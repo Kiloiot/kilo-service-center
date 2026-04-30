@@ -1,0 +1,1689 @@
+syntax = "proto3";
+
+package kilocenter.api.v1;
+
+option go_package = "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1;kilocenterv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/wrappers.proto";
+
+// CoreService handles device management, protocol operations, analytics,
+// monitoring, certificates, blueprints, and integrations.
+service CoreService {
+  // End Point management
+  rpc CreateEndPoint(CreateEndPointRequest) returns (EndPoint);
+  rpc GetEndPoint(GetEndPointRequest) returns (EndPoint);
+  rpc UpdateEndPoint(UpdateEndPointRequest) returns (EndPoint);
+  rpc DeleteEndPoint(DeleteEndPointRequest) returns (google.protobuf.Empty);
+  rpc ListEndPoints(ListEndPointsRequest) returns (ListEndPointsResponse);
+
+  // End Point attach/detach operations
+  rpc AttachEndPoint(AttachEndPointRequest) returns (AttachEndPointResponse);
+  rpc DetachEndPoint(DetachEndPointRequest) returns (DetachEndPointResponse);
+
+  // Base Station management
+  rpc CreateBaseStation(CreateBaseStationRequest) returns (BaseStation);
+  rpc GetBaseStation(GetBaseStationRequest) returns (BaseStation);
+  rpc UpdateBaseStation(UpdateBaseStationRequest) returns (BaseStation);
+  rpc DeleteBaseStation(DeleteBaseStationRequest) returns (google.protobuf.Empty);
+  rpc ListBaseStations(ListBaseStationsRequest) returns (ListBaseStationsResponse);
+  rpc GetBaseStationStats(GetBaseStationStatsRequest) returns (GetBaseStationStatsResponse);
+  rpc UpdateBaseStationEui(UpdateBaseStationEuiRequest) returns (BaseStation);
+
+  // Message operations
+  rpc GetMessage(GetMessageRequest) returns (Message);
+
+  // Downlink operations
+  rpc SendDownlink(SendDownlinkRequest) returns (SendDownlinkResponse);
+  rpc RevokeDownlink(RevokeDownlinkRequest) returns (RevokeDownlinkResponse);
+  rpc ListDownlinkQueue(ListDownlinkQueueRequest) returns (ListDownlinkQueueResponse);
+  rpc GetDownlinkResults(GetDownlinkResultsRequest) returns (GetDownlinkResultsResponse);
+
+  // UL Data Transmit operations (BSSCI 3.11)
+  rpc SendULTransmit(SendULTransmitRequest) returns (SendULTransmitResponse);
+
+  // Base Station operations (BSSCI 3.5)
+  rpc RequestBaseStationStatus(BaseStationStatusRequest) returns (BaseStationStatusResponse);
+
+  // Base Station Ping operation (BSSCI §5.4)
+  rpc InitiatePing(InitiatePingRequest) returns (InitiatePingResponse);
+
+  // DL RX Status operations (BSSCI 3.15-3.16)
+  rpc GetDLRXStatus(GetDLRXStatusRequest) returns (GetDLRXStatusResponse);
+  rpc QueryDLRXStatus(QueryDLRXStatusRequest) returns (QueryDLRXStatusResponse);
+  rpc GetDLRXStatusQueries(GetDLRXStatusQueriesRequest) returns (GetDLRXStatusQueriesResponse);
+
+  // System operations
+  rpc GetSystemStatus(google.protobuf.Empty) returns (SystemStatus);
+  rpc GetStatistics(GetStatisticsRequest) returns (Statistics);
+  rpc GetReleaseInfo(google.protobuf.Empty) returns (ReleaseInfo);
+
+  // Integrations
+  rpc CreateIntegration(CreateIntegrationRequest) returns (Integration);
+  rpc GetIntegration(GetIntegrationRequest) returns (Integration);
+  rpc UpdateIntegration(UpdateIntegrationRequest) returns (Integration);
+  rpc DeleteIntegration(DeleteIntegrationRequest) returns (google.protobuf.Empty);
+  rpc ListIntegrations(ListIntegrationsRequest) returns (ListIntegrationsResponse);
+
+  // Analytics
+  rpc GetAnalyticsOverview(GetAnalyticsOverviewRequest) returns (GetAnalyticsOverviewResponse);
+  rpc GetActivityAnalytics(GetActivityAnalyticsRequest) returns (GetActivityAnalyticsResponse);
+  rpc GetSignalQualityAnalytics(GetSignalQualityAnalyticsRequest) returns (GetSignalQualityAnalyticsResponse);
+
+  // Events & Alerts
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+
+  // Unified Activity Feed (Events + Messages with pagination)
+  rpc ListBaseStationActivity(ListBaseStationActivityRequest) returns (ListBaseStationActivityResponse);
+  rpc ListEndpointActivity(ListEndpointActivityRequest) returns (ListEndpointActivityResponse);
+
+  // Event streaming RPCs
+  rpc StreamEvents(StreamEventsRequest) returns (stream Event);
+
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);
+  rpc GetAlertSummary(GetAlertSummaryRequest) returns (GetAlertSummaryResponse);
+
+  // SCACI Monitoring
+  rpc ListScaciSessions(ListScaciSessionsRequest) returns (ListScaciSessionsResponse);
+  rpc GetScaciSession(GetScaciSessionRequest) returns (GetScaciSessionResponse);
+  rpc GetScaciStatistics(GetScaciStatisticsRequest) returns (GetScaciStatisticsResponse);
+  rpc ListScaciErrors(ListScaciErrorsRequest) returns (ListScaciErrorsResponse);
+  rpc ListScaciQueues(ListScaciQueuesRequest) returns (ListScaciQueuesResponse);
+  rpc GetScaciStatus(GetScaciStatusRequest) returns (GetScaciStatusResponse);
+
+  // Certificates
+  rpc GenerateCertificate(GenerateCertificateRequest) returns (GenerateCertificateResponse);
+  rpc DownloadCertificate(DownloadCertificateRequest) returns (DownloadCertificateResponse);
+  rpc DownloadBaseStationCertificate(DownloadBaseStationCertificateRequest) returns (DownloadCertificateResponse);
+  rpc GenerateServerCertificates(GenerateServerCertificatesRequest) returns (GenerateServerCertificatesResponse);
+  rpc RenewServerCertificates(RenewServerCertificatesRequest) returns (RenewServerCertificatesResponse);
+  rpc GetServerCertificateStatus(GetServerCertificateStatusRequest) returns (GetServerCertificateStatusResponse);
+
+  // Blueprints / Device Catalog - Manufacturers
+  rpc CreateManufacturer(CreateManufacturerRequest) returns (CreateManufacturerResponse);
+  rpc GetManufacturer(GetManufacturerRequest) returns (GetManufacturerResponse);
+  rpc UpdateManufacturer(UpdateManufacturerRequest) returns (UpdateManufacturerResponse);
+  rpc DeleteManufacturer(DeleteManufacturerRequest) returns (DeleteManufacturerResponse);
+  rpc ListManufacturers(ListManufacturersRequest) returns (ListManufacturersResponse);
+
+  // Blueprints / Device Catalog - Device Models
+  rpc CreateDeviceModel(CreateDeviceModelRequest) returns (CreateDeviceModelResponse);
+  rpc GetDeviceModel(GetDeviceModelRequest) returns (GetDeviceModelResponse);
+  rpc UpdateDeviceModel(UpdateDeviceModelRequest) returns (UpdateDeviceModelResponse);
+  rpc DeleteDeviceModel(DeleteDeviceModelRequest) returns (DeleteDeviceModelResponse);
+  rpc ListDeviceModels(ListDeviceModelsRequest) returns (ListDeviceModelsResponse);
+
+  // Blueprints / Device Catalog - Blueprints
+  rpc CreateBlueprint(CreateBlueprintRequest) returns (CreateBlueprintResponse);
+  rpc GetBlueprint(GetBlueprintRequest) returns (GetBlueprintResponse);
+  rpc UpdateBlueprint(UpdateBlueprintRequest) returns (UpdateBlueprintResponse);
+  rpc DeleteBlueprint(DeleteBlueprintRequest) returns (DeleteBlueprintResponse);
+  rpc ListBlueprints(ListBlueprintsRequest) returns (ListBlueprintsResponse);
+  rpc SetDefaultBlueprint(SetDefaultBlueprintRequest) returns (SetDefaultBlueprintResponse);
+  rpc SubmitBlueprintToRegistry(SubmitBlueprintToRegistryRequest) returns (SubmitBlueprintToRegistryResponse);
+
+  // Composite: Create device model + default blueprint atomically
+  rpc CreateDeviceModelWithBlueprint(CreateDeviceModelWithBlueprintRequest) returns (CreateDeviceModelWithBlueprintResponse);
+
+  // Blueprint decode preview
+  rpc DecodePreview(DecodePreviewRequest) returns (DecodePreviewResponse);
+
+  // Messages (listing + streaming + search/export)
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc StreamMessages(StreamMessagesRequest) returns (stream Message);
+  rpc ListBaseStationMessages(ListBaseStationMessagesRequest) returns (ListBaseStationMessagesResponse);
+  rpc GetBaseStationMessage(GetBaseStationMessageRequest) returns (GetBaseStationMessageResponse);
+  rpc GetBaseStationMessageStats(GetBaseStationMessageStatsRequest) returns (GetBaseStationMessageStatsResponse);
+  rpc SearchBaseStationMessages(SearchBaseStationMessagesRequest) returns (SearchBaseStationMessagesResponse);
+  rpc ExportBaseStationMessages(ExportBaseStationMessagesRequest) returns (ExportBaseStationMessagesResponse);
+  rpc StreamBaseStationMessages(StreamBaseStationMessagesRequest) returns (stream BaseStationMessage);
+
+  // Endpoint-specific message listing
+  rpc ListEndpointMessages(ListEndpointMessagesRequest) returns (ListEndpointMessagesResponse);
+
+  // Endpoint Stats/Operations
+  rpc GetEndPointStats(GetEndPointStatsRequest) returns (GetEndPointStatsResponse);
+  rpc GetEndPointOperations(GetEndPointOperationsRequest) returns (GetEndPointOperationsResponse);
+
+  // Global coverage (server admin only — cross-tenant)
+  rpc ListAllBaseStationLocations(ListAllBaseStationLocationsRequest) returns (ListAllBaseStationLocationsResponse);
+
+  // CE onboarding (CE mode only — requires no authentication)
+  rpc GetCEStatus(GetCEStatusRequest) returns (GetCEStatusResponse);
+  rpc CompleteCEOnboarding(CompleteCEOnboardingRequest) returns (CompleteCEOnboardingResponse);
+
+  // ECE CE registry admin (ECE internal only)
+  rpc ListCEInstances(ListCEInstancesRequest) returns (ListCEInstancesResponse);
+  rpc RevokeCEInstance(RevokeCEInstanceRequest) returns (RevokeCEInstanceResponse);
+}
+
+// ============================================================================
+// EndPoint Messages
+// ============================================================================
+
+// EndPoint represents a MIOTY End Point (EP)
+message EndPoint {
+  string epEui = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string description = 4;
+  string ep_class = 5; // 'Z' for zero-power (unidirectional), 'A' for active (bidirectional)
+  bytes nwk_sn_key = 6; // Network Session Key per MIOTY BSSCI v1.0.0
+  bytes app_key = 7;
+  string status = 8; // active, inactive, suspended
+  map<string, string> tags = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  google.protobuf.Timestamp last_seen_at = 12;
+  // MIOTY protocol fields per BSSCI v1.0.0 Section 3.8.1
+  string attach_status = 13; // attached, detached, attaching, pending
+  uint32 sh_addr = 14; // Short address
+  bool dual_chan = 15; // Dual-channel mode
+  bool repetition = 16; // Repetition flag
+  bool wide_carr_off = 17; // Wide carrier offset
+  bool long_blk_dist = 18; // Long block distance
+  uint32 attach_cnt = 19; // Attachment counter
+  bool pre_attach = 20; // Pre-attachment enabled
+  uint32 last_packet_cnt = 21; // Last known packet counter (uint32)
+  bytes type_eui = 22; // 8-byte Type EUI for blueprint decoding
+  int32 carrier_offset = 23; // Carrier offset in Hz
+  string device_model_id = 24; // UUID reference to device_models.id for blueprint decoding
+}
+
+// BaseStation represents a MIOTY Base Station (BS)
+message BaseStation {
+  string bsEui = 1;
+  string tenant_id = 2;
+  string name = 3;
+  string description = 4;
+  google.protobuf.DoubleValue latitude = 5;              // Nullable — absent when not set
+  google.protobuf.DoubleValue longitude = 6;             // Nullable — absent when not set
+  google.protobuf.DoubleValue altitude = 7;              // Nullable — absent when not set
+  string status = 8; // online, offline
+  map<string, string> tags = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+  google.protobuf.Timestamp last_seen_at = 12;
+  // MIOTY status fields (BSSCI v1.0.0 §5.5.2) - wrappers preserve "Not available" semantics
+  google.protobuf.Int64Value system_time = 13;           // Unix UTC ns timestamp
+  google.protobuf.DoubleValue duty_cycle = 14;           // TX time fraction (0.0-1.0)
+  google.protobuf.Int64Value uptime_seconds = 15;        // System uptime in seconds
+  google.protobuf.DoubleValue temperature_celsius = 16;  // System temperature
+  google.protobuf.DoubleValue cpu_load = 17;             // CPU utilization (0.0-1.0)
+  google.protobuf.DoubleValue memory_load = 18;          // Memory utilization (0.0-1.0)
+  google.protobuf.Struct bs_config = 19;                 // Configuration object (MIOTY §5.5.2)
+  google.protobuf.Timestamp last_status_at = 20;         // Last status reception time
+  string service_center_url = 21;                        // BSSCI Service Center URL (tls://host:port)
+  string location_source = 22;                           // "gps" or "manual"
+  google.protobuf.Timestamp location_updated_at = 23;    // When location was last updated
+}
+
+// Subpacket-level radio metrics per BSSCI spec
+message SubpacketInfo {
+  repeated double snr = 1;
+  repeated double rssi = 2;
+  repeated int64 frequency = 3;
+  repeated double phase = 4;
+}
+
+// Per-base-station reception data per SCACI §3.8.1
+message BaseStationReceptionInfo {
+  string bs_eui = 1;
+  int64 rx_time = 2;                              // mandatory (Unix UTC ns)
+  double snr = 3;                                  // mandatory
+  double rssi = 4;                                 // mandatory
+  google.protobuf.DoubleValue eq_snr = 5;          // optional (*float64)
+  google.protobuf.Int64Value rx_duration = 6;      // optional (*int64)
+  google.protobuf.StringValue profile = 7;         // optional (*string)
+  google.protobuf.StringValue mode = 8;            // optional (*string)
+  google.protobuf.DoubleValue dl_rx_snr = 9;       // optional (*float64)
+  google.protobuf.DoubleValue dl_rx_rssi = 10;     // optional (*float64)
+  SubpacketInfo subpackets = 11;                   // optional
+}
+
+// Message represents an uplink message from an End Point
+message Message {
+  string id = 1;
+  string epEui = 2;
+  string bsEui = 3;
+  string tenant_id = 4;
+  bytes payload = 5;
+  double frequency = 6;
+  double rssi = 7;
+  double snr = 8;
+  double eq_snr = 9;
+  string uplink_mode = 10; // standard, low_latency, repeated
+  uint32 packet_counter = 11;
+  bool dl_open = 12;
+  bool res_exp = 13;
+  bool dl_ack = 14;
+  uint32 crypto_mode = 15;
+  google.protobuf.Timestamp received_at = 16;
+  bytes decoded_payload = 17;      // JSON-encoded decoded payload from blueprint
+  string decode_status = 18;        // Decode status (success/failed/skipped/pending)
+  string decode_error_code = 19;    // Blueprint decoder error token (empty on success)
+  bytes blueprint_type_eui = 20;    // Type EUI of the blueprint used
+  string blueprint_version_id = 21; // UUID of the blueprint version used
+  repeated BaseStationReceptionInfo base_stations = 22; // Multi-BS reception data per SCACI §3.8.1
+  bool duplicate = 23;              // True when message received by multiple base stations
+}
+
+// End Point management requests/responses
+message CreateEndPointRequest {
+  EndPoint endpoint = 1;
+}
+
+message GetEndPointRequest {
+  string epEui = 1;
+  string tenant_id = 2;
+}
+
+message UpdateEndPointRequest {
+  EndPoint endpoint = 1;
+  // Required. Specifies which fields to update.
+  // Supported mask paths: "name", "description", "ep_class", "status",
+  //   "sh_addr", "attach_cnt", "dual_chan", "repetition", "wide_carr_off",
+  //   "long_blk_dist", "pre_attach", "last_packet_cnt", "carrier_offset",
+  //   "nwk_sn_key", "app_key", "device_model_id", "type_eui"
+  google.protobuf.FieldMask update_mask = 2;
+  // New EUI (16-char hex). If set, endpoint.ep_eui identifies the current endpoint
+  // and this field specifies the replacement EUI. Cascades to all dependent tables.
+  string new_ep_eui = 3;
+}
+
+message DeleteEndPointRequest {
+  string epEui = 1;
+  string tenant_id = 2;
+}
+
+message ListEndPointsRequest {
+  string tenant_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  string status_filter = 4;
+}
+
+message ListEndPointsResponse {
+  repeated EndPoint endpoints = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// End Point attach/detach messages
+// Note: organization_id is NOT in request - org is resolved from gRPC metadata (x-organization-id)
+message AttachEndPointRequest {
+  string ep_eui = 1;
+}
+
+message AttachEndPointResponse {
+  string operation_id = 1;
+  string status = 2;
+}
+
+message DetachEndPointRequest {
+  string ep_eui = 1;
+}
+
+message DetachEndPointResponse {
+  string operation_id = 1;
+  string status = 2;
+}
+
+// ============================================================================
+// Base Station Messages
+// ============================================================================
+
+message CreateBaseStationRequest {
+  BaseStation basestation = 1;
+}
+
+message GetBaseStationRequest {
+  string bsEui = 1;
+  string tenant_id = 2;
+}
+
+message UpdateBaseStationRequest {
+  BaseStation basestation = 1;
+  // Required. Specifies which fields to update.
+  // Supported mask paths: "name", "description", "latitude", "longitude", "altitude"
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteBaseStationRequest {
+  string bsEui = 1;
+  string tenant_id = 2;
+}
+
+message UpdateBaseStationEuiRequest {
+  string bs_eui = 1;      // Current EUI (accepts dashed or non-dashed)
+  string new_bs_eui = 2;  // New EUI (accepts dashed or non-dashed)
+}
+
+message ListBaseStationsRequest {
+  string tenant_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  string status_filter = 4;
+}
+
+message ListBaseStationsResponse {
+  repeated BaseStation basestations = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Base Station statistics request/response
+message GetBaseStationStatsRequest {
+  string bsEui = 1;
+  string tenant_id = 2;
+  google.protobuf.Timestamp start_time = 3;  // Optional time range filter
+  google.protobuf.Timestamp end_time = 4;    // Optional time range filter
+}
+
+message GetBaseStationStatsResponse {
+  string bsEui = 1;
+  int64 total_messages = 2;
+  int64 total_endpoints = 3;
+  int64 messages_today = 4;
+  int64 messages_this_week = 5;
+  int64 messages_this_month = 6;
+  double avg_rssi = 7;
+  double avg_snr = 8;
+  google.protobuf.Timestamp last_message_at = 9;
+  map<string, int64> endpoint_message_counts = 10;  // epEui -> count
+  string status = 11;  // online, offline
+  google.protobuf.Timestamp last_seen_at = 12;
+}
+
+// ============================================================================
+// Message Operations
+// ============================================================================
+
+message GetMessageRequest {
+  string id = 1;
+  string tenant_id = 2;
+}
+
+// ============================================================================
+// Downlink Operations
+// ============================================================================
+
+message SendDownlinkRequest {
+  string epEui = 1;
+  string tenant_id = 2;
+  repeated bytes payloads = 3;  // User data payloads (single entry if not counter-dependent, multiple if counter-dependent)
+  reserved 4;  // Removed: port (non-MIOTY)
+  float priority = 5;  // MIOTY BSSCI §3.12.1: single precision float (0.0-1.0)
+  reserved 6;  // Removed: confirmed (non-MIOTY)
+
+  // MIOTY fields from BSSCI §3.12.1
+  bool cnt_depend = 7;   // True if userData is counter dependent
+  repeated int64 packet_cnt = 8;  // End Point packet counters (must match payloads length when cnt_depend is true)
+  uint32 format = 9;     // User data format identifier, 8 bit
+  bool response_exp = 10;    // True to request End Point response
+  bool response_prio = 11;   // True to request priority End Point response
+  bool dl_wind_req = 12;     // True to request further End Point DL window
+  bool exp_only = 13;        // True to send only if End Point expects response
+  bool dl_rx_stat_qry = 14;  // SCACI §3.10.1: True to query DL RX status from endpoint
+}
+
+message SendDownlinkResponse {
+  string id = 1;
+  string status = 2;
+}
+
+message RevokeDownlinkRequest {
+  string epEui = 1;
+  string queue_id = 2;
+  string tenant_id = 3;
+}
+
+message RevokeDownlinkResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message ListDownlinkQueueRequest {
+  string tenant_id = 1;
+  string epEui = 2; // optional
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListDownlinkQueueResponse {
+  repeated DownlinkMessage messages = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message DownlinkMessage {
+  string id = 1;
+  string epEui = 2;
+  string tenant_id = 3;
+  bytes payload = 4;
+  reserved 5;  // Removed: port (non-MIOTY)
+  float priority = 6;  // MIOTY BSSCI §3.12.1: single precision float
+  string status = 7;   // pending, scheduled, transmitted, expired, failed (internal status)
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp scheduled_at = 9;
+  google.protobuf.Timestamp transmitted_at = 10;
+  string result = 11;  // "sent", "expired", "invalid" per BSSCI §3.14
+  int64 tx_time = 12;  // Unix nanoseconds when transmitted
+  string bs_eui = 13;  // Base Station EUI that transmitted
+
+  // MIOTY fields from BSSCI §3.12.1
+  bool cnt_depend = 14;
+  repeated int64 packet_cnt = 15;
+  uint32 format = 16;
+  bool response_exp = 17;
+  bool response_prio = 18;
+  bool dl_wind_req = 19;
+  bool exp_only = 20;
+  reserved 21;  // Removed: confirmed (non-MIOTY)
+  int64 que_id = 22;                   // Queue ID per BSSCI §3.14.1 for operator traceability
+  int32 attempts = 23;                 // Internal queue management
+  int32 max_attempts = 24;             // Internal queue management
+  int64 transmission_packet_cnt = 25;  // End Point packet counter when transmitted per BSSCI §3.14.1
+  repeated bytes payloads = 26;        // Full payload array (mirrors SendDownlinkRequest.payloads)
+  bool dl_rx_stat_qry = 27;            // SCACI §3.10.1: True to query DL RX status from endpoint
+}
+
+// Request downlink results - includes transmitted, expired, failed entries
+message GetDownlinkResultsRequest {
+  string tenant_id = 1;
+  string epEui = 2; // optional, filter by device
+  string status_filter = 3; // optional: "transmitted", "expired", "failed"
+  int32 page_size = 4;
+  string page_token = 5;
+  google.protobuf.Timestamp time_from = 6; // optional: filter results from this time
+  google.protobuf.Timestamp time_to = 7;   // optional: filter results to this time
+}
+
+message GetDownlinkResultsResponse {
+  repeated DownlinkMessage results = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// ============================================================================
+// UL Data Transmit (BSSCI 3.11)
+// ============================================================================
+
+message SendULTransmitRequest {
+  string epEui = 1;          // Endpoint EUI as hex string
+  bytes user_data = 2;        // User data to transmit
+  uint32 packet_cnt = 3;      // Packet counter
+  bytes nwk_sn_key = 4;       // Network session key (16 bytes)
+  uint32 sh_addr = 5;         // Short address
+  string profile = 6;         // Optional MIOTY profile
+  uint32 format = 7;          // Optional format ID (0-255)
+  string tenant_id = 8;       // Optional tenant ID
+  string bs_eui = 9;          // Optional target base station EUI (16 hex chars)
+}
+
+message SendULTransmitResponse {
+  string id = 1;              // Operation ID
+  string status = 2;          // Status (queued, failed, etc.)
+  string message = 3;         // Optional status message
+}
+
+// Base Station Status Request (BSSCI 3.5)
+message BaseStationStatusRequest {
+  uint64 bs_eui = 1;          // Base Station EUI
+}
+
+message BaseStationStatusResponse {
+  bool success = 1;           // Whether the request was sent successfully
+  string message = 2;         // Status or error message
+  int64 op_id = 3;           // Operation ID of the status request
+}
+
+// Ping Request (BSSCI §5.4)
+message InitiatePingRequest {
+  uint64 bs_eui = 1;  // Base Station EUI
+}
+
+message InitiatePingResponse {
+  bool success = 1;      // Whether ping was sent successfully
+  string message = 2;    // Status or error message
+  int64 op_id = 3;      // Operation ID of the ping request
+}
+
+// ============================================================================
+// System Operations
+// ============================================================================
+
+// ServiceStatus represents health state of a monitored service.
+message ServiceStatus {
+  string name = 1;
+  string url = 2;
+  bool healthy = 3;
+  int32 latency_ms = 4;
+  string error = 5;
+  google.protobuf.Timestamp checked_at = 6;
+}
+
+message SystemStatus {
+  string version = 1;
+  string status = 2;
+  google.protobuf.Timestamp uptime = 3;
+  int32 active_endpoints = 4;
+  int32 active_basestations = 5;
+  int64 messages_processed = 6;
+  repeated ServiceStatus services = 7;
+}
+
+// ReleaseInfo provides build and version metadata
+message ReleaseInfo {
+  // Build metadata
+  string version = 1;        // Semantic version from git tags
+  string build_time = 2;     // ISO 8601 timestamp
+  string git_commit = 3;     // Full git commit hash
+  string git_branch = 4;     // Git branch name
+  string build_user = 5;     // User who built the binary
+  string go_version = 6;     // Go compiler version
+  int32 schema_version = 7;  // Database schema version (migration count)
+  map<string, string> artifacts = 8;  // Binary artifact paths
+
+  // Service Center identity (BSSCI §5.3.2 / SCACI §3.3.2)
+  uint64 sc_eui = 9;         // Service Center EUI-64
+  string sc_vendor = 10;     // Vendor name (e.g., "KiloCenter")
+  string sc_model = 11;      // Model (e.g., "Enterprise")
+  string sc_name = 12;       // Instance name (from general.server_name)
+  string sc_sw_version = 13; // Software version (override or default)
+
+  // Distribution and legal metadata
+  string edition          = 14; // Build edition (e.g., "Community Edition")
+  string license_id       = 15; // SPDX license identifier (e.g., "AGPL-3.0-or-later")
+  string license_url      = 16; // URL to full license text
+  string source_url       = 17; // Source code repository URL
+  string documentation_url = 18; // Documentation URL
+  string homepage_url     = 19; // Project homepage URL
+  string trademark_notice = 20; // Trademark ownership statement
+  string edition_code     = 21; // Runtime edition code ("ce" or "ece") for feature gating
+}
+
+message GetStatisticsRequest {
+  string tenant_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  string granularity = 4; // hour, day, week, month
+}
+
+message Statistics {
+  int64 total_messages = 1;
+  int64 total_endpoints = 2;
+  int64 total_basestations = 3;
+  repeated TimeSeriesData message_counts = 4;
+  map<string, int64> endpoint_message_counts = 5;
+  map<string, int64> basestation_message_counts = 6;
+}
+
+message TimeSeriesData {
+  google.protobuf.Timestamp timestamp = 1;
+  int64 value = 2;
+}
+
+// ============================================================================
+// DL RX Status (BSSCI 3.15-3.16)
+// ============================================================================
+
+message DLRXStatus {
+  string ep_eui = 1;
+  string bs_eui = 2;
+  int64 rx_time = 3;       // Unix UTC ns
+  uint32 packet_cnt = 4;
+  double dl_rx_snr = 5;    // dB
+  double dl_rx_rssi = 6;   // dBm
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message GetDLRXStatusRequest {
+  string ep_eui = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  google.protobuf.Timestamp start_time = 4;  // Optional time range filter
+  google.protobuf.Timestamp end_time = 5;    // Optional time range filter
+}
+
+message GetDLRXStatusResponse {
+  repeated DLRXStatus statuses = 1;
+  int32 total_count = 2;
+  // Aggregate metrics for the requested period
+  double avg_snr = 3;
+  double avg_rssi = 4;
+}
+
+message QueryDLRXStatusRequest {
+  string ep_eui = 1;
+}
+
+message QueryDLRXStatusResponse {
+  bool query_initiated = 1;
+  string message = 2;
+}
+
+// DL RX Status Query tracking (BSSCI §5.15 telemetry)
+message DLRXStatusQuery {
+  string ep_eui = 1;           // Hex string (16 chars)
+  string bs_eui = 2;           // Hex string (16 chars)
+  int64 op_id = 3;             // SC operation ID (negative)
+  string status = 4;           // "pending"|"received"|"timeout"
+  google.protobuf.Timestamp requested_at = 5;
+  google.protobuf.Timestamp received_at = 6;  // Optional (null if not received)
+  string org_uuid = 7;         // Organization UUID for multi-tenant filtering (optional)
+}
+
+message GetDLRXStatusQueriesRequest {
+  string ep_eui = 1;
+  int32 limit = 2;             // Default 20, max 100
+  int32 offset = 3;
+  google.protobuf.Timestamp start_time = 4;  // Optional time range filter
+  google.protobuf.Timestamp end_time = 5;    // Optional time range filter
+}
+
+message DLRXStatusQueryStats {
+  int64 pending = 1;
+  int64 received = 2;
+  int64 timeout = 3;
+}
+
+message GetDLRXStatusQueriesResponse {
+  repeated DLRXStatusQuery queries = 1;
+  int64 total_count = 2;
+  DLRXStatusQueryStats stats = 3;
+}
+
+// ============================================================================
+// Integrations Messages
+// ============================================================================
+
+message Integration {
+  int64 id = 1;
+  string name = 2;
+  string description = 3;
+  string type = 4;                              // http, mqtt, database
+  google.protobuf.Struct config = 5;            // Type-specific configuration
+  google.protobuf.Struct event_filter = 6;      // Optional event filtering rules
+  string delivery_format = 7;                   // json (default)
+  string status = 8;                            // active, paused, disabled
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message CreateIntegrationRequest {
+  string name = 1;
+  string description = 2;
+  string type = 3;                              // http, mqtt, database
+  google.protobuf.Struct config = 4;
+  google.protobuf.Struct event_filter = 5;
+  string delivery_format = 6;
+}
+
+message GetIntegrationRequest {
+  int64 id = 1;
+}
+
+message UpdateIntegrationRequest {
+  int64 id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Struct config = 4;
+  google.protobuf.Struct event_filter = 5;
+  string status = 6;
+}
+
+message DeleteIntegrationRequest {
+  int64 id = 1;
+}
+
+message ListIntegrationsRequest {
+  int32 page_size = 1;
+  int32 offset = 2;
+}
+
+message ListIntegrationsResponse {
+  repeated Integration integrations = 1;
+  int64 total_count = 2;
+}
+
+// ============================================================================
+// Analytics Messages
+// ============================================================================
+
+message GetAnalyticsOverviewRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+}
+
+message GetAnalyticsOverviewResponse {
+  AnalyticsOverview overview = 1;
+}
+
+message GetActivityAnalyticsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  string granularity = 3;  // hour, day, week
+}
+
+message GetActivityAnalyticsResponse {
+  ActivityAnalytics activity = 1;
+}
+
+message GetSignalQualityAnalyticsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+}
+
+message GetSignalQualityAnalyticsResponse {
+  SignalQualityAnalytics signal_quality = 1;
+}
+
+message AnalyticsOverview {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  int64 total_messages = 3;
+  int64 active_endpoints = 4;
+  int64 active_base_stations = 5;
+  double avg_rssi = 6;
+  double avg_snr = 7;
+  google.protobuf.Timestamp first_message = 8;
+  google.protobuf.Timestamp last_message = 9;
+  repeated HourlyActivity hourly_activity = 10;
+  int64 messages_last_24h = 11; // Aggregated count for last 24 hours
+  int64 messages_last_week = 12; // Aggregated count for last 7 days
+}
+
+message HourlyActivity {
+  google.protobuf.Timestamp hour = 1;
+  int64 message_count = 2;
+}
+
+message ActivityAnalytics {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  int64 total_messages = 3;
+  int64 unique_endpoints = 4;
+  int64 unique_base_stations = 5;
+  repeated TimeSlotActivity time_slots = 6;
+}
+
+message TimeSlotActivity {
+  google.protobuf.Timestamp slot = 1;
+  int64 message_count = 2;
+  int64 endpoint_count = 3;
+}
+
+message SignalQualityAnalytics {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+  SignalQualityOverall overall = 3;
+  repeated BaseStationSignalQuality by_base_station = 4;
+}
+
+message SignalQualityOverall {
+  double avg_rssi = 1;
+  double min_rssi = 2;
+  double max_rssi = 3;
+  double median_rssi = 4;
+  double avg_snr = 5;
+  double min_snr = 6;
+  double max_snr = 7;
+  double median_snr = 8;
+}
+
+message BaseStationSignalQuality {
+  string eui = 1;
+  double avg_rssi = 2;
+  double avg_snr = 3;
+  int64 message_count = 4;
+}
+
+// ============================================================================
+// Events & Alerts Messages
+// ============================================================================
+
+message ListEventsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  repeated string categories = 3;  // Optional: basestation, endpoint, system, etc.
+  string severity = 4;             // Optional: critical, warning, info
+  google.protobuf.Timestamp start_time = 5;
+  google.protobuf.Timestamp end_time = 6;
+  repeated string event_types = 7; // Optional: filter by event type (e.g. service.started, user.created)
+}
+
+message ListEventsResponse {
+  repeated Event events = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Unified Activity Feed - combines Events and Messages with pagination
+message ListBaseStationActivityRequest {
+  string bs_eui = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+}
+
+message ListBaseStationActivityResponse {
+  repeated BaseStationActivityItem items = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Activity item - either an event or a message, sorted by timestamp
+message BaseStationActivityItem {
+  google.protobuf.Timestamp occurred_at = 1;
+  oneof item {
+    Event event = 2;
+    BaseStationMessage message = 3;
+  }
+}
+
+message ListEndpointActivityRequest {
+  string ep_eui = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+}
+
+message ListEndpointActivityResponse {
+  repeated EndpointActivityItem items = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Endpoint activity item - either an event or a message, sorted by timestamp
+message EndpointActivityItem {
+  google.protobuf.Timestamp occurred_at = 1;
+  oneof item {
+    Event event = 2;
+    Message message = 3;
+  }
+}
+
+// Event streaming request messages
+// All timestamps are optional; nil defaults to zero time in handlers
+message StreamEventsRequest {
+  string category = 1;      // Optional: filter by category
+  string severity = 2;      // Optional: filter by severity
+  google.protobuf.Timestamp start_time = 3;  // Optional: filter events after this time
+  google.protobuf.Timestamp end_time = 4;    // Optional: filter events before this time
+}
+
+message ListAlertsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string status = 3;      // Optional: new, acknowledged, resolved
+  string severity = 4;    // Optional: critical, warning
+}
+
+message ListAlertsResponse {
+  repeated Alert alerts = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message GetAlertSummaryRequest {
+  // Tenant context from headers
+}
+
+message GetAlertSummaryResponse {
+  AlertSummary summary = 1;
+}
+
+message Event {
+  string id = 1;
+  string event_type = 2;
+  string category = 3;
+  string severity = 4;
+  string title = 5;
+  string description = 6;
+  string source_name = 7;
+  google.protobuf.Timestamp timestamp = 8;
+  bytes data = 9;  // JSON-encoded extra data
+}
+
+message Alert {
+  string id = 1;
+  string severity = 2;
+  string category = 3;
+  string title = 4;
+  string description = 5;
+  string source_name = 6;
+  google.protobuf.Timestamp timestamp = 7;
+  string status = 8;  // new, acknowledged, resolved
+}
+
+message AlertSummary {
+  int32 critical = 1;
+  int32 warning = 2;
+  int32 info = 3;
+  repeated Alert recent = 4;
+}
+
+// ============================================================================
+// SCACI Monitoring Messages
+// ============================================================================
+
+message ListScaciSessionsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string status = 3;      // Optional: active, closed
+  bool can_resume = 4;    // Optional filter
+}
+
+message ListScaciSessionsResponse {
+  repeated ScaciSession sessions = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message GetScaciSessionRequest {
+  string id = 1;  // UUID
+}
+
+message GetScaciSessionResponse {
+  ScaciSession session = 1;
+}
+
+message GetScaciStatisticsRequest {
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
+}
+
+message GetScaciStatisticsResponse {
+  ScaciStatistics statistics = 1;
+}
+
+message ListScaciErrorsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time = 4;
+}
+
+message ListScaciErrorsResponse {
+  repeated ScaciError errors = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message ListScaciQueuesRequest {
+  string ep_eui = 1;  // Optional: filter by endpoint
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListScaciQueuesResponse {
+  repeated ScaciQueueEntry queue_entries = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message GetScaciStatusRequest {
+  // Tenant context from headers
+}
+
+message GetScaciStatusResponse {
+  ScaciStatus status = 1;
+}
+
+message ScaciSession {
+  string id = 1;           // UUID
+  string ac_eui = 2;       // Application Center EUI (hex)
+  string status = 3;       // active, closed
+  bool can_resume = 4;
+  string protocol_version = 5;
+  google.protobuf.Timestamp connected_at = 6;
+  google.protobuf.Timestamp last_activity_at = 7;
+  int64 operations_count = 8;
+}
+
+message ScaciStatistics {
+  int64 total_sessions = 1;
+  int64 active_sessions = 2;
+  int64 total_operations = 3;
+  int64 successful_operations = 4;
+  int64 failed_operations = 5;
+  double success_rate = 6;
+  google.protobuf.Timestamp uptime_since = 7;
+}
+
+message ScaciError {
+  string id = 1;
+  string error_code = 2;
+  string error_message = 3;
+  string session_id = 4;
+  string operation_type = 5;
+  google.protobuf.Timestamp occurred_at = 6;
+}
+
+message ScaciQueueEntry {
+  string id = 1;
+  string ep_eui = 2;
+  string operation_type = 3;
+  string status = 4;       // pending, in_progress, completed, failed
+  bytes payload = 5;
+  google.protobuf.Timestamp queued_at = 6;
+  google.protobuf.Timestamp processed_at = 7;
+}
+
+message ScaciStatus {
+  bool service_online = 1;
+  int32 active_sessions = 2;
+  int32 pending_operations = 3;
+  google.protobuf.Timestamp uptime_since = 4;
+  string protocol_version = 5;
+}
+
+// ============================================================================
+// Certificates Messages
+// ============================================================================
+
+message GenerateCertificateRequest {
+  string bs_eui = 1;
+  string base_station_name = 2;
+  int32 validity_days = 3;
+}
+
+message GenerateCertificateResponse {
+  string bs_eui = 1;
+  string service_center_url = 2;
+  map<string, string> download_urls = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message DownloadCertificateRequest {
+  string cert_type = 1;  // ca, client, key
+  string id = 2;         // Certificate set ID
+}
+
+message DownloadCertificateResponse {
+  bytes content = 1;
+  string filename = 2;
+  string content_type = 3;
+}
+
+message DownloadBaseStationCertificateRequest {
+  string bs_eui = 1;      // Base station EUI (hex, 16 chars or dashed XX-XX-XX-XX-XX-XX-XX-XX)
+  string cert_type = 2;   // "ca" | "client" | "key"
+}
+
+message GenerateServerCertificatesRequest {
+  // Empty - server certificates use config-derived hostname and 365-day validity
+}
+
+message GenerateServerCertificatesResponse {
+  bool success = 1;
+  string message = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message RenewServerCertificatesRequest {
+  // Empty - renews with same parameters as GenerateServerCertificates
+}
+
+message RenewServerCertificatesResponse {
+  bool success = 1;
+  string message = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message GetServerCertificateStatusRequest {
+  // No parameters
+}
+
+message GetServerCertificateStatusResponse {
+  CertificateStatus server_cert = 1;
+  CertificateStatus ca_cert = 2;
+}
+
+message CertificateStatus {
+  string subject = 1;
+  string issuer = 2;
+  google.protobuf.Timestamp not_before = 3;
+  google.protobuf.Timestamp not_after = 4;
+  int32 days_until_expiry = 5;
+  bool is_valid = 6;
+}
+
+// ============================================================================
+// Blueprints / Device Catalog - Manufacturers Messages
+// ============================================================================
+
+message CreateManufacturerRequest {
+  string name = 1;
+  string code = 2;
+  string description = 3;
+  string website = 4;
+  string contact_email = 5;
+}
+
+message CreateManufacturerResponse {
+  Manufacturer manufacturer = 1;
+}
+
+message GetManufacturerRequest {
+  string id = 1;  // UUID
+}
+
+message GetManufacturerResponse {
+  Manufacturer manufacturer = 1;
+}
+
+message UpdateManufacturerRequest {
+  string id = 1;  // UUID
+  string name = 2;
+  string description = 3;
+  string website = 4;
+  string contact_email = 5;
+}
+
+message UpdateManufacturerResponse {
+  Manufacturer manufacturer = 1;
+}
+
+message DeleteManufacturerRequest {
+  string id = 1;  // UUID
+}
+
+message DeleteManufacturerResponse {
+  bool success = 1;
+}
+
+message ListManufacturersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListManufacturersResponse {
+  repeated Manufacturer manufacturers = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message Manufacturer {
+  string id = 1;           // UUID
+  string name = 2;
+  string code = 3;
+  string description = 4;
+  string website = 5;
+  string contact_email = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  // Fields from KC-DB/storage/models/manufacturer.go
+  string tenant_id = 9;           // string per proto convention (line 198)
+  bool is_verified = 10;          // From manufacturer.go:19
+  int32 model_count = 11;         // From manufacturer.go:24
+}
+
+// ============================================================================
+// Blueprints / Device Catalog - Device Models Messages
+// ============================================================================
+
+message CreateDeviceModelRequest {
+  string manufacturer_id = 1;  // UUID
+  string name = 2;
+  string code = 3;
+  string type_eui = 4;         // Hex (16 chars)
+  string description = 5;
+}
+
+message CreateDeviceModelResponse {
+  DeviceModel device_model = 1;
+}
+
+message GetDeviceModelRequest {
+  string id = 1;  // UUID
+}
+
+message GetDeviceModelResponse {
+  DeviceModel device_model = 1;
+}
+
+message UpdateDeviceModelRequest {
+  string id = 1;  // UUID
+  string name = 2;
+  string description = 3;
+}
+
+message UpdateDeviceModelResponse {
+  DeviceModel device_model = 1;
+}
+
+message DeleteDeviceModelRequest {
+  string id = 1;  // UUID
+}
+
+message DeleteDeviceModelResponse {
+  bool success = 1;
+}
+
+message ListDeviceModelsRequest {
+  string manufacturer_id = 1;  // UUID - filter by manufacturer
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListDeviceModelsResponse {
+  repeated DeviceModel device_models = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message DeviceModel {
+  string id = 1;              // UUID
+  string manufacturer_id = 2; // UUID
+  string name = 3;
+  string code = 4;
+  string type_eui = 5;        // Hex (16 chars)
+  string description = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  // Fields from KC-DB/storage/models/device_model.go
+  string tenant_id = 9;           // string per proto convention
+  string datasheet_url = 10;      // From device_model.go:22
+  int32 blueprint_count = 11;     // Count from related blueprints
+}
+
+// ============================================================================
+// Blueprints / Device Catalog - Blueprints Messages
+// ============================================================================
+
+message CreateBlueprintRequest {
+  string device_model_id = 1;  // UUID
+  string name = 2;
+  string version = 3;
+  string description = 4;
+  bytes decoder_script = 5;    // JavaScript decoder
+  bool is_default = 6;
+}
+
+message CreateBlueprintResponse {
+  Blueprint blueprint = 1;
+}
+
+message GetBlueprintRequest {
+  string id = 1;  // UUID
+}
+
+message GetBlueprintResponse {
+  Blueprint blueprint = 1;
+}
+
+message UpdateBlueprintRequest {
+  string id = 1;  // UUID
+  string name = 2;
+  string version = 3;
+  string description = 4;
+  bytes decoder_script = 5;
+}
+
+message UpdateBlueprintResponse {
+  Blueprint blueprint = 1;
+}
+
+message DeleteBlueprintRequest {
+  string id = 1;  // UUID
+}
+
+message DeleteBlueprintResponse {
+  bool success = 1;
+}
+
+message ListBlueprintsRequest {
+  string device_model_id = 1;  // UUID - filter by device model
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListBlueprintsResponse {
+  repeated Blueprint blueprints = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message SetDefaultBlueprintRequest {
+  string id = 1;  // UUID
+}
+
+message SetDefaultBlueprintResponse {
+  bool success = 1;
+  Blueprint blueprint = 2;
+}
+
+message SubmitBlueprintToRegistryRequest {
+  string id = 1;  // UUID
+  string contributor_name = 2;
+  string contributor_email = 3;
+  string notes = 4;
+}
+
+message SubmitBlueprintToRegistryResponse {
+  bool success = 1;
+  string pr_url = 2;
+  string commit_sha = 3;
+  string branch_name = 4;
+}
+
+message Blueprint {
+  string id = 1;              // UUID
+  string device_model_id = 2; // UUID
+  string name = 3;
+  string version = 4;
+  string description = 5;
+  bytes decoder_script = 6;
+  bool is_default = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  // Fields from KC-DB/storage/models/blueprint.go
+  string type_eui = 10;           // hex string (8 bytes → 16 hex chars)
+  bytes spec_json = 11;           // bytes, not string (matches payload convention)
+  string registry_repo = 12;      // From blueprint.go:22
+  string registry_commit_sha = 13; // From blueprint.go:23
+  bool registry_verified = 14;    // From blueprint.go:24
+  string registry_pr_url = 15;    // From blueprint.go:26
+}
+
+// Composite: atomic model + default blueprint creation
+message CreateDeviceModelWithBlueprintRequest {
+  string manufacturer_id = 1;  // UUID
+  string name = 2;             // Model name
+  string version = 3;          // Blueprint version (e.g. "1.0.0")
+  bytes decoder_script = 4;    // Blueprint specification JSON
+}
+
+message CreateDeviceModelWithBlueprintResponse {
+  DeviceModel device_model = 1;
+  Blueprint blueprint = 2;
+}
+
+// Blueprint decode preview
+message DecodePreviewRequest {
+  string blueprint_id = 1;     // UUID of blueprint to use for decoding
+  bytes payload = 2;           // Raw binary payload
+  uint32 format_id = 3;        // MIOTY format ID
+}
+
+message DecodePreviewResponse {
+  bool success = 1;
+  bytes decoded_payload = 2;   // JSON-encoded decoded fields
+  string error_code = 3;       // Error token from blueprint decoder
+  string error_detail = 4;     // Human-readable error detail
+  uint32 format_id = 5;        // Format ID used
+  string blueprint_version = 6; // Version of blueprint used
+}
+
+// ============================================================================
+// Messages (listing + streaming) Messages
+// ============================================================================
+
+message ListMessagesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string ep_eui = 3;          // Optional: filter by endpoint
+  string bs_eui = 4;          // Optional: filter by base station
+  google.protobuf.Timestamp start_time = 5;
+  google.protobuf.Timestamp end_time = 6;
+}
+
+message ListMessagesResponse {
+  repeated Message messages = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// Endpoint-specific message listing
+message ListEndpointMessagesRequest {
+  string ep_eui = 1;              // Required: endpoint EUI filter
+  int32 page_size = 2;            // Pagination: items per page
+  string page_token = 3;          // Pagination: cursor token
+}
+
+message ListEndpointMessagesResponse {
+  repeated Message messages = 1;
+  string next_page_token = 2;     // Pagination: next cursor
+  int32 total_count = 3;          // Total matching messages
+}
+
+message StreamMessagesRequest {
+  string ep_eui = 1;  // Optional: filter by endpoint
+  string bs_eui = 2;  // Optional: filter by base station
+}
+
+// Note: StreamMessages returns stream Message (existing message type)
+
+message ListBaseStationMessagesRequest {
+  string bs_eui = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time = 5;
+  string direction = 6;     // Filter: "uplink" | "downlink" | "" (all)
+  string ep_eui = 7;        // Optional: filter by endpoint EUI
+}
+
+message ListBaseStationMessagesResponse {
+  repeated BaseStationMessage messages = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message GetBaseStationMessageRequest {
+  string bs_eui = 1;
+  string message_id = 2;
+}
+
+message GetBaseStationMessageResponse {
+  BaseStationMessage message = 1;
+}
+
+message GetBaseStationMessageStatsRequest {
+  string bs_eui = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+}
+
+message GetBaseStationMessageStatsResponse {
+  BaseStationMessageStats stats = 1;
+}
+
+message SearchBaseStationMessagesRequest {
+  string bs_eui = 1;
+  string query = 2;           // Search term
+  int32 page_size = 3;
+  string page_token = 4;
+  google.protobuf.Timestamp start_time = 5;
+  google.protobuf.Timestamp end_time = 6;
+  string direction = 7;       // Filter: "uplink" | "downlink" | "" (all)
+  string ep_eui = 8;          // Optional: filter by endpoint EUI
+}
+
+message SearchBaseStationMessagesResponse {
+  repeated BaseStationMessage messages = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message ExportBaseStationMessagesRequest {
+  string bs_eui = 1;
+  string format = 2;          // csv, json
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time = 4;
+  string direction = 5;       // Filter: "uplink" | "downlink" | "" (all)
+  string ep_eui = 6;          // Optional: filter by endpoint EUI
+}
+
+message ExportBaseStationMessagesResponse {
+  bytes content = 1;
+  string filename = 2;
+  string content_type = 3;
+}
+
+message StreamBaseStationMessagesRequest {
+  string bs_eui = 1;
+  string direction = 2;       // Filter: "uplink" | "downlink" | "" (all)
+  string ep_eui = 3;          // Optional: filter by endpoint EUI
+}
+
+// Note: StreamBaseStationMessages returns stream BaseStationMessage
+
+message BaseStationMessage {
+  string id = 1;
+  string bs_eui = 2;
+  string ep_eui = 3;
+  bytes payload = 4;
+  double rssi = 5;
+  double snr = 6;
+  double eq_snr = 7;
+  string uplink_mode = 8;
+  uint32 packet_counter = 9;
+  google.protobuf.Timestamp received_at = 10;
+  string direction = 11; // "uplink" or "downlink"
+  repeated BaseStationReceptionInfo base_stations = 12; // Multi-BS reception data per SCACI §3.8.1
+  bool duplicate = 13;              // True when message received by multiple base stations
+  bytes decoded_payload = 20;       // JSON-encoded decoded payload from blueprint
+  string decode_status = 21;        // Decode status (success/failed/skipped/pending)
+  string decode_error_code = 22;    // Blueprint decoder error token (empty on success)
+}
+
+message BaseStationMessageStats {
+  string bs_eui = 1;
+  int64 total_messages = 2;
+  int64 unique_endpoints = 3;
+  double avg_rssi = 4;
+  double avg_snr = 5;
+  int64 messages_today = 6;
+  int64 messages_this_week = 7;
+  int64 messages_this_month = 8;
+  google.protobuf.Timestamp first_message_at = 9;
+  google.protobuf.Timestamp last_message_at = 10;
+}
+
+// ============================================================================
+// EndPoint Stats/Operations Messages
+// ============================================================================
+
+message GetEndPointStatsRequest {
+  string ep_eui = 1;
+}
+
+message GetEndPointStatsResponse {
+  string ep_eui = 1;
+  int64 total_count = 2;           // From mioty.MessageStats.TotalCount
+  int64 unique_endpoints = 3;      // From mioty.MessageStats.UniqueEndpoints
+  double avg_rssi = 4;             // From mioty.MessageStats.AvgRSSI
+  double avg_snr = 5;              // From mioty.MessageStats.AvgSNR
+  google.protobuf.Timestamp first_seen = 6;   // From mioty.MessageStats.FirstSeen
+  google.protobuf.Timestamp last_seen = 7;    // From mioty.MessageStats.LastSeen
+  int32 active_days = 8;           // From mioty.MessageStats.ActiveDays
+  string attach_status = 9;        // From models.EndPoint.EpStatus via GetByEUI()
+}
+
+message GetEndPointOperationsRequest {
+  string ep_eui = 1;
+  int32 page_size = 2;
+  int32 offset = 3;
+}
+
+message GetEndPointOperationsResponse {
+  repeated EndPointOperation operations = 1;
+}
+
+message EndPointOperation {
+  string id = 1;                   // SystemEvent.ID (UUID string)
+  string event_type = 2;           // SystemEvent.EventType
+  string category = 3;             // SystemEvent.Category
+  string severity = 4;             // SystemEvent.Severity
+  string title = 5;                // SystemEvent.Title
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// ============================================================================
+// Global Coverage (server admin only)
+// ============================================================================
+
+message ListAllBaseStationLocationsRequest {}
+
+message BaseStationLocation {
+  string bs_eui = 1;
+  string name = 2;
+  double latitude = 3;
+  double longitude = 4;
+  google.protobuf.DoubleValue altitude = 5;
+  string location_source = 6;
+  bool is_online = 7;
+  string org_id = 8;
+}
+
+message ListAllBaseStationLocationsResponse {
+  repeated BaseStationLocation locations = 1;
+  int32 total_count = 2;
+}
+
+// ============================================================================
+// CE Onboarding & ECE Registry
+// ============================================================================
+
+message GetCEStatusRequest {}
+
+message GetCEStatusResponse {
+  // onboarding_required is true if the CE installation has not been completed yet.
+  bool onboarding_required = 1;
+  // ce_id is the assigned CE instance UUID (empty if not yet onboarded).
+  string ce_id = 2;
+  // company_name is the operator-provided company name (empty if not yet onboarded).
+  string company_name = 3;
+  // federation_connected indicates whether the CE relay stream is currently active.
+  bool federation_connected = 4;
+}
+
+message CompleteCEOnboardingRequest {
+  string company_name = 1;
+}
+
+message CompleteCEOnboardingResponse {
+  string ce_id = 1;
+  string company_name = 2;
+}
+
+message CEInstanceInfo {
+  string ce_id = 1;
+  string company_name = 2;
+  string status = 3;
+  string connection_status = 4;
+  int32 active_basestation_count = 5;
+  int64 total_packets_relayed = 6;
+  string ce_version = 7;
+  google.protobuf.Timestamp first_seen_at = 8;
+  google.protobuf.Timestamp last_heartbeat_at = 9;
+}
+
+message ListCEInstancesRequest {
+  string status_filter = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListCEInstancesResponse {
+  repeated CEInstanceInfo instances = 1;
+  int64 total_count = 2;
+  string next_page_token = 3;
+}
+
+message RevokeCEInstanceRequest {
+  string ce_id = 1;
+  string reason = 2;
+}
+
+message RevokeCEInstanceResponse {
+  bool success = 1;
+}

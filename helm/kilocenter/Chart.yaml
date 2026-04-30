@@ -1,0 +1,14 @@
+apiVersion: v2
+name: kilocenter
+description: KiloCenter - Open Source MIOTY Network Server
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/Kiloiot/KiloServiceCenter
+sources:
+  - https://github.com/Kiloiot/KiloServiceCenter
+keywords:
+  - mioty
+  - iot
+  - lpwan
+  - network-server

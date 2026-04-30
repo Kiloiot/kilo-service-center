@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-gateway
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-gateway") | nindent 4 }}
+data:
+  config.yaml: |
+    gateway:
+      upstream_address: "{{ include "kilocenter.fullname" . }}-core:{{ .Values.kcCore.config.grpc.port }}"
+      identity_address: "{{ include "kilocenter.fullname" . }}-identity:{{ .Values.kcIdentity.config.grpc.port }}"
+      health_port: {{ .Values.kcGateway.config.health.port }}
+      rate_limit:
+        enabled: {{ .Values.kcGateway.config.rateLimit.enabled }}
+        requests_per_min: {{ .Values.kcGateway.config.rateLimit.requestsPerMin }}
+        burst: {{ .Values.kcGateway.config.rateLimit.burst }}
+        cleanup_interval: {{ .Values.kcGateway.config.rateLimit.cleanupInterval }}
+
+    internal_auth:
+      peer_secret: ""
+
+    grpc:
+      port: {{ .Values.kcGateway.config.grpc.port }}
+      host: ""
+      web:
+        enabled: {{ .Values.kcGateway.config.grpc.webEnabled }}
+        allowed_origins:
+          {{- range .Values.kcGateway.config.corsOrigins }}
+          - {{ . | quote }}
+          {{- end }}
+        allow_credentials: true
+        enable_websockets: true
+
+    auth:
+      enabled: {{ .Values.kcGateway.config.auth.enabled }}
+      local_login_enabled: {{ .Values.kcGateway.config.auth.localLoginEnabled }}
+      refresh_token_enabled: true
+      access_token_ttl: {{ .Values.kcGateway.config.auth.accessTokenTTL }}
+      refresh_token_ttl: {{ .Values.kcGateway.config.auth.refreshTokenTTL }}
+      hmac_secret: "OVERRIDDEN_BY_ENV"
+      tenant_claim: "tenant_id"
+      issuer: {{ .Values.kcGateway.config.auth.issuer | quote }}
+      audience: {{ .Values.kcGateway.config.auth.audience | quote }}
+
+    monitoring:
+      metrics_enabled: false
+
+    general:
+      server_name: "KC-Gateway"
+      environment: "production"
+      edition: "ce"
+      org_enforcement_enabled: false
+      log_level: {{ .Values.kcCore.config.logLevel | quote }}
+      log_format: {{ .Values.kcCore.config.logFormat | quote }}

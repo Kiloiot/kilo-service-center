@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-web
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-web") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kilocenter.selectorLabels" (dict "context" . "component" "kc-web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-web") | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kc-web
+          image: "{{ .Values.kcWeb.image.repository }}:{{ .Values.kcWeb.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            failureThreshold: 3
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.kcWeb.resources | nindent 12 }}

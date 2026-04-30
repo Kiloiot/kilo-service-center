@@ -1,0 +1,484 @@
+syntax = "proto3";
+
+package kilocenter.api.v1;
+
+option go_package = "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1;kilocenterv1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+
+// IdentityService handles authentication, user management, organizations,
+// memberships, and API keys.
+service IdentityService {
+  // Auth & Session
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc RefreshTokens(RefreshTokensRequest) returns (RefreshTokensResponse);
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  rpc GetAuthSettings(GetAuthSettingsRequest) returns (GetAuthSettingsResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+
+  // External Auth Exchange (OIDC/OAuth2)
+  rpc ExchangeOIDC(ExchangeOIDCRequest) returns (LoginResponse);
+  rpc ExchangeOAuth2(ExchangeOAuth2Request) returns (LoginResponse);
+
+  // Self-service registration
+  rpc RegisterAccount(RegisterAccountRequest) returns (LoginResponse);
+
+  // Users
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc UpdateUserPassword(UpdateUserPasswordRequest) returns (UpdateUserPasswordResponse);
+
+  // Organizations
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+  rpc UpdateOrganization(UpdateOrganizationRequest) returns (UpdateOrganizationResponse);
+  rpc DeleteOrganization(DeleteOrganizationRequest) returns (DeleteOrganizationResponse);
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse);
+
+  // Organization Memberships
+  rpc AddOrganizationUser(AddOrganizationUserRequest) returns (AddOrganizationUserResponse);
+  rpc GetOrganizationUser(GetOrganizationUserRequest) returns (GetOrganizationUserResponse);
+  rpc UpdateOrganizationUser(UpdateOrganizationUserRequest) returns (UpdateOrganizationUserResponse);
+  rpc RemoveOrganizationUser(RemoveOrganizationUserRequest) returns (RemoveOrganizationUserResponse);
+  rpc ListOrganizationUsers(ListOrganizationUsersRequest) returns (ListOrganizationUsersResponse);
+  rpc ListUserOrganizations(ListUserOrganizationsRequest) returns (ListUserOrganizationsResponse);
+
+  // API Keys
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  rpc GetApiKey(GetApiKeyRequest) returns (GetApiKeyResponse);
+  rpc DeleteApiKey(DeleteApiKeyRequest) returns (DeleteApiKeyResponse);
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+}
+
+// ============================================================================
+// Auth & Session Messages
+// ============================================================================
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  AuthTokens tokens = 1;
+  UserProfile user = 2;
+}
+
+message RefreshTokensRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokensResponse {
+  AuthTokens tokens = 1;
+}
+
+message GetProfileRequest {
+  // User ID extracted from auth context (x-user-id header)
+}
+
+message GetProfileResponse {
+  UserProfile user = 1;
+}
+
+message GetAuthSettingsRequest {
+  // No parameters - returns global auth settings
+}
+
+message GetAuthSettingsResponse {
+  AuthSettings settings = 1;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {
+  bool success = 1;
+}
+
+message ChangePasswordRequest {
+  string current_password = 1;  // Required for verification
+  string new_password = 2;
+}
+
+message ChangePasswordResponse {
+  bool success = 1;
+}
+
+// External Auth Exchange messages
+message ExchangeOIDCRequest {
+  string code = 1;
+  string state = 2;
+}
+
+message ExchangeOAuth2Request {
+  string code = 1;
+  string state = 2;
+}
+
+message RegisterAccountRequest {
+  string email = 1;
+  string password = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string company_name = 5;
+}
+
+// Auth supporting messages
+message AuthTokens {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 access_expires_in = 3;   // seconds
+  int64 refresh_expires_in = 4;  // seconds
+}
+
+message UserProfile {
+  string id = 1;                      // UUID
+  string email = 2;
+  bool is_admin = 3;
+  bool has_password = 4;
+  repeated UserMembership memberships = 5;
+  string default_org_id = 6;          // UUID (optional)
+  string first_name = 7;
+  string last_name = 8;
+}
+
+message UserMembership {
+  string org_id = 1;    // UUID
+  string org_name = 2;
+  string role = 3;
+  string status = 4;
+  bool is_org_admin = 5;
+  bool is_base_station_admin = 6;
+  bool is_endpoint_admin = 7;
+}
+
+message AuthSettings {
+  bool enabled = 1;
+  bool local_login_enabled = 2;
+  string login_url = 3;
+  string login_label = 4;
+  bool login_redirect = 5;
+  string logout_url = 6;
+  bool refresh_token_enabled = 7;
+  ProviderSettings oidc = 8;
+  ProviderSettings oauth2 = 9;
+  bool registration_enabled = 10;
+}
+
+message ProviderSettings {
+  bool enabled = 1;
+  string login_url = 2;
+  string login_label = 3;
+  bool login_redirect = 4;
+  string logout_url = 5;
+}
+
+// ============================================================================
+// Users Messages
+// ============================================================================
+
+message CreateUserRequest {
+  string email = 1;
+  string password = 2;
+  string note = 3;
+  bool is_admin = 4;
+  bool is_active = 5;
+  bool is_tenant_manager = 6;
+  bool is_base_station_manager = 7;
+  bool is_endpoint_manager = 8;
+  string first_name = 9;
+  string last_name = 10;
+  string company_name = 11;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message GetUserRequest {
+  string id = 1;  // UUID
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message UpdateUserRequest {
+  string id = 1;  // UUID
+  string email = 2;
+  string note = 3;
+  bool is_admin = 4;
+  bool is_active = 5;
+  bool is_tenant_manager = 6;
+  bool is_base_station_manager = 7;
+  bool is_endpoint_manager = 8;
+  google.protobuf.FieldMask update_mask = 9;
+}
+
+message UpdateUserResponse {
+  User user = 1;
+}
+
+message DeleteUserRequest {
+  string id = 1;  // UUID
+}
+
+message DeleteUserResponse {
+  bool success = 1;
+}
+
+message ListUsersRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message UpdateUserPasswordRequest {
+  string id = 1;          // UUID - admin updating specific user
+  string new_password = 2;
+}
+
+message UpdateUserPasswordResponse {
+  bool success = 1;
+}
+
+message User {
+  string id = 1;                       // UUID
+  string email = 2;
+  bool is_admin = 3;
+  bool is_active = 4;
+  bool is_tenant_manager = 5;
+  bool is_base_station_manager = 6;
+  bool is_endpoint_manager = 7;
+  string note = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  string first_name = 11;
+  string last_name = 12;
+  string company_name = 13;
+}
+
+// ============================================================================
+// Organizations Messages
+// ============================================================================
+
+message CreateOrganizationRequest {
+  string name = 1;
+  string description = 2;
+  bool can_have_base_stations = 3;
+  int32 max_base_station_count = 4;
+  int32 max_endpoint_count = 5;
+  map<string, string> tags = 6;
+}
+
+message CreateOrganizationResponse {
+  Organization organization = 1;
+}
+
+message GetOrganizationRequest {
+  string id = 1;  // UUID
+}
+
+message GetOrganizationResponse {
+  Organization organization = 1;
+}
+
+message UpdateOrganizationRequest {
+  string id = 1;  // UUID
+  string name = 2;
+  string description = 3;
+  bool can_have_base_stations = 4;
+  int32 max_base_station_count = 5;
+  int32 max_endpoint_count = 6;
+  map<string, string> tags = 7;
+}
+
+message UpdateOrganizationResponse {
+  Organization organization = 1;
+}
+
+message DeleteOrganizationRequest {
+  string id = 1;  // UUID
+}
+
+message DeleteOrganizationResponse {
+  bool success = 1;
+}
+
+message ListOrganizationsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  int64 tenant_id = 3;  // Optional filter
+}
+
+message ListOrganizationsResponse {
+  repeated Organization organizations = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message Organization {
+  string id = 1;                       // UUID
+  int64 tenant_id = 2;
+  string name = 3;
+  string description = 4;
+  string state = 5;                    // active, inactive, archived
+  string external_id = 6;
+  bool can_have_base_stations = 7;
+  int32 max_base_station_count = 8;
+  int32 max_endpoint_count = 9;
+  map<string, string> tags = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+// ============================================================================
+// Organization Memberships Messages
+// ============================================================================
+
+message AddOrganizationUserRequest {
+  string org_id = 1;     // UUID
+  string user_id = 2;    // UUID
+  string role = 3;
+  bool is_org_admin = 4;
+  bool is_base_station_admin = 5;
+  bool is_endpoint_admin = 6;
+  string email = 7;      // Alternative to user_id — look up user by email
+}
+
+message AddOrganizationUserResponse {
+  OrganizationUser member = 1;
+}
+
+message GetOrganizationUserRequest {
+  string org_id = 1;   // UUID
+  string user_id = 2;  // UUID
+}
+
+message GetOrganizationUserResponse {
+  OrganizationUser member = 1;
+}
+
+message UpdateOrganizationUserRequest {
+  string org_id = 1;   // UUID
+  string user_id = 2;  // UUID
+  string role = 3;
+  bool is_org_admin = 4;
+  bool is_base_station_admin = 5;
+  bool is_endpoint_admin = 6;
+  google.protobuf.FieldMask update_mask = 7;
+}
+
+message UpdateOrganizationUserResponse {
+  OrganizationUser member = 1;
+}
+
+message RemoveOrganizationUserRequest {
+  string org_id = 1;   // UUID
+  string user_id = 2;  // UUID
+}
+
+message RemoveOrganizationUserResponse {
+  bool success = 1;
+}
+
+message ListOrganizationUsersRequest {
+  string org_id = 1;  // UUID
+  string status = 2;  // Optional: active, inactive, all
+  int32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListOrganizationUsersResponse {
+  repeated OrganizationUser members = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message OrganizationUser {
+  string org_id = 1;     // UUID
+  string user_id = 2;    // UUID
+  string email = 3;
+  string role = 4;
+  string status = 5;
+  bool is_org_admin = 6;
+  bool is_base_station_admin = 7;
+  bool is_endpoint_admin = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message ListUserOrganizationsRequest {
+  string user_id = 1;  // UUID
+}
+
+message ListUserOrganizationsResponse {
+  repeated UserMembership memberships = 1;
+}
+
+// ============================================================================
+// API Keys Messages
+// ============================================================================
+
+message CreateApiKeyRequest {
+  string name = 1;
+  string key_type = 2;                    // "user" or "service_account"
+  google.protobuf.Timestamp expires_at = 3;  // Optional
+}
+
+message CreateApiKeyResponse {
+  ApiKey api_key = 1;
+  string raw_key = 2;  // Only returned on creation, never stored
+}
+
+message GetApiKeyRequest {
+  string id = 1;  // UUID
+}
+
+message GetApiKeyResponse {
+  ApiKey api_key = 1;
+}
+
+message DeleteApiKeyRequest {
+  string id = 1;  // UUID
+}
+
+message DeleteApiKeyResponse {
+  bool success = 1;
+}
+
+message ListApiKeysRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  string user_id = 3;  // Optional: filter by user (UUID)
+}
+
+message ListApiKeysResponse {
+  repeated ApiKey api_keys = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message ApiKey {
+  string id = 1;           // UUID
+  string org_id = 2;       // UUID
+  string user_id = 3;      // UUID (nullable for service accounts)
+  string name = 4;
+  string key_prefix = 5;   // First 8 chars for identification
+  string key_type = 6;     // "user" or "service_account"
+  bool is_active = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  google.protobuf.Timestamp last_used_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+}

@@ -1,0 +1,45 @@
+
+KiloCenter has been deployed successfully.
+
+=== Accessing the Web UI ===
+
+{{- if .Values.ingress.enabled }}
+The web UI is available at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+
+Port-forward the web UI to your local machine:
+
+  kubectl port-forward svc/{{ include "kilocenter.fullname" . }}-web 8080:80
+
+Then open http://localhost:8080 in your browser.
+{{- end }}
+
+=== Accessing the gRPC-web API ===
+
+Port-forward the gateway:
+
+  kubectl port-forward svc/{{ include "kilocenter.fullname" . }}-gateway 9090:{{ .Values.kcGateway.config.grpc.port }}
+
+=== Exposing BSSCI for Base Stations ===
+
+Base stations connect to the BSSCI port via TLS. Expose it with a LoadBalancer
+or NodePort service, or through your cluster's TCP ingress:
+
+  kubectl port-forward svc/{{ include "kilocenter.fullname" . }}-core 5000:{{ .Values.kcCore.config.bssci.port }}
+
+=== Important Notes ===
+
+1. CHANGE DEFAULT PASSWORDS before using in production.
+   Override postgresql.password, secrets.authHmacSecret, and MQTT passwords
+   in your values file.
+
+2. PostgreSQL and Redis must be provisioned externally.
+   This chart does NOT deploy database or cache services.
+
+3. TLS certificates are auto-generated on first install via the certgen Job.
+   For production, replace with proper certificates signed by a trusted CA.
+
+Documentation: https://github.com/Kiloiot/KiloServiceCenter

@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-identity
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-identity") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kilocenter.selectorLabels" (dict "context" . "component" "kc-identity") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-identity") | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kc-identity
+          image: "{{ .Values.kcIdentity.image.repository }}:{{ .Values.kcIdentity.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.kcIdentity.config.grpc.port }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.kcIdentity.config.health.port }}
+              protocol: TCP
+          env:
+            - name: KILOCENTER_STORAGE_HOST
+              value: {{ .Values.postgresql.host | quote }}
+            - name: KILOCENTER_STORAGE_PORT
+              value: {{ .Values.postgresql.port | quote }}
+            - name: KILOCENTER_STORAGE_USERNAME
+              value: {{ .Values.postgresql.username | quote }}
+            - name: KILOCENTER_STORAGE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: postgresql-password
+            - name: KILOCENTER_STORAGE_DATABASE
+              value: {{ .Values.postgresql.database | quote }}
+            - name: KILOCENTER_STORAGE_SSL_MODE
+              value: {{ .Values.postgresql.sslMode | quote }}
+            - name: KILOCENTER_REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: KILOCENTER_REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: KILOCENTER_AUTH_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: auth-hmac-secret
+            - name: KILOCENTER_GRPC_PORT
+              value: {{ .Values.kcIdentity.config.grpc.port | quote }}
+            - name: KILOCENTER_HEALTH_PORT
+              value: {{ .Values.kcIdentity.config.health.port | quote }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: health
+            failureThreshold: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            failureThreshold: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            failureThreshold: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.kcIdentity.resources | nindent 12 }}

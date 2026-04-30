@@ -1,0 +1,2 @@
+# Keep stub values during merges - never auto-merge real build metadata
+release-manifest.json merge=ours

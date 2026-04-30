@@ -1,0 +1,2 @@
+-- No-op: Cannot reverse the backfill (we don't know which rows were NULL before)
+-- The columns remain nullable in this migration; NOT NULL enforcement is separate

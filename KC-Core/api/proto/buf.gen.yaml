@@ -1,0 +1,13 @@
+version: v1
+plugins:
+  - name: go
+    out: ../gen
+    opt:
+      - paths=import
+      - module=github.com/kilocenter/KC-Core/api/gen
+  - name: go-grpc
+    out: ../gen
+    opt:
+      - paths=import
+      - require_unimplemented_servers=false
+      - module=github.com/kilocenter/KC-Core/api/gen

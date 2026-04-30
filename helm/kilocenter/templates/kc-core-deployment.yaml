@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-core
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-core") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kilocenter.selectorLabels" (dict "context" . "component" "kc-core") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-core") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/kc-core-configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: kc-core
+          image: "{{ .Values.kcCore.image.repository }}:{{ .Values.kcCore.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.kcCore.config.grpc.port }}
+              protocol: TCP
+            - name: bssci
+              containerPort: {{ .Values.kcCore.config.bssci.port }}
+              protocol: TCP
+            - name: scaci
+              containerPort: {{ .Values.kcCore.config.scaci.port }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.kcCore.config.health.port }}
+              protocol: TCP
+          env:
+            - name: KILOCENTER_CONFIG_FILE
+              value: "/app/config/config.yaml"
+            - name: KILOCENTER_STORAGE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: postgresql-password
+            - name: KILOCENTER_MQTT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: mqtt-admin-password
+          startupProbe:
+            httpGet:
+              path: /health/ping
+              port: health
+            failureThreshold: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: health
+            failureThreshold: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: health
+            failureThreshold: 3
+            periodSeconds: 60
+          resources:
+            {{- toYaml .Values.kcCore.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: certs
+              mountPath: /app/certificates
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "kilocenter.fullname" . }}-core
+        - name: certs
+          persistentVolumeClaim:
+            claimName: {{ include "kilocenter.fullname" . }}-certs
+            readOnly: true

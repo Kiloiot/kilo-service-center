@@ -1,0 +1,2 @@
+-- No-op: cannot determine original manager flag values.
+-- The forward migration only sets flags to true for admin users.

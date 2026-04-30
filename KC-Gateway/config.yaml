@@ -1,0 +1,51 @@
+# KC-Gateway Configuration (local development)
+
+gateway:
+  upstream_address: "localhost:50051"
+  identity_address: "localhost:50052"
+  health_port: 8087
+  rate_limit:
+    enabled: true
+    requests_per_min: 5
+    burst: 3
+    cleanup_interval: 10m
+
+internal_auth:
+  peer_secret: ""  # Empty = dev mode (no peer auth required)
+
+grpc:
+  port: 9090
+  host: ""  # All interfaces (external-facing)
+  web:
+    enabled: true
+    allowed_origins:
+      - "http://localhost:5173"
+      - "http://localhost:3000"
+    allow_credentials: true
+    enable_websockets: true
+
+auth:
+  enabled: true
+  local_login_enabled: true
+  refresh_token_enabled: true
+  access_token_ttl: 15m
+  refresh_token_ttl: 24h
+  hmac_secret: "dev-secret-must-be-at-least-32-bytes-long"
+  tenant_claim: "tenant_id"
+  issuer: "kilocenter"
+  audience: "kilocenter-api"
+
+monitoring:
+  metrics_enabled: true
+  metrics_port: 9093
+  metrics_path: "/metrics"
+  tracing_enabled: false
+  tracing_sample_rate: 0.1
+
+general:
+  server_name: "KC-Gateway"
+  environment: "development"
+  log_level: "debug"
+  log_format: "text"
+  tenant_id: 1                      # Default tenant for single-tenant (Community) deployments
+  org_enforcement_enabled: false

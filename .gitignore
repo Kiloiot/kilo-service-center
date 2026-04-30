@@ -1,0 +1,86 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Backup files
+*.backup
+*.bak
+*.bak2
+*~
+
+# OS specific
+.DS_Store
+
+# Task files
+tasks.json
+tasks/
+
+# Build artifacts
+dist/
+coverage/
+test-results/
+.gocache/
+
+# Certificates (generated, never commit keys)
+KC-Core/certificates/*.crt
+KC-Core/certificates/*.key
+KC-Core/certificates/*.srl
+KC-Core/certificates/*.backup
+KC-Core/certificates/.backup-*/
+/certificates/
+
+# Go test binaries
+*.test
+
+# Compiled binaries
+/main
+/kilocenter
+/certgen
+bin/
+KC-Core/bin/
+KC-Core/main
+KC-Core/kc-core
+KC-Core/kilocenter
+KC-Core/certgen
+KC-Core/KC-Core/
+KC-Core/cmd/certgen/certgen
+KC-Gateway/gateway
+KC-Gateway/bin/
+/gateway
+KC-Identity/identity
+KC-Identity/bin/
+/identity
+KC-DB/migrate
+/federation-ingress
+/mioty-ingest
+examples/scaci-client/scaci-client
+examples/scaci-client/*.exe
+
+# Large binary assets (reference docs — not tracked in git)
+docs/mioty-docs/PDF/
+docs/mioty-docs/*.tar.gz
+
+# Internal development files (not shipped in public repo)
+CLAUDE.md
+AGENTS.md
+.remember/
+docs/

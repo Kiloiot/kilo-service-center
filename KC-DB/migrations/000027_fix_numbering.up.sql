@@ -1,0 +1,2 @@
+-- Migration to maintain sequential numbering
+-- Updates database schema version tracking

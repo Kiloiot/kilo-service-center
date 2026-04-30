@@ -1,0 +1,204 @@
+syntax = "proto3";
+
+package kilocenter.api.v1;
+
+option go_package = "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1;kilocenterv1";
+
+import "identity.proto";
+import "core.proto";
+import "google/protobuf/empty.proto";
+
+// KiloCenterService is the backward-compatible unified service retained for
+// frontend transition. It delegates to IdentityService and CoreService.
+// Removed (gateway cutover).
+service KiloCenterService {
+  // End Point management
+  rpc CreateEndPoint(CreateEndPointRequest) returns (EndPoint);
+  rpc GetEndPoint(GetEndPointRequest) returns (EndPoint);
+  rpc UpdateEndPoint(UpdateEndPointRequest) returns (EndPoint);
+  rpc DeleteEndPoint(DeleteEndPointRequest) returns (google.protobuf.Empty);
+  rpc ListEndPoints(ListEndPointsRequest) returns (ListEndPointsResponse);
+
+  // End Point attach/detach operations
+  rpc AttachEndPoint(AttachEndPointRequest) returns (AttachEndPointResponse);
+  rpc DetachEndPoint(DetachEndPointRequest) returns (DetachEndPointResponse);
+
+  // Base Station management
+  rpc CreateBaseStation(CreateBaseStationRequest) returns (BaseStation);
+  rpc GetBaseStation(GetBaseStationRequest) returns (BaseStation);
+  rpc UpdateBaseStation(UpdateBaseStationRequest) returns (BaseStation);
+  rpc DeleteBaseStation(DeleteBaseStationRequest) returns (google.protobuf.Empty);
+  rpc ListBaseStations(ListBaseStationsRequest) returns (ListBaseStationsResponse);
+  rpc GetBaseStationStats(GetBaseStationStatsRequest) returns (GetBaseStationStatsResponse);
+  rpc UpdateBaseStationEui(UpdateBaseStationEuiRequest) returns (BaseStation);
+
+  // Message operations
+  rpc GetMessage(GetMessageRequest) returns (Message);
+
+  // Downlink operations
+  rpc SendDownlink(SendDownlinkRequest) returns (SendDownlinkResponse);
+  rpc RevokeDownlink(RevokeDownlinkRequest) returns (RevokeDownlinkResponse);
+  rpc ListDownlinkQueue(ListDownlinkQueueRequest) returns (ListDownlinkQueueResponse);
+  rpc GetDownlinkResults(GetDownlinkResultsRequest) returns (GetDownlinkResultsResponse);
+
+  // UL Data Transmit operations (BSSCI 3.11)
+  rpc SendULTransmit(SendULTransmitRequest) returns (SendULTransmitResponse);
+
+  // Base Station operations (BSSCI 3.5)
+  rpc RequestBaseStationStatus(BaseStationStatusRequest) returns (BaseStationStatusResponse);
+
+  // Base Station Ping operation (BSSCI §5.4)
+  rpc InitiatePing(InitiatePingRequest) returns (InitiatePingResponse);
+
+  // DL RX Status operations (BSSCI 3.15-3.16)
+  rpc GetDLRXStatus(GetDLRXStatusRequest) returns (GetDLRXStatusResponse);
+  rpc QueryDLRXStatus(QueryDLRXStatusRequest) returns (QueryDLRXStatusResponse);
+  rpc GetDLRXStatusQueries(GetDLRXStatusQueriesRequest) returns (GetDLRXStatusQueriesResponse);
+
+  // System operations
+  rpc GetSystemStatus(google.protobuf.Empty) returns (SystemStatus);
+  rpc GetStatistics(GetStatisticsRequest) returns (Statistics);
+  rpc GetReleaseInfo(google.protobuf.Empty) returns (ReleaseInfo);
+
+  // Auth & Session
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc RefreshTokens(RefreshTokensRequest) returns (RefreshTokensResponse);
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  rpc GetAuthSettings(GetAuthSettingsRequest) returns (GetAuthSettingsResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+
+  // External Auth Exchange (OIDC/OAuth2)
+  rpc ExchangeOIDC(ExchangeOIDCRequest) returns (LoginResponse);
+  rpc ExchangeOAuth2(ExchangeOAuth2Request) returns (LoginResponse);
+
+  // Self-service registration
+  rpc RegisterAccount(RegisterAccountRequest) returns (LoginResponse);
+
+  // Users
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc UpdateUserPassword(UpdateUserPasswordRequest) returns (UpdateUserPasswordResponse);
+
+  // Organizations
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse);
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse);
+  rpc UpdateOrganization(UpdateOrganizationRequest) returns (UpdateOrganizationResponse);
+  rpc DeleteOrganization(DeleteOrganizationRequest) returns (DeleteOrganizationResponse);
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse);
+
+  // Organization Memberships
+  rpc AddOrganizationUser(AddOrganizationUserRequest) returns (AddOrganizationUserResponse);
+  rpc GetOrganizationUser(GetOrganizationUserRequest) returns (GetOrganizationUserResponse);
+  rpc UpdateOrganizationUser(UpdateOrganizationUserRequest) returns (UpdateOrganizationUserResponse);
+  rpc RemoveOrganizationUser(RemoveOrganizationUserRequest) returns (RemoveOrganizationUserResponse);
+  rpc ListOrganizationUsers(ListOrganizationUsersRequest) returns (ListOrganizationUsersResponse);
+  rpc ListUserOrganizations(ListUserOrganizationsRequest) returns (ListUserOrganizationsResponse);
+
+  // API Keys
+  rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse);
+  rpc GetApiKey(GetApiKeyRequest) returns (GetApiKeyResponse);
+  rpc DeleteApiKey(DeleteApiKeyRequest) returns (DeleteApiKeyResponse);
+  rpc ListApiKeys(ListApiKeysRequest) returns (ListApiKeysResponse);
+
+  // Integrations
+  rpc CreateIntegration(CreateIntegrationRequest) returns (Integration);
+  rpc GetIntegration(GetIntegrationRequest) returns (Integration);
+  rpc UpdateIntegration(UpdateIntegrationRequest) returns (Integration);
+  rpc DeleteIntegration(DeleteIntegrationRequest) returns (google.protobuf.Empty);
+  rpc ListIntegrations(ListIntegrationsRequest) returns (ListIntegrationsResponse);
+
+  // Analytics
+  rpc GetAnalyticsOverview(GetAnalyticsOverviewRequest) returns (GetAnalyticsOverviewResponse);
+  rpc GetActivityAnalytics(GetActivityAnalyticsRequest) returns (GetActivityAnalyticsResponse);
+  rpc GetSignalQualityAnalytics(GetSignalQualityAnalyticsRequest) returns (GetSignalQualityAnalyticsResponse);
+
+  // Events & Alerts
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+
+  // Unified Activity Feed (Events + Messages with pagination)
+  rpc ListBaseStationActivity(ListBaseStationActivityRequest) returns (ListBaseStationActivityResponse);
+  rpc ListEndpointActivity(ListEndpointActivityRequest) returns (ListEndpointActivityResponse);
+
+  // Event streaming RPCs
+  rpc StreamEvents(StreamEventsRequest) returns (stream Event);
+
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);
+  rpc GetAlertSummary(GetAlertSummaryRequest) returns (GetAlertSummaryResponse);
+
+  // SCACI Monitoring
+  rpc ListScaciSessions(ListScaciSessionsRequest) returns (ListScaciSessionsResponse);
+  rpc GetScaciSession(GetScaciSessionRequest) returns (GetScaciSessionResponse);
+  rpc GetScaciStatistics(GetScaciStatisticsRequest) returns (GetScaciStatisticsResponse);
+  rpc ListScaciErrors(ListScaciErrorsRequest) returns (ListScaciErrorsResponse);
+  rpc ListScaciQueues(ListScaciQueuesRequest) returns (ListScaciQueuesResponse);
+  rpc GetScaciStatus(GetScaciStatusRequest) returns (GetScaciStatusResponse);
+
+  // Certificates
+  rpc GenerateCertificate(GenerateCertificateRequest) returns (GenerateCertificateResponse);
+  rpc DownloadCertificate(DownloadCertificateRequest) returns (DownloadCertificateResponse);
+  rpc DownloadBaseStationCertificate(DownloadBaseStationCertificateRequest) returns (DownloadCertificateResponse);
+  rpc GenerateServerCertificates(GenerateServerCertificatesRequest) returns (GenerateServerCertificatesResponse);
+  rpc RenewServerCertificates(RenewServerCertificatesRequest) returns (RenewServerCertificatesResponse);
+  rpc GetServerCertificateStatus(GetServerCertificateStatusRequest) returns (GetServerCertificateStatusResponse);
+
+  // Blueprints / Device Catalog - Manufacturers
+  rpc CreateManufacturer(CreateManufacturerRequest) returns (CreateManufacturerResponse);
+  rpc GetManufacturer(GetManufacturerRequest) returns (GetManufacturerResponse);
+  rpc UpdateManufacturer(UpdateManufacturerRequest) returns (UpdateManufacturerResponse);
+  rpc DeleteManufacturer(DeleteManufacturerRequest) returns (DeleteManufacturerResponse);
+  rpc ListManufacturers(ListManufacturersRequest) returns (ListManufacturersResponse);
+
+  // Blueprints / Device Catalog - Device Models
+  rpc CreateDeviceModel(CreateDeviceModelRequest) returns (CreateDeviceModelResponse);
+  rpc GetDeviceModel(GetDeviceModelRequest) returns (GetDeviceModelResponse);
+  rpc UpdateDeviceModel(UpdateDeviceModelRequest) returns (UpdateDeviceModelResponse);
+  rpc DeleteDeviceModel(DeleteDeviceModelRequest) returns (DeleteDeviceModelResponse);
+  rpc ListDeviceModels(ListDeviceModelsRequest) returns (ListDeviceModelsResponse);
+
+  // Blueprints / Device Catalog - Blueprints
+  rpc CreateBlueprint(CreateBlueprintRequest) returns (CreateBlueprintResponse);
+  rpc GetBlueprint(GetBlueprintRequest) returns (GetBlueprintResponse);
+  rpc UpdateBlueprint(UpdateBlueprintRequest) returns (UpdateBlueprintResponse);
+  rpc DeleteBlueprint(DeleteBlueprintRequest) returns (DeleteBlueprintResponse);
+  rpc ListBlueprints(ListBlueprintsRequest) returns (ListBlueprintsResponse);
+  rpc SetDefaultBlueprint(SetDefaultBlueprintRequest) returns (SetDefaultBlueprintResponse);
+  rpc SubmitBlueprintToRegistry(SubmitBlueprintToRegistryRequest) returns (SubmitBlueprintToRegistryResponse);
+
+  // Composite: Create device model + default blueprint atomically
+  rpc CreateDeviceModelWithBlueprint(CreateDeviceModelWithBlueprintRequest) returns (CreateDeviceModelWithBlueprintResponse);
+
+  // Blueprint decode preview
+  rpc DecodePreview(DecodePreviewRequest) returns (DecodePreviewResponse);
+
+  // Messages (listing + streaming + search/export)
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+  rpc StreamMessages(StreamMessagesRequest) returns (stream Message);
+  rpc ListBaseStationMessages(ListBaseStationMessagesRequest) returns (ListBaseStationMessagesResponse);
+  rpc GetBaseStationMessage(GetBaseStationMessageRequest) returns (GetBaseStationMessageResponse);
+  rpc GetBaseStationMessageStats(GetBaseStationMessageStatsRequest) returns (GetBaseStationMessageStatsResponse);
+  rpc SearchBaseStationMessages(SearchBaseStationMessagesRequest) returns (SearchBaseStationMessagesResponse);
+  rpc ExportBaseStationMessages(ExportBaseStationMessagesRequest) returns (ExportBaseStationMessagesResponse);
+  rpc StreamBaseStationMessages(StreamBaseStationMessagesRequest) returns (stream BaseStationMessage);
+
+  // Endpoint-specific message listing
+  rpc ListEndpointMessages(ListEndpointMessagesRequest) returns (ListEndpointMessagesResponse);
+
+  // Endpoint Stats/Operations
+  rpc GetEndPointStats(GetEndPointStatsRequest) returns (GetEndPointStatsResponse);
+  rpc GetEndPointOperations(GetEndPointOperationsRequest) returns (GetEndPointOperationsResponse);
+
+  // Global coverage (server admin only — cross-tenant)
+  rpc ListAllBaseStationLocations(ListAllBaseStationLocationsRequest) returns (ListAllBaseStationLocationsResponse);
+
+  // CE onboarding (CE mode only)
+  rpc GetCEStatus(GetCEStatusRequest) returns (GetCEStatusResponse);
+  rpc CompleteCEOnboarding(CompleteCEOnboardingRequest) returns (CompleteCEOnboardingResponse);
+
+  // ECE CE registry admin
+  rpc ListCEInstances(ListCEInstancesRequest) returns (ListCEInstancesResponse);
+  rpc RevokeCEInstance(RevokeCEInstanceRequest) returns (RevokeCEInstanceResponse);
+}

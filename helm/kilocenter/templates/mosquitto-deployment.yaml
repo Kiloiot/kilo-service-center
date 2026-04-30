@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-mosquitto
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "mosquitto") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kilocenter.selectorLabels" (dict "context" . "component" "mosquitto") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kilocenter.componentLabels" (dict "context" . "component" "mosquitto") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/mosquitto-configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: init-passwd
+          image: "{{ .Values.mosquitto.image.repository }}:{{ .Values.mosquitto.image.tag }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              if [ ! -f /mosquitto/config/passwd ]; then
+                mosquitto_passwd -b -c /mosquitto/config/passwd admin "$MQTT_ADMIN_PASSWORD"
+                mosquitto_passwd -b /mosquitto/config/passwd kilocenter "$MQTT_CLIENT_PASSWORD"
+              fi
+          env:
+            - name: MQTT_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: mqtt-admin-password
+            - name: MQTT_CLIENT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: mqtt-client-password
+          volumeMounts:
+            - name: mosquitto-data
+              mountPath: /mosquitto/data
+            - name: mosquitto-passwd
+              mountPath: /mosquitto/config
+      containers:
+        - name: mosquitto
+          image: "{{ .Values.mosquitto.image.repository }}:{{ .Values.mosquitto.image.tag }}"
+          ports:
+            - name: mqtt
+              containerPort: 1883
+              protocol: TCP
+            - name: websocket
+              containerPort: 9001
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: mqtt
+            failureThreshold: 3
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: mqtt
+            failureThreshold: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.mosquitto.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /mosquitto/config/mosquitto.conf
+              subPath: mosquitto.conf
+              readOnly: true
+            - name: mosquitto-data
+              mountPath: /mosquitto/data
+            - name: mosquitto-passwd
+              mountPath: /mosquitto/config
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "kilocenter.fullname" . }}-mosquitto
+        - name: mosquitto-data
+          {{- if .Values.mosquitto.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "kilocenter.fullname" . }}-mosquitto
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: mosquitto-passwd
+          emptyDir: {}

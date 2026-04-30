@@ -1,0 +1,63 @@
+# Development overrides for docker-compose.yml
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: devpassword
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  mosquitto:
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./deployments/docker/mosquitto/mosquitto.dev.conf:/mosquitto/config/mosquitto.conf:ro
+
+  kilocenter:
+    environment:
+      KILOCENTER_GENERAL_LOG_LEVEL: debug
+      KILOCENTER_STORAGE_PASSWORD: devpassword
+
+  # Development Tools
+  adminer:
+    image: adminer:latest
+    container_name: kilocenter-adminer
+    ports:
+      - "8081:8080"
+    networks:
+      - kilocenter-network
+    depends_on:
+      - postgres
+
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    container_name: kilocenter-redisinsight
+    ports:
+      - "8082:8001"
+    networks:
+      - kilocenter-network
+    depends_on:
+      - redis
+
+  # gRPC UI - interactive gRPC API explorer
+  # Usage: docker compose -f docker-compose.dev.yml --profile ops up grpcui
+  grpcui:
+    image: fullstorydev/grpcui:latest
+    container_name: kilocenter-grpcui
+    profiles:
+      - ops
+    ports:
+      - "8083:8080"
+    networks:
+      - kilocenter-network
+    command: ["-plaintext", "kc-gateway:9090"]
+    depends_on:
+      - kc-gateway
+
+networks:
+  kilocenter-network:
+    driver: bridge

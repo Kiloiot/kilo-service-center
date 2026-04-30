@@ -1,0 +1,84 @@
+# KiloCenter
+
+> KiloCenter is an open-source MIOTY LPWAN network server for managing base stations, endpoints, and IoT message traffic.
+
+Source: https://github.com/Kiloiot/KiloServiceCenter
+License: AGPL-3.0-or-later
+Documentation: https://kiloiot.gitbook.io/kilocenter
+
+## What is this
+
+KiloCenter is the service-center side of the MIOTY stack. MIOTY is a Low Power Wide Area Network (LPWAN) protocol designed for interference resilience, long-range communication, and large endpoint fleets. KiloCenter implements the BSSCI (Base Station - Service Center Interface) and SCACI (Service Center - Application Center Interface) protocols, providing base station management, endpoint registration, uplink/downlink message processing, and application integrations via gRPC and MQTT.
+
+This is a MIOTY-native implementation built from scratch, not a fork or adaptation of another network server.
+
+## Live Demo
+
+https://servicecenter.kiloiot.io/
+Username: demo@kiloiot.io
+Password: demo1234
+
+## Architecture
+
+Four microservices plus infrastructure:
+
+- KC-Core (port 50051 gRPC, 5000 BSSCI/TLS, 5001 SCACI/TLS, 8086 health) — protocol engines, message processing
+- KC-Gateway (port 9090 gRPC-web, 8087 health) — external API ingress, auth proxy
+- KC-Identity (port 50052 gRPC, 8088 health) — users, organizations, API keys
+- KC-Web (port 80) — React web management console
+- PostgreSQL 18+ — primary data store
+- Redis 7+ — caching and sessions
+- Mosquitto 2.0+ — MQTT broker (optional)
+
+Data flow: Endpoints transmit over radio -> Base stations forward to KC-Core via BSSCI (TCP+TLS) -> KC-Core persists to PostgreSQL -> KC-Gateway exposes gRPC-web API -> KC-Web displays to operators. External systems consume via gRPC or MQTT.
+
+## Technology Stack
+
+- Backend: Go 1.24.4
+- Frontend: React 19.1, MUI 7, TypeScript 5.8, Vite
+- Database: PostgreSQL with monthly partitioned message tables
+- Protocols: BSSCI v1.0.0 (TLS 1.2+), SCACI v1.0.0 (TLS 1.3+)
+- API: gRPC + gRPC-web with 117 RPCs
+- Infrastructure: Docker Compose, Helm chart for Kubernetes
+
+## Deployment
+
+Three installation paths:
+
+1. Docker Compose: `cp .env.example .env && docker compose up --build -d` — certificates auto-generated
+2. Kubernetes: Helm chart at `helm/kilocenter/` — requires external PostgreSQL and Redis
+3. Linux Host: build from source with Go and Bun
+
+Default admin account (created on first startup): admin@kilocenter.local / admin123!
+
+## API
+
+gRPC-web API exposed through KC-Gateway on port 9090. Proto definitions in `KC-Core/api/proto/`. 117 RPCs covering: endpoints, base stations, messages (with streaming), downlinks, events, alerts, certificates, API keys, blueprints, analytics, organizations, users, SCACI monitoring, system health.
+
+Streaming RPCs: StreamMessages, StreamBaseStationMessages, StreamEvents, StreamBaseStationEvents, StreamEndPointEvents.
+
+## MQTT
+
+Disabled by default. Topic format: `{prefix}/{org_uuid}/device/{ep_eui_hex}/{channel}/{type}`. Channels: event/up (uplinks), event/attach, event/detach, event/downlink_result, command/down (downlink commands).
+
+## Key Directories
+
+- KC-Core/ — service center engine, BSSCI/SCACI protocol, gRPC server
+- KC-Gateway/ — external gRPC-web ingress
+- KC-Identity/ — authentication and user management
+- KC-Web/ — React web management console
+- KC-DB/ — PostgreSQL persistence, migrations, MIOTY type definitions
+- KC-MQTT/ — MQTT integration
+- helm/kilocenter/ — Kubernetes Helm chart
+- config/ — runtime configuration files
+- GitBook/ — user documentation
+
+## Further Reading
+
+- [Architecture and Components](GitBook/02-GettingStarted/01-architecture-and-components.md)
+- [Docker Compose Installation](GitBook/02-GettingStarted/03-installation-docker-compose.md)
+- [Kubernetes Installation](GitBook/02-GettingStarted/07-installation-kubernetes.md)
+- [gRPC API Overview](GitBook/04-Integrations/01-grpc-api-overview.md)
+- [MQTT Integration](GitBook/04-Integrations/03-mqtt-first-steps.md)
+- [Security](GitBook/05-Security/01-security-and-tenant-isolation-basics.md)
+- [Helm Chart README](helm/kilocenter/README.md)

@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package kilocenter.federation.v1;
+
+option go_package = "github.com/kilocenter/KC-Core/api/gen/federation/v1;federationv1";
+
+// FederationService is the single persistent stream used by CE instances to relay uplinks to ECE.
+// A CE opens one bidirectional stream per lifecycle; ECE can close it via RevokeNotice.
+service FederationService {
+  rpc Connect(stream CEToECEMessage) returns (stream ECEToCEMessage);
+}
+
+// CEToECEMessage carries messages sent from CE to ECE on the relay stream.
+message CEToECEMessage {
+  oneof payload {
+    CEHello       hello     = 1;
+    RelayedUplink uplink    = 2;
+    Heartbeat     heartbeat = 3;
+  }
+}
+
+// ECEToCEMessage carries messages sent from ECE to CE on the relay stream.
+message ECEToCEMessage {
+  oneof payload {
+    ECEHello      hello         = 1;
+    HeartbeatAck  heartbeat_ack = 2;
+    UplinkReceipt receipt       = 3;
+    RevokeNotice  revoke        = 4;
+  }
+}
+
+// CEHello is the first message CE sends after opening the stream.
+// On first registration, federation_token is empty and ECE issues one in ECEHello.
+// On subsequent connections, CE presents the token for validation.
+message CEHello {
+  string ce_id            = 1;
+  string federation_token = 2;
+  string company_name     = 3;
+  int32  active_bs_count  = 4;
+  string ce_version       = 5;
+}
+
+// ECEHello is ECE's response to CEHello, confirming authentication or rejecting it.
+message ECEHello {
+  bool   authenticated    = 1;
+  // federation_token is set when ECE issues or reissues a token.
+  string federation_token = 2;
+  string error_message    = 3;
+}
+
+// RelayedUplink carries an uplink frame that CE could not process locally
+// (unknown endpoint) and forwards to ECE for routing to the correct tenant.
+message RelayedUplink {
+  // relay_id is a CE-generated UUID; stable across retries for idempotency.
+  string relay_id        = 1;
+  string ce_id           = 2;
+  uint64 ep_eui          = 3;
+  // bs_eui is the real CE base station EUI — internal only, never in tenant-visible fields.
+  uint64 bs_eui          = 4;
+  bytes  raw_bssci_frame = 5;
+  int64  received_at_ns  = 6;
+}
+
+// UplinkReceipt is ECE's per-uplink acknowledgement to CE.
+message UplinkReceipt {
+  string relay_id      = 1;
+  bool   accepted      = 2;
+  string error_message = 3;
+}
+
+// Heartbeat keeps the stream alive and reports CE health metrics.
+message Heartbeat {
+  string ce_id           = 1;
+  int32  active_bs_count = 2;
+  int64  sent_at_ns      = 3;
+}
+
+// HeartbeatAck confirms ECE received the heartbeat.
+message HeartbeatAck {
+  int64 acked_at_ns = 1;
+}
+
+// RevokeNotice signals that ECE has revoked this CE instance.
+// CE must stop relaying and must not reconnect after receiving this.
+message RevokeNotice {
+  string reason = 1;
+}

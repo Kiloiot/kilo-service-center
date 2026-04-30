@@ -1,0 +1,159 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Gateway Unary RPC p99 Latency",
+      "description": "Target: < 200ms. From otelgrpc server handler metrics.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 200 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(rpc_server_duration_milliseconds_bucket{service_name=\"kc-gateway\", rpc_grpc_status_code=\"OK\"}[5m])) by (le))",
+          "legendFormat": "p99 latency",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "title": "Per-Service Availability",
+      "description": "Target: > 99.9%. Success rate over 5m window.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.99 },
+              { "color": "green", "value": 0.999 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(rpc_server_duration_milliseconds_count{service_name=\"kc-core\", rpc_grpc_status_code!~\"UNAVAILABLE|INTERNAL\"}[5m])) / sum(rate(rpc_server_duration_milliseconds_count{service_name=\"kc-core\"}[5m]))",
+          "legendFormat": "KC-Core",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(rpc_server_duration_milliseconds_count{service_name=\"kc-identity\", rpc_grpc_status_code!~\"UNAVAILABLE|INTERNAL\"}[5m])) / sum(rate(rpc_server_duration_milliseconds_count{service_name=\"kc-identity\"}[5m]))",
+          "legendFormat": "KC-Identity",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(rpc_server_duration_milliseconds_count{service_name=\"kc-gateway\", rpc_grpc_status_code!~\"UNAVAILABLE|INTERNAL\"}[5m])) / sum(rate(rpc_server_duration_milliseconds_count{service_name=\"kc-gateway\"}[5m]))",
+          "legendFormat": "KC-Gateway",
+          "refId": "C"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "title": "Error Budget Burn Rate",
+      "description": "Percentage of monthly error budget consumed. Alerts when > 50%.",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 0.8 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "1 - (sum(rate(rpc_server_duration_milliseconds_count{service_name=\"kc-gateway\", rpc_grpc_status_code!~\"UNAVAILABLE|INTERNAL\"}[30m])) / sum(rate(rpc_server_duration_milliseconds_count{service_name=\"kc-gateway\"}[30m]))) / 0.001",
+          "legendFormat": "Budget consumed",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "title": "Circuit Breaker State Timeline",
+      "description": "0=closed (healthy), 1=half-open (recovering), 2=open (unhealthy)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 2 }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Closed" }, "1": { "text": "Half-Open" }, "2": { "text": "Open" } } }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "kc_gateway_circuit_breaker_state{upstream=\"core\"}",
+          "legendFormat": "Core upstream",
+          "refId": "A"
+        },
+        {
+          "expr": "kc_gateway_circuit_breaker_state{upstream=\"identity\"}",
+          "legendFormat": "Identity upstream",
+          "refId": "B"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["kilocenter", "slo", "service-boundary"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": true, "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "KiloCenter Service SLO Dashboard",
+  "uid": "kc-service-slo",
+  "version": 1
+}

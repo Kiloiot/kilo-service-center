@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-certs
+  labels:
+    {{- include "kilocenter.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.certPvc.size }}
+  {{- if .Values.certPvc.storageClass }}
+  storageClassName: {{ .Values.certPvc.storageClass }}
+  {{- end }}

@@ -1,0 +1,411 @@
+# KiloCenter — Full LLM Reference
+
+> KiloCenter is an open-source MIOTY LPWAN network server for managing base stations, endpoints, and IoT message traffic.
+
+Source: https://github.com/Kiloiot/KiloServiceCenter
+License: AGPL-3.0-or-later
+Documentation: https://kiloiot.gitbook.io/kilocenter
+
+## Live Demo
+
+https://servicecenter.kiloiot.io/
+Username: demo@kiloiot.io
+Password: demo1234
+
+---
+
+## 1. Project Overview
+
+KiloCenter implements the service-center side of the MIOTY stack. MIOTY is a Low Power Wide Area Network (LPWAN) protocol built for interference resilience, long-range communication, and large endpoint fleets.
+
+KiloCenter provides:
+- BSSCI protocol (Base Station - Service Center Interface) v1.0.0
+- SCACI protocol (Service Center - Application Center Interface) v1.0.0
+- Base station management with certificate-based authentication
+- Endpoint registration with attachment propagation
+- Uplink and downlink message processing with deduplication
+- Multi-base-station operation and telegram splitting
+- Web management console with real-time monitoring
+- gRPC and MQTT application integration paths
+
+This is a MIOTY-native implementation built from scratch, not a fork of another network server.
+
+### Editions
+
+- **Community Edition (CE)**: Fully open-source under AGPL-3.0-or-later. Self-hosted, no commercial support.
+- **Enterprise Edition (ECE)**: Multi-tenancy, advanced auth, BSSCI sub-channels, Variable MAC, ReCon extension support. Commercial license.
+- **Kilo Cloud**: Planned managed hosting.
+
+---
+
+## 2. Architecture
+
+### Services
+
+| Service | Ports | Description |
+|---------|-------|-------------|
+| KC-Core | 50051 (gRPC), 5000 (BSSCI/TLS), 5001 (SCACI/TLS), 8086 (health) | Protocol engines, message processing, internal gRPC API |
+| KC-Gateway | 9090 (gRPC-web), 8087 (health) | External API ingress, authentication proxy |
+| KC-Identity | 50052 (gRPC), 8088 (health) | User authentication, org management, API keys |
+| KC-Web | 80 (nginx), 5173 (dev) | React web management console |
+
+### Infrastructure
+
+| Component | Port | Purpose |
+|-----------|------|---------|
+| PostgreSQL 18+ | 5432 (host) / 5433 (Docker) | Primary data store, monthly partitioned messages |
+| Redis 7+ | 6379 | Caching, session storage |
+| Mosquitto 2.0+ | 1883 (MQTT), 9001 (WebSocket) | MQTT broker (optional, disabled by default) |
+
+### Data Flow
+
+1. MIOTY endpoints transmit data over radio
+2. Base stations receive frames, forward to KC-Core over BSSCI (TCP+TLS, port 5000)
+3. KC-Core validates protocol frames, manages sessions, persists to PostgreSQL
+4. KC-Gateway exposes gRPC-web API on port 9090, proxying to KC-Core
+5. KC-Web connects to KC-Gateway for operator workflows
+6. External systems consume data via gRPC or MQTT
+
+### Technology Stack
+
+- Backend: Go 1.24.4, MessagePack for BSSCI encoding
+- Frontend: React 19.1, Material-UI 7.1.1, TypeScript 5.8, Vite 7
+- Database: PostgreSQL 18.1
+- API: gRPC + gRPC-web (117 RPCs)
+- Infrastructure: Docker Compose, Helm chart
+
+---
+
+## 3. Directory Structure
+
+```
+KC-Core/           Service center engine, BSSCI/SCACI protocol, gRPC server
+  api/proto/       gRPC + gRPC-web API definitions (kilocenter.proto, core.proto, identity.proto)
+  cmd/             Service entrypoints
+  internal/        Application services, transports, interceptors
+  pkg/             Protocol packages (bssci/, scaci/, scheduler/, grpc/, logger/)
+KC-Gateway/        External gRPC-web ingress
+  cmd/gateway/     Composition root
+  internal/        Proxy director, metadata sanitization, health handler
+KC-Identity/       Authentication and user management
+  cmd/identity/    Entrypoint
+KC-Web/            React web management console
+  src/modules/     Feature-first pages/components
+  src/services/    gRPC client, API adapters
+  src/hooks/       Domain hooks with React Query
+  src/theme/       Design tokens, icons
+KC-DB/             PostgreSQL persistence layer
+  storage/mioty/   Canonical MIOTY structs and enums (types.go)
+  storage/postgres/ Repository implementations
+  migrations/      SQL schema migrations
+KC-MQTT/           MQTT integration
+  pkg/mqtt/        Topic templates, QoS constants
+helm/kilocenter/   Kubernetes Helm chart
+config/            Runtime configuration files
+GitBook/           User documentation
+```
+
+---
+
+## 4. Deployment
+
+### Docker Compose (recommended)
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+TLS certificates are auto-generated on first start. KC-Web available at http://localhost/.
+
+Custom BSSCI hostname (set before first start):
+```bash
+echo 'KILOCENTER_TLS_SERVER_NAME=bssci.example.com' >> .env
+```
+
+### Kubernetes (Helm)
+
+Chart location: `helm/kilocenter/`
+
+Requires external PostgreSQL and Redis. Minimal install:
+```bash
+cat > my-values.yaml <<EOF
+postgresql:
+  host: my-postgres.default.svc.cluster.local
+  password: "a-strong-password"
+redis:
+  host: my-redis.default.svc.cluster.local
+secrets:
+  authHmacSecret: "replace-with-a-random-string-at-least-32-bytes"
+EOF
+
+helm install kilocenter ./helm/kilocenter -f my-values.yaml
+```
+
+### Linux Host (source)
+
+Requires Go 1.24.4+ and Bun runtime. Docker for infrastructure services (PostgreSQL, Redis, Mosquitto).
+
+```bash
+docker compose -f docker-compose.dev.yml up -d    # infrastructure
+./start-dev.sh                                      # application services
+```
+
+### Default Admin Account
+
+Created on first startup via database migration:
+- Email: admin@kilocenter.local
+- Password: admin123!
+
+---
+
+## 5. gRPC API
+
+Proto definitions: `KC-Core/api/proto/`
+- `kilocenter.proto` — unified service (117 RPCs)
+- `core.proto` — core domain (endpoints, base stations, messages, certificates)
+- `identity.proto` — identity domain (users, orgs, API keys, auth)
+
+API exposed through KC-Gateway on port 9090 (gRPC-web). gRPC reflection enabled.
+
+### RPC Domains
+
+**Endpoints** (7 RPCs): ListEndpoints, GetEndpoint, CreateEndpoint, UpdateEndpoint, DeleteEndpoint, GetEndpointStats, GetEndpointAttachments
+
+**Base Stations** (7 RPCs): ListBaseStations, GetBaseStation, CreateBaseStation, UpdateBaseStation, DeleteBaseStation, GetBaseStationStatus, GetBaseStationEndpoints
+
+**Messages** (11 RPCs): ListMessages, GetMessage, StreamMessages, StreamBaseStationMessages, ListEndpointMessages, ListBaseStationMessages, GetMessageStats, GetMessageTimeline, plus filtering and export
+
+**Downlinks** (4 RPCs): QueueDownlink, ListDownlinks, GetDownlinkStatus, CancelDownlink
+
+**Events & Alerts** (8 RPCs): ListEvents, StreamEvents, StreamBaseStationEvents, StreamEndPointEvents, ListAlerts, AcknowledgeAlert, GetAlertStats, GetEventTimeline
+
+**Certificates** (6 RPCs): GetCertificateStatus, GenerateServerCertificate, DownloadCACertificate, GenerateClientCertificate, DownloadClientCertificate, RevokeCertificate
+
+**SCACI Monitoring** (6 RPCs): ListScaciSessions, GetScaciSession, ListScaciOperations, GetScaciMetrics, StreamScaciEvents, GetScaciQueueStatus
+
+**System**: GetSystemStatus, GetReleaseInfo
+
+### Streaming RPCs
+
+- StreamMessages — real-time uplinks
+- StreamBaseStationMessages — base station message feed
+- StreamEvents, StreamBaseStationEvents, StreamEndPointEvents — event notifications
+
+### Pagination
+
+Standard lists: default 20, max 100. High-volume lists (endpoints, base stations, downlinks): default 100, max 1000. Uses `page_size` and `page_token`.
+
+### Authentication
+
+Community Edition: disabled by default, all RPCs accessible without headers.
+
+Enterprise Edition: JWT tokens or API keys via `authorization: Bearer <token>` header. Multi-tenant headers: `x-organization-id`, `x-user-id`.
+
+### Error Codes
+
+- INVALID_ARGUMENT (3) — validation failures
+- NOT_FOUND (5) — resource doesn't exist
+- ALREADY_EXISTS (6) — duplicate
+- PERMISSION_DENIED (7) — authorization failure
+- UNAUTHENTICATED (16) — missing/invalid token
+- Error tokens: KC-GRPC-ERR-NNN (001-099 validation, 100-199 auth, etc.)
+
+---
+
+## 6. MQTT Integration
+
+Disabled by default. Enable in config:
+```yaml
+mqtt:
+  enabled: true
+  host: "localhost"
+  port: 1883
+  username: "admin"
+  password: "KiloCenter"
+  topic_prefix: "mioty"
+```
+
+### Topic Format
+
+```
+{prefix}/{org_uuid}/device/{ep_eui_hex}/{channel}/{type}
+```
+
+### Event Topics (published by KiloCenter)
+
+- `mioty/{org}/device/{eui}/event/up` — uplink data (JSON: epEui, userData, rxTime, rssi, snr, bsEui)
+- `mioty/{org}/device/{eui}/event/attach` — endpoint attached
+- `mioty/{org}/device/{eui}/event/detach` — endpoint detached
+- `mioty/{org}/device/{eui}/event/downlink_result` — downlink delivery result
+
+### Command Topic (consumed by KiloCenter)
+
+- `mioty/{org}/device/{eui}/command/down` — queue downlink (JSON: userData as hex)
+
+### QoS
+
+Uplinks: QoS 1 (at-least-once). Lifecycle events and downlink commands: configurable.
+
+---
+
+## 7. MIOTY Protocol
+
+### BSSCI Three-Way Handshake
+
+All operations follow: Request -> Response -> Complete (e.g., attach -> attachRsp -> attachCmp).
+
+### Key Concepts
+
+- **EUI**: 8-byte device identifier (hex string, e.g., 70b3d59cd00009e6)
+- **Short Address (shAddr)**: compact endpoint address for radio frames
+- **Network Session Key (nwkSnKey)**: 16-byte AES-128 key for network-layer security
+- **Application Session Key (appSnKey)**: 16-byte AES-128 key for application-layer encryption
+- **Bidirectional (bidi)**: flag indicating downlink capability
+- **Operation IDs**: 64-bit signed integers, positive for base station operations, negative for service center operations
+
+### TLS Requirements
+
+- BSSCI: TLS 1.2+ (base station compatibility)
+- SCACI: TLS 1.3+
+- Self-signed CA trust model with certificate generation tooling
+
+---
+
+## 8. Configuration
+
+### Docker Compose Environment Variables
+
+```
+KILOCENTER_POSTGRESQL_USERNAME=kilocenter
+KILOCENTER_POSTGRESQL_PASSWORD=changeme
+KILOCENTER_POSTGRESQL_DATABASE=kilocenter
+KILOCENTER_LOG_LEVEL=info
+KILOCENTER_TLS_SERVER_NAME=localhost
+```
+
+### HMAC Secret
+
+KC-Identity signs JWT tokens and KC-Gateway validates them. Both must use the same HMAC secret (minimum 32 characters). Mismatch causes `invalid_token` errors on all API calls after login.
+
+### Helm Chart Values (key parameters)
+
+```yaml
+postgresql:
+  host: "postgresql"
+  port: 5432
+  password: "changeme"        # override in production
+  sslMode: "disable"
+
+redis:
+  host: "redis"
+  port: 6379
+
+secrets:
+  authHmacSecret: "..."       # >= 32 bytes, must override
+  mqttAdminPassword: "..."
+  mqttClientPassword: "..."
+
+kcCore:
+  config:
+    bssci:
+      port: 5000
+      tlsEnabled: true
+    scaci:
+      port: 5001
+      tlsEnabled: true
+    messageRetentionDays: 90
+
+kcGateway:
+  config:
+    auth:
+      enabled: true
+      accessTokenTTL: "15m"
+      refreshTokenTTL: "24h"
+    corsOrigins:
+      - "https://your-domain.com"
+
+ingress:
+  enabled: false
+  className: ""
+  hosts: []
+  tls: []
+```
+
+---
+
+## 9. Security
+
+### Default Credentials (change for any non-local deployment)
+
+- PostgreSQL: kilocenter / changeme
+- MQTT admin: admin / KiloCenter
+- MQTT client: kilocenter / kilocenter123
+- Web admin: admin@kilocenter.local / admin123!
+
+### Network Exposure Guidelines
+
+| Port | Exposure |
+|------|----------|
+| 5000 (BSSCI) | Base station networks only |
+| 5001 (SCACI) | Application center hosts only |
+| 9090 (KC-Gateway) | Operator/API consumer networks |
+| 80 (KC-Web) | Operator networks |
+| 50051, 50052 | Internal only (loopback) |
+| 5432/5433 | Internal only (loopback) |
+| 6379 | Internal only (loopback) |
+| 1883 | MQTT consumer networks only |
+
+### Certificate Management
+
+- CA certificate: 20-year validity
+- Server certificates: 1-year validity, renewable without base station changes
+- Client certificates: 1-year validity, per base station
+- certgen binary included in KC-Core image for generation
+
+---
+
+## 10. Operations
+
+### Health Checks
+
+```bash
+curl http://localhost:8086/health       # KC-Core
+curl http://localhost:8087/health       # KC-Gateway
+curl http://localhost:8088/health       # KC-Identity
+```
+
+### System Requirements
+
+- Minimum: 2 CPU cores, 4 GB RAM, 20 GB storage
+- Recommended: 4 CPU cores, 8 GB RAM, 100 GB SSD
+- OS: Linux (Ubuntu 22.04 LTS recommended)
+
+### Database
+
+PostgreSQL with monthly partitioned message tables. Message retention default: 90 days with archival support. Migrations run automatically on service startup when `enable_migrations: true`.
+
+### Logs
+
+Structured JSON logging. Docker: `docker compose logs -f <service>`. Source dev: `logs/runtime/*.log`.
+
+---
+
+## 11. Onboarding Workflow
+
+1. **Register base station**: Create in KC-Web with EUI (16-char hex) and name
+2. **Configure base station hardware**: Point to KC-Core host:5000 (TLS), import CA cert
+3. **Verify connection**: Check logs for `versionNeg` and `attach` messages, status shows Online
+4. **Register endpoint**: EUI, name, nwkSnKey (32-char hex), shAddr, optional bidi flag
+5. **Verify uplinks**: Endpoint transmits, message appears in KC-Web message viewer
+6. **Queue downlink** (if bidi): Via gRPC API or MQTT command topic
+
+---
+
+## 12. Licensing
+
+Community Edition: GNU AGPL v3.0-or-later. Network clause applies — modifications run as a service must make source available to users.
+
+`GetReleaseInfo` gRPC RPC returns runtime metadata: edition, license, source URL, documentation URL. This information is also displayed in the KC-Web UI.
+
+KiloCenter and logo are trademarks of Tim Kravchunovsky. Forks must not use the name/logo implying official affiliation.

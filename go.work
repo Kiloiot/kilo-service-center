@@ -1,0 +1,10 @@
+go 1.24.4
+
+use (
+	./KC-Core
+	./KC-DB
+	./KC-Gateway
+	./KC-Identity
+	./KC-MQTT
+	./pkg
+)

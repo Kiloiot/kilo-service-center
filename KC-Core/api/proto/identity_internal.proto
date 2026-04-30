@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package kilocenter.api.v1;
+
+option go_package = "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1;kilocenterv1";
+
+// IdentityInternalService provides peer-to-peer RPCs for cross-service
+// org/tenant resolution and API key validation. NOT routed through gateway.
+service IdentityInternalService {
+  rpc ResolveOrg(ResolveOrgRequest) returns (ResolveOrgResponse);
+  rpc GetDefaultOrgForTenant(GetDefaultOrgForTenantRequest) returns (GetDefaultOrgForTenantResponse);
+  rpc ValidateAPIKey(ValidateAPIKeyRequest) returns (ValidateAPIKeyResponse);
+  rpc UpdateAPIKeyLastUsed(UpdateAPIKeyLastUsedRequest) returns (UpdateAPIKeyLastUsedResponse);
+  rpc GetUserMembership(GetUserMembershipRequest) returns (GetUserMembershipResponse);
+  rpc CheckServerAdmin(CheckServerAdminRequest) returns (CheckServerAdminResponse);
+  // RecordPlatformEvent persists a platform-level event from stateless services (e.g., KC-Gateway).
+  rpc RecordPlatformEvent(RecordPlatformEventRequest) returns (RecordPlatformEventResponse);
+}
+
+message ResolveOrgRequest { string org_id = 1; }
+message ResolveOrgResponse { int64 tenant_id = 1; }
+
+message GetDefaultOrgForTenantRequest { int64 tenant_id = 1; }
+message GetDefaultOrgForTenantResponse { string org_id = 1; }
+
+message ValidateAPIKeyRequest { string key_hash = 1; }
+message ValidateAPIKeyResponse {
+  string id = 1;
+  int64 tenant_id = 2;
+  string organization_id = 3;
+  string user_id = 4;
+  bool is_active = 5;
+  bool is_expired = 6;
+}
+
+message UpdateAPIKeyLastUsedRequest { string id = 1; }
+message UpdateAPIKeyLastUsedResponse {}
+
+message GetUserMembershipRequest {
+  string org_id = 1;
+  string user_id = 2;
+}
+
+message GetUserMembershipResponse {
+  string role = 1;
+  bool is_active = 2;
+}
+
+message CheckServerAdminRequest { string user_id = 1; }
+message CheckServerAdminResponse { bool is_admin = 1; }
+
+// RecordPlatformEvent persists a platform-level event from stateless services.
+message RecordPlatformEventRequest {
+  int64 tenant_id = 1;
+  string event_type = 2;
+  string category = 3;
+  string severity = 4;
+  string source_type = 5;
+  string source_name = 6;
+  string user_id = 7;
+  string title = 8;
+  string description = 9;
+  bytes data = 10;  // JSON-encoded details
+}
+message RecordPlatformEventResponse {}

@@ -1,0 +1,8 @@
+{
+  "scaci_dashboard": true,
+  "downlink_management": true,
+  "certificate_generation": true,
+  "base_station_messages": true,
+  "dark_mode": true,
+  "enterprise_organizations": false
+}

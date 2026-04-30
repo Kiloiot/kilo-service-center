@@ -1,0 +1,58 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    /* Path Aliases - Locked Folder Structure per FRONTEND_DELIVERY_PLAN Section 0 */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@app/*": ["src/app/*"],
+      "@modules/*": ["src/modules/*"],
+      "@components/*": ["src/components/*"],
+      "@ui": ["src/ui/index.ts"],
+      "@ui/*": ["src/ui/*"],
+      "@layouts/*": ["src/layouts/*"],
+      "@services/*": ["src/services/*"],
+      "@services/grpc": ["node_modules/@kilocenter/grpc-stubs"],
+      "@services/grpc/*": ["node_modules/@kilocenter/grpc-stubs/*", "src/services/grpc/*"],
+      "@contexts/*": ["src/context/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@utils/*": ["src/utils/*"],
+      "@constants/*": ["src/constants/*"],
+      "@styles/*": ["src/styles/*"],
+      "@router": ["src/router/index.ts"],
+      "@router/*": ["src/router/*"],
+      "@api-types/*": ["src/types/*"],
+      "@locales/*": ["src/locales/*"],
+      "@assets/*": ["src/assets/*"],
+      "@config/*": ["src/config/*"],
+      "@theme/*": ["src/theme/*"],
+      "@mappers": ["src/mappers/index.ts"],
+      "@mappers/*": ["src/mappers/*"],
+      "@hooks": ["src/hooks/index.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["src/test"]
+}

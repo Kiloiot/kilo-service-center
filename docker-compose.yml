@@ -1,0 +1,271 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:18.1-alpine
+    container_name: kilocenter-postgres
+    environment:
+      POSTGRES_USER: ${KILOCENTER_POSTGRESQL_USERNAME:-kilocenter}
+      POSTGRES_PASSWORD: ${KILOCENTER_POSTGRESQL_PASSWORD:-changeme}
+      POSTGRES_DB: ${KILOCENTER_POSTGRESQL_DATABASE:-kilocenter}
+    command: postgres -c max_connections=2000 -c shared_buffers=256MB
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KILOCENTER_POSTGRESQL_USERNAME:-kilocenter}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kilocenter-network
+
+  # Redis Cache
+  redis:
+    image: redis:7.4-alpine
+    container_name: kilocenter-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kilocenter-network
+
+  # MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    container_name: kilocenter-mosquitto
+    volumes:
+      - ./deployments/docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./deployments/docker/mosquitto/passwd:/mosquitto/config/passwd
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    ports:
+      - "1883:1883"  # MQTT
+      - "9001:9001"  # WebSocket
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t 'health/check' -m 'test' -u admin -P KiloCenter && echo 'OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kilocenter-network
+
+  # TLS certificate generator (idempotent — skips if certs already exist)
+  certgen:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kilocenter:latest
+    container_name: kilocenter-certgen
+    user: "${UID:-1000}:${GID:-1000}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -f /app/certificates/ca.crt ] && [ -f /app/certificates/server.crt ]; then
+          echo "Certificates already exist, skipping generation"
+        else
+          echo "Generating TLS certificates for $${KILOCENTER_TLS_SERVER_NAME:-localhost}..."
+          certgen -dir /app/certificates -days 365 -server "$${KILOCENTER_TLS_SERVER_NAME:-localhost}"
+        fi
+    environment:
+      KILOCENTER_TLS_SERVER_NAME: ${KILOCENTER_TLS_SERVER_NAME:-localhost}
+    volumes:
+      - cert_data:/app/certificates
+
+  # KC-Identity (authentication and user management)
+  kc-identity:
+    build:
+      context: .
+      dockerfile: KC-Identity/Dockerfile
+    image: kc-identity:latest
+    container_name: kilocenter-identity
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KILOCENTER_STORAGE_HOST: postgres
+      KILOCENTER_STORAGE_PORT: 5432
+      KILOCENTER_STORAGE_USERNAME: ${KILOCENTER_POSTGRESQL_USERNAME:-kilocenter}
+      KILOCENTER_STORAGE_PASSWORD: ${KILOCENTER_POSTGRESQL_PASSWORD:-changeme}
+      KILOCENTER_STORAGE_DATABASE: ${KILOCENTER_POSTGRESQL_DATABASE:-kilocenter}
+      KILOCENTER_STORAGE_SSL_MODE: disable
+      KILOCENTER_STORAGE_ENABLE_MIGRATIONS: "true"
+      KILOCENTER_REDIS_HOST: redis
+      KILOCENTER_REDIS_PORT: 6379
+      KILOCENTER_GRPC_PORT: 50052
+      KILOCENTER_GRPC_HOST: "0.0.0.0"
+      KILOCENTER_GRPC_INTERNAL_TRUST_ENABLED: "true"
+      KILOCENTER_GRPC_WEB_ENABLED: "false"
+      KILOCENTER_GENERAL_HEALTH_CHECK_PORT: 8088
+      KILOCENTER_GENERAL_LOG_LEVEL: ${KILOCENTER_LOG_LEVEL:-info}
+      KILOCENTER_GENERAL_EDITION: "${KILOCENTER_EDITION:-ce}"
+      KILOCENTER_AUTH_ENABLED: "true"
+      KILOCENTER_AUTH_LOCAL_LOGIN_ENABLED: "true"
+      KILOCENTER_AUTH_REGISTRATION_ENABLED: "true"
+      # HMAC secret is set in config/config.identity-docker.yaml
+      # Must match the secret in config/config.gateway-docker.yaml
+      KILOCENTER_AUTH_ACCESS_TOKEN_TTL: "15m"
+      KILOCENTER_AUTH_REFRESH_TOKEN_TTL: "24h"
+      KILOCENTER_AUTH_ISSUER: "kilocenter"
+      KILOCENTER_AUTH_AUDIENCE: "kilocenter-api"
+    volumes:
+      - ./config/config.identity-docker.yaml:/app/config/config.yaml:ro
+    expose:
+      - "50052"
+    ports:
+      - "8088:8088"  # Health
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - kilocenter-network
+
+  # KiloCenter Application (KC-Core)
+  kilocenter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kilocenter:latest
+    container_name: kilocenter-app
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      kc-identity:
+        condition: service_healthy
+    environment:
+      # PostgreSQL
+      KILOCENTER_STORAGE_HOST: postgres
+      KILOCENTER_STORAGE_PORT: 5432
+      KILOCENTER_STORAGE_USERNAME: ${KILOCENTER_POSTGRESQL_USERNAME:-kilocenter}
+      KILOCENTER_STORAGE_PASSWORD: ${KILOCENTER_POSTGRESQL_PASSWORD:-changeme}
+      KILOCENTER_STORAGE_DATABASE: ${KILOCENTER_POSTGRESQL_DATABASE:-kilocenter}
+      KILOCENTER_STORAGE_SSL_MODE: disable
+
+      # Redis
+      KILOCENTER_REDIS_HOST: redis
+      KILOCENTER_REDIS_PORT: 6379
+
+      # MQTT
+      KILOCENTER_MQTT_HOST: mosquitto
+      KILOCENTER_MQTT_PORT: 1883
+      KILOCENTER_MQTT_CLIENT_ID: kilocenter-server
+
+      # Server (internal-only: gateway handles external ingress)
+      KILOCENTER_GRPC_PORT: 50051
+      KILOCENTER_GRPC_HOST: "0.0.0.0"
+      KILOCENTER_GRPC_INTERNAL_TRUST_ENABLED: "true"
+      KILOCENTER_GRPC_WEB_ENABLED: "false"
+      KILOCENTER_GENERAL_HEALTH_CHECK_PORT: 8086
+      KILOCENTER_GENERAL_LOG_LEVEL: ${KILOCENTER_LOG_LEVEL:-info}
+
+      # BSSCI Protocol
+      KILOCENTER_PROTOCOL_BSCI_ENABLED: "true"
+      KILOCENTER_PROTOCOL_BSCI_PORT: 5000
+      KILOCENTER_PROTOCOL_BSCI_TLS_ENABLED: "true"
+      KILOCENTER_PROTOCOL_BSCI_TLS_CERT_FILE: /app/certificates/server.crt
+      KILOCENTER_PROTOCOL_BSCI_TLS_KEY_FILE: /app/certificates/server.key
+      KILOCENTER_PROTOCOL_BSCI_TLS_CA_FILE: /app/certificates/ca.crt
+      KILOCENTER_PROTOCOL_BSCI_TLS_MIN_VERSION: "1.2"
+
+      # Config file path
+      KILOCENTER_CONFIG_FILE: /app/config/config.yaml
+    expose:
+      - "50051"       # Internal gRPC (gateway only, not published to host)
+    ports:
+      - "8086:8086"  # Health/Prometheus
+      - "5050:5000"  # BSSCI (host:5050 → container:5000; macOS uses 5000 for AirPlay)
+      - "5001:5001"  # SCACI
+    volumes:
+      - cert_data:/app/certificates:ro
+      - ./config/config.docker.yaml:/app/config/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - kilocenter-network
+
+  # KC-Gateway (external ingress)
+  kc-gateway:
+    build:
+      context: .
+      dockerfile: KC-Gateway/Dockerfile
+    image: kc-gateway:latest
+    container_name: kilocenter-gateway
+    depends_on:
+      kilocenter:
+        condition: service_healthy
+    environment:
+      # Upstream KC-Core via Docker service DNS
+      KILOCENTER_GATEWAY_UPSTREAM_ADDRESS: "kilocenter:50051"
+      KILOCENTER_GATEWAY_HEALTH_PORT: 8087
+
+      # gRPC-web configuration
+      KILOCENTER_GRPC_PORT: 9090
+      KILOCENTER_GRPC_WEB_ENABLED: "true"
+
+      KILOCENTER_GENERAL_LOG_LEVEL: ${KILOCENTER_LOG_LEVEL:-info}
+      KILOCENTER_GENERAL_EDITION: "${KILOCENTER_EDITION:-ce}"
+      KILOCENTER_GENERAL_ORG_ENFORCEMENT_ENABLED: "${KILOCENTER_ORG_ENFORCEMENT:-false}"
+    volumes:
+      - ./config/config.gateway-docker.yaml:/app/config/config.yaml:ro
+    ports:
+      - "9090:9090"   # gRPC-web (external)
+      - "8087:8087"   # Gateway health
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - kilocenter-network
+
+  # KC-Web browser interface (served via nginx on port 80)
+  kc-web:
+    build:
+      context: .
+      dockerfile: KC-Web/Dockerfile
+    image: kc-web:latest
+    container_name: kilocenter-web
+    depends_on:
+      kc-gateway:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - kilocenter-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  mosquitto_data:
+  mosquitto_log:
+  cert_data:
+  kilocenter-logs:
+
+networks:
+  kilocenter-network:
+    driver: bridge

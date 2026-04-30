@@ -1,0 +1,2 @@
+-- Revert migration numbering fix
+-- No schema changes to revert

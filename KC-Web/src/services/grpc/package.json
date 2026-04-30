@@ -1,0 +1,11 @@
+{
+  "name": "@kilocenter/grpc-stubs",
+  "version": "1.0.0",
+  "description": "Generated gRPC-web stubs for KiloCenter",
+  "main": "kilocenter_pb.js",
+  "type": "commonjs",
+  "dependencies": {
+    "google-protobuf": "^3.21.4",
+    "@improbable-eng/grpc-web": "^0.15.0"
+  }
+}

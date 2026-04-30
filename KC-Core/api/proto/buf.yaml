@@ -1,0 +1,42 @@
+version: v2
+name: github.com/kilocenter/KC-Core
+lint:
+  use:
+    - STANDARD
+  except:
+    # federation.proto uses kilocenter.federation.v1 while other protos use kilocenter.api.v1;
+    # both reside in the same directory as a deliberate layout choice (federation is internal-only).
+    - DIRECTORY_SAME_PACKAGE
+  ignore_only:
+    # Legacy compatibility: waive these rules for all service proto files
+    PACKAGE_DIRECTORY_MATCH:
+      - kilocenter.proto
+      - identity.proto
+      - identity_internal.proto
+      - core.proto
+      - federation.proto
+    FIELD_LOWER_SNAKE_CASE:
+      - kilocenter.proto
+      - identity.proto
+      - identity_internal.proto
+      - core.proto
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - kilocenter.proto
+      - identity.proto
+      - identity_internal.proto
+      - core.proto
+    RPC_REQUEST_STANDARD_NAME:
+      - kilocenter.proto
+      - identity.proto
+      - identity_internal.proto
+      - core.proto
+      - federation.proto
+    RPC_RESPONSE_STANDARD_NAME:
+      - kilocenter.proto
+      - identity.proto
+      - identity_internal.proto
+      - core.proto
+      - federation.proto
+breaking:
+  use:
+    - PACKAGE

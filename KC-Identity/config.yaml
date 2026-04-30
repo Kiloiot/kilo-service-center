@@ -1,0 +1,60 @@
+general:
+  server_name: "KiloCenter Identity"
+  environment: "development"
+  log_level: "debug"
+  log_format: "text"
+  health_check_port: 8088
+  tenant_id: 1
+
+storage:
+  host: "localhost"
+  port: 5433
+  database: "kilocenter"
+  username: "kilocenter"
+  password: "changeme"
+  ssl_mode: "disable"
+  max_connections: 100
+  max_idle_conns: 20
+  conn_max_lifetime: 300
+  conn_max_idle_time: 60
+  enable_migrations: true
+
+grpc:
+  port: 50052
+  host: "localhost"
+  internal_trust_enabled: true
+  web:
+    enabled: false
+  enable_reflection: true
+  enable_health: true
+
+auth:
+  enabled: true
+  local_login_enabled: true
+  registration_enabled: true
+  hmac_secret: "dev-secret-must-be-at-least-32-bytes-long"
+  access_token_ttl: 15m
+  refresh_token_ttl: 24h
+  refresh_token_enabled: true
+  issuer: "kilocenter"
+  audience: "kilocenter-api"
+  algorithm: "HS256"
+  tenant_claim: "tenant_id"
+  bootstrap:
+    enabled: false
+
+redis:
+  host: "localhost"
+  port: 6379
+  database: 0
+  pool_size: 10
+
+monitoring:
+  metrics_enabled: true
+  metrics_port: 9092
+  metrics_path: "/metrics"
+  tracing_enabled: false
+  tracing_sample_rate: 0.1
+
+internal_auth:
+  peer_secret: ""

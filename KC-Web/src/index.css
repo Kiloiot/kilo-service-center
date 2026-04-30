@@ -1,0 +1,25 @@
+/* KC-Web Global Styles */
+
+/* Roboto font family (Apache 2.0 license) */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
+
+/* Minimal CSS - Most styling handled by Material-UI theme */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Remove default focus outlines - MUI handles this */
+*:focus {
+  outline: none;
+}

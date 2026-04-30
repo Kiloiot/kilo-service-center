@@ -1,0 +1,264 @@
+# KiloCenter Production Docker Compose
+# Install: curl -fsSL https://raw.githubusercontent.com/Kiloiot/KiloServiceCenter/main/docker-compose.prod.yml -o docker-compose.yml && docker compose up -d
+# Docs: https://docs.kiloiot.io
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:18.1-alpine
+    container_name: kilocenter-postgres
+    environment:
+      POSTGRES_USER: ${KILOCENTER_DB_USER:-kilocenter}
+      POSTGRES_PASSWORD: ${KILOCENTER_DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${KILOCENTER_DB_NAME:-kilocenter}
+    command: postgres -c max_connections=2000 -c shared_buffers=256MB
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KILOCENTER_DB_USER:-kilocenter}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kilocenter
+
+  # Redis Cache
+  redis:
+    image: redis:7.4-alpine
+    container_name: kilocenter-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kilocenter
+
+  # MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:2.0.22
+    container_name: kilocenter-mosquitto
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        # Generate config if not present
+        mkdir -p /mosquitto/config /mosquitto/data /mosquitto/log
+        if [ ! -f /mosquitto/config/mosquitto.conf ]; then
+          cat > /mosquitto/config/mosquitto.conf <<'CONF'
+        persistence true
+        persistence_location /mosquitto/data/
+        log_dest stdout
+        listener 1883
+        protocol mqtt
+        listener 9001
+        protocol websockets
+        allow_anonymous false
+        password_file /mosquitto/config/passwd
+        max_queued_messages 1000
+        sys_interval 10
+        CONF
+        fi
+        # Generate password file if not present
+        if [ ! -f /mosquitto/config/passwd ]; then
+          mosquitto_passwd -b -c /mosquitto/config/passwd admin KiloCenter
+          mosquitto_passwd -b /mosquitto/config/passwd kilocenter kilocenter
+        fi
+        exec mosquitto -c /mosquitto/config/mosquitto.conf
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_config:/mosquitto/config
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t 'health/check' -m 'test' -u admin -P KiloCenter && echo 'OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kilocenter
+
+  # TLS Certificate Generator (runs once, then exits)
+  certgen:
+    image: ghcr.io/kiloiot/kiloservicecenter/kc-core:${KILOCENTER_VERSION:-latest}
+    container_name: kilocenter-certgen
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -f /app/certificates/ca.crt ] && [ -f /app/certificates/server.crt ]; then
+          echo "Certificates already exist, skipping generation"
+        else
+          echo "Generating TLS certificates for $${KILOCENTER_TLS_SERVER_NAME:-localhost}..."
+          certgen -dir /app/certificates -days 365 -server "$${KILOCENTER_TLS_SERVER_NAME:-localhost}"
+        fi
+    environment:
+      KILOCENTER_TLS_SERVER_NAME: ${KILOCENTER_TLS_SERVER_NAME:-localhost}
+    volumes:
+      - cert_data:/app/certificates
+
+  # KC-Identity (authentication and user management)
+  kc-identity:
+    image: ghcr.io/kiloiot/kiloservicecenter/kc-identity:${KILOCENTER_VERSION:-latest}
+    container_name: kilocenter-identity
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      KILOCENTER_STORAGE_HOST: postgres
+      KILOCENTER_STORAGE_PORT: 5432
+      KILOCENTER_STORAGE_USERNAME: ${KILOCENTER_DB_USER:-kilocenter}
+      KILOCENTER_STORAGE_PASSWORD: ${KILOCENTER_DB_PASSWORD:-changeme}
+      KILOCENTER_STORAGE_DATABASE: ${KILOCENTER_DB_NAME:-kilocenter}
+      KILOCENTER_STORAGE_SSL_MODE: disable
+      KILOCENTER_STORAGE_ENABLE_MIGRATIONS: "true"
+      KILOCENTER_REDIS_HOST: redis
+      KILOCENTER_REDIS_PORT: 6379
+      KILOCENTER_GRPC_PORT: 50052
+      KILOCENTER_GRPC_HOST: "0.0.0.0"
+      KILOCENTER_GRPC_INTERNAL_TRUST_ENABLED: "true"
+      KILOCENTER_GRPC_WEB_ENABLED: "false"
+      KILOCENTER_GENERAL_HEALTH_CHECK_PORT: 8088
+      KILOCENTER_GENERAL_LOG_LEVEL: ${KILOCENTER_LOG_LEVEL:-info}
+      KILOCENTER_GENERAL_EDITION: "${KILOCENTER_EDITION:-ce}"
+      KILOCENTER_AUTH_ENABLED: "true"
+      KILOCENTER_AUTH_LOCAL_LOGIN_ENABLED: "true"
+      KILOCENTER_AUTH_REGISTRATION_ENABLED: "true"
+      KILOCENTER_AUTH_HMAC_SECRET: ${KILOCENTER_AUTH_SECRET:-change-this-to-a-random-32-byte-secret}
+      KILOCENTER_AUTH_ACCESS_TOKEN_TTL: "15m"
+      KILOCENTER_AUTH_REFRESH_TOKEN_TTL: "24h"
+      KILOCENTER_AUTH_ISSUER: "kilocenter"
+      KILOCENTER_AUTH_AUDIENCE: "kilocenter-api"
+    expose:
+      - "50052"
+    ports:
+      - "8088:8088"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - kilocenter
+
+  # KiloCenter Core (BSSCI/SCACI protocol engine)
+  kilocenter:
+    image: ghcr.io/kiloiot/kiloservicecenter/kc-core:${KILOCENTER_VERSION:-latest}
+    container_name: kilocenter-app
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      kc-identity:
+        condition: service_healthy
+    environment:
+      KILOCENTER_STORAGE_HOST: postgres
+      KILOCENTER_STORAGE_PORT: 5432
+      KILOCENTER_STORAGE_USERNAME: ${KILOCENTER_DB_USER:-kilocenter}
+      KILOCENTER_STORAGE_PASSWORD: ${KILOCENTER_DB_PASSWORD:-changeme}
+      KILOCENTER_STORAGE_DATABASE: ${KILOCENTER_DB_NAME:-kilocenter}
+      KILOCENTER_STORAGE_SSL_MODE: disable
+      KILOCENTER_IDENTITY_ADDRESS: "kc-identity:50052"
+      KILOCENTER_STORAGE_ENABLE_MIGRATIONS: "true"
+      KILOCENTER_REDIS_HOST: redis
+      KILOCENTER_REDIS_PORT: 6379
+      KILOCENTER_MQTT_HOST: mosquitto
+      KILOCENTER_MQTT_PORT: 1883
+      KILOCENTER_MQTT_CLIENT_ID: kilocenter-server
+      KILOCENTER_GRPC_PORT: 50051
+      KILOCENTER_GRPC_HOST: "0.0.0.0"
+      KILOCENTER_GRPC_INTERNAL_TRUST_ENABLED: "true"
+      KILOCENTER_GRPC_WEB_ENABLED: "false"
+      KILOCENTER_GENERAL_HEALTH_CHECK_PORT: 8086
+      KILOCENTER_GENERAL_LOG_LEVEL: ${KILOCENTER_LOG_LEVEL:-info}
+      KILOCENTER_PROTOCOL_BSCI_ENABLED: "true"
+      KILOCENTER_PROTOCOL_BSCI_PORT: 5000
+      KILOCENTER_PROTOCOL_BSCI_TLS_ENABLED: "true"
+      KILOCENTER_PROTOCOL_BSCI_TLS_CERT_FILE: /app/certificates/server.crt
+      KILOCENTER_PROTOCOL_BSCI_TLS_KEY_FILE: /app/certificates/server.key
+      KILOCENTER_PROTOCOL_BSCI_TLS_CA_FILE: /app/certificates/ca.crt
+    expose:
+      - "50051"
+    ports:
+      - "8086:8086"
+      - "5000:5000"
+      - "5001:5001"
+    volumes:
+      - cert_data:/app/certificates:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - kilocenter
+
+  # KC-Gateway (external gRPC-web ingress)
+  kc-gateway:
+    image: ghcr.io/kiloiot/kiloservicecenter/kc-gateway:${KILOCENTER_VERSION:-latest}
+    container_name: kilocenter-gateway
+    depends_on:
+      kilocenter:
+        condition: service_healthy
+      kc-identity:
+        condition: service_healthy
+    environment:
+      KILOCENTER_GATEWAY_UPSTREAM_ADDRESS: "kilocenter:50051"
+      KILOCENTER_GATEWAY_IDENTITY_ADDRESS: "kc-identity:50052"
+      KILOCENTER_GATEWAY_HEALTH_PORT: 8087
+      KILOCENTER_GRPC_PORT: 9090
+      KILOCENTER_GRPC_WEB_ENABLED: "true"
+      KILOCENTER_GENERAL_LOG_LEVEL: ${KILOCENTER_LOG_LEVEL:-info}
+      KILOCENTER_GENERAL_EDITION: "${KILOCENTER_EDITION:-ce}"
+      KILOCENTER_GENERAL_ORG_ENFORCEMENT_ENABLED: "true"
+      KILOCENTER_AUTH_ENABLED: "true"
+      KILOCENTER_AUTH_HMAC_SECRET: ${KILOCENTER_AUTH_SECRET:-change-this-to-a-random-32-byte-secret}
+      KILOCENTER_AUTH_ISSUER: "kilocenter"
+      KILOCENTER_AUTH_AUDIENCE: "kilocenter-api"
+    ports:
+      - "9090:9090"
+      - "8087:8087"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - kilocenter
+
+  # KC-Web (browser interface)
+  kc-web:
+    image: ghcr.io/kiloiot/kiloservicecenter/kc-web:${KILOCENTER_VERSION:-latest}
+    container_name: kilocenter-web
+    depends_on:
+      kc-gateway:
+        condition: service_healthy
+    ports:
+      - "${KILOCENTER_WEB_PORT:-80}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - kilocenter
+
+volumes:
+  postgres_data:
+  redis_data:
+  mosquitto_data:
+  mosquitto_config:
+  cert_data:
+
+networks:
+  kilocenter:
+    driver: bridge

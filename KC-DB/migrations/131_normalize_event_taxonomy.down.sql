@@ -1,0 +1,2 @@
+-- Cannot reliably reverse taxonomy normalization
+-- Backfilled correlation data is correct and should be preserved

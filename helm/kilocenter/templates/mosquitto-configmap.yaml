@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-mosquitto
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "mosquitto") | nindent 4 }}
+data:
+  mosquitto.conf: |
+    persistence true
+    persistence_location /mosquitto/data/
+    log_dest stdout
+
+    listener 1883
+    protocol mqtt
+
+    listener 9001
+    protocol websockets
+
+    allow_anonymous false
+    password_file /mosquitto/config/passwd
+
+    max_queued_messages 1000
+    max_inflight_messages 20
+    max_keepalive 65535
+    sys_interval 10

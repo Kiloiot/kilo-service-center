@@ -1,0 +1,288 @@
+general:
+  server_name: "KiloCenter Dev"
+  environment: "development"
+  log_level: "debug"
+  log_format: "text"
+  health_check_port: 8086
+  tenant_id: 1  # Default tenant ID for single-tenant deployments
+  software_version: ""  # Optional override for BSSCI conRsp.swVersion (falls back to ldflags, then "dev")
+  edition: "ce"  # "ece" (Enterprise Cloud Edition) or "ce" (Community Edition)
+  org_enforcement_enabled: false  # Disabled in CE; strict tenant enforcement for ECE
+
+storage:
+  host: "localhost"
+  port: 5433
+  database: "kilocenter"
+  username: "kilocenter"
+  password: "changeme"
+  ssl_mode: "disable"
+  max_connections: 1000    # Support thousands of concurrent database queries
+  max_idle_conns: 100     # Keep connections ready for quick response
+  conn_max_lifetime: 300   # Refresh connections every 5 minutes
+  conn_max_idle_time: 60   # Close idle connections after 1 minute
+  message_retention_days: 90
+  archival_enabled: true
+  archival_check_interval: 15
+
+mqtt:
+  enabled: false
+  host: "localhost"
+  port: 1883
+  username: "admin"
+  password: "KiloCenter"
+  client_id: "kilocenter-core"
+  topic_prefix: "mioty"
+  enable_command_subscriptions: false
+
+protocol:
+  # Base Station Service Center Interface (BSSCI)
+  bsci_host: "0.0.0.0"
+  bsci_port: 5005
+  bsci_external_url: "tls://localhost:5000"
+  bsci_tls:
+    enabled: true
+    cert_file: "certificates/server.crt"
+    key_file: "certificates/server.key"
+    ca_file: "certificates/ca.crt"
+    min_version: "1.2"
+
+  # BSSCI Security Settings
+  detach_signature_validation_enabled: true  # Cryptographic validation of detach signatures (set to false for gradual rollout)
+
+  scaci_enabled: true
+  scaci_host: "0.0.0.0"
+  scaci_port: 5001
+  scaci_tls:
+    enabled: true
+    cert_file: "certificates/server.crt"
+    key_file: "certificates/server.key"
+    ca_file: "certificates/ca.crt"
+    min_version: "1.3"  # TLS 1.3 per MIOTY Security Guide v1.1 (operators may override to "1.2" for legacy Application Centers)
+    allowed_ciphers:
+      - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+
+  # SCACI tenant isolation (CRITICAL for multi-tenant deployments)
+  # When true: Extracts tenant ID from AC certificate CN/SAN (fail-closed)
+  # When false: All ACs map to default tenant (UNSAFE for production)
+  # Certificate formats: "ac-tenant-123", "tenant-42", "tenant007", or numeric CN
+  scaci_cert_tenant_mapping: false
+
+  # SCACI audit trail: Log Ping operations to scaci_operation_log (default: true)
+  # Set to false for high-frequency deployments where Ping audit is not required
+  scaci_log_ping_operations: true
+
+  # SCACI audit trail: Log Status operations to scaci_operation_log (default: true)
+  # Set to false for high-frequency deployments where Status audit is not required
+  scaci_log_status_operations: true
+
+  # Automatic propagation reconciliation
+  propagation:
+    batch_size: 500              # Endpoints processed per batch
+    inter_batch_delay: 100ms     # Rate limiting between batches
+    max_retries: 3               # Max attempts before auto-pause
+    retry_backoff: 30s           # Initial backoff (exponential: 30s, 60s, 120s)
+    cool_down: 2h                # Auto-reset paused BSs after 2h (0=manual only)
+
+  # Multi-tenant roaming support (DEFER-005)
+  roaming:
+    enabled: false               # Enable roaming support (set true for multi-tenant deployments)
+    cache_enabled: true          # Enable ownership cache for performance
+    cache_ttl: 5m               # Cache time-to-live
+    cache_max_size: 10000       # Maximum cache entries
+    enable_audit_trail: true    # Record roaming events for compliance
+    enable_metrics: true        # Track roaming metrics for monitoring
+
+  federation:
+    enabled: false                          # Set true in CE mode to relay unknown-endpoint uplinks to ECE
+    # ece_endpoint: "localhost:443"  # ECE federation-ingress gRPC address (CE mode only)
+    heartbeat_interval: 60s                 # How often CE sends heartbeats on the Connect stream
+    outbox_max_size: 10000                  # Maximum unacknowledged relay records in the durable outbox
+    reconnect_max_backoff: 5m               # Maximum exponential reconnect delay
+    synthetic_bs_eui: ""                    # Reserved BS EUI for ECE federation-ingress tenant-visible messages
+    ingress_grpc_port: 50055                # ECE federation-ingress gRPC listen port
+    tls:
+      enabled: false                        # Set true in production to secure CE→ECE relay transport
+      # cert_file: "certificates/ce-client.crt"
+      # key_file: "certificates/ce-client.key"
+      # ca_file: "certificates/ece-ca.crt"
+      insecure_skip_verify: false           # Never set true in production
+
+  # Service Center Identity (DEFER-007) - exposed via gRPC GetReleaseInfo
+  sc_vendor: "Kilo"             # Vendor name (displayed to operators)
+  sc_model: "KiloCenter"        # Model name (Community or Enterprise SKU)
+
+grpc:
+  port: 50051                      # Internal only (gateway owns :9090)
+  host: "localhost"                # Loopback — gateway on same host
+  rbac_role_cache_ttl_seconds: 30  # RBAC role cache TTL (seconds, default: 30)
+  internal_trust_enabled: true     # Trust gateway identity headers
+  enable_tls: false
+  enable_reflection: true
+  enable_health: true
+  http:
+    read_timeout: 30s
+    write_timeout: 30s
+    idle_timeout: 120s
+  web:
+    enabled: false                 # Gateway handles gRPC-web termination
+
+# Authentication and authorization
+auth:
+  enabled: true   # Enable auth for proper login flow
+  local_login_enabled: true  # Enable local login form
+  registration_enabled: true  # Enable self-service registration
+  refresh_token_enabled: true
+  hmac_secret: "dev-secret-change-in-production-at-least-32-chars"  # JWT signing secret (min 32 chars)
+  access_token_ttl: 30m  # Access token lifetime
+  refresh_token_ttl: 168h  # Refresh token lifetime (7 days)
+  # jwks_endpoint: "https://your-auth-provider/.well-known/jwks.json"
+  # issuer: "https://your-auth-provider"
+  # audience: "your-api-audience"
+  # tenant_claim: "urn:zitadel:iam:org:project:id"
+  # algorithm: "RS256"
+
+  # Admin bootstrap (initial admin user creation)
+  # Only runs if enabled=true and no users exist in database
+  bootstrap:
+    enabled: false
+    # initial_admin_email: "admin@example.com"
+    # password_hash: "$pbkdf2-sha512$..."  # PHC format hash
+    # tenant_id: 1
+    # organization_name: "Default Organization"
+    # create_org: true         # Create org if not exists
+    # create_membership: true  # Add user to org as owner
+
+  # External authentication provider settings
+  # ui_callback_url: "http://localhost:5173/#/login"  # UI redirect after external auth
+
+  # OIDC provider (OpenID Connect) - requires Redis for state storage
+  oidc:
+    enabled: false
+    # provider_url: "https://auth.example.com"  # OIDC provider base URL
+    # client_id: "your-client-id"
+    # client_secret: "your-client-secret"
+    # scopes: ["openid", "email", "profile"]  # Default scopes
+    # login_label: "Sign in with SSO"
+    # login_redirect: false  # Auto-redirect to provider on unauthenticated access
+    # logout_url: ""  # Post-logout redirect URL
+    # registration_enabled: false  # Allow new user creation from OIDC claims
+    # registration_callback_url: ""  # POST callback for new user provisioning
+    # assume_email_verified: false  # Skip email_verified claim check
+    # state_ttl: 5m  # State parameter TTL in Redis
+    # nonce_ttl: 5m  # Nonce TTL in Redis
+    # external_org_claim: ""  # JWT claim path for external org ID mapping
+
+  # OAuth2 provider (with PKCE) - requires Redis for state storage
+  oauth2:
+    enabled: false
+    # authorize_url: "https://provider.example.com/oauth/authorize"
+    # token_url: "https://provider.example.com/oauth/token"
+    # userinfo_url: "https://provider.example.com/oauth/userinfo"
+    # client_id: "your-client-id"
+    # client_secret: "your-client-secret"  # Optional if public_client=true
+    # public_client: false  # PKCE-only public client (no client_secret required)
+    # scopes: ["email", "profile"]  # Default scopes
+    # login_label: "Sign in with Provider"
+    # login_redirect: false  # Auto-redirect to provider on unauthenticated access
+    # logout_url: ""  # Post-logout redirect URL
+    # registration_enabled: false  # Allow new user creation from userinfo
+    # assume_email_verified: false  # Skip email verification requirement
+    # state_ttl: 5m  # State/verifier TTL in Redis
+    # pkce_method: "S256"  # PKCE code challenge method (S256 recommended)
+    # user_id_claim: "sub"  # Claim containing user ID
+    # email_claim: "email"  # Claim containing email
+
+# KC-Identity service connection (leave empty to use local DB resolver)
+identity:
+  address: "localhost:50052"
+
+# Peer-to-peer internal gRPC auth (shared secret for IdentityInternalService)
+internal_auth:
+  peer_secret: ""  # Empty = dev mode (no peer auth required)
+
+# Redis configuration (required when OIDC or OAuth2 enabled)
+redis:
+  host: "localhost"
+  port: 6379
+  # password: ""  # Redis password (if required)
+  # database: 0  # Redis database number
+  # pool_size: 10  # Connection pool size
+
+# Certificate generation configuration
+# IMPORTANT: The certgen_path is relative to the KC-Core working directory.
+# When using start-dev.sh, KC-Core runs from kilocenter-modules/KC-Core/.
+certificates:
+  # Path to the certgen binary (relative to KC-Core working directory or absolute)
+  # Default: "certgen" (assumes running from KC-Core/)
+  certgen_path: "./certgen"
+
+  # Directory for storing generated certificates (relative or absolute)
+  # Default: "certificates"
+  certs_dir: "certificates"
+
+  # Temporary directory for certificate generation
+  # Default: "/tmp/kilocenter-certs"
+  temp_dir: "/tmp/kilocenter-certs"
+
+  # Cleanup interval for temporary certificates (in minutes)
+  # Expired certificate directories older than 15 minutes are removed
+  # Default: 15
+  cleanup_interval_min: 15
+
+  # Default validity period for server certificates (days)
+  # Default: 365
+  server_validity_days: 365
+
+# Registry provider for blueprint submission to external registries
+# Requires GitHub-compatible API. Endpoints: /repos/{owner}/{repo}/git/refs, /contents, /pulls
+registry_provider:
+  enabled: false
+  api_url: "https://api.github.com"
+  token: ""  # Set via KILOCENTER_REGISTRY_PROVIDER_TOKEN env var
+  owner: ""  # Set via KILOCENTER_REGISTRY_PROVIDER_OWNER env var
+  repo: ""   # Set via KILOCENTER_REGISTRY_PROVIDER_REPO env var
+  base_branch: "main"
+  branch_prefix: "blueprint/"
+  blueprint_path: "blueprints/"
+  file_extension: ".json"
+  http_timeout: 30
+
+# Status monitoring endpoints for GetSystemStatus RPC
+status:
+  timeout: 5s
+  endpoints:
+    # HTTP Health Checks
+    - name: "KC-Core"
+      url: "http://localhost:8086/health/ping"
+      type: "http"
+    - name: "KC-Web"
+      url: "http://localhost:5173"
+      type: "http"
+
+    # Database
+    - name: "PostgreSQL"
+      url: "postgres"
+      type: "db"
+
+    # Protocol Listeners (TCP)
+    - name: "BSSCI"
+      host: "localhost"
+      port: 5000
+      type: "tcp"
+    - name: "SCACI"
+      host: "localhost"
+      port: 5001
+      type: "tcp"
+    - name: "gRPC (internal)"
+      host: "localhost"
+      port: 50051
+      type: "tcp"
+    - name: "KC-Gateway"
+      url: "http://localhost:8087/health"
+      type: "http"
+
+    # Internal services
+    - name: "MQTT"
+      type: "mqtt"
+    - name: "Archival"
+      type: "archival"

@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-certgen
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "certgen") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "kilocenter.selectorLabels" (dict "context" . "component" "certgen") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: certgen
+          image: "{{ .Values.certgen.image.repository }}:{{ .Values.certgen.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              if [ -f /app/certificates/ca.crt ] && [ -f /app/certificates/server.crt ]; then
+                echo "Certificates already exist, skipping generation"
+              else
+                echo "Generating TLS certificates for {{ .Values.certgen.serverName }}..."
+                certgen -dir /app/certificates -days 365 -server "{{ .Values.certgen.serverName }}"
+              fi
+          volumeMounts:
+            - name: certs
+              mountPath: /app/certificates
+      volumes:
+        - name: certs
+          persistentVolumeClaim:
+            claimName: {{ include "kilocenter.fullname" . }}-certs

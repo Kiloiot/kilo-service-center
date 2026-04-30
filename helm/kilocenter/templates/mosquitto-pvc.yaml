@@ -1,0 +1,17 @@
+{{- if .Values.mosquitto.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-mosquitto
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "mosquitto") | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.mosquitto.persistence.size }}
+  {{- if .Values.mosquitto.persistence.storageClass }}
+  storageClassName: {{ .Values.mosquitto.persistence.storageClass }}
+  {{- end }}
+{{- end }}

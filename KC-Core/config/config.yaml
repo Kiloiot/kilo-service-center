@@ -1,0 +1,83 @@
+# KiloCenter Configuration File
+
+general:
+  server_name: "KiloCenter"
+  environment: "development"
+  log_level: "debug"
+  log_format: "text"
+  health_check_port: 8086
+
+protocol:
+  # Base Station Service Center Interface (BSSCI)
+  bsci_port: 5000
+  bsci_tls_enabled: true
+  bsci_cert_file: "certificates/server.crt"
+  bsci_key_file: "certificates/server.key"
+  bsci_ca_file: "certificates/ca.crt"
+  
+  # Service Center Application Center Interface (SCACI)
+  scaci_enabled: true
+  scaci_host: "0.0.0.0"
+  scaci_port: 5001
+  scaci_tls:
+    enabled: true
+    cert_file: "certificates/scaci-server.crt"
+    key_file: "certificates/scaci-server.key"
+    ca_file: "certificates/scaci-ca.crt"
+    min_version: "1.2"
+    allowed_ciphers:
+      - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+
+  # Protocol parameters
+  max_retransmissions: 3
+  ack_timeout: 5000
+  duplicate_window: 300
+  message_encoding: "msgpack"
+
+storage:
+  type: "postgres"
+  host: "localhost"
+  port: 5432
+  database: "kilocenter"
+  username: "kilocenter"
+  password: "changeme"
+  ssl_mode: "disable"
+  max_connections: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+  conn_max_idle_time: 60
+  enable_migrations: true
+  message_retention_days: 90
+  archival_enabled: true
+  archival_check_interval: 3600
+
+mqtt:
+  enabled: true
+  host: "localhost"
+  port: 1883
+  client_id: "kilocenter"
+  username: "admin"
+  password: "KiloCenter"
+  qos: 1
+  clean_session: true
+  keep_alive: 60
+  connect_timeout: 30
+  max_reconnect_interval: 300
+  topic_prefix: "mioty"
+
+grpc:
+  port: 50051
+  host: "localhost"
+  internal_trust_enabled: true
+  enable_tls: false
+  tls_cert: ""
+  tls_key: ""
+  # Polling interval for gRPC streaming RPCs (StreamMessages, StreamBaseStationMessages)
+  stream_poll_interval: 5s
+  web:
+    enabled: false
+
+monitoring:
+  metrics_enabled: true
+  metrics_port: 9091
+  metrics_path: "/metrics"

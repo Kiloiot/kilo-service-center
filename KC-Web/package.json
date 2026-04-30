@@ -1,0 +1,59 @@
+{
+  "name": "kc-web",
+  "private": true,
+  "version": "0.0.0",
+  "description": "KiloCenter MIOTY Service Center — web management interface",
+  "homepage": "https://kiloiot.io/mioty-service-center/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kiloiot/KiloServiceCenter.git"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "Tim Kravchunovsky",
+  "type": "module",
+  "scripts": {
+    "predev": "bun run grpc:sync",
+    "dev": "vite",
+    "prebuild": "bun run grpc:sync",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "postinstall": "bun run grpc:sync",
+    "grpc:setup": "mkdir -p node_modules/@kilocenter/grpc-stubs && node -e \"const fs=require('fs'),d='node_modules/@kilocenter/grpc-stubs',s='src/services/grpc';['identity_pb.js','identity_pb.d.ts','core_pb.js','core_pb.d.ts','identity_pb_service.js','identity_pb_service.d.ts','core_pb_service.js','core_pb_service.d.ts','kilocenter_pb_service.js','kilocenter_pb_service.d.ts','package.json'].forEach(f=>{try{fs.copyFileSync(s+'/'+f,d+'/'+f)}catch(e){console.warn('skip',f)}});fs.writeFileSync(d+'/kilocenter_pb.js','var i=require(\\\"./identity_pb\\\");var c=require(\\\"./core_pb\\\");Object.keys(i).forEach(function(k){module.exports[k]=i[k]});Object.keys(c).forEach(function(k){module.exports[k]=c[k]});');fs.writeFileSync(d+'/kilocenter_pb.d.ts','export * from \\\"./identity_pb\\\";\\nexport * from \\\"./core_pb\\\";\\n')\"",
+    "grpc:generate": "mkdir -p src/services/grpc && grpc_tools_node_protoc --js_out=import_style=commonjs,binary:src/services/grpc --grpc_out=grpc_js:src/services/grpc --plugin=protoc-gen-grpc=node_modules/.bin/grpc_tools_node_protoc_plugin --plugin=protoc-gen-ts=node_modules/.bin/protoc-gen-ts --ts_out=service=grpc-web:src/services/grpc -I ../KC-Core/api/proto -I /usr/local/include ../KC-Core/api/proto/core.proto ../KC-Core/api/proto/identity.proto ../KC-Core/api/proto/kilocenter.proto && rm -f src/services/grpc/*_grpc_pb.js",
+    "grpc:sync": "bun run grpc:generate && bun run grpc:setup",
+    "grpc:verify": "TMPD=$(mktemp -d) && trap 'rm -rf \"$TMPD\"' EXIT && mkdir -p $TMPD && grpc_tools_node_protoc --js_out=import_style=commonjs,binary:$TMPD --grpc_out=grpc_js:$TMPD --plugin=protoc-gen-grpc=node_modules/.bin/grpc_tools_node_protoc_plugin --plugin=protoc-gen-ts=node_modules/.bin/protoc-gen-ts --ts_out=service=grpc-web:$TMPD -I ../KC-Core/api/proto -I /usr/local/include ../KC-Core/api/proto/core.proto ../KC-Core/api/proto/identity.proto ../KC-Core/api/proto/kilocenter.proto && rm -f $TMPD/*_grpc_pb.js && for f in core_pb.js core_pb.d.ts core_pb_service.js core_pb_service.d.ts identity_pb.js identity_pb.d.ts identity_pb_service.js identity_pb_service.d.ts kilocenter_pb_service.js kilocenter_pb_service.d.ts kilocenter_pb.js kilocenter_pb.d.ts; do cmp -s \"src/services/grpc/$f\" \"$TMPD/$f\" || exit 1; done"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@improbable-eng/grpc-web": "^0.15.0",
+    "@mui/icons-material": "^7.1.1",
+    "@mui/material": "^7.1.1",
+    "@mui/x-date-pickers": "^8.12.0",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/recharts": "^1.8.29",
+    "date-fns": "^4.1.0",
+    "google-protobuf": "^3.21.4",
+    "leaflet": "^1.9.4",
+    "react": "19.1",
+    "react-dom": "19.1",
+    "react-error-boundary": "^6.0.0",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.6.2",
+    "recharts": "^3.2.1"
+  },
+  "devDependencies": {
+    "@tanstack/react-query-devtools": "^5.91.1",
+    "@types/google-protobuf": "^3.15.12",
+    "@types/leaflet": "^1.9.21",
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "globals": "^16.0.0",
+    "grpc-tools": "^1.12.4",
+    "ts-protoc-gen": "^0.15.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}

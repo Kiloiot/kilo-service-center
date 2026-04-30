@@ -1,0 +1,541 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"encoding/json"
+
+	"github.com/kilocenter/KC-DB/storage/models"
+)
+
+// TestFixtures provides reusable test data creation functions
+type TestFixtures struct {
+	db  *sql.DB
+	ctx context.Context
+	t   *testing.T
+}
+
+// NewTestFixtures creates a new test fixtures instance
+func NewTestFixtures(t *testing.T, db *sql.DB) *TestFixtures {
+	return &TestFixtures{
+		db:  db,
+		ctx: context.Background(),
+		t:   t,
+	}
+}
+
+// CreateTenant creates a test tenant
+func (f *TestFixtures) CreateTenant(name string) *models.Tenant {
+	tenant := &models.Tenant{
+		Name:        name,
+		Description: "Test tenant",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	query := `
+		INSERT INTO tenants (name, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id
+	`
+
+	err := f.db.QueryRowContext(f.ctx, query,
+		tenant.Name,
+		tenant.Description,
+		tenant.CreatedAt,
+		tenant.UpdatedAt,
+	).Scan(&tenant.ID)
+
+	require.NoError(f.t, err)
+	return tenant
+}
+
+// CreateDevice creates a test device
+func (f *TestFixtures) CreateDevice(tenantID int64, deviceEUI string) *models.Device {
+	// Parse the EUI string into the EUI type
+	var eui models.EUI
+	_, err := fmt.Sscanf(deviceEUI, "%016x", &eui)
+	require.NoError(f.t, err)
+
+	device := &models.Device{
+		EUI:         eui,
+		TenantID:    tenantID,
+		Name:        "Test Device " + deviceEUI,
+		Description: "Test device fixture",
+		DeviceClass: "A",
+		NetworkKey:  []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10},
+		AppKey:      []byte{0x10, 0x1f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01},
+		Tags:        map[string]string{"type": "test", "category": "fixture"},
+	}
+
+	var id int64
+	var createdAt, updatedAt time.Time
+	err = f.db.QueryRowContext(f.ctx, `
+		INSERT INTO devices (eui, tenant_id, name, description, device_class, 
+			network_key, app_key, tags)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, created_at, updated_at
+	`, device.EUI, device.TenantID, device.Name, device.Description,
+		device.DeviceClass, device.NetworkKey, device.AppKey, device.Tags).
+		Scan(&id, &createdAt, &updatedAt)
+	require.NoError(f.t, err)
+
+	device.ID = id
+	device.CreatedAt = createdAt
+	device.UpdatedAt = updatedAt
+	return device
+}
+
+// CreateGateway creates a test gateway
+func (f *TestFixtures) CreateGateway(tenantID int64, gatewayEUI string) *models.Gateway {
+	// Parse the EUI string into the EUI type
+	var eui models.EUI
+	_, err := fmt.Sscanf(gatewayEUI, "%016x", &eui)
+	require.NoError(f.t, err)
+
+	lat := 52.5200
+	lon := 13.4050
+	alt := 100.0
+
+	gateway := &models.Gateway{
+		EUI:         eui,
+		TenantID:    tenantID,
+		Name:        "Test Gateway " + gatewayEUI,
+		Description: "Test gateway fixture",
+		Latitude:    &lat,
+		Longitude:   &lon,
+		Altitude:    &alt,
+		Tags:        map[string]string{"type": "test", "category": "fixture"},
+	}
+
+	var id int64
+	var createdAt, updatedAt time.Time
+	err = f.db.QueryRowContext(f.ctx, `
+		INSERT INTO gateways (eui, tenant_id, name, description, 
+			latitude, longitude, altitude, tags)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, created_at, updated_at
+	`, gateway.EUI, gateway.TenantID, gateway.Name, gateway.Description,
+		gateway.Latitude, gateway.Longitude, gateway.Altitude, gateway.Tags).
+		Scan(&id, &createdAt, &updatedAt)
+	require.NoError(f.t, err)
+
+	gateway.ID = id
+	gateway.CreatedAt = createdAt
+	gateway.UpdatedAt = updatedAt
+	return gateway
+}
+
+// CreateMessage creates a test message
+func (f *TestFixtures) CreateMessage(deviceID int64, tenantID int64) *models.Message {
+	message := &models.Message{
+		DeviceID:        fmt.Sprintf("%d", deviceID),
+		TenantID:        fmt.Sprintf("%d", tenantID),
+		EPEUI:           "0102030405060708",
+		BSEUI:           "0807060504030201",
+		ReceivedAt:      time.Now(),
+		Payload:         []byte("test payload"),
+		PayloadHex:      "7465737420706179c2a46f6164",
+		RSSI:            -70.0,
+		SNR:             10.0,
+		EqSNR:           8.5,
+		Frequency:       868300000,
+		SpreadingFactor: 7,
+		Bandwidth:       125000,
+		CodeRate:        "4/5",
+		MessageType:     "uplink",
+		FrameCount:      1,
+		CryptoMode:      "0x00",
+		DlOpen:          false,
+		ResExp:          false,
+		DlAck:           false,
+		Confirmed:       false,
+		Metadata:        json.RawMessage(`{"test": "data"}`),
+	}
+
+	query := `
+		INSERT INTO messages (device_id, tenant_id, epeui, bseui, 
+			received_at, payload, payload_hex, rssi, snr, eq_snr, frequency,
+			spreading_factor, bandwidth, code_rate, message_type, frame_count,
+			crypto_mode, dl_open, res_exp, dl_ack, confirmed, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+		RETURNING id, created_at, updated_at
+	`
+
+	var id string
+	var createdAt, updatedAt time.Time
+	err := f.db.QueryRowContext(f.ctx, query,
+		message.DeviceID, message.TenantID, message.EPEUI, message.BSEUI,
+		message.ReceivedAt, message.Payload, message.PayloadHex, message.RSSI,
+		message.SNR, message.EqSNR, message.Frequency, message.SpreadingFactor,
+		message.Bandwidth, message.CodeRate, message.MessageType, message.FrameCount,
+		message.CryptoMode, message.DlOpen, message.ResExp, message.DlAck,
+		message.Confirmed, message.Metadata).
+		Scan(&id, &createdAt, &updatedAt)
+	require.NoError(f.t, err)
+
+	message.ID = id
+	message.CreatedAt = createdAt
+	message.UpdatedAt = updatedAt
+	return message
+}
+
+// CreateGatewayReception creates a test gateway reception
+func (f *TestFixtures) CreateGatewayReception(messageID string, gatewayID int64, tenantID int64) *models.GatewayReception {
+	channel := int32(0)
+	rssi := float32(-50.0)
+	snr := float32(5.0)
+	eqSnr := float32(3.0)
+
+	reception := &models.GatewayReception{
+		MessageID:  messageID,
+		GatewayID:  fmt.Sprintf("%d", gatewayID),
+		TenantID:   fmt.Sprintf("%d", tenantID),
+		RSSI:       rssi,
+		SNR:        snr,
+		EqSNR:      &eqSnr,
+		Frequency:  868300000,
+		Channel:    &channel,
+		ReceivedAt: time.Now(),
+	}
+
+	query := `
+		INSERT INTO gateway_receptions (message_id, gateway_id, tenant_id,
+			rssi, snr, eq_snr, frequency, channel, received_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, created_at
+	`
+
+	var id string
+	var createdAt time.Time
+	err := f.db.QueryRowContext(f.ctx, query,
+		reception.MessageID, reception.GatewayID, reception.TenantID,
+		reception.RSSI, reception.SNR, reception.EqSNR,
+		reception.Frequency, reception.Channel, reception.ReceivedAt).
+		Scan(&id, &createdAt)
+	require.NoError(f.t, err)
+
+	reception.ID = id
+	reception.CreatedAt = createdAt
+	return reception
+}
+
+// CreateDeviceSession creates a test device session
+func (f *TestFixtures) CreateDeviceSession(deviceID, tenantID int64) *models.DeviceSession {
+	sessionKey := []byte("test-session-key-1234567890abcdef")
+	shAddr := int32(12345)
+
+	session := &models.DeviceSession{
+		DeviceID:       deviceID,
+		TenantID:       tenantID,
+		SessionID:      "test-session-001",
+		AttachCnt:      1,
+		SessionKey:     sessionKey,
+		Status:         "active",
+		StartedAt:      time.Now(),
+		LastActivityAt: time.Now(),
+		ShAddr:         &shAddr,
+		PacketCnt:      0,
+		UplinkMode:     "standard",
+		DlOpen:         false,
+		ResExp:         false,
+		DlAck:          false,
+		Repetition:     0,
+		UplinkCount:    0,
+		DownlinkCount:  0,
+		Metadata:       json.RawMessage(`{"test": "session"}`),
+	}
+
+	query := `
+		INSERT INTO device_sessions (device_id, tenant_id, session_id, attach_cnt,
+			session_key, status, started_at, last_activity_at, sh_addr, packet_cnt,
+			uplink_mode, dl_open, res_exp, dl_ack, repetition, uplink_count,
+			downlink_count, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		RETURNING id, created_at, updated_at
+	`
+
+	var id int64
+	var createdAt, updatedAt time.Time
+	err := f.db.QueryRowContext(f.ctx, query,
+		session.DeviceID, session.TenantID, session.SessionID, session.AttachCnt,
+		session.SessionKey, session.Status, session.StartedAt, session.LastActivityAt,
+		session.ShAddr, session.PacketCnt, session.UplinkMode, session.DlOpen,
+		session.ResExp, session.DlAck, session.Repetition, session.UplinkCount,
+		session.DownlinkCount, session.Metadata).
+		Scan(&id, &createdAt, &updatedAt)
+	require.NoError(f.t, err)
+
+	session.ID = id
+	session.CreatedAt = createdAt
+	session.UpdatedAt = updatedAt
+	return session
+}
+
+// CreateDeviceKey creates a test device key
+func (f *TestFixtures) CreateDeviceKey(deviceID int64, tenantID int64, keyType string) *models.DeviceKey {
+	keyValue := []byte("test-key-value-1234567890abcdef")
+	keyID := "test-key-001"
+
+	key := &models.DeviceKey{
+		DeviceID:   fmt.Sprintf("%d", deviceID),
+		TenantID:   fmt.Sprintf("%d", tenantID),
+		KeyType:    keyType,
+		KeyVersion: 1,
+		KeyValue:   keyValue,
+		KeyID:      &keyID,
+		Algorithm:  "AES-128",
+		ValidFrom:  time.Now(),
+		IsActive:   true,
+		UsageCount: 0,
+		Metadata:   json.RawMessage(`{"test": "key"}`),
+	}
+
+	query := `
+		INSERT INTO device_keys (device_id, tenant_id, key_type, key_version,
+			key_value, key_id, algorithm, valid_from, is_active, usage_count, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id, created_at
+	`
+
+	var id string
+	var createdAt time.Time
+	err := f.db.QueryRowContext(f.ctx, query,
+		key.DeviceID, key.TenantID, key.KeyType, key.KeyVersion,
+		key.KeyValue, key.KeyID, key.Algorithm, key.ValidFrom,
+		key.IsActive, key.UsageCount, key.Metadata).
+		Scan(&id, &createdAt)
+	require.NoError(f.t, err)
+
+	key.ID = id
+	key.CreatedAt = createdAt
+	return key
+}
+
+// CreateGatewaySession creates a test gateway session
+func (f *TestFixtures) CreateGatewaySession(gatewayID int64, tenantID int64) *models.GatewaySession {
+	remoteAddr := "192.168.1.100:5000"
+	protocolVersion := "BSSCI/1.0"
+	connectionID := "conn-001"
+
+	session := &models.GatewaySession{
+		GatewayID:        gatewayID,
+		TenantID:         tenantID,
+		SessionID:        "test-gw-session-001",
+		ConnectionID:     &connectionID,
+		RemoteAddr:       &remoteAddr,
+		ProtocolVersion:  &protocolVersion,
+		Status:           "active",
+		StartedAt:        time.Now(),
+		LastPingAt:       nil,
+		MessagesReceived: 0,
+		MessagesSent:     0,
+		BytesReceived:    0,
+		BytesSent:        0,
+		Metadata:         json.RawMessage(`{"test": "gateway_session"}`),
+	}
+
+	query := `
+		INSERT INTO gateway_sessions (gateway_id, tenant_id, session_id,
+			connection_id, remote_addr, protocol_version, status, started_at,
+			messages_received, messages_sent, bytes_received, bytes_sent, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		RETURNING id, created_at
+	`
+
+	var id int64
+	var createdAt time.Time
+	err := f.db.QueryRowContext(f.ctx, query,
+		session.GatewayID, session.TenantID, session.SessionID,
+		session.ConnectionID, session.RemoteAddr, session.ProtocolVersion,
+		session.Status, session.StartedAt, session.MessagesReceived,
+		session.MessagesSent, session.BytesReceived, session.BytesSent,
+		session.Metadata).
+		Scan(&id, &createdAt)
+	require.NoError(f.t, err)
+
+	session.ID = id
+	session.CreatedAt = createdAt
+	return session
+}
+
+// CreateSystemEvent creates a test system event
+func (f *TestFixtures) CreateSystemEvent(tenantID int64, eventType string) *models.SystemEvent {
+	sourceID := "test-source-001"
+
+	event := &models.SystemEvent{
+		TenantID:    fmt.Sprintf("%d", tenantID),
+		EventType:   eventType,
+		Category:    "system",
+		Severity:    "info",
+		SourceType:  "system",
+		SourceID:    &sourceID,
+		Title:       "Test Event " + eventType,
+		Description: "Test system event fixture",
+		Details:     json.RawMessage(`{"test": "event_details"}`),
+		Status:      "new",
+		Tags:        []string{"test", "fixture"},
+		Metadata:    json.RawMessage(`{"test": "event_metadata"}`),
+	}
+
+	query := `
+		INSERT INTO system_events (tenant_id, event_type, category, severity,
+			source_type, source_id, title, description, details, status, tags, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id, created_at, updated_at
+	`
+
+	var id string
+	var createdAt, updatedAt time.Time
+	err := f.db.QueryRowContext(f.ctx, query,
+		event.TenantID, event.EventType, event.Category, event.Severity,
+		event.SourceType, event.SourceID, event.Title, event.Description,
+		event.Details, event.Status, event.Tags, event.Metadata).
+		Scan(&id, &createdAt, &updatedAt)
+	require.NoError(f.t, err)
+
+	event.ID = id
+	event.CreatedAt = createdAt
+	event.UpdatedAt = updatedAt
+	return event
+}
+
+// CreateDownlinkMessage creates a test downlink message
+func (f *TestFixtures) CreateDownlinkMessage(deviceID, tenantID int64) *models.DownlinkMessage {
+	// Parse device EUI
+	var deviceEUI models.EUI
+	_, err := fmt.Sscanf("0102030405060708", "%016x", &deviceEUI)
+	require.NoError(f.t, err)
+
+	downlink := &models.DownlinkMessage{
+		EPEUI:       deviceEUI,
+		TenantID:    tenantID,
+		Payload:     []byte("downlink test data"),
+		Port:        10,
+		Confirmed:   false,
+		Priority:    1, // int32 priority
+		Status:      "pending",
+		MaxAttempts: 3,
+		Attempts:    0,
+		EarliestAt:  time.Now(),
+	}
+
+	var id int64
+	var createdAt, updatedAt time.Time
+	err = f.db.QueryRowContext(f.ctx, `
+		INSERT INTO downlink_queue (device_eui, tenant_id, payload, port,
+			confirmed, priority, status, max_attempts, attempts, earliest_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id, created_at, updated_at
+	`, downlink.EPEUI, downlink.TenantID, downlink.Payload, downlink.Port,
+		downlink.Confirmed, downlink.Priority, downlink.Status, downlink.MaxAttempts,
+		downlink.Attempts, downlink.EarliestAt).
+		Scan(&id, &createdAt, &updatedAt)
+	require.NoError(f.t, err)
+
+	downlink.ID = id
+	downlink.CreatedAt = createdAt
+	downlink.UpdatedAt = updatedAt
+	return downlink
+}
+
+// CreateCompleteTestScenario creates a complete test scenario with all entities
+func (f *TestFixtures) CreateCompleteTestScenario() *TestScenario {
+	// Create tenant
+	tenant := f.CreateTenant("Complete Test Tenant")
+
+	// Create devices
+	device1 := f.CreateDevice(tenant.ID, "0102030405060708")
+	device2 := f.CreateDevice(tenant.ID, "0807060504030201")
+
+	// Create gateways
+	gateway1 := f.CreateGateway(tenant.ID, "1122334455667788")
+	gateway2 := f.CreateGateway(tenant.ID, "8877665544332211")
+
+	// Create messages
+	message1 := f.CreateMessage(device1.ID, tenant.ID)
+	message2 := f.CreateMessage(device2.ID, tenant.ID)
+
+	// Create gateway receptions
+	reception1 := f.CreateGatewayReception(message1.ID, gateway1.ID, tenant.ID)
+	reception2 := f.CreateGatewayReception(message1.ID, gateway2.ID, tenant.ID)
+	reception3 := f.CreateGatewayReception(message2.ID, gateway1.ID, tenant.ID)
+
+	// Create device sessions
+	session1 := f.CreateDeviceSession(device1.ID, tenant.ID)
+	session2 := f.CreateDeviceSession(device2.ID, tenant.ID)
+
+	// Create device keys
+	key1 := f.CreateDeviceKey(device1.ID, tenant.ID, "network")
+	key2 := f.CreateDeviceKey(device1.ID, tenant.ID, "app")
+	key3 := f.CreateDeviceKey(device2.ID, tenant.ID, "network")
+
+	// Create gateway sessions
+	gwSession1 := f.CreateGatewaySession(gateway1.ID, tenant.ID)
+	gwSession2 := f.CreateGatewaySession(gateway2.ID, tenant.ID)
+
+	// Create system events
+	event1 := f.CreateSystemEvent(tenant.ID, "device_joined")
+	event2 := f.CreateSystemEvent(tenant.ID, "gateway_connected")
+
+	// Create downlink messages
+	downlink1 := f.CreateDownlinkMessage(device1.ID, tenant.ID)
+	downlink2 := f.CreateDownlinkMessage(device2.ID, tenant.ID)
+
+	return &TestScenario{
+		Tenant:            tenant,
+		Devices:           []*models.Device{device1, device2},
+		Gateways:          []*models.Gateway{gateway1, gateway2},
+		Messages:          []*models.Message{message1, message2},
+		GatewayReceptions: []*models.GatewayReception{reception1, reception2, reception3},
+		DeviceSessions:    []*models.DeviceSession{session1, session2},
+		DeviceKeys:        []*models.DeviceKey{key1, key2, key3},
+		GatewaySessions:   []*models.GatewaySession{gwSession1, gwSession2},
+		SystemEvents:      []*models.SystemEvent{event1, event2},
+		DownlinkMessages:  []*models.DownlinkMessage{downlink1, downlink2},
+	}
+}
+
+// TestScenario contains a complete set of test entities
+type TestScenario struct {
+	Tenant            *models.Tenant
+	Devices           []*models.Device
+	Gateways          []*models.Gateway
+	Messages          []*models.Message
+	GatewayReceptions []*models.GatewayReception
+	DeviceSessions    []*models.DeviceSession
+	DeviceKeys        []*models.DeviceKey
+	GatewaySessions   []*models.GatewaySession
+	SystemEvents      []*models.SystemEvent
+	DownlinkMessages  []*models.DownlinkMessage
+}
+
+// CleanupTestData removes all test data created by fixtures
+func (f *TestFixtures) CleanupTestData() {
+	// Clean up in reverse order of dependencies
+	tables := []string{
+		"downlink_queue",
+		"system_events",
+		"gateway_sessions",
+		"device_keys",
+		"device_sessions",
+		"gateway_receptions",
+		"messages",
+		"gateways",
+		"devices",
+		"tenants",
+	}
+
+	for _, table := range tables {
+		_, err := f.db.ExecContext(f.ctx, "DELETE FROM "+table)
+		if err != nil {
+			f.t.Logf("Warning: failed to clean up %s: %v", table, err)
+		}
+	}
+}

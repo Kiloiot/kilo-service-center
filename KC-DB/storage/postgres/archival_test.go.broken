@@ -1,0 +1,446 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/kilocenter/KC-Core/pkg/logger"
+)
+
+// TestArchivalService tests the archival service functionality
+func TestArchivalService(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	// Initialize test database
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Initialize logger
+	logger.Initialize("debug", "text")
+	log := logger.Get()
+
+	// Create archival service
+	archivalService := NewArchivalService(db, log)
+
+	// Run tests
+	t.Run("ArchiveOldMessages", func(t *testing.T) {
+		testArchiveOldMessages(t, db, archivalService)
+	})
+
+	t.Run("ArchiveOldGatewayReceptions", func(t *testing.T) {
+		testArchiveOldGatewayReceptions(t, db, archivalService)
+	})
+
+	t.Run("ArchiveOldDeviceSessions", func(t *testing.T) {
+		testArchiveOldDeviceSessions(t, db, archivalService)
+	})
+
+	t.Run("ArchiveOldDeviceKeys", func(t *testing.T) {
+		testArchiveOldDeviceKeys(t, db, archivalService)
+	})
+}
+
+func testArchiveOldMessages(t *testing.T, db *sql.DB, service *ArchivalService) {
+	ctx := context.Background()
+
+	// Create test data
+	tenantID := createTestTenant(t, db)
+	deviceID := createTestDevice(t, db, tenantID)
+
+	// Insert old messages (older than retention period)
+	oldTime := time.Now().Add(-100 * 24 * time.Hour) // 100 days ago
+	for i := 0; i < 5; i++ {
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO messages (device_id, tenant_id, received_at, payload, rssi, snr)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, deviceID, tenantID, oldTime.Add(time.Duration(i)*time.Hour), []byte("test"), -80.0, 10.0)
+		require.NoError(t, err)
+	}
+
+	// Insert recent messages (should not be archived)
+	recentTime := time.Now().Add(-1 * time.Hour)
+	for i := 0; i < 3; i++ {
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO messages (device_id, tenant_id, received_at, payload, rssi, snr)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, deviceID, tenantID, recentTime.Add(time.Duration(i)*time.Minute), []byte("test"), -80.0, 10.0)
+		require.NoError(t, err)
+	}
+
+	// Run archival
+	retention := 90 * 24 * time.Hour
+	count, err := service.ArchiveOldMessages(ctx, retention)
+	require.NoError(t, err)
+	assert.Equal(t, 5, count)
+
+	// Verify old messages are archived
+	var archivedCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM messages_archive").Scan(&archivedCount)
+	require.NoError(t, err)
+	assert.Equal(t, 5, archivedCount)
+
+	// Verify recent messages remain
+	var remainingCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM messages").Scan(&remainingCount)
+	require.NoError(t, err)
+	assert.Equal(t, 3, remainingCount)
+}
+
+func testArchiveOldGatewayReceptions(t *testing.T, db *sql.DB, service *ArchivalService) {
+	ctx := context.Background()
+
+	// Create test data
+	tenantID := createTestTenant(t, db)
+	gatewayID := createTestGateway(t, db, tenantID)
+	deviceID := createTestDevice(t, db, tenantID)
+	messageID := createTestMessage(t, db, deviceID, tenantID)
+
+	// Insert old gateway receptions
+	oldTime := time.Now().Add(-35 * 24 * time.Hour) // 35 days ago
+	for i := 0; i < 3; i++ {
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO gateway_receptions (message_id, gateway_id, rssi, snr, created_at)
+			VALUES ($1, $2, $3, $4, $5)
+		`, messageID, gatewayID, -80.0+float64(i), 10.0+float64(i), oldTime.Add(time.Duration(i)*time.Hour))
+		require.NoError(t, err)
+	}
+
+	// Insert recent gateway receptions
+	recentMessageID := createTestMessage(t, db, deviceID, tenantID)
+	recentTime := time.Now().Add(-1 * time.Hour)
+	for i := 0; i < 2; i++ {
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO gateway_receptions (message_id, gateway_id, rssi, snr, created_at)
+			VALUES ($1, $2, $3, $4, $5)
+		`, recentMessageID, gatewayID, -75.0+float64(i), 12.0+float64(i), recentTime.Add(time.Duration(i)*time.Minute))
+		require.NoError(t, err)
+	}
+
+	// Run archival
+	retention := 30 * 24 * time.Hour
+	count, err := service.ArchiveOldGatewayReceptions(ctx, retention)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+
+	// Verify old receptions are archived
+	var archivedCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gateway_receptions_archive").Scan(&archivedCount)
+	require.NoError(t, err)
+	assert.Equal(t, 3, archivedCount)
+
+	// Verify recent receptions remain
+	var remainingCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gateway_receptions").Scan(&remainingCount)
+	require.NoError(t, err)
+	assert.Equal(t, 2, remainingCount)
+}
+
+func testArchiveOldDeviceSessions(t *testing.T, db *sql.DB, service *ArchivalService) {
+	ctx := context.Background()
+
+	// Create test data
+	tenantID := createTestTenant(t, db)
+	deviceID := createTestDevice(t, db, tenantID)
+
+	// Insert old terminated sessions
+	oldTime := time.Now().Add(-200 * 24 * time.Hour) // 200 days ago
+	for i := 0; i < 4; i++ {
+		endTime := oldTime.Add(time.Duration(i+1) * time.Hour)
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO device_sessions (device_id, tenant_id, started_at, ended_at, status)
+			VALUES ($1, $2, $3, $4, $5)
+		`, deviceID, tenantID, oldTime.Add(time.Duration(i)*time.Hour), endTime, "terminated")
+		require.NoError(t, err)
+	}
+
+	// Insert active session (should not be archived)
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO device_sessions (device_id, tenant_id, started_at, status)
+		VALUES ($1, $2, $3, $4)
+	`, deviceID, tenantID, time.Now().Add(-1*time.Hour), "active")
+	require.NoError(t, err)
+
+	// Run archival
+	retention := 180 * 24 * time.Hour
+	count, err := service.ArchiveOldDeviceSessions(ctx, retention)
+	require.NoError(t, err)
+	assert.Equal(t, 4, count)
+
+	// Verify old sessions are archived
+	var archivedCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM device_sessions_archive").Scan(&archivedCount)
+	require.NoError(t, err)
+	assert.Equal(t, 4, archivedCount)
+
+	// Verify active session remains
+	var remainingCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM device_sessions WHERE status = 'active'").Scan(&remainingCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, remainingCount)
+}
+
+func testArchiveOldDeviceKeys(t *testing.T, db *sql.DB, service *ArchivalService) {
+	ctx := context.Background()
+
+	// Create test data
+	tenantID := createTestTenant(t, db)
+	deviceID := createTestDevice(t, db, tenantID)
+
+	// Insert old inactive keys
+	oldTime := time.Now().Add(-400 * 24 * time.Hour) // 400 days ago
+	for i := 0; i < 3; i++ {
+		validUntil := oldTime.Add(time.Duration(i+1) * 24 * time.Hour)
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO device_keys (device_id, tenant_id, key_type, key_value, created_at, valid_until, active)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, deviceID, tenantID, "network", "test_key_"+string(rune(i)), oldTime.Add(time.Duration(i)*time.Hour), validUntil, false)
+		require.NoError(t, err)
+	}
+
+	// Insert one recent inactive key (should be kept for history)
+	recentTime := time.Now().Add(-30 * 24 * time.Hour)
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO device_keys (device_id, tenant_id, key_type, key_value, created_at, valid_until, active)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, deviceID, tenantID, "network", "recent_inactive_key", recentTime, recentTime.Add(7*24*time.Hour), false)
+	require.NoError(t, err)
+
+	// Insert active key (should not be archived)
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO device_keys (device_id, tenant_id, key_type, key_value, created_at, active)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, deviceID, tenantID, "network", "active_key", time.Now().Add(-1*time.Hour), true)
+	require.NoError(t, err)
+
+	// Run archival
+	retention := 365 * 24 * time.Hour
+	count, err := service.ArchiveOldDeviceKeys(ctx, retention)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count) // Only the very old keys should be archived
+
+	// Verify old keys are archived
+	var archivedCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM device_keys_archive").Scan(&archivedCount)
+	require.NoError(t, err)
+	assert.Equal(t, 3, archivedCount)
+
+	// Verify active and recent inactive keys remain
+	var remainingCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM device_keys").Scan(&remainingCount)
+	require.NoError(t, err)
+	assert.Equal(t, 2, remainingCount) // Active key + recent inactive key
+}
+
+// TestArchivalScheduler tests the archival scheduler functionality
+func TestArchivalScheduler(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	// Initialize test database
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Initialize logger
+	logger.Initialize("debug", "text")
+	log := logger.Get()
+
+	// Create archival service
+	archivalService := NewArchivalService(db, log)
+
+	// Create scheduler with short intervals for testing
+	config := ArchivalConfig{
+		MessageRetentionDays:          1,
+		MessageArchivalHour:           time.Now().Hour(),
+		GatewayReceptionRetentionDays: 1,
+		GatewayReceptionArchivalHour:  time.Now().Hour(),
+		DeviceSessionRetentionDays:    1,
+		DeviceSessionArchivalHour:     time.Now().Hour(),
+		DeviceKeyRetentionDays:        1,
+		DeviceKeyArchivalHour:         time.Now().Hour(),
+		ArchivalEnabled:               true,
+		CheckInterval:                 1 * time.Second, // Very short for testing
+	}
+
+	scheduler := NewArchivalScheduler(archivalService, log, config)
+
+	// Start scheduler
+	err := scheduler.Start()
+	require.NoError(t, err)
+	defer scheduler.Stop()
+
+	// Verify scheduler is running
+	status := scheduler.GetStatus()
+	running, ok := status["running"].(bool)
+	assert.True(t, ok)
+	assert.True(t, running)
+
+	// Create test data that should be archived
+	ctx := context.Background()
+	tenantID := createTestTenant(t, db)
+	deviceID := createTestDevice(t, db, tenantID)
+
+	// Insert old message
+	oldTime := time.Now().Add(-2 * 24 * time.Hour)
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO messages (device_id, tenant_id, received_at, payload, rssi, snr)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, deviceID, tenantID, oldTime, []byte("test"), -80.0, 10.0)
+	require.NoError(t, err)
+
+	// Wait for scheduler to run (it should run immediately on start and then after CheckInterval)
+	time.Sleep(3 * time.Second)
+
+	// Verify message was archived
+	var archivedCount int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM messages_archive").Scan(&archivedCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, archivedCount)
+
+	// Check scheduler status again
+	status = scheduler.GetStatus()
+	lastRuns, ok := status["last_runs"].(map[string]string)
+	assert.True(t, ok)
+	assert.NotEmpty(t, lastRuns["messages"])
+}
+
+// TestArchivalPerformance tests the performance of archival operations
+func TestArchivalPerformance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping performance test")
+	}
+
+	// Initialize test database
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Initialize logger
+	logger.Initialize("info", "text")
+	log := logger.Get()
+
+	// Create archival service
+	archivalService := NewArchivalService(db, log)
+	ctx := context.Background()
+
+	// Create test data
+	tenantID := createTestTenant(t, db)
+	deviceID := createTestDevice(t, db, tenantID)
+	gatewayID := createTestGateway(t, db, tenantID)
+
+	// Performance test for message archival
+	t.Run("MessageArchivalPerformance", func(t *testing.T) {
+		// Insert 10,000 old messages
+		oldTime := time.Now().Add(-100 * 24 * time.Hour)
+
+		start := time.Now()
+		for i := 0; i < 10000; i++ {
+			_, err := db.ExecContext(ctx, `
+				INSERT INTO messages (device_id, tenant_id, received_at, payload, rssi, snr)
+				VALUES ($1, $2, $3, $4, $5, $6)
+			`, deviceID, tenantID, oldTime.Add(time.Duration(i)*time.Second), []byte("test"), -80.0, 10.0)
+			require.NoError(t, err)
+		}
+		insertDuration := time.Since(start)
+		t.Logf("Inserted 10,000 messages in %v", insertDuration)
+
+		// Run archival
+		start = time.Now()
+		retention := 90 * 24 * time.Hour
+		count, err := archivalService.ArchiveOldMessages(ctx, retention)
+		require.NoError(t, err)
+		archivalDuration := time.Since(start)
+
+		assert.Equal(t, 10000, count)
+		t.Logf("Archived 10,000 messages in %v (%.2f messages/second)",
+			archivalDuration, float64(count)/archivalDuration.Seconds())
+
+		// Performance should be reasonable
+		assert.Less(t, archivalDuration.Seconds(), 30.0, "Archival took too long")
+	})
+
+	// Performance test for gateway reception archival
+	t.Run("GatewayReceptionArchivalPerformance", func(t *testing.T) {
+		// Create a message for the receptions
+		messageID := createTestMessage(t, db, deviceID, tenantID)
+
+		// Insert 5,000 old gateway receptions
+		oldTime := time.Now().Add(-35 * 24 * time.Hour)
+
+		start := time.Now()
+		for i := 0; i < 5000; i++ {
+			_, err := db.ExecContext(ctx, `
+				INSERT INTO gateway_receptions (message_id, gateway_id, rssi, snr, created_at)
+				VALUES ($1, $2, $3, $4, $5)
+			`, messageID, gatewayID, -80.0, 10.0, oldTime.Add(time.Duration(i)*time.Second))
+			require.NoError(t, err)
+		}
+		insertDuration := time.Since(start)
+		t.Logf("Inserted 5,000 gateway receptions in %v", insertDuration)
+
+		// Run archival
+		start = time.Now()
+		retention := 30 * 24 * time.Hour
+		count, err := archivalService.ArchiveOldGatewayReceptions(ctx, retention)
+		require.NoError(t, err)
+		archivalDuration := time.Since(start)
+
+		assert.Equal(t, 5000, count)
+		t.Logf("Archived 5,000 gateway receptions in %v (%.2f receptions/second)",
+			archivalDuration, float64(count)/archivalDuration.Seconds())
+
+		// Performance should be reasonable
+		assert.Less(t, archivalDuration.Seconds(), 15.0, "Archival took too long")
+	})
+}
+
+// Helper functions for creating test data
+func createTestTenant(t *testing.T, db *sql.DB) int64 {
+	var id int64
+	err := db.QueryRow(`
+		INSERT INTO tenants (name, description)
+		VALUES ('test_tenant', 'Test tenant for archival')
+		RETURNING id
+	`).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+func createTestDevice(t *testing.T, db *sql.DB, tenantID int64) int64 {
+	var id int64
+	err := db.QueryRow(`
+		INSERT INTO devices (device_eui, tenant_id, name, device_class, status)
+		VALUES ('0102030405060708', $1, 'test_device', 'A', 'active')
+		RETURNING id
+	`, tenantID).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+func createTestGateway(t *testing.T, db *sql.DB, tenantID int64) int64 {
+	var id int64
+	err := db.QueryRow(`
+		INSERT INTO gateways (gateway_eui, tenant_id, name, latitude, longitude, altitude)
+		VALUES ('0807060504030201', $1, 'test_gateway', 52.5200, 13.4050, 100.0)
+		RETURNING id
+	`, tenantID).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+func createTestMessage(t *testing.T, db *sql.DB, deviceID, tenantID int64) int64 {
+	var id int64
+	err := db.QueryRow(`
+		INSERT INTO messages (device_id, tenant_id, received_at, payload, rssi, snr)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id
+	`, deviceID, tenantID, time.Now(), []byte("test"), -80.0, 10.0).Scan(&id)
+	require.NoError(t, err)
+	return id
+}

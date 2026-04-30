@@ -1,0 +1,355 @@
+package postgres
+
+import (
+	"context"
+	"encoding/binary"
+	"testing"
+	"time"
+
+	"github.com/jmoiron/sqlx"
+	"github.com/kilocenter/KC-DB/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestGetDownlinkResultsWithFilters tests the GetDownlinkResults method with various filters
+func TestGetDownlinkResultsWithFilters(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupTestDB(t)
+	defer db.Close()
+
+	store := &DB{
+		sqlxDB: db,
+	}
+
+	ctx := context.Background()
+	tenantID := "1"
+	epEui := "1234567890ABCDEF"
+
+	// Insert test data
+	setupDownlinkTestData(t, db, tenantID, epEui)
+
+	tests := []struct {
+		name           string
+		epEui          string
+		statusFilter   string
+		timeFrom       *time.Time
+		timeTo         *time.Time
+		expectedCount  int
+		expectedStatus []string
+	}{
+		{
+			name:           "no filters",
+			epEui:          "",
+			statusFilter:   "",
+			timeFrom:       nil,
+			timeTo:         nil,
+			expectedCount:  5, // All records
+			expectedStatus: []string{"transmitted", "transmitted", "expired", "failed", "queued"},
+		},
+		{
+			name:           "filter by endpoint",
+			epEui:          epEui,
+			statusFilter:   "",
+			timeFrom:       nil,
+			timeTo:         nil,
+			expectedCount:  3, // Only records for this endpoint
+			expectedStatus: []string{"transmitted", "expired", "failed"},
+		},
+		{
+			name:           "filter by status transmitted",
+			epEui:          "",
+			statusFilter:   "transmitted",
+			timeFrom:       nil,
+			timeTo:         nil,
+			expectedCount:  2,
+			expectedStatus: []string{"transmitted", "transmitted"},
+		},
+		{
+			name:           "filter by endpoint and status",
+			epEui:          epEui,
+			statusFilter:   "transmitted",
+			timeFrom:       nil,
+			timeTo:         nil,
+			expectedCount:  1,
+			expectedStatus: []string{"transmitted"},
+		},
+		{
+			name:           "filter by time range",
+			epEui:          "",
+			statusFilter:   "",
+			timeFrom:       timePtr(time.Now().Add(-2 * time.Hour)),
+			timeTo:         timePtr(time.Now().Add(-30 * time.Minute)),
+			expectedCount:  2, // Records within time range
+			expectedStatus: []string{"transmitted", "expired"},
+		},
+		{
+			name:           "all filters combined",
+			epEui:          epEui,
+			statusFilter:   "transmitted",
+			timeFrom:       timePtr(time.Now().Add(-2 * time.Hour)),
+			timeTo:         timePtr(time.Now()),
+			expectedCount:  1,
+			expectedStatus: []string{"transmitted"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results, totalCount, err := store.GetDownlinkResults(
+				ctx,
+				tt.epEui,
+				tenantID,
+				tt.statusFilter,
+				tt.timeFrom,
+				tt.timeTo,
+				10,
+				0,
+			)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedCount, totalCount)
+			assert.Len(t, results, tt.expectedCount)
+
+			// Check status values
+			for i, result := range results {
+				if i < len(tt.expectedStatus) {
+					assert.Equal(t, tt.expectedStatus[i], result.Status)
+				}
+			}
+		})
+	}
+}
+
+// TestGetDownlinkResultsTenantIsolation tests that tenant isolation is enforced
+func TestGetDownlinkResultsTenantIsolation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupTestDB(t)
+	defer db.Close()
+
+	store := &DB{
+		sqlxDB: db,
+	}
+
+	ctx := context.Background()
+
+	// Insert data for different tenants
+	setupMultiTenantDownlinkData(t, db)
+
+	tests := []struct {
+		name          string
+		tenantID      string
+		expectedCount int
+	}{
+		{
+			name:          "tenant 1 sees only their data",
+			tenantID:      "1",
+			expectedCount: 3,
+		},
+		{
+			name:          "tenant 2 sees only their data",
+			tenantID:      "2",
+			expectedCount: 2,
+		},
+		{
+			name:          "tenant 3 sees no data",
+			tenantID:      "3",
+			expectedCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results, totalCount, err := store.GetDownlinkResults(
+				ctx,
+				"", // No epEui filter
+				tt.tenantID,
+				"", // No status filter
+				nil,
+				nil,
+				10,
+				0,
+			)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedCount, totalCount)
+			assert.Len(t, results, tt.expectedCount)
+
+			// Verify all results belong to the correct tenant
+			for _, result := range results {
+				assert.Equal(t, tt.tenantID, result.TenantID)
+			}
+		})
+	}
+}
+
+// TestUpdateDownlinkResultSecurity tests security aspects of UpdateDownlinkResult
+func TestUpdateDownlinkResultSecurity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupTestDB(t)
+	defer db.Close()
+
+	store := &DB{
+		sqlxDB: db,
+	}
+
+	ctx := context.Background()
+
+	// Setup: Insert a downlink for tenant 1
+	queId := uint64(12345)
+	epEui := uint64(0x1234567890ABCDEF)
+	tenantID := int64(1)
+
+	insertDownlink(t, db, queId, epEui, tenantID, "queued")
+
+	tests := []struct {
+		name           string
+		updateTenantID int64
+		expectedError  error
+		checkStatus    string
+	}{
+		{
+			name:           "same tenant can update",
+			updateTenantID: 1,
+			expectedError:  nil,
+			checkStatus:    "transmitted",
+		},
+		{
+			name:           "different tenant cannot update",
+			updateTenantID: 2,
+			expectedError:  storage.ErrNotFound, // No rows affected
+			checkStatus:    "queued",            // Status should not change
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			txTime := time.Now()
+			packetCnt := uint32(10)
+
+			// UpdateDownlinkResult takes: ctx, queId, result, txTime, packetCnt, bsEui, epEui, tenantID
+			bsEuiBytes := make([]byte, 8)
+			epEuiBytes := make([]byte, 8)
+			binary.BigEndian.PutUint64(bsEuiBytes, 0x0123456789ABCDEF)
+			binary.BigEndian.PutUint64(epEuiBytes, epEui)
+
+			txTimeNano := txTime.UnixNano()
+			err := store.UpdateDownlinkResult(
+				ctx,
+				int64(queId),
+				"transmitted",
+				&txTimeNano,
+				&packetCnt,
+				bsEuiBytes,
+				epEuiBytes,
+				tt.updateTenantID,
+			)
+
+			if tt.expectedError != nil {
+				assert.ErrorIs(t, err, tt.expectedError)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			// Verify the status in database
+			var status string
+			err = db.QueryRow("SELECT status FROM downlink_queue WHERE que_id = $1 AND tenant_id = $2",
+				queId, tenantID).Scan(&status)
+			require.NoError(t, err)
+			assert.Equal(t, tt.checkStatus, status)
+
+			// Reset status for next test
+			if tt.expectedError == nil {
+				_, _ = db.Exec("UPDATE downlink_queue SET status = 'pending' WHERE que_id = $1", queId)
+			}
+		})
+	}
+}
+
+// Helper functions
+
+func setupTestDB(t *testing.T) *sqlx.DB {
+	// This assumes a test database is available
+	// In production, you'd use a test container or mock
+	db, err := sqlx.Connect("postgres", "postgres://kilocenter:changeme@localhost:5433/kilocenter_test?sslmode=disable")
+	if err != nil {
+		t.Skipf("Cannot connect to test database: %v", err)
+	}
+
+	// Clean up test data from downlink_queue table
+	_, _ = db.Exec("DELETE FROM downlink_queue WHERE tenant_id IN (1, 2, 3)")
+
+	return db
+}
+
+func setupDownlinkTestData(t *testing.T, db *sqlx.DB, tenantID, epEui string) {
+	now := time.Now()
+
+	testData := []struct {
+		queId  uint64
+		epEui  string
+		status string
+		txTime time.Time
+	}{
+		{1001, epEui, "transmitted", now.Add(-1 * time.Hour)},
+		{1002, epEui, "expired", now.Add(-45 * time.Minute)},
+		{1003, epEui, "failed", now.Add(-15 * time.Minute)},
+		{1004, "FEDCBA0987654321", "transmitted", now.Add(-1 * time.Hour)},
+		{1005, "FEDCBA0987654321", "queued", now},
+	}
+
+	for _, td := range testData {
+		_, err := db.Exec(`
+			INSERT INTO downlink_queue (que_id, ep_eui, tenant_id, status, transmitted_at, payload, created_at)
+			VALUES ($1, decode($2, 'hex'), $3, $4, $5, '\\x00', $6)
+		`, td.queId, td.epEui, tenantID, td.status, td.txTime, now)
+		require.NoError(t, err)
+	}
+}
+
+func setupMultiTenantDownlinkData(t *testing.T, db *sqlx.DB) {
+	now := time.Now()
+
+	testData := []struct {
+		queId    uint64
+		tenantID string
+		status   string
+	}{
+		{2001, "1", "transmitted"},
+		{2002, "1", "expired"},
+		{2003, "1", "failed"},
+		{2004, "2", "transmitted"},
+		{2005, "2", "queued"},
+	}
+
+	for _, td := range testData {
+		_, err := db.Exec(`
+			INSERT INTO downlink_queue (que_id, ep_eui, tenant_id, status, payload, created_at)
+			VALUES ($1, decode('1234567890ABCDEF', 'hex'), $2, $3, '\\x00', $4)
+		`, td.queId, td.tenantID, td.status, now)
+		require.NoError(t, err)
+	}
+}
+
+func insertDownlink(t *testing.T, db *sqlx.DB, queId, epEui uint64, tenantID int64, status string) {
+	epEuiBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(epEuiBytes, epEui)
+	_, err := db.Exec(`
+		INSERT INTO downlink_queue (que_id, ep_eui, tenant_id, status, payload, created_at)
+		VALUES ($1, $2, $3, $4, '\\x00', $5)
+	`, queId, epEuiBytes, tenantID, status, time.Now())
+	require.NoError(t, err)
+}
+
+func timePtr(t time.Time) *time.Time {
+	return &t
+}

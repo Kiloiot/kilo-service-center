@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-core
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-core") | nindent 4 }}
+data:
+  config.yaml: |
+    general:
+      server_name: "KiloCenter"
+      environment: {{ .Values.kcCore.config.environment | quote }}
+      edition: {{ .Values.kcCore.config.edition | quote }}
+      org_enforcement_enabled: false
+      log_level: {{ .Values.kcCore.config.logLevel | quote }}
+      log_format: {{ .Values.kcCore.config.logFormat | quote }}
+      health_check_port: {{ .Values.kcCore.config.health.port }}
+
+    protocol:
+      bsci_port: {{ .Values.kcCore.config.bssci.port }}
+      bsci_tls:
+        enabled: {{ .Values.kcCore.config.bssci.tlsEnabled }}
+        cert_file: "/app/certificates/server.crt"
+        key_file: "/app/certificates/server.key"
+        ca_file: "/app/certificates/ca.crt"
+        min_version: {{ .Values.kcCore.config.bssci.tlsMinVersion | quote }}
+      scaci_enabled: true
+      scaci_host: "0.0.0.0"
+      scaci_port: {{ .Values.kcCore.config.scaci.port }}
+      scaci_tls:
+        enabled: {{ .Values.kcCore.config.scaci.tlsEnabled }}
+        cert_file: "/app/certificates/server.crt"
+        key_file: "/app/certificates/server.key"
+        ca_file: "/app/certificates/ca.crt"
+        min_version: {{ .Values.kcCore.config.scaci.tlsMinVersion | quote }}
+      max_retransmissions: {{ .Values.kcCore.config.protocol.maxRetransmissions }}
+      ack_timeout: {{ .Values.kcCore.config.protocol.ackTimeout }}
+      duplicate_window: {{ .Values.kcCore.config.protocol.duplicateWindow }}
+      message_encoding: "msgpack"
+
+    certificates:
+      certgen_path: "/usr/local/bin/certgen"
+      certs_dir: "/app/certificates"
+      server_validity_days: 365
+
+    storage:
+      type: "postgres"
+      host: {{ .Values.postgresql.host | quote }}
+      port: {{ .Values.postgresql.port }}
+      database: {{ .Values.postgresql.database | quote }}
+      username: {{ .Values.postgresql.username | quote }}
+      password: "OVERRIDDEN_BY_ENV"
+      ssl_mode: {{ .Values.postgresql.sslMode | quote }}
+      max_connections: {{ .Values.postgresql.maxConnections }}
+      max_idle_conns: {{ .Values.postgresql.maxIdleConns }}
+      conn_max_lifetime: {{ .Values.postgresql.connMaxLifetime }}
+      conn_max_idle_time: {{ .Values.postgresql.connMaxIdleTime }}
+      enable_migrations: true
+      message_retention_days: {{ .Values.kcCore.config.messageRetentionDays }}
+      archival_enabled: true
+      archival_check_interval: 3600
+
+    mqtt:
+      enabled: true
+      host: {{ include "kilocenter.fullname" . }}-mosquitto
+      port: 1883
+      client_id: "kilocenter-server"
+      username: "admin"
+      password: "OVERRIDDEN_BY_ENV"
+      topic_prefix: "mioty"
+
+    monitoring:
+      metrics_enabled: false
+
+    grpc:
+      enabled: true
+      port: {{ .Values.kcCore.config.grpc.port }}
+      host: "0.0.0.0"
+      rbac_role_cache_ttl_seconds: 30
+      internal_trust_enabled: true
+      tls_enabled: false
+      web:
+        enabled: false
+
+    identity:
+      address: "{{ include "kilocenter.fullname" . }}-identity:{{ .Values.kcIdentity.config.grpc.port }}"
+
+    status:
+      timeout: 5s
+      endpoints:
+        - name: "KC-Core"
+          url: "http://localhost:{{ .Values.kcCore.config.health.port }}/health/ping"
+          type: "http"
+        - name: "KC-Identity"
+          url: "http://{{ include "kilocenter.fullname" . }}-identity:{{ .Values.kcIdentity.config.health.port }}/health"
+          type: "http"
+        - name: "PostgreSQL"
+          type: "db"
+        - name: "gRPC (internal)"
+          host: "localhost"
+          port: {{ .Values.kcCore.config.grpc.port }}
+          type: "tcp"
+        - name: "KC-Gateway"
+          url: "http://{{ include "kilocenter.fullname" . }}-gateway:{{ .Values.kcGateway.config.health.port }}/health"
+          type: "http"
+        - name: "MQTT"
+          type: "mqtt"
+        - name: "Archival"
+          type: "archival"

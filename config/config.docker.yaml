@@ -1,0 +1,110 @@
+# KiloCenter Docker Configuration File
+
+general:
+  server_name: "KiloCenter"
+  environment: "production"
+  edition: "ce"
+  org_enforcement_enabled: false
+  log_level: "info"
+  log_format: "json"
+  health_check_port: 8086
+
+protocol:
+  # Base Station Service Center Interface (BSSCI)
+  bsci_port: 5000
+  bsci_tls:
+    enabled: true
+    cert_file: "/app/certificates/server.crt"
+    key_file: "/app/certificates/server.key"
+    ca_file: "/app/certificates/ca.crt"
+    min_version: "1.2"
+
+  # Service Center Application Center Interface (SCACI)
+  scaci_enabled: true
+  scaci_host: "0.0.0.0"
+  scaci_port: 5001
+  scaci_tls:
+    enabled: true
+    cert_file: "/app/certificates/server.crt"
+    key_file: "/app/certificates/server.key"
+    ca_file: "/app/certificates/ca.crt"
+    min_version: "1.3"
+
+  # Protocol parameters
+  max_retransmissions: 3
+  ack_timeout: 5000
+  duplicate_window: 300
+  message_encoding: "msgpack"
+
+certificates:
+  certgen_path: "/usr/local/bin/certgen"
+  server_validity_days: 365
+
+storage:
+  type: "postgres"
+  host: "postgres"
+  port: 5432
+  database: "kilocenter"
+  username: "kilocenter"
+  password: "changeme"
+  ssl_mode: "disable"
+  max_connections: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 300
+  conn_max_idle_time: 60
+  enable_migrations: true
+  message_retention_days: 90
+  archival_enabled: true
+  archival_check_interval: 3600
+
+mqtt:
+  enabled: true
+  host: "mosquitto"
+  port: 1883
+  client_id: "kilocenter-server"
+  username: "admin"
+  password: "KiloCenter"
+  topic_prefix: "mioty"
+
+monitoring:
+  metrics_enabled: false
+  metrics_port: 9091
+
+grpc:
+  enabled: true
+  port: 50051
+  host: "0.0.0.0"
+  rbac_role_cache_ttl_seconds: 30
+  internal_trust_enabled: true
+  tls_enabled: false
+  web:
+    enabled: false
+
+status:
+  timeout: 5s
+  endpoints:
+    - name: "KC-Core"
+      url: "http://localhost:8086/health/ping"
+      type: "http"
+    - name: "PostgreSQL"
+      url: "postgres"
+      type: "db"
+    - name: "BSSCI"
+      host: "localhost"
+      port: 5000
+      type: "tcp"
+    - name: "SCACI"
+      host: "localhost"
+      port: 5001
+      type: "tcp"
+    - name: "gRPC (internal)"
+      host: "localhost"
+      port: 50051
+      type: "tcp"
+    - name: "KC-Identity"
+      url: "http://kc-identity:8088/health"
+      type: "http"
+    - name: "MQTT"
+      type: "mqtt"
+    - name: "Archival"
+      type: "archival"

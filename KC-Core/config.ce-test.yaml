@@ -1,0 +1,40 @@
+general:
+  server_name: "KiloCenter CE Test"
+  environment: "development"
+  log_level: "debug"
+  log_format: "text"
+  health_check_port: 8088
+  tenant_id: 1
+  edition: "ce"
+
+storage:
+  host: "localhost"
+  port: 5433
+  database: "kilocenter_ce"
+  username: "kilocenter"
+  password: "changeme"
+  ssl_mode: "disable"
+  max_connections: 25
+  max_idle_conns: 5
+
+protocol:
+  bsci_host: "0.0.0.0"
+  bsci_port: 5002
+  bsci_tls:
+    enabled: false
+  scaci_enabled: false
+
+  federation:
+    enabled: true
+    ece_endpoint: "localhost:50055"
+    heartbeat_interval: 60s
+    outbox_max_size: 10000
+    reconnect_max_backoff: 5m
+
+grpc:
+  port: 50053
+  host: "localhost"
+  internal_trust_enabled: false
+
+auth:
+  enabled: false

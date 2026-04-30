@@ -1,0 +1,388 @@
+package bssciservices_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	bssciservices "github.com/kilocenter/KC-Core/internal/services/bssci"
+	"github.com/kilocenter/KC-Core/pkg/roaming"
+	"github.com/kilocenter/KC-DB/storage/models"
+)
+
+// MockStorage for testing roaming operations
+type MockRoamingStorage struct {
+	mock.Mock
+}
+
+func (m *MockRoamingStorage) GetEndpointOwner(ctx context.Context, epEui []byte) (int64, error) {
+	args := m.Called(ctx, epEui)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockRoamingStorage) GetEndpointWithOwnership(ctx context.Context, epEui []byte, servingTenantID int64) (*models.EndPoint, error) {
+	args := m.Called(ctx, epEui, servingTenantID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.EndPoint), args.Error(1)
+}
+
+func (m *MockRoamingStorage) IsRoamingEnabled(ctx context.Context, tenantID int64) (bool, error) {
+	args := m.Called(ctx, tenantID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockRoamingStorage) AreTenantsPartners(ctx context.Context, tenant1, tenant2 int64) (bool, error) {
+	args := m.Called(ctx, tenant1, tenant2)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockRoamingStorage) RecordRoamingEvent(ctx context.Context, event *models.RoamingEvent) error {
+	args := m.Called(ctx, event)
+	return args.Error(0)
+}
+
+func (m *MockRoamingStorage) GetRoamingStatistics(ctx context.Context, tenantID int64) (*models.RoamingStatistics, error) {
+	args := m.Called(ctx, tenantID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.RoamingStatistics), args.Error(1)
+}
+
+func (m *MockRoamingStorage) UpdateEndpointRoamingStatus(ctx context.Context, epEui []byte, servingTenantID int64) error {
+	args := m.Called(ctx, epEui, servingTenantID)
+	return args.Error(0)
+}
+
+func (m *MockRoamingStorage) AddSessionRoamingEndpoint(ctx context.Context, sessionID int64, epEui []byte, ownerTenantID int64) error {
+	args := m.Called(ctx, sessionID, epEui, ownerTenantID)
+	return args.Error(0)
+}
+
+func (m *MockRoamingStorage) RemoveSessionRoamingEndpoint(ctx context.Context, sessionID int64, epEui []byte) error {
+	args := m.Called(ctx, sessionID, epEui)
+	return args.Error(0)
+}
+
+func (m *MockRoamingStorage) GetRoamingEndpointsInSession(ctx context.Context, sessionID int64) ([]models.RoamingEndpointInfo, error) {
+	args := m.Called(ctx, sessionID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.RoamingEndpointInfo), args.Error(1)
+}
+
+func (m *MockRoamingStorage) GetTenantRoamingConfig(ctx context.Context, tenantID int64) (*models.TenantRoamingConfig, error) {
+	args := m.Called(ctx, tenantID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.TenantRoamingConfig), args.Error(1)
+}
+
+func (m *MockRoamingStorage) UpdateTenantRoamingConfig(ctx context.Context, config *models.TenantRoamingConfig) error {
+	args := m.Called(ctx, config)
+	return args.Error(0)
+}
+
+func TestRoamingAdapter_GetEndpointOwner(t *testing.T) {
+	tests := []struct {
+		name          string
+		epEui         []byte
+		expectedOwner int64
+		setupMock     func(*MockRoamingStorage)
+		wantErr       bool
+	}{
+		{
+			name:          "get owner successfully",
+			epEui:         []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+			expectedOwner: 5,
+			setupMock: func(m *MockRoamingStorage) {
+				m.On("GetEndpointOwner", mock.Anything, mock.Anything).Return(int64(5), nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:  "endpoint not found",
+			epEui: []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+			setupMock: func(m *MockRoamingStorage) {
+				m.On("GetEndpointOwner", mock.Anything, mock.Anything).Return(int64(0), roaming.ErrEndpointNotFound)
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStorage := new(MockRoamingStorage)
+			tt.setupMock(mockStorage)
+
+			adapter := bssciservices.NewRoamingAdapter(mockStorage)
+
+			owner, err := adapter.GetEndpointOwner(context.Background(), tt.epEui)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedOwner, owner)
+			}
+
+			mockStorage.AssertExpectations(t)
+		})
+	}
+}
+
+func TestRoamingAdapter_AreTenantsPartners(t *testing.T) {
+	tests := []struct {
+		name        string
+		tenant1     int64
+		tenant2     int64
+		arePartners bool
+		setupMock   func(*MockRoamingStorage)
+		wantErr     bool
+	}{
+		{
+			name:        "tenants are partners",
+			tenant1:     1,
+			tenant2:     2,
+			arePartners: true,
+			setupMock: func(m *MockRoamingStorage) {
+				m.On("AreTenantsPartners", mock.Anything, int64(1), int64(2)).Return(true, nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:        "tenants are not partners",
+			tenant1:     1,
+			tenant2:     3,
+			arePartners: false,
+			setupMock: func(m *MockRoamingStorage) {
+				m.On("AreTenantsPartners", mock.Anything, int64(1), int64(3)).Return(false, nil)
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStorage := new(MockRoamingStorage)
+			tt.setupMock(mockStorage)
+
+			adapter := bssciservices.NewRoamingAdapter(mockStorage)
+
+			result, err := adapter.AreTenantsPartners(context.Background(), tt.tenant1, tt.tenant2)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.arePartners, result)
+			}
+
+			mockStorage.AssertExpectations(t)
+		})
+	}
+}
+
+func TestRoamingAdapter_RecordRoamingEvent(t *testing.T) {
+	tests := []struct {
+		name      string
+		event     *models.RoamingEvent
+		setupMock func(*MockRoamingStorage)
+		wantErr   bool
+	}{
+		{
+			name: "record attach event",
+			event: &models.RoamingEvent{
+				EventType:       models.RoamingEventAttach,
+				EpEUI:           []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+				OwnerTenantID:   1,
+				ServingTenantID: 2,
+				ToBsEUI:         []byte{0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01},
+				CreatedAt:       time.Now(),
+			},
+			setupMock: func(m *MockRoamingStorage) {
+				m.On("RecordRoamingEvent", mock.Anything, mock.MatchedBy(func(e *models.RoamingEvent) bool {
+					return e.EventType == "attach"
+				})).Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name: "record detach event",
+			event: &models.RoamingEvent{
+				EventType:       models.RoamingEventDetach,
+				EpEUI:           []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+				OwnerTenantID:   1,
+				ServingTenantID: 2,
+				ToBsEUI:         []byte{0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01},
+				CreatedAt:       time.Now(),
+			},
+			setupMock: func(m *MockRoamingStorage) {
+				m.On("RecordRoamingEvent", mock.Anything, mock.MatchedBy(func(e *models.RoamingEvent) bool {
+					return e.EventType == "detach"
+				})).Return(nil)
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStorage := new(MockRoamingStorage)
+			tt.setupMock(mockStorage)
+
+			adapter := bssciservices.NewRoamingAdapter(mockStorage)
+
+			err := adapter.RecordRoamingEvent(context.Background(), tt.event)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			mockStorage.AssertExpectations(t)
+		})
+	}
+}
+
+func TestRoamingService_DetectAndValidateRoaming(t *testing.T) {
+	tests := []struct {
+		name            string
+		epEui           []byte
+		servingTenantID int64
+		ownerTenantID   int64
+		isRoaming       bool
+		arePartners     bool
+		setupMocks      func(*MockRoamingStorage)
+		wantIsRoaming   bool
+		wantOwner       int64
+		wantErr         bool
+	}{
+		{
+			name:            "not roaming - same tenant",
+			epEui:           []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+			servingTenantID: 1,
+			ownerTenantID:   1,
+			isRoaming:       false,
+			setupMocks: func(m *MockRoamingStorage) {
+				m.On("GetEndpointOwner", mock.Anything, mock.Anything).Return(int64(1), nil)
+			},
+			wantIsRoaming: false,
+			wantOwner:     1,
+			wantErr:       false,
+		},
+		{
+			name:            "valid roaming - partners",
+			epEui:           []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+			servingTenantID: 2,
+			ownerTenantID:   1,
+			isRoaming:       true,
+			arePartners:     true,
+			setupMocks: func(m *MockRoamingStorage) {
+				m.On("GetEndpointOwner", mock.Anything, mock.Anything).Return(int64(1), nil)
+				m.On("AreTenantsPartners", mock.Anything, int64(1), int64(2)).Return(true, nil)
+			},
+			wantIsRoaming: true,
+			wantOwner:     1,
+			wantErr:       false,
+		},
+		{
+			name:            "invalid roaming - not partners",
+			epEui:           []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+			servingTenantID: 3,
+			ownerTenantID:   1,
+			isRoaming:       true,
+			arePartners:     false,
+			setupMocks: func(m *MockRoamingStorage) {
+				m.On("GetEndpointOwner", mock.Anything, mock.Anything).Return(int64(1), nil)
+				m.On("AreTenantsPartners", mock.Anything, int64(1), int64(3)).Return(false, nil)
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStorage := new(MockRoamingStorage)
+			tt.setupMocks(mockStorage)
+
+			roamingConfig := &roaming.Config{
+				Enabled:      true,
+				CacheEnabled: false,
+			}
+
+			adapter := bssciservices.NewRoamingAdapter(mockStorage)
+			detector := roaming.NewDetector(roamingConfig, adapter, adapter)
+			service := &RoamingService{
+				detector: detector,
+				storage:  mockStorage,
+			}
+
+			isRoaming, ownerTenantID, err := service.DetectAndValidateRoaming(
+				context.Background(),
+				tt.epEui,
+				tt.servingTenantID,
+			)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.wantIsRoaming, isRoaming)
+				assert.Equal(t, tt.wantOwner, ownerTenantID)
+			}
+
+			mockStorage.AssertExpectations(t)
+		})
+	}
+}
+
+func TestRoamingService_SessionTracking(t *testing.T) {
+	mockStorage := new(MockRoamingStorage)
+
+	sessionID := int64(12345)
+	epEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	ownerTenantID := int64(1)
+
+	// Setup mocks for session operations
+	mockStorage.On("AddSessionRoamingEndpoint", mock.Anything, sessionID, epEui, ownerTenantID).Return(nil)
+	mockStorage.On("RemoveSessionRoamingEndpoint", mock.Anything, sessionID, epEui).Return(nil)
+	mockStorage.On("GetSessionRoamingEndpoints", mock.Anything, sessionID).Return([]models.RoamingEndpoint{
+		{
+			EpEui:         epEui,
+			OwnerTenantID: ownerTenantID,
+			SessionID:     sessionID,
+		},
+	}, nil)
+
+	service := &RoamingService{
+		storage: mockStorage,
+	}
+
+	ctx := context.Background()
+
+	// Test adding endpoint to session
+	err := service.UpdateSessionRoaming(ctx, sessionID, epEui, ownerTenantID, true)
+	require.NoError(t, err)
+
+	// Test removing endpoint from session
+	err = service.UpdateSessionRoaming(ctx, sessionID, epEui, ownerTenantID, false)
+	require.NoError(t, err)
+
+	// Test getting session endpoints
+	endpoints, err := service.storage.GetSessionRoamingEndpoints(ctx, sessionID)
+	require.NoError(t, err)
+	assert.Len(t, endpoints, 1)
+	assert.Equal(t, epEui, endpoints[0].EpEui)
+
+	mockStorage.AssertExpectations(t)
+}

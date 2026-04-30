@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-gateway
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-gateway") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kilocenter.selectorLabels" (dict "context" . "component" "kc-gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-gateway") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/kc-gateway-configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kc-gateway
+          image: "{{ .Values.kcGateway.image.repository }}:{{ .Values.kcGateway.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc-web
+              containerPort: {{ .Values.kcGateway.config.grpc.port }}
+              protocol: TCP
+            - name: health
+              containerPort: {{ .Values.kcGateway.config.health.port }}
+              protocol: TCP
+          env:
+            - name: KILOCENTER_CONFIG_FILE
+              value: "/app/config/config.yaml"
+            - name: KILOCENTER_AUTH_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: auth-hmac-secret
+          startupProbe:
+            httpGet:
+              path: /health
+              port: health
+            failureThreshold: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            failureThreshold: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            failureThreshold: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.kcGateway.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "kilocenter.fullname" . }}-gateway

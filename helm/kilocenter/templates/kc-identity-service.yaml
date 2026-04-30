@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-identity
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-identity") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kilocenter.selectorLabels" (dict "context" . "component" "kc-identity") | nindent 4 }}
+  ports:
+    - name: grpc
+      port: {{ .Values.kcIdentity.config.grpc.port }}
+      targetPort: grpc
+      protocol: TCP
+    - name: health
+      port: {{ .Values.kcIdentity.config.health.port }}
+      targetPort: health
+      protocol: TCP

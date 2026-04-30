@@ -1,0 +1,18 @@
+version: 2
+registries:
+  github:
+    type: git
+    url: https://github.com
+    username: ${{secrets.GH_CI_USERNAME}}
+    password: ${{secrets.GH_CI_PASSWORD}}
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    registries:
+      - github
+    schedule:
+      interval: weekly
+    groups:
+      all:
+        patterns:
+          - "*"
