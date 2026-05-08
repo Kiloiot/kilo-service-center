@@ -16,7 +16,7 @@ import (
 	"github.com/kilocenter/KC-Core/pkg/org"
 	pkgcontext "github.com/kilocenter/pkg/context"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"golang.org/x/net/http2"   //nolint:staticcheck // h2c cleartext HTTP/2 support
+	"golang.org/x/net/http2"     //nolint:staticcheck // h2c cleartext HTTP/2 support
 	"golang.org/x/net/http2/h2c" //nolint:staticcheck // h2c deprecation acknowledged; migration deferred
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
