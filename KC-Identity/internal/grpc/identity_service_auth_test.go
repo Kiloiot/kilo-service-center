@@ -1107,7 +1107,7 @@ func TestAuthInterceptor_UserClaimExtracted(t *testing.T) {
 	require.NoError(t, token.Set("tenant_id", int64(42)))
 	require.NoError(t, token.Set("sub", userID.String()))
 
-	signed, err := jwt.Sign(token, jwt.WithKey(jwa.HS256, secret))
+	signed, err := jwt.Sign(token, jwt.WithKey(jwa.HS256(), secret))
 	require.NoError(t, err)
 
 	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{
