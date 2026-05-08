@@ -6,7 +6,7 @@
   "homepage": "https://kiloiot.io/mioty-service-center/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Kiloiot/KiloServiceCenter.git"
+    "url": "https://github.com/Kiloiot/kilo-service-center.git"
   },
   "license": "AGPL-3.0-or-later",
   "author": "Tim Kravchunovsky",

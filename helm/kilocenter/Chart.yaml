@@ -4,9 +4,9 @@ description: KiloCenter - Open Source MIOTY Network Server
 type: application
 version: 1.0.0
 appVersion: "1.0.0"
-home: https://github.com/Kiloiot/KiloServiceCenter
+home: https://github.com/Kiloiot/kilo-service-center
 sources:
-  - https://github.com/Kiloiot/KiloServiceCenter
+  - https://github.com/Kiloiot/kilo-service-center
 keywords:
   - mioty
   - iot

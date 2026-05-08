@@ -14,7 +14,7 @@ The AGPL extends GPL with a network-use clause:
 - If you **run a modified version as a network service**, you must make the complete corresponding source available to users of that service.
 - You may link to the source or provide a direct download — the requirement is that users can obtain it.
 
-Source code is always available at [github.com/Kiloiot/KiloServiceCenter](https://github.com/Kiloiot/KiloServiceCenter).
+Source code is always available at [github.com/Kiloiot/kilo-service-center](https://github.com/Kiloiot/kilo-service-center).
 
 ## Runtime Source Disclosure
 

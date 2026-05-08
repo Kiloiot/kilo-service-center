@@ -33,7 +33,7 @@ RUN VITE_GRPC_URL="" bun run --silent tsc -b && VITE_GRPC_URL="" bunx vite build
 
 # Stage 2: Runtime
 FROM nginx:1.27-alpine
-ARG SOURCE_URL=https://github.com/Kiloiot/KiloServiceCenter
+ARG SOURCE_URL=https://github.com/Kiloiot/kilo-service-center
 ARG DOCS_URL=https://docs.kiloiot.io/
 LABEL org.opencontainers.image.title="KiloCenter Web"
 LABEL org.opencontainers.image.description="Open-source MIOTY Service Center — web interface"

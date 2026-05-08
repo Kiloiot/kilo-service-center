@@ -42,4 +42,4 @@ or NodePort service, or through your cluster's TCP ingress:
 3. TLS certificates are auto-generated on first install via the certgen Job.
    For production, replace with proper certificates signed by a trusted CA.
 
-Documentation: https://github.com/Kiloiot/KiloServiceCenter
+Documentation: https://github.com/Kiloiot/kilo-service-center

@@ -2,7 +2,7 @@
 
 > KiloCenter is an open-source MIOTY LPWAN network server for managing base stations, endpoints, and IoT message traffic.
 
-Source: https://github.com/Kiloiot/KiloServiceCenter
+Source: https://github.com/Kiloiot/kilo-service-center
 License: AGPL-3.0-or-later
 Documentation: https://kiloiot.gitbook.io/kilocenter
 

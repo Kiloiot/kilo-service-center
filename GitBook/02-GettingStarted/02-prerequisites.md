@@ -67,6 +67,6 @@ application center communication (SCACI).
 Clone the repository:
 
 ```bash
-git clone https://github.com/Kiloiot/KiloServiceCenter.git
+git clone https://github.com/Kiloiot/kilo-service-center.git
 cd KiloServiceCenter
 ```

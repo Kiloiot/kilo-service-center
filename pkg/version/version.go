@@ -73,7 +73,7 @@ func Get() (*Info, error) {
 			manifest.EditionCode = "ce"
 		}
 		if manifest.SourceURL == "" {
-			manifest.SourceURL = "https://github.com/Kiloiot/KiloServiceCenter"
+			manifest.SourceURL = "https://github.com/Kiloiot/kilo-service-center"
 		}
 		if manifest.DocsURL == "" {
 			manifest.DocsURL = "https://docs.kiloiot.io/"

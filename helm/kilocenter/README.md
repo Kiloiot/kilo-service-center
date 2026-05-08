@@ -1,6 +1,6 @@
 # KiloCenter Helm Chart
 
-Deploy [KiloCenter](https://github.com/Kiloiot/KiloServiceCenter) -- an open-source MIOTY network server -- to Kubernetes.
+Deploy [KiloCenter](https://github.com/Kiloiot/kilo-service-center) -- an open-source MIOTY network server -- to Kubernetes.
 
 ## Prerequisites
 

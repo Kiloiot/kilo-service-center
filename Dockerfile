@@ -33,7 +33,7 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build \
 
 # Stage 2: Runtime
 FROM alpine:3.19
-ARG SOURCE_URL=https://github.com/Kiloiot/KiloServiceCenter
+ARG SOURCE_URL=https://github.com/Kiloiot/kilo-service-center
 ARG DOCS_URL=https://docs.kiloiot.io/
 LABEL org.opencontainers.image.title="KiloCenter"
 LABEL org.opencontainers.image.description="Open-source MIOTY Service Center"

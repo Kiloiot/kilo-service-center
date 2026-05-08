@@ -7,9 +7,9 @@
 
 ## Getting Help
 
-- **Bug reports:** [GitHub Issues](https://github.com/Kiloiot/KiloServiceCenter/issues/new?template=bug_report.yml)
-- **Feature requests:** [GitHub Issues](https://github.com/Kiloiot/KiloServiceCenter/issues/new?template=feature_request.yml)
-- **General questions:** [GitHub Issues](https://github.com/Kiloiot/KiloServiceCenter/issues) or [Discussions](https://github.com/Kiloiot/KiloServiceCenter/discussions)
+- **Bug reports:** [GitHub Issues](https://github.com/Kiloiot/kilo-service-center/issues/new?template=bug_report.yml)
+- **Feature requests:** [GitHub Issues](https://github.com/Kiloiot/kilo-service-center/issues/new?template=feature_request.yml)
+- **General questions:** [GitHub Issues](https://github.com/Kiloiot/kilo-service-center/issues) or [Discussions](https://github.com/Kiloiot/kilo-service-center/discussions)
 
 ## Response Times
 

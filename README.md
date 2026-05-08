@@ -123,7 +123,7 @@ Prerequisites:
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/Kiloiot/KiloServiceCenter.git
+git clone https://github.com/Kiloiot/kilo-service-center.git
 cd KiloServiceCenter
 ```
 
@@ -289,7 +289,7 @@ This repository is not the recommended production rollout vehicle. Use Kilo Clou
 
 KiloCenter Community Edition is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
-If you run a modified version as a network service, the AGPL requires you to make the modified source available to users. The source repository is [github.com/Kiloiot/KiloServiceCenter](https://github.com/Kiloiot/KiloServiceCenter).
+If you run a modified version as a network service, the AGPL requires you to make the modified source available to users. The source repository is [github.com/Kiloiot/kilo-service-center](https://github.com/Kiloiot/kilo-service-center).
 
 See [TRADEMARKS.md](TRADEMARKS.md) for trademark policy.
 
@@ -297,7 +297,7 @@ Copyright 2024-2026 Tim Kravchunovsky and contributors.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/Kiloiot/KiloServiceCenter/issues)
+- **Issues**: [GitHub Issues](https://github.com/Kiloiot/kilo-service-center/issues)
 - **Documentation**: [GitBook/](GitBook/)
 - **MIOTY Alliance**: [mioty-alliance.com](https://mioty-alliance.com)
 
@@ -307,4 +307,4 @@ KiloCenter is built on standards defined by the MIOTY Alliance and on common ope
 
 ---
 
-Refer to the [release notes](https://github.com/Kiloiot/KiloServiceCenter/releases) for version-specific behavior and upgrade notes.
+Refer to the [release notes](https://github.com/Kiloiot/kilo-service-center/releases) for version-specific behavior and upgrade notes.

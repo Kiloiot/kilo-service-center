@@ -33,4 +33,4 @@ Security reporters will be credited in the release notes for the fix, unless the
 
 ## Scope
 
-This policy covers the KiloCenter Community Edition codebase at [github.com/Kiloiot/KiloServiceCenter](https://github.com/Kiloiot/KiloServiceCenter). For security concerns related to the enterprise edition or Kilo Cloud, contact security@kiloiot.io directly.
+This policy covers the KiloCenter Community Edition codebase at [github.com/Kiloiot/kilo-service-center](https://github.com/Kiloiot/kilo-service-center). For security concerns related to the enterprise edition or Kilo Cloud, contact security@kiloiot.io directly.

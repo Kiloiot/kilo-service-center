@@ -8,11 +8,11 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ## Reporting Bugs
 
-Open a bug report using the [Bug Report template](https://github.com/Kiloiot/KiloServiceCenter/issues/new?template=bug_report.yml) on GitHub Issues. Include reproduction steps, expected vs actual behavior, and relevant logs.
+Open a bug report using the [Bug Report template](https://github.com/Kiloiot/kilo-service-center/issues/new?template=bug_report.yml) on GitHub Issues. Include reproduction steps, expected vs actual behavior, and relevant logs.
 
 ## Suggesting Features
 
-Open a feature request using the [Feature Request template](https://github.com/Kiloiot/KiloServiceCenter/issues/new?template=feature_request.yml) on GitHub Issues. Describe the use case, not just the solution.
+Open a feature request using the [Feature Request template](https://github.com/Kiloiot/kilo-service-center/issues/new?template=feature_request.yml) on GitHub Issues. Describe the use case, not just the solution.
 
 ## Security Vulnerabilities
 

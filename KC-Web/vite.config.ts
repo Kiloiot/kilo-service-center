@@ -31,7 +31,7 @@ function loadVersionInfo(): {
       edition: manifest.edition ?? 'Community Edition',
       licenseId: manifest.licenseId ?? 'AGPL-3.0-or-later',
       licenseUrl: manifest.licenseUrl ?? 'https://www.gnu.org/licenses/agpl-3.0.html',
-      sourceUrl: manifest.sourceUrl ?? 'https://github.com/Kiloiot/KiloServiceCenter',
+      sourceUrl: manifest.sourceUrl ?? 'https://github.com/Kiloiot/kilo-service-center',
       docsUrl: manifest.docsUrl ?? 'https://docs.kiloiot.io/',
       homepageUrl: manifest.homepageUrl ?? 'https://kiloiot.io/mioty-service-center/',
       trademarkNotice:
@@ -48,7 +48,7 @@ function loadVersionInfo(): {
       edition: 'Community Edition',
       licenseId: 'AGPL-3.0-or-later',
       licenseUrl: 'https://www.gnu.org/licenses/agpl-3.0.html',
-      sourceUrl: 'https://github.com/Kiloiot/KiloServiceCenter',
+      sourceUrl: 'https://github.com/Kiloiot/kilo-service-center',
       docsUrl: 'https://docs.kiloiot.io/',
       homepageUrl: 'https://kiloiot.io/mioty-service-center/',
       trademarkNotice: 'KiloCenter is a trademark of Tim Kravchunovsky.',
