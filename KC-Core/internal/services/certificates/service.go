@@ -590,7 +590,7 @@ func isValidEUI(eui string) bool {
 				return false
 			}
 		} else {
-			if !((ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F') || (ch >= 'a' && ch <= 'f')) {
+			if (ch < '0' || ch > '9') && (ch < 'A' || ch > 'F') && (ch < 'a' || ch > 'f') {
 				return false
 			}
 		}

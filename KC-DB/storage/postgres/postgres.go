@@ -391,30 +391,12 @@ func (db *DB) EnqueueDownlink(ctx context.Context, downlink *storage.DownlinkMes
 		format = int(downlink.Format)
 	}
 
-	responseExp := false
-	if downlink.ResponseExp {
-		responseExp = true
-	}
+	responseExp := downlink.ResponseExp
+	responsePrio := downlink.ResponsePrio
+	dlWindReq := downlink.DlWindReq
 
-	responsePrio := false
-	if downlink.ResponsePrio {
-		responsePrio = true
-	}
-
-	dlWindReq := false
-	if downlink.DlWindReq {
-		dlWindReq = true
-	}
-
-	expOnly := false
-	if downlink.ExpOnly {
-		expOnly = true
-	}
-
-	dlRxStatQry := false
-	if downlink.DlRxStatQry {
-		dlRxStatQry = true
-	}
+	expOnly := downlink.ExpOnly
+	dlRxStatQry := downlink.DlRxStatQry
 
 	// Set default max attempts if not specified
 	maxAttempts := downlink.MaxAttempts

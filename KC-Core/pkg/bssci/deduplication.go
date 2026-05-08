@@ -109,8 +109,8 @@ func (md *MessageDeduplicator) CheckAndRecord(
 
 	// Create message hash for additional validation
 	hasher := sha256.New()
-	hasher.Write([]byte(fmt.Sprintf("%016X", endpointEUI)))
-	hasher.Write([]byte(fmt.Sprintf("%08X", packetCounter)))
+	_, _ = fmt.Fprintf(hasher, "%016X", endpointEUI)
+	_, _ = fmt.Fprintf(hasher, "%08X", packetCounter)
 	hasher.Write(userData)
 	messageHash := hex.EncodeToString(hasher.Sum(nil))
 

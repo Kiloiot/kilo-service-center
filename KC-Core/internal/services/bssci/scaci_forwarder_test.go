@@ -49,7 +49,7 @@ func (l *testLogger) WithFields(_ map[string]interface{}) logger.Logger         
 
 func TestSCACIEPStatusAdapter_ImplementsInterface(_ *testing.T) {
 	// Verify that NewSCACIEPStatusAdapter returns SCACIEPStatusAdapterWithSetter
-	var _ SCACIEPStatusAdapterWithSetter = NewSCACIEPStatusAdapter(nil)
+	var _ = NewSCACIEPStatusAdapter(nil)
 }
 
 func TestSCACIEPStatusAdapter_SetSCACIServer_Stores(t *testing.T) {

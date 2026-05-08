@@ -24,13 +24,13 @@ func TestSchemaBaseline(t *testing.T) {
 
 	var output strings.Builder
 	output.WriteString("# Database Schema Audit\n\n")
-	output.WriteString(fmt.Sprintf("Generated: %s\n\n", time.Now().Format(time.RFC3339)))
+	fmt.Fprintf(&output, "Generated: %s\n\n", time.Now().Format(time.RFC3339))
 
 	// Get migration version
 	var version int
 	err := db.QueryRow("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").Scan(&version)
 	require.NoError(t, err)
-	output.WriteString(fmt.Sprintf("**Migration Version:** %d\n\n", version))
+	fmt.Fprintf(&output, "**Migration Version:** %d\n\n", version)
 
 	// Get all tables
 	rows, err := db.Query(`
@@ -55,11 +55,11 @@ func TestSchemaBaseline(t *testing.T) {
 		tables = append(tables, table)
 	}
 
-	output.WriteString(fmt.Sprintf("## Tables (%d total)\n\n", len(tables)))
+	fmt.Fprintf(&output, "## Tables (%d total)\n\n", len(tables))
 
 	// For each table, get detailed structure
 	for _, table := range tables {
-		output.WriteString(fmt.Sprintf("### %s\n\n", table))
+		fmt.Fprintf(&output, "### %s\n\n", table)
 
 		// Get columns
 		colRows, err := db.Query(`
@@ -97,8 +97,8 @@ func TestSchemaBaseline(t *testing.T) {
 				defaultStr = *colDefault
 			}
 
-			output.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
-				colName, typeStr, isNullable, defaultStr))
+			fmt.Fprintf(&output, "| %s | %s | %s | %s |\n",
+				colName, typeStr, isNullable, defaultStr)
 		}
 		if err := colRows.Close(); err != nil {
 			t.Fatalf("failed to close column rows: %v", err)

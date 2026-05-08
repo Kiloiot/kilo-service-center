@@ -182,7 +182,7 @@ func TestRawPayloadCapture(t *testing.T) {
 	assert.Len(t, msg.RawPayload, 5, "RawPayload should preserve original length")
 
 	// Verify field is properly typed as []byte
-	var _ []byte = msg.RawPayload // Compile-time type check
+	var _ = msg.RawPayload // Compile-time type check
 }
 
 // TestAttachMessagePersistence verifies BSSCI-5.6-PERSIST:

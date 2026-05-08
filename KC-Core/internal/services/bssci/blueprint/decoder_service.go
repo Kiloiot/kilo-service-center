@@ -267,14 +267,15 @@ func (s *DecoderService) extractValue(data []byte, bitOffset, bitSize int, field
 		return int64(uval), nil
 
 	case blueprint.FieldTypeFloat:
-		if bitSize == 32 {
+		switch bitSize {
+		case 32:
 			uval, err := s.extractUint(data, bitOffset, 32, littleEndian)
 			if err != nil {
 				return nil, err
 			}
 			//nolint:gosec // G115: intentional truncation for 32-bit float conversion
 			return float64FromBits32(uint32(uval)), nil
-		} else if bitSize == 64 {
+		case 64:
 			uval, err := s.extractUint(data, bitOffset, 64, littleEndian)
 			if err != nil {
 				return nil, err

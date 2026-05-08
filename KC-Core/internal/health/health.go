@@ -136,9 +136,10 @@ func (s *Service) HTTPHandler() http.HandlerFunc {
 
 		// Set appropriate status code
 		statusCode := http.StatusOK
-		if response.Status == StatusUnhealthy {
+		switch response.Status {
+		case StatusUnhealthy:
 			statusCode = http.StatusServiceUnavailable
-		} else if response.Status == StatusDegraded {
+		case StatusDegraded:
 			statusCode = http.StatusOK // Still return 200 for degraded
 		}
 

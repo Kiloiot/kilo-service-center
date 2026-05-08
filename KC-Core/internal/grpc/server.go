@@ -16,8 +16,8 @@ import (
 	"github.com/kilocenter/KC-Core/pkg/org"
 	pkgcontext "github.com/kilocenter/pkg/context"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	"golang.org/x/net/http2"   //nolint:staticcheck // h2c cleartext HTTP/2 support
+	"golang.org/x/net/http2/h2c" //nolint:staticcheck // h2c deprecation acknowledged; migration deferred
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -359,7 +359,7 @@ func createHTTPServer(grpcServer *grpc.Server, grpcWebWrapped *grpcweb.WrappedGr
 	var finalHandler http.Handler
 	if !cfg.EnableTLS {
 		h2s := &http2.Server{}
-		finalHandler = h2c.NewHandler(handler, h2s)
+		finalHandler = h2c.NewHandler(handler, h2s) //nolint:staticcheck // h2c deprecation acknowledged; migration deferred
 	} else {
 		finalHandler = handler
 	}

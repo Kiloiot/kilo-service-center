@@ -285,11 +285,12 @@ func (hs *handshakeService) ValidateConnect(
 	}
 
 	// TODO: Validate software version (non-fatal per SCACI §3.3.2 - swVersion is optional)
-	if hs.scSwVersion == "" {
+	switch hs.scSwVersion {
+	case "":
 		hs.logger.Warn("Software version not configured - ConnectResponse will omit swVersion field",
 			"tenantID", tenantID,
 			"acEui", pkgmioty.FormatEUI64(req.AcEui))
-	} else if hs.scSwVersion == "dev" || hs.scSwVersion == "dev-local" {
+	case "dev", "dev-local":
 		hs.logger.Warn("Using development software version in ConnectResponse",
 			"swVersion", hs.scSwVersion,
 			"tenantID", tenantID,

@@ -321,7 +321,7 @@ func (l *logger) outputText(level Level, msg string, fields map[string]interface
 	if l.useColor {
 		sb.WriteString(levelColors[level])
 	}
-	sb.WriteString(fmt.Sprintf("[%-5s]", levelNames[level]))
+	fmt.Fprintf(&sb, "[%-5s]", levelNames[level])
 	if l.useColor {
 		sb.WriteString(resetColor)
 	}
@@ -335,7 +335,7 @@ func (l *logger) outputText(level Level, msg string, fields map[string]interface
 		if key == "timestamp" || key == "level" || key == "message" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf(" %s=%v", key, value))
+		fmt.Fprintf(&sb, " %s=%v", key, value)
 	}
 
 	_, _ = fmt.Fprintln(l.output, sb.String()) //nolint:errcheck,gosec // Logging should not crash the application

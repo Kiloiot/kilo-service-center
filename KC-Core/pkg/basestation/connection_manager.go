@@ -272,7 +272,7 @@ func (cm *ConnectionManager) validateRegistration(reg *Registration) error {
 		// Only require certificates for pre-registration scenarios
 		if len(reg.TLSCertificate) == 0 || len(reg.TLSPrivateKey) == 0 {
 			// Allow placeholder for live connections
-			if !(string(reg.TLSCertificate) == placeholderLiveCert && string(reg.TLSPrivateKey) == placeholderLiveCert) {
+			if string(reg.TLSCertificate) != placeholderLiveCert || string(reg.TLSPrivateKey) != placeholderLiveCert {
 				return fmt.Errorf("TLS certificate and private key are required for BSSCI")
 			}
 		}

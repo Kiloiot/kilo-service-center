@@ -52,7 +52,7 @@ func startHealthCheck(port int, healthService *health.Service) {
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		_, _ = w.Write([]byte(fmt.Sprintf(HealthResponseFormat, response.Status)))
+		_, _ = fmt.Fprintf(w, HealthResponseFormat, response.Status)
 	})
 
 	server := &http.Server{

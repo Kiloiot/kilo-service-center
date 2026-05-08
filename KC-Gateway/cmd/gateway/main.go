@@ -37,7 +37,7 @@ import (
 	gobreaker "github.com/sony/gobreaker/v2"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	"golang.org/x/net/http2/h2c" //nolint:staticcheck // TODO: migrate to http.Server.Protocols when ecosystem support is stable
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -414,7 +414,7 @@ func main() {
 	})
 
 	h2s := &http2.Server{}
-	finalHandler := h2c.NewHandler(handler, h2s)
+	finalHandler := h2c.NewHandler(handler, h2s) //nolint:staticcheck // TODO: migrate to http.Server.Protocols
 
 	listenAddr := net.JoinHostPort(cfg.GRPC.Host, strconv.Itoa(cfg.GRPC.Port))
 	listener, err := net.Listen("tcp", listenAddr)

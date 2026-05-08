@@ -284,9 +284,10 @@ func (s *Server) handleDeregister(conn net.Conn, session *Session, opId int64, p
 	if errToken != "" {
 		// Map error tokens to appropriate POSIX codes
 		posixCode := POSIX_EINVAL
-		if errToken == errEndpointNotFound {
+		switch errToken {
+		case errEndpointNotFound:
 			posixCode = POSIX_ENOENT
-		} else if errToken == errDatabaseError || errToken == errFailedUpdateEndpoint {
+		case errDatabaseError, errFailedUpdateEndpoint:
 			posixCode = POSIX_EIO
 		}
 		return s.sendErrorWithCatalog(conn, session, opId, posixCode, errToken)
@@ -680,13 +681,14 @@ func (s *Server) handleULDataTransmit(conn net.Conn, session *Session, opId int6
 	if errToken != "" {
 		// Service returned error token - map to POSIX code and send error
 		posixCode := POSIX_EINVAL
-		if errToken == errULTransmitNotSupported {
+		switch errToken {
+		case errULTransmitNotSupported:
 			posixCode = POSIX_ENOTSUP
-		} else if errToken == errBaseStationUnavailable {
+		case errBaseStationUnavailable:
 			posixCode = POSIX_EAGAIN
-		} else if errToken == errBaseStationNotFound {
+		case errBaseStationNotFound:
 			posixCode = POSIX_ENOENT
-		} else if errToken == errFailedRecordOperation {
+		case errFailedRecordOperation:
 			posixCode = POSIX_EIO
 		}
 
@@ -1298,11 +1300,12 @@ func (s *Server) handleDLDataRevoke(conn net.Conn, session *Session, opId int64,
 	if errToken != "" {
 		// Service returned error token - map to POSIX code and send error
 		posixCode := POSIX_EINVAL
-		if errToken == errDownlinkNotFound {
+		switch errToken {
+		case errDownlinkNotFound:
 			posixCode = POSIX_ENOENT
-		} else if errToken == errSchedulerUnavailable {
+		case errSchedulerUnavailable:
 			posixCode = POSIX_ENOTSUP
-		} else if errToken == errDatabaseError {
+		case errDatabaseError:
 			posixCode = POSIX_EIO
 		}
 

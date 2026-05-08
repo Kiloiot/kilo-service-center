@@ -1436,7 +1436,7 @@ func TestTxnGetByEUI_SubpacketsParity(t *testing.T) {
 
 	// Get via transactional GetByEUI within a transaction
 	// Create raw sql.Tx from sqlx.DB for transactionalEndPointRepository
-	rawTx, err := db.DB.BeginTx(ctx, nil)
+	rawTx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err, "Failed to begin transaction")
 	defer func() { _ = rawTx.Rollback() }() // #nosec G307 -- Test cleanup
 

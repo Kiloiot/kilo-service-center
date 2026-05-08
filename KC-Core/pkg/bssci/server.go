@@ -1698,11 +1698,12 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 
 	// Build connect response using canonical struct (BSSCI §4-4.5)
 	// Validate software version (non-fatal per BSSCI §5.3.2 - swVersion is optional)
-	if s.config.SoftwareVersion == "" {
+	switch s.config.SoftwareVersion {
+	case "":
 		s.logger.WarnContext(s.safeCtx(), "Software version not configured - ConnectResponse will omit swVersion field",
 			"bsEui", session.BaseStationEUI,
 			"sessionUuid", sessionUUID)
-	} else if s.config.SoftwareVersion == "dev" || s.config.SoftwareVersion == "dev-local" {
+	case "dev", "dev-local":
 		s.logger.WarnContext(s.safeCtx(), "Using development software version in ConnectResponse",
 			"swVersion", s.config.SoftwareVersion,
 			"bsEui", session.BaseStationEUI)
@@ -5588,10 +5589,11 @@ func (s *Server) handleAttachPropagateResponse(srv *Server, session *Session, ms
 				operationType := "propagate_failed"
 				eventType := "endpoint_operation_failed"
 				if pendingOp != nil {
-					if pendingOp.OperationType == mioty.CmdAttachPropagate {
+					switch pendingOp.OperationType {
+					case mioty.CmdAttachPropagate:
 						operationType = "attach_propagate_failed"
 						eventType = "endpoint_attach_failed"
-					} else if pendingOp.OperationType == mioty.CmdDetachPropagate {
+					case mioty.CmdDetachPropagate:
 						operationType = "detach_propagate_failed"
 						eventType = "endpoint_detach_failed"
 					}
@@ -6325,10 +6327,11 @@ func (s *Server) handleDetachPropagateResponse(srv *Server, session *Session, ms
 				operationType := "propagate_failed"
 				eventType := "endpoint_operation_failed"
 				if pendingOp != nil {
-					if pendingOp.OperationType == mioty.CmdAttachPropagate {
+					switch pendingOp.OperationType {
+					case mioty.CmdAttachPropagate:
 						operationType = "attach_propagate_failed"
 						eventType = "endpoint_attach_failed"
-					} else if pendingOp.OperationType == mioty.CmdDetachPropagate {
+					case mioty.CmdDetachPropagate:
 						operationType = "detach_propagate_failed"
 						eventType = "endpoint_detach_failed"
 					}

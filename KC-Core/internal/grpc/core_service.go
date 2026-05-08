@@ -2616,9 +2616,10 @@ func (s *CoreService) GetDownlinkResults(ctx context.Context, req *pb.GetDownlin
 	// Translate BSSCI terms to internal status for database query
 	// Single translation point for BSSCI §3.14.1
 	statusFilter := req.StatusFilter
-	if statusFilter == "sent" {
+	switch statusFilter {
+	case "sent":
 		statusFilter = "transmitted"
-	} else if statusFilter == "invalid" {
+	case "invalid":
 		statusFilter = "failed"
 	}
 	// "expired" remains the same
