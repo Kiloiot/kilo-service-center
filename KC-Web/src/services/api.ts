@@ -718,7 +718,7 @@ class ApiService {
       startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
       endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
     });
-    return new Blob([response.content], { type: response.contentType });
+    return new Blob([new Uint8Array(response.content)], { type: response.contentType });
   }
 
   // ============================================================================
@@ -912,7 +912,7 @@ class ApiService {
   }> {
     const response = await grpcClient.downloadCertificate(certId, certType);
     return {
-      blob: new Blob([response.content], { type: response.contentType }),
+      blob: new Blob([new Uint8Array(response.content)], { type: response.contentType }),
       filename: response.filename,
     };
   }

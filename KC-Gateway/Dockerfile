@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for KC-Gateway
 # Build context: kilocenter-modules/ root
 # Stage 1: Builder
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache git make gcc musl-dev
 

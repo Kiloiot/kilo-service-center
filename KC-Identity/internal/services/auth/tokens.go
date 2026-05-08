@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/google/uuid"
 	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 // Token type claim values
@@ -131,8 +131,8 @@ func (ti *TokenIssuer) ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Tok
 	}
 
 	// Validate typ claim
-	typClaim, ok := token.Get(ClaimTokenType)
-	if !ok {
+	var typClaim interface{}
+	if err := token.Get(ClaimTokenType, &typClaim); err != nil {
 		return uuid.Nil, nil, ErrInvalidRefreshToken
 	}
 	if typStr, ok := typClaim.(string); !ok || typStr != TokenTypeRefresh {
@@ -140,12 +140,16 @@ func (ti *TokenIssuer) ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Tok
 	}
 
 	// Validate expiration
-	if time.Now().After(token.Expiration()) {
+	exp, ok := token.Expiration()
+	if !ok || time.Now().After(exp) {
 		return uuid.Nil, nil, ErrInvalidRefreshToken
 	}
 
 	// Extract user ID from subject
-	subjectStr := token.Subject()
+	subjectStr, ok := token.Subject()
+	if !ok {
+		return uuid.Nil, nil, ErrInvalidRefreshToken
+	}
 	userID, err := uuid.Parse(subjectStr)
 	if err != nil {
 		return uuid.Nil, nil, ErrInvalidRefreshToken
