@@ -20,6 +20,11 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1883
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: init-passwd
           image: "{{ .Values.mosquitto.image.repository }}:{{ .Values.mosquitto.image.tag }}"
@@ -49,6 +54,13 @@ spec:
       containers:
         - name: mosquitto
           image: "{{ .Values.mosquitto.image.repository }}:{{ .Values.mosquitto.image.tag }}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1883
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: mqtt
               containerPort: 1883

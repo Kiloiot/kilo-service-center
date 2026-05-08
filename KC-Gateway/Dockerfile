@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -o gateway ./cmd/gateway
 
 # Stage 2: Runtime
-FROM alpine:3.19
+FROM alpine:3.23
 ARG SOURCE_URL=https://github.com/Kiloiot/kilo-service-center
 ARG DOCS_URL=https://docs.kiloiot.io/
 LABEL org.opencontainers.image.title="KiloCenter"

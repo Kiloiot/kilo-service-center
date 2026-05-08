@@ -2,7 +2,7 @@
 # Build context: kilocenter-modules/ root
 
 # Stage 1: Builder
-FROM oven/bun:1.2-alpine AS builder
+FROM oven/bun:1.3-alpine AS builder
 
 WORKDIR /build
 
@@ -32,7 +32,7 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN VITE_GRPC_URL="" bun run --silent tsc -b && VITE_GRPC_URL="" bunx vite build
 
 # Stage 2: Runtime
-FROM nginx:1.27-alpine
+FROM nginx:1.28-alpine
 ARG SOURCE_URL=https://github.com/Kiloiot/kilo-service-center
 ARG DOCS_URL=https://docs.kiloiot.io/
 LABEL org.opencontainers.image.title="KiloCenter Web"
@@ -46,6 +46,11 @@ LABEL org.opencontainers.image.authors="Tim Kravchunovsky"
 
 COPY --from=builder /build/KC-Web/dist /usr/share/nginx/html
 COPY deployments/docker/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+
+RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/log/nginx && \
+    touch /var/run/nginx.pid && chown nginx:nginx /var/run/nginx.pid
+
+USER nginx
 
 EXPOSE 80
 

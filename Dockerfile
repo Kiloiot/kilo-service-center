@@ -32,7 +32,7 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build \
     -o certgen ./cmd/certgen
 
 # Stage 2: Runtime
-FROM alpine:3.19
+FROM alpine:3.23
 ARG SOURCE_URL=https://github.com/Kiloiot/kilo-service-center
 ARG DOCS_URL=https://docs.kiloiot.io/
 LABEL org.opencontainers.image.title="KiloCenter"
