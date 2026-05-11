@@ -6496,10 +6496,8 @@ func (s *Server) resolveEndpointOwnerContext(ctx context.Context, session *Sessi
 	return
 }
 
-// propagateResponseConfig holds the per-operation catalog references the shared
-// propagate-response failure handler needs. Every field is sourced from a
-// project catalog (pkg/bssci/log_messages.go log tokens,
-// pkg/bssci/errors_catalog.go error tokens). No human-readable strings.
+// propagateResponseConfig carries the per-operation catalog references the
+// shared propagate-response failure handler needs.
 type propagateResponseConfig struct {
 	// rejectedLog is the outer "rejected by base station" log token emitted
 	// before the failure-handling block runs.
@@ -6662,10 +6660,9 @@ func (s *Server) handlePropagateResponseFailure(
 		}
 	}
 
-	// Send error response to base station per BSSCI-4-01.
-	// MUST use POSIX error code (not the base station's result code) and the
-	// catalog-derived message; both sides go through the same path so the
-	// attach-side literal "command": "error" / inline message bug is fixed.
+	// Send error response to base station per BSSCI-4-01. POSIX error code is
+	// mandatory; the response message is sourced from the catalog so attach and
+	// detach paths produce identical wire format.
 	errorMsg := map[string]interface{}{
 		"command": mioty.CmdError,
 		"opId":    msg.OpId,
@@ -6683,9 +6680,7 @@ func (s *Server) handlePropagateResponseFailure(
 }
 
 // toFloat64Value coerces a numeric interface{} value to float64, returning
-// ok=false when the value is nil or not a recognized numeric type. Canonical
-// implementation shared by getFloat64Field and toFloat64 to eliminate
-// duplicated type-switch logic.
+// ok=false when the value is nil or not a recognized numeric type.
 func toFloat64Value(value interface{}) (float64, bool) {
 	if value == nil {
 		return 0, false
