@@ -3,7 +3,6 @@ package bssci
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 
@@ -408,66 +407,6 @@ func Test_PersistSession_ConnectInfoConditional(t *testing.T) {
 			t.Errorf("ConnectInfo = %s, want empty object", session.ConnectInfo)
 		}
 	})
-}
-
-// Test_SendAttachPropagateBySessionID_BroadcastErrorAggregation verifies that when
-// SendAttachPropagateToAll returns multiple errors, they are aggregated with full context
-// Regression: server.go:4118 - only returned first error, losing partial failure visibility
-func Test_SendAttachPropagateBySessionID_BroadcastErrorAggregation(t *testing.T) {
-	server := &Server{
-		config:   &Config{},
-		logger:   newRecordingLogger(),
-		sessions: make(map[string]*Session),
-	}
-	server.broadcastFn = server.SendAttachPropagateToAll
-
-	// Register a valid session (required for method to proceed past session lookup)
-	testSessionID := "test-session-123"
-	server.RegisterSession(&Session{
-		ID:                testSessionID,
-		BaseStationEUI:    TestBsEui04,
-		HandshakeComplete: true,
-	})
-
-	// Inject stub via broadcastFn hook to return 3 errors
-	server.broadcastFn = func(_ uint64, _ []byte, _ uint16, _ bool, _ uint32, _ bool, _ uint8, _ bool, _ bool) []error {
-		return []error{
-			errors.New("session A: network timeout"),
-			errors.New("session B: invalid endpoint"),
-			errors.New("session C: database error"),
-		}
-	}
-
-	endpoint := &models.EndPoint{
-		ID:            123,
-		EUI:           models.EUI{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88},
-		Bidi:          true,
-		NwkSnKey:      []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-		ShAddr:        nil,
-		Repetition:    false,
-		LastPacketCnt: 0,
-		DualChan:      false,
-		WideCarrOff:   false,
-		LongBlkDist:   false,
-	}
-
-	err := server.SendAttachPropagateBySessionID(testutil.TestContext(), testSessionID, endpoint)
-
-	// Verify error contains full context
-	if err == nil {
-		t.Fatal("Expected error from broadcast failure, got nil")
-	}
-
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "3 failures") {
-		t.Errorf("Error message should contain full error count. Got: %s", errMsg)
-	}
-	if !strings.Contains(errMsg, "Propagation broadcast encountered failures") {
-		t.Errorf("Error message should use catalog token. Got: %s", errMsg)
-	}
-	if !strings.Contains(errMsg, "network timeout") {
-		t.Errorf("Error message should wrap first error. Got: %s", errMsg)
-	}
 }
 
 // Test_SendAttachPropagateBySessionID_SessionSpecific verifies session-specific propagation

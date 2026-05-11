@@ -275,6 +275,9 @@ const (
 	ErrInvalidDlRxSnr  = errInvalidDlRxSnr  // dlRxSnr must be in uint32 range
 	ErrInvalidDlRxRssi = errInvalidDlRxRssi // dlRxRssi must be in uint32 range
 
+	// Propagation broadcast errors (used by propagation service)
+	ErrPropagationBroadcastFailure = errPropagationBroadcastFailure
+
 	// Note: ErrBaseStationTenantMismatch is now defined in ul_transmit.go as a proper error sentinel
 )
 

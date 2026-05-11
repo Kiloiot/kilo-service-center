@@ -151,13 +151,13 @@ func (s *propagationService) shouldPropagate(endpointTenant, sessionTenant int64
 	return false
 }
 
-// aggregateErrors combines multiple errors into a single error
-// Returns nil if no errors occurred
+// aggregateErrors combines multiple errors into a single error.
+// Returns nil if no errors occurred.
 func aggregateErrors(errs []error) error {
 	if len(errs) == 0 {
 		return nil
 	}
-
-	// Return first error for now - can enhance with multi-error later
-	return fmt.Errorf("propagation encountered %d errors, first: %w", len(errs), errs[0])
+	return fmt.Errorf("%s: %d failures, first: %w",
+		pkgbssci.ResolveErrorMessage(pkgbssci.ErrPropagationBroadcastFailure),
+		len(errs), errs[0])
 }
