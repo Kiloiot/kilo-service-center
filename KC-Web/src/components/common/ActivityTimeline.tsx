@@ -8,9 +8,10 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { ENDPOINT_DETAILS } from "@constants/messages";
-import { getTerminalStyles, formatTerminalTime } from "@theme/index";
+
 import { formatDate, formatEUIWithDashes } from "@utils/formatters";
+import { ENDPOINT_DETAILS } from "@constants/messages";
+import { formatTerminalTime,getTerminalStyles } from "@theme/index";
 
 // =============================================================================
 // Types

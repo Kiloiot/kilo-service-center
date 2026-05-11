@@ -21,8 +21,8 @@ import type {
   BaseStationActivityPage,
   BaseStationAPI,
   BaseStationDetailAPI,
-  BaseStationMessagesFilter,
   BaseStationMessageAPI,
+  BaseStationMessagesFilter,
   BaseStationMessagesPage,
   BaseStationMessagesStats,
   BaseStationReceptionAPI,
@@ -89,11 +89,7 @@ import {
 
 // INTERNAL: grpcClient is only imported here - nowhere else in the codebase
 // eslint-disable-next-line import/no-internal-modules
-import {
-  type BlueprintTransportDTO,
-  GrpcApiError,
-  grpcClient,
-} from "./grpc/client";
+import { type BlueprintTransportDTO, GrpcApiError, grpcClient } from "./grpc/client";
 
 // Re-export GrpcApiError as ApiError for backward compatibility
 export { GrpcApiError as ApiError };

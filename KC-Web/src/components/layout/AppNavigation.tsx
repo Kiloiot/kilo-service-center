@@ -25,10 +25,10 @@ import { useCapabilities } from "@hooks/useCapabilities";
 import {
   APP_EDITION,
   DRAWER_WIDTH,
+  formatPoweredByLabel,
   LOGO,
   NAV_ITEMS,
   ROUTES,
-  formatPoweredByLabel,
 } from "@constants/app";
 import { BRAND } from "@constants/messages";
 import {
