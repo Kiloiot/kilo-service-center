@@ -981,4 +981,36 @@ const (
 	LogBSSCIDeferredListenerFailed = "Failed to start deferred BSSCI TLS listener"
 	// LogBSSCIDeferredListenerCancelled is logged when the deferred listener polling is cancelled
 	LogBSSCIDeferredListenerCancelled = "BSSCI deferred listener polling cancelled"
+
+	// ========================================================================
+	// Service-layer Propagation Operations (internal/services/bssci/propagation_service.go)
+	// ========================================================================
+
+	LogBSSCISkippingPropagationDueToTenantMismatch = "Skipping propagation due to tenant mismatch"
+	LogBSSCIFailedToPropagateToSession             = "Failed to propagate to session"
+	LogBSSCIEndpointPropagationCompleted           = "Endpoint propagation completed"
+	LogBSSCIStartingBaseStationReconciliation      = "Starting base station reconciliation"
+	LogBSSCIReconciliationPropagateFailed          = "Reconciliation propagate failed"
+	LogBSSCIBaseStationReconciliationCompleted     = "Base station reconciliation completed"
+
+	// ========================================================================
+	// Service-layer Uplink Ingest Pipeline (internal/services/bssci/uplink_ingest_service.go)
+	// ========================================================================
+
+	LogBSSCIUplinkDeduplicationError                     = "Uplink deduplication error"
+	LogBSSCIDuplicateUplinkReceived                      = "Duplicate uplink received"
+	LogBSSCIUplinkFirstReception                         = "Uplink first reception"
+	LogBSSCIEndpointNotFoundDuringIngestTenantResolution = "Endpoint not found during ingest tenant resolution"
+	LogBSSCIRoamingDetectionFailedDuringIngest           = "Roaming detection failed during ingest"
+	LogBSSCIRoamingEndpointUplink                        = "Roaming endpoint uplink"
+	LogBSSCIFailedToResolveOrganizationForUplink         = "Failed to resolve organization for uplink"
+	LogBSSCIBlueprintResolutionFailed                    = "Blueprint resolution failed"
+	LogBSSCIBlueprintDecodeError                         = "Blueprint decode error"
+	LogBSSCIFailedToFetchEndpointForBlueprintDecode      = "Failed to fetch endpoint for blueprint decode"
+	LogBSSCIFailedToFetchDLRXStatus                      = "Failed to fetch DL RX status"
+	LogBSSCIFailedToPersistUplinkMessage                 = "Failed to persist uplink message"
+	LogBSSCIFailedToMarshalBaseStationsForDuplicateUpdate = "Failed to marshal base_stations for duplicate update"
+	LogBSSCIFailedToUpdateBaseStationsForDuplicate       = "Failed to update base_stations for duplicate"
+	LogBSSCIFailedToBroadcastUplinkToSCACI               = "Failed to broadcast uplink to SCACI"
+	LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved        = "MQTT uplink publish skipped: org unresolved"
 )

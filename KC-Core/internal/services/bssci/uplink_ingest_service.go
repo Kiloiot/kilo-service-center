@@ -115,18 +115,18 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 		payload.Subpackets,
 	)
 	if err != nil {
-		svc.logger.ErrorContext(ctx, "Uplink deduplication error",
+		svc.logger.ErrorContext(ctx, bssci.LogBSSCIUplinkDeduplicationError,
 			"ep_eui", payload.EpEUI, "packet_cnt", payload.PacketCnt, "error", err)
 		return nil, fmt.Errorf("deduplication failed: %w", err)
 	}
 
 	if isDuplicate {
-		svc.logger.DebugContext(ctx, "Duplicate uplink received",
+		svc.logger.DebugContext(ctx, bssci.LogBSSCIDuplicateUplinkReceived,
 			"ep_eui", payload.EpEUI, "packet_cnt", payload.PacketCnt,
 			"duplicate_count", record.DuplicateCount,
 			"total_base_stations", len(record.BaseStations))
 	} else {
-		svc.logger.InfoContext(ctx, "Uplink first reception",
+		svc.logger.InfoContext(ctx, bssci.LogBSSCIUplinkFirstReception,
 			"ep_eui", payload.EpEUI, "packet_cnt", payload.PacketCnt,
 			"size", len(payload.UserData), "rssi", payload.RSSI, "snr", payload.SNR)
 	}
@@ -174,18 +174,18 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 		isRoaming, ownerTenantID, err = svc.roamingSvc.DetectAndValidateRoaming(ctx, epEuiBytes, servingTenantID)
 		if err != nil {
 			if errors.Is(err, roaming.ErrEndpointNotFound) {
-				svc.logger.WarnContext(ctx, "Endpoint not found during ingest tenant resolution",
+				svc.logger.WarnContext(ctx, bssci.LogBSSCIEndpointNotFoundDuringIngestTenantResolution,
 					"ep_eui", payload.EpEUI)
 				// Disposition resolver should have prevented this; drop the packet
 				return nil, fmt.Errorf("endpoint not found during ingest: ep_eui=%d", payload.EpEUI)
 			}
 			// Any other roaming error is fail-closed: do not fall back to serving tenant
 			// as that could assign uplinks to the wrong tenant.
-			svc.logger.ErrorContext(ctx, "Roaming detection failed during ingest",
+			svc.logger.ErrorContext(ctx, bssci.LogBSSCIRoamingDetectionFailedDuringIngest,
 				"ep_eui", payload.EpEUI, "error", err)
 			return nil, fmt.Errorf("roaming detection failed: %w", err)
 		} else if isRoaming {
-			svc.logger.InfoContext(ctx, "Roaming endpoint uplink",
+			svc.logger.InfoContext(ctx, bssci.LogBSSCIRoamingEndpointUplink,
 				"ep_eui", payload.EpEUI,
 				"owner_tenant", ownerTenantID, "serving_tenant", servingTenantID)
 		}
@@ -214,7 +214,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 	if svc.orgResolver != nil {
 		ownerOrgUUID, err = svc.orgResolver.GetDefaultOrgForTenant(ownerCtx, ownerTenantID)
 		if err != nil {
-			svc.logger.WarnContext(ownerCtx, "Failed to resolve organization for uplink",
+			svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToResolveOrganizationForUplink,
 				"tenant_id", ownerTenantID, "error", err)
 		}
 	}
@@ -241,7 +241,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 			if epErr == nil && epModel != nil {
 				bp, bpErr := svc.blueprintResolver.ResolveBlueprintForEndpoint(ownerCtx, ownerTenantID, epModel, ulDataMsg.Format)
 				if bpErr != nil {
-					svc.logger.WarnContext(ownerCtx, "Blueprint resolution failed",
+					svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIBlueprintResolutionFailed,
 						"ep_eui", payload.EpEUI, "error", bpErr)
 				} else if bp != nil {
 					ulDataMsg.DecodeStatus = pkgblueprint.DecodeStatusPending
@@ -257,7 +257,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 
 					decodeResult, decodeErr := svc.blueprintDecoder.Decode(ownerCtx, bp, ulDataMsg.UserData, formatID, calibration)
 					if decodeErr != nil {
-						svc.logger.WarnContext(ownerCtx, "Blueprint decode error",
+						svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIBlueprintDecodeError,
 							"ep_eui", payload.EpEUI, "blueprint_id", bp.ID, "error", decodeErr)
 						ulDataMsg.DecodeStatus = pkgblueprint.DecodeStatusFailed
 						ulDataMsg.DecodeErrorCode = pkgblueprint.ErrInternalDecodePanic
@@ -279,7 +279,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 					}
 				}
 			} else if epErr != nil && !errors.Is(epErr, storage.ErrNotFound) {
-				svc.logger.WarnContext(ownerCtx, "Failed to fetch endpoint for blueprint decode",
+				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToFetchEndpointForBlueprintDecode,
 					"ep_eui", payload.EpEUI, "error", epErr)
 			}
 		}
@@ -299,7 +299,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 		dlRxStatuses, dlRxErr := svc.storage.DLRXStatus().GetLatestDLRXStatusByBaseStations(
 			ownerCtx, ulDataMsg.TenantID, epEuiBytesForDLRX, bsEuiBytes)
 		if dlRxErr != nil {
-			svc.logger.WarnContext(ownerCtx, "Failed to fetch DL RX status",
+			svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToFetchDLRXStatus,
 				"ep_eui", payload.EpEUI, "error", dlRxErr)
 		} else if len(dlRxStatuses) > 0 {
 			dlRxMap := make(map[uint64]*mioty.DLRXStatus, len(dlRxStatuses))
@@ -327,7 +327,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 	if svc.storage != nil && svc.storage.MIOTYMessages() != nil {
 		if !isDuplicate {
 			if err := svc.storage.MIOTYMessages().CreateULDataMessage(ownerCtx, ulDataMsg); err != nil {
-				svc.logger.ErrorContext(ownerCtx, "Failed to persist uplink message",
+				svc.logger.ErrorContext(ownerCtx, bssci.LogBSSCIFailedToPersistUplinkMessage,
 					"ep_eui", payload.EpEUI, "packet_cnt", payload.PacketCnt, "error", err)
 				return nil, fmt.Errorf("persist failed: %w", err)
 			}
@@ -335,12 +335,12 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 			rxTimeMin := time.Now().Add(-svc.deduplicator.WindowDuration()).UnixNano()
 			baseStationsJSON, marshalErr := json.Marshal(ulDataMsg.BaseStations)
 			if marshalErr != nil {
-				svc.logger.WarnContext(ownerCtx, "Failed to marshal base_stations for duplicate update",
+				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToMarshalBaseStationsForDuplicateUpdate,
 					"ep_eui", payload.EpEUI, "error", marshalErr)
 			} else if updateErr := svc.storage.MIOTYMessages().UpdateULDataBaseStations(
 				ownerCtx, ulDataMsg.TenantID, ulDataMsg.EpEui, uint32(ulDataMsg.PacketCnt),
 				rxTimeMin, baseStationsJSON); updateErr != nil {
-				svc.logger.WarnContext(ownerCtx, "Failed to update base_stations for duplicate",
+				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToUpdateBaseStationsForDuplicate,
 					"ep_eui", payload.EpEUI, "error", updateErr)
 			}
 		}
@@ -349,7 +349,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 	// Step 8: SCACI fan-out
 	if svc.broadcaster != nil {
 		if broadcastErr := svc.broadcaster.BroadcastULData(ownerCtx, ownerTenantID, ulDataMsg); broadcastErr != nil {
-			svc.logger.ErrorContext(ownerCtx, "Failed to broadcast uplink to SCACI",
+			svc.logger.ErrorContext(ownerCtx, bssci.LogBSSCIFailedToBroadcastUplinkToSCACI,
 				"ep_eui", payload.EpEUI, "error", broadcastErr)
 		}
 	}
@@ -365,12 +365,12 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 				payload.RxTime, payload.PacketCnt,
 				payload.UserData,
 			); pubErr != nil {
-				svc.logger.WarnContext(ownerCtx, "Failed to publish uplink to MQTT",
+				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToPublishUplinkToMQTT,
 					"ep_eui", payload.EpEUI, "error", pubErr)
 			}
 		}()
 	} else if svc.mqttPublisher != nil {
-		svc.logger.WarnContext(ownerCtx, "MQTT uplink publish skipped: org unresolved",
+		svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved,
 			"ep_eui", payload.EpEUI)
 	}
 
