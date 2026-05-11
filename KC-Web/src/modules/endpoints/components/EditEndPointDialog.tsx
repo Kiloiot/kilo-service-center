@@ -90,6 +90,109 @@ function buildEditEndpointFormData(endpoint: EndpointUI): EditEndpointFormData {
   };
 }
 
+/** Apply epEui (cascade rename via newEpEui) + name diffs. */
+function applyEndpointIdentityChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.epEui !== original.epEui && form.epEui !== "") {
+    changes.newEpEui = form.epEui;
+  }
+  if (form.name !== original.name) changes.name = form.name;
+}
+
+/** Apply shortAddr (hex) + carrierOffset diffs. */
+function applyEndpointAddressChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.shortAddr !== original.shortAddr && form.shortAddr !== "") {
+    changes.shAddr = parseInt(form.shortAddr, 16);
+  }
+  if (form.carrierOffset !== original.carrierOffset) {
+    changes.carrierOffset =
+      form.carrierOffset !== ""
+        ? parseInt(form.carrierOffset, 10)
+        : undefined;
+  }
+}
+
+/** Apply networkKey (nwkSnKey) + applicationKey (appKey) diffs. */
+function applyEndpointSecurityChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.networkKey !== original.networkKey && form.networkKey !== "") {
+    changes.nwkSnKey = form.networkKey;
+  }
+  if (form.applicationKey !== original.applicationKey) {
+    changes.appKey = form.applicationKey || undefined;
+  }
+}
+
+/** Apply MIOTY radio-option diffs (bidi/preAttach/dualChan/repetition/wide/long). */
+function applyEndpointMiotyOptionChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.bidirectional !== original.bidirectional) {
+    changes.bidi = form.bidirectional;
+  }
+  if (form.preAttach !== original.preAttach) {
+    changes.preAttach = form.preAttach;
+  }
+  if (form.dualChan !== original.dualChan) {
+    changes.dualChan = form.dualChan;
+  }
+  if (form.repetition !== original.repetition) {
+    changes.repetition = form.repetition;
+  }
+  if (form.wideCarrOff !== original.wideCarrOff) {
+    changes.wideCarrOff = form.wideCarrOff;
+  }
+  if (form.longBlkDist !== original.longBlkDist) {
+    changes.longBlkDist = form.longBlkDist;
+  }
+}
+
+/** Apply lastPacketCnt + attachCnt counter diffs. */
+function applyEndpointCounterChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (
+    form.lastPacketCnt !== original.lastPacketCnt &&
+    form.lastPacketCnt !== ""
+  ) {
+    changes.lastPacketCnt = parseInt(form.lastPacketCnt, 10);
+  }
+  if (form.attachCnt !== original.attachCnt && form.attachCnt !== "") {
+    changes.attachCnt = parseInt(form.attachCnt, 10);
+  }
+}
+
+/**
+ * Apply typeEui + deviceModelId blueprint diffs. Empty strings on these
+ * fields are surfaced as explicit `null` so the backend clears the column.
+ */
+function applyEndpointBlueprintChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.typeEui !== original.typeEui) {
+    changes.typeEui = form.typeEui || null;
+  }
+  if (form.deviceModelId !== original.deviceModelId) {
+    changes.deviceModelId = form.deviceModelId || null;
+  }
+}
+
 /**
  * Computes the diff between form data and the original snapshot, returning
  * an UpdateEndpointRequest with only the changed fields. EUI renames are
@@ -101,67 +204,12 @@ function buildChangedEndpointRequest(
   originalData: EditEndpointFormData,
 ): UpdateEndpointRequest {
   const changes: UpdateEndpointRequest = {};
-  if (formData.epEui !== originalData.epEui && formData.epEui !== "") {
-    changes.newEpEui = formData.epEui;
-  }
-  if (formData.name !== originalData.name) changes.name = formData.name;
-  if (
-    formData.shortAddr !== originalData.shortAddr &&
-    formData.shortAddr !== ""
-  ) {
-    changes.shAddr = parseInt(formData.shortAddr, 16);
-  }
-  if (formData.bidirectional !== originalData.bidirectional) {
-    changes.bidi = formData.bidirectional;
-  }
-  if (formData.preAttach !== originalData.preAttach) {
-    changes.preAttach = formData.preAttach;
-  }
-  if (formData.carrierOffset !== originalData.carrierOffset) {
-    changes.carrierOffset =
-      formData.carrierOffset !== ""
-        ? parseInt(formData.carrierOffset, 10)
-        : undefined;
-  }
-  if (
-    formData.networkKey !== originalData.networkKey &&
-    formData.networkKey !== ""
-  ) {
-    changes.nwkSnKey = formData.networkKey;
-  }
-  if (formData.applicationKey !== originalData.applicationKey) {
-    changes.appKey = formData.applicationKey || undefined;
-  }
-  if (formData.dualChan !== originalData.dualChan) {
-    changes.dualChan = formData.dualChan;
-  }
-  if (formData.repetition !== originalData.repetition) {
-    changes.repetition = formData.repetition;
-  }
-  if (formData.wideCarrOff !== originalData.wideCarrOff) {
-    changes.wideCarrOff = formData.wideCarrOff;
-  }
-  if (formData.longBlkDist !== originalData.longBlkDist) {
-    changes.longBlkDist = formData.longBlkDist;
-  }
-  if (
-    formData.lastPacketCnt !== originalData.lastPacketCnt &&
-    formData.lastPacketCnt !== ""
-  ) {
-    changes.lastPacketCnt = parseInt(formData.lastPacketCnt, 10);
-  }
-  if (
-    formData.attachCnt !== originalData.attachCnt &&
-    formData.attachCnt !== ""
-  ) {
-    changes.attachCnt = parseInt(formData.attachCnt, 10);
-  }
-  if (formData.typeEui !== originalData.typeEui) {
-    changes.typeEui = formData.typeEui || null;
-  }
-  if (formData.deviceModelId !== originalData.deviceModelId) {
-    changes.deviceModelId = formData.deviceModelId || null;
-  }
+  applyEndpointIdentityChanges(changes, formData, originalData);
+  applyEndpointAddressChanges(changes, formData, originalData);
+  applyEndpointSecurityChanges(changes, formData, originalData);
+  applyEndpointMiotyOptionChanges(changes, formData, originalData);
+  applyEndpointCounterChanges(changes, formData, originalData);
+  applyEndpointBlueprintChanges(changes, formData, originalData);
   return changes;
 }
 
@@ -187,46 +235,76 @@ function hasEndpointProfileChanges(
   );
 }
 
+/** Validate epEui format + required name. */
+function validateEditEndpointIdentity(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  const euiErr = validateEui(form.epEui);
+  if (euiErr) errors.epEui = euiErr;
+  if (!form.name) errors.name = ENDPOINT_FORM.ERROR_NAME_REQUIRED;
+}
+
+/** Validate hex format of network/application keys when provided. */
+function validateEditEndpointSecurity(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  if (form.networkKey) {
+    const nwkKeyErr = validateHexKey(form.networkKey, true);
+    if (nwkKeyErr) errors.networkKey = nwkKeyErr;
+  }
+  if (form.applicationKey) {
+    const appKeyErr = validateHexKey(form.applicationKey, false);
+    if (appKeyErr) errors.applicationKey = appKeyErr;
+  }
+}
+
+/** Validate lastPacketCnt + attachCnt uint32 range when provided. */
+function validateEditEndpointCounters(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  if (form.lastPacketCnt !== "") {
+    const pktErr = validateUint32Counter(form.lastPacketCnt, "lastPacketCnt");
+    if (pktErr) errors.lastPacketCnt = pktErr;
+  }
+  if (form.attachCnt !== "") {
+    const attErr = validateUint32Counter(form.attachCnt, "attachCnt");
+    if (attErr) errors.attachCnt = attErr;
+  }
+}
+
+/** Validate shortAddr (MIOTY 4-hex-char short address) when provided. */
+function validateEditEndpointMiotyConfig(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  if (form.shortAddr !== "") {
+    const shAddrErr = validateShortAddr(form.shortAddr);
+    if (shAddrErr) errors.shortAddr = shAddrErr;
+  }
+}
+
+/** Validate typeEui blueprint identifier format when provided. */
+function validateEditEndpointBlueprint(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  const typeEuiErr = validateTypeEui(form.typeEui);
+  if (typeEuiErr) errors.typeEui = typeEuiErr;
+}
+
 /** Validates the Edit dialog form. Returns sparse errors map keyed by field. */
 function validateEditEndpointForm(
   formData: EditEndpointFormData,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
-
-  const euiErr = validateEui(formData.epEui);
-  if (euiErr) errors.epEui = euiErr;
-
-  if (!formData.name) errors.name = ENDPOINT_FORM.ERROR_NAME_REQUIRED;
-
-  if (formData.shortAddr !== "") {
-    const shAddrErr = validateShortAddr(formData.shortAddr);
-    if (shAddrErr) errors.shortAddr = shAddrErr;
-  }
-
-  if (formData.networkKey) {
-    const nwkKeyErr = validateHexKey(formData.networkKey, true);
-    if (nwkKeyErr) errors.networkKey = nwkKeyErr;
-  }
-  if (formData.applicationKey) {
-    const appKeyErr = validateHexKey(formData.applicationKey, false);
-    if (appKeyErr) errors.applicationKey = appKeyErr;
-  }
-
-  if (formData.lastPacketCnt !== "") {
-    const pktErr = validateUint32Counter(
-      formData.lastPacketCnt,
-      "lastPacketCnt",
-    );
-    if (pktErr) errors.lastPacketCnt = pktErr;
-  }
-  if (formData.attachCnt !== "") {
-    const attErr = validateUint32Counter(formData.attachCnt, "attachCnt");
-    if (attErr) errors.attachCnt = attErr;
-  }
-
-  const typeEuiErr = validateTypeEui(formData.typeEui);
-  if (typeEuiErr) errors.typeEui = typeEuiErr;
-
+  validateEditEndpointIdentity(formData, errors);
+  validateEditEndpointSecurity(formData, errors);
+  validateEditEndpointCounters(formData, errors);
+  validateEditEndpointMiotyConfig(formData, errors);
+  validateEditEndpointBlueprint(formData, errors);
   return errors;
 }
 
