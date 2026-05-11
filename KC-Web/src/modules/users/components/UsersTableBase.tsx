@@ -104,6 +104,106 @@ function getUnifiedStatus(user: SystemUserUI | OrganizationUserUI): string {
   return user.isActive ? ORG_MEMBER_STATUS.ACTIVE : ORG_MEMBER_STATUS.REMOVED;
 }
 
+interface UsersTableRowProps {
+  user: SystemUserUI | OrganizationUserUI;
+  onEdit?: (user: SystemUserUI | OrganizationUserUI) => void;
+  onRemove?: (user: SystemUserUI | OrganizationUserUI) => void;
+}
+
+const UsersTableRow: React.FC<UsersTableRowProps> = ({
+  user,
+  onEdit,
+  onRemove,
+}) => {
+  const org = isOrgUser(user);
+  const role = getUnifiedRole(user);
+  const status = getUnifiedStatus(user);
+
+  const effectiveOrgAdmin = org
+    ? user.isOrgAdmin
+    : user.isAdmin || user.isTenantManager;
+  const effectiveBs = org
+    ? user.isOrgAdmin || user.isBaseStationAdmin
+    : user.isAdmin || user.isBaseStationManager;
+  const effectiveEp = org
+    ? user.isOrgAdmin || user.isEndpointAdmin
+    : user.isAdmin || user.isEndpointManager;
+
+  return (
+    <TableRow hover>
+      <TableCell>
+        <Typography variant="body2" fontWeight="medium">
+          {user.email}
+        </Typography>
+      </TableCell>
+
+      <TableCell>
+        <Chip
+          label={getRoleLabel(role)}
+          size="small"
+          color={role === ORG_ROLE.OWNER ? "primary" : "default"}
+        />
+      </TableCell>
+
+      <TableCell>
+        <Chip
+          label={getStatusLabel(status)}
+          color={getStatusColor(status)}
+          size="small"
+        />
+      </TableCell>
+
+      <TableCell>
+        {effectiveOrgAdmin ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
+      </TableCell>
+      <TableCell>
+        {effectiveBs ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
+      </TableCell>
+      <TableCell>
+        {effectiveEp ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
+      </TableCell>
+
+      <TableCell>
+        <Typography variant="body2" color="text.secondary">
+          {formatRelativeDuration(user.createdAt)}
+        </Typography>
+      </TableCell>
+
+      {(onEdit || onRemove) && (
+        <TableCell>
+          {onEdit && (
+            <Tooltip title={ORG_USERS_PAGE.TOOLTIP_EDIT}>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(user);
+                }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {onRemove && (
+            <Tooltip title={ORG_USERS_PAGE.TOOLTIP_REMOVE}>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(user);
+                }}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </TableCell>
+      )}
+    </TableRow>
+  );
+};
+
 const UsersTableBase: React.FC<UsersTableBaseProps> = ({
   users,
   orderBy,
@@ -178,97 +278,14 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
           </TableRow>
         </TableHead>
         <TableBody>
-          {users.map((user) => {
-            const id = getUserId(user);
-            const org = isOrgUser(user);
-
-            const role = getUnifiedRole(user);
-            const status = getUnifiedStatus(user);
-
-            const effectiveOrgAdmin = org
-              ? user.isOrgAdmin
-              : user.isAdmin || user.isTenantManager;
-            const effectiveBs = org
-              ? user.isOrgAdmin || user.isBaseStationAdmin
-              : user.isAdmin || user.isBaseStationManager;
-            const effectiveEp = org
-              ? user.isOrgAdmin || user.isEndpointAdmin
-              : user.isAdmin || user.isEndpointManager;
-
-            return (
-              <TableRow key={id} hover>
-                <TableCell>
-                  <Typography variant="body2" fontWeight="medium">
-                    {user.email}
-                  </Typography>
-                </TableCell>
-
-                <TableCell>
-                  <Chip
-                    label={getRoleLabel(role)}
-                    size="small"
-                    color={role === ORG_ROLE.OWNER ? "primary" : "default"}
-                  />
-                </TableCell>
-
-                <TableCell>
-                  <Chip
-                    label={getStatusLabel(status)}
-                    color={getStatusColor(status)}
-                    size="small"
-                  />
-                </TableCell>
-
-                <TableCell>
-                  {effectiveOrgAdmin ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
-                </TableCell>
-                <TableCell>
-                  {effectiveBs ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
-                </TableCell>
-                <TableCell>
-                  {effectiveEp ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
-                </TableCell>
-
-                <TableCell>
-                  <Typography variant="body2" color="text.secondary">
-                    {formatRelativeDuration(user.createdAt)}
-                  </Typography>
-                </TableCell>
-
-                {(onEdit || onRemove) && (
-                  <TableCell>
-                    {onEdit && (
-                      <Tooltip title={ORG_USERS_PAGE.TOOLTIP_EDIT}>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEdit(user);
-                          }}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                    {onRemove && (
-                      <Tooltip title={ORG_USERS_PAGE.TOOLTIP_REMOVE}>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemove(user);
-                          }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                  </TableCell>
-                )}
-              </TableRow>
-            );
-          })}
+          {users.map((user) => (
+            <UsersTableRow
+              key={getUserId(user)}
+              user={user}
+              onEdit={onEdit}
+              onRemove={onRemove}
+            />
+          ))}
         </TableBody>
       </Table>
     </TableContainer>
