@@ -5,7 +5,7 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/Kiloiot/kilo-service-center?filename=KC-Core%2Fgo.mod&style=flat-square&logo=go&logoColor=white&label=go)](KC-Core/go.mod)
 [![React](https://img.shields.io/github/package-json/dependency-version/Kiloiot/kilo-service-center/react?filename=KC-Web%2Fpackage.json&style=flat-square&logo=react&logoColor=white&label=react)](KC-Web/package.json)
 [![Docs](https://img.shields.io/badge/docs-kiloiot.io-blue?style=flat-square&logo=gitbook&logoColor=white)](https://docs.kiloiot.io/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Kiloiot/kilo-service-center/KC-Core?style=flat-square)](https://goreportcard.com/report/github.com/Kiloiot/kilo-service-center/KC-Core)
+[![CodeFactor](https://img.shields.io/codefactor/grade/github/Kiloiot/kilo-service-center?style=flat-square&logo=codefactor&logoColor=white&label=code%20quality)](https://www.codefactor.io/repository/github/Kiloiot/kilo-service-center)
 
 KiloCenter is an open source MIOTY network server for running your own MIOTY network — managing base stations, endpoints, uplink and downlink traffic, and application integrations from a self-hosted service center.
 
