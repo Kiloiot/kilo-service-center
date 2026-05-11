@@ -13,13 +13,14 @@ import type { BaseStationFilters } from '@config/query-keys';
 import { queryKeys } from '@config/query-keys';
 
 /**
- * Fetch all base stations with optional filters
- * Filters are passed to API even if backend ignores them (TypeScript aligned)
+ * Fetch all base stations. The optional `filters` arg is kept for callers
+ * that already build a filters object — it currently scopes the React Query
+ * cache key only; the gRPC list call is unfiltered server-side.
  */
 export function useBaseStations(filters?: BaseStationFilters) {
   return useQuery({
     queryKey: queryKeys.baseStations.list(filters),
-    queryFn: () => apiService.getBaseStations(filters),
+    queryFn: () => apiService.getBaseStations(),
   });
 }
 

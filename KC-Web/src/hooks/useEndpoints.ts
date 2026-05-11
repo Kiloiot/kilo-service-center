@@ -18,13 +18,14 @@ import type { EndpointFilters } from '@config/query-keys';
 import { queryKeys } from '@config/query-keys';
 
 /**
- * Fetch all endpoints with optional filters
- * Filters are passed to API even if backend ignores them (TypeScript aligned)
+ * Fetch all endpoints. The optional `filters` arg is kept for callers
+ * that already build a filters object — it currently scopes the React Query
+ * cache key only; the gRPC list call is unfiltered server-side.
  */
 export function useEndpoints(filters?: EndpointFilters) {
   return useQuery({
     queryKey: queryKeys.endpoints.list(filters),
-    queryFn: () => apiService.getEndpoints(filters),
+    queryFn: () => apiService.getEndpoints(),
   });
 }
 

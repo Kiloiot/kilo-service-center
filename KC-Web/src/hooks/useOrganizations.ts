@@ -30,7 +30,7 @@ export function useOrganizations(
 ) {
   return useQuery({
     queryKey: queryKeys.organizations.list({ limit, offset, tenantId }),
-    queryFn: () => apiService.getOrganizations(limit, offset, tenantId),
+    queryFn: () => apiService.getOrganizations(limit),
     enabled: options?.enabled ?? true,
   });
 }

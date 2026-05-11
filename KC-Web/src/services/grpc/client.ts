@@ -286,29 +286,48 @@ interface CreateEndpointInput {
   deviceModelId?: string;
 }
 
-// Builds a fully-populated EndPoint message from a CreateEndpointInput.
-// Predicates are intentionally a mix of truthy ("if (data.name)") for
-// string fields and `!== undefined` for primitive booleans/numbers — these
-// match the prior inline logic and the proto's semantics for empty strings.
-function buildEndpointMessage(data: CreateEndpointInput): pb.EndPoint {
-  const endpoint = new pb.EndPoint();
-  endpoint.setEpeui(data.epEui);
+// String fields with truthy check (empty string skipped, no conversion).
+function applyEndpointCreateStringFields(endpoint: pb.EndPoint, data: CreateEndpointInput): void {
   if (data.name) endpoint.setName(data.name);
   if (data.description) endpoint.setDescription(data.description);
   if (data.epClass) endpoint.setEpClass(data.epClass);
+  if (data.deviceModelId) endpoint.setDeviceModelId(data.deviceModelId);
+}
+
+// Hex-string fields with truthy check + hex→bytes conversion.
+function applyEndpointCreateHexFields(endpoint: pb.EndPoint, data: CreateEndpointInput): void {
   if (data.nwkSnKey) endpoint.setNwkSnKey(hexToBytes(data.nwkSnKey));
   if (data.appSnKey) endpoint.setAppKey(hexToBytes(data.appSnKey));
+  if (data.typeEui) endpoint.setTypeEui(hexToBytes(data.typeEui));
+}
+
+// Numeric fields with `!== undefined` check (preserves zero values).
+function applyEndpointCreateNumericFields(endpoint: pb.EndPoint, data: CreateEndpointInput): void {
   if (data.shAddr !== undefined) endpoint.setShAddr(data.shAddr);
+  if (data.attachCnt !== undefined) endpoint.setAttachCnt(data.attachCnt);
+  if (data.lastPacketCnt !== undefined) endpoint.setLastPacketCnt(data.lastPacketCnt);
+  if (data.carrierOffset !== undefined) endpoint.setCarrierOffset(data.carrierOffset);
+}
+
+// Boolean fields with `!== undefined` check (preserves explicit false values).
+function applyEndpointCreateBooleanFields(endpoint: pb.EndPoint, data: CreateEndpointInput): void {
+  if (data.preAttach !== undefined) endpoint.setPreAttach(data.preAttach);
   if (data.dualChan !== undefined) endpoint.setDualChan(data.dualChan);
   if (data.repetition !== undefined) endpoint.setRepetition(data.repetition);
   if (data.wideCarrOff !== undefined) endpoint.setWideCarrOff(data.wideCarrOff);
   if (data.longBlkDist !== undefined) endpoint.setLongBlkDist(data.longBlkDist);
-  if (data.attachCnt !== undefined) endpoint.setAttachCnt(data.attachCnt);
-  if (data.preAttach !== undefined) endpoint.setPreAttach(data.preAttach);
-  if (data.lastPacketCnt !== undefined) endpoint.setLastPacketCnt(data.lastPacketCnt);
-  if (data.typeEui) endpoint.setTypeEui(hexToBytes(data.typeEui));
-  if (data.carrierOffset !== undefined) endpoint.setCarrierOffset(data.carrierOffset);
-  if (data.deviceModelId) endpoint.setDeviceModelId(data.deviceModelId);
+}
+
+// Builds a fully-populated EndPoint message from a CreateEndpointInput.
+// Field predicates differ by type: strings use truthy checks (empty skipped),
+// numerics/booleans use `!== undefined` (preserves zero / false).
+function buildEndpointMessage(data: CreateEndpointInput): pb.EndPoint {
+  const endpoint = new pb.EndPoint();
+  endpoint.setEpeui(data.epEui);
+  applyEndpointCreateStringFields(endpoint, data);
+  applyEndpointCreateHexFields(endpoint, data);
+  applyEndpointCreateNumericFields(endpoint, data);
+  applyEndpointCreateBooleanFields(endpoint, data);
   return endpoint;
 }
 
@@ -344,17 +363,12 @@ interface EndpointUpdateDraft {
   paths: string[];
 }
 
-// Builds an EndPoint message + field-mask paths for an update RPC.
-// All predicates are `!== undefined` so partial updates don't reset
-// unspecified booleans/numbers. typeEui: null = explicit clear (skip
-// setTypeEui but still push the mask path so the server sees the field as
-// touched and empty). deviceModelId: null = explicit clear by sending the
-// empty string. Both clearing rules push the mask path.
-function buildEndpointUpdate(epEui: string, data: UpdateEndpointInput): EndpointUpdateDraft {
-  const endpoint = new pb.EndPoint();
-  endpoint.setEpeui(epEui);
-  const paths: string[] = [];
-
+// String fields: set + push path on `!== undefined` (preserves empty string writes).
+function applyEndpointUpdateStringFields(
+  endpoint: pb.EndPoint,
+  paths: string[],
+  data: UpdateEndpointInput
+): void {
   if (data.name !== undefined) {
     endpoint.setName(data.name);
     paths.push(ENDPOINT_UPDATE_MASK_PATHS.NAME);
@@ -371,10 +385,14 @@ function buildEndpointUpdate(epEui: string, data: UpdateEndpointInput): Endpoint
     endpoint.setStatus(data.status);
     paths.push(ENDPOINT_UPDATE_MASK_PATHS.STATUS);
   }
-  if (data.shAddr !== undefined) {
-    endpoint.setShAddr(data.shAddr);
-    paths.push(ENDPOINT_UPDATE_MASK_PATHS.SH_ADDR);
-  }
+}
+
+// Hex-string fields: set + push path on `!== undefined` with hex→bytes conversion.
+function applyEndpointUpdateHexFields(
+  endpoint: pb.EndPoint,
+  paths: string[],
+  data: UpdateEndpointInput
+): void {
   if (data.nwkSnKey !== undefined) {
     endpoint.setNwkSnKey(hexToBytes(data.nwkSnKey));
     paths.push(ENDPOINT_UPDATE_MASK_PATHS.NWK_SN_KEY);
@@ -382,6 +400,18 @@ function buildEndpointUpdate(epEui: string, data: UpdateEndpointInput): Endpoint
   if (data.appKey !== undefined) {
     endpoint.setAppKey(hexToBytes(data.appKey));
     paths.push(ENDPOINT_UPDATE_MASK_PATHS.APP_KEY);
+  }
+}
+
+// Numeric fields: set + push path on `!== undefined`.
+function applyEndpointUpdateNumericFields(
+  endpoint: pb.EndPoint,
+  paths: string[],
+  data: UpdateEndpointInput
+): void {
+  if (data.shAddr !== undefined) {
+    endpoint.setShAddr(data.shAddr);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.SH_ADDR);
   }
   if (data.attachCnt !== undefined) {
     endpoint.setAttachCnt(data.attachCnt);
@@ -395,6 +425,14 @@ function buildEndpointUpdate(epEui: string, data: UpdateEndpointInput): Endpoint
     endpoint.setCarrierOffset(data.carrierOffset);
     paths.push(ENDPOINT_UPDATE_MASK_PATHS.CARRIER_OFFSET);
   }
+}
+
+// Boolean fields: set + push path on `!== undefined` (preserves explicit false).
+function applyEndpointUpdateBooleanFields(
+  endpoint: pb.EndPoint,
+  paths: string[],
+  data: UpdateEndpointInput
+): void {
   if (data.preAttach !== undefined) {
     endpoint.setPreAttach(data.preAttach);
     paths.push(ENDPOINT_UPDATE_MASK_PATHS.PRE_ATTACH);
@@ -415,6 +453,15 @@ function buildEndpointUpdate(epEui: string, data: UpdateEndpointInput): Endpoint
     endpoint.setLongBlkDist(data.longBlkDist);
     paths.push(ENDPOINT_UPDATE_MASK_PATHS.LONG_BLK_DIST);
   }
+}
+
+// Clearable fields: typeEui (skip-set on null, still push path) and
+// deviceModelId (setDeviceModelId('') on null + push path).
+function applyEndpointUpdateClearableFields(
+  endpoint: pb.EndPoint,
+  paths: string[],
+  data: UpdateEndpointInput
+): void {
   if (data.typeEui !== undefined) {
     if (data.typeEui) {
       endpoint.setTypeEui(hexToBytes(data.typeEui));
@@ -425,7 +472,21 @@ function buildEndpointUpdate(epEui: string, data: UpdateEndpointInput): Endpoint
     endpoint.setDeviceModelId(data.deviceModelId ?? '');
     paths.push(ENDPOINT_UPDATE_MASK_PATHS.DEVICE_MODEL_ID);
   }
+}
 
+// Builds an EndPoint message + field-mask paths for an update RPC.
+// All predicates are `!== undefined` so partial updates don't reset
+// unspecified booleans/numbers. Clearable fields (typeEui, deviceModelId)
+// have special null semantics — see applyEndpointUpdateClearableFields.
+function buildEndpointUpdate(epEui: string, data: UpdateEndpointInput): EndpointUpdateDraft {
+  const endpoint = new pb.EndPoint();
+  endpoint.setEpeui(epEui);
+  const paths: string[] = [];
+  applyEndpointUpdateStringFields(endpoint, paths, data);
+  applyEndpointUpdateHexFields(endpoint, paths, data);
+  applyEndpointUpdateNumericFields(endpoint, paths, data);
+  applyEndpointUpdateBooleanFields(endpoint, paths, data);
+  applyEndpointUpdateClearableFields(endpoint, paths, data);
   return { endpoint, paths };
 }
 

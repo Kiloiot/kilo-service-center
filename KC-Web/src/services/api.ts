@@ -222,11 +222,7 @@ class ApiService {
   // BASE STATIONS
   // ============================================================================
 
-  async getBaseStations(_filters?: {
-    search?: string;
-    status?: string[];
-    sort?: { field: string; direction: 'asc' | 'desc' };
-  }): Promise<BaseStationUI[]> {
+  async getBaseStations(): Promise<BaseStationUI[]> {
     const response = await grpcClient.listBaseStations();
 
     // Map gRPC response to API format expected by mappers
@@ -721,12 +717,7 @@ class ApiService {
   // ENDPOINTS
   // ============================================================================
 
-  async getEndpoints(_filters?: {
-    search?: string;
-    attachState?: string[];
-    bidirectional?: boolean;
-    sort?: { field: string; direction: 'asc' | 'desc' };
-  }): Promise<EndpointUI[]> {
+  async getEndpoints(): Promise<EndpointUI[]> {
     const response = await grpcClient.listEndpoints();
     return response.map(mapGrpcEndpointToUI);
   }
@@ -1326,8 +1317,7 @@ class ApiService {
   // ============================================================================
 
   async getUsers(
-    limit = 50,
-    _offset = 0
+    limit = 50
   ): Promise<{ users: import('@api-types/api').SystemUserUI[]; total: number }> {
     const response = await grpcClient.listUsers({ pageSize: limit });
     return {
@@ -1435,9 +1425,7 @@ class ApiService {
   // ============================================================================
 
   async getOrganizations(
-    limit = 50,
-    _offset = 0,
-    _tenantId?: number
+    limit = 50
   ): Promise<{ organizations: import('@api-types/api').OrganizationUI[]; total: number }> {
     const response = await grpcClient.listOrganizations({ pageSize: limit });
     return {
