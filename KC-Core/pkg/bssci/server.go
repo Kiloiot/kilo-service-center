@@ -2040,7 +2040,7 @@ func (s *Server) SendPing(sessionID string) error {
 
 	// Success - persist counter to DB for session resume
 	if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-		s.logger.Error(LogBSSCIFailedToUpdateDatabaseSession,
+		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
 			"error", err,
 			"sessionID", sessionID,
 			"opId", opId)
@@ -2282,7 +2282,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 	}
 	err := s.statusSvc.RecordPendingOperation(ctx, session, int64(msg.OpId), pendingOp, session.DbSessionID)
 	if err != nil {
-		s.logger.Error("Failed to record pending attach operation", "opId", msg.OpId, "error", err)
+		s.logger.ErrorContext(ctx, "Failed to record pending attach operation", "opId", msg.OpId, "error", err)
 		return s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errOperationFailed))
 	}
 
@@ -3346,7 +3346,7 @@ func (s *Server) handleAttachComplete(_ *Server, session *Session, msg *Message,
 				}
 			}
 			if err := s.scaciEPStatusBroadcaster.BroadcastEPStatus(ctx, tid, epStatusData); err != nil {
-				s.logger.Warn(LogBSSCIEPStatusForwardFailed, "epEui", pkgmioty.FormatEUI64(eui), "error", err)
+				s.logger.WarnContext(ctx, LogBSSCIEPStatusForwardFailed, "epEui", pkgmioty.FormatEUI64(eui), "error", err)
 			}
 		}(ownerCtx, epEUI, tenantID)
 	}
@@ -3607,7 +3607,7 @@ func (s *Server) handleDetachComplete(_ *Server, session *Session, msg *Message,
 				}
 			}
 			if err := s.scaciEPStatusBroadcaster.BroadcastEPStatus(ctx, tid, epStatusData); err != nil {
-				s.logger.Warn(LogBSSCIEPStatusForwardFailed, "epEui", pkgmioty.FormatEUI64(eui), "error", err)
+				s.logger.WarnContext(ctx, LogBSSCIEPStatusForwardFailed, "epEui", pkgmioty.FormatEUI64(eui), "error", err)
 			}
 		}(ownerCtx, epEUI, tenantID)
 	}
@@ -5023,59 +5023,9 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 	s.logger.InfoContext(s.safeCtx(), LogBSSCIDebugFullAttachPropagateMessage,
 		"message", message)
 
-	// Convert endpointEUI to bytes for database storage
-	euiBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(euiBytes, endpointEUI)
-
-	// Resolve endpoint owner tenant BEFORE creating metadata (BSSCI §5.8.3 multi-tenant roaming)
-	// This ensures metadata contains correct tenant/org for resume scenarios
-	var endpointTenantID int64
-	var ownerOrgUUID uuid.UUID
-	var ownerCtx context.Context
-
-	if s.endpointRepo != nil {
-		// Try session tenant first (happy path)
-		tenantID := resolvedTenant(session, s.tenantID)
-		endpoint, err := s.endpointRepo.GetByEUI(ctx, tenantID, euiBytes)
-
-		// Fallback: endpoint roamed from different tenant
-		if err == storage.ErrNotFound {
-			var eui models.EUI
-			binary.BigEndian.PutUint64(eui[:], endpointEUI)
-			endpoint, err = s.endpointRepo.Get(ctx, eui)
-		}
-
-		if err == nil && endpoint != nil {
-			// Use endpoint's tenant (not session tenant) for all operations
-			endpointTenantID = endpoint.TenantID
-
-			// Resolve organization for owner tenant
-			if s.orgResolver != nil {
-				ownerOrgUUID, err = s.orgResolver.GetDefaultOrgForTenant(ctx, endpointTenantID)
-				if err != nil {
-					s.logger.Warn(LogBSSCIOrgLookupFailed, "tenantID", endpointTenantID, "error", err)
-					// Continue without org - ownerOrgUUID remains Nil
-				}
-			}
-
-			// Build owner-scoped context for all downstream operations
-			// Use Background() to avoid session context pollution
-			ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
-			if ownerOrgUUID != uuid.Nil {
-				ownerCtx = pkgcontext.WithOrganizationID(ownerCtx, ownerOrgUUID)
-			}
-		} else {
-			// Endpoint not found - use session tenant as fallback
-			endpointTenantID = tenantID
-			// Use Background() to avoid session context pollution
-			ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
-		}
-	} else {
-		// No repository - use session tenant
-		endpointTenantID = resolvedTenant(session, s.tenantID)
-		// Use Background() to avoid session context pollution
-		ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
-	}
+	// Resolve owner tenant + ctx before metadata (BSSCI §5.8.3 multi-tenant roaming).
+	// Returns euiBytes for downstream persistence + repository updates.
+	euiBytes, endpointTenantID, ownerOrgUUID, ownerCtx := s.resolveEndpointOwnerContext(ctx, session, endpointEUI)
 
 	// Create metadata with owner tenant/org info (BSSCI §5.8.3)
 	metadata := map[string]interface{}{
@@ -5301,7 +5251,7 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 	// Success - persist counter to DB for session resume
 	if s.sessionSvc != nil {
 		if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-			s.logger.Error(LogBSSCIFailedToUpdateDatabaseSession,
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
 				"error", err,
 				"sessionID", session.ID,
 				"opId", opId)
@@ -5514,166 +5464,10 @@ func (s *Server) handleAttachPropagateResponse(srv *Server, session *Session, ms
 	// Result codes: 0 = success, non-zero = error
 	if result != 0 {
 		// Attach propagate failed - DO NOT send completion or update endpoint
-		s.logger.ErrorContext(s.safeCtx(), LogBSSCIAttachPropagateRejectedByBaseStation,
-			"baseStation", session.BaseStationEUI,
-			"opId", msg.OpId,
-			"result", result)
-
-		// Mark the pending operation as failed and persist to database
-		if session.DbSessionID > 0 {
-			// Get existing metadata or create new
-			// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation access
-			var pendingOp *PendingOperation
-			if s.statusSvc != nil {
-				pendingOp, _ = s.statusSvc.GetPendingOperation(session, int64(msg.OpId))
-			}
-
-			metadata := make(map[string]interface{})
-			if pendingOp != nil && pendingOp.Metadata != nil {
-				// Copy existing metadata
-				for k, v := range pendingOp.Metadata {
-					metadata[k] = v
-				}
-			}
-
-			// Add failure information
-			metadata["failed"] = true
-			metadata["failureReason"] = fmt.Sprintf("Base station rejected with code %d", result)
-			metadata["failedAt"] = time.Now().UnixNano()
-			metadata["failureCode"] = result
-
-			// Persist to database
-			if err := s.updatePendingOperationMetadata(session, msg.OpId, metadata); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistFailureMetadata,
-					"error", err,
-					"opId", msg.OpId)
-			}
-
-			// Create system event for failure visibility in UI
-			if s.eventStore != nil {
-				// Extract owner tenant/org from metadata for roaming support
-				ownerTenantID := resolvedTenant(session, s.tenantID)
-				switch v := metadata["tenantId"].(type) {
-				case int64:
-					ownerTenantID = v
-				case float64:
-					ownerTenantID = int64(v)
-				default:
-					s.logger.Warn(LogBSSCIMissingTenantInMetadata, "opId", msg.OpId)
-				}
-
-				var ownerOrg uuid.UUID
-				if orgIDStr, ok := metadata["organizationId"].(string); ok {
-					ownerOrg, _ = uuid.Parse(orgIDStr) // Ignore parse error, Nil UUID is valid fallback
-				}
-
-				// Build owner context for event creation
-				ownerCtx := pkgcontext.WithTenantID(ctx, ownerTenantID)
-				if ownerOrg != uuid.Nil {
-					ownerCtx = pkgcontext.WithOrganizationID(ownerCtx, ownerOrg)
-				}
-
-				// Extract endpoint EUI if available
-				var epEUI uint64
-				if v, ok := metadata["epEui"]; ok {
-					epEUI, _ = parseMetadataEUI(v)
-				}
-				// Also check endpointEUI field for detach
-				if epEUI == 0 {
-					if v, ok := metadata["endpointEUI"]; ok {
-						epEUI, _ = parseMetadataEUI(v)
-					}
-				}
-
-				// Determine operation type
-				operationType := "propagate_failed"
-				eventType := "endpoint_operation_failed"
-				if pendingOp != nil {
-					switch pendingOp.OperationType {
-					case mioty.CmdAttachPropagate:
-						operationType = "attach_propagate_failed"
-						eventType = "endpoint_attach_failed"
-					case mioty.CmdDetachPropagate:
-						operationType = "detach_propagate_failed"
-						eventType = "endpoint_detach_failed"
-					}
-				}
-
-				// Extract operation ID safely (avoid nil dereference)
-				opID := msg.OpId
-				if pendingOp != nil {
-					opID = pendingOp.OperationID
-				}
-
-				details := map[string]interface{}{
-					"epEui":        pkgmioty.FormatEUI64(epEUI),
-					"bsEui":        pkgmioty.FormatEUI64(session.BaseStationEUI),
-					"operation":    operationType,
-					"operation_id": fmt.Sprintf("%d", opID), // For operation filtering
-					"failureCode":  result,
-					"reason":       fmt.Sprintf("Base station rejected with code %d", result),
-				}
-				detailsJSON, _ := json.Marshal(details)
-
-				title := fmt.Sprintf("Operation failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-				if pendingOp != nil && pendingOp.OperationType == mioty.CmdAttachPropagate {
-					title = fmt.Sprintf("Attach propagate failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-				} else if pendingOp != nil && pendingOp.OperationType == mioty.CmdDetachPropagate {
-					title = fmt.Sprintf("Detach propagate failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-				}
-
-				// Create endpoint event with source fields for UI visibility (use owner tenant for roaming)
-				if err := s.eventStore.CreateEvent(ownerCtx, &models.SystemEvent{
-					TenantID:    fmt.Sprintf("%d", ownerTenantID),
-					EventType:   eventType,
-					Category:    mioty.CategoryEndpoint,
-					Severity:    SeverityError,
-					Title:       title,
-					Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
-					Details:     detailsJSON,
-					Status:      EventStatusNew,
-					SourceType:  mioty.SourceTypeEndpoint,
-					SourceName:  pkgmioty.FormatEUI64(epEUI), // Critical for UI filtering
-					CreatedAt:   time.Now(),
-				}); err != nil {
-					s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateFailureEvent, "error", err)
-				}
-
-				// Also create base station event for symmetric tracking (use owner tenant for roaming)
-				if err := s.eventStore.CreateEvent(ownerCtx, &models.SystemEvent{
-					TenantID:    fmt.Sprintf("%d", ownerTenantID),
-					EventType:   eventType,
-					Category:    mioty.CategoryEndpoint,
-					Severity:    SeverityError,
-					Title:       fmt.Sprintf("Rejected %s for endpoint %s", operationType, pkgmioty.FormatEUI64(epEUI)),
-					Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
-					Details:     detailsJSON,
-					Status:      EventStatusNew,
-					SourceType:  mioty.SourceTypeBaseStation,
-					SourceName:  pkgmioty.FormatEUI64(session.BaseStationEUI), // Critical for UI filtering
-					CreatedAt:   time.Now(),
-				}); err != nil {
-					s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateBaseStationFailureEvent, "error", err)
-				}
-			}
-		}
-
-		// Send error response to base station per BSSCI-4-01
-		// MUST use POSIX error code, not the base station's result code
-		errorMsg := map[string]interface{}{
-			"command": "error",
-			"opId":    msg.OpId,
-			"code":    POSIX_EPROTO, // Protocol error per BSSCI spec
-			"message": fmt.Sprintf("Attach propagate rejected by base station with result code %d", result),
-		}
-
-		if err := s.sendMessage(session, errorMsg); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorMessageToBaseStation,
-				"error", err)
-		}
-
-		// Return nil to keep connection open - individual operation failure shouldn't close session
-		return nil
+		return s.handlePropagateResponseFailure(ctx, session, msg, result, propagateResponseConfig{
+			rejectedLog:     LogBSSCIAttachPropagateRejectedByBaseStation,
+			failureErrToken: errAttachPropagateFailed,
+		})
 	}
 
 	// Success case - proceed with three-way handshake completion
@@ -5763,7 +5557,7 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 			ownerTenantID = int64(tenantIDFloat)
 		} else {
 			ownerTenantID = resolvedTenant(session, s.tenantID)
-			s.logger.Warn(LogBSSCIMissingTenantInMetadata, "opId", msg.OpId)
+			s.logger.WarnContext(ctx, LogBSSCIMissingTenantInMetadata, "opId", msg.OpId)
 		}
 
 		var ownerOrg uuid.UUID
@@ -5796,7 +5590,7 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 				endpoint, err = s.endpointRepo.Get(ownerCtx, eui)
 			}
 			if err != nil {
-				s.logger.Warn(LogBSSCIEndpointNotFoundForPropagate, "epEui", epEUI)
+				s.logger.WarnContext(ownerCtx, LogBSSCIEndpointNotFoundForPropagate, "epEui", epEUI)
 				return nil
 			}
 			// Re-assign to actual endpoint tenant (metadata may be stale)
@@ -5807,7 +5601,7 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 			if s.orgResolver != nil {
 				newOrg, orgErr := s.orgResolver.GetDefaultOrgForTenant(ctx, ownerTenantID)
 				if orgErr != nil {
-					s.logger.Warn(LogBSSCIOrgLookupFailed,
+					s.logger.WarnContext(ctx, LogBSSCIOrgLookupFailed,
 						"tenantID", ownerTenantID,
 						"error", orgErr,
 						"context", "attach_propagate_complete_fallback",
@@ -5993,59 +5787,9 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 		"sessionID", sessionID,
 		"endpointEui", endpointEUI)
 
-	// Convert endpointEUI to bytes for database storage
-	euiBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(euiBytes, endpointEUI)
-
-	// Resolve endpoint owner tenant BEFORE creating metadata (BSSCI §3.9 multi-tenant roaming)
-	// This ensures metadata contains correct tenant/org for resume scenarios
-	var endpointTenantID int64
-	var ownerOrgUUID uuid.UUID
-	var ownerCtx context.Context
-
-	if s.endpointRepo != nil {
-		// Try session tenant first (happy path)
-		tenantID := resolvedTenant(session, s.tenantID)
-		endpoint, err := s.endpointRepo.GetByEUI(ctx, tenantID, euiBytes)
-
-		// Fallback: endpoint roamed from different tenant
-		if err == storage.ErrNotFound {
-			var eui models.EUI
-			binary.BigEndian.PutUint64(eui[:], endpointEUI)
-			endpoint, err = s.endpointRepo.Get(ctx, eui)
-		}
-
-		if err == nil && endpoint != nil {
-			// Use endpoint's tenant (not session tenant) for all operations
-			endpointTenantID = endpoint.TenantID
-
-			// Resolve organization for owner tenant
-			if s.orgResolver != nil {
-				ownerOrgUUID, err = s.orgResolver.GetDefaultOrgForTenant(ctx, endpointTenantID)
-				if err != nil {
-					s.logger.Warn(LogBSSCIOrgLookupFailed, "tenantID", endpointTenantID, "error", err)
-					// Continue without org - ownerOrgUUID remains Nil
-				}
-			}
-
-			// Build owner-scoped context for all downstream operations
-			// FIX-1: Use Background() to avoid session context pollution
-			ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
-			if ownerOrgUUID != uuid.Nil {
-				ownerCtx = pkgcontext.WithOrganizationID(ownerCtx, ownerOrgUUID)
-			}
-		} else {
-			// Endpoint not found - use session tenant as fallback, shAddr defaults to 0
-			endpointTenantID = tenantID
-			// FIX-1: Use Background() to avoid session context pollution
-			ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
-		}
-	} else {
-		// No repository - use session tenant, shAddr defaults to 0
-		endpointTenantID = resolvedTenant(session, s.tenantID)
-		// FIX-1: Use Background() to avoid session context pollution
-		ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
-	}
+	// Resolve owner tenant + ctx before metadata (BSSCI §3.9 multi-tenant roaming).
+	// shAddr defaults to 0 if the endpoint is unknown — handled downstream.
+	euiBytes, endpointTenantID, ownerOrgUUID, ownerCtx := s.resolveEndpointOwnerContext(ctx, session, endpointEUI)
 
 	// Build detach propagate message per BSSCI v1.0.0 spec
 	// Per BSSCI §3.9.1: detPrp requires only command, opId, epEui (shAddr is NOT in spec)
@@ -6169,7 +5913,7 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 	// Success - persist counter to DB for session resume
 	if s.sessionSvc != nil {
 		if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-			s.logger.Error(LogBSSCIFailedToUpdateDatabaseSession,
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
 				"error", err,
 				"sessionID", session.ID,
 				"opId", opId)
@@ -6252,166 +5996,10 @@ func (s *Server) handleDetachPropagateResponse(srv *Server, session *Session, ms
 	// Result codes: 0 = success, non-zero = error
 	if result != 0 {
 		// Detach propagate failed - DO NOT send completion or update endpoint
-		s.logger.ErrorContext(s.safeCtx(), LogBSSCIDetachPropagateRejectedByBaseStation,
-			"baseStation", session.BaseStationEUI,
-			"opId", msg.OpId,
-			"result", result)
-
-		// Mark the pending operation as failed and persist to database
-		if session.DbSessionID > 0 {
-			// Get existing metadata or create new
-			// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation access
-			var pendingOp *PendingOperation
-			if s.statusSvc != nil {
-				pendingOp, _ = s.statusSvc.GetPendingOperation(session, int64(msg.OpId))
-			}
-
-			metadata := make(map[string]interface{})
-			if pendingOp != nil && pendingOp.Metadata != nil {
-				// Copy existing metadata
-				for k, v := range pendingOp.Metadata {
-					metadata[k] = v
-				}
-			}
-
-			// Add failure information
-			metadata["failed"] = true
-			metadata["failureReason"] = fmt.Sprintf("Base station rejected with code %d", result)
-			metadata["failedAt"] = time.Now().UnixNano()
-			metadata["failureCode"] = result
-
-			// Persist to database
-			if err := s.updatePendingOperationMetadata(session, msg.OpId, metadata); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistFailureMetadata,
-					"error", err,
-					"opId", msg.OpId)
-			}
-
-			// Create system event for failure visibility in UI
-			if s.eventStore != nil {
-				// Extract owner tenant/org from metadata for roaming support
-				ownerTenantID := resolvedTenant(session, s.tenantID)
-				switch v := metadata["tenantId"].(type) {
-				case int64:
-					ownerTenantID = v
-				case float64:
-					ownerTenantID = int64(v)
-				default:
-					s.logger.Warn(LogBSSCIMissingTenantInMetadata, "opId", msg.OpId)
-				}
-
-				var ownerOrg uuid.UUID
-				if orgIDStr, ok := metadata["organizationId"].(string); ok {
-					ownerOrg, _ = uuid.Parse(orgIDStr) // Ignore parse error, Nil UUID is valid fallback
-				}
-
-				// Build owner context for event creation
-				ownerCtx := pkgcontext.WithTenantID(ctx, ownerTenantID)
-				if ownerOrg != uuid.Nil {
-					ownerCtx = pkgcontext.WithOrganizationID(ownerCtx, ownerOrg)
-				}
-
-				// Extract endpoint EUI if available
-				var epEUI uint64
-				if v, ok := metadata["epEui"]; ok {
-					epEUI, _ = parseMetadataEUI(v)
-				}
-				// Also check endpointEUI field for detach
-				if epEUI == 0 {
-					if v, ok := metadata["endpointEUI"]; ok {
-						epEUI, _ = parseMetadataEUI(v)
-					}
-				}
-
-				// Determine operation type
-				operationType := "propagate_failed"
-				eventType := "endpoint_operation_failed"
-				if pendingOp != nil {
-					switch pendingOp.OperationType {
-					case mioty.CmdAttachPropagate:
-						operationType = "attach_propagate_failed"
-						eventType = "endpoint_attach_failed"
-					case mioty.CmdDetachPropagate:
-						operationType = "detach_propagate_failed"
-						eventType = "endpoint_detach_failed"
-					}
-				}
-
-				// Extract operation ID safely (avoid nil dereference)
-				opID := msg.OpId
-				if pendingOp != nil {
-					opID = pendingOp.OperationID
-				}
-
-				details := map[string]interface{}{
-					"epEui":        pkgmioty.FormatEUI64(epEUI),
-					"bsEui":        pkgmioty.FormatEUI64(session.BaseStationEUI),
-					"operation":    operationType,
-					"operation_id": fmt.Sprintf("%d", opID), // For operation filtering
-					"failureCode":  result,
-					"reason":       fmt.Sprintf("Base station rejected with code %d", result),
-				}
-				detailsJSON, _ := json.Marshal(details)
-
-				title := fmt.Sprintf("Operation failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-				if pendingOp != nil && pendingOp.OperationType == mioty.CmdAttachPropagate {
-					title = fmt.Sprintf("Attach propagate failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-				} else if pendingOp != nil && pendingOp.OperationType == mioty.CmdDetachPropagate {
-					title = fmt.Sprintf("Detach propagate failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-				}
-
-				// Create endpoint event with source fields for UI visibility (use owner tenant for roaming)
-				if err := s.eventStore.CreateEvent(ownerCtx, &models.SystemEvent{
-					TenantID:    fmt.Sprintf("%d", ownerTenantID),
-					EventType:   eventType,
-					Category:    mioty.CategoryEndpoint,
-					Severity:    SeverityError,
-					Title:       title,
-					Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
-					Details:     detailsJSON,
-					Status:      EventStatusNew,
-					SourceType:  mioty.SourceTypeEndpoint,
-					SourceName:  pkgmioty.FormatEUI64(epEUI), // Critical for UI filtering
-					CreatedAt:   time.Now(),
-				}); err != nil {
-					s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateFailureEvent, "error", err)
-				}
-
-				// Also create base station event for symmetric tracking (use owner tenant for roaming)
-				if err := s.eventStore.CreateEvent(ownerCtx, &models.SystemEvent{
-					TenantID:    fmt.Sprintf("%d", ownerTenantID),
-					EventType:   eventType,
-					Category:    mioty.CategoryEndpoint,
-					Severity:    SeverityError,
-					Title:       fmt.Sprintf("Rejected %s for endpoint %s", operationType, pkgmioty.FormatEUI64(epEUI)),
-					Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
-					Details:     detailsJSON,
-					Status:      EventStatusNew,
-					SourceType:  mioty.SourceTypeBaseStation,
-					SourceName:  pkgmioty.FormatEUI64(session.BaseStationEUI), // Critical for UI filtering
-					CreatedAt:   time.Now(),
-				}); err != nil {
-					s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateBaseStationFailureEvent, "error", err)
-				}
-			}
-		}
-
-		// Send error response to base station per BSSCI-4-01
-		// MUST use POSIX error code, not the base station's result code
-		errorMsg := map[string]interface{}{
-			"command": mioty.CmdError, // Use constant instead of literal
-			"opId":    msg.OpId,
-			"code":    POSIX_EPROTO,                                  // Protocol error per BSSCI spec
-			"message": ResolveErrorMessage(errDetachPropagateFailed), // Use error catalog
-		}
-
-		if err := s.sendMessage(session, errorMsg); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorMessageToBaseStation,
-				"error", err)
-		}
-
-		// Return nil to keep connection open - individual operation failure shouldn't close session
-		return nil
+		return s.handlePropagateResponseFailure(ctx, session, msg, result, propagateResponseConfig{
+			rejectedLog:     LogBSSCIDetachPropagateRejectedByBaseStation,
+			failureErrToken: errDetachPropagateFailed,
+		})
 	}
 
 	// Success case - proceed with three-way handshake completion
@@ -6837,13 +6425,268 @@ func (s *Server) loadPendingOperations(session *Session) ([]*PendingOperation, e
 	return pendingOps, nil
 }
 
-// getFloat64Field extracts a float64 field from data
-func getFloat64Field(data map[string]interface{}, key string) (float64, bool) {
-	value, exists := data[key]
-	if !exists || value == nil {
-		return 0, false
+// resolveEndpointOwnerContext determines the owning tenant + organization for
+// an endpoint by EUI (BSSCI §5.8.3 / §3.9 multi-tenant roaming), converts the
+// EUI to its 8-byte big-endian representation for database use, then builds an
+// owner-scoped context using Background() to avoid session-context pollution.
+// Falls back to the session tenant when the endpoint repository is nil or the
+// endpoint is not found in either the session tenant or by global EUI lookup.
+func (s *Server) resolveEndpointOwnerContext(ctx context.Context, session *Session, endpointEUI uint64) (
+	euiBytes []byte,
+	endpointTenantID int64,
+	ownerOrgUUID uuid.UUID,
+	ownerCtx context.Context,
+) {
+	euiBytes = make([]byte, 8)
+	binary.BigEndian.PutUint64(euiBytes, endpointEUI)
+
+	if s.endpointRepo == nil {
+		// No repository - use session tenant
+		endpointTenantID = resolvedTenant(session, s.tenantID)
+		ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
+		return
 	}
 
+	// Try session tenant first (happy path)
+	sessionTenantID := resolvedTenant(session, s.tenantID)
+	endpoint, err := s.endpointRepo.GetByEUI(ctx, sessionTenantID, euiBytes)
+
+	// Fallback: endpoint roamed from a different tenant — look up by global EUI
+	if err == storage.ErrNotFound {
+		var eui models.EUI
+		binary.BigEndian.PutUint64(eui[:], endpointEUI)
+		endpoint, err = s.endpointRepo.Get(ctx, eui)
+	}
+
+	if err != nil || endpoint == nil {
+		// Endpoint not found in either lookup - use session tenant as fallback
+		endpointTenantID = sessionTenantID
+		ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
+		return
+	}
+
+	// Use endpoint's tenant (not session tenant) for all downstream operations
+	endpointTenantID = endpoint.TenantID
+
+	// Resolve organization for owner tenant
+	if s.orgResolver != nil {
+		ownerOrgUUID, err = s.orgResolver.GetDefaultOrgForTenant(ctx, endpointTenantID)
+		if err != nil {
+			s.logger.WarnContext(ctx, LogBSSCIOrgLookupFailed, "tenantID", endpointTenantID, "error", err)
+			// Continue without org - ownerOrgUUID remains Nil
+			ownerOrgUUID = uuid.Nil
+		}
+	}
+
+	// Build owner-scoped context for all downstream operations
+	ownerCtx = pkgcontext.WithTenantID(context.Background(), endpointTenantID)
+	if ownerOrgUUID != uuid.Nil {
+		ownerCtx = pkgcontext.WithOrganizationID(ownerCtx, ownerOrgUUID)
+	}
+	return
+}
+
+// propagateResponseConfig holds the per-operation catalog references the shared
+// propagate-response failure handler needs. Every field is sourced from a
+// project catalog (pkg/bssci/log_messages.go log tokens,
+// pkg/bssci/errors_catalog.go error tokens). No human-readable strings.
+type propagateResponseConfig struct {
+	// rejectedLog is the outer "rejected by base station" log token emitted
+	// before the failure-handling block runs.
+	rejectedLog string
+	// failureErrToken is the error-catalog token used both for the error
+	// response message (via ResolveErrorMessage) and as a stable identifier
+	// in failure metadata.
+	failureErrToken string
+}
+
+// handlePropagateResponseFailure runs the shared failure path for attach- and
+// detach-propagate response handlers when the base station reports a non-zero
+// result. It logs the rejection, marks the pending operation as failed with
+// metadata, creates symmetric endpoint + base-station system events with
+// owner-tenant context (BSSCI §5.8.3 / §3.9 roaming), and sends a
+// catalog-derived error response to the base station per BSSCI-4-01. Returns
+// nil to keep the connection open — an individual operation failure should
+// not close the session.
+func (s *Server) handlePropagateResponseFailure(
+	ctx context.Context,
+	session *Session,
+	msg *Message,
+	result int,
+	cfg propagateResponseConfig,
+) error {
+	s.logger.ErrorContext(s.safeCtx(), cfg.rejectedLog,
+		"baseStation", session.BaseStationEUI,
+		"opId", msg.OpId,
+		"result", result)
+
+	// Mark the pending operation as failed and persist to database
+	if session.DbSessionID > 0 {
+		// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation access
+		var pendingOp *PendingOperation
+		if s.statusSvc != nil {
+			pendingOp, _ = s.statusSvc.GetPendingOperation(session, int64(msg.OpId))
+		}
+
+		metadata := make(map[string]interface{})
+		if pendingOp != nil && pendingOp.Metadata != nil {
+			for k, v := range pendingOp.Metadata {
+				metadata[k] = v
+			}
+		}
+
+		// Add failure information
+		metadata["failed"] = true
+		metadata["failureReason"] = fmt.Sprintf("Base station rejected with code %d", result)
+		metadata["failedAt"] = time.Now().UnixNano()
+		metadata["failureCode"] = result
+
+		// Persist to database
+		if err := s.updatePendingOperationMetadata(session, msg.OpId, metadata); err != nil {
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistFailureMetadata,
+				"error", err,
+				"opId", msg.OpId)
+		}
+
+		// Create system events for failure visibility in UI
+		if s.eventStore != nil {
+			// Extract owner tenant/org from metadata for roaming support
+			ownerTenantID := resolvedTenant(session, s.tenantID)
+			switch v := metadata["tenantId"].(type) {
+			case int64:
+				ownerTenantID = v
+			case float64:
+				ownerTenantID = int64(v)
+			default:
+				s.logger.WarnContext(ctx, LogBSSCIMissingTenantInMetadata, "opId", msg.OpId)
+			}
+
+			var ownerOrg uuid.UUID
+			if orgIDStr, ok := metadata["organizationId"].(string); ok {
+				ownerOrg, _ = uuid.Parse(orgIDStr) // Ignore parse error, Nil UUID is valid fallback
+			}
+
+			// Build owner context for event creation
+			ownerCtx := pkgcontext.WithTenantID(ctx, ownerTenantID)
+			if ownerOrg != uuid.Nil {
+				ownerCtx = pkgcontext.WithOrganizationID(ownerCtx, ownerOrg)
+			}
+
+			// Extract endpoint EUI if available
+			var epEUI uint64
+			if v, ok := metadata["epEui"]; ok {
+				epEUI, _ = parseMetadataEUI(v)
+			}
+			// Also check endpointEUI field for detach
+			if epEUI == 0 {
+				if v, ok := metadata["endpointEUI"]; ok {
+					epEUI, _ = parseMetadataEUI(v)
+				}
+			}
+
+			// Determine operation type token + event type token from the pending
+			// operation's command (machine tokens; see DEFER-LOG-001 for the
+			// catalog-migration plan for these literals).
+			operationType := "propagate_failed"
+			eventType := "endpoint_operation_failed"
+			if pendingOp != nil {
+				switch pendingOp.OperationType {
+				case mioty.CmdAttachPropagate:
+					operationType = "attach_propagate_failed"
+					eventType = "endpoint_attach_failed"
+				case mioty.CmdDetachPropagate:
+					operationType = "detach_propagate_failed"
+					eventType = "endpoint_detach_failed"
+				}
+			}
+
+			// Extract operation ID safely (avoid nil dereference)
+			opID := msg.OpId
+			if pendingOp != nil {
+				opID = pendingOp.OperationID
+			}
+
+			details := map[string]interface{}{
+				"epEui":        pkgmioty.FormatEUI64(epEUI),
+				"bsEui":        pkgmioty.FormatEUI64(session.BaseStationEUI),
+				"operation":    operationType,
+				"operation_id": fmt.Sprintf("%d", opID), // For operation filtering
+				"failureCode":  result,
+				"reason":       fmt.Sprintf("Base station rejected with code %d", result),
+			}
+			detailsJSON, _ := json.Marshal(details)
+
+			title := fmt.Sprintf("Operation failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
+			if pendingOp != nil && pendingOp.OperationType == mioty.CmdAttachPropagate {
+				title = fmt.Sprintf("Attach propagate failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
+			} else if pendingOp != nil && pendingOp.OperationType == mioty.CmdDetachPropagate {
+				title = fmt.Sprintf("Detach propagate failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
+			}
+
+			// Create endpoint event with source fields for UI visibility (use owner tenant for roaming)
+			if err := s.eventStore.CreateEvent(ownerCtx, &models.SystemEvent{
+				TenantID:    fmt.Sprintf("%d", ownerTenantID),
+				EventType:   eventType,
+				Category:    mioty.CategoryEndpoint,
+				Severity:    SeverityError,
+				Title:       title,
+				Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
+				Details:     detailsJSON,
+				Status:      EventStatusNew,
+				SourceType:  mioty.SourceTypeEndpoint,
+				SourceName:  pkgmioty.FormatEUI64(epEUI), // Critical for UI filtering
+				CreatedAt:   time.Now(),
+			}); err != nil {
+				s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateFailureEvent, "error", err)
+			}
+
+			// Also create base station event for symmetric tracking (use owner tenant for roaming)
+			if err := s.eventStore.CreateEvent(ownerCtx, &models.SystemEvent{
+				TenantID:    fmt.Sprintf("%d", ownerTenantID),
+				EventType:   eventType,
+				Category:    mioty.CategoryEndpoint,
+				Severity:    SeverityError,
+				Title:       fmt.Sprintf("Rejected %s for endpoint %s", operationType, pkgmioty.FormatEUI64(epEUI)),
+				Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
+				Details:     detailsJSON,
+				Status:      EventStatusNew,
+				SourceType:  mioty.SourceTypeBaseStation,
+				SourceName:  pkgmioty.FormatEUI64(session.BaseStationEUI), // Critical for UI filtering
+				CreatedAt:   time.Now(),
+			}); err != nil {
+				s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateBaseStationFailureEvent, "error", err)
+			}
+		}
+	}
+
+	// Send error response to base station per BSSCI-4-01.
+	// MUST use POSIX error code (not the base station's result code) and the
+	// catalog-derived message; both sides go through the same path so the
+	// attach-side literal "command": "error" / inline message bug is fixed.
+	errorMsg := map[string]interface{}{
+		"command": mioty.CmdError,
+		"opId":    msg.OpId,
+		"code":    POSIX_EPROTO,
+		"message": ResolveErrorMessage(cfg.failureErrToken),
+	}
+
+	if err := s.sendMessage(session, errorMsg); err != nil {
+		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorMessageToBaseStation,
+			"error", err)
+	}
+
+	// Keep connection open - individual operation failure shouldn't close session
+	return nil
+}
+
+// toFloat64Value coerces a numeric interface{} value to float64, returning
+// ok=false when the value is nil or not a recognized numeric type. Canonical
+// implementation shared by getFloat64Field and toFloat64 to eliminate
+// duplicated type-switch logic.
+func toFloat64Value(value interface{}) (float64, bool) {
+	if value == nil {
+		return 0, false
+	}
 	switch v := value.(type) {
 	case float64:
 		return v, true
@@ -6866,33 +6709,22 @@ func getFloat64Field(data map[string]interface{}, key string) (float64, bool) {
 	}
 }
 
-// toFloat64 converts an interface{} value to float64, handling common numeric types.
-// Used for parsing array elements in geoLocation and similar fields.
-func toFloat64(value interface{}) (float64, bool) {
-	if value == nil {
+// getFloat64Field extracts a float64 field from a map[string]interface{} payload.
+// Returns ok=false when the key is missing or the value is nil/non-numeric.
+func getFloat64Field(data map[string]interface{}, key string) (float64, bool) {
+	value, exists := data[key]
+	if !exists {
 		return 0, false
 	}
+	return toFloat64Value(value)
+}
 
-	switch v := value.(type) {
-	case float64:
-		return v, true
-	case float32:
-		return float64(v), true
-	case int:
-		return float64(v), true
-	case int32:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case uint:
-		return float64(v), true
-	case uint32:
-		return float64(v), true
-	case uint64:
-		return float64(v), true
-	default:
-		return 0, false
-	}
+// toFloat64 converts an interface{} value to float64, handling common numeric types.
+// Used for parsing array elements in geoLocation and similar fields. Delegates
+// to toFloat64Value; preserved as the public-within-package API used by
+// status_handlers.go.
+func toFloat64(value interface{}) (float64, bool) {
+	return toFloat64Value(value)
 }
 
 // ============================================================================
