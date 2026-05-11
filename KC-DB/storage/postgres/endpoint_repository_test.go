@@ -2235,3 +2235,88 @@ func TestUpdateWithEUI_ClearsTypeEUI(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, retrieved.TypeEUI, "TypeEUI should be nil after clearing via UpdateWithEUI")
 }
+
+// TestGetEndpointWithKeysForDetachValidation_TypeEUIAndPropagatedAt verifies that
+// scanEndpointDetachValidationRow correctly round-trips the BYTEA type_eui column
+// (formerly mis-typed as sql.NullInt64) and the TIMESTAMP propagated_at column.
+// Both must survive a write → read cycle through the non-transactional repository.
+func TestGetEndpointWithKeysForDetachValidation_TypeEUIAndPropagatedAt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupEndpointTestDB(t)
+	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
+
+	tenantID := int64(900)
+	createTestTenant(t, db, tenantID, "TestTenant900")
+	defer cleanupEndpointTestData(t, db, "DetachValTypeEUI%")
+
+	repo := NewEndPointRepository(db)
+	eui := models.EUI{0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x01, 0x02, 0x03}
+
+	insertEndpointWithDetachKeys(t, db, EndpointInsertParams{
+		EpEUI:    eui.ToUint64(),
+		Name:     "DetachValTypeEUI-EP1",
+		TenantID: tenantID,
+	})
+
+	typeEUIBytes := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22}
+	propagatedAt := time.Date(2026, 4, 1, 12, 30, 45, 0, time.UTC)
+	_, err := db.Exec(`UPDATE endpoints SET type_eui = $1, propagated_at = $2 WHERE ep_eui = $3`,
+		typeEUIBytes, propagatedAt, euiToBytes(eui.ToUint64()))
+	require.NoError(t, err, "failed to seed type_eui + propagated_at")
+
+	ctx := testutil.TestContext()
+	endpoint, err := repo.GetEndpointWithKeysForDetachValidation(ctx, eui)
+	require.NoError(t, err)
+	require.NotNil(t, endpoint)
+	require.NotNil(t, endpoint.TypeEUI, "TypeEUI must round-trip from BYTEA")
+	assert.Equal(t, typeEUIBytes, endpoint.TypeEUI[:], "TypeEUI bytes must match seeded value")
+	require.NotNil(t, endpoint.PropagatedAt, "PropagatedAt must round-trip from TIMESTAMP")
+	assert.True(t, endpoint.PropagatedAt.Equal(propagatedAt),
+		"PropagatedAt should equal seeded timestamp (got %v, want %v)", endpoint.PropagatedAt, propagatedAt)
+}
+
+// TestTxnGetEndpointWithKeysForDetachValidation_TypeEUIAndPropagatedAt validates the
+// transactional variant emits the same fields through scanEndpointDetachValidationRow.
+func TestTxnGetEndpointWithKeysForDetachValidation_TypeEUIAndPropagatedAt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupEndpointTestDB(t)
+	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
+
+	tenantID := int64(901)
+	createTestTenant(t, db, tenantID, "TestTenant901")
+	defer cleanupEndpointTestData(t, db, "TxnDetachValTypeEUI%")
+
+	eui := models.EUI{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}
+	insertEndpointWithDetachKeys(t, db, EndpointInsertParams{
+		EpEUI:    eui.ToUint64(),
+		Name:     "TxnDetachValTypeEUI-EP1",
+		TenantID: tenantID,
+	})
+
+	typeEUIBytes := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33}
+	propagatedAt := time.Date(2026, 5, 1, 9, 15, 0, 0, time.UTC)
+	_, err := db.Exec(`UPDATE endpoints SET type_eui = $1, propagated_at = $2 WHERE ep_eui = $3`,
+		typeEUIBytes, propagatedAt, euiToBytes(eui.ToUint64()))
+	require.NoError(t, err)
+
+	ctx := testutil.TestContext()
+	rawTx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer func() { _ = rawTx.Rollback() }() // #nosec G307 -- Test cleanup
+
+	txnRepo := &transactionalEndPointRepository{tx: rawTx, db: nil}
+	endpoint, err := txnRepo.GetEndpointWithKeysForDetachValidation(ctx, eui)
+	require.NoError(t, err)
+	require.NotNil(t, endpoint)
+	require.NotNil(t, endpoint.TypeEUI, "TypeEUI must round-trip via transactional path")
+	assert.Equal(t, typeEUIBytes, endpoint.TypeEUI[:])
+	require.NotNil(t, endpoint.PropagatedAt, "PropagatedAt must round-trip via transactional path")
+	assert.True(t, endpoint.PropagatedAt.Equal(propagatedAt),
+		"transactional PropagatedAt should equal seeded timestamp (got %v, want %v)", endpoint.PropagatedAt, propagatedAt)
+}
