@@ -972,7 +972,7 @@ func (s *Server) Stop() error {
 	s.cancel()
 	if s.listener != nil {
 		if err := s.listener.Close(); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to close listener", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCloseListener, "error", err)
 		}
 	}
 	if s.deduplicator != nil {
@@ -1008,7 +1008,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	defer s.wg.Done()
 	defer func() {
 		if err := conn.Close(); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to close connection", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCloseConnection, "error", err)
 		}
 	}()
 
@@ -1027,7 +1027,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	if tlsConn, ok := conn.(*tls.Conn); ok {
 		// Trigger TLS handshake if not already done
 		if err := tlsConn.Handshake(); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "TLS handshake failed", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCITLSHandshakeFailed, "error", err)
 			return
 		}
 
@@ -1046,7 +1046,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 				orgID, tenantID, err = s.orgResolver.ResolveCert(ctx, cert)
 				if err != nil {
 					// Certificate-based resolution failed - use community fallback
-					s.logger.WarnContext(ctx, "BSSCI cert org resolution failed, using community fallback",
+					s.logger.WarnContext(ctx, LogBSSCICertOrgResolutionFailedUsingCommunityFallback,
 						"error", err,
 						"certCN", cert.Subject.CommonName,
 						"tenantID", session.ResolvedTenantID)
@@ -1054,7 +1054,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 					// Get default org for the server's default tenant
 					orgID, err = s.orgResolver.GetDefaultOrgForTenant(ctx, session.ResolvedTenantID)
 					if err != nil {
-						s.logger.ErrorContext(ctx, "Failed to resolve default org for BSSCI session",
+						s.logger.ErrorContext(ctx, LogBSSCIFailedToResolveDefaultOrgForBSSCISession,
 							"error", err,
 							"tenantID", session.ResolvedTenantID)
 						// Continue with nil UUID - will be NULL in database
@@ -1065,7 +1065,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 				} else {
 					// SUCCESS: cert resolution worked, use resolved tenant
 					session.ResolvedTenantID = tenantID
-					s.logger.InfoContext(ctx, "BSSCI cert org resolution succeeded",
+					s.logger.InfoContext(ctx, LogBSSCICertOrgResolutionSucceeded,
 						"orgID", orgID.String(),
 						"tenantID", tenantID,
 						"certCN", cert.Subject.CommonName)
@@ -1076,7 +1076,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			}
 
 			session.OrganizationID = orgID
-			s.logger.DebugContext(ctx, "BSSCI session org/tenant resolved",
+			s.logger.DebugContext(ctx, LogBSSCISessionOrgTenantResolved,
 				"orgID", orgID.String(),
 				"tenantID", session.ResolvedTenantID,
 				"certCN", cert.Subject.CommonName)
@@ -1090,14 +1090,14 @@ func (s *Server) handleConnection(conn net.Conn) {
 				var err error
 				orgID, err = s.orgResolver.GetDefaultOrgForTenant(ctx, session.ResolvedTenantID)
 				if err != nil {
-					s.logger.WarnContext(ctx, "No peer cert and failed to resolve default org for BSSCI session",
+					s.logger.WarnContext(ctx, LogBSSCINoPeerCertAndFailedToResolveDefaultOrgForBSSCISession,
 						"error", err,
 						"tenantID", session.ResolvedTenantID)
 					orgID = uuid.Nil
 				}
 			}
 			session.OrganizationID = orgID
-			s.logger.DebugContext(ctx, "BSSCI session no peer cert, using defaults",
+			s.logger.DebugContext(ctx, LogBSSCISessionNoPeerCertUsingDefaults,
 				"orgID", orgID.String(),
 				"tenantID", session.ResolvedTenantID)
 		}
@@ -1191,7 +1191,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 		// Set read deadline
 		if err := conn.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to set read deadline", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSetReadDeadline, "error", err)
 			return
 		}
 
@@ -1232,7 +1232,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			// Persist encoding to database if session has been persisted
 			if session.DbSessionID > 0 {
 				if err := s.sessionSvc.UpdateEncoding(s.safeCtx(), session.DbSessionID, encoding); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to persist encoding",
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistEncoding,
 						"encoding", encoding,
 						"sessionID", session.DbSessionID,
 						"error", err)
@@ -1240,7 +1240,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 				}
 			}
 
-			s.logger.InfoContext(s.safeCtx(), "Detected message encoding",
+			s.logger.InfoContext(s.safeCtx(), LogBSSCIDetectedMessageEncoding,
 				"encoding", encoding,
 				"sessionID", session.DbSessionID)
 		}
@@ -1302,7 +1302,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 					"opId", opId,
 					"error_token", errToken)
 				if err := s.sendError(session, opId, POSIX_EPROTO, ResolveErrorMessage(errToken)); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 				}
 				return
 			}
@@ -1366,7 +1366,7 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 		if err != nil {
 			// Normalization failed (mandatory field missing, invalid type, etc.)
 			// Send error response per BSSCI protocol
-			s.logger.ErrorContext(ctx, "Payload normalization failed",
+			s.logger.ErrorContext(ctx, LogBSSCIPayloadNormalizationFailed,
 				"command", msg.Command,
 				"opId", msg.OpId,
 				"error", err)
@@ -1387,7 +1387,7 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 			}
 
 			if sendErr := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errToken)); sendErr != nil {
-				s.logger.ErrorContext(ctx, "Failed to send error response", "error", sendErr)
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToSendErrorResponse, "error", sendErr)
 			}
 			return nil // Error sent via protocol, don't close connection
 		}
@@ -1414,7 +1414,7 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 				"bsEui", session.BaseStationEUI)
 			if err := s.sendError(session, msg.OpId, POSIX_EPROTO,
 				ResolveErrorMessage(errCommandBeforeHandshake)); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 			}
 			return nil // Don't close connection, just reject the command
 		}
@@ -1427,7 +1427,7 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 		if !strings.HasPrefix(msg.Command, "rc.") && !strings.HasPrefix(msg.Command, "vm.") {
 			// Send error for unsupported sublayer
 			if err := s.sendError(session, msg.OpId, POSIX_ENOTSUP, ResolveErrorMessage(errUnsupportedSublayerPrefix)); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 			}
 			return nil // Don't close connection
 		}
@@ -1437,7 +1437,7 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 	if !ok {
 		// Send BSSCI error message instead of closing socket (BSSCI-4-01)
 		if err := s.sendError(session, msg.OpId, POSIX_ENOTSUP, ResolveErrorMessage(errUnsupportedCommand)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 		}
 		return nil // Don't close connection
 	}
@@ -1513,7 +1513,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 		s.logger.WarnContext(s.safeCtx(), LogBSSCIInvalidConnectOperationID,
 			"op_id", msg.OpId)
 		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidConnectOpId)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 		}
 		return fmt.Errorf("%s: %d", ResolveErrorMessage(errInvalidConnectOpId), msg.OpId)
 	}
@@ -1523,7 +1523,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	bsEUI, ok := getNumericField(data, "bsEui")
 	if !ok {
 		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingBsEui)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 		}
 		return fmt.Errorf("%s", ResolveErrorMessage(errMissingBsEui))
 	}
@@ -1538,7 +1538,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 		}
 		// Fallback for unexpected errors
 		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errVersionIncompatible)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 		}
 		return fmt.Errorf("%s", ResolveErrorMessage(errVersionIncompatible))
 	}
@@ -1546,7 +1546,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	// Range guard for int64 -> uint64 conversion
 	if bsEUI < 0 {
 		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidBsEui)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 		}
 		return fmt.Errorf("%s: bsEUI=%d", ResolveErrorMessage(errInvalidBsEui), bsEUI)
 	}
@@ -1564,7 +1564,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	if infoValue, hasInfo := data["info"]; hasInfo {
 		infoJSON, err := json.Marshal(infoValue)
 		if err != nil {
-			s.logger.WarnContext(s.safeCtx(), "Failed to marshal connect info", "error", err)
+			s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToMarshalConnectInfo, "error", err)
 		} else {
 			session.ConnectInfo = infoJSON
 		}
@@ -1574,7 +1574,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	bidiValue, hasBidi := data["bidi"]
 	if !hasBidi {
 		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingBidiFlag)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 		}
 		return fmt.Errorf("%s", ResolveErrorMessage(errMissingBidiFlag))
 	}
@@ -1582,7 +1582,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	bidi, ok := bidiValue.(bool)
 	if !ok {
 		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingBidiFlag)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 		}
 		return fmt.Errorf("%s: not a boolean", ResolveErrorMessage(errMissingBidiFlag))
 	}
@@ -1638,7 +1638,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 		previousSession, err = s.sessionSvc.HandleResume(session, bsUUID, scUUIDToMatch, bsOpId, scOpId, session.BaseStationEUI)
 		if err != nil {
 			// Log error but continue with new session
-			s.logger.WarnContext(s.safeCtx(), "Failed to check session resume",
+			s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCheckSessionResume,
 				"error", err,
 				"eui", session.BaseStationEUI)
 		}
@@ -1700,11 +1700,11 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	// Validate software version (non-fatal per BSSCI §5.3.2 - swVersion is optional)
 	switch s.config.SoftwareVersion {
 	case "":
-		s.logger.WarnContext(s.safeCtx(), "Software version not configured - ConnectResponse will omit swVersion field",
+		s.logger.WarnContext(s.safeCtx(), LogBSSCISoftwareVersionNotConfiguredConnectResponseWillOmitSwVersionField,
 			"bsEui", session.BaseStationEUI,
 			"sessionUuid", sessionUUID)
 	case "dev", "dev-local":
-		s.logger.WarnContext(s.safeCtx(), "Using development software version in ConnectResponse",
+		s.logger.WarnContext(s.safeCtx(), LogBSSCIUsingDevelopmentSoftwareVersionInConnectResponse,
 			"swVersion", s.config.SoftwareVersion,
 			"bsEui", session.BaseStationEUI)
 	}
@@ -1739,7 +1739,7 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 	if msg.OpId != 0 {
 		errDef := GetErrorDefinition(errInvalidConnectCompleteOpId)
 		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, errDef.Message); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to send error response", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 		}
 		return fmt.Errorf("%s: %d", errDef.Message, msg.OpId)
 	}
@@ -1766,7 +1766,7 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 
 		// Send error response using catalog
 		if sendErr := s.sendError(session, msg.OpId, POSIX_EPERM, ResolveErrorMessage(errBaseStationNotRegistered)); sendErr != nil {
-			s.logger.ErrorContext(ctx, "Failed to send error response", "error", sendErr)
+			s.logger.ErrorContext(ctx, LogBSSCIFailedToSendErrorResponse, "error", sendErr)
 		}
 		return fmt.Errorf("%s: EUI %016X", ResolveErrorMessage(errBaseStationNotRegistered), session.BaseStationEUI)
 	}
@@ -1791,7 +1791,7 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 
 	// Delegate database session persistence to SessionService
 	if err := s.sessionSvc.PersistSession(ctx, session, baseStation, session.IsResumed, session.ConnectInfo); err != nil {
-		s.logger.ErrorContext(ctx, "Failed to persist session",
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistSession,
 			"error", err,
 			"eui", session.BaseStationEUI)
 		// Continue - session can still function without DB persistence
@@ -1900,7 +1900,7 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 				// BSSCI §§5.11-5.12.3 Gap 1: Guard against nil statusSvc (test compatibility)
 				if s.statusSvc != nil {
 					if err := s.statusSvc.RecordPendingOperation(ctx, session, op.OperationID, op, session.DbSessionID); err != nil {
-						s.logger.ErrorContext(ctx, "Failed to record pending operation",
+						s.logger.ErrorContext(ctx, LogBSSCIFailedToRecordPendingOperation,
 							"error", err,
 							"opId", op.OperationID)
 						// Continue - operation can still be reissued
@@ -2282,7 +2282,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 	}
 	err := s.statusSvc.RecordPendingOperation(ctx, session, int64(msg.OpId), pendingOp, session.DbSessionID)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "Failed to record pending attach operation", "opId", msg.OpId, "error", err)
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToRecordPendingAttachOperation, "opId", msg.OpId, "error", err)
 		return s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errOperationFailed))
 	}
 
@@ -2307,7 +2307,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 				"error", err)
 			// Clean up pending operation before returning error
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			// Return error per BSSCI - endpoint must be provisioned
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errEndpointNotProvisioned))
@@ -2330,27 +2330,27 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 		if s.roamingSvc != nil {
 			isRoaming, ownerTenantID, err = s.roamingSvc.DetectAndValidateRoaming(ctx, epEUIBytes, tenantID)
 			if err != nil {
-				s.logger.WarnContext(s.safeCtx(), "Roaming validation failed",
+				s.logger.WarnContext(s.safeCtx(), LogBSSCIRoamingValidationFailed,
 					"epEui", epEUI,
 					"servingTenant", tenantID,
 					"error", err)
 				// Clean up pending operation before returning error
 				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 				}
 				return s.sendError(session, msg.OpId, POSIX_EPERM, ResolveErrorMessage(errRoamingNotAllowed))
 			}
 
 			// If roaming, record the attach event
 			if isRoaming {
-				s.logger.InfoContext(s.safeCtx(), "Roaming endpoint attaching",
+				s.logger.InfoContext(s.safeCtx(), LogBSSCIRoamingEndpointAttaching,
 					"epEui", epEUI,
 					"ownerTenant", ownerTenantID,
 					"servingTenant", tenantID)
 
 				// Record roaming attach event
 				if err := s.roamingSvc.RecordAttach(ctx, epEUIBytes, session.BaseStationEUIBytes(), tenantID); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to record roaming attach",
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRecordRoamingAttach,
 						"error", err)
 					// Non-fatal: continue with attach
 				}
@@ -2358,7 +2358,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 				// Update session with roaming endpoint
 				if session.DbSessionID > 0 {
 					if err := s.roamingSvc.UpdateSessionRoaming(ctx, session.DbSessionID, epEUIBytes, true, tenantID); err != nil {
-						s.logger.ErrorContext(s.safeCtx(), "Failed to update session roaming",
+						s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateSessionRoaming,
 							"error", err)
 						// Non-fatal: continue with attach
 					}
@@ -2385,7 +2385,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 				"epEui", epEUI,
 				"keyLength", len(nwkSnKey))
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errNwkSnKeyInvalidLength))
 		}
@@ -2407,7 +2407,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 					"incomingAttachCnt", attachCnt,
 				)
 				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 				}
 				return s.sendError(session, msg.OpId, POSIX_EPROTO,
 					ResolveErrorMessage(errAttachCounterNotMonotonic))
@@ -2416,22 +2416,22 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 
 		//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for uint32
 		if err := ValidateAttachSignature(uint64(epEUI), uint32(attachCnt), sign, nwkSnKey); err != nil {
-			s.logger.WarnContext(s.safeCtx(), "Attach signature validation failed",
+			s.logger.WarnContext(s.safeCtx(), LogBSSCIAttachSignatureValidationFailed,
 				"epEui", epEUI,
 				"error", err)
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidSignature))
 		}
 
 		sessionKey, err := DeriveSessionKey(uint64(epEUI), nonce, sign, nwkSnKey)
 		if err != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to derive session key",
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToDeriveSessionKey,
 				"epEui", epEUI,
 				"error", err)
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidSignature))
 		}
@@ -2443,9 +2443,9 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 			var err error
 			encryptedSessionKey, err = s.keyEncryptor.EncryptKeyRaw(sessionKey)
 			if err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to encrypt session key", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToEncryptSessionKey, "error", err)
 				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 				}
 				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errFailedToEncryptKey))
 			}
@@ -2501,7 +2501,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 		// Persist subpackets if present (BSSCI §5.6.1 optional field)
 		if raw, ok := data["subpackets"].(map[string]interface{}); ok {
 			if sp, err := NormalizeSubpackets(raw); err != nil {
-				s.logger.WarnContext(ctx, "Failed to normalize attach subpackets", "error", err)
+				s.logger.WarnContext(ctx, LogBSSCIFailedToNormalizeAttachSubpackets, "error", err)
 			} else {
 				if encoded, err := json.Marshal(sp); err == nil {
 					attachUpdates["last_attach_subpackets"] = string(encoded)
@@ -2535,7 +2535,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 				}
 
 				if err := s.endpointRepo.UpdateRadioMetricsSelective(ctx, resolvedTenant(session, s.tenantID), eui, update); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to update radio metrics", "error", err)
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateRadioMetrics, "error", err)
 				}
 			}
 			return nil
@@ -2543,9 +2543,9 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 
 		tx, txErr := s.storage.BeginTx(ctx)
 		if txErr != nil {
-			s.logger.ErrorContext(s.safeCtx(), "Failed to begin transaction", "error", txErr)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToBeginTransaction, "error", txErr)
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 		}
@@ -2561,7 +2561,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 			commitErr = err
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointAttachMetadata, "error", err)
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 		}
@@ -2570,9 +2570,9 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 		activeSession, getErr := tx.EndPointSessions().GetActive(ctx, endpointIDStr)
 		if getErr != nil {
 			commitErr = getErr
-			s.logger.ErrorContext(s.safeCtx(), "Failed to load endpoint session", "error", getErr)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToLoadEndpointSession, "error", getErr)
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 		}
@@ -2600,9 +2600,9 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 			activeSession.PrimaryBaseStationID = primaryBsID
 			if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
 				commitErr = err
-				s.logger.ErrorContext(s.safeCtx(), "Failed to update endpoint session", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointSession, "error", err)
 				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 				}
 				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 			}
@@ -2622,9 +2622,9 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 			}
 			if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
 				commitErr = err
-				s.logger.ErrorContext(s.safeCtx(), "Failed to create endpoint session", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCreateEndpointSession, "error", err)
 				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 				}
 				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 			}
@@ -2632,9 +2632,9 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 
 		if err := tx.Commit(); err != nil {
 			commitErr = err
-			s.logger.ErrorContext(s.safeCtx(), "Failed to commit attach transaction", "error", err)
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCommitAttachTransaction, "error", err)
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to remove pending operation", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 		}
@@ -2664,7 +2664,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 			}
 
 			if err := s.endpointRepo.UpdateRadioMetricsSelective(ctx, resolvedTenant(session, s.tenantID), eui, update); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to update radio metrics", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateRadioMetrics, "error", err)
 			}
 		}
 
@@ -2818,7 +2818,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 			var orgErr error
 			ownerOrgUUID, orgErr = s.orgResolver.GetDefaultOrgForTenant(context.Background(), ownerTenantID)
 			if orgErr != nil {
-				s.logger.WarnContext(ctx, "Failed to resolve organization for endpoint owner",
+				s.logger.WarnContext(ctx, LogBSSCIFailedToResolveOrganizationForEndpointOwner,
 					"tenantID", ownerTenantID,
 					"error", orgErr)
 				ownerOrgUUID = uuid.Nil // Explicit fallback
@@ -2831,7 +2831,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 		}
 	} else {
 		// Unknown endpoint - validate via internal validator and use returned tenant metadata (BSSCI §5.7)
-		s.logger.WarnContext(ctx, "Detach from unknown endpoint",
+		s.logger.WarnContext(ctx, LogBSSCIDetachFromUnknownEndpoint,
 			"error", err,
 			"epEui", epEuiUint)
 
@@ -2841,14 +2841,14 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 			if validationErr != nil {
 				// Check for typed sentinel: endpoint not found
 				if errors.Is(validationErr, ErrDetachValidationEndpointNotFound) {
-					s.logger.WarnContext(ctx, "Unknown endpoint not found during detach validation",
+					s.logger.WarnContext(ctx, LogBSSCIUnknownEndpointNotFoundDuringDetachValidation,
 						"epEui", epEuiUint)
 					return s.sendError(session, msg.OpId, POSIX_ENOENT, ResolveErrorMessage(errEndpointNotFound))
 				}
 
 				// Check for signature validation failure with metadata
 				if errors.Is(validationErr, ErrDetachSignatureInvalid) && result != nil {
-					s.logger.WarnContext(ctx, "Unknown endpoint detach signature invalid",
+					s.logger.WarnContext(ctx, LogBSSCIUnknownEndpointDetachSignatureInvalid,
 						"epEui", epEuiUint,
 						"tenant_id", result.TenantID,
 						"owner_tenant_id", result.OwnerTenantID,
@@ -2857,7 +2857,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 				}
 
 				// All other errors treated as signature validation failure
-				s.logger.WarnContext(ctx, "Unknown endpoint detach signature validation failed",
+				s.logger.WarnContext(ctx, LogBSSCIUnknownEndpointDetachSignatureValidationFailed,
 					"epEui", epEuiUint,
 					"error", validationErr)
 				return s.sendError(session, msg.OpId, POSIX_EACCES, ResolveErrorMessage(errDetachSignatureInvalid))
@@ -2877,7 +2877,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 				var orgErr error
 				ownerOrgUUID, orgErr = s.orgResolver.GetDefaultOrgForTenant(context.Background(), ownerTenantID)
 				if orgErr != nil {
-					s.logger.WarnContext(ctx, "Failed to resolve organization for unknown endpoint owner",
+					s.logger.WarnContext(ctx, LogBSSCIFailedToResolveOrganizationForUnknownEndpointOwner,
 						"tenant_id", ownerTenantID,
 						"error", orgErr)
 					ownerOrgUUID = uuid.Nil
@@ -2890,7 +2890,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 				ownerCtx = pkgcontext.WithOrganizationID(ownerCtx, ownerOrgUUID)
 			}
 
-			s.logger.InfoContext(ctx, "Unknown endpoint detach signature validated successfully",
+			s.logger.InfoContext(ctx, LogBSSCIUnknownEndpointDetachSignatureValidatedSuccessfully,
 				"epEui", epEuiUint,
 				"tenantId", ownerTenantID,
 				"ownerTenantId", result.OwnerTenantID,
@@ -2899,7 +2899,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 			// Validator not configured - fall back to session tenant
 			ownerTenantID = resolvedTenant(session, s.tenantID)
 			ownerCtx = pkgcontext.WithTenantID(context.Background(), ownerTenantID)
-			s.logger.WarnContext(ctx, "Detach validator not configured - using session tenant for unknown endpoint",
+			s.logger.WarnContext(ctx, LogBSSCIDetachValidatorNotConfiguredUsingSessionTenantForUnknownEndpoint,
 				"epEui", epEuiUint,
 				"session_tenant", ownerTenantID)
 		}
@@ -2915,7 +2915,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 	if s.roamingSvc != nil && endpoint != nil {
 		isRoaming, ownerTenantID, err = s.roamingSvc.DetectAndValidateRoaming(ctx, euiBytes, servingTenantID)
 		if err != nil {
-			s.logger.WarnContext(s.safeCtx(), "Roaming validation failed during detach",
+			s.logger.WarnContext(s.safeCtx(), LogBSSCIRoamingValidationFailedDuringDetach,
 				"epEui", epEUI,
 				"servingTenant", servingTenantID,
 				"error", err)
@@ -2927,14 +2927,14 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 
 		// If roaming, record the detach event
 		if isRoaming {
-			s.logger.InfoContext(s.safeCtx(), "Roaming endpoint detaching",
+			s.logger.InfoContext(s.safeCtx(), LogBSSCIRoamingEndpointDetaching,
 				"epEui", epEUI,
 				"ownerTenant", ownerTenantID,
 				"servingTenant", servingTenantID)
 
 			// Record roaming detach event
 			if err := s.roamingSvc.RecordDetach(ctx, euiBytes, session.BaseStationEUIBytes(), servingTenantID); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to record roaming detach",
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRecordRoamingDetach,
 					"error", err)
 				// Non-fatal: continue with detach
 			}
@@ -2942,7 +2942,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 			// Update session to remove roaming endpoint
 			if session.DbSessionID > 0 {
 				if err := s.roamingSvc.UpdateSessionRoaming(ctx, session.DbSessionID, euiBytes, false, servingTenantID); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), "Failed to update session roaming for detach",
+					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateSessionRoamingForDetach,
 						"error", err)
 					// Non-fatal: continue with detach
 				}
@@ -3022,7 +3022,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 	// Persist subpackets if present (BSSCI §5.7.1 optional field)
 	if subpacketsMap != nil {
 		if normalizedSp, err := NormalizeSubpackets(subpacketsMap); err != nil {
-			s.logger.WarnContext(ownerCtx, "Failed to normalize detach subpackets", "error", err)
+			s.logger.WarnContext(ownerCtx, LogBSSCIFailedToNormalizeDetachSubpackets, "error", err)
 		} else {
 			detachMsg.Subpackets = normalizedSp
 		}
@@ -3046,7 +3046,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 		// Cryptographic signature validation
 		if s.config.DetachSignatureValidationEnabled {
 			if err := ValidateDetachSignature(sign, endpoint.Sign); err != nil {
-				s.logger.WarnContext(ownerCtx, "Detach signature validation failed",
+				s.logger.WarnContext(ownerCtx, LogBSSCIDetachSignatureValidationFailed,
 					"epEui", pkgmioty.FormatEUI64(epEuiUint),
 					"error", err)
 				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidSignature))
@@ -3067,7 +3067,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 			"propagate_status":       propagateStatus,
 		}
 		if err := s.endpointRepo.UpdateFields(ownerCtx, ownerTenantID, endpoint.ID, updates); err != nil {
-			s.logger.WarnContext(ownerCtx, "Failed to update endpoint detach telemetry",
+			s.logger.WarnContext(ownerCtx, LogBSSCIFailedToUpdateEndpointDetachTelemetry,
 				"error", err,
 				"epEui", epEuiUint)
 		}
@@ -3484,7 +3484,7 @@ func (s *Server) handleDetachComplete(_ *Server, session *Session, msg *Message,
 			}
 
 			if err := s.endpointRepo.UpdateRadioMetricsSelective(ctx, resolvedTenant(session, s.tenantID), eui, update); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), "Failed to update radio metrics", "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateRadioMetrics, "error", err)
 			}
 		}
 	}
@@ -3633,7 +3633,7 @@ func (s *Server) handleULData(_ *Server, session *Session, msg *Message, data ma
 		}
 		disposition, dispErr := s.dispositionResolver.Resolve(ctx, epEuiForDisp)
 		if dispErr != nil {
-			s.logger.ErrorContext(ctx, "Disposition resolution failed; rejecting uplink",
+			s.logger.ErrorContext(ctx, LogBSSCIDispositionResolutionFailedRejectingUplink,
 				"ep_eui", epEUI, "error", dispErr)
 			return s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errFailedToPersistULData))
 		}
@@ -3655,7 +3655,7 @@ func (s *Server) handleULData(_ *Server, session *Session, msg *Message, data ma
 				epU, _ := safeUint64(epEUI, "epEui")
 				_, enqErr := s.relayOutbox.Enqueue(ctx, epU, session.BaseStationEUI, rawFrame, time.Now().UnixNano())
 				if enqErr != nil {
-					s.logger.ErrorContext(ctx, "Failed to enqueue relay uplink",
+					s.logger.ErrorContext(ctx, LogBSSCIFailedToEnqueueRelayUplink,
 						"ep_eui", epEUI, "error", enqErr)
 					return s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errFailedToPersistULData))
 				}
@@ -3802,7 +3802,7 @@ func (s *Server) handleULData(_ *Server, session *Session, msg *Message, data ma
 		}
 		result, ingestErr := s.uplinkIngestSvc.Ingest(ctx, payload, UplinkIngestOptions{Source: UplinkSourceBSSCI})
 		if ingestErr != nil {
-			s.logger.ErrorContext(ctx, "Uplink ingest failed",
+			s.logger.ErrorContext(ctx, LogBSSCIUplinkIngestFailed,
 				"ep_eui", epEuiVal, "packet_cnt", packetCntVal, "error", ingestErr)
 			return s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errFailedToPersistULData))
 		}
@@ -5413,14 +5413,14 @@ func (s *Server) CloseSessionByEUI(ctx context.Context, eui uint64) error {
 		return nil // No active session for this EUI
 	}
 
-	s.logger.InfoContext(ctx, "Closing BSSCI session due to EUI change",
+	s.logger.InfoContext(ctx, LogBSSCIClosingBSSCISessionDueToEUIChange,
 		"eui", eui,
 		"sessionID", targetSession.ID)
 
 	// Terminate DB session record
 	if targetSession.DbSessionID != 0 && s.sessionSvc != nil {
 		if err := s.sessionSvc.TerminateSession(ctx, targetSession); err != nil {
-			s.logger.WarnContext(ctx, "Failed to terminate DB session during EUI change",
+			s.logger.WarnContext(ctx, LogBSSCIFailedToTerminateDBSessionDuringEUIChange,
 				"error", err,
 				"sessionID", targetSession.DbSessionID)
 		}
@@ -5439,7 +5439,7 @@ func (s *Server) CloseSessionByEUI(ctx context.Context, eui uint64) error {
 	// Close connection to trigger cleanup
 	if targetSession.Conn != nil {
 		if err := targetSession.Conn.Close(); err != nil {
-			s.logger.WarnContext(ctx, "Failed to close connection during EUI change cleanup",
+			s.logger.WarnContext(ctx, LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup,
 				"error", err,
 				"sessionID", targetSession.ID)
 		}
@@ -5884,7 +5884,7 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 	// Persist to messages (non-blocking - log errors only)
 	if s.storage != nil && s.storage.MIOTYMessages() != nil {
 		if err := s.storage.MIOTYMessages().CreateDetachPropagateMessage(ownerCtx, propagateMsg); err != nil {
-			s.logger.ErrorContext(ownerCtx, "Failed to persist detach propagate message",
+			s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToPersistDetachPropagateMessage,
 				"ep_eui", endpointEUI,
 				"bs_eui", session.BaseStationEUI,
 				"tenant_id", endpointTenantID,
@@ -6381,11 +6381,11 @@ func (s *Server) loadPendingOperations(session *Session) ([]*PendingOperation, e
 					normalizedMeta["subpackets"] = subpackets
 				}
 				metadata = normalizedMeta
-				s.logger.DebugContext(s.safeCtx(), "Normalized detach metadata on resume",
+				s.logger.DebugContext(s.safeCtx(), LogBSSCINormalizedDetachMetadataOnResume,
 					"opId", opId,
 					"epEui", typedMeta.EpEui)
 			} else {
-				s.logger.WarnContext(s.safeCtx(), "Failed to normalize detach metadata on resume, using raw data",
+				s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToNormalizeDetachMetadataOnResumeUsingRawData,
 					"opId", opId)
 			}
 		}
@@ -6764,7 +6764,7 @@ func (s *Server) sendCatalogError(session *Session, opId int64, err *CatalogErro
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		s.logger.ErrorContext(ctx, "Failed to send catalog error", "error", sendErr)
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToSendCatalogError, "error", sendErr)
 	}
 	return fmt.Errorf("%s", err.Token)
 }
