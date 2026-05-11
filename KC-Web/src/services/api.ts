@@ -507,11 +507,7 @@ class ApiService {
     };
   }
 
-  async getBaseStationMessageStats(
-    eui: string,
-    _startTime?: Date,
-    _endTime?: Date
-  ): Promise<BaseStationMessagesStats | null> {
+  async getBaseStationMessageStats(eui: string): Promise<BaseStationMessagesStats | null> {
     const response = await grpcClient.getBaseStationMessageStats(eui);
     if (!response) {
       return null; // Caller handles absence
@@ -1248,12 +1244,8 @@ class ApiService {
     });
   }
 
-  async exchangeOIDC(payload: ExchangeRequest, redirectUri?: string): Promise<LoginResponseAPI> {
-    const response = await grpcClient.exchangeOIDC(
-      payload.code,
-      payload.state,
-      redirectUri || window.location.origin + '/auth/callback'
-    );
+  async exchangeOIDC(payload: ExchangeRequest): Promise<LoginResponseAPI> {
+    const response = await grpcClient.exchangeOIDC(payload.code, payload.state);
     return mapLoginResponse({
       tokens: {
         access_token: response.tokens.accessToken,
@@ -1282,12 +1274,8 @@ class ApiService {
     });
   }
 
-  async exchangeOAuth2(payload: ExchangeRequest, redirectUri?: string): Promise<LoginResponseAPI> {
-    const response = await grpcClient.exchangeOAuth2(
-      payload.code,
-      payload.state,
-      redirectUri || window.location.origin + '/auth/callback'
-    );
+  async exchangeOAuth2(payload: ExchangeRequest): Promise<LoginResponseAPI> {
+    const response = await grpcClient.exchangeOAuth2(payload.code, payload.state);
     return mapLoginResponse({
       tokens: {
         access_token: response.tokens.accessToken,
