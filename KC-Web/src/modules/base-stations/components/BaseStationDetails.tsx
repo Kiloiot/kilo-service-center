@@ -108,6 +108,124 @@ interface BaseStationDetailsProps {
   onDelete?: (id: string) => void;
 }
 
+interface BaseStationEditFormData {
+  name: string;
+  eui: string;
+  latitude: string;
+  longitude: string;
+  altitude: string;
+}
+
+interface BaseStationDetailsSnapshot {
+  locationSource?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  altitude?: number | null;
+}
+
+/** Formats uptime seconds, including days when greater than 24h. */
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${secs}s`;
+  return `${hours}h ${minutes}m ${secs}s`;
+}
+
+/**
+ * Validates the manual-location fields. GPS-sourced rows are read-only so
+ * an empty errors map is returned. Returns sparse errors map keyed by
+ * "latitude" / "longitude".
+ */
+function validateLocationForm(
+  form: BaseStationEditFormData,
+  isGps: boolean,
+): Record<string, string> {
+  if (isGps) return {};
+  const errs: Record<string, string> = {};
+  const hasLat = form.latitude.trim() !== "";
+  const hasLng = form.longitude.trim() !== "";
+  if (hasLat !== hasLng) {
+    errs.latitude = VAL_LAT_LON_PAIR;
+    errs.longitude = VAL_LAT_LON_PAIR;
+  }
+  if (hasLat) {
+    const lat = parseFloat(form.latitude);
+    if (
+      isNaN(lat) ||
+      lat < GEO_BOUNDS.LATITUDE_MIN ||
+      lat > GEO_BOUNDS.LATITUDE_MAX
+    ) {
+      errs.latitude = VAL_LATITUDE_RANGE;
+    }
+  }
+  if (hasLng) {
+    const lng = parseFloat(form.longitude);
+    if (
+      isNaN(lng) ||
+      lng < GEO_BOUNDS.LONGITUDE_MIN ||
+      lng > GEO_BOUNDS.LONGITUDE_MAX
+    ) {
+      errs.longitude = VAL_LONGITUDE_RANGE;
+    }
+  }
+  return errs;
+}
+
+/**
+ * Builds the location update payload. number = set, null = clear,
+ * undefined-key = omit. GPS rows always return {} (do not modify).
+ */
+function buildLocationUpdateData(
+  form: BaseStationEditFormData,
+  details: BaseStationDetailsSnapshot | undefined,
+): { latitude?: number | null; longitude?: number | null; altitude?: number | null } {
+  if (details?.locationSource === "gps") return {};
+  const hasLat = form.latitude.trim() !== "";
+  const hasLng = form.longitude.trim() !== "";
+  const hadLat = details?.latitude != null;
+  if (!hasLat && !hasLng && hadLat) {
+    return { latitude: null, longitude: null, altitude: null };
+  }
+  if (hasLat && hasLng) {
+    const data: {
+      latitude: number;
+      longitude: number;
+      altitude?: number | null;
+    } = {
+      latitude: parseFloat(form.latitude),
+      longitude: parseFloat(form.longitude),
+    };
+    if (form.altitude.trim()) {
+      data.altitude = parseFloat(form.altitude);
+    } else if (details?.altitude != null) {
+      data.altitude = null;
+    }
+    return data;
+  }
+  return {};
+}
+
+/**
+ * Returns true when the form's lat/lng/altitude differ from the fetched
+ * details. GPS rows always return false (no manual edits propagate).
+ */
+function hasLocationChanged(
+  form: BaseStationEditFormData,
+  details: BaseStationDetailsSnapshot | undefined,
+): boolean {
+  if (details?.locationSource === "gps") return false;
+  const detailLat = details?.latitude != null ? String(details.latitude) : "";
+  const detailLng = details?.longitude != null ? String(details.longitude) : "";
+  const detailAlt = details?.altitude != null ? String(details.altitude) : "";
+  return (
+    form.latitude.trim() !== detailLat ||
+    form.longitude.trim() !== detailLng ||
+    form.altitude.trim() !== detailAlt
+  );
+}
+
 const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
   baseStation,
   onDelete,
@@ -190,19 +308,6 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
     baseStationDetails?.serviceCenterUrl ||
     baseStation.serviceCenterUrl;
 
-  // Helper function to format uptime with days when > 24 hours
-  const formatUptime = (seconds: number): string => {
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (days > 0) {
-      return `${days}d ${hours}h ${minutes}m ${secs}s`;
-    }
-    return `${hours}h ${minutes}m ${secs}s`;
-  };
-
   // Certificate expiry calculation using centralized helper
   const daysUntilExpiry = calculateDaysUntilExpiry(
     baseStation.certificateExpiryDate,
@@ -253,102 +358,19 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
   // Handle edit form save - update name and/or EUI
   /** Validate location fields; returns true if valid */
   const validateLocation = (): boolean => {
-    const isGps = baseStationDetails?.locationSource === "gps";
-    if (isGps) return true; // GPS fields are read-only
-
-    const errs: Record<string, string> = {};
-    const hasLat = editFormData.latitude.trim() !== "";
-    const hasLng = editFormData.longitude.trim() !== "";
-
-    if (hasLat !== hasLng) {
-      errs.latitude = VAL_LAT_LON_PAIR;
-      errs.longitude = VAL_LAT_LON_PAIR;
-    }
-    if (hasLat) {
-      const lat = parseFloat(editFormData.latitude);
-      if (
-        isNaN(lat) ||
-        lat < GEO_BOUNDS.LATITUDE_MIN ||
-        lat > GEO_BOUNDS.LATITUDE_MAX
-      ) {
-        errs.latitude = VAL_LATITUDE_RANGE;
-      }
-    }
-    if (hasLng) {
-      const lng = parseFloat(editFormData.longitude);
-      if (
-        isNaN(lng) ||
-        lng < GEO_BOUNDS.LONGITUDE_MIN ||
-        lng > GEO_BOUNDS.LONGITUDE_MAX
-      ) {
-        errs.longitude = VAL_LONGITUDE_RANGE;
-      }
-    }
+    const errs = validateLocationForm(
+      editFormData,
+      baseStationDetails?.locationSource === "gps",
+    );
     setLocationErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  /** Build location update data: number = set, null = clear, undefined = omit */
-  const buildLocationData = (): {
-    latitude?: number | null;
-    longitude?: number | null;
-    altitude?: number | null;
-  } => {
-    const isGps = baseStationDetails?.locationSource === "gps";
-    if (isGps) return {}; // GPS: don't modify
+  const buildLocationData = () =>
+    buildLocationUpdateData(editFormData, baseStationDetails);
 
-    const hasLat = editFormData.latitude.trim() !== "";
-    const hasLng = editFormData.longitude.trim() !== "";
-    const hadLat = baseStationDetails?.latitude != null;
-
-    if (!hasLat && !hasLng && hadLat) {
-      // Clearing location
-      return { latitude: null, longitude: null, altitude: null };
-    }
-    if (hasLat && hasLng) {
-      const data: {
-        latitude: number;
-        longitude: number;
-        altitude?: number | null;
-      } = {
-        latitude: parseFloat(editFormData.latitude),
-        longitude: parseFloat(editFormData.longitude),
-      };
-      if (editFormData.altitude.trim()) {
-        data.altitude = parseFloat(editFormData.altitude);
-      } else if (baseStationDetails?.altitude != null) {
-        data.altitude = null; // clear altitude
-      }
-      return data;
-    }
-    return {};
-  };
-
-  /** Compare current form values against fetched details to detect actual location changes */
-  const hasLocationChanged = (): boolean => {
-    const isGps = baseStationDetails?.locationSource === "gps";
-    if (isGps) return false;
-
-    const formLat = editFormData.latitude.trim();
-    const formLng = editFormData.longitude.trim();
-    const formAlt = editFormData.altitude.trim();
-    const detailLat =
-      baseStationDetails?.latitude != null
-        ? String(baseStationDetails.latitude)
-        : "";
-    const detailLng =
-      baseStationDetails?.longitude != null
-        ? String(baseStationDetails.longitude)
-        : "";
-    const detailAlt =
-      baseStationDetails?.altitude != null
-        ? String(baseStationDetails.altitude)
-        : "";
-
-    return (
-      formLat !== detailLat || formLng !== detailLng || formAlt !== detailAlt
-    );
-  };
+  const locationHasChanges = () =>
+    hasLocationChanged(editFormData, baseStationDetails);
 
   const handleUpdateSuccess = (newEui?: string) => {
     if (newEui) {
@@ -396,7 +418,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
     if (!validateLocation()) return;
 
     const locationData = buildLocationData();
-    const locationChanged = hasLocationChanged();
+    const locationChanged = locationHasChanges();
 
     // If EUI changed, update it first
     if (euiChanged) {
