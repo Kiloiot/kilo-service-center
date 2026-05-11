@@ -162,6 +162,10 @@ const (
 	LogBSSCIFailedToRecordAttachEvent = "Failed to record attach event"
 	// LogBSSCIFailedToSendAttachPropagateComplete is a log message constant
 	LogBSSCIFailedToSendAttachPropagateComplete = "Failed to send attach propagate complete"
+	// LogBSSCIFailedToSendDetachPropagateComplete is the symmetric token used
+	// when the Service Center cannot deliver the detach-propagate completion
+	// message to the base station.
+	LogBSSCIFailedToSendDetachPropagateComplete = "Failed to send detach propagate complete"
 	// LogBSSCIFailedToCreateCompletionEvent is a log message constant
 	LogBSSCIFailedToCreateCompletionEvent = "Failed to create attach propagate completion event"
 	// LogBSSCIFailedToPersistAttachPropagateComplete is a log message constant

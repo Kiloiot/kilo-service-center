@@ -6019,6 +6019,10 @@ func (s *Server) handleDetachPropagateResponse(srv *Server, session *Session, ms
 
 	// Send the completion message
 	if err := s.sendMessage(session, completionMsg); err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToSendDetachPropagateComplete,
+			"baseStation", session.BaseStationEUI,
+			"opId", msg.OpId,
+			"error", err)
 		return err
 	}
 
