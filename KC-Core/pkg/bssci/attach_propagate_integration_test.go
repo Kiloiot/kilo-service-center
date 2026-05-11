@@ -12,6 +12,7 @@ import (
 
 	bssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -522,7 +523,7 @@ func TestAttachPropagateCompletionIntegration_WithPendingOp(t *testing.T) {
 			"longBlkDist":   false,
 		},
 	}
-	err := statusSvc.RecordPendingOperation(context.Background(), session, testOpId, pendingOp, session.DbSessionID)
+	err := statusSvc.RecordPendingOperation(testutil.TestContextWithTenant(testTenantID), session, testOpId, pendingOp, session.DbSessionID)
 	require.NoError(t, err, "RecordPendingOperation should succeed")
 
 	// Verify pending op was recorded
@@ -816,7 +817,7 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 			"tenantId": float64(testTenantID),
 		},
 	}
-	require.NoError(t, statusSvc.RecordPendingOperation(context.Background(), session, testOpId, pendingOp, session.DbSessionID))
+	require.NoError(t, statusSvc.RecordPendingOperation(testutil.TestContextWithTenant(testTenantID), session, testOpId, pendingOp, session.DbSessionID))
 
 	data := map[string]interface{}{
 		"command": mioty.CmdAttachPropagateResponse,

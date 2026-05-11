@@ -8,6 +8,8 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -99,7 +101,7 @@ func (r *uplinkIngestEndpointRepo) Get(_ context.Context, eui models.EUI) (*mode
 	if ep, ok := r.endpoints[eui.ToUint64()]; ok {
 		return ep, nil
 	}
-	return nil, nil
+	return nil, storage.ErrNotFound
 }
 
 func (r *uplinkIngestEndpointRepo) GetByEUI(context.Context, int64, []byte) (*models.EndPoint, error) {
@@ -338,7 +340,7 @@ func TestUplinkIngest_PublishesMQTTUplink(t *testing.T) {
 	)
 
 	payload := buildUplinkPayload()
-	_, err := svc.Ingest(context.Background(), payload, bssci.UplinkIngestOptions{Source: bssci.UplinkSourceBSSCI})
+	_, err := svc.Ingest(testutil.TestContextWithTenant(uplinkIngestTestTenantID), payload, bssci.UplinkIngestOptions{Source: bssci.UplinkSourceBSSCI})
 	require.NoError(t, err)
 
 	// Ingest publishes MQTT inside a goroutine — wait on the channel.
@@ -367,7 +369,7 @@ func TestUplinkIngest_OrgUnresolved_SkipsPublish(t *testing.T) {
 	svc := newUplinkIngestForTest(t, map[int64]uuid.UUID{}, publisher)
 
 	payload := buildUplinkPayload()
-	_, err := svc.Ingest(context.Background(), payload, bssci.UplinkIngestOptions{Source: bssci.UplinkSourceBSSCI})
+	_, err := svc.Ingest(testutil.TestContextWithTenant(uplinkIngestTestTenantID), payload, bssci.UplinkIngestOptions{Source: bssci.UplinkSourceBSSCI})
 	require.NoError(t, err)
 
 	select {
