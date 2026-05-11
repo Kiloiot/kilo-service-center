@@ -41,6 +41,154 @@ func nullableByteParam(b []byte) interface{} {
 	return b
 }
 
+// hstoreToStringMap converts a postgres hstore to a Go map, omitting NULL values.
+func hstoreToStringMap(h hstore.Hstore) map[string]string {
+	out := make(map[string]string, len(h.Map))
+	for k, v := range h.Map {
+		if v.Valid {
+			out[k] = v.String
+		}
+	}
+	return out
+}
+
+// euiPtrFromBytes converts an 8-byte BYTEA column to *models.EUI. Returns nil
+// for any other length so callers can leave the destination unset.
+func euiPtrFromBytes(b []byte) *models.EUI {
+	if len(b) != 8 {
+		return nil
+	}
+	var eui models.EUI
+	copy(eui[:], b)
+	return &eui
+}
+
+// attachNullables groups the nullable scan targets for an endpoint's last-attach
+// metrics. Pass field addresses to sql.Row.Scan, then call assignAttachFields.
+type attachNullables struct {
+	LastAttachRxTime     sql.NullInt64
+	LastAttachRxDuration sql.NullInt64
+	LastAttachSubpackets sql.NullString
+	LastAttachedBsEui    sql.NullInt64
+}
+
+func assignAttachFields(ep *models.EndPoint, n attachNullables) {
+	if n.LastAttachRxTime.Valid {
+		v := n.LastAttachRxTime.Int64
+		ep.LastAttachRxTime = &v
+	}
+	if n.LastAttachRxDuration.Valid {
+		v := n.LastAttachRxDuration.Int64
+		ep.LastAttachRxDuration = &v
+	}
+	if n.LastAttachSubpackets.Valid {
+		v := n.LastAttachSubpackets.String
+		ep.LastAttachSubpackets = &v
+	}
+	if n.LastAttachedBsEui.Valid {
+		v := n.LastAttachedBsEui.Int64
+		ep.LastAttachedBsEui = &v
+	}
+}
+
+// detachNullables groups the nullable scan targets for an endpoint's detach
+// and propagate state.
+type detachNullables struct {
+	LastDetachTime      sql.NullInt64
+	LastDetachPacketCnt sql.NullInt64
+	LastDetachSign      []byte
+	LastPropagateTime   sql.NullInt64
+	PropagateStatus     sql.NullString
+	PropagatedAt        sql.NullTime
+}
+
+func assignDetachFields(ep *models.EndPoint, n detachNullables) {
+	if n.LastDetachTime.Valid {
+		v := n.LastDetachTime.Int64
+		ep.LastDetachTime = &v
+	}
+	if n.LastDetachPacketCnt.Valid {
+		v := n.LastDetachPacketCnt.Int64
+		ep.LastDetachPacketCnt = &v
+	}
+	if len(n.LastDetachSign) > 0 {
+		ep.LastDetachSign = n.LastDetachSign
+	}
+	if n.LastPropagateTime.Valid {
+		v := n.LastPropagateTime.Int64
+		ep.LastPropagateTime = &v
+	}
+	if n.PropagateStatus.Valid {
+		v := n.PropagateStatus.String
+		ep.PropagateStatus = &v
+	}
+	if n.PropagatedAt.Valid {
+		v := n.PropagatedAt.Time
+		ep.PropagatedAt = &v
+	}
+}
+
+// radioNullables groups the nullable scan targets for the BSSCI §3.6.1/3.7.1
+// radio metrics.
+type radioNullables struct {
+	LastSNR     sql.NullFloat64
+	LastRSSI    sql.NullFloat64
+	LastEqSNR   sql.NullFloat64
+	LastProfile sql.NullString
+}
+
+func assignRadioMetrics(ep *models.EndPoint, n radioNullables) {
+	if n.LastSNR.Valid {
+		v := n.LastSNR.Float64
+		ep.LastSNR = &v
+	}
+	if n.LastRSSI.Valid {
+		v := n.LastRSSI.Float64
+		ep.LastRSSI = &v
+	}
+	if n.LastEqSNR.Valid {
+		v := n.LastEqSNR.Float64
+		ep.LastEqSNR = &v
+	}
+	if n.LastProfile.Valid {
+		v := n.LastProfile.String
+		ep.LastProfile = &v
+	}
+}
+
+// uplinkNullables groups the nullable scan targets for an endpoint's last-uplink
+// telemetry. Direct columns (LastDlOpen, LastResponseExp, LastDlAck, PacketCnt)
+// are scanned straight into the struct in callers and not represented here.
+type uplinkNullables struct {
+	LastUserData   []byte
+	LastFormatID   sql.NullInt32
+	LastMode       sql.NullString
+	LastRxTime     sql.NullInt64
+	LastRxDuration sql.NullInt64
+}
+
+func assignUplinkFields(ep *models.EndPoint, n uplinkNullables) {
+	if len(n.LastUserData) > 0 {
+		ep.LastUserData = n.LastUserData
+	}
+	if n.LastFormatID.Valid {
+		v := n.LastFormatID.Int32
+		ep.LastFormatID = &v
+	}
+	if n.LastMode.Valid {
+		v := n.LastMode.String
+		ep.LastMode = &v
+	}
+	if n.LastRxTime.Valid {
+		v := n.LastRxTime.Int64
+		ep.LastRxTime = &v
+	}
+	if n.LastRxDuration.Valid {
+		v := n.LastRxDuration.Int64
+		ep.LastRxDuration = &v
+	}
+}
+
 // endpointBaseSelectColumns defines the standard column list for endpoint queries.
 // Used by Get, GetEndpointWithOwnership, and related methods to ensure consistent field selection.
 // Column order MUST match scan order in methods using this constant.
@@ -196,12 +344,9 @@ func scanEndpointTenantLookupRow(scanner interface {
 	var tags hstore.Hstore
 	var typeEUIBytes []byte
 	var attachCnt sql.NullInt64
-	var lastDetachSign []byte
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
-	var propagateStatus sql.NullString
-	var lastAttachRxTime, lastAttachRxDuration sql.NullInt64
-	var lastSNR, lastRSSI, lastEqSNR sql.NullFloat64
-	var lastProfile, lastAttachSubpackets sql.NullString
+	var attach attachNullables
+	var detach detachNullables
+	var radio radioNullables
 
 	err := scanner.Scan(
 		&endpoint.ID,
@@ -232,11 +377,11 @@ func scanEndpointTenantLookupRow(scanner interface {
 		&endpoint.WideCarrOff,
 		&endpoint.LongBlkDist,
 		// Detach fields (BSSCI §5.7)
-		&lastAttachedBsEui, &lastPropagateTime, &lastDetachTime,
-		&lastDetachSign, &lastDetachPacketCnt, &propagateStatus,
+		&attach.LastAttachedBsEui, &detach.LastPropagateTime, &detach.LastDetachTime,
+		&detach.LastDetachSign, &detach.LastDetachPacketCnt, &detach.PropagateStatus,
 		// Radio metrics (BSSCI §3.6.1/3.7.1)
-		&lastAttachRxTime, &lastAttachRxDuration,
-		&lastSNR, &lastRSSI, &lastEqSNR, &lastProfile, &lastAttachSubpackets,
+		&attach.LastAttachRxTime, &attach.LastAttachRxDuration,
+		&radio.LastSNR, &radio.LastRSSI, &radio.LastEqSNR, &radio.LastProfile, &attach.LastAttachSubpackets,
 		&endpoint.EpStatus,
 		&endpoint.DeviceModelID,
 	)
@@ -244,76 +389,15 @@ func scanEndpointTenantLookupRow(scanner interface {
 		return nil, err
 	}
 
-	endpoint.Tags = make(map[string]string)
-	for k, v := range tags.Map {
-		if v.Valid {
-			endpoint.Tags[k] = v.String
-		}
-	}
-
-	if len(typeEUIBytes) == 8 {
-		var typeEUI models.EUI
-		copy(typeEUI[:], typeEUIBytes)
-		endpoint.TypeEUI = &typeEUI
-	}
-
+	endpoint.Tags = hstoreToStringMap(tags)
+	endpoint.TypeEUI = euiPtrFromBytes(typeEUIBytes)
 	if attachCnt.Valid {
 		val := uint32(attachCnt.Int64) // #nosec G115 -- DB CHECK constraint ensures 0-4294967295
 		endpoint.AttachCnt = &val
 	}
-
-	if len(lastDetachSign) > 0 {
-		endpoint.LastDetachSign = lastDetachSign
-	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
-	}
-
-	if lastAttachRxTime.Valid {
-		val := lastAttachRxTime.Int64
-		endpoint.LastAttachRxTime = &val
-	}
-	if lastAttachRxDuration.Valid {
-		val := lastAttachRxDuration.Int64
-		endpoint.LastAttachRxDuration = &val
-	}
-	if lastSNR.Valid {
-		val := lastSNR.Float64
-		endpoint.LastSNR = &val
-	}
-	if lastRSSI.Valid {
-		val := lastRSSI.Float64
-		endpoint.LastRSSI = &val
-	}
-	if lastEqSNR.Valid {
-		val := lastEqSNR.Float64
-		endpoint.LastEqSNR = &val
-	}
-	if lastProfile.Valid {
-		val := lastProfile.String
-		endpoint.LastProfile = &val
-	}
-	if lastAttachSubpackets.Valid {
-		val := lastAttachSubpackets.String
-		endpoint.LastAttachSubpackets = &val
-	}
+	assignAttachFields(endpoint, attach)
+	assignDetachFields(endpoint, detach)
+	assignRadioMetrics(endpoint, radio)
 
 	return endpoint, nil
 }
@@ -353,12 +437,11 @@ func scanEndpointDetailRow(scanner interface {
 	var tags hstore.Hstore
 	var typeEUIBytes []byte
 	var attachCnt sql.NullInt64
-	var nonce, sign, lastUserData, lastDetachSign []byte
-	var lastAttachRxTime, lastAttachRxDuration, lastRxTime, lastRxDuration sql.NullInt64
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
-	var lastSNR, lastRSSI, lastEqSNR sql.NullFloat64
-	var lastFormatID sql.NullInt32
-	var lastProfile, lastAttachSubpackets, lastMode, propagateStatus sql.NullString
+	var nonce, sign []byte
+	var attach attachNullables
+	var detach detachNullables
+	var radio radioNullables
+	var uplink uplinkNullables
 
 	err := scanner.Scan(
 		&endpoint.ID,
@@ -389,20 +472,20 @@ func scanEndpointDetailRow(scanner interface {
 		// MIOTY config
 		&endpoint.DualChan, &endpoint.Repetition, &endpoint.WideCarrOff, &endpoint.LongBlkDist,
 		// Attach fields
-		&attachCnt, &nonce, &sign, &lastAttachRxTime, &lastAttachRxDuration,
+		&attachCnt, &nonce, &sign, &attach.LastAttachRxTime, &attach.LastAttachRxDuration,
 		// Radio metrics
-		&lastSNR, &lastRSSI, &lastEqSNR, &lastProfile, &lastAttachSubpackets,
+		&radio.LastSNR, &radio.LastRSSI, &radio.LastEqSNR, &radio.LastProfile, &attach.LastAttachSubpackets,
 		// Detach fields (BSSCI §5.7)
-		&lastAttachedBsEui, &lastPropagateTime, &lastDetachTime,
-		&lastDetachSign, &lastDetachPacketCnt, &propagateStatus,
+		&attach.LastAttachedBsEui, &detach.LastPropagateTime, &detach.LastDetachTime,
+		&detach.LastDetachSign, &detach.LastDetachPacketCnt, &detach.PropagateStatus,
 		// Attach status
 		&endpoint.EpStatus,
 		// UL deduplication
 		&endpoint.LastPacketCnt,
 		// UL data
-		&lastUserData, &lastFormatID, &lastMode,
+		&uplink.LastUserData, &uplink.LastFormatID, &uplink.LastMode,
 		// UL reception
-		&lastRxTime, &lastRxDuration, &endpoint.PacketCnt,
+		&uplink.LastRxTime, &uplink.LastRxDuration, &endpoint.PacketCnt,
 		// Downlink control
 		&endpoint.LastDlOpen, &endpoint.LastResponseExp, &endpoint.LastDlAck,
 		// Legacy
@@ -414,107 +497,22 @@ func scanEndpointDetailRow(scanner interface {
 		return nil, err
 	}
 
-	if len(typeEUIBytes) == 8 {
-		var typeEUI models.EUI
-		copy(typeEUI[:], typeEUIBytes)
-		endpoint.TypeEUI = &typeEUI
-	}
-
-	if tags.Map != nil {
-		endpoint.Tags = make(map[string]string)
-		for k, v := range tags.Map {
-			if v.Valid {
-				endpoint.Tags[k] = v.String
-			}
-		}
-	} else {
-		endpoint.Tags = make(map[string]string)
-	}
-
+	endpoint.TypeEUI = euiPtrFromBytes(typeEUIBytes)
+	endpoint.Tags = hstoreToStringMap(tags)
 	if attachCnt.Valid {
 		val := uint32(attachCnt.Int64) // #nosec G115 -- DB CHECK constraint ensures 0-4294967295
 		endpoint.AttachCnt = &val
 	}
-	if lastFormatID.Valid {
-		val := lastFormatID.Int32
-		endpoint.LastFormatID = &val
-	}
-
 	if len(nonce) > 0 {
 		endpoint.Nonce = nonce
 	}
 	if len(sign) > 0 {
 		endpoint.Sign = sign
 	}
-	if len(lastUserData) > 0 {
-		endpoint.LastUserData = lastUserData
-	}
-	if len(lastDetachSign) > 0 {
-		endpoint.LastDetachSign = lastDetachSign
-	}
-
-	if lastAttachRxTime.Valid {
-		val := lastAttachRxTime.Int64
-		endpoint.LastAttachRxTime = &val
-	}
-	if lastAttachRxDuration.Valid {
-		val := lastAttachRxDuration.Int64
-		endpoint.LastAttachRxDuration = &val
-	}
-	if lastRxTime.Valid {
-		val := lastRxTime.Int64
-		endpoint.LastRxTime = &val
-	}
-	if lastRxDuration.Valid {
-		val := lastRxDuration.Int64
-		endpoint.LastRxDuration = &val
-	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-
-	if lastSNR.Valid {
-		val := lastSNR.Float64
-		endpoint.LastSNR = &val
-	}
-	if lastRSSI.Valid {
-		val := lastRSSI.Float64
-		endpoint.LastRSSI = &val
-	}
-	if lastEqSNR.Valid {
-		val := lastEqSNR.Float64
-		endpoint.LastEqSNR = &val
-	}
-
-	if lastProfile.Valid {
-		val := lastProfile.String
-		endpoint.LastProfile = &val
-	}
-	if lastAttachSubpackets.Valid {
-		val := lastAttachSubpackets.String
-		endpoint.LastAttachSubpackets = &val
-	}
-	if lastMode.Valid {
-		val := lastMode.String
-		endpoint.LastMode = &val
-	}
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
-	}
+	assignAttachFields(endpoint, attach)
+	assignDetachFields(endpoint, detach)
+	assignRadioMetrics(endpoint, radio)
+	assignUplinkFields(endpoint, uplink)
 
 	return endpoint, nil
 }
@@ -553,15 +551,10 @@ func scanEndpointDetachValidationRow(scanner interface {
 	endpoint := &models.EndPoint{}
 	var tags hstore.Hstore
 	var typeEUIBytes []byte
-	var propagatedAt sql.NullTime
-	var lastAttachRxTime, lastAttachRxDuration sql.NullInt64
-	var lastSNR, lastRSSI, lastEqSNR sql.NullFloat64
-	var lastProfile, lastAttachSubpackets sql.NullString
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
-	var propagateStatus sql.NullString
-	var lastFormatID sql.NullInt32
-	var lastMode sql.NullString
-	var lastRxTime, lastRxDuration sql.NullInt64
+	var attach attachNullables
+	var detach detachNullables
+	var radio radioNullables
+	var uplink uplinkNullables
 	var lastSeenAt sql.NullTime
 	var batteryLevel sql.NullFloat64
 
@@ -582,7 +575,7 @@ func scanEndpointDetachValidationRow(scanner interface {
 		&endpoint.Model,
 		&endpoint.CarrierOffset,
 		&endpoint.Propagated,
-		&propagatedAt,
+		&detach.PropagatedAt,
 		&endpoint.PropagationCount,
 		&endpoint.DualChan,
 		&endpoint.Repetition,
@@ -592,25 +585,25 @@ func scanEndpointDetachValidationRow(scanner interface {
 		&endpoint.Nonce,
 		&endpoint.Sign,
 		&endpoint.PresharedKey,
-		&lastAttachRxTime,
-		&lastAttachRxDuration,
-		&lastSNR,
-		&lastRSSI,
-		&lastEqSNR,
-		&lastProfile,
-		&lastAttachSubpackets,
-		&lastAttachedBsEui,
-		&lastPropagateTime,
-		&lastDetachTime,
+		&attach.LastAttachRxTime,
+		&attach.LastAttachRxDuration,
+		&radio.LastSNR,
+		&radio.LastRSSI,
+		&radio.LastEqSNR,
+		&radio.LastProfile,
+		&attach.LastAttachSubpackets,
+		&attach.LastAttachedBsEui,
+		&detach.LastPropagateTime,
+		&detach.LastDetachTime,
 		&endpoint.LastDetachSign,
-		&lastDetachPacketCnt,
-		&propagateStatus,
+		&detach.LastDetachPacketCnt,
+		&detach.PropagateStatus,
 		&endpoint.LastPacketCnt,
-		&endpoint.LastUserData,
-		&lastFormatID,
-		&lastMode,
-		&lastRxTime,
-		&lastRxDuration,
+		&uplink.LastUserData,
+		&uplink.LastFormatID,
+		&uplink.LastMode,
+		&uplink.LastRxTime,
+		&uplink.LastRxDuration,
 		&endpoint.PacketCnt,
 		&endpoint.LastDlOpen,
 		&endpoint.LastResponseExp,
@@ -629,83 +622,12 @@ func scanEndpointDetachValidationRow(scanner interface {
 		return nil, err
 	}
 
-	endpoint.Tags = make(map[string]string)
-	for k, v := range tags.Map {
-		endpoint.Tags[k] = v.String
-	}
-
-	if len(typeEUIBytes) == 8 {
-		var typeEUI models.EUI
-		copy(typeEUI[:], typeEUIBytes)
-		endpoint.TypeEUI = &typeEUI
-	}
-	if propagatedAt.Valid {
-		endpoint.PropagatedAt = &propagatedAt.Time
-	}
-	if lastAttachRxTime.Valid {
-		val := lastAttachRxTime.Int64
-		endpoint.LastAttachRxTime = &val
-	}
-	if lastAttachRxDuration.Valid {
-		val := lastAttachRxDuration.Int64
-		endpoint.LastAttachRxDuration = &val
-	}
-	if lastSNR.Valid {
-		val := lastSNR.Float64
-		endpoint.LastSNR = &val
-	}
-	if lastRSSI.Valid {
-		val := lastRSSI.Float64
-		endpoint.LastRSSI = &val
-	}
-	if lastEqSNR.Valid {
-		val := lastEqSNR.Float64
-		endpoint.LastEqSNR = &val
-	}
-	if lastProfile.Valid {
-		val := lastProfile.String
-		endpoint.LastProfile = &val
-	}
-	if lastAttachSubpackets.Valid {
-		val := lastAttachSubpackets.String
-		endpoint.LastAttachSubpackets = &val
-	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
-	}
-	if lastFormatID.Valid {
-		val := lastFormatID.Int32
-		endpoint.LastFormatID = &val
-	}
-	if lastMode.Valid {
-		val := lastMode.String
-		endpoint.LastMode = &val
-	}
-	if lastRxTime.Valid {
-		val := lastRxTime.Int64
-		endpoint.LastRxTime = &val
-	}
-	if lastRxDuration.Valid {
-		val := lastRxDuration.Int64
-		endpoint.LastRxDuration = &val
-	}
+	endpoint.Tags = hstoreToStringMap(tags)
+	endpoint.TypeEUI = euiPtrFromBytes(typeEUIBytes)
+	assignAttachFields(endpoint, attach)
+	assignDetachFields(endpoint, detach)
+	assignRadioMetrics(endpoint, radio)
+	assignUplinkFields(endpoint, uplink)
 	if lastSeenAt.Valid {
 		endpoint.LastSeenAt = &lastSeenAt.Time
 	}
