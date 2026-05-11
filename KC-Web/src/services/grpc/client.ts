@@ -520,9 +520,12 @@ class GrpcClientService {
     request.setEmail(email);
     request.setPassword(password);
 
-    // Public method: skip org/user requirement (pre-auth)
+    // Public method: skip org/user requirement (pre-auth).
+    // skipRefreshRetry prevents the 401-refresh handler from swallowing
+    // invalid-credential errors into a never-resolving redirect promise.
     const response = await this.promisify<pb.LoginRequest, pb.LoginResponse>(this.client.login, {
       requireOrgUser: false,
+      skipRefreshRetry: true,
     })(request);
 
     const tokens = response.getTokens();
@@ -1362,7 +1365,7 @@ class GrpcClientService {
 
     const response = await this.promisify<pb.ExchangeOIDCRequest, pb.LoginResponse>(
       this.client.exchangeOIDC,
-      { requireOrgUser: false }
+      { requireOrgUser: false, skipRefreshRetry: true }
     )(request);
 
     const tokens = response.getTokens();
@@ -1440,7 +1443,7 @@ class GrpcClientService {
 
     const response = await this.promisify<pb.ExchangeOAuth2Request, pb.LoginResponse>(
       this.client.exchangeOAuth2,
-      { requireOrgUser: false }
+      { requireOrgUser: false, skipRefreshRetry: true }
     )(request);
 
     const tokens = response.getTokens();

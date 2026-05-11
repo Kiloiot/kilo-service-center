@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 
 import type { AuthSettingsAPI, LoginRequest } from '@api-types/api';
-import { ApiError } from '@api-types/api';
+import { isUnauthorizedError } from '@api-types/api';
 import {
   Alert,
   Box,
@@ -128,7 +128,7 @@ const Login: React.FC = () => {
       navigate(ROUTES.HOME);
     } catch (err) {
       // Distinguish 401 (invalid credentials) from other errors
-      if (err instanceof ApiError && err.status === 401) {
+      if (isUnauthorizedError(err)) {
         setError(ERR_AUTH_INVALID_CREDENTIALS);
       } else {
         setError(ERR_AUTH_LOGIN_FAILED);
