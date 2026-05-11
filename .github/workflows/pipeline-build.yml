@@ -166,5 +166,3 @@ jobs:
           file: KC-Web/Dockerfile
           push: true
           tags: ${{ needs.generate-version.outputs.registry }}/kc-web:${{ needs.generate-version.outputs.version }}
-
-
