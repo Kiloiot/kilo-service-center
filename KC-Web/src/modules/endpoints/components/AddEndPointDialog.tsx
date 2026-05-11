@@ -43,6 +43,109 @@ interface AddEndPointDialogProps {
   onClose: () => void;
 }
 
+interface AddEndpointFormData {
+  eui: string;
+  name: string;
+  shortAddr: string;
+  bidirectional: boolean;
+  preAttach: boolean;
+  carrierOffset: string;
+  networkKey: string;
+  applicationKey: string;
+  typeEui: string;
+  dualChan: boolean;
+  repetition: boolean;
+  wideCarrOff: boolean;
+  longBlkDist: boolean;
+  lastPacketCnt: string;
+  attachCnt: string;
+  deviceModelId: string;
+}
+
+/**
+ * Validates the AddEndPointDialog form per BSSCI §3.8.1 / SCACI §3.6.1.
+ * Returns a sparse errors map keyed by form field name.
+ */
+function validateAddEndpointForm(
+  formData: AddEndpointFormData,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  const euiErr = validateEui(formData.eui);
+  if (euiErr) errors.eui = euiErr;
+
+  if (!formData.name) errors.name = ENDPOINT_FORM.ERROR_NAME_REQUIRED;
+
+  if (!formData.networkKey) {
+    errors.networkKey = ENDPOINT_FORM.ERROR_NETWORK_KEY_REQUIRED;
+  } else {
+    const keyErr = validateHexKey(formData.networkKey, true);
+    if (keyErr) errors.networkKey = keyErr;
+  }
+
+  const shAddrErr = validateShortAddr(formData.shortAddr);
+  if (shAddrErr) errors.shortAddr = shAddrErr;
+
+  if (formData.lastPacketCnt === "") {
+    errors.lastPacketCnt = ENDPOINT_FORM.ERROR_LAST_PACKET_CNT_REQUIRED;
+  } else {
+    const pktErr = validateUint32Counter(
+      formData.lastPacketCnt,
+      "lastPacketCnt",
+    );
+    if (pktErr) errors.lastPacketCnt = pktErr;
+  }
+
+  if (formData.attachCnt === "") {
+    errors.attachCnt = ENDPOINT_FORM.ERROR_ATTACH_CNT_REQUIRED;
+  } else {
+    const attErr = validateUint32Counter(formData.attachCnt, "attachCnt");
+    if (attErr) errors.attachCnt = attErr;
+  }
+
+  if (formData.applicationKey) {
+    const appKeyErr = validateHexKey(formData.applicationKey, false);
+    if (appKeyErr) errors.applicationKey = appKeyErr;
+  }
+
+  const typeEuiErr = validateTypeEui(formData.typeEui);
+  if (typeEuiErr) errors.typeEui = typeEuiErr;
+
+  return errors;
+}
+
+/**
+ * Builds the CreateEndpointRequest from validated form data. All MIOTY
+ * protocol fields are required (BSSCI §3.8.1 / SCACI §3.6.1) and surfaced
+ * with explicit boolean values for radio flags; optional fields are
+ * omitted when blank.
+ */
+function buildCreateEndpointPayload(
+  formData: AddEndpointFormData,
+): CreateEndpointRequest {
+  return {
+    epEui: formData.eui.replace(/-/g, ""),
+    name: formData.name,
+    shAddr: parseInt(formData.shortAddr, 16),
+    nwkSnKey: formData.networkKey,
+    bidi: formData.bidirectional,
+    preAttach: formData.preAttach,
+    dualChan: formData.dualChan,
+    repetition: formData.repetition,
+    wideCarrOff: formData.wideCarrOff,
+    longBlkDist: formData.longBlkDist,
+    lastPacketCnt: parseInt(formData.lastPacketCnt, 10),
+    attachCnt: parseInt(formData.attachCnt, 10),
+    appKey: formData.applicationKey || undefined,
+    typeEui: formData.typeEui || undefined,
+    carrierOffset:
+      formData.carrierOffset !== ""
+        ? parseInt(formData.carrierOffset, 10)
+        : undefined,
+    deviceModelId: formData.deviceModelId || undefined,
+  };
+}
+
 const AddEndPointDialog: React.FC<AddEndPointDialogProps> = ({
   open,
   onClose,
@@ -107,92 +210,15 @@ const AddEndPointDialog: React.FC<AddEndPointDialogProps> = ({
     });
   };
 
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-
-    // Required fields (per BSSCI §3.8.1, SCACI §3.6.1)
-    const euiErr = validateEui(formData.eui);
-    if (euiErr) newErrors.eui = euiErr;
-
-    if (!formData.name) newErrors.name = ENDPOINT_FORM.ERROR_NAME_REQUIRED;
-
-    if (!formData.networkKey) {
-      newErrors.networkKey = ENDPOINT_FORM.ERROR_NETWORK_KEY_REQUIRED;
-    } else {
-      const keyErr = validateHexKey(formData.networkKey, true);
-      if (keyErr) newErrors.networkKey = keyErr;
-    }
-
-    const shAddrErr = validateShortAddr(formData.shortAddr);
-    if (shAddrErr) newErrors.shortAddr = shAddrErr;
-
-    if (formData.lastPacketCnt === "") {
-      newErrors.lastPacketCnt = ENDPOINT_FORM.ERROR_LAST_PACKET_CNT_REQUIRED;
-    } else {
-      const pktErr = validateUint32Counter(
-        formData.lastPacketCnt,
-        "lastPacketCnt",
-      );
-      if (pktErr) newErrors.lastPacketCnt = pktErr;
-    }
-
-    if (formData.attachCnt === "") {
-      newErrors.attachCnt = ENDPOINT_FORM.ERROR_ATTACH_CNT_REQUIRED;
-    } else {
-      const attErr = validateUint32Counter(formData.attachCnt, "attachCnt");
-      if (attErr) newErrors.attachCnt = attErr;
-    }
-
-    // Optional fields — validate format if provided
-    if (formData.applicationKey) {
-      const appKeyErr = validateHexKey(formData.applicationKey, false);
-      if (appKeyErr) newErrors.applicationKey = appKeyErr;
-    }
-
-    const typeEuiErr = validateTypeEui(formData.typeEui);
-    if (typeEuiErr) newErrors.typeEui = typeEuiErr;
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    const newErrors = validateAddEndpointForm(formData);
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 
-    // Call API to create endpoint (remove dashes from EUI)
-    const cleanEui = formData.eui.replace(/-/g, "");
+    const createRequest = buildCreateEndpointPayload(formData);
 
-    // Build payload - all MIOTY protocol fields are required per BSSCI §3.8.1, SCACI §3.6.1.
-    // No auto-derivation - values must be provided from device provisioning.
-    const createRequest: CreateEndpointRequest = {
-      epEui: cleanEui,
-      name: formData.name,
-      // shAddr: Required, parsed from hex input (4 hex chars, nonzero)
-      shAddr: parseInt(formData.shortAddr, 16),
-      nwkSnKey: formData.networkKey,
-      // Radio flags: explicit boolean (unchecked=false, not omitted)
-      bidi: formData.bidirectional,
-      preAttach: formData.preAttach,
-      dualChan: formData.dualChan,
-      repetition: formData.repetition,
-      wideCarrOff: formData.wideCarrOff,
-      longBlkDist: formData.longBlkDist,
-      // Counter fields: Required per BSSCI §3.8.1, SCACI §3.6.1
-      lastPacketCnt: parseInt(formData.lastPacketCnt, 10),
-      attachCnt: parseInt(formData.attachCnt, 10),
-      // Optional fields (validated when provided)
-      appKey: formData.applicationKey || undefined,
-      typeEui: formData.typeEui || undefined,
-      carrierOffset:
-        formData.carrierOffset !== ""
-          ? parseInt(formData.carrierOffset, 10)
-          : undefined,
-      deviceModelId: formData.deviceModelId || undefined,
-    };
-
-    // Use the mutation hook - it handles cache invalidation automatically on success
     createEndpointMutation.mutate(createRequest, {
       onSuccess: () => {
         // Cache is automatically invalidated by the mutation hook
