@@ -6556,7 +6556,7 @@ func (s *Server) handlePropagateResponseFailure(
 
 		// Add failure information
 		metadata["failed"] = true
-		metadata["failureReason"] = fmt.Sprintf("Base station rejected with code %d", result)
+		metadata["failureReason"] = fmt.Sprintf(PropagateFailureReasonFormat, result)
 		metadata["failedAt"] = time.Now().UnixNano()
 		metadata["failureCode"] = result
 
@@ -6618,7 +6618,7 @@ func (s *Server) handlePropagateResponseFailure(
 				"operation":    cfg.operationType,
 				"operation_id": fmt.Sprintf("%d", opID), // For operation filtering
 				"failureCode":  result,
-				"reason":       fmt.Sprintf("Base station rejected with code %d", result),
+				"reason":       fmt.Sprintf(PropagateFailureReasonFormat, result),
 			}
 			detailsJSON, _ := json.Marshal(details)
 
@@ -6631,7 +6631,7 @@ func (s *Server) handlePropagateResponseFailure(
 				Category:    mioty.CategoryEndpoint,
 				Severity:    SeverityError,
 				Title:       title,
-				Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
+				Description: fmt.Sprintf(PropagateFailureDescriptionFormat, result),
 				Details:     detailsJSON,
 				Status:      EventStatusNew,
 				SourceType:  mioty.SourceTypeEndpoint,
@@ -6647,8 +6647,8 @@ func (s *Server) handlePropagateResponseFailure(
 				EventType:   cfg.eventType,
 				Category:    mioty.CategoryEndpoint,
 				Severity:    SeverityError,
-				Title:       fmt.Sprintf("Rejected %s for endpoint %s", cfg.operationType, epEUIStr),
-				Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
+				Title:       fmt.Sprintf(TitleRejectedOperationForEndpoint, cfg.operationType, epEUIStr),
+				Description: fmt.Sprintf(PropagateFailureDescriptionFormat, result),
 				Details:     detailsJSON,
 				Status:      EventStatusNew,
 				SourceType:  mioty.SourceTypeBaseStation,

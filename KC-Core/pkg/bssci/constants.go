@@ -210,6 +210,19 @@ const (
 	// TitleDetachPropagateFailedForEndpointOnBS is the symmetric detach-side
 	// title format. Format args: endpoint EUI (string), base station EUI (string).
 	TitleDetachPropagateFailedForEndpointOnBS = "Detach propagate failed for endpoint %s on BS %s"
+
+	// PropagateFailureReasonFormat is the short reason recorded in failure-event
+	// details JSON when a base station rejects a propagate. Format args: result code.
+	PropagateFailureReasonFormat = "Base station rejected with code %d"
+
+	// PropagateFailureDescriptionFormat is the long description used on both the
+	// endpoint and base-station system events raised on a rejected propagate.
+	// Format args: result code.
+	PropagateFailureDescriptionFormat = "Base station rejected operation with result code %d"
+
+	// TitleRejectedOperationForEndpoint is the base-station-event title format for a
+	// rejected propagate. Format args: operation type (string), endpoint EUI (string).
+	TitleRejectedOperationForEndpoint = "Rejected %s for endpoint %s"
 )
 
 // Event Description Constants
