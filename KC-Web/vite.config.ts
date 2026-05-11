@@ -80,9 +80,11 @@ export default defineConfig(({ mode }) => {
         '@emotion/styled',
         '@emotion/cache',
       ],
-      esbuildOptions: {
-        define: {
-          global: 'globalThis',
+      rolldownOptions: {
+        transform: {
+          define: {
+            global: "globalThis",
+          },
         },
       },
     },
