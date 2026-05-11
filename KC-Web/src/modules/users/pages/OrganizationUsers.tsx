@@ -65,13 +65,148 @@ export interface OrganizationUsersProps {
   onAddDialogOpenChange?: (open: boolean) => void;
 }
 
+/** Classifies a removeOrgUser failure to the message shown in the dialog. */
+function classifyRemoveError(err: unknown): string {
+  const apiError = err as ApiError | undefined;
+
+  const isLastOwnerError =
+    apiError?.status === 409 ||
+    apiError?.code === "LAST_OWNER" ||
+    apiError?.token === "LAST_OWNER" ||
+    (typeof apiError?.message === "string" &&
+      apiError.message.toLowerCase().includes("last owner"));
+
+  const isSelfRemovalError =
+    apiError?.status === 412 ||
+    apiError?.token === "KC-GRPC-ERR-306" ||
+    (typeof apiError?.message === "string" &&
+      apiError.message.toLowerCase().includes("cannot remove yourself"));
+
+  if (isLastOwnerError) return ORG_USERS_PAGE.ERR_CANNOT_REMOVE_LAST_OWNER;
+  if (isSelfRemovalError) return ORG_USERS_PAGE.ERR_CANNOT_REMOVE_SELF;
+  return ORG_USER_FORM.ERR_REMOVE_FAILED;
+}
+
+/** Pure sort over the OrderBy-enumerated string fields. */
+function sortUsers(
+  users: OrganizationUserUI[],
+  orderBy: OrderBy,
+  direction: OrderDirection,
+): OrganizationUserUI[] {
+  return [...users].sort((a, b) => {
+    const aValue = a[orderBy] ?? "";
+    const bValue = b[orderBy] ?? "";
+    if (direction === "asc") {
+      return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+    }
+    return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+  });
+}
+
+interface OrgUsersHeaderProps {
+  embedded: boolean;
+  orgName?: string;
+  orgId: string;
+  onAddClick: () => void;
+}
+
+const OrgUsersHeader: React.FC<OrgUsersHeaderProps> = ({
+  embedded,
+  orgName,
+  orgId,
+  onAddClick,
+}) => {
+  const navigate = useNavigate();
+  return (
+    <Box
+      display="flex"
+      justifyContent="space-between"
+      alignItems="center"
+      mb={3}
+    >
+      <Box display="flex" alignItems="center" gap={2}>
+        {!embedded && (
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate(`${ROUTES.ORGANIZATIONS}/${orgId}`)}
+          >
+            {ORG_USERS_PAGE.BACK_TO_ORG}
+          </Button>
+        )}
+        <Typography variant="h4" component="h1">
+          {ORG_USERS_PAGE.TITLE}
+        </Typography>
+        {orgName && (
+          <Typography variant="h6" color="text.secondary">
+            - {orgName}
+          </Typography>
+        )}
+      </Box>
+      {!embedded && (
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={onAddClick}
+        >
+          {ORG_USERS_PAGE.ADD_USER}
+        </Button>
+      )}
+    </Box>
+  );
+};
+
+interface OrgUsersRemoveDialogProps {
+  open: boolean;
+  selectedUser: OrganizationUserUI | null;
+  removeError: string | null;
+  isPending: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+const OrgUsersRemoveDialog: React.FC<OrgUsersRemoveDialogProps> = ({
+  open,
+  selectedUser,
+  removeError,
+  isPending,
+  onClose,
+  onConfirm,
+}) => (
+  <Dialog open={open} onClose={onClose}>
+    <DialogTitle>{ORG_USER_FORM.ACTION_REMOVE}</DialogTitle>
+    <DialogContent>
+      {removeError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {removeError}
+        </Alert>
+      )}
+      <DialogContentText>{ORG_USER_FORM.CONFIRM_REMOVE}</DialogContentText>
+      {selectedUser && (
+        <Typography variant="body2" sx={{ mt: 1, fontWeight: "medium" }}>
+          {selectedUser.email}
+        </Typography>
+      )}
+    </DialogContent>
+    <DialogActions>
+      <Button onClick={onClose}>{ORG_USER_FORM.ACTION_CANCEL}</Button>
+      <Button
+        onClick={onConfirm}
+        color="error"
+        variant="contained"
+        disabled={isPending}
+      >
+        {ORG_USER_FORM.ACTION_REMOVE}
+      </Button>
+    </DialogActions>
+  </Dialog>
+);
+
 const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   orgId: propOrgId,
   embedded,
   addDialogOpen: externalAddDialogOpen,
   onAddDialogOpenChange,
 }) => {
-  const navigate = useNavigate();
   const { id: routeOrgId } = useParams<{ id: string }>();
   const { organizationId: contextOrgId, setOrganization } =
     useOrganizationContext();
@@ -136,31 +271,10 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   }, [users, search]);
 
   // Sort users
-  const sortedUsers = useMemo(() => {
-    return [...filteredUsers].sort((a, b) => {
-      let aValue: string = "";
-      let bValue: string = "";
-
-      if (orderBy === "email") {
-        aValue = a.email;
-        bValue = b.email;
-      } else if (orderBy === "role") {
-        aValue = a.role;
-        bValue = b.role;
-      } else if (orderBy === "status") {
-        aValue = a.status;
-        bValue = b.status;
-      } else if (orderBy === "createdAt") {
-        aValue = a.createdAt;
-        bValue = b.createdAt;
-      }
-
-      if (orderDirection === "asc") {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-      }
-      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-    });
-  }, [filteredUsers, orderBy, orderDirection]);
+  const sortedUsers = useMemo(
+    () => sortUsers(filteredUsers, orderBy, orderDirection),
+    [filteredUsers, orderBy, orderDirection],
+  );
 
   const handleSort = (field: OrderBy) => {
     if (orderBy === field) {
@@ -184,14 +298,13 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   // Remove member handler - opens confirmation dialog
   const handleRemove = (user: OrganizationUserUI) => {
     setSelectedUser(user);
-    setRemoveError(null); // Reset error when opening dialog
+    setRemoveError(null);
     setRemoveConfirmOpen(true);
   };
 
   // Confirm removal
   const confirmRemove = () => {
     if (!selectedUser) return;
-
     removeOrgUser.mutate(
       { orgId, userId: selectedUser.userId },
       {
@@ -201,30 +314,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
           setRemoveError(null);
         },
         onError: (err: unknown) => {
-          const apiError = err as ApiError;
-
-          const isLastOwnerError =
-            apiError?.status === 409 ||
-            apiError?.code === "LAST_OWNER" ||
-            apiError?.token === "LAST_OWNER" ||
-            (typeof apiError?.message === "string" &&
-              apiError.message.toLowerCase().includes("last owner"));
-
-          const isSelfRemovalError =
-            apiError?.status === 412 ||
-            apiError?.token === "KC-GRPC-ERR-306" ||
-            (typeof apiError?.message === "string" &&
-              apiError.message
-                .toLowerCase()
-                .includes("cannot remove yourself"));
-
-          if (isLastOwnerError) {
-            setRemoveError(ORG_USERS_PAGE.ERR_CANNOT_REMOVE_LAST_OWNER);
-          } else if (isSelfRemovalError) {
-            setRemoveError(ORG_USERS_PAGE.ERR_CANNOT_REMOVE_SELF);
-          } else {
-            setRemoveError(ORG_USER_FORM.ERR_REMOVE_FAILED);
-          }
+          setRemoveError(classifyRemoveError(err));
         },
       },
     );
@@ -234,7 +324,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   const handleRemoveDialogClose = () => {
     setRemoveConfirmOpen(false);
     setSelectedUser(null);
-    setRemoveError(null); // Reset error when closing
+    setRemoveError(null);
   };
 
   const handleAddDialogClose = () => {
@@ -261,41 +351,12 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
       data-testid="organization-users-page"
       sx={{ p: embedded ? 0 : 3, pt: embedded ? 0 : 4 }}
     >
-      {/* Header */}
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={3}
-      >
-        <Box display="flex" alignItems="center" gap={2}>
-          {!embedded && (
-            <Button
-              startIcon={<ArrowBackIcon />}
-              onClick={() => navigate(`${ROUTES.ORGANIZATIONS}/${orgId}`)}
-            >
-              {ORG_USERS_PAGE.BACK_TO_ORG}
-            </Button>
-          )}
-          <Typography variant="h4" component="h1">
-            {ORG_USERS_PAGE.TITLE}
-          </Typography>
-          {org && (
-            <Typography variant="h6" color="text.secondary">
-              - {org.name}
-            </Typography>
-          )}
-        </Box>
-        {!embedded && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleAddClick}
-          >
-            {ORG_USERS_PAGE.ADD_USER}
-          </Button>
-        )}
-      </Box>
+      <OrgUsersHeader
+        embedded={Boolean(embedded)}
+        orgName={org?.name}
+        orgId={orgId}
+        onAddClick={handleAddClick}
+      />
 
       {/* Statistics Cards */}
       <Grid container spacing={3} mb={3}>
@@ -394,36 +455,14 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
         initialUser={selectedUser ?? undefined}
       />
 
-      {/* Remove Confirmation Dialog */}
-      <Dialog open={removeConfirmOpen} onClose={handleRemoveDialogClose}>
-        <DialogTitle>{ORG_USER_FORM.ACTION_REMOVE}</DialogTitle>
-        <DialogContent>
-          {removeError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {removeError}
-            </Alert>
-          )}
-          <DialogContentText>{ORG_USER_FORM.CONFIRM_REMOVE}</DialogContentText>
-          {selectedUser && (
-            <Typography variant="body2" sx={{ mt: 1, fontWeight: "medium" }}>
-              {selectedUser.email}
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleRemoveDialogClose}>
-            {ORG_USER_FORM.ACTION_CANCEL}
-          </Button>
-          <Button
-            onClick={confirmRemove}
-            color="error"
-            variant="contained"
-            disabled={removeOrgUser.isPending}
-          >
-            {ORG_USER_FORM.ACTION_REMOVE}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <OrgUsersRemoveDialog
+        open={removeConfirmOpen}
+        selectedUser={selectedUser}
+        removeError={removeError}
+        isPending={removeOrgUser.isPending}
+        onClose={handleRemoveDialogClose}
+        onConfirm={confirmRemove}
+      />
     </Box>
   );
 };
