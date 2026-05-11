@@ -88,12 +88,13 @@ import {
 } from "@constants/messages";
 
 // INTERNAL: grpcClient is only imported here - nowhere else in the codebase
-// eslint-disable-next-line import/no-internal-modules
+/* eslint-disable import/no-internal-modules */
 import {
   type BlueprintTransportDTO,
   GrpcApiError,
   grpcClient,
 } from "./grpc/client";
+/* eslint-enable import/no-internal-modules */
 
 // Re-export GrpcApiError as ApiError for backward compatibility
 export { GrpcApiError as ApiError };
