@@ -143,6 +143,16 @@ const (
 	// EventTypeDetachPropagateFailed indicates detach propagate operation failed
 	EventTypeDetachPropagateFailed = "detach_propagate_failed"
 
+	// EventTypeEndpointAttachFailed is the SystemEvent.EventType for per-endpoint
+	// failure events raised when a base station rejects an attach-propagate.
+	// Matches the SQL filter `EventFilterAttachOps` in
+	// KC-DB/storage/queries/operation_status_queries.go.
+	EventTypeEndpointAttachFailed = "endpoint_attach_failed"
+
+	// EventTypeEndpointDetachFailed is the symmetric counterpart for
+	// detach-propagate rejection events.
+	EventTypeEndpointDetachFailed = "endpoint_detach_failed"
+
 	// EventTypeVMActivateSuccess indicates VM MAC type activation succeeded
 	EventTypeVMActivateSuccess = "vm_activate_success"
 
@@ -191,6 +201,15 @@ const (
 
 	// TitleOperationFailed is the title for failed operation events
 	TitleOperationFailed = "Operation Failed"
+
+	// TitleAttachPropagateFailedForEndpointOnBS is the title format for
+	// attach-propagate failure events raised when a base station rejects
+	// the propagate. Format args: endpoint EUI (string), base station EUI (string).
+	TitleAttachPropagateFailedForEndpointOnBS = "Attach propagate failed for endpoint %s on BS %s"
+
+	// TitleDetachPropagateFailedForEndpointOnBS is the symmetric detach-side
+	// title format. Format args: endpoint EUI (string), base station EUI (string).
+	TitleDetachPropagateFailedForEndpointOnBS = "Detach propagate failed for endpoint %s on BS %s"
 )
 
 // Event Description Constants

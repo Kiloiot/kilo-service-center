@@ -5467,6 +5467,9 @@ func (s *Server) handleAttachPropagateResponse(srv *Server, session *Session, ms
 		return s.handlePropagateResponseFailure(ctx, session, msg, result, propagateResponseConfig{
 			rejectedLog:     LogBSSCIAttachPropagateRejectedByBaseStation,
 			failureErrToken: errAttachPropagateFailed,
+			operationType:   EventTypeAttachPropagateFailed,
+			eventType:       EventTypeEndpointAttachFailed,
+			titleFormat:     TitleAttachPropagateFailedForEndpointOnBS,
 		})
 	}
 
@@ -5999,6 +6002,9 @@ func (s *Server) handleDetachPropagateResponse(srv *Server, session *Session, ms
 		return s.handlePropagateResponseFailure(ctx, session, msg, result, propagateResponseConfig{
 			rejectedLog:     LogBSSCIDetachPropagateRejectedByBaseStation,
 			failureErrToken: errDetachPropagateFailed,
+			operationType:   EventTypeDetachPropagateFailed,
+			eventType:       EventTypeEndpointDetachFailed,
+			titleFormat:     TitleDetachPropagateFailedForEndpointOnBS,
 		})
 	}
 
@@ -6502,6 +6508,17 @@ type propagateResponseConfig struct {
 	// response message (via ResolveErrorMessage) and as a stable identifier
 	// in failure metadata.
 	failureErrToken string
+	// operationType is the snake_case token written to details["operation"]
+	// (matches SQL filters in operation_status_queries.go). MUST be one of
+	// EventTypeAttachPropagateFailed or EventTypeDetachPropagateFailed.
+	operationType string
+	// eventType is the snake_case token written to SystemEvent.EventType.
+	// MUST be one of EventTypeEndpointAttachFailed or EventTypeEndpointDetachFailed.
+	eventType string
+	// titleFormat is a `fmt.Sprintf` format string accepting (epEUI, bsEUI)
+	// from pkg/bssci/constants.go — TitleAttachPropagateFailedForEndpointOnBS
+	// or TitleDetachPropagateFailedForEndpointOnBS.
+	titleFormat string
 }
 
 // handlePropagateResponseFailure runs the shared failure path for attach- and
@@ -6588,49 +6605,31 @@ func (s *Server) handlePropagateResponseFailure(
 				}
 			}
 
-			// Determine operation type token + event type token from the pending
-			// operation's command (machine tokens; see DEFER-LOG-001 for the
-			// catalog-migration plan for these literals).
-			operationType := "propagate_failed"
-			eventType := "endpoint_operation_failed"
-			if pendingOp != nil {
-				switch pendingOp.OperationType {
-				case mioty.CmdAttachPropagate:
-					operationType = "attach_propagate_failed"
-					eventType = "endpoint_attach_failed"
-				case mioty.CmdDetachPropagate:
-					operationType = "detach_propagate_failed"
-					eventType = "endpoint_detach_failed"
-				}
-			}
-
 			// Extract operation ID safely (avoid nil dereference)
 			opID := msg.OpId
 			if pendingOp != nil {
 				opID = pendingOp.OperationID
 			}
 
+			epEUIStr := pkgmioty.FormatEUI64(epEUI)
+			bsEUIStr := pkgmioty.FormatEUI64(session.BaseStationEUI)
+
 			details := map[string]interface{}{
-				"epEui":        pkgmioty.FormatEUI64(epEUI),
-				"bsEui":        pkgmioty.FormatEUI64(session.BaseStationEUI),
-				"operation":    operationType,
+				"epEui":        epEUIStr,
+				"bsEui":        bsEUIStr,
+				"operation":    cfg.operationType,
 				"operation_id": fmt.Sprintf("%d", opID), // For operation filtering
 				"failureCode":  result,
 				"reason":       fmt.Sprintf("Base station rejected with code %d", result),
 			}
 			detailsJSON, _ := json.Marshal(details)
 
-			title := fmt.Sprintf("Operation failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-			if pendingOp != nil && pendingOp.OperationType == mioty.CmdAttachPropagate {
-				title = fmt.Sprintf("Attach propagate failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-			} else if pendingOp != nil && pendingOp.OperationType == mioty.CmdDetachPropagate {
-				title = fmt.Sprintf("Detach propagate failed for endpoint %s on BS %s", pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI))
-			}
+			title := fmt.Sprintf(cfg.titleFormat, epEUIStr, bsEUIStr)
 
 			// Create endpoint event with source fields for UI visibility (use owner tenant for roaming)
 			if err := s.eventStore.CreateEvent(ownerCtx, &models.SystemEvent{
 				TenantID:    fmt.Sprintf("%d", ownerTenantID),
-				EventType:   eventType,
+				EventType:   cfg.eventType,
 				Category:    mioty.CategoryEndpoint,
 				Severity:    SeverityError,
 				Title:       title,
@@ -6638,7 +6637,7 @@ func (s *Server) handlePropagateResponseFailure(
 				Details:     detailsJSON,
 				Status:      EventStatusNew,
 				SourceType:  mioty.SourceTypeEndpoint,
-				SourceName:  pkgmioty.FormatEUI64(epEUI), // Critical for UI filtering
+				SourceName:  epEUIStr, // Critical for UI filtering
 				CreatedAt:   time.Now(),
 			}); err != nil {
 				s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateFailureEvent, "error", err)
@@ -6647,15 +6646,15 @@ func (s *Server) handlePropagateResponseFailure(
 			// Also create base station event for symmetric tracking (use owner tenant for roaming)
 			if err := s.eventStore.CreateEvent(ownerCtx, &models.SystemEvent{
 				TenantID:    fmt.Sprintf("%d", ownerTenantID),
-				EventType:   eventType,
+				EventType:   cfg.eventType,
 				Category:    mioty.CategoryEndpoint,
 				Severity:    SeverityError,
-				Title:       fmt.Sprintf("Rejected %s for endpoint %s", operationType, pkgmioty.FormatEUI64(epEUI)),
+				Title:       fmt.Sprintf("Rejected %s for endpoint %s", cfg.operationType, epEUIStr),
 				Description: fmt.Sprintf("Base station rejected operation with result code %d", result),
 				Details:     detailsJSON,
 				Status:      EventStatusNew,
 				SourceType:  mioty.SourceTypeBaseStation,
-				SourceName:  pkgmioty.FormatEUI64(session.BaseStationEUI), // Critical for UI filtering
+				SourceName:  bsEUIStr, // Critical for UI filtering
 				CreatedAt:   time.Now(),
 			}); err != nil {
 				s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateBaseStationFailureEvent, "error", err)
