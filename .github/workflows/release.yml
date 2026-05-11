@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      major: ${{ steps.meta.outputs.major }}
+      minor: ${{ steps.meta.outputs.minor }}
+      registry: ${{ steps.meta.outputs.registry }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version metadata
+        id: meta
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          MAJOR=$(echo "$TAG" | cut -d. -f1)
+          MINOR=$(echo "$TAG" | cut -d. -f1-2)
+          REGISTRY="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "version=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "minor=${MINOR}" >> "$GITHUB_OUTPUT"
+          echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate VERSION file matches tag
+        run: |
+          FILE_VERSION=$(tr -d '[:space:]' < VERSION)
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::VERSION file ($FILE_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+  release-images:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: kc-core
+            dockerfile: Dockerfile
+          - name: kc-gateway
+            dockerfile: KC-Gateway/Dockerfile
+          - name: kc-identity
+            dockerfile: KC-Identity/Dockerfile
+          - name: kc-web
+            dockerfile: KC-Web/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update release manifest
+        run: |
+          VERSION="v${{ needs.validate.outputs.version }}"
+          jq --arg v "$VERSION" \
+             --arg bt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+             --arg gc "${{ github.sha }}" \
+             --arg gb "main" \
+             --arg bu "github-actions" \
+             '.version=$v | .buildTime=$bt | .gitCommit=$gc | .gitBranch=$gb | .buildUser=$bu' \
+             release/manifest.json > pkg/version/release-manifest.json
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ needs.validate.outputs.registry }}/${{ matrix.name }}:v${{ needs.validate.outputs.version }}
+            ${{ needs.validate.outputs.registry }}/${{ matrix.name }}:v${{ needs.validate.outputs.minor }}
+            ${{ needs.validate.outputs.registry }}/${{ matrix.name }}:v${{ needs.validate.outputs.major }}
+            ${{ needs.validate.outputs.registry }}/${{ matrix.name }}:latest
+
+  github-release:
+    needs: [validate, release-images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ needs.validate.outputs.version }}" \
+            --title "v${{ needs.validate.outputs.version }}" \
+            --generate-notes \
+            --verify-tag
