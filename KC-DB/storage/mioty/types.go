@@ -4,7 +4,7 @@
 //
 // ALL code handling MIOTY messages MUST import and use these types:
 //
-//	import "github.com/kilocenter/KC-DB/storage/mioty"
+//	import "github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 //
 // DO NOT create duplicate type definitions elsewhere in the codebase!
 //

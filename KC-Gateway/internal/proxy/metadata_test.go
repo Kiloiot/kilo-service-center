@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	grpcconst "github.com/kilocenter/KC-Core/pkg/grpc"
-	pkgcontext "github.com/kilocenter/pkg/context"
 	"google.golang.org/grpc/metadata"
 )
 

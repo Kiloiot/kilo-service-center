@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
 )
 
 // Client represents an MQTT client for KiloCenter

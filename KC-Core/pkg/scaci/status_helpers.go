@@ -4,7 +4,7 @@ package scaci
 import (
 	"encoding/json"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // BuildBaseStationStatus transforms a models.BaseStation into scaci.BaseStationStatus per SCACI §3.5.2

@@ -4,7 +4,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // IntegrationRepository defines the interface for integration storage operations (CRUD for API parity)

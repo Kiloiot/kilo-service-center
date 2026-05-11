@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	mioty "github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/aead/cmac"
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	grpcconst "github.com/kilocenter/KC-Core/pkg/grpc"
-	mioty "github.com/kilocenter/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 	"google.golang.org/grpc"

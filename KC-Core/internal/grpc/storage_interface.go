@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/scaci"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-DB/storage/postgres"
 )
 
 // DLRXStatusQueryStorage defines the minimal storage interface for DL RX status query telemetry.

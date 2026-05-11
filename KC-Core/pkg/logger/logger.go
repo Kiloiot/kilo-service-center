@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	pkgcontext "github.com/kilocenter/pkg/context"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 // Level represents the logging level

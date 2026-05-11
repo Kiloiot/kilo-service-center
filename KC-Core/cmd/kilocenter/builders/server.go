@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	"github.com/kilocenter/KC-Core/internal/grpc"
-	pkgconfig "github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/grpc/interceptors"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/management"
-	"github.com/kilocenter/KC-Core/pkg/org"
-	"github.com/kilocenter/KC-DB/storage/models"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/grpc"
+	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/management"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // BuildGRPCServer constructs the gRPC server with interceptor chain (auth, org resolver).

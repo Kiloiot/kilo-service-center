@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/roaming"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-Core/pkg/roaming"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // RoamingRepository implements roaming-specific database operations

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package kilocenter.federation.v1;
 
-option go_package = "github.com/kilocenter/KC-Core/api/gen/federation/v1;federationv1";
+option go_package = "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/federation/v1;federationv1";
 
 // FederationService is the single persistent stream used by CE instances to relay uplinks to ECE.
 // A CE opens one bidirectional stream per lifecycle; ECE can close it via RevokeNotice.

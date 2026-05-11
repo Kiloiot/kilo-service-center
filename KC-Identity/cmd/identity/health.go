@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // healthHandler provides health check endpoints for KC-Identity.

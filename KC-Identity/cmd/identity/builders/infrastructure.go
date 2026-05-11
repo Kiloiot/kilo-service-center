@@ -8,14 +8,14 @@ import (
 	"strconv"
 	"time"
 
+	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/orgresolver"
 	"github.com/jmoiron/sqlx"
-	pkgconfig "github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/org"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-DB/storage/postgres"
-	"github.com/kilocenter/KC-Identity/internal/services/orgresolver"
 )
 
 // Infrastructure holds shared platform dependencies for KC-Identity.

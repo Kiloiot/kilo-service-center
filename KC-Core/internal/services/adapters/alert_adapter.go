@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	alertsservice "github.com/kilocenter/KC-Core/internal/services/alerts"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
+	alertsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/alerts"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // AlertStoreAdapter adapts interfaces.SystemEventStore to alertsservice.AlertStore.

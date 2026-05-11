@@ -1,22 +1,22 @@
-module github.com/kilocenter/KC-Identity
+module github.com/Kiloiot/kilo-service-center/KC-Identity
 
 go 1.26.3
 
 replace (
-	github.com/kilocenter/KC-Core => ../KC-Core
-	github.com/kilocenter/KC-DB => ../KC-DB
-	github.com/kilocenter/KC-MQTT => ../KC-MQTT
-	github.com/kilocenter/pkg => ../pkg
+	github.com/Kiloiot/kilo-service-center/KC-Core => ../KC-Core
+	github.com/Kiloiot/kilo-service-center/KC-DB => ../KC-DB
+	github.com/Kiloiot/kilo-service-center/KC-MQTT => ../KC-MQTT
+	github.com/Kiloiot/kilo-service-center/pkg => ../pkg
 )
 
 require (
+	github.com/Kiloiot/kilo-service-center/KC-Core v0.1.0
+	github.com/Kiloiot/kilo-service-center/KC-DB v0.1.0
+	github.com/Kiloiot/kilo-service-center/pkg v0.0.0-00010101000000-000000000000
 	github.com/go-chi/jwtauth/v5 v5.4.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/google/uuid v1.6.0
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/kilocenter/KC-Core v0.1.0
-	github.com/kilocenter/KC-DB v0.1.0
-	github.com/kilocenter/pkg v0.0.0-00010101000000-000000000000
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0
@@ -26,6 +26,7 @@ require (
 )
 
 require (
+	github.com/Kiloiot/kilo-service-center/KC-MQTT v0.1.0 // indirect
 	github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -42,7 +43,6 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/kilocenter/KC-MQTT v0.1.0 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
 	github.com/lestrrat-go/dsig v1.3.0 // indirect
 	github.com/lestrrat-go/dsig-secp256k1 v1.0.0 // indirect

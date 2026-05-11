@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
 
 // tenantResolver implements bssci.TenantResolver interface

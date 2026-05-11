@@ -4410,7 +4410,7 @@ const file_identity_proto_rawDesc = "" +
 	"\fCreateApiKey\x12&.kilocenter.api.v1.CreateApiKeyRequest\x1a'.kilocenter.api.v1.CreateApiKeyResponse\x12V\n" +
 	"\tGetApiKey\x12#.kilocenter.api.v1.GetApiKeyRequest\x1a$.kilocenter.api.v1.GetApiKeyResponse\x12_\n" +
 	"\fDeleteApiKey\x12&.kilocenter.api.v1.DeleteApiKeyRequest\x1a'.kilocenter.api.v1.DeleteApiKeyResponse\x12\\\n" +
-	"\vListApiKeys\x12%.kilocenter.api.v1.ListApiKeysRequest\x1a&.kilocenter.api.v1.ListApiKeysResponseBBZ@github.com/kilocenter/KC-Core/api/gen/kilocenter/v1;kilocenterv1b\x06proto3"
+	"\vListApiKeys\x12%.kilocenter.api.v1.ListApiKeysRequest\x1a&.kilocenter.api.v1.ListApiKeysResponseBSZQgithub.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1;kilocenterv1b\x06proto3"
 
 var (
 	file_identity_proto_rawDescOnce sync.Once

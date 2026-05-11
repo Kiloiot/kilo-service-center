@@ -1,13 +1,13 @@
-module github.com/kilocenter/KC-MQTT
+module github.com/Kiloiot/kilo-service-center/KC-MQTT
 
 go 1.26.3
 
 require (
+	github.com/Kiloiot/kilo-service-center/KC-Core v0.1.0
+	github.com/Kiloiot/kilo-service-center/KC-DB v0.1.0
+	github.com/Kiloiot/kilo-service-center/pkg v0.0.0-00010101000000-000000000000
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/google/uuid v1.6.0
-	github.com/kilocenter/KC-Core v0.1.0
-	github.com/kilocenter/KC-DB v0.1.0
-	github.com/kilocenter/pkg v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -38,7 +38,7 @@ require (
 )
 
 replace (
-	github.com/kilocenter/KC-Core => ../KC-Core
-	github.com/kilocenter/KC-DB => ../KC-DB
-	github.com/kilocenter/pkg => ../pkg
+	github.com/Kiloiot/kilo-service-center/KC-Core => ../KC-Core
+	github.com/Kiloiot/kilo-service-center/KC-DB => ../KC-DB
+	github.com/Kiloiot/kilo-service-center/pkg => ../pkg
 )

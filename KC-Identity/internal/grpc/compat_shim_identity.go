@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 )
 
 // KiloCenterServiceCompatIdentity implements the 29 identity RPCs of

@@ -5,8 +5,8 @@ import (
 	"context"
 	"net"
 
-	dbconfig "github.com/kilocenter/KC-DB/common/config"
-	"github.com/kilocenter/KC-DB/storage/models"
+	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // handlePing processes Ping messages per SCACI §3.4

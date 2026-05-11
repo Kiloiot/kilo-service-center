@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	pkgconfig "github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-Identity/cmd/identity/builders"
-	"github.com/kilocenter/pkg/observability"
-	"github.com/kilocenter/pkg/version"
+	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/cmd/identity/builders"
+	"github.com/Kiloiot/kilo-service-center/pkg/observability"
+	"github.com/Kiloiot/kilo-service-center/pkg/version"
 )
 
 func main() {

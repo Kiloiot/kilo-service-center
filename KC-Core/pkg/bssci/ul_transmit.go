@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kilocenter/KC-Core/pkg/scheduler" // Import neutral scheduler contracts
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler" // Import neutral scheduler contracts
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 // ============================================================================

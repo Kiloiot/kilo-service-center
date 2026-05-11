@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Identity/internal/services/auth"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/auth"
 )
 
 // StateStoreAdapter provides OIDC/OAuth2 state storage with key prefixing and TTL.

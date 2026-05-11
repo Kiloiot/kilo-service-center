@@ -1,6 +1,6 @@
 package grpc
 
-import "github.com/kilocenter/KC-Core/pkg/grpc/interceptors"
+import "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
 
 // OrgResolverInterceptor is a type alias for the extracted interceptors.OrgResolverInterceptor.
 type OrgResolverInterceptor = interceptors.OrgResolverInterceptor

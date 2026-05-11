@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // OperationStatusRepository defines the interface for operation status queries

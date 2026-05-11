@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage"
 )
 
 // MIOTYDownlinkRepository provides MIOTY-specific downlink queue operations

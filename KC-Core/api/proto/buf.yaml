@@ -1,5 +1,4 @@
 version: v2
-name: github.com/kilocenter/KC-Core
 lint:
   use:
     - STANDARD

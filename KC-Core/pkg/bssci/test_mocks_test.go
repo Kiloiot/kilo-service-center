@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/mioty"
 )
 
 // Compile-time interface assertions ensure mocks implement their contracts

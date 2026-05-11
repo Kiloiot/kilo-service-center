@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // ArchivalScheduler manages scheduled archival operations

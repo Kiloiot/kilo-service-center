@@ -1,15 +1,15 @@
-module github.com/kilocenter/KC-Core
+module github.com/Kiloiot/kilo-service-center/KC-Core
 
 go 1.26.3
 
 require (
+	github.com/Kiloiot/kilo-service-center/KC-DB v0.1.0
+	github.com/Kiloiot/kilo-service-center/KC-MQTT v0.1.0
+	github.com/Kiloiot/kilo-service-center/pkg v0.0.0-00010101000000-000000000000
 	github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1
 	github.com/google/uuid v1.6.0
 	github.com/improbable-eng/grpc-web v0.15.0
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/kilocenter/KC-DB v0.1.0
-	github.com/kilocenter/KC-MQTT v0.1.0
-	github.com/kilocenter/pkg v0.0.0-00010101000000-000000000000
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	github.com/lib/pq v1.12.3
 	github.com/sirupsen/logrus v1.9.4
@@ -83,7 +83,7 @@ require (
 )
 
 replace (
-	github.com/kilocenter/KC-DB => ../KC-DB
-	github.com/kilocenter/KC-MQTT => ../KC-MQTT
-	github.com/kilocenter/pkg => ../pkg
+	github.com/Kiloiot/kilo-service-center/KC-DB => ../KC-DB
+	github.com/Kiloiot/kilo-service-center/KC-MQTT => ../KC-MQTT
+	github.com/Kiloiot/kilo-service-center/pkg => ../pkg
 )

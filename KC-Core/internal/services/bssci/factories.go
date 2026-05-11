@@ -3,12 +3,12 @@ package bssciservices
 import (
 	"sync"
 
-	"github.com/kilocenter/KC-Core/pkg/basestation"
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/org"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/postgres"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 )
 
 // BSSCIServiceBundle packages all BSSCI service dependencies

@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/common/config"
-	pkgcontext "github.com/kilocenter/pkg/context"
 )
 
 // DownlinkEnqueuer abstracts SCACI downlink queueing for MQTT command handler.

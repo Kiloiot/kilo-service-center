@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/errors"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/queries"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/common/errors"
-	"github.com/kilocenter/KC-DB/common/validation"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-DB/storage/queries"
 	"github.com/lib/pq"
 )
 

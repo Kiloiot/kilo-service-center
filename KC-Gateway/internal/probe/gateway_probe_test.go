@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

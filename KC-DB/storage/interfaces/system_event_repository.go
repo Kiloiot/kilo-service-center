@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // SystemEventStore defines the interface for system event operations

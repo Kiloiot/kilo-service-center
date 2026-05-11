@@ -2,7 +2,7 @@
 package scaci
 
 import (
-	"github.com/kilocenter/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 )
 
 // Error catalog tokens for SCACI protocol operations

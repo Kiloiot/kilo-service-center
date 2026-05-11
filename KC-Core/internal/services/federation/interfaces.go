@@ -1,6 +1,6 @@
 package federation
 
-import pkgfederation "github.com/kilocenter/KC-Core/pkg/federation"
+import pkgfederation "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/federation"
 
 // RelayController is the canonical interface from pkg/federation.
 type RelayController = pkgfederation.RelayController

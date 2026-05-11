@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-DB/storage/postgres"
 )
 
 // TenantStoreAdapter adapts postgres.TenantRepository to provide

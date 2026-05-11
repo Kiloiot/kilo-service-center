@@ -2,8 +2,8 @@
 package orgresolver
 
 import (
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/org"
 )
 
 // NewCommunityResolver creates a CE resolver that maps all requests to the given

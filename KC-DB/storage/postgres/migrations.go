@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/migrations"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	"github.com/kilocenter/KC-DB/migrations"
 )
 
 // MigrationRunner handles database migrations using dedicated short-lived connections.

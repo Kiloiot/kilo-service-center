@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // EventWriter writes system events to the event store.

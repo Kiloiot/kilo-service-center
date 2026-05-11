@@ -8,9 +8,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/common/config"
-	pkgcontext "github.com/kilocenter/pkg/context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

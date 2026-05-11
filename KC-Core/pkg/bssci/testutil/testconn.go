@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	mioty "github.com/kilocenter/KC-DB/storage/mioty"
+	mioty "github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/vmihailenco/msgpack/v5"
 )
 

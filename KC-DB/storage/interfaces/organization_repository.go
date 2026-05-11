@@ -3,8 +3,8 @@ package interfaces
 import (
 	"context"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // OrgDirectoryRepository defines the CE-safe hot-path resolution methods.

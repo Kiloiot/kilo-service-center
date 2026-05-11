@@ -13,8 +13,8 @@ import (
 
 	_ "github.com/lib/pq"
 
-	"github.com/kilocenter/KC-Core/pkg/crypto"
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/crypto"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // UL transmit key migration script for BSSCI §5.11 security

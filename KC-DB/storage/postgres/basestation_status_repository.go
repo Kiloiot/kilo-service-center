@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/storage/mioty"
 )
 
 // BaseStationStatusRepository implements base station status history storage operations

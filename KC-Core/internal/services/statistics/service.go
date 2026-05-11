@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kilocenter/KC-Core/internal/services/grpcservices"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
 
 // ErrUnsupportedGranularity is returned when the requested time series granularity is not recognized.

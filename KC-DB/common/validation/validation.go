@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kilocenter/KC-DB/common/config"
-	"github.com/kilocenter/KC-DB/common/errors"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/errors"
 )
 
 // Regular expressions for validation

@@ -4,9 +4,9 @@ package adapters
 import (
 	"context"
 
-	dbadapters "github.com/kilocenter/KC-DB/storage/adapters"
-	"github.com/kilocenter/KC-DB/storage/models"
-	adminservice "github.com/kilocenter/KC-Identity/internal/services/admin"
+	dbadapters "github.com/Kiloiot/kilo-service-center/KC-DB/storage/adapters"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	adminservice "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/admin"
 )
 
 // TenantStoreAdapterWrapper wraps TenantStoreAdapter to implement admin.TenantStore.

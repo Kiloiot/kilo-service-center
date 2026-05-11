@@ -3,8 +3,8 @@ package mqtt
 import (
 	"context"
 
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // Publisher defines the interface for MQTT publish/subscribe operations.

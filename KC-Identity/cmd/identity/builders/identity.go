@@ -1,15 +1,15 @@
 package builders
 
 import (
-	pkgconfig "github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/org"
-	dbadapters "github.com/kilocenter/KC-DB/storage/adapters"
-	identitygrpc "github.com/kilocenter/KC-Identity/internal/grpc"
-	identityAdapters "github.com/kilocenter/KC-Identity/internal/services/adapters"
-	adminservice "github.com/kilocenter/KC-Identity/internal/services/admin"
-	authservice "github.com/kilocenter/KC-Identity/internal/services/auth"
-	"github.com/kilocenter/KC-Identity/internal/services/registration"
+	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	dbadapters "github.com/Kiloiot/kilo-service-center/KC-DB/storage/adapters"
+	identitygrpc "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/grpc"
+	identityAdapters "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/adapters"
+	adminservice "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/admin"
+	authservice "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/auth"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/registration"
 )
 
 // IdentityResult holds the fully wired identity services and cleanup functions.

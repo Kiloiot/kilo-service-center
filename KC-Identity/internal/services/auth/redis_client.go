@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/go-redis/redis/v8"
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
 )
 
 // RedisClient provides state storage for OIDC/OAuth2 flows.

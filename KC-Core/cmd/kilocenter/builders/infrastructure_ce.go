@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	orgresolver "github.com/kilocenter/KC-Core/internal/services/orgresolver"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	orgresolver "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/orgresolver"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

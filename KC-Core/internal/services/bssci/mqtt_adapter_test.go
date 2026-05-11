@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kilocenter/KC-MQTT/pkg/mqtt"
+	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

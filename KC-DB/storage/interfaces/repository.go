@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // EndpointRepository defines the interface for endpoint storage operations

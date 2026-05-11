@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	dbconfig "github.com/kilocenter/KC-DB/common/config"
-	"github.com/kilocenter/KC-DB/storage/models"
+	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // handleStatus processes Status messages per SCACI §3.5

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // Status represents the health status of a component

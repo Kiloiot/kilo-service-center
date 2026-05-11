@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	gobreaker "github.com/sony/gobreaker/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

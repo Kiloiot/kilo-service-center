@@ -5,12 +5,12 @@ import (
 	"context"
 	"math"
 
-	"github.com/kilocenter/KC-Core/internal/health"
-	"github.com/kilocenter/KC-Core/internal/services/grpcservices"
-	grpcconst "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/health"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // BaseStationStatsFetcher is a narrow interface for base station statistics.

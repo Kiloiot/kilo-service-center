@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // transactionalBaseStationReceptionRepository implements interfaces.BaseStationReceptionRepository within a transaction

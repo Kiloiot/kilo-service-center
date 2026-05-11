@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-MQTT/pkg/mqtt"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 )
 
 // mqttAdapter bridges bssci.MQTTEventPublisher → mqtt.DeviceEventPublisher.PublishDeviceEvent.

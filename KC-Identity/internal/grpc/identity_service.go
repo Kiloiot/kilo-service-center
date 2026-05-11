@@ -1,9 +1,9 @@
 package grpc
 
 import (
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Identity/internal/services/grpcservices"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 )
 
 // IdentityService implements the IdentityService gRPC service for authentication,

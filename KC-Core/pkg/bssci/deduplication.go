@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // MessageDeduplicator handles deduplication of MIOTY messages

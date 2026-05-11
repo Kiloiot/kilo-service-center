@@ -3,7 +3,7 @@
 package config
 
 import (
-	pkgconfig "github.com/kilocenter/KC-Core/pkg/config"
+	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 )
 
 // Config represents the complete configuration structure.

@@ -1,7 +1,7 @@
 package grpc
 
 import (
-	grpchelpers "github.com/kilocenter/KC-Core/pkg/grpc"
+	grpchelpers "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 )
 
 // Pagination defaults — delegated to KC-Core/pkg/grpc for cross-service use.

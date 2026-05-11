@@ -4,8 +4,8 @@ package interfaces
 import (
 	"context"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // DeviceModelRepository defines the interface for device model storage operations.

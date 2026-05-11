@@ -3,8 +3,8 @@ package admin
 import (
 	"context"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // UserAdminStore provides user persistence operations for admin.

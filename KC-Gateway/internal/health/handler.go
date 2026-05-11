@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kilocenter/KC-Gateway/internal/resilience"
+	"github.com/Kiloiot/kilo-service-center/KC-Gateway/internal/resilience"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 )

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 )
 
 // ValidateAPIKey looks up an API key by hash and returns its metadata.

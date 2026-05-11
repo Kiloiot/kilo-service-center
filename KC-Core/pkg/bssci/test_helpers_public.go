@@ -3,8 +3,8 @@ package bssci
 import (
 	"context"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/logger"
 )
 
 // NewServerForTesting creates a minimal Server instance for external tests.
