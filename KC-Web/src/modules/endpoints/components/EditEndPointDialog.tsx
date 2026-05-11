@@ -40,6 +40,196 @@ interface EditEndPointDialogProps {
   endpoint: EndpointUI | null;
 }
 
+interface EditEndpointFormData {
+  epEui: string;
+  name: string;
+  shortAddr: string;
+  bidirectional: boolean;
+  preAttach: boolean;
+  carrierOffset: string;
+  networkKey: string;
+  applicationKey: string;
+  dualChan: boolean;
+  repetition: boolean;
+  wideCarrOff: boolean;
+  longBlkDist: boolean;
+  lastPacketCnt: string;
+  attachCnt: string;
+  typeEui: string;
+  deviceModelId: string;
+}
+
+/** Builds initial EditEndpointFormData from a loaded EndpointUI. */
+function buildEditEndpointFormData(endpoint: EndpointUI): EditEndpointFormData {
+  return {
+    epEui: endpoint.epEui || "",
+    name: endpoint.name || "",
+    shortAddr: endpoint.shAddr
+      ? endpoint.shAddr.toString(16).toUpperCase().padStart(4, "0")
+      : "",
+    bidirectional: endpoint.bidi ?? false,
+    preAttach: endpoint.preAttach ?? false,
+    carrierOffset:
+      endpoint.carrierOffset !== undefined
+        ? String(endpoint.carrierOffset)
+        : "",
+    networkKey: endpoint.nwkSnKey || "",
+    applicationKey: endpoint.appKey || "",
+    dualChan: endpoint.dualChan ?? false,
+    repetition: endpoint.repetition ?? false,
+    wideCarrOff: endpoint.wideCarrOff ?? false,
+    longBlkDist: endpoint.longBlkDist ?? false,
+    lastPacketCnt:
+      endpoint.lastPacketCnt !== undefined
+        ? String(endpoint.lastPacketCnt)
+        : "0",
+    attachCnt:
+      endpoint.attachCnt !== undefined ? String(endpoint.attachCnt) : "0",
+    typeEui: endpoint.typeEui || "",
+    deviceModelId: endpoint.deviceModelId || "",
+  };
+}
+
+/**
+ * Computes the diff between form data and the original snapshot, returning
+ * an UpdateEndpointRequest with only the changed fields. EUI renames are
+ * surfaced via newEpEui per the cascade rename contract; clearable string
+ * fields use null to request explicit clear.
+ */
+function buildChangedEndpointRequest(
+  formData: EditEndpointFormData,
+  originalData: EditEndpointFormData,
+): UpdateEndpointRequest {
+  const changes: UpdateEndpointRequest = {};
+  if (formData.epEui !== originalData.epEui && formData.epEui !== "") {
+    changes.newEpEui = formData.epEui;
+  }
+  if (formData.name !== originalData.name) changes.name = formData.name;
+  if (
+    formData.shortAddr !== originalData.shortAddr &&
+    formData.shortAddr !== ""
+  ) {
+    changes.shAddr = parseInt(formData.shortAddr, 16);
+  }
+  if (formData.bidirectional !== originalData.bidirectional) {
+    changes.bidi = formData.bidirectional;
+  }
+  if (formData.preAttach !== originalData.preAttach) {
+    changes.preAttach = formData.preAttach;
+  }
+  if (formData.carrierOffset !== originalData.carrierOffset) {
+    changes.carrierOffset =
+      formData.carrierOffset !== ""
+        ? parseInt(formData.carrierOffset, 10)
+        : undefined;
+  }
+  if (
+    formData.networkKey !== originalData.networkKey &&
+    formData.networkKey !== ""
+  ) {
+    changes.nwkSnKey = formData.networkKey;
+  }
+  if (formData.applicationKey !== originalData.applicationKey) {
+    changes.appKey = formData.applicationKey || undefined;
+  }
+  if (formData.dualChan !== originalData.dualChan) {
+    changes.dualChan = formData.dualChan;
+  }
+  if (formData.repetition !== originalData.repetition) {
+    changes.repetition = formData.repetition;
+  }
+  if (formData.wideCarrOff !== originalData.wideCarrOff) {
+    changes.wideCarrOff = formData.wideCarrOff;
+  }
+  if (formData.longBlkDist !== originalData.longBlkDist) {
+    changes.longBlkDist = formData.longBlkDist;
+  }
+  if (
+    formData.lastPacketCnt !== originalData.lastPacketCnt &&
+    formData.lastPacketCnt !== ""
+  ) {
+    changes.lastPacketCnt = parseInt(formData.lastPacketCnt, 10);
+  }
+  if (
+    formData.attachCnt !== originalData.attachCnt &&
+    formData.attachCnt !== ""
+  ) {
+    changes.attachCnt = parseInt(formData.attachCnt, 10);
+  }
+  if (formData.typeEui !== originalData.typeEui) {
+    changes.typeEui = formData.typeEui || null;
+  }
+  if (formData.deviceModelId !== originalData.deviceModelId) {
+    changes.deviceModelId = formData.deviceModelId || null;
+  }
+  return changes;
+}
+
+/**
+ * Returns true when any profile field changed that would require the
+ * endpoint to be re-attached on the base station (radio, key, or address
+ * configuration).
+ */
+function hasEndpointProfileChanges(
+  formData: EditEndpointFormData,
+  originalData: EditEndpointFormData,
+): boolean {
+  return (
+    formData.shortAddr !== originalData.shortAddr ||
+    formData.networkKey !== originalData.networkKey ||
+    formData.applicationKey !== originalData.applicationKey ||
+    formData.bidirectional !== originalData.bidirectional ||
+    formData.preAttach !== originalData.preAttach ||
+    formData.dualChan !== originalData.dualChan ||
+    formData.repetition !== originalData.repetition ||
+    formData.wideCarrOff !== originalData.wideCarrOff ||
+    formData.longBlkDist !== originalData.longBlkDist
+  );
+}
+
+/** Validates the Edit dialog form. Returns sparse errors map keyed by field. */
+function validateEditEndpointForm(
+  formData: EditEndpointFormData,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  const euiErr = validateEui(formData.epEui);
+  if (euiErr) errors.epEui = euiErr;
+
+  if (!formData.name) errors.name = ENDPOINT_FORM.ERROR_NAME_REQUIRED;
+
+  if (formData.shortAddr !== "") {
+    const shAddrErr = validateShortAddr(formData.shortAddr);
+    if (shAddrErr) errors.shortAddr = shAddrErr;
+  }
+
+  if (formData.networkKey) {
+    const nwkKeyErr = validateHexKey(formData.networkKey, true);
+    if (nwkKeyErr) errors.networkKey = nwkKeyErr;
+  }
+  if (formData.applicationKey) {
+    const appKeyErr = validateHexKey(formData.applicationKey, false);
+    if (appKeyErr) errors.applicationKey = appKeyErr;
+  }
+
+  if (formData.lastPacketCnt !== "") {
+    const pktErr = validateUint32Counter(
+      formData.lastPacketCnt,
+      "lastPacketCnt",
+    );
+    if (pktErr) errors.lastPacketCnt = pktErr;
+  }
+  if (formData.attachCnt !== "") {
+    const attErr = validateUint32Counter(formData.attachCnt, "attachCnt");
+    if (attErr) errors.attachCnt = attErr;
+  }
+
+  const typeEuiErr = validateTypeEui(formData.typeEui);
+  if (typeEuiErr) errors.typeEui = typeEuiErr;
+
+  return errors;
+}
+
 /**
  * EditEndPointDialog - Edit existing endpoint configuration
  *
@@ -87,33 +277,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
   // Initialize form from endpoint data when dialog opens
   useEffect(() => {
     if (open && endpoint) {
-      const initialData = {
-        epEui: endpoint.epEui || "",
-        name: endpoint.name || "",
-        shortAddr: endpoint.shAddr
-          ? endpoint.shAddr.toString(16).toUpperCase().padStart(4, "0")
-          : "",
-        bidirectional: endpoint.bidi ?? false,
-        preAttach: endpoint.preAttach ?? false,
-        carrierOffset:
-          endpoint.carrierOffset !== undefined
-            ? String(endpoint.carrierOffset)
-            : "",
-        networkKey: endpoint.nwkSnKey || "",
-        applicationKey: endpoint.appKey || "",
-        dualChan: endpoint.dualChan ?? false,
-        repetition: endpoint.repetition ?? false,
-        wideCarrOff: endpoint.wideCarrOff ?? false,
-        longBlkDist: endpoint.longBlkDist ?? false,
-        lastPacketCnt:
-          endpoint.lastPacketCnt !== undefined
-            ? String(endpoint.lastPacketCnt)
-            : "0",
-        attachCnt:
-          endpoint.attachCnt !== undefined ? String(endpoint.attachCnt) : "0",
-        typeEui: endpoint.typeEui || "",
-        deviceModelId: endpoint.deviceModelId || "",
-      };
+      const initialData = buildEditEndpointFormData(endpoint);
       setFormData(initialData);
       setOriginalData(initialData);
       setErrors({});
@@ -146,150 +310,15 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
     }));
   };
 
-  // Compute which fields changed (only send changed fields in PATCH)
-  const computeChangedFields = useCallback((): UpdateEndpointRequest => {
-    if (!originalData) return {};
-
-    const changes: UpdateEndpointRequest = {};
-
-    if (formData.epEui !== originalData.epEui && formData.epEui !== "") {
-      changes.newEpEui = formData.epEui;
-    }
-    if (formData.name !== originalData.name) {
-      changes.name = formData.name;
-    }
-    if (
-      formData.shortAddr !== originalData.shortAddr &&
-      formData.shortAddr !== ""
-    ) {
-      changes.shAddr = parseInt(formData.shortAddr, 16);
-    }
-    if (formData.bidirectional !== originalData.bidirectional) {
-      changes.bidi = formData.bidirectional;
-    }
-    if (formData.preAttach !== originalData.preAttach) {
-      changes.preAttach = formData.preAttach;
-    }
-    if (formData.carrierOffset !== originalData.carrierOffset) {
-      changes.carrierOffset =
-        formData.carrierOffset !== ""
-          ? parseInt(formData.carrierOffset, 10)
-          : undefined;
-    }
-    if (
-      formData.networkKey !== originalData.networkKey &&
-      formData.networkKey !== ""
-    ) {
-      changes.nwkSnKey = formData.networkKey;
-    }
-    if (formData.applicationKey !== originalData.applicationKey) {
-      changes.appKey = formData.applicationKey || undefined;
-    }
-    if (formData.dualChan !== originalData.dualChan) {
-      changes.dualChan = formData.dualChan;
-    }
-    if (formData.repetition !== originalData.repetition) {
-      changes.repetition = formData.repetition;
-    }
-    if (formData.wideCarrOff !== originalData.wideCarrOff) {
-      changes.wideCarrOff = formData.wideCarrOff;
-    }
-    if (formData.longBlkDist !== originalData.longBlkDist) {
-      changes.longBlkDist = formData.longBlkDist;
-    }
-    if (
-      formData.lastPacketCnt !== originalData.lastPacketCnt &&
-      formData.lastPacketCnt !== ""
-    ) {
-      changes.lastPacketCnt = parseInt(formData.lastPacketCnt, 10);
-    }
-    if (
-      formData.attachCnt !== originalData.attachCnt &&
-      formData.attachCnt !== ""
-    ) {
-      changes.attachCnt = parseInt(formData.attachCnt, 10);
-    }
-    if (formData.typeEui !== originalData.typeEui) {
-      changes.typeEui = formData.typeEui || null;
-    }
-    if (formData.deviceModelId !== originalData.deviceModelId) {
-      changes.deviceModelId = formData.deviceModelId || null;
-    }
-
-    return changes;
-  }, [formData, originalData]);
-
-  // Check if any profile fields changed (would require re-attach)
-  const hasProfileChanges = useCallback((): boolean => {
-    if (!originalData) return false;
-
-    return (
-      formData.shortAddr !== originalData.shortAddr ||
-      formData.networkKey !== originalData.networkKey ||
-      formData.applicationKey !== originalData.applicationKey ||
-      formData.bidirectional !== originalData.bidirectional ||
-      formData.preAttach !== originalData.preAttach ||
-      formData.dualChan !== originalData.dualChan ||
-      formData.repetition !== originalData.repetition ||
-      formData.wideCarrOff !== originalData.wideCarrOff ||
-      formData.longBlkDist !== originalData.longBlkDist
-    );
-  }, [formData, originalData]);
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-
-    // EUI: 16 hex chars required
-    const euiErr = validateEui(formData.epEui);
-    if (euiErr) newErrors.epEui = euiErr;
-
-    if (!formData.name) newErrors.name = ENDPOINT_FORM.ERROR_NAME_REQUIRED;
-
-    // ShAddr: validated when provided
-    if (formData.shortAddr !== "") {
-      const shAddrErr = validateShortAddr(formData.shortAddr);
-      if (shAddrErr) newErrors.shortAddr = shAddrErr;
-    }
-
-    // Keys: validated when provided
-    if (formData.networkKey) {
-      const nwkKeyErr = validateHexKey(formData.networkKey, true);
-      if (nwkKeyErr) newErrors.networkKey = nwkKeyErr;
-    }
-    if (formData.applicationKey) {
-      const appKeyErr = validateHexKey(formData.applicationKey, false);
-      if (appKeyErr) newErrors.applicationKey = appKeyErr;
-    }
-
-    // Counters: validated when provided
-    if (formData.lastPacketCnt !== "") {
-      const pktErr = validateUint32Counter(
-        formData.lastPacketCnt,
-        "lastPacketCnt",
-      );
-      if (pktErr) newErrors.lastPacketCnt = pktErr;
-    }
-    if (formData.attachCnt !== "") {
-      const attErr = validateUint32Counter(formData.attachCnt, "attachCnt");
-      if (attErr) newErrors.attachCnt = attErr;
-    }
-
-    // Type EUI: 16 hex chars if provided
-    const typeEuiErr = validateTypeEui(formData.typeEui);
-    if (typeEuiErr) newErrors.typeEui = typeEuiErr;
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleSubmit = async () => {
-    if (!validateForm() || !endpoint) {
+    if (!endpoint || !originalData) return;
+    const newErrors = validateEditEndpointForm(formData);
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 
-    const changedFields = computeChangedFields();
-
-    // Check if anything changed
+    const changedFields = buildChangedEndpointRequest(formData, originalData);
     if (Object.keys(changedFields).length === 0) {
       handleClose();
       return;
@@ -300,8 +329,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
       {
         onSuccess: () => {
           setSuccessMessage(ENDPOINT_FORM.MSG_ENDPOINT_UPDATED);
-          // Check if profile fields changed and prompt for re-attach
-          if (hasProfileChanges()) {
+          if (hasEndpointProfileChanges(formData, originalData)) {
             setShowReattachPrompt(true);
           } else {
             handleClose();
@@ -365,7 +393,10 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
   };
 
   // Check if form has any changes
-  const hasChanges = Object.keys(computeChangedFields()).length > 0;
+  const hasChanges = originalData
+    ? Object.keys(buildChangedEndpointRequest(formData, originalData)).length >
+      0
+    : false;
 
   if (!endpoint) return null;
 
