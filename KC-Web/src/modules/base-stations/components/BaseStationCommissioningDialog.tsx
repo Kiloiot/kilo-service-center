@@ -119,6 +119,77 @@ interface CertificateData {
   expiresAt: string;
 }
 
+interface CommissioningFormData {
+  name: string;
+  eui: string;
+  latitude: string;
+  longitude: string;
+  altitude: string;
+}
+
+interface CommissionPayload {
+  eui: string;
+  name: string;
+  latitude?: number;
+  longitude?: number;
+  altitude?: number;
+}
+
+/** Builds the commission mutation payload, including optional GPS coordinates. */
+function buildCommissionPayload(
+  formData: CommissioningFormData,
+): CommissionPayload {
+  const payload: CommissionPayload = {
+    eui: formData.eui,
+    name: formData.name.trim(),
+  };
+  if (formData.latitude.trim() && formData.longitude.trim()) {
+    payload.latitude = parseFloat(formData.latitude);
+    payload.longitude = parseFloat(formData.longitude);
+    if (formData.altitude.trim()) {
+      payload.altitude = parseFloat(formData.altitude);
+    }
+  }
+  return payload;
+}
+
+/**
+ * Maps a commission-step error to the localized message shown under the form.
+ * Status-code based to stay robust against backend message changes.
+ */
+function mapCommissionError(err: unknown): string {
+  if (err instanceof TypeError && err.message === "Failed to fetch") {
+    return ERR_CERT_NETWORK;
+  }
+  if (err instanceof ApiError) {
+    if (err.status === 409) return ERR_BS_CREATION_AFTER_CERTS;
+    if (err.status === 503 || err.isServerError()) {
+      return ERR_CERT_SERVICE_UNAVAILABLE;
+    }
+    return err.message || ERR_CREATE_BASE_STATION;
+  }
+  if (err instanceof Error) {
+    return err.message || ERR_CREATE_BASE_STATION;
+  }
+  return ERR_CREATE_BASE_STATION;
+}
+
+/**
+ * Maps a cert-retry error to the localized message shown under the form.
+ */
+function mapRetryCertsError(err: unknown): string {
+  if (err instanceof TypeError && err.message === "Failed to fetch") {
+    return ERR_CERT_NETWORK;
+  }
+  if (err instanceof ApiError) {
+    if (err.status === 503 || err.isServerError()) {
+      return ERR_CERT_SERVICE_UNAVAILABLE;
+    }
+    return ERR_CERT_GENERATION_FAILED_RETRY;
+  }
+  return ERR_CERT_GENERATION_FAILED_RETRY;
+}
+
 /**
  * BaseStationCommissioningDialog - 3-Step Commissioning Wizard
  *
@@ -241,29 +312,11 @@ export default function BaseStationCommissioningDialog({
     setErrors({});
 
     try {
-      const mutationData: {
-        eui: string;
-        name: string;
-        latitude?: number;
-        longitude?: number;
-        altitude?: number;
-      } = {
-        eui: formData.eui,
-        name: formData.name.trim(),
-      };
-
-      if (formData.latitude.trim() && formData.longitude.trim()) {
-        mutationData.latitude = parseFloat(formData.latitude);
-        mutationData.longitude = parseFloat(formData.longitude);
-        if (formData.altitude.trim()) {
-          mutationData.altitude = parseFloat(formData.altitude);
-        }
-      }
-
-      const result = await commissionMutation.mutateAsync(mutationData);
+      const result = await commissionMutation.mutateAsync(
+        buildCommissionPayload(formData),
+      );
 
       if (result.status === "complete" && result.certData) {
-        // Full success - BS created and certs generated
         setCertificateData({
           bsEui: result.bsEui,
           serviceCenterUrl: result.certData.serviceCenterUrl,
@@ -272,34 +325,11 @@ export default function BaseStationCommissioningDialog({
         });
         setPhase("success");
       } else if (result.status === "partial") {
-        // Partial success - BS created but cert generation failed
         setRetryToken(result.retryToken || result.bsEui);
         setPhase("partial");
       }
     } catch (err) {
-      // Map errors using status codes (robust) instead of message fragments (brittle)
-      if (err instanceof TypeError && err.message === "Failed to fetch") {
-        setErrors({ general: ERR_CERT_NETWORK });
-      } else if (err instanceof ApiError) {
-        // Use HTTP status codes for error classification
-        if (err.status === 409) {
-          // 409 Conflict = duplicate EUI (BS already exists)
-          setErrors({ general: ERR_BS_CREATION_AFTER_CERTS });
-        } else if (err.status === 503 || err.isServerError()) {
-          // 503 Service Unavailable or 5xx = cert service unavailable
-          setErrors({ general: ERR_CERT_SERVICE_UNAVAILABLE });
-        } else if (err.status === 400) {
-          // 400 Bad Request = validation error
-          setErrors({ general: err.message || ERR_CREATE_BASE_STATION });
-        } else {
-          setErrors({ general: err.message || ERR_CREATE_BASE_STATION });
-        }
-      } else if (err instanceof Error) {
-        // Catch-all for non-HTTP errors (network, parsing)
-        setErrors({ general: err.message || ERR_CREATE_BASE_STATION });
-      } else {
-        setErrors({ general: ERR_CREATE_BASE_STATION });
-      }
+      setErrors({ general: mapCommissionError(err) });
     } finally {
       setLoading(false);
     }
@@ -328,17 +358,7 @@ export default function BaseStationCommissioningDialog({
       setRetryToken(null);
       setPhase("success");
     } catch (err) {
-      if (err instanceof TypeError && err.message === "Failed to fetch") {
-        setErrors({ general: ERR_CERT_NETWORK });
-      } else if (err instanceof ApiError) {
-        if (err.status === 503 || err.isServerError()) {
-          setErrors({ general: ERR_CERT_SERVICE_UNAVAILABLE });
-        } else {
-          setErrors({ general: ERR_CERT_GENERATION_FAILED_RETRY });
-        }
-      } else {
-        setErrors({ general: ERR_CERT_GENERATION_FAILED_RETRY });
-      }
+      setErrors({ general: mapRetryCertsError(err) });
     } finally {
       setLoading(false);
     }
