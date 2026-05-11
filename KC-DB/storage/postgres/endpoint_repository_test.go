@@ -928,7 +928,7 @@ func TestUpdateRadioMetricsSelective_TenantIsolation(t *testing.T) {
 
 	// Assert error returned
 	assert.Error(t, err, "Should fail for wrong tenant")
-	assert.Contains(t, err.Error(), "endpoint not found", "Error message should indicate not found")
+	assert.ErrorIs(t, err, storage.ErrNotFound, "Should return sentinel not-found error")
 
 	// Reload via CORRECT tenant and verify unchanged
 	unchanged := reloadEndpoint(t, repo, 100, eui)
@@ -969,7 +969,7 @@ func TestUpdateRadioMetricsSelective_NonexistentEndpoint(t *testing.T) {
 
 	// Assert error returned (rowsAffected == 0 case)
 	assert.Error(t, err, "Should fail for non-existent endpoint")
-	assert.Contains(t, err.Error(), "endpoint not found", "Error message from rowsAffected == 0 check")
+	assert.ErrorIs(t, err, storage.ErrNotFound, "Should return sentinel not-found error")
 }
 
 // TestGetEndpointWithKeysForDetachValidation_ReturnsAllCryptoFields verifies that

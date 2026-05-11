@@ -409,7 +409,7 @@ func (r *transactionalEndPointRepository) UpdateRadioMetrics(ctx context.Context
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -459,7 +459,7 @@ func (r *transactionalEndPointRepository) UpdateRadioMetricsSelective(ctx contex
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -470,7 +470,7 @@ func (r *transactionalEndPointRepository) GetByEUI(ctx context.Context, tenantID
 	query := `SELECT ` + endpointTenantLookupColumns + ` FROM endpoints WHERE tenant_id = $1 AND ep_eui = $2`
 	endpoint, err := scanEndpointTenantLookupRow(r.tx.QueryRowContext(ctx, query, tenantID, eui))
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("endpoint not found")
+		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint: %w", err)
@@ -517,7 +517,7 @@ func (r *transactionalEndPointRepository) UpdateFields(ctx context.Context, tena
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -575,7 +575,7 @@ func (r *transactionalEndPointRepository) GetByID(ctx context.Context, id int64,
 	query := `SELECT ` + endpointDetailColumns + ` FROM endpoints WHERE id = $1 AND tenant_id = $2`
 	endpoint, err := scanEndpointDetailRow(r.tx.QueryRowContext(ctx, query, id, tenantID))
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("endpoint not found")
+		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint by ID: %w", err)

@@ -853,7 +853,7 @@ func (r *EndPointRepository) Get(ctx context.Context, eui models.EUI) (*models.E
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("endpoint not found")
+		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint: %w", err)
@@ -1041,6 +1041,9 @@ func (r *EndPointRepository) GetByTenant(ctx context.Context, tenantID int64) ([
 
 		endpoints = append(endpoints, endpoint)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate tenant endpoints: %w", err)
+	}
 
 	return endpoints, nil
 }
@@ -1063,7 +1066,7 @@ func (r *EndPointRepository) GetByID(ctx context.Context, id int64, tenantID int
 	query := `SELECT ` + endpointDetailColumns + ` FROM endpoints WHERE id = $1 AND tenant_id = $2`
 	endpoint, err := scanEndpointDetailRow(r.db.QueryRowContext(ctx, query, id, tenantID))
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("endpoint not found")
+		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint by ID: %w", err)
@@ -1504,7 +1507,7 @@ func (r *EndPointRepository) UpdateRadioMetrics(ctx context.Context, tenantID in
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -1552,7 +1555,7 @@ func (r *EndPointRepository) UpdateRadioMetricsSelective(ctx context.Context, te
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -1604,7 +1607,7 @@ func (r *EndPointRepository) UpdateDetachMetrics(ctx context.Context, tenantID i
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -1649,7 +1652,7 @@ func (r *EndPointRepository) UpdateFields(ctx context.Context, tenantID int64, e
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -1867,6 +1870,9 @@ func (r *EndPointRepository) GetRoamingEndpoints(ctx context.Context, tenantID i
 		}
 
 		endpoints = append(endpoints, endpoint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate roaming endpoints: %w", err)
 	}
 
 	return endpoints, nil
