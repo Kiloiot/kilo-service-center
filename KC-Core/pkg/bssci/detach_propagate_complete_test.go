@@ -3,6 +3,7 @@ package bssci_test
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
@@ -35,6 +36,12 @@ func (m *detPrpTestConn) Write(b []byte) (n int, err error) {
 	defer m.mu.Unlock()
 	m.sentCount++
 	return len(b), nil
+}
+
+func (m *detPrpTestConn) SentCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sentCount
 }
 
 func (m *detPrpTestConn) Close() error                       { return nil }
@@ -253,7 +260,28 @@ func (s *detPrpCapturingStorage) BaseStationSessions() interfaces.BaseStationSes
 }
 func (s *detPrpCapturingStorage) DLRXStatus() interfaces.DLRXStatusRepository { return nil }
 func (s *detPrpCapturingStorage) PendingOperations() interfaces.PendingOperationRepository {
+	return &detPrpNoopPendingOps{}
+}
+
+// detPrpNoopPendingOps is a minimal PendingOperationRepository for failure-path tests
+// that only exercise UpdateMetadata. Other methods return zero values.
+type detPrpNoopPendingOps struct{}
+
+func (r *detPrpNoopPendingOps) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
 	return nil
+}
+func (r *detPrpNoopPendingOps) UpdateMetadata(_ context.Context, _ int64, _ int64, _ json.RawMessage) error {
+	return nil
+}
+func (r *detPrpNoopPendingOps) DeleteBySessionAndOperation(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (r *detPrpNoopPendingOps) DeleteByOperation(_ context.Context, _ int64) error { return nil }
+func (r *detPrpNoopPendingOps) DeleteBySession(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
+}
+func (r *detPrpNoopPendingOps) GetBySession(_ context.Context, _ int64) ([]*interfaces.PendingOperation, error) {
+	return nil, nil
 }
 func (s *detPrpCapturingStorage) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository { return nil }
 func (s *detPrpCapturingStorage) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
@@ -530,4 +558,165 @@ func TestDetachPropagateCompletionIntegration_NoPendingOp(t *testing.T) {
 	// Assert NO message persistence (no epEui available)
 	persistedMsgs := msgRepo.GetDetachMessages()
 	assert.Len(t, persistedMsgs, 0, "CreateDetachPropagateMessage should NOT be called without pendingOp")
+}
+
+// TestHandleDetachPropagateResponse_Rejected verifies that when detPrpRsp arrives
+// with a non-zero result, handlePropagateResponseFailure emits the cataloged event
+// type (EventTypeEndpointDetachFailed) and uses TitleDetachPropagateFailedForEndpointOnBS
+// rather than the pre-Fix-A pendingOp-dependent fallback strings.
+func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
+	t.Parallel()
+
+	const (
+		testTenantID = int64(100)
+		testOpId     = int64(-12345)
+		testEpEui    = uint64(0x12345678)
+		testBsEui    = uint64(0x1122334455667788)
+		rejectCode   = 42
+	)
+
+	msgRepo := &capturingDetPrpMIOTYMessageRepo{}
+	storageImpl := &detPrpCapturingStorage{miotyMessages: msgRepo}
+	eventStore := &detPrpCapturingEventStore{}
+	testLogger := logger.NewNop()
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
+	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
+		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
+	server.RegisterHandlers()
+
+	mockConn := &detPrpTestConn{}
+	session := &bssci.Session{
+		ID:                "test-detprp-rejected",
+		BaseStationEUI:    testBsEui,
+		Conn:              mockConn,
+		Encoding:          "msgpack",
+		HandshakeComplete: true,
+		ResolvedTenantID:  testTenantID,
+		DbSessionID:       1,
+	}
+	server.RegisterSession(session)
+
+	pendingOp := &bssci.PendingOperation{
+		OperationType: mioty.CmdDetachPropagate,
+		OperationID:   testOpId,
+		CreatedAt:     time.Now(),
+		Metadata: map[string]interface{}{
+			"endpointEUI": float64(testEpEui),
+			"tenantId":    float64(testTenantID),
+		},
+	}
+	require.NoError(t, statusSvc.RecordPendingOperation(context.Background(), session, testOpId, pendingOp, session.DbSessionID))
+
+	data := map[string]interface{}{
+		"command": mioty.CmdDetachPropagateResponse,
+		"opId":    testOpId,
+		"result":  int64(rejectCode),
+	}
+	msg := &bssci.Message{
+		Command: mioty.CmdDetachPropagateResponse,
+		OpId:    testOpId,
+		Data:    data,
+	}
+
+	require.NoError(t, server.CallHandleDetachPropagateResponse(session, msg, data),
+		"failure path must keep session alive (handler returns nil after sendError)")
+
+	captured := eventStore.CapturedEvents()
+	require.GreaterOrEqual(t, len(captured), 2, "expected endpoint + base-station failure events")
+
+	var endpointEvt, baseStationEvt *models.SystemEvent
+	for _, evt := range captured {
+		if evt.EventType != bssci.EventTypeEndpointDetachFailed {
+			continue
+		}
+		if evt.SourceType == mioty.SourceTypeEndpoint && endpointEvt == nil {
+			endpointEvt = evt
+		}
+		if evt.SourceType == mioty.SourceTypeBaseStation && baseStationEvt == nil {
+			baseStationEvt = evt
+		}
+	}
+	require.NotNil(t, endpointEvt, "endpoint-scoped failure event missing")
+	require.NotNil(t, baseStationEvt, "base-station-scoped failure event missing")
+
+	epStr := fmt.Sprintf("%016X", testEpEui)
+	bsStr := fmt.Sprintf("%016X", testBsEui)
+	assert.Equal(t, fmt.Sprintf(bssci.TitleDetachPropagateFailedForEndpointOnBS, epStr, bsStr), endpointEvt.Title,
+		"endpoint event title must match cataloged TitleDetachPropagateFailedForEndpointOnBS format")
+	assert.Equal(t, epStr, endpointEvt.SourceName, "endpoint SourceName must be the EUI")
+	assert.Equal(t, bsStr, baseStationEvt.SourceName, "base-station SourceName must be the BS EUI")
+	assert.Greater(t, mockConn.SentCount(), 0, "an error response must be written back to the base station")
+}
+
+// detPrpFailingWriteConn returns a hard write error so that sendMessage fails.
+type detPrpFailingWriteConn struct {
+	detPrpTestConn
+}
+
+func (c *detPrpFailingWriteConn) Write(_ []byte) (int, error) {
+	return 0, fmt.Errorf("simulated write failure")
+}
+
+// TestSendDetachPropagateComplete_SendFailure exercises the path where the
+// three-way handshake completion message fails to send. The handler must propagate
+// the sendMessage error to its caller after logging LogBSSCIFailedToSendDetachPropagateComplete.
+func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
+	t.Parallel()
+
+	const (
+		testTenantID = int64(100)
+		testOpId     = int64(-67890)
+		testEpEui    = uint64(0x12345678)
+		testBsEui    = uint64(0x1122334455667788)
+	)
+
+	msgRepo := &capturingDetPrpMIOTYMessageRepo{}
+	endpointRepo := &detPrpTestEndpointRepo{
+		endpoints: map[uint64]*models.EndPoint{testEpEui: {ID: 1, EUI: models.EUI{0x00, 0x00, 0x00, 0x00, 0x12, 0x34, 0x56, 0x78}, TenantID: testTenantID}},
+	}
+	storageImpl := &detPrpCapturingStorage{miotyMessages: msgRepo, endpointRepo: endpointRepo}
+	eventStore := &detPrpCapturingEventStore{}
+	testLogger := logger.NewNop()
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
+	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
+		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
+	server.RegisterHandlers()
+
+	mockConn := &detPrpFailingWriteConn{}
+	session := &bssci.Session{
+		ID:                "test-detprp-send-failure",
+		BaseStationEUI:    testBsEui,
+		Conn:              mockConn,
+		Encoding:          "msgpack",
+		HandshakeComplete: true,
+		ResolvedTenantID:  testTenantID,
+		DbSessionID:       1,
+	}
+	server.RegisterSession(session)
+
+	pendingOp := &bssci.PendingOperation{
+		OperationType: mioty.CmdDetachPropagate,
+		OperationID:   testOpId,
+		CreatedAt:     time.Now(),
+		Metadata: map[string]interface{}{
+			"endpointEUI": float64(testEpEui),
+			"tenantId":    float64(testTenantID),
+		},
+	}
+	require.NoError(t, statusSvc.RecordPendingOperation(context.Background(), session, testOpId, pendingOp, session.DbSessionID))
+
+	data := map[string]interface{}{
+		"command": mioty.CmdDetachPropagateResponse,
+		"opId":    testOpId,
+		"result":  int64(0),
+	}
+	msg := &bssci.Message{
+		Command: mioty.CmdDetachPropagateResponse,
+		OpId:    testOpId,
+		Data:    data,
+	}
+
+	err := server.CallHandleDetachPropagateResponse(session, msg, data)
+	require.Error(t, err, "send-complete failure must propagate as a returned error")
+	assert.Contains(t, err.Error(), "simulated write failure", "the underlying connection error must be surfaced")
 }

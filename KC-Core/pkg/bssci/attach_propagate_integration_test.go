@@ -3,6 +3,7 @@ package bssci_test
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
@@ -34,6 +35,12 @@ func (m *attPrpTestConn) Write(b []byte) (n int, err error) {
 	defer m.mu.Unlock()
 	m.sentCount++
 	return len(b), nil
+}
+
+func (m *attPrpTestConn) SentCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sentCount
 }
 
 func (m *attPrpTestConn) Close() error                       { return nil }
@@ -263,7 +270,28 @@ func (s *capturingStorage) BaseStationSessions() interfaces.BaseStationSessionRe
 }
 func (s *capturingStorage) DLRXStatus() interfaces.DLRXStatusRepository { return nil }
 func (s *capturingStorage) PendingOperations() interfaces.PendingOperationRepository {
+	return &attPrpNoopPendingOps{}
+}
+
+// attPrpNoopPendingOps is a minimal PendingOperationRepository for failure-path tests
+// that only exercise UpdateMetadata. Other methods return zero values.
+type attPrpNoopPendingOps struct{}
+
+func (r *attPrpNoopPendingOps) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
 	return nil
+}
+func (r *attPrpNoopPendingOps) UpdateMetadata(_ context.Context, _ int64, _ int64, _ json.RawMessage) error {
+	return nil
+}
+func (r *attPrpNoopPendingOps) DeleteBySessionAndOperation(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (r *attPrpNoopPendingOps) DeleteByOperation(_ context.Context, _ int64) error { return nil }
+func (r *attPrpNoopPendingOps) DeleteBySession(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
+}
+func (r *attPrpNoopPendingOps) GetBySession(_ context.Context, _ int64) ([]*interfaces.PendingOperation, error) {
+	return nil, nil
 }
 func (s *capturingStorage) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository { return nil }
 func (s *capturingStorage) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
@@ -661,4 +689,97 @@ func TestEUIPrecisionLossDetection(t *testing.T) {
 		// The important thing is that the precision check should prevent this path
 		t.Logf("Precision loss: originalEUI != recoveredEUI demonstrates why fail-fast is needed")
 	}
+}
+
+// TestHandleAttachPropagateResponse_Rejected verifies that when attPrpRsp arrives
+// with a non-zero result, handlePropagateResponseFailure emits the cataloged event
+// type (EventTypeEndpointAttachFailed) and uses TitleAttachPropagateFailedForEndpointOnBS
+// rather than the pre-Fix-A pendingOp-dependent fallback strings.
+func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
+	t.Parallel()
+
+	const (
+		testTenantID = int64(100)
+		testOpId     = int64(-54321)
+		testEpEui    = uint64(0x12345678)
+		testBsEui    = uint64(0x1122334455667788)
+		rejectCode   = 7
+	)
+
+	var epEUIBytes models.EUI
+	binary.BigEndian.PutUint64(epEUIBytes[:], testEpEui)
+	endpoint := &models.EndPoint{ID: 1001, EUI: epEUIBytes, TenantID: testTenantID}
+
+	msgRepo := &capturingMIOTYMessageRepo{}
+	endpointRepo := &attPrpTestEndpointRepo{endpoints: map[uint64]*models.EndPoint{testEpEui: endpoint}}
+	storageImpl := &capturingStorage{miotyMessages: msgRepo, endpointRepo: endpointRepo}
+	eventStore := &capturingEventStore{}
+	testLogger := logger.NewNop()
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
+	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
+		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
+	server.RegisterHandlers()
+
+	mockConn := &attPrpTestConn{}
+	session := &bssci.Session{
+		ID:                "test-attprp-rejected",
+		BaseStationEUI:    testBsEui,
+		Conn:              mockConn,
+		Encoding:          "msgpack",
+		HandshakeComplete: true,
+		ResolvedTenantID:  testTenantID,
+		DbSessionID:       1,
+	}
+	server.RegisterSession(session)
+
+	pendingOp := &bssci.PendingOperation{
+		OperationType: mioty.CmdAttachPropagate,
+		OperationID:   testOpId,
+		CreatedAt:     time.Now(),
+		Metadata: map[string]interface{}{
+			"epEui":    float64(testEpEui),
+			"tenantId": float64(testTenantID),
+		},
+	}
+	require.NoError(t, statusSvc.RecordPendingOperation(context.Background(), session, testOpId, pendingOp, session.DbSessionID))
+
+	data := map[string]interface{}{
+		"command": mioty.CmdAttachPropagateResponse,
+		"opId":    testOpId,
+		"result":  int64(rejectCode),
+	}
+	msg := &bssci.Message{
+		Command: mioty.CmdAttachPropagateResponse,
+		OpId:    testOpId,
+		Data:    data,
+	}
+
+	require.NoError(t, server.CallHandleAttachPropagateResponse(session, msg, data),
+		"failure path must keep session alive (handler returns nil after sendError)")
+
+	captured := eventStore.CapturedEvents()
+	require.GreaterOrEqual(t, len(captured), 2, "expected endpoint + base-station failure events")
+
+	var endpointEvt, baseStationEvt *models.SystemEvent
+	for _, evt := range captured {
+		if evt.EventType != bssci.EventTypeEndpointAttachFailed {
+			continue
+		}
+		if evt.SourceType == mioty.SourceTypeEndpoint && endpointEvt == nil {
+			endpointEvt = evt
+		}
+		if evt.SourceType == mioty.SourceTypeBaseStation && baseStationEvt == nil {
+			baseStationEvt = evt
+		}
+	}
+	require.NotNil(t, endpointEvt, "endpoint-scoped failure event missing")
+	require.NotNil(t, baseStationEvt, "base-station-scoped failure event missing")
+
+	epStr := fmt.Sprintf("%016X", testEpEui)
+	bsStr := fmt.Sprintf("%016X", testBsEui)
+	assert.Equal(t, fmt.Sprintf(bssci.TitleAttachPropagateFailedForEndpointOnBS, epStr, bsStr), endpointEvt.Title,
+		"endpoint event title must match cataloged TitleAttachPropagateFailedForEndpointOnBS format")
+	assert.Equal(t, epStr, endpointEvt.SourceName, "endpoint SourceName must be the EUI")
+	assert.Equal(t, bsStr, baseStationEvt.SourceName, "base-station SourceName must be the BS EUI")
+	assert.Greater(t, mockConn.SentCount(), 0, "an error response must be written back to the base station")
 }
