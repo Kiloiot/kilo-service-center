@@ -552,7 +552,9 @@ func scanEndpointDetachValidationRow(scanner interface {
 }) (*models.EndPoint, error) {
 	endpoint := &models.EndPoint{}
 	var tags hstore.Hstore
-	var typeEui, propagatedAt, lastAttachRxTime, lastAttachRxDuration sql.NullInt64
+	var typeEUIBytes []byte
+	var propagatedAt sql.NullTime
+	var lastAttachRxTime, lastAttachRxDuration sql.NullInt64
 	var lastSNR, lastRSSI, lastEqSNR sql.NullFloat64
 	var lastProfile, lastAttachSubpackets sql.NullString
 	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
@@ -575,7 +577,7 @@ func scanEndpointDetachValidationRow(scanner interface {
 		&endpoint.ShAddr,
 		&endpoint.Bidi,
 		&endpoint.PreAttach,
-		&typeEui,
+		&typeEUIBytes,
 		&endpoint.Manufacturer,
 		&endpoint.Model,
 		&endpoint.CarrierOffset,
@@ -632,17 +634,13 @@ func scanEndpointDetachValidationRow(scanner interface {
 		endpoint.Tags[k] = v.String
 	}
 
-	if typeEui.Valid {
-		euiVal := models.EUI{}
-		for i := 7; i >= 0; i-- {
-			euiVal[i] = byte(typeEui.Int64 & 0xFF)
-			typeEui.Int64 >>= 8
-		}
-		endpoint.TypeEUI = &euiVal
+	if len(typeEUIBytes) == 8 {
+		var typeEUI models.EUI
+		copy(typeEUI[:], typeEUIBytes)
+		endpoint.TypeEUI = &typeEUI
 	}
 	if propagatedAt.Valid {
-		t := time.Unix(0, propagatedAt.Int64)
-		endpoint.PropagatedAt = &t
+		endpoint.PropagatedAt = &propagatedAt.Time
 	}
 	if lastAttachRxTime.Valid {
 		val := lastAttachRxTime.Int64
