@@ -70,6 +70,14 @@ function bytesToString(value: Uint8Array): string {
   return textDecoder.decode(value);
 }
 
+function dateToTimestamp(
+  date: Date,
+): google_protobuf_timestamp_pb.Timestamp {
+  const timestamp = new google_protobuf_timestamp_pb.Timestamp();
+  timestamp.fromDate(date);
+  return timestamp;
+}
+
 /** gRPC-layer API key (timestamps as Date from protobuf Timestamp). */
 export interface GrpcApiKey {
   id: string;
@@ -436,7 +444,9 @@ class GrpcClientService {
   }
 
   /**
-   * Execute a single gRPC call returning a Promise.
+   * Execute a single gRPC call returning a Promise. Metadata is built by the
+   * caller so client-side fail-closed errors (e.g. missing org context) throw
+   * synchronously and bypass the refresh-and-retry path in promisify.
    */
   private executeCall<TRequest, TResponse>(
     method: (
@@ -448,10 +458,9 @@ class GrpcClientService {
       ) => void,
     ) => void,
     request: TRequest,
-    options: { requireOrgUser: boolean },
+    metadata: grpc.Metadata,
   ): Promise<TResponse> {
     return new Promise((resolve, reject) => {
-      const metadata = this.buildMetadata(options);
       method.call(this.client, request, metadata, (error, response) => {
         if (error) {
           reject(this.handleError(error));
@@ -485,8 +494,9 @@ class GrpcClientService {
     },
   ): (request: TRequest) => Promise<TResponse> {
     return async (request: TRequest): Promise<TResponse> => {
+      const metadata = this.buildMetadata(options);
       try {
-        return await this.executeCall(method, request, options);
+        return await this.executeCall(method, request, metadata);
       } catch (err) {
         if (
           !options.skipRefreshRetry &&
@@ -495,7 +505,11 @@ class GrpcClientService {
         ) {
           const refreshed = await this.attemptTokenRefresh();
           if (refreshed) {
-            return this.executeCall(method, request, options);
+            return this.executeCall(
+              method,
+              request,
+              this.buildMetadata(options),
+            );
           }
           // Refresh failed — clear session and redirect to login
           this.authFailureCallback?.();
@@ -1408,7 +1422,6 @@ class GrpcClientService {
   async exchangeOIDC(
     code: string,
     state: string,
-    _redirectUri?: string,
   ): Promise<{
     tokens: {
       accessToken: string;
@@ -1484,12 +1497,10 @@ class GrpcClientService {
 
   /**
    * Exchange OAuth2 authorization code for tokens
-   * Note: redirectUri kept for API compat but not sent to gRPC (backend handles redirect)
    */
   async exchangeOAuth2(
     code: string,
     state: string,
-    _redirectUri?: string,
   ): Promise<{
     tokens: {
       accessToken: string;
@@ -3009,7 +3020,7 @@ class GrpcClientService {
    */
   async getBaseStationMessageStats(
     bsEui: string,
-    _params?: {
+    params?: {
       startTime?: Date;
       endTime?: Date;
     },
@@ -3027,6 +3038,12 @@ class GrpcClientService {
   } | null> {
     const request = new pb.GetBaseStationMessageStatsRequest();
     request.setBsEui(bsEui);
+    if (params?.startTime) {
+      request.setStartTime(dateToTimestamp(params.startTime));
+    }
+    if (params?.endTime) {
+      request.setEndTime(dateToTimestamp(params.endTime));
+    }
 
     const response = await this.promisify<
       pb.GetBaseStationMessageStatsRequest,

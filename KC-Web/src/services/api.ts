@@ -166,6 +166,142 @@ function parseTenantIdOrZero(tenantId: string): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+interface BaseStationListFilters {
+  search?: string;
+  status?: string[];
+  sort?: { field: string; direction: "asc" | "desc" };
+}
+
+interface EndpointListFilters {
+  search?: string;
+  attachState?: string[];
+  bidirectional?: boolean;
+  sort?: { field: string; direction: "asc" | "desc" };
+}
+
+function compareNullableString(
+  a: string | undefined | null,
+  b: string | undefined | null,
+  direction: "asc" | "desc",
+): number {
+  const aMissing = a === undefined || a === null || a === "";
+  const bMissing = b === undefined || b === null || b === "";
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1; // null/empty sort last
+  if (bMissing) return -1;
+  const cmp = (a as string).localeCompare(b as string);
+  return direction === "asc" ? cmp : -cmp;
+}
+
+function compareNullableNumber(
+  a: number | undefined | null,
+  b: number | undefined | null,
+  direction: "asc" | "desc",
+): number {
+  const aMissing = a === undefined || a === null;
+  const bMissing = b === undefined || b === null;
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  const cmp = (a as number) - (b as number);
+  return direction === "asc" ? cmp : -cmp;
+}
+
+function filterAndSortBaseStations(
+  items: BaseStationUI[],
+  filters?: BaseStationListFilters,
+): BaseStationUI[] {
+  if (!filters) return items;
+  let out = items;
+  if (filters.search) {
+    const needle = filters.search.toLowerCase();
+    out = out.filter(
+      (bs) =>
+        (bs.name?.toLowerCase().includes(needle) ?? false) ||
+        bs.eui.toLowerCase().includes(needle),
+    );
+  }
+  if (filters.status && filters.status.length > 0) {
+    const allowed = new Set(filters.status);
+    out = out.filter((bs) => allowed.has(bs.status));
+  }
+  if (filters.sort) {
+    const { field, direction } = filters.sort;
+    out = [...out].sort((a, b) => {
+      switch (field) {
+        case "name":
+          return compareNullableString(a.name, b.name, direction);
+        case "eui":
+          return compareNullableString(a.eui, b.eui, direction);
+        case "status":
+          return compareNullableString(a.status, b.status, direction);
+        case "connectionType":
+          return compareNullableString(
+            a.connectionType,
+            b.connectionType,
+            direction,
+          );
+        case "lastSeen":
+          return compareNullableString(a.lastSeen, b.lastSeen, direction);
+        default:
+          return 0;
+      }
+    });
+  }
+  return out;
+}
+
+function filterAndSortEndpoints(
+  items: EndpointUI[],
+  filters?: EndpointListFilters,
+): EndpointUI[] {
+  if (!filters) return items;
+  let out = items;
+  if (filters.search) {
+    const needle = filters.search.toLowerCase();
+    out = out.filter(
+      (ep) =>
+        (ep.name?.toLowerCase().includes(needle) ?? false) ||
+        ep.epEui.toLowerCase().includes(needle),
+    );
+  }
+  if (filters.attachState && filters.attachState.length > 0) {
+    const allowed = new Set(filters.attachState);
+    out = out.filter((ep) => allowed.has(ep.attachStatus));
+  }
+  if (filters.bidirectional !== undefined) {
+    out = out.filter((ep) => (ep.bidi ?? false) === filters.bidirectional);
+  }
+  if (filters.sort) {
+    const { field, direction } = filters.sort;
+    out = [...out].sort((a, b) => {
+      switch (field) {
+        case "name":
+          return compareNullableString(a.name, b.name, direction);
+        case "epEui":
+          return compareNullableString(a.epEui, b.epEui, direction);
+        case "attachState":
+          return compareNullableString(
+            a.attachStatus,
+            b.attachStatus,
+            direction,
+          );
+        case "lastSeen":
+          return compareNullableString(a.lastSeen, b.lastSeen, direction);
+        case "packetCnt":
+          return compareNullableNumber(
+            a.lastPacketCnt,
+            b.lastPacketCnt,
+            direction,
+          );
+        default:
+          return 0;
+      }
+    });
+  }
+  return out;
+}
+
 const payloadWhitespaceRegex = /\s+/g;
 const payloadHexPrefixRegex = /^0x/i;
 const payloadBase64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -243,7 +379,7 @@ class ApiService {
   // BASE STATIONS
   // ============================================================================
 
-  async getBaseStations(_filters?: {
+  async getBaseStations(filters?: {
     search?: string;
     status?: string[];
     sort?: { field: string; direction: "asc" | "desc" };
@@ -251,7 +387,7 @@ class ApiService {
     const response = await grpcClient.listBaseStations();
 
     // Map gRPC response to API format expected by mappers
-    return response.map((bs) => {
+    const items = response.map((bs) => {
       const apiFormat: BaseStationAPI = {
         bsEui: bs.bsEui,
         name: bs.name,
@@ -270,6 +406,8 @@ class ApiService {
       };
       return mapBaseStation(apiFormat);
     });
+
+    return filterAndSortBaseStations(items, filters);
   }
 
   async getBaseStationById(id: string): Promise<BaseStationUI | null> {
@@ -533,10 +671,13 @@ class ApiService {
 
   async getBaseStationMessageStats(
     eui: string,
-    _startTime?: Date,
-    _endTime?: Date,
+    startTime?: Date,
+    endTime?: Date,
   ): Promise<BaseStationMessagesStats | null> {
-    const response = await grpcClient.getBaseStationMessageStats(eui);
+    const response = await grpcClient.getBaseStationMessageStats(eui, {
+      startTime,
+      endTime,
+    });
     if (!response) {
       return null; // Caller handles absence
     }
@@ -757,14 +898,15 @@ class ApiService {
   // ENDPOINTS
   // ============================================================================
 
-  async getEndpoints(_filters?: {
+  async getEndpoints(filters?: {
     search?: string;
     attachState?: string[];
     bidirectional?: boolean;
     sort?: { field: string; direction: "asc" | "desc" };
   }): Promise<EndpointUI[]> {
     const response = await grpcClient.listEndpoints();
-    return response.map(mapGrpcEndpointToUI);
+    const items = response.map(mapGrpcEndpointToUI);
+    return filterAndSortEndpoints(items, filters);
   }
 
   async getEndpointById(id: string): Promise<EndpointUI | null> {
@@ -1308,15 +1450,8 @@ class ApiService {
     });
   }
 
-  async exchangeOIDC(
-    payload: ExchangeRequest,
-    redirectUri?: string,
-  ): Promise<LoginResponseAPI> {
-    const response = await grpcClient.exchangeOIDC(
-      payload.code,
-      payload.state,
-      redirectUri || window.location.origin + "/auth/callback",
-    );
+  async exchangeOIDC(payload: ExchangeRequest): Promise<LoginResponseAPI> {
+    const response = await grpcClient.exchangeOIDC(payload.code, payload.state);
     return mapLoginResponse({
       tokens: {
         access_token: response.tokens.accessToken,
@@ -1345,14 +1480,10 @@ class ApiService {
     });
   }
 
-  async exchangeOAuth2(
-    payload: ExchangeRequest,
-    redirectUri?: string,
-  ): Promise<LoginResponseAPI> {
+  async exchangeOAuth2(payload: ExchangeRequest): Promise<LoginResponseAPI> {
     const response = await grpcClient.exchangeOAuth2(
       payload.code,
       payload.state,
-      redirectUri || window.location.origin + "/auth/callback",
     );
     return mapLoginResponse({
       tokens: {
@@ -1408,27 +1539,28 @@ class ApiService {
 
   async getUsers(
     limit = 50,
-    _offset = 0,
+    offset = 0,
   ): Promise<{
     users: import("@api-types/api").SystemUserUI[];
     total: number;
   }> {
-    const response = await grpcClient.listUsers({ pageSize: limit });
+    const response = await grpcClient.listUsers({ pageSize: limit + offset });
+    const mapped = mapUserList(
+      response.users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        is_admin: u.isAdmin,
+        is_active: u.isActive,
+        is_tenant_manager: u.isTenantManager,
+        is_base_station_manager: u.isBaseStationManager,
+        is_endpoint_manager: u.isEndpointManager,
+        note: u.note,
+        created_at: u.createdAt?.toISOString() || new Date().toISOString(),
+        updated_at: u.updatedAt?.toISOString() || new Date().toISOString(),
+      })),
+    );
     return {
-      users: mapUserList(
-        response.users.map((u) => ({
-          id: u.id,
-          email: u.email,
-          is_admin: u.isAdmin,
-          is_active: u.isActive,
-          is_tenant_manager: u.isTenantManager,
-          is_base_station_manager: u.isBaseStationManager,
-          is_endpoint_manager: u.isEndpointManager,
-          note: u.note,
-          created_at: u.createdAt?.toISOString() || new Date().toISOString(),
-          updated_at: u.updatedAt?.toISOString() || new Date().toISOString(),
-        })),
-      ),
+      users: mapped.slice(offset, offset + limit),
       total: response.totalCount,
     };
   }
@@ -1522,26 +1654,27 @@ class ApiService {
 
   async getOrganizations(
     limit = 50,
-    _offset = 0,
-    _tenantId?: number,
+    offset = 0,
   ): Promise<{
     organizations: import("@api-types/api").OrganizationUI[];
     total: number;
   }> {
-    const response = await grpcClient.listOrganizations({ pageSize: limit });
+    const pageSize = limit + offset;
+    const response = await grpcClient.listOrganizations({ pageSize });
+    const organizations = mapOrganizationList(
+      response.organizations.map((o) => ({
+        id: o.id,
+        name: o.name,
+        description: o.description,
+        tenant_id: parseInt(o.tenantId, 10) || 0,
+        state: o.state || "active",
+        can_have_base_stations: o.canHaveBaseStations ?? true,
+        created_at: o.createdAt?.toISOString() || new Date().toISOString(),
+        updated_at: o.updatedAt?.toISOString() || new Date().toISOString(),
+      })),
+    );
     return {
-      organizations: mapOrganizationList(
-        response.organizations.map((o) => ({
-          id: o.id,
-          name: o.name,
-          description: o.description,
-          tenant_id: parseInt(o.tenantId, 10) || 0,
-          state: o.state || "active",
-          can_have_base_stations: o.canHaveBaseStations ?? true,
-          created_at: o.createdAt?.toISOString() || new Date().toISOString(),
-          updated_at: o.updatedAt?.toISOString() || new Date().toISOString(),
-        })),
-      ),
+      organizations: organizations.slice(offset, offset + limit),
       total: response.totalCount,
     };
   }

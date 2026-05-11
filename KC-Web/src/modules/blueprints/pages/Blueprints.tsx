@@ -159,7 +159,7 @@ export const Blueprints: React.FC = () => {
   };
 
   // Navigate to add model page
-  const handleAddModel = (_manufacturerId: string) => {
+  const handleAddModel = () => {
     navigate(ROUTES.BLUEPRINT_MODEL_NEW);
   };
 
@@ -225,7 +225,7 @@ export const Blueprints: React.FC = () => {
                 expandedModels={expandedModels}
                 onToggleModel={toggleModel}
                 onBlueprintClick={handleBlueprintClick}
-                onAddModel={() => handleAddModel(mfr.id)}
+                onAddModel={handleAddModel}
                 onEdit={() => setEditMfr(mfr)}
                 onDelete={() => setDeleteMfr(mfr)}
                 onEditModel={(model) => setEditModel({ model, mfrId: mfr.id })}
@@ -266,7 +266,6 @@ export const Blueprints: React.FC = () => {
       {/* Edit Device Model Dialog */}
       <EditDeviceModelDialog
         model={editModel?.model ?? null}
-        manufacturerId={editModel?.mfrId ?? null}
         onClose={() => setEditModel(null)}
         onSuccess={() => {
           if (editModel) {
@@ -801,14 +800,12 @@ const EditManufacturerDialog: React.FC<EditManufacturerDialogProps> = ({
  */
 interface EditDeviceModelDialogProps {
   model: DeviceModelUI | null;
-  manufacturerId: string | null;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 const EditDeviceModelDialog: React.FC<EditDeviceModelDialogProps> = ({
   model,
-  manufacturerId: _manufacturerId,
   onClose,
   onSuccess,
 }) => {

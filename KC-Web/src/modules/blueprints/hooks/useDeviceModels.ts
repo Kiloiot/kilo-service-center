@@ -54,7 +54,6 @@ export function useUpdateDeviceModel() {
   return useMutation({
     mutationFn: ({
       id,
-      manufacturerId: _manufacturerId,
       data,
     }: {
       id: string;
@@ -77,7 +76,6 @@ export function useDeleteDeviceModel() {
   return useMutation({
     mutationFn: ({
       id,
-      manufacturerId: _manufacturerId,
     }: {
       id: string;
       manufacturerId: string;

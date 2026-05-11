@@ -67,7 +67,6 @@ export function useUpdateBlueprint() {
   return useMutation({
     mutationFn: ({
       id,
-      deviceModelId: _deviceModelId,
       data,
     }: {
       id: string;
@@ -93,7 +92,6 @@ export function useDeleteBlueprint() {
   return useMutation({
     mutationFn: ({
       id,
-      deviceModelId: _deviceModelId,
     }: {
       id: string;
       deviceModelId: string;
