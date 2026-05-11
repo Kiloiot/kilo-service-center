@@ -997,22 +997,22 @@ const (
 	// Service-layer Uplink Ingest Pipeline (internal/services/bssci/uplink_ingest_service.go)
 	// ========================================================================
 
-	LogBSSCIUplinkDeduplicationError                     = "Uplink deduplication error"
-	LogBSSCIDuplicateUplinkReceived                      = "Duplicate uplink received"
-	LogBSSCIUplinkFirstReception                         = "Uplink first reception"
-	LogBSSCIEndpointNotFoundDuringIngestTenantResolution = "Endpoint not found during ingest tenant resolution"
-	LogBSSCIRoamingDetectionFailedDuringIngest           = "Roaming detection failed during ingest"
-	LogBSSCIRoamingEndpointUplink                        = "Roaming endpoint uplink"
-	LogBSSCIFailedToResolveOrganizationForUplink         = "Failed to resolve organization for uplink"
-	LogBSSCIBlueprintResolutionFailed                    = "Blueprint resolution failed"
-	LogBSSCIBlueprintDecodeError                         = "Blueprint decode error"
-	LogBSSCIFailedToFetchEndpointForBlueprintDecode      = "Failed to fetch endpoint for blueprint decode"
-	LogBSSCIFailedToFetchDLRXStatus                      = "Failed to fetch DL RX status"
-	LogBSSCIFailedToPersistUplinkMessage                 = "Failed to persist uplink message"
+	LogBSSCIUplinkDeduplicationError                      = "Uplink deduplication error"
+	LogBSSCIDuplicateUplinkReceived                       = "Duplicate uplink received"
+	LogBSSCIUplinkFirstReception                          = "Uplink first reception"
+	LogBSSCIEndpointNotFoundDuringIngestTenantResolution  = "Endpoint not found during ingest tenant resolution"
+	LogBSSCIRoamingDetectionFailedDuringIngest            = "Roaming detection failed during ingest"
+	LogBSSCIRoamingEndpointUplink                         = "Roaming endpoint uplink"
+	LogBSSCIFailedToResolveOrganizationForUplink          = "Failed to resolve organization for uplink"
+	LogBSSCIBlueprintResolutionFailed                     = "Blueprint resolution failed"
+	LogBSSCIBlueprintDecodeError                          = "Blueprint decode error"
+	LogBSSCIFailedToFetchEndpointForBlueprintDecode       = "Failed to fetch endpoint for blueprint decode"
+	LogBSSCIFailedToFetchDLRXStatus                       = "Failed to fetch DL RX status"
+	LogBSSCIFailedToPersistUplinkMessage                  = "Failed to persist uplink message"
 	LogBSSCIFailedToMarshalBaseStationsForDuplicateUpdate = "Failed to marshal base_stations for duplicate update"
-	LogBSSCIFailedToUpdateBaseStationsForDuplicate       = "Failed to update base_stations for duplicate"
-	LogBSSCIFailedToBroadcastUplinkToSCACI               = "Failed to broadcast uplink to SCACI"
-	LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved        = "MQTT uplink publish skipped: org unresolved"
+	LogBSSCIFailedToUpdateBaseStationsForDuplicate        = "Failed to update base_stations for duplicate"
+	LogBSSCIFailedToBroadcastUplinkToSCACI                = "Failed to broadcast uplink to SCACI"
+	LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved         = "MQTT uplink publish skipped: org unresolved"
 
 	// ========================================================================
 	// Server core (KC-Core/pkg/bssci/server.go)
