@@ -240,7 +240,7 @@ type uplinkIngestStorage struct {
 func (s *uplinkIngestStorage) MIOTYMessages() interfaces.MIOTYMessageRepository {
 	return s.miotyMessages
 }
-func (s *uplinkIngestStorage) EndPoints() interfaces.EndpointRepository       { return nil }
+func (s *uplinkIngestStorage) EndPoints() interfaces.EndpointRepository          { return nil }
 func (s *uplinkIngestStorage) DownlinkQueue() interfaces.DownlinkQueueRepository { return nil }
 func (s *uplinkIngestStorage) BaseStationReceptions() interfaces.BaseStationReceptionRepository {
 	return nil
