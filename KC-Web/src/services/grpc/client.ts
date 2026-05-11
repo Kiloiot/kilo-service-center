@@ -276,6 +276,261 @@ function mapEndpointProto(ep: pb.EndPoint): GrpcEndpointResult {
   };
 }
 
+/** gRPC-layer base station detail shape returned by getBaseStation. */
+export interface GrpcBaseStationDetail {
+  bsEui: string;
+  tenantId: string;
+  name: string;
+  description?: string;
+  latitude?: number;
+  longitude?: number;
+  altitude?: number;
+  status: string;
+  tags: Record<string, string>;
+  createdAt?: Date;
+  updatedAt?: Date;
+  lastSeenAt?: Date;
+  // MIOTY status fields (BSSCI v1.0.0 §5.5.2)
+  systemTime?: number;
+  dutyCycle?: number;
+  uptimeSeconds?: number;
+  temperatureCelsius?: number;
+  cpuLoad?: number;
+  memoryLoad?: number;
+  bsConfig?: Record<string, unknown>;
+  lastStatusAt?: Date;
+  serviceCenterUrl?: string;
+  locationSource?: string;
+  locationUpdatedAt?: Date;
+}
+
+/** Maps a protobuf BaseStation message to the shared GrpcBaseStationDetail shape. */
+function mapBaseStationProto(response: pb.BaseStation): GrpcBaseStationDetail {
+  return {
+    bsEui: response.getBseui(),
+    tenantId: response.getTenantId(),
+    name: response.getName(),
+    description: response.getDescription() || undefined,
+    latitude: response.getLatitude()?.getValue() ?? undefined,
+    longitude: response.getLongitude()?.getValue() ?? undefined,
+    altitude: response.getAltitude()?.getValue() ?? undefined,
+    status: response.getStatus(),
+    tags: response
+      .getTagsMap()
+      .toObject()
+      .reduce(
+        (acc, [k, v]) => {
+          acc[k] = v;
+          return acc;
+        },
+        {} as Record<string, string>,
+      ),
+    createdAt: response.getCreatedAt()?.toDate(),
+    updatedAt: response.getUpdatedAt()?.toDate(),
+    lastSeenAt: response.getLastSeenAt()?.toDate(),
+    systemTime: response.getSystemTime()?.getValue() ?? undefined,
+    dutyCycle: response.getDutyCycle()?.getValue() ?? undefined,
+    uptimeSeconds: response.getUptimeSeconds()?.getValue() ?? undefined,
+    temperatureCelsius:
+      response.getTemperatureCelsius()?.getValue() ?? undefined,
+    cpuLoad: response.getCpuLoad()?.getValue() ?? undefined,
+    memoryLoad: response.getMemoryLoad()?.getValue() ?? undefined,
+    bsConfig: response.getBsConfig()?.toJavaScript() ?? undefined,
+    lastStatusAt: response.getLastStatusAt()?.toDate() ?? undefined,
+    serviceCenterUrl: response.getServiceCenterUrl() || undefined,
+    locationSource: response.getLocationSource() || undefined,
+    locationUpdatedAt: response.getLocationUpdatedAt()?.toDate() ?? undefined,
+  };
+}
+
+/** Endpoint create payload (drives buildCreateEndpointRequest). */
+interface CreateEndpointInput {
+  epEui: string;
+  name?: string;
+  description?: string;
+  epClass?: string;
+  nwkSnKey?: string;
+  appSnKey?: string;
+  shAddr?: number;
+  dualChan?: boolean;
+  repetition?: boolean;
+  wideCarrOff?: boolean;
+  longBlkDist?: boolean;
+  attachCnt?: number;
+  preAttach?: boolean;
+  lastPacketCnt?: number;
+  typeEui?: string;
+  carrierOffset?: number;
+  deviceModelId?: string;
+}
+
+/** Endpoint update payload (drives applyEndpointUpdateFields). */
+interface UpdateEndpointInput {
+  name?: string;
+  description?: string;
+  epClass?: string;
+  status?: string;
+  shAddr?: number;
+  nwkSnKey?: string;
+  appKey?: string;
+  preAttach?: boolean;
+  dualChan?: boolean;
+  repetition?: boolean;
+  wideCarrOff?: boolean;
+  longBlkDist?: boolean;
+  attachCnt?: number;
+  lastPacketCnt?: number;
+  carrierOffset?: number;
+  typeEui?: string | null;
+  deviceModelId?: string | null;
+  newEpEui?: string;
+}
+
+/** Builds the nested EndPoint + outer request for CreateEndPoint. */
+function buildCreateEndpointRequest(
+  data: CreateEndpointInput,
+): pb.CreateEndPointRequest {
+  const endpoint = new pb.EndPoint();
+  endpoint.setEpeui(data.epEui);
+  if (data.name) endpoint.setName(data.name);
+  if (data.description) endpoint.setDescription(data.description);
+  if (data.epClass) endpoint.setEpClass(data.epClass);
+  if (data.nwkSnKey) endpoint.setNwkSnKey(hexToBytes(data.nwkSnKey));
+  if (data.appSnKey) endpoint.setAppKey(hexToBytes(data.appSnKey));
+  if (data.shAddr !== undefined) endpoint.setShAddr(data.shAddr);
+  if (data.dualChan !== undefined) endpoint.setDualChan(data.dualChan);
+  if (data.repetition !== undefined) endpoint.setRepetition(data.repetition);
+  if (data.wideCarrOff !== undefined) endpoint.setWideCarrOff(data.wideCarrOff);
+  if (data.longBlkDist !== undefined) endpoint.setLongBlkDist(data.longBlkDist);
+  if (data.attachCnt !== undefined) endpoint.setAttachCnt(data.attachCnt);
+  if (data.preAttach !== undefined) endpoint.setPreAttach(data.preAttach);
+  if (data.lastPacketCnt !== undefined)
+    endpoint.setLastPacketCnt(data.lastPacketCnt);
+  if (data.typeEui) endpoint.setTypeEui(hexToBytes(data.typeEui));
+  if (data.carrierOffset !== undefined)
+    endpoint.setCarrierOffset(data.carrierOffset);
+  if (data.deviceModelId) endpoint.setDeviceModelId(data.deviceModelId);
+
+  const request = new pb.CreateEndPointRequest();
+  request.setEndpoint(endpoint);
+  return request;
+}
+
+/**
+ * Sets each declared field on the nested EndPoint message and returns the
+ * FieldMask paths corresponding to the fields that were set. typeEui and
+ * deviceModelId support an explicit clear ({null} clears, missing leaves
+ * unchanged).
+ */
+function applyEndpointUpdateFields(
+  endpoint: pb.EndPoint,
+  data: UpdateEndpointInput,
+): string[] {
+  const paths: string[] = [];
+  if (data.name !== undefined) {
+    endpoint.setName(data.name);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.NAME);
+  }
+  if (data.description !== undefined) {
+    endpoint.setDescription(data.description);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.DESCRIPTION);
+  }
+  if (data.epClass !== undefined) {
+    endpoint.setEpClass(data.epClass);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.EP_CLASS);
+  }
+  if (data.status !== undefined) {
+    endpoint.setStatus(data.status);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.STATUS);
+  }
+  if (data.shAddr !== undefined) {
+    endpoint.setShAddr(data.shAddr);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.SH_ADDR);
+  }
+  if (data.nwkSnKey !== undefined) {
+    endpoint.setNwkSnKey(hexToBytes(data.nwkSnKey));
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.NWK_SN_KEY);
+  }
+  if (data.appKey !== undefined) {
+    endpoint.setAppKey(hexToBytes(data.appKey));
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.APP_KEY);
+  }
+  if (data.attachCnt !== undefined) {
+    endpoint.setAttachCnt(data.attachCnt);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.ATTACH_CNT);
+  }
+  if (data.lastPacketCnt !== undefined) {
+    endpoint.setLastPacketCnt(data.lastPacketCnt);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.LAST_PACKET_CNT);
+  }
+  if (data.carrierOffset !== undefined) {
+    endpoint.setCarrierOffset(data.carrierOffset);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.CARRIER_OFFSET);
+  }
+  if (data.preAttach !== undefined) {
+    endpoint.setPreAttach(data.preAttach);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.PRE_ATTACH);
+  }
+  if (data.dualChan !== undefined) {
+    endpoint.setDualChan(data.dualChan);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.DUAL_CHAN);
+  }
+  if (data.repetition !== undefined) {
+    endpoint.setRepetition(data.repetition);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.REPETITION);
+  }
+  if (data.wideCarrOff !== undefined) {
+    endpoint.setWideCarrOff(data.wideCarrOff);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.WIDE_CARR_OFF);
+  }
+  if (data.longBlkDist !== undefined) {
+    endpoint.setLongBlkDist(data.longBlkDist);
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.LONG_BLK_DIST);
+  }
+  // typeEui: null clears (empty bytes), string sets, missing leaves
+  if (data.typeEui !== undefined) {
+    if (data.typeEui) {
+      endpoint.setTypeEui(hexToBytes(data.typeEui));
+    }
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.TYPE_EUI);
+  }
+  // deviceModelId: null clears (empty string), string sets, missing leaves
+  if (data.deviceModelId !== undefined) {
+    endpoint.setDeviceModelId(data.deviceModelId ?? "");
+    paths.push(ENDPOINT_UPDATE_MASK_PATHS.DEVICE_MODEL_ID);
+  }
+  return paths;
+}
+
+/** Wraps a non-empty paths array in a FieldMask, or returns undefined. */
+function buildEndpointUpdateMask(paths: string[]): FieldMask | undefined {
+  if (paths.length === 0) return undefined;
+  const mask = new FieldMask();
+  mask.setPathsList(paths);
+  return mask;
+}
+
+/** Builds the UpdateEndPointRequest from epEui + update payload. */
+function buildUpdateEndpointRequest(
+  epEui: string,
+  data: UpdateEndpointInput,
+): pb.UpdateEndPointRequest {
+  const endpoint = new pb.EndPoint();
+  endpoint.setEpeui(epEui);
+  const paths = applyEndpointUpdateFields(endpoint, data);
+
+  const request = new pb.UpdateEndPointRequest();
+  request.setEndpoint(endpoint);
+  if (data.newEpEui !== undefined) {
+    request.setNewEpEui(data.newEpEui);
+  }
+  const mask = buildEndpointUpdateMask(paths);
+  if (mask) {
+    request.setUpdateMask(mask);
+  }
+  return request;
+}
+
 /**
  * gRPC-web Client Service
  *
@@ -842,32 +1097,7 @@ class GrpcClientService {
   /**
    * Get base station by EUI
    */
-  async getBaseStation(bsEui: string): Promise<{
-    bsEui: string;
-    tenantId: string;
-    name: string;
-    description?: string;
-    latitude?: number;
-    longitude?: number;
-    altitude?: number;
-    status: string;
-    tags: Record<string, string>;
-    createdAt?: Date;
-    updatedAt?: Date;
-    lastSeenAt?: Date;
-    // MIOTY status fields (BSSCI v1.0.0 §5.5.2)
-    systemTime?: number;
-    dutyCycle?: number;
-    uptimeSeconds?: number;
-    temperatureCelsius?: number;
-    cpuLoad?: number;
-    memoryLoad?: number;
-    bsConfig?: Record<string, unknown>;
-    lastStatusAt?: Date;
-    serviceCenterUrl?: string;
-    locationSource?: string;
-    locationUpdatedAt?: Date;
-  } | null> {
+  async getBaseStation(bsEui: string): Promise<GrpcBaseStationDetail | null> {
     const request = new pb.GetBaseStationRequest();
     request.setBseui(bsEui);
 
@@ -876,43 +1106,7 @@ class GrpcClientService {
         pb.GetBaseStationRequest,
         pb.BaseStation
       >(this.client.getBaseStation)(request);
-
-      return {
-        bsEui: response.getBseui(),
-        tenantId: response.getTenantId(),
-        name: response.getName(),
-        description: response.getDescription() || undefined,
-        latitude: response.getLatitude()?.getValue() ?? undefined,
-        longitude: response.getLongitude()?.getValue() ?? undefined,
-        altitude: response.getAltitude()?.getValue() ?? undefined,
-        status: response.getStatus(),
-        tags: response
-          .getTagsMap()
-          .toObject()
-          .reduce(
-            (acc, [k, v]) => {
-              acc[k] = v;
-              return acc;
-            },
-            {} as Record<string, string>,
-          ),
-        createdAt: response.getCreatedAt()?.toDate(),
-        updatedAt: response.getUpdatedAt()?.toDate(),
-        lastSeenAt: response.getLastSeenAt()?.toDate(),
-        systemTime: response.getSystemTime()?.getValue() ?? undefined,
-        dutyCycle: response.getDutyCycle()?.getValue() ?? undefined,
-        uptimeSeconds: response.getUptimeSeconds()?.getValue() ?? undefined,
-        temperatureCelsius:
-          response.getTemperatureCelsius()?.getValue() ?? undefined,
-        cpuLoad: response.getCpuLoad()?.getValue() ?? undefined,
-        memoryLoad: response.getMemoryLoad()?.getValue() ?? undefined,
-        bsConfig: response.getBsConfig()?.toJavaScript() ?? undefined,
-        lastStatusAt: response.getLastStatusAt()?.toDate() ?? undefined,
-        serviceCenterUrl: response.getServiceCenterUrl() || undefined,
-        locationSource: response.getLocationSource() || undefined,
-        locationUpdatedAt:
-          response.getLocationUpdatedAt()?.toDate() ?? undefined,
-      };
+      return mapBaseStationProto(response);
     } catch (error) {
       if (error instanceof GrpcApiError && error.isNotFound()) {
         return null;
@@ -2499,57 +2693,11 @@ class GrpcClientService {
   /**
    * Create endpoint
    */
-  async createEndpoint(data: {
-    epEui: string;
-    name?: string;
-    description?: string;
-    epClass?: string;
-    nwkSnKey?: string;
-    appSnKey?: string;
-    shAddr?: number;
-    dualChan?: boolean;
-    repetition?: boolean;
-    wideCarrOff?: boolean;
-    longBlkDist?: boolean;
-    attachCnt?: number;
-    preAttach?: boolean;
-    lastPacketCnt?: number;
-    typeEui?: string;
-    carrierOffset?: number;
-    deviceModelId?: string;
-  }): Promise<GrpcEndpointResult> {
-    // Build nested EndPoint message
-    const endpoint = new pb.EndPoint();
-    endpoint.setEpeui(data.epEui);
-    if (data.name) endpoint.setName(data.name);
-    if (data.description) endpoint.setDescription(data.description);
-    if (data.epClass) endpoint.setEpClass(data.epClass);
-    if (data.nwkSnKey) endpoint.setNwkSnKey(hexToBytes(data.nwkSnKey));
-    if (data.appSnKey) endpoint.setAppKey(hexToBytes(data.appSnKey));
-    if (data.shAddr !== undefined) endpoint.setShAddr(data.shAddr);
-    if (data.dualChan !== undefined) endpoint.setDualChan(data.dualChan);
-    if (data.repetition !== undefined) endpoint.setRepetition(data.repetition);
-    if (data.wideCarrOff !== undefined)
-      endpoint.setWideCarrOff(data.wideCarrOff);
-    if (data.longBlkDist !== undefined)
-      endpoint.setLongBlkDist(data.longBlkDist);
-    if (data.attachCnt !== undefined) endpoint.setAttachCnt(data.attachCnt);
-    if (data.preAttach !== undefined) endpoint.setPreAttach(data.preAttach);
-    if (data.lastPacketCnt !== undefined)
-      endpoint.setLastPacketCnt(data.lastPacketCnt);
-    if (data.typeEui) endpoint.setTypeEui(hexToBytes(data.typeEui));
-    if (data.carrierOffset !== undefined)
-      endpoint.setCarrierOffset(data.carrierOffset);
-    if (data.deviceModelId) endpoint.setDeviceModelId(data.deviceModelId);
-
-    const request = new pb.CreateEndPointRequest();
-    request.setEndpoint(endpoint);
-
-    // Service returns EndPoint directly
+  async createEndpoint(data: CreateEndpointInput): Promise<GrpcEndpointResult> {
+    const request = buildCreateEndpointRequest(data);
     const ep = await this.promisify<pb.CreateEndPointRequest, pb.EndPoint>(
       this.client.createEndPoint,
     )(request);
-
     return mapEndpointProto(ep);
   }
 
@@ -2560,128 +2708,12 @@ class GrpcClientService {
    */
   async updateEndpoint(
     epEui: string,
-    data: {
-      name?: string;
-      description?: string;
-      epClass?: string;
-      status?: string;
-      shAddr?: number;
-      nwkSnKey?: string;
-      appKey?: string;
-      preAttach?: boolean;
-      dualChan?: boolean;
-      repetition?: boolean;
-      wideCarrOff?: boolean;
-      longBlkDist?: boolean;
-      attachCnt?: number;
-      lastPacketCnt?: number;
-      carrierOffset?: number;
-      typeEui?: string | null;
-      deviceModelId?: string | null;
-      newEpEui?: string;
-    },
+    data: UpdateEndpointInput,
   ): Promise<GrpcEndpointResult> {
-    // Build nested EndPoint message
-    const endpoint = new pb.EndPoint();
-    endpoint.setEpeui(epEui);
-
-    // Build field mask for explicit field tracking
-    const paths: string[] = [];
-
-    if (data.name !== undefined) {
-      endpoint.setName(data.name);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.NAME);
-    }
-    if (data.description !== undefined) {
-      endpoint.setDescription(data.description);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.DESCRIPTION);
-    }
-    if (data.epClass !== undefined) {
-      endpoint.setEpClass(data.epClass);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.EP_CLASS);
-    }
-    if (data.status !== undefined) {
-      endpoint.setStatus(data.status);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.STATUS);
-    }
-    if (data.shAddr !== undefined) {
-      endpoint.setShAddr(data.shAddr);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.SH_ADDR);
-    }
-    if (data.nwkSnKey !== undefined) {
-      endpoint.setNwkSnKey(hexToBytes(data.nwkSnKey));
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.NWK_SN_KEY);
-    }
-    if (data.appKey !== undefined) {
-      endpoint.setAppKey(hexToBytes(data.appKey));
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.APP_KEY);
-    }
-    if (data.attachCnt !== undefined) {
-      endpoint.setAttachCnt(data.attachCnt);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.ATTACH_CNT);
-    }
-    if (data.lastPacketCnt !== undefined) {
-      endpoint.setLastPacketCnt(data.lastPacketCnt);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.LAST_PACKET_CNT);
-    }
-    if (data.carrierOffset !== undefined) {
-      endpoint.setCarrierOffset(data.carrierOffset);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.CARRIER_OFFSET);
-    }
-    // Boolean fields - explicitly track in mask
-    if (data.preAttach !== undefined) {
-      endpoint.setPreAttach(data.preAttach);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.PRE_ATTACH);
-    }
-    if (data.dualChan !== undefined) {
-      endpoint.setDualChan(data.dualChan);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.DUAL_CHAN);
-    }
-    if (data.repetition !== undefined) {
-      endpoint.setRepetition(data.repetition);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.REPETITION);
-    }
-    if (data.wideCarrOff !== undefined) {
-      endpoint.setWideCarrOff(data.wideCarrOff);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.WIDE_CARR_OFF);
-    }
-    if (data.longBlkDist !== undefined) {
-      endpoint.setLongBlkDist(data.longBlkDist);
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.LONG_BLK_DIST);
-    }
-    // typeEui: null = explicit clear (send empty bytes), string = set
-    if (data.typeEui !== undefined) {
-      if (data.typeEui) {
-        endpoint.setTypeEui(hexToBytes(data.typeEui));
-      }
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.TYPE_EUI);
-    }
-    // deviceModelId: null = explicit clear (send empty string), string = set
-    if (data.deviceModelId !== undefined) {
-      endpoint.setDeviceModelId(data.deviceModelId ?? "");
-      paths.push(ENDPOINT_UPDATE_MASK_PATHS.DEVICE_MODEL_ID);
-    }
-
-    const request = new pb.UpdateEndPointRequest();
-    request.setEndpoint(endpoint);
-
-    // Set new EUI for cascade rename if provided
-    if (data.newEpEui !== undefined) {
-      request.setNewEpEui(data.newEpEui);
-    }
-
-    // Set update mask if any fields are being updated
-    if (paths.length > 0) {
-      const mask = new FieldMask();
-      mask.setPathsList(paths);
-      request.setUpdateMask(mask);
-    }
-
-    // Service returns EndPoint directly
+    const request = buildUpdateEndpointRequest(epEui, data);
     const ep = await this.promisify<pb.UpdateEndPointRequest, pb.EndPoint>(
       this.client.updateEndPoint,
     )(request);
-
     return mapEndpointProto(ep);
   }
 
