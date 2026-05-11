@@ -278,6 +278,10 @@ const (
 	// Propagation broadcast errors (used by propagation service)
 	ErrPropagationBroadcastFailure = errPropagationBroadcastFailure
 
+	// Propagate-rejection errors (used by handlePropagateResponseFailure)
+	ErrAttachPropagateFailed = errAttachPropagateFailed
+	ErrDetachPropagateFailed = errDetachPropagateFailed
+
 	// Note: ErrBaseStationTenantMismatch is now defined in ul_transmit.go as a proper error sentinel
 )
 
