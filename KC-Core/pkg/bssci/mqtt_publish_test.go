@@ -467,11 +467,25 @@ func TestHandleDetachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 
 // --- Uplink MQTT Publish Tests ---
 
-// mqttNoopIngestService satisfies UplinkIngestService for unit tests.
-type mqttNoopIngestService struct{}
+// mqttPublishingIngestService drives the same MQTT publish path the real ingest exercises,
+// reading orgResolver/mqttPublisher/tenantID from the server. This keeps the test in
+// package bssci while avoiding the pkg/bssci ↔ internal/services/bssci import cycle that
+// would arise from constructing the real internal ingest here.
+type mqttPublishingIngestService struct {
+	server *Server
+}
 
-func (s *mqttNoopIngestService) Ingest(_ context.Context, _ *UplinkPayload, _ UplinkIngestOptions) (*IngestResult, error) {
-	return &IngestResult{}, nil
+func (s *mqttPublishingIngestService) Ingest(ctx context.Context, payload *UplinkPayload, _ UplinkIngestOptions) (*IngestResult, error) {
+	var ownerOrgUUID uuid.UUID
+	if s.server.orgResolver != nil {
+		ownerOrgUUID, _ = s.server.orgResolver.GetDefaultOrgForTenant(ctx, s.server.tenantID)
+	}
+	if s.server.mqttPublisher != nil && ownerOrgUUID != uuid.Nil {
+		_ = s.server.mqttPublisher.PublishUplink(ctx, ownerOrgUUID.String(),
+			payload.EpEUI, payload.BsEUI, payload.RSSI, payload.SNR,
+			payload.RxTime, payload.PacketCnt, payload.UserData)
+	}
+	return &IngestResult{OwnerTenantID: s.server.tenantID, OwnerOrgUUID: ownerOrgUUID}, nil
 }
 
 func TestHandleULData_PublishesMQTTUplink(t *testing.T) {
@@ -485,7 +499,7 @@ func TestHandleULData_PublishesMQTTUplink(t *testing.T) {
 	dedup := NewMessageDeduplicator(5 * time.Minute)
 	defer dedup.Stop()
 	server.deduplicator = dedup
-	server.uplinkIngestSvc = &mqttNoopIngestService{}
+	server.uplinkIngestSvc = &mqttPublishingIngestService{server: server}
 
 	// Wire org resolver to map server tenant → known org UUID
 	ownerOrg := uuid.New()
@@ -550,7 +564,7 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 	// Wire deduplicator
 	dedup := NewMessageDeduplicator(5 * time.Minute)
 	defer dedup.Stop()
-	server.uplinkIngestSvc = &mqttNoopIngestService{}
+	server.uplinkIngestSvc = &mqttPublishingIngestService{server: server}
 	server.deduplicator = dedup
 
 	// orgResolver returns uuid.Nil for server tenant (no org mapping)
