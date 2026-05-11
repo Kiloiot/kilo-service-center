@@ -7,7 +7,12 @@
 import React, { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
-import type { OrganizationUI, UpdateUserRequest } from "@api-types/api";
+import type {
+  OrganizationMembershipUI,
+  OrganizationUI,
+  SystemUserUI,
+  UpdateUserRequest,
+} from "@api-types/api";
 import {
   useDeleteUser,
   useUpdateUser,
@@ -64,12 +69,349 @@ import {
 } from "@constants/messages";
 import { AddIcon, DeleteIcon, SaveIcon } from "@theme/icons";
 
+interface UserProfileForm {
+  email: string;
+  note: string;
+  isUserAdmin: boolean;
+  isActive: boolean;
+  isTenantManager: boolean;
+  isBaseStationManager: boolean;
+  isEndpointManager: boolean;
+}
+
+/**
+ * Builds an UpdateUserRequest containing only the fields that differ from the
+ * loaded user record. Returns an empty object when nothing changed.
+ */
+function buildUpdateUserPayload(
+  form: UserProfileForm,
+  original: SystemUserUI,
+): UpdateUserRequest {
+  const updates: UpdateUserRequest = {};
+  if (form.email !== original.email) updates.email = form.email;
+  if (form.note !== (original.note || "")) {
+    updates.note = form.note || undefined;
+  }
+  if (form.isUserAdmin !== original.isAdmin) updates.is_admin = form.isUserAdmin;
+  if (form.isActive !== original.isActive) updates.is_active = form.isActive;
+  if (form.isTenantManager !== original.isTenantManager) {
+    updates.is_tenant_manager = form.isTenantManager;
+  }
+  if (form.isBaseStationManager !== original.isBaseStationManager) {
+    updates.is_base_station_manager = form.isBaseStationManager;
+  }
+  if (form.isEndpointManager !== original.isEndpointManager) {
+    updates.is_endpoint_manager = form.isEndpointManager;
+  }
+  return updates;
+}
+
+interface UserDetailHeaderProps {
+  onBack: () => void;
+}
+
+const UserDetailHeader: React.FC<UserDetailHeaderProps> = ({ onBack }) => (
+  <Box
+    display="flex"
+    justifyContent="space-between"
+    alignItems="center"
+    mb={3}
+  >
+    <Typography variant="h4" component="h1">
+      {USERS_PAGE.DETAILS_TITLE}
+    </Typography>
+    <Button variant="outlined" onClick={onBack}>
+      {USERS_PAGE.BACK_TO_LIST}
+    </Button>
+  </Box>
+);
+
+interface UserProfileCardProps {
+  form: UserProfileForm;
+  isSaving: boolean;
+  isDeleting: boolean;
+  onChange: <K extends keyof UserProfileForm>(
+    key: K,
+    value: UserProfileForm[K],
+  ) => void;
+  onSave: () => void;
+  onDeleteClick: () => void;
+}
+
+const UserProfileCard: React.FC<UserProfileCardProps> = ({
+  form,
+  isSaving,
+  isDeleting,
+  onChange,
+  onSave,
+  onDeleteClick,
+}) => (
+  <Card>
+    <CardContent>
+      <Typography variant="h6" gutterBottom>
+        {USER_FORM.DIALOG_TITLE_EDIT}
+      </Typography>
+
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 2 }}>
+        <TextField
+          label={USER_FORM.LABEL_EMAIL}
+          type="email"
+          value={form.email}
+          onChange={(e) => onChange("email", e.target.value)}
+          fullWidth
+        />
+
+        <TextField
+          label={USER_FORM.LABEL_NOTE}
+          value={form.note}
+          onChange={(e) => onChange("note", e.target.value)}
+          multiline
+          rows={2}
+          fullWidth
+        />
+
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.isActive}
+                onChange={(e) => onChange("isActive", e.target.checked)}
+              />
+            }
+            label={USER_FORM.LABEL_IS_ACTIVE}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.isUserAdmin}
+                onChange={(e) => onChange("isUserAdmin", e.target.checked)}
+              />
+            }
+            label={USER_FORM.LABEL_IS_ADMIN}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.isTenantManager}
+                onChange={(e) => onChange("isTenantManager", e.target.checked)}
+              />
+            }
+            label={USER_FORM.LABEL_IS_TENANT_MGR}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.isBaseStationManager}
+                onChange={(e) =>
+                  onChange("isBaseStationManager", e.target.checked)
+                }
+              />
+            }
+            label={USER_FORM.LABEL_IS_BS_MGR}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.isEndpointManager}
+                onChange={(e) =>
+                  onChange("isEndpointManager", e.target.checked)
+                }
+              />
+            }
+            label={USER_FORM.LABEL_IS_EP_MGR}
+          />
+        </Box>
+
+        <Box display="flex" gap={2} mt={2}>
+          <Button
+            variant="contained"
+            startIcon={<SaveIcon />}
+            onClick={onSave}
+            disabled={isSaving}
+          >
+            {USER_FORM.ACTION_SUBMIT}
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={onDeleteClick}
+            disabled={isDeleting}
+          >
+            {USER_FORM.ACTION_DELETE}
+          </Button>
+        </Box>
+      </Box>
+    </CardContent>
+  </Card>
+);
+
+interface UserMembershipsCardProps {
+  memberships: OrganizationMembershipUI[];
+  availableOrgs: OrganizationUI[];
+  isOrgsLoading: boolean;
+  isRemovePending: boolean;
+  isAddPending: boolean;
+  selectedOrg: OrganizationUI | null;
+  selectedRole: string;
+  membershipSuccess: string;
+  membershipError: string;
+  onSelectedOrgChange: (org: OrganizationUI | null) => void;
+  onSelectedRoleChange: (role: string) => void;
+  onAddMembership: () => void;
+  onRemoveMembership: (orgId: string) => void;
+}
+
+const UserMembershipsCard: React.FC<UserMembershipsCardProps> = ({
+  memberships,
+  availableOrgs,
+  isOrgsLoading,
+  isRemovePending,
+  isAddPending,
+  selectedOrg,
+  selectedRole,
+  membershipSuccess,
+  membershipError,
+  onSelectedOrgChange,
+  onSelectedRoleChange,
+  onAddMembership,
+  onRemoveMembership,
+}) => (
+  <Card>
+    <CardContent>
+      <Typography variant="h6" gutterBottom>
+        {USER_FORM.SECTION_ORG_MEMBERSHIPS}
+      </Typography>
+
+      {membershipSuccess && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {membershipSuccess}
+        </Alert>
+      )}
+
+      {membershipError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {membershipError}
+        </Alert>
+      )}
+
+      {isOrgsLoading ? (
+        <Box display="flex" justifyContent="center" py={2}>
+          <CircularProgress size={24} />
+        </Box>
+      ) : memberships.length === 0 ? (
+        <Typography color="text.secondary" sx={{ py: 2 }}>
+          {USER_FORM.EMPTY_NO_MEMBERSHIPS}
+        </Typography>
+      ) : (
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>{USER_FORM.COL_ORG_NAME}</TableCell>
+                <TableCell>{ORG_USERS_PAGE.COL_ROLE}</TableCell>
+                <TableCell>{ORG_USERS_PAGE.COL_STATUS}</TableCell>
+                <TableCell>{ORG_USERS_PAGE.COL_ACTIONS}</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {memberships.map((m) => (
+                <TableRow key={m.orgId}>
+                  <TableCell>
+                    <Typography variant="body2">{m.orgName}</Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={m.role} size="small" />
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={m.status}
+                      size="small"
+                      color={
+                        m.status === ORG_MEMBER_STATUS.ACTIVE
+                          ? "success"
+                          : "default"
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Tooltip title={ORG_USERS_PAGE.TOOLTIP_REMOVE}>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => onRemoveMembership(m.orgId)}
+                        disabled={isRemovePending}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "divider" }}>
+        <Typography variant="subtitle2" gutterBottom>
+          {USER_FORM.LABEL_ADD_TO_ORG}
+        </Typography>
+        <Box display="flex" gap={2} alignItems="flex-start">
+          <Autocomplete
+            options={availableOrgs}
+            getOptionLabel={(option) => option.name}
+            value={selectedOrg}
+            onChange={(_, newValue) => onSelectedOrgChange(newValue)}
+            isOptionEqualToValue={(option, value) => option.id === value.id}
+            sx={{ minWidth: 250, flex: 1 }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={USER_FORM.LABEL_SELECT_ORG}
+                size="small"
+              />
+            )}
+          />
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>{USER_FORM.LABEL_SELECT_ROLE}</InputLabel>
+            <Select
+              value={selectedRole}
+              onChange={(e) => onSelectedRoleChange(e.target.value)}
+              label={USER_FORM.LABEL_SELECT_ROLE}
+            >
+              <MenuItem value={ORG_ROLE.MEMBER}>
+                {ORG_USERS_PAGE.ROLE_MEMBER}
+              </MenuItem>
+              <MenuItem value={ORG_ROLE.ADMIN}>
+                {ORG_USERS_PAGE.ROLE_ADMIN}
+              </MenuItem>
+              <MenuItem value={ORG_ROLE.OWNER}>
+                {ORG_USERS_PAGE.ROLE_OWNER}
+              </MenuItem>
+            </Select>
+          </FormControl>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={onAddMembership}
+            disabled={!selectedOrg || isAddPending}
+            sx={{ mt: 0.5 }}
+          >
+            {USER_FORM.ACTION_ADD_MEMBERSHIP}
+          </Button>
+        </Box>
+      </Box>
+    </CardContent>
+  </Card>
+);
+
 const UserDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { isAdmin, isHydrated } = useSession();
 
-  // Hooks
   const {
     data: user,
     isLoading,
@@ -82,7 +424,6 @@ const UserDetail: React.FC = () => {
   const deleteUser = useDeleteUser();
   const canNavigateToPassword = Boolean(id);
 
-  // Organization memberships
   const { data: userOrgsData, isLoading: isOrgsLoading } = useUserOrganizations(
     id || "",
     {
@@ -91,95 +432,78 @@ const UserDetail: React.FC = () => {
   );
   const memberships = userOrgsData?.memberships ?? [];
 
-  // Available organizations for the "Add to Organization" picker
   const { data: allOrgsData } = useOrganizations(200, 0, undefined, {
     enabled: isHydrated && isAdmin && Boolean(id),
   });
   const allOrganizations = allOrgsData?.organizations ?? [];
 
-  // Filter out orgs the user is already a member of
   const availableOrgs = allOrganizations.filter(
     (org) => !memberships.some((m) => m.orgId === org.id),
   );
 
-  // Add/remove org mutation hooks
   const addOrgUser = useAddOrgUser();
   const removeOrgUser = useRemoveOrgUser();
 
-  // Form state (use isUserAdmin to avoid conflict with session isAdmin)
-  const [email, setEmail] = useState("");
-  const [note, setNote] = useState("");
-  const [isUserAdmin, setIsUserAdmin] = useState(false);
-  const [isActive, setIsActive] = useState(true);
-  const [isTenantManager, setIsTenantManager] = useState(false);
-  const [isBaseStationManager, setIsBaseStationManager] = useState(false);
-  const [isEndpointManager, setIsEndpointManager] = useState(false);
+  const [form, setForm] = useState<UserProfileForm>({
+    email: "",
+    note: "",
+    isUserAdmin: false,
+    isActive: true,
+    isTenantManager: false,
+    isBaseStationManager: false,
+    isEndpointManager: false,
+  });
+  const updateForm = <K extends keyof UserProfileForm>(
+    key: K,
+    value: UserProfileForm[K],
+  ) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  // Dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-
-  // Success messages
   const [successMessage, setSuccessMessage] = useState("");
 
-  // Add-to-org form state
   const [selectedOrg, setSelectedOrg] = useState<OrganizationUI | null>(null);
   const [selectedRole, setSelectedRole] = useState(ORG_ROLE.MEMBER);
   const [membershipError, setMembershipError] = useState("");
   const [membershipSuccess, setMembershipSuccess] = useState("");
 
-  // Populate form when user data loads
   useEffect(() => {
     if (user) {
-      setEmail(user.email);
-      setNote(user.note || "");
-      setIsUserAdmin(user.isAdmin);
-      setIsActive(user.isActive);
-      setIsTenantManager(user.isTenantManager);
-      setIsBaseStationManager(user.isBaseStationManager);
-      setIsEndpointManager(user.isEndpointManager);
+      setForm({
+        email: user.email,
+        note: user.note || "",
+        isUserAdmin: user.isAdmin,
+        isActive: user.isActive,
+        isTenantManager: user.isTenantManager,
+        isBaseStationManager: user.isBaseStationManager,
+        isEndpointManager: user.isEndpointManager,
+      });
     }
   }, [user]);
 
   const handleSave = async () => {
     if (!id || !user) return;
-
-    const updates: UpdateUserRequest = {};
-
-    if (email !== user.email) updates.email = email;
-    if (note !== (user.note || "")) updates.note = note || undefined;
-    if (isUserAdmin !== user.isAdmin) updates.is_admin = isUserAdmin;
-    if (isActive !== user.isActive) updates.is_active = isActive;
-    if (isTenantManager !== user.isTenantManager)
-      updates.is_tenant_manager = isTenantManager;
-    if (isBaseStationManager !== user.isBaseStationManager)
-      updates.is_base_station_manager = isBaseStationManager;
-    if (isEndpointManager !== user.isEndpointManager)
-      updates.is_endpoint_manager = isEndpointManager;
-
-    // Only call API if there are changes
-    if (Object.keys(updates).length > 0) {
-      try {
-        await updateUser.mutateAsync({ id, data: updates });
-        setSuccessMessage(MSG_USER_UPDATED);
-        setTimeout(
-          () => setSuccessMessage(""),
-          UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS,
-        );
-      } catch {
-        // Error handled by mutation hook
-      }
+    const updates = buildUpdateUserPayload(form, user);
+    if (Object.keys(updates).length === 0) return;
+    try {
+      await updateUser.mutateAsync({ id, data: updates });
+      setSuccessMessage(MSG_USER_UPDATED);
+      setTimeout(
+        () => setSuccessMessage(""),
+        UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS,
+      );
+    } catch {
+      // Surfaced via updateUser.isError
     }
   };
 
   const handleDelete = async () => {
     if (!id) return;
-
     try {
       await deleteUser.mutateAsync(id);
       setSuccessMessage(MSG_USER_DELETED);
       navigate(ROUTES.USERS);
     } catch {
-      // Error handled by mutation hook
+      // Surfaced via deleteUser.isError
     }
     setDeleteDialogOpen(false);
   };
@@ -190,10 +514,8 @@ const UserDetail: React.FC = () => {
 
   const handleAddMembership = async () => {
     if (!id || !selectedOrg) return;
-
     setMembershipError("");
     setMembershipSuccess("");
-
     try {
       await addOrgUser.mutateAsync({
         orgId: selectedOrg.id,
@@ -219,10 +541,8 @@ const UserDetail: React.FC = () => {
 
   const handleRemoveMembership = async (orgId: string) => {
     if (!id) return;
-
     setMembershipError("");
     setMembershipSuccess("");
-
     try {
       await removeOrgUser.mutateAsync({ orgId, userId: id });
       setMembershipSuccess(USER_FORM.MSG_MEMBERSHIP_REMOVED);
@@ -235,13 +555,8 @@ const UserDetail: React.FC = () => {
     }
   };
 
-  if (!isHydrated) {
-    return null;
-  }
-
-  if (!isAdmin) {
-    return <Navigate to={ROUTES.HOME} replace />;
-  }
+  if (!isHydrated) return null;
+  if (!isAdmin) return <Navigate to={ROUTES.HOME} replace />;
 
   if (isLoading) {
     return (
@@ -274,29 +589,14 @@ const UserDetail: React.FC = () => {
 
   return (
     <Box sx={{ p: 3, pt: 4 }}>
-      {/* Header */}
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={3}
-      >
-        <Typography variant="h4" component="h1">
-          {USERS_PAGE.DETAILS_TITLE}
-        </Typography>
-        <Button variant="outlined" onClick={handleBackToList}>
-          {USERS_PAGE.BACK_TO_LIST}
-        </Button>
-      </Box>
+      <UserDetailHeader onBack={handleBackToList} />
 
-      {/* Success Message */}
       {successMessage && (
         <Alert severity="success" sx={{ mb: 3 }}>
           {successMessage}
         </Alert>
       )}
 
-      {/* Update Error */}
       {updateUser.isError && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {updateUser.error instanceof Error
@@ -306,109 +606,17 @@ const UserDetail: React.FC = () => {
       )}
 
       <Grid container spacing={3}>
-        {/* User Details Card */}
         <Grid size={{ xs: 12, md: 8 }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                {USER_FORM.DIALOG_TITLE_EDIT}
-              </Typography>
-
-              <Box
-                sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 2 }}
-              >
-                <TextField
-                  label={USER_FORM.LABEL_EMAIL}
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  fullWidth
-                />
-
-                <TextField
-                  label={USER_FORM.LABEL_NOTE}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  multiline
-                  rows={2}
-                  fullWidth
-                />
-
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={isActive}
-                        onChange={(e) => setIsActive(e.target.checked)}
-                      />
-                    }
-                    label={USER_FORM.LABEL_IS_ACTIVE}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={isUserAdmin}
-                        onChange={(e) => setIsUserAdmin(e.target.checked)}
-                      />
-                    }
-                    label={USER_FORM.LABEL_IS_ADMIN}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={isTenantManager}
-                        onChange={(e) => setIsTenantManager(e.target.checked)}
-                      />
-                    }
-                    label={USER_FORM.LABEL_IS_TENANT_MGR}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={isBaseStationManager}
-                        onChange={(e) =>
-                          setIsBaseStationManager(e.target.checked)
-                        }
-                      />
-                    }
-                    label={USER_FORM.LABEL_IS_BS_MGR}
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={isEndpointManager}
-                        onChange={(e) => setIsEndpointManager(e.target.checked)}
-                      />
-                    }
-                    label={USER_FORM.LABEL_IS_EP_MGR}
-                  />
-                </Box>
-
-                <Box display="flex" gap={2} mt={2}>
-                  <Button
-                    variant="contained"
-                    startIcon={<SaveIcon />}
-                    onClick={handleSave}
-                    disabled={updateUser.isPending}
-                  >
-                    {USER_FORM.ACTION_SUBMIT}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={() => setDeleteDialogOpen(true)}
-                    disabled={deleteUser.isPending}
-                  >
-                    {USER_FORM.ACTION_DELETE}
-                  </Button>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
+          <UserProfileCard
+            form={form}
+            isSaving={updateUser.isPending}
+            isDeleting={deleteUser.isPending}
+            onChange={updateForm}
+            onSave={handleSave}
+            onDeleteClick={() => setDeleteDialogOpen(true)}
+          />
         </Grid>
 
-        {/* Info Card */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Card>
             <CardContent>
@@ -439,144 +647,25 @@ const UserDetail: React.FC = () => {
           </Card>
         </Grid>
 
-        {/* Organization Memberships Card */}
         <Grid size={{ xs: 12 }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                {USER_FORM.SECTION_ORG_MEMBERSHIPS}
-              </Typography>
-
-              {membershipSuccess && (
-                <Alert severity="success" sx={{ mb: 2 }}>
-                  {membershipSuccess}
-                </Alert>
-              )}
-
-              {membershipError && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  {membershipError}
-                </Alert>
-              )}
-
-              {/* Memberships table */}
-              {isOrgsLoading ? (
-                <Box display="flex" justifyContent="center" py={2}>
-                  <CircularProgress size={24} />
-                </Box>
-              ) : memberships.length === 0 ? (
-                <Typography color="text.secondary" sx={{ py: 2 }}>
-                  {USER_FORM.EMPTY_NO_MEMBERSHIPS}
-                </Typography>
-              ) : (
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>{USER_FORM.COL_ORG_NAME}</TableCell>
-                        <TableCell>{ORG_USERS_PAGE.COL_ROLE}</TableCell>
-                        <TableCell>{ORG_USERS_PAGE.COL_STATUS}</TableCell>
-                        <TableCell>{ORG_USERS_PAGE.COL_ACTIONS}</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {memberships.map((m) => (
-                        <TableRow key={m.orgId}>
-                          <TableCell>
-                            <Typography variant="body2">{m.orgName}</Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Chip label={m.role} size="small" />
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={m.status}
-                              size="small"
-                              color={
-                                m.status === ORG_MEMBER_STATUS.ACTIVE
-                                  ? "success"
-                                  : "default"
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Tooltip title={ORG_USERS_PAGE.TOOLTIP_REMOVE}>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => handleRemoveMembership(m.orgId)}
-                                disabled={removeOrgUser.isPending}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-
-              {/* Add to Organization section */}
-              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "divider" }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  {USER_FORM.LABEL_ADD_TO_ORG}
-                </Typography>
-                <Box display="flex" gap={2} alignItems="flex-start">
-                  <Autocomplete
-                    options={availableOrgs}
-                    getOptionLabel={(option) => option.name}
-                    value={selectedOrg}
-                    onChange={(_, newValue) => setSelectedOrg(newValue)}
-                    isOptionEqualToValue={(option, value) =>
-                      option.id === value.id
-                    }
-                    sx={{ minWidth: 250, flex: 1 }}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        label={USER_FORM.LABEL_SELECT_ORG}
-                        size="small"
-                      />
-                    )}
-                  />
-                  <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <InputLabel>{USER_FORM.LABEL_SELECT_ROLE}</InputLabel>
-                    <Select
-                      value={selectedRole}
-                      onChange={(e) => setSelectedRole(e.target.value)}
-                      label={USER_FORM.LABEL_SELECT_ROLE}
-                    >
-                      <MenuItem value={ORG_ROLE.MEMBER}>
-                        {ORG_USERS_PAGE.ROLE_MEMBER}
-                      </MenuItem>
-                      <MenuItem value={ORG_ROLE.ADMIN}>
-                        {ORG_USERS_PAGE.ROLE_ADMIN}
-                      </MenuItem>
-                      <MenuItem value={ORG_ROLE.OWNER}>
-                        {ORG_USERS_PAGE.ROLE_OWNER}
-                      </MenuItem>
-                    </Select>
-                  </FormControl>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    startIcon={<AddIcon />}
-                    onClick={handleAddMembership}
-                    disabled={!selectedOrg || addOrgUser.isPending}
-                    sx={{ mt: 0.5 }}
-                  >
-                    {USER_FORM.ACTION_ADD_MEMBERSHIP}
-                  </Button>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
+          <UserMembershipsCard
+            memberships={memberships}
+            availableOrgs={availableOrgs}
+            isOrgsLoading={isOrgsLoading}
+            isRemovePending={removeOrgUser.isPending}
+            isAddPending={addOrgUser.isPending}
+            selectedOrg={selectedOrg}
+            selectedRole={selectedRole}
+            membershipSuccess={membershipSuccess}
+            membershipError={membershipError}
+            onSelectedOrgChange={setSelectedOrg}
+            onSelectedRoleChange={setSelectedRole}
+            onAddMembership={handleAddMembership}
+            onRemoveMembership={handleRemoveMembership}
+          />
         </Grid>
       </Grid>
 
-      {/* Delete Confirmation Dialog */}
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
