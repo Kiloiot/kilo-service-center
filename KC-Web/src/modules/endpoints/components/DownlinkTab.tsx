@@ -125,6 +125,108 @@ const isValidPacketCnt = (value: string): boolean => {
   return Number.isInteger(num) && num >= 0 && num <= MIOTY_UINT32_MAX;
 };
 
+interface DownlinkFormState {
+  payload: string;
+  format: string;
+  priority: string;
+  cntDepend: boolean;
+  payloadRows: PayloadRow[];
+}
+
+interface DownlinkFormValidation {
+  payloadError: string;
+  formatError: string;
+  priorityError: string;
+  cntDependRowsValid: boolean;
+  formatNum: number;
+  priorityNum: number;
+}
+
+/**
+ * Validates the downlink form. Format must be an integer 0-255, priority
+ * a float 0.0-1.0, payload a valid hex string when single-shot, and every
+ * row a valid hex+counter pair when in counter-dependent mode.
+ */
+function validateDownlinkForm(state: DownlinkFormState): DownlinkFormValidation {
+  const formatNum = parseInt(state.format, 10);
+  const priorityNum = parseFloat(state.priority);
+  const payloadError =
+    !state.cntDepend &&
+    state.payload.length > 0 &&
+    !isValidHexString(state.payload)
+      ? VAL_INVALID_HEX_STRING
+      : "";
+  const formatError =
+    isNaN(formatNum) || formatNum < 0 || formatNum > 255
+      ? VAL_FORMAT_RANGE
+      : "";
+  const priorityError =
+    isNaN(priorityNum) || priorityNum < 0.0 || priorityNum > 1.0
+      ? VAL_PRIORITY_RANGE
+      : "";
+  const cntDependRowsValid = state.cntDepend
+    ? state.payloadRows.length >= 1 &&
+      state.payloadRows.every(
+        (r) =>
+          r.payload.length > 0 &&
+          isValidHexString(r.payload) &&
+          isValidPacketCnt(r.packetCnt),
+      )
+    : true;
+  return {
+    payloadError,
+    formatError,
+    priorityError,
+    cntDependRowsValid,
+    formatNum,
+    priorityNum,
+  };
+}
+
+interface BuildSendDownlinkInput {
+  epEui: string;
+  state: DownlinkFormState;
+  formatNum: number;
+  priorityNum: number;
+  responseExp: boolean;
+  responsePrio: boolean;
+  dlWindReq: boolean;
+  expOnly: boolean;
+  dlRxStatQry: boolean;
+}
+
+/**
+ * Builds the send-downlink mutation argument. In counter-dependent mode
+ * payloads are per-row + packetCnt is materialized from the row counters;
+ * otherwise a single-payload (or empty) call.
+ */
+function buildSendDownlinkPayload(
+  input: BuildSendDownlinkInput,
+): Parameters<ReturnType<typeof useSendDownlink>["mutate"]>[0] {
+  const { state } = input;
+  const payloads = state.cntDepend
+    ? state.payloadRows.map((r) => r.payload)
+    : state.payload.length > 0
+      ? [state.payload]
+      : [];
+  const packetCnt = state.cntDepend
+    ? state.payloadRows.map((r) => parseInt(r.packetCnt, 10))
+    : undefined;
+  return {
+    epEui: input.epEui,
+    payloads,
+    priority: input.priorityNum,
+    cntDepend: state.cntDepend,
+    packetCnt,
+    format: input.formatNum,
+    responseExp: input.responseExp,
+    responsePrio: input.responsePrio,
+    dlWindReq: input.dlWindReq,
+    expOnly: input.expOnly,
+    dlRxStatQry: input.dlRxStatQry,
+  };
+}
+
 export function DownlinkTab({ epEui }: DownlinkTabProps) {
   // Compose form state
   const [payload, setPayload] = useState("");
@@ -169,30 +271,20 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
   const resultsTotalCount = resultsQuery.data?.pages[0]?.totalCount ?? 0;
 
   // Validation
-  const payloadError =
-    !cntDepend && payload.length > 0 && !isValidHexString(payload)
-      ? VAL_INVALID_HEX_STRING
-      : "";
-  const formatNum = parseInt(format, 10);
-  const formatError =
-    isNaN(formatNum) || formatNum < 0 || formatNum > 255
-      ? VAL_FORMAT_RANGE
-      : "";
-  const priorityNum = parseFloat(priority);
-  const priorityError =
-    isNaN(priorityNum) || priorityNum < 0.0 || priorityNum > 1.0
-      ? VAL_PRIORITY_RANGE
-      : "";
-
-  const cntDependRowsValid = cntDepend
-    ? payloadRows.length >= 1 &&
-      payloadRows.every(
-        (r) =>
-          r.payload.length > 0 &&
-          isValidHexString(r.payload) &&
-          isValidPacketCnt(r.packetCnt),
-      )
-    : true;
+  const {
+    payloadError,
+    formatError,
+    priorityError,
+    cntDependRowsValid,
+    formatNum,
+    priorityNum,
+  } = validateDownlinkForm({
+    payload,
+    format,
+    priority,
+    cntDepend,
+    payloadRows,
+  });
 
   const canSend =
     !sendMutation.isPending &&
@@ -202,29 +294,18 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
     cntDependRowsValid;
 
   const handleSend = useCallback(() => {
-    const payloads = cntDepend
-      ? payloadRows.map((r) => r.payload)
-      : payload.length > 0
-        ? [payload]
-        : [];
-    const packetCnt = cntDepend
-      ? payloadRows.map((r) => parseInt(r.packetCnt, 10))
-      : undefined;
-
     sendMutation.mutate(
-      {
+      buildSendDownlinkPayload({
         epEui,
-        payloads,
-        priority: priorityNum,
-        cntDepend,
-        packetCnt,
-        format: formatNum,
+        state: { payload, format, priority, cntDepend, payloadRows },
+        formatNum,
+        priorityNum,
         responseExp,
         responsePrio,
         dlWindReq,
         expOnly,
         dlRxStatQry,
-      },
+      }),
       {
         onSuccess: () => {
           setSuccessMsg(MSG_DOWNLINK_QUEUED);
@@ -232,7 +313,6 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
             () => setSuccessMsg(""),
             UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS,
           );
-          // Reset form
           setPayload("");
           setPayloadRows([{ payload: "", packetCnt: "0" }]);
         },
@@ -244,9 +324,11 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
     dlWindReq,
     epEui,
     expOnly,
+    format,
     formatNum,
     payload,
     payloadRows,
+    priority,
     priorityNum,
     responseExp,
     responsePrio,
