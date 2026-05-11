@@ -4856,7 +4856,7 @@ func (s *Server) normalizeUserDataField(userDataRaw interface{}) []byte {
 //
 // BSSCI §5.8-5.8.3: Automatic endpoint propagation
 func (s *Server) SendAttachPropagateToSession(
-	ownerCtx context.Context,
+	_ context.Context, // ownerCtx kept on the interface for tenant/org propagation; this impl delegates to a context-less SendAttachPropagate
 	session *Session,
 	endpoint *models.EndPoint,
 ) error {

@@ -982,100 +982,179 @@ const (
 	// LogBSSCIDeferredListenerCancelled is logged when the deferred listener polling is cancelled
 	LogBSSCIDeferredListenerCancelled = "BSSCI deferred listener polling cancelled"
 
-	// ========================================================================
-	// Service-layer Propagation Operations (internal/services/bssci/propagation_service.go)
-	// ========================================================================
+	// Service-layer Propagation Operations live in internal/services/bssci/propagation_service.go.
 
+	// LogBSSCISkippingPropagationDueToTenantMismatch is logged when ATT-03 filters out a session
+	// that belongs to a different tenant than the endpoint owner.
 	LogBSSCISkippingPropagationDueToTenantMismatch = "Skipping propagation due to tenant mismatch"
-	LogBSSCIFailedToPropagateToSession             = "Failed to propagate to session"
-	LogBSSCIEndpointPropagationCompleted           = "Endpoint propagation completed"
-	LogBSSCIStartingBaseStationReconciliation      = "Starting base station reconciliation"
-	LogBSSCIReconciliationPropagateFailed          = "Reconciliation propagate failed"
-	LogBSSCIBaseStationReconciliationCompleted     = "Base station reconciliation completed"
+	// LogBSSCIFailedToPropagateToSession is logged when a per-session propagate send fails.
+	LogBSSCIFailedToPropagateToSession = "Failed to propagate to session"
+	// LogBSSCIEndpointPropagationCompleted summarizes a TriggerEndpointPropagate fan-out.
+	LogBSSCIEndpointPropagationCompleted = "Endpoint propagation completed"
+	// LogBSSCIStartingBaseStationReconciliation marks the start of reconcile-on-connect.
+	LogBSSCIStartingBaseStationReconciliation = "Starting base station reconciliation"
+	// LogBSSCIReconciliationPropagateFailed is logged when a reconciliation per-endpoint send fails.
+	LogBSSCIReconciliationPropagateFailed = "Reconciliation propagate failed"
+	// LogBSSCIBaseStationReconciliationCompleted summarizes a reconcile-on-connect run.
+	LogBSSCIBaseStationReconciliationCompleted = "Base station reconciliation completed"
 
-	// ========================================================================
-	// Service-layer Uplink Ingest Pipeline (internal/services/bssci/uplink_ingest_service.go)
-	// ========================================================================
+	// Service-layer Uplink Ingest Pipeline lives in internal/services/bssci/uplink_ingest_service.go.
 
-	LogBSSCIUplinkDeduplicationError                      = "Uplink deduplication error"
-	LogBSSCIDuplicateUplinkReceived                       = "Duplicate uplink received"
-	LogBSSCIUplinkFirstReception                          = "Uplink first reception"
-	LogBSSCIEndpointNotFoundDuringIngestTenantResolution  = "Endpoint not found during ingest tenant resolution"
-	LogBSSCIRoamingDetectionFailedDuringIngest            = "Roaming detection failed during ingest"
-	LogBSSCIRoamingEndpointUplink                         = "Roaming endpoint uplink"
-	LogBSSCIFailedToResolveOrganizationForUplink          = "Failed to resolve organization for uplink"
-	LogBSSCIBlueprintResolutionFailed                     = "Blueprint resolution failed"
-	LogBSSCIBlueprintDecodeError                          = "Blueprint decode error"
-	LogBSSCIFailedToFetchEndpointForBlueprintDecode       = "Failed to fetch endpoint for blueprint decode"
-	LogBSSCIFailedToFetchDLRXStatus                       = "Failed to fetch DL RX status"
-	LogBSSCIFailedToPersistUplinkMessage                  = "Failed to persist uplink message"
+	// LogBSSCIUplinkDeduplicationError is logged when the deduplicator returns an error during ingest.
+	LogBSSCIUplinkDeduplicationError = "Uplink deduplication error"
+	// LogBSSCIDuplicateUplinkReceived is logged when dedup classifies an uplink as a duplicate.
+	LogBSSCIDuplicateUplinkReceived = "Duplicate uplink received"
+	// LogBSSCIUplinkFirstReception is logged on the first reception of a unique uplink.
+	LogBSSCIUplinkFirstReception = "Uplink first reception"
+	// LogBSSCIEndpointNotFoundDuringIngestTenantResolution is logged when tenant resolution can't find the endpoint.
+	LogBSSCIEndpointNotFoundDuringIngestTenantResolution = "Endpoint not found during ingest tenant resolution"
+	// LogBSSCIRoamingDetectionFailedDuringIngest is logged when the roaming service errors during tenant resolution.
+	LogBSSCIRoamingDetectionFailedDuringIngest = "Roaming detection failed during ingest"
+	// LogBSSCIRoamingEndpointUplink is logged when ingest classifies an uplink as a roaming reception.
+	LogBSSCIRoamingEndpointUplink = "Roaming endpoint uplink"
+	// LogBSSCIFailedToResolveOrganizationForUplink is logged when org lookup fails for an uplink.
+	LogBSSCIFailedToResolveOrganizationForUplink = "Failed to resolve organization for uplink"
+	// LogBSSCIBlueprintResolutionFailed is logged when blueprint resolution fails during ingest.
+	LogBSSCIBlueprintResolutionFailed = "Blueprint resolution failed"
+	// LogBSSCIBlueprintDecodeError is logged when the blueprint decoder returns an error.
+	LogBSSCIBlueprintDecodeError = "Blueprint decode error"
+	// LogBSSCIFailedToFetchEndpointForBlueprintDecode is logged when the endpoint lookup for blueprint decode fails.
+	LogBSSCIFailedToFetchEndpointForBlueprintDecode = "Failed to fetch endpoint for blueprint decode"
+	// LogBSSCIFailedToFetchDLRXStatus is logged when DL RX status fetch fails during ingest.
+	LogBSSCIFailedToFetchDLRXStatus = "Failed to fetch DL RX status"
+	// LogBSSCIFailedToPersistUplinkMessage is logged when CreateULDataMessage fails.
+	LogBSSCIFailedToPersistUplinkMessage = "Failed to persist uplink message"
+	// LogBSSCIFailedToMarshalBaseStationsForDuplicateUpdate is logged when JSON-marshaling base_stations fails on the duplicate path.
 	LogBSSCIFailedToMarshalBaseStationsForDuplicateUpdate = "Failed to marshal base_stations for duplicate update"
-	LogBSSCIFailedToUpdateBaseStationsForDuplicate        = "Failed to update base_stations for duplicate"
-	LogBSSCIFailedToBroadcastUplinkToSCACI                = "Failed to broadcast uplink to SCACI"
-	LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved         = "MQTT uplink publish skipped: org unresolved"
+	// LogBSSCIFailedToUpdateBaseStationsForDuplicate is logged when UpdateULDataBaseStations fails on the duplicate path.
+	LogBSSCIFailedToUpdateBaseStationsForDuplicate = "Failed to update base_stations for duplicate"
+	// LogBSSCIFailedToBroadcastUplinkToSCACI is logged when the SCACI broadcaster returns an error during ingest.
+	LogBSSCIFailedToBroadcastUplinkToSCACI = "Failed to broadcast uplink to SCACI"
+	// LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved is logged when MQTT publish is skipped due to unresolved owner-org UUID.
+	LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved = "MQTT uplink publish skipped: org unresolved"
 
 	// ========================================================================
 	// Server core (KC-Core/pkg/bssci/server.go)
 	// ========================================================================
 
-	LogBSSCIAttachSignatureValidationFailed                                   = "Attach signature validation failed"
-	LogBSSCICertOrgResolutionFailedUsingCommunityFallback                     = "BSSCI cert org resolution failed, using community fallback"
-	LogBSSCICertOrgResolutionSucceeded                                        = "BSSCI cert org resolution succeeded"
-	LogBSSCISessionNoPeerCertUsingDefaults                                    = "BSSCI session no peer cert, using defaults"
-	LogBSSCISessionOrgTenantResolved                                          = "BSSCI session org/tenant resolved"
-	LogBSSCIClosingBSSCISessionDueToEUIChange                                 = "Closing BSSCI session due to EUI change"
-	LogBSSCIDetachFromUnknownEndpoint                                         = "Detach from unknown endpoint"
-	LogBSSCIDetachSignatureValidationFailed                                   = "Detach signature validation failed"
-	LogBSSCIDetachValidatorNotConfiguredUsingSessionTenantForUnknownEndpoint  = "Detach validator not configured - using session tenant for unknown endpoint"
-	LogBSSCIDetectedMessageEncoding                                           = "Detected message encoding"
-	LogBSSCIDispositionResolutionFailedRejectingUplink                        = "Disposition resolution failed; rejecting uplink"
-	LogBSSCIFailedToBeginTransaction                                          = "Failed to begin transaction"
-	LogBSSCIFailedToCheckSessionResume                                        = "Failed to check session resume"
-	LogBSSCIFailedToCloseConnection                                           = "Failed to close connection"
-	LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup                     = "Failed to close connection during EUI change cleanup"
-	LogBSSCIFailedToCloseListener                                             = "Failed to close listener"
-	LogBSSCIFailedToCommitAttachTransaction                                   = "Failed to commit attach transaction"
-	LogBSSCIFailedToCreateEndpointSession                                     = "Failed to create endpoint session"
-	LogBSSCIFailedToDeriveSessionKey                                          = "Failed to derive session key"
-	LogBSSCIFailedToEncryptSessionKey                                         = "Failed to encrypt session key"
-	LogBSSCIFailedToEnqueueRelayUplink                                        = "Failed to enqueue relay uplink"
-	LogBSSCIFailedToLoadEndpointSession                                       = "Failed to load endpoint session"
-	LogBSSCIFailedToMarshalConnectInfo                                        = "Failed to marshal connect info"
-	LogBSSCIFailedToNormalizeAttachSubpackets                                 = "Failed to normalize attach subpackets"
-	LogBSSCIFailedToNormalizeDetachMetadataOnResumeUsingRawData               = "Failed to normalize detach metadata on resume, using raw data"
-	LogBSSCIFailedToNormalizeDetachSubpackets                                 = "Failed to normalize detach subpackets"
-	LogBSSCIFailedToPersistDetachPropagateMessage                             = "Failed to persist detach propagate message"
-	LogBSSCIFailedToPersistEncoding                                           = "Failed to persist encoding"
-	LogBSSCIFailedToPersistSession                                            = "Failed to persist session"
-	LogBSSCIFailedToRecordPendingAttachOperation                              = "Failed to record pending attach operation"
-	LogBSSCIFailedToRecordPendingOperation                                    = "Failed to record pending operation"
-	LogBSSCIFailedToRecordRoamingAttach                                       = "Failed to record roaming attach"
-	LogBSSCIFailedToRecordRoamingDetach                                       = "Failed to record roaming detach"
-	LogBSSCIFailedToResolveDefaultOrgForBSSCISession                          = "Failed to resolve default org for BSSCI session"
-	LogBSSCIFailedToResolveOrganizationForEndpointOwner                       = "Failed to resolve organization for endpoint owner"
-	LogBSSCIFailedToResolveOrganizationForUnknownEndpointOwner                = "Failed to resolve organization for unknown endpoint owner"
-	LogBSSCIFailedToSendCatalogError                                          = "Failed to send catalog error"
-	LogBSSCIFailedToSendErrorResponse                                         = "Failed to send error response"
-	LogBSSCIFailedToSetReadDeadline                                           = "Failed to set read deadline"
-	LogBSSCIFailedToTerminateDBSessionDuringEUIChange                         = "Failed to terminate DB session during EUI change"
-	LogBSSCIFailedToUpdateEndpointDetachTelemetry                             = "Failed to update endpoint detach telemetry"
-	LogBSSCIFailedToUpdateEndpointSession                                     = "Failed to update endpoint session"
-	LogBSSCIFailedToUpdateRadioMetrics                                        = "Failed to update radio metrics"
-	LogBSSCIFailedToUpdateSessionRoaming                                      = "Failed to update session roaming"
-	LogBSSCIFailedToUpdateSessionRoamingForDetach                             = "Failed to update session roaming for detach"
-	LogBSSCINoPeerCertAndFailedToResolveDefaultOrgForBSSCISession             = "No peer cert and failed to resolve default org for BSSCI session"
-	LogBSSCINormalizedDetachMetadataOnResume                                  = "Normalized detach metadata on resume"
-	LogBSSCIPayloadNormalizationFailed                                        = "Payload normalization failed"
-	LogBSSCIRoamingEndpointAttaching                                          = "Roaming endpoint attaching"
-	LogBSSCIRoamingEndpointDetaching                                          = "Roaming endpoint detaching"
-	LogBSSCIRoamingValidationFailed                                           = "Roaming validation failed"
-	LogBSSCIRoamingValidationFailedDuringDetach                               = "Roaming validation failed during detach"
+	// LogBSSCIAttachSignatureValidationFailed is logged when attach signature validation failed.
+	LogBSSCIAttachSignatureValidationFailed = "Attach signature validation failed"
+	// LogBSSCICertOrgResolutionFailedUsingCommunityFallback is logged when BSSCI cert org resolution failed, using community fallback.
+	LogBSSCICertOrgResolutionFailedUsingCommunityFallback = "BSSCI cert org resolution failed, using community fallback"
+	// LogBSSCICertOrgResolutionSucceeded is logged when BSSCI cert org resolution succeeded.
+	LogBSSCICertOrgResolutionSucceeded = "BSSCI cert org resolution succeeded"
+	// LogBSSCISessionNoPeerCertUsingDefaults is logged when BSSCI session no peer cert, using defaults.
+	LogBSSCISessionNoPeerCertUsingDefaults = "BSSCI session no peer cert, using defaults"
+	// LogBSSCISessionOrgTenantResolved is logged when BSSCI session org/tenant resolved.
+	LogBSSCISessionOrgTenantResolved = "BSSCI session org/tenant resolved"
+	// LogBSSCIClosingBSSCISessionDueToEUIChange is logged when closing BSSCI session due to EUI change.
+	LogBSSCIClosingBSSCISessionDueToEUIChange = "Closing BSSCI session due to EUI change"
+	// LogBSSCIDetachFromUnknownEndpoint is logged when detach from unknown endpoint.
+	LogBSSCIDetachFromUnknownEndpoint = "Detach from unknown endpoint"
+	// LogBSSCIDetachSignatureValidationFailed is logged when detach signature validation failed.
+	LogBSSCIDetachSignatureValidationFailed = "Detach signature validation failed"
+	// LogBSSCIDetachValidatorNotConfiguredUsingSessionTenantForUnknownEndpoint is logged when detach validator not configured - using session tenant for unknown endpoint.
+	LogBSSCIDetachValidatorNotConfiguredUsingSessionTenantForUnknownEndpoint = "Detach validator not configured - using session tenant for unknown endpoint"
+	// LogBSSCIDetectedMessageEncoding is logged when detected message encoding.
+	LogBSSCIDetectedMessageEncoding = "Detected message encoding"
+	// LogBSSCIDispositionResolutionFailedRejectingUplink is logged when disposition resolution failed; rejecting uplink.
+	LogBSSCIDispositionResolutionFailedRejectingUplink = "Disposition resolution failed; rejecting uplink"
+	// LogBSSCIFailedToBeginTransaction is logged when failed to begin transaction.
+	LogBSSCIFailedToBeginTransaction = "Failed to begin transaction"
+	// LogBSSCIFailedToCheckSessionResume is logged when failed to check session resume.
+	LogBSSCIFailedToCheckSessionResume = "Failed to check session resume"
+	// LogBSSCIFailedToCloseConnection is logged when failed to close connection.
+	LogBSSCIFailedToCloseConnection = "Failed to close connection"
+	// LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup is logged when failed to close connection during EUI change cleanup.
+	LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup = "Failed to close connection during EUI change cleanup"
+	// LogBSSCIFailedToCloseListener is logged when failed to close listener.
+	LogBSSCIFailedToCloseListener = "Failed to close listener"
+	// LogBSSCIFailedToCommitAttachTransaction is logged when failed to commit attach transaction.
+	LogBSSCIFailedToCommitAttachTransaction = "Failed to commit attach transaction"
+	// LogBSSCIFailedToCreateEndpointSession is logged when failed to create endpoint session.
+	LogBSSCIFailedToCreateEndpointSession = "Failed to create endpoint session"
+	// LogBSSCIFailedToDeriveSessionKey is logged when failed to derive session key.
+	LogBSSCIFailedToDeriveSessionKey = "Failed to derive session key"
+	// LogBSSCIFailedToEncryptSessionKey is logged when failed to encrypt session key.
+	LogBSSCIFailedToEncryptSessionKey = "Failed to encrypt session key"
+	// LogBSSCIFailedToEnqueueRelayUplink is logged when failed to enqueue relay uplink.
+	LogBSSCIFailedToEnqueueRelayUplink = "Failed to enqueue relay uplink"
+	// LogBSSCIFailedToLoadEndpointSession is logged when failed to load endpoint session.
+	LogBSSCIFailedToLoadEndpointSession = "Failed to load endpoint session"
+	// LogBSSCIFailedToMarshalConnectInfo is logged when failed to marshal connect info.
+	LogBSSCIFailedToMarshalConnectInfo = "Failed to marshal connect info"
+	// LogBSSCIFailedToNormalizeAttachSubpackets is logged when failed to normalize attach subpackets.
+	LogBSSCIFailedToNormalizeAttachSubpackets = "Failed to normalize attach subpackets"
+	// LogBSSCIFailedToNormalizeDetachMetadataOnResumeUsingRawData is logged when failed to normalize detach metadata on resume, using raw data.
+	LogBSSCIFailedToNormalizeDetachMetadataOnResumeUsingRawData = "Failed to normalize detach metadata on resume, using raw data"
+	// LogBSSCIFailedToNormalizeDetachSubpackets is logged when failed to normalize detach subpackets.
+	LogBSSCIFailedToNormalizeDetachSubpackets = "Failed to normalize detach subpackets"
+	// LogBSSCIFailedToPersistDetachPropagateMessage is logged when failed to persist detach propagate message.
+	LogBSSCIFailedToPersistDetachPropagateMessage = "Failed to persist detach propagate message"
+	// LogBSSCIFailedToPersistEncoding is logged when failed to persist encoding.
+	LogBSSCIFailedToPersistEncoding = "Failed to persist encoding"
+	// LogBSSCIFailedToPersistSession is logged when failed to persist session.
+	LogBSSCIFailedToPersistSession = "Failed to persist session"
+	// LogBSSCIFailedToRecordPendingAttachOperation is logged when failed to record pending attach operation.
+	LogBSSCIFailedToRecordPendingAttachOperation = "Failed to record pending attach operation"
+	// LogBSSCIFailedToRecordPendingOperation is logged when failed to record pending operation.
+	LogBSSCIFailedToRecordPendingOperation = "Failed to record pending operation"
+	// LogBSSCIFailedToRecordRoamingAttach is logged when failed to record roaming attach.
+	LogBSSCIFailedToRecordRoamingAttach = "Failed to record roaming attach"
+	// LogBSSCIFailedToRecordRoamingDetach is logged when failed to record roaming detach.
+	LogBSSCIFailedToRecordRoamingDetach = "Failed to record roaming detach"
+	// LogBSSCIFailedToResolveDefaultOrgForBSSCISession is logged when failed to resolve default org for BSSCI session.
+	LogBSSCIFailedToResolveDefaultOrgForBSSCISession = "Failed to resolve default org for BSSCI session"
+	// LogBSSCIFailedToResolveOrganizationForEndpointOwner is logged when failed to resolve organization for endpoint owner.
+	LogBSSCIFailedToResolveOrganizationForEndpointOwner = "Failed to resolve organization for endpoint owner"
+	// LogBSSCIFailedToResolveOrganizationForUnknownEndpointOwner is logged when failed to resolve organization for unknown endpoint owner.
+	LogBSSCIFailedToResolveOrganizationForUnknownEndpointOwner = "Failed to resolve organization for unknown endpoint owner"
+	// LogBSSCIFailedToSendCatalogError is logged when failed to send catalog error.
+	LogBSSCIFailedToSendCatalogError = "Failed to send catalog error"
+	// LogBSSCIFailedToSendErrorResponse is logged when failed to send error response.
+	LogBSSCIFailedToSendErrorResponse = "Failed to send error response"
+	// LogBSSCIFailedToSetReadDeadline is logged when failed to set read deadline.
+	LogBSSCIFailedToSetReadDeadline = "Failed to set read deadline"
+	// LogBSSCIFailedToTerminateDBSessionDuringEUIChange is logged when failed to terminate DB session during EUI change.
+	LogBSSCIFailedToTerminateDBSessionDuringEUIChange = "Failed to terminate DB session during EUI change"
+	// LogBSSCIFailedToUpdateEndpointDetachTelemetry is logged when failed to update endpoint detach telemetry.
+	LogBSSCIFailedToUpdateEndpointDetachTelemetry = "Failed to update endpoint detach telemetry"
+	// LogBSSCIFailedToUpdateEndpointSession is logged when failed to update endpoint session.
+	LogBSSCIFailedToUpdateEndpointSession = "Failed to update endpoint session"
+	// LogBSSCIFailedToUpdateRadioMetrics is logged when failed to update radio metrics.
+	LogBSSCIFailedToUpdateRadioMetrics = "Failed to update radio metrics"
+	// LogBSSCIFailedToUpdateSessionRoaming is logged when failed to update session roaming.
+	LogBSSCIFailedToUpdateSessionRoaming = "Failed to update session roaming"
+	// LogBSSCIFailedToUpdateSessionRoamingForDetach is logged when failed to update session roaming for detach.
+	LogBSSCIFailedToUpdateSessionRoamingForDetach = "Failed to update session roaming for detach"
+	// LogBSSCINoPeerCertAndFailedToResolveDefaultOrgForBSSCISession is logged when no peer cert and failed to resolve default org for BSSCI session.
+	LogBSSCINoPeerCertAndFailedToResolveDefaultOrgForBSSCISession = "No peer cert and failed to resolve default org for BSSCI session"
+	// LogBSSCINormalizedDetachMetadataOnResume is logged when normalized detach metadata on resume.
+	LogBSSCINormalizedDetachMetadataOnResume = "Normalized detach metadata on resume"
+	// LogBSSCIPayloadNormalizationFailed is logged when payload normalization failed.
+	LogBSSCIPayloadNormalizationFailed = "Payload normalization failed"
+	// LogBSSCIRoamingEndpointAttaching is logged when roaming endpoint attaching.
+	LogBSSCIRoamingEndpointAttaching = "Roaming endpoint attaching"
+	// LogBSSCIRoamingEndpointDetaching is logged when roaming endpoint detaching.
+	LogBSSCIRoamingEndpointDetaching = "Roaming endpoint detaching"
+	// LogBSSCIRoamingValidationFailed is logged when roaming validation failed.
+	LogBSSCIRoamingValidationFailed = "Roaming validation failed"
+	// LogBSSCIRoamingValidationFailedDuringDetach is logged when roaming validation failed during detach.
+	LogBSSCIRoamingValidationFailedDuringDetach = "Roaming validation failed during detach"
+	// LogBSSCISoftwareVersionNotConfiguredConnectResponseWillOmitSwVersionField is logged when software version not configured - ConnectResponse will omit swVersion field.
 	LogBSSCISoftwareVersionNotConfiguredConnectResponseWillOmitSwVersionField = "Software version not configured - ConnectResponse will omit swVersion field"
-	LogBSSCITLSHandshakeFailed                                                = "TLS handshake failed"
-	LogBSSCIUnknownEndpointDetachSignatureInvalid                             = "Unknown endpoint detach signature invalid"
-	LogBSSCIUnknownEndpointDetachSignatureValidatedSuccessfully               = "Unknown endpoint detach signature validated successfully"
-	LogBSSCIUnknownEndpointDetachSignatureValidationFailed                    = "Unknown endpoint detach signature validation failed"
-	LogBSSCIUnknownEndpointNotFoundDuringDetachValidation                     = "Unknown endpoint not found during detach validation"
-	LogBSSCIUplinkIngestFailed                                                = "Uplink ingest failed"
-	LogBSSCIUsingDevelopmentSoftwareVersionInConnectResponse                  = "Using development software version in ConnectResponse"
+	// LogBSSCITLSHandshakeFailed is logged when TLS handshake failed.
+	LogBSSCITLSHandshakeFailed = "TLS handshake failed"
+	// LogBSSCIUnknownEndpointDetachSignatureInvalid is logged when unknown endpoint detach signature invalid.
+	LogBSSCIUnknownEndpointDetachSignatureInvalid = "Unknown endpoint detach signature invalid"
+	// LogBSSCIUnknownEndpointDetachSignatureValidatedSuccessfully is logged when unknown endpoint detach signature validated successfully.
+	LogBSSCIUnknownEndpointDetachSignatureValidatedSuccessfully = "Unknown endpoint detach signature validated successfully"
+	// LogBSSCIUnknownEndpointDetachSignatureValidationFailed is logged when unknown endpoint detach signature validation failed.
+	LogBSSCIUnknownEndpointDetachSignatureValidationFailed = "Unknown endpoint detach signature validation failed"
+	// LogBSSCIUnknownEndpointNotFoundDuringDetachValidation is logged when unknown endpoint not found during detach validation.
+	LogBSSCIUnknownEndpointNotFoundDuringDetachValidation = "Unknown endpoint not found during detach validation"
+	// LogBSSCIUplinkIngestFailed is logged when uplink ingest failed.
+	LogBSSCIUplinkIngestFailed = "Uplink ingest failed"
+	// LogBSSCIUsingDevelopmentSoftwareVersionInConnectResponse is logged when using development software version in ConnectResponse.
+	LogBSSCIUsingDevelopmentSoftwareVersionInConnectResponse = "Using development software version in ConnectResponse"
 )

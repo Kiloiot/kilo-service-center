@@ -1,3 +1,6 @@
+// Package adapters bridges between the storage interface layer and the
+// postgres repository implementations. Adapters wrap repositories so callers
+// can program against narrow domain types without importing postgres directly.
 package adapters
 
 import (

@@ -1,3 +1,6 @@
+// Package testutil provides test-only helpers for KC-Core/pkg/bssci.
+// TestConn is a net.Conn implementation that captures msgpack/JSON frames so
+// tests can decode them after exercising handler code paths.
 package testutil
 
 import (
