@@ -9,10 +9,16 @@
  *   const isDarkModeEnabled = useFeatureFlag('dark_mode');
  */
 
-import type { ReactNode } from 'react';
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-import defaultFlags from '@config/flags/default.json';
+import defaultFlags from "@config/flags/default.json";
 
 // Type for flag names based on default.json keys
 export type FeatureFlagName = keyof typeof defaultFlags;
@@ -31,7 +37,9 @@ interface FeatureFlagContextValue {
   loading: boolean;
 }
 
-const FeatureFlagContext = createContext<FeatureFlagContextValue | undefined>(undefined);
+const FeatureFlagContext = createContext<FeatureFlagContextValue | undefined>(
+  undefined,
+);
 
 interface FeatureFlagProviderProps {
   children: ReactNode;
@@ -97,7 +105,9 @@ export const FeatureFlagProvider: React.FC<FeatureFlagProviderProps> = ({
   };
 
   return (
-    <FeatureFlagContext.Provider value={{ flags, isEnabled, isDisabled, loading }}>
+    <FeatureFlagContext.Provider
+      value={{ flags, isEnabled, isDisabled, loading }}
+    >
       {children}
     </FeatureFlagContext.Provider>
   );
@@ -115,7 +125,9 @@ export const useFeatureFlags = (): FeatureFlagContextValue => {
   const context = useContext(FeatureFlagContext);
 
   if (!context) {
-    throw new Error('useFeatureFlags must be used within a FeatureFlagProvider');
+    throw new Error(
+      "useFeatureFlags must be used within a FeatureFlagProvider",
+    );
   }
 
   return context;

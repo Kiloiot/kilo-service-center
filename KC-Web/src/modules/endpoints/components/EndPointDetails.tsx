@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   useAttachEndpoint,
@@ -7,7 +7,7 @@ import {
   useDetachEndpoint,
   useEndpoint,
   useEndpointActivity,
-} from '@hooks';
+} from "@hooks";
 import {
   Alert,
   Box,
@@ -26,16 +26,16 @@ import {
   Tabs,
   Tooltip,
   Typography,
-} from '@mui/material';
-import Grid from '@mui/material/Grid';
+} from "@mui/material";
+import Grid from "@mui/material/Grid";
 
-import { ActivityTimeline } from '@components/common/ActivityTimeline';
-import { PaginationControls } from '@components/common/PaginationControls';
-import { api } from '@services/api';
-import { formatDateTime } from '@utils/formatters';
-import { logger } from '@utils/logger';
-import { getMonoBody1 } from '@utils/typography';
-import { ROUTES } from '@constants/app';
+import { ActivityTimeline } from "@components/common/ActivityTimeline";
+import { PaginationControls } from "@components/common/PaginationControls";
+import { api } from "@services/api";
+import { formatDateTime } from "@utils/formatters";
+import { logger } from "@utils/logger";
+import { getMonoBody1 } from "@utils/typography";
+import { ROUTES } from "@constants/app";
 import {
   ACTION_CANCEL,
   ACTION_DELETE,
@@ -47,7 +47,7 @@ import {
   LOG_DELETE_FAILED,
   LOG_DETACH_FAILED,
   LOG_PRE_DELETE_DETACH_FAILED,
-} from '@constants/messages';
+} from "@constants/messages";
 import {
   BlueprintIcon,
   DeleteIcon,
@@ -56,10 +56,10 @@ import {
   LinkOffIcon,
   MessageIcon,
   SendIcon,
-} from '@theme/icons';
+} from "@theme/icons";
 
-import { DownlinkTab } from './DownlinkTab';
-import EditEndPointDialog from './EditEndPointDialog';
+import { DownlinkTab } from "./DownlinkTab";
+import EditEndPointDialog from "./EditEndPointDialog";
 
 interface EndPointDetailsProps {
   endPoint: {
@@ -67,8 +67,13 @@ interface EndPointDetailsProps {
     epEui: string;
     name?: string;
     lastSeen?: string;
-    status: 'active' | 'inactive';
-    attachStatus?: 'attached' | 'detached' | 'attaching' | 'pending' | 'unknown';
+    status: "active" | "inactive";
+    attachStatus?:
+      | "attached"
+      | "detached"
+      | "attaching"
+      | "pending"
+      | "unknown";
     // Roaming fields.
     ownerTenantId?: number;
     isRoaming?: boolean;
@@ -76,7 +81,10 @@ interface EndPointDetailsProps {
   onDelete?: (id: string) => void;
 }
 
-const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete }) => {
+const EndPointDetails: React.FC<EndPointDetailsProps> = ({
+  endPoint,
+  onDelete,
+}) => {
   const navigate = useNavigate();
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -99,17 +107,22 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
   // Activity feed pagination (token-based, mirroring BaseStationMessages)
   const [activityPage, setActivityPage] = useState(0);
   const [activityRowsPerPage, setActivityRowsPerPage] = useState(50);
-  const [activityPageTokens, setActivityPageTokens] = useState<string[]>(['']);
-  const currentActivityToken = activityPageTokens[activityPage] || '';
+  const [activityPageTokens, setActivityPageTokens] = useState<string[]>([""]);
+  const currentActivityToken = activityPageTokens[activityPage] || "";
 
-  const {
-    data: activityData,
-    isLoading: activityLoading,
-  } = useEndpointActivity(endPoint.epEui, currentActivityToken, activityRowsPerPage);
+  const { data: activityData, isLoading: activityLoading } =
+    useEndpointActivity(
+      endPoint.epEui,
+      currentActivityToken,
+      activityRowsPerPage,
+    );
 
   // Track next page token for forward navigation
   useEffect(() => {
-    if (activityData?.nextPageToken && activityPage === activityPageTokens.length - 1) {
+    if (
+      activityData?.nextPageToken &&
+      activityPage === activityPageTokens.length - 1
+    ) {
       setActivityPageTokens((prev) => [...prev, activityData.nextPageToken!]);
     }
   }, [activityData?.nextPageToken, activityPage, activityPageTokens.length]);
@@ -141,7 +154,10 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
         });
       } catch {
         if (!cancelled) {
-          setBlueprintInfo({ manufacturerName: deviceModelId, modelName: deviceModelId });
+          setBlueprintInfo({
+            manufacturerName: deviceModelId,
+            modelName: deviceModelId,
+          });
         }
       }
     })();
@@ -184,7 +200,7 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
 
     try {
       // Pre-delete detach if attached (handle detach failure explicitly)
-      if (endpointData.attachStatus === 'attached') {
+      if (endpointData.attachStatus === "attached") {
         try {
           await detachMutation.mutateAsync(endPoint.epEui);
         } catch (detachErr) {
@@ -214,7 +230,12 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
     <>
       <Card sx={{ mt: 2, mb: 2 }}>
         <CardContent>
-          <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
+          <Box
+            display="flex"
+            justifyContent="flex-end"
+            alignItems="center"
+            mb={2}
+          >
             <Box>
               <Tooltip title={ENDPOINT_DETAILS.TOOLTIP_EDIT}>
                 <IconButton size="small" onClick={handleEdit}>
@@ -222,7 +243,11 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
                 </IconButton>
               </Tooltip>
               <Tooltip title={ENDPOINT_DETAILS.TOOLTIP_DELETE}>
-                <IconButton size="small" color="error" onClick={() => setDeleteDialogOpen(true)}>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
                   <DeleteIcon />
                 </IconButton>
               </Tooltip>
@@ -231,7 +256,12 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
 
           <Grid container spacing={3}>
             <Grid size={{ xs: 12, md: 6 }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+              <Typography
+                variant="subtitle2"
+                color="text.secondary"
+                gutterBottom
+                sx={{ mb: 2 }}
+              >
                 {ENDPOINT_DETAILS.SECTION_DEVICE_INFO}
               </Typography>
               {endPoint.name && (
@@ -253,7 +283,12 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
             </Grid>
 
             <Grid size={{ xs: 12, md: 6 }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+              <Typography
+                variant="subtitle2"
+                color="text.secondary"
+                gutterBottom
+                sx={{ mb: 2 }}
+              >
                 {ENDPOINT_DETAILS.SECTION_STATUS_INFO}
               </Typography>
               <Box mb={1}>
@@ -262,13 +297,15 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
                 </Typography>
                 <Box display="flex" alignItems="center" gap={1}>
                   <Chip
-                    label={endpointData.attachStatus || ENDPOINT_DETAILS.TERM_UNKNOWN}
+                    label={
+                      endpointData.attachStatus || ENDPOINT_DETAILS.TERM_UNKNOWN
+                    }
                     color={
-                      endpointData.attachStatus === 'attached'
-                        ? 'success'
-                        : endpointData.attachStatus === 'detached'
-                          ? 'warning'
-                          : 'default'
+                      endpointData.attachStatus === "attached"
+                        ? "success"
+                        : endpointData.attachStatus === "detached"
+                          ? "warning"
+                          : "default"
                     }
                     size="small"
                   />
@@ -287,13 +324,14 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
                           ? ENDPOINT_DETAILS.STATUS_ROAMING
                           : ENDPOINT_DETAILS.STATUS_HOME_NETWORK
                       }
-                      color={endpointData.isRoaming ? 'info' : 'default'}
+                      color={endpointData.isRoaming ? "info" : "default"}
                       size="small"
                       icon={endpointData.isRoaming ? <LinkIcon /> : undefined}
                     />
                     {endpointData.ownerTenantId && (
                       <Typography variant="caption" color="text.secondary">
-                        ({ENDPOINT_DETAILS.LABEL_OWNER_TENANT} {endpointData.ownerTenantId})
+                        ({ENDPOINT_DETAILS.LABEL_OWNER_TENANT}{" "}
+                        {endpointData.ownerTenantId})
                       </Typography>
                     )}
                   </Box>
@@ -303,14 +341,17 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
                 <Typography variant="body2" color="text.secondary">
                   {ENDPOINT_DETAILS.LABEL_LAST_SEEN}
                 </Typography>
-                <Typography variant="body1" color={endPoint.lastSeen ? 'inherit' : 'error'}>
+                <Typography
+                  variant="body1"
+                  color={endPoint.lastSeen ? "inherit" : "error"}
+                >
                   {endPoint.lastSeen
                     ? formatDateTime(endPoint.lastSeen)
                     : ENDPOINT_DETAILS.STATUS_NEVER}
                 </Typography>
               </Box>
               <Box mt={2}>
-                {endpointData.attachStatus !== 'attached' ? (
+                {endpointData.attachStatus !== "attached" ? (
                   <Button
                     variant="contained"
                     color="primary"
@@ -347,7 +388,12 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
                   variant="subtitle2"
                   color="text.secondary"
                   gutterBottom
-                  sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}
+                  sx={{
+                    mt: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                  }}
                 >
                   <BlueprintIcon fontSize="small" />
                   {ENDPOINT_DETAILS.SECTION_BLUEPRINT_INFO}
@@ -357,13 +403,17 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
                     <Typography variant="body2" color="text.secondary">
                       {ENDPOINT_DETAILS.OPTION_SELECT_MANUFACTURER}
                     </Typography>
-                    <Typography variant="body1">{blueprintInfo.manufacturerName}</Typography>
+                    <Typography variant="body1">
+                      {blueprintInfo.manufacturerName}
+                    </Typography>
                   </Box>
                   <Box>
                     <Typography variant="body2" color="text.secondary">
                       {ENDPOINT_DETAILS.OPTION_SELECT_MODEL}
                     </Typography>
-                    <Typography variant="body1">{blueprintInfo.modelName}</Typography>
+                    <Typography variant="body1">
+                      {blueprintInfo.modelName}
+                    </Typography>
                   </Box>
                 </Box>
               </Grid>
@@ -374,7 +424,7 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
             </Grid>
 
             <Grid size={12}>
-              <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
                 <Tabs
                   value={activeTab}
                   onChange={(_, v) => setActiveTab(v)}
@@ -416,7 +466,7 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
                     onRowsPerPageChange={(newSize) => {
                       setActivityRowsPerPage(newSize);
                       setActivityPage(0);
-                      setActivityPageTokens(['']);
+                      setActivityPageTokens([""]);
                     }}
                   />
                 </Box>
@@ -435,16 +485,22 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
       </Card>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
         <DialogTitle>{ENDPOINT_DETAILS.DIALOG_DELETE_TITLE}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            {ENDPOINT_DETAILS.DIALOG_DELETE_CONFIRM_PREFIX} ({endPoint.name || endPoint.epEui})?
-            {endpointData.attachStatus === 'attached' && (
+            {ENDPOINT_DETAILS.DIALOG_DELETE_CONFIRM_PREFIX} (
+            {endPoint.name || endPoint.epEui})?
+            {endpointData.attachStatus === "attached" && (
               <>
                 <br />
                 <br />
-                <strong>{ENDPOINT_DETAILS.DIALOG_DELETE_NOTE_PREFIX}</strong>{' '}
+                <strong>
+                  {ENDPOINT_DETAILS.DIALOG_DELETE_NOTE_PREFIX}
+                </strong>{" "}
                 {ENDPOINT_DETAILS.DIALOG_DELETE_NOTE}
               </>
             )}
@@ -457,7 +513,12 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({ endPoint, onDelete })
           <Button onClick={() => setDeleteDialogOpen(false)} color="primary">
             {ACTION_CANCEL}
           </Button>
-          <Button onClick={handleDelete} color="error" variant="contained" disabled={isDeleting}>
+          <Button
+            onClick={handleDelete}
+            color="error"
+            variant="contained"
+            disabled={isDeleting}
+          >
             {isDeleting ? ENDPOINT_DETAILS.ACTION_DELETING : ACTION_DELETE}
           </Button>
         </DialogActions>

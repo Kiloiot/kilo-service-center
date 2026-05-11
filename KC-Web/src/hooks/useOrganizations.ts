@@ -9,11 +9,11 @@ import type {
   CreateOrganizationRequest,
   UpdateOrganizationRequest,
   UpdateOrgUserRequest,
-} from '@api-types/api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+} from "@api-types/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiService } from '@services/api';
-import { queryKeys } from '@config/query-keys';
+import { apiService } from "@services/api";
+import { queryKeys } from "@config/query-keys";
 
 // ============================================================================
 // Organization Hooks
@@ -26,7 +26,7 @@ export function useOrganizations(
   limit = 50,
   offset = 0,
   tenantId?: number,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean },
 ) {
   return useQuery({
     queryKey: queryKeys.organizations.list({ limit, offset, tenantId }),
@@ -53,7 +53,8 @@ export function useCreateOrganization() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateOrganizationRequest) => apiService.createOrganization(data),
+    mutationFn: (data: CreateOrganizationRequest) =>
+      apiService.createOrganization(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
     },
@@ -67,11 +68,18 @@ export function useUpdateOrganization() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateOrganizationRequest }) =>
-      apiService.updateOrganization(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: UpdateOrganizationRequest;
+    }) => apiService.updateOrganization(id, data),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.detail(id) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.organizations.detail(id),
+      });
     },
   });
 }
@@ -97,7 +105,11 @@ export function useDeleteOrganization() {
 /**
  * Fetch organization members with optional status filter
  */
-export function useOrgUsers(orgId: string, status?: string, options?: { enabled?: boolean }) {
+export function useOrgUsers(
+  orgId: string,
+  status?: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: queryKeys.organizations.users(orgId),
     queryFn: () => apiService.getOrgUsers(orgId, status),
@@ -127,7 +139,9 @@ export function useAddOrgUser() {
     mutationFn: ({ orgId, data }: { orgId: string; data: AddOrgUserRequest }) =>
       apiService.addOrgUser(orgId, data),
     onSuccess: (_, { orgId, data }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.users(orgId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.organizations.users(orgId),
+      });
       if (data.user_id) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.userOrganizations(data.user_id),
@@ -154,7 +168,9 @@ export function useUpdateOrgUser() {
       data: UpdateOrgUserRequest;
     }) => apiService.updateOrgUser(orgId, userId, data),
     onSuccess: (_, { orgId, userId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.users(orgId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.organizations.users(orgId),
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.organizations.userDetail(orgId, userId),
       });
@@ -173,7 +189,9 @@ export function useRemoveOrgUser() {
     mutationFn: ({ orgId, userId }: { orgId: string; userId: string }) =>
       apiService.removeOrgUser(orgId, userId),
     onSuccess: (_, { orgId, userId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.organizations.users(orgId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.organizations.users(orgId),
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.userOrganizations(userId),
       });

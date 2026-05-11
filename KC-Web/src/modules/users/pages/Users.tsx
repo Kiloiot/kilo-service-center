@@ -4,11 +4,11 @@
  * System user management list page with edit/delete action buttons.
  */
 
-import React, { useMemo, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import React, { useMemo, useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 
-import type { OrganizationUserUI, SystemUserUI } from '@api-types/api';
-import { useDeleteUser, useUsers } from '@hooks';
+import type { OrganizationUserUI, SystemUserUI } from "@api-types/api";
+import { useDeleteUser, useUsers } from "@hooks";
 import {
   Alert,
   Box,
@@ -25,17 +25,24 @@ import {
   InputAdornment,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { useSession } from '@contexts/SessionContext';
-import { ORG_MEMBER_STATUS, ORG_ROLE, ROUTES } from '@constants/app';
-import { ERR_LOAD_USERS, USERS_PAGE } from '@constants/messages';
-import { AddIcon, AdminIcon, ErrorIcon, PeopleIcon, SearchIcon, SuccessIcon } from '@theme/icons';
+import { useSession } from "@contexts/SessionContext";
+import { ORG_MEMBER_STATUS, ORG_ROLE, ROUTES } from "@constants/app";
+import { ERR_LOAD_USERS, USERS_PAGE } from "@constants/messages";
+import {
+  AddIcon,
+  AdminIcon,
+  ErrorIcon,
+  PeopleIcon,
+  SearchIcon,
+  SuccessIcon,
+} from "@theme/icons";
 
-import AddUserDialog from '../components/AddUserDialog';
-import UsersTableBase, { type OrderBy } from '../components/UsersTableBase';
+import AddUserDialog from "../components/AddUserDialog";
+import UsersTableBase, { type OrderBy } from "../components/UsersTableBase";
 
-type OrderDirection = 'asc' | 'desc';
+type OrderDirection = "asc" | "desc";
 
 export interface UsersProps {
   /** When true, reduces padding for use inside tabs */
@@ -44,14 +51,18 @@ export interface UsersProps {
   onAddDialogOpenChange?: (open: boolean) => void;
 }
 
-const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenChange }) => {
+const Users: React.FC<UsersProps> = ({
+  embedded,
+  addDialogOpen,
+  onAddDialogOpenChange,
+}) => {
   const navigate = useNavigate();
   const { isAdmin, isHydrated } = useSession();
 
   // Local UI state
-  const [search, setSearch] = useState('');
-  const [orderBy, setOrderBy] = useState<OrderBy>('email');
-  const [orderDirection, setOrderDirection] = useState<OrderDirection>('asc');
+  const [search, setSearch] = useState("");
+  const [orderBy, setOrderBy] = useState<OrderBy>("email");
+  const [orderDirection, setOrderDirection] = useState<OrderDirection>("asc");
   const [localAddDialogOpen, setLocalAddDialogOpen] = useState(false);
   const isAddDialogOpen = addDialogOpen ?? localAddDialogOpen;
   const setAddDialogOpen = onAddDialogOpenChange ?? setLocalAddDialogOpen;
@@ -76,31 +87,35 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
     return users.filter(
       (user) =>
         user.email.toLowerCase().includes(searchLower) ||
-        user.note?.toLowerCase().includes(searchLower)
+        user.note?.toLowerCase().includes(searchLower),
     );
   }, [users, search]);
 
   // Sort users using unified role/status values
   const sortedUsers = useMemo(() => {
     return [...filteredUsers].sort((a, b) => {
-      let aValue = '';
-      let bValue = '';
+      let aValue = "";
+      let bValue = "";
 
-      if (orderBy === 'email') {
+      if (orderBy === "email") {
         aValue = a.email;
         bValue = b.email;
-      } else if (orderBy === 'role') {
+      } else if (orderBy === "role") {
         aValue = a.isAdmin ? ORG_ROLE.ADMIN : ORG_ROLE.MEMBER;
         bValue = b.isAdmin ? ORG_ROLE.ADMIN : ORG_ROLE.MEMBER;
-      } else if (orderBy === 'status') {
-        aValue = a.isActive ? ORG_MEMBER_STATUS.ACTIVE : ORG_MEMBER_STATUS.REMOVED;
-        bValue = b.isActive ? ORG_MEMBER_STATUS.ACTIVE : ORG_MEMBER_STATUS.REMOVED;
-      } else if (orderBy === 'createdAt') {
+      } else if (orderBy === "status") {
+        aValue = a.isActive
+          ? ORG_MEMBER_STATUS.ACTIVE
+          : ORG_MEMBER_STATUS.REMOVED;
+        bValue = b.isActive
+          ? ORG_MEMBER_STATUS.ACTIVE
+          : ORG_MEMBER_STATUS.REMOVED;
+      } else if (orderBy === "createdAt") {
         aValue = a.createdAt;
         bValue = b.createdAt;
       }
 
-      if (orderDirection === 'asc') {
+      if (orderDirection === "asc") {
         return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
       }
       return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
@@ -109,15 +124,15 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
 
   const handleSort = (field: OrderBy) => {
     if (orderBy === field) {
-      setOrderDirection(orderDirection === 'asc' ? 'desc' : 'asc');
+      setOrderDirection(orderDirection === "asc" ? "desc" : "asc");
     } else {
       setOrderBy(field);
-      setOrderDirection('asc');
+      setOrderDirection("asc");
     }
   };
 
   const handleEdit = (user: SystemUserUI | OrganizationUserUI) => {
-    const id = 'id' in user ? (user as SystemUserUI).id : '';
+    const id = "id" in user ? (user as SystemUserUI).id : "";
     navigate(`${ROUTES.USERS}/${id}`);
   };
 
@@ -137,7 +152,9 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
         setDeleteError(null);
       },
       onError: (err: unknown) => {
-        setDeleteError(err instanceof Error ? err.message : USERS_PAGE.ERR_DELETE_FAILED);
+        setDeleteError(
+          err instanceof Error ? err.message : USERS_PAGE.ERR_DELETE_FAILED,
+        );
       },
     });
   };
@@ -162,9 +179,17 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
   }
 
   return (
-    <Box data-testid="users-page" sx={{ p: embedded ? 0 : 3, pt: embedded ? 0 : 4 }}>
+    <Box
+      data-testid="users-page"
+      sx={{ p: embedded ? 0 : 3, pt: embedded ? 0 : 4 }}
+    >
       {!embedded && (
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          mb={3}
+        >
           <Typography variant="h4" component="h1">
             {USERS_PAGE.TITLE}
           </Typography>
@@ -184,7 +209,9 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <PeopleIcon sx={{ fontSize: 40, color: 'primary.main', mr: 2 }} />
+                <PeopleIcon
+                  sx={{ fontSize: 40, color: "primary.main", mr: 2 }}
+                />
                 <Box>
                   <Typography color="text.secondary" variant="body2">
                     {USERS_PAGE.TOTAL_USERS}
@@ -199,7 +226,9 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <SuccessIcon sx={{ fontSize: 40, color: 'success.main', mr: 2 }} />
+                <SuccessIcon
+                  sx={{ fontSize: 40, color: "success.main", mr: 2 }}
+                />
                 <Box>
                   <Typography color="text.secondary" variant="body2">
                     {USERS_PAGE.ACTIVE_USERS}
@@ -214,7 +243,7 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <ErrorIcon sx={{ fontSize: 40, color: 'error.main', mr: 2 }} />
+                <ErrorIcon sx={{ fontSize: 40, color: "error.main", mr: 2 }} />
                 <Box>
                   <Typography color="text.secondary" variant="body2">
                     {USERS_PAGE.INACTIVE_USERS}
@@ -229,7 +258,9 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <AdminIcon sx={{ fontSize: 40, color: 'warning.main', mr: 2 }} />
+                <AdminIcon
+                  sx={{ fontSize: 40, color: "warning.main", mr: 2 }}
+                />
                 <Box>
                   <Typography color="text.secondary" variant="body2">
                     {USERS_PAGE.ADMIN_USERS}
@@ -261,7 +292,12 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
 
       {/* Loading State */}
       {isLoading && (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          minHeight="200px"
+        >
           <CircularProgress />
         </Box>
       )}
@@ -287,7 +323,10 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
       )}
 
       {/* Add User Dialog */}
-      <AddUserDialog open={isAddDialogOpen} onClose={() => setAddDialogOpen(false)} />
+      <AddUserDialog
+        open={isAddDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+      />
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmOpen} onClose={handleDeleteDialogClose}>
@@ -298,15 +337,19 @@ const Users: React.FC<UsersProps> = ({ embedded, addDialogOpen, onAddDialogOpenC
               {deleteError}
             </Alert>
           )}
-          <DialogContentText>{USERS_PAGE.CONFIRM_DELETE_MESSAGE}</DialogContentText>
+          <DialogContentText>
+            {USERS_PAGE.CONFIRM_DELETE_MESSAGE}
+          </DialogContentText>
           {selectedUser && (
-            <Typography variant="body2" sx={{ mt: 1, fontWeight: 'medium' }}>
+            <Typography variant="body2" sx={{ mt: 1, fontWeight: "medium" }}>
               {selectedUser.email}
             </Typography>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleDeleteDialogClose}>{USERS_PAGE.ACTION_CANCEL}</Button>
+          <Button onClick={handleDeleteDialogClose}>
+            {USERS_PAGE.ACTION_CANCEL}
+          </Button>
           <Button
             onClick={confirmDelete}
             color="error"

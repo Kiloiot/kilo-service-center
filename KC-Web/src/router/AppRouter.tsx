@@ -7,11 +7,11 @@
  * Default export for lazy loading compatibility.
  */
 
-import React from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import React from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 
-import { FeatureProtectedRoute } from './FeatureProtectedRoute';
-import { routes } from './routes';
+import { FeatureProtectedRoute } from "./FeatureProtectedRoute";
+import { routes } from "./routes";
 
 /**
  * Application Router Component
@@ -34,7 +34,10 @@ const AppRouter: React.FC = () => {
           key={route.path}
           path={route.path}
           element={
-            <FeatureProtectedRoute featureFlag={route.featureFlag} routeName={route.title}>
+            <FeatureProtectedRoute
+              featureFlag={route.featureFlag}
+              routeName={route.title}
+            >
               <route.element />
             </FeatureProtectedRoute>
           }

@@ -6,9 +6,9 @@
  * EP Admin, Joined, Actions. System users are mapped to the same columns.
  */
 
-import React from 'react';
+import React from "react";
 
-import type { OrganizationUserUI, SystemUserUI } from '@api-types/api';
+import type { OrganizationUserUI, SystemUserUI } from "@api-types/api";
 import {
   Chip,
   IconButton,
@@ -22,15 +22,15 @@ import {
   TableSortLabel,
   Tooltip,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { formatRelativeDuration } from '@utils/formatters';
-import { ORG_MEMBER_STATUS, ORG_ROLE } from '@constants/app';
-import { ORG_USERS_PAGE } from '@constants/messages';
-import { DeleteIcon, EditIcon } from '@theme/icons';
+import { formatRelativeDuration } from "@utils/formatters";
+import { ORG_MEMBER_STATUS, ORG_ROLE } from "@constants/app";
+import { ORG_USERS_PAGE } from "@constants/messages";
+import { DeleteIcon, EditIcon } from "@theme/icons";
 
-export type OrderBy = 'email' | 'role' | 'status' | 'createdAt';
-export type OrderDirection = 'asc' | 'desc';
+export type OrderBy = "email" | "role" | "status" | "createdAt";
+export type OrderDirection = "asc" | "desc";
 
 export interface UsersTableBaseProps {
   users: SystemUserUI[] | OrganizationUserUI[];
@@ -55,16 +55,18 @@ const getRoleLabel = (role: string): string => {
   }
 };
 
-const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'default' => {
+const getStatusColor = (
+  status: string,
+): "success" | "warning" | "error" | "default" => {
   switch (status) {
     case ORG_MEMBER_STATUS.ACTIVE:
-      return 'success';
+      return "success";
     case ORG_MEMBER_STATUS.INVITED:
-      return 'warning';
+      return "warning";
     case ORG_MEMBER_STATUS.REMOVED:
-      return 'error';
+      return "error";
     default:
-      return 'default';
+      return "default";
   }
 };
 
@@ -81,8 +83,10 @@ const getStatusLabel = (status: string): string => {
   }
 };
 
-function isOrgUser(user: SystemUserUI | OrganizationUserUI): user is OrganizationUserUI {
-  return 'orgId' in user;
+function isOrgUser(
+  user: SystemUserUI | OrganizationUserUI,
+): user is OrganizationUserUI {
+  return "orgId" in user;
 }
 
 function getUserId(user: SystemUserUI | OrganizationUserUI): string {
@@ -111,22 +115,24 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
 }) => {
   if (users.length === 0) {
     return (
-      <Paper sx={{ p: 4, textAlign: 'center' }}>
-        <Typography color="text.secondary">{emptyMessage ?? ORG_USERS_PAGE.NO_USERS}</Typography>
+      <Paper sx={{ p: 4, textAlign: "center" }}>
+        <Typography color="text.secondary">
+          {emptyMessage ?? ORG_USERS_PAGE.NO_USERS}
+        </Typography>
       </Paper>
     );
   }
 
   return (
-    <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
+    <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
       <Table>
         <TableHead>
           <TableRow>
             <TableCell>
               <TableSortLabel
-                active={orderBy === 'email'}
-                direction={orderBy === 'email' ? orderDirection : 'asc'}
-                onClick={() => onSort('email')}
+                active={orderBy === "email"}
+                direction={orderBy === "email" ? orderDirection : "asc"}
+                onClick={() => onSort("email")}
               >
                 {ORG_USERS_PAGE.COL_EMAIL}
               </TableSortLabel>
@@ -134,9 +140,9 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
 
             <TableCell>
               <TableSortLabel
-                active={orderBy === 'role'}
-                direction={orderBy === 'role' ? orderDirection : 'asc'}
-                onClick={() => onSort('role')}
+                active={orderBy === "role"}
+                direction={orderBy === "role" ? orderDirection : "asc"}
+                onClick={() => onSort("role")}
               >
                 {ORG_USERS_PAGE.COL_ROLE}
               </TableSortLabel>
@@ -144,9 +150,9 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
 
             <TableCell>
               <TableSortLabel
-                active={orderBy === 'status'}
-                direction={orderBy === 'status' ? orderDirection : 'asc'}
-                onClick={() => onSort('status')}
+                active={orderBy === "status"}
+                direction={orderBy === "status" ? orderDirection : "asc"}
+                onClick={() => onSort("status")}
               >
                 {ORG_USERS_PAGE.COL_STATUS}
               </TableSortLabel>
@@ -158,15 +164,17 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
 
             <TableCell>
               <TableSortLabel
-                active={orderBy === 'createdAt'}
-                direction={orderBy === 'createdAt' ? orderDirection : 'asc'}
-                onClick={() => onSort('createdAt')}
+                active={orderBy === "createdAt"}
+                direction={orderBy === "createdAt" ? orderDirection : "asc"}
+                onClick={() => onSort("createdAt")}
               >
                 {ORG_USERS_PAGE.COL_JOINED}
               </TableSortLabel>
             </TableCell>
 
-            {(onEdit || onRemove) && <TableCell>{ORG_USERS_PAGE.COL_ACTIONS}</TableCell>}
+            {(onEdit || onRemove) && (
+              <TableCell>{ORG_USERS_PAGE.COL_ACTIONS}</TableCell>
+            )}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -177,7 +185,9 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
             const role = getUnifiedRole(user);
             const status = getUnifiedStatus(user);
 
-            const effectiveOrgAdmin = org ? user.isOrgAdmin : user.isAdmin || user.isTenantManager;
+            const effectiveOrgAdmin = org
+              ? user.isOrgAdmin
+              : user.isAdmin || user.isTenantManager;
             const effectiveBs = org
               ? user.isOrgAdmin || user.isBaseStationAdmin
               : user.isAdmin || user.isBaseStationManager;
@@ -197,7 +207,7 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
                   <Chip
                     label={getRoleLabel(role)}
                     size="small"
-                    color={role === ORG_ROLE.OWNER ? 'primary' : 'default'}
+                    color={role === ORG_ROLE.OWNER ? "primary" : "default"}
                   />
                 </TableCell>
 
@@ -209,9 +219,15 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
                   />
                 </TableCell>
 
-                <TableCell>{effectiveOrgAdmin ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}</TableCell>
-                <TableCell>{effectiveBs ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}</TableCell>
-                <TableCell>{effectiveEp ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}</TableCell>
+                <TableCell>
+                  {effectiveOrgAdmin ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
+                </TableCell>
+                <TableCell>
+                  {effectiveBs ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
+                </TableCell>
+                <TableCell>
+                  {effectiveEp ? ORG_USERS_PAGE.YES : ORG_USERS_PAGE.NO}
+                </TableCell>
 
                 <TableCell>
                   <Typography variant="body2" color="text.secondary">

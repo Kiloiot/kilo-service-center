@@ -4,8 +4,8 @@
  * Organization detail view with configuration tabs and runtime admin guard.
  */
 
-import React, { useEffect, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import {
   Alert,
@@ -19,24 +19,24 @@ import {
   Tab,
   Tabs,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { ApiError } from '@services/api';
-import { useOrganization as useOrganizationContext } from '@contexts/OrganizationContext';
-import { useSession } from '@contexts/SessionContext';
-import { useOrganization as useOrganizationQuery } from '@hooks/useOrganizations';
-import { formatRelativeDuration } from '@utils/formatters';
-import { ORG_STATE, ROUTES } from '@constants/app';
+import { ApiError } from "@services/api";
+import { useOrganization as useOrganizationContext } from "@contexts/OrganizationContext";
+import { useSession } from "@contexts/SessionContext";
+import { useOrganization as useOrganizationQuery } from "@hooks/useOrganizations";
+import { formatRelativeDuration } from "@utils/formatters";
+import { ORG_STATE, ROUTES } from "@constants/app";
 import {
   ORG_USERS_PAGE,
   ORGANIZATION_FORM,
   ORGANIZATIONS_PAGE,
   SECTION_CONFIG,
   UI_COMMON,
-} from '@constants/messages';
-import { ArrowBackIcon, BusinessIcon, PeopleIcon } from '@theme/icons';
+} from "@constants/messages";
+import { ArrowBackIcon, BusinessIcon, PeopleIcon } from "@theme/icons";
 
-import OrganizationForm from '../components/OrganizationForm';
+import OrganizationForm from "../components/OrganizationForm";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -46,7 +46,11 @@ interface TabPanelProps {
 
 const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
   return (
-    <div role="tabpanel" hidden={value !== index} id={`organization-tabpanel-${index}`}>
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`organization-tabpanel-${index}`}
+    >
       {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
     </div>
   );
@@ -65,7 +69,7 @@ const OrganizationDetail: React.FC = () => {
     isLoading,
     isError,
     error,
-  } = useOrganizationQuery(id || '', {
+  } = useOrganizationQuery(id || "", {
     enabled: canQuery,
   });
 
@@ -85,16 +89,18 @@ const OrganizationDetail: React.FC = () => {
     return <Navigate to={ROUTES.HOME} replace />;
   }
 
-  const getStateColor = (state: string): 'success' | 'warning' | 'error' | 'default' => {
+  const getStateColor = (
+    state: string,
+  ): "success" | "warning" | "error" | "default" => {
     switch (state) {
       case ORG_STATE.ACTIVE:
-        return 'success';
+        return "success";
       case ORG_STATE.SUSPENDED:
-        return 'warning';
+        return "warning";
       case ORG_STATE.ARCHIVED:
-        return 'error';
+        return "error";
       default:
-        return 'default';
+        return "default";
     }
   };
 
@@ -113,7 +119,12 @@ const OrganizationDetail: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="400px"
+      >
         <CircularProgress />
       </Box>
     );
@@ -123,7 +134,7 @@ const OrganizationDetail: React.FC = () => {
     const isForbidden = error instanceof ApiError && error.isForbidden();
     return (
       <Box sx={{ p: 3, pt: 4 }}>
-        <Alert severity={isForbidden ? 'warning' : 'error'}>
+        <Alert severity={isForbidden ? "warning" : "error"}>
           {isForbidden
             ? ORGANIZATIONS_PAGE.ERR_NOT_MEMBER
             : error instanceof Error
@@ -156,26 +167,40 @@ const OrganizationDetail: React.FC = () => {
   return (
     <Box data-testid="organization-detail-page" sx={{ p: 3, pt: 4 }}>
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
         <Box display="flex" alignItems="center" gap={2}>
-          <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(ROUTES.ORGANIZATIONS)}>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate(ROUTES.ORGANIZATIONS)}
+          >
             {ORGANIZATIONS_PAGE.BACK_TO_LIST}
           </Button>
           <Typography variant="h4" component="h1">
             {org.name}
           </Typography>
-          <Chip label={getStateLabel(org.state)} color={getStateColor(org.state)} size="small" />
+          <Chip
+            label={getStateLabel(org.state)}
+            color={getStateColor(org.state)}
+            size="small"
+          />
         </Box>
         <Button
           variant="outlined"
           startIcon={<PeopleIcon />}
-          onClick={() => navigate(ROUTES.ORGANIZATION_USERS.replace(':id', id ?? ''))}
+          onClick={() =>
+            navigate(ROUTES.ORGANIZATION_USERS.replace(":id", id ?? ""))
+          }
         >
           {ORG_USERS_PAGE.VIEW_MEMBERS}
         </Button>
       </Box>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
         <Tabs
           value={activeTab}
           onChange={handleTabChange}
@@ -201,8 +226,10 @@ const OrganizationDetail: React.FC = () => {
             <Card>
               <CardContent>
                 <Box display="flex" alignItems="center" gap={2} mb={3}>
-                  <BusinessIcon sx={{ fontSize: 40, color: 'primary.main' }} />
-                  <Typography variant="h6">{ORGANIZATIONS_PAGE.DETAILS_TITLE}</Typography>
+                  <BusinessIcon sx={{ fontSize: 40, color: "primary.main" }} />
+                  <Typography variant="h6">
+                    {ORGANIZATIONS_PAGE.DETAILS_TITLE}
+                  </Typography>
                 </Box>
 
                 <Grid container spacing={2}>
@@ -216,13 +243,17 @@ const OrganizationDetail: React.FC = () => {
                     <Typography variant="body2" color="text.secondary">
                       {ORGANIZATION_FORM.LABEL_STATE}
                     </Typography>
-                    <Typography variant="body1">{getStateLabel(org.state)}</Typography>
+                    <Typography variant="body1">
+                      {getStateLabel(org.state)}
+                    </Typography>
                   </Grid>
                   <Grid size={{ xs: 12 }}>
                     <Typography variant="body2" color="text.secondary">
                       {ORGANIZATION_FORM.LABEL_DESCRIPTION}
                     </Typography>
-                    <Typography variant="body1">{org.description || '-'}</Typography>
+                    <Typography variant="body1">
+                      {org.description || "-"}
+                    </Typography>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <Typography variant="body2" color="text.secondary">
@@ -234,7 +265,7 @@ const OrganizationDetail: React.FC = () => {
                           ? ORGANIZATIONS_PAGE.QUOTA_ALLOWED
                           : ORGANIZATIONS_PAGE.QUOTA_NOT_ALLOWED
                       }
-                      color={org.canHaveBaseStations ? 'success' : 'default'}
+                      color={org.canHaveBaseStations ? "success" : "default"}
                       size="small"
                       variant="outlined"
                     />
@@ -250,7 +281,8 @@ const OrganizationDetail: React.FC = () => {
                       {ORGANIZATION_FORM.LABEL_MAX_BS_COUNT}
                     </Typography>
                     <Typography variant="body1">
-                      {org.maxBaseStationCount ?? ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}
+                      {org.maxBaseStationCount ??
+                        ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}
                     </Typography>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
@@ -258,7 +290,8 @@ const OrganizationDetail: React.FC = () => {
                       {ORGANIZATION_FORM.LABEL_MAX_EP_COUNT}
                     </Typography>
                     <Typography variant="body1">
-                      {org.maxEndpointCount ?? ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}
+                      {org.maxEndpointCount ??
+                        ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}
                     </Typography>
                   </Grid>
                 </Grid>
@@ -276,13 +309,17 @@ const OrganizationDetail: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">
                     {ORGANIZATION_FORM.INFO_CREATED}
                   </Typography>
-                  <Typography variant="body1">{formatRelativeDuration(org.createdAt)}</Typography>
+                  <Typography variant="body1">
+                    {formatRelativeDuration(org.createdAt)}
+                  </Typography>
                 </Box>
                 <Box>
                   <Typography variant="body2" color="text.secondary">
                     {ORGANIZATION_FORM.INFO_UPDATED}
                   </Typography>
-                  <Typography variant="body1">{formatRelativeDuration(org.updatedAt)}</Typography>
+                  <Typography variant="body1">
+                    {formatRelativeDuration(org.updatedAt)}
+                  </Typography>
                 </Box>
               </CardContent>
             </Card>
@@ -296,7 +333,12 @@ const OrganizationDetail: React.FC = () => {
                   </Typography>
                   <Box display="flex" flexWrap="wrap" gap={1}>
                     {Object.entries(org.tags).map(([key, value]) => (
-                      <Chip key={key} label={`${key}: ${value}`} size="small" variant="outlined" />
+                      <Chip
+                        key={key}
+                        label={`${key}: ${value}`}
+                        size="small"
+                        variant="outlined"
+                      />
                     ))}
                   </Box>
                 </CardContent>
@@ -307,7 +349,10 @@ const OrganizationDetail: React.FC = () => {
       </TabPanel>
 
       <TabPanel value={activeTab} index={1}>
-        <OrganizationForm organization={org} onDeleted={() => navigate(ROUTES.ORGANIZATIONS)} />
+        <OrganizationForm
+          organization={org}
+          onDeleted={() => navigate(ROUTES.ORGANIZATIONS)}
+        />
       </TabPanel>
     </Box>
   );

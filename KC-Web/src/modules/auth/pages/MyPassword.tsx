@@ -4,8 +4,8 @@
  * Self-service password change page for authenticated users.
  */
 
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   Alert,
@@ -17,19 +17,19 @@ import {
   TextField,
   Typography,
   useTheme,
-} from '@mui/material';
+} from "@mui/material";
 
-import { apiService } from '@services/api';
-import { ROUTES, UI_TIMING } from '@constants/app';
-import { MY_PASSWORD } from '@constants/messages';
+import { apiService } from "@services/api";
+import { ROUTES, UI_TIMING } from "@constants/app";
+import { MY_PASSWORD } from "@constants/messages";
 
 export default function MyPassword() {
   const theme = useTheme();
   const navigate = useNavigate();
 
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,9 +50,9 @@ export default function MyPassword() {
     try {
       await apiService.changeOwnPassword(currentPassword, password);
       setSuccess(true);
-      setCurrentPassword('');
-      setPassword('');
-      setConfirmPassword('');
+      setCurrentPassword("");
+      setPassword("");
+      setConfirmPassword("");
       // Redirect after success message shows
       setTimeout(() => {
         navigate(ROUTES.HOME);
@@ -67,20 +67,24 @@ export default function MyPassword() {
   return (
     <Box
       sx={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: '100%',
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: "100%",
         p: theme.spacing(3),
       }}
     >
-      <Card sx={{ maxWidth: 400, width: '100%' }}>
+      <Card sx={{ maxWidth: 400, width: "100%" }}>
         <CardContent sx={{ p: theme.spacing(3) }}>
           <Typography variant="h5" component="h1" gutterBottom>
             {MY_PASSWORD.TITLE}
           </Typography>
 
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: theme.spacing(2) }}>
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            sx={{ mt: theme.spacing(2) }}
+          >
             {error && (
               <Alert severity="error" sx={{ mb: theme.spacing(2) }}>
                 {error}
@@ -129,7 +133,11 @@ export default function MyPassword() {
               variant="contained"
               fullWidth
               disabled={
-                isSubmitting || success || !currentPassword || !password || !confirmPassword
+                isSubmitting ||
+                success ||
+                !currentPassword ||
+                !password ||
+                !confirmPassword
               }
               startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
             >

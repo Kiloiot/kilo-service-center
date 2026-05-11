@@ -4,13 +4,13 @@
  * React Query hooks for base station data fetching and mutations.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiService } from '@services/api';
-import { formatEUIWithDashes } from '@utils/formatters';
-import { CERT_VALIDITY_DAYS } from '@constants/app';
-import type { BaseStationFilters } from '@config/query-keys';
-import { queryKeys } from '@config/query-keys';
+import { apiService } from "@services/api";
+import { formatEUIWithDashes } from "@utils/formatters";
+import { CERT_VALIDITY_DAYS } from "@constants/app";
+import type { BaseStationFilters } from "@config/query-keys";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Fetch all base stations with optional filters
@@ -55,7 +55,7 @@ export function useCommissionBaseStation() {
  * Uses BS-first flow: creates base station before generating certificates.
  */
 export interface CommissionResult {
-  status: 'complete' | 'partial';
+  status: "complete" | "partial";
   bsEui: string;
   certData?: {
     serviceCenterUrl: string;
@@ -90,14 +90,14 @@ export function useCommissionBaseStationWithCerts() {
       longitude?: number;
       altitude?: number;
     }): Promise<CommissionResult> => {
-      const euiClean = data.eui.replace(/-/g, '');
+      const euiClean = data.eui.replace(/-/g, "");
       const euiDashed = formatEUIWithDashes(euiClean);
 
       // STEP 1: Create base station FIRST (must exist before cert generation)
       await apiService.createBaseStation({
         eui: euiClean,
         name: data.name,
-        connection_type: 'bssci',
+        connection_type: "bssci",
         latitude: data.latitude,
         longitude: data.longitude,
         altitude: data.altitude,
@@ -113,7 +113,7 @@ export function useCommissionBaseStationWithCerts() {
 
         // Complete success - BS created and certs generated
         return {
-          status: 'complete',
+          status: "complete",
           bsEui: certResponse.bsEui,
           certData: {
             serviceCenterUrl: certResponse.serviceCenterUrl,
@@ -129,7 +129,7 @@ export function useCommissionBaseStationWithCerts() {
         // Partial success - BS created but cert generation failed
         // Return retryToken so user can retry cert generation
         return {
-          status: 'partial',
+          status: "partial",
           bsEui: euiDashed,
           retryToken: euiDashed, // EUI for retry
         };
@@ -202,7 +202,9 @@ export function useUpdateBaseStation() {
     }) => apiService.updateBaseStation(eui, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.detail(variables.eui) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.baseStations.detail(variables.eui),
+      });
     },
   });
 }
@@ -219,8 +221,12 @@ export function useUpdateBaseStationEui() {
     onSuccess: (_, variables) => {
       // Invalidate both old and new EUI queries
       queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.detail(variables.eui) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.detail(variables.newEui) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.baseStations.detail(variables.eui),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.baseStations.detail(variables.newEui),
+      });
     },
   });
 }
@@ -235,11 +241,12 @@ export function useBaseStationActivity(
     endTime?: string;
   },
   pageToken?: string,
-  pageSize = 50
+  pageSize = 50,
 ) {
   return useQuery({
     queryKey: queryKeys.baseStations.activity(eui, filter, pageToken, pageSize),
-    queryFn: () => apiService.getBaseStationActivity(eui, filter, pageToken, pageSize),
+    queryFn: () =>
+      apiService.getBaseStationActivity(eui, filter, pageToken, pageSize),
     enabled: !!eui,
   });
 }

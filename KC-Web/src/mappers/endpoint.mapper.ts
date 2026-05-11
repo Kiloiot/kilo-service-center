@@ -6,23 +6,28 @@
  * Uses attachStatus for endpoint state and epEui as primary identifier.
  */
 
-import type { EndpointAPI, EndpointUI } from '@api-types/api';
+import type { EndpointAPI, EndpointUI } from "@api-types/api";
 
-import { ENDPOINT_ACTIVITY_WINDOW_HOURS } from '@constants/app';
+import { ENDPOINT_ACTIVITY_WINDOW_HOURS } from "@constants/app";
 
 /**
  * Calculate endpoint activity status based on lastSeen timestamp.
  * Fallback for when backend status is missing or unexpected.
  */
-export function deriveActivityStatus(lastSeen: string | undefined): 'active' | 'inactive' {
-  if (!lastSeen) return 'inactive';
+export function deriveActivityStatus(
+  lastSeen: string | undefined,
+): "active" | "inactive" {
+  if (!lastSeen) return "inactive";
 
   const lastSeenDate = new Date(lastSeen);
-  if (isNaN(lastSeenDate.getTime())) return 'inactive';
+  if (isNaN(lastSeenDate.getTime())) return "inactive";
 
   const now = new Date();
-  const hoursSinceLastSeen = (now.getTime() - lastSeenDate.getTime()) / (1000 * 60 * 60);
-  return hoursSinceLastSeen <= ENDPOINT_ACTIVITY_WINDOW_HOURS ? 'active' : 'inactive';
+  const hoursSinceLastSeen =
+    (now.getTime() - lastSeenDate.getTime()) / (1000 * 60 * 60);
+  return hoursSinceLastSeen <= ENDPOINT_ACTIVITY_WINDOW_HOURS
+    ? "active"
+    : "inactive";
 }
 
 /**
@@ -30,16 +35,16 @@ export function deriveActivityStatus(lastSeen: string | undefined): 'active' | '
  * Used for filtering and display purposes when attachStatus is not available from backend
  */
 export function deriveAttachState(
-  endpoint: EndpointAPI
-): 'attached' | 'detached' | 'attaching' | 'pending' | 'unknown' {
+  endpoint: EndpointAPI,
+): "attached" | "detached" | "attaching" | "pending" | "unknown" {
   // If attachStatus is provided, use it directly
   if (endpoint.attachStatus) return endpoint.attachStatus;
 
   // If shAddr is assigned, endpoint is likely attached or pending
-  if (endpoint.shAddr !== undefined && endpoint.shAddr > 0) return 'pending';
+  if (endpoint.shAddr !== undefined && endpoint.shAddr > 0) return "pending";
 
   // Default to detached
-  return 'detached';
+  return "detached";
 }
 
 /**
@@ -52,7 +57,7 @@ export function mapEndpoint(api: EndpointAPI): EndpointUI {
     epEui: api.epEui,
     name: api.name,
     status:
-      api.status === 'active' || api.status === 'inactive'
+      api.status === "active" || api.status === "inactive"
         ? api.status
         : deriveActivityStatus(api.lastSeen),
     batteryLevel: api.batteryLevel,

@@ -6,17 +6,25 @@
  * Code and type_eui are generated server-side.
  */
 
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { Alert, Box, Button, CircularProgress, Paper, TextField, Typography } from '@mui/material';
-import { useMutation } from '@tanstack/react-query';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Paper,
+  TextField,
+  Typography,
+} from "@mui/material";
+import { useMutation } from "@tanstack/react-query";
 
-import { api } from '@services/api';
-import { ROUTES } from '@constants/app';
-import { BLUEPRINT_LABELS } from '@constants/messages';
+import { api } from "@services/api";
+import { ROUTES } from "@constants/app";
+import { BLUEPRINT_LABELS } from "@constants/messages";
 
-import { useManufacturers } from '../hooks';
+import { useManufacturers } from "../hooks";
 
 /**
  * AddDeviceModel page component
@@ -26,10 +34,10 @@ export const AddDeviceModel: React.FC = () => {
 
   const { data: manufacturers, isLoading: mfrsLoading } = useManufacturers();
 
-  const [manufacturerId, setManufacturerId] = useState('');
-  const [name, setName] = useState('');
-  const [version, setVersion] = useState('');
-  const [specJsonText, setSpecJsonText] = useState('');
+  const [manufacturerId, setManufacturerId] = useState("");
+  const [name, setName] = useState("");
+  const [version, setVersion] = useState("");
+  const [specJsonText, setSpecJsonText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -73,7 +81,7 @@ export const AddDeviceModel: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3, pt: 4, maxWidth: 800, mx: 'auto' }}>
+    <Box sx={{ p: 3, pt: 4, maxWidth: 800, mx: "auto" }}>
       <Typography variant="h4" sx={{ mb: 3 }}>
         {BLUEPRINT_LABELS.ADD_MODEL}
       </Typography>
@@ -133,17 +141,27 @@ export const AddDeviceModel: React.FC = () => {
           helperText={BLUEPRINT_LABELS.HELPER_SPEC_JSON}
           slotProps={{
             input: {
-              sx: { fontFamily: 'monospace', fontSize: '0.875rem' },
+              sx: { fontFamily: "monospace", fontSize: "0.875rem" },
             },
           }}
         />
 
-        <Box sx={{ display: 'flex', gap: 2, mt: 3, justifyContent: 'flex-end' }}>
+        <Box
+          sx={{ display: "flex", gap: 2, mt: 3, justifyContent: "flex-end" }}
+        >
           <Button onClick={() => navigate(ROUTES.BLUEPRINTS)}>
             {BLUEPRINT_LABELS.ACTION_CANCEL}
           </Button>
-          <Button variant="contained" onClick={handleSubmit} disabled={mutation.isPending}>
-            {mutation.isPending ? <CircularProgress size={20} /> : BLUEPRINT_LABELS.ACTION_CREATE}
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={mutation.isPending}
+          >
+            {mutation.isPending ? (
+              <CircularProgress size={20} />
+            ) : (
+              BLUEPRINT_LABELS.ACTION_CREATE
+            )}
           </Button>
         </Box>
       </Paper>

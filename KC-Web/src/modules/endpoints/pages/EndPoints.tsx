@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { generatePath, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from "react";
+import { generatePath, useNavigate, useParams } from "react-router-dom";
 
-import { useEndpoint, useEndpointFilters, useEndpoints } from '@hooks';
+import { useEndpoint, useEndpointFilters, useEndpoints } from "@hooks";
 import {
   Alert,
   Box,
@@ -22,13 +22,13 @@ import {
   TableSortLabel,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { PaginationControls } from '@components/common/PaginationControls';
-import { formatRelativeDuration, paginate } from '@utils/formatters';
-import { getMonoBody2 } from '@utils/typography';
-import { ROUTES } from '@constants/app';
-import { ENDPOINTS_PAGE, ERR_LOAD_ENDPOINTS } from '@constants/messages';
+import { PaginationControls } from "@components/common/PaginationControls";
+import { formatRelativeDuration, paginate } from "@utils/formatters";
+import { getMonoBody2 } from "@utils/typography";
+import { ROUTES } from "@constants/app";
+import { ENDPOINTS_PAGE, ERR_LOAD_ENDPOINTS } from "@constants/messages";
 import {
   AddIcon,
   EndPointIcon,
@@ -36,19 +36,20 @@ import {
   FilterListIcon,
   SearchIcon,
   SuccessIcon,
-} from '@theme/icons';
+} from "@theme/icons";
 
-import AddEndPointDialog from '../components/AddEndPointDialog';
-import EndPointDetails from '../components/EndPointDetails';
+import AddEndPointDialog from "../components/AddEndPointDialog";
+import EndPointDetails from "../components/EndPointDetails";
 
-type OrderBy = 'name' | 'epEui' | 'status' | 'lastSeen';
+type OrderBy = "name" | "epEui" | "status" | "lastSeen";
 
 const EndPoints: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
 
   // Filter context for persistent search/sort/pagination state
-  const { filters, setSearch, setSort, pagination, setPage, setPageSize } = useEndpointFilters();
+  const { filters, setSearch, setSort, pagination, setPage, setPageSize } =
+    useEndpointFilters();
 
   // Local UI state (not persisted)
   const [selectedEndPoint, setSelectedEndPoint] = useState<string | null>(null);
@@ -62,10 +63,17 @@ const EndPoints: React.FC = () => {
   };
 
   // React Query hooks for data fetching (passes filters for TypeScript alignment)
-  const { data: endPoints = [], isLoading: loading, isError, error } = useEndpoints(apiFilters);
+  const {
+    data: endPoints = [],
+    isLoading: loading,
+    isError,
+    error,
+  } = useEndpoints(apiFilters);
 
   // Fetch full endpoint data when viewing details
-  const { data: fullEndpointData, isLoading: detailsLoading } = useEndpoint(selectedEndPoint || '');
+  const { data: fullEndpointData, isLoading: detailsLoading } = useEndpoint(
+    selectedEndPoint || "",
+  );
 
   // Handle URL parameter for direct navigation to endpoint details
   useEffect(() => {
@@ -86,7 +94,8 @@ const EndPoints: React.FC = () => {
     const searchLower = filters.search.toLowerCase();
     return endPoints.filter(
       (ep) =>
-        ep.name?.toLowerCase().includes(searchLower) || ep.epEui.toLowerCase().includes(searchLower)
+        ep.name?.toLowerCase().includes(searchLower) ||
+        ep.epEui.toLowerCase().includes(searchLower),
     );
   }, [endPoints, filters.search]);
 
@@ -94,10 +103,10 @@ const EndPoints: React.FC = () => {
     const orderBy = filters.sort.field as OrderBy;
     const orderDirection = filters.sort.direction;
     return [...filteredEndPoints].sort((a, b) => {
-      const aValue = a[orderBy] || '';
-      const bValue = b[orderBy] || '';
+      const aValue = a[orderBy] || "";
+      const bValue = b[orderBy] || "";
 
-      if (orderDirection === 'asc') {
+      if (orderDirection === "asc") {
         return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
       } else {
         return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
@@ -108,12 +117,13 @@ const EndPoints: React.FC = () => {
   // Paginate the sorted list for display
   const paginatedEndpoints = useMemo(
     () => paginate(sortedEndPoints, pagination.page, pagination.pageSize),
-    [sortedEndPoints, pagination.page, pagination.pageSize]
+    [sortedEndPoints, pagination.page, pagination.pageSize],
   );
 
   const handleSort = (property: OrderBy) => {
-    const isAsc = filters.sort.field === property && filters.sort.direction === 'asc';
-    setSort({ field: property, direction: isAsc ? 'desc' : 'asc' });
+    const isAsc =
+      filters.sort.field === property && filters.sort.direction === "asc";
+    setSort({ field: property, direction: isAsc ? "desc" : "asc" });
   };
 
   const handleAddDialogClose = () => {
@@ -127,10 +137,12 @@ const EndPoints: React.FC = () => {
     }
   };
 
-  const selectedEndPointData = endPoints.find((ep) => ep.epEui === selectedEndPoint);
+  const selectedEndPointData = endPoints.find(
+    (ep) => ep.epEui === selectedEndPoint,
+  );
 
   // Calculate statistics
-  const activeCount = endPoints.filter((ep) => ep.status === 'active').length;
+  const activeCount = endPoints.filter((ep) => ep.status === "active").length;
 
   const handleBackToList = () => {
     navigate(ROUTES.ENDPOINTS);
@@ -146,10 +158,10 @@ const EndPoints: React.FC = () => {
         <Box
           sx={{
             pt: 4,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            minHeight: '400px',
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: "400px",
           }}
         >
           <CircularProgress />
@@ -159,7 +171,12 @@ const EndPoints: React.FC = () => {
 
     return (
       <Box sx={{ pt: 4 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          mb={3}
+        >
           <Typography variant="h4" component="h1">
             {ENDPOINTS_PAGE.DETAILS_TITLE}
           </Typography>
@@ -180,11 +197,20 @@ const EndPoints: React.FC = () => {
 
   return (
     <Box data-testid="endpoints-page" sx={{ p: 3, pt: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
         <Typography variant="h4" component="h1">
           {ENDPOINTS_PAGE.TITLE}
         </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddDialogOpen(true)}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setAddDialogOpen(true)}
+        >
           {ENDPOINTS_PAGE.ADD_ENDPOINT}
         </Button>
       </Box>
@@ -195,7 +221,9 @@ const EndPoints: React.FC = () => {
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <EndPointIcon sx={{ fontSize: 40, color: 'primary.main', mr: 2 }} />
+                <EndPointIcon
+                  sx={{ fontSize: 40, color: "primary.main", mr: 2 }}
+                />
                 <Box>
                   <Typography color="text.secondary" variant="body2">
                     {ENDPOINTS_PAGE.TOTAL_ENDPOINTS}
@@ -210,7 +238,9 @@ const EndPoints: React.FC = () => {
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <SuccessIcon sx={{ fontSize: 40, color: 'success.main', mr: 2 }} />
+                <SuccessIcon
+                  sx={{ fontSize: 40, color: "success.main", mr: 2 }}
+                />
                 <Box>
                   <Typography color="text.secondary" variant="body2">
                     {ENDPOINTS_PAGE.ACTIVE}
@@ -225,12 +255,14 @@ const EndPoints: React.FC = () => {
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <ErrorIcon sx={{ fontSize: 40, color: 'error.main', mr: 2 }} />
+                <ErrorIcon sx={{ fontSize: 40, color: "error.main", mr: 2 }} />
                 <Box>
                   <Typography color="text.secondary" variant="body2">
                     {ENDPOINTS_PAGE.INACTIVE}
                   </Typography>
-                  <Typography variant="h4">{endPoints.length - activeCount}</Typography>
+                  <Typography variant="h4">
+                    {endPoints.length - activeCount}
+                  </Typography>
                 </Box>
               </Box>
             </CardContent>
@@ -260,7 +292,12 @@ const EndPoints: React.FC = () => {
 
       {/* Loading State */}
       {loading && (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          minHeight="200px"
+        >
           <CircularProgress />
         </Box>
       )}
@@ -274,42 +311,58 @@ const EndPoints: React.FC = () => {
 
       {/* End Points Table */}
       {!loading && !isError && (
-        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
+        <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
           <Table>
             <TableHead>
               <TableRow>
                 <TableCell>
                   <TableSortLabel
-                    active={filters.sort.field === 'name'}
-                    direction={filters.sort.field === 'name' ? filters.sort.direction : 'asc'}
-                    onClick={() => handleSort('name')}
+                    active={filters.sort.field === "name"}
+                    direction={
+                      filters.sort.field === "name"
+                        ? filters.sort.direction
+                        : "asc"
+                    }
+                    onClick={() => handleSort("name")}
                   >
                     {ENDPOINTS_PAGE.COL_NAME}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell>
                   <TableSortLabel
-                    active={filters.sort.field === 'epEui'}
-                    direction={filters.sort.field === 'epEui' ? filters.sort.direction : 'asc'}
-                    onClick={() => handleSort('epEui')}
+                    active={filters.sort.field === "epEui"}
+                    direction={
+                      filters.sort.field === "epEui"
+                        ? filters.sort.direction
+                        : "asc"
+                    }
+                    onClick={() => handleSort("epEui")}
                   >
                     {ENDPOINTS_PAGE.COL_EUI}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell>
                   <TableSortLabel
-                    active={filters.sort.field === 'status'}
-                    direction={filters.sort.field === 'status' ? filters.sort.direction : 'asc'}
-                    onClick={() => handleSort('status')}
+                    active={filters.sort.field === "status"}
+                    direction={
+                      filters.sort.field === "status"
+                        ? filters.sort.direction
+                        : "asc"
+                    }
+                    onClick={() => handleSort("status")}
                   >
                     {ENDPOINTS_PAGE.COL_STATUS}
                   </TableSortLabel>
                 </TableCell>
                 <TableCell>
                   <TableSortLabel
-                    active={filters.sort.field === 'lastSeen'}
-                    direction={filters.sort.field === 'lastSeen' ? filters.sort.direction : 'asc'}
-                    onClick={() => handleSort('lastSeen')}
+                    active={filters.sort.field === "lastSeen"}
+                    direction={
+                      filters.sort.field === "lastSeen"
+                        ? filters.sort.direction
+                        : "asc"
+                    }
+                    onClick={() => handleSort("lastSeen")}
                   >
                     {ENDPOINTS_PAGE.COL_LAST_SEEN}
                   </TableSortLabel>
@@ -321,7 +374,9 @@ const EndPoints: React.FC = () => {
                 <TableRow>
                   <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
                     <Typography color="text.secondary">
-                      {filters.search ? ENDPOINTS_PAGE.NO_MATCH : ENDPOINTS_PAGE.NO_ENDPOINTS}
+                      {filters.search
+                        ? ENDPOINTS_PAGE.NO_MATCH
+                        : ENDPOINTS_PAGE.NO_ENDPOINTS}
                     </Typography>
                   </TableCell>
                 </TableRow>
@@ -331,7 +386,7 @@ const EndPoints: React.FC = () => {
                     key={endPoint.id}
                     hover
                     onClick={() => handleEndPointClick(endPoint.epEui)}
-                    sx={{ cursor: 'pointer' }}
+                    sx={{ cursor: "pointer" }}
                   >
                     <TableCell>
                       <Typography variant="body2">
@@ -339,21 +394,26 @@ const EndPoints: React.FC = () => {
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={(theme) => getMonoBody2(theme)}>
+                      <Typography
+                        variant="body2"
+                        sx={(theme) => getMonoBody2(theme)}
+                      >
                         {endPoint.epEui}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Chip
                         label={endPoint.status}
-                        color={endPoint.status === 'active' ? 'success' : 'default'}
+                        color={
+                          endPoint.status === "active" ? "success" : "default"
+                        }
                         size="small"
                       />
                     </TableCell>
                     <TableCell>
                       <Typography
                         variant="body2"
-                        color={endPoint.lastSeen ? 'text.secondary' : 'error'}
+                        color={endPoint.lastSeen ? "text.secondary" : "error"}
                       >
                         {formatRelativeDuration(endPoint.lastSeen)}
                       </Typography>

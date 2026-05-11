@@ -8,32 +8,36 @@
 /**
  * Connection state for realtime streaming
  */
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+export type ConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "reconnecting";
 
 /**
  * Realtime event types matching backend events
  */
 export type RealtimeEventType =
   // Uplink events
-  | 'uplink.received'
+  | "uplink.received"
   // Downlink events
-  | 'downlink.queued'
-  | 'downlink.sent'
-  | 'downlink.acknowledged'
-  | 'downlink.failed'
-  | 'downlink.revoked'
+  | "downlink.queued"
+  | "downlink.sent"
+  | "downlink.acknowledged"
+  | "downlink.failed"
+  | "downlink.revoked"
   // Endpoint events
-  | 'endpoint.attached'
-  | 'endpoint.detached'
+  | "endpoint.attached"
+  | "endpoint.detached"
   // Base station events
-  | 'basestation.online'
-  | 'basestation.offline'
+  | "basestation.online"
+  | "basestation.offline"
   // SCACI events
-  | 'scaci.session.opened'
-  | 'scaci.session.closed'
-  | 'scaci.error'
+  | "scaci.session.opened"
+  | "scaci.session.closed"
+  | "scaci.error"
   // Generic event
-  | 'event.received';
+  | "event.received";
 
 /**
  * Base realtime event structure
@@ -80,12 +84,12 @@ export type ErrorListener = (error: ConnectionError | null) => void;
  * Connection event types for activity feed
  */
 export type ConnectionEventType =
-  | 'realtime_connect'
-  | 'realtime_connected'
-  | 'realtime_error'
-  | 'realtime_reconnect'
-  | 'realtime_disconnected'
-  | 'realtime_info';
+  | "realtime_connect"
+  | "realtime_connected"
+  | "realtime_error"
+  | "realtime_reconnect"
+  | "realtime_disconnected"
+  | "realtime_info";
 
 /**
  * Connection event for activity timeline

@@ -6,4 +6,4 @@
  *   const Dashboard = lazy(() => import('@modules/dashboard').then(m => ({ default: m.Dashboard })));
  */
 
-export { default as Dashboard } from './pages/Dashboard';
+export { default as Dashboard } from "./pages/Dashboard";

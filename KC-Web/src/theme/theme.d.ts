@@ -1,6 +1,6 @@
-import '@mui/material/styles';
+import "@mui/material/styles";
 
-declare module '@mui/material/styles' {
+declare module "@mui/material/styles" {
   // For theme.typography.monoFontFamily access
   interface Typography {
     monoFontFamily: string;

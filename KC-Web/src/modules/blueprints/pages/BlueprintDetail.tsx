@@ -5,10 +5,13 @@
  * Includes decode preview panel for testing payload decoding.
  */
 
-import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
-import type { DecodePreviewRequest, DecodePreviewResponse } from '@api-types/api';
+import type {
+  DecodePreviewRequest,
+  DecodePreviewResponse,
+} from "@api-types/api";
 import {
   Alert,
   Box,
@@ -23,17 +26,27 @@ import {
   Paper,
   TextField,
   Typography,
-} from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+} from "@mui/material";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from '@services/api';
-import { formatDateTime, formatDecodedPayload, formatTypeEUI } from '@utils/formatters';
-import { ROUTES } from '@constants/app';
-import { BLUEPRINT_LABELS } from '@constants/messages';
-import { queryKeys } from '@config/query-keys';
-import { ArrowBackIcon, CheckCircleIcon, EditIcon, PublishIcon, SaveIcon } from '@theme/icons';
+import { api } from "@services/api";
+import {
+  formatDateTime,
+  formatDecodedPayload,
+  formatTypeEUI,
+} from "@utils/formatters";
+import { ROUTES } from "@constants/app";
+import { BLUEPRINT_LABELS } from "@constants/messages";
+import { queryKeys } from "@config/query-keys";
+import {
+  ArrowBackIcon,
+  CheckCircleIcon,
+  EditIcon,
+  PublishIcon,
+  SaveIcon,
+} from "@theme/icons";
 
-import { RegistrySubmitDialog } from '../components/RegistrySubmitDialog';
+import { RegistrySubmitDialog } from "../components/RegistrySubmitDialog";
 
 /**
  * Blueprint detail page component
@@ -45,14 +58,15 @@ export const BlueprintDetail: React.FC = () => {
 
   // Edit state
   const [isEditing, setIsEditing] = useState(false);
-  const [editedSpec, setEditedSpec] = useState<string>('');
-  const [editedVersion, setEditedVersion] = useState<string>('');
+  const [editedSpec, setEditedSpec] = useState<string>("");
+  const [editedVersion, setEditedVersion] = useState<string>("");
   const [editError, setEditError] = useState<string | null>(null);
 
   // Decode preview state
-  const [testPayload, setTestPayload] = useState<string>('');
+  const [testPayload, setTestPayload] = useState<string>("");
   const [testFormatId, setTestFormatId] = useState<number>(0);
-  const [decodeResult, setDecodeResult] = useState<DecodePreviewResponse | null>(null);
+  const [decodeResult, setDecodeResult] =
+    useState<DecodePreviewResponse | null>(null);
 
   // Registry submit state
   const [showRegistryDialog, setShowRegistryDialog] = useState(false);
@@ -71,7 +85,7 @@ export const BlueprintDetail: React.FC = () => {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: async () => {
-      if (!id) throw new Error('No blueprint ID');
+      if (!id) throw new Error("No blueprint ID");
 
       // Validate JSON
       try {
@@ -89,7 +103,9 @@ export const BlueprintDetail: React.FC = () => {
       setIsEditing(false);
       setEditError(null);
       if (id) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.detail(id) });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.blueprints.detail(id),
+        });
       }
     },
     onError: (err: Error) => {
@@ -102,7 +118,9 @@ export const BlueprintDetail: React.FC = () => {
     mutationFn: () => api.setBlueprintDefault(id!),
     onSuccess: () => {
       if (id) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.detail(id) });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.blueprints.detail(id),
+        });
       }
       // Invalidate all blueprint lists since default status affects list display
       queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.all });
@@ -156,7 +174,7 @@ export const BlueprintDetail: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+      <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
         <CircularProgress />
       </Box>
     );
@@ -166,7 +184,9 @@ export const BlueprintDetail: React.FC = () => {
     return (
       <Box sx={{ p: 3 }}>
         <Alert severity="error">
-          {error instanceof Error ? error.message : BLUEPRINT_LABELS.ERR_BLUEPRINT_NOT_FOUND}
+          {error instanceof Error
+            ? error.message
+            : BLUEPRINT_LABELS.ERR_BLUEPRINT_NOT_FOUND}
         </Alert>
         <Button
           startIcon={<ArrowBackIcon />}
@@ -182,7 +202,7 @@ export const BlueprintDetail: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
         <IconButton onClick={() => navigate(ROUTES.BLUEPRINTS)}>
           <ArrowBackIcon />
         </IconButton>
@@ -190,7 +210,9 @@ export const BlueprintDetail: React.FC = () => {
           {BLUEPRINT_LABELS.BLUEPRINT_VERSION_PREFIX}
           {blueprint.version}
         </Typography>
-        {blueprint.isDefault && <Chip label={BLUEPRINT_LABELS.BADGE_DEFAULT} color="primary" />}
+        {blueprint.isDefault && (
+          <Chip label={BLUEPRINT_LABELS.BADGE_DEFAULT} color="primary" />
+        )}
         {blueprint.registryVerified && (
           <Chip label={BLUEPRINT_LABELS.BADGE_VERIFIED} color="success" />
         )}
@@ -222,7 +244,9 @@ export const BlueprintDetail: React.FC = () => {
         )}
         {isEditing && (
           <>
-            <Button onClick={handleCancelEdit}>{BLUEPRINT_LABELS.ACTION_CANCEL}</Button>
+            <Button onClick={handleCancelEdit}>
+              {BLUEPRINT_LABELS.ACTION_CANCEL}
+            </Button>
             <Button
               variant="contained"
               startIcon={<SaveIcon />}
@@ -272,7 +296,9 @@ export const BlueprintDetail: React.FC = () => {
                 <Typography variant="subtitle2" color="text.secondary">
                   {BLUEPRINT_LABELS.LABEL_TYPE_EUI}
                 </Typography>
-                <Typography fontFamily="monospace">{formatTypeEUI(blueprint.typeEui)}</Typography>
+                <Typography fontFamily="monospace">
+                  {formatTypeEUI(blueprint.typeEui)}
+                </Typography>
               </Box>
 
               <Box sx={{ mb: 2 }}>
@@ -338,19 +364,33 @@ export const BlueprintDetail: React.FC = () => {
                   sx={(theme) => ({
                     mt: 2,
                     p: 2,
-                    bgcolor: decodeResult.success ? 'success.dark' : 'error.dark',
-                    color: 'common.white',
+                    bgcolor: decodeResult.success
+                      ? "success.dark"
+                      : "error.dark",
+                    color: "common.white",
                     fontFamily: theme.typography.monoFontFamily,
-                    fontSize: '0.875rem',
+                    fontSize: "0.875rem",
                   })}
                 >
                   {decodeResult.success ? (
                     <>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          mb: 1,
+                        }}
+                      >
                         <CheckCircleIcon fontSize="small" />
-                        <Typography variant="body2">{BLUEPRINT_LABELS.DECODE_SUCCESS}</Typography>
+                        <Typography variant="body2">
+                          {BLUEPRINT_LABELS.DECODE_SUCCESS}
+                        </Typography>
                       </Box>
-                      <Typography component="pre" sx={{ whiteSpace: 'pre-wrap' }}>
+                      <Typography
+                        component="pre"
+                        sx={{ whiteSpace: "pre-wrap" }}
+                      >
                         {decodeResult.decodedData
                           ? formatDecodedPayload(decodeResult.decodedData)
                           : BLUEPRINT_LABELS.NO_DECODE_RESULT}
@@ -363,11 +403,14 @@ export const BlueprintDetail: React.FC = () => {
                       </Typography>
                       {decodeResult.errorCode && (
                         <Typography variant="body2">
-                          {BLUEPRINT_LABELS.ERROR_CODE_PREFIX} {decodeResult.errorCode}
+                          {BLUEPRINT_LABELS.ERROR_CODE_PREFIX}{" "}
+                          {decodeResult.errorCode}
                         </Typography>
                       )}
                       {decodeResult.errorDetail && (
-                        <Typography variant="body2">{decodeResult.errorDetail}</Typography>
+                        <Typography variant="body2">
+                          {decodeResult.errorDetail}
+                        </Typography>
                       )}
                     </>
                   )}
@@ -394,7 +437,7 @@ export const BlueprintDetail: React.FC = () => {
                   value={editedSpec}
                   onChange={(e) => setEditedSpec(e.target.value)}
                   inputProps={{
-                    style: { fontFamily: 'monospace', fontSize: '0.875rem' },
+                    style: { fontFamily: "monospace", fontSize: "0.875rem" },
                   }}
                   helperText={BLUEPRINT_LABELS.HELPER_SPEC_JSON}
                 />
@@ -402,15 +445,17 @@ export const BlueprintDetail: React.FC = () => {
                 <Paper
                   sx={(theme) => ({
                     p: 2,
-                    bgcolor: 'grey.900',
-                    color: 'grey.100',
+                    bgcolor: "grey.900",
+                    color: "grey.100",
                     fontFamily: theme.typography.monoFontFamily,
-                    fontSize: '0.875rem',
-                    overflow: 'auto',
+                    fontSize: "0.875rem",
+                    overflow: "auto",
                     maxHeight: 500,
                   })}
                 >
-                  <pre style={{ margin: 0 }}>{JSON.stringify(blueprint.specJson, null, 2)}</pre>
+                  <pre style={{ margin: 0 }}>
+                    {JSON.stringify(blueprint.specJson, null, 2)}
+                  </pre>
                 </Paper>
               )}
             </CardContent>
@@ -426,7 +471,9 @@ export const BlueprintDetail: React.FC = () => {
         onSuccess={() => {
           setShowRegistryDialog(false);
           if (id) {
-            queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.detail(id) });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.blueprints.detail(id),
+            });
           }
         }}
       />

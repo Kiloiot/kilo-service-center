@@ -9,7 +9,7 @@ var CoreService = (function () {
   function CoreService() {}
   CoreService.serviceName = "kilocenter.api.v1.CoreService";
   return CoreService;
-}());
+})();
 
 CoreService.CreateEndPoint = {
   methodName: "CreateEndPoint",
@@ -17,7 +17,7 @@ CoreService.CreateEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateEndPointRequest,
-  responseType: core_pb.EndPoint
+  responseType: core_pb.EndPoint,
 };
 
 CoreService.GetEndPoint = {
@@ -26,7 +26,7 @@ CoreService.GetEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetEndPointRequest,
-  responseType: core_pb.EndPoint
+  responseType: core_pb.EndPoint,
 };
 
 CoreService.UpdateEndPoint = {
@@ -35,7 +35,7 @@ CoreService.UpdateEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateEndPointRequest,
-  responseType: core_pb.EndPoint
+  responseType: core_pb.EndPoint,
 };
 
 CoreService.DeleteEndPoint = {
@@ -44,7 +44,7 @@ CoreService.DeleteEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteEndPointRequest,
-  responseType: google_protobuf_empty_pb.Empty
+  responseType: google_protobuf_empty_pb.Empty,
 };
 
 CoreService.ListEndPoints = {
@@ -53,7 +53,7 @@ CoreService.ListEndPoints = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListEndPointsRequest,
-  responseType: core_pb.ListEndPointsResponse
+  responseType: core_pb.ListEndPointsResponse,
 };
 
 CoreService.AttachEndPoint = {
@@ -62,7 +62,7 @@ CoreService.AttachEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.AttachEndPointRequest,
-  responseType: core_pb.AttachEndPointResponse
+  responseType: core_pb.AttachEndPointResponse,
 };
 
 CoreService.DetachEndPoint = {
@@ -71,7 +71,7 @@ CoreService.DetachEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DetachEndPointRequest,
-  responseType: core_pb.DetachEndPointResponse
+  responseType: core_pb.DetachEndPointResponse,
 };
 
 CoreService.CreateBaseStation = {
@@ -80,7 +80,7 @@ CoreService.CreateBaseStation = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateBaseStationRequest,
-  responseType: core_pb.BaseStation
+  responseType: core_pb.BaseStation,
 };
 
 CoreService.GetBaseStation = {
@@ -89,7 +89,7 @@ CoreService.GetBaseStation = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBaseStationRequest,
-  responseType: core_pb.BaseStation
+  responseType: core_pb.BaseStation,
 };
 
 CoreService.UpdateBaseStation = {
@@ -98,7 +98,7 @@ CoreService.UpdateBaseStation = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateBaseStationRequest,
-  responseType: core_pb.BaseStation
+  responseType: core_pb.BaseStation,
 };
 
 CoreService.DeleteBaseStation = {
@@ -107,7 +107,7 @@ CoreService.DeleteBaseStation = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteBaseStationRequest,
-  responseType: google_protobuf_empty_pb.Empty
+  responseType: google_protobuf_empty_pb.Empty,
 };
 
 CoreService.ListBaseStations = {
@@ -116,7 +116,7 @@ CoreService.ListBaseStations = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListBaseStationsRequest,
-  responseType: core_pb.ListBaseStationsResponse
+  responseType: core_pb.ListBaseStationsResponse,
 };
 
 CoreService.GetBaseStationStats = {
@@ -125,7 +125,7 @@ CoreService.GetBaseStationStats = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBaseStationStatsRequest,
-  responseType: core_pb.GetBaseStationStatsResponse
+  responseType: core_pb.GetBaseStationStatsResponse,
 };
 
 CoreService.UpdateBaseStationEui = {
@@ -134,7 +134,7 @@ CoreService.UpdateBaseStationEui = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateBaseStationEuiRequest,
-  responseType: core_pb.BaseStation
+  responseType: core_pb.BaseStation,
 };
 
 CoreService.GetMessage = {
@@ -143,7 +143,7 @@ CoreService.GetMessage = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetMessageRequest,
-  responseType: core_pb.Message
+  responseType: core_pb.Message,
 };
 
 CoreService.SendDownlink = {
@@ -152,7 +152,7 @@ CoreService.SendDownlink = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SendDownlinkRequest,
-  responseType: core_pb.SendDownlinkResponse
+  responseType: core_pb.SendDownlinkResponse,
 };
 
 CoreService.RevokeDownlink = {
@@ -161,7 +161,7 @@ CoreService.RevokeDownlink = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.RevokeDownlinkRequest,
-  responseType: core_pb.RevokeDownlinkResponse
+  responseType: core_pb.RevokeDownlinkResponse,
 };
 
 CoreService.ListDownlinkQueue = {
@@ -170,7 +170,7 @@ CoreService.ListDownlinkQueue = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListDownlinkQueueRequest,
-  responseType: core_pb.ListDownlinkQueueResponse
+  responseType: core_pb.ListDownlinkQueueResponse,
 };
 
 CoreService.GetDownlinkResults = {
@@ -179,7 +179,7 @@ CoreService.GetDownlinkResults = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetDownlinkResultsRequest,
-  responseType: core_pb.GetDownlinkResultsResponse
+  responseType: core_pb.GetDownlinkResultsResponse,
 };
 
 CoreService.SendULTransmit = {
@@ -188,7 +188,7 @@ CoreService.SendULTransmit = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SendULTransmitRequest,
-  responseType: core_pb.SendULTransmitResponse
+  responseType: core_pb.SendULTransmitResponse,
 };
 
 CoreService.RequestBaseStationStatus = {
@@ -197,7 +197,7 @@ CoreService.RequestBaseStationStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.BaseStationStatusRequest,
-  responseType: core_pb.BaseStationStatusResponse
+  responseType: core_pb.BaseStationStatusResponse,
 };
 
 CoreService.InitiatePing = {
@@ -206,7 +206,7 @@ CoreService.InitiatePing = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.InitiatePingRequest,
-  responseType: core_pb.InitiatePingResponse
+  responseType: core_pb.InitiatePingResponse,
 };
 
 CoreService.GetDLRXStatus = {
@@ -215,7 +215,7 @@ CoreService.GetDLRXStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetDLRXStatusRequest,
-  responseType: core_pb.GetDLRXStatusResponse
+  responseType: core_pb.GetDLRXStatusResponse,
 };
 
 CoreService.QueryDLRXStatus = {
@@ -224,7 +224,7 @@ CoreService.QueryDLRXStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.QueryDLRXStatusRequest,
-  responseType: core_pb.QueryDLRXStatusResponse
+  responseType: core_pb.QueryDLRXStatusResponse,
 };
 
 CoreService.GetDLRXStatusQueries = {
@@ -233,7 +233,7 @@ CoreService.GetDLRXStatusQueries = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetDLRXStatusQueriesRequest,
-  responseType: core_pb.GetDLRXStatusQueriesResponse
+  responseType: core_pb.GetDLRXStatusQueriesResponse,
 };
 
 CoreService.GetSystemStatus = {
@@ -242,7 +242,7 @@ CoreService.GetSystemStatus = {
   requestStream: false,
   responseStream: false,
   requestType: google_protobuf_empty_pb.Empty,
-  responseType: core_pb.SystemStatus
+  responseType: core_pb.SystemStatus,
 };
 
 CoreService.GetStatistics = {
@@ -251,7 +251,7 @@ CoreService.GetStatistics = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetStatisticsRequest,
-  responseType: core_pb.Statistics
+  responseType: core_pb.Statistics,
 };
 
 CoreService.GetReleaseInfo = {
@@ -260,7 +260,7 @@ CoreService.GetReleaseInfo = {
   requestStream: false,
   responseStream: false,
   requestType: google_protobuf_empty_pb.Empty,
-  responseType: core_pb.ReleaseInfo
+  responseType: core_pb.ReleaseInfo,
 };
 
 CoreService.CreateIntegration = {
@@ -269,7 +269,7 @@ CoreService.CreateIntegration = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateIntegrationRequest,
-  responseType: core_pb.Integration
+  responseType: core_pb.Integration,
 };
 
 CoreService.GetIntegration = {
@@ -278,7 +278,7 @@ CoreService.GetIntegration = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetIntegrationRequest,
-  responseType: core_pb.Integration
+  responseType: core_pb.Integration,
 };
 
 CoreService.UpdateIntegration = {
@@ -287,7 +287,7 @@ CoreService.UpdateIntegration = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateIntegrationRequest,
-  responseType: core_pb.Integration
+  responseType: core_pb.Integration,
 };
 
 CoreService.DeleteIntegration = {
@@ -296,7 +296,7 @@ CoreService.DeleteIntegration = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteIntegrationRequest,
-  responseType: google_protobuf_empty_pb.Empty
+  responseType: google_protobuf_empty_pb.Empty,
 };
 
 CoreService.ListIntegrations = {
@@ -305,7 +305,7 @@ CoreService.ListIntegrations = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListIntegrationsRequest,
-  responseType: core_pb.ListIntegrationsResponse
+  responseType: core_pb.ListIntegrationsResponse,
 };
 
 CoreService.GetAnalyticsOverview = {
@@ -314,7 +314,7 @@ CoreService.GetAnalyticsOverview = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetAnalyticsOverviewRequest,
-  responseType: core_pb.GetAnalyticsOverviewResponse
+  responseType: core_pb.GetAnalyticsOverviewResponse,
 };
 
 CoreService.GetActivityAnalytics = {
@@ -323,7 +323,7 @@ CoreService.GetActivityAnalytics = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetActivityAnalyticsRequest,
-  responseType: core_pb.GetActivityAnalyticsResponse
+  responseType: core_pb.GetActivityAnalyticsResponse,
 };
 
 CoreService.GetSignalQualityAnalytics = {
@@ -332,7 +332,7 @@ CoreService.GetSignalQualityAnalytics = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetSignalQualityAnalyticsRequest,
-  responseType: core_pb.GetSignalQualityAnalyticsResponse
+  responseType: core_pb.GetSignalQualityAnalyticsResponse,
 };
 
 CoreService.ListEvents = {
@@ -341,7 +341,7 @@ CoreService.ListEvents = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListEventsRequest,
-  responseType: core_pb.ListEventsResponse
+  responseType: core_pb.ListEventsResponse,
 };
 
 CoreService.ListBaseStationActivity = {
@@ -350,7 +350,7 @@ CoreService.ListBaseStationActivity = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListBaseStationActivityRequest,
-  responseType: core_pb.ListBaseStationActivityResponse
+  responseType: core_pb.ListBaseStationActivityResponse,
 };
 
 CoreService.ListEndpointActivity = {
@@ -359,7 +359,7 @@ CoreService.ListEndpointActivity = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListEndpointActivityRequest,
-  responseType: core_pb.ListEndpointActivityResponse
+  responseType: core_pb.ListEndpointActivityResponse,
 };
 
 CoreService.StreamEvents = {
@@ -368,7 +368,7 @@ CoreService.StreamEvents = {
   requestStream: false,
   responseStream: true,
   requestType: core_pb.StreamEventsRequest,
-  responseType: core_pb.Event
+  responseType: core_pb.Event,
 };
 
 CoreService.ListAlerts = {
@@ -377,7 +377,7 @@ CoreService.ListAlerts = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListAlertsRequest,
-  responseType: core_pb.ListAlertsResponse
+  responseType: core_pb.ListAlertsResponse,
 };
 
 CoreService.GetAlertSummary = {
@@ -386,7 +386,7 @@ CoreService.GetAlertSummary = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetAlertSummaryRequest,
-  responseType: core_pb.GetAlertSummaryResponse
+  responseType: core_pb.GetAlertSummaryResponse,
 };
 
 CoreService.ListScaciSessions = {
@@ -395,7 +395,7 @@ CoreService.ListScaciSessions = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListScaciSessionsRequest,
-  responseType: core_pb.ListScaciSessionsResponse
+  responseType: core_pb.ListScaciSessionsResponse,
 };
 
 CoreService.GetScaciSession = {
@@ -404,7 +404,7 @@ CoreService.GetScaciSession = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetScaciSessionRequest,
-  responseType: core_pb.GetScaciSessionResponse
+  responseType: core_pb.GetScaciSessionResponse,
 };
 
 CoreService.GetScaciStatistics = {
@@ -413,7 +413,7 @@ CoreService.GetScaciStatistics = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetScaciStatisticsRequest,
-  responseType: core_pb.GetScaciStatisticsResponse
+  responseType: core_pb.GetScaciStatisticsResponse,
 };
 
 CoreService.ListScaciErrors = {
@@ -422,7 +422,7 @@ CoreService.ListScaciErrors = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListScaciErrorsRequest,
-  responseType: core_pb.ListScaciErrorsResponse
+  responseType: core_pb.ListScaciErrorsResponse,
 };
 
 CoreService.ListScaciQueues = {
@@ -431,7 +431,7 @@ CoreService.ListScaciQueues = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListScaciQueuesRequest,
-  responseType: core_pb.ListScaciQueuesResponse
+  responseType: core_pb.ListScaciQueuesResponse,
 };
 
 CoreService.GetScaciStatus = {
@@ -440,7 +440,7 @@ CoreService.GetScaciStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetScaciStatusRequest,
-  responseType: core_pb.GetScaciStatusResponse
+  responseType: core_pb.GetScaciStatusResponse,
 };
 
 CoreService.GenerateCertificate = {
@@ -449,7 +449,7 @@ CoreService.GenerateCertificate = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GenerateCertificateRequest,
-  responseType: core_pb.GenerateCertificateResponse
+  responseType: core_pb.GenerateCertificateResponse,
 };
 
 CoreService.DownloadCertificate = {
@@ -458,7 +458,7 @@ CoreService.DownloadCertificate = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DownloadCertificateRequest,
-  responseType: core_pb.DownloadCertificateResponse
+  responseType: core_pb.DownloadCertificateResponse,
 };
 
 CoreService.DownloadBaseStationCertificate = {
@@ -467,7 +467,7 @@ CoreService.DownloadBaseStationCertificate = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DownloadBaseStationCertificateRequest,
-  responseType: core_pb.DownloadCertificateResponse
+  responseType: core_pb.DownloadCertificateResponse,
 };
 
 CoreService.GenerateServerCertificates = {
@@ -476,7 +476,7 @@ CoreService.GenerateServerCertificates = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GenerateServerCertificatesRequest,
-  responseType: core_pb.GenerateServerCertificatesResponse
+  responseType: core_pb.GenerateServerCertificatesResponse,
 };
 
 CoreService.RenewServerCertificates = {
@@ -485,7 +485,7 @@ CoreService.RenewServerCertificates = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.RenewServerCertificatesRequest,
-  responseType: core_pb.RenewServerCertificatesResponse
+  responseType: core_pb.RenewServerCertificatesResponse,
 };
 
 CoreService.GetServerCertificateStatus = {
@@ -494,7 +494,7 @@ CoreService.GetServerCertificateStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetServerCertificateStatusRequest,
-  responseType: core_pb.GetServerCertificateStatusResponse
+  responseType: core_pb.GetServerCertificateStatusResponse,
 };
 
 CoreService.CreateManufacturer = {
@@ -503,7 +503,7 @@ CoreService.CreateManufacturer = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateManufacturerRequest,
-  responseType: core_pb.CreateManufacturerResponse
+  responseType: core_pb.CreateManufacturerResponse,
 };
 
 CoreService.GetManufacturer = {
@@ -512,7 +512,7 @@ CoreService.GetManufacturer = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetManufacturerRequest,
-  responseType: core_pb.GetManufacturerResponse
+  responseType: core_pb.GetManufacturerResponse,
 };
 
 CoreService.UpdateManufacturer = {
@@ -521,7 +521,7 @@ CoreService.UpdateManufacturer = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateManufacturerRequest,
-  responseType: core_pb.UpdateManufacturerResponse
+  responseType: core_pb.UpdateManufacturerResponse,
 };
 
 CoreService.DeleteManufacturer = {
@@ -530,7 +530,7 @@ CoreService.DeleteManufacturer = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteManufacturerRequest,
-  responseType: core_pb.DeleteManufacturerResponse
+  responseType: core_pb.DeleteManufacturerResponse,
 };
 
 CoreService.ListManufacturers = {
@@ -539,7 +539,7 @@ CoreService.ListManufacturers = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListManufacturersRequest,
-  responseType: core_pb.ListManufacturersResponse
+  responseType: core_pb.ListManufacturersResponse,
 };
 
 CoreService.CreateDeviceModel = {
@@ -548,7 +548,7 @@ CoreService.CreateDeviceModel = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateDeviceModelRequest,
-  responseType: core_pb.CreateDeviceModelResponse
+  responseType: core_pb.CreateDeviceModelResponse,
 };
 
 CoreService.GetDeviceModel = {
@@ -557,7 +557,7 @@ CoreService.GetDeviceModel = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetDeviceModelRequest,
-  responseType: core_pb.GetDeviceModelResponse
+  responseType: core_pb.GetDeviceModelResponse,
 };
 
 CoreService.UpdateDeviceModel = {
@@ -566,7 +566,7 @@ CoreService.UpdateDeviceModel = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateDeviceModelRequest,
-  responseType: core_pb.UpdateDeviceModelResponse
+  responseType: core_pb.UpdateDeviceModelResponse,
 };
 
 CoreService.DeleteDeviceModel = {
@@ -575,7 +575,7 @@ CoreService.DeleteDeviceModel = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteDeviceModelRequest,
-  responseType: core_pb.DeleteDeviceModelResponse
+  responseType: core_pb.DeleteDeviceModelResponse,
 };
 
 CoreService.ListDeviceModels = {
@@ -584,7 +584,7 @@ CoreService.ListDeviceModels = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListDeviceModelsRequest,
-  responseType: core_pb.ListDeviceModelsResponse
+  responseType: core_pb.ListDeviceModelsResponse,
 };
 
 CoreService.CreateBlueprint = {
@@ -593,7 +593,7 @@ CoreService.CreateBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateBlueprintRequest,
-  responseType: core_pb.CreateBlueprintResponse
+  responseType: core_pb.CreateBlueprintResponse,
 };
 
 CoreService.GetBlueprint = {
@@ -602,7 +602,7 @@ CoreService.GetBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBlueprintRequest,
-  responseType: core_pb.GetBlueprintResponse
+  responseType: core_pb.GetBlueprintResponse,
 };
 
 CoreService.UpdateBlueprint = {
@@ -611,7 +611,7 @@ CoreService.UpdateBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateBlueprintRequest,
-  responseType: core_pb.UpdateBlueprintResponse
+  responseType: core_pb.UpdateBlueprintResponse,
 };
 
 CoreService.DeleteBlueprint = {
@@ -620,7 +620,7 @@ CoreService.DeleteBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteBlueprintRequest,
-  responseType: core_pb.DeleteBlueprintResponse
+  responseType: core_pb.DeleteBlueprintResponse,
 };
 
 CoreService.ListBlueprints = {
@@ -629,7 +629,7 @@ CoreService.ListBlueprints = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListBlueprintsRequest,
-  responseType: core_pb.ListBlueprintsResponse
+  responseType: core_pb.ListBlueprintsResponse,
 };
 
 CoreService.SetDefaultBlueprint = {
@@ -638,7 +638,7 @@ CoreService.SetDefaultBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SetDefaultBlueprintRequest,
-  responseType: core_pb.SetDefaultBlueprintResponse
+  responseType: core_pb.SetDefaultBlueprintResponse,
 };
 
 CoreService.SubmitBlueprintToRegistry = {
@@ -647,7 +647,7 @@ CoreService.SubmitBlueprintToRegistry = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SubmitBlueprintToRegistryRequest,
-  responseType: core_pb.SubmitBlueprintToRegistryResponse
+  responseType: core_pb.SubmitBlueprintToRegistryResponse,
 };
 
 CoreService.CreateDeviceModelWithBlueprint = {
@@ -656,7 +656,7 @@ CoreService.CreateDeviceModelWithBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateDeviceModelWithBlueprintRequest,
-  responseType: core_pb.CreateDeviceModelWithBlueprintResponse
+  responseType: core_pb.CreateDeviceModelWithBlueprintResponse,
 };
 
 CoreService.DecodePreview = {
@@ -665,7 +665,7 @@ CoreService.DecodePreview = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DecodePreviewRequest,
-  responseType: core_pb.DecodePreviewResponse
+  responseType: core_pb.DecodePreviewResponse,
 };
 
 CoreService.ListMessages = {
@@ -674,7 +674,7 @@ CoreService.ListMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListMessagesRequest,
-  responseType: core_pb.ListMessagesResponse
+  responseType: core_pb.ListMessagesResponse,
 };
 
 CoreService.StreamMessages = {
@@ -683,7 +683,7 @@ CoreService.StreamMessages = {
   requestStream: false,
   responseStream: true,
   requestType: core_pb.StreamMessagesRequest,
-  responseType: core_pb.Message
+  responseType: core_pb.Message,
 };
 
 CoreService.ListBaseStationMessages = {
@@ -692,7 +692,7 @@ CoreService.ListBaseStationMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListBaseStationMessagesRequest,
-  responseType: core_pb.ListBaseStationMessagesResponse
+  responseType: core_pb.ListBaseStationMessagesResponse,
 };
 
 CoreService.GetBaseStationMessage = {
@@ -701,7 +701,7 @@ CoreService.GetBaseStationMessage = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBaseStationMessageRequest,
-  responseType: core_pb.GetBaseStationMessageResponse
+  responseType: core_pb.GetBaseStationMessageResponse,
 };
 
 CoreService.GetBaseStationMessageStats = {
@@ -710,7 +710,7 @@ CoreService.GetBaseStationMessageStats = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBaseStationMessageStatsRequest,
-  responseType: core_pb.GetBaseStationMessageStatsResponse
+  responseType: core_pb.GetBaseStationMessageStatsResponse,
 };
 
 CoreService.SearchBaseStationMessages = {
@@ -719,7 +719,7 @@ CoreService.SearchBaseStationMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SearchBaseStationMessagesRequest,
-  responseType: core_pb.SearchBaseStationMessagesResponse
+  responseType: core_pb.SearchBaseStationMessagesResponse,
 };
 
 CoreService.ExportBaseStationMessages = {
@@ -728,7 +728,7 @@ CoreService.ExportBaseStationMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ExportBaseStationMessagesRequest,
-  responseType: core_pb.ExportBaseStationMessagesResponse
+  responseType: core_pb.ExportBaseStationMessagesResponse,
 };
 
 CoreService.StreamBaseStationMessages = {
@@ -737,7 +737,7 @@ CoreService.StreamBaseStationMessages = {
   requestStream: false,
   responseStream: true,
   requestType: core_pb.StreamBaseStationMessagesRequest,
-  responseType: core_pb.BaseStationMessage
+  responseType: core_pb.BaseStationMessage,
 };
 
 CoreService.ListEndpointMessages = {
@@ -746,7 +746,7 @@ CoreService.ListEndpointMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListEndpointMessagesRequest,
-  responseType: core_pb.ListEndpointMessagesResponse
+  responseType: core_pb.ListEndpointMessagesResponse,
 };
 
 CoreService.GetEndPointStats = {
@@ -755,7 +755,7 @@ CoreService.GetEndPointStats = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetEndPointStatsRequest,
-  responseType: core_pb.GetEndPointStatsResponse
+  responseType: core_pb.GetEndPointStatsResponse,
 };
 
 CoreService.GetEndPointOperations = {
@@ -764,7 +764,7 @@ CoreService.GetEndPointOperations = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetEndPointOperationsRequest,
-  responseType: core_pb.GetEndPointOperationsResponse
+  responseType: core_pb.GetEndPointOperationsResponse,
 };
 
 CoreService.ListAllBaseStationLocations = {
@@ -773,7 +773,7 @@ CoreService.ListAllBaseStationLocations = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListAllBaseStationLocationsRequest,
-  responseType: core_pb.ListAllBaseStationLocationsResponse
+  responseType: core_pb.ListAllBaseStationLocationsResponse,
 };
 
 CoreService.GetCEStatus = {
@@ -782,7 +782,7 @@ CoreService.GetCEStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetCEStatusRequest,
-  responseType: core_pb.GetCEStatusResponse
+  responseType: core_pb.GetCEStatusResponse,
 };
 
 CoreService.CompleteCEOnboarding = {
@@ -791,7 +791,7 @@ CoreService.CompleteCEOnboarding = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CompleteCEOnboardingRequest,
-  responseType: core_pb.CompleteCEOnboardingResponse
+  responseType: core_pb.CompleteCEOnboardingResponse,
 };
 
 CoreService.ListCEInstances = {
@@ -800,7 +800,7 @@ CoreService.ListCEInstances = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListCEInstancesRequest,
-  responseType: core_pb.ListCEInstancesResponse
+  responseType: core_pb.ListCEInstancesResponse,
 };
 
 CoreService.RevokeCEInstance = {
@@ -809,7 +809,7 @@ CoreService.RevokeCEInstance = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.RevokeCEInstanceRequest,
-  responseType: core_pb.RevokeCEInstanceResponse
+  responseType: core_pb.RevokeCEInstanceResponse,
 };
 
 exports.CoreService = CoreService;
@@ -819,7 +819,11 @@ function CoreServiceClient(serviceHost, options) {
   this.options = options || {};
 }
 
-CoreServiceClient.prototype.createEndPoint = function createEndPoint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.createEndPoint = function createEndPoint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -840,17 +844,21 @@ CoreServiceClient.prototype.createEndPoint = function createEndPoint(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getEndPoint = function getEndPoint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getEndPoint = function getEndPoint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -871,17 +879,21 @@ CoreServiceClient.prototype.getEndPoint = function getEndPoint(requestMessage, m
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.updateEndPoint = function updateEndPoint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.updateEndPoint = function updateEndPoint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -902,17 +914,21 @@ CoreServiceClient.prototype.updateEndPoint = function updateEndPoint(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.deleteEndPoint = function deleteEndPoint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.deleteEndPoint = function deleteEndPoint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -933,17 +949,21 @@ CoreServiceClient.prototype.deleteEndPoint = function deleteEndPoint(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listEndPoints = function listEndPoints(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listEndPoints = function listEndPoints(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -964,17 +984,21 @@ CoreServiceClient.prototype.listEndPoints = function listEndPoints(requestMessag
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.attachEndPoint = function attachEndPoint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.attachEndPoint = function attachEndPoint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -995,17 +1019,21 @@ CoreServiceClient.prototype.attachEndPoint = function attachEndPoint(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.detachEndPoint = function detachEndPoint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.detachEndPoint = function detachEndPoint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1026,17 +1054,21 @@ CoreServiceClient.prototype.detachEndPoint = function detachEndPoint(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.createBaseStation = function createBaseStation(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.createBaseStation = function createBaseStation(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1057,17 +1089,21 @@ CoreServiceClient.prototype.createBaseStation = function createBaseStation(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getBaseStation = function getBaseStation(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getBaseStation = function getBaseStation(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1088,17 +1124,21 @@ CoreServiceClient.prototype.getBaseStation = function getBaseStation(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.updateBaseStation = function updateBaseStation(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.updateBaseStation = function updateBaseStation(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1119,17 +1159,21 @@ CoreServiceClient.prototype.updateBaseStation = function updateBaseStation(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.deleteBaseStation = function deleteBaseStation(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.deleteBaseStation = function deleteBaseStation(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1150,17 +1194,21 @@ CoreServiceClient.prototype.deleteBaseStation = function deleteBaseStation(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listBaseStations = function listBaseStations(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listBaseStations = function listBaseStations(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1181,17 +1229,21 @@ CoreServiceClient.prototype.listBaseStations = function listBaseStations(request
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getBaseStationStats = function getBaseStationStats(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getBaseStationStats = function getBaseStationStats(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1212,48 +1264,53 @@ CoreServiceClient.prototype.getBaseStationStats = function getBaseStationStats(r
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.updateBaseStationEui = function updateBaseStationEui(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.UpdateBaseStationEui, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.updateBaseStationEui =
+  function updateBaseStationEui(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.UpdateBaseStationEui, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.getMessage = function getMessage(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getMessage = function getMessage(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1274,17 +1331,21 @@ CoreServiceClient.prototype.getMessage = function getMessage(requestMessage, met
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.sendDownlink = function sendDownlink(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.sendDownlink = function sendDownlink(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1305,17 +1366,21 @@ CoreServiceClient.prototype.sendDownlink = function sendDownlink(requestMessage,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.revokeDownlink = function revokeDownlink(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.revokeDownlink = function revokeDownlink(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1336,17 +1401,21 @@ CoreServiceClient.prototype.revokeDownlink = function revokeDownlink(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listDownlinkQueue = function listDownlinkQueue(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listDownlinkQueue = function listDownlinkQueue(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1367,17 +1436,21 @@ CoreServiceClient.prototype.listDownlinkQueue = function listDownlinkQueue(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getDownlinkResults = function getDownlinkResults(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getDownlinkResults = function getDownlinkResults(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1398,17 +1471,21 @@ CoreServiceClient.prototype.getDownlinkResults = function getDownlinkResults(req
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.sendULTransmit = function sendULTransmit(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.sendULTransmit = function sendULTransmit(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1429,48 +1506,53 @@ CoreServiceClient.prototype.sendULTransmit = function sendULTransmit(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.requestBaseStationStatus = function requestBaseStationStatus(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.RequestBaseStationStatus, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.requestBaseStationStatus =
+  function requestBaseStationStatus(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.RequestBaseStationStatus, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.initiatePing = function initiatePing(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.initiatePing = function initiatePing(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1491,17 +1573,21 @@ CoreServiceClient.prototype.initiatePing = function initiatePing(requestMessage,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getDLRXStatus = function getDLRXStatus(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getDLRXStatus = function getDLRXStatus(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1522,17 +1608,21 @@ CoreServiceClient.prototype.getDLRXStatus = function getDLRXStatus(requestMessag
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.queryDLRXStatus = function queryDLRXStatus(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.queryDLRXStatus = function queryDLRXStatus(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1553,48 +1643,53 @@ CoreServiceClient.prototype.queryDLRXStatus = function queryDLRXStatus(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getDLRXStatusQueries = function getDLRXStatusQueries(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GetDLRXStatusQueries, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.getDLRXStatusQueries =
+  function getDLRXStatusQueries(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GetDLRXStatusQueries, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.getSystemStatus = function getSystemStatus(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getSystemStatus = function getSystemStatus(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1615,17 +1710,21 @@ CoreServiceClient.prototype.getSystemStatus = function getSystemStatus(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getStatistics = function getStatistics(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getStatistics = function getStatistics(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1646,17 +1745,21 @@ CoreServiceClient.prototype.getStatistics = function getStatistics(requestMessag
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getReleaseInfo = function getReleaseInfo(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getReleaseInfo = function getReleaseInfo(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1677,17 +1780,21 @@ CoreServiceClient.prototype.getReleaseInfo = function getReleaseInfo(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.createIntegration = function createIntegration(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.createIntegration = function createIntegration(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1708,17 +1815,21 @@ CoreServiceClient.prototype.createIntegration = function createIntegration(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getIntegration = function getIntegration(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getIntegration = function getIntegration(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1739,17 +1850,21 @@ CoreServiceClient.prototype.getIntegration = function getIntegration(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.updateIntegration = function updateIntegration(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.updateIntegration = function updateIntegration(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1770,17 +1885,21 @@ CoreServiceClient.prototype.updateIntegration = function updateIntegration(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.deleteIntegration = function deleteIntegration(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.deleteIntegration = function deleteIntegration(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1801,17 +1920,21 @@ CoreServiceClient.prototype.deleteIntegration = function deleteIntegration(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listIntegrations = function listIntegrations(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listIntegrations = function listIntegrations(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1832,110 +1955,117 @@ CoreServiceClient.prototype.listIntegrations = function listIntegrations(request
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getAnalyticsOverview = function getAnalyticsOverview(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GetAnalyticsOverview, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.getAnalyticsOverview =
+  function getAnalyticsOverview(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GetAnalyticsOverview, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.getActivityAnalytics = function getActivityAnalytics(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GetActivityAnalytics, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.getActivityAnalytics =
+  function getActivityAnalytics(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GetActivityAnalytics, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.getSignalQualityAnalytics = function getSignalQualityAnalytics(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GetSignalQualityAnalytics, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.getSignalQualityAnalytics =
+  function getSignalQualityAnalytics(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GetSignalQualityAnalytics, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.listEvents = function listEvents(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listEvents = function listEvents(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1956,83 +2086,88 @@ CoreServiceClient.prototype.listEvents = function listEvents(requestMessage, met
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listBaseStationActivity = function listBaseStationActivity(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.ListBaseStationActivity, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.listBaseStationActivity =
+  function listBaseStationActivity(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.ListBaseStationActivity, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.listEndpointActivity = function listEndpointActivity(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.ListEndpointActivity, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.listEndpointActivity =
+  function listEndpointActivity(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.ListEndpointActivity, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.streamEvents = function streamEvents(requestMessage, metadata) {
+CoreServiceClient.prototype.streamEvents = function streamEvents(
+  requestMessage,
+  metadata,
+) {
   var listeners = {
     data: [],
     end: [],
-    status: []
+    status: [],
   };
   var client = grpc.invoke(CoreService.StreamEvents, {
     request: requestMessage,
@@ -2053,7 +2188,7 @@ CoreServiceClient.prototype.streamEvents = function streamEvents(requestMessage,
         handler({ code: status, details: statusMessage, metadata: trailers });
       });
       listeners = null;
-    }
+    },
   });
   return {
     on: function (type, handler) {
@@ -2063,11 +2198,15 @@ CoreServiceClient.prototype.streamEvents = function streamEvents(requestMessage,
     cancel: function () {
       listeners = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listAlerts = function listAlerts(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listAlerts = function listAlerts(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2088,17 +2227,21 @@ CoreServiceClient.prototype.listAlerts = function listAlerts(requestMessage, met
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getAlertSummary = function getAlertSummary(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getAlertSummary = function getAlertSummary(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2119,17 +2262,21 @@ CoreServiceClient.prototype.getAlertSummary = function getAlertSummary(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listScaciSessions = function listScaciSessions(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listScaciSessions = function listScaciSessions(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2150,17 +2297,21 @@ CoreServiceClient.prototype.listScaciSessions = function listScaciSessions(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getScaciSession = function getScaciSession(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getScaciSession = function getScaciSession(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2181,17 +2332,21 @@ CoreServiceClient.prototype.getScaciSession = function getScaciSession(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getScaciStatistics = function getScaciStatistics(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getScaciStatistics = function getScaciStatistics(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2212,17 +2367,21 @@ CoreServiceClient.prototype.getScaciStatistics = function getScaciStatistics(req
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listScaciErrors = function listScaciErrors(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listScaciErrors = function listScaciErrors(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2243,17 +2402,21 @@ CoreServiceClient.prototype.listScaciErrors = function listScaciErrors(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listScaciQueues = function listScaciQueues(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listScaciQueues = function listScaciQueues(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2274,17 +2437,21 @@ CoreServiceClient.prototype.listScaciQueues = function listScaciQueues(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getScaciStatus = function getScaciStatus(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getScaciStatus = function getScaciStatus(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2305,17 +2472,21 @@ CoreServiceClient.prototype.getScaciStatus = function getScaciStatus(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.generateCertificate = function generateCertificate(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.generateCertificate = function generateCertificate(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2336,17 +2507,21 @@ CoreServiceClient.prototype.generateCertificate = function generateCertificate(r
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.downloadCertificate = function downloadCertificate(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.downloadCertificate = function downloadCertificate(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2367,141 +2542,149 @@ CoreServiceClient.prototype.downloadCertificate = function downloadCertificate(r
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.downloadBaseStationCertificate = function downloadBaseStationCertificate(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.DownloadBaseStationCertificate, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.downloadBaseStationCertificate =
+  function downloadBaseStationCertificate(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.DownloadBaseStationCertificate, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.generateServerCertificates = function generateServerCertificates(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GenerateServerCertificates, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.generateServerCertificates =
+  function generateServerCertificates(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GenerateServerCertificates, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.renewServerCertificates = function renewServerCertificates(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.RenewServerCertificates, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.renewServerCertificates =
+  function renewServerCertificates(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.RenewServerCertificates, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.getServerCertificateStatus = function getServerCertificateStatus(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GetServerCertificateStatus, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.getServerCertificateStatus =
+  function getServerCertificateStatus(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GetServerCertificateStatus, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.createManufacturer = function createManufacturer(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.createManufacturer = function createManufacturer(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2522,17 +2705,21 @@ CoreServiceClient.prototype.createManufacturer = function createManufacturer(req
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getManufacturer = function getManufacturer(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getManufacturer = function getManufacturer(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2553,17 +2740,21 @@ CoreServiceClient.prototype.getManufacturer = function getManufacturer(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.updateManufacturer = function updateManufacturer(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.updateManufacturer = function updateManufacturer(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2584,17 +2775,21 @@ CoreServiceClient.prototype.updateManufacturer = function updateManufacturer(req
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.deleteManufacturer = function deleteManufacturer(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.deleteManufacturer = function deleteManufacturer(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2615,17 +2810,21 @@ CoreServiceClient.prototype.deleteManufacturer = function deleteManufacturer(req
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listManufacturers = function listManufacturers(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listManufacturers = function listManufacturers(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2646,17 +2845,21 @@ CoreServiceClient.prototype.listManufacturers = function listManufacturers(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.createDeviceModel = function createDeviceModel(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.createDeviceModel = function createDeviceModel(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2677,17 +2880,21 @@ CoreServiceClient.prototype.createDeviceModel = function createDeviceModel(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getDeviceModel = function getDeviceModel(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getDeviceModel = function getDeviceModel(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2708,17 +2915,21 @@ CoreServiceClient.prototype.getDeviceModel = function getDeviceModel(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.updateDeviceModel = function updateDeviceModel(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.updateDeviceModel = function updateDeviceModel(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2739,17 +2950,21 @@ CoreServiceClient.prototype.updateDeviceModel = function updateDeviceModel(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.deleteDeviceModel = function deleteDeviceModel(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.deleteDeviceModel = function deleteDeviceModel(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2770,17 +2985,21 @@ CoreServiceClient.prototype.deleteDeviceModel = function deleteDeviceModel(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listDeviceModels = function listDeviceModels(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listDeviceModels = function listDeviceModels(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2801,17 +3020,21 @@ CoreServiceClient.prototype.listDeviceModels = function listDeviceModels(request
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.createBlueprint = function createBlueprint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.createBlueprint = function createBlueprint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2832,17 +3055,21 @@ CoreServiceClient.prototype.createBlueprint = function createBlueprint(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getBlueprint = function getBlueprint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getBlueprint = function getBlueprint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2863,17 +3090,21 @@ CoreServiceClient.prototype.getBlueprint = function getBlueprint(requestMessage,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.updateBlueprint = function updateBlueprint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.updateBlueprint = function updateBlueprint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2894,17 +3125,21 @@ CoreServiceClient.prototype.updateBlueprint = function updateBlueprint(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.deleteBlueprint = function deleteBlueprint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.deleteBlueprint = function deleteBlueprint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2925,17 +3160,21 @@ CoreServiceClient.prototype.deleteBlueprint = function deleteBlueprint(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listBlueprints = function listBlueprints(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listBlueprints = function listBlueprints(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2956,17 +3195,21 @@ CoreServiceClient.prototype.listBlueprints = function listBlueprints(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.setDefaultBlueprint = function setDefaultBlueprint(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.setDefaultBlueprint = function setDefaultBlueprint(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2987,79 +3230,85 @@ CoreServiceClient.prototype.setDefaultBlueprint = function setDefaultBlueprint(r
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.submitBlueprintToRegistry = function submitBlueprintToRegistry(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.SubmitBlueprintToRegistry, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.submitBlueprintToRegistry =
+  function submitBlueprintToRegistry(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.SubmitBlueprintToRegistry, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.createDeviceModelWithBlueprint = function createDeviceModelWithBlueprint(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.CreateDeviceModelWithBlueprint, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.createDeviceModelWithBlueprint =
+  function createDeviceModelWithBlueprint(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.CreateDeviceModelWithBlueprint, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.decodePreview = function decodePreview(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.decodePreview = function decodePreview(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3080,17 +3329,21 @@ CoreServiceClient.prototype.decodePreview = function decodePreview(requestMessag
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.listMessages = function listMessages(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listMessages = function listMessages(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3111,21 +3364,24 @@ CoreServiceClient.prototype.listMessages = function listMessages(requestMessage,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.streamMessages = function streamMessages(requestMessage, metadata) {
+CoreServiceClient.prototype.streamMessages = function streamMessages(
+  requestMessage,
+  metadata,
+) {
   var listeners = {
     data: [],
     end: [],
-    status: []
+    status: [],
   };
   var client = grpc.invoke(CoreService.StreamMessages, {
     request: requestMessage,
@@ -3146,7 +3402,7 @@ CoreServiceClient.prototype.streamMessages = function streamMessages(requestMess
         handler({ code: status, details: statusMessage, metadata: trailers });
       });
       listeners = null;
-    }
+    },
   });
   return {
     on: function (type, handler) {
@@ -3156,236 +3412,247 @@ CoreServiceClient.prototype.streamMessages = function streamMessages(requestMess
     cancel: function () {
       listeners = null;
       client.close();
-    }
-  };
-};
-
-CoreServiceClient.prototype.listBaseStationMessages = function listBaseStationMessages(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.ListBaseStationMessages, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
-        }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
-  };
-};
-
-CoreServiceClient.prototype.getBaseStationMessage = function getBaseStationMessage(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GetBaseStationMessage, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
-        }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
-  };
-};
-
-CoreServiceClient.prototype.getBaseStationMessageStats = function getBaseStationMessageStats(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GetBaseStationMessageStats, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
-        }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
-  };
-};
-
-CoreServiceClient.prototype.searchBaseStationMessages = function searchBaseStationMessages(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.SearchBaseStationMessages, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
-        }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
-  };
-};
-
-CoreServiceClient.prototype.exportBaseStationMessages = function exportBaseStationMessages(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.ExportBaseStationMessages, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
-        }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
-  };
-};
-
-CoreServiceClient.prototype.streamBaseStationMessages = function streamBaseStationMessages(requestMessage, metadata) {
-  var listeners = {
-    data: [],
-    end: [],
-    status: []
-  };
-  var client = grpc.invoke(CoreService.StreamBaseStationMessages, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onMessage: function (responseMessage) {
-      listeners.data.forEach(function (handler) {
-        handler(responseMessage);
-      });
     },
-    onEnd: function (status, statusMessage, trailers) {
-      listeners.status.forEach(function (handler) {
-        handler({ code: status, details: statusMessage, metadata: trailers });
-      });
-      listeners.end.forEach(function (handler) {
-        handler({ code: status, details: statusMessage, metadata: trailers });
-      });
-      listeners = null;
-    }
-  });
-  return {
-    on: function (type, handler) {
-      listeners[type].push(handler);
-      return this;
-    },
-    cancel: function () {
-      listeners = null;
-      client.close();
-    }
   };
 };
 
-CoreServiceClient.prototype.listEndpointMessages = function listEndpointMessages(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.ListEndpointMessages, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.listBaseStationMessages =
+  function listBaseStationMessages(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.ListBaseStationMessages, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.getEndPointStats = function getEndPointStats(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getBaseStationMessage =
+  function getBaseStationMessage(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GetBaseStationMessage, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
+        }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
+  };
+
+CoreServiceClient.prototype.getBaseStationMessageStats =
+  function getBaseStationMessageStats(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GetBaseStationMessageStats, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
+        }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
+  };
+
+CoreServiceClient.prototype.searchBaseStationMessages =
+  function searchBaseStationMessages(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.SearchBaseStationMessages, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
+        }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
+  };
+
+CoreServiceClient.prototype.exportBaseStationMessages =
+  function exportBaseStationMessages(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.ExportBaseStationMessages, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
+        }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
+  };
+
+CoreServiceClient.prototype.streamBaseStationMessages =
+  function streamBaseStationMessages(requestMessage, metadata) {
+    var listeners = {
+      data: [],
+      end: [],
+      status: [],
+    };
+    var client = grpc.invoke(CoreService.StreamBaseStationMessages, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onMessage: function (responseMessage) {
+        listeners.data.forEach(function (handler) {
+          handler(responseMessage);
+        });
+      },
+      onEnd: function (status, statusMessage, trailers) {
+        listeners.status.forEach(function (handler) {
+          handler({ code: status, details: statusMessage, metadata: trailers });
+        });
+        listeners.end.forEach(function (handler) {
+          handler({ code: status, details: statusMessage, metadata: trailers });
+        });
+        listeners = null;
+      },
+    });
+    return {
+      on: function (type, handler) {
+        listeners[type].push(handler);
+        return this;
+      },
+      cancel: function () {
+        listeners = null;
+        client.close();
+      },
+    };
+  };
+
+CoreServiceClient.prototype.listEndpointMessages =
+  function listEndpointMessages(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.ListEndpointMessages, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
+        }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
+  };
+
+CoreServiceClient.prototype.getEndPointStats = function getEndPointStats(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3406,79 +3673,85 @@ CoreServiceClient.prototype.getEndPointStats = function getEndPointStats(request
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.getEndPointOperations = function getEndPointOperations(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.GetEndPointOperations, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.getEndPointOperations =
+  function getEndPointOperations(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.GetEndPointOperations, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.listAllBaseStationLocations = function listAllBaseStationLocations(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.ListAllBaseStationLocations, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.listAllBaseStationLocations =
+  function listAllBaseStationLocations(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.ListAllBaseStationLocations, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.getCEStatus = function getCEStatus(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.getCEStatus = function getCEStatus(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3499,48 +3772,53 @@ CoreServiceClient.prototype.getCEStatus = function getCEStatus(requestMessage, m
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.completeCEOnboarding = function completeCEOnboarding(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(CoreService.CompleteCEOnboarding, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+CoreServiceClient.prototype.completeCEOnboarding =
+  function completeCEOnboarding(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(CoreService.CompleteCEOnboarding, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-CoreServiceClient.prototype.listCEInstances = function listCEInstances(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.listCEInstances = function listCEInstances(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3561,17 +3839,21 @@ CoreServiceClient.prototype.listCEInstances = function listCEInstances(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-CoreServiceClient.prototype.revokeCEInstance = function revokeCEInstance(requestMessage, metadata, callback) {
+CoreServiceClient.prototype.revokeCEInstance = function revokeCEInstance(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3592,15 +3874,14 @@ CoreServiceClient.prototype.revokeCEInstance = function revokeCEInstance(request
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
 exports.CoreServiceClient = CoreServiceClient;
-

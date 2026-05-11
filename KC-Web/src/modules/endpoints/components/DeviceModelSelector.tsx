@@ -1,18 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 
-import type { DeviceModelUI, ManufacturerUI } from '@api-types/api';
-import { Autocomplete, TextField, Typography } from '@mui/material';
-import Grid from '@mui/material/Grid';
-import { useQuery } from '@tanstack/react-query';
+import type { DeviceModelUI, ManufacturerUI } from "@api-types/api";
+import { Autocomplete, TextField, Typography } from "@mui/material";
+import Grid from "@mui/material/Grid";
+import { useQuery } from "@tanstack/react-query";
 
-import { useDeviceModels, useManufacturers } from '@modules/blueprints/hooks';
-import { api } from '@services/api';
-import { ENDPOINT_DETAILS, ENDPOINT_FORM } from '@constants/messages';
-import { queryKeys } from '@config/query-keys';
+import { useDeviceModels, useManufacturers } from "@modules/blueprints/hooks";
+import { api } from "@services/api";
+import { ENDPOINT_DETAILS, ENDPOINT_FORM } from "@constants/messages";
+import { queryKeys } from "@config/query-keys";
 
 // Discriminated union option types for clear sentinel safety
-type MfgOption = { kind: 'real'; data: ManufacturerUI } | { kind: 'clear' };
-type ModelOption = { kind: 'real'; data: DeviceModelUI } | { kind: 'clear' };
+type MfgOption = { kind: "real"; data: ManufacturerUI } | { kind: "clear" };
+type ModelOption = { kind: "real"; data: DeviceModelUI } | { kind: "clear" };
 
 interface DeviceModelSelectorProps {
   value?: string;
@@ -28,15 +28,24 @@ interface DeviceModelSelectorProps {
  * fetches the model via React Query to resolve its manufacturerId, then hydrates
  * both dropdowns deterministically.
  */
-const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({ value, onChange, disabled }) => {
-  const { data: manufacturers = [], isLoading: loadingMfg } = useManufacturers();
+const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
+  value,
+  onChange,
+  disabled,
+}) => {
+  const { data: manufacturers = [], isLoading: loadingMfg } =
+    useManufacturers();
   const [selectedMfg, setSelectedMfg] = useState<ManufacturerUI | null>(null);
-  const { data: deviceModels = [], isLoading: loadingModels } = useDeviceModels(selectedMfg?.id);
-  const [selectedModel, setSelectedModel] = useState<DeviceModelUI | null>(null);
+  const { data: deviceModels = [], isLoading: loadingModels } = useDeviceModels(
+    selectedMfg?.id,
+  );
+  const [selectedModel, setSelectedModel] = useState<DeviceModelUI | null>(
+    null,
+  );
 
   // Query-driven bootstrap: fetch the model by ID to get its manufacturerId
   const { data: resolvedModel } = useQuery({
-    queryKey: queryKeys.blueprints.deviceModelDetail(value ?? ''),
+    queryKey: queryKeys.blueprints.deviceModelDetail(value ?? ""),
     queryFn: () => api.getDeviceModel(value!),
     enabled: !!value,
   });
@@ -54,7 +63,9 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({ value, onChan
   // Effect 2 — Manufacturer resolution from resolved model
   useEffect(() => {
     if (resolvedModel && manufacturers.length > 0 && !selectedMfg) {
-      const mfg = manufacturers.find((m) => m.id === resolvedModel.manufacturerId);
+      const mfg = manufacturers.find(
+        (m) => m.id === resolvedModel.manufacturerId,
+      );
       if (mfg) setSelectedMfg(mfg);
     }
   }, [resolvedModel, manufacturers, selectedMfg]);
@@ -71,17 +82,17 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({ value, onChan
   const hasBond = !!value;
 
   const mfgOptions: MfgOption[] = [
-    ...(hasBond || selectedMfg ? [{ kind: 'clear' as const }] : []),
-    ...manufacturers.map((m) => ({ kind: 'real' as const, data: m })),
+    ...(hasBond || selectedMfg ? [{ kind: "clear" as const }] : []),
+    ...manufacturers.map((m) => ({ kind: "real" as const, data: m })),
   ];
 
   const modelOptions: ModelOption[] = [
-    ...(hasBond || selectedModel ? [{ kind: 'clear' as const }] : []),
-    ...deviceModels.map((m) => ({ kind: 'real' as const, data: m })),
+    ...(hasBond || selectedModel ? [{ kind: "clear" as const }] : []),
+    ...deviceModels.map((m) => ({ kind: "real" as const, data: m })),
   ];
 
   const handleMfgChange = (_: unknown, opt: MfgOption | null) => {
-    if (!opt || opt.kind === 'clear') {
+    if (!opt || opt.kind === "clear") {
       setSelectedMfg(null);
       setSelectedModel(null);
       onChange(undefined);
@@ -93,7 +104,7 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({ value, onChan
   };
 
   const handleModelChange = (_: unknown, opt: ModelOption | null) => {
-    if (!opt || opt.kind === 'clear') {
+    if (!opt || opt.kind === "clear") {
       setSelectedModel(null);
       onChange(undefined);
       return;
@@ -103,9 +114,11 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({ value, onChan
   };
 
   // Map local selection back to MfgOption for Autocomplete value
-  const mfgValue: MfgOption | null = selectedMfg ? { kind: 'real', data: selectedMfg } : null;
+  const mfgValue: MfgOption | null = selectedMfg
+    ? { kind: "real", data: selectedMfg }
+    : null;
   const modelValue: ModelOption | null = selectedModel
-    ? { kind: 'real', data: selectedModel }
+    ? { kind: "real", data: selectedModel }
     : null;
 
   return (
@@ -123,11 +136,14 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({ value, onChan
         <Autocomplete
           options={mfgOptions}
           getOptionLabel={(opt) =>
-            opt.kind === 'clear' ? ENDPOINT_FORM.OPTION_NONE_MANUFACTURER : opt.data.name
+            opt.kind === "clear"
+              ? ENDPOINT_FORM.OPTION_NONE_MANUFACTURER
+              : opt.data.name
           }
           isOptionEqualToValue={(opt, val) => {
-            if (opt.kind === 'clear' && val.kind === 'clear') return true;
-            if (opt.kind === 'real' && val.kind === 'real') return opt.data.id === val.data.id;
+            if (opt.kind === "clear" && val.kind === "clear") return true;
+            if (opt.kind === "real" && val.kind === "real")
+              return opt.data.id === val.data.id;
             return false;
           }}
           value={mfgValue}
@@ -152,11 +168,14 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({ value, onChan
         <Autocomplete
           options={modelOptions}
           getOptionLabel={(opt) =>
-            opt.kind === 'clear' ? ENDPOINT_FORM.OPTION_NONE_MODEL : opt.data.name
+            opt.kind === "clear"
+              ? ENDPOINT_FORM.OPTION_NONE_MODEL
+              : opt.data.name
           }
           isOptionEqualToValue={(opt, val) => {
-            if (opt.kind === 'clear' && val.kind === 'clear') return true;
-            if (opt.kind === 'real' && val.kind === 'real') return opt.data.id === val.data.id;
+            if (opt.kind === "clear" && val.kind === "clear") return true;
+            if (opt.kind === "real" && val.kind === "real")
+              return opt.data.id === val.data.id;
             return false;
           }}
           value={modelValue}

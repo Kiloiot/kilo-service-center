@@ -4,17 +4,21 @@
  * React Query hooks for user admin data fetching and mutations.
  */
 
-import type { CreateUserRequest, UpdateUserRequest } from '@api-types/api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CreateUserRequest, UpdateUserRequest } from "@api-types/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiService } from '@services/api';
-import { TIMING, USER_LOOKUP_LIMIT } from '@constants/app';
-import { queryKeys } from '@config/query-keys';
+import { apiService } from "@services/api";
+import { TIMING, USER_LOOKUP_LIMIT } from "@constants/app";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Fetch all users with pagination
  */
-export function useUsers(limit = 50, offset = 0, options?: { enabled?: boolean }) {
+export function useUsers(
+  limit = 50,
+  offset = 0,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: queryKeys.users.list({ limit, offset }),
     queryFn: () => apiService.getUsers(limit, offset),
@@ -103,7 +107,10 @@ export function useUsersForLookup(options?: { enabled?: boolean }) {
 /**
  * Fetch organizations a user belongs to
  */
-export function useUserOrganizations(userId: string, options?: { enabled?: boolean }) {
+export function useUserOrganizations(
+  userId: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: queryKeys.userOrganizations(userId),
     queryFn: () => apiService.listUserOrganizations(userId),

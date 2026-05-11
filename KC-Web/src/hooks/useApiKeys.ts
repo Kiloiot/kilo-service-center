@@ -5,12 +5,16 @@
  * with automatic cache invalidation via React Query.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from '@services/api';
-import { queryKeys } from '@config/query-keys';
+import { api } from "@services/api";
+import { queryKeys } from "@config/query-keys";
 
-export function useApiKeys(params?: { pageSize?: number; pageToken?: string; userId?: string }) {
+export function useApiKeys(params?: {
+  pageSize?: number;
+  pageToken?: string;
+  userId?: string;
+}) {
   return useQuery({
     queryKey: queryKeys.apiKeys.list(params),
     queryFn: () => api.listApiKeys(params),
@@ -20,7 +24,8 @@ export function useApiKeys(params?: { pageSize?: number; pageToken?: string; use
 export function useCreateApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (req: { name: string; keyType: string; expiresAt?: Date }) => api.createApiKey(req),
+    mutationFn: (req: { name: string; keyType: string; expiresAt?: Date }) =>
+      api.createApiKey(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.all });
     },

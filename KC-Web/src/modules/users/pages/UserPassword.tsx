@@ -5,10 +5,10 @@
  * Uses ROUTE_TITLES.USER_DETAIL (intentionally reused per NAV_STRUCTURE.md).
  */
 
-import React, { useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import React, { useState } from "react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
-import { useChangePassword, useUser } from '@hooks';
+import { useChangePassword, useUser } from "@hooks";
 import {
   Alert,
   Box,
@@ -18,11 +18,15 @@ import {
   CircularProgress,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { useSession } from '@contexts/SessionContext';
-import { ROUTES, UI_TIMING } from '@constants/app';
-import { MSG_PASSWORD_CHANGED, USER_FORM, USERS_PAGE } from '@constants/messages';
+import { useSession } from "@contexts/SessionContext";
+import { ROUTES, UI_TIMING } from "@constants/app";
+import {
+  MSG_PASSWORD_CHANGED,
+  USER_FORM,
+  USERS_PAGE,
+} from "@constants/messages";
 
 const UserPassword: React.FC = () => {
   const navigate = useNavigate();
@@ -34,16 +38,16 @@ const UserPassword: React.FC = () => {
     data: user,
     isLoading: userLoading,
     isError: userError,
-  } = useUser(id || '', {
+  } = useUser(id || "", {
     enabled: isHydrated && isAdmin && Boolean(id),
   });
   const changePassword = useChangePassword();
 
   // Form state
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const handleChangePassword = async () => {
     if (!id) return;
@@ -58,16 +62,16 @@ const UserPassword: React.FC = () => {
       return;
     }
 
-    setPasswordError('');
+    setPasswordError("");
 
     try {
       await changePassword.mutateAsync({ id, password: newPassword });
-      setNewPassword('');
-      setConfirmPassword('');
+      setNewPassword("");
+      setConfirmPassword("");
       setSuccessMessage(MSG_PASSWORD_CHANGED);
       // Redirect to user detail after success
       setTimeout(() => {
-        navigate(ROUTES.USER_DETAIL.replace(':id', id));
+        navigate(ROUTES.USER_DETAIL.replace(":id", id));
       }, UI_TIMING.NAVIGATION_DELAY_MS);
     } catch {
       // Error handled by mutation hook
@@ -76,7 +80,7 @@ const UserPassword: React.FC = () => {
 
   const handleBackToDetail = () => {
     if (id) {
-      navigate(ROUTES.USER_DETAIL.replace(':id', id));
+      navigate(ROUTES.USER_DETAIL.replace(":id", id));
     } else {
       navigate(ROUTES.USERS);
     }
@@ -95,10 +99,10 @@ const UserPassword: React.FC = () => {
       <Box
         sx={{
           pt: 4,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '400px',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "400px",
         }}
       >
         <CircularProgress />
@@ -120,7 +124,12 @@ const UserPassword: React.FC = () => {
   return (
     <Box sx={{ p: 3, pt: 4 }}>
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
         <Typography variant="h4" component="h1">
           {USER_FORM.ACTION_CHANGE_PASSWORD}
         </Typography>
@@ -159,7 +168,7 @@ const UserPassword: React.FC = () => {
 
       <Card sx={{ maxWidth: 500 }}>
         <CardContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
             <TextField
               label={USER_FORM.LABEL_PASSWORD}
               type="password"

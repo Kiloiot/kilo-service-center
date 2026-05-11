@@ -4,11 +4,11 @@
  * React Query hooks for dashboard data fetching.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from "@tanstack/react-query";
 
-import { apiService } from '@services/api';
-import { TIMING, SERVER_ACTIVITY_EVENT_TYPES } from '@constants/app';
-import { queryKeys } from '@config/query-keys';
+import { apiService } from "@services/api";
+import { TIMING, SERVER_ACTIVITY_EVENT_TYPES } from "@constants/app";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Fetch analytics overview for dashboard
@@ -38,7 +38,8 @@ export function useDashboardEvents(
 ) {
   return useQuery({
     queryKey: queryKeys.events.list(categories, pageToken, eventTypes),
-    queryFn: () => apiService.getEvents(limit, categories, pageToken, eventTypes),
+    queryFn: () =>
+      apiService.getEvents(limit, categories, pageToken, eventTypes),
     refetchInterval: TIMING.DASHBOARD_REFRESH * 1000,
   });
 }

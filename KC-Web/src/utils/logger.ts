@@ -5,7 +5,7 @@
  * All source files must use this logger instead of console directly.
  */
 
-import { isDevelopment } from '@config/env';
+import { isDevelopment } from "@config/env";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const silent = (..._: unknown[]): void => {};

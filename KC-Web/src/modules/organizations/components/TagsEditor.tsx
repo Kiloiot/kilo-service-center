@@ -4,12 +4,12 @@
  * Key-value tag editor for organizations.
  */
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
-import { Box, Chip, IconButton, Stack, TextField } from '@mui/material';
+import { Box, Chip, IconButton, Stack, TextField } from "@mui/material";
 
-import { TAGS_EDITOR } from '@constants/messages';
-import { AddIcon, DeleteIcon } from '@theme/icons';
+import { TAGS_EDITOR } from "@constants/messages";
+import { AddIcon, DeleteIcon } from "@theme/icons";
 
 interface TagsEditorProps {
   tags: Record<string, string>;
@@ -17,24 +17,26 @@ interface TagsEditorProps {
 }
 
 const TagsEditor: React.FC<TagsEditorProps> = ({ tags, onChange }) => {
-  const [newKey, setNewKey] = useState('');
-  const [newValue, setNewValue] = useState('');
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
 
   const handleAdd = () => {
     if (newKey && !tags[newKey]) {
       onChange({ ...tags, [newKey]: newValue });
-      setNewKey('');
-      setNewValue('');
+      setNewKey("");
+      setNewValue("");
     }
   };
 
   const handleRemove = (keyToRemove: string) => {
-    const rest = Object.fromEntries(Object.entries(tags).filter(([k]) => k !== keyToRemove));
+    const rest = Object.fromEntries(
+      Object.entries(tags).filter(([k]) => k !== keyToRemove),
+    );
     onChange(rest);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && newKey && !tags[newKey]) {
+    if (e.key === "Enter" && newKey && !tags[newKey]) {
       e.preventDefault();
       handleAdd();
     }
@@ -59,11 +61,15 @@ const TagsEditor: React.FC<TagsEditorProps> = ({ tags, onChange }) => {
           onKeyDown={handleKeyDown}
           sx={{ flex: 1 }}
         />
-        <IconButton onClick={handleAdd} disabled={!newKey || !!tags[newKey]} size="small">
+        <IconButton
+          onClick={handleAdd}
+          disabled={!newKey || !!tags[newKey]}
+          size="small"
+        >
           <AddIcon />
         </IconButton>
       </Stack>
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
         {Object.entries(tags).map(([key, value]) => (
           <Chip
             key={key}
@@ -74,7 +80,7 @@ const TagsEditor: React.FC<TagsEditorProps> = ({ tags, onChange }) => {
           />
         ))}
         {Object.keys(tags).length === 0 && (
-          <Box sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
+          <Box sx={{ color: "text.secondary", fontSize: "0.875rem" }}>
             {TAGS_EDITOR.LABEL_NO_TAGS}
           </Box>
         )}

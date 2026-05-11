@@ -8,7 +8,7 @@ var IdentityService = (function () {
   function IdentityService() {}
   IdentityService.serviceName = "kilocenter.api.v1.IdentityService";
   return IdentityService;
-}());
+})();
 
 IdentityService.Login = {
   methodName: "Login",
@@ -16,7 +16,7 @@ IdentityService.Login = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.LoginRequest,
-  responseType: identity_pb.LoginResponse
+  responseType: identity_pb.LoginResponse,
 };
 
 IdentityService.RefreshTokens = {
@@ -25,7 +25,7 @@ IdentityService.RefreshTokens = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.RefreshTokensRequest,
-  responseType: identity_pb.RefreshTokensResponse
+  responseType: identity_pb.RefreshTokensResponse,
 };
 
 IdentityService.GetProfile = {
@@ -34,7 +34,7 @@ IdentityService.GetProfile = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetProfileRequest,
-  responseType: identity_pb.GetProfileResponse
+  responseType: identity_pb.GetProfileResponse,
 };
 
 IdentityService.GetAuthSettings = {
@@ -43,7 +43,7 @@ IdentityService.GetAuthSettings = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetAuthSettingsRequest,
-  responseType: identity_pb.GetAuthSettingsResponse
+  responseType: identity_pb.GetAuthSettingsResponse,
 };
 
 IdentityService.Logout = {
@@ -52,7 +52,7 @@ IdentityService.Logout = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.LogoutRequest,
-  responseType: identity_pb.LogoutResponse
+  responseType: identity_pb.LogoutResponse,
 };
 
 IdentityService.ChangePassword = {
@@ -61,7 +61,7 @@ IdentityService.ChangePassword = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ChangePasswordRequest,
-  responseType: identity_pb.ChangePasswordResponse
+  responseType: identity_pb.ChangePasswordResponse,
 };
 
 IdentityService.ExchangeOIDC = {
@@ -70,7 +70,7 @@ IdentityService.ExchangeOIDC = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ExchangeOIDCRequest,
-  responseType: identity_pb.LoginResponse
+  responseType: identity_pb.LoginResponse,
 };
 
 IdentityService.ExchangeOAuth2 = {
@@ -79,7 +79,7 @@ IdentityService.ExchangeOAuth2 = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ExchangeOAuth2Request,
-  responseType: identity_pb.LoginResponse
+  responseType: identity_pb.LoginResponse,
 };
 
 IdentityService.RegisterAccount = {
@@ -88,7 +88,7 @@ IdentityService.RegisterAccount = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.RegisterAccountRequest,
-  responseType: identity_pb.LoginResponse
+  responseType: identity_pb.LoginResponse,
 };
 
 IdentityService.CreateUser = {
@@ -97,7 +97,7 @@ IdentityService.CreateUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.CreateUserRequest,
-  responseType: identity_pb.CreateUserResponse
+  responseType: identity_pb.CreateUserResponse,
 };
 
 IdentityService.GetUser = {
@@ -106,7 +106,7 @@ IdentityService.GetUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetUserRequest,
-  responseType: identity_pb.GetUserResponse
+  responseType: identity_pb.GetUserResponse,
 };
 
 IdentityService.UpdateUser = {
@@ -115,7 +115,7 @@ IdentityService.UpdateUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.UpdateUserRequest,
-  responseType: identity_pb.UpdateUserResponse
+  responseType: identity_pb.UpdateUserResponse,
 };
 
 IdentityService.DeleteUser = {
@@ -124,7 +124,7 @@ IdentityService.DeleteUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.DeleteUserRequest,
-  responseType: identity_pb.DeleteUserResponse
+  responseType: identity_pb.DeleteUserResponse,
 };
 
 IdentityService.ListUsers = {
@@ -133,7 +133,7 @@ IdentityService.ListUsers = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListUsersRequest,
-  responseType: identity_pb.ListUsersResponse
+  responseType: identity_pb.ListUsersResponse,
 };
 
 IdentityService.UpdateUserPassword = {
@@ -142,7 +142,7 @@ IdentityService.UpdateUserPassword = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.UpdateUserPasswordRequest,
-  responseType: identity_pb.UpdateUserPasswordResponse
+  responseType: identity_pb.UpdateUserPasswordResponse,
 };
 
 IdentityService.CreateOrganization = {
@@ -151,7 +151,7 @@ IdentityService.CreateOrganization = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.CreateOrganizationRequest,
-  responseType: identity_pb.CreateOrganizationResponse
+  responseType: identity_pb.CreateOrganizationResponse,
 };
 
 IdentityService.GetOrganization = {
@@ -160,7 +160,7 @@ IdentityService.GetOrganization = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetOrganizationRequest,
-  responseType: identity_pb.GetOrganizationResponse
+  responseType: identity_pb.GetOrganizationResponse,
 };
 
 IdentityService.UpdateOrganization = {
@@ -169,7 +169,7 @@ IdentityService.UpdateOrganization = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.UpdateOrganizationRequest,
-  responseType: identity_pb.UpdateOrganizationResponse
+  responseType: identity_pb.UpdateOrganizationResponse,
 };
 
 IdentityService.DeleteOrganization = {
@@ -178,7 +178,7 @@ IdentityService.DeleteOrganization = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.DeleteOrganizationRequest,
-  responseType: identity_pb.DeleteOrganizationResponse
+  responseType: identity_pb.DeleteOrganizationResponse,
 };
 
 IdentityService.ListOrganizations = {
@@ -187,7 +187,7 @@ IdentityService.ListOrganizations = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListOrganizationsRequest,
-  responseType: identity_pb.ListOrganizationsResponse
+  responseType: identity_pb.ListOrganizationsResponse,
 };
 
 IdentityService.AddOrganizationUser = {
@@ -196,7 +196,7 @@ IdentityService.AddOrganizationUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.AddOrganizationUserRequest,
-  responseType: identity_pb.AddOrganizationUserResponse
+  responseType: identity_pb.AddOrganizationUserResponse,
 };
 
 IdentityService.GetOrganizationUser = {
@@ -205,7 +205,7 @@ IdentityService.GetOrganizationUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetOrganizationUserRequest,
-  responseType: identity_pb.GetOrganizationUserResponse
+  responseType: identity_pb.GetOrganizationUserResponse,
 };
 
 IdentityService.UpdateOrganizationUser = {
@@ -214,7 +214,7 @@ IdentityService.UpdateOrganizationUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.UpdateOrganizationUserRequest,
-  responseType: identity_pb.UpdateOrganizationUserResponse
+  responseType: identity_pb.UpdateOrganizationUserResponse,
 };
 
 IdentityService.RemoveOrganizationUser = {
@@ -223,7 +223,7 @@ IdentityService.RemoveOrganizationUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.RemoveOrganizationUserRequest,
-  responseType: identity_pb.RemoveOrganizationUserResponse
+  responseType: identity_pb.RemoveOrganizationUserResponse,
 };
 
 IdentityService.ListOrganizationUsers = {
@@ -232,7 +232,7 @@ IdentityService.ListOrganizationUsers = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListOrganizationUsersRequest,
-  responseType: identity_pb.ListOrganizationUsersResponse
+  responseType: identity_pb.ListOrganizationUsersResponse,
 };
 
 IdentityService.ListUserOrganizations = {
@@ -241,7 +241,7 @@ IdentityService.ListUserOrganizations = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListUserOrganizationsRequest,
-  responseType: identity_pb.ListUserOrganizationsResponse
+  responseType: identity_pb.ListUserOrganizationsResponse,
 };
 
 IdentityService.CreateApiKey = {
@@ -250,7 +250,7 @@ IdentityService.CreateApiKey = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.CreateApiKeyRequest,
-  responseType: identity_pb.CreateApiKeyResponse
+  responseType: identity_pb.CreateApiKeyResponse,
 };
 
 IdentityService.GetApiKey = {
@@ -259,7 +259,7 @@ IdentityService.GetApiKey = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetApiKeyRequest,
-  responseType: identity_pb.GetApiKeyResponse
+  responseType: identity_pb.GetApiKeyResponse,
 };
 
 IdentityService.DeleteApiKey = {
@@ -268,7 +268,7 @@ IdentityService.DeleteApiKey = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.DeleteApiKeyRequest,
-  responseType: identity_pb.DeleteApiKeyResponse
+  responseType: identity_pb.DeleteApiKeyResponse,
 };
 
 IdentityService.ListApiKeys = {
@@ -277,7 +277,7 @@ IdentityService.ListApiKeys = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListApiKeysRequest,
-  responseType: identity_pb.ListApiKeysResponse
+  responseType: identity_pb.ListApiKeysResponse,
 };
 
 exports.IdentityService = IdentityService;
@@ -287,7 +287,11 @@ function IdentityServiceClient(serviceHost, options) {
   this.options = options || {};
 }
 
-IdentityServiceClient.prototype.login = function login(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.login = function login(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -308,17 +312,21 @@ IdentityServiceClient.prototype.login = function login(requestMessage, metadata,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.refreshTokens = function refreshTokens(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.refreshTokens = function refreshTokens(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -339,17 +347,21 @@ IdentityServiceClient.prototype.refreshTokens = function refreshTokens(requestMe
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.getProfile = function getProfile(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.getProfile = function getProfile(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -370,17 +382,21 @@ IdentityServiceClient.prototype.getProfile = function getProfile(requestMessage,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.getAuthSettings = function getAuthSettings(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.getAuthSettings = function getAuthSettings(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -401,17 +417,21 @@ IdentityServiceClient.prototype.getAuthSettings = function getAuthSettings(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.logout = function logout(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.logout = function logout(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -432,17 +452,21 @@ IdentityServiceClient.prototype.logout = function logout(requestMessage, metadat
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.changePassword = function changePassword(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.changePassword = function changePassword(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -463,17 +487,21 @@ IdentityServiceClient.prototype.changePassword = function changePassword(request
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.exchangeOIDC = function exchangeOIDC(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.exchangeOIDC = function exchangeOIDC(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -494,17 +522,21 @@ IdentityServiceClient.prototype.exchangeOIDC = function exchangeOIDC(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.exchangeOAuth2 = function exchangeOAuth2(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.exchangeOAuth2 = function exchangeOAuth2(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -525,17 +557,21 @@ IdentityServiceClient.prototype.exchangeOAuth2 = function exchangeOAuth2(request
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.registerAccount = function registerAccount(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.registerAccount = function registerAccount(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -556,17 +592,21 @@ IdentityServiceClient.prototype.registerAccount = function registerAccount(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.createUser = function createUser(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.createUser = function createUser(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -587,17 +627,21 @@ IdentityServiceClient.prototype.createUser = function createUser(requestMessage,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.getUser = function getUser(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.getUser = function getUser(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -618,17 +662,21 @@ IdentityServiceClient.prototype.getUser = function getUser(requestMessage, metad
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.updateUser = function updateUser(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.updateUser = function updateUser(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -649,17 +697,21 @@ IdentityServiceClient.prototype.updateUser = function updateUser(requestMessage,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.deleteUser = function deleteUser(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.deleteUser = function deleteUser(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -680,17 +732,21 @@ IdentityServiceClient.prototype.deleteUser = function deleteUser(requestMessage,
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.listUsers = function listUsers(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.listUsers = function listUsers(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -711,79 +767,85 @@ IdentityServiceClient.prototype.listUsers = function listUsers(requestMessage, m
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.updateUserPassword = function updateUserPassword(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.UpdateUserPassword, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.updateUserPassword =
+  function updateUserPassword(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.UpdateUserPassword, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.createOrganization = function createOrganization(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.CreateOrganization, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.createOrganization =
+  function createOrganization(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.CreateOrganization, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.getOrganization = function getOrganization(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.getOrganization = function getOrganization(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -804,79 +866,85 @@ IdentityServiceClient.prototype.getOrganization = function getOrganization(reque
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.updateOrganization = function updateOrganization(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.UpdateOrganization, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.updateOrganization =
+  function updateOrganization(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.UpdateOrganization, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.deleteOrganization = function deleteOrganization(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.DeleteOrganization, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.deleteOrganization =
+  function deleteOrganization(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.DeleteOrganization, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.listOrganizations = function listOrganizations(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.listOrganizations = function listOrganizations(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -897,203 +965,213 @@ IdentityServiceClient.prototype.listOrganizations = function listOrganizations(r
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.addOrganizationUser = function addOrganizationUser(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.AddOrganizationUser, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.addOrganizationUser =
+  function addOrganizationUser(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.AddOrganizationUser, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.getOrganizationUser = function getOrganizationUser(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.GetOrganizationUser, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.getOrganizationUser =
+  function getOrganizationUser(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.GetOrganizationUser, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.updateOrganizationUser = function updateOrganizationUser(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.UpdateOrganizationUser, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.updateOrganizationUser =
+  function updateOrganizationUser(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.UpdateOrganizationUser, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.removeOrganizationUser = function removeOrganizationUser(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.RemoveOrganizationUser, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.removeOrganizationUser =
+  function removeOrganizationUser(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.RemoveOrganizationUser, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.listOrganizationUsers = function listOrganizationUsers(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.ListOrganizationUsers, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.listOrganizationUsers =
+  function listOrganizationUsers(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.ListOrganizationUsers, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.listUserOrganizations = function listUserOrganizations(requestMessage, metadata, callback) {
-  if (arguments.length === 2) {
-    callback = arguments[1];
-  }
-  var client = grpc.unary(IdentityService.ListUserOrganizations, {
-    request: requestMessage,
-    host: this.serviceHost,
-    metadata: metadata,
-    transport: this.options.transport,
-    debug: this.options.debug,
-    onEnd: function (response) {
-      if (callback) {
-        if (response.status !== grpc.Code.OK) {
-          var err = new Error(response.statusMessage);
-          err.code = response.status;
-          err.metadata = response.trailers;
-          callback(err, null);
-        } else {
-          callback(null, response.message);
+IdentityServiceClient.prototype.listUserOrganizations =
+  function listUserOrganizations(requestMessage, metadata, callback) {
+    if (arguments.length === 2) {
+      callback = arguments[1];
+    }
+    var client = grpc.unary(IdentityService.ListUserOrganizations, {
+      request: requestMessage,
+      host: this.serviceHost,
+      metadata: metadata,
+      transport: this.options.transport,
+      debug: this.options.debug,
+      onEnd: function (response) {
+        if (callback) {
+          if (response.status !== grpc.Code.OK) {
+            var err = new Error(response.statusMessage);
+            err.code = response.status;
+            err.metadata = response.trailers;
+            callback(err, null);
+          } else {
+            callback(null, response.message);
+          }
         }
-      }
-    }
-  });
-  return {
-    cancel: function () {
-      callback = null;
-      client.close();
-    }
+      },
+    });
+    return {
+      cancel: function () {
+        callback = null;
+        client.close();
+      },
+    };
   };
-};
 
-IdentityServiceClient.prototype.createApiKey = function createApiKey(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.createApiKey = function createApiKey(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1114,17 +1192,21 @@ IdentityServiceClient.prototype.createApiKey = function createApiKey(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.getApiKey = function getApiKey(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.getApiKey = function getApiKey(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1145,17 +1227,21 @@ IdentityServiceClient.prototype.getApiKey = function getApiKey(requestMessage, m
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.deleteApiKey = function deleteApiKey(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.deleteApiKey = function deleteApiKey(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1176,17 +1262,21 @@ IdentityServiceClient.prototype.deleteApiKey = function deleteApiKey(requestMess
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
-IdentityServiceClient.prototype.listApiKeys = function listApiKeys(requestMessage, metadata, callback) {
+IdentityServiceClient.prototype.listApiKeys = function listApiKeys(
+  requestMessage,
+  metadata,
+  callback,
+) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1207,15 +1297,14 @@ IdentityServiceClient.prototype.listApiKeys = function listApiKeys(requestMessag
           callback(null, response.message);
         }
       }
-    }
+    },
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    }
+    },
   };
 };
 
 exports.IdentityServiceClient = IdentityServiceClient;
-

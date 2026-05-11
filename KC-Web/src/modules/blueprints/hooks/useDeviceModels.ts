@@ -5,18 +5,21 @@
  * Uses centralized query keys for cache management.
  */
 
-import type { CreateDeviceModelRequest, UpdateDeviceModelRequest } from '@api-types/api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type {
+  CreateDeviceModelRequest,
+  UpdateDeviceModelRequest,
+} from "@api-types/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from '@services/api';
-import { queryKeys } from '@config/query-keys';
+import { api } from "@services/api";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Hook to fetch device models for a manufacturer
  */
 export function useDeviceModels(manufacturerId: string | undefined) {
   return useQuery({
-    queryKey: queryKeys.blueprints.deviceModels(manufacturerId ?? ''),
+    queryKey: queryKeys.blueprints.deviceModels(manufacturerId ?? ""),
     queryFn: () => api.getDeviceModels(manufacturerId!),
     enabled: !!manufacturerId,
   });
@@ -72,8 +75,13 @@ export function useUpdateDeviceModel() {
 export function useDeleteDeviceModel() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, manufacturerId: _manufacturerId }: { id: string; manufacturerId: string }) =>
-      api.deleteDeviceModel(id),
+    mutationFn: ({
+      id,
+      manufacturerId: _manufacturerId,
+    }: {
+      id: string;
+      manufacturerId: string;
+    }) => api.deleteDeviceModel(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.blueprints.deviceModels(variables.manufacturerId),

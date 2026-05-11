@@ -19,7 +19,7 @@ export interface PaginationState {
 // Sort state
 export interface SortState {
   field: string;
-  direction: 'asc' | 'desc';
+  direction: "asc" | "desc";
 }
 
 // Base station filters
@@ -49,7 +49,7 @@ export interface SavedView {
 }
 
 // Filter scopes
-export type FilterScope = 'baseStations' | 'endpoints';
+export type FilterScope = "baseStations" | "endpoints";
 
 // Complete filters state
 export interface FiltersState {
@@ -60,17 +60,17 @@ export interface FiltersState {
 
 // Filter actions
 export type FiltersAction =
-  | { type: 'SET_FILTER'; scope: FilterScope; key: string; value: unknown }
-  | { type: 'SET_SEARCH'; scope: FilterScope; search: string }
-  | { type: 'SET_PAGINATION'; scope: FilterScope; pagination: PaginationState }
-  | { type: 'SET_SORT'; scope: FilterScope; sort: SortState }
-  | { type: 'SET_DATE_RANGE'; scope: FilterScope; dateRange: DateRange }
-  | { type: 'RESET_SCOPE'; scope: FilterScope }
-  | { type: 'RESET_ALL' }
-  | { type: 'SAVE_VIEW'; name: string; scope: FilterScope }
-  | { type: 'LOAD_VIEW'; viewId: string }
-  | { type: 'DELETE_VIEW'; viewId: string }
-  | { type: 'LOAD_STATE'; state: FiltersState };
+  | { type: "SET_FILTER"; scope: FilterScope; key: string; value: unknown }
+  | { type: "SET_SEARCH"; scope: FilterScope; search: string }
+  | { type: "SET_PAGINATION"; scope: FilterScope; pagination: PaginationState }
+  | { type: "SET_SORT"; scope: FilterScope; sort: SortState }
+  | { type: "SET_DATE_RANGE"; scope: FilterScope; dateRange: DateRange }
+  | { type: "RESET_SCOPE"; scope: FilterScope }
+  | { type: "RESET_ALL" }
+  | { type: "SAVE_VIEW"; name: string; scope: FilterScope }
+  | { type: "LOAD_VIEW"; viewId: string }
+  | { type: "DELETE_VIEW"; viewId: string }
+  | { type: "LOAD_STATE"; state: FiltersState };
 
 // Context value type
 export interface FiltersContextValue {

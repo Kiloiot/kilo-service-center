@@ -14,17 +14,22 @@ import {
   TableRow,
   Tooltip,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { SYSTEM_STATUS } from '@constants/messages';
-import { ErrorIcon, SuccessIcon } from '@theme/icons';
+import { SYSTEM_STATUS } from "@constants/messages";
+import { ErrorIcon, SuccessIcon } from "@theme/icons";
 
 /**
  * Props for ServiceStatusTable component
  */
 interface ServiceStatusTableProps {
   /** Array of services to display - rendered in order received (no sorting) */
-  services: Array<{ name: string; healthy: boolean; latencyMs: number; error?: string }>;
+  services: Array<{
+    name: string;
+    healthy: boolean;
+    latencyMs: number;
+    error?: string;
+  }>;
   /** Timestamp of last status check */
   timestamp?: string;
 }
@@ -35,7 +40,10 @@ interface ServiceStatusTableProps {
  * Renders the system status table with Status/Service/Latency columns
  * and "Last checked" timestamp. Used by the Dashboard.
  */
-export function ServiceStatusTable({ services, timestamp }: ServiceStatusTableProps) {
+export function ServiceStatusTable({
+  services,
+  timestamp,
+}: ServiceStatusTableProps) {
   return (
     <>
       <Table size="small">
@@ -53,7 +61,7 @@ export function ServiceStatusTable({ services, timestamp }: ServiceStatusTablePr
                 {service.healthy ? (
                   <SuccessIcon color="success" fontSize="small" />
                 ) : (
-                  <Tooltip title={service.error || ''}>
+                  <Tooltip title={service.error || ""}>
                     <ErrorIcon color="error" fontSize="small" />
                   </Tooltip>
                 )}
@@ -73,10 +81,10 @@ export function ServiceStatusTable({ services, timestamp }: ServiceStatusTablePr
           ))}
         </TableBody>
       </Table>
-      <Box sx={{ mt: 2, textAlign: 'center' }}>
+      <Box sx={{ mt: 2, textAlign: "center" }}>
         <Typography variant="caption" color="text.secondary">
-          {SYSTEM_STATUS.LABEL_LAST_CHECKED}:{' '}
-          {timestamp ? new Date(timestamp).toLocaleTimeString() : 'N/A'}
+          {SYSTEM_STATUS.LABEL_LAST_CHECKED}:{" "}
+          {timestamp ? new Date(timestamp).toLocaleTimeString() : "N/A"}
         </Typography>
       </Box>
     </>

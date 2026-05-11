@@ -5,8 +5,8 @@
  * Uses MUI List + Collapse for tree navigation per plan constraints.
  */
 
-import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import type {
   CreateManufacturerRequest,
@@ -14,7 +14,7 @@ import type {
   ManufacturerUI,
   UpdateDeviceModelRequest,
   UpdateManufacturerRequest,
-} from '@api-types/api';
+} from "@api-types/api";
 import {
   Alert,
   Box,
@@ -37,14 +37,14 @@ import {
   TextField,
   Tooltip,
   Typography,
-} from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+} from "@mui/material";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from '@services/api';
-import { formatTypeEUI } from '@utils/formatters';
-import { ROUTES } from '@constants/app';
-import { BLUEPRINT_LABELS } from '@constants/messages';
-import { queryKeys } from '@config/query-keys';
+import { api } from "@services/api";
+import { formatTypeEUI } from "@utils/formatters";
+import { ROUTES } from "@constants/app";
+import { BLUEPRINT_LABELS } from "@constants/messages";
+import { queryKeys } from "@config/query-keys";
 import {
   AddIcon,
   BlueprintIcon,
@@ -53,7 +53,7 @@ import {
   EditIcon,
   ExpandLess,
   ExpandMore,
-} from '@theme/icons';
+} from "@theme/icons";
 
 /**
  * Blueprints page component
@@ -71,13 +71,18 @@ export const Blueprints: React.FC = () => {
   const [showMfrDialog, setShowMfrDialog] = useState(false);
   // Dialog states - Edit
   const [editMfr, setEditMfr] = useState<ManufacturerUI | null>(null);
-  const [editModel, setEditModel] = useState<{ model: DeviceModelUI; mfrId: string } | null>(null);
+  const [editModel, setEditModel] = useState<{
+    model: DeviceModelUI;
+    mfrId: string;
+  } | null>(null);
   // Dialog states - Delete
   const [deleteMfr, setDeleteMfr] = useState<ManufacturerUI | null>(null);
-  const [deleteModel, setDeleteModel] = useState<{ model: DeviceModelUI; mfrId: string } | null>(
-    null
-  );
-  const [addBlueprintModel, setAddBlueprintModel] = useState<DeviceModelUI | null>(null);
+  const [deleteModel, setDeleteModel] = useState<{
+    model: DeviceModelUI;
+    mfrId: string;
+  } | null>(null);
+  const [addBlueprintModel, setAddBlueprintModel] =
+    useState<DeviceModelUI | null>(null);
 
   // Fetch manufacturers
   const {
@@ -150,7 +155,7 @@ export const Blueprints: React.FC = () => {
 
   // Navigate to blueprint detail
   const handleBlueprintClick = (blueprintId: string) => {
-    navigate(ROUTES.BLUEPRINT_DETAIL.replace(':id', blueprintId));
+    navigate(ROUTES.BLUEPRINT_DETAIL.replace(":id", blueprintId));
   };
 
   // Navigate to add model page
@@ -166,9 +171,20 @@ export const Blueprints: React.FC = () => {
   return (
     <Box sx={{ p: 3, pt: 4 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 3,
+        }}
+      >
         <Typography variant="h4">{BLUEPRINT_LABELS.PAGE_TITLE}</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setShowMfrDialog(true)}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setShowMfrDialog(true)}
+        >
           {BLUEPRINT_LABELS.ADD_MANUFACTURER}
         </Button>
       </Box>
@@ -182,15 +198,17 @@ export const Blueprints: React.FC = () => {
 
       {/* Loading state */}
       {mfrsLoading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
           <CircularProgress />
         </Box>
       )}
 
       {/* Empty state */}
       {!mfrsLoading && manufacturers?.length === 0 && (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">{BLUEPRINT_LABELS.NO_MANUFACTURERS}</Typography>
+        <Paper sx={{ p: 4, textAlign: "center" }}>
+          <Typography color="text.secondary">
+            {BLUEPRINT_LABELS.NO_MANUFACTURERS}
+          </Typography>
         </Paper>
       )}
 
@@ -211,7 +229,9 @@ export const Blueprints: React.FC = () => {
                 onEdit={() => setEditMfr(mfr)}
                 onDelete={() => setDeleteMfr(mfr)}
                 onEditModel={(model) => setEditModel({ model, mfrId: mfr.id })}
-                onDeleteModel={(model) => setDeleteModel({ model, mfrId: mfr.id })}
+                onDeleteModel={(model) =>
+                  setDeleteModel({ model, mfrId: mfr.id })
+                }
                 onAddDecoder={handleAddDecoder}
               />
             ))}
@@ -225,7 +245,9 @@ export const Blueprints: React.FC = () => {
         onClose={() => setShowMfrDialog(false)}
         onSuccess={() => {
           setShowMfrDialog(false);
-          queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.manufacturers() });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.blueprints.manufacturers(),
+          });
         }}
       />
 
@@ -235,7 +257,9 @@ export const Blueprints: React.FC = () => {
         onClose={() => setEditMfr(null)}
         onSuccess={() => {
           setEditMfr(null);
-          queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.manufacturers() });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.blueprints.manufacturers(),
+          });
         }}
       />
 
@@ -263,7 +287,9 @@ export const Blueprints: React.FC = () => {
         onConfirm={async () => {
           if (deleteMfr) {
             await api.deleteManufacturer(deleteMfr.id);
-            queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.manufacturers() });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.blueprints.manufacturers(),
+            });
             setDeleteMfr(null);
           }
         }}
@@ -296,7 +322,9 @@ export const Blueprints: React.FC = () => {
               queryKey: queryKeys.blueprints.list(addBlueprintModel.id),
             });
             queryClient.invalidateQueries({
-              queryKey: queryKeys.blueprints.deviceModels(addBlueprintModel.manufacturerId),
+              queryKey: queryKeys.blueprints.deviceModels(
+                addBlueprintModel.manufacturerId,
+              ),
             });
           }
           setAddBlueprintModel(null);
@@ -350,7 +378,7 @@ const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
       <ListItem
         disablePadding
         secondaryAction={
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
             <IconButton size="small" onClick={onToggle}>
               {isExpanded ? <ExpandLess /> : <ExpandMore />}
             </IconButton>
@@ -392,13 +420,19 @@ const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
                 label={BLUEPRINT_LABELS.BADGE_VERIFIED}
                 size="small"
                 color="success"
-                sx={{ textDecoration: 'none', '& .MuiChip-label': { fontFamily: 'inherit' } }}
+                sx={{
+                  textDecoration: "none",
+                  "& .MuiChip-label": { fontFamily: "inherit" },
+                }}
               />
             )}
             <Chip
               label={`${models?.length ?? manufacturer.modelCount} ${BLUEPRINT_LABELS.COL_MODELS}`}
               size="small"
-              sx={{ textDecoration: 'none', '& .MuiChip-label': { fontFamily: 'inherit' } }}
+              sx={{
+                textDecoration: "none",
+                "& .MuiChip-label": { fontFamily: "inherit" },
+              }}
             />
           </Box>
         }
@@ -407,7 +441,10 @@ const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
           <ListItemIcon>
             <CategoryIcon />
           </ListItemIcon>
-          <ListItemText primary={manufacturer.name} secondary={manufacturer.website || undefined} />
+          <ListItemText
+            primary={manufacturer.name}
+            secondary={manufacturer.website || undefined}
+          />
         </ListItemButton>
       </ListItem>
 
@@ -434,7 +471,7 @@ const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
             <ListItem sx={{ pl: 4 }}>
               <ListItemText
                 secondary={BLUEPRINT_LABELS.NO_MODELS}
-                sx={{ color: 'text.secondary' }}
+                sx={{ color: "text.secondary" }}
               />
             </ListItem>
           )}
@@ -479,7 +516,7 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
         disablePadding
         sx={{ pl: 4 }}
         secondaryAction={
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
             <IconButton size="small" onClick={onToggle}>
               {isExpanded ? <ExpandLess /> : <ExpandMore />}
             </IconButton>
@@ -519,7 +556,10 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
             <Chip
               label={`${blueprints?.length ?? model.blueprintCount} ${BLUEPRINT_LABELS.COL_BLUEPRINTS}`}
               size="small"
-              sx={{ textDecoration: 'none', '& .MuiChip-label': { fontFamily: 'inherit' } }}
+              sx={{
+                textDecoration: "none",
+                "& .MuiChip-label": { fontFamily: "inherit" },
+              }}
             />
           </Box>
         }
@@ -530,7 +570,9 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
           </ListItemIcon>
           <ListItemText
             primary={model.name}
-            secondary={model.typeEui ? formatTypeEUI(model.typeEui) : model.code}
+            secondary={
+              model.typeEui ? formatTypeEUI(model.typeEui) : model.code
+            }
           />
         </ListItemButton>
       </ListItem>
@@ -545,9 +587,16 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
           {blueprints?.map((bp) => (
             <ListItem key={bp.id} disablePadding sx={{ pl: 8 }}>
               <ListItemButton onClick={() => onBlueprintClick(bp.id)}>
-                <ListItemText primary={`v${bp.version}`} secondary={formatTypeEUI(bp.typeEui)} />
+                <ListItemText
+                  primary={`v${bp.version}`}
+                  secondary={formatTypeEUI(bp.typeEui)}
+                />
                 {bp.isDefault && (
-                  <Chip label={BLUEPRINT_LABELS.BADGE_DEFAULT} size="small" color="primary" />
+                  <Chip
+                    label={BLUEPRINT_LABELS.BADGE_DEFAULT}
+                    size="small"
+                    color="primary"
+                  />
                 )}
               </ListItemButton>
             </ListItem>
@@ -556,7 +605,7 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
             <ListItem sx={{ pl: 8 }}>
               <ListItemText
                 secondary={BLUEPRINT_LABELS.NO_BLUEPRINTS}
-                sx={{ color: 'text.secondary' }}
+                sx={{ color: "text.secondary" }}
               />
             </ListItem>
           )}
@@ -581,14 +630,15 @@ const AddManufacturerDialog: React.FC<AddManufacturerDialogProps> = ({
   onSuccess,
 }) => {
   const [formData, setFormData] = useState<CreateManufacturerRequest>({
-    name: '',
+    name: "",
   });
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: (data: CreateManufacturerRequest) => api.createManufacturer(data),
+    mutationFn: (data: CreateManufacturerRequest) =>
+      api.createManufacturer(data),
     onSuccess: () => {
-      setFormData({ name: '' });
+      setFormData({ name: "" });
       setError(null);
       onSuccess();
     },
@@ -626,14 +676,24 @@ const AddManufacturerDialog: React.FC<AddManufacturerDialogProps> = ({
           margin="dense"
           label={BLUEPRINT_LABELS.LABEL_WEBSITE}
           fullWidth
-          value={formData.website || ''}
-          onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+          value={formData.website || ""}
+          onChange={(e) =>
+            setFormData({ ...formData, website: e.target.value })
+          }
         />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{BLUEPRINT_LABELS.ACTION_CANCEL}</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={mutation.isPending}>
-          {mutation.isPending ? <CircularProgress size={20} /> : BLUEPRINT_LABELS.ACTION_CREATE}
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? (
+            <CircularProgress size={20} />
+          ) : (
+            BLUEPRINT_LABELS.ACTION_CREATE
+          )}
         </Button>
       </DialogActions>
     </Dialog>
@@ -670,7 +730,8 @@ const EditManufacturerDialog: React.FC<EditManufacturerDialogProps> = ({
 
   const mutation = useMutation({
     mutationFn: (data: UpdateManufacturerRequest) => {
-      if (!manufacturer) throw new Error(BLUEPRINT_LABELS.ERR_NO_MANUFACTURER_SELECTED);
+      if (!manufacturer)
+        throw new Error(BLUEPRINT_LABELS.ERR_NO_MANUFACTURER_SELECTED);
       return api.updateManufacturer(manufacturer.id, data);
     },
     onSuccess: () => {
@@ -704,21 +765,31 @@ const EditManufacturerDialog: React.FC<EditManufacturerDialogProps> = ({
           margin="dense"
           label={BLUEPRINT_LABELS.LABEL_NAME}
           fullWidth
-          value={formData.name || ''}
+          value={formData.name || ""}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
         />
         <TextField
           margin="dense"
           label={BLUEPRINT_LABELS.LABEL_WEBSITE}
           fullWidth
-          value={formData.website || ''}
-          onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+          value={formData.website || ""}
+          onChange={(e) =>
+            setFormData({ ...formData, website: e.target.value })
+          }
         />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{BLUEPRINT_LABELS.ACTION_CANCEL}</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={mutation.isPending}>
-          {mutation.isPending ? <CircularProgress size={20} /> : BLUEPRINT_LABELS.ACTION_SAVE}
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? (
+            <CircularProgress size={20} />
+          ) : (
+            BLUEPRINT_LABELS.ACTION_SAVE
+          )}
         </Button>
       </DialogActions>
     </Dialog>
@@ -792,7 +863,7 @@ const EditDeviceModelDialog: React.FC<EditDeviceModelDialogProps> = ({
           margin="dense"
           label={BLUEPRINT_LABELS.LABEL_NAME}
           fullWidth
-          value={formData.name || ''}
+          value={formData.name || ""}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
         />
         <TextField
@@ -801,14 +872,24 @@ const EditDeviceModelDialog: React.FC<EditDeviceModelDialogProps> = ({
           fullWidth
           multiline
           rows={2}
-          value={formData.description || ''}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          value={formData.description || ""}
+          onChange={(e) =>
+            setFormData({ ...formData, description: e.target.value })
+          }
         />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{BLUEPRINT_LABELS.ACTION_CANCEL}</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={mutation.isPending}>
-          {mutation.isPending ? <CircularProgress size={20} /> : BLUEPRINT_LABELS.ACTION_SAVE}
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? (
+            <CircularProgress size={20} />
+          ) : (
+            BLUEPRINT_LABELS.ACTION_SAVE
+          )}
         </Button>
       </DialogActions>
     </Dialog>
@@ -824,15 +905,19 @@ interface AddBlueprintDialogProps {
   onSuccess: () => void;
 }
 
-const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({ model, onClose, onSuccess }) => {
-  const [version, setVersion] = useState('');
-  const [specJson, setSpecJson] = useState('');
+const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({
+  model,
+  onClose,
+  onSuccess,
+}) => {
+  const [version, setVersion] = useState("");
+  const [specJson, setSpecJson] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (model) {
-      setVersion('');
-      setSpecJson('');
+      setVersion("");
+      setSpecJson("");
       setError(null);
     }
   }, [model]);
@@ -874,7 +959,7 @@ const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({ model, onClose,
       <DialogTitle>{BLUEPRINT_LABELS.ADD_DECODER}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>
-          {model ? `${BLUEPRINT_LABELS.LABEL_NAME}: ${model.name}` : ''}
+          {model ? `${BLUEPRINT_LABELS.LABEL_NAME}: ${model.name}` : ""}
         </DialogContentText>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -904,8 +989,16 @@ const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({ model, onClose,
         <Button onClick={onClose} disabled={mutation.isPending}>
           {BLUEPRINT_LABELS.ACTION_CANCEL}
         </Button>
-        <Button onClick={() => mutation.mutate()} variant="contained" disabled={mutation.isPending}>
-          {mutation.isPending ? <CircularProgress size={20} /> : BLUEPRINT_LABELS.ACTION_CREATE}
+        <Button
+          onClick={() => mutation.mutate()}
+          variant="contained"
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? (
+            <CircularProgress size={20} />
+          ) : (
+            BLUEPRINT_LABELS.ACTION_CREATE
+          )}
         </Button>
       </DialogActions>
     </Dialog>
@@ -939,7 +1032,9 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
     try {
       await onConfirm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : BLUEPRINT_LABELS.ERR_DELETE_FAILED);
+      setError(
+        err instanceof Error ? err.message : BLUEPRINT_LABELS.ERR_DELETE_FAILED,
+      );
       setIsDeleting(false);
     }
   };
@@ -967,8 +1062,17 @@ const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
         <Button onClick={onClose} disabled={isDeleting}>
           {BLUEPRINT_LABELS.ACTION_CANCEL}
         </Button>
-        <Button onClick={handleConfirm} color="error" variant="contained" disabled={isDeleting}>
-          {isDeleting ? <CircularProgress size={20} /> : BLUEPRINT_LABELS.ACTION_DELETE}
+        <Button
+          onClick={handleConfirm}
+          color="error"
+          variant="contained"
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <CircularProgress size={20} />
+          ) : (
+            BLUEPRINT_LABELS.ACTION_DELETE
+          )}
         </Button>
       </DialogActions>
     </Dialog>

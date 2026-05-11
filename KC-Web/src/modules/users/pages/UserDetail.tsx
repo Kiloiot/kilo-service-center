@@ -4,11 +4,16 @@
  * View and edit user details, including organization memberships management.
  */
 
-import React, { useEffect, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
-import type { OrganizationUI, UpdateUserRequest } from '@api-types/api';
-import { useDeleteUser, useUpdateUser, useUser, useUserOrganizations } from '@hooks';
+import type { OrganizationUI, UpdateUserRequest } from "@api-types/api";
+import {
+  useDeleteUser,
+  useUpdateUser,
+  useUser,
+  useUserOrganizations,
+} from "@hooks";
 import {
   Alert,
   Autocomplete,
@@ -40,20 +45,24 @@ import {
   TextField,
   Tooltip,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { useSession } from '@contexts/SessionContext';
-import { useAddOrgUser, useOrganizations, useRemoveOrgUser } from '@hooks/useOrganizations';
-import { formatRelativeDuration } from '@utils/formatters';
-import { ORG_MEMBER_STATUS, ORG_ROLE, ROUTES, UI_TIMING } from '@constants/app';
+import { useSession } from "@contexts/SessionContext";
+import {
+  useAddOrgUser,
+  useOrganizations,
+  useRemoveOrgUser,
+} from "@hooks/useOrganizations";
+import { formatRelativeDuration } from "@utils/formatters";
+import { ORG_MEMBER_STATUS, ORG_ROLE, ROUTES, UI_TIMING } from "@constants/app";
 import {
   MSG_USER_DELETED,
   MSG_USER_UPDATED,
   ORG_USERS_PAGE,
   USER_FORM,
   USERS_PAGE,
-} from '@constants/messages';
-import { AddIcon, DeleteIcon, SaveIcon } from '@theme/icons';
+} from "@constants/messages";
+import { AddIcon, DeleteIcon, SaveIcon } from "@theme/icons";
 
 const UserDetail: React.FC = () => {
   const navigate = useNavigate();
@@ -66,7 +75,7 @@ const UserDetail: React.FC = () => {
     isLoading,
     isError,
     error,
-  } = useUser(id || '', {
+  } = useUser(id || "", {
     enabled: isHydrated && isAdmin && Boolean(id),
   });
   const updateUser = useUpdateUser();
@@ -74,9 +83,12 @@ const UserDetail: React.FC = () => {
   const canNavigateToPassword = Boolean(id);
 
   // Organization memberships
-  const { data: userOrgsData, isLoading: isOrgsLoading } = useUserOrganizations(id || '', {
-    enabled: isHydrated && isAdmin && Boolean(id),
-  });
+  const { data: userOrgsData, isLoading: isOrgsLoading } = useUserOrganizations(
+    id || "",
+    {
+      enabled: isHydrated && isAdmin && Boolean(id),
+    },
+  );
   const memberships = userOrgsData?.memberships ?? [];
 
   // Available organizations for the "Add to Organization" picker
@@ -87,7 +99,7 @@ const UserDetail: React.FC = () => {
 
   // Filter out orgs the user is already a member of
   const availableOrgs = allOrganizations.filter(
-    (org) => !memberships.some((m) => m.orgId === org.id)
+    (org) => !memberships.some((m) => m.orgId === org.id),
   );
 
   // Add/remove org mutation hooks
@@ -95,8 +107,8 @@ const UserDetail: React.FC = () => {
   const removeOrgUser = useRemoveOrgUser();
 
   // Form state (use isUserAdmin to avoid conflict with session isAdmin)
-  const [email, setEmail] = useState('');
-  const [note, setNote] = useState('');
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
   const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [isTenantManager, setIsTenantManager] = useState(false);
@@ -107,19 +119,19 @@ const UserDetail: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Success messages
-  const [successMessage, setSuccessMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState("");
 
   // Add-to-org form state
   const [selectedOrg, setSelectedOrg] = useState<OrganizationUI | null>(null);
   const [selectedRole, setSelectedRole] = useState(ORG_ROLE.MEMBER);
-  const [membershipError, setMembershipError] = useState('');
-  const [membershipSuccess, setMembershipSuccess] = useState('');
+  const [membershipError, setMembershipError] = useState("");
+  const [membershipSuccess, setMembershipSuccess] = useState("");
 
   // Populate form when user data loads
   useEffect(() => {
     if (user) {
       setEmail(user.email);
-      setNote(user.note || '');
+      setNote(user.note || "");
       setIsUserAdmin(user.isAdmin);
       setIsActive(user.isActive);
       setIsTenantManager(user.isTenantManager);
@@ -134,10 +146,11 @@ const UserDetail: React.FC = () => {
     const updates: UpdateUserRequest = {};
 
     if (email !== user.email) updates.email = email;
-    if (note !== (user.note || '')) updates.note = note || undefined;
+    if (note !== (user.note || "")) updates.note = note || undefined;
     if (isUserAdmin !== user.isAdmin) updates.is_admin = isUserAdmin;
     if (isActive !== user.isActive) updates.is_active = isActive;
-    if (isTenantManager !== user.isTenantManager) updates.is_tenant_manager = isTenantManager;
+    if (isTenantManager !== user.isTenantManager)
+      updates.is_tenant_manager = isTenantManager;
     if (isBaseStationManager !== user.isBaseStationManager)
       updates.is_base_station_manager = isBaseStationManager;
     if (isEndpointManager !== user.isEndpointManager)
@@ -148,7 +161,10 @@ const UserDetail: React.FC = () => {
       try {
         await updateUser.mutateAsync({ id, data: updates });
         setSuccessMessage(MSG_USER_UPDATED);
-        setTimeout(() => setSuccessMessage(''), UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS);
+        setTimeout(
+          () => setSuccessMessage(""),
+          UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS,
+        );
       } catch {
         // Error handled by mutation hook
       }
@@ -175,8 +191,8 @@ const UserDetail: React.FC = () => {
   const handleAddMembership = async () => {
     if (!id || !selectedOrg) return;
 
-    setMembershipError('');
-    setMembershipSuccess('');
+    setMembershipError("");
+    setMembershipSuccess("");
 
     try {
       await addOrgUser.mutateAsync({
@@ -192,7 +208,10 @@ const UserDetail: React.FC = () => {
       setSelectedOrg(null);
       setSelectedRole(ORG_ROLE.MEMBER);
       setMembershipSuccess(USER_FORM.MSG_MEMBERSHIP_ADDED);
-      setTimeout(() => setMembershipSuccess(''), UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS);
+      setTimeout(
+        () => setMembershipSuccess(""),
+        UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS,
+      );
     } catch {
       setMembershipError(USER_FORM.ERR_MEMBERSHIP_ADD_FAILED);
     }
@@ -201,13 +220,16 @@ const UserDetail: React.FC = () => {
   const handleRemoveMembership = async (orgId: string) => {
     if (!id) return;
 
-    setMembershipError('');
-    setMembershipSuccess('');
+    setMembershipError("");
+    setMembershipSuccess("");
 
     try {
       await removeOrgUser.mutateAsync({ orgId, userId: id });
       setMembershipSuccess(USER_FORM.MSG_MEMBERSHIP_REMOVED);
-      setTimeout(() => setMembershipSuccess(''), UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS);
+      setTimeout(
+        () => setMembershipSuccess(""),
+        UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS,
+      );
     } catch {
       setMembershipError(USER_FORM.ERR_MEMBERSHIP_REMOVE_FAILED);
     }
@@ -226,10 +248,10 @@ const UserDetail: React.FC = () => {
       <Box
         sx={{
           pt: 4,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '400px',
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "400px",
         }}
       >
         <CircularProgress />
@@ -253,7 +275,12 @@ const UserDetail: React.FC = () => {
   return (
     <Box sx={{ p: 3, pt: 4 }}>
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
         <Typography variant="h4" component="h1">
           {USERS_PAGE.DETAILS_TITLE}
         </Typography>
@@ -287,7 +314,9 @@ const UserDetail: React.FC = () => {
                 {USER_FORM.DIALOG_TITLE_EDIT}
               </Typography>
 
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+              <Box
+                sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 2 }}
+              >
                 <TextField
                   label={USER_FORM.LABEL_EMAIL}
                   type="email"
@@ -305,10 +334,13 @@ const UserDetail: React.FC = () => {
                   fullWidth
                 />
 
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                   <FormControlLabel
                     control={
-                      <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                      <Switch
+                        checked={isActive}
+                        onChange={(e) => setIsActive(e.target.checked)}
+                      />
                     }
                     label={USER_FORM.LABEL_IS_ACTIVE}
                   />
@@ -334,7 +366,9 @@ const UserDetail: React.FC = () => {
                     control={
                       <Switch
                         checked={isBaseStationManager}
-                        onChange={(e) => setIsBaseStationManager(e.target.checked)}
+                        onChange={(e) =>
+                          setIsBaseStationManager(e.target.checked)
+                        }
                       />
                     }
                     label={USER_FORM.LABEL_IS_BS_MGR}
@@ -382,16 +416,18 @@ const UserDetail: React.FC = () => {
                 {USER_FORM.INFO_TITLE}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {USER_FORM.INFO_CREATED}: {formatRelativeDuration(user.createdAt)}
+                {USER_FORM.INFO_CREATED}:{" "}
+                {formatRelativeDuration(user.createdAt)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {USER_FORM.INFO_UPDATED}: {formatRelativeDuration(user.updatedAt)}
+                {USER_FORM.INFO_UPDATED}:{" "}
+                {formatRelativeDuration(user.updatedAt)}
               </Typography>
               <Button
                 variant="outlined"
                 onClick={() => {
                   if (!id) return;
-                  navigate(ROUTES.USER_PASSWORD.replace(':id', id));
+                  navigate(ROUTES.USER_PASSWORD.replace(":id", id));
                 }}
                 sx={{ mt: 2 }}
                 fullWidth
@@ -456,7 +492,11 @@ const UserDetail: React.FC = () => {
                             <Chip
                               label={m.status}
                               size="small"
-                              color={m.status === ORG_MEMBER_STATUS.ACTIVE ? 'success' : 'default'}
+                              color={
+                                m.status === ORG_MEMBER_STATUS.ACTIVE
+                                  ? "success"
+                                  : "default"
+                              }
                             />
                           </TableCell>
                           <TableCell>
@@ -479,7 +519,7 @@ const UserDetail: React.FC = () => {
               )}
 
               {/* Add to Organization section */}
-              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+              <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: "divider" }}>
                 <Typography variant="subtitle2" gutterBottom>
                   {USER_FORM.LABEL_ADD_TO_ORG}
                 </Typography>
@@ -489,10 +529,16 @@ const UserDetail: React.FC = () => {
                     getOptionLabel={(option) => option.name}
                     value={selectedOrg}
                     onChange={(_, newValue) => setSelectedOrg(newValue)}
-                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    isOptionEqualToValue={(option, value) =>
+                      option.id === value.id
+                    }
                     sx={{ minWidth: 250, flex: 1 }}
                     renderInput={(params) => (
-                      <TextField {...params} label={USER_FORM.LABEL_SELECT_ORG} size="small" />
+                      <TextField
+                        {...params}
+                        label={USER_FORM.LABEL_SELECT_ORG}
+                        size="small"
+                      />
                     )}
                   />
                   <FormControl size="small" sx={{ minWidth: 120 }}>
@@ -502,9 +548,15 @@ const UserDetail: React.FC = () => {
                       onChange={(e) => setSelectedRole(e.target.value)}
                       label={USER_FORM.LABEL_SELECT_ROLE}
                     >
-                      <MenuItem value={ORG_ROLE.MEMBER}>{ORG_USERS_PAGE.ROLE_MEMBER}</MenuItem>
-                      <MenuItem value={ORG_ROLE.ADMIN}>{ORG_USERS_PAGE.ROLE_ADMIN}</MenuItem>
-                      <MenuItem value={ORG_ROLE.OWNER}>{ORG_USERS_PAGE.ROLE_OWNER}</MenuItem>
+                      <MenuItem value={ORG_ROLE.MEMBER}>
+                        {ORG_USERS_PAGE.ROLE_MEMBER}
+                      </MenuItem>
+                      <MenuItem value={ORG_ROLE.ADMIN}>
+                        {ORG_USERS_PAGE.ROLE_ADMIN}
+                      </MenuItem>
+                      <MenuItem value={ORG_ROLE.OWNER}>
+                        {ORG_USERS_PAGE.ROLE_OWNER}
+                      </MenuItem>
                     </Select>
                   </FormControl>
                   <Button
@@ -525,14 +577,23 @@ const UserDetail: React.FC = () => {
       </Grid>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
         <DialogTitle>{USER_FORM.ACTION_DELETE}</DialogTitle>
         <DialogContent>
           <DialogContentText>{USER_FORM.CONFIRM_DELETE}</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>{USER_FORM.ACTION_CANCEL}</Button>
-          <Button color="error" onClick={handleDelete} disabled={deleteUser.isPending}>
+          <Button onClick={() => setDeleteDialogOpen(false)}>
+            {USER_FORM.ACTION_CANCEL}
+          </Button>
+          <Button
+            color="error"
+            onClick={handleDelete}
+            disabled={deleteUser.isPending}
+          >
             {USER_FORM.ACTION_DELETE}
           </Button>
         </DialogActions>

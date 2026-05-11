@@ -6,7 +6,7 @@
  * @see src/services/grpc/client.ts for gRPC implementation
  */
 
-export { realtimeService } from './RealtimeService';
+export { realtimeService } from "./RealtimeService";
 export type {
   ConnectionError,
   ConnectionEvent,
@@ -18,4 +18,4 @@ export type {
   RealtimeEvent,
   RealtimeEventType,
   StateChangeListener,
-} from './types';
+} from "./types";

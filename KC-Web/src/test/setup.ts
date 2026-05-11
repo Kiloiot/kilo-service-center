@@ -4,16 +4,16 @@
  * This file runs before each test file and configures the testing environment.
  */
 
-import { cleanup } from '@testing-library/react';
-import { afterEach, vi } from 'vitest';
+import { cleanup } from "@testing-library/react";
+import { afterEach, vi } from "vitest";
 
-import '@testing-library/jest-dom';
+import "@testing-library/jest-dom";
 
 // Pass-through mock: loads actual proto constructors from @kilocenter/grpc-stubs (pre-bundled CJS)
 // CJS→ESM interop may wrap all exports under `default`, so we unwrap first.
-vi.mock('@services/grpc/kilocenter_pb', async () => {
+vi.mock("@services/grpc/kilocenter_pb", async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
-    '@kilocenter/grpc-stubs/kilocenter_pb'
+    "@kilocenter/grpc-stubs/kilocenter_pb",
   );
   const exports = (actual.default ?? actual) as Record<string, unknown>;
   return {
@@ -22,7 +22,7 @@ vi.mock('@services/grpc/kilocenter_pb', async () => {
   };
 });
 
-vi.mock('@services/grpc/kilocenter_pb_service', () => {
+vi.mock("@services/grpc/kilocenter_pb_service", () => {
   // Create a mock class for KiloCenterServiceClient
   class MockKiloCenterServiceClient {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -99,7 +99,7 @@ vi.mock('@services/grpc/kilocenter_pb_service', () => {
   return {
     default: {},
     KiloCenterService: {
-      serviceName: 'kilocenter.api.v1.KiloCenterService',
+      serviceName: "kilocenter.api.v1.KiloCenterService",
       StreamMessages: {},
       StreamEvents: {},
       StreamBaseStationMessages: {},
@@ -114,7 +114,7 @@ afterEach(() => {
 });
 
 // Mock window.matchMedia for components that use media queries
-Object.defineProperty(window, 'matchMedia', {
+Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({
     matches: false,

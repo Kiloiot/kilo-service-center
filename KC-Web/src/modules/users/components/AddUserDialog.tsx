@@ -6,10 +6,10 @@
  * Supports a multi-org picker when no explicit orgId is provided.
  */
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
-import type { CreateUserRequest, OrganizationUI } from '@api-types/api';
-import { useCreateUser } from '@hooks';
+import type { CreateUserRequest, OrganizationUI } from "@api-types/api";
+import { useCreateUser } from "@hooks";
 import {
   Alert,
   Autocomplete,
@@ -23,12 +23,12 @@ import {
   FormControlLabel,
   Switch,
   TextField,
-} from '@mui/material';
+} from "@mui/material";
 
-import { useOrganization as useOrganizationContext } from '@contexts/OrganizationContext';
-import { useAddOrgUser, useOrganizations } from '@hooks/useOrganizations';
-import { ORG_ROLE } from '@constants/app';
-import { USER_FORM } from '@constants/messages';
+import { useOrganization as useOrganizationContext } from "@contexts/OrganizationContext";
+import { useAddOrgUser, useOrganizations } from "@hooks/useOrganizations";
+import { ORG_ROLE } from "@constants/app";
+import { USER_FORM } from "@constants/messages";
 
 interface AddUserDialogProps {
   open: boolean;
@@ -37,22 +37,26 @@ interface AddUserDialogProps {
   orgId?: string;
 }
 
-const AddUserDialog: React.FC<AddUserDialogProps> = ({ open, onClose, orgId }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [note, setNote] = useState('');
+const AddUserDialog: React.FC<AddUserDialogProps> = ({
+  open,
+  onClose,
+  orgId,
+}) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [note, setNote] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [isTenantManager, setIsTenantManager] = useState(false);
   const [isBaseStationManager, setIsBaseStationManager] = useState(false);
   const [isEndpointManager, setIsEndpointManager] = useState(false);
   const [selectedOrgs, setSelectedOrgs] = useState<OrganizationUI[]>([]);
-  const [partialError, setPartialError] = useState('');
+  const [partialError, setPartialError] = useState("");
 
-  const [emailError, setEmailError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
 
   const createUser = useCreateUser();
   const addOrgUser = useAddOrgUser();
@@ -66,7 +70,12 @@ const AddUserDialog: React.FC<AddUserDialogProps> = ({ open, onClose, orgId }) =
 
   // Pre-select current org context if available and no explicit orgId
   const handleOpen = () => {
-    if (!orgId && organizationId && organizations.length > 0 && selectedOrgs.length === 0) {
+    if (
+      !orgId &&
+      organizationId &&
+      organizations.length > 0 &&
+      selectedOrgs.length === 0
+    ) {
       const currentOrg = organizations.find((o) => o.id === organizationId);
       if (currentOrg) {
         setSelectedOrgs([currentOrg]);
@@ -75,20 +84,20 @@ const AddUserDialog: React.FC<AddUserDialogProps> = ({ open, onClose, orgId }) =
   };
 
   const resetForm = () => {
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-    setNote('');
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setNote("");
     setIsAdmin(false);
     setIsActive(true);
     setIsTenantManager(false);
     setIsBaseStationManager(false);
     setIsEndpointManager(false);
     setSelectedOrgs([]);
-    setPartialError('');
-    setEmailError('');
-    setPasswordError('');
-    setConfirmPasswordError('');
+    setPartialError("");
+    setEmailError("");
+    setPasswordError("");
+    setConfirmPasswordError("");
   };
 
   const handleClose = () => {
@@ -103,21 +112,21 @@ const AddUserDialog: React.FC<AddUserDialogProps> = ({ open, onClose, orgId }) =
       setEmailError(USER_FORM.ERR_EMAIL_REQUIRED);
       isValid = false;
     } else {
-      setEmailError('');
+      setEmailError("");
     }
 
     if (!password) {
       setPasswordError(USER_FORM.ERR_PASSWORD_REQUIRED);
       isValid = false;
     } else {
-      setPasswordError('');
+      setPasswordError("");
     }
 
     if (password !== confirmPassword) {
       setConfirmPasswordError(USER_FORM.ERR_PASSWORD_MISMATCH);
       isValid = false;
     } else {
-      setConfirmPasswordError('');
+      setConfirmPasswordError("");
     }
 
     return isValid;
@@ -196,7 +205,7 @@ const AddUserDialog: React.FC<AddUserDialogProps> = ({ open, onClose, orgId }) =
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>{USER_FORM.DIALOG_TITLE_ADD}</DialogTitle>
       <DialogContent>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
           {createUser.isError && (
             <Alert severity="error">
               {createUser.error instanceof Error
@@ -250,15 +259,23 @@ const AddUserDialog: React.FC<AddUserDialogProps> = ({ open, onClose, orgId }) =
             fullWidth
           />
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <FormControlLabel
               control={
-                <Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                <Switch
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                />
               }
               label={USER_FORM.LABEL_IS_ACTIVE}
             />
             <FormControlLabel
-              control={<Switch checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />}
+              control={
+                <Switch
+                  checked={isAdmin}
+                  onChange={(e) => setIsAdmin(e.target.checked)}
+                />
+              }
               label={USER_FORM.LABEL_IS_ADMIN}
             />
             <FormControlLabel
@@ -302,7 +319,14 @@ const AddUserDialog: React.FC<AddUserDialogProps> = ({ open, onClose, orgId }) =
               renderTags={(value, getTagProps) =>
                 value.map((option, index) => {
                   const { key, ...chipProps } = getTagProps({ index });
-                  return <Chip key={key} label={option.name} size="small" {...chipProps} />;
+                  return (
+                    <Chip
+                      key={key}
+                      label={option.name}
+                      size="small"
+                      {...chipProps}
+                    />
+                  );
                 })
               }
               renderInput={(params) => (
@@ -320,7 +344,11 @@ const AddUserDialog: React.FC<AddUserDialogProps> = ({ open, onClose, orgId }) =
         <Button onClick={handleClose} disabled={createUser.isPending}>
           {USER_FORM.ACTION_CANCEL}
         </Button>
-        <Button variant="contained" onClick={handleSubmit} disabled={createUser.isPending}>
+        <Button
+          variant="contained"
+          onClick={handleSubmit}
+          disabled={createUser.isPending}
+        >
           {USER_FORM.ACTION_SUBMIT}
         </Button>
       </DialogActions>

@@ -5,14 +5,17 @@
  * Wraps route content with Suspense and ErrorBoundary.
  */
 
-import type { ReactNode } from 'react';
-import React, { Suspense } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import type { ReactNode } from "react";
+import React, { Suspense } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 
-import GlobalLoader from '@components/common/GlobalLoader';
-import { type FeatureFlagName, useFeatureFlags } from '@contexts/FeatureFlagContext';
+import GlobalLoader from "@components/common/GlobalLoader";
+import {
+  type FeatureFlagName,
+  useFeatureFlags,
+} from "@contexts/FeatureFlagContext";
 
-import { RouteErrorBoundary } from './RouteErrorBoundary';
+import { RouteErrorBoundary } from "./RouteErrorBoundary";
 
 interface FeatureProtectedRouteProps {
   children: ReactNode;
@@ -39,7 +42,7 @@ interface FeatureProtectedRouteProps {
 export const FeatureProtectedRoute: React.FC<FeatureProtectedRouteProps> = ({
   children,
   featureFlag,
-  routeName = 'Route',
+  routeName = "Route",
   loadingFallback = <GlobalLoader />,
 }) => {
   const { isEnabled, loading } = useFeatureFlags();
@@ -54,7 +57,13 @@ export const FeatureProtectedRoute: React.FC<FeatureProtectedRouteProps> = ({
   if (featureFlag && !isEnabled(featureFlag)) {
     // Navigate to home with message about disabled feature
     // In the future, could show a dedicated "Feature Disabled" page
-    return <Navigate to="/" state={{ from: location, disabledFeature: featureFlag }} replace />;
+    return (
+      <Navigate
+        to="/"
+        state={{ from: location, disabledFeature: featureFlag }}
+        replace
+      />
+    );
   }
 
   // Render route with Suspense and ErrorBoundary

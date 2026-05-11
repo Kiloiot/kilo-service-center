@@ -5,14 +5,14 @@
  * Uses the shared ErrorState component for consistent UI.
  */
 
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
-import { Box } from '@mui/material';
-import { ErrorState } from '@ui';
+import { Box } from "@mui/material";
+import { ErrorState } from "@ui";
 
-import { logger } from '@utils/logger';
-import { ERROR_BOUNDARY, UI_COMMON } from '@constants/messages';
-import { isDevelopment } from '@config/env';
+import { logger } from "@utils/logger";
+import { ERROR_BOUNDARY, UI_COMMON } from "@constants/messages";
+import { isDevelopment } from "@config/env";
 
 interface RouteErrorBoundaryProps {
   children: ReactNode;
@@ -42,14 +42,20 @@ export class RouteErrorBoundary extends Component<
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): Partial<RouteErrorBoundaryState> {
+  static getDerivedStateFromError(
+    error: Error,
+  ): Partial<RouteErrorBoundaryState> {
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log error in development
     if (isDevelopment) {
-      logger.error('[RouteErrorBoundary]', this.props.routeName || 'Unknown route', error);
+      logger.error(
+        "[RouteErrorBoundary]",
+        this.props.routeName || "Unknown route",
+        error,
+      );
     }
 
     // Call optional error handler for telemetry
@@ -61,7 +67,7 @@ export class RouteErrorBoundary extends Component<
   };
 
   handleGoHome = () => {
-    window.location.href = '/';
+    window.location.href = "/";
   };
 
   render() {

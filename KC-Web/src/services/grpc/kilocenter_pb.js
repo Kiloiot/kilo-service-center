@@ -11,19 +11,27 @@
 /* eslint-disable */
 // @ts-nocheck
 
-var jspb = require('google-protobuf');
+var jspb = require("google-protobuf");
 var goog = jspb;
-var global = (function() {
-  if (this) { return this; }
-  if (typeof window !== 'undefined') { return window; }
-  if (typeof global !== 'undefined') { return global; }
-  if (typeof self !== 'undefined') { return self; }
-  return Function('return this')();
-}.call(null));
+var global = function () {
+  if (this) {
+    return this;
+  }
+  if (typeof window !== "undefined") {
+    return window;
+  }
+  if (typeof global !== "undefined") {
+    return global;
+  }
+  if (typeof self !== "undefined") {
+    return self;
+  }
+  return Function("return this")();
+}.call(null);
 
-var identity_pb = require('./identity_pb.js');
+var identity_pb = require("./identity_pb.js");
 goog.object.extend(proto, identity_pb);
-var core_pb = require('./core_pb.js');
+var core_pb = require("./core_pb.js");
 goog.object.extend(proto, core_pb);
-var google_protobuf_empty_pb = require('google-protobuf/google/protobuf/empty_pb.js');
+var google_protobuf_empty_pb = require("google-protobuf/google/protobuf/empty_pb.js");
 goog.object.extend(proto, google_protobuf_empty_pb);

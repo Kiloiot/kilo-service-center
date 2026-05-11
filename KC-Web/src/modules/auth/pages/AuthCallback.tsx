@@ -1,13 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { Alert, Box, CircularProgress, Typography } from '@mui/material';
+import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 
-import { apiService } from '@services/api';
-import { useOrganization } from '@contexts/OrganizationContext';
-import { useSession } from '@contexts/SessionContext';
-import { storageService } from '@utils/storage';
-import { AUTH_LAYOUT, DEFAULT_ORG_NAME, ROUTES, STORAGE_KEYS } from '@constants/app';
+import { apiService } from "@services/api";
+import { useOrganization } from "@contexts/OrganizationContext";
+import { useSession } from "@contexts/SessionContext";
+import { storageService } from "@utils/storage";
+import {
+  AUTH_LAYOUT,
+  DEFAULT_ORG_NAME,
+  ROUTES,
+  STORAGE_KEYS,
+} from "@constants/app";
 import {
   ACTION_RETURN_TO_LOGIN,
   ERR_AUTH_CALLBACK_EXCHANGE_FAILED,
@@ -15,7 +20,7 @@ import {
   ERR_AUTH_ORG_REQUIRED,
   ERR_AUTH_PROFILE_LOAD_FAILED,
   MSG_AUTH_COMPLETING,
-} from '@constants/messages';
+} from "@constants/messages";
 
 const AuthCallback: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -26,25 +31,29 @@ const AuthCallback: React.FC = () => {
 
   useEffect(() => {
     const handleCallback = async () => {
-      const code = searchParams.get('code');
-      const state = searchParams.get('state');
+      const code = searchParams.get("code");
+      const state = searchParams.get("state");
 
       // Check for error response from provider
-      const errorParam = searchParams.get('error');
+      const errorParam = searchParams.get("error");
       if (errorParam) {
         setError(ERR_AUTH_CALLBACK_EXCHANGE_FAILED);
         return;
       }
 
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      const accessToken = hashParams.get('access_token');
+      const hashParams = new URLSearchParams(
+        window.location.hash.replace(/^#/, ""),
+      );
+      const accessToken = hashParams.get("access_token");
       if (accessToken) {
         storageService.setItem(STORAGE_KEYS.AUTH_TOKEN, accessToken);
 
         try {
           const profile = await apiService.getAuthProfile();
 
-          const defaultOrg = profile.memberships.find((m) => m.orgId === profile.defaultOrgId);
+          const defaultOrg = profile.memberships.find(
+            (m) => m.orgId === profile.defaultOrgId,
+          );
           const firstOrg = profile.memberships[0];
           const org = defaultOrg || firstOrg;
 
@@ -55,8 +64,16 @@ const AuthCallback: React.FC = () => {
           }
 
           setUser(profile);
-          setOrganization(org.orgId, org.orgName || DEFAULT_ORG_NAME, profile.id);
-          window.history.replaceState(null, document.title, ROUTES.AUTH_CALLBACK);
+          setOrganization(
+            org.orgId,
+            org.orgName || DEFAULT_ORG_NAME,
+            profile.id,
+          );
+          window.history.replaceState(
+            null,
+            document.title,
+            ROUTES.AUTH_CALLBACK,
+          );
           navigate(ROUTES.HOME);
           return;
         } catch {
@@ -84,18 +101,26 @@ const AuthCallback: React.FC = () => {
         }
 
         // Store access token for subsequent API requests
-        storageService.setItem(STORAGE_KEYS.AUTH_TOKEN, loginResponse.tokens.accessToken);
+        storageService.setItem(
+          STORAGE_KEYS.AUTH_TOKEN,
+          loginResponse.tokens.accessToken,
+        );
 
         // Store refresh token if provided (refresh_token_enabled=true on backend)
         if (loginResponse.tokens.refreshToken) {
-          storageService.setItem(STORAGE_KEYS.REFRESH_TOKEN, loginResponse.tokens.refreshToken);
+          storageService.setItem(
+            STORAGE_KEYS.REFRESH_TOKEN,
+            loginResponse.tokens.refreshToken,
+          );
         } else {
           storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
         }
 
         // Set organization context from user profile
         const { user } = loginResponse;
-        const defaultOrg = user.memberships.find((m) => m.orgId === user.defaultOrgId);
+        const defaultOrg = user.memberships.find(
+          (m) => m.orgId === user.defaultOrgId,
+        );
         const firstOrg = user.memberships[0];
         const org = defaultOrg || firstOrg;
 
@@ -131,7 +156,7 @@ const AuthCallback: React.FC = () => {
         <Typography
           variant="body2"
           color="primary"
-          sx={{ cursor: 'pointer', textDecoration: 'underline' }}
+          sx={{ cursor: "pointer", textDecoration: "underline" }}
           onClick={() => navigate(ROUTES.LOGIN)}
         >
           {ACTION_RETURN_TO_LOGIN}
@@ -148,7 +173,9 @@ const AuthCallback: React.FC = () => {
       minHeight={AUTH_LAYOUT.FULL_HEIGHT}
     >
       <CircularProgress />
-      <Typography sx={{ ml: AUTH_LAYOUT.SPACING_ML }}>{MSG_AUTH_COMPLETING}</Typography>
+      <Typography sx={{ ml: AUTH_LAYOUT.SPACING_ML }}>
+        {MSG_AUTH_COMPLETING}
+      </Typography>
     </Box>
   );
 };

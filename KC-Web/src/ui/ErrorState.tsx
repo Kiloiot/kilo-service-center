@@ -5,13 +5,13 @@
  * Uses theme tokens exclusively - no inline colors/spacing.
  */
 
-import type { ReactNode } from 'react';
-import React from 'react';
+import type { ReactNode } from "react";
+import React from "react";
 
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button, Typography } from "@mui/material";
 
-import { ERROR_BOUNDARY } from '@constants/messages';
-import { isDevelopment } from '@config/env';
+import { ERROR_BOUNDARY } from "@constants/messages";
+import { isDevelopment } from "@config/env";
 
 export interface ErrorStateProps {
   /** Main error title */
@@ -55,27 +55,28 @@ export interface ErrorStateProps {
  * />
  */
 export const ErrorState: React.FC<ErrorStateProps> = ({
-  title = 'Something went wrong',
+  title = "Something went wrong",
   message,
   error,
   icon,
   onRetry,
-  retryLabel = 'Try again',
+  retryLabel = "Try again",
   secondaryAction,
   minHeight = 300,
   showDetails,
 }) => {
-  const displayMessage = message || error?.message || 'An unexpected error occurred';
+  const displayMessage =
+    message || error?.message || "An unexpected error occurred";
   const shouldShowDetails = showDetails ?? isDevelopment;
 
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
         minHeight,
         p: 4,
       }}
@@ -84,7 +85,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
         <Box
           sx={{
             mb: 2,
-            color: 'error.main',
+            color: "error.main",
             opacity: 0.8,
           }}
         >
@@ -96,12 +97,16 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
         {title}
       </Typography>
 
-      <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mb: 2 }}>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ maxWidth: 400, mb: 2 }}
+      >
         {displayMessage}
       </Typography>
 
       {(onRetry || secondaryAction) && (
-        <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+        <Box sx={{ display: "flex", gap: 2, mt: 1 }}>
           {onRetry && (
             <Button variant="contained" onClick={onRetry}>
               {retryLabel}
@@ -117,10 +122,16 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
 
       {/* Show stack trace only in development */}
       {shouldShowDetails && error?.stack && (
-        <Box sx={{ mt: 4, textAlign: 'left', maxWidth: 600, width: '100%' }}>
+        <Box sx={{ mt: 4, textAlign: "left", maxWidth: 600, width: "100%" }}>
           <details>
-            <summary style={{ cursor: 'pointer', marginBottom: 8, color: 'inherit' }}>
-              <Typography variant="caption" color="text.secondary" component="span">
+            <summary
+              style={{ cursor: "pointer", marginBottom: 8, color: "inherit" }}
+            >
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                component="span"
+              >
                 {ERROR_BOUNDARY.STACK_TRACE_SUMMARY}
               </Typography>
             </summary>
@@ -128,14 +139,14 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
               component="pre"
               sx={{
                 p: 2,
-                bgcolor: 'background.paper',
+                bgcolor: "background.paper",
                 borderRadius: 1,
-                overflow: 'auto',
-                fontSize: '0.75rem',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
+                overflow: "auto",
+                fontSize: "0.75rem",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
                 border: 1,
-                borderColor: 'divider',
+                borderColor: "divider",
               }}
             >
               {error.stack}
