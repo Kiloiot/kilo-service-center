@@ -80,7 +80,7 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({
     return () => {
       apiService.setAuthFailureCallback(undefined);
     };
-  }, []);  
+  }, []);
 
   // Start proactive token refresh scheduler when authenticated
   useEffect(() => {
@@ -92,7 +92,7 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({
       scheduleRefresh();
     }
     return () => stopRefresh();
-  }, [isHydrated, user]);  
+  }, [isHydrated, user]);
 
   const setUser = (profile: UserProfileAPI) => {
     storageService.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));

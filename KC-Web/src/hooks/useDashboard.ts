@@ -7,7 +7,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiService } from "@services/api";
-import { SERVER_ACTIVITY_EVENT_TYPES,TIMING } from "@constants/app";
+import { SERVER_ACTIVITY_EVENT_TYPES, TIMING } from "@constants/app";
 import { queryKeys } from "@config/query-keys";
 
 /**

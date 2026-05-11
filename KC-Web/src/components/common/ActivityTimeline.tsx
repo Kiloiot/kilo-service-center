@@ -11,7 +11,7 @@ import {
 
 import { formatDate, formatEUIWithDashes } from "@utils/formatters";
 import { ENDPOINT_DETAILS } from "@constants/messages";
-import { formatTerminalTime,getTerminalStyles } from "@theme/index";
+import { formatTerminalTime, getTerminalStyles } from "@theme/index";
 
 // =============================================================================
 // Types
