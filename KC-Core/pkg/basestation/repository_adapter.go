@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 // RepositoryAdapter adapts KC-DB BaseStationRepository to Store interface

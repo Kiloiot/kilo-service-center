@@ -2,7 +2,7 @@
 package scheduler
 
 import (
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // ULTransmitScheduler allows SCACI to schedule uplink transmissions via BSSCI without import cycles.

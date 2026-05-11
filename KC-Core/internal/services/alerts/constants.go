@@ -1,7 +1,7 @@
 // Package alerts provides alerts service implementation for gRPC layer.
 package alerts
 
-import "github.com/kilocenter/KC-DB/storage/models"
+import "github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 
 // AlertSeverities defines severities that qualify as alerts (warning+).
 var AlertSeverities = []string{

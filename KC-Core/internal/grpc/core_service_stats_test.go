@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	"github.com/kilocenter/KC-DB/storage/models"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 // MockStorage implements storage.Storage for testing

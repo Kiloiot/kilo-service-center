@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/config"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

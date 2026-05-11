@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 func TestHandleGetConnectedSessionsIncludesVersionFields(t *testing.T) {

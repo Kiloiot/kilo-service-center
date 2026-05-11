@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	"github.com/kilocenter/KC-Core/pkg/testutil"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"

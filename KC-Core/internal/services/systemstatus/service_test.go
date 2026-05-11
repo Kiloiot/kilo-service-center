@@ -6,11 +6,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/internal/services/systemstatus"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/testutil"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/systemstatus"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

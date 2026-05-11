@@ -5,9 +5,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/org"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // UserStore provides user persistence operations.

@@ -3,13 +3,13 @@ package builders
 import (
 	"time"
 
-	federationservices "github.com/kilocenter/KC-Core/internal/services/federation"
-	orgresolver "github.com/kilocenter/KC-Core/internal/services/orgresolver"
-	"github.com/kilocenter/KC-Core/pkg/federation"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/org"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/postgres"
+	federationservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/federation"
+	orgresolver "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/orgresolver"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/federation"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 )
 
 // NewCEBootstrapHandler constructs and configures the CE bootstrap service,

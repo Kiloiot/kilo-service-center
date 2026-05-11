@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"

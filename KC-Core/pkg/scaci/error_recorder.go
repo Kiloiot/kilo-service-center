@@ -4,9 +4,9 @@ package scaci
 import (
 	"context"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // errorRecorderImpl implements the ErrorRecorder interface per SCACI §3.14.

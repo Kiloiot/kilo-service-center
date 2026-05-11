@@ -6,8 +6,8 @@ package interceptors
 import (
 	"context"
 
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/google/uuid"
-	grpcconst "github.com/kilocenter/KC-Core/pkg/grpc"
 )
 
 // APIKeyRecord is a decoupled representation of an API key for interceptor use.

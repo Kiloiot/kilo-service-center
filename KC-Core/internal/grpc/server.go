@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-Core/pkg/grpc/interceptors"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/org"
-	pkgcontext "github.com/kilocenter/pkg/context"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"golang.org/x/net/http2"     //nolint:staticcheck // h2c cleartext HTTP/2 support
 	"golang.org/x/net/http2/h2c" //nolint:staticcheck // h2c deprecation acknowledged; migration deferred

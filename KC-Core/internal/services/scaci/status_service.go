@@ -23,9 +23,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/scaci"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // statusService implements StatusService interface

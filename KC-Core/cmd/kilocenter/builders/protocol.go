@@ -9,17 +9,17 @@ import (
 	"sync"
 	"time"
 
-	bssciservices "github.com/kilocenter/KC-Core/internal/services/bssci"
-	blueprintresolver "github.com/kilocenter/KC-Core/internal/services/bssci/blueprint"
-	federationservices "github.com/kilocenter/KC-Core/internal/services/federation"
-	scaciservices "github.com/kilocenter/KC-Core/internal/services/scaci"
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	pkgconfig "github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/propagation"
-	"github.com/kilocenter/KC-Core/pkg/scaci"
-	"github.com/kilocenter/KC-DB/storage/postgres"
-	"github.com/kilocenter/KC-MQTT/pkg/mqtt"
+	bssciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci"
+	blueprintresolver "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci/blueprint"
+	federationservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/federation"
+	scaciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
+	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 )
 
 // ProtocolServers holds BSSCI and SCACI server instances and related resources.

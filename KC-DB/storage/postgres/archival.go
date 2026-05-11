@@ -9,7 +9,7 @@ import (
 
 	"github.com/lib/pq"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // ArchivalService handles message archiving operations

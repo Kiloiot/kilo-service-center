@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // RefreshTokenRepository implements the RefreshTokenRepository interface for PostgreSQL

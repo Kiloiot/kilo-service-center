@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kilocenter/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 )
 
 // LoadTLSConfig loads TLS configuration for SCACI server per MIOTY SCACI v1.0.0 §1

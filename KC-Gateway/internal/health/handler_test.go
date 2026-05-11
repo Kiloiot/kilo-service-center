@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Gateway/internal/resilience"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Gateway/internal/resilience"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

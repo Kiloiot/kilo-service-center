@@ -3,9 +3,9 @@ package grpc
 import (
 	"context"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	grpcconst "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-Core/pkg/grpc/interceptors"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
 	"google.golang.org/grpc/metadata"
 )
 

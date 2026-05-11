@@ -15,9 +15,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	pkgmioty "github.com/kilocenter/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
-	"github.com/kilocenter/KC-DB/common/encoding"
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/encoding"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // BaseStationRepository defines the interface for Base Station data operations

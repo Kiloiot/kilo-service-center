@@ -4,12 +4,12 @@ import (
 	"context"
 	"sync"
 
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	pkgmioty "github.com/kilocenter/KC-Core/pkg/mioty" // FormatEUI64 helper
-	"github.com/kilocenter/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // FormatEUI64 helper
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 )
 
 // scaciBroadcaster interface is defined in pkg/bssci/server.go

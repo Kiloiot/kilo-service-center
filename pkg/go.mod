@@ -1,4 +1,4 @@
-module github.com/kilocenter/pkg
+module github.com/Kiloiot/kilo-service-center/pkg
 
 go 1.26.3
 

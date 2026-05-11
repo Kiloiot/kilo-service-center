@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
 )
 
 // mockLoggerForDispatch is a minimal mock implementing logger.Logger

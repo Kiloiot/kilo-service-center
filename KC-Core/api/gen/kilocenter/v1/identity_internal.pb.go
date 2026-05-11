@@ -810,7 +810,7 @@ const file_identity_internal_proto_rawDesc = "" +
 	"\x14UpdateAPIKeyLastUsed\x12..kilocenter.api.v1.UpdateAPIKeyLastUsedRequest\x1a/.kilocenter.api.v1.UpdateAPIKeyLastUsedResponse\x12n\n" +
 	"\x11GetUserMembership\x12+.kilocenter.api.v1.GetUserMembershipRequest\x1a,.kilocenter.api.v1.GetUserMembershipResponse\x12k\n" +
 	"\x10CheckServerAdmin\x12*.kilocenter.api.v1.CheckServerAdminRequest\x1a+.kilocenter.api.v1.CheckServerAdminResponse\x12t\n" +
-	"\x13RecordPlatformEvent\x12-.kilocenter.api.v1.RecordPlatformEventRequest\x1a..kilocenter.api.v1.RecordPlatformEventResponseBBZ@github.com/kilocenter/KC-Core/api/gen/kilocenter/v1;kilocenterv1b\x06proto3"
+	"\x13RecordPlatformEvent\x12-.kilocenter.api.v1.RecordPlatformEventRequest\x1a..kilocenter.api.v1.RecordPlatformEventResponseBSZQgithub.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1;kilocenterv1b\x06proto3"
 
 var (
 	file_identity_internal_proto_rawDescOnce sync.Once

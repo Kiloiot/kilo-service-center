@@ -3,7 +3,7 @@ package bssciservices
 import (
 	"context"
 
-	"github.com/kilocenter/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 )
 
 // NoopRoamingService is a no-operation implementation of RoamingService

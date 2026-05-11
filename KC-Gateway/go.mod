@@ -1,14 +1,14 @@
-module github.com/kilocenter/KC-Gateway
+module github.com/Kiloiot/kilo-service-center/KC-Gateway
 
 go 1.26.3
 
 require (
+	github.com/Kiloiot/kilo-service-center/KC-Core v0.1.0
+	github.com/Kiloiot/kilo-service-center/KC-DB v0.1.0
+	github.com/Kiloiot/kilo-service-center/pkg v0.0.0-00010101000000-000000000000
 	github.com/aead/cmac v0.0.0-20160719120800-7af84192f0b1
 	github.com/google/uuid v1.6.0
 	github.com/improbable-eng/grpc-web v0.15.0
-	github.com/kilocenter/KC-Core v0.1.0
-	github.com/kilocenter/KC-DB v0.1.0
-	github.com/kilocenter/pkg v0.0.0-00010101000000-000000000000
 	github.com/lib/pq v1.12.3
 	github.com/mwitkow/grpc-proxy v0.0.0-20250813121105-2866842de9a5
 	github.com/prometheus/client_golang v1.23.2
@@ -23,6 +23,7 @@ require (
 )
 
 require (
+	github.com/Kiloiot/kilo-service-center/KC-MQTT v0.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -39,11 +40,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.19.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/hashicorp/errwrap v1.1.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/jmoiron/sqlx v1.4.0 // indirect
-	github.com/kilocenter/KC-MQTT v0.1.0 // indirect
-	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc v1.0.6 // indirect
@@ -59,7 +56,6 @@ require (
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
-	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
@@ -74,7 +70,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
@@ -90,8 +85,8 @@ require (
 )
 
 replace (
-	github.com/kilocenter/KC-Core => ../KC-Core
-	github.com/kilocenter/KC-DB => ../KC-DB
-	github.com/kilocenter/KC-MQTT => ../KC-MQTT
-	github.com/kilocenter/pkg => ../pkg
+	github.com/Kiloiot/kilo-service-center/KC-Core => ../KC-Core
+	github.com/Kiloiot/kilo-service-center/KC-DB => ../KC-DB
+	github.com/Kiloiot/kilo-service-center/KC-MQTT => ../KC-MQTT
+	github.com/Kiloiot/kilo-service-center/pkg => ../pkg
 )

@@ -6,11 +6,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/scaci"
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	"github.com/kilocenter/KC-MQTT/pkg/mqtt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

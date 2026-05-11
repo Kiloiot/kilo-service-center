@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )

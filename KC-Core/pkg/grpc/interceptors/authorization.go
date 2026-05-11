@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	pkgconfig "github.com/kilocenter/KC-Core/pkg/config"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/models"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 )

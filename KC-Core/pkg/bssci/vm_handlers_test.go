@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/bssci/testutil"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

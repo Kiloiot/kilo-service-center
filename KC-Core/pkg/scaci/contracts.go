@@ -52,10 +52,10 @@ import (
 	"context"
 	"crypto/x509"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // HandshakeService manages SCACI connect flow per MIOTY §3.3

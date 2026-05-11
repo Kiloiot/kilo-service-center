@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // buildMinimalValidPayload creates payloads matching actual sendMessage() output

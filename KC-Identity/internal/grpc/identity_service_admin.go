@@ -15,12 +15,12 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-Identity/internal/services/admin"
-	"github.com/kilocenter/KC-Identity/internal/services/grpcservices"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/admin"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 // validateOrgAccess validates the request org ID and confirms it belongs to the caller's tenant.

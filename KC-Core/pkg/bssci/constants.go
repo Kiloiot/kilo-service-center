@@ -3,7 +3,7 @@ package bssci
 import (
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/endpoint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
 )
 
 // Message Encoding Constants

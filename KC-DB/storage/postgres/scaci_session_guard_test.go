@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 func TestSCACIListSessions_NilTenantID_ReturnsError(t *testing.T) {

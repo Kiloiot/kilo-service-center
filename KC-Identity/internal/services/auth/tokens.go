@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/config"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 

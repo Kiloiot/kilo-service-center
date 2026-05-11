@@ -17,19 +17,19 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	pkgmioty "github.com/kilocenter/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
-	"github.com/kilocenter/KC-Core/pkg/org"            // Organization resolver for propagation context
-	"github.com/kilocenter/KC-Core/pkg/propagation"    // BSSCI §5.8-5.8.3 attach propagation contracts
-	"github.com/kilocenter/KC-Core/pkg/scheduler"      // Import neutral scheduler contracts
-	dbconfig "github.com/kilocenter/KC-DB/common/config"
-	"github.com/kilocenter/KC-DB/common/encoding"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	"github.com/kilocenter/KC-DB/storage/models"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"            // Organization resolver for propagation context
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"    // BSSCI §5.8-5.8.3 attach propagation contracts
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler"      // Import neutral scheduler contracts
+	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/encoding"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/vmihailenco/msgpack/v5"
 )
 

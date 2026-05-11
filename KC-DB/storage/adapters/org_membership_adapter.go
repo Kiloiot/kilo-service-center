@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-DB/storage/postgres"
 )
 
 // OrgMembershipStoreAdapter adapts postgres.OrganizationRepository to provide

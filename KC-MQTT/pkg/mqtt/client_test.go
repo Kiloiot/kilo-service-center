@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // MockLogger implements the Logger interface for testing

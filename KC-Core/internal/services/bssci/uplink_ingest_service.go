@@ -9,17 +9,17 @@ import (
 
 	"time"
 
+	pkgblueprint "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/roaming"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	pkgblueprint "github.com/kilocenter/KC-Core/pkg/blueprint"
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/org"
-	"github.com/kilocenter/KC-Core/pkg/roaming"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	"github.com/kilocenter/KC-DB/storage/models"
-	pkgcontext "github.com/kilocenter/pkg/context"
 )
 
 // UplinkIngestServiceImpl implements bssci.UplinkIngestService.

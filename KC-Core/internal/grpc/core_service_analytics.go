@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	"github.com/kilocenter/KC-Core/internal/services/grpcservices"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 )
 
 // Analytics handlers

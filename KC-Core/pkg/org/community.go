@@ -5,8 +5,8 @@ import (
 	"crypto/x509"
 	"fmt"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage"
 )
 
 // CommunityResolver implements Resolver and OrganizationResolver for

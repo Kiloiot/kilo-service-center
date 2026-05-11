@@ -3,7 +3,7 @@ package scaciservices
 import (
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 )
 
 func TestValidateConnectFields_ValidFreshSession(t *testing.T) {

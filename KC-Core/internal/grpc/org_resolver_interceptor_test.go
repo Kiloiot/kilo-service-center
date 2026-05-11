@@ -5,9 +5,9 @@ import (
 	"crypto/x509"
 	"testing"
 
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	pkgcontext "github.com/kilocenter/pkg/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

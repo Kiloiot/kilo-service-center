@@ -4,7 +4,7 @@ package testutil
 import (
 	"context"
 
-	pkgcontext "github.com/kilocenter/pkg/context"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 // TestContext returns a background context for use in tests.

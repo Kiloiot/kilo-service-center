@@ -22,19 +22,19 @@ import (
 	"github.com/google/uuid"
 	"github.com/vmihailenco/msgpack/v5"
 
-	"github.com/kilocenter/KC-Core/pkg/basestation"
-	"github.com/kilocenter/KC-Core/pkg/crypto"
-	"github.com/kilocenter/KC-Core/pkg/endpoint"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	pkgmioty "github.com/kilocenter/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
-	"github.com/kilocenter/KC-Core/pkg/org"
-	"github.com/kilocenter/KC-Core/pkg/propagation"
-	"github.com/kilocenter/KC-DB/common/validation"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/mioty"
-	"github.com/kilocenter/KC-DB/storage/models"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/crypto"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 const (

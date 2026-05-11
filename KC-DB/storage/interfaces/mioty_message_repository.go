@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // MIOTYMessageRepository provides MIOTY-specific message storage operations

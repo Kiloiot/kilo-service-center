@@ -2,7 +2,7 @@
 package resilience
 
 import (
-	"github.com/kilocenter/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/sony/gobreaker/v2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

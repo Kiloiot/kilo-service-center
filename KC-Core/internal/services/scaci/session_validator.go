@@ -1,7 +1,7 @@
 package scaciservices
 
 import (
-	"github.com/kilocenter/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 )
 
 // sessionValidator implements scaci.SessionValidator interface

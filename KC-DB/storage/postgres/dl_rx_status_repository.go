@@ -10,9 +10,9 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	dbconfig "github.com/kilocenter/KC-DB/common/config"
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // DLRXStatusRepository handles DL RX status persistence per BSSCI §3.15

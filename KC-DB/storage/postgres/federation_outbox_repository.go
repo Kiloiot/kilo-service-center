@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
 )
 
 // FederationOutboxRepository manages CE-side outbox records using PostgreSQL.

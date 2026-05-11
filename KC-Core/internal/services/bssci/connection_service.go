@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/basestation"
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 type connectionService struct {

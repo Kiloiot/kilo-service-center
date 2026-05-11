@@ -7,7 +7,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
 
 // DetachEndpoint builds the canonical endpoint detach update map and applies it.

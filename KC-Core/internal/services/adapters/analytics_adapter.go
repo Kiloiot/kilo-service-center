@@ -5,9 +5,9 @@ import (
 	"context"
 	"time"
 
-	analyticsservice "github.com/kilocenter/KC-Core/internal/services/analytics"
-	miotyformat "github.com/kilocenter/KC-Core/pkg/mioty"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
+	analyticsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/analytics"
+	miotyformat "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
 
 // AnalyticsMessageStoreAdapter adapts interfaces.MIOTYMessageRepository to analyticsservice.MessageStore.

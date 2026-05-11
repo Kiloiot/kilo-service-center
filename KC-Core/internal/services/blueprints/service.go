@@ -12,16 +12,16 @@ import (
 	"regexp"
 	"strings"
 
+	blueprintdecoder "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci/blueprint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	blueprintconstants "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	blueprintdecoder "github.com/kilocenter/KC-Core/internal/services/bssci/blueprint"
-	"github.com/kilocenter/KC-Core/internal/services/grpcservices"
-	blueprintconstants "github.com/kilocenter/KC-Core/pkg/blueprint"
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
-	pkgcontext "github.com/kilocenter/pkg/context"
 )
 
 // Sentinel errors for blueprint operations.

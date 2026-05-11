@@ -13,7 +13,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )

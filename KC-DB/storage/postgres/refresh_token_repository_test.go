@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/testutil"
-	"github.com/kilocenter/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

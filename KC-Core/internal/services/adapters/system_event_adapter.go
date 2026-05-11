@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	eventsservice "github.com/kilocenter/KC-Core/internal/services/events"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
+	eventsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/events"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // SystemEventStoreAdapter adapts interfaces.SystemEventStore to eventsservice.SystemEventStore.

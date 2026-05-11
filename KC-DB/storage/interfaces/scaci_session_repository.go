@@ -3,7 +3,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // SCACISessionRepository defines the interface for SCACI session management

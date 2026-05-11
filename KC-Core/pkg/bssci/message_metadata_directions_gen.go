@@ -3,7 +3,7 @@
 
 package bssci
 
-import mioty "github.com/kilocenter/KC-DB/storage/mioty"
+import mioty "github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 
 // CommandDirectionMap maps all 58 BSSCI v1.0.0 commands to their protocol direction
 // Derived from KC-DB/storage/mioty/types.go annotations (// Direction: ...)

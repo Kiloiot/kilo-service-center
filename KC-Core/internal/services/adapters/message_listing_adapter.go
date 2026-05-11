@@ -8,10 +8,10 @@ import (
 	"encoding/json"
 	"time"
 
-	messagesservice "github.com/kilocenter/KC-Core/internal/services/messages"
-	miotyformat "github.com/kilocenter/KC-Core/pkg/mioty"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	messagesservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/messages"
+	miotyformat "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // MessageListingStoreAdapter adapts interfaces.MIOTYMessageRepository to messagesservice.MessageStore.

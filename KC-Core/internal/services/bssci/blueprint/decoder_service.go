@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/kilocenter/KC-Core/pkg/blueprint"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // DecoderService implements the BlueprintDecoder interface for payload decoding.

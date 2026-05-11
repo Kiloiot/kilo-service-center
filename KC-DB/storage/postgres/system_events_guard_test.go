@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
 
 func TestGetEvents_EmptyTenantID_ReturnsError(t *testing.T) {

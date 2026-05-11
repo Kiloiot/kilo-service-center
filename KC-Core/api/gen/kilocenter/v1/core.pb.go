@@ -14869,7 +14869,7 @@ const file_core_proto_rawDesc = "" +
 	"\vGetCEStatus\x12%.kilocenter.api.v1.GetCEStatusRequest\x1a&.kilocenter.api.v1.GetCEStatusResponse\x12w\n" +
 	"\x14CompleteCEOnboarding\x12..kilocenter.api.v1.CompleteCEOnboardingRequest\x1a/.kilocenter.api.v1.CompleteCEOnboardingResponse\x12h\n" +
 	"\x0fListCEInstances\x12).kilocenter.api.v1.ListCEInstancesRequest\x1a*.kilocenter.api.v1.ListCEInstancesResponse\x12k\n" +
-	"\x10RevokeCEInstance\x12*.kilocenter.api.v1.RevokeCEInstanceRequest\x1a+.kilocenter.api.v1.RevokeCEInstanceResponseBBZ@github.com/kilocenter/KC-Core/api/gen/kilocenter/v1;kilocenterv1b\x06proto3"
+	"\x10RevokeCEInstance\x12*.kilocenter.api.v1.RevokeCEInstanceRequest\x1a+.kilocenter.api.v1.RevokeCEInstanceResponseBSZQgithub.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1;kilocenterv1b\x06proto3"
 
 var (
 	file_core_proto_rawDescOnce sync.Once

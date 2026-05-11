@@ -30,14 +30,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kilocenter/KC-Core/pkg/endpoint"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	pkgmioty "github.com/kilocenter/KC-Core/pkg/mioty" // FormatEUI64 helper
-	"github.com/kilocenter/KC-Core/pkg/scaci"
-	dbconfig "github.com/kilocenter/KC-DB/common/config"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // FormatEUI64 helper
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // endpointService implements EndpointService interface

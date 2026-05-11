@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"net"
 
+	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
+	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	pkgmioty "github.com/kilocenter/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
-	dbconfig "github.com/kilocenter/KC-DB/common/config"
-	"github.com/kilocenter/KC-DB/storage/models"
 	"github.com/vmihailenco/msgpack/v5"
 )
 

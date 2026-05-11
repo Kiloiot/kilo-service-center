@@ -3,8 +3,8 @@ package grpc
 import (
 	"context"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

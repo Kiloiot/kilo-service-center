@@ -1,8 +1,8 @@
 package builders
 
 import (
-	federationservices "github.com/kilocenter/KC-Core/internal/services/federation"
-	"github.com/kilocenter/KC-DB/storage/postgres"
+	federationservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/federation"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 )
 
 // defaultFederationWirer wires CE-only federation services (bootstrap/onboarding).

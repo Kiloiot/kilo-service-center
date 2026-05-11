@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 )
 
 // Helper to create test certificate with custom properties

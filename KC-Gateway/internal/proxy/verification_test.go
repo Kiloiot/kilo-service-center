@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	grpcconst "github.com/kilocenter/KC-Core/pkg/grpc"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"

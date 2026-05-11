@@ -16,7 +16,7 @@ package bssci
 //go:generate go run ../../../../tools/extract_command_directions.go
 
 import (
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // ============================================================================

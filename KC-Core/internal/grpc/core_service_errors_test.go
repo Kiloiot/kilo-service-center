@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

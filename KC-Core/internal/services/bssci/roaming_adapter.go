@@ -6,9 +6,9 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/kilocenter/KC-Core/pkg/roaming"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/roaming"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	log "github.com/sirupsen/logrus"
 )
 

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

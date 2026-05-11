@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package kilocenter.api.v1;
 
-option go_package = "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1;kilocenterv1";
+option go_package = "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1;kilocenterv1";
 
 import "identity.proto";
 import "core.proto";

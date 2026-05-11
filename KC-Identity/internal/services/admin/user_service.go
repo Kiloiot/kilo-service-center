@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/auth"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/config"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-Identity/internal/services/auth"
-	"github.com/kilocenter/KC-Identity/internal/services/grpcservices"
 )
 
 // UserAdminService implements grpcservices.AdminUserService.

@@ -3,7 +3,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // MIOTYBaseStationStatusRepository provides base station status history storage operations

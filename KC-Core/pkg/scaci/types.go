@@ -4,7 +4,7 @@ package scaci
 import (
 	"fmt"
 
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/vmihailenco/msgpack/v5"
 )
 

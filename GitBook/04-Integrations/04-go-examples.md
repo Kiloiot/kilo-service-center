@@ -39,7 +39,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	kilocenterv1 "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
+	kilocenterv1 "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 )
 
 // server is the KiloCenter KC-Gateway gRPC endpoint.
@@ -87,7 +87,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	kilocenterv1 "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
+	kilocenterv1 "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 )
 
 var server = "localhost:9090"

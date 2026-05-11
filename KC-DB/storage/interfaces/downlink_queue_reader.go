@@ -3,7 +3,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/kilocenter/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 )
 
 // DownlinkQueueReader defines the interface for read-only downlink queue operations

@@ -4,10 +4,10 @@ package grpc
 import (
 	"context"
 
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-Core/pkg/grpc/interceptors"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // AuthInterceptor is a type alias for the extracted interceptors.AuthInterceptor.

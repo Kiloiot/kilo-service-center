@@ -8,9 +8,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // SCACISessionRepository implements the SCACISessionRepository interface for PostgreSQL

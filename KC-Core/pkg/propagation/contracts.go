@@ -5,7 +5,7 @@ package propagation
 import (
 	"context"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // BaseStationSession is a lightweight snapshot of active BSSCI session state

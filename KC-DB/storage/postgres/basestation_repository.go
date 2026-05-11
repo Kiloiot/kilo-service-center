@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // BaseStationRepository implements the BaseStationRepository interface for PostgreSQL

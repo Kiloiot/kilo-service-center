@@ -5,9 +5,9 @@ import (
 	"context"
 	"time"
 
+	grpcpkg "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	grpcpkg "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // AuthLoginResult contains tokens and profile for login/exchange operations

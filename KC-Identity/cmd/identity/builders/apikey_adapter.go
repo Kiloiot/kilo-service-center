@@ -3,9 +3,9 @@ package builders
 import (
 	"context"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	identitygrpc "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/grpc"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	identitygrpc "github.com/kilocenter/KC-Identity/internal/grpc"
 )
 
 // apiKeyLookupAdapter bridges interfaces.APIKeyRepository to identitygrpc.APIKeyLookup.

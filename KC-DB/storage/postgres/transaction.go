@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/crypto"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/jmoiron/sqlx"
-	"github.com/kilocenter/KC-Core/pkg/crypto"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
 )
 
 // Transaction represents a database transaction

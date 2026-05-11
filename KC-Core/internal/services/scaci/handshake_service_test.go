@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-Core/pkg/scaci"
-	"github.com/kilocenter/KC-Core/pkg/testutil"
-	"github.com/kilocenter/KC-DB/storage/models"
 )
 
 // ============================================================================

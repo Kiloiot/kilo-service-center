@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	kcerrors "github.com/kilocenter/KC-DB/common/errors"
+	kcerrors "github.com/Kiloiot/kilo-service-center/KC-DB/common/errors"
 	"github.com/lib/pq"
 )
 

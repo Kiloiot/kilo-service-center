@@ -4,7 +4,7 @@ package scaci
 import (
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
 )
 
 // Session persistence timeouts per SCACI operational requirements

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage"
 )
 
 var (

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/google/uuid"
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

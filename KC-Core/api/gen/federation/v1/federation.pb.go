@@ -725,7 +725,7 @@ const file_federation_proto_rawDesc = "" +
 	"\fRevokeNotice\x12\x16\n" +
 	"\x06reason\x18\x01 \x01(\tR\x06reason2v\n" +
 	"\x11FederationService\x12a\n" +
-	"\aConnect\x12(.kilocenter.federation.v1.CEToECEMessage\x1a(.kilocenter.federation.v1.ECEToCEMessage(\x010\x01BBZ@github.com/kilocenter/KC-Core/api/gen/federation/v1;federationv1b\x06proto3"
+	"\aConnect\x12(.kilocenter.federation.v1.CEToECEMessage\x1a(.kilocenter.federation.v1.ECEToCEMessage(\x010\x01BSZQgithub.com/Kiloiot/kilo-service-center/KC-Core/api/gen/federation/v1;federationv1b\x06proto3"
 
 var (
 	file_federation_proto_rawDescOnce sync.Once

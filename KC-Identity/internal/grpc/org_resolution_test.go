@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/models"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

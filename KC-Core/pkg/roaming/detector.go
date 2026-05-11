@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // ErrEndpointNotFound is returned when an endpoint cannot be found

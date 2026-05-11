@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // oidcClient handles OIDC discovery, token exchange, and ID token validation.

@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcconstants "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/google/uuid"
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	grpcconstants "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-Core/pkg/logger"
 	"google.golang.org/grpc/metadata"
 )
 

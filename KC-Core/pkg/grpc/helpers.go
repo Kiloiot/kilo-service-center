@@ -6,8 +6,8 @@ package grpc
 import (
 	"context"
 
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	pkgcontext "github.com/kilocenter/pkg/context"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )

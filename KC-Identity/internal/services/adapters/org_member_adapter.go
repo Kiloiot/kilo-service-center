@@ -5,11 +5,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	adminservice "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/admin"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-DB/storage"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
-	"github.com/kilocenter/KC-DB/storage/models"
-	adminservice "github.com/kilocenter/KC-Identity/internal/services/admin"
 )
 
 // OrganizationMemberStoreAdapter wraps OrganizationRepository to implement admin.OrganizationMemberStore.

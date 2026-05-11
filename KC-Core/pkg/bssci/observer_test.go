@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )

@@ -9,8 +9,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/kilocenter/KC-Core/internal/services/grpcservices"
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // Service implements grpcservices.ActivityService.

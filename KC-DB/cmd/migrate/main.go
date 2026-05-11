@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/kilocenter/KC-DB/storage/postgres"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 )
 
 func main() {

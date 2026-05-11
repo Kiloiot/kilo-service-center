@@ -5,10 +5,10 @@ import (
 	"encoding/binary"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/google/uuid"
-	"github.com/kilocenter/KC-Core/pkg/bssci"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/interfaces"
 )
 
 // downlinkDispatcher implements bssci.DownlinkDispatcher (BSSCI §5.10.2).

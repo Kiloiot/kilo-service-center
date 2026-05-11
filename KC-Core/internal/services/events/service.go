@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kilocenter/KC-Core/internal/services/grpcservices"
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	"github.com/kilocenter/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // SystemEventStore provides event persistence operations.

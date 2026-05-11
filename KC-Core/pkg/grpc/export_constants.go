@@ -2,7 +2,7 @@
 package grpc
 
 import (
-	"github.com/kilocenter/KC-Core/internal/services/messages"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/messages"
 )
 
 // Export format constants - re-exported from domain layer (internal/services/messages).

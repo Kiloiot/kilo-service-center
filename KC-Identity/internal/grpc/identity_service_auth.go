@@ -15,11 +15,11 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-DB/storage/models"
-	"github.com/kilocenter/KC-Identity/internal/services/auth"
-	"github.com/kilocenter/KC-Identity/internal/services/grpcservices"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/auth"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 )
 
 // Login authenticates a user and returns tokens with user profile in a single round-trip.

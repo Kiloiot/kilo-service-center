@@ -12,9 +12,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
-	pkgmioty "github.com/kilocenter/KC-Core/pkg/mioty" // EPStatus constants (EPStatusAttached, EPStatusDetached)
-	"github.com/kilocenter/KC-DB/storage/mioty"        // Numeric4, Subpackets types
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // EPStatus constants (EPStatusAttached, EPStatusDetached)
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"        // Numeric4, Subpackets types
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -11,10 +11,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	"github.com/kilocenter/KC-Core/internal/services/grpcservices"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-DB/storage/mioty"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // Message listing handlers

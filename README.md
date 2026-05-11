@@ -1,12 +1,21 @@
 # KiloCenter - Open Source MIOTY Network Server
 
-KiloCenter is an open source MIOTY network server for operating base stations, endpoints, uplink and downlink traffic, and application integrations on a self-hosted service center.
+[![Build](https://img.shields.io/github/actions/workflow/status/Kiloiot/kilo-service-center/pipeline-build.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=build)](https://github.com/Kiloiot/kilo-service-center/actions/workflows/pipeline-build.yml)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/Kiloiot/kilo-service-center?filename=KC-Core%2Fgo.mod&style=flat-square&logo=go&logoColor=white&label=go)](KC-Core/go.mod)
+[![React](https://img.shields.io/github/package-json/dependency-version/Kiloiot/kilo-service-center/react?filename=KC-Web%2Fpackage.json&style=flat-square&logo=react&logoColor=white&label=react)](KC-Web/package.json)
+[![Docs](https://img.shields.io/badge/docs-kiloiot.io-blue?style=flat-square&logo=gitbook&logoColor=white)](https://docs.kiloiot.io/)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Kiloiot/kilo-service-center/KC-Core?style=flat-square)](https://goreportcard.com/report/github.com/Kiloiot/kilo-service-center/KC-Core)
+
+KiloCenter is an open source MIOTY network server for running your own MIOTY network — managing base stations, endpoints, uplink and downlink traffic, and application integrations from a self-hosted service center.
 
 It is a MIOTY-native service center built specifically for the MIOTY stack from the ground up. It is not a fork, wrapper, or adaptation of another LPWAN network server.
 
-MIOTY is a LPWAN protocol built for interference resilience, long-range communication, and large endpoint fleets. KiloCenter implements the service-center side of that stack with Docker and Linux-host deployment paths, gRPC and MQTT integrations, and a web management console.
+MIOTY is an LPWAN protocol designed for interference resilience, long-range communication, and massive endpoint fleets. Unlike LoRaWAN, it uses telegram splitting to stay robust under heavy interference, and is increasingly adopted for industrial IoT deployments at scales where other LPWAN options hit capacity walls. KiloCenter implements the service-center side of that stack with Docker and Linux-host deployment paths, gRPC and MQTT integrations, and a web management console.
 
 ## Live Demo
+
+![KiloCenter service center dashboard](GitBook/images/service-center-dashboard.jpg)
 
 A demo environment is available at [https://servicecenter.kiloiot.io/](https://servicecenter.kiloiot.io/)
 

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kilocenter/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // oauth2Client handles authorization URL generation and token exchange with PKCE.

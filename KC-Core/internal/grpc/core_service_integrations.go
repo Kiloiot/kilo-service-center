@@ -14,12 +14,12 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "github.com/kilocenter/KC-Core/api/gen/kilocenter/v1"
-	"github.com/kilocenter/KC-Core/internal/services/grpcservices"
-	"github.com/kilocenter/KC-Core/internal/services/integrations"
-	grpcerrors "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/KC-DB/storage/models"
-	pkgcontext "github.com/kilocenter/pkg/context"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/integrations"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 // CreateIntegration creates a new integration.

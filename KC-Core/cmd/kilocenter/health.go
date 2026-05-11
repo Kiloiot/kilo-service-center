@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/kilocenter/KC-Core/internal/health"
-	grpcconstants "github.com/kilocenter/KC-Core/pkg/grpc"
-	"github.com/kilocenter/pkg/version"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/health"
+	grpcconstants "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/pkg/version"
 )
 
 // getVersionInfo returns release manifest or exits with fatal error.
