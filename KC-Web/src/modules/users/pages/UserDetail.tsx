@@ -8,7 +8,6 @@ import React, { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import type {
-  OrganizationMembershipUI,
   OrganizationUI,
   SystemUserUI,
   UpdateUserRequest,
@@ -69,6 +68,13 @@ import {
 } from "@constants/messages";
 import { AddIcon, DeleteIcon, SaveIcon } from "@theme/icons";
 
+interface UserOrgMembership {
+  orgId: string;
+  orgName: string;
+  role: string;
+  status: string;
+}
+
 interface UserProfileForm {
   email: string;
   note: string;
@@ -92,7 +98,8 @@ function buildUpdateUserPayload(
   if (form.note !== (original.note || "")) {
     updates.note = form.note || undefined;
   }
-  if (form.isUserAdmin !== original.isAdmin) updates.is_admin = form.isUserAdmin;
+  if (form.isUserAdmin !== original.isAdmin)
+    updates.is_admin = form.isUserAdmin;
   if (form.isActive !== original.isActive) updates.is_active = form.isActive;
   if (form.isTenantManager !== original.isTenantManager) {
     updates.is_tenant_manager = form.isTenantManager;
@@ -111,12 +118,7 @@ interface UserDetailHeaderProps {
 }
 
 const UserDetailHeader: React.FC<UserDetailHeaderProps> = ({ onBack }) => (
-  <Box
-    display="flex"
-    justifyContent="space-between"
-    alignItems="center"
-    mb={3}
-  >
+  <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
     <Typography variant="h4" component="h1">
       {USERS_PAGE.DETAILS_TITLE}
     </Typography>
@@ -247,7 +249,7 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
 );
 
 interface UserMembershipsCardProps {
-  memberships: OrganizationMembershipUI[];
+  memberships: UserOrgMembership[];
   availableOrgs: OrganizationUI[];
   isOrgsLoading: boolean;
   isRemovePending: boolean;
@@ -462,7 +464,7 @@ const UserDetail: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState("");
 
   const [selectedOrg, setSelectedOrg] = useState<OrganizationUI | null>(null);
-  const [selectedRole, setSelectedRole] = useState(ORG_ROLE.MEMBER);
+  const [selectedRole, setSelectedRole] = useState<string>(ORG_ROLE.MEMBER);
   const [membershipError, setMembershipError] = useState("");
   const [membershipSuccess, setMembershipSuccess] = useState("");
 

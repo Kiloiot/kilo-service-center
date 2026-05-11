@@ -179,8 +179,12 @@ function validateLocationForm(
  */
 function buildLocationUpdateData(
   form: BaseStationEditFormData,
-  details: BaseStationDetailsSnapshot | undefined,
-): { latitude?: number | null; longitude?: number | null; altitude?: number | null } {
+  details: BaseStationDetailsSnapshot | null | undefined,
+): {
+  latitude?: number | null;
+  longitude?: number | null;
+  altitude?: number | null;
+} {
   if (details?.locationSource === "gps") return {};
   const hasLat = form.latitude.trim() !== "";
   const hasLng = form.longitude.trim() !== "";
@@ -213,7 +217,7 @@ function buildLocationUpdateData(
  */
 function hasLocationChanged(
   form: BaseStationEditFormData,
-  details: BaseStationDetailsSnapshot | undefined,
+  details: BaseStationDetailsSnapshot | null | undefined,
 ): boolean {
   if (details?.locationSource === "gps") return false;
   const detailLat = details?.latitude != null ? String(details.latitude) : "";

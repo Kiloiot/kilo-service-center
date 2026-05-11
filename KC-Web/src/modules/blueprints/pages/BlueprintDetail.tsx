@@ -50,15 +50,22 @@ import {
 import { RegistrySubmitDialog } from "../components/RegistrySubmitDialog";
 
 /**
- * Returns parsed JSON when text is a valid blueprint spec, or throws an Error
- * with the localized invalid-JSON message otherwise.
+ * Returns the parsed blueprint spec object when text is valid JSON, or throws
+ * an Error with the localized invalid-JSON message otherwise. The blueprint
+ * spec contract requires an object (not array, not primitive); primitives
+ * round-trip through JSON.parse and would be rejected by the backend.
  */
-function validateBlueprintSpecJson(text: string): unknown {
+function validateBlueprintSpecJson(text: string): object {
+  let parsed: unknown;
   try {
-    return JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch {
     throw new Error(BLUEPRINT_LABELS.ERR_INVALID_JSON);
   }
+  if (parsed === null || typeof parsed !== "object") {
+    throw new Error(BLUEPRINT_LABELS.ERR_INVALID_JSON);
+  }
+  return parsed;
 }
 
 interface BlueprintDetailHeaderProps {
@@ -316,7 +323,7 @@ const BlueprintDecodePreviewCard: React.FC<BlueprintDecodePreviewCardProps> = ({
 );
 
 interface BlueprintSpecCardProps {
-  specJson: unknown;
+  specJson: object;
   isEditing: boolean;
   editedSpec: string;
   onEditedSpecChange: (value: string) => void;
