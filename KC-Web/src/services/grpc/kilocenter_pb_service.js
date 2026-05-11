@@ -11,7 +11,7 @@ var KiloCenterService = (function () {
   function KiloCenterService() {}
   KiloCenterService.serviceName = "kilocenter.api.v1.KiloCenterService";
   return KiloCenterService;
-})();
+}());
 
 KiloCenterService.CreateEndPoint = {
   methodName: "CreateEndPoint",
@@ -19,7 +19,7 @@ KiloCenterService.CreateEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateEndPointRequest,
-  responseType: core_pb.EndPoint,
+  responseType: core_pb.EndPoint
 };
 
 KiloCenterService.GetEndPoint = {
@@ -28,7 +28,7 @@ KiloCenterService.GetEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetEndPointRequest,
-  responseType: core_pb.EndPoint,
+  responseType: core_pb.EndPoint
 };
 
 KiloCenterService.UpdateEndPoint = {
@@ -37,7 +37,7 @@ KiloCenterService.UpdateEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateEndPointRequest,
-  responseType: core_pb.EndPoint,
+  responseType: core_pb.EndPoint
 };
 
 KiloCenterService.DeleteEndPoint = {
@@ -46,7 +46,7 @@ KiloCenterService.DeleteEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteEndPointRequest,
-  responseType: google_protobuf_empty_pb.Empty,
+  responseType: google_protobuf_empty_pb.Empty
 };
 
 KiloCenterService.ListEndPoints = {
@@ -55,7 +55,7 @@ KiloCenterService.ListEndPoints = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListEndPointsRequest,
-  responseType: core_pb.ListEndPointsResponse,
+  responseType: core_pb.ListEndPointsResponse
 };
 
 KiloCenterService.AttachEndPoint = {
@@ -64,7 +64,7 @@ KiloCenterService.AttachEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.AttachEndPointRequest,
-  responseType: core_pb.AttachEndPointResponse,
+  responseType: core_pb.AttachEndPointResponse
 };
 
 KiloCenterService.DetachEndPoint = {
@@ -73,7 +73,7 @@ KiloCenterService.DetachEndPoint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DetachEndPointRequest,
-  responseType: core_pb.DetachEndPointResponse,
+  responseType: core_pb.DetachEndPointResponse
 };
 
 KiloCenterService.CreateBaseStation = {
@@ -82,7 +82,7 @@ KiloCenterService.CreateBaseStation = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateBaseStationRequest,
-  responseType: core_pb.BaseStation,
+  responseType: core_pb.BaseStation
 };
 
 KiloCenterService.GetBaseStation = {
@@ -91,7 +91,7 @@ KiloCenterService.GetBaseStation = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBaseStationRequest,
-  responseType: core_pb.BaseStation,
+  responseType: core_pb.BaseStation
 };
 
 KiloCenterService.UpdateBaseStation = {
@@ -100,7 +100,7 @@ KiloCenterService.UpdateBaseStation = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateBaseStationRequest,
-  responseType: core_pb.BaseStation,
+  responseType: core_pb.BaseStation
 };
 
 KiloCenterService.DeleteBaseStation = {
@@ -109,7 +109,7 @@ KiloCenterService.DeleteBaseStation = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteBaseStationRequest,
-  responseType: google_protobuf_empty_pb.Empty,
+  responseType: google_protobuf_empty_pb.Empty
 };
 
 KiloCenterService.ListBaseStations = {
@@ -118,7 +118,7 @@ KiloCenterService.ListBaseStations = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListBaseStationsRequest,
-  responseType: core_pb.ListBaseStationsResponse,
+  responseType: core_pb.ListBaseStationsResponse
 };
 
 KiloCenterService.GetBaseStationStats = {
@@ -127,7 +127,7 @@ KiloCenterService.GetBaseStationStats = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBaseStationStatsRequest,
-  responseType: core_pb.GetBaseStationStatsResponse,
+  responseType: core_pb.GetBaseStationStatsResponse
 };
 
 KiloCenterService.UpdateBaseStationEui = {
@@ -136,7 +136,7 @@ KiloCenterService.UpdateBaseStationEui = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateBaseStationEuiRequest,
-  responseType: core_pb.BaseStation,
+  responseType: core_pb.BaseStation
 };
 
 KiloCenterService.GetMessage = {
@@ -145,7 +145,7 @@ KiloCenterService.GetMessage = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetMessageRequest,
-  responseType: core_pb.Message,
+  responseType: core_pb.Message
 };
 
 KiloCenterService.SendDownlink = {
@@ -154,7 +154,7 @@ KiloCenterService.SendDownlink = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SendDownlinkRequest,
-  responseType: core_pb.SendDownlinkResponse,
+  responseType: core_pb.SendDownlinkResponse
 };
 
 KiloCenterService.RevokeDownlink = {
@@ -163,7 +163,7 @@ KiloCenterService.RevokeDownlink = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.RevokeDownlinkRequest,
-  responseType: core_pb.RevokeDownlinkResponse,
+  responseType: core_pb.RevokeDownlinkResponse
 };
 
 KiloCenterService.ListDownlinkQueue = {
@@ -172,7 +172,7 @@ KiloCenterService.ListDownlinkQueue = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListDownlinkQueueRequest,
-  responseType: core_pb.ListDownlinkQueueResponse,
+  responseType: core_pb.ListDownlinkQueueResponse
 };
 
 KiloCenterService.GetDownlinkResults = {
@@ -181,7 +181,7 @@ KiloCenterService.GetDownlinkResults = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetDownlinkResultsRequest,
-  responseType: core_pb.GetDownlinkResultsResponse,
+  responseType: core_pb.GetDownlinkResultsResponse
 };
 
 KiloCenterService.SendULTransmit = {
@@ -190,7 +190,7 @@ KiloCenterService.SendULTransmit = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SendULTransmitRequest,
-  responseType: core_pb.SendULTransmitResponse,
+  responseType: core_pb.SendULTransmitResponse
 };
 
 KiloCenterService.RequestBaseStationStatus = {
@@ -199,7 +199,7 @@ KiloCenterService.RequestBaseStationStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.BaseStationStatusRequest,
-  responseType: core_pb.BaseStationStatusResponse,
+  responseType: core_pb.BaseStationStatusResponse
 };
 
 KiloCenterService.InitiatePing = {
@@ -208,7 +208,7 @@ KiloCenterService.InitiatePing = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.InitiatePingRequest,
-  responseType: core_pb.InitiatePingResponse,
+  responseType: core_pb.InitiatePingResponse
 };
 
 KiloCenterService.GetDLRXStatus = {
@@ -217,7 +217,7 @@ KiloCenterService.GetDLRXStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetDLRXStatusRequest,
-  responseType: core_pb.GetDLRXStatusResponse,
+  responseType: core_pb.GetDLRXStatusResponse
 };
 
 KiloCenterService.QueryDLRXStatus = {
@@ -226,7 +226,7 @@ KiloCenterService.QueryDLRXStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.QueryDLRXStatusRequest,
-  responseType: core_pb.QueryDLRXStatusResponse,
+  responseType: core_pb.QueryDLRXStatusResponse
 };
 
 KiloCenterService.GetDLRXStatusQueries = {
@@ -235,7 +235,7 @@ KiloCenterService.GetDLRXStatusQueries = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetDLRXStatusQueriesRequest,
-  responseType: core_pb.GetDLRXStatusQueriesResponse,
+  responseType: core_pb.GetDLRXStatusQueriesResponse
 };
 
 KiloCenterService.GetSystemStatus = {
@@ -244,7 +244,7 @@ KiloCenterService.GetSystemStatus = {
   requestStream: false,
   responseStream: false,
   requestType: google_protobuf_empty_pb.Empty,
-  responseType: core_pb.SystemStatus,
+  responseType: core_pb.SystemStatus
 };
 
 KiloCenterService.GetStatistics = {
@@ -253,7 +253,7 @@ KiloCenterService.GetStatistics = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetStatisticsRequest,
-  responseType: core_pb.Statistics,
+  responseType: core_pb.Statistics
 };
 
 KiloCenterService.GetReleaseInfo = {
@@ -262,7 +262,7 @@ KiloCenterService.GetReleaseInfo = {
   requestStream: false,
   responseStream: false,
   requestType: google_protobuf_empty_pb.Empty,
-  responseType: core_pb.ReleaseInfo,
+  responseType: core_pb.ReleaseInfo
 };
 
 KiloCenterService.Login = {
@@ -271,7 +271,7 @@ KiloCenterService.Login = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.LoginRequest,
-  responseType: identity_pb.LoginResponse,
+  responseType: identity_pb.LoginResponse
 };
 
 KiloCenterService.RefreshTokens = {
@@ -280,7 +280,7 @@ KiloCenterService.RefreshTokens = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.RefreshTokensRequest,
-  responseType: identity_pb.RefreshTokensResponse,
+  responseType: identity_pb.RefreshTokensResponse
 };
 
 KiloCenterService.GetProfile = {
@@ -289,7 +289,7 @@ KiloCenterService.GetProfile = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetProfileRequest,
-  responseType: identity_pb.GetProfileResponse,
+  responseType: identity_pb.GetProfileResponse
 };
 
 KiloCenterService.GetAuthSettings = {
@@ -298,7 +298,7 @@ KiloCenterService.GetAuthSettings = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetAuthSettingsRequest,
-  responseType: identity_pb.GetAuthSettingsResponse,
+  responseType: identity_pb.GetAuthSettingsResponse
 };
 
 KiloCenterService.Logout = {
@@ -307,7 +307,7 @@ KiloCenterService.Logout = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.LogoutRequest,
-  responseType: identity_pb.LogoutResponse,
+  responseType: identity_pb.LogoutResponse
 };
 
 KiloCenterService.ChangePassword = {
@@ -316,7 +316,7 @@ KiloCenterService.ChangePassword = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ChangePasswordRequest,
-  responseType: identity_pb.ChangePasswordResponse,
+  responseType: identity_pb.ChangePasswordResponse
 };
 
 KiloCenterService.ExchangeOIDC = {
@@ -325,7 +325,7 @@ KiloCenterService.ExchangeOIDC = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ExchangeOIDCRequest,
-  responseType: identity_pb.LoginResponse,
+  responseType: identity_pb.LoginResponse
 };
 
 KiloCenterService.ExchangeOAuth2 = {
@@ -334,7 +334,7 @@ KiloCenterService.ExchangeOAuth2 = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ExchangeOAuth2Request,
-  responseType: identity_pb.LoginResponse,
+  responseType: identity_pb.LoginResponse
 };
 
 KiloCenterService.RegisterAccount = {
@@ -343,7 +343,7 @@ KiloCenterService.RegisterAccount = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.RegisterAccountRequest,
-  responseType: identity_pb.LoginResponse,
+  responseType: identity_pb.LoginResponse
 };
 
 KiloCenterService.CreateUser = {
@@ -352,7 +352,7 @@ KiloCenterService.CreateUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.CreateUserRequest,
-  responseType: identity_pb.CreateUserResponse,
+  responseType: identity_pb.CreateUserResponse
 };
 
 KiloCenterService.GetUser = {
@@ -361,7 +361,7 @@ KiloCenterService.GetUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetUserRequest,
-  responseType: identity_pb.GetUserResponse,
+  responseType: identity_pb.GetUserResponse
 };
 
 KiloCenterService.UpdateUser = {
@@ -370,7 +370,7 @@ KiloCenterService.UpdateUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.UpdateUserRequest,
-  responseType: identity_pb.UpdateUserResponse,
+  responseType: identity_pb.UpdateUserResponse
 };
 
 KiloCenterService.DeleteUser = {
@@ -379,7 +379,7 @@ KiloCenterService.DeleteUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.DeleteUserRequest,
-  responseType: identity_pb.DeleteUserResponse,
+  responseType: identity_pb.DeleteUserResponse
 };
 
 KiloCenterService.ListUsers = {
@@ -388,7 +388,7 @@ KiloCenterService.ListUsers = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListUsersRequest,
-  responseType: identity_pb.ListUsersResponse,
+  responseType: identity_pb.ListUsersResponse
 };
 
 KiloCenterService.UpdateUserPassword = {
@@ -397,7 +397,7 @@ KiloCenterService.UpdateUserPassword = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.UpdateUserPasswordRequest,
-  responseType: identity_pb.UpdateUserPasswordResponse,
+  responseType: identity_pb.UpdateUserPasswordResponse
 };
 
 KiloCenterService.CreateOrganization = {
@@ -406,7 +406,7 @@ KiloCenterService.CreateOrganization = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.CreateOrganizationRequest,
-  responseType: identity_pb.CreateOrganizationResponse,
+  responseType: identity_pb.CreateOrganizationResponse
 };
 
 KiloCenterService.GetOrganization = {
@@ -415,7 +415,7 @@ KiloCenterService.GetOrganization = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetOrganizationRequest,
-  responseType: identity_pb.GetOrganizationResponse,
+  responseType: identity_pb.GetOrganizationResponse
 };
 
 KiloCenterService.UpdateOrganization = {
@@ -424,7 +424,7 @@ KiloCenterService.UpdateOrganization = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.UpdateOrganizationRequest,
-  responseType: identity_pb.UpdateOrganizationResponse,
+  responseType: identity_pb.UpdateOrganizationResponse
 };
 
 KiloCenterService.DeleteOrganization = {
@@ -433,7 +433,7 @@ KiloCenterService.DeleteOrganization = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.DeleteOrganizationRequest,
-  responseType: identity_pb.DeleteOrganizationResponse,
+  responseType: identity_pb.DeleteOrganizationResponse
 };
 
 KiloCenterService.ListOrganizations = {
@@ -442,7 +442,7 @@ KiloCenterService.ListOrganizations = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListOrganizationsRequest,
-  responseType: identity_pb.ListOrganizationsResponse,
+  responseType: identity_pb.ListOrganizationsResponse
 };
 
 KiloCenterService.AddOrganizationUser = {
@@ -451,7 +451,7 @@ KiloCenterService.AddOrganizationUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.AddOrganizationUserRequest,
-  responseType: identity_pb.AddOrganizationUserResponse,
+  responseType: identity_pb.AddOrganizationUserResponse
 };
 
 KiloCenterService.GetOrganizationUser = {
@@ -460,7 +460,7 @@ KiloCenterService.GetOrganizationUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetOrganizationUserRequest,
-  responseType: identity_pb.GetOrganizationUserResponse,
+  responseType: identity_pb.GetOrganizationUserResponse
 };
 
 KiloCenterService.UpdateOrganizationUser = {
@@ -469,7 +469,7 @@ KiloCenterService.UpdateOrganizationUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.UpdateOrganizationUserRequest,
-  responseType: identity_pb.UpdateOrganizationUserResponse,
+  responseType: identity_pb.UpdateOrganizationUserResponse
 };
 
 KiloCenterService.RemoveOrganizationUser = {
@@ -478,7 +478,7 @@ KiloCenterService.RemoveOrganizationUser = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.RemoveOrganizationUserRequest,
-  responseType: identity_pb.RemoveOrganizationUserResponse,
+  responseType: identity_pb.RemoveOrganizationUserResponse
 };
 
 KiloCenterService.ListOrganizationUsers = {
@@ -487,7 +487,7 @@ KiloCenterService.ListOrganizationUsers = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListOrganizationUsersRequest,
-  responseType: identity_pb.ListOrganizationUsersResponse,
+  responseType: identity_pb.ListOrganizationUsersResponse
 };
 
 KiloCenterService.ListUserOrganizations = {
@@ -496,7 +496,7 @@ KiloCenterService.ListUserOrganizations = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListUserOrganizationsRequest,
-  responseType: identity_pb.ListUserOrganizationsResponse,
+  responseType: identity_pb.ListUserOrganizationsResponse
 };
 
 KiloCenterService.CreateApiKey = {
@@ -505,7 +505,7 @@ KiloCenterService.CreateApiKey = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.CreateApiKeyRequest,
-  responseType: identity_pb.CreateApiKeyResponse,
+  responseType: identity_pb.CreateApiKeyResponse
 };
 
 KiloCenterService.GetApiKey = {
@@ -514,7 +514,7 @@ KiloCenterService.GetApiKey = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.GetApiKeyRequest,
-  responseType: identity_pb.GetApiKeyResponse,
+  responseType: identity_pb.GetApiKeyResponse
 };
 
 KiloCenterService.DeleteApiKey = {
@@ -523,7 +523,7 @@ KiloCenterService.DeleteApiKey = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.DeleteApiKeyRequest,
-  responseType: identity_pb.DeleteApiKeyResponse,
+  responseType: identity_pb.DeleteApiKeyResponse
 };
 
 KiloCenterService.ListApiKeys = {
@@ -532,7 +532,7 @@ KiloCenterService.ListApiKeys = {
   requestStream: false,
   responseStream: false,
   requestType: identity_pb.ListApiKeysRequest,
-  responseType: identity_pb.ListApiKeysResponse,
+  responseType: identity_pb.ListApiKeysResponse
 };
 
 KiloCenterService.CreateIntegration = {
@@ -541,7 +541,7 @@ KiloCenterService.CreateIntegration = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateIntegrationRequest,
-  responseType: core_pb.Integration,
+  responseType: core_pb.Integration
 };
 
 KiloCenterService.GetIntegration = {
@@ -550,7 +550,7 @@ KiloCenterService.GetIntegration = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetIntegrationRequest,
-  responseType: core_pb.Integration,
+  responseType: core_pb.Integration
 };
 
 KiloCenterService.UpdateIntegration = {
@@ -559,7 +559,7 @@ KiloCenterService.UpdateIntegration = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateIntegrationRequest,
-  responseType: core_pb.Integration,
+  responseType: core_pb.Integration
 };
 
 KiloCenterService.DeleteIntegration = {
@@ -568,7 +568,7 @@ KiloCenterService.DeleteIntegration = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteIntegrationRequest,
-  responseType: google_protobuf_empty_pb.Empty,
+  responseType: google_protobuf_empty_pb.Empty
 };
 
 KiloCenterService.ListIntegrations = {
@@ -577,7 +577,7 @@ KiloCenterService.ListIntegrations = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListIntegrationsRequest,
-  responseType: core_pb.ListIntegrationsResponse,
+  responseType: core_pb.ListIntegrationsResponse
 };
 
 KiloCenterService.GetAnalyticsOverview = {
@@ -586,7 +586,7 @@ KiloCenterService.GetAnalyticsOverview = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetAnalyticsOverviewRequest,
-  responseType: core_pb.GetAnalyticsOverviewResponse,
+  responseType: core_pb.GetAnalyticsOverviewResponse
 };
 
 KiloCenterService.GetActivityAnalytics = {
@@ -595,7 +595,7 @@ KiloCenterService.GetActivityAnalytics = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetActivityAnalyticsRequest,
-  responseType: core_pb.GetActivityAnalyticsResponse,
+  responseType: core_pb.GetActivityAnalyticsResponse
 };
 
 KiloCenterService.GetSignalQualityAnalytics = {
@@ -604,7 +604,7 @@ KiloCenterService.GetSignalQualityAnalytics = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetSignalQualityAnalyticsRequest,
-  responseType: core_pb.GetSignalQualityAnalyticsResponse,
+  responseType: core_pb.GetSignalQualityAnalyticsResponse
 };
 
 KiloCenterService.ListEvents = {
@@ -613,7 +613,7 @@ KiloCenterService.ListEvents = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListEventsRequest,
-  responseType: core_pb.ListEventsResponse,
+  responseType: core_pb.ListEventsResponse
 };
 
 KiloCenterService.ListBaseStationActivity = {
@@ -622,7 +622,7 @@ KiloCenterService.ListBaseStationActivity = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListBaseStationActivityRequest,
-  responseType: core_pb.ListBaseStationActivityResponse,
+  responseType: core_pb.ListBaseStationActivityResponse
 };
 
 KiloCenterService.ListEndpointActivity = {
@@ -631,7 +631,7 @@ KiloCenterService.ListEndpointActivity = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListEndpointActivityRequest,
-  responseType: core_pb.ListEndpointActivityResponse,
+  responseType: core_pb.ListEndpointActivityResponse
 };
 
 KiloCenterService.StreamEvents = {
@@ -640,7 +640,7 @@ KiloCenterService.StreamEvents = {
   requestStream: false,
   responseStream: true,
   requestType: core_pb.StreamEventsRequest,
-  responseType: core_pb.Event,
+  responseType: core_pb.Event
 };
 
 KiloCenterService.ListAlerts = {
@@ -649,7 +649,7 @@ KiloCenterService.ListAlerts = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListAlertsRequest,
-  responseType: core_pb.ListAlertsResponse,
+  responseType: core_pb.ListAlertsResponse
 };
 
 KiloCenterService.GetAlertSummary = {
@@ -658,7 +658,7 @@ KiloCenterService.GetAlertSummary = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetAlertSummaryRequest,
-  responseType: core_pb.GetAlertSummaryResponse,
+  responseType: core_pb.GetAlertSummaryResponse
 };
 
 KiloCenterService.ListScaciSessions = {
@@ -667,7 +667,7 @@ KiloCenterService.ListScaciSessions = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListScaciSessionsRequest,
-  responseType: core_pb.ListScaciSessionsResponse,
+  responseType: core_pb.ListScaciSessionsResponse
 };
 
 KiloCenterService.GetScaciSession = {
@@ -676,7 +676,7 @@ KiloCenterService.GetScaciSession = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetScaciSessionRequest,
-  responseType: core_pb.GetScaciSessionResponse,
+  responseType: core_pb.GetScaciSessionResponse
 };
 
 KiloCenterService.GetScaciStatistics = {
@@ -685,7 +685,7 @@ KiloCenterService.GetScaciStatistics = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetScaciStatisticsRequest,
-  responseType: core_pb.GetScaciStatisticsResponse,
+  responseType: core_pb.GetScaciStatisticsResponse
 };
 
 KiloCenterService.ListScaciErrors = {
@@ -694,7 +694,7 @@ KiloCenterService.ListScaciErrors = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListScaciErrorsRequest,
-  responseType: core_pb.ListScaciErrorsResponse,
+  responseType: core_pb.ListScaciErrorsResponse
 };
 
 KiloCenterService.ListScaciQueues = {
@@ -703,7 +703,7 @@ KiloCenterService.ListScaciQueues = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListScaciQueuesRequest,
-  responseType: core_pb.ListScaciQueuesResponse,
+  responseType: core_pb.ListScaciQueuesResponse
 };
 
 KiloCenterService.GetScaciStatus = {
@@ -712,7 +712,7 @@ KiloCenterService.GetScaciStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetScaciStatusRequest,
-  responseType: core_pb.GetScaciStatusResponse,
+  responseType: core_pb.GetScaciStatusResponse
 };
 
 KiloCenterService.GenerateCertificate = {
@@ -721,7 +721,7 @@ KiloCenterService.GenerateCertificate = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GenerateCertificateRequest,
-  responseType: core_pb.GenerateCertificateResponse,
+  responseType: core_pb.GenerateCertificateResponse
 };
 
 KiloCenterService.DownloadCertificate = {
@@ -730,7 +730,7 @@ KiloCenterService.DownloadCertificate = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DownloadCertificateRequest,
-  responseType: core_pb.DownloadCertificateResponse,
+  responseType: core_pb.DownloadCertificateResponse
 };
 
 KiloCenterService.DownloadBaseStationCertificate = {
@@ -739,7 +739,7 @@ KiloCenterService.DownloadBaseStationCertificate = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DownloadBaseStationCertificateRequest,
-  responseType: core_pb.DownloadCertificateResponse,
+  responseType: core_pb.DownloadCertificateResponse
 };
 
 KiloCenterService.GenerateServerCertificates = {
@@ -748,7 +748,7 @@ KiloCenterService.GenerateServerCertificates = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GenerateServerCertificatesRequest,
-  responseType: core_pb.GenerateServerCertificatesResponse,
+  responseType: core_pb.GenerateServerCertificatesResponse
 };
 
 KiloCenterService.RenewServerCertificates = {
@@ -757,7 +757,7 @@ KiloCenterService.RenewServerCertificates = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.RenewServerCertificatesRequest,
-  responseType: core_pb.RenewServerCertificatesResponse,
+  responseType: core_pb.RenewServerCertificatesResponse
 };
 
 KiloCenterService.GetServerCertificateStatus = {
@@ -766,7 +766,7 @@ KiloCenterService.GetServerCertificateStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetServerCertificateStatusRequest,
-  responseType: core_pb.GetServerCertificateStatusResponse,
+  responseType: core_pb.GetServerCertificateStatusResponse
 };
 
 KiloCenterService.CreateManufacturer = {
@@ -775,7 +775,7 @@ KiloCenterService.CreateManufacturer = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateManufacturerRequest,
-  responseType: core_pb.CreateManufacturerResponse,
+  responseType: core_pb.CreateManufacturerResponse
 };
 
 KiloCenterService.GetManufacturer = {
@@ -784,7 +784,7 @@ KiloCenterService.GetManufacturer = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetManufacturerRequest,
-  responseType: core_pb.GetManufacturerResponse,
+  responseType: core_pb.GetManufacturerResponse
 };
 
 KiloCenterService.UpdateManufacturer = {
@@ -793,7 +793,7 @@ KiloCenterService.UpdateManufacturer = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateManufacturerRequest,
-  responseType: core_pb.UpdateManufacturerResponse,
+  responseType: core_pb.UpdateManufacturerResponse
 };
 
 KiloCenterService.DeleteManufacturer = {
@@ -802,7 +802,7 @@ KiloCenterService.DeleteManufacturer = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteManufacturerRequest,
-  responseType: core_pb.DeleteManufacturerResponse,
+  responseType: core_pb.DeleteManufacturerResponse
 };
 
 KiloCenterService.ListManufacturers = {
@@ -811,7 +811,7 @@ KiloCenterService.ListManufacturers = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListManufacturersRequest,
-  responseType: core_pb.ListManufacturersResponse,
+  responseType: core_pb.ListManufacturersResponse
 };
 
 KiloCenterService.CreateDeviceModel = {
@@ -820,7 +820,7 @@ KiloCenterService.CreateDeviceModel = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateDeviceModelRequest,
-  responseType: core_pb.CreateDeviceModelResponse,
+  responseType: core_pb.CreateDeviceModelResponse
 };
 
 KiloCenterService.GetDeviceModel = {
@@ -829,7 +829,7 @@ KiloCenterService.GetDeviceModel = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetDeviceModelRequest,
-  responseType: core_pb.GetDeviceModelResponse,
+  responseType: core_pb.GetDeviceModelResponse
 };
 
 KiloCenterService.UpdateDeviceModel = {
@@ -838,7 +838,7 @@ KiloCenterService.UpdateDeviceModel = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateDeviceModelRequest,
-  responseType: core_pb.UpdateDeviceModelResponse,
+  responseType: core_pb.UpdateDeviceModelResponse
 };
 
 KiloCenterService.DeleteDeviceModel = {
@@ -847,7 +847,7 @@ KiloCenterService.DeleteDeviceModel = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteDeviceModelRequest,
-  responseType: core_pb.DeleteDeviceModelResponse,
+  responseType: core_pb.DeleteDeviceModelResponse
 };
 
 KiloCenterService.ListDeviceModels = {
@@ -856,7 +856,7 @@ KiloCenterService.ListDeviceModels = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListDeviceModelsRequest,
-  responseType: core_pb.ListDeviceModelsResponse,
+  responseType: core_pb.ListDeviceModelsResponse
 };
 
 KiloCenterService.CreateBlueprint = {
@@ -865,7 +865,7 @@ KiloCenterService.CreateBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateBlueprintRequest,
-  responseType: core_pb.CreateBlueprintResponse,
+  responseType: core_pb.CreateBlueprintResponse
 };
 
 KiloCenterService.GetBlueprint = {
@@ -874,7 +874,7 @@ KiloCenterService.GetBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBlueprintRequest,
-  responseType: core_pb.GetBlueprintResponse,
+  responseType: core_pb.GetBlueprintResponse
 };
 
 KiloCenterService.UpdateBlueprint = {
@@ -883,7 +883,7 @@ KiloCenterService.UpdateBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.UpdateBlueprintRequest,
-  responseType: core_pb.UpdateBlueprintResponse,
+  responseType: core_pb.UpdateBlueprintResponse
 };
 
 KiloCenterService.DeleteBlueprint = {
@@ -892,7 +892,7 @@ KiloCenterService.DeleteBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DeleteBlueprintRequest,
-  responseType: core_pb.DeleteBlueprintResponse,
+  responseType: core_pb.DeleteBlueprintResponse
 };
 
 KiloCenterService.ListBlueprints = {
@@ -901,7 +901,7 @@ KiloCenterService.ListBlueprints = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListBlueprintsRequest,
-  responseType: core_pb.ListBlueprintsResponse,
+  responseType: core_pb.ListBlueprintsResponse
 };
 
 KiloCenterService.SetDefaultBlueprint = {
@@ -910,7 +910,7 @@ KiloCenterService.SetDefaultBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SetDefaultBlueprintRequest,
-  responseType: core_pb.SetDefaultBlueprintResponse,
+  responseType: core_pb.SetDefaultBlueprintResponse
 };
 
 KiloCenterService.SubmitBlueprintToRegistry = {
@@ -919,7 +919,7 @@ KiloCenterService.SubmitBlueprintToRegistry = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SubmitBlueprintToRegistryRequest,
-  responseType: core_pb.SubmitBlueprintToRegistryResponse,
+  responseType: core_pb.SubmitBlueprintToRegistryResponse
 };
 
 KiloCenterService.CreateDeviceModelWithBlueprint = {
@@ -928,7 +928,7 @@ KiloCenterService.CreateDeviceModelWithBlueprint = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CreateDeviceModelWithBlueprintRequest,
-  responseType: core_pb.CreateDeviceModelWithBlueprintResponse,
+  responseType: core_pb.CreateDeviceModelWithBlueprintResponse
 };
 
 KiloCenterService.DecodePreview = {
@@ -937,7 +937,7 @@ KiloCenterService.DecodePreview = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.DecodePreviewRequest,
-  responseType: core_pb.DecodePreviewResponse,
+  responseType: core_pb.DecodePreviewResponse
 };
 
 KiloCenterService.ListMessages = {
@@ -946,7 +946,7 @@ KiloCenterService.ListMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListMessagesRequest,
-  responseType: core_pb.ListMessagesResponse,
+  responseType: core_pb.ListMessagesResponse
 };
 
 KiloCenterService.StreamMessages = {
@@ -955,7 +955,7 @@ KiloCenterService.StreamMessages = {
   requestStream: false,
   responseStream: true,
   requestType: core_pb.StreamMessagesRequest,
-  responseType: core_pb.Message,
+  responseType: core_pb.Message
 };
 
 KiloCenterService.ListBaseStationMessages = {
@@ -964,7 +964,7 @@ KiloCenterService.ListBaseStationMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListBaseStationMessagesRequest,
-  responseType: core_pb.ListBaseStationMessagesResponse,
+  responseType: core_pb.ListBaseStationMessagesResponse
 };
 
 KiloCenterService.GetBaseStationMessage = {
@@ -973,7 +973,7 @@ KiloCenterService.GetBaseStationMessage = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBaseStationMessageRequest,
-  responseType: core_pb.GetBaseStationMessageResponse,
+  responseType: core_pb.GetBaseStationMessageResponse
 };
 
 KiloCenterService.GetBaseStationMessageStats = {
@@ -982,7 +982,7 @@ KiloCenterService.GetBaseStationMessageStats = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetBaseStationMessageStatsRequest,
-  responseType: core_pb.GetBaseStationMessageStatsResponse,
+  responseType: core_pb.GetBaseStationMessageStatsResponse
 };
 
 KiloCenterService.SearchBaseStationMessages = {
@@ -991,7 +991,7 @@ KiloCenterService.SearchBaseStationMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.SearchBaseStationMessagesRequest,
-  responseType: core_pb.SearchBaseStationMessagesResponse,
+  responseType: core_pb.SearchBaseStationMessagesResponse
 };
 
 KiloCenterService.ExportBaseStationMessages = {
@@ -1000,7 +1000,7 @@ KiloCenterService.ExportBaseStationMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ExportBaseStationMessagesRequest,
-  responseType: core_pb.ExportBaseStationMessagesResponse,
+  responseType: core_pb.ExportBaseStationMessagesResponse
 };
 
 KiloCenterService.StreamBaseStationMessages = {
@@ -1009,7 +1009,7 @@ KiloCenterService.StreamBaseStationMessages = {
   requestStream: false,
   responseStream: true,
   requestType: core_pb.StreamBaseStationMessagesRequest,
-  responseType: core_pb.BaseStationMessage,
+  responseType: core_pb.BaseStationMessage
 };
 
 KiloCenterService.ListEndpointMessages = {
@@ -1018,7 +1018,7 @@ KiloCenterService.ListEndpointMessages = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListEndpointMessagesRequest,
-  responseType: core_pb.ListEndpointMessagesResponse,
+  responseType: core_pb.ListEndpointMessagesResponse
 };
 
 KiloCenterService.GetEndPointStats = {
@@ -1027,7 +1027,7 @@ KiloCenterService.GetEndPointStats = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetEndPointStatsRequest,
-  responseType: core_pb.GetEndPointStatsResponse,
+  responseType: core_pb.GetEndPointStatsResponse
 };
 
 KiloCenterService.GetEndPointOperations = {
@@ -1036,7 +1036,7 @@ KiloCenterService.GetEndPointOperations = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetEndPointOperationsRequest,
-  responseType: core_pb.GetEndPointOperationsResponse,
+  responseType: core_pb.GetEndPointOperationsResponse
 };
 
 KiloCenterService.ListAllBaseStationLocations = {
@@ -1045,7 +1045,7 @@ KiloCenterService.ListAllBaseStationLocations = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListAllBaseStationLocationsRequest,
-  responseType: core_pb.ListAllBaseStationLocationsResponse,
+  responseType: core_pb.ListAllBaseStationLocationsResponse
 };
 
 KiloCenterService.GetCEStatus = {
@@ -1054,7 +1054,7 @@ KiloCenterService.GetCEStatus = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.GetCEStatusRequest,
-  responseType: core_pb.GetCEStatusResponse,
+  responseType: core_pb.GetCEStatusResponse
 };
 
 KiloCenterService.CompleteCEOnboarding = {
@@ -1063,7 +1063,7 @@ KiloCenterService.CompleteCEOnboarding = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.CompleteCEOnboardingRequest,
-  responseType: core_pb.CompleteCEOnboardingResponse,
+  responseType: core_pb.CompleteCEOnboardingResponse
 };
 
 KiloCenterService.ListCEInstances = {
@@ -1072,7 +1072,7 @@ KiloCenterService.ListCEInstances = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.ListCEInstancesRequest,
-  responseType: core_pb.ListCEInstancesResponse,
+  responseType: core_pb.ListCEInstancesResponse
 };
 
 KiloCenterService.RevokeCEInstance = {
@@ -1081,7 +1081,7 @@ KiloCenterService.RevokeCEInstance = {
   requestStream: false,
   responseStream: false,
   requestType: core_pb.RevokeCEInstanceRequest,
-  responseType: core_pb.RevokeCEInstanceResponse,
+  responseType: core_pb.RevokeCEInstanceResponse
 };
 
 exports.KiloCenterService = KiloCenterService;
@@ -1091,11 +1091,7 @@ function KiloCenterServiceClient(serviceHost, options) {
   this.options = options || {};
 }
 
-KiloCenterServiceClient.prototype.createEndPoint = function createEndPoint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.createEndPoint = function createEndPoint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1116,21 +1112,17 @@ KiloCenterServiceClient.prototype.createEndPoint = function createEndPoint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getEndPoint = function getEndPoint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getEndPoint = function getEndPoint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1151,21 +1143,17 @@ KiloCenterServiceClient.prototype.getEndPoint = function getEndPoint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateEndPoint = function updateEndPoint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.updateEndPoint = function updateEndPoint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1186,21 +1174,17 @@ KiloCenterServiceClient.prototype.updateEndPoint = function updateEndPoint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.deleteEndPoint = function deleteEndPoint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.deleteEndPoint = function deleteEndPoint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1221,21 +1205,17 @@ KiloCenterServiceClient.prototype.deleteEndPoint = function deleteEndPoint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listEndPoints = function listEndPoints(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listEndPoints = function listEndPoints(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1256,21 +1236,17 @@ KiloCenterServiceClient.prototype.listEndPoints = function listEndPoints(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.attachEndPoint = function attachEndPoint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.attachEndPoint = function attachEndPoint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1291,21 +1267,17 @@ KiloCenterServiceClient.prototype.attachEndPoint = function attachEndPoint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.detachEndPoint = function detachEndPoint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.detachEndPoint = function detachEndPoint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1326,53 +1298,48 @@ KiloCenterServiceClient.prototype.detachEndPoint = function detachEndPoint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.createBaseStation =
-  function createBaseStation(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.CreateBaseStation, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.createBaseStation = function createBaseStation(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.CreateBaseStation, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getBaseStation = function getBaseStation(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getBaseStation = function getBaseStation(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1393,85 +1360,79 @@ KiloCenterServiceClient.prototype.getBaseStation = function getBaseStation(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateBaseStation =
-  function updateBaseStation(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.UpdateBaseStation, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.updateBaseStation = function updateBaseStation(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.UpdateBaseStation, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.deleteBaseStation =
-  function deleteBaseStation(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.DeleteBaseStation, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.listBaseStations = function listBaseStations(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.deleteBaseStation = function deleteBaseStation(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.DeleteBaseStation, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.listBaseStations = function listBaseStations(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1492,85 +1453,79 @@ KiloCenterServiceClient.prototype.listBaseStations = function listBaseStations(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getBaseStationStats =
-  function getBaseStationStats(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.GetBaseStationStats, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.getBaseStationStats = function getBaseStationStats(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetBaseStationStats, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.updateBaseStationEui =
-  function updateBaseStationEui(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.UpdateBaseStationEui, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getMessage = function getMessage(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.updateBaseStationEui = function updateBaseStationEui(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.UpdateBaseStationEui, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getMessage = function getMessage(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1591,21 +1546,17 @@ KiloCenterServiceClient.prototype.getMessage = function getMessage(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.sendDownlink = function sendDownlink(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.sendDownlink = function sendDownlink(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1626,21 +1577,17 @@ KiloCenterServiceClient.prototype.sendDownlink = function sendDownlink(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.revokeDownlink = function revokeDownlink(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.revokeDownlink = function revokeDownlink(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1661,85 +1608,79 @@ KiloCenterServiceClient.prototype.revokeDownlink = function revokeDownlink(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listDownlinkQueue =
-  function listDownlinkQueue(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.ListDownlinkQueue, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.listDownlinkQueue = function listDownlinkQueue(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListDownlinkQueue, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.getDownlinkResults =
-  function getDownlinkResults(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.GetDownlinkResults, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.sendULTransmit = function sendULTransmit(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getDownlinkResults = function getDownlinkResults(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetDownlinkResults, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.sendULTransmit = function sendULTransmit(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1760,53 +1701,48 @@ KiloCenterServiceClient.prototype.sendULTransmit = function sendULTransmit(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.requestBaseStationStatus =
-  function requestBaseStationStatus(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.RequestBaseStationStatus, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.requestBaseStationStatus = function requestBaseStationStatus(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.RequestBaseStationStatus, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.initiatePing = function initiatePing(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.initiatePing = function initiatePing(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1827,21 +1763,17 @@ KiloCenterServiceClient.prototype.initiatePing = function initiatePing(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getDLRXStatus = function getDLRXStatus(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getDLRXStatus = function getDLRXStatus(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1862,21 +1794,17 @@ KiloCenterServiceClient.prototype.getDLRXStatus = function getDLRXStatus(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.queryDLRXStatus = function queryDLRXStatus(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.queryDLRXStatus = function queryDLRXStatus(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1897,53 +1825,48 @@ KiloCenterServiceClient.prototype.queryDLRXStatus = function queryDLRXStatus(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getDLRXStatusQueries =
-  function getDLRXStatusQueries(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.GetDLRXStatusQueries, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.getDLRXStatusQueries = function getDLRXStatusQueries(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetDLRXStatusQueries, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getSystemStatus = function getSystemStatus(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getSystemStatus = function getSystemStatus(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1964,21 +1887,17 @@ KiloCenterServiceClient.prototype.getSystemStatus = function getSystemStatus(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getStatistics = function getStatistics(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getStatistics = function getStatistics(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -1999,21 +1918,17 @@ KiloCenterServiceClient.prototype.getStatistics = function getStatistics(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getReleaseInfo = function getReleaseInfo(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getReleaseInfo = function getReleaseInfo(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2034,21 +1949,17 @@ KiloCenterServiceClient.prototype.getReleaseInfo = function getReleaseInfo(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.login = function login(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.login = function login(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2069,21 +1980,17 @@ KiloCenterServiceClient.prototype.login = function login(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.refreshTokens = function refreshTokens(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.refreshTokens = function refreshTokens(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2104,21 +2011,17 @@ KiloCenterServiceClient.prototype.refreshTokens = function refreshTokens(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getProfile = function getProfile(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getProfile = function getProfile(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2139,21 +2042,17 @@ KiloCenterServiceClient.prototype.getProfile = function getProfile(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getAuthSettings = function getAuthSettings(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getAuthSettings = function getAuthSettings(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2174,21 +2073,17 @@ KiloCenterServiceClient.prototype.getAuthSettings = function getAuthSettings(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.logout = function logout(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.logout = function logout(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2209,21 +2104,17 @@ KiloCenterServiceClient.prototype.logout = function logout(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.changePassword = function changePassword(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.changePassword = function changePassword(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2244,21 +2135,17 @@ KiloCenterServiceClient.prototype.changePassword = function changePassword(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.exchangeOIDC = function exchangeOIDC(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.exchangeOIDC = function exchangeOIDC(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2279,21 +2166,17 @@ KiloCenterServiceClient.prototype.exchangeOIDC = function exchangeOIDC(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.exchangeOAuth2 = function exchangeOAuth2(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.exchangeOAuth2 = function exchangeOAuth2(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2314,21 +2197,17 @@ KiloCenterServiceClient.prototype.exchangeOAuth2 = function exchangeOAuth2(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.registerAccount = function registerAccount(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.registerAccount = function registerAccount(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2349,21 +2228,17 @@ KiloCenterServiceClient.prototype.registerAccount = function registerAccount(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.createUser = function createUser(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.createUser = function createUser(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2384,21 +2259,17 @@ KiloCenterServiceClient.prototype.createUser = function createUser(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getUser = function getUser(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getUser = function getUser(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2419,21 +2290,17 @@ KiloCenterServiceClient.prototype.getUser = function getUser(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateUser = function updateUser(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.updateUser = function updateUser(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2454,21 +2321,17 @@ KiloCenterServiceClient.prototype.updateUser = function updateUser(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.deleteUser = function deleteUser(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.deleteUser = function deleteUser(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2489,21 +2352,17 @@ KiloCenterServiceClient.prototype.deleteUser = function deleteUser(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listUsers = function listUsers(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listUsers = function listUsers(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2524,85 +2383,79 @@ KiloCenterServiceClient.prototype.listUsers = function listUsers(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateUserPassword =
-  function updateUserPassword(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.UpdateUserPassword, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.updateUserPassword = function updateUserPassword(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.UpdateUserPassword, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.createOrganization =
-  function createOrganization(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.CreateOrganization, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getOrganization = function getOrganization(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.createOrganization = function createOrganization(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.CreateOrganization, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getOrganization = function getOrganization(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2623,309 +2476,296 @@ KiloCenterServiceClient.prototype.getOrganization = function getOrganization(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateOrganization =
-  function updateOrganization(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.UpdateOrganization, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.updateOrganization = function updateOrganization(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.UpdateOrganization, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.deleteOrganization =
-  function deleteOrganization(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.DeleteOrganization, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.listOrganizations =
-  function listOrganizations(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.ListOrganizations, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.addOrganizationUser =
-  function addOrganizationUser(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+KiloCenterServiceClient.prototype.deleteOrganization = function deleteOrganization(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.DeleteOrganization, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
     }
-    var client = grpc.unary(KiloCenterService.AddOrganizationUser, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.getOrganizationUser =
-  function getOrganizationUser(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.GetOrganizationUser, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.updateOrganizationUser =
-  function updateOrganizationUser(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+KiloCenterServiceClient.prototype.listOrganizations = function listOrganizations(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListOrganizations, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
     }
-    var client = grpc.unary(KiloCenterService.UpdateOrganizationUser, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.removeOrganizationUser =
-  function removeOrganizationUser(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.RemoveOrganizationUser, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.listOrganizationUsers =
-  function listOrganizationUsers(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+KiloCenterServiceClient.prototype.addOrganizationUser = function addOrganizationUser(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.AddOrganizationUser, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
     }
-    var client = grpc.unary(KiloCenterService.ListOrganizationUsers, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.listUserOrganizations =
-  function listUserOrganizations(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.ListUserOrganizations, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.createApiKey = function createApiKey(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getOrganizationUser = function getOrganizationUser(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetOrganizationUser, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.updateOrganizationUser = function updateOrganizationUser(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.UpdateOrganizationUser, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.removeOrganizationUser = function removeOrganizationUser(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.RemoveOrganizationUser, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.listOrganizationUsers = function listOrganizationUsers(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListOrganizationUsers, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.listUserOrganizations = function listUserOrganizations(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListUserOrganizations, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.createApiKey = function createApiKey(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2946,21 +2786,17 @@ KiloCenterServiceClient.prototype.createApiKey = function createApiKey(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getApiKey = function getApiKey(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getApiKey = function getApiKey(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -2981,21 +2817,17 @@ KiloCenterServiceClient.prototype.getApiKey = function getApiKey(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.deleteApiKey = function deleteApiKey(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.deleteApiKey = function deleteApiKey(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3016,21 +2848,17 @@ KiloCenterServiceClient.prototype.deleteApiKey = function deleteApiKey(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listApiKeys = function listApiKeys(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listApiKeys = function listApiKeys(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3051,53 +2879,48 @@ KiloCenterServiceClient.prototype.listApiKeys = function listApiKeys(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.createIntegration =
-  function createIntegration(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.CreateIntegration, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.createIntegration = function createIntegration(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.CreateIntegration, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getIntegration = function getIntegration(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getIntegration = function getIntegration(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3118,85 +2941,79 @@ KiloCenterServiceClient.prototype.getIntegration = function getIntegration(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateIntegration =
-  function updateIntegration(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.UpdateIntegration, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.updateIntegration = function updateIntegration(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.UpdateIntegration, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.deleteIntegration =
-  function deleteIntegration(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.DeleteIntegration, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.listIntegrations = function listIntegrations(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.deleteIntegration = function deleteIntegration(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.DeleteIntegration, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.listIntegrations = function listIntegrations(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3217,117 +3034,110 @@ KiloCenterServiceClient.prototype.listIntegrations = function listIntegrations(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getAnalyticsOverview =
-  function getAnalyticsOverview(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.GetAnalyticsOverview, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.getAnalyticsOverview = function getAnalyticsOverview(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetAnalyticsOverview, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.getActivityAnalytics =
-  function getActivityAnalytics(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.GetActivityAnalytics, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.getSignalQualityAnalytics =
-  function getSignalQualityAnalytics(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.GetSignalQualityAnalytics, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.listEvents = function listEvents(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getActivityAnalytics = function getActivityAnalytics(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetActivityAnalytics, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getSignalQualityAnalytics = function getSignalQualityAnalytics(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetSignalQualityAnalytics, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.listEvents = function listEvents(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3348,88 +3158,83 @@ KiloCenterServiceClient.prototype.listEvents = function listEvents(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listBaseStationActivity =
-  function listBaseStationActivity(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.ListBaseStationActivity, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.listBaseStationActivity = function listBaseStationActivity(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListBaseStationActivity, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.listEndpointActivity =
-  function listEndpointActivity(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.ListEndpointActivity, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.streamEvents = function streamEvents(
-  requestMessage,
-  metadata,
-) {
+KiloCenterServiceClient.prototype.listEndpointActivity = function listEndpointActivity(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListEndpointActivity, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.streamEvents = function streamEvents(requestMessage, metadata) {
   var listeners = {
     data: [],
     end: [],
-    status: [],
+    status: []
   };
   var client = grpc.invoke(KiloCenterService.StreamEvents, {
     request: requestMessage,
@@ -3450,7 +3255,7 @@ KiloCenterServiceClient.prototype.streamEvents = function streamEvents(
         handler({ code: status, details: statusMessage, metadata: trailers });
       });
       listeners = null;
-    },
+    }
   });
   return {
     on: function (type, handler) {
@@ -3460,15 +3265,11 @@ KiloCenterServiceClient.prototype.streamEvents = function streamEvents(
     cancel: function () {
       listeners = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listAlerts = function listAlerts(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listAlerts = function listAlerts(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3489,21 +3290,17 @@ KiloCenterServiceClient.prototype.listAlerts = function listAlerts(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getAlertSummary = function getAlertSummary(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getAlertSummary = function getAlertSummary(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3524,53 +3321,48 @@ KiloCenterServiceClient.prototype.getAlertSummary = function getAlertSummary(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listScaciSessions =
-  function listScaciSessions(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.ListScaciSessions, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.listScaciSessions = function listScaciSessions(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListScaciSessions, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getScaciSession = function getScaciSession(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getScaciSession = function getScaciSession(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3591,53 +3383,48 @@ KiloCenterServiceClient.prototype.getScaciSession = function getScaciSession(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getScaciStatistics =
-  function getScaciStatistics(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.GetScaciStatistics, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.getScaciStatistics = function getScaciStatistics(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetScaciStatistics, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.listScaciErrors = function listScaciErrors(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listScaciErrors = function listScaciErrors(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3658,21 +3445,17 @@ KiloCenterServiceClient.prototype.listScaciErrors = function listScaciErrors(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listScaciQueues = function listScaciQueues(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listScaciQueues = function listScaciQueues(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3693,21 +3476,17 @@ KiloCenterServiceClient.prototype.listScaciQueues = function listScaciQueues(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getScaciStatus = function getScaciStatus(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getScaciStatus = function getScaciStatus(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3728,245 +3507,234 @@ KiloCenterServiceClient.prototype.getScaciStatus = function getScaciStatus(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.generateCertificate =
-  function generateCertificate(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.GenerateCertificate, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.generateCertificate = function generateCertificate(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GenerateCertificate, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.downloadCertificate =
-  function downloadCertificate(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.DownloadCertificate, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.downloadBaseStationCertificate =
-  function downloadBaseStationCertificate(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.DownloadBaseStationCertificate, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.generateServerCertificates =
-  function generateServerCertificates(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+KiloCenterServiceClient.prototype.downloadCertificate = function downloadCertificate(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.DownloadCertificate, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
     }
-    var client = grpc.unary(KiloCenterService.GenerateServerCertificates, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.renewServerCertificates =
-  function renewServerCertificates(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.RenewServerCertificates, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.getServerCertificateStatus =
-  function getServerCertificateStatus(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+KiloCenterServiceClient.prototype.downloadBaseStationCertificate = function downloadBaseStationCertificate(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.DownloadBaseStationCertificate, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
     }
-    var client = grpc.unary(KiloCenterService.GetServerCertificateStatus, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.createManufacturer =
-  function createManufacturer(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.CreateManufacturer, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.getManufacturer = function getManufacturer(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.generateServerCertificates = function generateServerCertificates(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GenerateServerCertificates, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.renewServerCertificates = function renewServerCertificates(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.RenewServerCertificates, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getServerCertificateStatus = function getServerCertificateStatus(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetServerCertificateStatus, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.createManufacturer = function createManufacturer(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.CreateManufacturer, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getManufacturer = function getManufacturer(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -3987,149 +3755,141 @@ KiloCenterServiceClient.prototype.getManufacturer = function getManufacturer(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateManufacturer =
-  function updateManufacturer(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.UpdateManufacturer, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.updateManufacturer = function updateManufacturer(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.UpdateManufacturer, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.deleteManufacturer =
-  function deleteManufacturer(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.DeleteManufacturer, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.listManufacturers =
-  function listManufacturers(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.ListManufacturers, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.createDeviceModel =
-  function createDeviceModel(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+KiloCenterServiceClient.prototype.deleteManufacturer = function deleteManufacturer(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.DeleteManufacturer, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
     }
-    var client = grpc.unary(KiloCenterService.CreateDeviceModel, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getDeviceModel = function getDeviceModel(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listManufacturers = function listManufacturers(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListManufacturers, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.createDeviceModel = function createDeviceModel(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.CreateDeviceModel, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getDeviceModel = function getDeviceModel(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4150,85 +3910,79 @@ KiloCenterServiceClient.prototype.getDeviceModel = function getDeviceModel(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateDeviceModel =
-  function updateDeviceModel(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.UpdateDeviceModel, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.updateDeviceModel = function updateDeviceModel(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.UpdateDeviceModel, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.deleteDeviceModel =
-  function deleteDeviceModel(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.DeleteDeviceModel, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.listDeviceModels = function listDeviceModels(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.deleteDeviceModel = function deleteDeviceModel(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.DeleteDeviceModel, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.listDeviceModels = function listDeviceModels(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4249,21 +4003,17 @@ KiloCenterServiceClient.prototype.listDeviceModels = function listDeviceModels(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.createBlueprint = function createBlueprint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.createBlueprint = function createBlueprint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4284,21 +4034,17 @@ KiloCenterServiceClient.prototype.createBlueprint = function createBlueprint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getBlueprint = function getBlueprint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.getBlueprint = function getBlueprint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4319,21 +4065,17 @@ KiloCenterServiceClient.prototype.getBlueprint = function getBlueprint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.updateBlueprint = function updateBlueprint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.updateBlueprint = function updateBlueprint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4354,21 +4096,17 @@ KiloCenterServiceClient.prototype.updateBlueprint = function updateBlueprint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.deleteBlueprint = function deleteBlueprint(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.deleteBlueprint = function deleteBlueprint(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4389,21 +4127,17 @@ KiloCenterServiceClient.prototype.deleteBlueprint = function deleteBlueprint(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listBlueprints = function listBlueprints(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listBlueprints = function listBlueprints(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4424,117 +4158,110 @@ KiloCenterServiceClient.prototype.listBlueprints = function listBlueprints(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.setDefaultBlueprint =
-  function setDefaultBlueprint(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.SetDefaultBlueprint, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.setDefaultBlueprint = function setDefaultBlueprint(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.SetDefaultBlueprint, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.submitBlueprintToRegistry =
-  function submitBlueprintToRegistry(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.SubmitBlueprintToRegistry, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.createDeviceModelWithBlueprint =
-  function createDeviceModelWithBlueprint(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.CreateDeviceModelWithBlueprint, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.decodePreview = function decodePreview(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.submitBlueprintToRegistry = function submitBlueprintToRegistry(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.SubmitBlueprintToRegistry, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.createDeviceModelWithBlueprint = function createDeviceModelWithBlueprint(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.CreateDeviceModelWithBlueprint, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.decodePreview = function decodePreview(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4555,21 +4282,17 @@ KiloCenterServiceClient.prototype.decodePreview = function decodePreview(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listMessages = function listMessages(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listMessages = function listMessages(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4590,24 +4313,21 @@ KiloCenterServiceClient.prototype.listMessages = function listMessages(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.streamMessages = function streamMessages(
-  requestMessage,
-  metadata,
-) {
+KiloCenterServiceClient.prototype.streamMessages = function streamMessages(requestMessage, metadata) {
   var listeners = {
     data: [],
     end: [],
-    status: [],
+    status: []
   };
   var client = grpc.invoke(KiloCenterService.StreamMessages, {
     request: requestMessage,
@@ -4628,7 +4348,7 @@ KiloCenterServiceClient.prototype.streamMessages = function streamMessages(
         handler({ code: status, details: statusMessage, metadata: trailers });
       });
       listeners = null;
-    },
+    }
   });
   return {
     on: function (type, handler) {
@@ -4638,247 +4358,236 @@ KiloCenterServiceClient.prototype.streamMessages = function streamMessages(
     cancel: function () {
       listeners = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.listBaseStationMessages =
-  function listBaseStationMessages(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.ListBaseStationMessages, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.listBaseStationMessages = function listBaseStationMessages(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListBaseStationMessages, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.getBaseStationMessage =
-  function getBaseStationMessage(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.GetBaseStationMessage, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.getBaseStationMessageStats =
-  function getBaseStationMessageStats(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.GetBaseStationMessageStats, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
   };
+};
 
-KiloCenterServiceClient.prototype.searchBaseStationMessages =
-  function searchBaseStationMessages(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+KiloCenterServiceClient.prototype.getBaseStationMessage = function getBaseStationMessage(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetBaseStationMessage, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
     }
-    var client = grpc.unary(KiloCenterService.SearchBaseStationMessages, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.exportBaseStationMessages =
-  function exportBaseStationMessages(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
     }
-    var client = grpc.unary(KiloCenterService.ExportBaseStationMessages, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+  };
+};
+
+KiloCenterServiceClient.prototype.getBaseStationMessageStats = function getBaseStationMessageStats(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetBaseStationMessageStats, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.streamBaseStationMessages =
-  function streamBaseStationMessages(requestMessage, metadata) {
-    var listeners = {
-      data: [],
-      end: [],
-      status: [],
-    };
-    var client = grpc.invoke(KiloCenterService.StreamBaseStationMessages, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onMessage: function (responseMessage) {
-        listeners.data.forEach(function (handler) {
-          handler(responseMessage);
-        });
-      },
-      onEnd: function (status, statusMessage, trailers) {
-        listeners.status.forEach(function (handler) {
-          handler({ code: status, details: statusMessage, metadata: trailers });
-        });
-        listeners.end.forEach(function (handler) {
-          handler({ code: status, details: statusMessage, metadata: trailers });
-        });
-        listeners = null;
-      },
-    });
-    return {
-      on: function (type, handler) {
-        listeners[type].push(handler);
-        return this;
-      },
-      cancel: function () {
-        listeners = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.listEndpointMessages =
-  function listEndpointMessages(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.ListEndpointMessages, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getEndPointStats = function getEndPointStats(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.searchBaseStationMessages = function searchBaseStationMessages(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.SearchBaseStationMessages, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.exportBaseStationMessages = function exportBaseStationMessages(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ExportBaseStationMessages, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.streamBaseStationMessages = function streamBaseStationMessages(requestMessage, metadata) {
+  var listeners = {
+    data: [],
+    end: [],
+    status: []
+  };
+  var client = grpc.invoke(KiloCenterService.StreamBaseStationMessages, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onMessage: function (responseMessage) {
+      listeners.data.forEach(function (handler) {
+        handler(responseMessage);
+      });
+    },
+    onEnd: function (status, statusMessage, trailers) {
+      listeners.status.forEach(function (handler) {
+        handler({ code: status, details: statusMessage, metadata: trailers });
+      });
+      listeners.end.forEach(function (handler) {
+        handler({ code: status, details: statusMessage, metadata: trailers });
+      });
+      listeners = null;
+    }
+  });
+  return {
+    on: function (type, handler) {
+      listeners[type].push(handler);
+      return this;
+    },
+    cancel: function () {
+      listeners = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.listEndpointMessages = function listEndpointMessages(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListEndpointMessages, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getEndPointStats = function getEndPointStats(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4899,85 +4608,79 @@ KiloCenterServiceClient.prototype.getEndPointStats = function getEndPointStats(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.getEndPointOperations =
-  function getEndPointOperations(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.GetEndPointOperations, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.getEndPointOperations = function getEndPointOperations(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetEndPointOperations, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
-  };
-
-KiloCenterServiceClient.prototype.listAllBaseStationLocations =
-  function listAllBaseStationLocations(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
+      }
     }
-    var client = grpc.unary(KiloCenterService.ListAllBaseStationLocations, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
-        }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.getCEStatus = function getCEStatus(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listAllBaseStationLocations = function listAllBaseStationLocations(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.ListAllBaseStationLocations, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getCEStatus = function getCEStatus(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -4998,53 +4701,48 @@ KiloCenterServiceClient.prototype.getCEStatus = function getCEStatus(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.completeCEOnboarding =
-  function completeCEOnboarding(requestMessage, metadata, callback) {
-    if (arguments.length === 2) {
-      callback = arguments[1];
-    }
-    var client = grpc.unary(KiloCenterService.CompleteCEOnboarding, {
-      request: requestMessage,
-      host: this.serviceHost,
-      metadata: metadata,
-      transport: this.options.transport,
-      debug: this.options.debug,
-      onEnd: function (response) {
-        if (callback) {
-          if (response.status !== grpc.Code.OK) {
-            var err = new Error(response.statusMessage);
-            err.code = response.status;
-            err.metadata = response.trailers;
-            callback(err, null);
-          } else {
-            callback(null, response.message);
-          }
+KiloCenterServiceClient.prototype.completeCEOnboarding = function completeCEOnboarding(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.CompleteCEOnboarding, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
         }
-      },
-    });
-    return {
-      cancel: function () {
-        callback = null;
-        client.close();
-      },
-    };
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
   };
+};
 
-KiloCenterServiceClient.prototype.listCEInstances = function listCEInstances(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.listCEInstances = function listCEInstances(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -5065,21 +4763,17 @@ KiloCenterServiceClient.prototype.listCEInstances = function listCEInstances(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
-KiloCenterServiceClient.prototype.revokeCEInstance = function revokeCEInstance(
-  requestMessage,
-  metadata,
-  callback,
-) {
+KiloCenterServiceClient.prototype.revokeCEInstance = function revokeCEInstance(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
   }
@@ -5100,14 +4794,15 @@ KiloCenterServiceClient.prototype.revokeCEInstance = function revokeCEInstance(
           callback(null, response.message);
         }
       }
-    },
+    }
   });
   return {
     cancel: function () {
       callback = null;
       client.close();
-    },
+    }
   };
 };
 
 exports.KiloCenterServiceClient = KiloCenterServiceClient;
+
