@@ -25,8 +25,6 @@ import {
 } from "@utils/formatters";
 import { MIOTY_KEY_BYTE_LENGTH } from "@constants/app";
 import { ENDPOINT_FORM } from "@constants/messages";
-import { InfoIcon } from "@theme/icons";
-
 import {
   AdvancedMiotySettings,
   CommunicationSettings,

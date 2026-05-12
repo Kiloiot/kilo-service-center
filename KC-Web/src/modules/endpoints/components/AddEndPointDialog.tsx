@@ -4,7 +4,6 @@ import type { CreateEndpointRequest } from "@api-types/api";
 import { useCreateEndpoint } from "@hooks";
 import {
   Alert,
-  Box,
   Button,
   Dialog,
   DialogActions,
@@ -28,7 +27,6 @@ import {
 import {
   MIOTY_EUI_REGEX,
   MIOTY_KEY_BYTE_LENGTH,
-  MIOTY_UINT32_MAX,
 } from "@constants/app";
 import { ENDPOINT_FORM } from "@constants/messages";
 import { CheckCircleIcon, InfoIcon } from "@theme/icons";
