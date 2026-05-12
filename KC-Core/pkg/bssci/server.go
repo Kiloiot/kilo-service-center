@@ -2119,578 +2119,81 @@ func (s *Server) InitiatePing(ctx context.Context, baseStationEUI uint64, tenant
 func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
 	ctx := s.sessionContext(session)
 
-	// Extract and validate mandatory epEui field
-	epEUI, hasEpEUI := getNumericField(data, "epEui")
-	if !hasEpEUI {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingEpEui))
+	// Extract and validate all mandatory/optional fields from the attach request
+	f, err := s.extractAttachFields(session, msg, data)
+	if err != nil {
+		return err
 	}
-
-	// Extract and validate ALL mandatory fields per BSSCI 3.6.1
-	rxTime, hasRxTime := getNumericField(data, "rxTime")          // Reception time (Unix UTC ns)
-	attachCnt, hasAttachCnt := getNumericField(data, "attachCnt") // Attach counter
-
-	// Validate mandatory field presence
-	if !hasRxTime {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingRxTime))
-	}
-	if !hasAttachCnt {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingAttachCnt))
-	}
-	// Validate attachCnt is 24-bit unsigned (0 to 0xFFFFFF per BSSCI §5.6.1)
-	if attachCnt < 0 || attachCnt > 0xFFFFFF {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidAttachCntRange))
-	}
-
-	// Extract and validate mandatory SNR/RSSI fields per BSSCI 3.6.1
-	snr, hasValidSnr := getFloatFieldValidated(data, "snr")    // Signal-to-noise ratio in dB
-	rssi, hasValidRssi := getFloatFieldValidated(data, "rssi") // Signal strength in dBm
-
-	if !hasValidSnr {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidSnrValue))
-	}
-	if !hasValidRssi {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidRssiValue))
-	}
-
-	// Extract and validate nonce (mandatory 4-byte array per BSSCI §5.6.1)
-	nonceData, ok := data["nonce"]
-	if !ok {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingNonce))
-	}
-	nonce, errToken := validateByteArray(nonceData, "nonce", 4)
-	if errToken != "" {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errToken))
-	}
-
-	// Extract and validate signature (mandatory 4-byte array per BSSCI §5.6.1)
-	signData, ok := data["sign"]
-	if !ok {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingSign))
-	}
-	sign, errToken := validateByteArray(signData, "sign", 4)
-	if errToken != "" {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errToken))
-	}
-
-	// Extract optional radio capability flags per BSSCI 3.6.1
-	var dualChan bool
-	_, hasDualChan := data["dualChan"]
-	if hasDualChan {
-		dualChan = getBoolField(data, "dualChan", false)
-	}
-
-	var repetition bool
-	_, hasRepetition := data["repetition"]
-	if hasRepetition {
-		repetition = getBoolField(data, "repetition", false)
-	}
-
-	var wideCarrOff bool
-	_, hasWideCarrOff := data["wideCarrOff"]
-	if hasWideCarrOff {
-		wideCarrOff = getBoolField(data, "wideCarrOff", false)
-	}
-
-	var longBlkDist bool
-	_, hasLongBlkDist := data["longBlkDist"]
-	if hasLongBlkDist {
-		longBlkDist = getBoolField(data, "longBlkDist", false)
-	}
-
-	// Extract optional fields with validation
-	eqSnr := snr // Default to snr value
-	var rxDuration int64
-	if rawEqSnr, exists := data["eqSnr"]; exists && rawEqSnr != nil {
-		if eqSnrFloat, valid := getFloatFieldValidated(data, "eqSnr"); valid {
-			eqSnr = eqSnrFloat
-		} else {
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidEqSnrValue))
-		}
-	}
-	rxDuration, hasRxDuration := getNumericField(data, "rxDuration")
-
-	var profile string
-	var hasProfile bool
-	if profileData, exists := data["profile"]; exists {
-		if profileStr, ok := profileData.(string); ok {
-			profile = profileStr
-			hasProfile = true
-		}
-	}
-
-	// Extract subpackets if provided
-	var subpackets []interface{}
-	if sp, ok := data["subpackets"]; ok {
-		if spArray, ok := sp.([]interface{}); ok {
-			subpackets = spArray
-		}
-	}
-
-	// Optional short address if assigned by Base Station
-	shAddr, hasShAddr := getNumericField(data, "shAddr")
-	var scAssignedShAddr bool
 
 	s.logger.InfoContext(s.safeCtx(), LogBSSCIEndPointAttachRequestWithFullTelemetry,
 		"baseStation", session.BaseStationEUI,
-		"endPoint", epEUI,
-		"attachCnt", attachCnt,
-		"rxTime", rxTime,
-		"nonceLen", len(nonce),
-		"signLen", len(sign),
-		"dualChan", dualChan,
-		"repetition", repetition,
-		"wideCarrOff", wideCarrOff,
-		"longBlkDist", longBlkDist)
+		"endPoint", f.epEUI,
+		"attachCnt", f.attachCnt,
+		"rxTime", f.rxTime,
+		"nonceLen", len(f.nonce),
+		"signLen", len(f.sign),
+		"dualChan", f.dualChan,
+		"repetition", f.repetition,
+		"wideCarrOff", f.wideCarrOff,
+		"longBlkDist", f.longBlkDist)
 
-	// Store pending operation for completion tracking
-	// Make a copy of the data to avoid mutations
-	pendingData := map[string]interface{}{
-		"epEui":       pkgmioty.FormatEUI64(uint64(epEUI)),
-		"attachCnt":   attachCnt,
-		"rxTime":      rxTime,
-		"nonce":       nonce,
-		"sign":        sign,
-		"dualChan":    dualChan,
-		"repetition":  repetition,
-		"wideCarrOff": wideCarrOff,
-		"longBlkDist": longBlkDist,
-		"rssi":        rssi,
-		"snr":         snr,
-		"eqSnr":       eqSnr,
-		"subpackets":  subpackets,
-	}
-
-	// Optional fields: only store when present
-	if hasRxDuration {
-		pendingData["rxDuration"] = rxDuration
-	}
-	// BSSCI-ATTACH-023: Empty profile preserves existing DB value (consistent with detach at line 2600)
-	// Rationale: "absent or empty" should not overwrite; only non-empty strings update the profile field
-	if hasProfile && profile != "" {
-		pendingData["profile"] = profile
-	}
-
-	// Track pending operation for the three-way handshake
-	// StatusService is the single path for pending operation persistence
+	// Record pending operation for three-way handshake tracking
 	pendingOp := &PendingOperation{
 		SessionSlug:   session.ID,
 		OperationID:   int64(msg.OpId),
 		OperationType: mioty.CmdAttach,
 		Message:       data,
-		Metadata:      pendingData,
+		Metadata:      f.buildAttachPendingData(),
 		CreatedAt:     time.Now(),
 	}
-	err := s.statusSvc.RecordPendingOperation(ctx, session, int64(msg.OpId), pendingOp, session.DbSessionID)
-	if err != nil {
+	if err := s.statusSvc.RecordPendingOperation(ctx, session, int64(msg.OpId), pendingOp, session.DbSessionID); err != nil {
 		s.logger.ErrorContext(ctx, LogBSSCIFailedToRecordPendingAttachOperation, "opId", msg.OpId, "error", err)
 		return s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errOperationFailed))
 	}
 
-	// Convert endpoint EUI to bytes for database lookup
-	epEUIBytes := make([]byte, 8)
-	// EUIs are always positive in MIOTY protocol
-	if epEUI < 0 {
-		return s.sendError(session, msg.OpId, POSIX_EINVAL, ResolveErrorMessage(errInvalidFieldValue))
+	// Resolve endpoint: lookup, roaming, replay protection, crypto, short address
+	if s.endpointRepo == nil {
+		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errEndpointNotProvisioned))
 	}
-	binary.BigEndian.PutUint64(epEUIBytes[:], uint64(epEUI))
 
-	// Look up endpoint in database to get network keys
-	var nwkSnKey []byte
-	var responseShAddr uint16
+	r, err := s.resolveAttachEndpoint(ctx, session, msg, f)
+	if err != nil {
+		return err
+	}
 
-	if s.endpointRepo != nil {
-		tenantID := resolvedTenant(session, s.tenantID)
-		endpoint, err := s.endpointRepo.GetByEUI(ctx, resolvedTenant(session, s.tenantID), epEUIBytes)
-		if err != nil {
-			s.logger.WarnContext(s.safeCtx(), LogBSSCIEndpointNotProvisionedForAttach,
-				"epEui", epEUI,
-				"error", err)
-			// Clean up pending operation before returning error
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			// Return error per BSSCI - endpoint must be provisioned
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errEndpointNotProvisioned))
-		}
+	// Build database update map for endpoint attach metadata
+	attachUpdates := buildAttachFieldUpdates(f, r, data)
 
-		// Store endpoint metadata for attach propagation (BSSCI §5.8.2)
-		// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation access
-		if s.statusSvc != nil {
-			if pendingOp, err := s.statusSvc.GetPendingOperation(session, int64(msg.OpId)); err == nil {
-				pendingOp.Metadata["endpointID"] = endpoint.ID
-				pendingOp.Metadata["endpointTenantID"] = endpoint.TenantID
-				// Note: Metadata changes are in-memory only; StatusService already persisted the operation
-				// If DB persistence of metadata updates is required, call RecordPendingOperation here
-			}
-		}
-
-		// Detect roaming and validate agreements
-		var isRoaming bool
-		var ownerTenantID int64
-		if s.roamingSvc != nil {
-			isRoaming, ownerTenantID, err = s.roamingSvc.DetectAndValidateRoaming(ctx, epEUIBytes, tenantID)
-			if err != nil {
-				s.logger.WarnContext(s.safeCtx(), LogBSSCIRoamingValidationFailed,
-					"epEui", epEUI,
-					"servingTenant", tenantID,
-					"error", err)
-				// Clean up pending operation before returning error
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPERM, ResolveErrorMessage(errRoamingNotAllowed))
-			}
-
-			// If roaming, record the attach event
-			if isRoaming {
-				s.logger.InfoContext(s.safeCtx(), LogBSSCIRoamingEndpointAttaching,
-					"epEui", epEUI,
-					"ownerTenant", ownerTenantID,
-					"servingTenant", tenantID)
-
-				// Record roaming attach event
-				if err := s.roamingSvc.RecordAttach(ctx, epEUIBytes, session.BaseStationEUIBytes(), tenantID); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRecordRoamingAttach,
-						"error", err)
-					// Non-fatal: continue with attach
-				}
-
-				// Update session with roaming endpoint
-				if session.DbSessionID > 0 {
-					if err := s.roamingSvc.UpdateSessionRoaming(ctx, session.DbSessionID, epEUIBytes, true, tenantID); err != nil {
-						s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateSessionRoaming,
-							"error", err)
-						// Non-fatal: continue with attach
-					}
-				}
-
-				// Store owner tenant ID in pending operation metadata
-				if s.statusSvc != nil {
-					if pendingOp, err := s.statusSvc.GetPendingOperation(session, int64(msg.OpId)); err == nil {
-						pendingOp.Metadata["ownerTenantID"] = ownerTenantID
-						pendingOp.Metadata["isRoaming"] = true
-					}
-				}
-			}
-		} else {
-			// If roaming service is not configured, owner equals serving tenant
-			_ = tenantID // Implicit: ownerTenantID := tenantID (not needed due to earlier declaration)
-		}
-
-		// Get network session key from endpoint
-		nwkSnKey = endpoint.NwkSnKey
-
-		if len(nwkSnKey) != 16 {
-			s.logger.WarnContext(s.safeCtx(), LogBSSCIInvalidNetworkKeyLengthForAttach,
-				"epEui", epEUI,
-				"keyLength", len(nwkSnKey))
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errNwkSnKeyInvalidLength))
-		}
-
-		// Replay protection: enforce monotonic attach counter (BSSCI §5.6.1)
-		if endpoint.AttachCnt != nil {
-			storedCnt := int64(*endpoint.AttachCnt)
-
-			// Handle 24-bit rollover: allow reset to 0 only when stored is near max
-			isRollover := storedCnt > 0xFFFF00 && attachCnt < 0x100
-
-			if !isRollover && attachCnt <= storedCnt {
-				s.logger.WarnContext(
-					s.safeCtx(),
-					LogBSSCIAttachCounterReplay,
-					"tenantId", resolvedTenant(session, s.tenantID),
-					"epEui", epEUI,
-					"storedAttachCnt", storedCnt,
-					"incomingAttachCnt", attachCnt,
-				)
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPROTO,
-					ResolveErrorMessage(errAttachCounterNotMonotonic))
-			}
-		}
-
-		//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for uint32
-		if err := ValidateAttachSignature(uint64(epEUI), uint32(attachCnt), sign, nwkSnKey); err != nil {
-			s.logger.WarnContext(s.safeCtx(), LogBSSCIAttachSignatureValidationFailed,
-				"epEui", epEUI,
-				"error", err)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidSignature))
-		}
-
-		sessionKey, err := DeriveSessionKey(uint64(epEUI), nonce, sign, nwkSnKey)
-		if err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToDeriveSessionKey,
-				"epEui", epEUI,
-				"error", err)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidSignature))
-		}
-
-		// Encrypt session key using raw GCM (nonce + ciphertext + tag ~44 bytes)
-		// This satisfies BSSCI §5.6.2 storage requirements while maintaining authenticated encryption
-		encryptedSessionKey := sessionKey
-		if s.keyEncryptor != nil {
-			var err error
-			encryptedSessionKey, err = s.keyEncryptor.EncryptKeyRaw(sessionKey)
-			if err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToEncryptSessionKey, "error", err)
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errFailedToEncryptKey))
-			}
-		}
-
-		// Use short address from database or BS-provided
-		if hasShAddr {
-			// Short address must fit in uint16 range (0-65535 per MIOTY spec)
-			if shAddr < 0 || shAddr > 65535 {
-				return s.sendError(session, msg.OpId, POSIX_EINVAL, ResolveErrorMessage(errInvalidFieldValue))
-			}
-			responseShAddr = uint16(shAddr)
-			// Update database if BS assigned a different short address
-			if endpoint.ShAddr == nil || *endpoint.ShAddr != responseShAddr { // Model now stores uint16, no cast needed
-				scAssignedShAddr = false
-			}
-		} else if endpoint.ShAddr != nil {
-			// Model now stores uint16, no conversion needed
-			responseShAddr = *endpoint.ShAddr
-			scAssignedShAddr = true
-		} else {
-			// Generate short address from lower bits of EUI
-			responseShAddr = uint16(epEUI & 0xFFFF) //nolint:gosec // G115: bitwise AND guarantees value fits uint16
-			scAssignedShAddr = true
-		}
-
-		attachUpdates := map[string]interface{}{
-			"attach_cnt":          attachCnt,
-			"last_attach_rx_time": rxTime,
-			"nonce":               nonce,
-			"sign":                sign,
-		}
-
-		if hasRxDuration {
-			attachUpdates["last_attach_rx_duration"] = rxDuration
-		}
-		if hasDualChan {
-			attachUpdates["dual_chan"] = dualChan
-		}
-		if hasRepetition {
-			attachUpdates["repetition"] = repetition
-		}
-		if hasWideCarrOff {
-			attachUpdates["wide_carr_off"] = wideCarrOff
-		}
-		if hasLongBlkDist {
-			attachUpdates["long_blk_dist"] = longBlkDist
-		}
-		if hasShAddr || scAssignedShAddr {
-			attachUpdates["sh_addr"] = responseShAddr
-		}
-
-		// Persist subpackets if present (BSSCI §5.6.1 optional field)
-		if raw, ok := data["subpackets"].(map[string]interface{}); ok {
-			if sp, err := NormalizeSubpackets(raw); err != nil {
-				s.logger.WarnContext(ctx, LogBSSCIFailedToNormalizeAttachSubpackets, "error", err)
-			} else {
-				if encoded, err := json.Marshal(sp); err == nil {
-					attachUpdates["last_attach_subpackets"] = string(encoded)
-				}
-			}
-		}
-
-		if s.config != nil && s.config.DisableAttachPersistence {
-			// Skip DB persistence for test scenarios while still exercising replay protection and validation.
-			// However, still call UpdateRadioMetricsSelective to test profile handling logic.
-			var eui models.EUI
-			if len(epEUIBytes) == 8 {
-				copy(eui[:], epEUIBytes)
-
-				update := interfaces.RadioMetricsUpdate{
-					SNR:        snr,
-					RSSI:       rssi,
-					EqSNR:      eqSnr,
-					RxTime:     rxTime,
-					RxDuration: nil, // preserve if not present
-					Profile:    nil, // preserve if not present
-				}
-
-				if hasRxDuration {
-					update.RxDuration = &rxDuration
-				}
-
-				// BSSCI-ATTACH-023: Only update profile when non-empty to preserve existing DB value
-				if hasProfile && profile != "" {
-					update.Profile = &profile
-				}
-
-				if err := s.endpointRepo.UpdateRadioMetricsSelective(ctx, resolvedTenant(session, s.tenantID), eui, update); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateRadioMetrics, "error", err)
-				}
-			}
-			return nil
-		}
-
-		tx, txErr := s.storage.BeginTx(ctx)
-		if txErr != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToBeginTransaction, "error", txErr)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-		}
-
-		var commitErr error
-		defer func() {
-			if commitErr != nil {
-				_ = tx.Rollback()
-			}
-		}()
-
-		if err := tx.EndPoints().UpdateFields(ctx, tenantID, endpoint.ID, attachUpdates); err != nil {
-			commitErr = err
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointAttachMetadata, "error", err)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-		}
-
-		endpointIDStr := fmt.Sprintf("%d", endpoint.ID)
-		activeSession, getErr := tx.EndPointSessions().GetActive(ctx, endpointIDStr)
-		if getErr != nil {
-			commitErr = getErr
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToLoadEndpointSession, "error", getErr)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-		}
-
-		now := time.Now().UTC()
-
-		// Lookup base station ID for session enrichment (tenant-scoped)
-		var primaryBsID *int64
-		if s.basestationRepo != nil {
-			bs, bsErr := s.basestationRepo.GetByEUI(ctx, resolvedTenant(session, s.tenantID), session.BaseStationEUIBytes())
-			if bsErr == nil && bs != nil {
-				primaryBsID = &bs.ID
-			}
-		}
-
-		// responseShAddr is uint16, model ShAddr is *int32 (INTEGER 0-65535)
-		shAddrInt32 := int32(responseShAddr)
-
-		if activeSession != nil {
-			activeSession.SessionKey = encryptedSessionKey
-			//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for int32
-			activeSession.AttachCnt = int32(attachCnt)
-			activeSession.LastActivityAt = now
-			activeSession.ShAddr = &shAddrInt32
-			activeSession.PrimaryBaseStationID = primaryBsID
-			if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
-				commitErr = err
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointSession, "error", err)
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-			}
-		} else {
-			newSession := &models.EndPointSession{
-				TenantID:   tenantID,
-				EndPointID: endpoint.ID,
-				SessionID:  uuid.New().String(),
-				SessionKey: encryptedSessionKey,
-				//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for int32
-				AttachCnt:            int32(attachCnt),
-				Status:               "active",
-				StartedAt:            now,
-				LastActivityAt:       now,
-				ShAddr:               &shAddrInt32,
-				PrimaryBaseStationID: primaryBsID,
-			}
-			if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
-				commitErr = err
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCreateEndpointSession, "error", err)
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			commitErr = err
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCommitAttachTransaction, "error", err)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-		}
-		commitErr = nil
-
-		// Update radio metrics using selective update (preserves optional fields)
+	// Test mode: skip DB persistence while still exercising replay protection and validation
+	if s.config != nil && s.config.DisableAttachPersistence {
 		var eui models.EUI
-		if len(epEUIBytes) == 8 {
-			copy(eui[:], epEUIBytes)
-
-			update := interfaces.RadioMetricsUpdate{
-				SNR:        snr,
-				RSSI:       rssi,
-				EqSNR:      eqSnr,
-				RxTime:     rxTime,
-				RxDuration: nil, // preserve if not present
-				Profile:    nil, // preserve if not present
-			}
-
-			if hasRxDuration {
-				update.RxDuration = &rxDuration
-			}
-
-			// BSSCI-ATTACH-023: Only update profile when non-empty to preserve existing DB value
-			if hasProfile && profile != "" {
-				update.Profile = &profile
-			}
-
+		if len(r.epEUIBytes) == 8 {
+			copy(eui[:], r.epEUIBytes)
+			update := f.buildRadioMetricsUpdate()
 			if err := s.endpointRepo.UpdateRadioMetricsSelective(ctx, resolvedTenant(session, s.tenantID), eui, update); err != nil {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateRadioMetrics, "error", err)
 			}
 		}
-
-		// Build attach response per BSSCI 3.6.2
-		response := map[string]interface{}{
-			"command": mioty.CmdAttachResponse,
-			"opId":    msg.OpId,
-		}
-
-		numericKey := make([]interface{}, 16)
-		for i := 0; i < 16; i++ {
-			if i < len(sessionKey) {
-				numericKey[i] = int(sessionKey[i])
-			} else {
-				numericKey[i] = 0
-			}
-		}
-
-		response["nwkSnKey"] = numericKey
-		if scAssignedShAddr {
-			response["shAddr"] = responseShAddr
-		}
-
-		return s.sendMessage(session, response)
+		return nil
 	}
-	return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errEndpointNotProvisioned))
+
+	// Transactional endpoint update and session create/update
+	if err := s.persistAttachSession(ctx, session, msg, f, r, attachUpdates); err != nil {
+		return err
+	}
+
+	// Update radio metrics outside the transaction (non-fatal on failure)
+	var eui models.EUI
+	if len(r.epEUIBytes) == 8 {
+		copy(eui[:], r.epEUIBytes)
+		update := f.buildRadioMetricsUpdate()
+		if err := s.endpointRepo.UpdateRadioMetricsSelective(ctx, resolvedTenant(session, s.tenantID), eui, update); err != nil {
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateRadioMetrics, "error", err)
+		}
+	}
+
+	// Send attach response per BSSCI §5.6.2
+	return s.sendAttachResponse(session, msg, r)
 }
 
 // handleDetach handles detach operations per BSSCI 3.7
