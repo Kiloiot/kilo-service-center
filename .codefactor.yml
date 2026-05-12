@@ -1,0 +1,12 @@
+version: "1"
+exclude_paths:
+  # Generated protobuf stubs (JS/TS)
+  - "KC-Web/src/services/grpc/*_pb.js"
+  - "KC-Web/src/services/grpc/*_pb.d.ts"
+  - "KC-Web/src/services/grpc/*_pb_service.js"
+  - "KC-Web/src/services/grpc/*_pb_service.d.ts"
+  # Generated protobuf stubs (Go)
+  - "KC-Core/api/gen/**"
+  # Vendored/third-party
+  - "node_modules/**"
+  - "bun.lock"
