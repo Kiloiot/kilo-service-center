@@ -5,8 +5,8 @@
  * Uses OpenStreetMap tiles — no API key required.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { MapContainer, Marker, TileLayer, useMapEvents } from 'react-leaflet';
+import { useCallback, useEffect, useState } from "react";
+import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
 
 import {
   Button,
@@ -15,23 +15,24 @@ import {
   DialogContent,
   DialogTitle,
   Typography,
-} from '@mui/material';
-import L from 'leaflet';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
+} from "@mui/material";
+import L from "leaflet";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
 // Fix Leaflet default marker icon paths (broken by bundlers)
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
-import { MAP_DEFAULTS } from '@constants/app';
+import { MAP_DEFAULTS } from "@constants/app";
 import {
   ACTION_CANCEL,
   ACTION_CONFIRM_LOCATION,
   INSTR_MAP_PICKER,
   TITLE_MAP_PICKER,
-} from '@constants/messages';
-import { env } from '@config/env';
+} from "@constants/messages";
+import { env } from "@config/env";
 
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)
+  ._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
@@ -67,12 +68,16 @@ export default function MapPickerDialog({
   initialLat,
   initialLng,
 }: MapPickerDialogProps) {
-  const [selectedPosition, setSelectedPosition] = useState<[number, number] | null>(null);
+  const [selectedPosition, setSelectedPosition] = useState<
+    [number, number] | null
+  >(null);
 
   useEffect(() => {
     if (open) {
       setSelectedPosition(
-        initialLat !== undefined && initialLng !== undefined ? [initialLat, initialLng] : null
+        initialLat !== undefined && initialLng !== undefined
+          ? [initialLat, initialLng]
+          : null,
       );
     }
   }, [open, initialLat, initialLng]);
@@ -92,7 +97,9 @@ export default function MapPickerDialog({
   const center: [number, number] = hasInitial
     ? [initialLat, initialLng]
     : [MAP_DEFAULTS.CENTER_LAT, MAP_DEFAULTS.CENTER_LNG];
-  const zoom = hasInitial ? MAP_DEFAULTS.ZOOM_LOCATION : MAP_DEFAULTS.ZOOM_DEFAULT;
+  const zoom = hasInitial
+    ? MAP_DEFAULTS.ZOOM_LOCATION
+    : MAP_DEFAULTS.ZOOM_DEFAULT;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -104,10 +111,12 @@ export default function MapPickerDialog({
         <MapContainer
           center={center}
           zoom={zoom}
-          style={{ height: MAP_DEFAULTS.PICKER_HEIGHT, width: '100%' }}
+          style={{ height: MAP_DEFAULTS.PICKER_HEIGHT, width: "100%" }}
         >
           <TileLayer
-            attribution={env.mapTileAttribution || MAP_DEFAULTS.TILE_ATTRIBUTION}
+            attribution={
+              env.mapTileAttribution || MAP_DEFAULTS.TILE_ATTRIBUTION
+            }
             url={env.mapTileUrl || MAP_DEFAULTS.TILE_URL}
           />
           <MapClickHandler onLocationSelect={handleLocationSelect} />
@@ -116,7 +125,11 @@ export default function MapPickerDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{ACTION_CANCEL}</Button>
-        <Button onClick={handleConfirm} variant="contained" disabled={!selectedPosition}>
+        <Button
+          onClick={handleConfirm}
+          variant="contained"
+          disabled={!selectedPosition}
+        >
           {ACTION_CONFIRM_LOCATION}
         </Button>
       </DialogActions>

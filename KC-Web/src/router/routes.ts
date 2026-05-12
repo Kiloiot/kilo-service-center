@@ -5,10 +5,10 @@
  * All routes are wrapped with FeatureProtectedRoute.
  */
 
-import { lazy } from 'react';
+import { lazy } from "react";
 
-import type { FeatureFlagName } from '@contexts/FeatureFlagContext';
-import { ROUTE_TITLES, ROUTES } from '@constants/app';
+import type { FeatureFlagName } from "@contexts/FeatureFlagContext";
+import { ROUTE_TITLES, ROUTES } from "@constants/app";
 
 /**
  * Route configuration interface
@@ -25,57 +25,75 @@ export interface RouteConfig {
 }
 
 // Lazy load page components from modules (code splitting)
-const Dashboard = lazy(() => import('@modules/dashboard').then((m) => ({ default: m.Dashboard })));
+const Dashboard = lazy(() =>
+  import("@modules/dashboard").then((m) => ({ default: m.Dashboard })),
+);
 
 const BaseStations = lazy(() =>
-  import('@modules/base-stations').then((m) => ({ default: m.BaseStations }))
+  import("@modules/base-stations").then((m) => ({ default: m.BaseStations })),
 );
 
-const EndPoints = lazy(() => import('@modules/endpoints').then((m) => ({ default: m.EndPoints })));
+const EndPoints = lazy(() =>
+  import("@modules/endpoints").then((m) => ({ default: m.EndPoints })),
+);
 
 const Certificates = lazy(() =>
-  import('@modules/certificates').then((m) => ({ default: m.Certificates }))
+  import("@modules/certificates").then((m) => ({ default: m.Certificates })),
 );
 
-const Login = lazy(() => import('@modules/auth').then((m) => ({ default: m.Login })));
-const Register = lazy(() => import('@modules/auth').then((m) => ({ default: m.Register })));
-const AuthCallback = lazy(() => import('@modules/auth').then((m) => ({ default: m.AuthCallback })));
-const MyPassword = lazy(() => import('@modules/auth').then((m) => ({ default: m.MyPassword })));
+const Login = lazy(() =>
+  import("@modules/auth").then((m) => ({ default: m.Login })),
+);
+const Register = lazy(() =>
+  import("@modules/auth").then((m) => ({ default: m.Register })),
+);
+const AuthCallback = lazy(() =>
+  import("@modules/auth").then((m) => ({ default: m.AuthCallback })),
+);
+const MyPassword = lazy(() =>
+  import("@modules/auth").then((m) => ({ default: m.MyPassword })),
+);
 
 // User management
-const UserDetail = lazy(() => import('@modules/users').then((m) => ({ default: m.UserDetail })));
+const UserDetail = lazy(() =>
+  import("@modules/users").then((m) => ({ default: m.UserDetail })),
+);
 const UserPassword = lazy(() =>
-  import('@modules/users').then((m) => ({ default: m.UserPassword }))
+  import("@modules/users").then((m) => ({ default: m.UserPassword })),
 );
 
 // Users and Roles tabbed page + Organization Users
 const UsersAndRoles = lazy(() =>
-  import('@modules/users').then((m) => ({ default: m.UsersAndRoles }))
+  import("@modules/users").then((m) => ({ default: m.UsersAndRoles })),
 );
 const OrganizationUsersPage = lazy(() =>
-  import('@modules/users').then((m) => ({ default: m.OrganizationUsers }))
+  import("@modules/users").then((m) => ({ default: m.OrganizationUsers })),
 );
 
 // Organization management
 const Organizations = lazy(() =>
-  import('@modules/organizations').then((m) => ({ default: m.Organizations }))
+  import("@modules/organizations").then((m) => ({ default: m.Organizations })),
 );
 const OrganizationDetail = lazy(() =>
-  import('@modules/organizations').then((m) => ({ default: m.OrganizationDetail }))
+  import("@modules/organizations").then((m) => ({
+    default: m.OrganizationDetail,
+  })),
 );
 
 // API Keys management
-const ApiKeys = lazy(() => import('@modules/api-keys').then((m) => ({ default: m.ApiKeys })));
+const ApiKeys = lazy(() =>
+  import("@modules/api-keys").then((m) => ({ default: m.ApiKeys })),
+);
 
 // Blueprint feature: Device catalog and payload decoding
 const Blueprints = lazy(() =>
-  import('@modules/blueprints').then((m) => ({ default: m.Blueprints }))
+  import("@modules/blueprints").then((m) => ({ default: m.Blueprints })),
 );
 const BlueprintDetail = lazy(() =>
-  import('@modules/blueprints').then((m) => ({ default: m.BlueprintDetail }))
+  import("@modules/blueprints").then((m) => ({ default: m.BlueprintDetail })),
 );
 const AddDeviceModel = lazy(() =>
-  import('@modules/blueprints').then((m) => ({ default: m.AddDeviceModel }))
+  import("@modules/blueprints").then((m) => ({ default: m.AddDeviceModel })),
 );
 
 /**
@@ -89,7 +107,7 @@ export const routes: RouteConfig[] = [
     path: ROUTES.HOME,
     element: Dashboard,
     title: ROUTE_TITLES.DASHBOARD,
-    featureFlag: 'scaci_dashboard',
+    featureFlag: "scaci_dashboard",
   },
   {
     path: ROUTES.BASE_STATIONS,
@@ -141,7 +159,7 @@ export const routes: RouteConfig[] = [
     path: ROUTES.CERTIFICATES,
     element: Certificates,
     title: ROUTE_TITLES.CERTIFICATES,
-    featureFlag: 'certificate_generation',
+    featureFlag: "certificate_generation",
   },
   // Users and Roles tabbed page
   {
@@ -170,20 +188,20 @@ export const routes: RouteConfig[] = [
     path: ROUTES.ORGANIZATIONS,
     element: Organizations,
     title: ROUTE_TITLES.ORGANIZATIONS,
-    featureFlag: 'enterprise_organizations',
+    featureFlag: "enterprise_organizations",
   },
   {
     path: ROUTES.ORGANIZATION_DETAIL,
     element: OrganizationDetail,
     title: ROUTE_TITLES.ORGANIZATION_DETAIL,
-    featureFlag: 'enterprise_organizations',
+    featureFlag: "enterprise_organizations",
   },
   // Organization Users (ECE only)
   {
     path: ROUTES.ORGANIZATION_USERS,
     element: OrganizationUsersPage,
     title: ROUTE_TITLES.ORGANIZATION_USERS,
-    featureFlag: 'enterprise_organizations',
+    featureFlag: "enterprise_organizations",
   },
   {
     path: ROUTES.LOGIN,

@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 
-import type { AuthSettingsAPI, LoginRequest } from '@api-types/api';
-import { isUnauthorizedError } from '@api-types/api';
+import type { AuthSettingsAPI, LoginRequest } from "@api-types/api";
+import { isUnauthorizedError } from "@api-types/api";
 import {
   Alert,
   Box,
@@ -13,13 +13,13 @@ import {
   Paper,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { apiService } from '@services/api';
-import { useOrganization } from '@contexts/OrganizationContext';
-import { useSession } from '@contexts/SessionContext';
-import { useSystem } from '@contexts/SystemContext';
-import { storageService } from '@utils/storage';
+import { apiService } from "@services/api";
+import { useOrganization } from "@contexts/OrganizationContext";
+import { useSession } from "@contexts/SessionContext";
+import { useSystem } from "@contexts/SystemContext";
+import { storageService } from "@utils/storage";
 import {
   APP_EDITION,
   APP_NAME,
@@ -27,7 +27,7 @@ import {
   DEFAULT_ORG_NAME,
   ROUTES,
   STORAGE_KEYS,
-} from '@constants/app';
+} from "@constants/app";
 import {
   ACTION_CREATE_ONE,
   ACTION_LOGIN,
@@ -42,8 +42,8 @@ import {
   LABEL_PASSWORD,
   VAL_EMAIL_REQUIRED,
   VAL_PASSWORD_REQUIRED,
-} from '@constants/messages';
-import kiloLogo from '@assets/kilo-logo.png';
+} from "@constants/messages";
+import kiloLogo from "@assets/kilo-logo.png";
 
 const Login: React.FC = () => {
   const { versionInfo } = useSystem();
@@ -51,9 +51,12 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [validation, setValidation] = useState<{ email?: string; password?: string }>({});
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [validation, setValidation] = useState<{
+    email?: string;
+    password?: string;
+  }>({});
   const navigate = useNavigate();
   const { setOrganization } = useOrganization();
   const { setUser } = useSession();
@@ -69,7 +72,10 @@ const Login: React.FC = () => {
           window.location.replace(authSettings.oidc.login_url);
           return;
         }
-        if (authSettings.oauth2?.enabled && authSettings.oauth2.login_redirect) {
+        if (
+          authSettings.oauth2?.enabled &&
+          authSettings.oauth2.login_redirect
+        ) {
           window.location.replace(authSettings.oauth2.login_url);
           return;
         }
@@ -101,18 +107,26 @@ const Login: React.FC = () => {
       const loginResponse = await apiService.login(payload);
 
       // Store access token for subsequent API requests
-      storageService.setItem(STORAGE_KEYS.AUTH_TOKEN, loginResponse.tokens.accessToken);
+      storageService.setItem(
+        STORAGE_KEYS.AUTH_TOKEN,
+        loginResponse.tokens.accessToken,
+      );
 
       // Store refresh token if provided (refresh_token_enabled=true on backend)
       if (loginResponse.tokens.refreshToken) {
-        storageService.setItem(STORAGE_KEYS.REFRESH_TOKEN, loginResponse.tokens.refreshToken);
+        storageService.setItem(
+          STORAGE_KEYS.REFRESH_TOKEN,
+          loginResponse.tokens.refreshToken,
+        );
       } else {
         storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
       }
 
       // Set organization context from user profile
       const { user } = loginResponse;
-      const defaultOrg = user.memberships.find((m) => m.orgId === user.defaultOrgId);
+      const defaultOrg = user.memberships.find(
+        (m) => m.orgId === user.defaultOrgId,
+      );
       const firstOrg = user.memberships[0];
       const org = defaultOrg || firstOrg;
 
@@ -166,15 +180,33 @@ const Login: React.FC = () => {
         sx={{
           p: AUTH_LAYOUT.CARD_PADDING,
           maxWidth: AUTH_LAYOUT.CARD_MAX_WIDTH,
-          width: '100%',
-          textAlign: 'center',
+          width: "100%",
+          textAlign: "center",
         }}
       >
         {/* Logo and branding */}
-        <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <img src={kiloLogo} alt={APP_NAME} style={{ maxWidth: '200px', height: 'auto', marginBottom: '8px' }} />
-          <Chip label={versionInfo?.edition ?? APP_EDITION} size="small" variant="outlined" sx={{ mb: 2 }} />
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mb: 3 }}>
+        <Box
+          sx={{
+            mb: 3,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          <img
+            src={kiloLogo}
+            alt={APP_NAME}
+            style={{ maxWidth: "200px", height: "auto", marginBottom: "8px" }}
+          />
+          <Chip
+            label={versionInfo?.edition ?? APP_EDITION}
+            size="small"
+            variant="outlined"
+            sx={{ mb: 2 }}
+          />
+          <Box
+            sx={{ display: "flex", gap: 2, justifyContent: "center", mb: 3 }}
+          >
             <MuiLink
               href={versionInfo?.documentationUrl}
               target="_blank"
@@ -183,7 +215,12 @@ const Login: React.FC = () => {
             >
               {BRAND.DOCUMENTATION}
             </MuiLink>
-            <MuiLink href={versionInfo?.sourceUrl} target="_blank" rel="noopener" variant="caption">
+            <MuiLink
+              href={versionInfo?.sourceUrl}
+              target="_blank"
+              rel="noopener"
+              variant="caption"
+            >
               {BRAND.SOURCE}
             </MuiLink>
             <MuiLink
@@ -233,12 +270,19 @@ const Login: React.FC = () => {
               disabled={submitting}
               sx={{ mt: AUTH_LAYOUT.SPACING_MT }}
             >
-              {submitting ? <CircularProgress size={AUTH_LAYOUT.SPINNER_SIZE} /> : ACTION_LOGIN}
+              {submitting ? (
+                <CircularProgress size={AUTH_LAYOUT.SPINNER_SIZE} />
+              ) : (
+                ACTION_LOGIN
+              )}
             </Button>
             {settings?.registration_enabled && (
               <Typography variant="body2" textAlign="center" sx={{ mt: 1 }}>
-                {ACTION_NO_ACCOUNT}{' '}
-                <RouterLink to={ROUTES.REGISTER} style={{ textDecoration: 'none' }}>
+                {ACTION_NO_ACCOUNT}{" "}
+                <RouterLink
+                  to={ROUTES.REGISTER}
+                  style={{ textDecoration: "none" }}
+                >
                   {ACTION_CREATE_ONE}
                 </RouterLink>
               </Typography>

@@ -123,8 +123,8 @@ const (
 
 // Security event types (category: security)
 const (
-	EventTypeAuthInvalidToken           = "auth.invalid_token"
-	EventTypeAuthAPIKeyRejected         = "auth.api_key_rejected"
+	EventTypeAuthInvalidToken           = "auth.invalid_token"    //nolint:gosec // G101: event type identifier, not a credential
+	EventTypeAuthAPIKeyRejected         = "auth.api_key_rejected" //nolint:gosec // G101: event type identifier, not a credential
 	EventTypeAuthOrgContextMissing      = "auth.organization_context_missing"
 	EventTypeAuthOrgResolutionFailed    = "auth.organization_resolution_failed"
 	EventTypeAuthInternalTrustViolation = "auth.internal_trust_violation"
@@ -227,8 +227,8 @@ const (
 	EventTitleDLRxStatus = "DL RX Status - %s"
 
 	// API key event titles.
-	EventTitleAPIKeyCreated = "API key created"
-	EventTitleAPIKeyDeleted = "API key deleted"
+	EventTitleAPIKeyCreated = "API key created" //nolint:gosec // G101: UI title string, not a credential
+	EventTitleAPIKeyDeleted = "API key deleted" //nolint:gosec // G101: UI title string, not a credential
 
 	// Integration event titles.
 	EventTitleIntegrationCreated = "Integration created"
@@ -288,8 +288,8 @@ const (
 	EventDescriptionOrgDeleted = "Organization %s deleted"
 
 	// API key event description formats.
-	EventDescriptionAPIKeyCreatedFmt = "API key '%s' created for organization %s"
-	EventDescriptionAPIKeyDeletedFmt = "API key '%s' deleted"
+	EventDescriptionAPIKeyCreatedFmt = "API key '%s' created for organization %s" //nolint:gosec // G101: UI description template, not a credential
+	EventDescriptionAPIKeyDeletedFmt = "API key '%s' deleted"                     //nolint:gosec // G101: UI description template, not a credential
 
 	// Integration event description formats.
 	EventDescriptionIntegrationCreatedFmt = "Integration '%s' created"

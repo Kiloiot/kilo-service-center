@@ -1452,7 +1452,7 @@ func (s *Server) resolveOwnerOrgUUID(ctx context.Context, tenantID int64, epEuiB
 		return nil, fmt.Errorf("failed to fetch endpoint: %w", err)
 	}
 	if endpoint == nil {
-		return nil, fmt.Errorf("endpoint not found")
+		return nil, storage.ErrNotFound
 	}
 
 	// Resolve org UUID for the endpoint's tenant (which may differ from BS tenant in roaming)

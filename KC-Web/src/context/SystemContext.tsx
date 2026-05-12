@@ -1,7 +1,13 @@
-import React, { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
-import { api } from '@services/api';
-import { logger } from '@utils/logger';
+import { api } from "@services/api";
+import { logger } from "@utils/logger";
 
 interface VersionInfo {
   version: string;
@@ -37,7 +43,9 @@ interface SystemContextValue {
 
 const SystemContext = createContext<SystemContextValue | undefined>(undefined);
 
-export const SystemProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const SystemProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,16 +57,18 @@ export const SystemProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const version = await api.getVersion();
       setVersionInfo(version);
     } catch (err) {
-      logger.error('Failed to fetch version info:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load version info');
+      logger.error("Failed to fetch version info:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to load version info",
+      );
       // Set fallback version info using build-time disclosure constants
       setVersionInfo({
-        version: 'unknown',
+        version: "unknown",
         buildTime: new Date().toISOString(),
-        gitCommit: 'unknown',
-        gitBranch: 'unknown',
-        buildUser: 'unknown',
-        goVersion: 'unknown',
+        gitCommit: "unknown",
+        gitBranch: "unknown",
+        buildUser: "unknown",
+        goVersion: "unknown",
         schemaVersion: 0,
         artifacts: {},
         isProduction: false,
@@ -102,7 +112,7 @@ export const useSystem = (): SystemContextValue => {
   const context = useContext(SystemContext);
 
   if (!context) {
-    throw new Error('useSystem must be used within SystemProvider');
+    throw new Error("useSystem must be used within SystemProvider");
   }
 
   return context;

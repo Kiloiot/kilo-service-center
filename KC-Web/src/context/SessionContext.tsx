@@ -1,14 +1,20 @@
-import React, { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
-import type { UserProfileAPI } from '@api-types/api';
+import type { UserProfileAPI } from "@api-types/api";
 
-import { apiService } from '@services/api';
-import { realtimeService } from '@services/realtime';
-import { logger } from '@utils/logger';
-import { storageService } from '@utils/storage';
-import { scheduleRefresh, stopRefresh } from '@utils/tokenRefresh';
-import { STORAGE_KEYS } from '@constants/app';
-import { SESSION_ERRORS } from '@constants/messages';
+import { apiService } from "@services/api";
+import { realtimeService } from "@services/realtime";
+import { logger } from "@utils/logger";
+import { storageService } from "@utils/storage";
+import { scheduleRefresh, stopRefresh } from "@utils/tokenRefresh";
+import { STORAGE_KEYS } from "@constants/app";
+import { SESSION_ERRORS } from "@constants/messages";
 
 /**
  * Session Context
@@ -30,9 +36,13 @@ interface SessionContextValue {
   clearSession: () => void;
 }
 
-const SessionContext = createContext<SessionContextValue | undefined>(undefined);
+const SessionContext = createContext<SessionContextValue | undefined>(
+  undefined,
+);
 
-export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const SessionProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const [user, setUserState] = useState<UserProfileAPI | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -70,15 +80,19 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
     return () => {
       apiService.setAuthFailureCallback(undefined);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Start proactive token refresh scheduler when authenticated
   useEffect(() => {
-    if (isHydrated && user && storageService.getItem(STORAGE_KEYS.REFRESH_TOKEN)) {
+    if (
+      isHydrated &&
+      user &&
+      storageService.getItem(STORAGE_KEYS.REFRESH_TOKEN)
+    ) {
       scheduleRefresh();
     }
     return () => stopRefresh();
-  }, [isHydrated, user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isHydrated, user]);
 
   const setUser = (profile: UserProfileAPI) => {
     storageService.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));

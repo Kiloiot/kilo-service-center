@@ -5,11 +5,11 @@
  * Auto-refreshes at TIMING_STATUS_REFRESH interval.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from "@tanstack/react-query";
 
-import { apiService } from '@services/api';
-import { TIMING_STATUS_REFRESH } from '@constants/app';
-import { queryKeys } from '@config/query-keys';
+import { apiService } from "@services/api";
+import { TIMING_STATUS_REFRESH } from "@constants/app";
+import { queryKeys } from "@config/query-keys";
 
 export interface UseSystemStatusOptions {
   /** Override the default refresh interval (milliseconds) */
@@ -25,7 +25,8 @@ export interface UseSystemStatusOptions {
  * @returns React Query result with system status data
  */
 export function useSystemStatus(options?: UseSystemStatusOptions) {
-  const { refetchInterval = TIMING_STATUS_REFRESH, enabled = true } = options ?? {};
+  const { refetchInterval = TIMING_STATUS_REFRESH, enabled = true } =
+    options ?? {};
 
   return useQuery({
     queryKey: queryKeys.system.status(),

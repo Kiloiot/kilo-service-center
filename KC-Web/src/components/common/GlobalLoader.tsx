@@ -1,9 +1,9 @@
-import React from 'react';
+import React from "react";
 
-import { Box, CircularProgress, Typography } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
+import { Box, CircularProgress, Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 
-import { LOADER } from '@constants/messages';
+import { LOADER } from "@constants/messages";
 
 /**
  * Global Loading Component
@@ -16,11 +16,11 @@ const GlobalLoader: React.FC = () => {
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "100vh",
         backgroundColor: theme.palette.background.default,
       }}
     >

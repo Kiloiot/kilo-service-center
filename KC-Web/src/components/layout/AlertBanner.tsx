@@ -1,9 +1,9 @@
-import React from 'react';
+import React from "react";
 
-import { useConnectionStatus } from '@hooks';
-import { Alert, Collapse } from '@mui/material';
+import { useConnectionStatus } from "@hooks";
+import { Alert, Collapse } from "@mui/material";
 
-import { STATUS_OFFLINE, STATUS_RECONNECTING } from '@constants/messages';
+import { STATUS_OFFLINE, STATUS_RECONNECTING } from "@constants/messages";
 
 /**
  * Alert Banner Component
@@ -13,23 +13,24 @@ import { STATUS_OFFLINE, STATUS_RECONNECTING } from '@constants/messages';
 
 interface AlertBannerProps {
   show?: boolean;
-  severity?: 'error' | 'warning' | 'info' | 'success';
+  severity?: "error" | "warning" | "info" | "success";
   message?: string;
   showConnectionStatus?: boolean;
 }
 
 const AlertBanner: React.FC<AlertBannerProps> = ({
   show = false,
-  severity = 'info',
-  message = '',
+  severity = "info",
+  message = "",
   showConnectionStatus = false,
 }) => {
   const { status, isConnected } = useConnectionStatus();
 
   // Connection status banner (shown when disconnected/reconnecting)
   const showConnectionBanner = showConnectionStatus && !isConnected;
-  const connectionSeverity = status === 'reconnecting' ? 'warning' : 'error';
-  const connectionMessage = status === 'reconnecting' ? STATUS_RECONNECTING : STATUS_OFFLINE;
+  const connectionSeverity = status === "reconnecting" ? "warning" : "error";
+  const connectionMessage =
+    status === "reconnecting" ? STATUS_RECONNECTING : STATUS_OFFLINE;
 
   return (
     <>

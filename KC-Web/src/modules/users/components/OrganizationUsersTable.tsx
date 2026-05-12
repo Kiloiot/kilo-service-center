@@ -5,16 +5,16 @@
  * Provides edit/remove action handlers.
  */
 
-import React from 'react';
+import React from "react";
 
-import type { OrganizationUserUI, SystemUserUI } from '@api-types/api';
+import type { OrganizationUserUI, SystemUserUI } from "@api-types/api";
 
-import { ORG_USERS_PAGE } from '@constants/messages';
+import { ORG_USERS_PAGE } from "@constants/messages";
 
-import UsersTableBase, { type OrderBy } from './UsersTableBase';
+import UsersTableBase, { type OrderBy } from "./UsersTableBase";
 
-type OrgOrderBy = 'email' | 'role' | 'status' | 'createdAt';
-type OrderDirection = 'asc' | 'desc';
+type OrgOrderBy = "email" | "role" | "status" | "createdAt";
+type OrderDirection = "asc" | "desc";
 
 export interface OrganizationUsersTableProps {
   users: OrganizationUserUI[];

@@ -19,7 +19,7 @@
  * etc.) explicitly skip org/user requirements.
  */
 
-import { DEFAULT_EXTERNAL_ORG_CLAIM_PATH } from '@constants/app';
+import { DEFAULT_EXTERNAL_ORG_CLAIM_PATH } from "@constants/app";
 
 export interface EnvConfig {
   /** Base URL for gRPC-web requests (empty string uses proxy) */
@@ -47,19 +47,20 @@ export interface EnvConfig {
 // ONLY these keys exported - no tenantId, no passthrough import.meta.env
 export const env: EnvConfig = {
   // gRPC-web URL - empty string uses Vite proxy in development
-  grpcUrl: import.meta.env.VITE_GRPC_URL || '',
+  grpcUrl: import.meta.env.VITE_GRPC_URL || "",
   isProduction: import.meta.env.PROD,
   isDevelopment: import.meta.env.DEV,
   externalOrgClaimPath:
-    import.meta.env.VITE_EXTERNAL_ORG_CLAIM_PATH || DEFAULT_EXTERNAL_ORG_CLAIM_PATH,
+    import.meta.env.VITE_EXTERNAL_ORG_CLAIM_PATH ||
+    DEFAULT_EXTERNAL_ORG_CLAIM_PATH,
   // Centralized versioning - injected at build time from release/manifest.json
   appVersion: __APP_VERSION__,
   buildTime: __BUILD_TIME__,
   gitCommit: __GIT_COMMIT__,
   schemaVersion: __SCHEMA_VERSION__,
   // Map tile provider (deployment-configurable)
-  mapTileUrl: import.meta.env.VITE_MAP_TILE_URL || '',
-  mapTileAttribution: import.meta.env.VITE_MAP_TILE_ATTRIBUTION || '',
+  mapTileUrl: import.meta.env.VITE_MAP_TILE_URL || "",
+  mapTileAttribution: import.meta.env.VITE_MAP_TILE_ATTRIBUTION || "",
 };
 
 // Named exports for convenience

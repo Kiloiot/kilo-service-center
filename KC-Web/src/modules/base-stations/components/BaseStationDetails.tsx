@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import type { GenerateCertificateResponse } from '@api-types/api';
+import type { GenerateCertificateResponse } from "@api-types/api";
 import {
   useBaseStation,
   useDeleteBaseStation,
   useUpdateBaseStation,
   useUpdateBaseStationEui,
-} from '@hooks';
+} from "@hooks";
 import {
   Alert,
   Box,
@@ -29,11 +29,11 @@ import {
   TextField,
   Tooltip,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { apiService } from '@services/api';
-import type { GrpcApiError } from '@services/grpc/client';
-import { realtimeService } from '@services/realtime';
+import { apiService } from "@services/api";
+import type { GrpcApiError } from "@services/grpc/client";
+import { realtimeService } from "@services/realtime";
 import {
   calculateDaysUntilExpiry,
   formatDate,
@@ -41,15 +41,15 @@ import {
   formatEUIWithDashes,
   isValidEUI,
   truncateWithEllipsis,
-} from '@utils/formatters';
-import { getMonoBody1 } from '@utils/typography';
+} from "@utils/formatters";
+import { getMonoBody1 } from "@utils/typography";
 import {
   BS_DETAIL_LAYOUT,
   CERT_VALIDITY_DAYS,
   TIMING_COPY_FEEDBACK,
   TRUNCATION,
-} from '@constants/app';
-import { GEO_BOUNDS } from '@constants/app';
+} from "@constants/app";
+import { GEO_BOUNDS } from "@constants/app";
 import {
   ACTION_CANCEL,
   ACTION_DELETE,
@@ -79,7 +79,7 @@ import {
   VAL_LAT_LON_PAIR,
   VAL_LATITUDE_RANGE,
   VAL_LONGITUDE_RANGE,
-} from '@constants/messages';
+} from "@constants/messages";
 import {
   CheckCircleIcon,
   ContentCopyIcon,
@@ -88,19 +88,19 @@ import {
   EditIcon,
   GpsFixedIcon,
   MapIcon,
-} from '@theme/icons';
+} from "@theme/icons";
 
-import BaseStationLocationMap from './BaseStationLocationMap';
-import BaseStationMessages from './BaseStationMessages';
-import MapPickerDialog from './MapPickerDialog';
+import BaseStationLocationMap from "./BaseStationLocationMap";
+import BaseStationMessages from "./BaseStationMessages";
+import MapPickerDialog from "./MapPickerDialog";
 
 interface BaseStationDetailsProps {
   baseStation: {
     id: string;
     eui: string;
     name?: string;
-    status: 'online' | 'offline';
-    connectionType: 'BSSCI' | 'MQTT';
+    status: "online" | "offline";
+    connectionType: "BSSCI" | "MQTT";
     lastSeen: string;
     serviceCenterUrl: string;
     certificateExpiryDate?: string;
@@ -108,19 +108,146 @@ interface BaseStationDetailsProps {
   onDelete?: (id: string) => void;
 }
 
-const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, onDelete }) => {
+interface BaseStationEditFormData {
+  name: string;
+  eui: string;
+  latitude: string;
+  longitude: string;
+  altitude: string;
+}
+
+interface BaseStationDetailsSnapshot {
+  locationSource?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  altitude?: number | null;
+}
+
+/** Formats uptime seconds, including days when greater than 24h. */
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${secs}s`;
+  return `${hours}h ${minutes}m ${secs}s`;
+}
+
+/**
+ * Validates the manual-location fields. GPS-sourced rows are read-only so
+ * an empty errors map is returned. Returns sparse errors map keyed by
+ * "latitude" / "longitude".
+ */
+function validateLocationForm(
+  form: BaseStationEditFormData,
+  isGps: boolean,
+): Record<string, string> {
+  if (isGps) return {};
+  const errs: Record<string, string> = {};
+  const hasLat = form.latitude.trim() !== "";
+  const hasLng = form.longitude.trim() !== "";
+  if (hasLat !== hasLng) {
+    errs.latitude = VAL_LAT_LON_PAIR;
+    errs.longitude = VAL_LAT_LON_PAIR;
+  }
+  if (hasLat) {
+    const lat = parseFloat(form.latitude);
+    if (
+      isNaN(lat) ||
+      lat < GEO_BOUNDS.LATITUDE_MIN ||
+      lat > GEO_BOUNDS.LATITUDE_MAX
+    ) {
+      errs.latitude = VAL_LATITUDE_RANGE;
+    }
+  }
+  if (hasLng) {
+    const lng = parseFloat(form.longitude);
+    if (
+      isNaN(lng) ||
+      lng < GEO_BOUNDS.LONGITUDE_MIN ||
+      lng > GEO_BOUNDS.LONGITUDE_MAX
+    ) {
+      errs.longitude = VAL_LONGITUDE_RANGE;
+    }
+  }
+  return errs;
+}
+
+/**
+ * Builds the location update payload. number = set, null = clear,
+ * undefined-key = omit. GPS rows always return {} (do not modify).
+ */
+function buildLocationUpdateData(
+  form: BaseStationEditFormData,
+  details: BaseStationDetailsSnapshot | null | undefined,
+): {
+  latitude?: number | null;
+  longitude?: number | null;
+  altitude?: number | null;
+} {
+  if (details?.locationSource === "gps") return {};
+  const hasLat = form.latitude.trim() !== "";
+  const hasLng = form.longitude.trim() !== "";
+  const hadLat = details?.latitude != null;
+  if (!hasLat && !hasLng && hadLat) {
+    return { latitude: null, longitude: null, altitude: null };
+  }
+  if (hasLat && hasLng) {
+    const data: {
+      latitude: number;
+      longitude: number;
+      altitude?: number | null;
+    } = {
+      latitude: parseFloat(form.latitude),
+      longitude: parseFloat(form.longitude),
+    };
+    if (form.altitude.trim()) {
+      data.altitude = parseFloat(form.altitude);
+    } else if (details?.altitude != null) {
+      data.altitude = null;
+    }
+    return data;
+  }
+  return {};
+}
+
+/**
+ * Returns true when the form's lat/lng/altitude differ from the fetched
+ * details. GPS rows always return false (no manual edits propagate).
+ */
+function hasLocationChanged(
+  form: BaseStationEditFormData,
+  details: BaseStationDetailsSnapshot | null | undefined,
+): boolean {
+  if (details?.locationSource === "gps") return false;
+  const detailLat = details?.latitude != null ? String(details.latitude) : "";
+  const detailLng = details?.longitude != null ? String(details.longitude) : "";
+  const detailAlt = details?.altitude != null ? String(details.altitude) : "";
+  return (
+    form.latitude.trim() !== detailLat ||
+    form.longitude.trim() !== detailLng ||
+    form.altitude.trim() !== detailAlt
+  );
+}
+
+const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
+  baseStation,
+  onDelete,
+}) => {
   const navigate = useNavigate();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState({
-    name: baseStation.name || '',
+    name: baseStation.name || "",
     eui: formatEUIWithDashes(baseStation.eui),
-    latitude: '',
-    longitude: '',
-    altitude: '',
+    latitude: "",
+    longitude: "",
+    altitude: "",
   });
   const [euiError, setEuiError] = useState<string | null>(null);
-  const [locationErrors, setLocationErrors] = useState<Record<string, string>>({});
+  const [locationErrors, setLocationErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const [euiCopied, setEuiCopied] = useState(false);
   const [scUrlCopied, setScUrlCopied] = useState(false);
@@ -130,7 +257,8 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
 
   // Certificate regeneration state
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
-  const [regenCertData, setRegenCertData] = useState<GenerateCertificateResponse | null>(null);
+  const [regenCertData, setRegenCertData] =
+    useState<GenerateCertificateResponse | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
   // Handle EUI copy with feedback
@@ -184,32 +312,30 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
     baseStationDetails?.serviceCenterUrl ||
     baseStation.serviceCenterUrl;
 
-  // Helper function to format uptime with days when > 24 hours
-  const formatUptime = (seconds: number): string => {
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (days > 0) {
-      return `${days}d ${hours}h ${minutes}m ${secs}s`;
-    }
-    return `${hours}h ${minutes}m ${secs}s`;
-  };
-
   // Certificate expiry calculation using centralized helper
-  const daysUntilExpiry = calculateDaysUntilExpiry(baseStation.certificateExpiryDate);
+  const daysUntilExpiry = calculateDaysUntilExpiry(
+    baseStation.certificateExpiryDate,
+  );
   const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 30;
   const isExpired = daysUntilExpiry !== null && daysUntilExpiry < 0;
 
   // Handle edit dialog open - initialize form data
   const handleEditDialogOpen = () => {
     setEditFormData({
-      name: baseStation.name || '',
+      name: baseStation.name || "",
       eui: formatEUIWithDashes(baseStation.eui),
-      latitude: baseStationDetails?.latitude != null ? String(baseStationDetails.latitude) : '',
-      longitude: baseStationDetails?.longitude != null ? String(baseStationDetails.longitude) : '',
-      altitude: baseStationDetails?.altitude != null ? String(baseStationDetails.altitude) : '',
+      latitude:
+        baseStationDetails?.latitude != null
+          ? String(baseStationDetails.latitude)
+          : "",
+      longitude:
+        baseStationDetails?.longitude != null
+          ? String(baseStationDetails.longitude)
+          : "",
+      altitude:
+        baseStationDetails?.altitude != null
+          ? String(baseStationDetails.altitude)
+          : "",
     });
     setEuiError(null);
     setLocationErrors({});
@@ -236,82 +362,19 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
   // Handle edit form save - update name and/or EUI
   /** Validate location fields; returns true if valid */
   const validateLocation = (): boolean => {
-    const isGps = baseStationDetails?.locationSource === 'gps';
-    if (isGps) return true; // GPS fields are read-only
-
-    const errs: Record<string, string> = {};
-    const hasLat = editFormData.latitude.trim() !== '';
-    const hasLng = editFormData.longitude.trim() !== '';
-
-    if (hasLat !== hasLng) {
-      errs.latitude = VAL_LAT_LON_PAIR;
-      errs.longitude = VAL_LAT_LON_PAIR;
-    }
-    if (hasLat) {
-      const lat = parseFloat(editFormData.latitude);
-      if (isNaN(lat) || lat < GEO_BOUNDS.LATITUDE_MIN || lat > GEO_BOUNDS.LATITUDE_MAX) {
-        errs.latitude = VAL_LATITUDE_RANGE;
-      }
-    }
-    if (hasLng) {
-      const lng = parseFloat(editFormData.longitude);
-      if (isNaN(lng) || lng < GEO_BOUNDS.LONGITUDE_MIN || lng > GEO_BOUNDS.LONGITUDE_MAX) {
-        errs.longitude = VAL_LONGITUDE_RANGE;
-      }
-    }
+    const errs = validateLocationForm(
+      editFormData,
+      baseStationDetails?.locationSource === "gps",
+    );
     setLocationErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  /** Build location update data: number = set, null = clear, undefined = omit */
-  const buildLocationData = (): {
-    latitude?: number | null;
-    longitude?: number | null;
-    altitude?: number | null;
-  } => {
-    const isGps = baseStationDetails?.locationSource === 'gps';
-    if (isGps) return {}; // GPS: don't modify
+  const buildLocationData = () =>
+    buildLocationUpdateData(editFormData, baseStationDetails);
 
-    const hasLat = editFormData.latitude.trim() !== '';
-    const hasLng = editFormData.longitude.trim() !== '';
-    const hadLat = baseStationDetails?.latitude != null;
-
-    if (!hasLat && !hasLng && hadLat) {
-      // Clearing location
-      return { latitude: null, longitude: null, altitude: null };
-    }
-    if (hasLat && hasLng) {
-      const data: { latitude: number; longitude: number; altitude?: number | null } = {
-        latitude: parseFloat(editFormData.latitude),
-        longitude: parseFloat(editFormData.longitude),
-      };
-      if (editFormData.altitude.trim()) {
-        data.altitude = parseFloat(editFormData.altitude);
-      } else if (baseStationDetails?.altitude != null) {
-        data.altitude = null; // clear altitude
-      }
-      return data;
-    }
-    return {};
-  };
-
-  /** Compare current form values against fetched details to detect actual location changes */
-  const hasLocationChanged = (): boolean => {
-    const isGps = baseStationDetails?.locationSource === 'gps';
-    if (isGps) return false;
-
-    const formLat = editFormData.latitude.trim();
-    const formLng = editFormData.longitude.trim();
-    const formAlt = editFormData.altitude.trim();
-    const detailLat =
-      baseStationDetails?.latitude != null ? String(baseStationDetails.latitude) : '';
-    const detailLng =
-      baseStationDetails?.longitude != null ? String(baseStationDetails.longitude) : '';
-    const detailAlt =
-      baseStationDetails?.altitude != null ? String(baseStationDetails.altitude) : '';
-
-    return formLat !== detailLat || formLng !== detailLng || formAlt !== detailAlt;
-  };
+  const locationHasChanges = () =>
+    hasLocationChanged(editFormData, baseStationDetails);
 
   const handleUpdateSuccess = (newEui?: string) => {
     if (newEui) {
@@ -324,7 +387,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
   };
 
   const handleUpdateError = (error: unknown) => {
-    if (error instanceof Error && error.name === 'GrpcApiError') {
+    if (error instanceof Error && error.name === "GrpcApiError") {
       const grpcError = error as GrpcApiError;
       if (grpcError.isNotFound()) {
         setEditError(ERR_BS_NOT_FOUND);
@@ -338,10 +401,10 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
 
   const handleEditSave = async () => {
     setEditError(null);
-    const cleanedNewEui = editFormData.eui.replace(/-/g, '').toLowerCase();
-    const cleanedOldEui = baseStation.eui.replace(/-/g, '').toLowerCase();
+    const cleanedNewEui = editFormData.eui.replace(/-/g, "").toLowerCase();
+    const cleanedOldEui = baseStation.eui.replace(/-/g, "").toLowerCase();
     const euiChanged = cleanedNewEui !== cleanedOldEui;
-    const nameChanged = editFormData.name !== (baseStation.name || '');
+    const nameChanged = editFormData.name !== (baseStation.name || "");
 
     // Validate EUI if changed
     if (euiChanged) {
@@ -359,7 +422,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
     if (!validateLocation()) return;
 
     const locationData = buildLocationData();
-    const locationChanged = hasLocationChanged();
+    const locationChanged = locationHasChanges();
 
     // If EUI changed, update it first
     if (euiChanged) {
@@ -382,14 +445,14 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                   onError: () => {
                     setEditError(ERR_UPDATE_BS_NAME_PARTIAL);
                   },
-                }
+                },
               );
             } else {
               handleUpdateSuccess(cleanedNewEui);
             }
           },
           onError: (error) => {
-            if (error instanceof Error && error.name === 'GrpcApiError') {
+            if (error instanceof Error && error.name === "GrpcApiError") {
               const grpcError = error as GrpcApiError;
               if (grpcError.isAlreadyExists()) {
                 setEuiError(ERR_BS_EUI_EXISTS);
@@ -404,7 +467,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
               setEditError(ERR_UPDATE_BS_EUI);
             }
           },
-        }
+        },
       );
     } else if (nameChanged || locationChanged) {
       updateBaseStationMutation.mutate(
@@ -418,7 +481,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
         {
           onSuccess: () => handleUpdateSuccess(),
           onError: handleUpdateError,
-        }
+        },
       );
     } else {
       // No changes
@@ -451,10 +514,10 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
   };
 
   // Handle regenerated certificate download
-  const handleDownloadRegenCert = async (certType: 'ca' | 'client' | 'key') => {
+  const handleDownloadRegenCert = async (certType: "ca" | "client" | "key") => {
     if (!regenCertData?.downloadUrls) return;
 
-    const certIdMap: Record<'ca' | 'client' | 'key', string | undefined> = {
+    const certIdMap: Record<"ca" | "client" | "key", string | undefined> = {
       ca: regenCertData.downloadUrls.caCert,
       client: regenCertData.downloadUrls.clientCert,
       key: regenCertData.downloadUrls.privateKey,
@@ -464,9 +527,12 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
     if (!certId) return;
 
     try {
-      const { blob, filename } = await apiService.downloadCertificate(certId, certType);
+      const { blob, filename } = await apiService.downloadCertificate(
+        certId,
+        certType,
+      );
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
@@ -481,7 +547,12 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
   return (
     <Card sx={{ mt: 2, mb: 2 }}>
       <CardContent>
-        <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
+        <Box
+          display="flex"
+          justifyContent="flex-end"
+          alignItems="center"
+          mb={2}
+        >
           <Box>
             <Tooltip title={ACTION_EDIT}>
               <IconButton size="small" onClick={handleEditDialogOpen}>
@@ -489,7 +560,11 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
               </IconButton>
             </Tooltip>
             <Tooltip title={ACTION_DELETE}>
-              <IconButton size="small" color="error" onClick={() => setDeleteDialogOpen(true)}>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
                 <DeleteIcon />
               </IconButton>
             </Tooltip>
@@ -509,9 +584,20 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
 
           {/* Right column: Info sections */}
           <Grid size={{ xs: 12, md: 9 }}>
-            <Box sx={{ display: 'flex', gap: 32, flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+            <Box
+              sx={{
+                display: "flex",
+                gap: 32,
+                flexWrap: { xs: "wrap", md: "nowrap" },
+              }}
+            >
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                  sx={{ mb: 2 }}
+                >
                   {BASE_STATION_DETAILS.BASIC_INFORMATION}
                 </Typography>
                 <Box mb={1}>
@@ -526,7 +612,10 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                   <Typography variant="body2" color="text.secondary">
                     {BASE_STATION_DETAILS.BASE_STATION_EUI}
                   </Typography>
-                  <Typography variant="body1" sx={(theme) => getMonoBody1(theme)}>
+                  <Typography
+                    variant="body1"
+                    sx={(theme) => getMonoBody1(theme)}
+                  >
                     {formatEUIWithDashes(baseStation.eui)}
                   </Typography>
                 </Box>
@@ -536,14 +625,21 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                   </Typography>
                   <Chip
                     label={baseStation.status}
-                    color={baseStation.status === 'online' ? 'success' : 'default'}
+                    color={
+                      baseStation.status === "online" ? "success" : "default"
+                    }
                     size="small"
                   />
                 </Box>
               </Box>
 
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                  sx={{ mb: 2 }}
+                >
                   {BASE_STATION_DETAILS.PERFORMANCE_METRICS}
                 </Typography>
                 {baseStationDetails ? (
@@ -592,12 +688,19 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                       <Typography variant="body2" color="text.secondary">
                         {BASE_STATION_DETAILS.BS_CONFIG}
                       </Typography>
-                      <Typography variant="body1" sx={(theme) => getMonoBody1(theme)}>
+                      <Typography
+                        variant="body1"
+                        sx={(theme) => getMonoBody1(theme)}
+                      >
                         {baseStationDetails.bsConfig
                           ? truncateWithEllipsis(
-                              JSON.stringify(baseStationDetails.bsConfig, null, 2),
+                              JSON.stringify(
+                                baseStationDetails.bsConfig,
+                                null,
+                                2,
+                              ),
                               TRUNCATION.CONFIG_PREVIEW_LENGTH,
-                              TRUNCATION.ELLIPSIS
+                              TRUNCATION.ELLIPSIS,
                             )
                           : BASE_STATION_DETAILS.NOT_AVAILABLE}
                       </Typography>
@@ -612,13 +715,20 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                   </Box>
                 ) : detailsError ? (
                   <Alert severity="error" variant="outlined">
-                    {detailsError instanceof Error ? detailsError.message : ERR_LOAD_BS_DETAILS}
+                    {detailsError instanceof Error
+                      ? detailsError.message
+                      : ERR_LOAD_BS_DETAILS}
                   </Alert>
                 ) : null}
               </Box>
 
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 2 }}>
+                <Typography
+                  variant="subtitle2"
+                  color="text.secondary"
+                  gutterBottom
+                  sx={{ mb: 2 }}
+                >
                   {BASE_STATION_DETAILS.SYSTEM_INFORMATION}
                 </Typography>
                 {baseStationDetails ? (
@@ -629,7 +739,9 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                       </Typography>
                       <Typography variant="body1">
                         {baseStationDetails.systemTime
-                          ? formatDateTime(baseStationDetails.systemTime / 1000000)
+                          ? formatDateTime(
+                              baseStationDetails.systemTime / 1000000,
+                            )
                           : BASE_STATION_DETAILS.NOT_AVAILABLE}
                       </Typography>
                     </Box>
@@ -662,10 +774,10 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                           variant="body1"
                           color={
                             isExpired
-                              ? 'error.main'
+                              ? "error.main"
                               : isExpiringSoon
-                                ? 'warning.main'
-                                : 'text.primary'
+                                ? "warning.main"
+                                : "text.primary"
                           }
                         >
                           {formatDate(baseStation.certificateExpiryDate)}
@@ -682,7 +794,9 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                   </Box>
                 ) : detailsError ? (
                   <Alert severity="error" variant="outlined">
-                    {detailsError instanceof Error ? detailsError.message : ERR_LOAD_BS_DETAILS}
+                    {detailsError instanceof Error
+                      ? detailsError.message
+                      : ERR_LOAD_BS_DETAILS}
                   </Alert>
                 ) : null}
               </Box>
@@ -697,24 +811,32 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
           <Grid size={12}>
             <BaseStationMessages
               bsEui={baseStation.eui}
-              basestationName={baseStation.name || formatEUIWithDashes(baseStation.eui)}
+              basestationName={
+                baseStation.name || formatEUIWithDashes(baseStation.eui)
+              }
             />
           </Grid>
         </Grid>
       </CardContent>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
         <DialogTitle>{BASE_STATION_DETAILS.DIALOG_DELETE_TITLE}</DialogTitle>
         <DialogContent>
           <DialogContentText>
             {BASE_STATION_DETAILS.DIALOG_DELETE_CONFIRM_PREFIX} &quot;
-            {baseStation.name || formatEUIWithDashes(baseStation.eui)}&quot;?{' '}
+            {baseStation.name ||
+              formatEUIWithDashes(baseStation.eui)}&quot;?{" "}
             {BASE_STATION_DETAILS.DIALOG_DELETE_WARNING}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>{ACTION_CANCEL}</Button>
+          <Button onClick={() => setDeleteDialogOpen(false)}>
+            {ACTION_CANCEL}
+          </Button>
           <Button
             onClick={() => {
               deleteBaseStationMutation.mutate(baseStation.eui, {
@@ -741,7 +863,12 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
       </Dialog>
 
       {/* Edit Base Station Dialog */}
-      <Dialog open={editDialogOpen} onClose={handleEditDialogClose} maxWidth="sm" fullWidth>
+      <Dialog
+        open={editDialogOpen}
+        onClose={handleEditDialogClose}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>{BASE_STATION_DETAILS.DIALOG_EDIT_TITLE}</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -765,7 +892,11 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                             : BASE_STATION_DETAILS.ACTION_COPY_EUI
                         }
                       >
-                        <IconButton size="small" onClick={handleCopyEui} edge="end">
+                        <IconButton
+                          size="small"
+                          onClick={handleCopyEui}
+                          edge="end"
+                        >
                           {euiCopied ? (
                             <CheckCircleIcon fontSize="small" color="success" />
                           ) : (
@@ -787,7 +918,9 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
               fullWidth
               label={BASE_STATION_DETAILS.LABEL_EDIT_NAME}
               value={editFormData.name}
-              onChange={(e) => setEditFormData((prev) => ({ ...prev, name: e.target.value }))}
+              onChange={(e) =>
+                setEditFormData((prev) => ({ ...prev, name: e.target.value }))
+              }
               sx={{ mb: 3 }}
             />
 
@@ -796,53 +929,64 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
               {LABEL_LOCATION}
             </Typography>
-            {baseStationDetails?.locationSource === 'gps' ? (
+            {baseStationDetails?.locationSource === "gps" ? (
               <Alert severity="info" icon={<GpsFixedIcon />} sx={{ mb: 2 }}>
                 {MSG_GPS_AUTHORITATIVE}
               </Alert>
             ) : null}
-            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
               <TextField
                 label={LABEL_LATITUDE}
                 value={editFormData.latitude}
                 onChange={(e) => {
-                  setEditFormData((prev) => ({ ...prev, latitude: e.target.value }));
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    latitude: e.target.value,
+                  }));
                   if (locationErrors.latitude)
-                    setLocationErrors((prev) => ({ ...prev, latitude: '' }));
+                    setLocationErrors((prev) => ({ ...prev, latitude: "" }));
                 }}
                 type="number"
                 helperText={locationErrors.latitude || HELPER_LATITUDE}
                 error={!!locationErrors.latitude}
-                disabled={baseStationDetails?.locationSource === 'gps'}
+                disabled={baseStationDetails?.locationSource === "gps"}
                 sx={{ flex: 1 }}
               />
               <TextField
                 label={LABEL_LONGITUDE}
                 value={editFormData.longitude}
                 onChange={(e) => {
-                  setEditFormData((prev) => ({ ...prev, longitude: e.target.value }));
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    longitude: e.target.value,
+                  }));
                   if (locationErrors.longitude)
-                    setLocationErrors((prev) => ({ ...prev, longitude: '' }));
+                    setLocationErrors((prev) => ({ ...prev, longitude: "" }));
                 }}
                 type="number"
                 helperText={locationErrors.longitude || HELPER_LONGITUDE}
                 error={!!locationErrors.longitude}
-                disabled={baseStationDetails?.locationSource === 'gps'}
+                disabled={baseStationDetails?.locationSource === "gps"}
                 sx={{ flex: 1 }}
               />
             </Box>
-            <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
               <TextField
                 label={LABEL_ALTITUDE}
                 value={editFormData.altitude}
-                onChange={(e) => setEditFormData((prev) => ({ ...prev, altitude: e.target.value }))}
+                onChange={(e) =>
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    altitude: e.target.value,
+                  }))
+                }
                 type="number"
                 helperText={HELPER_ALTITUDE}
-                disabled={baseStationDetails?.locationSource === 'gps'}
+                disabled={baseStationDetails?.locationSource === "gps"}
                 sx={{ flex: 1 }}
               />
-              <Box sx={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                {baseStationDetails?.locationSource !== 'gps' && (
+              <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
+                {baseStationDetails?.locationSource !== "gps" && (
                   <Button
                     variant="outlined"
                     startIcon={<MapIcon />}
@@ -865,8 +1009,16 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                 }));
                 setMapPickerOpen(false);
               }}
-              initialLat={editFormData.latitude ? parseFloat(editFormData.latitude) : undefined}
-              initialLng={editFormData.longitude ? parseFloat(editFormData.longitude) : undefined}
+              initialLat={
+                editFormData.latitude
+                  ? parseFloat(editFormData.latitude)
+                  : undefined
+              }
+              initialLng={
+                editFormData.longitude
+                  ? parseFloat(editFormData.longitude)
+                  : undefined
+              }
             />
 
             {/* Service Center URL (read-only with copy) */}
@@ -887,9 +1039,16 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                               : BASE_STATION_DETAILS.ACTION_COPY_SC_URL
                           }
                         >
-                          <IconButton size="small" onClick={handleCopyScUrl} edge="end">
+                          <IconButton
+                            size="small"
+                            onClick={handleCopyScUrl}
+                            edge="end"
+                          >
                             {scUrlCopied ? (
-                              <CheckCircleIcon fontSize="small" color="success" />
+                              <CheckCircleIcon
+                                fontSize="small"
+                                color="success"
+                              />
                             ) : (
                               <ContentCopyIcon fontSize="small" />
                             )}
@@ -933,9 +1092,16 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                                   : BASE_STATION_DETAILS.ACTION_COPY_SC_URL
                               }
                             >
-                              <IconButton size="small" onClick={handleCopyScUrl} edge="end">
+                              <IconButton
+                                size="small"
+                                onClick={handleCopyScUrl}
+                                edge="end"
+                              >
                                 {scUrlCopied ? (
-                                  <CheckCircleIcon fontSize="small" color="success" />
+                                  <CheckCircleIcon
+                                    fontSize="small"
+                                    color="success"
+                                  />
                                 ) : (
                                   <ContentCopyIcon fontSize="small" />
                                 )}
@@ -954,7 +1120,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                     variant="outlined"
                     size="small"
                     startIcon={<DownloadIcon />}
-                    onClick={() => handleDownloadRegenCert('ca')}
+                    onClick={() => handleDownloadRegenCert("ca")}
                   >
                     {BASE_STATION_DETAILS.DOWNLOAD_CA}
                   </Button>
@@ -962,7 +1128,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                     variant="outlined"
                     size="small"
                     startIcon={<DownloadIcon />}
-                    onClick={() => handleDownloadRegenCert('client')}
+                    onClick={() => handleDownloadRegenCert("client")}
                   >
                     {BASE_STATION_DETAILS.DOWNLOAD_CERT}
                   </Button>
@@ -970,7 +1136,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
                     variant="outlined"
                     size="small"
                     startIcon={<DownloadIcon />}
-                    onClick={() => handleDownloadRegenCert('key')}
+                    onClick={() => handleDownloadRegenCert("key")}
                   >
                     {BASE_STATION_DETAILS.DOWNLOAD_KEY}
                   </Button>
@@ -979,7 +1145,11 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
             ) : (
               // Before regeneration: show regenerate button
               <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 2 }}
+                >
                   {BASE_STATION_DETAILS.CERTIFICATES_HINT}
                 </Typography>
                 <Button
@@ -997,18 +1167,25 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
         {editError && (
           <Alert
             severity="error"
-            sx={{ mx: BS_DETAIL_LAYOUT.DIALOG_ALERT_MX, mb: BS_DETAIL_LAYOUT.DIALOG_ALERT_MB }}
+            sx={{
+              mx: BS_DETAIL_LAYOUT.DIALOG_ALERT_MX,
+              mb: BS_DETAIL_LAYOUT.DIALOG_ALERT_MB,
+            }}
             onClose={() => setEditError(null)}
           >
             {editError}
           </Alert>
         )}
         <DialogActions>
-          <Button onClick={handleEditDialogClose}>{BASE_STATION_DETAILS.ACTION_CANCEL}</Button>
+          <Button onClick={handleEditDialogClose}>
+            {BASE_STATION_DETAILS.ACTION_CANCEL}
+          </Button>
           <Button
             onClick={handleEditSave}
             variant="contained"
-            disabled={updateBaseStationMutation.isPending || updateEuiMutation.isPending}
+            disabled={
+              updateBaseStationMutation.isPending || updateEuiMutation.isPending
+            }
           >
             {updateBaseStationMutation.isPending || updateEuiMutation.isPending
               ? BASE_STATION_DETAILS.ACTION_SAVING
@@ -1019,7 +1196,9 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
 
       {/* Certificate Regeneration Confirmation Dialog */}
       <Dialog open={showRegenConfirm} onClose={handleRegenCancel}>
-        <DialogTitle>{BASE_STATION_DETAILS.REGENERATE_CERTS_CONFIRM_TITLE}</DialogTitle>
+        <DialogTitle>
+          {BASE_STATION_DETAILS.REGENERATE_CERTS_CONFIRM_TITLE}
+        </DialogTitle>
         <DialogContent>
           <DialogContentText>
             {BASE_STATION_DETAILS.REGENERATE_CERTS_CONFIRM_TEXT}
@@ -1027,7 +1206,11 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
         </DialogContent>
         <DialogActions>
           <Button onClick={handleRegenCancel}>{ACTION_CANCEL}</Button>
-          <Button onClick={handleRegenerateCerts} color="warning" disabled={isRegenerating}>
+          <Button
+            onClick={handleRegenerateCerts}
+            color="warning"
+            disabled={isRegenerating}
+          >
             {BASE_STATION_DETAILS.ACTION_REGENERATE}
           </Button>
         </DialogActions>
@@ -1038,7 +1221,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
         open={!!errorMessage}
         autoHideDuration={6000}
         onClose={() => setErrorMessage(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert severity="error" onClose={() => setErrorMessage(null)}>
           {errorMessage}
@@ -1050,7 +1233,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({ baseStation, on
         open={!!successMessage}
         autoHideDuration={4000}
         onClose={() => setSuccessMessage(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert severity="success" onClose={() => setSuccessMessage(null)}>
           {successMessage}

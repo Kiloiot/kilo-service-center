@@ -1,13 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState } from "react";
 
-import type { SCACIDownlinkQueueDTO } from '@api-types/api';
+import type { SCACIDownlinkQueueDTO } from "@api-types/api";
 import {
   useDownlinkQueue,
   useDownlinkResults,
   useFlushDownlinkQueue,
   useRevokeDownlink,
   useSendDownlink,
-} from '@hooks';
+} from "@hooks";
 import {
   Accordion,
   AccordionDetails,
@@ -32,22 +32,22 @@ import {
   TextField,
   Tooltip,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { isValidHexString } from '@utils/formatters';
+import { isValidHexString } from "@utils/formatters";
 import {
   formatDateTime,
   formatDownlinkPriority,
   formatDownlinkQueueStatus,
   formatDownlinkResult,
-} from '@utils/formatters';
+} from "@utils/formatters";
 import {
   DOWNLINK_PRIORITY_PRESETS,
   MIOTY_UINT32_MAX,
   PAGINATION,
   REVOCABLE_QUEUE_STATUSES,
   UI_TIMING,
-} from '@constants/app';
+} from "@constants/app";
 import {
   ACTION_CANCEL,
   ACTION_FLUSH_QUEUE,
@@ -96,8 +96,14 @@ import {
   VAL_INVALID_HEX_STRING,
   VAL_PACKET_CNT_RANGE,
   VAL_PRIORITY_RANGE,
-} from '@constants/messages';
-import { AddIcon, DeleteIcon, ExpandMoreIcon, RefreshIcon, SendIcon } from '@theme/icons';
+} from "@constants/messages";
+import {
+  AddIcon,
+  DeleteIcon,
+  ExpandMoreIcon,
+  RefreshIcon,
+  SendIcon,
+} from "@theme/icons";
 
 interface DownlinkTabProps {
   epEui: string;
@@ -114,27 +120,132 @@ interface PayloadRow {
  */
 const isValidPacketCnt = (value: string): boolean => {
   const trimmed = value.trim();
-  if (trimmed === '' || !/^\d+$/.test(trimmed)) return false;
+  if (trimmed === "" || !/^\d+$/.test(trimmed)) return false;
   const num = Number(trimmed);
   return Number.isInteger(num) && num >= 0 && num <= MIOTY_UINT32_MAX;
 };
 
+interface DownlinkFormState {
+  payload: string;
+  format: string;
+  priority: string;
+  cntDepend: boolean;
+  payloadRows: PayloadRow[];
+}
+
+interface DownlinkFormValidation {
+  payloadError: string;
+  formatError: string;
+  priorityError: string;
+  cntDependRowsValid: boolean;
+  formatNum: number;
+  priorityNum: number;
+}
+
+/**
+ * Validates the downlink form. Format must be an integer 0-255, priority
+ * a float 0.0-1.0, payload a valid hex string when single-shot, and every
+ * row a valid hex+counter pair when in counter-dependent mode.
+ */
+function validateDownlinkForm(state: DownlinkFormState): DownlinkFormValidation {
+  const formatNum = parseInt(state.format, 10);
+  const priorityNum = parseFloat(state.priority);
+  const payloadError =
+    !state.cntDepend &&
+    state.payload.length > 0 &&
+    !isValidHexString(state.payload)
+      ? VAL_INVALID_HEX_STRING
+      : "";
+  const formatError =
+    isNaN(formatNum) || formatNum < 0 || formatNum > 255
+      ? VAL_FORMAT_RANGE
+      : "";
+  const priorityError =
+    isNaN(priorityNum) || priorityNum < 0.0 || priorityNum > 1.0
+      ? VAL_PRIORITY_RANGE
+      : "";
+  const cntDependRowsValid = state.cntDepend
+    ? state.payloadRows.length >= 1 &&
+      state.payloadRows.every(
+        (r) =>
+          r.payload.length > 0 &&
+          isValidHexString(r.payload) &&
+          isValidPacketCnt(r.packetCnt),
+      )
+    : true;
+  return {
+    payloadError,
+    formatError,
+    priorityError,
+    cntDependRowsValid,
+    formatNum,
+    priorityNum,
+  };
+}
+
+interface BuildSendDownlinkInput {
+  epEui: string;
+  state: DownlinkFormState;
+  formatNum: number;
+  priorityNum: number;
+  responseExp: boolean;
+  responsePrio: boolean;
+  dlWindReq: boolean;
+  expOnly: boolean;
+  dlRxStatQry: boolean;
+}
+
+/**
+ * Builds the send-downlink mutation argument. In counter-dependent mode
+ * payloads are per-row + packetCnt is materialized from the row counters;
+ * otherwise a single-payload (or empty) call.
+ */
+function buildSendDownlinkPayload(
+  input: BuildSendDownlinkInput,
+): Parameters<ReturnType<typeof useSendDownlink>["mutate"]>[0] {
+  const { state } = input;
+  const payloads = state.cntDepend
+    ? state.payloadRows.map((r) => r.payload)
+    : state.payload.length > 0
+      ? [state.payload]
+      : [];
+  const packetCnt = state.cntDepend
+    ? state.payloadRows.map((r) => parseInt(r.packetCnt, 10))
+    : undefined;
+  return {
+    epEui: input.epEui,
+    payloads,
+    priority: input.priorityNum,
+    cntDepend: state.cntDepend,
+    packetCnt,
+    format: input.formatNum,
+    responseExp: input.responseExp,
+    responsePrio: input.responsePrio,
+    dlWindReq: input.dlWindReq,
+    expOnly: input.expOnly,
+    dlRxStatQry: input.dlRxStatQry,
+  };
+}
+
 export function DownlinkTab({ epEui }: DownlinkTabProps) {
   // Compose form state
-  const [payload, setPayload] = useState('');
-  const [format, setFormat] = useState('0');
-  const [priority, setPriority] = useState('0.5');
+  const [payload, setPayload] = useState("");
+  const [format, setFormat] = useState("0");
+  const [priority, setPriority] = useState("0.5");
   const [cntDepend, setCntDepend] = useState(false);
   const [responseExp, setResponseExp] = useState(false);
   const [responsePrio, setResponsePrio] = useState(false);
   const [dlWindReq, setDlWindReq] = useState(false);
   const [expOnly, setExpOnly] = useState(false);
   const [dlRxStatQry, setDlRxStatQry] = useState(false);
-  const [payloadRows, setPayloadRows] = useState<PayloadRow[]>([{ payload: '', packetCnt: '0' }]);
-  const [successMsg, setSuccessMsg] = useState('');
+  const [payloadRows, setPayloadRows] = useState<PayloadRow[]>([
+    { payload: "", packetCnt: "0" },
+  ]);
+  const [successMsg, setSuccessMsg] = useState("");
 
   // Confirmation dialogs
-  const [revokeTarget, setRevokeTarget] = useState<SCACIDownlinkQueueDTO | null>(null);
+  const [revokeTarget, setRevokeTarget] =
+    useState<SCACIDownlinkQueueDTO | null>(null);
   const [flushDialogOpen, setFlushDialogOpen] = useState(false);
 
   // Mutations
@@ -143,30 +254,37 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
   const flushMutation = useFlushDownlinkQueue();
 
   // Queries
-  const queueQuery = useDownlinkQueue(epEui, PAGINATION.DOWNLINK_QUEUE_PAGE_SIZE);
-  const resultsQuery = useDownlinkResults(epEui, PAGINATION.DOWNLINK_RESULTS_PAGE_SIZE);
+  const queueQuery = useDownlinkQueue(
+    epEui,
+    PAGINATION.DOWNLINK_QUEUE_PAGE_SIZE,
+  );
+  const resultsQuery = useDownlinkResults(
+    epEui,
+    PAGINATION.DOWNLINK_RESULTS_PAGE_SIZE,
+  );
 
   // Flatten infinite query pages
   const queueMessages = queueQuery.data?.pages.flatMap((p) => p.messages) ?? [];
-  const resultMessages = resultsQuery.data?.pages.flatMap((p) => p.results) ?? [];
+  const resultMessages =
+    resultsQuery.data?.pages.flatMap((p) => p.results) ?? [];
   const queueTotalCount = queueQuery.data?.pages[0]?.totalCount ?? 0;
   const resultsTotalCount = resultsQuery.data?.pages[0]?.totalCount ?? 0;
 
   // Validation
-  const payloadError =
-    !cntDepend && payload.length > 0 && !isValidHexString(payload) ? VAL_INVALID_HEX_STRING : '';
-  const formatNum = parseInt(format, 10);
-  const formatError = isNaN(formatNum) || formatNum < 0 || formatNum > 255 ? VAL_FORMAT_RANGE : '';
-  const priorityNum = parseFloat(priority);
-  const priorityError =
-    isNaN(priorityNum) || priorityNum < 0.0 || priorityNum > 1.0 ? VAL_PRIORITY_RANGE : '';
-
-  const cntDependRowsValid = cntDepend
-    ? payloadRows.length >= 1 &&
-      payloadRows.every(
-        (r) => r.payload.length > 0 && isValidHexString(r.payload) && isValidPacketCnt(r.packetCnt)
-      )
-    : true;
+  const {
+    payloadError,
+    formatError,
+    priorityError,
+    cntDependRowsValid,
+    formatNum,
+    priorityNum,
+  } = validateDownlinkForm({
+    payload,
+    format,
+    priority,
+    cntDepend,
+    payloadRows,
+  });
 
   const canSend =
     !sendMutation.isPending &&
@@ -176,36 +294,29 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
     cntDependRowsValid;
 
   const handleSend = useCallback(() => {
-    const payloads = cntDepend
-      ? payloadRows.map((r) => r.payload)
-      : payload.length > 0
-        ? [payload]
-        : [];
-    const packetCnt = cntDepend ? payloadRows.map((r) => parseInt(r.packetCnt, 10)) : undefined;
-
     sendMutation.mutate(
-      {
+      buildSendDownlinkPayload({
         epEui,
-        payloads,
-        priority: priorityNum,
-        cntDepend,
-        packetCnt,
-        format: formatNum,
+        state: { payload, format, priority, cntDepend, payloadRows },
+        formatNum,
+        priorityNum,
         responseExp,
         responsePrio,
         dlWindReq,
         expOnly,
         dlRxStatQry,
-      },
+      }),
       {
         onSuccess: () => {
           setSuccessMsg(MSG_DOWNLINK_QUEUED);
-          setTimeout(() => setSuccessMsg(''), UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS);
-          // Reset form
-          setPayload('');
-          setPayloadRows([{ payload: '', packetCnt: '0' }]);
+          setTimeout(
+            () => setSuccessMsg(""),
+            UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS,
+          );
+          setPayload("");
+          setPayloadRows([{ payload: "", packetCnt: "0" }]);
         },
-      }
+      },
     );
   }, [
     cntDepend,
@@ -213,9 +324,11 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
     dlWindReq,
     epEui,
     expOnly,
+    format,
     formatNum,
     payload,
     payloadRows,
+    priority,
     priorityNum,
     responseExp,
     responsePrio,
@@ -230,9 +343,12 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
         onSuccess: () => {
           setRevokeTarget(null);
           setSuccessMsg(MSG_DOWNLINK_REVOKED);
-          setTimeout(() => setSuccessMsg(''), UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS);
+          setTimeout(
+            () => setSuccessMsg(""),
+            UI_TIMING.SUCCESS_MESSAGE_DISMISS_MS,
+          );
         },
-      }
+      },
     );
   }, [epEui, revokeTarget, revokeMutation]);
 
@@ -243,21 +359,21 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
         onSuccess: () => {
           setFlushDialogOpen(false);
         },
-      }
+      },
     );
   }, [epEui, flushMutation]);
 
   const handleCntDependToggle = useCallback((checked: boolean) => {
     setCntDepend(checked);
     if (checked) {
-      setPayloadRows([{ payload: '', packetCnt: '0' }]);
+      setPayloadRows([{ payload: "", packetCnt: "0" }]);
     } else {
-      setPayload('');
+      setPayload("");
     }
   }, []);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
       {/* Success message */}
       {successMsg && (
         <Typography color="success.main" variant="body2">
@@ -272,7 +388,7 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
         <Typography variant="subtitle2" gutterBottom>
           {SECTION_COMPOSE_DOWNLINK}
         </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {/* Payload input */}
           {!cntDepend ? (
             <TextField
@@ -285,21 +401,29 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
               fullWidth
             />
           ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
               <Typography variant="caption" color="text.secondary">
                 {HELPER_DL_CNT_DEPEND_PAYLOADS}
               </Typography>
               {payloadRows.map((row, idx) => (
-                <Box key={idx} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                <Box
+                  key={idx}
+                  sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}
+                >
                   <TextField
                     label={LABEL_DL_PAYLOAD}
                     value={row.payload}
                     onChange={(e) => {
                       const updated = [...payloadRows];
-                      updated[idx] = { ...updated[idx], payload: e.target.value };
+                      updated[idx] = {
+                        ...updated[idx],
+                        payload: e.target.value,
+                      };
                       setPayloadRows(updated);
                     }}
-                    error={row.payload.length > 0 && !isValidHexString(row.payload)}
+                    error={
+                      row.payload.length > 0 && !isValidHexString(row.payload)
+                    }
                     size="small"
                     sx={{ flex: 2 }}
                   />
@@ -308,12 +432,19 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                     value={row.packetCnt}
                     onChange={(e) => {
                       const updated = [...payloadRows];
-                      updated[idx] = { ...updated[idx], packetCnt: e.target.value };
+                      updated[idx] = {
+                        ...updated[idx],
+                        packetCnt: e.target.value,
+                      };
                       setPayloadRows(updated);
                     }}
-                    error={row.packetCnt.length > 0 && !isValidPacketCnt(row.packetCnt)}
+                    error={
+                      row.packetCnt.length > 0 &&
+                      !isValidPacketCnt(row.packetCnt)
+                    }
                     helperText={
-                      row.packetCnt.length > 0 && !isValidPacketCnt(row.packetCnt)
+                      row.packetCnt.length > 0 &&
+                      !isValidPacketCnt(row.packetCnt)
                         ? VAL_PACKET_CNT_RANGE
                         : undefined
                     }
@@ -324,7 +455,9 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                   {payloadRows.length > 1 && (
                     <IconButton
                       size="small"
-                      onClick={() => setPayloadRows(payloadRows.filter((_, i) => i !== idx))}
+                      onClick={() =>
+                        setPayloadRows(payloadRows.filter((_, i) => i !== idx))
+                      }
                       aria-label={LABEL_DL_REMOVE_PAYLOAD_ROW}
                     >
                       <DeleteIcon fontSize="small" />
@@ -335,8 +468,13 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
               <Button
                 size="small"
                 startIcon={<AddIcon />}
-                onClick={() => setPayloadRows([...payloadRows, { payload: '', packetCnt: '0' }])}
-                sx={{ alignSelf: 'flex-start' }}
+                onClick={() =>
+                  setPayloadRows([
+                    ...payloadRows,
+                    { payload: "", packetCnt: "0" },
+                  ])
+                }
+                sx={{ alignSelf: "flex-start" }}
               >
                 {LABEL_DL_ADD_PAYLOAD_ROW}
               </Button>
@@ -344,7 +482,7 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
           )}
 
           {/* Common fields row */}
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
             <TextField
               label={LABEL_DL_FORMAT}
               value={format}
@@ -362,7 +500,9 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
               error={!!priorityError}
               helperText={
                 priorityError ||
-                DOWNLINK_PRIORITY_PRESETS.map((p) => `${p.value}=${p.label}`).join(', ')
+                DOWNLINK_PRIORITY_PRESETS.map(
+                  (p) => `${p.value}=${p.label}`,
+                ).join(", ")
               }
               type="number"
               inputProps={{ step: 0.1, min: 0, max: 1 }}
@@ -372,8 +512,15 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
           </Box>
 
           {/* Toggle switches */}
-          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box
+            sx={{
+              display: "flex",
+              gap: 3,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center" }}>
               <Switch
                 checked={cntDepend}
                 onChange={(_, checked) => handleCntDependToggle(checked)}
@@ -386,20 +533,45 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
           </Box>
 
           {/* Advanced options */}
-          <Accordion disableGutters sx={{ '&:before': { display: 'none' } }}>
+          <Accordion disableGutters sx={{ "&:before": { display: "none" } }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="body2">{LABEL_DL_ADVANCED_OPTIONS}</Typography>
+              <Typography variant="body2">
+                {LABEL_DL_ADVANCED_OPTIONS}
+              </Typography>
             </AccordionSummary>
             <AccordionDetails>
-              <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+              <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                 {[
-                  { label: LABEL_DL_RESPONSE_EXP, value: responseExp, setter: setResponseExp },
-                  { label: LABEL_DL_RESPONSE_PRIO, value: responsePrio, setter: setResponsePrio },
-                  { label: LABEL_DL_WIND_REQ, value: dlWindReq, setter: setDlWindReq },
-                  { label: LABEL_DL_EXP_ONLY, value: expOnly, setter: setExpOnly },
-                  { label: LABEL_DL_RX_STAT_QRY, value: dlRxStatQry, setter: setDlRxStatQry },
+                  {
+                    label: LABEL_DL_RESPONSE_EXP,
+                    value: responseExp,
+                    setter: setResponseExp,
+                  },
+                  {
+                    label: LABEL_DL_RESPONSE_PRIO,
+                    value: responsePrio,
+                    setter: setResponsePrio,
+                  },
+                  {
+                    label: LABEL_DL_WIND_REQ,
+                    value: dlWindReq,
+                    setter: setDlWindReq,
+                  },
+                  {
+                    label: LABEL_DL_EXP_ONLY,
+                    value: expOnly,
+                    setter: setExpOnly,
+                  },
+                  {
+                    label: LABEL_DL_RX_STAT_QRY,
+                    value: dlRxStatQry,
+                    setter: setDlRxStatQry,
+                  },
                 ].map(({ label, value, setter }) => (
-                  <Box key={label} sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box
+                    key={label}
+                    sx={{ display: "flex", alignItems: "center" }}
+                  >
                     <Switch
                       checked={value}
                       onChange={(_, checked) => setter(checked)}
@@ -421,7 +593,9 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
               disabled={!canSend}
               size="small"
             >
-              {sendMutation.isPending ? ACTION_SENDING_DOWNLINK : ACTION_SEND_DOWNLINK}
+              {sendMutation.isPending
+                ? ACTION_SENDING_DOWNLINK
+                : ACTION_SEND_DOWNLINK}
             </Button>
             {sendMutation.isError && (
               <Typography color="error" variant="caption" sx={{ ml: 2 }}>
@@ -436,7 +610,7 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
       {/* Queue Table Section */}
       {/* ================================================================ */}
       <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
           <Typography variant="subtitle2">{SECTION_DOWNLINK_QUEUE}</Typography>
           <Typography variant="caption" color="text.secondary">
             ({queueTotalCount})
@@ -447,7 +621,9 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
               <RefreshIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          {queueMessages.some((m) => m.status && REVOCABLE_QUEUE_STATUSES.has(m.status)) && (
+          {queueMessages.some(
+            (m) => m.status && REVOCABLE_QUEUE_STATUSES.has(m.status),
+          ) && (
             <Button
               size="small"
               color="warning"
@@ -455,7 +631,9 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
               onClick={() => setFlushDialogOpen(true)}
               disabled={flushMutation.isPending}
             >
-              {flushMutation.isPending ? ACTION_FLUSHING_QUEUE : ACTION_FLUSH_QUEUE}
+              {flushMutation.isPending
+                ? ACTION_FLUSHING_QUEUE
+                : ACTION_FLUSH_QUEUE}
             </Button>
           )}
         </Box>
@@ -479,12 +657,16 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                     <TableCell>{LABEL_DL_PRIORITY}</TableCell>
                     <TableCell>{LABEL_DL_PAYLOAD}</TableCell>
                     <TableCell>{LABEL_DL_CREATED_AT}</TableCell>
-                    <TableCell align="right">{TABLE_HEADERS.COL_ACTIONS}</TableCell>
+                    <TableCell align="right">
+                      {TABLE_HEADERS.COL_ACTIONS}
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {queueMessages.map((msg) => {
-                    const statusDisplay = formatDownlinkQueueStatus(msg.status ?? '');
+                    const statusDisplay = formatDownlinkQueueStatus(
+                      msg.status ?? "",
+                    );
                     const isRevocable = msg.status
                       ? REVOCABLE_QUEUE_STATUSES.has(msg.status)
                       : false;
@@ -498,19 +680,30 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                             size="small"
                           />
                         </TableCell>
-                        <TableCell>{formatDownlinkPriority(msg.priority)}</TableCell>
+                        <TableCell>
+                          {formatDownlinkPriority(msg.priority)}
+                        </TableCell>
                         <TableCell
-                          sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                          sx={{
+                            maxWidth: 200,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
                         >
                           <Typography
                             variant="body2"
                             noWrap
-                            sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                            sx={{
+                              fontFamily: "monospace",
+                              fontSize: "0.75rem",
+                            }}
                           >
-                            {msg.payload || '(empty)'}
+                            {msg.payload || "(empty)"}
                           </Typography>
                         </TableCell>
-                        <TableCell>{msg.createdAt ? formatDateTime(msg.createdAt) : ''}</TableCell>
+                        <TableCell>
+                          {msg.createdAt ? formatDateTime(msg.createdAt) : ""}
+                        </TableCell>
                         <TableCell align="right">
                           {isRevocable && (
                             <Tooltip title={ACTION_REVOKE}>
@@ -531,13 +724,15 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
               </Table>
             </TableContainer>
             {queueQuery.hasNextPage && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+              <Box sx={{ display: "flex", justifyContent: "center", mt: 1 }}>
                 <Button
                   size="small"
                   onClick={() => queueQuery.fetchNextPage()}
                   disabled={queueQuery.isFetchingNextPage}
                 >
-                  {queueQuery.isFetchingNextPage ? LOADER.LOADING : ACTION_LOAD_MORE}
+                  {queueQuery.isFetchingNextPage
+                    ? LOADER.LOADING
+                    : ACTION_LOAD_MORE}
                 </Button>
               </Box>
             )}
@@ -549,8 +744,10 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
       {/* Results Table Section */}
       {/* ================================================================ */}
       <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <Typography variant="subtitle2">{SECTION_DOWNLINK_RESULTS}</Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+          <Typography variant="subtitle2">
+            {SECTION_DOWNLINK_RESULTS}
+          </Typography>
           <Typography variant="caption" color="text.secondary">
             ({resultsTotalCount})
           </Typography>
@@ -585,8 +782,12 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                 </TableHead>
                 <TableBody>
                   {resultMessages.map((msg, idx) => {
-                    const resultDisplay = formatDownlinkResult(msg.result ?? '');
-                    const statusDisplay = formatDownlinkQueueStatus(msg.status ?? '');
+                    const resultDisplay = formatDownlinkResult(
+                      msg.result ?? "",
+                    );
+                    const statusDisplay = formatDownlinkQueueStatus(
+                      msg.status ?? "",
+                    );
                     return (
                       <TableRow key={`${msg.queId}-${idx}`}>
                         <TableCell>{msg.queId}</TableCell>
@@ -605,11 +806,15 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                             variant="outlined"
                           />
                         </TableCell>
-                        <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                          {msg.bsEui || '-'}
+                        <TableCell
+                          sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                        >
+                          {msg.bsEui || "-"}
                         </TableCell>
                         <TableCell>
-                          {msg.transmittedAt ? formatDateTime(msg.transmittedAt) : '-'}
+                          {msg.transmittedAt
+                            ? formatDateTime(msg.transmittedAt)
+                            : "-"}
                         </TableCell>
                       </TableRow>
                     );
@@ -618,13 +823,15 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
               </Table>
             </TableContainer>
             {resultsQuery.hasNextPage && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+              <Box sx={{ display: "flex", justifyContent: "center", mt: 1 }}>
                 <Button
                   size="small"
                   onClick={() => resultsQuery.fetchNextPage()}
                   disabled={resultsQuery.isFetchingNextPage}
                 >
-                  {resultsQuery.isFetchingNextPage ? LOADER.LOADING : ACTION_LOAD_MORE}
+                  {resultsQuery.isFetchingNextPage
+                    ? LOADER.LOADING
+                    : ACTION_LOAD_MORE}
                 </Button>
               </Box>
             )}
@@ -640,7 +847,11 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setRevokeTarget(null)}>{ACTION_CANCEL}</Button>
-          <Button color="warning" onClick={handleRevoke} disabled={revokeMutation.isPending}>
+          <Button
+            color="warning"
+            onClick={handleRevoke}
+            disabled={revokeMutation.isPending}
+          >
             {revokeMutation.isPending ? ACTION_REVOKING : ACTION_REVOKE}
           </Button>
         </DialogActions>
@@ -653,9 +864,17 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
           <DialogContentText>{CONFIRM_FLUSH_QUEUE}</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setFlushDialogOpen(false)}>{ACTION_CANCEL}</Button>
-          <Button color="warning" onClick={handleFlush} disabled={flushMutation.isPending}>
-            {flushMutation.isPending ? ACTION_FLUSHING_QUEUE : ACTION_FLUSH_QUEUE}
+          <Button onClick={() => setFlushDialogOpen(false)}>
+            {ACTION_CANCEL}
+          </Button>
+          <Button
+            color="warning"
+            onClick={handleFlush}
+            disabled={flushMutation.isPending}
+          >
+            {flushMutation.isPending
+              ? ACTION_FLUSHING_QUEUE
+              : ACTION_FLUSH_QUEUE}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 
 import {
   Alert,
@@ -11,14 +11,14 @@ import {
   Paper,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { apiService } from '@services/api';
-import { useFeatureFlags } from '@contexts/FeatureFlagContext';
-import { useOrganization } from '@contexts/OrganizationContext';
-import { useSession } from '@contexts/SessionContext';
-import { useSystem } from '@contexts/SystemContext';
-import { storageService } from '@utils/storage';
+import { apiService } from "@services/api";
+import { useFeatureFlags } from "@contexts/FeatureFlagContext";
+import { useOrganization } from "@contexts/OrganizationContext";
+import { useSession } from "@contexts/SessionContext";
+import { useSystem } from "@contexts/SystemContext";
+import { storageService } from "@utils/storage";
 import {
   APP_EDITION,
   APP_NAME,
@@ -26,7 +26,7 @@ import {
   DEFAULT_ORG_NAME,
   ROUTES,
   STORAGE_KEYS,
-} from '@constants/app';
+} from "@constants/app";
 import {
   ACTION_CREATE_ACCOUNT,
   ACTION_HAVE_ACCOUNT,
@@ -44,8 +44,8 @@ import {
   VAL_LAST_NAME_REQUIRED,
   VAL_PASSWORD_CONFIRM_MISMATCH,
   VAL_PASSWORD_REQUIRED,
-} from '@constants/messages';
-import kiloLogo from '@assets/kilo-logo.png';
+} from "@constants/messages";
+import kiloLogo from "@assets/kilo-logo.png";
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -53,7 +53,7 @@ const Register: React.FC = () => {
   const { setUser } = useSession();
   const { setOrganization } = useOrganization();
   const { isEnabled } = useFeatureFlags();
-  const showCompanyName = isEnabled('enterprise_organizations');
+  const showCompanyName = isEnabled("enterprise_organizations");
 
   // Redirect to login if registration is disabled
   useEffect(() => {
@@ -69,12 +69,12 @@ const Register: React.FC = () => {
       });
   }, [navigate]);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -84,7 +84,8 @@ const Register: React.FC = () => {
 
     if (!firstName.trim()) errors.firstName = VAL_FIRST_NAME_REQUIRED;
     if (!lastName.trim()) errors.lastName = VAL_LAST_NAME_REQUIRED;
-    if (showCompanyName && !companyName.trim()) errors.companyName = VAL_COMPANY_NAME_REQUIRED;
+    if (showCompanyName && !companyName.trim())
+      errors.companyName = VAL_COMPANY_NAME_REQUIRED;
     if (!email.trim()) errors.email = VAL_EMAIL_REQUIRED;
     if (!password) errors.password = VAL_PASSWORD_REQUIRED;
     if (password && password !== confirmPassword)
@@ -111,11 +112,17 @@ const Register: React.FC = () => {
       });
 
       // Store access token for subsequent API requests
-      storageService.setItem(STORAGE_KEYS.AUTH_TOKEN, result.tokens.accessToken);
+      storageService.setItem(
+        STORAGE_KEYS.AUTH_TOKEN,
+        result.tokens.accessToken,
+      );
 
       // Store refresh token if provided (refresh_token_enabled=true on backend)
       if (result.tokens.refreshToken) {
-        storageService.setItem(STORAGE_KEYS.REFRESH_TOKEN, result.tokens.refreshToken);
+        storageService.setItem(
+          STORAGE_KEYS.REFRESH_TOKEN,
+          result.tokens.refreshToken,
+        );
       } else {
         storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
       }
@@ -125,7 +132,9 @@ const Register: React.FC = () => {
 
       // Set organization context from user profile
       const { user } = result;
-      const defaultOrg = user.memberships.find((m) => m.orgId === user.defaultOrgId);
+      const defaultOrg = user.memberships.find(
+        (m) => m.orgId === user.defaultOrgId,
+      );
       const firstOrg = user.memberships[0];
       const org = defaultOrg || firstOrg;
 
@@ -152,15 +161,33 @@ const Register: React.FC = () => {
         sx={{
           p: AUTH_LAYOUT.CARD_PADDING,
           maxWidth: 480,
-          width: '100%',
-          textAlign: 'center',
+          width: "100%",
+          textAlign: "center",
         }}
       >
         {/* Logo and branding */}
-        <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <img src={kiloLogo} alt={APP_NAME} style={{ maxWidth: '200px', height: 'auto', marginBottom: '8px' }} />
-          <Chip label={versionInfo?.edition ?? APP_EDITION} size="small" variant="outlined" sx={{ mb: 2 }} />
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mb: 1 }}>
+        <Box
+          sx={{
+            mb: 3,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          <img
+            src={kiloLogo}
+            alt={APP_NAME}
+            style={{ maxWidth: "200px", height: "auto", marginBottom: "8px" }}
+          />
+          <Chip
+            label={versionInfo?.edition ?? APP_EDITION}
+            size="small"
+            variant="outlined"
+            sx={{ mb: 2 }}
+          />
+          <Box
+            sx={{ display: "flex", gap: 2, justifyContent: "center", mb: 1 }}
+          >
             <MuiLink
               href={versionInfo?.documentationUrl}
               target="_blank"
@@ -169,7 +196,12 @@ const Register: React.FC = () => {
             >
               {BRAND.DOCUMENTATION}
             </MuiLink>
-            <MuiLink href={versionInfo?.sourceUrl} target="_blank" rel="noopener" variant="caption">
+            <MuiLink
+              href={versionInfo?.sourceUrl}
+              target="_blank"
+              rel="noopener"
+              variant="caption"
+            >
               {BRAND.SOURCE}
             </MuiLink>
             <MuiLink
@@ -276,8 +308,8 @@ const Register: React.FC = () => {
           </Button>
 
           <Typography variant="body2" textAlign="center">
-            {ACTION_HAVE_ACCOUNT}{' '}
-            <RouterLink to={ROUTES.LOGIN} style={{ textDecoration: 'none' }}>
+            {ACTION_HAVE_ACCOUNT}{" "}
+            <RouterLink to={ROUTES.LOGIN} style={{ textDecoration: "none" }}>
               Log in
             </RouterLink>
           </Typography>

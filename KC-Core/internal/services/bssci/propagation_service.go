@@ -55,7 +55,7 @@ func (s *propagationService) TriggerEndpointPropagate(
 
 	for _, sess := range activeSessions {
 		if !s.shouldPropagate(endpoint.TenantID, sess.TenantID) {
-			s.logger.InfoContext(ctx, "Skipping propagation due to tenant mismatch",
+			s.logger.InfoContext(ctx, pkgbssci.LogBSSCISkippingPropagationDueToTenantMismatch,
 				"endpoint_tenant", endpoint.TenantID,
 				"session_tenant", sess.TenantID,
 				"bs_eui", sess.BaseStationEUI)
@@ -65,7 +65,7 @@ func (s *propagationService) TriggerEndpointPropagate(
 
 		// Send propagate message using context enriched by caller
 		if err := s.sender.SendAttachPropagateBySessionID(ctx, sess.ID, endpoint); err != nil {
-			s.logger.WarnContext(ctx, "Failed to propagate to session",
+			s.logger.WarnContext(ctx, pkgbssci.LogBSSCIFailedToPropagateToSession,
 				"endpoint_id", endpoint.ID,
 				"session_id", sess.ID,
 				"bs_eui", sess.BaseStationEUI,
@@ -76,7 +76,7 @@ func (s *propagationService) TriggerEndpointPropagate(
 		}
 	}
 
-	s.logger.InfoContext(ctx, "Endpoint propagation completed",
+	s.logger.InfoContext(ctx, pkgbssci.LogBSSCIEndpointPropagationCompleted,
 		"endpoint_id", endpoint.ID,
 		"propagated_count", propagatedCount,
 		"total_sessions", len(activeSessions),
@@ -103,7 +103,7 @@ func (s *propagationService) ReconcileBaseStation(
 	// BSSCI §3.8: Propagate ALL endpoints to this BS
 	// attPrp is idempotent - safe to send even if endpoint was propagated to another BS
 	// This ensures multi-BS deployments work correctly (each BS needs attPrp)
-	s.logger.InfoContext(ctx, "Starting base station reconciliation",
+	s.logger.InfoContext(ctx, pkgbssci.LogBSSCIStartingBaseStationReconciliation,
 		"session_id", session.ID,
 		"bs_eui", session.BaseStationEUI,
 		"tenant_id", session.TenantID,
@@ -116,7 +116,7 @@ func (s *propagationService) ReconcileBaseStation(
 	for _, endpoint := range endpoints {
 		// Use context as-is (already enriched by caller)
 		if err := s.sender.SendAttachPropagateBySessionID(ctx, session.ID, endpoint); err != nil {
-			s.logger.WarnContext(ctx, "Reconciliation propagate failed",
+			s.logger.WarnContext(ctx, pkgbssci.LogBSSCIReconciliationPropagateFailed,
 				"endpoint_id", endpoint.ID,
 				"session_id", session.ID,
 				"bs_eui", session.BaseStationEUI,
@@ -127,7 +127,7 @@ func (s *propagationService) ReconcileBaseStation(
 		}
 	}
 
-	s.logger.InfoContext(ctx, "Base station reconciliation completed",
+	s.logger.InfoContext(ctx, pkgbssci.LogBSSCIBaseStationReconciliationCompleted,
 		"session_id", session.ID,
 		"bs_eui", session.BaseStationEUI,
 		"reconciled_count", reconciledCount,
@@ -151,13 +151,13 @@ func (s *propagationService) shouldPropagate(endpointTenant, sessionTenant int64
 	return false
 }
 
-// aggregateErrors combines multiple errors into a single error
-// Returns nil if no errors occurred
+// aggregateErrors combines multiple errors into a single error.
+// Returns nil if no errors occurred.
 func aggregateErrors(errs []error) error {
 	if len(errs) == 0 {
 		return nil
 	}
-
-	// Return first error for now - can enhance with multi-error later
-	return fmt.Errorf("propagation encountered %d errors, first: %w", len(errs), errs[0])
+	return fmt.Errorf("%s: %d failures, first: %w",
+		pkgbssci.ResolveErrorMessage(pkgbssci.ErrPropagationBroadcastFailure),
+		len(errs), errs[0])
 }

@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from "react";
 
-import type { BaseStationActivityFilter } from '@api-types/api';
-import { useBaseStationActivity } from '@hooks';
+import type { BaseStationActivityFilter } from "@api-types/api";
+import { useBaseStationActivity } from "@hooks";
 import {
   Alert,
   Box,
@@ -10,18 +10,15 @@ import {
   Snackbar,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { ActivityTimeline } from '@components/common/ActivityTimeline';
-import { PaginationControls } from '@components/common/PaginationControls';
-import { apiService } from '@services/api';
-import {
-  formatDate,
-  parseDateInputEU,
-} from '@utils/formatters';
-import { PAGINATION } from '@constants/app';
-import { BASE_STATION_MESSAGES } from '@constants/messages';
-import { DownloadIcon } from '@theme/icons';
+import { ActivityTimeline } from "@components/common/ActivityTimeline";
+import { PaginationControls } from "@components/common/PaginationControls";
+import { apiService } from "@services/api";
+import { formatDate, parseDateInputEU } from "@utils/formatters";
+import { PAGINATION } from "@constants/app";
+import { BASE_STATION_MESSAGES } from "@constants/messages";
+import { DownloadIcon } from "@theme/icons";
 
 interface BaseStationMessagesProps {
   bsEui: string;
@@ -33,34 +30,36 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
   basestationName,
 }) => {
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState<number>(PAGINATION.DEFAULT_PAGE_SIZE);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(
+    PAGINATION.DEFAULT_PAGE_SIZE,
+  );
   const [filter, setFilter] = useState<BaseStationActivityFilter>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Local state for date inputs (allows typing before blur validation)
-  const [startDateText, setStartDateText] = useState('');
-  const [endDateText, setEndDateText] = useState('');
+  const [startDateText, setStartDateText] = useState("");
+  const [endDateText, setEndDateText] = useState("");
   const [startDateError, setStartDateError] = useState<string | null>(null);
   const [endDateError, setEndDateError] = useState<string | null>(null);
 
   // Sync local date text from filter (for initial load and clear)
   useEffect(() => {
-    setStartDateText(filter.startTime ? formatDate(filter.startTime) : '');
-    setEndDateText(filter.endTime ? formatDate(filter.endTime) : '');
+    setStartDateText(filter.startTime ? formatDate(filter.startTime) : "");
+    setEndDateText(filter.endTime ? formatDate(filter.endTime) : "");
     setStartDateError(null);
     setEndDateError(null);
   }, [filter.startTime, filter.endTime]);
 
   // Track page tokens for cursor-based pagination
-  const [pageTokens, setPageTokens] = useState<string[]>(['']); // First page has empty token
-  const currentPageToken = pageTokens[page] || '';
+  const [pageTokens, setPageTokens] = useState<string[]>([""]); // First page has empty token
+  const currentPageToken = pageTokens[page] || "";
 
   // Use unified activity feed hook
   const { data: activityData, isLoading } = useBaseStationActivity(
     bsEui,
     filter,
     currentPageToken,
-    rowsPerPage
+    rowsPerPage,
   );
 
   // Update page tokens when we get a new nextPageToken
@@ -76,21 +75,31 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
       }
       setPage(newPage);
     },
-    [page, activityData?.nextPageToken]
+    [page, activityData?.nextPageToken],
   );
 
-  const handleExport = async (format: 'csv' | 'json') => {
+  const handleExport = async (format: "csv" | "json") => {
     try {
-      const blob = await apiService.exportBaseStationMessages(bsEui, filter, format);
+      const blob = await apiService.exportBaseStationMessages(
+        bsEui,
+        filter,
+        format,
+      );
       const text = await blob.text();
 
       // CSV: detect header-only export
-      if (format === 'csv' && text.trim() === BASE_STATION_MESSAGES.EXPORT_CSV_HEADER) {
+      if (
+        format === "csv" &&
+        text.trim() === BASE_STATION_MESSAGES.EXPORT_CSV_HEADER
+      ) {
         setErrorMessage(BASE_STATION_MESSAGES.ERR_EXPORT_NO_DATA);
         return;
       }
       // JSON: detect empty array
-      if (format === 'json' && text.trim() === BASE_STATION_MESSAGES.EXPORT_JSON_EMPTY) {
+      if (
+        format === "json" &&
+        text.trim() === BASE_STATION_MESSAGES.EXPORT_JSON_EMPTY
+      ) {
         setErrorMessage(BASE_STATION_MESSAGES.ERR_EXPORT_NO_DATA);
         return;
       }
@@ -98,7 +107,7 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
       // Re-create blob from text for download
       const downloadBlob = new Blob([text], { type: blob.type });
       const url = URL.createObjectURL(downloadBlob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       const timestamp = new Date().toISOString();
       a.download = `${BASE_STATION_MESSAGES.EXPORT_FILENAME_PREFIX}${bsEui}${BASE_STATION_MESSAGES.EXPORT_FILENAME_SUFFIX}${timestamp}.${format}`;
@@ -114,10 +123,10 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
   const handleClearFilters = () => {
     setFilter({});
     setPage(0);
-    setPageTokens(['']);
+    setPageTokens([""]);
     // Reset local date input state
-    setStartDateText('');
-    setEndDateText('');
+    setStartDateText("");
+    setEndDateText("");
     setStartDateError(null);
     setEndDateError(null);
   };
@@ -126,7 +135,7 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
   const handleFilterChange = (newFilter: BaseStationActivityFilter) => {
     setFilter(newFilter);
     setPage(0);
-    setPageTokens(['']);
+    setPageTokens([""]);
   };
 
   const totalCount = activityData?.totalCount ?? 0;
@@ -134,18 +143,30 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
   return (
     <Box>
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 2,
+          }}
+        >
           <Typography variant="h6">
             {BASE_STATION_MESSAGES.TITLE_PREFIX}
-            {basestationName || `${BASE_STATION_MESSAGES.TITLE_FALLBACK_PREFIX}${bsEui}`}
+            {basestationName ||
+              `${BASE_STATION_MESSAGES.TITLE_FALLBACK_PREFIX}${bsEui}`}
           </Typography>
           <Box>
-            <Button startIcon={<DownloadIcon />} onClick={() => handleExport('csv')} sx={{ ml: 1 }}>
+            <Button
+              startIcon={<DownloadIcon />}
+              onClick={() => handleExport("csv")}
+              sx={{ ml: 1 }}
+            >
               {BASE_STATION_MESSAGES.EXPORT_CSV}
             </Button>
             <Button
               startIcon={<DownloadIcon />}
-              onClick={() => handleExport('json')}
+              onClick={() => handleExport("json")}
               sx={{ ml: 1 }}
             >
               {BASE_STATION_MESSAGES.EXPORT_JSON}
@@ -154,7 +175,7 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
         </Box>
 
         {/* Filters */}
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+        <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
           <TextField
             label={BASE_STATION_MESSAGES.LABEL_START_DATE}
             type="text"
@@ -175,7 +196,10 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
                 setStartDateError(BASE_STATION_MESSAGES.ERR_DATE_INVALID);
                 return;
               }
-              handleFilterChange({ ...filter, startTime: `${isoDate}T00:00:00Z` });
+              handleFilterChange({
+                ...filter,
+                startTime: `${isoDate}T00:00:00Z`,
+              });
             }}
             error={!!startDateError}
             helperText={startDateError || BASE_STATION_MESSAGES.DATE_HELPER_EU}
@@ -204,7 +228,10 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
                 setEndDateError(BASE_STATION_MESSAGES.ERR_DATE_INVALID);
                 return;
               }
-              handleFilterChange({ ...filter, endTime: `${isoDate}T23:59:59Z` });
+              handleFilterChange({
+                ...filter,
+                endTime: `${isoDate}T23:59:59Z`,
+              });
             }}
             error={!!endDateError}
             helperText={endDateError || BASE_STATION_MESSAGES.DATE_HELPER_EU}
@@ -235,7 +262,7 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
           onRowsPerPageChange={(newSize) => {
             setRowsPerPage(newSize);
             setPage(0);
-            setPageTokens(['']);
+            setPageTokens([""]);
           }}
         />
       </Paper>
@@ -245,7 +272,7 @@ export const BaseStationMessages: React.FC<BaseStationMessagesProps> = ({
         open={!!errorMessage}
         autoHideDuration={6000}
         onClose={() => setErrorMessage(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert severity="error" onClose={() => setErrorMessage(null)}>
           {errorMessage}

@@ -1,10 +1,20 @@
-import React, { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
-import { extractOrganizationId, extractOrganizationName, extractUserId } from '@utils/jwt';
-import { storageService } from '@utils/storage';
-import { DEFAULT_ORG_NAME, STORAGE_KEYS } from '@constants/app';
+import {
+  extractOrganizationId,
+  extractOrganizationName,
+  extractUserId,
+} from "@utils/jwt";
+import { storageService } from "@utils/storage";
+import { DEFAULT_ORG_NAME, STORAGE_KEYS } from "@constants/app";
 
-import { useSession } from './SessionContext';
+import { useSession } from "./SessionContext";
 
 /**
  * Organization Context
@@ -27,9 +37,13 @@ interface OrganizationContextValue {
   clearOrganization: () => void;
 }
 
-const OrganizationContext = createContext<OrganizationContextValue | undefined>(undefined);
+const OrganizationContext = createContext<OrganizationContextValue | undefined>(
+  undefined,
+);
 
-export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   // No dev fallbacks - org/user must come from JWT token or session profile (fail closed for tenant isolation)
   const [organizationId, setOrgId] = useState<string | null>(null);
   const [organizationName, setOrgName] = useState<string | null>(null);
@@ -70,7 +84,9 @@ export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({ childr
       setOrgId(user.defaultOrgId);
 
       // Find the org name from memberships
-      const membership = user.memberships?.find((m) => m.orgId === user.defaultOrgId);
+      const membership = user.memberships?.find(
+        (m) => m.orgId === user.defaultOrgId,
+      );
       setOrgName(membership?.orgName || DEFAULT_ORG_NAME);
 
       // Also set userId if not already set
@@ -122,7 +138,7 @@ export const useOrganization = (): OrganizationContextValue => {
   const context = useContext(OrganizationContext);
 
   if (!context) {
-    throw new Error('useOrganization must be used within OrganizationProvider');
+    throw new Error("useOrganization must be used within OrganizationProvider");
   }
 
   return context;

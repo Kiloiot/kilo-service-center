@@ -6,13 +6,13 @@
  * This abstraction allows easy mocking in tests and future storage backend swaps.
  */
 
-import { logger } from '@utils/logger';
+import { logger } from "@utils/logger";
 import {
   ERR_STORAGE_CLEAR_FAILED,
   ERR_STORAGE_GET_FAILED,
   ERR_STORAGE_REMOVE_FAILED,
   ERR_STORAGE_SET_FAILED,
-} from '@constants/messages';
+} from "@constants/messages";
 
 /**
  * Storage interface for dependency injection and testing
@@ -40,7 +40,7 @@ class LocalStorageService implements IStorage {
     try {
       return localStorage.getItem(key);
     } catch (error) {
-      logger.error(ERR_STORAGE_GET_FAILED.replace('{key}', key), error);
+      logger.error(ERR_STORAGE_GET_FAILED.replace("{key}", key), error);
       return null;
     }
   }
@@ -54,7 +54,7 @@ class LocalStorageService implements IStorage {
     try {
       localStorage.setItem(key, value);
     } catch (error) {
-      logger.error(ERR_STORAGE_SET_FAILED.replace('{key}', key), error);
+      logger.error(ERR_STORAGE_SET_FAILED.replace("{key}", key), error);
     }
   }
 
@@ -66,7 +66,7 @@ class LocalStorageService implements IStorage {
     try {
       localStorage.removeItem(key);
     } catch (error) {
-      logger.error(ERR_STORAGE_REMOVE_FAILED.replace('{key}', key), error);
+      logger.error(ERR_STORAGE_REMOVE_FAILED.replace("{key}", key), error);
     }
   }
 

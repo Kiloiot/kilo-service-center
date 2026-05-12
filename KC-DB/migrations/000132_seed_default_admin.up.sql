@@ -2,7 +2,10 @@
 -- Default credentials: admin@kilocenter.local / admin123!
 -- WARNING: Change the password or remove this user before production use.
 --
--- This migration is idempotent — it skips if a user with this email already exists.
+-- Idempotent: skips the user insert when the seed UUID OR the seed email is
+-- already taken (e.g. environments where 00000000-0000-0000-0000-000000000001
+-- belongs to a different dev user). The membership insert resolves the admin
+-- user by email so it only fires when this seed actually created the row.
 
 INSERT INTO identity.users (
     id, email, email_verified, password_hash,
@@ -23,26 +26,32 @@ SELECT
     'KiloCenter',
     'Default admin account — remove or change password before production use'
 WHERE NOT EXISTS (
-    SELECT 1 FROM identity.users WHERE email = 'admin@kilocenter.local'
+    SELECT 1 FROM identity.users
+    WHERE email = 'admin@kilocenter.local'
+       OR id = '00000000-0000-0000-0000-000000000001'::uuid
 );
 
--- Add the default admin to the default organization (tenant 1) if not already a member
+-- Add the seeded admin to the default organization (tenant 1) if not already a
+-- member. Resolve user_id by email so we never attach the membership to a
+-- different user that happens to occupy the same UUID slot.
 INSERT INTO identity.organization_members (
     org_id, user_id, role, status,
     is_org_admin, is_base_station_admin, is_endpoint_admin
 )
 SELECT
     o.org_id,
-    '00000000-0000-0000-0000-000000000001'::uuid,
+    u.id,
     'owner',
     'active',
     true,
     true,
     true
 FROM identity.organizations o
+CROSS JOIN identity.users u
 WHERE o.tenant_id = 1
+  AND u.email = 'admin@kilocenter.local'
   AND NOT EXISTS (
     SELECT 1 FROM identity.organization_members
-    WHERE user_id = '00000000-0000-0000-0000-000000000001'::uuid
+    WHERE user_id = u.id
       AND org_id = o.org_id
 );

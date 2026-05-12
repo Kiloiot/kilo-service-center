@@ -1,9 +1,9 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button, Typography } from "@mui/material";
 
-import { ERROR_BOUNDARY, UI_COMMON } from '@constants/messages';
-import { isDevelopment } from '@config/env';
+import { ERROR_BOUNDARY, UI_COMMON } from "@constants/messages";
+import { isDevelopment } from "@config/env";
 
 /**
  * Shared Error Boundary Component
@@ -32,7 +32,10 @@ interface ErrorBoundaryState {
   errorInfo: ErrorInfo | null;
 }
 
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null, errorInfo: null };
@@ -66,13 +69,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       return (
         <Box
           sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: '100vh',
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: "100vh",
             p: 3,
-            textAlign: 'center',
+            textAlign: "center",
           }}
         >
           <Typography variant="h4" color="error" gutterBottom>
@@ -87,21 +90,21 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
           {/* Show stack trace only in development */}
           {isDevelopment && this.state.error?.stack && (
-            <Box sx={{ mt: 4, textAlign: 'left', maxWidth: 800 }}>
+            <Box sx={{ mt: 4, textAlign: "left", maxWidth: 800 }}>
               <details>
-                <summary style={{ cursor: 'pointer', marginBottom: 8 }}>
+                <summary style={{ cursor: "pointer", marginBottom: 8 }}>
                   {ERROR_BOUNDARY.STACK_TRACE_SUMMARY}
                 </summary>
                 <Box
                   component="pre"
                   sx={{
                     p: 2,
-                    bgcolor: 'grey.100',
+                    bgcolor: "grey.100",
                     borderRadius: 1,
-                    overflow: 'auto',
-                    fontSize: '0.75rem',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
+                    overflow: "auto",
+                    fontSize: "0.75rem",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
                   }}
                 >
                   {this.state.error.stack}

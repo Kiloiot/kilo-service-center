@@ -9,19 +9,19 @@ import type {
   CreateBlueprintRequest,
   DecodePreviewRequest,
   UpdateBlueprintRequest,
-} from '@api-types/api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+} from "@api-types/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from '@services/api';
-import { BLUEPRINT_LABELS } from '@constants/messages';
-import { queryKeys } from '@config/query-keys';
+import { api } from "@services/api";
+import { BLUEPRINT_LABELS } from "@constants/messages";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Hook to fetch blueprints for a device model
  */
 export function useBlueprints(deviceModelId: string | undefined) {
   return useQuery({
-    queryKey: queryKeys.blueprints.list(deviceModelId ?? ''),
+    queryKey: queryKeys.blueprints.list(deviceModelId ?? ""),
     queryFn: () => api.getBlueprints(deviceModelId!),
     enabled: !!deviceModelId,
   });
@@ -32,7 +32,7 @@ export function useBlueprints(deviceModelId: string | undefined) {
  */
 export function useBlueprint(id: string | undefined) {
   return useQuery({
-    queryKey: queryKeys.blueprints.detail(id ?? ''),
+    queryKey: queryKeys.blueprints.detail(id ?? ""),
     queryFn: () => api.getBlueprint(id!),
     enabled: !!id,
   });
@@ -67,7 +67,6 @@ export function useUpdateBlueprint() {
   return useMutation({
     mutationFn: ({
       id,
-      deviceModelId: _deviceModelId,
       data,
     }: {
       id: string;
@@ -75,7 +74,9 @@ export function useUpdateBlueprint() {
       data: UpdateBlueprintRequest;
     }) => api.updateBlueprint(id, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.detail(variables.id) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.blueprints.detail(variables.id),
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.blueprints.list(variables.deviceModelId),
       });
@@ -89,8 +90,12 @@ export function useUpdateBlueprint() {
 export function useDeleteBlueprint() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, deviceModelId: _deviceModelId }: { id: string; deviceModelId: string }) =>
-      api.deleteBlueprint(id),
+    mutationFn: ({
+      id,
+    }: {
+      id: string;
+      deviceModelId: string;
+    }) => api.deleteBlueprint(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.blueprints.list(variables.deviceModelId),
@@ -107,7 +112,9 @@ export function useSetBlueprintDefault() {
   return useMutation({
     mutationFn: ({ id }: { id: string }) => api.setBlueprintDefault(id),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.detail(variables.id) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.blueprints.detail(variables.id),
+      });
       // Invalidate all lists since default status affects display
       queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.all });
     },
@@ -120,7 +127,8 @@ export function useSetBlueprintDefault() {
 export function useDecodePreview(blueprintId: string | undefined) {
   return useMutation({
     mutationFn: (data: DecodePreviewRequest) => {
-      if (!blueprintId) throw new Error(BLUEPRINT_LABELS.ERR_BLUEPRINT_ID_REQUIRED);
+      if (!blueprintId)
+        throw new Error(BLUEPRINT_LABELS.ERR_BLUEPRINT_ID_REQUIRED);
       return api.decodePreview(blueprintId, data);
     },
   });

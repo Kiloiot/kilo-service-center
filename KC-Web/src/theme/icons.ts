@@ -7,7 +7,7 @@ export {
   Assessment as AssessmentIcon,
   Dashboard as DashboardIcon,
   Speed as SpeedIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Base Station Icons
 export {
@@ -17,7 +17,7 @@ export {
   Map as MapIcon,
   Router as RouterIcon,
   SignalCellularAlt as SignalIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // End Point Icons
 export {
@@ -25,7 +25,7 @@ export {
   DeviceHub as DeviceHubIcon,
   Sensors as EndPointIcon,
   Memory as MemoryIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Message Icons
 export {
@@ -34,7 +34,7 @@ export {
   CallReceived as ReceiveIcon,
   Schedule as ScheduleIcon,
   Send as SendIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Blueprint & Model Icons
 export {
@@ -42,7 +42,7 @@ export {
   Category as CategoryIcon,
   Code as CodeIcon,
   Description as DescriptionIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // User & Admin Icons
 export {
@@ -55,7 +55,7 @@ export {
   Person as PersonIcon,
   Security as SecurityIcon,
   VpnKey as VpnKeyIcon, // Alias for API Keys navigation
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Status Icons
 export {
@@ -71,7 +71,7 @@ export {
   TrendingDown as TrendingDownIcon,
   TrendingUp as TrendingUpIcon,
   Warning as WarningIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Action Icons
 export {
@@ -92,7 +92,7 @@ export {
   Save as SaveIcon,
   Search as SearchIcon,
   Upload as UploadIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // UI & Navigation Icons
 export {
@@ -106,21 +106,21 @@ export {
   MoreVert as MoreIcon,
   NavigateBefore as NavigateBeforeIcon,
   NavigateNext as NavigateNextIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Theme Icons
 export {
   DarkMode as DarkModeIcon,
   LightMode as LightModeIcon,
   Brightness4 as ThemeIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Settings Icons
 export {
   Build as BuildIcon,
   Settings as SettingsIcon,
   Tune as TuneIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Network Icons
 export {
@@ -128,14 +128,14 @@ export {
   NetworkWifi as NetworkWifiIcon,
   SignalWifiStatusbar4Bar as StrongSignalIcon,
   SignalWifi2Bar as WeakSignalIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Time Icons
 export {
   CalendarToday as CalendarTodayIcon,
   History as HistoryIcon,
   Update as UpdateIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Additional Icons
 export {
@@ -143,7 +143,7 @@ export {
   ContentCopy as ContentCopyIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Export icon size constants
 export const ICON_SIZES = {

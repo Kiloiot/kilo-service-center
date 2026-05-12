@@ -1,4 +1,4 @@
-import type { Theme } from '@mui/material/styles';
+import type { Theme } from "@mui/material/styles";
 
 // Helper functions that return style objects - defined outside render scope
 // These are pure functions that won't recreate objects unnecessarily
@@ -25,5 +25,5 @@ export const getMonoBody1 = (theme: Theme) => ({
 // For technical displays (EUI, addresses, etc)
 export const getTechnicalTypography = (theme: Theme) => ({
   fontFamily: theme.typography.monoFontFamily,
-  letterSpacing: '0.025em', // Slight spacing for readability
+  letterSpacing: "0.025em", // Slight spacing for readability
 });

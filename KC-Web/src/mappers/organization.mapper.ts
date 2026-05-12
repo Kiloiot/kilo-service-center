@@ -10,7 +10,7 @@ import type {
   OrganizationUI,
   OrganizationUserAPI,
   OrganizationUserUI,
-} from '@api-types/api';
+} from "@api-types/api";
 
 /**
  * Maps a single OrganizationAPI to OrganizationUI.
@@ -59,6 +59,8 @@ export function mapOrgUser(api: OrganizationUserAPI): OrganizationUserUI {
 /**
  * Maps an array of OrganizationUserAPI to OrganizationUserUI.
  */
-export function mapOrgUserList(users: OrganizationUserAPI[]): OrganizationUserUI[] {
+export function mapOrgUserList(
+  users: OrganizationUserAPI[],
+): OrganizationUserUI[] {
   return users.map(mapOrgUser);
 }

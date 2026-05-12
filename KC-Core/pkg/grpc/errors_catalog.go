@@ -423,16 +423,19 @@ const (
 	ErrTokenGatewayInternalTrustInvalidHeader = "KC-GRPC-ERR-602"
 
 	// Generic errors (KC-GRPC-ERR-900+)
-	ErrTokenInternalError        = "KC-GRPC-ERR-900"
-	ErrTokenInvalidArgument      = "KC-GRPC-ERR-901"
-	ErrTokenNotImplemented       = "KC-GRPC-ERR-902"
-	ErrTokenServiceUnavailable   = "KC-GRPC-ERR-903"
-	ErrTokenDatabaseError        = "KC-GRPC-ERR-904"
-	ErrTokenTenantRequired       = "KC-GRPC-ERR-905"
-	ErrTokenServiceNotConfigured = "KC-GRPC-ERR-906"
-	ErrTokenOrgRequired          = "KC-GRPC-ERR-907"
-	ErrTokenUserRequired         = "KC-GRPC-ERR-908"
-	ErrTokenContextMissing       = "KC-GRPC-ERR-909"
+	ErrTokenInternalError           = "KC-GRPC-ERR-900"
+	ErrTokenInvalidArgument         = "KC-GRPC-ERR-901"
+	ErrTokenNotImplemented          = "KC-GRPC-ERR-902"
+	ErrTokenServiceUnavailable      = "KC-GRPC-ERR-903"
+	ErrTokenDatabaseError           = "KC-GRPC-ERR-904"
+	ErrTokenTenantRequired          = "KC-GRPC-ERR-905"
+	ErrTokenServiceNotConfigured    = "KC-GRPC-ERR-906"
+	ErrTokenOrgRequired             = "KC-GRPC-ERR-907"
+	ErrTokenUserRequired            = "KC-GRPC-ERR-908"
+	ErrTokenContextMissing          = "KC-GRPC-ERR-909"
+	ErrTokenCEStatusUnavailable     = "KC-GRPC-ERR-90A"
+	ErrTokenCEOnboardingUnavailable = "KC-GRPC-ERR-90B"
+	ErrTokenCERegistryUnavailable   = "KC-GRPC-ERR-90C"
 )
 
 // ErrorDefinition maps error tokens to messages and gRPC codes
@@ -2118,6 +2121,23 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenGatewayInternalTrustInvalidHeader,
 		Message: "invalid or missing internal trust header",
 		Code:    codes.Unauthenticated,
+	},
+
+	// CE/ECE edition-gated stubs (returned by RPCs whose owning service is nil in the running edition).
+	ErrTokenCEStatusUnavailable: {
+		Token:   ErrTokenCEStatusUnavailable,
+		Message: "CE status not available in this edition",
+		Code:    codes.Unimplemented,
+	},
+	ErrTokenCEOnboardingUnavailable: {
+		Token:   ErrTokenCEOnboardingUnavailable,
+		Message: "CE onboarding not available in this edition",
+		Code:    codes.Unimplemented,
+	},
+	ErrTokenCERegistryUnavailable: {
+		Token:   ErrTokenCERegistryUnavailable,
+		Message: "CE registry not available in this edition",
+		Code:    codes.Unimplemented,
 	},
 }
 

@@ -1,10 +1,17 @@
-import React from 'react';
+import React from "react";
 
-import { Box, FormControl, MenuItem, Pagination, Select, Typography } from '@mui/material';
+import {
+  Box,
+  FormControl,
+  MenuItem,
+  Pagination,
+  Select,
+  Typography,
+} from "@mui/material";
 
-import { PAGINATION } from '@constants/app';
-import { PAGINATION_LABELS } from '@constants/messages';
-import { componentSpacing } from '@theme/index';
+import { PAGINATION } from "@constants/app";
+import { PAGINATION_LABELS } from "@constants/messages";
+import { componentSpacing } from "@theme/index";
 
 interface PaginationControlsProps {
   page: number; // 0-based
@@ -33,19 +40,26 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
     <Box
       sx={{
         mt: componentSpacing.pagination.containerMt,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        flexWrap: "wrap",
         gap: componentSpacing.pagination.containerGap,
       }}
     >
       {/* Left: Rows per page */}
-      <Box display="flex" alignItems="center" gap={componentSpacing.pagination.controlGap}>
+      <Box
+        display="flex"
+        alignItems="center"
+        gap={componentSpacing.pagination.controlGap}
+      >
         <Typography variant="body2" color="text.secondary">
           {PAGINATION_LABELS.ROWS_PER_PAGE}
         </Typography>
-        <FormControl size="small" sx={{ minWidth: componentSpacing.pagination.selectMinWidth }}>
+        <FormControl
+          size="small"
+          sx={{ minWidth: componentSpacing.pagination.selectMinWidth }}
+        >
           <Select
             value={rowsPerPage}
             onChange={(e) => onRowsPerPageChange(Number(e.target.value))}

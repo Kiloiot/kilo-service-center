@@ -74,7 +74,7 @@ func (a *IdentityRPCEventAdapter) CreateEvent(ctx context.Context, event *models
 	defer cancel()
 
 	if _, err := a.client.RecordPlatformEvent(rpcCtx, req); err != nil {
-		a.log.Warn("failed to record platform event via KC-Identity",
+		a.log.Warn(LogGatewayPlatformEventViaIdentityRecordFailed,
 			"eventType", event.EventType,
 			"error", err)
 		return err

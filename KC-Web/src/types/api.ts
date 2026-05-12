@@ -84,7 +84,7 @@ export interface BaseStationResponse {
 
 export interface BaseStationDetailAPI extends BaseStationAPI {
   description?: string;
-  connectionType: 'bssci' | 'mqtt';
+  connectionType: "bssci" | "mqtt";
   serviceCenterUrl?: string;
   version?: string;
   latitude?: number;
@@ -135,7 +135,7 @@ export interface BaseStationMessageAPI {
   id: string;
   receivedAt: string;
   messageType: string; // "ulData", "attach", "detach", etc.
-  direction: 'uplink' | 'downlink';
+  direction: "uplink" | "downlink";
   epEui: string;
   bsEui: string;
   packetCnt: number;
@@ -167,7 +167,7 @@ export interface BaseStationMessagesFilter {
   startTime?: string;
   endTime?: string;
   messageTypes?: string[];
-  direction?: 'uplink' | 'downlink';
+  direction?: "uplink" | "downlink";
   epEui?: string;
   minRssi?: number;
   maxRssi?: number;
@@ -218,7 +218,7 @@ export interface ActivityEventItem {
 }
 
 export interface ActivityItem {
-  type: 'event' | 'message';
+  type: "event" | "message";
   occurredAt: Date;
   event?: ActivityEventItem;
   message?: BaseStationMessageAPI;
@@ -248,7 +248,7 @@ export interface EndpointAPI {
   name?: string;
   lastSeen?: string;
   createdAt: string;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
   batteryLevel?: number;
   shAddr?: number;
   bidi?: boolean; // Derived from ep_class: 'A' = true, 'Z' = false
@@ -265,7 +265,7 @@ export interface EndpointAPI {
   attachCnt?: number; // Attachment counter
   lastPacketCnt?: number; // Packet counter (last received)
   // Attach status from ep_status column (replaces propagated/propagatedAt/propagationCount)
-  attachStatus?: 'attached' | 'detached' | 'attaching' | 'pending' | 'unknown';
+  attachStatus?: "attached" | "detached" | "attaching" | "pending" | "unknown";
   // Type EUI (8-byte device type identifier)
   typeEui?: string;
   // Blueprint device model association
@@ -342,7 +342,7 @@ export interface EventAPI {
   message?: string;
   description?: string;
   source_name?: string;
-  severity: 'success' | 'warning' | 'error' | 'info'; // Backend uses severity, not status
+  severity: "success" | "warning" | "error" | "info"; // Backend uses severity, not status
   metadata?: Record<string, unknown>;
 }
 
@@ -387,7 +387,7 @@ export interface CertificateAPI {
 
 export interface CertificateStatusResponse {
   certificates: CertificateAPI[];
-  status: 'ok' | 'warning' | 'error';
+  status: "ok" | "warning" | "error";
   message?: string;
 }
 
@@ -430,7 +430,7 @@ export interface AlertSummaryAPI {
   info: number;
   recent: Array<{
     id: string;
-    level: 'critical' | 'warning' | 'info';
+    level: "critical" | "warning" | "info";
     message: string;
     timestamp: string;
   }>;
@@ -444,8 +444,8 @@ export interface BaseStationUI {
   id: string;
   eui: string;
   name?: string;
-  status: 'online' | 'offline';
-  connectionType: 'BSSCI' | 'MQTT';
+  status: "online" | "offline";
+  connectionType: "BSSCI" | "MQTT";
   createdAt: string;
   lastSeen: string;
   serviceCenterUrl: string;
@@ -455,7 +455,7 @@ export interface BaseStationUI {
   latitude?: number;
   longitude?: number;
   altitude?: number;
-  locationSource?: 'gps' | 'manual';
+  locationSource?: "gps" | "manual";
   locationUpdatedAt?: string;
   // MIOTY status metrics (available in detail view) per BSSCI v1.0.0 §3.5.2
   systemTime?: number;
@@ -473,7 +473,7 @@ export interface EndpointUI {
   id: string; // Backward compat alias for epEui (used as key in lists/grids)
   epEui: string; // Primary identifier (was numeric id)
   name?: string;
-  status: 'active' | 'inactive';
+  status: "active" | "inactive";
   batteryLevel?: number;
   lastSeen?: string;
   createdAt: string; // Required for weekly addition tracking (matches EndpointAPI)
@@ -481,7 +481,7 @@ export interface EndpointUI {
   attachCnt?: number;
   lastPacketCnt?: number;
   // Attach status from ep_status column (replaces propagated/propagatedAt/propagationCount)
-  attachStatus: 'attached' | 'detached' | 'attaching' | 'pending' | 'unknown';
+  attachStatus: "attached" | "detached" | "attaching" | "pending" | "unknown";
   // MIOTY configuration fields per BSSCI v1.0.0 §3.8.1
   shAddr?: number;
   bidi?: boolean; // Derived from ep_class: 'A' = true, 'Z' = false
@@ -505,8 +505,8 @@ export interface EndpointUI {
 
 export interface EventUI {
   id: string;
-  type: 'success' | 'warning' | 'error' | 'info';
-  severity: 'success' | 'warning' | 'error' | 'info';
+  type: "success" | "warning" | "error" | "info";
+  severity: "success" | "warning" | "error" | "info";
   message: string;
   time: string; // Relative time like "2 hours ago"
   timestamp: string; // ISO timestamp for date grouping
@@ -519,7 +519,7 @@ export interface EventUI {
 
 export interface CertificateUI {
   name: string;
-  status: 'valid' | 'expiring' | 'expired';
+  status: "valid" | "expiring" | "expired";
   expiryDate: string;
   daysUntilExpiry: number;
   issuer: string;
@@ -536,9 +536,15 @@ export class ApiError extends Error {
   public token?: string;
   public details?: unknown;
 
-  constructor(status: number, message: string, details?: unknown, code?: string, token?: string) {
+  constructor(
+    status: number,
+    message: string,
+    details?: unknown,
+    code?: string,
+    token?: string,
+  ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.token = token;

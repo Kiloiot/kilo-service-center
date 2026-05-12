@@ -4,9 +4,9 @@
  * Editable organization configuration form with delete action.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 
-import type { OrganizationUI, UpdateOrganizationRequest } from '@api-types/api';
+import type { OrganizationUI, UpdateOrganizationRequest } from "@api-types/api";
 import {
   Alert,
   Box,
@@ -21,24 +21,33 @@ import {
   Switch,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { useDeleteOrganization, useUpdateOrganization } from '@hooks/useOrganizations';
-import { ERR_DELETE_ORGANIZATION, ORGANIZATION_FORM } from '@constants/messages';
+import {
+  useDeleteOrganization,
+  useUpdateOrganization,
+} from "@hooks/useOrganizations";
+import {
+  ERR_DELETE_ORGANIZATION,
+  ORGANIZATION_FORM,
+} from "@constants/messages";
 
-import TagsEditor from './TagsEditor';
+import TagsEditor from "./TagsEditor";
 
 interface OrganizationFormProps {
   organization: OrganizationUI;
   onDeleted?: () => void;
 }
 
-const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onDeleted }) => {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+const OrganizationForm: React.FC<OrganizationFormProps> = ({
+  organization,
+  onDeleted,
+}) => {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [canHaveBaseStations, setCanHaveBaseStations] = useState(true);
-  const [maxBsCount, setMaxBsCount] = useState('');
-  const [maxEpCount, setMaxEpCount] = useState('');
+  const [maxBsCount, setMaxBsCount] = useState("");
+  const [maxEpCount, setMaxEpCount] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [successSnackbarOpen, setSuccessSnackbarOpen] = useState(false);
@@ -48,13 +57,17 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onDel
 
   useEffect(() => {
     setName(organization.name);
-    setDescription(organization.description ?? '');
+    setDescription(organization.description ?? "");
     setCanHaveBaseStations(organization.canHaveBaseStations);
     setMaxBsCount(
-      organization.maxBaseStationCount !== undefined ? String(organization.maxBaseStationCount) : ''
+      organization.maxBaseStationCount !== undefined
+        ? String(organization.maxBaseStationCount)
+        : "",
     );
     setMaxEpCount(
-      organization.maxEndpointCount !== undefined ? String(organization.maxEndpointCount) : ''
+      organization.maxEndpointCount !== undefined
+        ? String(organization.maxEndpointCount)
+        : "",
     );
     setTags(organization.tags ?? {});
   }, [organization]);
@@ -76,7 +89,10 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onDel
   const handleSave = async () => {
     const payload = buildUpdateRequest();
     try {
-      await updateOrganization.mutateAsync({ id: organization.id, data: payload });
+      await updateOrganization.mutateAsync({
+        id: organization.id,
+        data: payload,
+      });
       setSuccessSnackbarOpen(true);
     } catch {
       // Error surfaced via updateOrganization.isError
@@ -140,11 +156,11 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onDel
         label={ORGANIZATION_FORM.LABEL_CAN_HAVE_BS}
         sx={{ mt: 1 }}
       />
-      <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+      <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
         <TextField
           label={ORGANIZATION_FORM.LABEL_MAX_BS_COUNT}
           value={maxBsCount}
-          onChange={(e) => setMaxBsCount(e.target.value.replace(/\D/g, ''))}
+          onChange={(e) => setMaxBsCount(e.target.value.replace(/\D/g, ""))}
           helperText={ORGANIZATION_FORM.HELPER_MAX_BS_COUNT}
           type="number"
           slotProps={{ htmlInput: { min: 0 } }}
@@ -154,7 +170,7 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onDel
         <TextField
           label={ORGANIZATION_FORM.LABEL_MAX_EP_COUNT}
           value={maxEpCount}
-          onChange={(e) => setMaxEpCount(e.target.value.replace(/\D/g, ''))}
+          onChange={(e) => setMaxEpCount(e.target.value.replace(/\D/g, ""))}
           helperText={ORGANIZATION_FORM.HELPER_MAX_EP_COUNT}
           type="number"
           slotProps={{ htmlInput: { min: 0 } }}
@@ -167,7 +183,7 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onDel
         </Typography>
         <TagsEditor tags={tags} onChange={setTags} />
       </Box>
-      <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
+      <Box sx={{ display: "flex", gap: 2, mt: 3 }}>
         <Button
           variant="contained"
           onClick={handleSave}
@@ -185,16 +201,25 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onDel
         </Button>
       </Box>
 
-      <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)}>
+      <Dialog
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+      >
         <DialogTitle>{ORGANIZATION_FORM.ACTION_DELETE}</DialogTitle>
         <DialogContent>
-          <DialogContentText>{ORGANIZATION_FORM.CONFIRM_DELETE}</DialogContentText>
+          <DialogContentText>
+            {ORGANIZATION_FORM.CONFIRM_DELETE}
+          </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmDeleteOpen(false)}>
             {ORGANIZATION_FORM.ACTION_CANCEL}
           </Button>
-          <Button color="error" onClick={handleDelete} disabled={deleteOrganization.isPending}>
+          <Button
+            color="error"
+            onClick={handleDelete}
+            disabled={deleteOrganization.isPending}
+          >
             {ORGANIZATION_FORM.ACTION_DELETE}
           </Button>
         </DialogActions>
@@ -204,7 +229,7 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({ organization, onDel
         open={successSnackbarOpen}
         autoHideDuration={3000}
         onClose={() => setSuccessSnackbarOpen(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert severity="success" onClose={() => setSuccessSnackbarOpen(false)}>
           {ORGANIZATION_FORM.SUCCESS_UPDATE}

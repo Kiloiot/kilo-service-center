@@ -3,8 +3,8 @@
  * RFC 7519 compliant JWT parsing with base64url support
  */
 
-import { logger } from '@utils/logger';
-import { externalOrgClaimPath } from '@config/env';
+import { logger } from "@utils/logger";
+import { externalOrgClaimPath } from "@config/env";
 
 /**
  * Decode JWT payload with proper base64url handling
@@ -17,32 +17,34 @@ import { externalOrgClaimPath } from '@config/env';
  * - Handles URL-safe characters: - and _
  * - Supports Unicode characters in claims
  */
-export function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  if (!token || token.split('.').length !== 3) {
+export function decodeJwtPayload(
+  token: string,
+): Record<string, unknown> | null {
+  if (!token || token.split(".").length !== 3) {
     return null;
   }
 
   try {
     // Step 1: Extract payload (middle part of JWT)
-    const base64Url = token.split('.')[1];
+    const base64Url = token.split(".")[1];
 
     // Step 2: Convert base64url → base64 (RFC 7519 standard)
     // Replace URL-safe characters: - → +, _ → /
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
 
     // Step 3: Decode base64 with Unicode support
     // Handles special characters in organization names, user names, etc.
     const jsonPayload = decodeURIComponent(
       atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join(""),
     );
 
     // Step 4: Parse JSON payload
     return JSON.parse(jsonPayload);
   } catch (error) {
-    logger.error('Failed to decode JWT payload:', error);
+    logger.error("Failed to decode JWT payload:", error);
     return null;
   }
 }
@@ -61,9 +63,10 @@ export function extractOrganizationId(token: string): string | null {
   const orgId = payload[externalOrgClaimPath];
 
   // Validate UUID format
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  return typeof orgId === 'string' && uuidRegex.test(orgId) ? orgId : null;
+  return typeof orgId === "string" && uuidRegex.test(orgId) ? orgId : null;
 }
 
 /**
@@ -75,7 +78,7 @@ export function extractOrganizationId(token: string): string | null {
 export function extractOrganizationName(token: string): string | null {
   const payload = decodeJwtPayload(token);
   const orgName = payload?.organization_name;
-  return typeof orgName === 'string' ? orgName : null;
+  return typeof orgName === "string" ? orgName : null;
 }
 
 /**
@@ -92,9 +95,10 @@ export function extractUserId(token: string): string | null {
   const userId = payload.sub;
 
   // Validate UUID format
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  return typeof userId === 'string' && uuidRegex.test(userId) ? userId : null;
+  return typeof userId === "string" && uuidRegex.test(userId) ? userId : null;
 }
 
 /**
@@ -111,7 +115,10 @@ export function extractTenantId(token: string): string | null {
   const tenantId = payload[externalOrgClaimPath];
 
   // Validate UUID format
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  return typeof tenantId === 'string' && uuidRegex.test(tenantId) ? tenantId : null;
+  return typeof tenantId === "string" && uuidRegex.test(tenantId)
+    ? tenantId
+    : null;
 }

@@ -128,7 +128,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 		return nil, fmt.Errorf("email: %w", errEmailExists)
 	}
 	if !errors.Is(err, interfaces.ErrRecordNotFound) {
-		s.log.ErrorContext(ctx, "failed to check email uniqueness", "error", err)
+		s.log.ErrorContext(ctx, LogRegistrationEmailUniquenessCheckFailed, "error", err)
 		return nil, fmt.Errorf("check email: %w", errRegistrationFailed)
 	}
 
@@ -160,7 +160,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 	if s.isCommunityEdition {
 		defaultOrg, lookupErr := s.defaultOrgRepo.GetOrgByTenantID(ctx, s.defaultTenantID)
 		if lookupErr != nil || defaultOrg == nil {
-			s.log.ErrorContext(ctx, "CE default org lookup failed", "error", lookupErr)
+			s.log.ErrorContext(ctx, LogRegistrationCEDefaultOrgLookupFailed, "error", lookupErr)
 			return nil, fmt.Errorf("register account: %w", errRegistrationFailed)
 		}
 
@@ -170,7 +170,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 			OrgID:    defaultOrg.OrgID,
 		})
 		if ceErr != nil {
-			s.log.ErrorContext(ctx, "CE registration failed", "error", ceErr)
+			s.log.ErrorContext(ctx, LogRegistrationCERegistrationFailed, "error", ceErr)
 			return nil, fmt.Errorf("register account: %w", errRegistrationFailed)
 		}
 		result = ceResult
@@ -180,7 +180,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 			CompanyName: req.CompanyName,
 		})
 		if eceErr != nil {
-			s.log.ErrorContext(ctx, "registration transaction failed", "error", eceErr)
+			s.log.ErrorContext(ctx, LogRegistrationTransactionFailed, "error", eceErr)
 			return nil, fmt.Errorf("register account: %w", errRegistrationFailed)
 		}
 		result = eceResult
@@ -189,7 +189,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 	// Issue access token
 	accessToken, err := s.tokenIssuer.IssueAccessToken(result.User.ID, &result.Organization.OrgID)
 	if err != nil {
-		s.log.ErrorContext(ctx, "failed to issue access token after registration", "user_id", result.User.ID, "error", err)
+		s.log.ErrorContext(ctx, LogRegistrationAccessTokenIssueFailed, "user_id", result.User.ID, "error", err)
 		return nil, fmt.Errorf("issue token: %w", errRegistrationFailed)
 	}
 
@@ -202,7 +202,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 	if s.refreshTokenEnabled {
 		refreshToken, err := s.tokenIssuer.IssueRefreshToken(result.User.ID)
 		if err != nil {
-			s.log.ErrorContext(ctx, "failed to issue refresh token after registration", "user_id", result.User.ID, "error", err)
+			s.log.ErrorContext(ctx, LogRegistrationRefreshTokenIssueFailed, "user_id", result.User.ID, "error", err)
 		} else {
 			// Store refresh token hash
 			tokenHash := auth.HashRefreshToken(refreshToken)
@@ -214,7 +214,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 				ExpiresAt: s.tokenIssuer.GetRefreshExpiresAt(),
 			}
 			if storeErr := s.refreshTokenStore.Create(ctx, rt); storeErr != nil {
-				s.log.ErrorContext(ctx, "failed to store refresh token after registration", "user_id", result.User.ID, "error", storeErr)
+				s.log.ErrorContext(ctx, LogRegistrationRefreshTokenStoreFailed, "user_id", result.User.ID, "error", storeErr)
 			} else {
 				tokens.RefreshToken = refreshToken
 				tokens.RefreshExpiresIn = s.tokenIssuer.GetRefreshTTL()
@@ -225,7 +225,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 	// Load memberships for profile
 	memberships, err := s.membershipStore.ListUserMemberships(ctx, result.User.ID)
 	if err != nil {
-		s.log.ErrorContext(ctx, "failed to load memberships after registration", "user_id", result.User.ID, "error", err)
+		s.log.ErrorContext(ctx, LogRegistrationMembershipLoadFailed, "user_id", result.User.ID, "error", err)
 		memberships = nil
 	}
 

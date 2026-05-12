@@ -288,10 +288,12 @@ func insertEndpointWithDetachKeys(t *testing.T, db *sqlx.DB, p EndpointInsertPar
 	t.Helper()
 	applyEndpointDefaults(&p)
 
-	// Default detach keys to zeros if not provided
+	// Default detach keys to zeros if not provided.
+	// sign must be exactly 4 bytes per migration 000048 length constraint.
+	// preshared_key must be exactly 16 bytes per migration 000133 length constraint.
 	sign := p.Sign
 	if sign == nil {
-		sign = make([]byte, 16)
+		sign = make([]byte, 4)
 	}
 	preshared := p.Preshared
 	if preshared == nil {

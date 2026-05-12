@@ -5,14 +5,14 @@ import (
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 // GetCEStatus returns CE installation status. Only meaningful in CE mode.
 func (s *CoreService) GetCEStatus(ctx context.Context, req *pb.GetCEStatusRequest) (*pb.GetCEStatusResponse, error) {
 	if s.ceBootstrapSvc == nil {
-		return nil, status.Error(codes.Unimplemented, "CE status not available in this edition")
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCEStatusUnavailable),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCEStatusUnavailable))
 	}
 	return s.ceBootstrapSvc.GetCEStatus(ctx, req)
 }
@@ -20,7 +20,8 @@ func (s *CoreService) GetCEStatus(ctx context.Context, req *pb.GetCEStatusReques
 // CompleteCEOnboarding stores the company name and completes CE onboarding. CE mode only.
 func (s *CoreService) CompleteCEOnboarding(ctx context.Context, req *pb.CompleteCEOnboardingRequest) (*pb.CompleteCEOnboardingResponse, error) {
 	if s.ceBootstrapSvc == nil {
-		return nil, status.Error(codes.Unimplemented, "CE onboarding not available in this edition")
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCEOnboardingUnavailable),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCEOnboardingUnavailable))
 	}
 	return s.ceBootstrapSvc.CompleteCEOnboarding(ctx, req)
 }
@@ -29,7 +30,8 @@ func (s *CoreService) CompleteCEOnboarding(ctx context.Context, req *pb.Complete
 // Restricted to server admins.
 func (s *CoreService) ListCEInstances(ctx context.Context, req *pb.ListCEInstancesRequest) (*pb.ListCEInstancesResponse, error) {
 	if s.ceRegistrySvc == nil {
-		return nil, status.Error(codes.Unimplemented, "CE registry not available in this edition")
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCERegistryUnavailable),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCERegistryUnavailable))
 	}
 
 	userID, err := GetUserFromContext(ctx)
@@ -59,7 +61,8 @@ func (s *CoreService) ListCEInstances(ctx context.Context, req *pb.ListCEInstanc
 // Restricted to server admins.
 func (s *CoreService) RevokeCEInstance(ctx context.Context, req *pb.RevokeCEInstanceRequest) (*pb.RevokeCEInstanceResponse, error) {
 	if s.ceRegistrySvc == nil {
-		return nil, status.Error(codes.Unimplemented, "CE registry not available in this edition")
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCERegistryUnavailable),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCERegistryUnavailable))
 	}
 
 	userID, err := GetUserFromContext(ctx)

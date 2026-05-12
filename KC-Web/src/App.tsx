@@ -1,36 +1,46 @@
-import React, { useEffect, useMemo } from 'react';
-import { BrowserRouter as Router, useLocation } from 'react-router-dom';
+import React, { useEffect, useMemo } from "react";
+import { BrowserRouter as Router, useLocation } from "react-router-dom";
 
-import { useRealtimeUpdates } from '@hooks';
-import { AppBar, Box, IconButton, Toolbar, Typography, useTheme } from '@mui/material';
-import { AppRouter, AuthGuard } from '@router';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { EnvBadge } from '@ui';
+import { useRealtimeUpdates } from "@hooks";
+import {
+  AppBar,
+  Box,
+  IconButton,
+  Toolbar,
+  Typography,
+  useTheme,
+} from "@mui/material";
+import { AppRouter, AuthGuard } from "@router";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { EnvBadge } from "@ui";
 
-import GlobalLoader from '@components/common/GlobalLoader';
-import AlertBanner from '@components/layout/AlertBanner';
-import AppNavigation from '@components/layout/AppNavigation';
-import OrgBadge from '@components/layout/OrgBadge';
-import { apiService } from '@services/api';
-import type { FeatureFlags } from '@contexts/FeatureFlagContext';
-import { FeatureFlagProvider } from '@contexts/FeatureFlagContext';
-import { FiltersProvider } from '@contexts/filters';
-import { OrganizationProvider, useOrganization } from '@contexts/OrganizationContext';
-import { SessionProvider, useSession } from '@contexts/SessionContext';
-import { SystemProvider, useSystem } from '@contexts/SystemContext';
-import { APP_TITLE, DRAWER_WIDTH, ROUTES } from '@constants/app';
-import { ARIA } from '@constants/messages';
-import { isDevelopment } from '@config/env';
-import { queryClient } from '@config/query-client';
-import { MenuIcon } from '@theme/icons';
+import GlobalLoader from "@components/common/GlobalLoader";
+import AlertBanner from "@components/layout/AlertBanner";
+import AppNavigation from "@components/layout/AppNavigation";
+import OrgBadge from "@components/layout/OrgBadge";
+import { apiService } from "@services/api";
+import type { FeatureFlags } from "@contexts/FeatureFlagContext";
+import { FeatureFlagProvider } from "@contexts/FeatureFlagContext";
+import { FiltersProvider } from "@contexts/filters";
+import {
+  OrganizationProvider,
+  useOrganization,
+} from "@contexts/OrganizationContext";
+import { SessionProvider, useSession } from "@contexts/SessionContext";
+import { SystemProvider, useSystem } from "@contexts/SystemContext";
+import { APP_TITLE, DRAWER_WIDTH, ROUTES } from "@constants/app";
+import { ARIA } from "@constants/messages";
+import { isDevelopment } from "@config/env";
+import { queryClient } from "@config/query-client";
+import { MenuIcon } from "@theme/icons";
 
-import 'leaflet/dist/leaflet.css';
+import "leaflet/dist/leaflet.css";
 
 const ReactQueryDevtools = isDevelopment
   ? React.lazy(() =>
-      import('@tanstack/react-query-devtools').then((m) => ({
+      import("@tanstack/react-query-devtools").then((m) => ({
         default: m.ReactQueryDevtools,
-      }))
+      })),
     )
   : null;
 
@@ -45,7 +55,9 @@ const AppContent: React.FC = () => {
   const { user, isHydrated } = useSession();
 
   // Check if current route is a public route (login, auth callback)
-  const isPublicRoute = PUBLIC_ROUTES.some((path) => location.pathname.startsWith(path));
+  const isPublicRoute = PUBLIC_ROUTES.some((path) =>
+    location.pathname.startsWith(path),
+  );
 
   // Wire realtime connection + cache invalidation globally
   useRealtimeUpdates();
@@ -75,7 +87,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: "flex" }}>
       {/* App Bar */}
       <AppBar
         position="fixed"
@@ -91,17 +103,23 @@ const AppContent: React.FC = () => {
             aria-label={ARIA.OPEN_DRAWER}
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: theme.spacing(2), display: { sm: 'none' } }}
+            sx={{ mr: theme.spacing(2), display: { sm: "none" } }}
           >
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {APP_TITLE}
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: theme.spacing(2) }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: theme.spacing(2),
+            }}
+          >
             {/* Environment Badge */}
             <EnvBadge hideInProduction />
-            <Box sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+            <Box sx={{ display: { xs: "none", sm: "inline-flex" } }}>
               <OrgBadge />
             </Box>
           </Box>
@@ -109,7 +127,10 @@ const AppContent: React.FC = () => {
       </AppBar>
 
       {/* Navigation */}
-      <AppNavigation mobileOpen={mobileOpen} handleDrawerToggle={handleDrawerToggle} />
+      <AppNavigation
+        mobileOpen={mobileOpen}
+        handleDrawerToggle={handleDrawerToggle}
+      />
 
       {/* Main content */}
       <Box
@@ -141,11 +162,12 @@ const AppContent: React.FC = () => {
 const EditionAwareApp: React.FC = () => {
   const { versionInfo, loading: systemLoading } = useSystem();
 
-  const isEnterprise = versionInfo?.editionCode === 'ece';
+  const isEnterprise = versionInfo?.editionCode === "ece";
 
   const flagOverrides: Partial<FeatureFlags> | undefined = useMemo(
-    () => (systemLoading ? undefined : { enterprise_organizations: isEnterprise }),
-    [systemLoading, isEnterprise]
+    () =>
+      systemLoading ? undefined : { enterprise_organizations: isEnterprise },
+    [systemLoading, isEnterprise],
   );
 
   return (

@@ -41,6 +41,154 @@ func nullableByteParam(b []byte) interface{} {
 	return b
 }
 
+// hstoreToStringMap converts a postgres hstore to a Go map, omitting NULL values.
+func hstoreToStringMap(h hstore.Hstore) map[string]string {
+	out := make(map[string]string, len(h.Map))
+	for k, v := range h.Map {
+		if v.Valid {
+			out[k] = v.String
+		}
+	}
+	return out
+}
+
+// euiPtrFromBytes converts an 8-byte BYTEA column to *models.EUI. Returns nil
+// for any other length so callers can leave the destination unset.
+func euiPtrFromBytes(b []byte) *models.EUI {
+	if len(b) != 8 {
+		return nil
+	}
+	var eui models.EUI
+	copy(eui[:], b)
+	return &eui
+}
+
+// attachNullables groups the nullable scan targets for an endpoint's last-attach
+// metrics. Pass field addresses to sql.Row.Scan, then call assignAttachFields.
+type attachNullables struct {
+	LastAttachRxTime     sql.NullInt64
+	LastAttachRxDuration sql.NullInt64
+	LastAttachSubpackets sql.NullString
+	LastAttachedBsEui    sql.NullInt64
+}
+
+func assignAttachFields(ep *models.EndPoint, n attachNullables) {
+	if n.LastAttachRxTime.Valid {
+		v := n.LastAttachRxTime.Int64
+		ep.LastAttachRxTime = &v
+	}
+	if n.LastAttachRxDuration.Valid {
+		v := n.LastAttachRxDuration.Int64
+		ep.LastAttachRxDuration = &v
+	}
+	if n.LastAttachSubpackets.Valid {
+		v := n.LastAttachSubpackets.String
+		ep.LastAttachSubpackets = &v
+	}
+	if n.LastAttachedBsEui.Valid {
+		v := n.LastAttachedBsEui.Int64
+		ep.LastAttachedBsEui = &v
+	}
+}
+
+// detachNullables groups the nullable scan targets for an endpoint's detach
+// and propagate state.
+type detachNullables struct {
+	LastDetachTime      sql.NullInt64
+	LastDetachPacketCnt sql.NullInt64
+	LastDetachSign      []byte
+	LastPropagateTime   sql.NullInt64
+	PropagateStatus     sql.NullString
+	PropagatedAt        sql.NullTime
+}
+
+func assignDetachFields(ep *models.EndPoint, n detachNullables) {
+	if n.LastDetachTime.Valid {
+		v := n.LastDetachTime.Int64
+		ep.LastDetachTime = &v
+	}
+	if n.LastDetachPacketCnt.Valid {
+		v := n.LastDetachPacketCnt.Int64
+		ep.LastDetachPacketCnt = &v
+	}
+	if len(n.LastDetachSign) > 0 {
+		ep.LastDetachSign = n.LastDetachSign
+	}
+	if n.LastPropagateTime.Valid {
+		v := n.LastPropagateTime.Int64
+		ep.LastPropagateTime = &v
+	}
+	if n.PropagateStatus.Valid {
+		v := n.PropagateStatus.String
+		ep.PropagateStatus = &v
+	}
+	if n.PropagatedAt.Valid {
+		v := n.PropagatedAt.Time
+		ep.PropagatedAt = &v
+	}
+}
+
+// radioNullables groups the nullable scan targets for the BSSCI §3.6.1/3.7.1
+// radio metrics.
+type radioNullables struct {
+	LastSNR     sql.NullFloat64
+	LastRSSI    sql.NullFloat64
+	LastEqSNR   sql.NullFloat64
+	LastProfile sql.NullString
+}
+
+func assignRadioMetrics(ep *models.EndPoint, n radioNullables) {
+	if n.LastSNR.Valid {
+		v := n.LastSNR.Float64
+		ep.LastSNR = &v
+	}
+	if n.LastRSSI.Valid {
+		v := n.LastRSSI.Float64
+		ep.LastRSSI = &v
+	}
+	if n.LastEqSNR.Valid {
+		v := n.LastEqSNR.Float64
+		ep.LastEqSNR = &v
+	}
+	if n.LastProfile.Valid {
+		v := n.LastProfile.String
+		ep.LastProfile = &v
+	}
+}
+
+// uplinkNullables groups the nullable scan targets for an endpoint's last-uplink
+// telemetry. Direct columns (LastDlOpen, LastResponseExp, LastDlAck, PacketCnt)
+// are scanned straight into the struct in callers and not represented here.
+type uplinkNullables struct {
+	LastUserData   []byte
+	LastFormatID   sql.NullInt32
+	LastMode       sql.NullString
+	LastRxTime     sql.NullInt64
+	LastRxDuration sql.NullInt64
+}
+
+func assignUplinkFields(ep *models.EndPoint, n uplinkNullables) {
+	if len(n.LastUserData) > 0 {
+		ep.LastUserData = n.LastUserData
+	}
+	if n.LastFormatID.Valid {
+		v := n.LastFormatID.Int32
+		ep.LastFormatID = &v
+	}
+	if n.LastMode.Valid {
+		v := n.LastMode.String
+		ep.LastMode = &v
+	}
+	if n.LastRxTime.Valid {
+		v := n.LastRxTime.Int64
+		ep.LastRxTime = &v
+	}
+	if n.LastRxDuration.Valid {
+		v := n.LastRxDuration.Int64
+		ep.LastRxDuration = &v
+	}
+}
+
 // endpointBaseSelectColumns defines the standard column list for endpoint queries.
 // Used by Get, GetEndpointWithOwnership, and related methods to ensure consistent field selection.
 // Column order MUST match scan order in methods using this constant.
@@ -163,6 +311,329 @@ func scanEndpointListRow(scanner interface {
 	if propagateStatus.Valid {
 		val := propagateStatus.String
 		endpoint.PropagateStatus = &val
+	}
+
+	return endpoint, nil
+}
+
+// endpointTenantLookupColumns lists columns returned by tenant-scoped endpoint
+// lookups (GetByEUI on both EndPointRepository and transactionalEndPointRepository).
+// Includes owner_tenant_id for cross-tenant roaming visibility and the full
+// attach/detach radio metrics. Column order MUST match scanEndpointTenantLookupRow.
+const endpointTenantLookupColumns = `
+	id, ep_eui, name, description, tenant_id, owner_tenant_id,
+	nwk_key, app_key, crypto_mode,
+	last_seen_at, frame_count, battery_level,
+	tags, created_at, updated_at, sh_addr,
+	endpoint_class, bidi, pre_attach, type_eui,
+	attach_cnt, last_packet_cnt,
+	carrier_offset, dual_chan, repetition, wide_carr_off, long_blk_dist,
+	last_attached_bs_eui, last_propagate_time, last_detach_time,
+	last_detach_sign, last_detach_packet_cnt, propagate_status,
+	last_attach_rx_time, last_attach_rx_duration,
+	last_snr, last_rssi, last_eq_snr, last_profile, last_attach_subpackets,
+	ep_status, device_model_id`
+
+// scanEndpointTenantLookupRow scans a row produced by endpointTenantLookupColumns
+// into *models.EndPoint with full nullable resolution. Returns the raw scan
+// error (callers map sql.ErrNoRows to their preferred sentinel).
+func scanEndpointTenantLookupRow(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*models.EndPoint, error) {
+	endpoint := &models.EndPoint{}
+	var tags hstore.Hstore
+	var typeEUIBytes []byte
+	var attachCnt sql.NullInt64
+	var attach attachNullables
+	var detach detachNullables
+	var radio radioNullables
+
+	err := scanner.Scan(
+		&endpoint.ID,
+		&endpoint.EUI,
+		&endpoint.Name,
+		&endpoint.Description,
+		&endpoint.TenantID,
+		&endpoint.OwnerTenantID,
+		&endpoint.NwkSnKey,
+		&endpoint.AppKey,
+		&endpoint.CryptoMode,
+		&endpoint.LastSeenAt,
+		&endpoint.FrameCount,
+		&endpoint.BatteryLevel,
+		&tags,
+		&endpoint.CreatedAt,
+		&endpoint.UpdatedAt,
+		&endpoint.ShAddr,
+		&endpoint.EPClass,
+		&endpoint.Bidi,
+		&endpoint.PreAttach,
+		&typeEUIBytes,
+		&attachCnt,
+		&endpoint.LastPacketCnt,
+		&endpoint.CarrierOffset,
+		&endpoint.DualChan,
+		&endpoint.Repetition,
+		&endpoint.WideCarrOff,
+		&endpoint.LongBlkDist,
+		// Detach fields (BSSCI §5.7)
+		&attach.LastAttachedBsEui, &detach.LastPropagateTime, &detach.LastDetachTime,
+		&detach.LastDetachSign, &detach.LastDetachPacketCnt, &detach.PropagateStatus,
+		// Radio metrics (BSSCI §3.6.1/3.7.1)
+		&attach.LastAttachRxTime, &attach.LastAttachRxDuration,
+		&radio.LastSNR, &radio.LastRSSI, &radio.LastEqSNR, &radio.LastProfile, &attach.LastAttachSubpackets,
+		&endpoint.EpStatus,
+		&endpoint.DeviceModelID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint.Tags = hstoreToStringMap(tags)
+	endpoint.TypeEUI = euiPtrFromBytes(typeEUIBytes)
+	if attachCnt.Valid {
+		val := uint32(attachCnt.Int64) // #nosec G115 -- DB CHECK constraint ensures 0-4294967295
+		endpoint.AttachCnt = &val
+	}
+	assignAttachFields(endpoint, attach)
+	assignDetachFields(endpoint, detach)
+	assignRadioMetrics(endpoint, radio)
+
+	return endpoint, nil
+}
+
+// endpointDetailColumns lists columns returned by full-detail endpoint lookups
+// (GetByID on both EndPointRepository and transactionalEndPointRepository).
+// Union of attach + detach + radio metric + UL/DL telemetry columns plus
+// owner_tenant_id, ep_status and device_model_id. Column order MUST match
+// scanEndpointDetailRow.
+const endpointDetailColumns = `
+	id, ep_eui, name, description, tenant_id, owner_tenant_id,
+	nwk_key, app_key, crypto_mode,
+	last_seen_at, frame_count, battery_level,
+	tags, created_at, updated_at, sh_addr,
+	manufacturer, model, carrier_offset, type_eui,
+	propagated, propagated_at, propagation_count,
+	bidi, pre_attach,
+	dual_chan, repetition, wide_carr_off, long_blk_dist,
+	attach_cnt, nonce, sign, last_attach_rx_time, last_attach_rx_duration,
+	last_snr, last_rssi, last_eq_snr, last_profile, last_attach_subpackets,
+	last_attached_bs_eui, last_propagate_time, last_detach_time,
+	last_detach_sign, last_detach_packet_cnt, propagate_status,
+	ep_status,
+	last_packet_cnt,
+	last_user_data, last_format_id, last_mode,
+	last_rx_time, last_rx_duration, packet_cnt,
+	last_dl_open, last_response_exp, last_dl_ack,
+	endpoint_class,
+	device_model_id`
+
+// scanEndpointDetailRow scans a row produced by endpointDetailColumns into
+// *models.EndPoint with full nullable resolution. Returns the raw scan error.
+func scanEndpointDetailRow(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*models.EndPoint, error) {
+	endpoint := &models.EndPoint{}
+	var tags hstore.Hstore
+	var typeEUIBytes []byte
+	var attachCnt sql.NullInt64
+	var nonce, sign []byte
+	var attach attachNullables
+	var detach detachNullables
+	var radio radioNullables
+	var uplink uplinkNullables
+
+	err := scanner.Scan(
+		&endpoint.ID,
+		&endpoint.EUI,
+		&endpoint.Name,
+		&endpoint.Description,
+		&endpoint.TenantID,
+		&endpoint.OwnerTenantID,
+		&endpoint.NwkSnKey,
+		&endpoint.AppKey,
+		&endpoint.CryptoMode,
+		&endpoint.LastSeenAt,
+		&endpoint.FrameCount,
+		&endpoint.BatteryLevel,
+		&tags,
+		&endpoint.CreatedAt,
+		&endpoint.UpdatedAt,
+		&endpoint.ShAddr,
+		&endpoint.Manufacturer,
+		&endpoint.Model,
+		&endpoint.CarrierOffset,
+		&typeEUIBytes,
+		&endpoint.Propagated,
+		&endpoint.PropagatedAt,
+		&endpoint.PropagationCount,
+		&endpoint.Bidi,
+		&endpoint.PreAttach,
+		// MIOTY config
+		&endpoint.DualChan, &endpoint.Repetition, &endpoint.WideCarrOff, &endpoint.LongBlkDist,
+		// Attach fields
+		&attachCnt, &nonce, &sign, &attach.LastAttachRxTime, &attach.LastAttachRxDuration,
+		// Radio metrics
+		&radio.LastSNR, &radio.LastRSSI, &radio.LastEqSNR, &radio.LastProfile, &attach.LastAttachSubpackets,
+		// Detach fields (BSSCI §5.7)
+		&attach.LastAttachedBsEui, &detach.LastPropagateTime, &detach.LastDetachTime,
+		&detach.LastDetachSign, &detach.LastDetachPacketCnt, &detach.PropagateStatus,
+		// Attach status
+		&endpoint.EpStatus,
+		// UL deduplication
+		&endpoint.LastPacketCnt,
+		// UL data
+		&uplink.LastUserData, &uplink.LastFormatID, &uplink.LastMode,
+		// UL reception
+		&uplink.LastRxTime, &uplink.LastRxDuration, &endpoint.PacketCnt,
+		// Downlink control
+		&endpoint.LastDlOpen, &endpoint.LastResponseExp, &endpoint.LastDlAck,
+		// Legacy
+		&endpoint.EPClass,
+		// Blueprint device model.
+		&endpoint.DeviceModelID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint.TypeEUI = euiPtrFromBytes(typeEUIBytes)
+	endpoint.Tags = hstoreToStringMap(tags)
+	if attachCnt.Valid {
+		val := uint32(attachCnt.Int64) // #nosec G115 -- DB CHECK constraint ensures 0-4294967295
+		endpoint.AttachCnt = &val
+	}
+	if len(nonce) > 0 {
+		endpoint.Nonce = nonce
+	}
+	if len(sign) > 0 {
+		endpoint.Sign = sign
+	}
+	assignAttachFields(endpoint, attach)
+	assignDetachFields(endpoint, detach)
+	assignRadioMetrics(endpoint, radio)
+	assignUplinkFields(endpoint, uplink)
+
+	return endpoint, nil
+}
+
+// endpointDetachValidationColumns lists columns returned by detach validation
+// lookups (GetEndpointWithKeysForDetachValidation variants). Includes the
+// preshared_key + key material needed for detach signature validation per
+// BSSCI §5.7. Column order MUST match scanEndpointDetachValidationRow.
+const endpointDetachValidationColumns = `
+	id, ep_eui, name, description, tenant_id, owner_tenant_id,
+	nwk_key, app_key, sh_addr, bidi, pre_attach, type_eui,
+	manufacturer, model, carrier_offset,
+	propagated, propagated_at, propagation_count,
+	dual_chan, repetition, wide_carr_off, long_blk_dist,
+	attach_cnt, nonce, sign, preshared_key,
+	last_attach_rx_time, last_attach_rx_duration,
+	last_snr, last_rssi, last_eq_snr, last_profile,
+	last_attach_subpackets,
+	last_attached_bs_eui, last_propagate_time, last_detach_time,
+	last_detach_sign, last_detach_packet_cnt, propagate_status,
+	last_packet_cnt,
+	last_user_data, last_format_id, last_mode,
+	last_rx_time, last_rx_duration, packet_cnt,
+	last_dl_open, last_response_exp, last_dl_ack,
+	crypto_mode, endpoint_class,
+	last_seen_at, frame_count, battery_level,
+	tags, created_at, updated_at,
+	device_model_id`
+
+// scanEndpointDetachValidationRow scans a row produced by
+// endpointDetachValidationColumns into *models.EndPoint with full nullable
+// resolution. Returns the raw scan error.
+func scanEndpointDetachValidationRow(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*models.EndPoint, error) {
+	endpoint := &models.EndPoint{}
+	var tags hstore.Hstore
+	var typeEUIBytes []byte
+	var attach attachNullables
+	var detach detachNullables
+	var radio radioNullables
+	var uplink uplinkNullables
+	var lastSeenAt sql.NullTime
+	var batteryLevel sql.NullFloat64
+
+	err := scanner.Scan(
+		&endpoint.ID,
+		&endpoint.EUI,
+		&endpoint.Name,
+		&endpoint.Description,
+		&endpoint.TenantID,
+		&endpoint.OwnerTenantID,
+		&endpoint.NwkSnKey,
+		&endpoint.AppKey,
+		&endpoint.ShAddr,
+		&endpoint.Bidi,
+		&endpoint.PreAttach,
+		&typeEUIBytes,
+		&endpoint.Manufacturer,
+		&endpoint.Model,
+		&endpoint.CarrierOffset,
+		&endpoint.Propagated,
+		&detach.PropagatedAt,
+		&endpoint.PropagationCount,
+		&endpoint.DualChan,
+		&endpoint.Repetition,
+		&endpoint.WideCarrOff,
+		&endpoint.LongBlkDist,
+		&endpoint.AttachCnt,
+		&endpoint.Nonce,
+		&endpoint.Sign,
+		&endpoint.PresharedKey,
+		&attach.LastAttachRxTime,
+		&attach.LastAttachRxDuration,
+		&radio.LastSNR,
+		&radio.LastRSSI,
+		&radio.LastEqSNR,
+		&radio.LastProfile,
+		&attach.LastAttachSubpackets,
+		&attach.LastAttachedBsEui,
+		&detach.LastPropagateTime,
+		&detach.LastDetachTime,
+		&endpoint.LastDetachSign,
+		&detach.LastDetachPacketCnt,
+		&detach.PropagateStatus,
+		&endpoint.LastPacketCnt,
+		&uplink.LastUserData,
+		&uplink.LastFormatID,
+		&uplink.LastMode,
+		&uplink.LastRxTime,
+		&uplink.LastRxDuration,
+		&endpoint.PacketCnt,
+		&endpoint.LastDlOpen,
+		&endpoint.LastResponseExp,
+		&endpoint.LastDlAck,
+		&endpoint.CryptoMode,
+		&endpoint.EPClass,
+		&lastSeenAt,
+		&endpoint.FrameCount,
+		&batteryLevel,
+		&tags,
+		&endpoint.CreatedAt,
+		&endpoint.UpdatedAt,
+		&endpoint.DeviceModelID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint.Tags = hstoreToStringMap(tags)
+	endpoint.TypeEUI = euiPtrFromBytes(typeEUIBytes)
+	assignAttachFields(endpoint, attach)
+	assignDetachFields(endpoint, detach)
+	assignRadioMetrics(endpoint, radio)
+	assignUplinkFields(endpoint, uplink)
+	if lastSeenAt.Valid {
+		endpoint.LastSeenAt = &lastSeenAt.Time
+	}
+	if batteryLevel.Valid {
+		val := float32(batteryLevel.Float64)
+		endpoint.BatteryLevel = &val
 	}
 
 	return endpoint, nil
@@ -304,7 +775,7 @@ func (r *EndPointRepository) Get(ctx context.Context, eui models.EUI) (*models.E
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("endpoint not found")
+		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint: %w", err)
@@ -346,153 +817,14 @@ func (r *EndPointRepository) Get(ctx context.Context, eui models.EUI) (*models.E
 
 // GetByEUI retrieves an endpoint by EUI for a specific tenant
 func (r *EndPointRepository) GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.EndPoint, error) {
-	query := `
-		SELECT
-			id, ep_eui, name, description, tenant_id,
-			nwk_key, app_key, crypto_mode,
-			last_seen_at, frame_count, battery_level,
-			tags, created_at, updated_at, sh_addr,
-			endpoint_class, bidi, pre_attach, type_eui,
-			attach_cnt, last_packet_cnt,
-			carrier_offset, dual_chan, repetition, wide_carr_off, long_blk_dist,
-			last_attached_bs_eui, last_propagate_time, last_detach_time,
-			last_detach_sign, last_detach_packet_cnt, propagate_status,
-			last_attach_rx_time, last_attach_rx_duration,
-			last_snr, last_rssi, last_eq_snr, last_profile, last_attach_subpackets,
-			ep_status,
-			device_model_id
-		FROM endpoints
-		WHERE tenant_id = $1 AND ep_eui = $2`
-
-	endpoint := &models.EndPoint{}
-	var tags hstore.Hstore
-	var lastDetachSign []byte
-	var typeEUIBytes []byte
-	var attachCnt sql.NullInt64
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
-	var propagateStatus sql.NullString
-	var lastAttachRxTime, lastAttachRxDuration sql.NullInt64
-	var lastSNR, lastRSSI, lastEqSNR sql.NullFloat64
-	var lastProfile, lastAttachSubpackets sql.NullString
-
-	err := r.db.QueryRowContext(ctx, query, tenantID, eui).Scan(
-		&endpoint.ID,
-		&endpoint.EUI,
-		&endpoint.Name,
-		&endpoint.Description,
-		&endpoint.TenantID,
-		&endpoint.NwkSnKey,
-		&endpoint.AppKey,
-		&endpoint.CryptoMode,
-		&endpoint.LastSeenAt,
-		&endpoint.FrameCount,
-		&endpoint.BatteryLevel,
-		&tags,
-		&endpoint.CreatedAt,
-		&endpoint.UpdatedAt,
-		&endpoint.ShAddr,
-		&endpoint.EPClass,
-		&endpoint.Bidi,
-		&endpoint.PreAttach,
-		&typeEUIBytes,
-		&attachCnt,
-		&endpoint.LastPacketCnt,
-		&endpoint.CarrierOffset,
-		&endpoint.DualChan,
-		&endpoint.Repetition,
-		&endpoint.WideCarrOff,
-		&endpoint.LongBlkDist,
-		// Detach fields (BSSCI §5.7)
-		&lastAttachedBsEui, &lastPropagateTime, &lastDetachTime,
-		&lastDetachSign, &lastDetachPacketCnt, &propagateStatus,
-		// Radio metrics fields (BSSCI §3.6.1/3.7.1 attach/detach telemetry)
-		&lastAttachRxTime, &lastAttachRxDuration,
-		&lastSNR, &lastRSSI, &lastEqSNR, &lastProfile, &lastAttachSubpackets,
-		&endpoint.EpStatus,
-		// Blueprint device model.
-		&endpoint.DeviceModelID,
-	)
-
+	query := `SELECT ` + endpointTenantLookupColumns + ` FROM endpoints WHERE tenant_id = $1 AND ep_eui = $2`
+	endpoint, err := scanEndpointTenantLookupRow(r.db.QueryRowContext(ctx, query, tenantID, eui))
 	if err == sql.ErrNoRows {
 		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint: %w", err)
 	}
-
-	// Convert hstore to map[string]string
-	endpoint.Tags = make(map[string]string)
-	for k, v := range tags.Map {
-		endpoint.Tags[k] = v.String
-	}
-
-	if len(typeEUIBytes) == 8 {
-		var typeEUI models.EUI
-		copy(typeEUI[:], typeEUIBytes)
-		endpoint.TypeEUI = &typeEUI
-	}
-
-	if attachCnt.Valid {
-		val := uint32(attachCnt.Int64) // #nosec G115 -- DB CHECK constraint ensures 0-4294967295
-		endpoint.AttachCnt = &val
-	}
-
-	// Detach nullable fields (BSSCI §5.7)
-	if len(lastDetachSign) > 0 {
-		endpoint.LastDetachSign = lastDetachSign
-	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
-	}
-
-	// Radio metrics nullable fields (BSSCI §3.6.1/3.7.1 attach/detach telemetry)
-	if lastAttachRxTime.Valid {
-		val := lastAttachRxTime.Int64
-		endpoint.LastAttachRxTime = &val
-	}
-	if lastAttachRxDuration.Valid {
-		val := lastAttachRxDuration.Int64
-		endpoint.LastAttachRxDuration = &val
-	}
-	if lastSNR.Valid {
-		val := lastSNR.Float64
-		endpoint.LastSNR = &val
-	}
-	if lastRSSI.Valid {
-		val := lastRSSI.Float64
-		endpoint.LastRSSI = &val
-	}
-	if lastEqSNR.Valid {
-		val := lastEqSNR.Float64
-		endpoint.LastEqSNR = &val
-	}
-	if lastProfile.Valid {
-		val := lastProfile.String
-		endpoint.LastProfile = &val
-	}
-	// BSSCI-ATTACH-024: Subpackets parity with GetByID
-	if lastAttachSubpackets.Valid {
-		val := lastAttachSubpackets.String
-		endpoint.LastAttachSubpackets = &val
-	}
-
 	return endpoint, nil
 }
 
@@ -631,6 +963,9 @@ func (r *EndPointRepository) GetByTenant(ctx context.Context, tenantID int64) ([
 
 		endpoints = append(endpoints, endpoint)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate tenant endpoints: %w", err)
+	}
 
 	return endpoints, nil
 }
@@ -650,209 +985,14 @@ func (r *EndPointRepository) CountByTenant(ctx context.Context, tenantID int64) 
 
 // GetByID retrieves an endpoint by ID with tenant isolation
 func (r *EndPointRepository) GetByID(ctx context.Context, id int64, tenantID int64) (*models.EndPoint, error) {
-	query := `
-		SELECT
-			id, ep_eui, name, description, tenant_id,
-			nwk_key, app_key, crypto_mode,
-			last_seen_at, frame_count, battery_level,
-			tags, created_at, updated_at, sh_addr,
-			manufacturer, model, carrier_offset, type_eui,
-			propagated, propagated_at, propagation_count,
-			bidi, pre_attach,
-			dual_chan, repetition, wide_carr_off, long_blk_dist,
-			attach_cnt, nonce, sign, last_attach_rx_time, last_attach_rx_duration,
-			last_snr, last_rssi, last_eq_snr, last_profile, last_attach_subpackets,
-			last_attached_bs_eui, last_propagate_time, last_detach_time,
-			last_detach_sign, last_detach_packet_cnt, propagate_status,
-			ep_status,
-			last_packet_cnt,
-			last_user_data, last_format_id, last_mode,
-			last_rx_time, last_rx_duration, packet_cnt,
-			last_dl_open, last_response_exp, last_dl_ack,
-			endpoint_class,
-			device_model_id
-		FROM endpoints
-		WHERE id = $1 AND tenant_id = $2`
-
-	endpoint := &models.EndPoint{}
-	var tags hstore.Hstore
-	var typeEUIBytes []byte
-
-	// Nullable scan targets
-	var attachCnt sql.NullInt64 // BIGINT for uint32 range per SCACI §3.6.1
-	var lastFormatID sql.NullInt32
-	var nonce, sign, lastUserData, lastDetachSign []byte
-	var lastAttachRxTime, lastAttachRxDuration, lastRxTime, lastRxDuration sql.NullInt64
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
-	var lastSNR, lastRSSI, lastEqSNR sql.NullFloat64
-	var lastProfile, lastAttachSubpackets, lastMode, propagateStatus sql.NullString
-
-	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
-		&endpoint.ID,
-		&endpoint.EUI,
-		&endpoint.Name,
-		&endpoint.Description,
-		&endpoint.TenantID,
-		&endpoint.NwkSnKey,
-		&endpoint.AppKey,
-		&endpoint.CryptoMode,
-		&endpoint.LastSeenAt,
-		&endpoint.FrameCount,
-		&endpoint.BatteryLevel,
-		&tags,
-		&endpoint.CreatedAt,
-		&endpoint.UpdatedAt,
-		&endpoint.ShAddr,
-		&endpoint.Manufacturer,
-		&endpoint.Model,
-		&endpoint.CarrierOffset,
-		&typeEUIBytes,
-		&endpoint.Propagated,
-		&endpoint.PropagatedAt,
-		&endpoint.PropagationCount,
-		&endpoint.Bidi,
-		&endpoint.PreAttach,
-		// MIOTY config
-		&endpoint.DualChan, &endpoint.Repetition, &endpoint.WideCarrOff, &endpoint.LongBlkDist,
-		// Attach fields
-		&attachCnt, &nonce, &sign, &lastAttachRxTime, &lastAttachRxDuration,
-		// Radio metrics
-		&lastSNR, &lastRSSI, &lastEqSNR, &lastProfile, &lastAttachSubpackets,
-		// Detach fields (BSSCI §5.7)
-		&lastAttachedBsEui, &lastPropagateTime, &lastDetachTime,
-		&lastDetachSign, &lastDetachPacketCnt, &propagateStatus,
-		// Attach status
-		&endpoint.EpStatus,
-		// UL deduplication
-		&endpoint.LastPacketCnt,
-		// UL data
-		&lastUserData, &lastFormatID, &lastMode,
-		// UL reception
-		&lastRxTime, &lastRxDuration, &endpoint.PacketCnt,
-		// Downlink control
-		&endpoint.LastDlOpen, &endpoint.LastResponseExp, &endpoint.LastDlAck,
-		// Legacy
-		&endpoint.EPClass,
-		// Blueprint device model.
-		&endpoint.DeviceModelID,
-	)
-
+	query := `SELECT ` + endpointDetailColumns + ` FROM endpoints WHERE id = $1 AND tenant_id = $2`
+	endpoint, err := scanEndpointDetailRow(r.db.QueryRowContext(ctx, query, id, tenantID))
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("endpoint not found")
+		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint by ID: %w", err)
 	}
-
-	// Convert typeEUIBytes to *models.EUI
-	if len(typeEUIBytes) == 8 {
-		var typeEUI models.EUI
-		copy(typeEUI[:], typeEUIBytes)
-		endpoint.TypeEUI = &typeEUI
-	}
-
-	// Convert hstore to map
-	if tags.Map != nil {
-		endpoint.Tags = make(map[string]string)
-		for k, v := range tags.Map {
-			endpoint.Tags[k] = v.String
-		}
-	} else {
-		endpoint.Tags = make(map[string]string)
-	}
-
-	// Convert nullable fields to pointers
-	if attachCnt.Valid {
-		val := uint32(attachCnt.Int64) // #nosec G115 -- DB CHECK constraint ensures 0-4294967295
-		endpoint.AttachCnt = &val
-	}
-	if lastFormatID.Valid {
-		val := lastFormatID.Int32
-		endpoint.LastFormatID = &val
-	}
-
-	// Byte slices (direct assignment if non-empty)
-	if len(nonce) > 0 {
-		endpoint.Nonce = nonce
-	}
-	if len(sign) > 0 {
-		endpoint.Sign = sign
-	}
-	if len(lastUserData) > 0 {
-		endpoint.LastUserData = lastUserData
-	}
-	if len(lastDetachSign) > 0 {
-		endpoint.LastDetachSign = lastDetachSign
-	}
-
-	// Nullable int64 fields
-	if lastAttachRxTime.Valid {
-		val := lastAttachRxTime.Int64
-		endpoint.LastAttachRxTime = &val
-	}
-	if lastAttachRxDuration.Valid {
-		val := lastAttachRxDuration.Int64
-		endpoint.LastAttachRxDuration = &val
-	}
-	if lastRxTime.Valid {
-		val := lastRxTime.Int64
-		endpoint.LastRxTime = &val
-	}
-	if lastRxDuration.Valid {
-		val := lastRxDuration.Int64
-		endpoint.LastRxDuration = &val
-	}
-	// Detach nullable int64 fields (BSSCI §5.7)
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-
-	// Nullable float64 fields
-	if lastSNR.Valid {
-		val := lastSNR.Float64
-		endpoint.LastSNR = &val
-	}
-	if lastRSSI.Valid {
-		val := lastRSSI.Float64
-		endpoint.LastRSSI = &val
-	}
-	if lastEqSNR.Valid {
-		val := lastEqSNR.Float64
-		endpoint.LastEqSNR = &val
-	}
-
-	// Nullable string fields
-	if lastProfile.Valid {
-		val := lastProfile.String
-		endpoint.LastProfile = &val
-	}
-	if lastAttachSubpackets.Valid {
-		val := lastAttachSubpackets.String
-		endpoint.LastAttachSubpackets = &val
-	}
-	if lastMode.Valid {
-		val := lastMode.String
-		endpoint.LastMode = &val
-	}
-	// Detach nullable string fields (BSSCI §5.7)
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
-	}
-
 	return endpoint, nil
 }
 
@@ -1289,7 +1429,7 @@ func (r *EndPointRepository) UpdateRadioMetrics(ctx context.Context, tenantID in
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -1337,7 +1477,7 @@ func (r *EndPointRepository) UpdateRadioMetricsSelective(ctx context.Context, te
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -1389,7 +1529,7 @@ func (r *EndPointRepository) UpdateDetachMetrics(ctx context.Context, tenantID i
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -1434,7 +1574,7 @@ func (r *EndPointRepository) UpdateFields(ctx context.Context, tenantID int64, e
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("endpoint not found")
+		return storage.ErrNotFound
 	}
 
 	return nil
@@ -1479,204 +1619,14 @@ func (r *EndPointRepository) HasEndpointsSince(ctx context.Context, since time.T
 // GetEndpointWithKeysForDetachValidation retrieves an endpoint with all crypto material for detach signature validation
 // Returns complete endpoint record including Sign, NwkSnKey, and PresharedKey fields.
 func (r *EndPointRepository) GetEndpointWithKeysForDetachValidation(ctx context.Context, eui models.EUI) (*models.EndPoint, error) {
-	query := `
-		SELECT id, ep_eui, name, description, tenant_id, owner_tenant_id,
-		       nwk_key, app_key, sh_addr, bidi, pre_attach, type_eui,
-		       manufacturer, model, carrier_offset,
-		       propagated, propagated_at, propagation_count,
-		       dual_chan, repetition, wide_carr_off, long_blk_dist,
-		       attach_cnt, nonce, sign, preshared_key,
-		       last_attach_rx_time, last_attach_rx_duration,
-		       last_snr, last_rssi, last_eq_snr, last_profile,
-		       last_attach_subpackets,
-		       last_attached_bs_eui, last_propagate_time, last_detach_time,
-		       last_detach_sign, last_detach_packet_cnt, propagate_status,
-		       last_packet_cnt,
-		       last_user_data, last_format_id, last_mode,
-		       last_rx_time, last_rx_duration, packet_cnt,
-		       last_dl_open, last_response_exp, last_dl_ack,
-		       crypto_mode, endpoint_class,
-		       last_seen_at, frame_count, battery_level,
-		       tags, created_at, updated_at,
-		       device_model_id
-		FROM endpoints
-		WHERE ep_eui = $1
-		LIMIT 1`
-
-	endpoint := &models.EndPoint{}
-	var tags hstore.Hstore
-	var typeEui, propagatedAt, lastAttachRxTime, lastAttachRxDuration sql.NullInt64
-	var lastSNR, lastRSSI, lastEqSNR sql.NullFloat64
-	var lastProfile, lastAttachSubpackets sql.NullString
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
-	var propagateStatus sql.NullString
-	var lastFormatID sql.NullInt32
-	var lastMode sql.NullString
-	var lastRxTime, lastRxDuration sql.NullInt64
-	var lastSeenAt sql.NullTime
-	var batteryLevel sql.NullFloat64
-
-	err := r.db.QueryRowContext(ctx, query, eui[:]).Scan(
-		&endpoint.ID,
-		&endpoint.EUI,
-		&endpoint.Name,
-		&endpoint.Description,
-		&endpoint.TenantID,
-		&endpoint.OwnerTenantID,
-		&endpoint.NwkSnKey,
-		&endpoint.AppKey,
-		&endpoint.ShAddr,
-		&endpoint.Bidi,
-		&endpoint.PreAttach,
-		&typeEui,
-		&endpoint.Manufacturer,
-		&endpoint.Model,
-		&endpoint.CarrierOffset,
-		&endpoint.Propagated,
-		&propagatedAt,
-		&endpoint.PropagationCount,
-		&endpoint.DualChan,
-		&endpoint.Repetition,
-		&endpoint.WideCarrOff,
-		&endpoint.LongBlkDist,
-		&endpoint.AttachCnt,
-		&endpoint.Nonce,
-		&endpoint.Sign,
-		&endpoint.PresharedKey,
-		&lastAttachRxTime,
-		&lastAttachRxDuration,
-		&lastSNR,
-		&lastRSSI,
-		&lastEqSNR,
-		&lastProfile,
-		&lastAttachSubpackets,
-		&lastAttachedBsEui,
-		&lastPropagateTime,
-		&lastDetachTime,
-		&endpoint.LastDetachSign,
-		&lastDetachPacketCnt,
-		&propagateStatus,
-		&endpoint.LastPacketCnt,
-		&endpoint.LastUserData,
-		&lastFormatID,
-		&lastMode,
-		&lastRxTime,
-		&lastRxDuration,
-		&endpoint.PacketCnt,
-		&endpoint.LastDlOpen,
-		&endpoint.LastResponseExp,
-		&endpoint.LastDlAck,
-		&endpoint.CryptoMode,
-		&endpoint.EPClass,
-		&lastSeenAt,
-		&endpoint.FrameCount,
-		&batteryLevel,
-		&tags,
-		&endpoint.CreatedAt,
-		&endpoint.UpdatedAt,
-		// Blueprint device model.
-		&endpoint.DeviceModelID,
-	)
-
+	query := `SELECT ` + endpointDetachValidationColumns + ` FROM endpoints WHERE ep_eui = $1 LIMIT 1`
+	endpoint, err := scanEndpointDetachValidationRow(r.db.QueryRowContext(ctx, query, eui[:]))
 	if err == sql.ErrNoRows {
 		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get endpoint with keys for detach validation: %w", err)
 	}
-
-	// Convert hstore to map[string]string
-	endpoint.Tags = make(map[string]string)
-	for k, v := range tags.Map {
-		endpoint.Tags[k] = v.String
-	}
-
-	// Handle nullable fields
-	if typeEui.Valid {
-		euiVal := models.EUI{}
-		// Convert int64 to EUI bytes
-		for i := 7; i >= 0; i-- {
-			euiVal[i] = byte(typeEui.Int64 & 0xFF)
-			typeEui.Int64 >>= 8
-		}
-		endpoint.TypeEUI = &euiVal
-	}
-	if propagatedAt.Valid {
-		t := time.Unix(0, propagatedAt.Int64)
-		endpoint.PropagatedAt = &t
-	}
-	if lastAttachRxTime.Valid {
-		val := lastAttachRxTime.Int64
-		endpoint.LastAttachRxTime = &val
-	}
-	if lastAttachRxDuration.Valid {
-		val := lastAttachRxDuration.Int64
-		endpoint.LastAttachRxDuration = &val
-	}
-	if lastSNR.Valid {
-		val := lastSNR.Float64
-		endpoint.LastSNR = &val
-	}
-	if lastRSSI.Valid {
-		val := lastRSSI.Float64
-		endpoint.LastRSSI = &val
-	}
-	if lastEqSNR.Valid {
-		val := lastEqSNR.Float64
-		endpoint.LastEqSNR = &val
-	}
-	if lastProfile.Valid {
-		val := lastProfile.String
-		endpoint.LastProfile = &val
-	}
-	if lastAttachSubpackets.Valid {
-		val := lastAttachSubpackets.String
-		endpoint.LastAttachSubpackets = &val
-	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
-	}
-	if lastFormatID.Valid {
-		val := lastFormatID.Int32
-		endpoint.LastFormatID = &val
-	}
-	if lastMode.Valid {
-		val := lastMode.String
-		endpoint.LastMode = &val
-	}
-	if lastRxTime.Valid {
-		val := lastRxTime.Int64
-		endpoint.LastRxTime = &val
-	}
-	if lastRxDuration.Valid {
-		val := lastRxDuration.Int64
-		endpoint.LastRxDuration = &val
-	}
-	if lastSeenAt.Valid {
-		endpoint.LastSeenAt = &lastSeenAt.Time
-	}
-	if batteryLevel.Valid {
-		val := float32(batteryLevel.Float64)
-		endpoint.BatteryLevel = &val
-	}
-
 	return endpoint, nil
 }
 
@@ -1842,6 +1792,9 @@ func (r *EndPointRepository) GetRoamingEndpoints(ctx context.Context, tenantID i
 		}
 
 		endpoints = append(endpoints, endpoint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate roaming endpoints: %w", err)
 	}
 
 	return endpoints, nil

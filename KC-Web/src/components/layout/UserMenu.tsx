@@ -8,10 +8,10 @@
  * - Logout
  */
 
-import { type MouseEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { type MouseEvent, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { useAuthSettings } from '@hooks';
+import { useAuthSettings } from "@hooks";
 import {
   Box,
   Button,
@@ -23,16 +23,16 @@ import {
   Tooltip,
   Typography,
   useTheme,
-} from '@mui/material';
+} from "@mui/material";
 
-import { apiService } from '@services/api';
-import { useOrganization } from '@contexts/OrganizationContext';
-import { useSession } from '@contexts/SessionContext';
-import { useSystem } from '@contexts/SystemContext';
-import { storageService } from '@utils/storage';
-import { ROUTES, STORAGE_KEYS } from '@constants/app';
-import { ARIA, BRAND, USER_MENU } from '@constants/messages';
-import { resetQueryClient } from '@config/query-client';
+import { apiService } from "@services/api";
+import { useOrganization } from "@contexts/OrganizationContext";
+import { useSession } from "@contexts/SessionContext";
+import { useSystem } from "@contexts/SystemContext";
+import { storageService } from "@utils/storage";
+import { ROUTES, STORAGE_KEYS } from "@constants/app";
+import { ARIA, BRAND, USER_MENU } from "@constants/messages";
+import { resetQueryClient } from "@config/query-client";
 import {
   AccountIcon,
   DarkModeIcon,
@@ -41,8 +41,8 @@ import {
   LightModeIcon,
   LogoutIcon,
   OpenInNewIcon,
-} from '@theme/icons';
-import { useThemeMode } from '@theme/ThemeContext';
+} from "@theme/icons";
+import { useThemeMode } from "@theme/ThemeContext";
 
 export function UserMenu() {
   const theme = useTheme();
@@ -101,7 +101,8 @@ export function UserMenu() {
     resetQueryClient();
 
     // Redirect to provider logout URL if configured, otherwise login page
-    const logoutUrl = authSettings?.oidc?.logout_url || authSettings?.oauth2?.logout_url;
+    const logoutUrl =
+      authSettings?.oidc?.logout_url || authSettings?.oauth2?.logout_url;
     if (logoutUrl) {
       window.location.href = logoutUrl;
     } else {
@@ -113,11 +114,11 @@ export function UserMenu() {
   const versionTooltip = versionInfo
     ? [
         `${USER_MENU.VERSION_TOOLTIP_BUILD}: ${new Date(versionInfo.buildTime).toLocaleString()}`,
-        `${USER_MENU.VERSION_TOOLTIP_COMMIT}: ${versionInfo.gitCommit?.substring(0, 8) || 'unknown'}`,
-        `${USER_MENU.VERSION_TOOLTIP_BRANCH}: ${versionInfo.gitBranch || 'unknown'}`,
-        `${USER_MENU.VERSION_TOOLTIP_SCHEMA}: ${versionInfo.schemaVersion || 'unknown'}`,
-      ].join('\n')
-    : '';
+        `${USER_MENU.VERSION_TOOLTIP_COMMIT}: ${versionInfo.gitCommit?.substring(0, 8) || "unknown"}`,
+        `${USER_MENU.VERSION_TOOLTIP_BRANCH}: ${versionInfo.gitBranch || "unknown"}`,
+        `${USER_MENU.VERSION_TOOLTIP_SCHEMA}: ${versionInfo.schemaVersion || "unknown"}`,
+      ].join("\n")
+    : "";
 
   if (!user) {
     return null;
@@ -127,20 +128,20 @@ export function UserMenu() {
     <Box>
       <Button
         id="user-menu-button"
-        aria-controls={open ? 'user-menu' : undefined}
+        aria-controls={open ? "user-menu" : undefined}
         aria-haspopup="true"
-        aria-expanded={open ? 'true' : undefined}
+        aria-expanded={open ? "true" : undefined}
         aria-label={ARIA.USER_MENU_TOGGLE}
         onClick={handleClick}
         startIcon={<AccountIcon />}
         sx={{
-          width: '100%',
-          justifyContent: 'flex-start',
-          textTransform: 'none',
+          width: "100%",
+          justifyContent: "flex-start",
+          textTransform: "none",
           color: theme.palette.text.primary,
           px: 1.5,
           py: 1,
-          '&:hover': {
+          "&:hover": {
             backgroundColor: theme.palette.action.hover,
           },
         }}
@@ -149,8 +150,8 @@ export function UserMenu() {
           variant="body2"
           noWrap
           sx={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             maxWidth: 160,
           }}
         >
@@ -164,16 +165,16 @@ export function UserMenu() {
         open={open}
         onClose={handleClose}
         MenuListProps={{
-          'aria-labelledby': 'user-menu-button',
-          'aria-label': ARIA.USER_MENU,
+          "aria-labelledby": "user-menu-button",
+          "aria-label": ARIA.USER_MENU,
         }}
         anchorOrigin={{
-          vertical: 'top',
-          horizontal: 'left',
+          vertical: "top",
+          horizontal: "left",
         }}
         transformOrigin={{
-          vertical: 'bottom',
-          horizontal: 'left',
+          vertical: "bottom",
+          horizontal: "left",
         }}
         slotProps={{
           paper: {
@@ -189,20 +190,28 @@ export function UserMenu() {
             sx={{
               px: 2,
               py: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
               borderBottom: `1px solid ${theme.palette.divider}`,
             }}
           >
             <Typography variant="caption" color="text.secondary">
               {versionInfo.version}
-              {!versionInfo.isProduction && ' (dev)'}
+              {!versionInfo.isProduction && " (dev)"}
             </Typography>
             <Tooltip
-              title={<pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{versionTooltip}</pre>}
+              title={
+                <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                  {versionTooltip}
+                </pre>
+              }
             >
-              <InfoIcon fontSize="small" color="action" sx={{ cursor: 'pointer' }} />
+              <InfoIcon
+                fontSize="small"
+                color="action"
+                sx={{ cursor: "pointer" }}
+              />
             </Tooltip>
           </Box>
         )}
@@ -220,13 +229,25 @@ export function UserMenu() {
           </ListItemIcon>
           <ListItemText primary={BRAND.DOCUMENTATION} />
         </MenuItem>
-        <MenuItem component="a" href={versionInfo?.sourceUrl} target="_blank" rel="noopener" dense>
+        <MenuItem
+          component="a"
+          href={versionInfo?.sourceUrl}
+          target="_blank"
+          rel="noopener"
+          dense
+        >
           <ListItemIcon>
             <OpenInNewIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText primary={BRAND.SOURCE} />
         </MenuItem>
-        <MenuItem component="a" href={versionInfo?.licenseUrl} target="_blank" rel="noopener" dense>
+        <MenuItem
+          component="a"
+          href={versionInfo?.licenseUrl}
+          target="_blank"
+          rel="noopener"
+          dense
+        >
           <ListItemIcon>
             <OpenInNewIcon fontSize="small" />
           </ListItemIcon>
@@ -236,7 +257,7 @@ export function UserMenu() {
 
         {/* Theme toggle */}
         <MenuItem onClick={handleThemeToggle}>
-          {mode === 'dark' ? (
+          {mode === "dark" ? (
             <>
               <LightModeIcon sx={{ mr: 1.5 }} fontSize="small" />
               {USER_MENU.THEME_LIGHT}
