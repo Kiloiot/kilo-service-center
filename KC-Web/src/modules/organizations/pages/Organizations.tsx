@@ -16,8 +16,6 @@ import {
   CardContent,
   CircularProgress,
   Grid,
-  InputAdornment,
-  TextField,
   Typography,
 } from "@mui/material";
 
@@ -33,9 +31,10 @@ import {
   ArchiveIcon,
   BusinessIcon,
   ErrorIcon,
-  SearchIcon,
   SuccessIcon,
 } from "@theme/icons";
+
+import SearchField from "@components/common/SearchField";
 
 import AddOrganizationDialog from "../components/AddOrganizationDialog";
 import OrganizationsTable from "../components/OrganizationsTable";
@@ -230,18 +229,10 @@ const Organizations: React.FC = () => {
 
       {/* Search */}
       <Box display="flex" gap={2} mb={3}>
-        <TextField
+        <SearchField
           placeholder={ORGANIZATIONS_PAGE.SEARCH_PLACEHOLDER}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ flexGrow: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
         />
       </Box>
 

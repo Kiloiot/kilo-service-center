@@ -7,9 +7,7 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
-  Link as MuiLink,
   Paper,
   TextField,
   Typography,
@@ -19,21 +17,13 @@ import { apiService } from "@services/api";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { useSystem } from "@contexts/SystemContext";
-import { storageService } from "@utils/storage";
-import {
-  APP_EDITION,
-  APP_NAME,
-  AUTH_LAYOUT,
-  DEFAULT_ORG_NAME,
-  ROUTES,
-  STORAGE_KEYS,
-} from "@constants/app";
+import { persistAuthSession } from "@utils/auth-session";
+import { AUTH_LAYOUT, ROUTES } from "@constants/app";
 import {
   ACTION_CREATE_ONE,
   ACTION_LOGIN,
   ACTION_LOGIN_PROVIDER,
   ACTION_NO_ACCOUNT,
-  BRAND,
   ERR_AUTH_INVALID_CREDENTIALS,
   ERR_AUTH_LOGIN_FAILED,
   ERR_AUTH_ORG_REQUIRED,
@@ -43,7 +33,8 @@ import {
   VAL_EMAIL_REQUIRED,
   VAL_PASSWORD_REQUIRED,
 } from "@constants/messages";
-import kiloLogo from "@assets/kilo-logo.png";
+
+import AuthBranding from "../components/AuthBranding";
 
 const Login: React.FC = () => {
   const { versionInfo } = useSystem();
@@ -106,43 +97,14 @@ const Login: React.FC = () => {
       const payload: LoginRequest = { email: email.trim(), password };
       const loginResponse = await apiService.login(payload);
 
-      // Store access token for subsequent API requests
-      storageService.setItem(
-        STORAGE_KEYS.AUTH_TOKEN,
-        loginResponse.tokens.accessToken,
-      );
-
-      // Store refresh token if provided (refresh_token_enabled=true on backend)
-      if (loginResponse.tokens.refreshToken) {
-        storageService.setItem(
-          STORAGE_KEYS.REFRESH_TOKEN,
-          loginResponse.tokens.refreshToken,
-        );
-      } else {
-        storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-      }
-
-      // Set organization context from user profile
-      const { user } = loginResponse;
-      const defaultOrg = user.memberships.find(
-        (m) => m.orgId === user.defaultOrgId,
-      );
-      const firstOrg = user.memberships[0];
-      const org = defaultOrg || firstOrg;
-
-      if (!org) {
-        storageService.removeItem(STORAGE_KEYS.AUTH_TOKEN);
-        setError(ERR_AUTH_ORG_REQUIRED);
-        return;
-      }
-
-      setUser(user);
-
-      setOrganization(org.orgId, org.orgName || DEFAULT_ORG_NAME, user.id);
+      const session = persistAuthSession(loginResponse);
+      setUser(session.user);
+      setOrganization(session.orgId, session.orgName, session.user.id);
       navigate(ROUTES.HOME);
     } catch (err) {
-      // Distinguish 401 (invalid credentials) from other errors
-      if (isUnauthorizedError(err)) {
+      if (err instanceof Error && err.message === ERR_AUTH_ORG_REQUIRED) {
+        setError(ERR_AUTH_ORG_REQUIRED);
+      } else if (isUnauthorizedError(err)) {
         setError(ERR_AUTH_INVALID_CREDENTIALS);
       } else {
         setError(ERR_AUTH_LOGIN_FAILED);
@@ -184,55 +146,7 @@ const Login: React.FC = () => {
           textAlign: "center",
         }}
       >
-        {/* Logo and branding */}
-        <Box
-          sx={{
-            mb: 3,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          <img
-            src={kiloLogo}
-            alt={APP_NAME}
-            style={{ maxWidth: "200px", height: "auto", marginBottom: "8px" }}
-          />
-          <Chip
-            label={versionInfo?.edition ?? APP_EDITION}
-            size="small"
-            variant="outlined"
-            sx={{ mb: 2 }}
-          />
-          <Box
-            sx={{ display: "flex", gap: 2, justifyContent: "center", mb: 3 }}
-          >
-            <MuiLink
-              href={versionInfo?.documentationUrl}
-              target="_blank"
-              rel="noopener"
-              variant="caption"
-            >
-              {BRAND.DOCUMENTATION}
-            </MuiLink>
-            <MuiLink
-              href={versionInfo?.sourceUrl}
-              target="_blank"
-              rel="noopener"
-              variant="caption"
-            >
-              {BRAND.SOURCE}
-            </MuiLink>
-            <MuiLink
-              href={versionInfo?.licenseUrl}
-              target="_blank"
-              rel="noopener"
-              variant="caption"
-            >
-              {BRAND.LICENSE}
-            </MuiLink>
-          </Box>
-        </Box>
+        <AuthBranding versionInfo={versionInfo} />
 
         {error && (
           <Alert severity="error" sx={{ mb: AUTH_LAYOUT.SPACING_MB }}>

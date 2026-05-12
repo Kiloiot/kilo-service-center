@@ -7,22 +7,17 @@
 import React, { useState } from "react";
 
 import {
-  Box,
   Button,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
-  Switch,
-  TextField,
-  Typography,
 } from "@mui/material";
 
 import { useCreateOrganization } from "@hooks/useOrganizations";
 import { ORGANIZATION_FORM } from "@constants/messages";
 
-import TagsEditor from "./TagsEditor";
+import OrganizationFormFields from "./OrganizationFormFields";
 
 interface AddOrganizationDialogProps {
   open: boolean;
@@ -82,63 +77,21 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>{ORGANIZATION_FORM.DIALOG_TITLE_ADD}</DialogTitle>
       <DialogContent>
-        <TextField
-          label={ORGANIZATION_FORM.LABEL_NAME}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          helperText={ORGANIZATION_FORM.HELPER_NAME}
-          fullWidth
-          required
-          margin="normal"
+        <OrganizationFormFields
+          name={name}
+          description={description}
+          canHaveBaseStations={canHaveBaseStations}
+          maxBsCount={maxBsCount}
+          maxEpCount={maxEpCount}
+          tags={tags}
+          onNameChange={setName}
+          onDescriptionChange={setDescription}
+          onCanHaveBaseStationsChange={setCanHaveBaseStations}
+          onMaxBsCountChange={setMaxBsCount}
+          onMaxEpCountChange={setMaxEpCount}
+          onTagsChange={setTags}
           autoFocus
         />
-        <TextField
-          label={ORGANIZATION_FORM.LABEL_DESCRIPTION}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          helperText={ORGANIZATION_FORM.HELPER_DESCRIPTION}
-          fullWidth
-          multiline
-          rows={3}
-          margin="normal"
-        />
-        <FormControlLabel
-          control={
-            <Switch
-              checked={canHaveBaseStations}
-              onChange={(e) => setCanHaveBaseStations(e.target.checked)}
-            />
-          }
-          label={ORGANIZATION_FORM.LABEL_CAN_HAVE_BS}
-          sx={{ mt: 1 }}
-        />
-        <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-          <TextField
-            label={ORGANIZATION_FORM.LABEL_MAX_BS_COUNT}
-            value={maxBsCount}
-            onChange={(e) => setMaxBsCount(e.target.value.replace(/\D/g, ""))}
-            helperText={ORGANIZATION_FORM.HELPER_MAX_BS_COUNT}
-            type="number"
-            slotProps={{ htmlInput: { min: 0 } }}
-            fullWidth
-            disabled={!canHaveBaseStations}
-          />
-          <TextField
-            label={ORGANIZATION_FORM.LABEL_MAX_EP_COUNT}
-            value={maxEpCount}
-            onChange={(e) => setMaxEpCount(e.target.value.replace(/\D/g, ""))}
-            helperText={ORGANIZATION_FORM.HELPER_MAX_EP_COUNT}
-            type="number"
-            slotProps={{ htmlInput: { min: 0 } }}
-            fullWidth
-          />
-        </Box>
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            {ORGANIZATION_FORM.LABEL_TAGS}
-          </Typography>
-          <TagsEditor tags={tags} onChange={setTags} />
-        </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>{ORGANIZATION_FORM.ACTION_CANCEL}</Button>

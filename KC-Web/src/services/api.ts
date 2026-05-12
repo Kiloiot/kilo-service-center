@@ -344,6 +344,80 @@ function parseDecodePreviewPayload(payload: string): Uint8Array {
  */
 type AuthFailureCallback = () => void;
 
+/** Shape of gRPC auth response returned by login/register/exchange methods */
+type GrpcAuthResponse = Awaited<ReturnType<typeof grpcClient.login>>;
+
+/** Maps a gRPC auth response to the snake_case shape expected by mapLoginResponse */
+function mapExchangeResponse(response: GrpcAuthResponse): LoginResponseAPI {
+  return mapLoginResponse({
+    tokens: {
+      access_token: response.tokens.accessToken,
+      refresh_token: response.tokens.refreshToken,
+      access_expires_in: response.tokens.accessExpiresIn,
+      refresh_expires_in: response.tokens.refreshExpiresIn,
+    },
+    user: {
+      id: response.user.id,
+      email: response.user.email,
+      is_admin: response.user.isAdmin,
+      has_password: response.user.hasPassword,
+      memberships: response.user.memberships.map((m) => ({
+        org_id: m.orgId,
+        org_name: m.orgName,
+        role: m.role,
+        status: m.status,
+        is_org_admin: m.isOrgAdmin ?? false,
+        is_base_station_admin: m.isBaseStationAdmin ?? false,
+        is_endpoint_admin: m.isEndpointAdmin ?? false,
+      })),
+      default_org_id: response.user.defaultOrgId,
+      first_name: response.user.firstName,
+      last_name: response.user.lastName,
+    },
+  });
+}
+
+/** Builds the common filter params object for base station message queries */
+function buildMessageFilterParams(
+  filter: BaseStationMessagesFilter | undefined,
+  pageSize: number,
+): {
+  pageSize: number;
+  direction: "uplink" | "downlink" | undefined;
+  epEui: string | undefined;
+  startTime: Date | undefined;
+  endTime: Date | undefined;
+} {
+  return {
+    pageSize,
+    direction: filter?.direction as "uplink" | "downlink" | undefined,
+    epEui: filter?.epEui,
+    startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
+    endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
+  };
+}
+
+/** Shape of individual message from gRPC listBaseStationMessages/searchBaseStationMessages */
+type GrpcBaseStationMessage = Awaited<
+  ReturnType<typeof grpcClient.listBaseStationMessages>
+>["messages"][number];
+
+/** Maps a gRPC base station message to the UI message shape */
+function mapBaseStationMessageToUI(m: GrpcBaseStationMessage): BaseStationMessageAPI {
+  return {
+    id: m.id,
+    bsEui: m.bsEui,
+    epEui: m.epEui,
+    direction: m.direction,
+    messageType: m.uplinkMode || "ulData",
+    packetCnt: m.packetCounter || 0,
+    userData: m.payload,
+    rssi: m.rssi,
+    snr: m.snr,
+    receivedAt: m.receivedAt.toISOString(),
+  };
+}
+
 /**
  * API Service - gRPC-backed implementation
  *
@@ -611,27 +685,13 @@ class ApiService {
     page = 1,
     pageSize = 50,
   ): Promise<BaseStationMessagesPage> {
-    const response = await grpcClient.listBaseStationMessages(eui, {
-      pageSize,
-      direction: filter?.direction as "uplink" | "downlink" | undefined,
-      epEui: filter?.epEui,
-      startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
-      endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
-    });
+    const response = await grpcClient.listBaseStationMessages(
+      eui,
+      buildMessageFilterParams(filter, pageSize),
+    );
 
     return {
-      messages: response.messages.map((m) => ({
-        id: m.id,
-        bsEui: m.bsEui,
-        epEui: m.epEui,
-        direction: m.direction,
-        messageType: m.uplinkMode || "ulData",
-        packetCnt: m.packetCounter || 0,
-        userData: m.payload,
-        rssi: m.rssi,
-        snr: m.snr,
-        receivedAt: m.receivedAt.toISOString(),
-      })),
+      messages: response.messages.map(mapBaseStationMessageToUI),
       page,
       pageSize,
       totalCount: response.totalCount,
@@ -849,28 +909,11 @@ class ApiService {
     const response = await grpcClient.searchBaseStationMessages(
       eui,
       searchTerm,
-      {
-        pageSize,
-        direction: filter?.direction as "uplink" | "downlink" | undefined,
-        epEui: filter?.epEui,
-        startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
-        endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
-      },
+      buildMessageFilterParams(filter, pageSize),
     );
 
     return {
-      messages: response.messages.map((m) => ({
-        id: m.id,
-        bsEui: m.bsEui,
-        epEui: m.epEui,
-        direction: m.direction,
-        messageType: m.uplinkMode || "ulData",
-        packetCnt: m.packetCounter || 0,
-        userData: m.payload,
-        rssi: m.rssi,
-        snr: m.snr,
-        receivedAt: m.receivedAt.toISOString(),
-      })),
+      messages: response.messages.map(mapBaseStationMessageToUI),
       page,
       pageSize,
       totalCount: response.totalCount,
@@ -883,11 +926,12 @@ class ApiService {
     filter?: BaseStationMessagesFilter,
     format: "csv" | "json" = "csv",
   ): Promise<Blob> {
+    const filterParams = buildMessageFilterParams(filter, 0);
     const response = await grpcClient.exportBaseStationMessages(eui, format, {
-      direction: filter?.direction as "uplink" | "downlink" | undefined,
-      epEui: filter?.epEui,
-      startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
-      endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
+      direction: filterParams.direction,
+      epEui: filterParams.epEui,
+      startTime: filterParams.startTime,
+      endTime: filterParams.endTime,
     });
     return new Blob([new Uint8Array(response.content)], {
       type: response.contentType,
@@ -1384,32 +1428,7 @@ class ApiService {
 
   async login(payload: LoginRequest): Promise<LoginResponseAPI> {
     const response = await grpcClient.login(payload.email, payload.password);
-    return mapLoginResponse({
-      tokens: {
-        access_token: response.tokens.accessToken,
-        refresh_token: response.tokens.refreshToken,
-        access_expires_in: response.tokens.accessExpiresIn,
-        refresh_expires_in: response.tokens.refreshExpiresIn,
-      },
-      user: {
-        id: response.user.id,
-        email: response.user.email,
-        is_admin: response.user.isAdmin,
-        has_password: response.user.hasPassword,
-        memberships: response.user.memberships.map((m) => ({
-          org_id: m.orgId,
-          org_name: m.orgName,
-          role: m.role,
-          status: m.status,
-          is_org_admin: m.isOrgAdmin,
-          is_base_station_admin: m.isBaseStationAdmin,
-          is_endpoint_admin: m.isEndpointAdmin,
-        })),
-        default_org_id: response.user.defaultOrgId,
-        first_name: response.user.firstName,
-        last_name: response.user.lastName,
-      },
-    });
+    return mapExchangeResponse(response);
   }
 
   async registerAccount(
@@ -1422,62 +1441,12 @@ class ApiService {
       payload.lastName,
       payload.companyName,
     );
-    return mapLoginResponse({
-      tokens: {
-        access_token: response.tokens.accessToken,
-        refresh_token: response.tokens.refreshToken,
-        access_expires_in: response.tokens.accessExpiresIn,
-        refresh_expires_in: response.tokens.refreshExpiresIn,
-      },
-      user: {
-        id: response.user.id,
-        email: response.user.email,
-        is_admin: response.user.isAdmin,
-        has_password: response.user.hasPassword,
-        memberships: response.user.memberships.map((m) => ({
-          org_id: m.orgId,
-          org_name: m.orgName,
-          role: m.role,
-          status: m.status,
-          is_org_admin: m.isOrgAdmin,
-          is_base_station_admin: m.isBaseStationAdmin,
-          is_endpoint_admin: m.isEndpointAdmin,
-        })),
-        default_org_id: response.user.defaultOrgId,
-        first_name: response.user.firstName,
-        last_name: response.user.lastName,
-      },
-    });
+    return mapExchangeResponse(response);
   }
 
   async exchangeOIDC(payload: ExchangeRequest): Promise<LoginResponseAPI> {
     const response = await grpcClient.exchangeOIDC(payload.code, payload.state);
-    return mapLoginResponse({
-      tokens: {
-        access_token: response.tokens.accessToken,
-        refresh_token: response.tokens.refreshToken,
-        access_expires_in: response.tokens.accessExpiresIn,
-        refresh_expires_in: response.tokens.refreshExpiresIn,
-      },
-      user: {
-        id: response.user.id,
-        email: response.user.email,
-        is_admin: response.user.isAdmin,
-        has_password: response.user.hasPassword,
-        memberships: response.user.memberships.map((m) => ({
-          org_id: m.orgId,
-          org_name: m.orgName,
-          role: m.role,
-          status: m.status,
-          is_org_admin: m.isOrgAdmin ?? false,
-          is_base_station_admin: m.isBaseStationAdmin ?? false,
-          is_endpoint_admin: m.isEndpointAdmin ?? false,
-        })),
-        default_org_id: response.user.defaultOrgId,
-        first_name: response.user.firstName,
-        last_name: response.user.lastName,
-      },
-    });
+    return mapExchangeResponse(response);
   }
 
   async exchangeOAuth2(payload: ExchangeRequest): Promise<LoginResponseAPI> {
@@ -1485,32 +1454,7 @@ class ApiService {
       payload.code,
       payload.state,
     );
-    return mapLoginResponse({
-      tokens: {
-        access_token: response.tokens.accessToken,
-        refresh_token: response.tokens.refreshToken,
-        access_expires_in: response.tokens.accessExpiresIn,
-        refresh_expires_in: response.tokens.refreshExpiresIn,
-      },
-      user: {
-        id: response.user.id,
-        email: response.user.email,
-        is_admin: response.user.isAdmin,
-        has_password: response.user.hasPassword,
-        memberships: response.user.memberships.map((m) => ({
-          org_id: m.orgId,
-          org_name: m.orgName,
-          role: m.role,
-          status: m.status,
-          is_org_admin: m.isOrgAdmin ?? false,
-          is_base_station_admin: m.isBaseStationAdmin ?? false,
-          is_endpoint_admin: m.isEndpointAdmin ?? false,
-        })),
-        default_org_id: response.user.defaultOrgId,
-        first_name: response.user.firstName,
-        last_name: response.user.lastName,
-      },
-    });
+    return mapExchangeResponse(response);
   }
 
   async logout(refreshToken: string): Promise<void> {

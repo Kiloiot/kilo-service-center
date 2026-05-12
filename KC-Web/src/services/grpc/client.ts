@@ -78,6 +78,107 @@ function dateToTimestamp(
   return timestamp;
 }
 
+/** Pagination and time-range filter params shared across listing methods. */
+interface PaginationTimeRangeParams {
+  pageSize?: number;
+  pageToken?: string;
+  startTime?: Date;
+  endTime?: Date;
+}
+
+/**
+ * Apply pagination (pageSize, pageToken) and time-range (startTime, endTime)
+ * fields to a protobuf request that exposes the standard setters.
+ */
+function applyPaginationAndTimeRange(
+  request: {
+    setPageSize(v: number): void;
+    setPageToken(v: string): void;
+    setStartTime(v: google_protobuf_timestamp_pb.Timestamp): void;
+    setEndTime(v: google_protobuf_timestamp_pb.Timestamp): void;
+  },
+  params?: PaginationTimeRangeParams,
+): void {
+  if (params?.pageSize) request.setPageSize(params.pageSize);
+  if (params?.pageToken) request.setPageToken(params.pageToken);
+  if (params?.startTime) request.setStartTime(dateToTimestamp(params.startTime));
+  if (params?.endTime) request.setEndTime(dateToTimestamp(params.endTime));
+}
+
+/** Shared membership shape returned by login/exchange endpoints. */
+interface AuthMembership {
+  orgId: string;
+  orgName: string;
+  role: string;
+  status: string;
+  isOrgAdmin: boolean;
+  isBaseStationAdmin: boolean;
+  isEndpointAdmin: boolean;
+}
+
+/** Shared response shape returned by login, exchangeOIDC, and exchangeOAuth2. */
+export interface AuthTokensAndUser {
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+    accessExpiresIn: number;
+    refreshExpiresIn: number;
+  };
+  user: {
+    id: string;
+    email: string;
+    isAdmin: boolean;
+    hasPassword: boolean;
+    memberships: AuthMembership[];
+    defaultOrgId?: string;
+    firstName?: string;
+    lastName?: string;
+  };
+}
+
+/**
+ * Extract tokens and user data from a LoginResponse protobuf message.
+ * Throws GrpcApiError when the response lacks required fields.
+ */
+function extractAuthTokensAndUser(
+  response: pb.LoginResponse,
+  errorToken: string,
+): AuthTokensAndUser {
+  const tokens = response.getTokens();
+  const user = response.getUser();
+
+  if (!tokens || !user) {
+    throw new GrpcApiError(500, errorToken);
+  }
+
+  return {
+    tokens: {
+      accessToken: tokens.getAccessToken(),
+      refreshToken: tokens.getRefreshToken(),
+      accessExpiresIn: tokens.getAccessExpiresIn(),
+      refreshExpiresIn: tokens.getRefreshExpiresIn(),
+    },
+    user: {
+      id: user.getId(),
+      email: user.getEmail(),
+      isAdmin: user.getIsAdmin(),
+      hasPassword: user.getHasPassword(),
+      memberships: user.getMembershipsList().map((m) => ({
+        orgId: m.getOrgId(),
+        orgName: m.getOrgName(),
+        role: m.getRole(),
+        status: m.getStatus(),
+        isOrgAdmin: m.getIsOrgAdmin(),
+        isBaseStationAdmin: m.getIsBaseStationAdmin(),
+        isEndpointAdmin: m.getIsEndpointAdmin(),
+      })),
+      defaultOrgId: user.getDefaultOrgId() || undefined,
+      firstName: user.getFirstName() || undefined,
+      lastName: user.getLastName() || undefined,
+    },
+  };
+}
+
 /** gRPC-layer API key (timestamps as Date from protobuf Timestamp). */
 export interface GrpcApiKey {
   id: string;
@@ -794,32 +895,7 @@ class GrpcClientService {
   async login(
     email: string,
     password: string,
-  ): Promise<{
-    tokens: {
-      accessToken: string;
-      refreshToken: string;
-      accessExpiresIn: number;
-      refreshExpiresIn: number;
-    };
-    user: {
-      id: string;
-      email: string;
-      isAdmin: boolean;
-      hasPassword: boolean;
-      memberships: Array<{
-        orgId: string;
-        orgName: string;
-        role: string;
-        status: string;
-        isOrgAdmin: boolean;
-        isBaseStationAdmin: boolean;
-        isEndpointAdmin: boolean;
-      }>;
-      defaultOrgId?: string;
-      firstName?: string;
-      lastName?: string;
-    };
-  }> {
+  ): Promise<AuthTokensAndUser> {
     const request = new pb.LoginRequest();
     request.setEmail(email);
     request.setPassword(password);
@@ -835,39 +911,10 @@ class GrpcClientService {
       },
     )(request);
 
-    const tokens = response.getTokens();
-    const user = response.getUser();
-
-    if (!tokens || !user) {
-      throw new GrpcApiError(500, GRPC_CLIENT_ERRORS.INVALID_LOGIN_RESPONSE);
-    }
-
-    return {
-      tokens: {
-        accessToken: tokens.getAccessToken(),
-        refreshToken: tokens.getRefreshToken(),
-        accessExpiresIn: tokens.getAccessExpiresIn(),
-        refreshExpiresIn: tokens.getRefreshExpiresIn(),
-      },
-      user: {
-        id: user.getId(),
-        email: user.getEmail(),
-        isAdmin: user.getIsAdmin(),
-        hasPassword: user.getHasPassword(),
-        memberships: user.getMembershipsList().map((m) => ({
-          orgId: m.getOrgId(),
-          orgName: m.getOrgName(),
-          role: m.getRole(),
-          status: m.getStatus(),
-          isOrgAdmin: m.getIsOrgAdmin(),
-          isBaseStationAdmin: m.getIsBaseStationAdmin(),
-          isEndpointAdmin: m.getIsEndpointAdmin(),
-        })),
-        defaultOrgId: user.getDefaultOrgId() || undefined,
-        firstName: user.getFirstName() || undefined,
-        lastName: user.getLastName() || undefined,
-      },
-    };
+    return extractAuthTokensAndUser(
+      response,
+      GRPC_CLIENT_ERRORS.INVALID_LOGIN_RESPONSE,
+    );
   }
 
   /**
@@ -1621,32 +1668,7 @@ class GrpcClientService {
   async exchangeOIDC(
     code: string,
     state: string,
-  ): Promise<{
-    tokens: {
-      accessToken: string;
-      refreshToken: string;
-      accessExpiresIn: number;
-      refreshExpiresIn: number;
-    };
-    user: {
-      id: string;
-      email: string;
-      isAdmin: boolean;
-      hasPassword: boolean;
-      memberships: Array<{
-        orgId: string;
-        orgName: string;
-        role: string;
-        status: string;
-        isOrgAdmin: boolean;
-        isBaseStationAdmin: boolean;
-        isEndpointAdmin: boolean;
-      }>;
-      defaultOrgId?: string;
-      firstName?: string;
-      lastName?: string;
-    };
-  }> {
+  ): Promise<AuthTokensAndUser> {
     const request = new pb.ExchangeOIDCRequest();
     request.setCode(code);
     request.setState(state);
@@ -1656,42 +1678,10 @@ class GrpcClientService {
       pb.LoginResponse
     >(this.client.exchangeOIDC, { requireOrgUser: false, skipRefreshRetry: true })(request);
 
-    const tokens = response.getTokens();
-    const user = response.getUser();
-
-    if (!tokens || !user) {
-      throw new GrpcApiError(
-        500,
-        GRPC_CLIENT_ERRORS.INVALID_OIDC_EXCHANGE_RESPONSE,
-      );
-    }
-
-    return {
-      tokens: {
-        accessToken: tokens.getAccessToken(),
-        refreshToken: tokens.getRefreshToken(),
-        accessExpiresIn: tokens.getAccessExpiresIn(),
-        refreshExpiresIn: tokens.getRefreshExpiresIn(),
-      },
-      user: {
-        id: user.getId(),
-        email: user.getEmail(),
-        isAdmin: user.getIsAdmin(),
-        hasPassword: user.getHasPassword(),
-        memberships: user.getMembershipsList().map((m) => ({
-          orgId: m.getOrgId(),
-          orgName: m.getOrgName(),
-          role: m.getRole(),
-          status: m.getStatus(),
-          isOrgAdmin: m.getIsOrgAdmin(),
-          isBaseStationAdmin: m.getIsBaseStationAdmin(),
-          isEndpointAdmin: m.getIsEndpointAdmin(),
-        })),
-        defaultOrgId: user.getDefaultOrgId() || undefined,
-        firstName: user.getFirstName() || undefined,
-        lastName: user.getLastName() || undefined,
-      },
-    };
+    return extractAuthTokensAndUser(
+      response,
+      GRPC_CLIENT_ERRORS.INVALID_OIDC_EXCHANGE_RESPONSE,
+    );
   }
 
   /**
@@ -1702,32 +1692,7 @@ class GrpcClientService {
   async exchangeOAuth2(
     code: string,
     state: string,
-  ): Promise<{
-    tokens: {
-      accessToken: string;
-      refreshToken: string;
-      accessExpiresIn: number;
-      refreshExpiresIn: number;
-    };
-    user: {
-      id: string;
-      email: string;
-      isAdmin: boolean;
-      hasPassword: boolean;
-      memberships: Array<{
-        orgId: string;
-        orgName: string;
-        role: string;
-        status: string;
-        isOrgAdmin: boolean;
-        isBaseStationAdmin: boolean;
-        isEndpointAdmin: boolean;
-      }>;
-      defaultOrgId?: string;
-      firstName?: string;
-      lastName?: string;
-    };
-  }> {
+  ): Promise<AuthTokensAndUser> {
     const request = new pb.ExchangeOAuth2Request();
     request.setCode(code);
     request.setState(state);
@@ -1737,42 +1702,10 @@ class GrpcClientService {
       pb.LoginResponse
     >(this.client.exchangeOAuth2, { requireOrgUser: false, skipRefreshRetry: true })(request);
 
-    const tokens = response.getTokens();
-    const user = response.getUser();
-
-    if (!tokens || !user) {
-      throw new GrpcApiError(
-        500,
-        GRPC_CLIENT_ERRORS.INVALID_OAUTH2_EXCHANGE_RESPONSE,
-      );
-    }
-
-    return {
-      tokens: {
-        accessToken: tokens.getAccessToken(),
-        refreshToken: tokens.getRefreshToken(),
-        accessExpiresIn: tokens.getAccessExpiresIn(),
-        refreshExpiresIn: tokens.getRefreshExpiresIn(),
-      },
-      user: {
-        id: user.getId(),
-        email: user.getEmail(),
-        isAdmin: user.getIsAdmin(),
-        hasPassword: user.getHasPassword(),
-        memberships: user.getMembershipsList().map((m) => ({
-          orgId: m.getOrgId(),
-          orgName: m.getOrgName(),
-          role: m.getRole(),
-          status: m.getStatus(),
-          isOrgAdmin: m.getIsOrgAdmin(),
-          isBaseStationAdmin: m.getIsBaseStationAdmin(),
-          isEndpointAdmin: m.getIsEndpointAdmin(),
-        })),
-        defaultOrgId: user.getDefaultOrgId() || undefined,
-        firstName: user.getFirstName() || undefined,
-        lastName: user.getLastName() || undefined,
-      },
-    };
+    return extractAuthTokensAndUser(
+      response,
+      GRPC_CLIENT_ERRORS.INVALID_OAUTH2_EXCHANGE_RESPONSE,
+    );
   }
 
   // ============================================================================
@@ -2961,20 +2894,9 @@ class GrpcClientService {
   }> {
     const request = new pb.ListBaseStationMessagesRequest();
     request.setBsEui(bsEui);
-    if (params?.pageSize) request.setPageSize(params.pageSize);
-    if (params?.pageToken) request.setPageToken(params.pageToken);
+    applyPaginationAndTimeRange(request, params);
     if (params?.direction) request.setDirection(params.direction);
     if (params?.epEui) request.setEpEui(params.epEui);
-    if (params?.startTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.startTime);
-      request.setStartTime(ts);
-    }
-    if (params?.endTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.endTime);
-      request.setEndTime(ts);
-    }
 
     const response = await this.promisify<
       pb.ListBaseStationMessagesRequest,
@@ -3143,20 +3065,9 @@ class GrpcClientService {
     const request = new pb.SearchBaseStationMessagesRequest();
     request.setBsEui(bsEui);
     request.setQuery(query);
-    if (params?.pageSize) request.setPageSize(params.pageSize);
-    if (params?.pageToken) request.setPageToken(params.pageToken);
+    applyPaginationAndTimeRange(request, params);
     if (params?.direction) request.setDirection(params.direction);
     if (params?.epEui) request.setEpEui(params.epEui);
-    if (params?.startTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.startTime);
-      request.setStartTime(ts);
-    }
-    if (params?.endTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.endTime);
-      request.setEndTime(ts);
-    }
 
     const response = await this.promisify<
       pb.SearchBaseStationMessagesRequest,
@@ -3205,16 +3116,8 @@ class GrpcClientService {
     request.setFormat(format);
     if (params?.direction) request.setDirection(params.direction);
     if (params?.epEui) request.setEpEui(params.epEui);
-    if (params?.startTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.startTime);
-      request.setStartTime(ts);
-    }
-    if (params?.endTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.endTime);
-      request.setEndTime(ts);
-    }
+    if (params?.startTime) request.setStartTime(dateToTimestamp(params.startTime));
+    if (params?.endTime) request.setEndTime(dateToTimestamp(params.endTime));
 
     const response = await this.promisify<
       pb.ExportBaseStationMessagesRequest,
@@ -3408,18 +3311,7 @@ class GrpcClientService {
   }> {
     const request = new pb.ListBaseStationActivityRequest();
     request.setBsEui(bsEui);
-    if (params?.pageSize) request.setPageSize(params.pageSize);
-    if (params?.pageToken) request.setPageToken(params.pageToken);
-    if (params?.startTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.startTime);
-      request.setStartTime(ts);
-    }
-    if (params?.endTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.endTime);
-      request.setEndTime(ts);
-    }
+    applyPaginationAndTimeRange(request, params);
 
     const response = await this.promisify<
       pb.ListBaseStationActivityRequest,
@@ -3521,18 +3413,7 @@ class GrpcClientService {
   }> {
     const request = new pb.ListEndpointActivityRequest();
     request.setEpEui(epEui);
-    if (params?.pageSize) request.setPageSize(params.pageSize);
-    if (params?.pageToken) request.setPageToken(params.pageToken);
-    if (params?.startTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.startTime);
-      request.setStartTime(ts);
-    }
-    if (params?.endTime) {
-      const ts = new google_protobuf_timestamp_pb.Timestamp();
-      ts.fromDate(params.endTime);
-      request.setEndTime(ts);
-    }
+    applyPaginationAndTimeRange(request, params);
 
     const response = await this.promisify<
       pb.ListEndpointActivityRequest,
