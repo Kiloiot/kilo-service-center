@@ -26,8 +26,6 @@ import {
   DialogContentText,
   DialogTitle,
   Grid,
-  InputAdornment,
-  TextField,
   Typography,
 } from "@mui/material";
 
@@ -45,7 +43,9 @@ import {
   ORG_USER_FORM,
   ORG_USERS_PAGE,
 } from "@constants/messages";
-import { AddIcon, ArrowBackIcon, PeopleIcon, SearchIcon } from "@theme/icons";
+import { AddIcon, ArrowBackIcon, PeopleIcon } from "@theme/icons";
+
+import SearchField from "@components/common/SearchField";
 
 import AddUserDialog from "../components/AddUserDialog";
 import OrganizationUserDialog from "../components/OrganizationUserDialog";
@@ -381,18 +381,10 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
 
       {/* Search */}
       <Box display="flex" gap={2} mb={3}>
-        <TextField
+        <SearchField
           placeholder={ORG_USERS_PAGE.SEARCH_PLACEHOLDER}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ flexGrow: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
         />
       </Box>
 

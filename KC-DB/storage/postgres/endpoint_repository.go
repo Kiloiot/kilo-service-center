@@ -190,8 +190,7 @@ func assignUplinkFields(ep *models.EndPoint, n uplinkNullables) {
 }
 
 // endpointBaseSelectColumns defines the standard column list for endpoint queries.
-// Used by Get, GetEndpointWithOwnership, and related methods to ensure consistent field selection.
-// Column order MUST match scan order in methods using this constant.
+// Column order MUST match scanEndpointBaseRow field order.
 const endpointBaseSelectColumns = `
 	id, ep_eui, name, description, tenant_id, owner_tenant_id,
 	nwk_key, app_key, crypto_mode,
@@ -215,6 +214,78 @@ const endpointListSelectColumns = `
 	ep_status, endpoint_class, device_model_id,
 	bidi, pre_attach, type_eui, attach_cnt, last_packet_cnt,
 	dual_chan, repetition, wide_carr_off, long_blk_dist`
+
+// scanEndpointBaseRow scans a single row selected with endpointBaseSelectColumns into *models.EndPoint.
+// Column order MUST match endpointBaseSelectColumns.
+func scanEndpointBaseRow(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*models.EndPoint, error) {
+	endpoint := &models.EndPoint{}
+	var tags hstore.Hstore
+	var lastDetachSign []byte
+	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
+	var propagateStatus sql.NullString
+
+	err := scanner.Scan(
+		&endpoint.ID,
+		&endpoint.EUI,
+		&endpoint.Name,
+		&endpoint.Description,
+		&endpoint.TenantID,
+		&endpoint.OwnerTenantID,
+		&endpoint.NwkSnKey,
+		&endpoint.AppKey,
+		&endpoint.CryptoMode,
+		&endpoint.LastSeenAt,
+		&endpoint.FrameCount,
+		&endpoint.BatteryLevel,
+		&tags,
+		&endpoint.CreatedAt,
+		&endpoint.UpdatedAt,
+		&endpoint.ShAddr,
+		// Detach fields (BSSCI §5.7)
+		&lastAttachedBsEui, &lastPropagateTime, &lastDetachTime,
+		&lastDetachSign, &lastDetachPacketCnt, &propagateStatus,
+		&endpoint.EpStatus,
+		&endpoint.DeviceModelID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert hstore to map[string]string
+	endpoint.Tags = make(map[string]string)
+	for k, v := range tags.Map {
+		endpoint.Tags[k] = v.String
+	}
+
+	// Detach nullable fields (BSSCI §5.7)
+	if len(lastDetachSign) > 0 {
+		endpoint.LastDetachSign = lastDetachSign
+	}
+	if lastAttachedBsEui.Valid {
+		val := lastAttachedBsEui.Int64
+		endpoint.LastAttachedBsEui = &val
+	}
+	if lastPropagateTime.Valid {
+		val := lastPropagateTime.Int64
+		endpoint.LastPropagateTime = &val
+	}
+	if lastDetachTime.Valid {
+		val := lastDetachTime.Int64
+		endpoint.LastDetachTime = &val
+	}
+	if lastDetachPacketCnt.Valid {
+		val := lastDetachPacketCnt.Int64
+		endpoint.LastDetachPacketCnt = &val
+	}
+	if propagateStatus.Valid {
+		val := propagateStatus.String
+		endpoint.PropagateStatus = &val
+	}
+
+	return endpoint, nil
+}
 
 // scanEndpointListRow scans a single row from an endpoint list query into *models.EndPoint.
 // Column order must match endpointListSelectColumns.
@@ -744,72 +815,12 @@ func (r *EndPointRepository) Create(ctx context.Context, endpoint *models.EndPoi
 func (r *EndPointRepository) Get(ctx context.Context, eui models.EUI) (*models.EndPoint, error) {
 	query := `SELECT ` + endpointBaseSelectColumns + ` FROM endpoints WHERE ep_eui = $1`
 
-	endpoint := &models.EndPoint{}
-	var tags hstore.Hstore
-	var lastDetachSign []byte
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
-	var propagateStatus sql.NullString
-
-	err := r.db.QueryRowContext(ctx, query, eui[:]).Scan(
-		&endpoint.ID,
-		&endpoint.EUI,
-		&endpoint.Name,
-		&endpoint.Description,
-		&endpoint.TenantID,
-		&endpoint.OwnerTenantID,
-		&endpoint.NwkSnKey,
-		&endpoint.AppKey,
-		&endpoint.CryptoMode,
-		&endpoint.LastSeenAt,
-		&endpoint.FrameCount,
-		&endpoint.BatteryLevel,
-		&tags,
-		&endpoint.CreatedAt,
-		&endpoint.UpdatedAt,
-		&endpoint.ShAddr,
-		// Detach fields (BSSCI §5.7)
-		&lastAttachedBsEui, &lastPropagateTime, &lastDetachTime,
-		&lastDetachSign, &lastDetachPacketCnt, &propagateStatus,
-		&endpoint.EpStatus,
-		&endpoint.DeviceModelID,
-	)
-
+	endpoint, err := scanEndpointBaseRow(r.db.QueryRowContext(ctx, query, eui[:]))
 	if err == sql.ErrNoRows {
 		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint: %w", err)
-	}
-
-	// Convert hstore to map[string]string
-	endpoint.Tags = make(map[string]string)
-	for k, v := range tags.Map {
-		endpoint.Tags[k] = v.String
-	}
-
-	// Detach nullable fields (BSSCI §5.7)
-	if len(lastDetachSign) > 0 {
-		endpoint.LastDetachSign = lastDetachSign
-	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
 	}
 
 	return endpoint, nil
@@ -1638,71 +1649,12 @@ func (r *EndPointRepository) GetEndpointWithKeysForDetachValidation(ctx context.
 func (r *EndPointRepository) GetEndpointWithOwnership(ctx context.Context, eui models.EUI, _ int64) (*models.EndPoint, error) {
 	query := `SELECT ` + endpointBaseSelectColumns + ` FROM endpoints WHERE ep_eui = $1`
 
-	endpoint := &models.EndPoint{}
-	var tags hstore.Hstore
-	var lastDetachSign []byte
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
-	var propagateStatus sql.NullString
-
-	err := r.db.QueryRowContext(ctx, query, eui[:]).Scan(
-		&endpoint.ID,
-		&endpoint.EUI,
-		&endpoint.Name,
-		&endpoint.Description,
-		&endpoint.TenantID,
-		&endpoint.OwnerTenantID,
-		&endpoint.NwkSnKey,
-		&endpoint.AppKey,
-		&endpoint.CryptoMode,
-		&endpoint.LastSeenAt,
-		&endpoint.FrameCount,
-		&endpoint.BatteryLevel,
-		&tags,
-		&endpoint.CreatedAt,
-		&endpoint.UpdatedAt,
-		&endpoint.ShAddr,
-		// Detach fields (BSSCI §5.7)
-		&lastAttachedBsEui, &lastPropagateTime, &lastDetachTime,
-		&lastDetachSign, &lastDetachPacketCnt, &propagateStatus,
-		&endpoint.EpStatus,
-		&endpoint.DeviceModelID,
-	)
+	endpoint, err := scanEndpointBaseRow(r.db.QueryRowContext(ctx, query, eui[:]))
 	if err == sql.ErrNoRows {
 		return nil, storage.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get endpoint with ownership: %w", err)
-	}
-
-	// Convert hstore to map[string]string
-	endpoint.Tags = make(map[string]string)
-	for k, v := range tags.Map {
-		endpoint.Tags[k] = v.String
-	}
-
-	// Detach nullable fields (BSSCI §5.7)
-	if len(lastDetachSign) > 0 {
-		endpoint.LastDetachSign = lastDetachSign
-	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
 	}
 
 	return endpoint, nil

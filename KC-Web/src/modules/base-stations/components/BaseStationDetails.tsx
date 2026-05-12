@@ -93,6 +93,7 @@ import {
 import BaseStationLocationMap from "./BaseStationLocationMap";
 import BaseStationMessages from "./BaseStationMessages";
 import MapPickerDialog from "./MapPickerDialog";
+import ScUrlCopyField from "./ScUrlCopyField";
 
 interface BaseStationDetailsProps {
   baseStation: {
@@ -1023,43 +1024,11 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
 
             {/* Service Center URL (read-only with copy) */}
             {effectiveServiceCenterUrl && (
-              <TextField
-                label={BASE_STATION_DETAILS.LABEL_SC_URL}
+              <ScUrlCopyField
                 value={effectiveServiceCenterUrl}
-                fullWidth
-                slotProps={{
-                  input: {
-                    readOnly: true,
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Tooltip
-                          title={
-                            scUrlCopied
-                              ? BASE_STATION_DETAILS.LABEL_SC_URL_COPIED
-                              : BASE_STATION_DETAILS.ACTION_COPY_SC_URL
-                          }
-                        >
-                          <IconButton
-                            size="small"
-                            onClick={handleCopyScUrl}
-                            edge="end"
-                          >
-                            {scUrlCopied ? (
-                              <CheckCircleIcon
-                                fontSize="small"
-                                color="success"
-                              />
-                            ) : (
-                              <ContentCopyIcon fontSize="small" />
-                            )}
-                          </IconButton>
-                        </Tooltip>
-                      </InputAdornment>
-                    ),
-                    sx: (theme) => getMonoBody1(theme),
-                  },
-                }}
-                sx={{ mb: 3 }}
+                copied={scUrlCopied}
+                onCopy={handleCopyScUrl}
+                inputSxGetter={getMonoBody1}
               />
             )}
 
@@ -1076,43 +1045,12 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
                   {BASE_STATION_DETAILS.REGENERATE_CERTS_SUCCESS}
                 </Alert>
                 {effectiveServiceCenterUrl && (
-                  <TextField
-                    label={BASE_STATION_DETAILS.LABEL_SC_URL}
+                  <ScUrlCopyField
                     value={effectiveServiceCenterUrl}
-                    fullWidth
-                    slotProps={{
-                      input: {
-                        readOnly: true,
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <Tooltip
-                              title={
-                                scUrlCopied
-                                  ? BASE_STATION_DETAILS.LABEL_SC_URL_COPIED
-                                  : BASE_STATION_DETAILS.ACTION_COPY_SC_URL
-                              }
-                            >
-                              <IconButton
-                                size="small"
-                                onClick={handleCopyScUrl}
-                                edge="end"
-                              >
-                                {scUrlCopied ? (
-                                  <CheckCircleIcon
-                                    fontSize="small"
-                                    color="success"
-                                  />
-                                ) : (
-                                  <ContentCopyIcon fontSize="small" />
-                                )}
-                              </IconButton>
-                            </Tooltip>
-                          </InputAdornment>
-                        ),
-                        sx: (theme) => getMonoBody1(theme),
-                      },
-                    }}
-                    sx={{ mb: 2 }}
+                    copied={scUrlCopied}
+                    onCopy={handleCopyScUrl}
+                    inputSxGetter={getMonoBody1}
+                    mb={2}
                   />
                 )}
                 <Box display="flex" gap={1} flexWrap="wrap">

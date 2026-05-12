@@ -101,6 +101,7 @@ import {
   SecurityIcon,
 } from "@theme/icons";
 
+import BsConfigSummary from "./BsConfigSummary";
 import MapPickerDialog from "./MapPickerDialog";
 
 interface BaseStationCommissioningDialogProps {
@@ -552,57 +553,13 @@ export default function BaseStationCommissioningDialog({
         {MSG_BS_PARTIAL_SUCCESS}
       </Alert>
 
-      {/* Configuration Summary */}
-      <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-        <Typography variant="subtitle2" gutterBottom>
-          {SECTION_BS_CONFIG}
-        </Typography>
-
-        <Box sx={{ mt: 2 }}>
-          {/* Name */}
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ mb: 1 }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              {LABEL_NAME}
-            </Typography>
-            <Typography variant="body2">{formData.name}</Typography>
-          </Box>
-
-          {/* EUI with copy */}
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Typography variant="body2" color="text.secondary">
-              {LABEL_BS_EUI_DISPLAY}
-            </Typography>
-            <Box display="flex" alignItems="center" gap={1}>
-              <Typography variant="body2" sx={(theme) => getMonoBody2(theme)}>
-                {formData.eui}
-              </Typography>
-              <Tooltip
-                title={copiedField === "eui" ? ACTION_COPIED : ACTION_COPY}
-              >
-                <IconButton
-                  size="small"
-                  onClick={() => handleCopy(formData.eui, "eui")}
-                >
-                  {copiedField === "eui" ? (
-                    <CheckCircleIcon fontSize="small" color="success" />
-                  ) : (
-                    <ContentCopyIcon fontSize="small" />
-                  )}
-                </IconButton>
-              </Tooltip>
-            </Box>
-          </Box>
-        </Box>
-      </Paper>
+      <BsConfigSummary
+        name={formData.name}
+        eui={formData.eui}
+        copiedField={copiedField}
+        onCopy={handleCopy}
+        monoSxGetter={getMonoBody2}
+      />
 
       {errors.general && (
         <Alert severity="error" sx={{ mt: 2 }}>
@@ -621,92 +578,47 @@ export default function BaseStationCommissioningDialog({
         {certificateData ? MSG_BS_ADDED_WITH_CERTS : MSG_BS_ADDED_NO_CERTS}
       </Alert>
 
-      {/* Configuration Summary */}
-      <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-        <Typography variant="subtitle2" gutterBottom>
-          {SECTION_BS_CONFIG}
-        </Typography>
-
-        <Box sx={{ mt: 2 }}>
-          {/* Name */}
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ mb: 1 }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              {LABEL_NAME}
+      <BsConfigSummary
+        name={formData.name}
+        eui={formData.eui}
+        copiedField={copiedField}
+        onCopy={handleCopy}
+        monoSxGetter={getMonoBody2}
+      >
+        {/* Service Center URL with copy */}
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+        >
+          <Typography variant="body2" color="text.secondary">
+            {LABEL_SC_URL_DISPLAY}
+          </Typography>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Typography variant="body2" sx={(theme) => getMonoBody2(theme)}>
+              {certificateData?.serviceCenterUrl || "\u2014"}
             </Typography>
-            <Typography variant="body2">{formData.name}</Typography>
-          </Box>
-
-          {/* EUI with copy */}
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ mb: 1 }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              {LABEL_BS_EUI_DISPLAY}
-            </Typography>
-            <Box display="flex" alignItems="center" gap={1}>
-              <Typography variant="body2" sx={(theme) => getMonoBody2(theme)}>
-                {formData.eui}
-              </Typography>
+            {certificateData?.serviceCenterUrl && (
               <Tooltip
-                title={copiedField === "eui" ? ACTION_COPIED : ACTION_COPY}
+                title={copiedField === "url" ? ACTION_COPIED : ACTION_COPY}
               >
                 <IconButton
                   size="small"
-                  onClick={() => handleCopy(formData.eui, "eui")}
+                  onClick={() =>
+                    handleCopy(certificateData.serviceCenterUrl, "url")
+                  }
                 >
-                  {copiedField === "eui" ? (
+                  {copiedField === "url" ? (
                     <CheckCircleIcon fontSize="small" color="success" />
                   ) : (
                     <ContentCopyIcon fontSize="small" />
                   )}
                 </IconButton>
               </Tooltip>
-            </Box>
-          </Box>
-
-          {/* Service Center URL with copy */}
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Typography variant="body2" color="text.secondary">
-              {LABEL_SC_URL_DISPLAY}
-            </Typography>
-            <Box display="flex" alignItems="center" gap={1}>
-              <Typography variant="body2" sx={(theme) => getMonoBody2(theme)}>
-                {certificateData?.serviceCenterUrl || "—"}
-              </Typography>
-              {certificateData?.serviceCenterUrl && (
-                <Tooltip
-                  title={copiedField === "url" ? ACTION_COPIED : ACTION_COPY}
-                >
-                  <IconButton
-                    size="small"
-                    onClick={() =>
-                      handleCopy(certificateData.serviceCenterUrl, "url")
-                    }
-                  >
-                    {copiedField === "url" ? (
-                      <CheckCircleIcon fontSize="small" color="success" />
-                    ) : (
-                      <ContentCopyIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </Tooltip>
-              )}
-            </Box>
+            )}
           </Box>
         </Box>
-      </Paper>
+      </BsConfigSummary>
 
       {/* Certificate Downloads */}
       {certificateData && (

@@ -22,8 +22,6 @@ import {
   DialogContentText,
   DialogTitle,
   Grid,
-  InputAdornment,
-  TextField,
   Typography,
 } from "@mui/material";
 
@@ -35,9 +33,10 @@ import {
   AdminIcon,
   ErrorIcon,
   PeopleIcon,
-  SearchIcon,
   SuccessIcon,
 } from "@theme/icons";
+
+import SearchField from "@components/common/SearchField";
 
 import AddUserDialog from "../components/AddUserDialog";
 import UsersTableBase, { type OrderBy } from "../components/UsersTableBase";
@@ -275,18 +274,10 @@ const Users: React.FC<UsersProps> = ({
 
       {/* Search */}
       <Box display="flex" gap={2} mb={3}>
-        <TextField
+        <SearchField
           placeholder={USERS_PAGE.SEARCH_PLACEHOLDER}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          sx={{ flexGrow: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
         />
       </Box>
 

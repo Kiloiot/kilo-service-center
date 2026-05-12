@@ -55,6 +55,8 @@ import {
   ExpandMore,
 } from "@theme/icons";
 
+import ManufacturerFormFields from "../components/ManufacturerFormFields";
+
 /**
  * Blueprints page component
  */
@@ -663,21 +665,12 @@ const AddManufacturerDialog: React.FC<AddManufacturerDialogProps> = ({
             {error}
           </Alert>
         )}
-        <TextField
-          autoFocus
-          margin="dense"
-          label={BLUEPRINT_LABELS.LABEL_NAME}
-          fullWidth
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-        />
-        <TextField
-          margin="dense"
-          label={BLUEPRINT_LABELS.LABEL_WEBSITE}
-          fullWidth
-          value={formData.website || ""}
-          onChange={(e) =>
-            setFormData({ ...formData, website: e.target.value })
+        <ManufacturerFormFields
+          name={formData.name}
+          website={formData.website || ""}
+          onNameChange={(value) => setFormData({ ...formData, name: value })}
+          onWebsiteChange={(value) =>
+            setFormData({ ...formData, website: value })
           }
         />
       </DialogContent>
@@ -759,21 +752,12 @@ const EditManufacturerDialog: React.FC<EditManufacturerDialogProps> = ({
             {error}
           </Alert>
         )}
-        <TextField
-          autoFocus
-          margin="dense"
-          label={BLUEPRINT_LABELS.LABEL_NAME}
-          fullWidth
-          value={formData.name || ""}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-        />
-        <TextField
-          margin="dense"
-          label={BLUEPRINT_LABELS.LABEL_WEBSITE}
-          fullWidth
-          value={formData.website || ""}
-          onChange={(e) =>
-            setFormData({ ...formData, website: e.target.value })
+        <ManufacturerFormFields
+          name={formData.name || ""}
+          website={formData.website || ""}
+          onNameChange={(value) => setFormData({ ...formData, name: value })}
+          onWebsiteChange={(value) =>
+            setFormData({ ...formData, website: value })
           }
         />
       </DialogContent>

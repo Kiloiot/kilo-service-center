@@ -6,6 +6,7 @@ import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 import { apiService } from "@services/api";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
+import { persistAuthSession } from "@utils/auth-session";
 import { storageService } from "@utils/storage";
 import {
   AUTH_LAYOUT,
@@ -100,42 +101,16 @@ const AuthCallback: React.FC = () => {
           loginResponse = await apiService.exchangeOAuth2({ code, state });
         }
 
-        // Store access token for subsequent API requests
-        storageService.setItem(
-          STORAGE_KEYS.AUTH_TOKEN,
-          loginResponse.tokens.accessToken,
-        );
-
-        // Store refresh token if provided (refresh_token_enabled=true on backend)
-        if (loginResponse.tokens.refreshToken) {
-          storageService.setItem(
-            STORAGE_KEYS.REFRESH_TOKEN,
-            loginResponse.tokens.refreshToken,
-          );
-        } else {
-          storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-        }
-
-        // Set organization context from user profile
-        const { user } = loginResponse;
-        const defaultOrg = user.memberships.find(
-          (m) => m.orgId === user.defaultOrgId,
-        );
-        const firstOrg = user.memberships[0];
-        const org = defaultOrg || firstOrg;
-
-        if (!org) {
-          storageService.removeItem(STORAGE_KEYS.AUTH_TOKEN);
-          setError(ERR_AUTH_ORG_REQUIRED);
-          return;
-        }
-
-        setUser(user);
-
-        setOrganization(org.orgId, org.orgName || DEFAULT_ORG_NAME, user.id);
+        const session = persistAuthSession(loginResponse);
+        setUser(session.user);
+        setOrganization(session.orgId, session.orgName, session.user.id);
         navigate(ROUTES.HOME);
-      } catch {
-        setError(ERR_AUTH_CALLBACK_EXCHANGE_FAILED);
+      } catch (err) {
+        if (err instanceof Error && err.message === ERR_AUTH_ORG_REQUIRED) {
+          setError(ERR_AUTH_ORG_REQUIRED);
+        } else {
+          setError(ERR_AUTH_CALLBACK_EXCHANGE_FAILED);
+        }
       }
     };
 

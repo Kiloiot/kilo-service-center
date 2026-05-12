@@ -4,21 +4,16 @@ import type { EndpointUI, UpdateEndpointRequest } from "@api-types/api";
 import { useAttachEndpoint, useUpdateEndpoint } from "@hooks";
 import {
   Alert,
-  Box,
   Button,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
-  InputAdornment,
   Snackbar,
   TextField,
   Typography,
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
-import Tooltip from "@mui/material/Tooltip";
 
 import {
   generateRandomKey,
@@ -28,10 +23,16 @@ import {
   validateTypeEui,
   validateUint32Counter,
 } from "@utils/formatters";
-import { MIOTY_KEY_BYTE_LENGTH, MIOTY_UINT32_MAX } from "@constants/app";
+import { MIOTY_KEY_BYTE_LENGTH } from "@constants/app";
 import { ENDPOINT_FORM } from "@constants/messages";
 import { InfoIcon } from "@theme/icons";
 
+import {
+  AdvancedMiotySettings,
+  CommunicationSettings,
+  CounterFields,
+  SecurityKeyFields,
+} from "./EndpointFormFields";
 import DeviceModelSelector from "./DeviceModelSelector";
 
 interface EditEndPointDialogProps {
@@ -569,45 +570,12 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
               </Typography>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 6 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.bidirectional}
-                    onChange={handleChange("bidirectional")}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    {ENDPOINT_FORM.LABEL_BIDIRECTIONAL}
-                    <Tooltip title={ENDPOINT_FORM.TOOLTIP_BIDI}>
-                      <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
-                    </Tooltip>
-                  </Box>
-                }
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.preAttach}
-                    onChange={handleChange("preAttach")}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    {ENDPOINT_FORM.LABEL_PRE_ATTACH}
-                    <Tooltip title={ENDPOINT_FORM.TOOLTIP_PRE_ATTACH}>
-                      <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
-                    </Tooltip>
-                  </Box>
-                }
-              />
-            </Grid>
+            <CommunicationSettings
+              bidirectional={formData.bidirectional}
+              preAttach={formData.preAttach}
+              onBidirectionalChange={handleChange("bidirectional")}
+              onPreAttachChange={handleChange("preAttach")}
+            />
 
             {/* Advanced MIOTY Settings */}
             <Grid size={12}>
@@ -616,113 +584,24 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
               </Typography>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 6 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.dualChan}
-                    onChange={handleChange("dualChan")}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    {ENDPOINT_FORM.LABEL_DUAL_CHAN}
-                    <Tooltip title={ENDPOINT_FORM.TOOLTIP_DUAL_CHAN}>
-                      <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
-                    </Tooltip>
-                  </Box>
-                }
-              />
-            </Grid>
+            <AdvancedMiotySettings
+              dualChan={formData.dualChan}
+              repetition={formData.repetition}
+              wideCarrOff={formData.wideCarrOff}
+              longBlkDist={formData.longBlkDist}
+              onDualChanChange={handleChange("dualChan")}
+              onRepetitionChange={handleChange("repetition")}
+              onWideCarrOffChange={handleChange("wideCarrOff")}
+              onLongBlkDistChange={handleChange("longBlkDist")}
+            />
 
-            <Grid size={{ xs: 12, md: 6 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.repetition}
-                    onChange={handleChange("repetition")}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    {ENDPOINT_FORM.LABEL_REPETITION}
-                    <Tooltip title={ENDPOINT_FORM.TOOLTIP_REPETITION}>
-                      <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
-                    </Tooltip>
-                  </Box>
-                }
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.wideCarrOff}
-                    onChange={handleChange("wideCarrOff")}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    {ENDPOINT_FORM.LABEL_WIDE_CARR_OFF}
-                    <Tooltip title={ENDPOINT_FORM.TOOLTIP_WIDE_CARR_OFF}>
-                      <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
-                    </Tooltip>
-                  </Box>
-                }
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={formData.longBlkDist}
-                    onChange={handleChange("longBlkDist")}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Box sx={{ display: "flex", alignItems: "center" }}>
-                    {ENDPOINT_FORM.LABEL_LONG_BLK_DIST}
-                    <Tooltip title={ENDPOINT_FORM.TOOLTIP_LONG_BLK_DIST}>
-                      <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
-                    </Tooltip>
-                  </Box>
-                }
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                label={ENDPOINT_FORM.LABEL_LAST_PACKET_CNT}
-                value={formData.lastPacketCnt}
-                onChange={handleChange("lastPacketCnt")}
-                error={!!errors.lastPacketCnt}
-                helperText={
-                  errors.lastPacketCnt || ENDPOINT_FORM.HELPER_LAST_PACKET_CNT
-                }
-                type="number"
-                inputProps={{ min: 0, max: MIOTY_UINT32_MAX }}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                label={ENDPOINT_FORM.LABEL_ATTACH_CNT}
-                value={formData.attachCnt}
-                onChange={handleChange("attachCnt")}
-                error={!!errors.attachCnt}
-                helperText={errors.attachCnt || ENDPOINT_FORM.HELPER_ATTACH_CNT}
-                type="number"
-                inputProps={{ min: 0, max: MIOTY_UINT32_MAX }}
-              />
-            </Grid>
+            <CounterFields
+              lastPacketCnt={formData.lastPacketCnt}
+              attachCnt={formData.attachCnt}
+              onLastPacketCntChange={handleChange("lastPacketCnt")}
+              onAttachCntChange={handleChange("attachCnt")}
+              errors={errors}
+            />
 
             {/* Security Keys */}
             <Grid size={12}>
@@ -731,52 +610,15 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
               </Typography>
             </Grid>
 
-            <Grid size={12}>
-              <TextField
-                fullWidth
-                label={ENDPOINT_FORM.LABEL_NETWORK_KEY}
-                value={formData.networkKey}
-                onChange={handleChange("networkKey")}
-                error={!!errors.networkKey}
-                helperText={
-                  errors.networkKey || ENDPOINT_FORM.HELPER_NETWORK_KEY
-                }
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Button size="small" onClick={handleGenerateNetworkKey}>
-                        {ENDPOINT_FORM.BUTTON_GENERATE}
-                      </Button>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-
-            <Grid size={12}>
-              <TextField
-                fullWidth
-                label={ENDPOINT_FORM.LABEL_APP_KEY}
-                value={formData.applicationKey}
-                onChange={handleChange("applicationKey")}
-                error={!!errors.applicationKey}
-                helperText={
-                  errors.applicationKey || ENDPOINT_FORM.HELPER_APP_KEY
-                }
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Button
-                        size="small"
-                        onClick={handleGenerateApplicationKey}
-                      >
-                        {ENDPOINT_FORM.BUTTON_GENERATE}
-                      </Button>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
+            <SecurityKeyFields
+              networkKey={formData.networkKey}
+              applicationKey={formData.applicationKey}
+              onNetworkKeyChange={handleChange("networkKey")}
+              onApplicationKeyChange={handleChange("applicationKey")}
+              onGenerateNetworkKey={handleGenerateNetworkKey}
+              onGenerateApplicationKey={handleGenerateApplicationKey}
+              errors={errors}
+            />
 
             {/* Type EUI */}
             <Grid size={12}>

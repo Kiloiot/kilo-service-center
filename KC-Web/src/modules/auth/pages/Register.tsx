@@ -5,9 +5,7 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
-  Link as MuiLink,
   Paper,
   TextField,
   Typography,
@@ -20,8 +18,6 @@ import { useSession } from "@contexts/SessionContext";
 import { useSystem } from "@contexts/SystemContext";
 import { storageService } from "@utils/storage";
 import {
-  APP_EDITION,
-  APP_NAME,
   AUTH_LAYOUT,
   DEFAULT_ORG_NAME,
   ROUTES,
@@ -30,9 +26,9 @@ import {
 import {
   ACTION_CREATE_ACCOUNT,
   ACTION_HAVE_ACCOUNT,
+  ACTION_LOGIN,
   AUTH_EMAIL_LABEL,
   AUTH_PASSWORD_LABEL,
-  BRAND,
   ERR_REGISTRATION_FAILED,
   LABEL_COMPANY_NAME,
   LABEL_CONFIRM_PASSWORD,
@@ -45,7 +41,8 @@ import {
   VAL_PASSWORD_CONFIRM_MISMATCH,
   VAL_PASSWORD_REQUIRED,
 } from "@constants/messages";
-import kiloLogo from "@assets/kilo-logo.png";
+
+import AuthBranding from "../components/AuthBranding";
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -165,55 +162,7 @@ const Register: React.FC = () => {
           textAlign: "center",
         }}
       >
-        {/* Logo and branding */}
-        <Box
-          sx={{
-            mb: 3,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          <img
-            src={kiloLogo}
-            alt={APP_NAME}
-            style={{ maxWidth: "200px", height: "auto", marginBottom: "8px" }}
-          />
-          <Chip
-            label={versionInfo?.edition ?? APP_EDITION}
-            size="small"
-            variant="outlined"
-            sx={{ mb: 2 }}
-          />
-          <Box
-            sx={{ display: "flex", gap: 2, justifyContent: "center", mb: 1 }}
-          >
-            <MuiLink
-              href={versionInfo?.documentationUrl}
-              target="_blank"
-              rel="noopener"
-              variant="caption"
-            >
-              {BRAND.DOCUMENTATION}
-            </MuiLink>
-            <MuiLink
-              href={versionInfo?.sourceUrl}
-              target="_blank"
-              rel="noopener"
-              variant="caption"
-            >
-              {BRAND.SOURCE}
-            </MuiLink>
-            <MuiLink
-              href={versionInfo?.licenseUrl}
-              target="_blank"
-              rel="noopener"
-              variant="caption"
-            >
-              {BRAND.LICENSE}
-            </MuiLink>
-          </Box>
-        </Box>
+        <AuthBranding versionInfo={versionInfo} linksMb={1} />
 
         <Typography variant="h5" component="h2" gutterBottom>
           {ACTION_CREATE_ACCOUNT}
@@ -310,7 +259,7 @@ const Register: React.FC = () => {
           <Typography variant="body2" textAlign="center">
             {ACTION_HAVE_ACCOUNT}{" "}
             <RouterLink to={ROUTES.LOGIN} style={{ textDecoration: "none" }}>
-              Log in
+              {ACTION_LOGIN}
             </RouterLink>
           </Typography>
         </Box>
