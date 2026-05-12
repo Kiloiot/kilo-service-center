@@ -19,7 +19,6 @@ import {
   InputAdornment,
   TextField,
   Tooltip,
-  Typography,
 } from "@mui/material";
 
 import { apiService } from "@services/api";
@@ -36,21 +35,12 @@ import {
   TIMING_COPY_FEEDBACK,
 } from "@constants/app";
 import {
-  ACTION_PICK_ON_MAP,
   BASE_STATION_DETAILS,
   ERR_BS_EUI_EXISTS,
   ERR_BS_NOT_FOUND,
   ERR_UPDATE_BS,
   ERR_UPDATE_BS_EUI,
   ERR_UPDATE_BS_NAME_PARTIAL,
-  HELPER_ALTITUDE,
-  HELPER_LATITUDE,
-  HELPER_LONGITUDE,
-  LABEL_ALTITUDE,
-  LABEL_LATITUDE,
-  LABEL_LOCATION,
-  LABEL_LONGITUDE,
-  MSG_GPS_AUTHORITATIVE,
   PLACEHOLDER_BS_EUI,
   VAL_BS_EUI_FORMAT,
   VAL_BS_EUI_REQUIRED,
@@ -58,16 +48,11 @@ import {
   VAL_LATITUDE_RANGE,
   VAL_LONGITUDE_RANGE,
 } from "@constants/messages";
-import {
-  CheckCircleIcon,
-  ContentCopyIcon,
-  DownloadIcon,
-  GpsFixedIcon,
-  MapIcon,
-} from "@theme/icons";
+import { CheckCircleIcon, ContentCopyIcon } from "@theme/icons";
 
 import BaseStationCertRegenDialog from "./BaseStationCertRegenDialog";
-import MapPickerDialog from "./MapPickerDialog";
+import BaseStationCertSection from "./BaseStationCertSection";
+import BaseStationLocationFields from "./BaseStationLocationFields";
 import ScUrlCopyField from "./ScUrlCopyField";
 
 interface BaseStationEditFormData {
@@ -216,7 +201,6 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
     {},
   );
   const [editError, setEditError] = useState<string | null>(null);
-  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const [euiCopied, setEuiCopied] = useState(false);
   const [scUrlCopied, setScUrlCopied] = useState(false);
 
@@ -415,36 +399,6 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
     }
   };
 
-  const handleDownloadRegenCert = async (certType: "ca" | "client" | "key") => {
-    if (!regenCertData?.downloadUrls) return;
-
-    const certIdMap: Record<"ca" | "client" | "key", string | undefined> = {
-      ca: regenCertData.downloadUrls.caCert,
-      client: regenCertData.downloadUrls.clientCert,
-      key: regenCertData.downloadUrls.privateKey,
-    };
-
-    const certId = certIdMap[certType];
-    if (!certId) return;
-
-    try {
-      const { blob, filename } = await apiService.downloadCertificate(
-        certId,
-        certType,
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch {
-      onError(BASE_STATION_DETAILS.CERTIFICATE_DOWNLOAD_ERROR);
-    }
-  };
-
   return (
     <>
       <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -505,99 +459,20 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
 
             {/* Location fields */}
             <Divider sx={{ mb: 2 }} />
-            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-              {LABEL_LOCATION}
-            </Typography>
-            {baseStationDetails?.locationSource === "gps" ? (
-              <Alert severity="info" icon={<GpsFixedIcon />} sx={{ mb: 2 }}>
-                {MSG_GPS_AUTHORITATIVE}
-              </Alert>
-            ) : null}
-            <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
-              <TextField
-                label={LABEL_LATITUDE}
-                value={editFormData.latitude}
-                onChange={(e) => {
-                  setEditFormData((prev) => ({
-                    ...prev,
-                    latitude: e.target.value,
-                  }));
-                  if (locationErrors.latitude)
-                    setLocationErrors((prev) => ({ ...prev, latitude: "" }));
-                }}
-                type="number"
-                helperText={locationErrors.latitude || HELPER_LATITUDE}
-                error={!!locationErrors.latitude}
-                disabled={baseStationDetails?.locationSource === "gps"}
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                label={LABEL_LONGITUDE}
-                value={editFormData.longitude}
-                onChange={(e) => {
-                  setEditFormData((prev) => ({
-                    ...prev,
-                    longitude: e.target.value,
-                  }));
-                  if (locationErrors.longitude)
-                    setLocationErrors((prev) => ({ ...prev, longitude: "" }));
-                }}
-                type="number"
-                helperText={locationErrors.longitude || HELPER_LONGITUDE}
-                error={!!locationErrors.longitude}
-                disabled={baseStationDetails?.locationSource === "gps"}
-                sx={{ flex: 1 }}
-              />
-            </Box>
-            <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
-              <TextField
-                label={LABEL_ALTITUDE}
-                value={editFormData.altitude}
-                onChange={(e) =>
-                  setEditFormData((prev) => ({
-                    ...prev,
-                    altitude: e.target.value,
-                  }))
-                }
-                type="number"
-                helperText={HELPER_ALTITUDE}
-                disabled={baseStationDetails?.locationSource === "gps"}
-                sx={{ flex: 1 }}
-              />
-              <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
-                {baseStationDetails?.locationSource !== "gps" && (
-                  <Button
-                    variant="outlined"
-                    startIcon={<MapIcon />}
-                    onClick={() => setMapPickerOpen(true)}
-                  >
-                    {ACTION_PICK_ON_MAP}
-                  </Button>
-                )}
-              </Box>
-            </Box>
-
-            <MapPickerDialog
-              open={mapPickerOpen}
-              onClose={() => setMapPickerOpen(false)}
-              onConfirm={(lat, lng) => {
-                setEditFormData((prev) => ({
-                  ...prev,
-                  latitude: lat.toFixed(6),
-                  longitude: lng.toFixed(6),
-                }));
-                setMapPickerOpen(false);
+            <BaseStationLocationFields
+              values={{
+                latitude: editFormData.latitude,
+                longitude: editFormData.longitude,
+                altitude: editFormData.altitude,
               }}
-              initialLat={
-                editFormData.latitude
-                  ? parseFloat(editFormData.latitude)
-                  : undefined
+              onChange={(field, value) =>
+                setEditFormData((prev) => ({ ...prev, [field]: value }))
               }
-              initialLng={
-                editFormData.longitude
-                  ? parseFloat(editFormData.longitude)
-                  : undefined
+              errors={locationErrors}
+              onClearError={(field) =>
+                setLocationErrors((prev) => ({ ...prev, [field]: "" }))
               }
+              isGps={baseStationDetails?.locationSource === "gps"}
             />
 
             {/* Service Center URL (read-only with copy) */}
@@ -611,71 +486,15 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
             )}
 
             {/* Certificates section */}
-            <Divider sx={{ mb: 2 }} />
-            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-              {BASE_STATION_DETAILS.CERTIFICATES_SECTION_TITLE}
-            </Typography>
-
-            {regenCertData ? (
-              <Box>
-                <Alert severity="success" sx={{ mb: 2 }}>
-                  {BASE_STATION_DETAILS.REGENERATE_CERTS_SUCCESS}
-                </Alert>
-                {effectiveServiceCenterUrl && (
-                  <ScUrlCopyField
-                    value={effectiveServiceCenterUrl}
-                    copied={scUrlCopied}
-                    onCopy={handleCopyScUrl}
-                    inputSxGetter={getMonoBody1}
-                    mb={2}
-                  />
-                )}
-                <Box display="flex" gap={1} flexWrap="wrap">
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<DownloadIcon />}
-                    onClick={() => handleDownloadRegenCert("ca")}
-                  >
-                    {BASE_STATION_DETAILS.DOWNLOAD_CA}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<DownloadIcon />}
-                    onClick={() => handleDownloadRegenCert("client")}
-                  >
-                    {BASE_STATION_DETAILS.DOWNLOAD_CERT}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<DownloadIcon />}
-                    onClick={() => handleDownloadRegenCert("key")}
-                  >
-                    {BASE_STATION_DETAILS.DOWNLOAD_KEY}
-                  </Button>
-                </Box>
-              </Box>
-            ) : (
-              <Box>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 2 }}
-                >
-                  {BASE_STATION_DETAILS.CERTIFICATES_HINT}
-                </Typography>
-                <Button
-                  variant="outlined"
-                  color="warning"
-                  onClick={() => setShowRegenConfirm(true)}
-                  disabled={isRegenerating}
-                >
-                  {BASE_STATION_DETAILS.ACTION_REGENERATE_CERTS}
-                </Button>
-              </Box>
-            )}
+            <BaseStationCertSection
+              regenCertData={regenCertData}
+              effectiveServiceCenterUrl={effectiveServiceCenterUrl}
+              scUrlCopied={scUrlCopied}
+              onCopyScUrl={handleCopyScUrl}
+              isRegenerating={isRegenerating}
+              onRegenerate={() => setShowRegenConfirm(true)}
+              onError={onError}
+            />
           </Box>
         </DialogContent>
         {editError && (
