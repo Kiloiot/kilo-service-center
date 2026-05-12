@@ -572,6 +572,32 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Predicate for 401-shaped errors across transports.
+ * Accepts ApiError, GrpcApiError, or any duck-typed error exposing
+ * status === 401 or an isUnauthorized() method. Keeps callers free
+ * of transport-specific imports.
+ */
+export function isUnauthorizedError(err: unknown): boolean {
+  if (err === null || typeof err !== "object") {
+    return false;
+  }
+  const candidate = err as {
+    status?: unknown;
+    isUnauthorized?: () => boolean;
+  };
+  if (typeof candidate.isUnauthorized === "function") {
+    try {
+      if (candidate.isUnauthorized() === true) {
+        return true;
+      }
+    } catch {
+      // fall through to status check
+    }
+  }
+  return candidate.status === 401;
+}
+
 // ============================================================================
 // SCACI Types (Service Center - Application Center Interface)
 // ============================================================================

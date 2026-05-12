@@ -531,6 +531,7 @@ function buildUpdateEndpointRequest(
   return request;
 }
 
+
 /**
  * gRPC-web Client Service
  *
@@ -823,11 +824,14 @@ class GrpcClientService {
     request.setEmail(email);
     request.setPassword(password);
 
-    // Public method: skip org/user requirement (pre-auth)
+    // Public method: skip org/user requirement (pre-auth).
+    // skipRefreshRetry prevents the 401-refresh handler from swallowing
+    // invalid-credential errors into a never-resolving redirect promise.
     const response = await this.promisify<pb.LoginRequest, pb.LoginResponse>(
       this.client.login,
       {
         requireOrgUser: false,
+        skipRefreshRetry: true,
       },
     )(request);
 
@@ -1610,8 +1614,9 @@ class GrpcClientService {
   }
 
   /**
-   * Exchange OIDC authorization code for tokens
-   * Note: redirectUri kept for API compat but not sent to gRPC (backend handles redirect)
+   * Exchange OIDC authorization code for tokens.
+   * Backend resolves the redirect URI from server-side config, so the
+   * client doesn't send one over the wire.
    */
   async exchangeOIDC(
     code: string,
@@ -1649,7 +1654,7 @@ class GrpcClientService {
     const response = await this.promisify<
       pb.ExchangeOIDCRequest,
       pb.LoginResponse
-    >(this.client.exchangeOIDC, { requireOrgUser: false })(request);
+    >(this.client.exchangeOIDC, { requireOrgUser: false, skipRefreshRetry: true })(request);
 
     const tokens = response.getTokens();
     const user = response.getUser();
@@ -1690,7 +1695,9 @@ class GrpcClientService {
   }
 
   /**
-   * Exchange OAuth2 authorization code for tokens
+   * Exchange OAuth2 authorization code for tokens.
+   * Backend resolves the redirect URI from server-side config, so the
+   * client doesn't send one over the wire.
    */
   async exchangeOAuth2(
     code: string,
@@ -1728,7 +1735,7 @@ class GrpcClientService {
     const response = await this.promisify<
       pb.ExchangeOAuth2Request,
       pb.LoginResponse
-    >(this.client.exchangeOAuth2, { requireOrgUser: false })(request);
+    >(this.client.exchangeOAuth2, { requireOrgUser: false, skipRefreshRetry: true })(request);
 
     const tokens = response.getTokens();
     const user = response.getUser();

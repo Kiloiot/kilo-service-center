@@ -21,7 +21,7 @@ export function useUsers(
 ) {
   return useQuery({
     queryKey: queryKeys.users.list({ limit, offset }),
-    queryFn: () => apiService.getUsers(limit, offset),
+    queryFn: () => apiService.getUsers(limit),
     enabled: options?.enabled ?? true,
   });
 }
@@ -98,7 +98,7 @@ export function useChangePassword() {
 export function useUsersForLookup(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.users.list({ limit: USER_LOOKUP_LIMIT, offset: 0 }),
-    queryFn: () => apiService.getUsers(USER_LOOKUP_LIMIT, 0),
+    queryFn: () => apiService.getUsers(USER_LOOKUP_LIMIT),
     enabled: options?.enabled ?? true,
     staleTime: TIMING.LIST_REFRESH * 1000, // Use centralized timing constant (30s)
   });
