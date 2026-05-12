@@ -5,9 +5,14 @@
  * Handles BSSCI, SCACI, and system events.
  */
 
-import type { CertificateAPI, CertificateUI, EventAPI, EventUI } from '@api-types/api';
+import type {
+  CertificateAPI,
+  CertificateUI,
+  EventAPI,
+  EventUI,
+} from "@api-types/api";
 
-import { formatRelativeDuration } from '@utils/formatters';
+import { formatRelativeDuration } from "@utils/formatters";
 
 /**
  * Transform a system event from API to UI format
@@ -40,20 +45,22 @@ export function mapEventList(events: EventAPI[]): EventUI[] {
  * Calculate certificate status based on expiry date
  */
 export function deriveCertificateStatus(expiryDate: string): {
-  status: 'valid' | 'expiring' | 'expired';
+  status: "valid" | "expiring" | "expired";
   daysUntilExpiry: number;
 } {
   const expiry = new Date(expiryDate);
   const now = new Date();
-  const daysUntilExpiry = Math.floor((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const daysUntilExpiry = Math.floor(
+    (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+  );
 
-  let status: 'valid' | 'expiring' | 'expired';
+  let status: "valid" | "expiring" | "expired";
   if (daysUntilExpiry < 0) {
-    status = 'expired';
+    status = "expired";
   } else if (daysUntilExpiry < 30) {
-    status = 'expiring';
+    status = "expiring";
   } else {
-    status = 'valid';
+    status = "valid";
   }
 
   return { status, daysUntilExpiry };
@@ -78,6 +85,8 @@ export function mapCertificate(api: CertificateAPI): CertificateUI {
 /**
  * Transform an array of certificates
  */
-export function mapCertificateList(certificates: CertificateAPI[]): CertificateUI[] {
+export function mapCertificateList(
+  certificates: CertificateAPI[],
+): CertificateUI[] {
   return certificates.map(mapCertificate);
 }

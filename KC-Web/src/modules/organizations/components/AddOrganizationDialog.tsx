@@ -4,7 +4,7 @@
  * Dialog for creating new organizations with full field support.
  */
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
 import {
   Box,
@@ -17,34 +17,37 @@ import {
   Switch,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { useCreateOrganization } from '@hooks/useOrganizations';
-import { ORGANIZATION_FORM } from '@constants/messages';
+import { useCreateOrganization } from "@hooks/useOrganizations";
+import { ORGANIZATION_FORM } from "@constants/messages";
 
-import TagsEditor from './TagsEditor';
+import TagsEditor from "./TagsEditor";
 
 interface AddOrganizationDialogProps {
   open: boolean;
   onClose: () => void;
 }
 
-const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({ open, onClose }) => {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({
+  open,
+  onClose,
+}) => {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [canHaveBaseStations, setCanHaveBaseStations] = useState(true);
-  const [maxBsCount, setMaxBsCount] = useState('');
-  const [maxEpCount, setMaxEpCount] = useState('');
+  const [maxBsCount, setMaxBsCount] = useState("");
+  const [maxEpCount, setMaxEpCount] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
 
   const { mutate: createOrg, isPending } = useCreateOrganization();
 
   const handleReset = () => {
-    setName('');
-    setDescription('');
+    setName("");
+    setDescription("");
     setCanHaveBaseStations(true);
-    setMaxBsCount('');
-    setMaxEpCount('');
+    setMaxBsCount("");
+    setMaxEpCount("");
     setTags({});
   };
 
@@ -71,7 +74,7 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({ open, onC
         onSuccess: () => {
           handleClose();
         },
-      }
+      },
     );
   };
 
@@ -109,11 +112,11 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({ open, onC
           label={ORGANIZATION_FORM.LABEL_CAN_HAVE_BS}
           sx={{ mt: 1 }}
         />
-        <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+        <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
           <TextField
             label={ORGANIZATION_FORM.LABEL_MAX_BS_COUNT}
             value={maxBsCount}
-            onChange={(e) => setMaxBsCount(e.target.value.replace(/\D/g, ''))}
+            onChange={(e) => setMaxBsCount(e.target.value.replace(/\D/g, ""))}
             helperText={ORGANIZATION_FORM.HELPER_MAX_BS_COUNT}
             type="number"
             slotProps={{ htmlInput: { min: 0 } }}
@@ -123,7 +126,7 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({ open, onC
           <TextField
             label={ORGANIZATION_FORM.LABEL_MAX_EP_COUNT}
             value={maxEpCount}
-            onChange={(e) => setMaxEpCount(e.target.value.replace(/\D/g, ''))}
+            onChange={(e) => setMaxEpCount(e.target.value.replace(/\D/g, ""))}
             helperText={ORGANIZATION_FORM.HELPER_MAX_EP_COUNT}
             type="number"
             slotProps={{ htmlInput: { min: 0 } }}
@@ -139,7 +142,11 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({ open, onC
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose}>{ORGANIZATION_FORM.ACTION_CANCEL}</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={!name || isPending}>
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={!name || isPending}
+        >
           {ORGANIZATION_FORM.ACTION_SUBMIT}
         </Button>
       </DialogActions>

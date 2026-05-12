@@ -5,28 +5,32 @@
  * Maps connection states to UI-friendly values.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
-import { type ConnectionError, type ConnectionState, realtimeService } from '@services/realtime';
+import {
+  type ConnectionError,
+  type ConnectionState,
+  realtimeService,
+} from "@services/realtime";
 
 /**
  * UI-friendly connection status
  */
-export type UIConnectionStatus = 'connected' | 'reconnecting' | 'offline';
+export type UIConnectionStatus = "connected" | "reconnecting" | "offline";
 
 /**
  * Map internal connection state to UI status
  */
 function mapStateToStatus(state: ConnectionState): UIConnectionStatus {
   switch (state) {
-    case 'connected':
-      return 'connected';
-    case 'connecting':
-    case 'reconnecting':
-      return 'reconnecting';
-    case 'disconnected':
+    case "connected":
+      return "connected";
+    case "connecting":
+    case "reconnecting":
+      return "reconnecting";
+    case "disconnected":
     default:
-      return 'offline';
+      return "offline";
   }
 }
 
@@ -37,10 +41,10 @@ function mapStateToStatus(state: ConnectionState): UIConnectionStatus {
  */
 export function useConnectionStatus() {
   const [status, setStatus] = useState<UIConnectionStatus>(() =>
-    mapStateToStatus(realtimeService.getState())
+    mapStateToStatus(realtimeService.getState()),
   );
   const [lastError, setLastError] = useState<ConnectionError | null>(() =>
-    realtimeService.getLastError()
+    realtimeService.getLastError(),
   );
 
   useEffect(() => {
@@ -60,9 +64,9 @@ export function useConnectionStatus() {
 
   return {
     status,
-    isConnected: status === 'connected',
-    isReconnecting: status === 'reconnecting',
-    isOffline: status === 'offline',
+    isConnected: status === "connected",
+    isReconnecting: status === "reconnecting",
+    isOffline: status === "offline",
     lastError,
   };
 }

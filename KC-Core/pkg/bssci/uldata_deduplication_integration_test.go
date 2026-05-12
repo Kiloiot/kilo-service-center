@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	bssciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci"
 	bssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -463,20 +464,26 @@ func setupULTestServer(t *testing.T, msgRepo *ulCapturingMIOTYMessageRepo, epRep
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 	server.RegisterHandlers()
 
-	// Initialize deduplicator with default 5-minute window (required for handleULData)
 	dedup := bssci.NewMessageDeduplicator(5 * time.Minute)
 	server.SetDeduplicator(dedup)
-	server.SetUplinkIngestService(&ulNoopIngestService{})
+	ingestSvc := bssciservices.NewUplinkIngestService(
+		dedup,
+		stor,
+		nil,
+		nil,
+		epRepo,
+		nil,
+		nil,
+		broadcaster,
+		nil,
+		testLogger,
+		ulTestTenantID,
+		0,
+	)
+	server.SetUplinkIngestService(ingestSvc)
 	t.Cleanup(func() { dedup.Stop() })
 
 	return server, eventStore
-}
-
-// ulNoopIngestService is a minimal UplinkIngestService for unit tests.
-type ulNoopIngestService struct{}
-
-func (s *ulNoopIngestService) Ingest(_ context.Context, _ *bssci.UplinkPayload, _ bssci.UplinkIngestOptions) (*bssci.IngestResult, error) {
-	return &bssci.IngestResult{}, nil
 }
 
 // --- Integration Tests ---
@@ -786,12 +793,10 @@ func TestULDataDeduplication_HashCollision_ReturnsError(t *testing.T) {
 	data2 := buildTestULDataPayload(ulTestEpEui, 42, rxTime+1000, 15.5, -80.0, []byte{0xFF})
 	msg2 := buildTestMessage(1001, data2)
 	err = server.CallHandleULData(session, msg2, data2)
+	require.NoError(t, err, "handleULData should not propagate collision error; it writes a wire error response")
 
-	// Second call should return error due to hash collision
-	require.Error(t, err, "Second handleULData should return error for hash collision")
-	assert.Contains(t, err.Error(), "collision", "Error should indicate collision")
-
-	// CreateULDataMessage should only be called once
+	// Collision triggers an error response written to the session, but persistence is skipped
+	assert.GreaterOrEqual(t, mockConn.SentCount(), 2, "At least one response written for each handleULData call")
 	assert.Equal(t, 1, msgRepo.GetCreateULDataCallCount(), "CreateULDataMessage should only be called once")
 }
 
@@ -800,19 +805,27 @@ func TestULDataDeduplication_HashCollision_ReturnsError(t *testing.T) {
 func TestULDataDeduplication_OutsideWindow_CreatesNewMessage(t *testing.T) {
 	t.Parallel()
 
-	// Setup
 	msgRepo := &ulCapturingMIOTYMessageRepo{}
 	epRepo := &ulTestEndpointRepo{
 		endpoints: map[uint64]*models.EndPoint{
 			ulTestEpEui: createTestEndpoint(ulTestEpEui, ulTestTenantID),
 		},
 	}
-	server, _ := setupULTestServer(t, msgRepo, epRepo)
+	stor := &ulCapturingStorage{miotyMessages: msgRepo, endpointRepo: epRepo}
+	eventStore := &ulCapturingEventStore{}
+	testLogger := logger.NewNop()
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
+	server := bssci.NewTestServer(testLogger, stor, eventStore, ulTestTenantID,
+		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
+	server.RegisterHandlers()
 
-	// Create deduplicator with very short window (1ms)
 	shortDedup := bssci.NewMessageDeduplicator(1 * time.Millisecond)
-	defer shortDedup.Stop()
+	t.Cleanup(func() { shortDedup.Stop() })
 	server.SetDeduplicator(shortDedup)
+	ingestSvc := bssciservices.NewUplinkIngestService(
+		shortDedup, stor, nil, nil, epRepo, nil, nil, broadcaster, nil, testLogger, ulTestTenantID, 0,
+	)
+	server.SetUplinkIngestService(ingestSvc)
 
 	mockConn := &ulTestConn{}
 	session := createTestSession(ulTestBsEui1, ulTestTenantID, mockConn)
@@ -956,7 +969,21 @@ func setupULTestServerWithBroadcaster(t *testing.T, msgRepo *ulCapturingMIOTYMes
 
 	dedup := bssci.NewMessageDeduplicator(5 * time.Minute)
 	server.SetDeduplicator(dedup)
-	server.SetUplinkIngestService(&ulNoopIngestService{})
+	ingestSvc := bssciservices.NewUplinkIngestService(
+		dedup,
+		stor,
+		nil,
+		nil,
+		epRepo,
+		nil,
+		nil,
+		broadcaster,
+		nil,
+		testLogger,
+		ulTestTenantID,
+		0,
+	)
+	server.SetUplinkIngestService(ingestSvc)
 	t.Cleanup(func() { dedup.Stop() })
 
 	return server, eventStore, broadcaster

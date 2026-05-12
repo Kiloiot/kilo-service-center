@@ -4,9 +4,9 @@
  * Displays organizations in a sortable table.
  */
 
-import React from 'react';
+import React from "react";
 
-import type { OrganizationUI } from '@api-types/api';
+import type { OrganizationUI } from "@api-types/api";
 import {
   Box,
   Chip,
@@ -19,14 +19,14 @@ import {
   TableRow,
   TableSortLabel,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { formatRelativeDuration } from '@utils/formatters';
-import { ORG_STATE } from '@constants/app';
-import { ORGANIZATIONS_PAGE } from '@constants/messages';
+import { formatRelativeDuration } from "@utils/formatters";
+import { ORG_STATE } from "@constants/app";
+import { ORGANIZATIONS_PAGE } from "@constants/messages";
 
-type OrderBy = 'name' | 'state' | 'createdAt';
-type OrderDirection = 'asc' | 'desc';
+type OrderBy = "name" | "state" | "createdAt";
+type OrderDirection = "asc" | "desc";
 
 interface OrganizationsTableProps {
   organizations: OrganizationUI[];
@@ -37,16 +37,18 @@ interface OrganizationsTableProps {
   emptyMessage?: string;
 }
 
-const getStateColor = (state: string): 'success' | 'warning' | 'error' | 'default' => {
+const getStateColor = (
+  state: string,
+): "success" | "warning" | "error" | "default" => {
   switch (state) {
     case ORG_STATE.ACTIVE:
-      return 'success';
+      return "success";
     case ORG_STATE.SUSPENDED:
-      return 'warning';
+      return "warning";
     case ORG_STATE.ARCHIVED:
-      return 'error';
+      return "error";
     default:
-      return 'default';
+      return "default";
   }
 };
 
@@ -73,22 +75,22 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
 }) => {
   if (organizations.length === 0) {
     return (
-      <Paper sx={{ p: 4, textAlign: 'center' }}>
+      <Paper sx={{ p: 4, textAlign: "center" }}>
         <Typography color="text.secondary">{emptyMessage}</Typography>
       </Paper>
     );
   }
 
   return (
-    <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
+    <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
       <Table>
         <TableHead>
           <TableRow>
             <TableCell>
               <TableSortLabel
-                active={orderBy === 'name'}
-                direction={orderBy === 'name' ? orderDirection : 'asc'}
-                onClick={() => onSort('name')}
+                active={orderBy === "name"}
+                direction={orderBy === "name" ? orderDirection : "asc"}
+                onClick={() => onSort("name")}
               >
                 {ORGANIZATIONS_PAGE.COL_NAME}
               </TableSortLabel>
@@ -96,9 +98,9 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
             <TableCell>{ORGANIZATIONS_PAGE.COL_DESCRIPTION}</TableCell>
             <TableCell>
               <TableSortLabel
-                active={orderBy === 'state'}
-                direction={orderBy === 'state' ? orderDirection : 'asc'}
-                onClick={() => onSort('state')}
+                active={orderBy === "state"}
+                direction={orderBy === "state" ? orderDirection : "asc"}
+                onClick={() => onSort("state")}
               >
                 {ORGANIZATIONS_PAGE.COL_STATE}
               </TableSortLabel>
@@ -108,9 +110,9 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
             <TableCell>{ORGANIZATIONS_PAGE.COL_EP_QUOTA}</TableCell>
             <TableCell>
               <TableSortLabel
-                active={orderBy === 'createdAt'}
-                direction={orderBy === 'createdAt' ? orderDirection : 'asc'}
-                onClick={() => onSort('createdAt')}
+                active={orderBy === "createdAt"}
+                direction={orderBy === "createdAt" ? orderDirection : "asc"}
+                onClick={() => onSort("createdAt")}
               >
                 {ORGANIZATIONS_PAGE.COL_CREATED}
               </TableSortLabel>
@@ -122,7 +124,7 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
             <TableRow
               key={org.id}
               hover
-              sx={{ cursor: 'pointer' }}
+              sx={{ cursor: "pointer" }}
               onClick={() => onRowClick(org.id)}
             >
               <TableCell>
@@ -134,12 +136,12 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
                   color="text.secondary"
                   sx={{
                     maxWidth: 200,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {org.description || '-'}
+                  {org.description || "-"}
                 </Typography>
               </TableCell>
               <TableCell>
@@ -156,16 +158,21 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
                       ? ORGANIZATIONS_PAGE.QUOTA_ALLOWED
                       : ORGANIZATIONS_PAGE.QUOTA_NOT_ALLOWED
                   }
-                  color={org.canHaveBaseStations ? 'success' : 'default'}
+                  color={org.canHaveBaseStations ? "success" : "default"}
                   size="small"
                   variant="outlined"
                 />
               </TableCell>
               <TableCell>
-                <Box>{org.maxBaseStationCount ?? ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}</Box>
+                <Box>
+                  {org.maxBaseStationCount ??
+                    ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}
+                </Box>
               </TableCell>
               <TableCell>
-                <Box>{org.maxEndpointCount ?? ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}</Box>
+                <Box>
+                  {org.maxEndpointCount ?? ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}
+                </Box>
               </TableCell>
               <TableCell>
                 <Typography variant="body2" color="text.secondary">

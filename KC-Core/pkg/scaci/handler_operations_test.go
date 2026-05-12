@@ -2730,9 +2730,9 @@ func TestHandleRegisterComplete_RoamingPropagationUsesOwnerTenant(t *testing.T) 
 	const sessionTenant = int64(1)  // Session tenant
 	const endpointTenant = int64(2) // Endpoint owner tenant (different)
 
-	// Track which tenant context was used for propagation
-	var propagationEndpointID int64
-	var propagationCalled bool
+	// Synchronize the assertion goroutine with the async propagation goroutine
+	// via a buffered channel (capacity 1 so the matcher never blocks).
+	propagationCh := make(chan int64, 1)
 
 	// Mock endpoint service: returns endpoint from different tenant
 	mockEndpoint := new(MockEndpointService)
@@ -2760,8 +2760,11 @@ func TestHandleRegisterComplete_RoamingPropagationUsesOwnerTenant(t *testing.T) 
 	// Custom mock propagation service to capture call and verify tenant context
 	mockPropSvc := new(mockPropagationService)
 	mockPropSvc.On("TriggerEndpointPropagate", mock.Anything, mock.MatchedBy(func(epID int64) bool {
-		propagationCalled = true
-		propagationEndpointID = epID
+		// Non-blocking send into the buffered channel; the test reads it below.
+		select {
+		case propagationCh <- epID:
+		default:
+		}
 		return true
 	}), mock.Anything).Return(nil)
 	mockSnapProvider := &mockSessionSnapshotProvider{sessions: []propagation.BaseStationSession{}}
@@ -2787,11 +2790,15 @@ func TestHandleRegisterComplete_RoamingPropagationUsesOwnerTenant(t *testing.T) 
 	handlerErr := server.handleRegisterComplete(conn, session, 42)
 	assert.NoError(t, handlerErr)
 
-	// Allow async goroutine to complete
-	time.Sleep(50 * time.Millisecond)
-
-	// Verify propagation was triggered with the correct endpoint ID
-	assert.True(t, propagationCalled, "Propagation must be called for preAttach endpoint")
-	assert.Equal(t, int64(1), propagationEndpointID, "Propagation must use correct endpoint ID")
+	// Wait for the async propagation goroutine to call TriggerEndpointPropagate.
+	// Channel synchronization establishes the happens-before relationship the
+	// race detector needs; replacing the previous time.Sleep eliminates a real
+	// data race on shared bool/int64 variables.
+	select {
+	case epID := <-propagationCh:
+		assert.Equal(t, int64(1), epID, "Propagation must use correct endpoint ID")
+	case <-time.After(2 * time.Second):
+		t.Fatal("propagation goroutine did not invoke TriggerEndpointPropagate within timeout")
+	}
 	mockPropSvc.AssertExpectations(t)
 }

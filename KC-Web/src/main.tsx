@@ -1,17 +1,17 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import React from "react";
+import ReactDOM from "react-dom/client";
 
-import { ErrorBoundary } from '@components/common/ErrorBoundary';
-import { KCThemeProvider } from '@theme/ThemeContext';
+import { ErrorBoundary } from "@components/common/ErrorBoundary";
+import { KCThemeProvider } from "@theme/ThemeContext";
 
-import App from './App';
+import App from "./App";
 
-import './index.css';
+import "./index.css";
 
-const rootElement = document.getElementById('root');
+const rootElement = document.getElementById("root");
 
 if (!rootElement) {
-  throw new Error('Failed to find the root element');
+  throw new Error("Failed to find the root element");
 }
 
 const root = ReactDOM.createRoot(rootElement);
@@ -23,5 +23,5 @@ root.render(
         <App />
       </KCThemeProvider>
     </ErrorBoundary>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

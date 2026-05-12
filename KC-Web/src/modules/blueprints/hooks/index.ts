@@ -10,7 +10,7 @@ export {
   useDeleteManufacturer,
   useManufacturers,
   useUpdateManufacturer,
-} from './useManufacturers';
+} from "./useManufacturers";
 
 // Device Model hooks
 export {
@@ -18,7 +18,7 @@ export {
   useDeleteDeviceModel,
   useDeviceModels,
   useUpdateDeviceModel,
-} from './useDeviceModels';
+} from "./useDeviceModels";
 
 // Blueprint hooks
 export {
@@ -29,4 +29,4 @@ export {
   useDeleteBlueprint,
   useSetBlueprintDefault,
   useUpdateBlueprint,
-} from './useBlueprints';
+} from "./useBlueprints";

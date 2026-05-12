@@ -17,6 +17,10 @@ import (
 // Matches bssci.EventKeyBsEui but defined locally to avoid import cycle
 const eventKeyBsEui = "bsEui"
 
+// basestationNameUnknown is the placeholder used in event titles/descriptions
+// when the base station name is not present in the event data map.
+const basestationNameUnknown = "Unknown"
+
 // PersistentEventRecorder implements EventRecorder and persists events to database
 type PersistentEventRecorder struct {
 	logger     logger.Logger
@@ -51,7 +55,7 @@ func (r *PersistentEventRecorder) RecordEvent(ctx context.Context, eui [8]byte, 
 	switch eventType {
 	case models.EventTypeBaseStationOffline, "status_offline":
 		severity = models.EventSeverityWarning
-		basestationName := "Unknown"
+		basestationName := basestationNameUnknown
 		if name, ok := data["basestation_name"].(string); ok && name != "" {
 			basestationName = name
 		}
@@ -60,7 +64,7 @@ func (r *PersistentEventRecorder) RecordEvent(ctx context.Context, eui [8]byte, 
 
 	case models.EventTypeBaseStationOnline, "status_online":
 		severity = models.EventSeverityInfo
-		basestationName := "Unknown"
+		basestationName := basestationNameUnknown
 		if name, ok := data["basestation_name"].(string); ok && name != "" {
 			basestationName = name
 		}
@@ -69,7 +73,7 @@ func (r *PersistentEventRecorder) RecordEvent(ctx context.Context, eui [8]byte, 
 
 	case models.EventTypeBSRegistered:
 		severity = models.EventSeverityInfo
-		basestationName := "Unknown"
+		basestationName := basestationNameUnknown
 		if name, ok := data["name"].(string); ok && name != "" {
 			basestationName = name
 		}

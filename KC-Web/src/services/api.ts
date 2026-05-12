@@ -21,8 +21,8 @@ import type {
   BaseStationActivityPage,
   BaseStationAPI,
   BaseStationDetailAPI,
-  BaseStationMessagesFilter,
   BaseStationMessageAPI,
+  BaseStationMessagesFilter,
   BaseStationMessagesPage,
   BaseStationMessagesStats,
   BaseStationReceptionAPI,
@@ -58,7 +58,7 @@ import type {
   UpdateEndpointRequest,
   UpdateManufacturerRequest,
   UserProfileAPI,
-} from '@api-types/api';
+} from "@api-types/api";
 import {
   mapBaseStation,
   mapCertificate,
@@ -72,35 +72,49 @@ import {
   mapUser,
   mapUserList,
   mapUserProfile,
-} from '@mappers';
-import { deriveAttachState } from '@mappers/endpoint.mapper';
+} from "@mappers";
+import { deriveAttachState } from "@mappers/endpoint.mapper";
 
-import { hexToBytes } from '@utils/formatters';
-import type { CertificateDownloadType } from '@constants/app';
-import { CERTIFICATE_TYPES, ENDPOINT_EP_CLASS, REGISTRY_DEFAULTS } from '@constants/app';
-import { CERTIFICATE_LABELS, VAL_INVALID_HEX_STRING } from '@constants/messages';
+import { hexToBytes } from "@utils/formatters";
+import type { CertificateDownloadType } from "@constants/app";
+import {
+  CERTIFICATE_TYPES,
+  ENDPOINT_EP_CLASS,
+  REGISTRY_DEFAULTS,
+} from "@constants/app";
+import {
+  CERTIFICATE_LABELS,
+  VAL_INVALID_HEX_STRING,
+} from "@constants/messages";
 
 // INTERNAL: grpcClient is only imported here - nowhere else in the codebase
-// eslint-disable-next-line import/no-internal-modules
-import { type BlueprintTransportDTO, GrpcApiError, grpcClient } from './grpc/client';
+/* eslint-disable import/no-internal-modules */
+import {
+  type BlueprintTransportDTO,
+  GrpcApiError,
+  grpcClient,
+} from "./grpc/client";
+/* eslint-enable import/no-internal-modules */
 
 // Re-export GrpcApiError as ApiError for backward compatibility
 export { GrpcApiError as ApiError };
 
 /** Shape returned by grpcClient endpoint methods (uses centralized GrpcEndpointResult) */
-type GrpcEndpoint = Awaited<ReturnType<typeof grpcClient.listEndpoints>>[number];
+type GrpcEndpoint = Awaited<
+  ReturnType<typeof grpcClient.listEndpoints>
+>[number];
 
 /** Maps a gRPC endpoint response to EndpointAPI and then to EndpointUI */
 function mapGrpcEndpointToUI(ep: GrpcEndpoint): EndpointUI {
   return mapEndpoint({
     epEui: ep.epEui,
     name: ep.name,
-    status: ep.status as EndpointAPI['status'],
-    bidi: ep.epClass === 'A',
-    createdAt: ep.createdAt?.toISOString() || '',
-    lastSeen: ep.lastSeenAt?.toISOString() || '',
+    status: ep.status as EndpointAPI["status"],
+    bidi: ep.epClass === "A",
+    createdAt: ep.createdAt?.toISOString() || "",
+    lastSeen: ep.lastSeenAt?.toISOString() || "",
     attachStatus:
-      (ep.attachStatus as EndpointAPI['attachStatus']) ??
+      (ep.attachStatus as EndpointAPI["attachStatus"]) ??
       deriveAttachState({ shAddr: ep.shAddr } as EndpointAPI),
     shAddr: ep.shAddr,
     attachCnt: ep.attachCnt,
@@ -141,8 +155,8 @@ function mapTransportBlueprintToUI(b: BlueprintTransportDTO): BlueprintUI {
     registryCommitSha: b.registryCommitSha,
     registryVerified: b.registryVerified,
     registryPrUrl: b.registryPrUrl,
-    createdAt: b.createdAt?.toISOString() || '',
-    updatedAt: b.updatedAt?.toISOString() || '',
+    createdAt: b.createdAt?.toISOString() || "",
+    updatedAt: b.updatedAt?.toISOString() || "",
   };
 }
 
@@ -152,12 +166,150 @@ function parseTenantIdOrZero(tenantId: string): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
+interface BaseStationListFilters {
+  search?: string;
+  status?: string[];
+  sort?: { field: string; direction: "asc" | "desc" };
+}
+
+interface EndpointListFilters {
+  search?: string;
+  attachState?: string[];
+  bidirectional?: boolean;
+  sort?: { field: string; direction: "asc" | "desc" };
+}
+
+function compareNullableString(
+  a: string | undefined | null,
+  b: string | undefined | null,
+  direction: "asc" | "desc",
+): number {
+  const aMissing = a === undefined || a === null || a === "";
+  const bMissing = b === undefined || b === null || b === "";
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1; // null/empty sort last
+  if (bMissing) return -1;
+  const cmp = (a as string).localeCompare(b as string);
+  return direction === "asc" ? cmp : -cmp;
+}
+
+function compareNullableNumber(
+  a: number | undefined | null,
+  b: number | undefined | null,
+  direction: "asc" | "desc",
+): number {
+  const aMissing = a === undefined || a === null;
+  const bMissing = b === undefined || b === null;
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  const cmp = (a as number) - (b as number);
+  return direction === "asc" ? cmp : -cmp;
+}
+
+function filterAndSortBaseStations(
+  items: BaseStationUI[],
+  filters?: BaseStationListFilters,
+): BaseStationUI[] {
+  if (!filters) return items;
+  let out = items;
+  if (filters.search) {
+    const needle = filters.search.toLowerCase();
+    out = out.filter(
+      (bs) =>
+        (bs.name?.toLowerCase().includes(needle) ?? false) ||
+        bs.eui.toLowerCase().includes(needle),
+    );
+  }
+  if (filters.status && filters.status.length > 0) {
+    const allowed = new Set(filters.status);
+    out = out.filter((bs) => allowed.has(bs.status));
+  }
+  if (filters.sort) {
+    const { field, direction } = filters.sort;
+    out = [...out].sort((a, b) => {
+      switch (field) {
+        case "name":
+          return compareNullableString(a.name, b.name, direction);
+        case "eui":
+          return compareNullableString(a.eui, b.eui, direction);
+        case "status":
+          return compareNullableString(a.status, b.status, direction);
+        case "connectionType":
+          return compareNullableString(
+            a.connectionType,
+            b.connectionType,
+            direction,
+          );
+        case "lastSeen":
+          return compareNullableString(a.lastSeen, b.lastSeen, direction);
+        default:
+          return 0;
+      }
+    });
+  }
+  return out;
+}
+
+function filterAndSortEndpoints(
+  items: EndpointUI[],
+  filters?: EndpointListFilters,
+): EndpointUI[] {
+  if (!filters) return items;
+  let out = items;
+  if (filters.search) {
+    const needle = filters.search.toLowerCase();
+    out = out.filter(
+      (ep) =>
+        (ep.name?.toLowerCase().includes(needle) ?? false) ||
+        ep.epEui.toLowerCase().includes(needle),
+    );
+  }
+  if (filters.attachState && filters.attachState.length > 0) {
+    const allowed = new Set(filters.attachState);
+    out = out.filter((ep) => allowed.has(ep.attachStatus));
+  }
+  if (filters.bidirectional !== undefined) {
+    out = out.filter((ep) => (ep.bidi ?? false) === filters.bidirectional);
+  }
+  if (filters.sort) {
+    const { field, direction } = filters.sort;
+    out = [...out].sort((a, b) => {
+      switch (field) {
+        case "name":
+          return compareNullableString(a.name, b.name, direction);
+        case "epEui":
+          return compareNullableString(a.epEui, b.epEui, direction);
+        case "attachState":
+          return compareNullableString(
+            a.attachStatus,
+            b.attachStatus,
+            direction,
+          );
+        case "lastSeen":
+          return compareNullableString(a.lastSeen, b.lastSeen, direction);
+        case "packetCnt":
+          return compareNullableNumber(
+            a.lastPacketCnt,
+            b.lastPacketCnt,
+            direction,
+          );
+        default:
+          return 0;
+      }
+    });
+  }
+  return out;
+}
+
 const payloadWhitespaceRegex = /\s+/g;
 const payloadHexPrefixRegex = /^0x/i;
 const payloadBase64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
 
 function normalizePayloadInput(payload: string): string {
-  return payload.replace(payloadWhitespaceRegex, '').replace(payloadHexPrefixRegex, '');
+  return payload
+    .replace(payloadWhitespaceRegex, "")
+    .replace(payloadHexPrefixRegex, "");
 }
 
 function base64ToBytes(base64Payload: string): Uint8Array {
@@ -177,7 +329,9 @@ function parseDecodePreviewPayload(payload: string): Uint8Array {
     return hexToBytes(normalized);
   } catch {
     const looksBase64 =
-      normalized.length > 0 && normalized.length % 4 === 0 && payloadBase64Regex.test(normalized);
+      normalized.length > 0 &&
+      normalized.length % 4 === 0 &&
+      payloadBase64Regex.test(normalized);
     if (looksBase64) {
       return base64ToBytes(normalized);
     }
@@ -207,7 +361,10 @@ class ApiService {
   /**
    * Set organization context for API requests
    */
-  setOrganization(orgId: string | null | undefined, userId?: string | null | undefined): void {
+  setOrganization(
+    orgId: string | null | undefined,
+    userId?: string | null | undefined,
+  ): void {
     grpcClient.setOrganization(orgId, userId);
   }
 
@@ -222,22 +379,22 @@ class ApiService {
   // BASE STATIONS
   // ============================================================================
 
-  async getBaseStations(_filters?: {
+  async getBaseStations(filters?: {
     search?: string;
     status?: string[];
-    sort?: { field: string; direction: 'asc' | 'desc' };
+    sort?: { field: string; direction: "asc" | "desc" };
   }): Promise<BaseStationUI[]> {
     const response = await grpcClient.listBaseStations();
 
     // Map gRPC response to API format expected by mappers
-    return response.map((bs) => {
+    const items = response.map((bs) => {
       const apiFormat: BaseStationAPI = {
         bsEui: bs.bsEui,
         name: bs.name,
-        isOnline: bs.status === 'online',
+        isOnline: bs.status === "online",
         messageCount: 0,
-        lastSeen: bs.lastSeenAt?.toISOString() || '',
-        firstSeen: bs.createdAt?.toISOString() || '',
+        lastSeen: bs.lastSeenAt?.toISOString() || "",
+        firstSeen: bs.createdAt?.toISOString() || "",
         uniqueEndpoints: 0,
         avgRssi: 0,
         avgSnr: 0,
@@ -249,6 +406,8 @@ class ApiService {
       };
       return mapBaseStation(apiFormat);
     });
+
+    return filterAndSortBaseStations(items, filters);
   }
 
   async getBaseStationById(id: string): Promise<BaseStationUI | null> {
@@ -259,10 +418,10 @@ class ApiService {
       const apiFormat: BaseStationAPI = {
         bsEui: bs.bsEui,
         name: bs.name,
-        isOnline: bs.status === 'online',
+        isOnline: bs.status === "online",
         messageCount: 0,
-        lastSeen: bs.lastSeenAt?.toISOString() || '',
-        firstSeen: bs.createdAt?.toISOString() || '',
+        lastSeen: bs.lastSeenAt?.toISOString() || "",
+        firstSeen: bs.createdAt?.toISOString() || "",
         uniqueEndpoints: 0,
         avgRssi: 0,
         avgSnr: 0,
@@ -288,17 +447,17 @@ class ApiService {
         eui: bs.bsEui,
         bsEui: bs.bsEui,
         name: bs.name,
-        isOnline: bs.status === 'online',
+        isOnline: bs.status === "online",
         messageCount: 0,
-        lastSeen: bs.lastSeenAt?.toISOString() || '',
-        firstSeen: bs.createdAt?.toISOString() || '',
+        lastSeen: bs.lastSeenAt?.toISOString() || "",
+        firstSeen: bs.createdAt?.toISOString() || "",
         uniqueEndpoints: 0,
         avgRssi: 0,
         avgSnr: 0,
-        connectionType: 'bssci',
+        connectionType: "bssci",
         statusCode: 0,
-        createdAt: bs.createdAt?.toISOString() || '',
-        updatedAt: bs.updatedAt?.toISOString() || '',
+        createdAt: bs.createdAt?.toISOString() || "",
+        updatedAt: bs.updatedAt?.toISOString() || "",
         // MIOTY status fields (BSSCI v1.0.0 §5.5.2)
         systemTime: bs.systemTime,
         dutyCycle: bs.dutyCycle,
@@ -328,7 +487,7 @@ class ApiService {
     eui: string;
     name?: string;
     description?: string;
-    connection_type: 'bssci' | 'mqtt';
+    connection_type: "bssci" | "mqtt";
     service_center_url?: string;
     tls_auth_required?: boolean;
     tls_hostname_verification?: boolean;
@@ -355,10 +514,10 @@ class ApiService {
     const apiFormat: BaseStationAPI = {
       bsEui: response.bsEui,
       name: response.name,
-      isOnline: response.status === 'online',
+      isOnline: response.status === "online",
       messageCount: 0,
-      lastSeen: '',
-      firstSeen: '',
+      lastSeen: "",
+      firstSeen: "",
       uniqueEndpoints: 0,
       avgRssi: 0,
       avgSnr: 0,
@@ -386,7 +545,7 @@ class ApiService {
       latitude?: number | null;
       longitude?: number | null;
       altitude?: number | null;
-    }
+    },
   ): Promise<BaseStationUI> {
     const response = await grpcClient.updateBaseStation(eui, {
       name: data.name,
@@ -398,10 +557,10 @@ class ApiService {
     const apiFormat: BaseStationAPI = {
       bsEui: response.bsEui,
       name: response.name,
-      isOnline: response.status === 'online',
+      isOnline: response.status === "online",
       messageCount: 0,
-      lastSeen: '',
-      firstSeen: '',
+      lastSeen: "",
+      firstSeen: "",
       uniqueEndpoints: 0,
       avgRssi: 0,
       avgSnr: 0,
@@ -417,16 +576,19 @@ class ApiService {
   /**
    * Update base station EUI with cascade to all dependent tables.
    */
-  async updateBaseStationEui(eui: string, newEui: string): Promise<BaseStationUI> {
+  async updateBaseStationEui(
+    eui: string,
+    newEui: string,
+  ): Promise<BaseStationUI> {
     const response = await grpcClient.updateBaseStationEui(eui, newEui);
 
     const apiFormat: BaseStationAPI = {
       bsEui: response.bsEui,
       name: response.name,
-      isOnline: response.status === 'online',
+      isOnline: response.status === "online",
       messageCount: 0,
-      lastSeen: '',
-      firstSeen: '',
+      lastSeen: "",
+      firstSeen: "",
       uniqueEndpoints: 0,
       avgRssi: 0,
       avgSnr: 0,
@@ -447,11 +609,11 @@ class ApiService {
     eui: string,
     filter?: BaseStationMessagesFilter,
     page = 1,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<BaseStationMessagesPage> {
     const response = await grpcClient.listBaseStationMessages(eui, {
       pageSize,
-      direction: filter?.direction as 'uplink' | 'downlink' | undefined,
+      direction: filter?.direction as "uplink" | "downlink" | undefined,
       epEui: filter?.epEui,
       startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
       endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
@@ -463,7 +625,7 @@ class ApiService {
         bsEui: m.bsEui,
         epEui: m.epEui,
         direction: m.direction,
-        messageType: m.uplinkMode || 'ulData',
+        messageType: m.uplinkMode || "ulData",
         packetCnt: m.packetCounter || 0,
         userData: m.payload,
         rssi: m.rssi,
@@ -479,12 +641,12 @@ class ApiService {
 
   async getBaseStationMessage(
     eui: string,
-    messageId: string
+    messageId: string,
   ): Promise<{
     id: string;
     bsEui: string;
     epEui: string;
-    direction: 'uplink' | 'downlink';
+    direction: "uplink" | "downlink";
     userData: string;
     rssi: number;
     snr: number;
@@ -509,10 +671,13 @@ class ApiService {
 
   async getBaseStationMessageStats(
     eui: string,
-    _startTime?: Date,
-    _endTime?: Date
+    startTime?: Date,
+    endTime?: Date,
   ): Promise<BaseStationMessagesStats | null> {
-    const response = await grpcClient.getBaseStationMessageStats(eui);
+    const response = await grpcClient.getBaseStationMessageStats(eui, {
+      startTime,
+      endTime,
+    });
     if (!response) {
       return null; // Caller handles absence
     }
@@ -560,7 +725,7 @@ class ApiService {
         messageType: string;
         packetCnt: number;
         receivedAt: Date;
-        direction: 'uplink' | 'downlink';
+        direction: "uplink" | "downlink";
         baseStations?: Array<{
           bsEui: string;
           rxTime: number;
@@ -591,7 +756,7 @@ class ApiService {
     return {
       items: response.items.map(
         (item): ActivityItem => ({
-          type: item.type as 'event' | 'message',
+          type: item.type as "event" | "message",
           occurredAt: item.occurredAt,
           event: item.event,
           message: item.message
@@ -600,7 +765,7 @@ class ApiService {
                 receivedAt: item.message.receivedAt.toISOString(),
               }
             : undefined,
-        })
+        }),
       ),
       nextPageToken: response.nextPageToken,
       totalCount: response.totalCount,
@@ -614,7 +779,7 @@ class ApiService {
     eui: string,
     filter?: BaseStationActivityFilter,
     pageToken?: string,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<BaseStationActivityPage> {
     const response = await grpcClient.listBaseStationActivity(eui, {
       pageSize,
@@ -632,7 +797,7 @@ class ApiService {
   async getEndpointActivity(
     epEui: string,
     pageToken?: string,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<EndpointActivityPage> {
     const response = await grpcClient.listEndpointActivity(epEui, {
       pageSize,
@@ -644,13 +809,13 @@ class ApiService {
 
   async getLatestBaseStationMessages(
     eui: string,
-    limit = 10
+    limit = 10,
   ): Promise<
     Array<{
       id: string;
       bsEui: string;
       epEui: string;
-      direction: 'uplink' | 'downlink';
+      direction: "uplink" | "downlink";
       userData: string;
       rssi: number;
       snr: number;
@@ -658,7 +823,9 @@ class ApiService {
       receivedAt: string;
     }>
   > {
-    const response = await grpcClient.listBaseStationMessages(eui, { pageSize: limit });
+    const response = await grpcClient.listBaseStationMessages(eui, {
+      pageSize: limit,
+    });
     return response.messages.map((m) => ({
       id: m.id,
       bsEui: m.bsEui,
@@ -677,15 +844,19 @@ class ApiService {
     searchTerm: string,
     filter?: BaseStationMessagesFilter,
     page = 1,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<BaseStationMessagesPage> {
-    const response = await grpcClient.searchBaseStationMessages(eui, searchTerm, {
-      pageSize,
-      direction: filter?.direction as 'uplink' | 'downlink' | undefined,
-      epEui: filter?.epEui,
-      startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
-      endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
-    });
+    const response = await grpcClient.searchBaseStationMessages(
+      eui,
+      searchTerm,
+      {
+        pageSize,
+        direction: filter?.direction as "uplink" | "downlink" | undefined,
+        epEui: filter?.epEui,
+        startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
+        endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
+      },
+    );
 
     return {
       messages: response.messages.map((m) => ({
@@ -693,7 +864,7 @@ class ApiService {
         bsEui: m.bsEui,
         epEui: m.epEui,
         direction: m.direction,
-        messageType: m.uplinkMode || 'ulData',
+        messageType: m.uplinkMode || "ulData",
         packetCnt: m.packetCounter || 0,
         userData: m.payload,
         rssi: m.rssi,
@@ -710,29 +881,32 @@ class ApiService {
   async exportBaseStationMessages(
     eui: string,
     filter?: BaseStationMessagesFilter,
-    format: 'csv' | 'json' = 'csv'
+    format: "csv" | "json" = "csv",
   ): Promise<Blob> {
     const response = await grpcClient.exportBaseStationMessages(eui, format, {
-      direction: filter?.direction as 'uplink' | 'downlink' | undefined,
+      direction: filter?.direction as "uplink" | "downlink" | undefined,
       epEui: filter?.epEui,
       startTime: filter?.startTime ? new Date(filter.startTime) : undefined,
       endTime: filter?.endTime ? new Date(filter.endTime) : undefined,
     });
-    return new Blob([new Uint8Array(response.content)], { type: response.contentType });
+    return new Blob([new Uint8Array(response.content)], {
+      type: response.contentType,
+    });
   }
 
   // ============================================================================
   // ENDPOINTS
   // ============================================================================
 
-  async getEndpoints(_filters?: {
+  async getEndpoints(filters?: {
     search?: string;
     attachState?: string[];
     bidirectional?: boolean;
-    sort?: { field: string; direction: 'asc' | 'desc' };
+    sort?: { field: string; direction: "asc" | "desc" };
   }): Promise<EndpointUI[]> {
     const response = await grpcClient.listEndpoints();
-    return response.map(mapGrpcEndpointToUI);
+    const items = response.map(mapGrpcEndpointToUI);
+    return filterAndSortEndpoints(items, filters);
   }
 
   async getEndpointById(id: string): Promise<EndpointUI | null> {
@@ -753,7 +927,9 @@ class ApiService {
     const response = await grpcClient.createEndpoint({
       epEui: data.epEui,
       name: data.name,
-      epClass: data.bidi ? ENDPOINT_EP_CLASS.BIDIRECTIONAL : ENDPOINT_EP_CLASS.UNIDIRECTIONAL,
+      epClass: data.bidi
+        ? ENDPOINT_EP_CLASS.BIDIRECTIONAL
+        : ENDPOINT_EP_CLASS.UNIDIRECTIONAL,
       nwkSnKey: data.nwkSnKey,
       appSnKey: data.appKey,
       shAddr: data.shAddr,
@@ -772,7 +948,10 @@ class ApiService {
     return mapGrpcEndpointToUI(response);
   }
 
-  async updateEndpoint(epEui: string, data: UpdateEndpointRequest): Promise<EndpointUI> {
+  async updateEndpoint(
+    epEui: string,
+    data: UpdateEndpointRequest,
+  ): Promise<EndpointUI> {
     const response = await grpcClient.updateEndpoint(epEui, {
       name: data.name,
       epClass:
@@ -812,8 +991,12 @@ class ApiService {
     limit = 5,
     categories?: readonly string[],
     pageToken?: string,
-    eventTypes?: readonly string[]
-  ): Promise<{ events: EventUI[]; nextPageToken?: string; totalCount: number }> {
+    eventTypes?: readonly string[],
+  ): Promise<{
+    events: EventUI[];
+    nextPageToken?: string;
+    totalCount: number;
+  }> {
     const response = await grpcClient.listEvents({
       pageSize: limit,
       categories,
@@ -827,7 +1010,7 @@ class ApiService {
           id: e.id,
           event_type: e.eventType,
           category: e.category,
-          severity: e.severity as 'error' | 'info' | 'success' | 'warning',
+          severity: e.severity as "error" | "info" | "success" | "warning",
           title: e.title,
           description: e.description,
           source_name: e.sourceName,
@@ -835,7 +1018,7 @@ class ApiService {
           timestamp: e.timestamp.toISOString(),
           createdAt: e.timestamp.toISOString(),
           metadata: e.data as Record<string, unknown> | undefined,
-        })
+        }),
       ),
       nextPageToken: response.nextPageToken || undefined,
       totalCount: response.totalCount,
@@ -856,12 +1039,12 @@ class ApiService {
         mapCertificate({
           type: CERTIFICATE_TYPES.SERVER,
           name: CERTIFICATE_LABELS.SERVER,
-          path: '',
+          path: "",
           subject: response.serverCert.subject,
           issuer: response.serverCert.issuer,
-          expiryDate: response.serverCert.notAfter?.toISOString() || '',
-          serialNumber: '', // Not available in gRPC response
-        })
+          expiryDate: response.serverCert.notAfter?.toISOString() || "",
+          serialNumber: "", // Not available in gRPC response
+        }),
       );
     }
     if (response.caCert) {
@@ -869,19 +1052,19 @@ class ApiService {
         mapCertificate({
           type: CERTIFICATE_TYPES.CA,
           name: CERTIFICATE_LABELS.CA,
-          path: '',
+          path: "",
           subject: response.caCert.subject,
           issuer: response.caCert.issuer,
-          expiryDate: response.caCert.notAfter?.toISOString() || '',
-          serialNumber: '', // Not available in gRPC response
-        })
+          expiryDate: response.caCert.notAfter?.toISOString() || "",
+          serialNumber: "", // Not available in gRPC response
+        }),
       );
     }
     return certs;
   }
 
   async generateCertificate(
-    data: GenerateCertificateRequest
+    data: GenerateCertificateRequest,
   ): Promise<GenerateCertificateResponse> {
     const response = await grpcClient.generateCertificate({
       bsEui: data.bsEui,
@@ -890,13 +1073,13 @@ class ApiService {
 
     return {
       bsEui: data.bsEui,
-      serviceCenterUrl: response.serviceCenterUrl || '',
+      serviceCenterUrl: response.serviceCenterUrl || "",
       downloadUrls: {
-        caCert: response.downloadUrls?.['ca_cert'] || '',
-        clientCert: response.downloadUrls?.['client_cert'] || '',
-        privateKey: response.downloadUrls?.['private_key'] || '',
+        caCert: response.downloadUrls?.["ca_cert"] || "",
+        clientCert: response.downloadUrls?.["client_cert"] || "",
+        privateKey: response.downloadUrls?.["private_key"] || "",
       },
-      expiresAt: response.expiresAt?.toISOString() || '',
+      expiresAt: response.expiresAt?.toISOString() || "",
     };
   }
 
@@ -905,14 +1088,16 @@ class ApiService {
    */
   async downloadCertificate(
     certId: string,
-    certType: CertificateDownloadType
+    certType: CertificateDownloadType,
   ): Promise<{
     blob: Blob;
     filename: string;
   }> {
     const response = await grpcClient.downloadCertificate(certId, certType);
     return {
-      blob: new Blob([new Uint8Array(response.content)], { type: response.contentType }),
+      blob: new Blob([new Uint8Array(response.content)], {
+        type: response.contentType,
+      }),
       filename: response.filename,
     };
   }
@@ -938,11 +1123,17 @@ class ApiService {
     return grpcClient.getServerCertificateStatus();
   }
 
-  async generateServerCertificates(): Promise<{ success: boolean; message: string }> {
+  async generateServerCertificates(): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     return grpcClient.generateServerCertificates();
   }
 
-  async renewServerCertificates(): Promise<{ success: boolean; message: string }> {
+  async renewServerCertificates(): Promise<{
+    success: boolean;
+    message: string;
+  }> {
     return grpcClient.renewServerCertificates();
   }
 
@@ -969,8 +1160,8 @@ class ApiService {
       info: response.info,
       recent: response.recent.map((a) => ({
         id: a.id,
-        level: a.severity as 'critical' | 'warning' | 'info',
-        message: a.title || a.description || '',
+        level: a.severity as "critical" | "warning" | "info",
+        message: a.title || a.description || "",
         timestamp: a.timestamp.toISOString(),
       })),
     };
@@ -983,7 +1174,7 @@ class ApiService {
     const healthy =
       response.services.length > 0
         ? response.services.every((s) => s.healthy)
-        : response.status === 'healthy';
+        : response.status === "healthy";
 
     // Derive timestamp from latest checkedAt (already has fallback from client)
     const timestamp =
@@ -991,12 +1182,12 @@ class ApiService {
         ? response.services
             .reduce(
               (latest, s) => (s.checkedAt > latest ? s.checkedAt : latest),
-              response.services[0].checkedAt
+              response.services[0].checkedAt,
             )
             .toISOString()
         : response.uptime
           ? response.uptime.toISOString()
-          : '';
+          : "";
 
     return {
       services: response.services.map((s) => ({
@@ -1029,7 +1220,9 @@ class ApiService {
     };
   }
 
-  async attachEndpoint(id: string): Promise<{ status: string; message?: string }> {
+  async attachEndpoint(
+    id: string,
+  ): Promise<{ status: string; message?: string }> {
     const response = await grpcClient.attachEndpoint(id);
     return {
       status: response.status,
@@ -1037,7 +1230,9 @@ class ApiService {
     };
   }
 
-  async detachEndpoint(id: string): Promise<{ status: string; message?: string }> {
+  async detachEndpoint(
+    id: string,
+  ): Promise<{ status: string; message?: string }> {
     const response = await grpcClient.detachEndpoint(id);
     return {
       status: response.status,
@@ -1050,23 +1245,23 @@ class ApiService {
   // ============================================================================
 
   async sendDownlink(
-    params: import('@api-types/api').SendDownlinkRequest
-  ): Promise<import('@api-types/api').SendDownlinkResponse> {
+    params: import("@api-types/api").SendDownlinkRequest,
+  ): Promise<import("@api-types/api").SendDownlinkResponse> {
     return grpcClient.sendDownlink(params);
   }
 
   async revokeDownlink(
     epEui: string,
-    queueId: string
-  ): Promise<import('@api-types/api').RevokeDownlinkResponse> {
+    queueId: string,
+  ): Promise<import("@api-types/api").RevokeDownlinkResponse> {
     return grpcClient.revokeDownlink({ epEui, queueId });
   }
 
   async listDownlinkQueue(
     epEui: string,
     pageSize: number,
-    pageToken?: string
-  ): Promise<import('@api-types/api').DownlinkQueueResponse> {
+    pageToken?: string,
+  ): Promise<import("@api-types/api").DownlinkQueueResponse> {
     return grpcClient.listDownlinkQueue({ epEui, pageSize, pageToken });
   }
 
@@ -1074,9 +1269,14 @@ class ApiService {
     epEui: string,
     pageSize: number,
     pageToken?: string,
-    statusFilter?: string
-  ): Promise<import('@api-types/api').DownlinkResultsResponse> {
-    return grpcClient.getDownlinkResults({ epEui, statusFilter, pageSize, pageToken });
+    statusFilter?: string,
+  ): Promise<import("@api-types/api").DownlinkResultsResponse> {
+    return grpcClient.getDownlinkResults({
+      epEui,
+      statusFilter,
+      pageSize,
+      pageToken,
+    });
   }
 
   // ============================================================================
@@ -1142,8 +1342,8 @@ class ApiService {
       oidc: response.oidc
         ? {
             enabled: response.oidc.enabled,
-            login_url: response.oidc.loginUrl || '',
-            login_label: response.oidc.loginLabel || '',
+            login_url: response.oidc.loginUrl || "",
+            login_label: response.oidc.loginLabel || "",
             login_redirect: response.oidc.loginRedirect,
             logout_url: response.oidc.logoutUrl,
           }
@@ -1151,8 +1351,8 @@ class ApiService {
       oauth2: response.oauth2
         ? {
             enabled: response.oauth2.enabled,
-            login_url: response.oauth2.loginUrl || '',
-            login_label: response.oauth2.loginLabel || '',
+            login_url: response.oauth2.loginUrl || "",
+            login_label: response.oauth2.loginLabel || "",
             login_redirect: response.oauth2.loginRedirect,
             logout_url: response.oauth2.logoutUrl,
           }
@@ -1212,13 +1412,15 @@ class ApiService {
     });
   }
 
-  async registerAccount(payload: RegisterAccountRequest): Promise<LoginResponseAPI> {
+  async registerAccount(
+    payload: RegisterAccountRequest,
+  ): Promise<LoginResponseAPI> {
     const response = await grpcClient.registerAccount(
       payload.email,
       payload.password,
       payload.firstName,
       payload.lastName,
-      payload.companyName
+      payload.companyName,
     );
     return mapLoginResponse({
       tokens: {
@@ -1248,12 +1450,8 @@ class ApiService {
     });
   }
 
-  async exchangeOIDC(payload: ExchangeRequest, redirectUri?: string): Promise<LoginResponseAPI> {
-    const response = await grpcClient.exchangeOIDC(
-      payload.code,
-      payload.state,
-      redirectUri || window.location.origin + '/auth/callback'
-    );
+  async exchangeOIDC(payload: ExchangeRequest): Promise<LoginResponseAPI> {
+    const response = await grpcClient.exchangeOIDC(payload.code, payload.state);
     return mapLoginResponse({
       tokens: {
         access_token: response.tokens.accessToken,
@@ -1282,11 +1480,10 @@ class ApiService {
     });
   }
 
-  async exchangeOAuth2(payload: ExchangeRequest, redirectUri?: string): Promise<LoginResponseAPI> {
+  async exchangeOAuth2(payload: ExchangeRequest): Promise<LoginResponseAPI> {
     const response = await grpcClient.exchangeOAuth2(
       payload.code,
       payload.state,
-      redirectUri || window.location.origin + '/auth/callback'
     );
     return mapLoginResponse({
       tokens: {
@@ -1329,7 +1526,10 @@ class ApiService {
     return grpcClient.refreshTokens(refreshToken);
   }
 
-  async changeOwnPassword(currentPassword: string, newPassword: string): Promise<void> {
+  async changeOwnPassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
     await grpcClient.changePassword(currentPassword, newPassword);
   }
 
@@ -1339,29 +1539,35 @@ class ApiService {
 
   async getUsers(
     limit = 50,
-    _offset = 0
-  ): Promise<{ users: import('@api-types/api').SystemUserUI[]; total: number }> {
-    const response = await grpcClient.listUsers({ pageSize: limit });
+    offset = 0,
+  ): Promise<{
+    users: import("@api-types/api").SystemUserUI[];
+    total: number;
+  }> {
+    const response = await grpcClient.listUsers({ pageSize: limit + offset });
+    const mapped = mapUserList(
+      response.users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        is_admin: u.isAdmin,
+        is_active: u.isActive,
+        is_tenant_manager: u.isTenantManager,
+        is_base_station_manager: u.isBaseStationManager,
+        is_endpoint_manager: u.isEndpointManager,
+        note: u.note,
+        created_at: u.createdAt?.toISOString() || new Date().toISOString(),
+        updated_at: u.updatedAt?.toISOString() || new Date().toISOString(),
+      })),
+    );
     return {
-      users: mapUserList(
-        response.users.map((u) => ({
-          id: u.id,
-          email: u.email,
-          is_admin: u.isAdmin,
-          is_active: u.isActive,
-          is_tenant_manager: u.isTenantManager,
-          is_base_station_manager: u.isBaseStationManager,
-          is_endpoint_manager: u.isEndpointManager,
-          note: u.note,
-          created_at: u.createdAt?.toISOString() || new Date().toISOString(),
-          updated_at: u.updatedAt?.toISOString() || new Date().toISOString(),
-        }))
-      ),
+      users: mapped.slice(offset, offset + limit),
       total: response.totalCount,
     };
   }
 
-  async getUser(id: string): Promise<import('@api-types/api').SystemUserUI | null> {
+  async getUser(
+    id: string,
+  ): Promise<import("@api-types/api").SystemUserUI | null> {
     const response = await grpcClient.getUser(id);
     if (!response) return null;
 
@@ -1380,8 +1586,8 @@ class ApiService {
   }
 
   async createUser(
-    data: import('@api-types/api').CreateUserRequest
-  ): Promise<import('@api-types/api').SystemUserUI> {
+    data: import("@api-types/api").CreateUserRequest,
+  ): Promise<import("@api-types/api").SystemUserUI> {
     const response = await grpcClient.createUser({
       email: data.email,
       password: data.password,
@@ -1408,8 +1614,8 @@ class ApiService {
 
   async updateUser(
     id: string,
-    data: import('@api-types/api').UpdateUserRequest
-  ): Promise<import('@api-types/api').SystemUserUI> {
+    data: import("@api-types/api").UpdateUserRequest,
+  ): Promise<import("@api-types/api").SystemUserUI> {
     const response = await grpcClient.updateUser(id, {
       email: data.email,
       note: data.note,
@@ -1448,28 +1654,34 @@ class ApiService {
 
   async getOrganizations(
     limit = 50,
-    _offset = 0,
-    _tenantId?: number
-  ): Promise<{ organizations: import('@api-types/api').OrganizationUI[]; total: number }> {
-    const response = await grpcClient.listOrganizations({ pageSize: limit });
+    offset = 0,
+  ): Promise<{
+    organizations: import("@api-types/api").OrganizationUI[];
+    total: number;
+  }> {
+    const pageSize = limit + offset;
+    const response = await grpcClient.listOrganizations({ pageSize });
+    const organizations = mapOrganizationList(
+      response.organizations.map((o) => ({
+        id: o.id,
+        name: o.name,
+        description: o.description,
+        tenant_id: parseInt(o.tenantId, 10) || 0,
+        state: o.state || "active",
+        can_have_base_stations: o.canHaveBaseStations ?? true,
+        created_at: o.createdAt?.toISOString() || new Date().toISOString(),
+        updated_at: o.updatedAt?.toISOString() || new Date().toISOString(),
+      })),
+    );
     return {
-      organizations: mapOrganizationList(
-        response.organizations.map((o) => ({
-          id: o.id,
-          name: o.name,
-          description: o.description,
-          tenant_id: parseInt(o.tenantId, 10) || 0,
-          state: o.state || 'active',
-          can_have_base_stations: o.canHaveBaseStations ?? true,
-          created_at: o.createdAt?.toISOString() || new Date().toISOString(),
-          updated_at: o.updatedAt?.toISOString() || new Date().toISOString(),
-        }))
-      ),
+      organizations: organizations.slice(offset, offset + limit),
       total: response.totalCount,
     };
   }
 
-  async getOrganization(id: string): Promise<import('@api-types/api').OrganizationUI | null> {
+  async getOrganization(
+    id: string,
+  ): Promise<import("@api-types/api").OrganizationUI | null> {
     const response = await grpcClient.getOrganization(id);
     if (!response) return null;
 
@@ -1478,7 +1690,7 @@ class ApiService {
       name: response.name,
       description: response.description,
       tenant_id: parseInt(response.tenantId, 10) || 0,
-      state: response.state || 'active',
+      state: response.state || "active",
       can_have_base_stations: response.canHaveBaseStations ?? true,
       created_at: response.createdAt?.toISOString() || new Date().toISOString(),
       updated_at: response.updatedAt?.toISOString() || new Date().toISOString(),
@@ -1486,8 +1698,8 @@ class ApiService {
   }
 
   async createOrganization(
-    data: import('@api-types/api').CreateOrganizationRequest
-  ): Promise<import('@api-types/api').OrganizationUI> {
+    data: import("@api-types/api").CreateOrganizationRequest,
+  ): Promise<import("@api-types/api").OrganizationUI> {
     const response = await grpcClient.createOrganization({
       name: data.name,
       description: data.description,
@@ -1498,7 +1710,7 @@ class ApiService {
       name: response.name,
       description: response.description,
       tenant_id: parseInt(response.tenantId, 10) || 0,
-      state: 'active',
+      state: "active",
       can_have_base_stations: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -1507,8 +1719,8 @@ class ApiService {
 
   async updateOrganization(
     id: string,
-    data: import('@api-types/api').UpdateOrganizationRequest
-  ): Promise<import('@api-types/api').OrganizationUI> {
+    data: import("@api-types/api").UpdateOrganizationRequest,
+  ): Promise<import("@api-types/api").OrganizationUI> {
     const response = await grpcClient.updateOrganization(id, {
       name: data.name,
       description: data.description,
@@ -1519,7 +1731,7 @@ class ApiService {
       name: response.name,
       description: response.description,
       tenant_id: parseInt(response.tenantId, 10) || 0,
-      state: 'active',
+      state: "active",
       can_have_base_stations: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -1536,8 +1748,11 @@ class ApiService {
 
   async getOrgUsers(
     orgId: string,
-    status?: string
-  ): Promise<{ users: import('@api-types/api').OrganizationUserUI[]; total: number }> {
+    status?: string,
+  ): Promise<{
+    users: import("@api-types/api").OrganizationUserUI[];
+    total: number;
+  }> {
     const response = await grpcClient.listOrganizationUsers(orgId, { status });
     return {
       users: mapOrgUserList(
@@ -1552,7 +1767,7 @@ class ApiService {
           is_endpoint_admin: u.isEndpointAdmin ?? false,
           created_at: u.createdAt?.toISOString() || new Date().toISOString(),
           updated_at: u.updatedAt?.toISOString() || new Date().toISOString(),
-        }))
+        })),
       ),
       total: response.totalCount,
     };
@@ -1560,8 +1775,8 @@ class ApiService {
 
   async getOrgUser(
     orgId: string,
-    userId: string
-  ): Promise<import('@api-types/api').OrganizationUserUI | null> {
+    userId: string,
+  ): Promise<import("@api-types/api").OrganizationUserUI | null> {
     const response = await grpcClient.getOrganizationUser(orgId, userId);
     if (!response) return null;
 
@@ -1581,8 +1796,8 @@ class ApiService {
 
   async addOrgUser(
     orgId: string,
-    data: import('@api-types/api').AddOrgUserRequest
-  ): Promise<import('@api-types/api').OrganizationUserUI> {
+    data: import("@api-types/api").AddOrgUserRequest,
+  ): Promise<import("@api-types/api").OrganizationUserUI> {
     const response = await grpcClient.addOrganizationUser(orgId, {
       userId: data.user_id,
       email: data.email,
@@ -1597,20 +1812,20 @@ class ApiService {
       org_id: response.orgId,
       role: response.role,
       status: response.status,
-      email: response.email || '',
+      email: response.email || "",
       is_org_admin: response.isOrgAdmin ?? false,
       is_base_station_admin: response.isBaseStationAdmin ?? false,
       is_endpoint_admin: response.isEndpointAdmin ?? false,
-      created_at: response.createdAt?.toISOString() || '',
-      updated_at: response.updatedAt?.toISOString() || '',
+      created_at: response.createdAt?.toISOString() || "",
+      updated_at: response.updatedAt?.toISOString() || "",
     });
   }
 
   async updateOrgUser(
     orgId: string,
     userId: string,
-    data: import('@api-types/api').UpdateOrgUserRequest
-  ): Promise<import('@api-types/api').OrganizationUserUI> {
+    data: import("@api-types/api").UpdateOrgUserRequest,
+  ): Promise<import("@api-types/api").OrganizationUserUI> {
     const response = await grpcClient.updateOrganizationUser(orgId, userId, {
       role: data.role,
       isOrgAdmin: data.is_org_admin,
@@ -1623,12 +1838,12 @@ class ApiService {
       org_id: response.orgId,
       role: response.role,
       status: response.status,
-      email: response.email || '',
+      email: response.email || "",
       is_org_admin: response.isOrgAdmin ?? false,
       is_base_station_admin: response.isBaseStationAdmin ?? false,
       is_endpoint_admin: response.isEndpointAdmin ?? false,
-      created_at: response.createdAt?.toISOString() || '',
-      updated_at: response.updatedAt?.toISOString() || '',
+      created_at: response.createdAt?.toISOString() || "",
+      updated_at: response.updatedAt?.toISOString() || "",
     });
   }
 
@@ -1637,7 +1852,12 @@ class ApiService {
   }
 
   async listUserOrganizations(userId: string): Promise<{
-    memberships: Array<{ orgId: string; orgName: string; role: string; status: string }>;
+    memberships: Array<{
+      orgId: string;
+      orgName: string;
+      role: string;
+      status: string;
+    }>;
   }> {
     return grpcClient.listUserOrganizations(userId);
   }
@@ -1655,8 +1875,8 @@ class ApiService {
       website: m.website,
       isVerified: m.isVerified,
       modelCount: m.modelCount,
-      createdAt: m.createdAt?.toISOString() || '',
-      updatedAt: m.updatedAt?.toISOString() || '',
+      createdAt: m.createdAt?.toISOString() || "",
+      updatedAt: m.updatedAt?.toISOString() || "",
     }));
   }
 
@@ -1671,12 +1891,14 @@ class ApiService {
       website: response.website,
       isVerified: response.isVerified,
       modelCount: response.modelCount,
-      createdAt: response.createdAt?.toISOString() || '',
-      updatedAt: response.updatedAt?.toISOString() || '',
+      createdAt: response.createdAt?.toISOString() || "",
+      updatedAt: response.updatedAt?.toISOString() || "",
     };
   }
 
-  async createManufacturer(data: CreateManufacturerRequest): Promise<ManufacturerUI> {
+  async createManufacturer(
+    data: CreateManufacturerRequest,
+  ): Promise<ManufacturerUI> {
     const response = await grpcClient.createManufacturer({
       name: data.name,
       website: data.website,
@@ -1689,12 +1911,15 @@ class ApiService {
       website: response.website,
       isVerified: response.isVerified,
       modelCount: response.modelCount,
-      createdAt: response.createdAt?.toISOString() || '',
-      updatedAt: response.updatedAt?.toISOString() || '',
+      createdAt: response.createdAt?.toISOString() || "",
+      updatedAt: response.updatedAt?.toISOString() || "",
     };
   }
 
-  async updateManufacturer(id: string, data: UpdateManufacturerRequest): Promise<void> {
+  async updateManufacturer(
+    id: string,
+    data: UpdateManufacturerRequest,
+  ): Promise<void> {
     await grpcClient.updateManufacturer(id, {
       name: data.name,
       website: data.website,
@@ -1721,8 +1946,8 @@ class ApiService {
       description: m.description,
       datasheetUrl: m.datasheetUrl,
       blueprintCount: m.blueprintCount,
-      createdAt: m.createdAt?.toISOString() || '',
-      updatedAt: m.updatedAt?.toISOString() || '',
+      createdAt: m.createdAt?.toISOString() || "",
+      updatedAt: m.updatedAt?.toISOString() || "",
     }));
   }
 
@@ -1740,14 +1965,14 @@ class ApiService {
       description: response.description,
       datasheetUrl: response.datasheetUrl,
       blueprintCount: response.blueprintCount,
-      createdAt: response.createdAt?.toISOString() || '',
-      updatedAt: response.updatedAt?.toISOString() || '',
+      createdAt: response.createdAt?.toISOString() || "",
+      updatedAt: response.updatedAt?.toISOString() || "",
     };
   }
 
   async createDeviceModel(
     manufacturerId: string,
-    data: CreateDeviceModelRequest
+    data: CreateDeviceModelRequest,
   ): Promise<DeviceModelUI> {
     const response = await grpcClient.createDeviceModel(manufacturerId, {
       name: data.name,
@@ -1766,12 +1991,15 @@ class ApiService {
       description: response.description,
       datasheetUrl: response.datasheetUrl,
       blueprintCount: response.blueprintCount,
-      createdAt: response.createdAt?.toISOString() || '',
-      updatedAt: response.updatedAt?.toISOString() || '',
+      createdAt: response.createdAt?.toISOString() || "",
+      updatedAt: response.updatedAt?.toISOString() || "",
     };
   }
 
-  async updateDeviceModel(id: string, data: UpdateDeviceModelRequest): Promise<void> {
+  async updateDeviceModel(
+    id: string,
+    data: UpdateDeviceModelRequest,
+  ): Promise<void> {
     await grpcClient.updateDeviceModel(id, {
       name: data.name,
       description: data.description,
@@ -1786,7 +2014,9 @@ class ApiService {
    * Create a device model with a default blueprint atomically.
    * The server generates the model code slug automatically.
    */
-  async createDeviceModelWithBlueprint(data: CreateDeviceModelWithBlueprintRequest): Promise<{
+  async createDeviceModelWithBlueprint(
+    data: CreateDeviceModelWithBlueprintRequest,
+  ): Promise<{
     model: DeviceModelUI;
     blueprint: BlueprintUI;
   }> {
@@ -1808,8 +2038,8 @@ class ApiService {
         description: response.deviceModel.description,
         datasheetUrl: response.deviceModel.datasheetUrl,
         blueprintCount: response.deviceModel.blueprintCount || 1,
-        createdAt: response.deviceModel.createdAt?.toISOString() || '',
-        updatedAt: response.deviceModel.updatedAt?.toISOString() || '',
+        createdAt: response.deviceModel.createdAt?.toISOString() || "",
+        updatedAt: response.deviceModel.updatedAt?.toISOString() || "",
       },
       blueprint: mapTransportBlueprintToUI(response.blueprint),
     };
@@ -1827,7 +2057,7 @@ class ApiService {
       version: b.version,
       typeEui: b.typeEui,
       isDefault: b.isDefault,
-      createdAt: b.createdAt?.toISOString() || '',
+      createdAt: b.createdAt?.toISOString() || "",
     }));
   }
 
@@ -1838,7 +2068,10 @@ class ApiService {
     return mapTransportBlueprintToUI(response);
   }
 
-  async createBlueprint(modelId: string, data: CreateBlueprintRequest): Promise<BlueprintUI> {
+  async createBlueprint(
+    modelId: string,
+    data: CreateBlueprintRequest,
+  ): Promise<BlueprintUI> {
     const response = await grpcClient.createBlueprint(modelId, {
       name: data.version,
       version: data.version,
@@ -1848,7 +2081,10 @@ class ApiService {
     return mapTransportBlueprintToUI(response);
   }
 
-  async updateBlueprint(id: string, data: UpdateBlueprintRequest): Promise<void> {
+  async updateBlueprint(
+    id: string,
+    data: UpdateBlueprintRequest,
+  ): Promise<void> {
     await grpcClient.updateBlueprint(id, {
       version: data.version,
       decoderScript: data.specJson ? JSON.stringify(data.specJson) : undefined,
@@ -1863,9 +2099,16 @@ class ApiService {
     await grpcClient.setDefaultBlueprint(id);
   }
 
-  async decodePreview(id: string, data: DecodePreviewRequest): Promise<DecodePreviewResponse> {
+  async decodePreview(
+    id: string,
+    data: DecodePreviewRequest,
+  ): Promise<DecodePreviewResponse> {
     const payloadBytes = parseDecodePreviewPayload(data.userData);
-    const result = await grpcClient.decodePreview(id, payloadBytes, data.formatId || 0);
+    const result = await grpcClient.decodePreview(
+      id,
+      payloadBytes,
+      data.formatId || 0,
+    );
 
     return {
       success: result.success,
@@ -1876,7 +2119,10 @@ class ApiService {
     };
   }
 
-  async submitToRegistry(id: string, data: RegistrySubmitRequest): Promise<RegistrySubmitResponse> {
+  async submitToRegistry(
+    id: string,
+    data: RegistrySubmitRequest,
+  ): Promise<RegistrySubmitResponse> {
     const response = await grpcClient.submitBlueprintToRegistry(id, {
       contributorName: data.contributorName,
       contributorEmail: data.contributorEmail,
@@ -1885,7 +2131,7 @@ class ApiService {
 
     return {
       prUrl: response.prUrl,
-      commitSha: response.commitSha || '',
+      commitSha: response.commitSha || "",
       branch: response.branchName || REGISTRY_DEFAULTS.BRANCH,
     };
   }
@@ -1916,7 +2162,7 @@ class ApiService {
           expiresAt: k.expiresAt?.toISOString(),
           lastUsedAt: k.lastUsedAt?.toISOString(),
           createdAt: k.createdAt?.toISOString() || new Date().toISOString(),
-        })
+        }),
       ),
       nextPageToken: response.nextPageToken,
       totalCount: response.totalCount,
@@ -1967,7 +2213,7 @@ class ApiService {
   async getEndpointMessages(
     epEui: string,
     page: number,
-    pageSize: number
+    pageSize: number,
   ): Promise<{
     messages: BaseStationMessageAPI[];
     pagination: {
@@ -1986,35 +2232,39 @@ class ApiService {
       pageToken,
     });
     return {
-      messages: response.messages.map((m): BaseStationMessageAPI => ({
-        id: m.id,
-        epEui: m.epEui,
-        bsEui: m.bsEui,
-        packetCnt: m.packetCounter,
-        userData: m.payload,
-        rssi: m.rssi,
-        snr: m.snr,
-        receivedAt: m.receivedAt?.toISOString() || '',
-        messageType: 'ulData',
-        direction: 'uplink' as const,
-        decodedPayload: m.decodedPayload,
-        decodeStatus: m.decodeStatus,
-        decodeErrorCode: m.decodeErrorCode,
-        duplicate: m.duplicate,
-        baseStations: m.baseStations?.map((bs): BaseStationReceptionAPI => ({
-          bsEui: bs.bsEui,
-          rxTime: bs.rxTime,
-          snr: bs.snr,
-          rssi: bs.rssi,
-          eqSnr: bs.eqSnr,
-          rxDuration: bs.rxDuration,
-          profile: bs.profile,
-          mode: bs.mode,
-          dlRxSnr: bs.dlRxSnr,
-          dlRxRssi: bs.dlRxRssi,
-          subpackets: bs.subpackets,
-        })),
-      })),
+      messages: response.messages.map(
+        (m): BaseStationMessageAPI => ({
+          id: m.id,
+          epEui: m.epEui,
+          bsEui: m.bsEui,
+          packetCnt: m.packetCounter,
+          userData: m.payload,
+          rssi: m.rssi,
+          snr: m.snr,
+          receivedAt: m.receivedAt?.toISOString() || "",
+          messageType: "ulData",
+          direction: "uplink" as const,
+          decodedPayload: m.decodedPayload,
+          decodeStatus: m.decodeStatus,
+          decodeErrorCode: m.decodeErrorCode,
+          duplicate: m.duplicate,
+          baseStations: m.baseStations?.map(
+            (bs): BaseStationReceptionAPI => ({
+              bsEui: bs.bsEui,
+              rxTime: bs.rxTime,
+              snr: bs.snr,
+              rssi: bs.rssi,
+              eqSnr: bs.eqSnr,
+              rxDuration: bs.rxDuration,
+              profile: bs.profile,
+              mode: bs.mode,
+              dlRxSnr: bs.dlRxSnr,
+              dlRxRssi: bs.dlRxRssi,
+              subpackets: bs.subpackets,
+            }),
+          ),
+        }),
+      ),
       pagination: {
         page,
         pageSize,
@@ -2059,7 +2309,7 @@ class ApiService {
   async getEndpointOperations(
     epEui: string,
     page = 1,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<{
     operations: Array<{
       id: string;
@@ -2082,7 +2332,7 @@ class ApiService {
         category: op.category,
         severity: op.severity,
         title: op.title,
-        createdAt: op.createdAt?.toISOString() || '',
+        createdAt: op.createdAt?.toISOString() || "",
       })),
     };
   }
@@ -2123,8 +2373,8 @@ class ApiService {
       eventFilter: result.eventFilter,
       deliveryFormat: result.deliveryFormat,
       status: result.status,
-      createdAt: result.createdAt?.toISOString() || '',
-      updatedAt: result.updatedAt?.toISOString() || '',
+      createdAt: result.createdAt?.toISOString() || "",
+      updatedAt: result.updatedAt?.toISOString() || "",
     };
   }
 
@@ -2150,8 +2400,8 @@ class ApiService {
       type: result.type,
       deliveryFormat: result.deliveryFormat,
       status: result.status,
-      createdAt: result.createdAt?.toISOString() || '',
-      updatedAt: result.updatedAt?.toISOString() || '',
+      createdAt: result.createdAt?.toISOString() || "",
+      updatedAt: result.updatedAt?.toISOString() || "",
     };
   }
 
@@ -2164,7 +2414,7 @@ class ApiService {
       name?: string;
       description?: string;
       status?: string;
-    }
+    },
   ): Promise<{
     id: number;
     name: string;
@@ -2183,8 +2433,8 @@ class ApiService {
       type: result.type,
       deliveryFormat: result.deliveryFormat,
       status: result.status,
-      createdAt: result.createdAt?.toISOString() || '',
-      updatedAt: result.updatedAt?.toISOString() || '',
+      createdAt: result.createdAt?.toISOString() || "",
+      updatedAt: result.updatedAt?.toISOString() || "",
     };
   }
 
@@ -2200,7 +2450,7 @@ class ApiService {
    */
   async listIntegrations(
     page = 1,
-    pageSize = 50
+    pageSize = 50,
   ): Promise<{
     integrations: Array<{
       id: number;
@@ -2227,8 +2477,8 @@ class ApiService {
         type: i.type,
         deliveryFormat: i.deliveryFormat,
         status: i.status,
-        createdAt: i.createdAt?.toISOString() || '',
-        updatedAt: i.updatedAt?.toISOString() || '',
+        createdAt: i.createdAt?.toISOString() || "",
+        updatedAt: i.updatedAt?.toISOString() || "",
       })),
       totalCount: response.totalCount,
     };

@@ -4,9 +4,9 @@
  * Centralized QueryClient with defaults for caching, retries, and error handling.
  */
 
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient } from "@tanstack/react-query";
 
-import { TIMING } from '@constants/app';
+import { TIMING } from "@constants/app";
 
 /**
  * Exponential backoff delay for retries

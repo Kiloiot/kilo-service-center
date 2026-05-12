@@ -3,7 +3,7 @@
  * Handles MIOTYA01 header parsing per MIOTY_SC-AC §3.1
  */
 
-import { logger } from '@utils/logger';
+import { logger } from "@utils/logger";
 
 export interface MIOTYHeader {
   version: string;
@@ -32,16 +32,18 @@ export const parseMIOTYA01Header = (payload: string): MIOTYHeader | null => {
     }
 
     const headerBytes = bytes.substring(0, 8);
-    const hex = Array.from(headerBytes, (c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join(
-      ''
-    );
+    const hex = Array.from(headerBytes, (c) =>
+      c.charCodeAt(0).toString(16).padStart(2, "0"),
+    ).join("");
 
     // Parse version (first 2 bytes)
     const version =
-      headerBytes.charCodeAt(0).toString() + '.' + headerBytes.charCodeAt(1).toString();
+      headerBytes.charCodeAt(0).toString() +
+      "." +
+      headerBytes.charCodeAt(1).toString();
 
     // Parse type (byte 3)
-    const type = headerBytes.charCodeAt(2).toString(16).padStart(2, '0');
+    const type = headerBytes.charCodeAt(2).toString(16).padStart(2, "0");
 
     // Parse length (bytes 4-7, big-endian)
     const length =
@@ -58,7 +60,7 @@ export const parseMIOTYA01Header = (payload: string): MIOTYHeader | null => {
       raw: `0x${hex}`,
     };
   } catch (error) {
-    logger.error('Failed to parse MIOTYA01 header:', error);
+    logger.error("Failed to parse MIOTYA01 header:", error);
     return null;
   }
 };
@@ -73,7 +75,7 @@ export const validateMIOTYA01Header = (header: MIOTYHeader | null): boolean => {
   if (!header) return false;
 
   // Basic validation: version should be reasonable, length should be positive
-  const versionParts = header.version.split('.');
+  const versionParts = header.version.split(".");
   if (versionParts.length !== 2) return false;
 
   const major = parseInt(versionParts[0], 10);
@@ -93,7 +95,7 @@ export const validateMIOTYA01Header = (header: MIOTYHeader | null): boolean => {
  * @returns Payload data without MIOTYA01 header, or original if no valid header
  */
 export const extractPayloadData = (payload: string): string => {
-  if (!payload) return '';
+  if (!payload) return "";
 
   try {
     const bytes = atob(payload);
@@ -106,7 +108,7 @@ export const extractPayloadData = (payload: string): string => {
     const dataBytes = bytes.substring(8);
     return btoa(dataBytes);
   } catch (error) {
-    logger.error('Failed to extract payload data:', error);
+    logger.error("Failed to extract payload data:", error);
     return payload;
   }
 };

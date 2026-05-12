@@ -2,6 +2,7 @@ package bssciservices
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -365,4 +366,34 @@ func (f *fakeEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, e
 }
 func (f *fakeEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 	return nil
+}
+
+// TestAggregateErrors_BroadcastErrorAggregation verifies that aggregateErrors
+// wraps multiple broadcast failures into a single error that carries the
+// catalog message, the failure count, and the first underlying error reachable
+// via errors.Is. Replaces the obsolete
+// Test_SendAttachPropagateBySessionID_BroadcastErrorAggregation regression,
+// which targeted a session-specific method that does not aggregate.
+func TestAggregateErrors_BroadcastErrorAggregation(t *testing.T) {
+	first := errors.New("session A: network timeout")
+	errs := []error{
+		first,
+		errors.New("session B: invalid endpoint"),
+		errors.New("session C: database error"),
+	}
+
+	err := aggregateErrors(errs)
+	require.Error(t, err)
+
+	msg := err.Error()
+	assert.Contains(t, msg, "3 failures", "error message must include failure count")
+	assert.Contains(t, msg,
+		pkgbssci.ResolveErrorMessage(pkgbssci.ErrPropagationBroadcastFailure),
+		"error message must include the catalog-derived prefix")
+	assert.True(t, errors.Is(err, first), "first underlying error must be reachable via errors.Is")
+}
+
+func TestAggregateErrors_NoErrors(t *testing.T) {
+	assert.NoError(t, aggregateErrors(nil))
+	assert.NoError(t, aggregateErrors([]error{}))
 }

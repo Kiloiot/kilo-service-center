@@ -5,10 +5,10 @@
  * Allows users to list, create, and delete API keys.
  */
 
-import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { useState } from "react";
+import { Navigate } from "react-router-dom";
 
-import type { ApiKeyAPI } from '@api-types/api';
+import type { ApiKeyAPI } from "@api-types/api";
 import {
   Alert,
   Box,
@@ -34,13 +34,22 @@ import {
   TextField,
   Tooltip,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { useSession } from '@contexts/SessionContext';
-import { useApiKeys, useCreateApiKey, useDeleteApiKey } from '@hooks/useApiKeys';
-import { formatRelativeDate } from '@utils/formatters';
-import { logger } from '@utils/logger';
-import { API_KEY_PAGE_SIZE, API_KEY_TYPES, ROUTES, TIMING_COPY_FEEDBACK } from '@constants/app';
+import { useSession } from "@contexts/SessionContext";
+import {
+  useApiKeys,
+  useCreateApiKey,
+  useDeleteApiKey,
+} from "@hooks/useApiKeys";
+import { formatRelativeDate } from "@utils/formatters";
+import { logger } from "@utils/logger";
+import {
+  API_KEY_PAGE_SIZE,
+  API_KEY_TYPES,
+  ROUTES,
+  TIMING_COPY_FEEDBACK,
+} from "@constants/app";
 import {
   API_KEY_CREATED_DIALOG,
   API_KEY_FORM,
@@ -52,8 +61,13 @@ import {
   MSG_API_KEY_COPIED,
   MSG_API_KEY_CREATED,
   MSG_API_KEY_DELETED,
-} from '@constants/messages';
-import { AddIcon, ContentCopyIcon, DeleteIcon, RefreshIcon } from '@theme/icons';
+} from "@constants/messages";
+import {
+  AddIcon,
+  ContentCopyIcon,
+  DeleteIcon,
+  RefreshIcon,
+} from "@theme/icons";
 
 const ApiKeys: React.FC = () => {
   const { isAdmin, isHydrated } = useSession();
@@ -76,13 +90,13 @@ const ApiKeysContent: React.FC = () => {
 
   // Create dialog state
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyName, setNewKeyName] = useState("");
   const [newKeyType, setNewKeyType] = useState(API_KEY_TYPES.USER);
-  const [newKeyExpiresAt, setNewKeyExpiresAt] = useState('');
+  const [newKeyExpiresAt, setNewKeyExpiresAt] = useState("");
 
   // Key reveal dialog state
   const [revealDialogOpen, setRevealDialogOpen] = useState(false);
-  const [newRawKey, setNewRawKey] = useState('');
+  const [newRawKey, setNewRawKey] = useState("");
   const [keyCopied, setKeyCopied] = useState(false);
 
   // Delete confirmation state
@@ -90,7 +104,9 @@ const ApiKeysContent: React.FC = () => {
   const [keyToDelete, setKeyToDelete] = useState<ApiKeyAPI | null>(null);
 
   // React Query hooks
-  const { data, isLoading, isError, refetch } = useApiKeys({ pageSize: API_KEY_PAGE_SIZE });
+  const { data, isLoading, isError, refetch } = useApiKeys({
+    pageSize: API_KEY_PAGE_SIZE,
+  });
   const createMutation = useCreateApiKey();
   const deleteMutation = useDeleteApiKey();
 
@@ -108,7 +124,7 @@ const ApiKeysContent: React.FC = () => {
         keyType: newKeyType,
         expiresAt: newKeyExpiresAt
           ? (() => {
-              const [y, m, d] = newKeyExpiresAt.split('-').map(Number);
+              const [y, m, d] = newKeyExpiresAt.split("-").map(Number);
               return new Date(y, m - 1, d, 23, 59, 59, 999);
             })()
           : undefined,
@@ -118,16 +134,16 @@ const ApiKeysContent: React.FC = () => {
           setNewRawKey(response.rawKey);
           setRevealDialogOpen(true);
           setCreateDialogOpen(false);
-          setNewKeyName('');
+          setNewKeyName("");
           setNewKeyType(API_KEY_TYPES.USER);
-          setNewKeyExpiresAt('');
+          setNewKeyExpiresAt("");
           setSuccessMessage(MSG_API_KEY_CREATED);
         },
         onError: (err) => {
-          logger.error('Failed to create API key:', err);
+          logger.error("Failed to create API key:", err);
           setError(ERR_CREATE_API_KEY);
         },
-      }
+      },
     );
   };
 
@@ -142,7 +158,7 @@ const ApiKeysContent: React.FC = () => {
         setKeyToDelete(null);
       },
       onError: (err) => {
-        logger.error('Failed to delete API key:', err);
+        logger.error("Failed to delete API key:", err);
         setError(ERR_DELETE_API_KEY);
       },
     });
@@ -155,29 +171,44 @@ const ApiKeysContent: React.FC = () => {
       setSuccessMessage(MSG_API_KEY_COPIED);
       setTimeout(() => setKeyCopied(false), TIMING_COPY_FEEDBACK);
     } catch (err) {
-      logger.error('Failed to copy to clipboard:', err);
+      logger.error("Failed to copy to clipboard:", err);
     }
   };
 
   const handleCloseRevealDialog = () => {
     setRevealDialogOpen(false);
-    setNewRawKey('');
+    setNewRawKey("");
     setKeyCopied(false);
   };
 
   const getStatusChip = (key: ApiKeyAPI) => {
     if (key.expiresAt && new Date(key.expiresAt) < new Date()) {
-      return <Chip label={API_KEYS_PAGE.STATUS_EXPIRED} color="error" size="small" />;
+      return (
+        <Chip label={API_KEYS_PAGE.STATUS_EXPIRED} color="error" size="small" />
+      );
     }
     if (!key.isActive) {
-      return <Chip label={API_KEYS_PAGE.STATUS_INACTIVE} color="default" size="small" />;
+      return (
+        <Chip
+          label={API_KEYS_PAGE.STATUS_INACTIVE}
+          color="default"
+          size="small"
+        />
+      );
     }
-    return <Chip label={API_KEYS_PAGE.STATUS_ACTIVE} color="success" size="small" />;
+    return (
+      <Chip label={API_KEYS_PAGE.STATUS_ACTIVE} color="success" size="small" />
+    );
   };
 
   return (
     <Box sx={{ p: 3, pt: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
         <Box>
           <Typography variant="h4" component="h1" gutterBottom>
             {API_KEYS_PAGE.TITLE}
@@ -217,12 +248,16 @@ const ApiKeysContent: React.FC = () => {
       )}
 
       {successMessage && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
+        <Alert
+          severity="success"
+          sx={{ mb: 2 }}
+          onClose={() => setSuccessMessage(null)}
+        >
           {successMessage}
         </Alert>
       )}
 
-      <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
+      <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
         <Table>
           <TableHead>
             <TableRow>
@@ -272,11 +307,15 @@ const ApiKeysContent: React.FC = () => {
                   </TableCell>
                   <TableCell>{getStatusChip(key)}</TableCell>
                   <TableCell>
-                    {key.lastUsedAt ? formatRelativeDate(key.lastUsedAt) : API_KEYS_PAGE.NEVER}
+                    {key.lastUsedAt
+                      ? formatRelativeDate(key.lastUsedAt)
+                      : API_KEYS_PAGE.NEVER}
                   </TableCell>
                   <TableCell>{formatRelativeDate(key.createdAt)}</TableCell>
                   <TableCell>
-                    {key.expiresAt ? formatRelativeDate(key.expiresAt) : API_KEYS_PAGE.NO_EXPIRY}
+                    {key.expiresAt
+                      ? formatRelativeDate(key.expiresAt)
+                      : API_KEYS_PAGE.NO_EXPIRY}
                   </TableCell>
                   <TableCell align="right">
                     <Tooltip title={API_KEYS_PAGE.ACTION_DELETE}>
@@ -317,7 +356,9 @@ const ApiKeysContent: React.FC = () => {
               autoFocus
               error={!newKeyName.trim() && createMutation.isPending}
               helperText={
-                !newKeyName.trim() && createMutation.isPending ? API_KEY_FORM.ERR_NAME_REQUIRED : ''
+                !newKeyName.trim() && createMutation.isPending
+                  ? API_KEY_FORM.ERR_NAME_REQUIRED
+                  : ""
               }
             />
             <FormControl fullWidth>
@@ -327,7 +368,9 @@ const ApiKeysContent: React.FC = () => {
                 label={API_KEY_FORM.LABEL_TYPE}
                 onChange={(e) => setNewKeyType(e.target.value)}
               >
-                <MenuItem value={API_KEY_TYPES.USER}>{API_KEYS_PAGE.TYPE_USER}</MenuItem>
+                <MenuItem value={API_KEY_TYPES.USER}>
+                  {API_KEYS_PAGE.TYPE_USER}
+                </MenuItem>
                 <MenuItem value={API_KEY_TYPES.SERVICE_ACCOUNT}>
                   {API_KEYS_PAGE.TYPE_SERVICE_ACCOUNT}
                 </MenuItem>
@@ -344,7 +387,10 @@ const ApiKeysContent: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)} disabled={createMutation.isPending}>
+          <Button
+            onClick={() => setCreateDialogOpen(false)}
+            disabled={createMutation.isPending}
+          >
             {API_KEY_FORM.ACTION_CANCEL}
           </Button>
           <Button
@@ -358,7 +404,12 @@ const ApiKeysContent: React.FC = () => {
       </Dialog>
 
       {/* Key Reveal Dialog */}
-      <Dialog open={revealDialogOpen} onClose={handleCloseRevealDialog} maxWidth="sm" fullWidth>
+      <Dialog
+        open={revealDialogOpen}
+        onClose={handleCloseRevealDialog}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>{API_KEY_CREATED_DIALOG.TITLE}</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -369,20 +420,26 @@ const ApiKeysContent: React.FC = () => {
           </Typography>
           <Box
             sx={{
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: 1,
               p: 2,
-              bgcolor: 'grey.100',
+              bgcolor: "grey.100",
               borderRadius: 1,
-              fontFamily: 'monospace',
-              wordBreak: 'break-all',
+              fontFamily: "monospace",
+              wordBreak: "break-all",
             }}
           >
-            <Typography variant="body2" sx={{ flex: 1, fontFamily: 'monospace' }}>
+            <Typography
+              variant="body2"
+              sx={{ flex: 1, fontFamily: "monospace" }}
+            >
               {newRawKey}
             </Typography>
-            <IconButton onClick={handleCopyKey} color={keyCopied ? 'success' : 'default'}>
+            <IconButton
+              onClick={handleCopyKey}
+              color={keyCopied ? "success" : "default"}
+            >
               <ContentCopyIcon />
             </IconButton>
           </Box>
@@ -400,18 +457,24 @@ const ApiKeysContent: React.FC = () => {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
         <DialogTitle>{API_KEYS_PAGE.ACTION_DELETE}</DialogTitle>
         <DialogContent>
           <DialogContentText>{CONFIRM_DELETE_API_KEY}</DialogContentText>
           {keyToDelete && (
-            <Typography variant="body2" sx={{ mt: 2, fontWeight: 'bold' }}>
+            <Typography variant="body2" sx={{ mt: 2, fontWeight: "bold" }}>
               {keyToDelete.name}
             </Typography>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleteMutation.isPending}>
+          <Button
+            onClick={() => setDeleteDialogOpen(false)}
+            disabled={deleteMutation.isPending}
+          >
             {API_KEY_FORM.ACTION_CANCEL}
           </Button>
           <Button

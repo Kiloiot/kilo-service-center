@@ -246,7 +246,7 @@ func (m *syncMockSCACIEPStatusBroadcaster) Wait() {
 // Returns a successful IngestResult with the endpoint's owner tenant.
 type mockUplinkIngestSvc struct{}
 
-func (m *mockUplinkIngestSvc) Ingest(_ context.Context, payload *UplinkPayload, _ UplinkIngestOptions) (*IngestResult, error) {
+func (m *mockUplinkIngestSvc) Ingest(_ context.Context, _ *UplinkPayload, _ UplinkIngestOptions) (*IngestResult, error) {
 	return &IngestResult{
 		OwnerTenantID: 0,
 		OwnerOrgUUID:  uuid.Nil,

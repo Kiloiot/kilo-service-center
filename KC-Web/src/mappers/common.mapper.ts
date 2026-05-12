@@ -21,7 +21,7 @@ export function parseISODate(dateStr: string | null | undefined): Date | null {
 export function normalizeStatus<T extends string>(
   value: string | undefined,
   validValues: readonly T[],
-  fallback: T
+  fallback: T,
 ): T {
   if (!value) return fallback;
   const normalized = value.toLowerCase() as T;
@@ -33,10 +33,10 @@ export function normalizeStatus<T extends string>(
  * Handles both string and number formats
  */
 export function formatEUI(eui: string | number | undefined): string {
-  if (eui === undefined || eui === null) return '';
-  if (typeof eui === 'number') {
+  if (eui === undefined || eui === null) return "";
+  if (typeof eui === "number") {
     // Convert to hex string, pad to 16 chars (8 bytes)
-    return eui.toString(16).padStart(16, '0').toUpperCase();
+    return eui.toString(16).padStart(16, "0").toUpperCase();
   }
   // Already a string - ensure uppercase
   return eui.toUpperCase();
@@ -47,13 +47,15 @@ export function formatEUI(eui: string | number | undefined): string {
  * Returns '0x' prefix format
  */
 export function base64ToHex(base64: string | undefined): string {
-  if (!base64) return '0x';
+  if (!base64) return "0x";
   try {
     const bytes = atob(base64);
-    const hex = Array.from(bytes, (c) => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+    const hex = Array.from(bytes, (c) =>
+      c.charCodeAt(0).toString(16).padStart(2, "0"),
+    ).join("");
     return `0x${hex}`;
   } catch {
-    return '0x';
+    return "0x";
   }
 }
 

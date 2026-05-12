@@ -6,25 +6,25 @@
  * Admin-only page with runtime guard for deep link protection.
  */
 
-import React, { useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import React, { useState } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
 
-import { Box, Button, Tab, Tabs, Typography } from '@mui/material';
+import { Box, Button, Tab, Tabs, Typography } from "@mui/material";
 
-import OrganizationRequired from '@components/common/OrganizationRequired';
-import { useFeatureFlags } from '@contexts/FeatureFlagContext';
-import { useOrganization } from '@contexts/OrganizationContext';
-import { useSession } from '@contexts/SessionContext';
-import { useCapabilities } from '@hooks/useCapabilities';
-import { ROUTES } from '@constants/app';
-import { USERS_AND_ROLES, USERS_PAGE } from '@constants/messages';
-import { AddIcon } from '@theme/icons';
+import OrganizationRequired from "@components/common/OrganizationRequired";
+import { useFeatureFlags } from "@contexts/FeatureFlagContext";
+import { useOrganization } from "@contexts/OrganizationContext";
+import { useSession } from "@contexts/SessionContext";
+import { useCapabilities } from "@hooks/useCapabilities";
+import { ROUTES } from "@constants/app";
+import { USERS_AND_ROLES, USERS_PAGE } from "@constants/messages";
+import { AddIcon } from "@theme/icons";
 
-import OrganizationUsers from './OrganizationUsers';
-import Users from './Users';
+import OrganizationUsers from "./OrganizationUsers";
+import Users from "./Users";
 
-const TAB_PARAM = 'tab';
-const TAB_VALUES = ['system', 'organization'] as const;
+const TAB_PARAM = "tab";
+const TAB_VALUES = ["system", "organization"] as const;
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -34,7 +34,11 @@ interface TabPanelProps {
 
 const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
   return (
-    <div role="tabpanel" hidden={value !== index} id={`users-tabpanel-${index}`}>
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`users-tabpanel-${index}`}
+    >
       {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
     </div>
   );
@@ -45,7 +49,7 @@ const UsersAndRoles: React.FC = () => {
   const { isServerAdmin, isOrgAdmin } = useCapabilities();
   const { organizationId } = useOrganization();
   const { isEnabled } = useFeatureFlags();
-  const showOrgUsers = isEnabled('enterprise_organizations');
+  const showOrgUsers = isEnabled("enterprise_organizations");
   const [searchParams, setSearchParams] = useSearchParams();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
@@ -73,7 +77,12 @@ const UsersAndRoles: React.FC = () => {
   if (!showOrgUsers) {
     return (
       <Box data-testid="users-and-roles-page" sx={{ p: 3, pt: 4 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="center"
+          mb={3}
+        >
           <Typography variant="h4" component="h1">
             {USERS_AND_ROLES.TITLE}
           </Typography>
@@ -85,7 +94,11 @@ const UsersAndRoles: React.FC = () => {
             {USERS_PAGE.ADD_USER}
           </Button>
         </Box>
-        <Users embedded addDialogOpen={addDialogOpen} onAddDialogOpenChange={setAddDialogOpen} />
+        <Users
+          embedded
+          addDialogOpen={addDialogOpen}
+          onAddDialogOpenChange={setAddDialogOpen}
+        />
       </Box>
     );
   }
@@ -98,17 +111,30 @@ const UsersAndRoles: React.FC = () => {
   // ECE: existing tabbed layout
   return (
     <Box data-testid="users-and-roles-page" sx={{ p: 3, pt: 4 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
         <Typography variant="h4" component="h1">
           {USERS_AND_ROLES.TITLE}
         </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddDialogOpen(true)}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setAddDialogOpen(true)}
+        >
           {USERS_PAGE.ADD_USER}
         </Button>
       </Box>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs value={activeTab} onChange={handleTabChange} aria-label={USERS_AND_ROLES.ARIA_TABS}>
+      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          aria-label={USERS_AND_ROLES.ARIA_TABS}
+        >
           {/* Server admin sees both tabs; org admin sees only Organization Users */}
           {isServerAdmin && (
             <Tab
@@ -127,7 +153,11 @@ const UsersAndRoles: React.FC = () => {
 
       {isServerAdmin && (
         <TabPanel value={activeTab} index={0}>
-          <Users embedded addDialogOpen={addDialogOpen} onAddDialogOpenChange={setAddDialogOpen} />
+          <Users
+            embedded
+            addDialogOpen={addDialogOpen}
+            onAddDialogOpenChange={setAddDialogOpen}
+          />
         </TabPanel>
       )}
 

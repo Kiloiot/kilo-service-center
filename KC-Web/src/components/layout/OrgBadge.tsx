@@ -1,11 +1,11 @@
-import React from 'react';
+import React from "react";
 
-import { Chip } from '@mui/material';
+import { Chip } from "@mui/material";
 
-import { useFeatureFlags } from '@contexts/FeatureFlagContext';
-import { useOrganization } from '@contexts/OrganizationContext';
-import { ORG_BADGE } from '@constants/messages';
-import { AdminIcon } from '@theme/icons';
+import { useFeatureFlags } from "@contexts/FeatureFlagContext";
+import { useOrganization } from "@contexts/OrganizationContext";
+import { ORG_BADGE } from "@constants/messages";
+import { AdminIcon } from "@theme/icons";
 
 /**
  * Organization Badge Component
@@ -16,7 +16,7 @@ export const OrgBadge: React.FC = () => {
   const { organizationName, organizationId } = useOrganization();
   const { isEnabled } = useFeatureFlags();
 
-  if (!isEnabled('enterprise_organizations')) return null;
+  if (!isEnabled("enterprise_organizations")) return null;
 
   if (!organizationId) {
     return (

@@ -12,13 +12,13 @@
  * @see src/services/grpc/client.ts for gRPC implementation
  */
 
-import { grpc } from '@improbable-eng/grpc-web';
+import { grpc } from "@improbable-eng/grpc-web";
 
-import * as ServiceModule from '@services/grpc/kilocenter_pb_service';
+import * as ServiceModule from "@services/grpc/kilocenter_pb_service";
 const { KiloCenterService } = ServiceModule;
-import * as pb from '@services/grpc/kilocenter_pb';
-import { logger } from '@utils/logger';
-import { storageService } from '@utils/storage';
+import * as pb from "@services/grpc/kilocenter_pb";
+import { logger } from "@utils/logger";
+import { storageService } from "@utils/storage";
 import {
   BACKEND_EVENT_TO_REALTIME,
   HEADER_VALUES,
@@ -27,9 +27,9 @@ import {
   STORAGE_KEYS,
   TIMING_RECONNECT_BASE_DELAY,
   TIMING_RECONNECT_MAX_DELAY,
-} from '@constants/app';
-import { REALTIME_MESSAGES } from '@constants/messages';
-import { grpcUrl } from '@config/env';
+} from "@constants/app";
+import { REALTIME_MESSAGES } from "@constants/messages";
+import { grpcUrl } from "@config/env";
 
 import type {
   ConnectionError,
@@ -41,7 +41,7 @@ import type {
   RealtimeEvent,
   RealtimeEventType,
   StateChangeListener,
-} from './types';
+} from "./types";
 
 /** Maximum number of connection events to keep in buffer */
 const CONNECTION_EVENT_BUFFER_SIZE = 20;
@@ -51,12 +51,12 @@ const CONNECTION_EVENT_BUFFER_SIZE = 20;
  */
 function isValidRealtimeEvent(event: unknown): event is RealtimeEvent {
   return (
-    typeof event === 'object' &&
+    typeof event === "object" &&
     event !== null &&
-    'type' in event &&
-    typeof (event as RealtimeEvent).type === 'string' &&
-    'timestamp' in event &&
-    typeof (event as RealtimeEvent).timestamp === 'string'
+    "type" in event &&
+    typeof (event as RealtimeEvent).type === "string" &&
+    "timestamp" in event &&
+    typeof (event as RealtimeEvent).timestamp === "string"
   );
 }
 
@@ -73,7 +73,7 @@ class RealtimeService {
   private wildcardHandlers = new Set<EventHandler>();
   private reconnectAttempts = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private state: ConnectionState = 'disconnected';
+  private state: ConnectionState = "disconnected";
   private stateListeners = new Set<StateChangeListener>();
   private lastError: ConnectionError | null = null;
   private errorListeners = new Set<ErrorListener>();
@@ -86,12 +86,14 @@ class RealtimeService {
   // Separate base station stream state (must not interfere with global stream)
   private baseStationStream: grpc.Request | null = null;
   private baseStationReconnectAttempts = 0;
-  private baseStationReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private baseStationReconnectTimeout: ReturnType<typeof setTimeout> | null =
+    null;
 
   // Event stream state
   private eventStream: grpc.Request | null = null;
   private eventStreamReconnectAttempts = 0;
-  private eventStreamReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private eventStreamReconnectTimeout: ReturnType<typeof setTimeout> | null =
+    null;
 
   /**
    * Get the singleton instance
@@ -121,7 +123,7 @@ class RealtimeService {
     if (token) {
       metadata.set(
         HEADERS.AUTHORIZATION.toLowerCase(),
-        `${HEADER_VALUES.AUTH_BEARER_PREFIX}${token}`
+        `${HEADER_VALUES.AUTH_BEARER_PREFIX}${token}`,
       );
     }
     if (this.currentOrgId) {
@@ -157,7 +159,9 @@ class RealtimeService {
   /**
    * Map gRPC BaseStationMessage to RealtimeEvent
    */
-  private mapBaseStationMessageToRealtimeEvent(msg: pb.BaseStationMessage.AsObject): RealtimeEvent {
+  private mapBaseStationMessageToRealtimeEvent(
+    msg: pb.BaseStationMessage.AsObject,
+  ): RealtimeEvent {
     let timestamp = new Date().toISOString();
     if (msg.receivedAt) {
       const seconds = msg.receivedAt.seconds || 0;
@@ -176,10 +180,13 @@ class RealtimeService {
    * Map gRPC Event to RealtimeEvent
    * Maps backend underscore event_type to UI dotted format
    */
-  private mapEventToRealtimeEvent(event: pb.Event.AsObject): RealtimeEvent | null {
+  private mapEventToRealtimeEvent(
+    event: pb.Event.AsObject,
+  ): RealtimeEvent | null {
     // Map backend event_type to UI realtime event type, fallback to EVENT_RECEIVED
     const realtimeType =
-      BACKEND_EVENT_TO_REALTIME[event.eventType] || REALTIME_EVENT_TYPE.EVENT_RECEIVED;
+      BACKEND_EVENT_TO_REALTIME[event.eventType] ||
+      REALTIME_EVENT_TYPE.EVENT_RECEIVED;
 
     // Preserve backend timestamp for ordering; fallback to now if missing
     let timestamp = new Date().toISOString();
@@ -259,7 +266,7 @@ class RealtimeService {
    */
   connect(organizationId?: string, userId?: string): void {
     // Don't reconnect if already connected or connecting
-    if (this.messageStream && this.state === 'connected') {
+    if (this.messageStream && this.state === "connected") {
       return;
     }
 
@@ -278,14 +285,14 @@ class RealtimeService {
       return;
     }
 
-    this.setState('connecting');
+    this.setState("connecting");
 
     try {
-      const host = grpcUrl || '';
+      const host = grpcUrl || "";
 
       // Emit connect attempt event
       this.emitConnectionEvent({
-        type: 'realtime_connect',
+        type: "realtime_connect",
         message: `${REALTIME_MESSAGES.CONNECTING_AT} ${host}`,
         url: host,
       });
@@ -303,10 +310,10 @@ class RealtimeService {
           this.reconnectAttempts = 0;
           this.reconnecting = false;
           this.setError(null);
-          this.setState('connected');
+          this.setState("connected");
 
           this.emitConnectionEvent({
-            type: 'realtime_connected',
+            type: "realtime_connected",
             message: REALTIME_MESSAGES.CONNECTED,
           });
 
@@ -322,10 +329,11 @@ class RealtimeService {
           this.messageStream = null;
 
           if (code !== grpc.Code.OK) {
-            const errorMessage = message || `${REALTIME_MESSAGES.STREAM_ENDED_ERROR} ${code}`;
+            const errorMessage =
+              message || `${REALTIME_MESSAGES.STREAM_ENDED_ERROR} ${code}`;
 
             this.emitConnectionEvent({
-              type: 'realtime_disconnected',
+              type: "realtime_disconnected",
               message: errorMessage,
               code,
             });
@@ -337,7 +345,7 @@ class RealtimeService {
             });
           } else {
             this.emitConnectionEvent({
-              type: 'realtime_disconnected',
+              type: "realtime_disconnected",
               message: REALTIME_MESSAGES.STREAM_ENDED_NORMAL,
             });
           }
@@ -348,11 +356,13 @@ class RealtimeService {
       });
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : REALTIME_MESSAGES.FAILED_ESTABLISH;
+        error instanceof Error
+          ? error.message
+          : REALTIME_MESSAGES.FAILED_ESTABLISH;
       logger.error(REALTIME_MESSAGES.FAILED_ESTABLISH, error);
 
       this.emitConnectionEvent({
-        type: 'realtime_error',
+        type: "realtime_error",
         message: errorMessage,
       });
 
@@ -403,7 +413,7 @@ class RealtimeService {
     // Close event stream
     this.disconnectEventStream();
 
-    this.setState('disconnected');
+    this.setState("disconnected");
     this.reconnectAttempts = 0;
   }
 
@@ -454,15 +464,18 @@ class RealtimeService {
    */
   private dispatch(event: unknown): void {
     if (!isValidRealtimeEvent(event)) {
-      logger.warn('Invalid realtime event received:', event);
+      logger.warn("Invalid realtime event received:", event);
       return;
     }
 
     // Defense-in-depth: client-side filter supplements server-side tenant isolation
     // This is best-effort and does NOT replace server-side isolation
-    const eventOrgId = (event as RealtimeEvent & { organizationId?: string }).organizationId;
+    const eventOrgId = (event as RealtimeEvent & { organizationId?: string })
+      .organizationId;
     if (eventOrgId && this.currentOrgId && eventOrgId !== this.currentOrgId) {
-      logger.warn('Received event for different org, dropping (defense-in-depth)');
+      logger.warn(
+        "Received event for different org, dropping (defense-in-depth)",
+      );
       return;
     }
 
@@ -481,7 +494,7 @@ class RealtimeService {
       try {
         handler(event);
       } catch (error) {
-        logger.error('Error in wildcard event handler:', error);
+        logger.error("Error in wildcard event handler:", error);
       }
     });
   }
@@ -507,7 +520,7 @@ class RealtimeService {
    * Emit a connection event (for activity feed)
    * Maintains a ring buffer of recent events
    */
-  private emitConnectionEvent(event: Omit<ConnectionEvent, 'timestamp'>): void {
+  private emitConnectionEvent(event: Omit<ConnectionEvent, "timestamp">): void {
     const fullEvent: ConnectionEvent = {
       ...event,
       timestamp: new Date().toISOString(),
@@ -518,7 +531,10 @@ class RealtimeService {
 
     // Trim to max size
     if (this.connectionEvents.length > CONNECTION_EVENT_BUFFER_SIZE) {
-      this.connectionEvents = this.connectionEvents.slice(0, CONNECTION_EVENT_BUFFER_SIZE);
+      this.connectionEvents = this.connectionEvents.slice(
+        0,
+        CONNECTION_EVENT_BUFFER_SIZE,
+      );
     }
 
     // Notify listeners
@@ -526,7 +542,7 @@ class RealtimeService {
       try {
         listener(fullEvent);
       } catch (error) {
-        logger.error('Error in connection event listener:', error);
+        logger.error("Error in connection event listener:", error);
       }
     });
   }
@@ -585,19 +601,19 @@ class RealtimeService {
       return;
     }
 
-    this.setState('reconnecting');
+    this.setState("reconnecting");
 
     // Exponential backoff: base * 2^attempts, capped at max
     const delay = Math.min(
       TIMING_RECONNECT_BASE_DELAY * Math.pow(2, this.reconnectAttempts),
-      TIMING_RECONNECT_MAX_DELAY
+      TIMING_RECONNECT_MAX_DELAY,
     );
 
     this.reconnectAttempts++;
 
     // Emit reconnect event with timing info
     this.emitConnectionEvent({
-      type: 'realtime_reconnect',
+      type: "realtime_reconnect",
       message: `${REALTIME_MESSAGES.RECONNECTING_IN} ${Math.round(delay / 1000)}s (attempt ${this.reconnectAttempts})`,
       attempt: this.reconnectAttempts,
       delayMs: delay,
@@ -637,34 +653,39 @@ class RealtimeService {
     const request = new pb.StreamBaseStationMessagesRequest();
     request.setBsEui(bsEui);
 
-    this.baseStationStream = grpc.invoke(KiloCenterService.StreamBaseStationMessages, {
-      host: grpcUrl || '',
-      request,
-      metadata: this.buildMetadata(),
-      onHeaders: () => {
-        this.baseStationReconnectAttempts = 0; // Reset on successful connect
-        this.emitConnectionEvent({
-          type: 'realtime_connected',
-          message: REALTIME_MESSAGES.BS_STREAM_CONNECTED,
-        });
-      },
-      onMessage: (msg: pb.BaseStationMessage) => {
-        const event = this.mapBaseStationMessageToRealtimeEvent(msg.toObject());
-        this.dispatch(event);
-      },
-      onEnd: (code: grpc.Code, message: string) => {
-        this.baseStationStream = null;
-        if (code !== grpc.Code.OK) {
-          this.setError({
-            message: message || REALTIME_MESSAGES.BS_STREAM_ERROR,
-            timestamp: new Date(),
-            code,
+    this.baseStationStream = grpc.invoke(
+      KiloCenterService.StreamBaseStationMessages,
+      {
+        host: grpcUrl || "",
+        request,
+        metadata: this.buildMetadata(),
+        onHeaders: () => {
+          this.baseStationReconnectAttempts = 0; // Reset on successful connect
+          this.emitConnectionEvent({
+            type: "realtime_connected",
+            message: REALTIME_MESSAGES.BS_STREAM_CONNECTED,
           });
-          // Use SEPARATE reconnect state
-          this.scheduleBaseStationReconnect(bsEui);
-        }
+        },
+        onMessage: (msg: pb.BaseStationMessage) => {
+          const event = this.mapBaseStationMessageToRealtimeEvent(
+            msg.toObject(),
+          );
+          this.dispatch(event);
+        },
+        onEnd: (code: grpc.Code, message: string) => {
+          this.baseStationStream = null;
+          if (code !== grpc.Code.OK) {
+            this.setError({
+              message: message || REALTIME_MESSAGES.BS_STREAM_ERROR,
+              timestamp: new Date(),
+              code,
+            });
+            // Use SEPARATE reconnect state
+            this.scheduleBaseStationReconnect(bsEui);
+          }
+        },
       },
-    });
+    );
   }
 
   /**
@@ -683,8 +704,9 @@ class RealtimeService {
 
     // Use SEPARATE reconnect attempts counter
     const delay = Math.min(
-      TIMING_RECONNECT_BASE_DELAY * Math.pow(2, this.baseStationReconnectAttempts),
-      TIMING_RECONNECT_MAX_DELAY
+      TIMING_RECONNECT_BASE_DELAY *
+        Math.pow(2, this.baseStationReconnectAttempts),
+      TIMING_RECONNECT_MAX_DELAY,
     );
     this.baseStationReconnectAttempts++;
 
@@ -735,13 +757,13 @@ class RealtimeService {
     // No filters - stream all events for the tenant
 
     this.eventStream = grpc.invoke(KiloCenterService.StreamEvents, {
-      host: grpcUrl || '',
+      host: grpcUrl || "",
       request,
       metadata: this.buildMetadata(),
       onHeaders: () => {
         this.eventStreamReconnectAttempts = 0; // Reset on successful connect
         this.emitConnectionEvent({
-          type: 'realtime_connected',
+          type: "realtime_connected",
           message: REALTIME_MESSAGES.EVENT_STREAM_CONNECTED,
         });
       },
@@ -780,8 +802,9 @@ class RealtimeService {
     }
 
     const delay = Math.min(
-      TIMING_RECONNECT_BASE_DELAY * Math.pow(2, this.eventStreamReconnectAttempts),
-      TIMING_RECONNECT_MAX_DELAY
+      TIMING_RECONNECT_BASE_DELAY *
+        Math.pow(2, this.eventStreamReconnectAttempts),
+      TIMING_RECONNECT_MAX_DELAY,
     );
     this.eventStreamReconnectAttempts++;
 

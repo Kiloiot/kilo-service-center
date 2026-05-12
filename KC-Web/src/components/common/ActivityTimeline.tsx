@@ -1,10 +1,17 @@
-import React, { useMemo } from 'react';
+import React, { useMemo } from "react";
 
-import type { ActivityItem } from '@api-types/api';
-import { Box, CircularProgress, Paper, Typography, useTheme } from '@mui/material';
-import { ENDPOINT_DETAILS } from '@constants/messages';
-import { getTerminalStyles, formatTerminalTime } from '@theme/index';
-import { formatDate, formatEUIWithDashes } from '@utils/formatters';
+import type { ActivityItem } from "@api-types/api";
+import {
+  Box,
+  CircularProgress,
+  Paper,
+  Typography,
+  useTheme,
+} from "@mui/material";
+
+import { formatDate, formatEUIWithDashes } from "@utils/formatters";
+import { ENDPOINT_DETAILS } from "@constants/messages";
+import { formatTerminalTime, getTerminalStyles } from "@theme/index";
 
 // =============================================================================
 // Types
@@ -14,7 +21,7 @@ import { formatDate, formatEUIWithDashes } from '@utils/formatters';
 interface FlatItem {
   id: string;
   time: Date;
-  type: 'event' | 'message';
+  type: "event" | "message";
   // Event fields
   eventType?: string;
   category?: string;
@@ -38,11 +45,11 @@ interface FlatItem {
 
 /** Convert canonical ActivityItem to internal flat rendering shape. */
 function toFlatItem(item: ActivityItem, idx: number): FlatItem {
-  if (item.type === 'event' && item.event) {
+  if (item.type === "event" && item.event) {
     return {
       id: item.event.id || `evt-${idx}`,
       time: item.occurredAt,
-      type: 'event',
+      type: "event",
       eventType: item.event.eventType,
       category: item.event.category,
       severity: item.event.severity,
@@ -55,14 +62,18 @@ function toFlatItem(item: ActivityItem, idx: number): FlatItem {
   return {
     id: msg?.id || `msg-${idx}`,
     time: item.occurredAt,
-    type: 'message',
+    type: "message",
     bsEui: msg?.bsEui,
     epEui: msg?.epEui,
     packetCnt: msg?.packetCnt,
     rssi: msg?.rssi,
     snr: msg?.snr,
     userData: msg?.userData,
-    baseStations: msg?.baseStations?.map((bs) => ({ bsEui: bs.bsEui, snr: bs.snr, rssi: bs.rssi })),
+    baseStations: msg?.baseStations?.map((bs) => ({
+      bsEui: bs.bsEui,
+      snr: bs.snr,
+      rssi: bs.rssi,
+    })),
     duplicate: msg?.duplicate,
     decodedPayload: msg?.decodedPayload,
     decodeStatus: msg?.decodeStatus,
@@ -72,7 +83,7 @@ function toFlatItem(item: ActivityItem, idx: number): FlatItem {
 
 interface ActivityTimelineProps {
   items: ActivityItem[];
-  variant: 'compact' | 'detailed';
+  variant: "compact" | "detailed";
   loading?: boolean;
   emptyMessage?: string;
 }
@@ -88,7 +99,10 @@ function groupByDate(items: FlatItem[]): Map<string, FlatItem[]> {
 
   for (const item of items) {
     const itemKey = item.time.toDateString();
-    const label = itemKey === todayKey ? ENDPOINT_DETAILS.LABEL_TODAY : formatDate(item.time.toISOString());
+    const label =
+      itemKey === todayKey
+        ? ENDPOINT_DETAILS.LABEL_TODAY
+        : formatDate(item.time.toISOString());
     const group = groups.get(label);
     if (group) {
       group.push(item);
@@ -102,16 +116,16 @@ function groupByDate(items: FlatItem[]): Map<string, FlatItem[]> {
 /** Map severity to terminal color key. */
 function severityColor(
   severity: string | undefined,
-  colors: ReturnType<typeof getTerminalStyles>['colors'],
+  colors: ReturnType<typeof getTerminalStyles>["colors"],
 ): string {
   switch (severity?.toLowerCase()) {
-    case 'error':
-    case 'critical':
+    case "error":
+    case "critical":
       return colors.error;
-    case 'warning':
-    case 'warn':
+    case "warning":
+    case "warn":
       return colors.warning;
-    case 'info':
+    case "info":
       return colors.info;
     default:
       return colors.text;
@@ -120,7 +134,7 @@ function severityColor(
 
 /** Format a base64 userData string for display (first 32 chars with ellipsis). */
 function formatUserData(userData: string | undefined): string {
-  if (!userData) return '';
+  if (!userData) return "";
   return userData.length > 32 ? `${userData.slice(0, 32)}...` : userData;
 }
 
@@ -130,34 +144,39 @@ function formatUserData(userData: string | undefined): string {
 
 interface EventLineProps {
   item: FlatItem;
-  variant: 'compact' | 'detailed';
+  variant: "compact" | "detailed";
   terminalStyles: ReturnType<typeof getTerminalStyles>;
 }
 
-const EventLine: React.FC<EventLineProps> = ({ item, variant, terminalStyles }) => {
+const EventLine: React.FC<EventLineProps> = ({
+  item,
+  variant,
+  terminalStyles,
+}) => {
   const { colors } = terminalStyles;
   const color = severityColor(item.severity, colors);
-  const displayTitle = item.title || item.eventType || ENDPOINT_DETAILS.MSG_SYSTEM_EVENT_FALLBACK;
+  const displayTitle =
+    item.title || item.eventType || ENDPOINT_DETAILS.MSG_SYSTEM_EVENT_FALLBACK;
 
   return (
     <Box sx={terminalStyles.line}>
       <Box component="span" sx={{ color: colors.timestamp }}>
         {formatTerminalTime(item.time)}
-      </Box>{' '}
+      </Box>{" "}
       {item.sourceName && (
         <>
           <Box component="span" sx={{ color: colors.info, opacity: 0.7 }}>
             {item.sourceName}
           </Box>
           <Box component="span" sx={{ color: colors.text, opacity: 0.5 }}>
-            {' | '}
+            {" | "}
           </Box>
         </>
       )}
       <Box component="span" sx={{ color }}>
         {displayTitle}
       </Box>
-      {variant === 'detailed' && item.description && (
+      {variant === "detailed" && item.description && (
         <Box sx={{ pl: 10, color: colors.text, opacity: 0.8 }}>
           {item.description}
         </Box>
@@ -168,11 +187,15 @@ const EventLine: React.FC<EventLineProps> = ({ item, variant, terminalStyles }) 
 
 interface MessageLineProps {
   item: FlatItem;
-  variant: 'compact' | 'detailed';
+  variant: "compact" | "detailed";
   terminalStyles: ReturnType<typeof getTerminalStyles>;
 }
 
-const MessageLine: React.FC<MessageLineProps> = ({ item, variant, terminalStyles }) => {
+const MessageLine: React.FC<MessageLineProps> = ({
+  item,
+  variant,
+  terminalStyles,
+}) => {
   const { colors } = terminalStyles;
   const bsList = item.baseStations ?? [];
   const hasBsList = bsList.length > 0;
@@ -182,13 +205,13 @@ const MessageLine: React.FC<MessageLineProps> = ({ item, variant, terminalStyles
     <Box sx={terminalStyles.line}>
       <Box component="span" sx={{ color: colors.timestamp }}>
         {formatTerminalTime(item.time)}
-      </Box>{' '}
+      </Box>{" "}
       <Box component="span" sx={{ color: colors.success }}>
         {ENDPOINT_DETAILS.MSG_UPLINK_RECEIVED}
       </Box>
       {item.duplicate && (
         <>
-          {' '}
+          {" "}
           <Box component="span" sx={{ color: colors.warning }}>
             {ENDPOINT_DETAILS.TERM_DUPLICATE}
           </Box>
@@ -229,8 +252,8 @@ const MessageLine: React.FC<MessageLineProps> = ({ item, variant, terminalStyles
       )}
       {!hasBsList && item.bsEui && (
         <>
-          {' '}
-          {ENDPOINT_DETAILS.MSG_FROM_BS}{' '}
+          {" "}
+          {ENDPOINT_DETAILS.MSG_FROM_BS}{" "}
           <Box component="span" sx={{ color: colors.identifier }}>
             {formatEUIWithDashes(item.bsEui)}
           </Box>
@@ -267,7 +290,7 @@ const MessageLine: React.FC<MessageLineProps> = ({ item, variant, terminalStyles
     </Box>
   );
 
-  if (variant === 'compact') {
+  if (variant === "compact") {
     return primaryLine;
   }
 
@@ -276,7 +299,10 @@ const MessageLine: React.FC<MessageLineProps> = ({ item, variant, terminalStyles
       {primaryLine}
       {multiBs &&
         bsList.map((bs, idx) => (
-          <Box key={`${item.id}-bs-${idx}`} sx={{ ...terminalStyles.line, pl: 10 }}>
+          <Box
+            key={`${item.id}-bs-${idx}`}
+            sx={{ ...terminalStyles.line, pl: 10 }}
+          >
             <Box component="span" sx={{ color: colors.identifier }}>
               {formatEUIWithDashes(bs.bsEui)}
             </Box>
@@ -290,9 +316,10 @@ const MessageLine: React.FC<MessageLineProps> = ({ item, variant, terminalStyles
             </Box>
           </Box>
         ))}
-      {item.decodedPayload && item.decodeStatus === 'success' && (
+      {item.decodedPayload && item.decodeStatus === "success" && (
         <Box sx={{ ...terminalStyles.line, pl: 10, color: colors.info }}>
-          {ENDPOINT_DETAILS.MSG_DECODED_PREFIX} {JSON.stringify(item.decodedPayload)}
+          {ENDPOINT_DETAILS.MSG_DECODED_PREFIX}{" "}
+          {JSON.stringify(item.decodedPayload)}
         </Box>
       )}
     </>
@@ -318,8 +345,18 @@ const ActivityTimelineInner: React.FC<ActivityTimelineProps> = ({
 
   if (loading) {
     return (
-      <Paper variant="outlined" sx={{ ...terminalStyles.container, minHeight: 120 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
+      <Paper
+        variant="outlined"
+        sx={{ ...terminalStyles.container, minHeight: 120 }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            py: 4,
+          }}
+        >
           <CircularProgress size={24} />
         </Box>
       </Paper>
@@ -328,12 +365,15 @@ const ActivityTimelineInner: React.FC<ActivityTimelineProps> = ({
 
   if (items.length === 0) {
     return (
-      <Paper variant="outlined" sx={{ ...terminalStyles.container, minHeight: 120 }}>
-        <Box sx={{ ...terminalStyles.line, textAlign: 'center', py: 4 }}>
+      <Paper
+        variant="outlined"
+        sx={{ ...terminalStyles.container, minHeight: 120 }}
+      >
+        <Box sx={{ ...terminalStyles.line, textAlign: "center", py: 4 }}>
           <Typography
             sx={{
-              fontFamily: 'inherit',
-              fontSize: 'inherit',
+              fontFamily: "inherit",
+              fontSize: "inherit",
               color: terminalStyles.colors.text,
               opacity: 0.6,
             }}
@@ -351,14 +391,14 @@ const ActivityTimelineInner: React.FC<ActivityTimelineProps> = ({
       sx={{
         ...terminalStyles.container,
         maxHeight: 600,
-        overflow: 'auto',
+        overflow: "auto",
       }}
     >
       {Array.from(dateGroups.entries()).map(([dateLabel, groupItems]) => (
         <React.Fragment key={dateLabel}>
           <Box sx={terminalStyles.header}>=== {dateLabel} ===</Box>
           {groupItems.map((item) =>
-            item.type === 'event' ? (
+            item.type === "event" ? (
               <EventLine
                 key={item.id}
                 item={item}

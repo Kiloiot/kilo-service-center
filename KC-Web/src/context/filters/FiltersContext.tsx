@@ -5,12 +5,18 @@
  * Persists filter state per organization to localStorage.
  */
 
-import React, { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+} from "react";
 
-import { useOrganization } from '@contexts/OrganizationContext';
-import { logger } from '@utils/logger';
-import { storageService } from '@utils/storage';
-import { PAGINATION, STORAGE_KEYS } from '@constants/app';
+import { useOrganization } from "@contexts/OrganizationContext";
+import { logger } from "@utils/logger";
+import { storageService } from "@utils/storage";
+import { PAGINATION, STORAGE_KEYS } from "@constants/app";
 
 import type {
   BaseStationFiltersState,
@@ -23,21 +29,21 @@ import type {
   PaginationState,
   SavedView,
   SortState,
-} from './types';
+} from "./types";
 
 // Default filter states
 const defaultBaseStationFilters: BaseStationFiltersState = {
-  search: '',
+  search: "",
   status: [],
-  sort: { field: 'lastSeen', direction: 'desc' },
+  sort: { field: "lastSeen", direction: "desc" },
   pagination: { page: 0, pageSize: PAGINATION.DEFAULT_PAGE_SIZE },
 };
 
 const defaultEndpointFilters: EndpointFiltersState = {
-  search: '',
+  search: "",
   attachState: [],
   bidirectional: null,
-  sort: { field: 'lastSeen', direction: 'desc' },
+  sort: { field: "lastSeen", direction: "desc" },
   pagination: { page: 0, pageSize: PAGINATION.DEFAULT_PAGE_SIZE },
 };
 
@@ -56,9 +62,12 @@ function generateViewId(): string {
 }
 
 // Reducer function
-function filtersReducer(state: FiltersState, action: FiltersAction): FiltersState {
+function filtersReducer(
+  state: FiltersState,
+  action: FiltersAction,
+): FiltersState {
   switch (action.type) {
-    case 'SET_FILTER':
+    case "SET_FILTER":
       // Reset pagination page to 0 when filters change
       return {
         ...state,
@@ -69,7 +78,7 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
         },
       };
 
-    case 'SET_SEARCH':
+    case "SET_SEARCH":
       // Reset pagination page to 0 when search changes
       return {
         ...state,
@@ -80,7 +89,7 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
         },
       };
 
-    case 'SET_PAGINATION':
+    case "SET_PAGINATION":
       return {
         ...state,
         [action.scope]: {
@@ -89,7 +98,7 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
         },
       };
 
-    case 'SET_SORT':
+    case "SET_SORT":
       // Reset pagination page to 0 when sort changes
       return {
         ...state,
@@ -100,7 +109,7 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
         },
       };
 
-    case 'SET_DATE_RANGE':
+    case "SET_DATE_RANGE":
       return {
         ...state,
         [action.scope]: {
@@ -109,7 +118,7 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
         },
       };
 
-    case 'RESET_SCOPE': {
+    case "RESET_SCOPE": {
       const defaults: Record<FilterScope, object> = {
         baseStations: defaultBaseStationFilters,
         endpoints: defaultEndpointFilters,
@@ -120,13 +129,13 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
       };
     }
 
-    case 'RESET_ALL':
+    case "RESET_ALL":
       return {
         ...createInitialState(),
         savedViews: state.savedViews, // Preserve saved views
       };
 
-    case 'SAVE_VIEW': {
+    case "SAVE_VIEW": {
       const view: SavedView = {
         id: generateViewId(),
         name: action.name,
@@ -140,7 +149,7 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
       };
     }
 
-    case 'LOAD_VIEW': {
+    case "LOAD_VIEW": {
       const view = state.savedViews.find((v) => v.id === action.viewId);
       if (!view) return state;
       return {
@@ -149,13 +158,13 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
       };
     }
 
-    case 'DELETE_VIEW':
+    case "DELETE_VIEW":
       return {
         ...state,
         savedViews: state.savedViews.filter((v) => v.id !== action.viewId),
       };
 
-    case 'LOAD_STATE':
+    case "LOAD_STATE":
       return action.state;
 
     default:
@@ -164,11 +173,13 @@ function filtersReducer(state: FiltersState, action: FiltersAction): FiltersStat
 }
 
 // Context
-const FiltersContext = createContext<FiltersContextValue | undefined>(undefined);
+const FiltersContext = createContext<FiltersContextValue | undefined>(
+  undefined,
+);
 
 // Storage key builder with org scope
 function buildStorageKey(orgId: string | null): string {
-  const namespace = orgId || 'default';
+  const namespace = orgId || "default";
   return `${STORAGE_KEYS.FILTERS}-${namespace}`;
 }
 
@@ -182,18 +193,21 @@ function loadFromStorage(storageKey: string): FiltersState | null {
         baseStations: {
           ...defaultBaseStationFilters,
           ...parsed.baseStations,
-          pagination: parsed.baseStations?.pagination ?? defaultBaseStationFilters.pagination,
+          pagination:
+            parsed.baseStations?.pagination ??
+            defaultBaseStationFilters.pagination,
         },
         endpoints: {
           ...defaultEndpointFilters,
           ...parsed.endpoints,
-          pagination: parsed.endpoints?.pagination ?? defaultEndpointFilters.pagination,
+          pagination:
+            parsed.endpoints?.pagination ?? defaultEndpointFilters.pagination,
         },
         savedViews: Array.isArray(parsed.savedViews) ? parsed.savedViews : [],
       };
     }
   } catch (error) {
-    logger.error('Failed to load filters from storage:', error);
+    logger.error("Failed to load filters from storage:", error);
   }
   return null;
 }
@@ -203,7 +217,7 @@ function saveToStorage(storageKey: string, state: FiltersState): void {
   try {
     storageService.setItem(storageKey, JSON.stringify(state));
   } catch (error) {
-    logger.error('Failed to save filters to storage:', error);
+    logger.error("Failed to save filters to storage:", error);
   }
 }
 
@@ -222,7 +236,10 @@ export function FiltersProvider({ children }: FiltersProviderProps) {
   const { organizationId } = useOrganization();
 
   // Build org-scoped storage key
-  const storageKey = useMemo(() => buildStorageKey(organizationId), [organizationId]);
+  const storageKey = useMemo(
+    () => buildStorageKey(organizationId),
+    [organizationId],
+  );
 
   // Initialize state from storage or defaults
   const [state, dispatch] = useReducer(filtersReducer, storageKey, (key) => {
@@ -234,9 +251,9 @@ export function FiltersProvider({ children }: FiltersProviderProps) {
   useEffect(() => {
     const loaded = loadFromStorage(storageKey);
     if (loaded) {
-      dispatch({ type: 'LOAD_STATE', state: loaded });
+      dispatch({ type: "LOAD_STATE", state: loaded });
     } else {
-      dispatch({ type: 'RESET_ALL' });
+      dispatch({ type: "RESET_ALL" });
     }
   }, [storageKey]);
 
@@ -251,24 +268,31 @@ export function FiltersProvider({ children }: FiltersProviderProps) {
       state,
       dispatch,
       setFilter: (scope: FilterScope, key: string, value: unknown) =>
-        dispatch({ type: 'SET_FILTER', scope, key, value }),
+        dispatch({ type: "SET_FILTER", scope, key, value }),
       setSearch: (scope: FilterScope, search: string) =>
-        dispatch({ type: 'SET_SEARCH', scope, search }),
+        dispatch({ type: "SET_SEARCH", scope, search }),
       setPagination: (scope: FilterScope, pagination: PaginationState) =>
-        dispatch({ type: 'SET_PAGINATION', scope, pagination }),
-      setSort: (scope: FilterScope, sort: SortState) => dispatch({ type: 'SET_SORT', scope, sort }),
+        dispatch({ type: "SET_PAGINATION", scope, pagination }),
+      setSort: (scope: FilterScope, sort: SortState) =>
+        dispatch({ type: "SET_SORT", scope, sort }),
       setDateRange: (scope: FilterScope, dateRange: DateRange) =>
-        dispatch({ type: 'SET_DATE_RANGE', scope, dateRange }),
-      resetScope: (scope: FilterScope) => dispatch({ type: 'RESET_SCOPE', scope }),
-      resetAll: () => dispatch({ type: 'RESET_ALL' }),
-      saveView: (name: string, scope: FilterScope) => dispatch({ type: 'SAVE_VIEW', name, scope }),
-      loadView: (viewId: string) => dispatch({ type: 'LOAD_VIEW', viewId }),
-      deleteView: (viewId: string) => dispatch({ type: 'DELETE_VIEW', viewId }),
+        dispatch({ type: "SET_DATE_RANGE", scope, dateRange }),
+      resetScope: (scope: FilterScope) =>
+        dispatch({ type: "RESET_SCOPE", scope }),
+      resetAll: () => dispatch({ type: "RESET_ALL" }),
+      saveView: (name: string, scope: FilterScope) =>
+        dispatch({ type: "SAVE_VIEW", name, scope }),
+      loadView: (viewId: string) => dispatch({ type: "LOAD_VIEW", viewId }),
+      deleteView: (viewId: string) => dispatch({ type: "DELETE_VIEW", viewId }),
     }),
-    [state]
+    [state],
   );
 
-  return <FiltersContext.Provider value={contextValue}>{children}</FiltersContext.Provider>;
+  return (
+    <FiltersContext.Provider value={contextValue}>
+      {children}
+    </FiltersContext.Provider>
+  );
 }
 
 /**
@@ -278,7 +302,7 @@ export function FiltersProvider({ children }: FiltersProviderProps) {
 export function useFilters(): FiltersContextValue {
   const context = useContext(FiltersContext);
   if (!context) {
-    throw new Error('useFilters must be used within a FiltersProvider');
+    throw new Error("useFilters must be used within a FiltersProvider");
   }
   return context;
 }

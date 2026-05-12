@@ -3,6 +3,7 @@ package bssci_test
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	bssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -18,22 +20,45 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // --- Mock Implementations for Integration Tests ---
 
 // attPrpTestConn is a minimal mock connection for attach propagate integration tests
+// attPrpTestConn captures every Write so tests can decode the msgpack payload frame.
+// sendMessage writes the header and payload in two separate Conn.Write calls.
 type attPrpTestConn struct {
 	net.Conn
-	mu        sync.Mutex
-	sentCount int
+	mu     sync.Mutex
+	frames [][]byte
 }
 
 func (m *attPrpTestConn) Write(b []byte) (n int, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.sentCount++
+	clone := make([]byte, len(b))
+	copy(clone, b)
+	m.frames = append(m.frames, clone)
 	return len(b), nil
+}
+
+func (m *attPrpTestConn) SentCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.frames)
+}
+
+func (m *attPrpTestConn) Frames() [][]byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([][]byte, len(m.frames))
+	for i, f := range m.frames {
+		dup := make([]byte, len(f))
+		copy(dup, f)
+		out[i] = dup
+	}
+	return out
 }
 
 func (m *attPrpTestConn) Close() error                       { return nil }
@@ -150,11 +175,21 @@ func (r *capturingMIOTYMessageRepo) GetMonthlyActivity(_ context.Context, _ int6
 	return nil, nil
 }
 
-// attPrpTestEndpointRepo is a minimal endpoint repository for attach propagate integration tests
+// attPrpTestEndpointRepo is a minimal endpoint repository for attach propagate integration tests.
+// Every mutation method increments its tally so rejected-propagate tests can assert zero state changes.
 type attPrpTestEndpointRepo struct {
-	endpoints         map[uint64]*models.EndPoint
-	getByEUICalls     int
-	updateFieldsCalls int
+	endpoints map[uint64]*models.EndPoint
+
+	getByEUICalls                    int
+	createCalls                      int
+	updateCalls                      int
+	updateFieldsCalls                int
+	updateLastSeenCalls              int
+	updateRadioMetricsCalls          int
+	updateRadioMetricsSelectiveCalls int
+	updateDetachMetricsCalls         int
+	updateWithEUICalls               int
+	deleteByTenantCalls              int
 }
 
 func (r *attPrpTestEndpointRepo) GetByEUI(_ context.Context, _ int64, eui []byte) (*models.EndPoint, error) {
@@ -185,7 +220,10 @@ func (r *attPrpTestEndpointRepo) UpdateFields(_ context.Context, _ int64, _ int6
 }
 
 // Stub implementations for remaining EndpointRepository methods
-func (r *attPrpTestEndpointRepo) Create(context.Context, *models.EndPoint) error { return nil }
+func (r *attPrpTestEndpointRepo) Create(context.Context, *models.EndPoint) error {
+	r.createCalls++
+	return nil
+}
 func (r *attPrpTestEndpointRepo) GetByID(context.Context, int64, int64) (*models.EndPoint, error) {
 	return nil, nil
 }
@@ -196,17 +234,24 @@ func (r *attPrpTestEndpointRepo) CountByTenant(context.Context, int64) (int64, e
 func (r *attPrpTestEndpointRepo) ListByTenantPaginated(context.Context, int64, int, int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
-func (r *attPrpTestEndpointRepo) Update(context.Context, *models.EndPoint) error { return nil }
+func (r *attPrpTestEndpointRepo) Update(context.Context, *models.EndPoint) error {
+	r.updateCalls++
+	return nil
+}
 func (r *attPrpTestEndpointRepo) UpdateLastSeen(context.Context, int64, models.EUI, uint32) error {
+	r.updateLastSeenCalls++
 	return nil
 }
 func (r *attPrpTestEndpointRepo) UpdateRadioMetrics(context.Context, int64, models.EUI, float64, float64, float64, int64, int64, string) error {
+	r.updateRadioMetricsCalls++
 	return nil
 }
 func (r *attPrpTestEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, interfaces.RadioMetricsUpdate) error {
+	r.updateRadioMetricsSelectiveCalls++
 	return nil
 }
 func (r *attPrpTestEndpointRepo) UpdateDetachMetrics(context.Context, int64, models.EUI, interfaces.DetachMetricsUpdate) error {
+	r.updateDetachMetricsCalls++
 	return nil
 }
 func (r *attPrpTestEndpointRepo) StreamAllForPropagation(context.Context, int64, int) ([]*models.EndPoint, error) {
@@ -222,9 +267,11 @@ func (r *attPrpTestEndpointRepo) GetPreferredBsEui(context.Context, int64, []byt
 	return nil, false, nil
 }
 func (r *attPrpTestEndpointRepo) DeleteByTenant(context.Context, int64, []byte) error {
+	r.deleteByTenantCalls++
 	return nil
 }
 func (r *attPrpTestEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
+	r.updateWithEUICalls++
 	return ep, nil
 }
 func (r *attPrpTestEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
@@ -235,6 +282,7 @@ func (r *attPrpTestEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) err
 type capturingStorage struct {
 	miotyMessages *capturingMIOTYMessageRepo
 	endpointRepo  *attPrpTestEndpointRepo
+	pendingOps    *attPrpCapturingPendingOps
 }
 
 func (s *capturingStorage) MIOTYMessages() interfaces.MIOTYMessageRepository {
@@ -263,7 +311,62 @@ func (s *capturingStorage) BaseStationSessions() interfaces.BaseStationSessionRe
 }
 func (s *capturingStorage) DLRXStatus() interfaces.DLRXStatusRepository { return nil }
 func (s *capturingStorage) PendingOperations() interfaces.PendingOperationRepository {
+	if s.pendingOps == nil {
+		s.pendingOps = &attPrpCapturingPendingOps{}
+	}
+	return s.pendingOps
+}
+
+// attPrpUpdateMetadataCall captures a single UpdateMetadata invocation.
+type attPrpUpdateMetadataCall struct {
+	SessionID   int64
+	OperationID int64
+	Metadata    json.RawMessage
+}
+
+// attPrpCapturingPendingOps records every UpdateMetadata call so rejected-path tests
+// can assert on the failure metadata that handlePropagateResponseFailure persists.
+type attPrpCapturingPendingOps struct {
+	mu      sync.Mutex
+	updates []attPrpUpdateMetadataCall
+}
+
+func (r *attPrpCapturingPendingOps) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
 	return nil
+}
+func (r *attPrpCapturingPendingOps) UpdateMetadata(_ context.Context, sessionID, operationID int64, metadata json.RawMessage) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	dup := make(json.RawMessage, len(metadata))
+	copy(dup, metadata)
+	r.updates = append(r.updates, attPrpUpdateMetadataCall{SessionID: sessionID, OperationID: operationID, Metadata: dup})
+	return nil
+}
+func (r *attPrpCapturingPendingOps) DeleteBySessionAndOperation(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (r *attPrpCapturingPendingOps) DeleteByOperation(_ context.Context, _ int64) error { return nil }
+func (r *attPrpCapturingPendingOps) DeleteBySession(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
+}
+func (r *attPrpCapturingPendingOps) GetBySession(_ context.Context, _ int64) ([]*interfaces.PendingOperation, error) {
+	return nil, nil
+}
+
+func (r *attPrpCapturingPendingOps) LastUpdate() *attPrpUpdateMetadataCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.updates) == 0 {
+		return nil
+	}
+	call := r.updates[len(r.updates)-1]
+	return &call
+}
+
+func (r *attPrpCapturingPendingOps) UpdateCalls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.updates)
 }
 func (s *capturingStorage) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository { return nil }
 func (s *capturingStorage) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
@@ -420,7 +523,7 @@ func TestAttachPropagateCompletionIntegration_WithPendingOp(t *testing.T) {
 			"longBlkDist":   false,
 		},
 	}
-	err := statusSvc.RecordPendingOperation(context.Background(), session, testOpId, pendingOp, session.DbSessionID)
+	err := statusSvc.RecordPendingOperation(testutil.TestContextWithTenant(testTenantID), session, testOpId, pendingOp, session.DbSessionID)
 	require.NoError(t, err, "RecordPendingOperation should succeed")
 
 	// Verify pending op was recorded
@@ -661,4 +764,132 @@ func TestEUIPrecisionLossDetection(t *testing.T) {
 		// The important thing is that the precision check should prevent this path
 		t.Logf("Precision loss: originalEUI != recoveredEUI demonstrates why fail-fast is needed")
 	}
+}
+
+// TestHandleAttachPropagateResponse_Rejected verifies that when attPrpRsp arrives
+// with a non-zero result, handlePropagateResponseFailure emits the cataloged event
+// type (EventTypeEndpointAttachFailed) and uses TitleAttachPropagateFailedForEndpointOnBS
+// rather than the pre-Fix-A pendingOp-dependent fallback strings.
+func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
+	t.Parallel()
+
+	const (
+		testTenantID = int64(100)
+		testOpId     = int64(-54321)
+		testEpEui    = uint64(0x12345678)
+		testBsEui    = uint64(0x1122334455667788)
+		rejectCode   = 7
+	)
+
+	var epEUIBytes models.EUI
+	binary.BigEndian.PutUint64(epEUIBytes[:], testEpEui)
+	endpoint := &models.EndPoint{ID: 1001, EUI: epEUIBytes, TenantID: testTenantID}
+
+	msgRepo := &capturingMIOTYMessageRepo{}
+	endpointRepo := &attPrpTestEndpointRepo{endpoints: map[uint64]*models.EndPoint{testEpEui: endpoint}}
+	pendingOps := &attPrpCapturingPendingOps{}
+	storageImpl := &capturingStorage{miotyMessages: msgRepo, endpointRepo: endpointRepo, pendingOps: pendingOps}
+	eventStore := &capturingEventStore{}
+	testLogger := logger.NewNop()
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
+	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
+		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
+	server.RegisterHandlers()
+
+	mockConn := &attPrpTestConn{}
+	session := &bssci.Session{
+		ID:                "test-attprp-rejected",
+		BaseStationEUI:    testBsEui,
+		Conn:              mockConn,
+		Encoding:          "msgpack",
+		HandshakeComplete: true,
+		ResolvedTenantID:  testTenantID,
+		DbSessionID:       1,
+	}
+	server.RegisterSession(session)
+
+	pendingOp := &bssci.PendingOperation{
+		OperationType: mioty.CmdAttachPropagate,
+		OperationID:   testOpId,
+		CreatedAt:     time.Now(),
+		Metadata: map[string]interface{}{
+			"epEui":    float64(testEpEui),
+			"tenantId": float64(testTenantID),
+		},
+	}
+	require.NoError(t, statusSvc.RecordPendingOperation(testutil.TestContextWithTenant(testTenantID), session, testOpId, pendingOp, session.DbSessionID))
+
+	data := map[string]interface{}{
+		"command": mioty.CmdAttachPropagateResponse,
+		"opId":    testOpId,
+		"result":  int64(rejectCode),
+	}
+	msg := &bssci.Message{
+		Command: mioty.CmdAttachPropagateResponse,
+		OpId:    testOpId,
+		Data:    data,
+	}
+
+	require.NoError(t, server.CallHandleAttachPropagateResponse(session, msg, data),
+		"failure path must keep session alive (handler returns nil after sendError)")
+
+	// Wire response: sendMessage writes header + msgpack payload (two Write calls).
+	frames := mockConn.Frames()
+	require.GreaterOrEqual(t, len(frames), 2, "sendMessage must write header + payload")
+	assert.Len(t, frames[0], 12, "header is 8-byte magic + 4-byte length")
+
+	var wireResp map[string]interface{}
+	require.NoError(t, msgpack.Unmarshal(frames[1], &wireResp), "payload must be msgpack-decodable")
+	assert.Equal(t, mioty.CmdError, wireResp["command"], "rejected propagate must reply with mioty.CmdError")
+	assert.Equal(t, testOpId, testInt64(t, wireResp["opId"]), "response opId must echo the request")
+	assert.Equal(t, int64(bssci.POSIX_EPROTO), testInt64(t, wireResp["code"]), "POSIX code must be EPROTO per BSSCI-4-01")
+	assert.Equal(t, bssci.ResolveErrorMessage(bssci.ErrAttachPropagateFailed), wireResp["message"],
+		"wire message must be cataloged via ErrAttachPropagateFailed")
+
+	// Pending-op metadata persistence.
+	update := pendingOps.LastUpdate()
+	require.NotNil(t, update, "UpdateMetadata must be called once on the rejected path")
+	require.Equal(t, 1, pendingOps.UpdateCalls(), "exactly one UpdateMetadata call")
+	var metadata map[string]interface{}
+	require.NoError(t, json.Unmarshal(update.Metadata, &metadata))
+	assert.Equal(t, true, metadata["failed"], "metadata.failed must be true")
+	assert.Equal(t, int64(rejectCode), testInt64(t, metadata["failureCode"]), "metadata.failureCode must match the BS-reported code")
+	assert.Equal(t, fmt.Sprintf(bssci.PropagateFailureReasonFormat, rejectCode), metadata["failureReason"],
+		"metadata.failureReason must use the cataloged PropagateFailureReasonFormat")
+
+	// Event creation: both endpoint- and BS-scoped events, cataloged event type + title.
+	captured := eventStore.CapturedEvents()
+	require.GreaterOrEqual(t, len(captured), 2, "expected endpoint + base-station failure events")
+	var endpointEvt, baseStationEvt *models.SystemEvent
+	for _, evt := range captured {
+		if evt.EventType != bssci.EventTypeEndpointAttachFailed {
+			continue
+		}
+		if evt.SourceType == mioty.SourceTypeEndpoint && endpointEvt == nil {
+			endpointEvt = evt
+		}
+		if evt.SourceType == mioty.SourceTypeBaseStation && baseStationEvt == nil {
+			baseStationEvt = evt
+		}
+	}
+	require.NotNil(t, endpointEvt, "endpoint-scoped failure event missing")
+	require.NotNil(t, baseStationEvt, "base-station-scoped failure event missing")
+
+	epStr := fmt.Sprintf("%016X", testEpEui)
+	bsStr := fmt.Sprintf("%016X", testBsEui)
+	assert.Equal(t, fmt.Sprintf(bssci.TitleAttachPropagateFailedForEndpointOnBS, epStr, bsStr), endpointEvt.Title,
+		"endpoint event title must match cataloged TitleAttachPropagateFailedForEndpointOnBS format")
+	assert.Equal(t, epStr, endpointEvt.SourceName, "endpoint SourceName must be the EUI")
+	assert.Equal(t, bsStr, baseStationEvt.SourceName, "base-station SourceName must be the BS EUI")
+
+	// Endpoint must not be mutated on the rejected path.
+	assert.Equal(t, 0, endpointRepo.createCalls, "no Create on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.updateCalls, "no Update on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.updateFieldsCalls, "no UpdateFields on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.updateLastSeenCalls, "no UpdateLastSeen on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.updateRadioMetricsCalls, "no UpdateRadioMetrics on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.updateRadioMetricsSelectiveCalls, "no UpdateRadioMetricsSelective on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.updateDetachMetricsCalls, "no UpdateDetachMetrics on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.updateWithEUICalls, "no UpdateWithEUI on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.deleteByTenantCalls, "no DeleteByTenant on rejected propagate")
 }

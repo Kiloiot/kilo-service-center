@@ -5,16 +5,16 @@
  * Protects routes when backend auth is enabled.
  */
 
-import type { ReactNode } from 'react';
-import React, { useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import type { ReactNode } from "react";
+import React, { useEffect, useState } from "react";
+import { Navigate, useLocation } from "react-router-dom";
 
-import GlobalLoader from '@components/common/GlobalLoader';
-import { apiService } from '@services/api';
-import { useSession } from '@contexts/SessionContext';
-import { logger } from '@utils/logger';
-import { ROUTES } from '@constants/app';
-import { ERR_AUTH_SETTINGS_LOAD } from '@constants/messages';
+import GlobalLoader from "@components/common/GlobalLoader";
+import { apiService } from "@services/api";
+import { useSession } from "@contexts/SessionContext";
+import { logger } from "@utils/logger";
+import { ROUTES } from "@constants/app";
+import { ERR_AUTH_SETTINGS_LOAD } from "@constants/messages";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -35,7 +35,9 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
   // Public routes that don't require authentication
   const publicPaths = [ROUTES.LOGIN, ROUTES.REGISTER, ROUTES.AUTH_CALLBACK];
-  const isPublicRoute = publicPaths.some((path) => location.pathname.startsWith(path));
+  const isPublicRoute = publicPaths.some((path) =>
+    location.pathname.startsWith(path),
+  );
 
   useEffect(() => {
     const checkAuthSettings = async () => {

@@ -5,11 +5,14 @@
  * Uses centralized query keys for cache management.
  */
 
-import type { CreateManufacturerRequest, UpdateManufacturerRequest } from '@api-types/api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type {
+  CreateManufacturerRequest,
+  UpdateManufacturerRequest,
+} from "@api-types/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from '@services/api';
-import { queryKeys } from '@config/query-keys';
+import { api } from "@services/api";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Hook to fetch all manufacturers
@@ -27,9 +30,12 @@ export function useManufacturers() {
 export function useCreateManufacturer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: CreateManufacturerRequest) => api.createManufacturer(data),
+    mutationFn: (data: CreateManufacturerRequest) =>
+      api.createManufacturer(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.manufacturers() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.blueprints.manufacturers(),
+      });
     },
   });
 }
@@ -40,10 +46,17 @@ export function useCreateManufacturer() {
 export function useUpdateManufacturer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateManufacturerRequest }) =>
-      api.updateManufacturer(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: UpdateManufacturerRequest;
+    }) => api.updateManufacturer(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.manufacturers() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.blueprints.manufacturers(),
+      });
     },
   });
 }
@@ -56,7 +69,9 @@ export function useDeleteManufacturer() {
   return useMutation({
     mutationFn: (id: string) => api.deleteManufacturer(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.manufacturers() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.blueprints.manufacturers(),
+      });
     },
   });
 }

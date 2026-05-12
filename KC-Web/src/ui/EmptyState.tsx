@@ -5,10 +5,10 @@
  * Uses theme tokens exclusively - no inline colors/spacing.
  */
 
-import type { ReactNode } from 'react';
-import React from 'react';
+import type { ReactNode } from "react";
+import React from "react";
 
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button, Typography } from "@mui/material";
 
 export interface EmptyStateProps {
   /** Main title text */
@@ -53,11 +53,11 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
         minHeight,
         p: 4,
       }}
@@ -66,7 +66,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         <Box
           sx={{
             mb: 2,
-            color: 'text.secondary',
+            color: "text.secondary",
             opacity: 0.6,
           }}
         >
@@ -89,7 +89,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
       )}
 
       {(action || secondaryAction) && (
-        <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+        <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
           {action && (
             <Button variant="contained" onClick={action.onClick}>
               {action.label}

@@ -5,7 +5,7 @@
  * Timestamps kept as ISO strings for consistency with other UI types.
  */
 
-import type { SystemUserAPI, SystemUserUI } from '@api-types/api';
+import type { SystemUserAPI, SystemUserUI } from "@api-types/api";
 
 /**
  * Maps a single SystemUserAPI to SystemUserUI.

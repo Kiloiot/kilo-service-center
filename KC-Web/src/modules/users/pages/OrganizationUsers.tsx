@@ -9,10 +9,10 @@
  * Admin-only page with runtime guard for deep link protection.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from "react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
-import type { ApiError, OrganizationUserUI } from '@api-types/api';
+import type { ApiError, OrganizationUserUI } from "@api-types/api";
 import {
   Alert,
   Box,
@@ -29,26 +29,30 @@ import {
   InputAdornment,
   TextField,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { useOrganization as useOrganizationContext } from '@contexts/OrganizationContext';
-import { useSession } from '@contexts/SessionContext';
-import { useCapabilities } from '@hooks/useCapabilities';
+import { useOrganization as useOrganizationContext } from "@contexts/OrganizationContext";
+import { useSession } from "@contexts/SessionContext";
+import { useCapabilities } from "@hooks/useCapabilities";
 import {
   useOrganization as useOrganizationQuery,
   useOrgUsers,
   useRemoveOrgUser,
-} from '@hooks/useOrganizations';
-import { ROUTES } from '@constants/app';
-import { ERR_LOAD_ORG_USERS, ORG_USER_FORM, ORG_USERS_PAGE } from '@constants/messages';
-import { AddIcon, ArrowBackIcon, PeopleIcon, SearchIcon } from '@theme/icons';
+} from "@hooks/useOrganizations";
+import { ROUTES } from "@constants/app";
+import {
+  ERR_LOAD_ORG_USERS,
+  ORG_USER_FORM,
+  ORG_USERS_PAGE,
+} from "@constants/messages";
+import { AddIcon, ArrowBackIcon, PeopleIcon, SearchIcon } from "@theme/icons";
 
-import AddUserDialog from '../components/AddUserDialog';
-import OrganizationUserDialog from '../components/OrganizationUserDialog';
-import OrganizationUsersTable from '../components/OrganizationUsersTable';
+import AddUserDialog from "../components/AddUserDialog";
+import OrganizationUserDialog from "../components/OrganizationUserDialog";
+import OrganizationUsersTable from "../components/OrganizationUsersTable";
 
-type OrderBy = 'email' | 'role' | 'status' | 'createdAt';
-type OrderDirection = 'asc' | 'desc';
+type OrderBy = "email" | "role" | "status" | "createdAt";
+type OrderDirection = "asc" | "desc";
 
 export interface OrganizationUsersProps {
   /** Optional orgId prop - if not provided, falls back to route param then context */
@@ -61,40 +65,181 @@ export interface OrganizationUsersProps {
   onAddDialogOpenChange?: (open: boolean) => void;
 }
 
+/** Classifies a removeOrgUser failure to the message shown in the dialog. */
+function classifyRemoveError(err: unknown): string {
+  const apiError = err as ApiError | undefined;
+
+  const isLastOwnerError =
+    apiError?.status === 409 ||
+    apiError?.code === "LAST_OWNER" ||
+    apiError?.token === "LAST_OWNER" ||
+    (typeof apiError?.message === "string" &&
+      apiError.message.toLowerCase().includes("last owner"));
+
+  const isSelfRemovalError =
+    apiError?.status === 412 ||
+    apiError?.token === "KC-GRPC-ERR-306" ||
+    (typeof apiError?.message === "string" &&
+      apiError.message.toLowerCase().includes("cannot remove yourself"));
+
+  if (isLastOwnerError) return ORG_USERS_PAGE.ERR_CANNOT_REMOVE_LAST_OWNER;
+  if (isSelfRemovalError) return ORG_USERS_PAGE.ERR_CANNOT_REMOVE_SELF;
+  return ORG_USER_FORM.ERR_REMOVE_FAILED;
+}
+
+/** Pure sort over the OrderBy-enumerated string fields. */
+function sortUsers(
+  users: OrganizationUserUI[],
+  orderBy: OrderBy,
+  direction: OrderDirection,
+): OrganizationUserUI[] {
+  return [...users].sort((a, b) => {
+    const aValue = a[orderBy] ?? "";
+    const bValue = b[orderBy] ?? "";
+    if (direction === "asc") {
+      return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+    }
+    return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+  });
+}
+
+interface OrgUsersHeaderProps {
+  embedded: boolean;
+  orgName?: string;
+  orgId: string;
+  onAddClick: () => void;
+}
+
+const OrgUsersHeader: React.FC<OrgUsersHeaderProps> = ({
+  embedded,
+  orgName,
+  orgId,
+  onAddClick,
+}) => {
+  const navigate = useNavigate();
+  return (
+    <Box
+      display="flex"
+      justifyContent="space-between"
+      alignItems="center"
+      mb={3}
+    >
+      <Box display="flex" alignItems="center" gap={2}>
+        {!embedded && (
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate(`${ROUTES.ORGANIZATIONS}/${orgId}`)}
+          >
+            {ORG_USERS_PAGE.BACK_TO_ORG}
+          </Button>
+        )}
+        <Typography variant="h4" component="h1">
+          {ORG_USERS_PAGE.TITLE}
+        </Typography>
+        {orgName && (
+          <Typography variant="h6" color="text.secondary">
+            - {orgName}
+          </Typography>
+        )}
+      </Box>
+      {!embedded && (
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={onAddClick}
+        >
+          {ORG_USERS_PAGE.ADD_USER}
+        </Button>
+      )}
+    </Box>
+  );
+};
+
+interface OrgUsersRemoveDialogProps {
+  open: boolean;
+  selectedUser: OrganizationUserUI | null;
+  removeError: string | null;
+  isPending: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+const OrgUsersRemoveDialog: React.FC<OrgUsersRemoveDialogProps> = ({
+  open,
+  selectedUser,
+  removeError,
+  isPending,
+  onClose,
+  onConfirm,
+}) => (
+  <Dialog open={open} onClose={onClose}>
+    <DialogTitle>{ORG_USER_FORM.ACTION_REMOVE}</DialogTitle>
+    <DialogContent>
+      {removeError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {removeError}
+        </Alert>
+      )}
+      <DialogContentText>{ORG_USER_FORM.CONFIRM_REMOVE}</DialogContentText>
+      {selectedUser && (
+        <Typography variant="body2" sx={{ mt: 1, fontWeight: "medium" }}>
+          {selectedUser.email}
+        </Typography>
+      )}
+    </DialogContent>
+    <DialogActions>
+      <Button onClick={onClose}>{ORG_USER_FORM.ACTION_CANCEL}</Button>
+      <Button
+        onClick={onConfirm}
+        color="error"
+        variant="contained"
+        disabled={isPending}
+      >
+        {ORG_USER_FORM.ACTION_REMOVE}
+      </Button>
+    </DialogActions>
+  </Dialog>
+);
+
 const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   orgId: propOrgId,
   embedded,
   addDialogOpen: externalAddDialogOpen,
   onAddDialogOpenChange,
 }) => {
-  const navigate = useNavigate();
   const { id: routeOrgId } = useParams<{ id: string }>();
-  const { organizationId: contextOrgId, setOrganization } = useOrganizationContext();
+  const { organizationId: contextOrgId, setOrganization } =
+    useOrganizationContext();
   const { isHydrated } = useSession();
   const { isServerAdmin, isOrgAdmin } = useCapabilities();
 
   // Resolve orgId: prop > route param > context
-  const orgId = propOrgId || routeOrgId || contextOrgId || '';
+  const orgId = propOrgId || routeOrgId || contextOrgId || "";
 
   // Local UI state
-  const [search, setSearch] = useState('');
-  const [orderBy, setOrderBy] = useState<OrderBy>('email');
-  const [orderDirection, setOrderDirection] = useState<OrderDirection>('asc');
+  const [search, setSearch] = useState("");
+  const [orderBy, setOrderBy] = useState<OrderBy>("email");
+  const [orderDirection, setOrderDirection] = useState<OrderDirection>("asc");
 
   // Dialog state - separate dialogs for add (new user) vs edit (existing member)
   const [localAddDialogOpen, setLocalAddDialogOpen] = useState(false);
   const isAddDialogOpen = externalAddDialogOpen ?? localAddDialogOpen;
   const setAddDialogOpen = onAddDialogOpenChange ?? setLocalAddDialogOpen;
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<OrganizationUserUI | null>(null);
+  const [selectedUser, setSelectedUser] = useState<OrganizationUserUI | null>(
+    null,
+  );
 
   // Remove confirmation state
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   // React Query hooks
-  const canQuery = isHydrated && (isServerAdmin || isOrgAdmin) && Boolean(orgId);
-  const { data: org } = useOrganizationQuery(orgId, { enabled: canQuery && isServerAdmin });
+  const canQuery =
+    isHydrated && (isServerAdmin || isOrgAdmin) && Boolean(orgId);
+  const { data: org } = useOrganizationQuery(orgId, {
+    enabled: canQuery && isServerAdmin,
+  });
   const {
     data: usersData,
     isLoading,
@@ -120,42 +265,23 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   // Filter users by search
   const filteredUsers = useMemo(() => {
     const searchLower = search.toLowerCase();
-    return users.filter((user) => user.email.toLowerCase().includes(searchLower));
+    return users.filter((user) =>
+      user.email.toLowerCase().includes(searchLower),
+    );
   }, [users, search]);
 
   // Sort users
-  const sortedUsers = useMemo(() => {
-    return [...filteredUsers].sort((a, b) => {
-      let aValue: string = '';
-      let bValue: string = '';
-
-      if (orderBy === 'email') {
-        aValue = a.email;
-        bValue = b.email;
-      } else if (orderBy === 'role') {
-        aValue = a.role;
-        bValue = b.role;
-      } else if (orderBy === 'status') {
-        aValue = a.status;
-        bValue = b.status;
-      } else if (orderBy === 'createdAt') {
-        aValue = a.createdAt;
-        bValue = b.createdAt;
-      }
-
-      if (orderDirection === 'asc') {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-      }
-      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-    });
-  }, [filteredUsers, orderBy, orderDirection]);
+  const sortedUsers = useMemo(
+    () => sortUsers(filteredUsers, orderBy, orderDirection),
+    [filteredUsers, orderBy, orderDirection],
+  );
 
   const handleSort = (field: OrderBy) => {
     if (orderBy === field) {
-      setOrderDirection(orderDirection === 'asc' ? 'desc' : 'asc');
+      setOrderDirection(orderDirection === "asc" ? "desc" : "asc");
     } else {
       setOrderBy(field);
-      setOrderDirection('asc');
+      setOrderDirection("asc");
     }
   };
 
@@ -172,14 +298,13 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   // Remove member handler - opens confirmation dialog
   const handleRemove = (user: OrganizationUserUI) => {
     setSelectedUser(user);
-    setRemoveError(null); // Reset error when opening dialog
+    setRemoveError(null);
     setRemoveConfirmOpen(true);
   };
 
   // Confirm removal
   const confirmRemove = () => {
     if (!selectedUser) return;
-
     removeOrgUser.mutate(
       { orgId, userId: selectedUser.userId },
       {
@@ -189,30 +314,9 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
           setRemoveError(null);
         },
         onError: (err: unknown) => {
-          const apiError = err as ApiError;
-
-          const isLastOwnerError =
-            apiError?.status === 409 ||
-            apiError?.code === 'LAST_OWNER' ||
-            apiError?.token === 'LAST_OWNER' ||
-            (typeof apiError?.message === 'string' &&
-              apiError.message.toLowerCase().includes('last owner'));
-
-          const isSelfRemovalError =
-            apiError?.status === 412 ||
-            apiError?.token === 'KC-GRPC-ERR-306' ||
-            (typeof apiError?.message === 'string' &&
-              apiError.message.toLowerCase().includes('cannot remove yourself'));
-
-          if (isLastOwnerError) {
-            setRemoveError(ORG_USERS_PAGE.ERR_CANNOT_REMOVE_LAST_OWNER);
-          } else if (isSelfRemovalError) {
-            setRemoveError(ORG_USERS_PAGE.ERR_CANNOT_REMOVE_SELF);
-          } else {
-            setRemoveError(ORG_USER_FORM.ERR_REMOVE_FAILED);
-          }
+          setRemoveError(classifyRemoveError(err));
         },
-      }
+      },
     );
   };
 
@@ -220,7 +324,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   const handleRemoveDialogClose = () => {
     setRemoveConfirmOpen(false);
     setSelectedUser(null);
-    setRemoveError(null); // Reset error when closing
+    setRemoveError(null);
   };
 
   const handleAddDialogClose = () => {
@@ -243,33 +347,16 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   }
 
   return (
-    <Box data-testid="organization-users-page" sx={{ p: embedded ? 0 : 3, pt: embedded ? 0 : 4 }}>
-      {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Box display="flex" alignItems="center" gap={2}>
-          {!embedded && (
-            <Button
-              startIcon={<ArrowBackIcon />}
-              onClick={() => navigate(`${ROUTES.ORGANIZATIONS}/${orgId}`)}
-            >
-              {ORG_USERS_PAGE.BACK_TO_ORG}
-            </Button>
-          )}
-          <Typography variant="h4" component="h1">
-            {ORG_USERS_PAGE.TITLE}
-          </Typography>
-          {org && (
-            <Typography variant="h6" color="text.secondary">
-              - {org.name}
-            </Typography>
-          )}
-        </Box>
-        {!embedded && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddClick}>
-            {ORG_USERS_PAGE.ADD_USER}
-          </Button>
-        )}
-      </Box>
+    <Box
+      data-testid="organization-users-page"
+      sx={{ p: embedded ? 0 : 3, pt: embedded ? 0 : 4 }}
+    >
+      <OrgUsersHeader
+        embedded={Boolean(embedded)}
+        orgName={org?.name}
+        orgId={orgId}
+        onAddClick={handleAddClick}
+      />
 
       {/* Statistics Cards */}
       <Grid container spacing={3} mb={3}>
@@ -277,7 +364,9 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
-                <PeopleIcon sx={{ fontSize: 40, color: 'primary.main', mr: 2 }} />
+                <PeopleIcon
+                  sx={{ fontSize: 40, color: "primary.main", mr: 2 }}
+                />
                 <Box>
                   <Typography color="text.secondary" variant="body2">
                     {ORG_USERS_PAGE.TOTAL_MEMBERS}
@@ -309,7 +398,12 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
 
       {/* Loading State */}
       {isLoading && (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          minHeight="200px"
+        >
           <CircularProgress />
         </Box>
       )}
@@ -330,13 +424,19 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
           onSort={handleSort}
           onEdit={handleEdit}
           onRemove={handleRemove}
-          emptyMessage={search ? ORG_USERS_PAGE.NO_MATCH : ORG_USERS_PAGE.NO_USERS}
+          emptyMessage={
+            search ? ORG_USERS_PAGE.NO_MATCH : ORG_USERS_PAGE.NO_USERS
+          }
         />
       )}
 
       {/* Add User Dialog - server admin creates new system user; org admin invites by email */}
       {isServerAdmin ? (
-        <AddUserDialog open={isAddDialogOpen} onClose={handleAddDialogClose} orgId={orgId} />
+        <AddUserDialog
+          open={isAddDialogOpen}
+          onClose={handleAddDialogClose}
+          orgId={orgId}
+        />
       ) : (
         <OrganizationUserDialog
           open={isAddDialogOpen}
@@ -355,34 +455,14 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
         initialUser={selectedUser ?? undefined}
       />
 
-      {/* Remove Confirmation Dialog */}
-      <Dialog open={removeConfirmOpen} onClose={handleRemoveDialogClose}>
-        <DialogTitle>{ORG_USER_FORM.ACTION_REMOVE}</DialogTitle>
-        <DialogContent>
-          {removeError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {removeError}
-            </Alert>
-          )}
-          <DialogContentText>{ORG_USER_FORM.CONFIRM_REMOVE}</DialogContentText>
-          {selectedUser && (
-            <Typography variant="body2" sx={{ mt: 1, fontWeight: 'medium' }}>
-              {selectedUser.email}
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleRemoveDialogClose}>{ORG_USER_FORM.ACTION_CANCEL}</Button>
-          <Button
-            onClick={confirmRemove}
-            color="error"
-            variant="contained"
-            disabled={removeOrgUser.isPending}
-          >
-            {ORG_USER_FORM.ACTION_REMOVE}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <OrgUsersRemoveDialog
+        open={removeConfirmOpen}
+        selectedUser={selectedUser}
+        removeError={removeError}
+        isPending={removeOrgUser.isPending}
+        onClose={handleRemoveDialogClose}
+        onConfirm={confirmRemove}
+      />
     </Box>
   );
 };

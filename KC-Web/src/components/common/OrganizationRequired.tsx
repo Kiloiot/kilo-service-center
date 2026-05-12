@@ -7,13 +7,13 @@
  * Thin wrapper around EmptyState to avoid duplicating empty-state UI.
  */
 
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React from "react";
+import { useNavigate } from "react-router-dom";
 
-import { EmptyState } from '@ui/EmptyState';
-import { ROUTES } from '@constants/app';
-import { USERS_AND_ROLES } from '@constants/messages';
-import { BusinessIcon } from '@theme/icons';
+import { EmptyState } from "@ui/EmptyState";
+import { ROUTES } from "@constants/app";
+import { USERS_AND_ROLES } from "@constants/messages";
+import { BusinessIcon } from "@theme/icons";
 
 const OrganizationRequired: React.FC = () => {
   const navigate = useNavigate();

@@ -9,13 +9,18 @@ import type {
   SCACIDownlinkQueueDTO,
   SendDownlinkRequest,
   UpdateEndpointRequest,
-} from '@api-types/api';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+} from "@api-types/api";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
-import { apiService } from '@services/api';
-import { PAGINATION, REVOCABLE_QUEUE_STATUSES } from '@constants/app';
-import type { EndpointFilters } from '@config/query-keys';
-import { queryKeys } from '@config/query-keys';
+import { apiService } from "@services/api";
+import { PAGINATION, REVOCABLE_QUEUE_STATUSES } from "@constants/app";
+import type { EndpointFilters } from "@config/query-keys";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Fetch all endpoints with optional filters
@@ -46,7 +51,8 @@ export function useCreateEndpoint() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateEndpointRequest) => apiService.createEndpoint(data),
+    mutationFn: (data: CreateEndpointRequest) =>
+      apiService.createEndpoint(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
     },
@@ -62,8 +68,13 @@ export function useUpdateEndpoint() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ epEui, data }: { epEui: string; data: UpdateEndpointRequest }) =>
-      apiService.updateEndpoint(epEui, data),
+    mutationFn: ({
+      epEui,
+      data,
+    }: {
+      epEui: string;
+      data: UpdateEndpointRequest;
+    }) => apiService.updateEndpoint(epEui, data),
     onSuccess: () => {
       // Invalidate both list and detail queries
       queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
@@ -118,7 +129,11 @@ export function useDetachEndpoint() {
 /**
  * Fetch unified activity feed (events + messages) for an endpoint
  */
-export function useEndpointActivity(epEui: string, pageToken?: string, pageSize = 50) {
+export function useEndpointActivity(
+  epEui: string,
+  pageToken?: string,
+  pageSize = 50,
+) {
   return useQuery({
     queryKey: queryKeys.endpoints.activity(epEui, pageToken, pageSize),
     queryFn: () => apiService.getEndpointActivity(epEui, pageToken, pageSize),
@@ -136,7 +151,8 @@ export function useEndpointActivity(epEui: string, pageToken?: string, pageSize 
 export function useDownlinkQueue(eui: string, pageSize: number) {
   return useInfiniteQuery({
     queryKey: queryKeys.endpoints.downlinkQueue(eui, pageSize),
-    queryFn: ({ pageParam }) => apiService.listDownlinkQueue(eui, pageSize, pageParam),
+    queryFn: ({ pageParam }) =>
+      apiService.listDownlinkQueue(eui, pageSize, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextPageToken || undefined,
     enabled: !!eui,
@@ -146,7 +162,11 @@ export function useDownlinkQueue(eui: string, pageSize: number) {
 /**
  * Fetch downlink results for an endpoint (cursor-based pagination)
  */
-export function useDownlinkResults(eui: string, pageSize: number, statusFilter?: string) {
+export function useDownlinkResults(
+  eui: string,
+  pageSize: number,
+  statusFilter?: string,
+) {
   return useInfiniteQuery({
     queryKey: queryKeys.endpoints.downlinkResults(eui, statusFilter, pageSize),
     queryFn: ({ pageParam }) =>
@@ -203,10 +223,10 @@ export function useFlushDownlinkQueue() {
         const response = await apiService.listDownlinkQueue(
           epEui,
           PAGINATION.DOWNLINK_FLUSH_PAGE_SIZE,
-          pageToken
+          pageToken,
         );
         const revocable = response.messages.filter(
-          (m) => m.status && REVOCABLE_QUEUE_STATUSES.has(m.status)
+          (m) => m.status && REVOCABLE_QUEUE_STATUSES.has(m.status),
         );
         allRevocable.push(...revocable);
         pageToken = response.nextPageToken || undefined;
@@ -215,12 +235,14 @@ export function useFlushDownlinkQueue() {
       if (allRevocable.length === 0) return { revoked: 0, failed: 0 };
 
       const results = await Promise.allSettled(
-        allRevocable.map((m) => apiService.revokeDownlink(epEui, String(m.queId)))
+        allRevocable.map((m) =>
+          apiService.revokeDownlink(epEui, String(m.queId)),
+        ),
       );
 
       return {
-        revoked: results.filter((r) => r.status === 'fulfilled').length,
-        failed: results.filter((r) => r.status === 'rejected').length,
+        revoked: results.filter((r) => r.status === "fulfilled").length,
+        failed: results.filter((r) => r.status === "rejected").length,
       };
     },
     onSuccess: () => {

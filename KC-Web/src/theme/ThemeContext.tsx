@@ -1,16 +1,22 @@
 // Theme Context Provider with Cookie Persistence
 // Uses createAppTheme factory for semantic token-based theming
 
-import type { ReactNode } from 'react';
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from "@mui/material/CssBaseline";
+import { ThemeProvider } from "@mui/material/styles";
 
-import { createAppTheme } from './index';
+import { createAppTheme } from "./index";
 
 interface ThemeContextType {
-  mode: 'light' | 'dark';
+  mode: "light" | "dark";
   toggleTheme: () => void;
 }
 
@@ -18,12 +24,12 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 // Cookie utilities
-const THEME_COOKIE_NAME = 'kc-web-theme-mode';
+const THEME_COOKIE_NAME = "kc-web-theme-mode";
 
 const getCookie = (name: string): string | null => {
   const value = `; ${document.cookie}`;
   const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  if (parts.length === 2) return parts.pop()?.split(";").shift() || null;
   return null;
 };
 
@@ -41,36 +47,39 @@ interface ThemeProviderProps {
 
 export const KCThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Initialize theme from cookie or system preference
-  const [mode, setMode] = useState<'light' | 'dark'>(() => {
+  const [mode, setMode] = useState<"light" | "dark">(() => {
     const savedMode = getCookie(THEME_COOKIE_NAME);
-    if (savedMode === 'light' || savedMode === 'dark') {
+    if (savedMode === "light" || savedMode === "dark") {
       return savedMode;
     }
     // Check system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
+    if (
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      return "dark";
     }
-    return 'light';
+    return "light";
   });
 
   // Toggle theme function
   const toggleTheme = () => {
-    const newMode = mode === 'light' ? 'dark' : 'light';
+    const newMode = mode === "light" ? "dark" : "light";
     setMode(newMode);
     setCookie(THEME_COOKIE_NAME, newMode);
   };
 
   // Listen for system theme changes
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = (e: MediaQueryListEvent) => {
       if (!getCookie(THEME_COOKIE_NAME)) {
-        setMode(e.matches ? 'dark' : 'light');
+        setMode(e.matches ? "dark" : "light");
       }
     };
 
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
   // Memoize theme creation to avoid recreation on every render
@@ -91,7 +100,7 @@ export const KCThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 export const useThemeMode = () => {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    throw new Error('useThemeMode must be used within a KCThemeProvider');
+    throw new Error("useThemeMode must be used within a KCThemeProvider");
   }
   return context;
 };

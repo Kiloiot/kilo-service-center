@@ -4,10 +4,10 @@
  * React Query hooks for server certificate status and management.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiService } from '@services/api';
-import { queryKeys } from '@config/query-keys';
+import { apiService } from "@services/api";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Fetch current server certificate status (server cert + CA cert).
@@ -26,7 +26,10 @@ export function useGenerateServerCertificates() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => apiService.generateServerCertificates(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.certificates.status() }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.certificates.status(),
+      }),
   });
 }
 
@@ -37,6 +40,9 @@ export function useRenewServerCertificates() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => apiService.renewServerCertificates(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.certificates.status() }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.certificates.status(),
+      }),
   });
 }

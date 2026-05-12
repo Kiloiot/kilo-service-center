@@ -8,35 +8,42 @@
  * Uses theme tokens exclusively - no inline colors/spacing.
  */
 
-import React from 'react';
+import React from "react";
 
-import { Chip, Tooltip } from '@mui/material';
+import { Chip, Tooltip } from "@mui/material";
 
-import { ENV_LABELS, ENV_TOOLTIPS } from '@constants/app';
-import { env, isProduction } from '@config/env';
+import { ENV_LABELS, ENV_TOOLTIPS } from "@constants/app";
+import { env, isProduction } from "@config/env";
 
-type EnvType = 'development' | 'staging' | 'production';
+type EnvType = "development" | "staging" | "production";
 
 interface EnvConfig {
   label: string;
-  color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+  color:
+    | "default"
+    | "primary"
+    | "secondary"
+    | "error"
+    | "info"
+    | "success"
+    | "warning";
   tooltip: string;
 }
 
 const ENV_CONFIGS: Record<EnvType, EnvConfig> = {
   development: {
     label: ENV_LABELS.development,
-    color: 'warning',
+    color: "warning",
     tooltip: ENV_TOOLTIPS.development,
   },
   staging: {
     label: ENV_LABELS.staging,
-    color: 'info',
+    color: "info",
     tooltip: ENV_TOOLTIPS.staging,
   },
   production: {
     label: ENV_LABELS.production,
-    color: 'success',
+    color: "success",
     tooltip: ENV_TOOLTIPS.production,
   },
 };
@@ -48,12 +55,16 @@ const detectEnvironment = (): EnvType => {
   if (isProduction) {
     // Check if gRPC URL suggests staging
     const grpcUrl = env.grpcUrl.toLowerCase();
-    if (grpcUrl.includes('staging') || grpcUrl.includes('stage') || grpcUrl.includes('stg')) {
-      return 'staging';
+    if (
+      grpcUrl.includes("staging") ||
+      grpcUrl.includes("stage") ||
+      grpcUrl.includes("stg")
+    ) {
+      return "staging";
     }
-    return 'production';
+    return "production";
   }
-  return 'development';
+  return "development";
 };
 
 export interface EnvBadgeProps {
@@ -62,7 +73,7 @@ export interface EnvBadgeProps {
   /** Only show in non-production environments */
   hideInProduction?: boolean;
   /** Custom size */
-  size?: 'small' | 'medium';
+  size?: "small" | "medium";
 }
 
 /**
@@ -87,13 +98,13 @@ export interface EnvBadgeProps {
 export const EnvBadge: React.FC<EnvBadgeProps> = ({
   environment,
   hideInProduction = false,
-  size = 'small',
+  size = "small",
 }) => {
   const currentEnv = environment || detectEnvironment();
   const config = ENV_CONFIGS[currentEnv];
 
   // Optionally hide in production
-  if (hideInProduction && currentEnv === 'production') {
+  if (hideInProduction && currentEnv === "production") {
     return null;
   }
 
@@ -112,10 +123,12 @@ export const EnvBadge: React.FC<EnvBadgeProps> = ({
           fontFamily: theme.typography.caption.fontFamily,
           fontWeight: theme.typography.fontWeightMedium,
           fontSize:
-            size === 'small' ? theme.typography.caption.fontSize : theme.typography.body2.fontSize,
-          height: size === 'small' ? theme.spacing(2.5) : theme.spacing(3),
-          cursor: 'default',
-          '& .MuiChip-label': {
+            size === "small"
+              ? theme.typography.caption.fontSize
+              : theme.typography.body2.fontSize,
+          height: size === "small" ? theme.spacing(2.5) : theme.spacing(3),
+          cursor: "default",
+          "& .MuiChip-label": {
             px: theme.spacing(1),
           },
         })}

@@ -10,15 +10,15 @@
  * rather than mocks, providing confidence that the component integration works correctly.
  */
 
-import type { ReactElement, ReactNode } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import type { ReactElement, ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 
-import { render, type RenderOptions } from '@testing-library/react';
+import { render, type RenderOptions } from "@testing-library/react";
 
-import { FeatureFlagProvider } from '@contexts/FeatureFlagContext';
-import { OrganizationProvider } from '@contexts/OrganizationContext';
-import { SystemProvider } from '@contexts/SystemContext';
-import { KCThemeProvider } from '@theme/ThemeContext';
+import { FeatureFlagProvider } from "@contexts/FeatureFlagContext";
+import { OrganizationProvider } from "@contexts/OrganizationContext";
+import { SystemProvider } from "@contexts/SystemContext";
+import { KCThemeProvider } from "@theme/ThemeContext";
 
 interface ProvidersProps {
   children: ReactNode;
@@ -29,7 +29,7 @@ interface ProvidersProps {
  * Wrapper component that includes all application providers.
  * Uses MemoryRouter for controlled routing in tests.
  */
-function AllProviders({ children, initialRoute = '/' }: ProvidersProps) {
+function AllProviders({ children, initialRoute = "/" }: ProvidersProps) {
   return (
     <MemoryRouter initialEntries={[initialRoute]}>
       <KCThemeProvider>
@@ -43,7 +43,7 @@ function AllProviders({ children, initialRoute = '/' }: ProvidersProps) {
   );
 }
 
-interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
+interface CustomRenderOptions extends Omit<RenderOptions, "wrapper"> {
   initialRoute?: string;
 }
 
@@ -64,17 +64,22 @@ interface CustomRenderOptions extends Omit<RenderOptions, 'wrapper'> {
  *   expect(screen.getByTestId('base-stations-page')).toBeInTheDocument();
  * });
  */
-function renderWithProviders(ui: ReactElement, options: CustomRenderOptions = {}) {
+function renderWithProviders(
+  ui: ReactElement,
+  options: CustomRenderOptions = {},
+) {
   const { initialRoute, ...renderOptions } = options;
   return render(ui, {
-    wrapper: ({ children }) => <AllProviders initialRoute={initialRoute}>{children}</AllProviders>,
+    wrapper: ({ children }) => (
+      <AllProviders initialRoute={initialRoute}>{children}</AllProviders>
+    ),
     ...renderOptions,
   });
 }
 
 // Re-export everything from @testing-library/react
-export * from '@testing-library/react';
-export { userEvent } from '@testing-library/user-event';
+export * from "@testing-library/react";
+export { userEvent } from "@testing-library/user-event";
 
 // Export custom render as both named and default
 export { renderWithProviders };

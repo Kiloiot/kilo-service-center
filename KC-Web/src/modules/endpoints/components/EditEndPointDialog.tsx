@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from "react";
 
-import type { EndpointUI, UpdateEndpointRequest } from '@api-types/api';
-import { useAttachEndpoint, useUpdateEndpoint } from '@hooks';
+import type { EndpointUI, UpdateEndpointRequest } from "@api-types/api";
+import { useAttachEndpoint, useUpdateEndpoint } from "@hooks";
 import {
   Alert,
   Box,
@@ -16,9 +16,9 @@ import {
   Snackbar,
   TextField,
   Typography,
-} from '@mui/material';
-import Grid from '@mui/material/Grid';
-import Tooltip from '@mui/material/Tooltip';
+} from "@mui/material";
+import Grid from "@mui/material/Grid";
+import Tooltip from "@mui/material/Tooltip";
 
 import {
   generateRandomKey,
@@ -27,17 +27,285 @@ import {
   validateShortAddr,
   validateTypeEui,
   validateUint32Counter,
-} from '@utils/formatters';
-import { MIOTY_KEY_BYTE_LENGTH, MIOTY_UINT32_MAX } from '@constants/app';
-import { ENDPOINT_FORM } from '@constants/messages';
-import { InfoIcon } from '@theme/icons';
+} from "@utils/formatters";
+import { MIOTY_KEY_BYTE_LENGTH, MIOTY_UINT32_MAX } from "@constants/app";
+import { ENDPOINT_FORM } from "@constants/messages";
+import { InfoIcon } from "@theme/icons";
 
-import DeviceModelSelector from './DeviceModelSelector';
+import DeviceModelSelector from "./DeviceModelSelector";
 
 interface EditEndPointDialogProps {
   open: boolean;
   onClose: () => void;
   endpoint: EndpointUI | null;
+}
+
+interface EditEndpointFormData {
+  epEui: string;
+  name: string;
+  shortAddr: string;
+  bidirectional: boolean;
+  preAttach: boolean;
+  carrierOffset: string;
+  networkKey: string;
+  applicationKey: string;
+  dualChan: boolean;
+  repetition: boolean;
+  wideCarrOff: boolean;
+  longBlkDist: boolean;
+  lastPacketCnt: string;
+  attachCnt: string;
+  typeEui: string;
+  deviceModelId: string;
+}
+
+/** Builds initial EditEndpointFormData from a loaded EndpointUI. */
+function buildEditEndpointFormData(endpoint: EndpointUI): EditEndpointFormData {
+  return {
+    epEui: endpoint.epEui || "",
+    name: endpoint.name || "",
+    shortAddr: endpoint.shAddr
+      ? endpoint.shAddr.toString(16).toUpperCase().padStart(4, "0")
+      : "",
+    bidirectional: endpoint.bidi ?? false,
+    preAttach: endpoint.preAttach ?? false,
+    carrierOffset:
+      endpoint.carrierOffset !== undefined
+        ? String(endpoint.carrierOffset)
+        : "",
+    networkKey: endpoint.nwkSnKey || "",
+    applicationKey: endpoint.appKey || "",
+    dualChan: endpoint.dualChan ?? false,
+    repetition: endpoint.repetition ?? false,
+    wideCarrOff: endpoint.wideCarrOff ?? false,
+    longBlkDist: endpoint.longBlkDist ?? false,
+    lastPacketCnt:
+      endpoint.lastPacketCnt !== undefined
+        ? String(endpoint.lastPacketCnt)
+        : "0",
+    attachCnt:
+      endpoint.attachCnt !== undefined ? String(endpoint.attachCnt) : "0",
+    typeEui: endpoint.typeEui || "",
+    deviceModelId: endpoint.deviceModelId || "",
+  };
+}
+
+/** Apply epEui (cascade rename via newEpEui) + name diffs. */
+function applyEndpointIdentityChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.epEui !== original.epEui && form.epEui !== "") {
+    changes.newEpEui = form.epEui;
+  }
+  if (form.name !== original.name) changes.name = form.name;
+}
+
+/** Apply shortAddr (hex) + carrierOffset diffs. */
+function applyEndpointAddressChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.shortAddr !== original.shortAddr && form.shortAddr !== "") {
+    changes.shAddr = parseInt(form.shortAddr, 16);
+  }
+  if (form.carrierOffset !== original.carrierOffset) {
+    changes.carrierOffset =
+      form.carrierOffset !== ""
+        ? parseInt(form.carrierOffset, 10)
+        : undefined;
+  }
+}
+
+/** Apply networkKey (nwkSnKey) + applicationKey (appKey) diffs. */
+function applyEndpointSecurityChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.networkKey !== original.networkKey && form.networkKey !== "") {
+    changes.nwkSnKey = form.networkKey;
+  }
+  if (form.applicationKey !== original.applicationKey) {
+    changes.appKey = form.applicationKey || undefined;
+  }
+}
+
+/** Apply MIOTY radio-option diffs (bidi/preAttach/dualChan/repetition/wide/long). */
+function applyEndpointMiotyOptionChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.bidirectional !== original.bidirectional) {
+    changes.bidi = form.bidirectional;
+  }
+  if (form.preAttach !== original.preAttach) {
+    changes.preAttach = form.preAttach;
+  }
+  if (form.dualChan !== original.dualChan) {
+    changes.dualChan = form.dualChan;
+  }
+  if (form.repetition !== original.repetition) {
+    changes.repetition = form.repetition;
+  }
+  if (form.wideCarrOff !== original.wideCarrOff) {
+    changes.wideCarrOff = form.wideCarrOff;
+  }
+  if (form.longBlkDist !== original.longBlkDist) {
+    changes.longBlkDist = form.longBlkDist;
+  }
+}
+
+/** Apply lastPacketCnt + attachCnt counter diffs. */
+function applyEndpointCounterChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (
+    form.lastPacketCnt !== original.lastPacketCnt &&
+    form.lastPacketCnt !== ""
+  ) {
+    changes.lastPacketCnt = parseInt(form.lastPacketCnt, 10);
+  }
+  if (form.attachCnt !== original.attachCnt && form.attachCnt !== "") {
+    changes.attachCnt = parseInt(form.attachCnt, 10);
+  }
+}
+
+/**
+ * Apply typeEui + deviceModelId blueprint diffs. Empty strings on these
+ * fields are surfaced as explicit `null` so the backend clears the column.
+ */
+function applyEndpointBlueprintChanges(
+  changes: UpdateEndpointRequest,
+  form: EditEndpointFormData,
+  original: EditEndpointFormData,
+): void {
+  if (form.typeEui !== original.typeEui) {
+    changes.typeEui = form.typeEui || null;
+  }
+  if (form.deviceModelId !== original.deviceModelId) {
+    changes.deviceModelId = form.deviceModelId || null;
+  }
+}
+
+/**
+ * Computes the diff between form data and the original snapshot, returning
+ * an UpdateEndpointRequest with only the changed fields. EUI renames are
+ * surfaced via newEpEui per the cascade rename contract; clearable string
+ * fields use null to request explicit clear.
+ */
+function buildChangedEndpointRequest(
+  formData: EditEndpointFormData,
+  originalData: EditEndpointFormData,
+): UpdateEndpointRequest {
+  const changes: UpdateEndpointRequest = {};
+  applyEndpointIdentityChanges(changes, formData, originalData);
+  applyEndpointAddressChanges(changes, formData, originalData);
+  applyEndpointSecurityChanges(changes, formData, originalData);
+  applyEndpointMiotyOptionChanges(changes, formData, originalData);
+  applyEndpointCounterChanges(changes, formData, originalData);
+  applyEndpointBlueprintChanges(changes, formData, originalData);
+  return changes;
+}
+
+/**
+ * Returns true when any profile field changed that would require the
+ * endpoint to be re-attached on the base station (radio, key, or address
+ * configuration).
+ */
+function hasEndpointProfileChanges(
+  formData: EditEndpointFormData,
+  originalData: EditEndpointFormData,
+): boolean {
+  return (
+    formData.shortAddr !== originalData.shortAddr ||
+    formData.networkKey !== originalData.networkKey ||
+    formData.applicationKey !== originalData.applicationKey ||
+    formData.bidirectional !== originalData.bidirectional ||
+    formData.preAttach !== originalData.preAttach ||
+    formData.dualChan !== originalData.dualChan ||
+    formData.repetition !== originalData.repetition ||
+    formData.wideCarrOff !== originalData.wideCarrOff ||
+    formData.longBlkDist !== originalData.longBlkDist
+  );
+}
+
+/** Validate epEui format + required name. */
+function validateEditEndpointIdentity(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  const euiErr = validateEui(form.epEui);
+  if (euiErr) errors.epEui = euiErr;
+  if (!form.name) errors.name = ENDPOINT_FORM.ERROR_NAME_REQUIRED;
+}
+
+/** Validate hex format of network/application keys when provided. */
+function validateEditEndpointSecurity(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  if (form.networkKey) {
+    const nwkKeyErr = validateHexKey(form.networkKey, true);
+    if (nwkKeyErr) errors.networkKey = nwkKeyErr;
+  }
+  if (form.applicationKey) {
+    const appKeyErr = validateHexKey(form.applicationKey, false);
+    if (appKeyErr) errors.applicationKey = appKeyErr;
+  }
+}
+
+/** Validate lastPacketCnt + attachCnt uint32 range when provided. */
+function validateEditEndpointCounters(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  if (form.lastPacketCnt !== "") {
+    const pktErr = validateUint32Counter(form.lastPacketCnt, "lastPacketCnt");
+    if (pktErr) errors.lastPacketCnt = pktErr;
+  }
+  if (form.attachCnt !== "") {
+    const attErr = validateUint32Counter(form.attachCnt, "attachCnt");
+    if (attErr) errors.attachCnt = attErr;
+  }
+}
+
+/** Validate shortAddr (MIOTY 4-hex-char short address) when provided. */
+function validateEditEndpointMiotyConfig(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  if (form.shortAddr !== "") {
+    const shAddrErr = validateShortAddr(form.shortAddr);
+    if (shAddrErr) errors.shortAddr = shAddrErr;
+  }
+}
+
+/** Validate typeEui blueprint identifier format when provided. */
+function validateEditEndpointBlueprint(
+  form: EditEndpointFormData,
+  errors: Record<string, string>,
+): void {
+  const typeEuiErr = validateTypeEui(form.typeEui);
+  if (typeEuiErr) errors.typeEui = typeEuiErr;
+}
+
+/** Validates the Edit dialog form. Returns sparse errors map keyed by field. */
+function validateEditEndpointForm(
+  formData: EditEndpointFormData,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  validateEditEndpointIdentity(formData, errors);
+  validateEditEndpointSecurity(formData, errors);
+  validateEditEndpointCounters(formData, errors);
+  validateEditEndpointMiotyConfig(formData, errors);
+  validateEditEndpointBlueprint(formData, errors);
+  return errors;
 }
 
 /**
@@ -47,60 +315,47 @@ interface EditEndPointDialogProps {
  * Only changed fields are sent in PATCH request.
  * EUI changes trigger a transactional cascade across all dependent tables.
  */
-const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, endpoint }) => {
+const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
+  open,
+  onClose,
+  endpoint,
+}) => {
   const updateEndpointMutation = useUpdateEndpoint();
   const attachEndpointMutation = useAttachEndpoint();
 
   // Form state - initialized from endpoint when dialog opens
   const [formData, setFormData] = useState({
-    epEui: '',
-    name: '',
-    shortAddr: '',
+    epEui: "",
+    name: "",
+    shortAddr: "",
     bidirectional: false,
     preAttach: false,
-    carrierOffset: '',
-    networkKey: '',
-    applicationKey: '',
+    carrierOffset: "",
+    networkKey: "",
+    applicationKey: "",
     dualChan: false,
     repetition: false,
     wideCarrOff: false,
     longBlkDist: false,
-    lastPacketCnt: '',
-    attachCnt: '',
-    typeEui: '',
-    deviceModelId: '',
+    lastPacketCnt: "",
+    attachCnt: "",
+    typeEui: "",
+    deviceModelId: "",
   });
 
   // Track original values to compute diff
-  const [originalData, setOriginalData] = useState<typeof formData | null>(null);
+  const [originalData, setOriginalData] = useState<typeof formData | null>(
+    null,
+  );
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showReattachPrompt, setShowReattachPrompt] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState("");
 
   // Initialize form from endpoint data when dialog opens
   useEffect(() => {
     if (open && endpoint) {
-      const initialData = {
-        epEui: endpoint.epEui || '',
-        name: endpoint.name || '',
-        shortAddr: endpoint.shAddr
-          ? endpoint.shAddr.toString(16).toUpperCase().padStart(4, '0')
-          : '',
-        bidirectional: endpoint.bidi ?? false,
-        preAttach: endpoint.preAttach ?? false,
-        carrierOffset: endpoint.carrierOffset !== undefined ? String(endpoint.carrierOffset) : '',
-        networkKey: endpoint.nwkSnKey || '',
-        applicationKey: endpoint.appKey || '',
-        dualChan: endpoint.dualChan ?? false,
-        repetition: endpoint.repetition ?? false,
-        wideCarrOff: endpoint.wideCarrOff ?? false,
-        longBlkDist: endpoint.longBlkDist ?? false,
-        lastPacketCnt: endpoint.lastPacketCnt !== undefined ? String(endpoint.lastPacketCnt) : '0',
-        attachCnt: endpoint.attachCnt !== undefined ? String(endpoint.attachCnt) : '0',
-        typeEui: endpoint.typeEui || '',
-        deviceModelId: endpoint.deviceModelId || '',
-      };
+      const initialData = buildEditEndpointFormData(endpoint);
       setFormData(initialData);
       setOriginalData(initialData);
       setErrors({});
@@ -108,17 +363,22 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
   }, [open, endpoint]);
 
   const handleChange = useCallback(
-    (field: string) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const target = event.target as HTMLInputElement;
-      const value = target.type === 'checkbox' ? target.checked : target.value;
-      setFormData((prev) => ({ ...prev, [field]: value }));
-      setErrors((prev) => ({ ...prev, [field]: '' }));
-    },
-    []
+    (field: string) =>
+      (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const target = event.target as HTMLInputElement;
+        const value =
+          target.type === "checkbox" ? target.checked : target.value;
+        setFormData((prev) => ({ ...prev, [field]: value }));
+        setErrors((prev) => ({ ...prev, [field]: "" }));
+      },
+    [],
   );
 
   const handleGenerateNetworkKey = () => {
-    setFormData((prev) => ({ ...prev, networkKey: generateRandomKey(MIOTY_KEY_BYTE_LENGTH) }));
+    setFormData((prev) => ({
+      ...prev,
+      networkKey: generateRandomKey(MIOTY_KEY_BYTE_LENGTH),
+    }));
   };
 
   const handleGenerateApplicationKey = () => {
@@ -128,133 +388,15 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
     }));
   };
 
-  // Compute which fields changed (only send changed fields in PATCH)
-  const computeChangedFields = useCallback((): UpdateEndpointRequest => {
-    if (!originalData) return {};
-
-    const changes: UpdateEndpointRequest = {};
-
-    if (formData.epEui !== originalData.epEui && formData.epEui !== '') {
-      changes.newEpEui = formData.epEui;
-    }
-    if (formData.name !== originalData.name) {
-      changes.name = formData.name;
-    }
-    if (formData.shortAddr !== originalData.shortAddr && formData.shortAddr !== '') {
-      changes.shAddr = parseInt(formData.shortAddr, 16);
-    }
-    if (formData.bidirectional !== originalData.bidirectional) {
-      changes.bidi = formData.bidirectional;
-    }
-    if (formData.preAttach !== originalData.preAttach) {
-      changes.preAttach = formData.preAttach;
-    }
-    if (formData.carrierOffset !== originalData.carrierOffset) {
-      changes.carrierOffset =
-        formData.carrierOffset !== '' ? parseInt(formData.carrierOffset, 10) : undefined;
-    }
-    if (formData.networkKey !== originalData.networkKey && formData.networkKey !== '') {
-      changes.nwkSnKey = formData.networkKey;
-    }
-    if (formData.applicationKey !== originalData.applicationKey) {
-      changes.appKey = formData.applicationKey || undefined;
-    }
-    if (formData.dualChan !== originalData.dualChan) {
-      changes.dualChan = formData.dualChan;
-    }
-    if (formData.repetition !== originalData.repetition) {
-      changes.repetition = formData.repetition;
-    }
-    if (formData.wideCarrOff !== originalData.wideCarrOff) {
-      changes.wideCarrOff = formData.wideCarrOff;
-    }
-    if (formData.longBlkDist !== originalData.longBlkDist) {
-      changes.longBlkDist = formData.longBlkDist;
-    }
-    if (formData.lastPacketCnt !== originalData.lastPacketCnt && formData.lastPacketCnt !== '') {
-      changes.lastPacketCnt = parseInt(formData.lastPacketCnt, 10);
-    }
-    if (formData.attachCnt !== originalData.attachCnt && formData.attachCnt !== '') {
-      changes.attachCnt = parseInt(formData.attachCnt, 10);
-    }
-    if (formData.typeEui !== originalData.typeEui) {
-      changes.typeEui = formData.typeEui || null;
-    }
-    if (formData.deviceModelId !== originalData.deviceModelId) {
-      changes.deviceModelId = formData.deviceModelId || null;
-    }
-
-    return changes;
-  }, [formData, originalData]);
-
-  // Check if any profile fields changed (would require re-attach)
-  const hasProfileChanges = useCallback((): boolean => {
-    if (!originalData) return false;
-
-    return (
-      formData.shortAddr !== originalData.shortAddr ||
-      formData.networkKey !== originalData.networkKey ||
-      formData.applicationKey !== originalData.applicationKey ||
-      formData.bidirectional !== originalData.bidirectional ||
-      formData.preAttach !== originalData.preAttach ||
-      formData.dualChan !== originalData.dualChan ||
-      formData.repetition !== originalData.repetition ||
-      formData.wideCarrOff !== originalData.wideCarrOff ||
-      formData.longBlkDist !== originalData.longBlkDist
-    );
-  }, [formData, originalData]);
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-
-    // EUI: 16 hex chars required
-    const euiErr = validateEui(formData.epEui);
-    if (euiErr) newErrors.epEui = euiErr;
-
-    if (!formData.name) newErrors.name = ENDPOINT_FORM.ERROR_NAME_REQUIRED;
-
-    // ShAddr: validated when provided
-    if (formData.shortAddr !== '') {
-      const shAddrErr = validateShortAddr(formData.shortAddr);
-      if (shAddrErr) newErrors.shortAddr = shAddrErr;
-    }
-
-    // Keys: validated when provided
-    if (formData.networkKey) {
-      const nwkKeyErr = validateHexKey(formData.networkKey, true);
-      if (nwkKeyErr) newErrors.networkKey = nwkKeyErr;
-    }
-    if (formData.applicationKey) {
-      const appKeyErr = validateHexKey(formData.applicationKey, false);
-      if (appKeyErr) newErrors.applicationKey = appKeyErr;
-    }
-
-    // Counters: validated when provided
-    if (formData.lastPacketCnt !== '') {
-      const pktErr = validateUint32Counter(formData.lastPacketCnt, 'lastPacketCnt');
-      if (pktErr) newErrors.lastPacketCnt = pktErr;
-    }
-    if (formData.attachCnt !== '') {
-      const attErr = validateUint32Counter(formData.attachCnt, 'attachCnt');
-      if (attErr) newErrors.attachCnt = attErr;
-    }
-
-    // Type EUI: 16 hex chars if provided
-    const typeEuiErr = validateTypeEui(formData.typeEui);
-    if (typeEuiErr) newErrors.typeEui = typeEuiErr;
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleSubmit = async () => {
-    if (!validateForm() || !endpoint) {
+    if (!endpoint || !originalData) return;
+    const newErrors = validateEditEndpointForm(formData);
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 
-    const changedFields = computeChangedFields();
-
-    // Check if anything changed
+    const changedFields = buildChangedEndpointRequest(formData, originalData);
     if (Object.keys(changedFields).length === 0) {
       handleClose();
       return;
@@ -265,22 +407,21 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
       {
         onSuccess: () => {
           setSuccessMessage(ENDPOINT_FORM.MSG_ENDPOINT_UPDATED);
-          // Check if profile fields changed and prompt for re-attach
-          if (hasProfileChanges()) {
+          if (hasEndpointProfileChanges(formData, originalData)) {
             setShowReattachPrompt(true);
           } else {
             handleClose();
           }
         },
         onError: (error) => {
-          const message = error instanceof Error ? error.message : '';
+          const message = error instanceof Error ? error.message : "";
           setErrors({
             general: message
               ? `${ENDPOINT_FORM.ERROR_UPDATE_PREFIX}${message}`
               : ENDPOINT_FORM.ERROR_UPDATE_GENERIC,
           });
         },
-      }
+      },
     );
   };
 
@@ -306,22 +447,22 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
 
   const handleClose = () => {
     setFormData({
-      epEui: '',
-      name: '',
-      shortAddr: '',
+      epEui: "",
+      name: "",
+      shortAddr: "",
       bidirectional: false,
       preAttach: false,
-      carrierOffset: '',
-      networkKey: '',
-      applicationKey: '',
+      carrierOffset: "",
+      networkKey: "",
+      applicationKey: "",
       dualChan: false,
       repetition: false,
       wideCarrOff: false,
       longBlkDist: false,
-      lastPacketCnt: '',
-      attachCnt: '',
-      typeEui: '',
-      deviceModelId: '',
+      lastPacketCnt: "",
+      attachCnt: "",
+      typeEui: "",
+      deviceModelId: "",
     });
     setOriginalData(null);
     setErrors({});
@@ -330,13 +471,21 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
   };
 
   // Check if form has any changes
-  const hasChanges = Object.keys(computeChangedFields()).length > 0;
+  const hasChanges = originalData
+    ? Object.keys(buildChangedEndpointRequest(formData, originalData)).length >
+      0
+    : false;
 
   if (!endpoint) return null;
 
   return (
     <>
-      <Dialog open={open && !showReattachPrompt} onClose={handleClose} maxWidth="md" fullWidth>
+      <Dialog
+        open={open && !showReattachPrompt}
+        onClose={handleClose}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>
           {ENDPOINT_FORM.EDIT_DIALOG_TITLE}
           <Typography variant="body2" color="text.secondary">
@@ -363,7 +512,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_EUI}
                 value={formData.epEui}
-                onChange={handleChange('epEui')}
+                onChange={handleChange("epEui")}
                 error={!!errors.epEui}
                 helperText={errors.epEui || ENDPOINT_FORM.HELPER_EUI}
                 inputProps={{ maxLength: 16 }}
@@ -375,7 +524,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_NAME}
                 value={formData.name}
-                onChange={handleChange('name')}
+                onChange={handleChange("name")}
                 error={!!errors.name}
                 helperText={errors.name || ENDPOINT_FORM.HELPER_NAME}
                 required
@@ -394,7 +543,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_SHORT_ADDR}
                 value={formData.shortAddr}
-                onChange={handleChange('shortAddr')}
+                onChange={handleChange("shortAddr")}
                 error={!!errors.shortAddr}
                 helperText={errors.shortAddr || ENDPOINT_FORM.HELPER_SHORT_ADDR}
                 placeholder={ENDPOINT_FORM.PLACEHOLDER_SHORT_ADDR}
@@ -407,7 +556,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_CARRIER_OFFSET}
                 value={formData.carrierOffset}
-                onChange={handleChange('carrierOffset')}
+                onChange={handleChange("carrierOffset")}
                 helperText={ENDPOINT_FORM.HELPER_CARRIER_OFFSET}
                 type="number"
               />
@@ -425,12 +574,12 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 control={
                   <Checkbox
                     checked={formData.bidirectional}
-                    onChange={handleChange('bidirectional')}
+                    onChange={handleChange("bidirectional")}
                     color="primary"
                   />
                 }
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
                     {ENDPOINT_FORM.LABEL_BIDIRECTIONAL}
                     <Tooltip title={ENDPOINT_FORM.TOOLTIP_BIDI}>
                       <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
@@ -445,12 +594,12 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 control={
                   <Checkbox
                     checked={formData.preAttach}
-                    onChange={handleChange('preAttach')}
+                    onChange={handleChange("preAttach")}
                     color="primary"
                   />
                 }
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
                     {ENDPOINT_FORM.LABEL_PRE_ATTACH}
                     <Tooltip title={ENDPOINT_FORM.TOOLTIP_PRE_ATTACH}>
                       <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
@@ -472,12 +621,12 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 control={
                   <Checkbox
                     checked={formData.dualChan}
-                    onChange={handleChange('dualChan')}
+                    onChange={handleChange("dualChan")}
                     color="primary"
                   />
                 }
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
                     {ENDPOINT_FORM.LABEL_DUAL_CHAN}
                     <Tooltip title={ENDPOINT_FORM.TOOLTIP_DUAL_CHAN}>
                       <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
@@ -492,12 +641,12 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 control={
                   <Checkbox
                     checked={formData.repetition}
-                    onChange={handleChange('repetition')}
+                    onChange={handleChange("repetition")}
                     color="primary"
                   />
                 }
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
                     {ENDPOINT_FORM.LABEL_REPETITION}
                     <Tooltip title={ENDPOINT_FORM.TOOLTIP_REPETITION}>
                       <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
@@ -512,12 +661,12 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 control={
                   <Checkbox
                     checked={formData.wideCarrOff}
-                    onChange={handleChange('wideCarrOff')}
+                    onChange={handleChange("wideCarrOff")}
                     color="primary"
                   />
                 }
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
                     {ENDPOINT_FORM.LABEL_WIDE_CARR_OFF}
                     <Tooltip title={ENDPOINT_FORM.TOOLTIP_WIDE_CARR_OFF}>
                       <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
@@ -532,12 +681,12 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 control={
                   <Checkbox
                     checked={formData.longBlkDist}
-                    onChange={handleChange('longBlkDist')}
+                    onChange={handleChange("longBlkDist")}
                     color="primary"
                   />
                 }
                 label={
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
                     {ENDPOINT_FORM.LABEL_LONG_BLK_DIST}
                     <Tooltip title={ENDPOINT_FORM.TOOLTIP_LONG_BLK_DIST}>
                       <InfoIcon fontSize="small" sx={{ ml: 0.5 }} />
@@ -552,9 +701,11 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_LAST_PACKET_CNT}
                 value={formData.lastPacketCnt}
-                onChange={handleChange('lastPacketCnt')}
+                onChange={handleChange("lastPacketCnt")}
                 error={!!errors.lastPacketCnt}
-                helperText={errors.lastPacketCnt || ENDPOINT_FORM.HELPER_LAST_PACKET_CNT}
+                helperText={
+                  errors.lastPacketCnt || ENDPOINT_FORM.HELPER_LAST_PACKET_CNT
+                }
                 type="number"
                 inputProps={{ min: 0, max: MIOTY_UINT32_MAX }}
               />
@@ -565,7 +716,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_ATTACH_CNT}
                 value={formData.attachCnt}
-                onChange={handleChange('attachCnt')}
+                onChange={handleChange("attachCnt")}
                 error={!!errors.attachCnt}
                 helperText={errors.attachCnt || ENDPOINT_FORM.HELPER_ATTACH_CNT}
                 type="number"
@@ -585,9 +736,11 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_NETWORK_KEY}
                 value={formData.networkKey}
-                onChange={handleChange('networkKey')}
+                onChange={handleChange("networkKey")}
                 error={!!errors.networkKey}
-                helperText={errors.networkKey || ENDPOINT_FORM.HELPER_NETWORK_KEY}
+                helperText={
+                  errors.networkKey || ENDPOINT_FORM.HELPER_NETWORK_KEY
+                }
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -605,13 +758,18 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_APP_KEY}
                 value={formData.applicationKey}
-                onChange={handleChange('applicationKey')}
+                onChange={handleChange("applicationKey")}
                 error={!!errors.applicationKey}
-                helperText={errors.applicationKey || ENDPOINT_FORM.HELPER_APP_KEY}
+                helperText={
+                  errors.applicationKey || ENDPOINT_FORM.HELPER_APP_KEY
+                }
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
-                      <Button size="small" onClick={handleGenerateApplicationKey}>
+                      <Button
+                        size="small"
+                        onClick={handleGenerateApplicationKey}
+                      >
                         {ENDPOINT_FORM.BUTTON_GENERATE}
                       </Button>
                     </InputAdornment>
@@ -626,7 +784,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
                 fullWidth
                 label={ENDPOINT_FORM.LABEL_TYPE_EUI}
                 value={formData.typeEui}
-                onChange={handleChange('typeEui')}
+                onChange={handleChange("typeEui")}
                 error={!!errors.typeEui}
                 helperText={
                   formData.deviceModelId
@@ -643,8 +801,8 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
               onChange={(id) => {
                 setFormData((prev) => ({
                   ...prev,
-                  deviceModelId: id || '',
-                  typeEui: id ? '' : prev.typeEui,
+                  deviceModelId: id || "",
+                  typeEui: id ? "" : prev.typeEui,
                 }));
               }}
             />
@@ -673,7 +831,9 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
           </Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleSkipReattach}>{ENDPOINT_FORM.REATTACH_BUTTON_LATER}</Button>
+          <Button onClick={handleSkipReattach}>
+            {ENDPOINT_FORM.REATTACH_BUTTON_LATER}
+          </Button>
           <Button
             onClick={handleReattach}
             variant="contained"
@@ -690,7 +850,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({ open, onClose, 
       <Snackbar
         open={!!successMessage}
         autoHideDuration={3000}
-        onClose={() => setSuccessMessage('')}
+        onClose={() => setSuccessMessage("")}
         message={successMessage}
       />
     </>

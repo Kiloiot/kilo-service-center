@@ -1,14 +1,14 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import type { ActivityItem } from '@api-types/api';
+import type { ActivityItem } from "@api-types/api";
 import {
   useConnectionStatus,
   useDashboardAnalytics,
   useDashboardEvents,
   useDashboardStats,
   useSystemStatus,
-} from '@hooks';
+} from "@hooks";
 import {
   Box,
   Card,
@@ -20,31 +20,35 @@ import {
   Paper,
   Tooltip,
   Typography,
-} from '@mui/material';
+} from "@mui/material";
 
-import { ActivityTimeline } from '@components/common/ActivityTimeline';
-import { PaginationControls } from '@components/common/PaginationControls';
-import { ServiceStatusTable } from '@components/common/ServiceStatusWidget';
+import { ActivityTimeline } from "@components/common/ActivityTimeline";
+import { PaginationControls } from "@components/common/PaginationControls";
+import { ServiceStatusTable } from "@components/common/ServiceStatusWidget";
 import {
   formatDashboardCardTrend,
   formatDashboardCountTrend,
-} from '@utils/formatters';
-import { PAGINATION, SERVER_ACTIVITY_CATEGORIES } from '@constants/app';
-import { ACTION_REFRESH, DASHBOARD_PAGE, SYSTEM_STATUS } from '@constants/messages';
+} from "@utils/formatters";
+import { PAGINATION, SERVER_ACTIVITY_CATEGORIES } from "@constants/app";
+import {
+  ACTION_REFRESH,
+  DASHBOARD_PAGE,
+  SYSTEM_STATUS,
+} from "@constants/messages";
 import {
   DeviceHubIcon,
   MessageIcon,
   RefreshIcon,
   RouterIcon,
   TimeIcon,
-} from '@theme/icons';
+} from "@theme/icons";
 
 interface StatusCardProps {
   title: string;
   value: string | number;
   subtitle?: string;
   icon: React.ReactElement;
-  color: 'primary' | 'success' | 'warning' | 'error' | 'info';
+  color: "primary" | "success" | "warning" | "error" | "info";
   trend?: {
     value: number;
     label: string;
@@ -61,9 +65,15 @@ const StatusCard: React.FC<StatusCardProps> = ({
   trend,
   onClick,
 }) => (
-  <Card sx={{ height: '100%' }}>
+  <Card sx={{ height: "100%" }}>
     <CardContent>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+        }}
+      >
         <Box sx={{ flex: 1 }}>
           <Typography color="text.secondary" variant="body2" gutterBottom>
             {title}
@@ -82,9 +92,9 @@ const StatusCard: React.FC<StatusCardProps> = ({
                 label={trend.label}
                 size="small"
                 sx={{
-                  bgcolor: 'transparent',
-                  color: 'success.main', // Always green (dashboard cards show non-negative values)
-                  border: 'none',
+                  bgcolor: "transparent",
+                  color: "success.main", // Always green (dashboard cards show non-negative values)
+                  border: "none",
                   fontWeight: 500,
                 }}
               />
@@ -96,14 +106,14 @@ const StatusCard: React.FC<StatusCardProps> = ({
             p: 1.5,
             borderRadius: 2,
             backgroundColor: `${color}.main`,
-            color: 'white',
+            color: "white",
             opacity: 0.9,
-            cursor: onClick ? 'pointer' : 'default',
-            transition: 'all 0.2s ease',
-            '&:hover': onClick
+            cursor: onClick ? "pointer" : "default",
+            transition: "all 0.2s ease",
+            "&:hover": onClick
               ? {
                   opacity: 1,
-                  transform: 'scale(1.05)',
+                  transform: "scale(1.05)",
                   boxShadow: 3,
                 }
               : {},
@@ -128,21 +138,24 @@ const Dashboard: React.FC = () => {
   const { data: analyticsData } = useDashboardAnalytics();
   // Server-side pagination state for Service Center Activity
   const [activityPage, setActivityPage] = useState(0);
-  const [activityPageSize, setActivityPageSize] = useState<number>(PAGINATION.DEFAULT_PAGE_SIZE);
-  const [pageTokens, setPageTokens] = useState<string[]>(['']);
-  const currentPageToken = pageTokens[activityPage] || '';
+  const [activityPageSize, setActivityPageSize] = useState<number>(
+    PAGINATION.DEFAULT_PAGE_SIZE,
+  );
+  const [pageTokens, setPageTokens] = useState<string[]>([""]);
+  const currentPageToken = pageTokens[activityPage] || "";
 
   // Server activity events - filtered to exclude endpoint message traffic
   const { data: eventsData, isLoading: eventsLoading } = useDashboardEvents(
     activityPageSize,
     SERVER_ACTIVITY_CATEGORIES,
-    currentPageToken
+    currentPageToken,
   );
-  const { data: systemStatusData, isLoading: systemStatusLoading } = useSystemStatus();
+  const { data: systemStatusData, isLoading: systemStatusLoading } =
+    useSystemStatus();
 
   // Compute base station stats
   const baseStationStats = useMemo(() => {
-    const online = baseStations.filter((bs) => bs.status === 'online').length;
+    const online = baseStations.filter((bs) => bs.status === "online").length;
     const total = baseStations.length;
 
     // Calculate items added in last 7 days using createdAt
@@ -165,7 +178,7 @@ const Dashboard: React.FC = () => {
         label: formatDashboardCardTrend(
           onlinePercent,
           addedLastWeek,
-          DASHBOARD_PAGE.FROM_LAST_WEEK
+          DASHBOARD_PAGE.FROM_LAST_WEEK,
         ),
       },
     };
@@ -188,7 +201,10 @@ const Dashboard: React.FC = () => {
       total,
       trend: {
         value: addedLastWeek, // Used for chip color logic (always >= 0)
-        label: formatDashboardCountTrend(addedLastWeek, DASHBOARD_PAGE.FROM_LAST_WEEK),
+        label: formatDashboardCountTrend(
+          addedLastWeek,
+          DASHBOARD_PAGE.FROM_LAST_WEEK,
+        ),
       },
     };
   }, [endpoints]);
@@ -199,7 +215,7 @@ const Dashboard: React.FC = () => {
     () => ({
       totalMessages: analyticsData?.totalMessages || 0,
     }),
-    [analyticsData]
+    [analyticsData],
   );
 
   // Handle server-side page change
@@ -214,13 +230,13 @@ const Dashboard: React.FC = () => {
       }
       setActivityPage(newPage);
     },
-    [activityPage, eventsData?.nextPageToken]
+    [activityPage, eventsData?.nextPageToken],
   );
 
   const handleActivityPageSizeChange = useCallback((newSize: number) => {
     setActivityPageSize(newSize);
     setActivityPage(0);
-    setPageTokens(['']);
+    setPageTokens([""]);
   }, []);
 
   // Convert dashboard events to ActivityItem[] for the unified timeline component
@@ -228,21 +244,21 @@ const Dashboard: React.FC = () => {
     () =>
       (eventsData?.events || []).map(
         (evt): ActivityItem => ({
-          type: 'event',
+          type: "event",
           occurredAt: new Date(evt.timestamp),
           event: {
             id: evt.id,
             eventType: evt.eventType || evt.type,
-            category: evt.category || '',
+            category: evt.category || "",
             severity: evt.severity,
             title: evt.title || evt.message,
             description: evt.message,
             timestamp: new Date(evt.timestamp),
-            sourceName: evt.sourceName || '',
+            sourceName: evt.sourceName || "",
           },
-        })
+        }),
       ),
-    [eventsData?.events]
+    [eventsData?.events],
   );
 
   const handleRefresh = () => {
@@ -261,7 +277,14 @@ const Dashboard: React.FC = () => {
   return (
     <Box data-testid="dashboard-page" sx={{ p: 3, pt: 4 }}>
       {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box
+        sx={{
+          mb: 3,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
         <Box>
           <Typography variant="h4" component="h1">
             {DASHBOARD_PAGE.TITLE}
@@ -272,7 +295,11 @@ const Dashboard: React.FC = () => {
         </Box>
         <Tooltip title={ACTION_REFRESH}>
           <span>
-            <IconButton size="large" onClick={handleRefresh} disabled={isLoading}>
+            <IconButton
+              size="large"
+              onClick={handleRefresh}
+              disabled={isLoading}
+            >
               <RefreshIcon />
             </IconButton>
           </span>
@@ -296,7 +323,7 @@ const Dashboard: React.FC = () => {
               value: baseStationStats.trend.value,
               label: baseStationStats.trend.label,
             }}
-            onClick={() => navigate('/base-stations')}
+            onClick={() => navigate("/base-stations")}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -314,7 +341,7 @@ const Dashboard: React.FC = () => {
               value: endpointStats.trend.value,
               label: endpointStats.trend.label,
             }}
-            onClick={() => navigate('/endpoints')}
+            onClick={() => navigate("/endpoints")}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -324,7 +351,7 @@ const Dashboard: React.FC = () => {
             subtitle={DASHBOARD_PAGE.LAST_24_HOURS}
             icon={<MessageIcon />}
             color="primary"
-            onClick={() => navigate('/messages')}
+            onClick={() => navigate("/messages")}
           />
         </Grid>
       </Grid>
@@ -333,12 +360,19 @@ const Dashboard: React.FC = () => {
       <Grid container spacing={3}>
         {/* Service Center Status */}
         <Grid size={{ xs: 12, md: 3 }}>
-          <Paper sx={{ p: 3, minHeight: 360, height: '100%' }}>
+          <Paper sx={{ p: 3, minHeight: 360, height: "100%" }}>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
               {DASHBOARD_PAGE.SERVICE_CENTER_STATUS}
             </Typography>
             {systemStatusLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  p: 4,
+                }}
+              >
                 <CircularProgress size={24} />
                 <Typography sx={{ ml: 1 }} color="text.secondary">
                   {SYSTEM_STATUS.LABEL_CHECKING}
@@ -350,7 +384,9 @@ const Dashboard: React.FC = () => {
                 timestamp={systemStatusData.timestamp}
               />
             ) : (
-              <Typography color="text.secondary">{SYSTEM_STATUS.TOOLTIP_UNABLE}</Typography>
+              <Typography color="text.secondary">
+                {SYSTEM_STATUS.TOOLTIP_UNABLE}
+              </Typography>
             )}
           </Paper>
         </Grid>
@@ -358,10 +394,21 @@ const Dashboard: React.FC = () => {
         {/* Network Activity Monitor */}
         <Grid size={{ xs: 12, md: 9 }}>
           <Paper
-            sx={{ p: 3, minHeight: 360, height: '100%', display: 'flex', flexDirection: 'column' }}
+            sx={{
+              p: 3,
+              minHeight: 360,
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+            }}
           >
             <Box
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 2,
+              }}
             >
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 {DASHBOARD_PAGE.RECENT_ACTIVITY}
@@ -371,13 +418,17 @@ const Dashboard: React.FC = () => {
                 label={DASHBOARD_PAGE.LIVE}
                 color="success"
                 size="small"
-                sx={{ animation: 'pulse 2s infinite' }}
+                sx={{ animation: "pulse 2s infinite" }}
               />
             </Box>
-            <Box sx={{ flex: 1, overflow: 'auto' }}>
-              <ActivityTimeline variant="compact" items={activityItems} loading={eventsLoading} />
+            <Box sx={{ flex: 1, overflow: "auto" }}>
+              <ActivityTimeline
+                variant="compact"
+                items={activityItems}
+                loading={eventsLoading}
+              />
             </Box>
-            <Box sx={{ mt: 'auto', pt: 2 }}>
+            <Box sx={{ mt: "auto", pt: 2 }}>
               <PaginationControls
                 page={activityPage}
                 rowsPerPage={activityPageSize}
