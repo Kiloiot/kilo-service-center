@@ -31,13 +31,9 @@ import {
 import { ENDPOINT_FORM } from "@constants/messages";
 import { CheckCircleIcon, InfoIcon } from "@theme/icons";
 
-import {
-  AdvancedMiotySettings,
-  CommunicationSettings,
-  CounterFields,
-  SecurityKeyFields,
-} from "./EndpointFormFields";
+import { SecurityKeyFields } from "./EndpointFormFields";
 import DeviceModelSelector from "./DeviceModelSelector";
+import EndpointSettingsSection from "./EndpointSettingsSection";
 
 interface AddEndPointDialogProps {
   open: boolean;
@@ -369,45 +365,11 @@ const AddEndPointDialog: React.FC<AddEndPointDialogProps> = ({
             />
           </Grid>
 
-          {/* Communication Settings */}
-          <Grid size={12}>
-            <Typography variant="subtitle2" fontWeight="bold" mb={1} mt={1}>
-              {ENDPOINT_FORM.SECTION_COMMUNICATION}
-            </Typography>
-          </Grid>
-
-          <CommunicationSettings
-            bidirectional={formData.bidirectional}
-            preAttach={formData.preAttach}
-            onBidirectionalChange={handleChange("bidirectional")}
-            onPreAttachChange={handleChange("preAttach")}
-          />
-
-          {/* Advanced MIOTY Settings */}
-          <Grid size={12}>
-            <Typography variant="subtitle2" fontWeight="bold" mb={1} mt={1}>
-              {ENDPOINT_FORM.SECTION_ADVANCED}
-            </Typography>
-          </Grid>
-
-          <AdvancedMiotySettings
-            dualChan={formData.dualChan}
-            repetition={formData.repetition}
-            wideCarrOff={formData.wideCarrOff}
-            longBlkDist={formData.longBlkDist}
-            onDualChanChange={handleChange("dualChan")}
-            onRepetitionChange={handleChange("repetition")}
-            onWideCarrOffChange={handleChange("wideCarrOff")}
-            onLongBlkDistChange={handleChange("longBlkDist")}
-          />
-
-          <CounterFields
-            lastPacketCnt={formData.lastPacketCnt}
-            attachCnt={formData.attachCnt}
-            onLastPacketCntChange={handleChange("lastPacketCnt")}
-            onAttachCntChange={handleChange("attachCnt")}
+          <EndpointSettingsSection
+            formData={formData}
+            handleChange={handleChange}
             errors={errors}
-            required
+            counterRequired
           />
 
           {/* Security Keys */}
