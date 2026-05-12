@@ -215,6 +215,44 @@ const endpointListSelectColumns = `
 	bidi, pre_attach, type_eui, attach_cnt, last_packet_cnt,
 	dual_chan, repetition, wide_carr_off, long_blk_dist`
 
+// applyEndpointPostScan converts hstore tags and nullable detach fields
+// onto the endpoint struct after scanning. Shared by base-row and list-row scanners.
+func applyEndpointPostScan(
+	endpoint *models.EndPoint,
+	tags hstore.Hstore,
+	lastDetachSign []byte,
+	lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64,
+	propagateStatus sql.NullString,
+) {
+	endpoint.Tags = make(map[string]string)
+	for k, v := range tags.Map {
+		endpoint.Tags[k] = v.String
+	}
+	if len(lastDetachSign) > 0 {
+		endpoint.LastDetachSign = lastDetachSign
+	}
+	if lastAttachedBsEui.Valid {
+		val := lastAttachedBsEui.Int64
+		endpoint.LastAttachedBsEui = &val
+	}
+	if lastPropagateTime.Valid {
+		val := lastPropagateTime.Int64
+		endpoint.LastPropagateTime = &val
+	}
+	if lastDetachTime.Valid {
+		val := lastDetachTime.Int64
+		endpoint.LastDetachTime = &val
+	}
+	if lastDetachPacketCnt.Valid {
+		val := lastDetachPacketCnt.Int64
+		endpoint.LastDetachPacketCnt = &val
+	}
+	if propagateStatus.Valid {
+		val := propagateStatus.String
+		endpoint.PropagateStatus = &val
+	}
+}
+
 // scanEndpointBaseRow scans a single row selected with endpointBaseSelectColumns into *models.EndPoint.
 // Column order MUST match endpointBaseSelectColumns.
 func scanEndpointBaseRow(scanner interface {
@@ -253,36 +291,9 @@ func scanEndpointBaseRow(scanner interface {
 		return nil, err
 	}
 
-	// Convert hstore to map[string]string
-	endpoint.Tags = make(map[string]string)
-	for k, v := range tags.Map {
-		endpoint.Tags[k] = v.String
-	}
-
-	// Detach nullable fields (BSSCI §5.7)
-	if len(lastDetachSign) > 0 {
-		endpoint.LastDetachSign = lastDetachSign
-	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
-	if lastPropagateTime.Valid {
-		val := lastPropagateTime.Int64
-		endpoint.LastPropagateTime = &val
-	}
-	if lastDetachTime.Valid {
-		val := lastDetachTime.Int64
-		endpoint.LastDetachTime = &val
-	}
-	if lastDetachPacketCnt.Valid {
-		val := lastDetachPacketCnt.Int64
-		endpoint.LastDetachPacketCnt = &val
-	}
-	if propagateStatus.Valid {
-		val := propagateStatus.String
-		endpoint.PropagateStatus = &val
-	}
+	applyEndpointPostScan(endpoint, tags, lastDetachSign,
+		lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt,
+		propagateStatus)
 
 	return endpoint, nil
 }
@@ -919,36 +930,9 @@ func (r *EndPointRepository) GetByTenant(ctx context.Context, tenantID int64) ([
 			return nil, fmt.Errorf("failed to scan endpoint: %w", err)
 		}
 
-		// Convert hstore to map[string]string
-		endpoint.Tags = make(map[string]string)
-		for k, v := range tags.Map {
-			endpoint.Tags[k] = v.String
-		}
-
-		// Detach nullable fields (BSSCI §5.7)
-		if len(lastDetachSign) > 0 {
-			endpoint.LastDetachSign = lastDetachSign
-		}
-		if lastAttachedBsEui.Valid {
-			val := lastAttachedBsEui.Int64
-			endpoint.LastAttachedBsEui = &val
-		}
-		if lastPropagateTime.Valid {
-			val := lastPropagateTime.Int64
-			endpoint.LastPropagateTime = &val
-		}
-		if lastDetachTime.Valid {
-			val := lastDetachTime.Int64
-			endpoint.LastDetachTime = &val
-		}
-		if lastDetachPacketCnt.Valid {
-			val := lastDetachPacketCnt.Int64
-			endpoint.LastDetachPacketCnt = &val
-		}
-		if propagateStatus.Valid {
-			val := propagateStatus.String
-			endpoint.PropagateStatus = &val
-		}
+		applyEndpointPostScan(endpoint, tags, lastDetachSign,
+			lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt,
+			propagateStatus)
 
 		// BSSCI §3.8.1/§5.8.1 attach propagate fields (direct assignment for NOT NULL)
 		endpoint.Bidi = bidi
