@@ -57,7 +57,7 @@ type mockDLResultCall struct {
 }
 
 func (m *mockMQTTEventPublisher) PublishUplink(_ context.Context, orgUUID string, epEUI uint64, bsEUI uint64,
-	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte) error {
+	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, _ []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.uplinks = append(m.uplinks, mockUplinkCall{
@@ -125,9 +125,9 @@ func newSyncMockMQTTEventPublisher() *syncMockMQTTEventPublisher {
 }
 
 func (m *syncMockMQTTEventPublisher) PublishUplink(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64,
-	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte) error {
+	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, decodedPayload []byte) error {
 	defer m.wg.Done()
-	return m.mockMQTTEventPublisher.PublishUplink(ctx, orgUUID, epEUI, bsEUI, rssi, snr, rxTime, packetCnt, userData)
+	return m.mockMQTTEventPublisher.PublishUplink(ctx, orgUUID, epEUI, bsEUI, rssi, snr, rxTime, packetCnt, userData, decodedPayload)
 }
 
 func (m *syncMockMQTTEventPublisher) PublishAttach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
@@ -483,7 +483,7 @@ func (s *mqttPublishingIngestService) Ingest(ctx context.Context, payload *Uplin
 	if s.server.mqttPublisher != nil && ownerOrgUUID != uuid.Nil {
 		_ = s.server.mqttPublisher.PublishUplink(ctx, ownerOrgUUID.String(),
 			payload.EpEUI, payload.BsEUI, payload.RSSI, payload.SNR,
-			payload.RxTime, payload.PacketCnt, payload.UserData)
+			payload.RxTime, payload.PacketCnt, payload.UserData, nil)
 	}
 	return &IngestResult{OwnerTenantID: s.server.tenantID, OwnerOrgUUID: ownerOrgUUID}, nil
 }

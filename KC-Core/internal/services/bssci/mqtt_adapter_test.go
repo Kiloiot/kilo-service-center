@@ -60,7 +60,7 @@ func TestMQTTAdapter_PublishUplink_CorrectPayloadAndTopic(t *testing.T) {
 
 	err := adapter.PublishUplink(context.Background(), "org-uuid-123",
 		0x70B3D59CD00009E6, 0xABCDEF1234567890,
-		-80.5, 15.2, 1700000000000000000, 42, []byte("hello"))
+		-80.5, 15.2, 1700000000000000000, 42, []byte("hello"), nil)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, mock.callCount())
@@ -86,7 +86,7 @@ func TestMQTTAdapter_PublishUplink_ZeroPaddedEUI(t *testing.T) {
 	adapter := NewMQTTAdapter(mock)
 
 	err := adapter.PublishUplink(context.Background(), "org", 0x00000001, 0x00000002,
-		0, 0, 0, 0, nil)
+		0, 0, 0, 0, nil, nil)
 
 	require.NoError(t, err)
 	call := mock.lastCall()
@@ -165,7 +165,7 @@ func TestMQTTAdapter_PropagatesPublishError(t *testing.T) {
 	mock := &mockDeviceEventPublisher{returnErr: fmt.Errorf("broker down")}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishUplink(context.Background(), "org", 1, 2, 0, 0, 0, 0, nil)
+	err := adapter.PublishUplink(context.Background(), "org", 1, 2, 0, 0, 0, 0, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "broker down")
 }

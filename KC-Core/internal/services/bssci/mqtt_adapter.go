@@ -21,16 +21,20 @@ func NewMQTTAdapter(pub mqtt.DeviceEventPublisher) bssci.MQTTEventPublisher {
 }
 
 func (a *mqttAdapter) PublishUplink(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64,
-	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte) error {
+	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, decodedPayload []byte) error {
 	epEUIHex := fmt.Sprintf("%016x", epEUI)
-	payload, err := json.Marshal(map[string]interface{}{
+	msg := map[string]interface{}{
 		"bsEui":  fmt.Sprintf("%016x", bsEUI),
 		"rssi":   rssi,
 		"snr":    snr,
 		"rxTime": rxTime,
 		"cnt":    packetCnt,
 		"data":   userData,
-	})
+	}
+	if len(decodedPayload) > 0 {
+		msg["decodedPayload"] = json.RawMessage(decodedPayload)
+	}
+	payload, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("mqtt adapter: failed to marshal uplink payload: %w", err)
 	}
