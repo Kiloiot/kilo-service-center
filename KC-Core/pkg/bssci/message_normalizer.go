@@ -364,6 +364,21 @@ func coerceUint64(value interface{}) (uint64, error) {
 			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
 		}
 		return uint64(v), nil
+	case int32:
+		if v < 0 {
+			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
+		}
+		return uint64(v), nil
+	case int16:
+		if v < 0 {
+			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
+		}
+		return uint64(v), nil
+	case int8:
+		if v < 0 {
+			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
+		}
+		return uint64(v), nil
 	case float64:
 		if v < 0 {
 			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %f", v)
@@ -398,6 +413,21 @@ func coerceUint32(value interface{}) (uint32, error) {
 	case int:
 		if v < 0 || v > 4294967295 {
 			return 0, fmt.Errorf("value %d out of range for uint32", v)
+		}
+		return uint32(v), nil
+	case int32:
+		if v < 0 {
+			return 0, fmt.Errorf("negative value cannot be coerced to uint32: %d", v)
+		}
+		return uint32(v), nil
+	case int16:
+		if v < 0 {
+			return 0, fmt.Errorf("negative value cannot be coerced to uint32: %d", v)
+		}
+		return uint32(v), nil
+	case int8:
+		if v < 0 {
+			return 0, fmt.Errorf("negative value cannot be coerced to uint32: %d", v)
 		}
 		return uint32(v), nil
 	case float64:
@@ -435,6 +465,21 @@ func coerceUint16(value interface{}) (uint16, error) {
 	case int:
 		if v < 0 || v > 65535 {
 			return 0, fmt.Errorf("value %d out of range for uint16", v)
+		}
+		return uint16(v), nil
+	case int32:
+		if v < 0 || v > 65535 {
+			return 0, fmt.Errorf("value %d out of range for uint16", v)
+		}
+		return uint16(v), nil
+	case int16:
+		if v < 0 {
+			return 0, fmt.Errorf("negative value cannot be coerced to uint16: %d", v)
+		}
+		return uint16(v), nil
+	case int8:
+		if v < 0 {
+			return 0, fmt.Errorf("negative value cannot be coerced to uint16: %d", v)
 		}
 		return uint16(v), nil
 	case float64:
