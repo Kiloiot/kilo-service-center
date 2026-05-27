@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net"
-	"reflect"
 	"testing"
 	"time"
 
@@ -523,17 +522,39 @@ func TestComplexSCOperations(t *testing.T) {
 			// cardinality, not dimensionality). The base station rejects the
 			// message with BSSCI error 22 ("DL data queue message malformed")
 			// when userData arrives as the 1D inner array directly. This
-			// assertion pins the wrapping fix from b10daee6.
+			// assertion pins the wrapping fix from b10daee6 AND verifies the
+			// inner bytes still match the original payload — a shape-only
+			// check would pass even if the payload were truncated or wrong.
 			outer, ok := msg["userData"].([]interface{})
 			require.True(t, ok,
 				"userData must serialize to an outer slice (got %T) for cntDepend=false", msg["userData"])
 			require.Len(t, outer, 1,
 				"non-counter-dependent userData must contain exactly one inner payload entry (m=1)")
-			innerKind := reflect.TypeOf(outer[0]).Kind()
-			require.Truef(t,
-				innerKind == reflect.Slice || innerKind == reflect.Array,
-				"inner userData entry must be a slice/array of bytes (got kind=%s, type=%T)",
-				innerKind, outer[0])
+
+			expectedPayload := []byte{0x01, 0x02, 0x03, 0x04}
+			switch inner := outer[0].(type) {
+			case []byte:
+				require.Equal(t, expectedPayload, inner,
+					"inner userData bytes must match the original payload")
+			case []interface{}:
+				require.Lenf(t, inner, len(expectedPayload),
+					"inner userData length must match original payload (got %d, want %d)",
+					len(inner), len(expectedPayload))
+				for i, want := range expectedPayload {
+					switch v := inner[i].(type) {
+					case uint8:
+						require.Equalf(t, want, v, "byte %d mismatch", i)
+					case int64:
+						require.Equalf(t, int64(want), v, "byte %d mismatch", i)
+					case float64:
+						require.Equalf(t, float64(want), v, "byte %d mismatch", i)
+					default:
+						t.Fatalf("inner userData[%d] has unexpected element type %T", i, v)
+					}
+				}
+			default:
+				t.Fatalf("inner userData entry has unexpected type %T (want []byte or []interface{})", outer[0])
+			}
 
 			// Log actual fields for inspection (serializer may omit optional fields with defaults)
 			t.Logf("SendDLDataQueue (%s) emitted fields: %v", encoding, getFieldNames(msg))

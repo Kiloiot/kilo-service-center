@@ -1,4 +1,4 @@
-import { UI_COMMON } from "@constants/messages";
+import { UI_COMMON, VAL_PAYLOAD_BASE64 } from "@constants/messages";
 import { formatTime24h } from "@theme/index";
 
 // Centralized locale configuration for MIOTY
@@ -193,7 +193,7 @@ export const formatHexPayload = (payload: string): string => {
     ).join("");
     return `0x${hex}`;
   } catch {
-    return "Invalid base64 payload";
+    return VAL_PAYLOAD_BASE64;
   }
 };
 
