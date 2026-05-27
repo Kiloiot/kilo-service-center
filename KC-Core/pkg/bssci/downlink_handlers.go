@@ -354,7 +354,7 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 		}
 	}
 
-	// Create dlDataQue message per MIOTY spec Section 3.12.1
+	// Create dlDataQue message per BSSCI §5.12.1
 	msg := map[string]interface{}{
 		"command":   mioty.CmdDLDataQueue,
 		"opId":      opId,
