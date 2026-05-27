@@ -172,17 +172,18 @@ export const formatPosixError = (code: number): string => {
 };
 
 // ============================================================================
-// MessagePack Payload Formatting
+// Payload Hex Formatting
 // ============================================================================
 
 /**
- * Format base64 MessagePack payload for preview
- * Decodes base64 → hex preview
+ * Format a base64-encoded byte payload as a hex string for display.
+ * Used for downlink/uplink payload columns where the wire/DTO format is
+ * base64 but operators read hex.
  *
  * @param payload - Base64-encoded payload string
  * @returns Hex string with 0x prefix, or error message
  */
-export const formatMessagePackPayload = (payload: string): string => {
+export const formatHexPayload = (payload: string): string => {
   if (!payload) return "0x";
 
   try {

@@ -105,6 +105,12 @@ export const TIMING_REFRESH_DEBOUNCE = 100; // Post-action refresh: 100ms
 export const TIMING_RECONNECT_BASE_DELAY = 1000; // Base delay for reconnection
 export const TIMING_RECONNECT_MAX_DELAY = 30000; // Max delay cap for exponential backoff
 
+// Event-stream catch-up invalidation cadence. The debounce collapses any
+// rapid reconnect burst into a single invalidation; the min interval is a
+// hard rate limit even under pathological reconnect cycling.
+export const TIMING_REALTIME_EVENT_STREAM_CATCHUP_DEBOUNCE_MS = 500;
+export const TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS = 5000;
+
 /**
  * TIMING object for React Query staleTime patterns.
  * Values are in SECONDS - multiply by 1000 for millisecond APIs (setTimeout, setInterval).

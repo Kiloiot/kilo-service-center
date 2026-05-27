@@ -40,6 +40,7 @@ import {
   formatDownlinkPriority,
   formatDownlinkQueueStatus,
   formatDownlinkResult,
+  formatHexPayload,
 } from "@utils/formatters";
 import {
   DOWNLINK_PRIORITY_PRESETS,
@@ -693,7 +694,7 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                               fontSize: "0.75rem",
                             }}
                           >
-                            {msg.payload || "(empty)"}
+                            {msg.payload ? formatHexPayload(msg.payload) : "(empty)"}
                           </Typography>
                         </TableCell>
                         <TableCell>

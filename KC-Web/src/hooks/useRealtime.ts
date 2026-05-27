@@ -19,7 +19,11 @@ import {
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { queryKeys } from "@config/query-keys";
-import { REALTIME_STREAM_KIND } from "@constants/app";
+import {
+  REALTIME_STREAM_KIND,
+  TIMING_REALTIME_EVENT_STREAM_CATCHUP_DEBOUNCE_MS,
+  TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS,
+} from "@constants/app";
 
 /**
  * Event type to query keys invalidation mapping.
@@ -329,9 +333,6 @@ type EventStreamFlight = {
   lastInvalidateAt: number;
 };
 
-const EVENT_STREAM_INVALIDATE_DEBOUNCE_MS = 500;
-const EVENT_STREAM_INVALIDATE_MIN_INTERVAL_MS = 5000;
-
 /**
  * Invalidate the EVENT-stream-backed caches: anything that depends on
  * system_events. Includes endpoints (downlink lifecycle), base stations
@@ -359,7 +360,7 @@ function invalidateForEventStream(qc: QueryClient): void {
  *
  * Debounced + rate-limited so any cluster of rapid reconnect events
  * collapses into a single invalidation, and no more than one fires per
- * `EVENT_STREAM_INVALIDATE_MIN_INTERVAL_MS`. This prevents the kind of
+ * `TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS`. This prevents the kind of
  * cascade that would happen when the message stream reconnects and triggers
  * an event-stream close+reopen in quick succession.
  */
@@ -381,12 +382,12 @@ function useCatchUpOnStreamReconnect(): void {
       flight.pendingInvalidate = setTimeout(() => {
         flight.pendingInvalidate = null;
         const now = Date.now();
-        if (now - flight.lastInvalidateAt < EVENT_STREAM_INVALIDATE_MIN_INTERVAL_MS) {
+        if (now - flight.lastInvalidateAt < TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS) {
           return;
         }
         flight.lastInvalidateAt = now;
         invalidateForEventStream(queryClient);
-      }, EVENT_STREAM_INVALIDATE_DEBOUNCE_MS);
+      }, TIMING_REALTIME_EVENT_STREAM_CATCHUP_DEBOUNCE_MS);
     };
 
     const unsubscribe = realtimeService.onConnectionEvent((evt) => {
