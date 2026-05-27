@@ -35,7 +35,7 @@ type DownlinkInsertParams struct {
 	NoDefaultPayload bool // If true, skip default payload (for backward-compat tests)
 
 	// SCACI §3.10 fields (migration 000089, 000090)
-	DlRxStatQry    *bool   // DL RX status query requested (nullable)
+	DlRxStatQry    *bool   // DL RX status query requested; default false when nil (column is NOT NULL per migration 000089)
 	OrganizationID *string // Organization UUID for multi-tenant audit (nullable)
 }
 
@@ -52,8 +52,15 @@ func insertDownlink(t *testing.T, db *DB, p DownlinkInsertParams) int64 {
 	if p.Status == "" {
 		p.Status = bssci.DLQueueStatusPending
 	}
-	if p.Payload == nil && !p.NoDefaultPayload {
-		p.Payload = []byte{0x01, 0x02, 0x03} // Default payload
+	if p.Payload == nil {
+		if p.NoDefaultPayload {
+			// Caller wants "empty payload, UserData carries the bytes" — the
+			// payload column is NOT NULL though, so substitute an empty bytea
+			// instead of leaving nil (which lib/pq sends as SQL NULL).
+			p.Payload = []byte{}
+		} else {
+			p.Payload = []byte{0x01, 0x02, 0x03}
+		}
 	}
 
 	// Prepare user_data JSON if provided, or use SQL NULL for empty
@@ -74,6 +81,14 @@ func insertDownlink(t *testing.T, db *DB, p DownlinkInsertParams) int64 {
 	// que_id now has DEFAULT nextval('downlink_queue_que_id_seq') from migration 085.
 	// earliest_at and latest_at MUST both be NULL or both NOT NULL per downlink_queue_schedule_order constraint.
 	// For test inserts, we set both to NULL to satisfy the constraint.
+	//
+	// dl_rx_stat_qry is NOT NULL per migration 000089. Default to false when the
+	// caller didn't specify a value, so tests written before that migration (and
+	// tests that don't care about the field) still insert successfully.
+	dlRxStatQry := false
+	if p.DlRxStatQry != nil {
+		dlRxStatQry = *p.DlRxStatQry
+	}
 	var queID int64
 	query := `
 		INSERT INTO downlink_queue (
@@ -86,7 +101,7 @@ func insertDownlink(t *testing.T, db *DB, p DownlinkInsertParams) int64 {
 	`
 	err := db.conn.QueryRow(query,
 		epEUIBytes, p.TenantID, p.Payload, p.Priority, p.Status, userDataJSON, p.Format,
-		p.DlRxStatQry, p.OrganizationID,
+		dlRxStatQry, p.OrganizationID,
 	).Scan(&queID)
 	require.NoError(t, err, "Failed to insert test downlink")
 
@@ -715,11 +730,13 @@ func TestReserveNextPendingDownlink_DlRxStatQryFalse(t *testing.T) {
 	assert.False(t, dl.DlRxStatQry, "DlRxStatQry should be false when column is FALSE")
 }
 
-// TestReserveNextPendingDownlink_DlRxStatQryNull verifies dl_rx_stat_qry=NULL is returned as nil.
-// When the column is NULL, ReserveNextPendingDownlink should return DlRxStatQry=nil.
-//
-// Spec: SCACI §3.10.1 - dlRxStatQry is optional; NULL means not requested
-func TestReserveNextPendingDownlink_DlRxStatQryNull(t *testing.T) {
+// TestReserveNextPendingDownlink_DlRxStatQryDefaultFalse verifies that when
+// the caller omits DlRxStatQry from the insert helper (nil), the row lands
+// with dl_rx_stat_qry=false. The column is BOOLEAN NOT NULL DEFAULT false
+// per migration 000089 — there is no valid SQL NULL path. The helper
+// translates nil to false so legacy tests that pre-date migration 000089
+// continue to insert successfully.
+func TestReserveNextPendingDownlink_DlRxStatQryDefaultFalse(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -739,11 +756,12 @@ func TestReserveNextPendingDownlink_DlRxStatQryNull(t *testing.T) {
 
 	insertEndpoint(t, sqlxDB, EndpointInsertParams{
 		EpEUI:    epEUI,
-		Name:     "TestEndpoint-DlRxStatQryNull",
+		Name:     "TestEndpoint-DlRxStatQryDefaultFalse",
 		TenantID: 100,
 	})
 
-	// DlRxStatQry = nil means column will be NULL
+	// DlRxStatQry omitted (nil) — helper must default to false at insert time
+	// because the column is NOT NULL.
 	_ = insertDownlink(t, db, DownlinkInsertParams{
 		EpEUI:       epEUI,
 		TenantID:    100,
@@ -761,9 +779,8 @@ func TestReserveNextPendingDownlink_DlRxStatQryNull(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, dl)
 
-	// DlRxStatQry should be false when column is NULL (bool default)
-	// Note: DownlinkMessage.DlRxStatQry is bool (not pointer) - DB NULL → false
-	assert.False(t, dl.DlRxStatQry, "DlRxStatQry should be false when column is NULL")
+	// Helper default → false. (DownlinkMessage.DlRxStatQry is bool, not pointer.)
+	assert.False(t, dl.DlRxStatQry, "nil input to helper must default the column to false")
 }
 
 // TestReserveNextPendingDownlink_OrganizationID verifies organization_id is returned.
