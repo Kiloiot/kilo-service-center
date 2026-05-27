@@ -578,23 +578,25 @@ func (db *DB) UpdateDownlinkResult(ctx context.Context, queId int64, result stri
 	// Update both legacy and transmission columns for backward compatibility
 	// Will consolidate in future migration
 	// CRITICAL: Include ep_eui and tenant_id in WHERE clause to prevent cross-tenant/endpoint updates
+	// Explicit ::text / ::bigint casts let lib/pq lock down parameter types when $1 is
+	// referenced in both column assignments and a CASE comparison and $2 can be NULL.
 	query := fmt.Sprintf(`
 		UPDATE downlink_queue
-		SET result = $1,
-		    tx_time = $2,
+		SET result = $1::text,
+		    tx_time = $2::bigint,
 		    bs_eui = $3,
-		    transmission_result = $1,
-		    transmission_time = $2,
-		    transmission_packet_cnt = $4,
+		    transmission_result = $1::text,
+		    transmission_time = $2::bigint,
+		    transmission_packet_cnt = $4::bigint,
 		    status = CASE
-		        WHEN $1 = 'sent' THEN 'transmitted'
-		        WHEN $1 = 'expired' THEN 'expired'
-		        WHEN $1 = 'invalid' THEN 'failed'
-		        WHEN $1 = 'revoked' THEN 'revoked'
+		        WHEN $1::text = 'sent' THEN 'transmitted'
+		        WHEN $1::text = 'expired' THEN 'expired'
+		        WHEN $1::text = 'invalid' THEN 'failed'
+		        WHEN $1::text = 'revoked' THEN 'revoked'
 		        ELSE status
 		    END,
 		    transmitted_at = CASE
-		        WHEN $1 = 'sent' THEN NOW()
+		        WHEN $1::text = 'sent' THEN NOW()
 		        ELSE transmitted_at
 		    END,
 		    updated_at = NOW()
