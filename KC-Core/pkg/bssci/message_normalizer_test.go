@@ -457,6 +457,135 @@ func TestCoerceUint16_RejectsUint64Overflow(t *testing.T) {
 	assert.Contains(t, err.Error(), "out of range")
 }
 
+// Signed-integer coercion cases — added after a real-device uplink was rejected
+// because msgpack-go encoded packetCnt=1 as int8 and the coerce helpers only
+// recognised the unsigned widths + int/int64/float64. These pin the int8/int16/
+// int32 paths so a regression silently dropping them gets caught.
+
+func TestCoerceUint64_AcceptsInt8(t *testing.T) {
+	got, err := coerceUint64(int8(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), got)
+
+	max, err := coerceUint64(int8(math.MaxInt8))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(math.MaxInt8), max)
+}
+
+func TestCoerceUint64_AcceptsInt16(t *testing.T) {
+	got, err := coerceUint64(int16(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), got)
+
+	max, err := coerceUint64(int16(math.MaxInt16))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(math.MaxInt16), max)
+}
+
+func TestCoerceUint64_AcceptsInt32(t *testing.T) {
+	got, err := coerceUint64(int32(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), got)
+
+	max, err := coerceUint64(int32(math.MaxInt32))
+	require.NoError(t, err)
+	assert.Equal(t, uint64(math.MaxInt32), max)
+}
+
+func TestCoerceUint64_RejectsNegativeSigned(t *testing.T) {
+	for _, v := range []interface{}{int8(-1), int16(-1), int32(-1)} {
+		_, err := coerceUint64(v)
+		require.Error(t, err, "should reject %T(%v)", v, v)
+		assert.Contains(t, err.Error(), "negative value cannot be coerced to uint64")
+	}
+}
+
+func TestCoerceUint32_AcceptsInt8(t *testing.T) {
+	got, err := coerceUint32(int8(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), got)
+
+	max, err := coerceUint32(int8(math.MaxInt8))
+	require.NoError(t, err)
+	assert.Equal(t, uint32(math.MaxInt8), max)
+}
+
+func TestCoerceUint32_AcceptsInt16(t *testing.T) {
+	got, err := coerceUint32(int16(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), got)
+
+	max, err := coerceUint32(int16(math.MaxInt16))
+	require.NoError(t, err)
+	assert.Equal(t, uint32(math.MaxInt16), max)
+}
+
+func TestCoerceUint32_AcceptsInt32(t *testing.T) {
+	got, err := coerceUint32(int32(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), got)
+
+	max, err := coerceUint32(int32(math.MaxInt32))
+	require.NoError(t, err)
+	assert.Equal(t, uint32(math.MaxInt32), max)
+}
+
+func TestCoerceUint32_RejectsNegativeSigned(t *testing.T) {
+	for _, v := range []interface{}{int8(-1), int16(-1), int32(-1)} {
+		_, err := coerceUint32(v)
+		require.Error(t, err, "should reject %T(%v)", v, v)
+		assert.Contains(t, err.Error(), "negative value cannot be coerced to uint32")
+	}
+}
+
+func TestCoerceUint16_AcceptsInt8(t *testing.T) {
+	got, err := coerceUint16(int8(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint16(1), got)
+
+	max, err := coerceUint16(int8(math.MaxInt8))
+	require.NoError(t, err)
+	assert.Equal(t, uint16(math.MaxInt8), max)
+}
+
+func TestCoerceUint16_AcceptsInt16(t *testing.T) {
+	got, err := coerceUint16(int16(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint16(1), got)
+
+	max, err := coerceUint16(int16(math.MaxInt16))
+	require.NoError(t, err)
+	assert.Equal(t, uint16(math.MaxInt16), max)
+}
+
+func TestCoerceUint16_AcceptsInt32InRange(t *testing.T) {
+	got, err := coerceUint16(int32(1))
+	require.NoError(t, err)
+	assert.Equal(t, uint16(1), got)
+
+	// uint16 fits values up to 65535; assert max boundary.
+	maxVal, err := coerceUint16(int32(math.MaxUint16))
+	require.NoError(t, err)
+	assert.Equal(t, uint16(math.MaxUint16), maxVal)
+}
+
+func TestCoerceUint16_RejectsInt32Overflow(t *testing.T) {
+	_, err := coerceUint16(int32(math.MaxUint16 + 1))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "out of range")
+}
+
+func TestCoerceUint16_RejectsNegativeSigned(t *testing.T) {
+	for _, v := range []interface{}{int8(-1), int16(-1), int32(-1)} {
+		_, err := coerceUint16(v)
+		require.Error(t, err, "should reject %T(%v)", v, v)
+		// int32 negative goes through the "out of range" branch; int8/int16
+		// negatives go through the dedicated "negative value" branch. Either
+		// way the error mentions uint16.
+		assert.Contains(t, err.Error(), "uint16")
+	}
+}
+
 // TestMsgpackDecoderProducesUint64ForUnsigned locks the assumption that vmihailenco/msgpack
 // decodes unsigned integers exceeding MaxInt64 as Go uint64 when unmarshaling into interface{}.
 // Values that fit in int64 are decoded as int64 by the Go library, but C-based BS encoders

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"reflect"
 	"testing"
 	"time"
 
@@ -514,6 +515,25 @@ func TestComplexSCOperations(t *testing.T) {
 			assert.Contains(t, msg, "cntDepend", "cntDepend must be present (required field)")
 			assert.Equal(t, false, msg["cntDepend"], "cntDepend should be false in non-counter-dependent mode")
 			assert.NotContains(t, msg, "packetCnt", "packetCnt should not be present when cntDepend=false")
+
+			// BSSCI §5.12.1 declares userData as Numeric[m][n] — a 2D array
+			// of m packet-counter entries by n payload bytes. For cntDepend=false
+			// m=1 but the outer array MUST still be present (the "single user
+			// data entry if cntDepend is false" line in the spec describes
+			// cardinality, not dimensionality). The base station rejects the
+			// message with BSSCI error 22 ("DL data queue message malformed")
+			// when userData arrives as the 1D inner array directly. This
+			// assertion pins the wrapping fix from b10daee6.
+			outer, ok := msg["userData"].([]interface{})
+			require.True(t, ok,
+				"userData must serialize to an outer slice (got %T) for cntDepend=false", msg["userData"])
+			require.Len(t, outer, 1,
+				"non-counter-dependent userData must contain exactly one inner payload entry (m=1)")
+			innerKind := reflect.TypeOf(outer[0]).Kind()
+			require.Truef(t,
+				innerKind == reflect.Slice || innerKind == reflect.Array,
+				"inner userData entry must be a slice/array of bytes (got kind=%s, type=%T)",
+				innerKind, outer[0])
 
 			// Log actual fields for inspection (serializer may omit optional fields with defaults)
 			t.Logf("SendDLDataQueue (%s) emitted fields: %v", encoding, getFieldNames(msg))
