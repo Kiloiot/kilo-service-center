@@ -17,5 +17,6 @@ export type {
   EventHandler,
   RealtimeEvent,
   RealtimeEventType,
+  RealtimeStreamKind,
   StateChangeListener,
 } from "./types";

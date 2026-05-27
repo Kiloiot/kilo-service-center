@@ -24,6 +24,7 @@ import {
   HEADER_VALUES,
   HEADERS,
   REALTIME_EVENT_TYPE,
+  REALTIME_STREAM_KIND,
   STORAGE_KEYS,
   TIMING_RECONNECT_BASE_DELAY,
   TIMING_RECONNECT_MAX_DELAY,
@@ -295,6 +296,7 @@ class RealtimeService {
         type: "realtime_connect",
         message: `${REALTIME_MESSAGES.CONNECTING_AT} ${host}`,
         url: host,
+        streamKind: REALTIME_STREAM_KIND.MESSAGE,
       });
 
       // Build request - empty request for general stream, org filter via metadata
@@ -315,6 +317,7 @@ class RealtimeService {
           this.emitConnectionEvent({
             type: "realtime_connected",
             message: REALTIME_MESSAGES.CONNECTED,
+            streamKind: REALTIME_STREAM_KIND.MESSAGE,
           });
 
           // Start event stream after message stream connected
@@ -336,6 +339,7 @@ class RealtimeService {
               type: "realtime_disconnected",
               message: errorMessage,
               code,
+              streamKind: REALTIME_STREAM_KIND.MESSAGE,
             });
 
             this.setError({
@@ -347,6 +351,7 @@ class RealtimeService {
             this.emitConnectionEvent({
               type: "realtime_disconnected",
               message: REALTIME_MESSAGES.STREAM_ENDED_NORMAL,
+              streamKind: REALTIME_STREAM_KIND.MESSAGE,
             });
           }
 
@@ -364,6 +369,7 @@ class RealtimeService {
       this.emitConnectionEvent({
         type: "realtime_error",
         message: errorMessage,
+        streamKind: REALTIME_STREAM_KIND.MESSAGE,
       });
 
       this.setError({
@@ -617,6 +623,7 @@ class RealtimeService {
       message: `${REALTIME_MESSAGES.RECONNECTING_IN} ${Math.round(delay / 1000)}s (attempt ${this.reconnectAttempts})`,
       attempt: this.reconnectAttempts,
       delayMs: delay,
+      streamKind: REALTIME_STREAM_KIND.MESSAGE,
     });
 
     this.reconnectTimeout = setTimeout(() => {
@@ -664,6 +671,7 @@ class RealtimeService {
           this.emitConnectionEvent({
             type: "realtime_connected",
             message: REALTIME_MESSAGES.BS_STREAM_CONNECTED,
+            streamKind: REALTIME_STREAM_KIND.BASE_STATION,
           });
         },
         onMessage: (msg: pb.BaseStationMessage) => {
@@ -675,13 +683,26 @@ class RealtimeService {
         onEnd: (code: grpc.Code, message: string) => {
           this.baseStationStream = null;
           if (code !== grpc.Code.OK) {
+            const errorMessage = message || REALTIME_MESSAGES.BS_STREAM_ERROR;
             this.setError({
-              message: message || REALTIME_MESSAGES.BS_STREAM_ERROR,
+              message: errorMessage,
               timestamp: new Date(),
               code,
             });
+            this.emitConnectionEvent({
+              type: "realtime_disconnected",
+              message: errorMessage,
+              code,
+              streamKind: REALTIME_STREAM_KIND.BASE_STATION,
+            });
             // Use SEPARATE reconnect state
             this.scheduleBaseStationReconnect(bsEui);
+          } else {
+            this.emitConnectionEvent({
+              type: "realtime_disconnected",
+              message: REALTIME_MESSAGES.STREAM_ENDED_NORMAL,
+              streamKind: REALTIME_STREAM_KIND.BASE_STATION,
+            });
           }
         },
       },
@@ -709,6 +730,14 @@ class RealtimeService {
       TIMING_RECONNECT_MAX_DELAY,
     );
     this.baseStationReconnectAttempts++;
+
+    this.emitConnectionEvent({
+      type: "realtime_reconnect",
+      message: `${REALTIME_MESSAGES.RECONNECTING_IN} ${Math.round(delay / 1000)}s (attempt ${this.baseStationReconnectAttempts})`,
+      attempt: this.baseStationReconnectAttempts,
+      delayMs: delay,
+      streamKind: REALTIME_STREAM_KIND.BASE_STATION,
+    });
 
     this.baseStationReconnectTimeout = setTimeout(() => {
       this.baseStationReconnectTimeout = null;
@@ -765,6 +794,7 @@ class RealtimeService {
         this.emitConnectionEvent({
           type: "realtime_connected",
           message: REALTIME_MESSAGES.EVENT_STREAM_CONNECTED,
+          streamKind: REALTIME_STREAM_KIND.EVENT,
         });
       },
       onMessage: (msg: pb.Event) => {
@@ -776,10 +806,23 @@ class RealtimeService {
       onEnd: (code: grpc.Code, message: string) => {
         this.eventStream = null;
         if (code !== grpc.Code.OK) {
+          const errorMessage = message || REALTIME_MESSAGES.EVENT_STREAM_ERROR;
           this.setError({
-            message: message || REALTIME_MESSAGES.EVENT_STREAM_ERROR,
+            message: errorMessage,
             timestamp: new Date(),
             code,
+          });
+          this.emitConnectionEvent({
+            type: "realtime_disconnected",
+            message: errorMessage,
+            code,
+            streamKind: REALTIME_STREAM_KIND.EVENT,
+          });
+        } else {
+          this.emitConnectionEvent({
+            type: "realtime_disconnected",
+            message: REALTIME_MESSAGES.STREAM_ENDED_NORMAL,
+            streamKind: REALTIME_STREAM_KIND.EVENT,
           });
         }
         // Schedule reconnect regardless of how stream ended (mirrors message stream)
@@ -807,6 +850,14 @@ class RealtimeService {
       TIMING_RECONNECT_MAX_DELAY,
     );
     this.eventStreamReconnectAttempts++;
+
+    this.emitConnectionEvent({
+      type: "realtime_reconnect",
+      message: `${REALTIME_MESSAGES.RECONNECTING_IN} ${Math.round(delay / 1000)}s (attempt ${this.eventStreamReconnectAttempts})`,
+      attempt: this.eventStreamReconnectAttempts,
+      delayMs: delay,
+      streamKind: REALTIME_STREAM_KIND.EVENT,
+    });
 
     this.eventStreamReconnectTimeout = setTimeout(() => {
       this.eventStreamReconnectTimeout = null;

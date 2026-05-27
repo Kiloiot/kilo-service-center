@@ -4,7 +4,7 @@
  * React hooks for realtime connection management and cache invalidation.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { QueryClient } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
@@ -13,11 +13,13 @@ import {
   type ConnectionState,
   type RealtimeEvent,
   type RealtimeEventType,
+  type RealtimeStreamKind,
   realtimeService,
 } from "@services/realtime";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { queryKeys } from "@config/query-keys";
+import { REALTIME_STREAM_KIND } from "@constants/app";
 
 /**
  * Event type to query keys invalidation mapping.
@@ -186,6 +188,13 @@ function invalidateEndpoint(qc: QueryClient, epEui: string): void {
   qc.invalidateQueries({ queryKey: queryKeys.endpoints.activity(epEui) });
 }
 
+// Backend audit events emit the EUI as uppercase hex (`%016X`), but React
+// Query keys built from the lowercase canonical form would not match without
+// normalization. Strip separators and lowercase to align both forms.
+function normalizeEuiForQueryKey(eui: string): string {
+  return eui.replaceAll("-", "").toLowerCase();
+}
+
 /** Per-event-type targeted invalidations (run after the generic map). */
 function applyTargetedInvalidations(
   qc: QueryClient,
@@ -222,9 +231,16 @@ function applyTargetedInvalidations(
     event.type === "downlink.failed" ||
     event.type === "downlink.revoked"
   ) {
-    const epEui = extractEpEuiFromPayload(event.payload);
-    if (epEui) {
+    const rawEpEui = extractEpEuiFromPayload(event.payload);
+    if (rawEpEui) {
+      const epEui = normalizeEuiForQueryKey(rawEpEui);
       qc.invalidateQueries({ queryKey: queryKeys.endpoints.detail(epEui) });
+      qc.invalidateQueries({
+        queryKey: queryKeys.endpoints.downlinkQueuePrefix(epEui),
+      });
+      qc.invalidateQueries({
+        queryKey: queryKeys.endpoints.downlinkResultsPrefix(epEui),
+      });
     }
   }
 }
@@ -306,6 +322,103 @@ export function useRealtimeInvalidation() {
   useSubscriptionLifecycle(handler);
 }
 
+type EventStreamFlight = {
+  hasConnected: boolean;
+  connected: boolean;
+  pendingInvalidate: ReturnType<typeof setTimeout> | null;
+  lastInvalidateAt: number;
+};
+
+const EVENT_STREAM_INVALIDATE_DEBOUNCE_MS = 500;
+const EVENT_STREAM_INVALIDATE_MIN_INTERVAL_MS = 5000;
+
+/**
+ * Invalidate the EVENT-stream-backed caches: anything that depends on
+ * system_events. Includes endpoints (downlink lifecycle), base stations
+ * (online/offline events), events feed, SCACI, and dashboard.
+ */
+function invalidateForEventStream(qc: QueryClient): void {
+  qc.invalidateQueries({ queryKey: queryKeys.endpoints.all });
+  qc.invalidateQueries({ queryKey: queryKeys.baseStations.all });
+  qc.invalidateQueries({ queryKey: queryKeys.events.all });
+  qc.invalidateQueries({ queryKey: queryKeys.scaci.all });
+  qc.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+}
+
+/**
+ * Catch-up invalidation when the EVENT stream reconnects after a drop. The
+ * EVENT gRPC stream idle-times out every few minutes; events emitted during
+ * the gap never reach the browser. Without this hook, the UI stays stale
+ * until something else (window focus, manual refresh) refetches.
+ *
+ * Scoped narrowly to the EVENT stream only — the MESSAGE stream's reconnect
+ * cycles `connectEventStream()` (closing+reopening the event stream) every
+ * time it itself reconnects, so handling MESSAGE here would double-count and
+ * could cascade into a refetch storm. The EVENT stream's own
+ * realtime_connected event captures every relevant reconnect anyway.
+ *
+ * Debounced + rate-limited so any cluster of rapid reconnect events
+ * collapses into a single invalidation, and no more than one fires per
+ * `EVENT_STREAM_INVALIDATE_MIN_INTERVAL_MS`. This prevents the kind of
+ * cascade that would happen when the message stream reconnects and triggers
+ * an event-stream close+reopen in quick succession.
+ */
+function useCatchUpOnStreamReconnect(): void {
+  const queryClient = useQueryClient();
+  const flightRef = useRef<EventStreamFlight>({
+    hasConnected: false,
+    connected: false,
+    pendingInvalidate: null,
+    lastInvalidateAt: 0,
+  });
+
+  useEffect(() => {
+    const scheduleInvalidate = () => {
+      const flight = flightRef.current;
+      if (flight.pendingInvalidate) {
+        clearTimeout(flight.pendingInvalidate);
+      }
+      flight.pendingInvalidate = setTimeout(() => {
+        flight.pendingInvalidate = null;
+        const now = Date.now();
+        if (now - flight.lastInvalidateAt < EVENT_STREAM_INVALIDATE_MIN_INTERVAL_MS) {
+          return;
+        }
+        flight.lastInvalidateAt = now;
+        invalidateForEventStream(queryClient);
+      }, EVENT_STREAM_INVALIDATE_DEBOUNCE_MS);
+    };
+
+    const unsubscribe = realtimeService.onConnectionEvent((evt) => {
+      if (evt.streamKind !== REALTIME_STREAM_KIND.EVENT) return;
+      const flight = flightRef.current;
+
+      if (evt.type === "realtime_connected") {
+        const isReconnect = flight.hasConnected && !flight.connected;
+        flight.hasConnected = true;
+        flight.connected = true;
+        if (isReconnect) {
+          scheduleInvalidate();
+        }
+      } else if (
+        evt.type === "realtime_disconnected" ||
+        evt.type === "realtime_error"
+      ) {
+        flight.connected = false;
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      const flight = flightRef.current;
+      if (flight.pendingInvalidate) {
+        clearTimeout(flight.pendingInvalidate);
+        flight.pendingInvalidate = null;
+      }
+    };
+  }, [queryClient]);
+}
+
 /**
  * Combined hook for realtime connection + cache invalidation
  *
@@ -314,6 +427,7 @@ export function useRealtimeInvalidation() {
 export function useRealtimeUpdates() {
   const { state, isConnected, isReconnecting } = useRealtimeConnection();
   useRealtimeInvalidation();
+  useCatchUpOnStreamReconnect();
 
   return { state, isConnected, isReconnecting };
 }

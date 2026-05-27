@@ -237,6 +237,18 @@ export const REALTIME_EVENT_TYPE = {
 } as const;
 
 /**
+ * Identifies which underlying gRPC stream a realtime connection event belongs
+ * to. Used by the catch-up hook to invalidate the right query caches when a
+ * specific stream reconnects after a drop, without coupling it to the
+ * message-stream-only `useRealtimeConnection().state` signal.
+ */
+export const REALTIME_STREAM_KIND = {
+  MESSAGE: "message",
+  BASE_STATION: "base_station",
+  EVENT: "event",
+} as const;
+
+/**
  * Backend event_type → UI realtime event type mapping
  * Backend uses underscore/dotted format (DB-compatible), UI uses dotted format
  * CRUD events map to generic EVENT_RECEIVED to preserve semantics
