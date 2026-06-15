@@ -46,6 +46,11 @@ func (r *DownlinkQueueReader) ListTenantQueue(ctx context.Context, tenantID int6
 	}
 
 	// Build query with optional endpoint filter
+	// Status filter covers every in-flight state so the UI shows messages
+	// that have already been pushed to the base station (status="queued")
+	// in addition to those still waiting on the SC scheduler. Terminal states
+	// (transmitted, delivered, acked, failed, expired, revoked) are excluded
+	// because they belong to the results view, not the queue view.
 	query := `
 		SELECT
 			id, ep_eui, tenant_id, organization_id, payload,
@@ -56,10 +61,16 @@ func (r *DownlinkQueueReader) ListTenantQueue(ctx context.Context, tenantID int6
 			created_at, transmitted_at, acknowledged_at, earliest_at, user_data
 		FROM downlink_queue
 		WHERE tenant_id = $1
-		AND status IN ($2, $3)`
+		AND status IN ($2, $3, $4, $5)`
 
-	args := []interface{}{tenantID, bssci.DLQueueStatusPending, bssci.DLQueueStatusScheduled}
-	argIndex := 4
+	args := []interface{}{
+		tenantID,
+		bssci.DLQueueStatusPending,
+		bssci.DLQueueStatusScheduled,
+		bssci.DLQueueStatusReserved,
+		bssci.DLQueueStatusQueued,
+	}
+	argIndex := 6
 
 	// Add endpoint filter if provided
 	if epFilter != nil {

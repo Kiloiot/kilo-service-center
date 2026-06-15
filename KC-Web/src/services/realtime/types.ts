@@ -5,6 +5,11 @@
  * Step 0A.3 will implement gRPC streaming using StreamMessages RPC.
  */
 
+import type { REALTIME_STREAM_KIND } from "@constants/app";
+
+export type RealtimeStreamKind =
+  (typeof REALTIME_STREAM_KIND)[keyof typeof REALTIME_STREAM_KIND];
+
 /**
  * Connection state for realtime streaming
  */
@@ -109,6 +114,11 @@ export interface ConnectionEvent {
   attempt?: number;
   /** Delay until next reconnect (ms) */
   delayMs?: number;
+  /** Which underlying stream emitted this event. Absent for service-wide
+   * events that don't belong to a single stream. The catch-up hook in
+   * useRealtime.ts branches on this to invalidate the right caches when a
+   * particular stream reconnects after a drop. */
+  streamKind?: RealtimeStreamKind;
 }
 
 /**

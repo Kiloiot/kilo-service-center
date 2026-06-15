@@ -93,6 +93,8 @@ export const queryKeys = {
       ] as const,
     downlinkQueue: (eui: string, pageSize?: number) =>
       [...queryKeys.endpoints.all, "downlinkQueue", eui, pageSize] as const,
+    downlinkQueuePrefix: (eui: string) =>
+      [...queryKeys.endpoints.all, "downlinkQueue", eui] as const,
     downlinkResults: (eui: string, statusFilter?: string, pageSize?: number) =>
       [
         ...queryKeys.endpoints.all,
@@ -101,6 +103,8 @@ export const queryKeys = {
         statusFilter,
         pageSize,
       ] as const,
+    downlinkResultsPrefix: (eui: string) =>
+      [...queryKeys.endpoints.all, "downlinkResults", eui] as const,
   },
 
   dashboard: {

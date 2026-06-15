@@ -105,6 +105,12 @@ export const TIMING_REFRESH_DEBOUNCE = 100; // Post-action refresh: 100ms
 export const TIMING_RECONNECT_BASE_DELAY = 1000; // Base delay for reconnection
 export const TIMING_RECONNECT_MAX_DELAY = 30000; // Max delay cap for exponential backoff
 
+// Event-stream catch-up invalidation cadence. The debounce collapses any
+// rapid reconnect burst into a single invalidation; the min interval is a
+// hard rate limit even under pathological reconnect cycling.
+export const TIMING_REALTIME_EVENT_STREAM_CATCHUP_DEBOUNCE_MS = 500;
+export const TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS = 5000;
+
 /**
  * TIMING object for React Query staleTime patterns.
  * Values are in SECONDS - multiply by 1000 for millisecond APIs (setTimeout, setInterval).
@@ -234,6 +240,18 @@ export const REALTIME_EVENT_TYPE = {
   SCACI_SESSION_CLOSED: "scaci.session.closed",
   SCACI_ERROR: "scaci.error",
   EVENT_RECEIVED: "event.received",
+} as const;
+
+/**
+ * Identifies which underlying gRPC stream a realtime connection event belongs
+ * to. Used by the catch-up hook to invalidate the right query caches when a
+ * specific stream reconnects after a drop, without coupling it to the
+ * message-stream-only `useRealtimeConnection().state` signal.
+ */
+export const REALTIME_STREAM_KIND = {
+  MESSAGE: "message",
+  BASE_STATION: "base_station",
+  EVENT: "event",
 } as const;
 
 /**

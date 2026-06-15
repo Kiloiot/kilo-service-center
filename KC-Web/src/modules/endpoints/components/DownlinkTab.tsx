@@ -40,6 +40,7 @@ import {
   formatDownlinkPriority,
   formatDownlinkQueueStatus,
   formatDownlinkResult,
+  formatHexPayload,
 } from "@utils/formatters";
 import {
   DOWNLINK_PRIORITY_PRESETS,
@@ -53,7 +54,6 @@ import {
   ACTION_FLUSH_QUEUE,
   ACTION_FLUSHING_QUEUE,
   ACTION_LOAD_MORE,
-  ACTION_REFRESH,
   ACTION_REVOKE,
   ACTION_REVOKING,
   ACTION_SEND_DOWNLINK,
@@ -101,7 +101,6 @@ import {
   AddIcon,
   DeleteIcon,
   ExpandMoreIcon,
-  RefreshIcon,
   SendIcon,
 } from "@theme/icons";
 
@@ -147,7 +146,9 @@ interface DownlinkFormValidation {
  * a float 0.0-1.0, payload a valid hex string when single-shot, and every
  * row a valid hex+counter pair when in counter-dependent mode.
  */
-function validateDownlinkForm(state: DownlinkFormState): DownlinkFormValidation {
+function validateDownlinkForm(
+  state: DownlinkFormState,
+): DownlinkFormValidation {
   const formatNum = parseInt(state.format, 10);
   const priorityNum = parseFloat(state.priority);
   const payloadError =
@@ -616,11 +617,6 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
             ({queueTotalCount})
           </Typography>
           <Box sx={{ flex: 1 }} />
-          <Tooltip title={ACTION_REFRESH}>
-            <IconButton size="small" onClick={() => queueQuery.refetch()}>
-              <RefreshIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
           {queueMessages.some(
             (m) => m.status && REVOCABLE_QUEUE_STATUSES.has(m.status),
           ) && (
@@ -698,7 +694,7 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                               fontSize: "0.75rem",
                             }}
                           >
-                            {msg.payload || "(empty)"}
+                            {msg.payload ? formatHexPayload(msg.payload) : "(empty)"}
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -752,11 +748,6 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
             ({resultsTotalCount})
           </Typography>
           <Box sx={{ flex: 1 }} />
-          <Tooltip title={ACTION_REFRESH}>
-            <IconButton size="small" onClick={() => resultsQuery.refetch()}>
-              <RefreshIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
         </Box>
 
         {resultsQuery.isLoading ? (

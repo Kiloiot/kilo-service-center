@@ -339,22 +339,22 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 		}
 		userDataField = userDataArray
 	} else {
-		// Non-counter-dependent: userData is single Numeric[n] or empty for ACK-only
-		// BSSCI §5.12: "If user data is empty, a pure acknowledgement downlink is queued"
+		// Non-counter-dependent: userData is Numeric[m][n] with m=1 per BSSCI §5.12.1
+		// ("single user data entry if cntDepend is false" — still wrapped in outer array
+		// to keep the declared Numeric[m][n] shape). Empty payloads form an ACK-only
+		// downlink with no entries.
 		if len(payloads) == 0 {
-			// ACK-only downlink: empty Numeric[n]
 			userDataField = []interface{}{}
 		} else {
-			// Normal single payload (already validated len(payloads) == 1)
 			singlePayload := make([]interface{}, len(payloads[0]))
 			for i, b := range payloads[0] {
 				singlePayload[i] = uint8(b)
 			}
-			userDataField = singlePayload // Direct Numeric[n] per BSSCI §3.12.1
+			userDataField = []interface{}{singlePayload}
 		}
 	}
 
-	// Create dlDataQue message per MIOTY spec Section 3.12.1
+	// Create dlDataQue message per BSSCI §5.12.1
 	msg := map[string]interface{}{
 		"command":   mioty.CmdDLDataQueue,
 		"opId":      opId,
@@ -1452,7 +1452,7 @@ func (s *Server) resolveOwnerOrgUUID(ctx context.Context, tenantID int64, epEuiB
 		return nil, fmt.Errorf("failed to fetch endpoint: %w", err)
 	}
 	if endpoint == nil {
-		return nil, storage.ErrNotFound
+		return nil, fmt.Errorf("endpoint not found")
 	}
 
 	// Resolve org UUID for the endpoint's tenant (which may differ from BS tenant in roaming)
