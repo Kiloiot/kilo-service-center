@@ -126,6 +126,16 @@ func (a *IdentityRPCOrgAdapter) ResolveOrganization(ctx context.Context, tenantI
 	return a.GetDefaultOrgForTenant(ctx, tenantID)
 }
 
+// IsServerAdmin checks if the given user is a server admin via KC-Identity.
+func (a *IdentityRPCOrgAdapter) IsServerAdmin(ctx context.Context, userID string) (bool, error) {
+	rpcCtx := a.withPeerAuth(ctx)
+	resp, err := a.client.CheckServerAdmin(rpcCtx, &pb.CheckServerAdminRequest{UserId: userID})
+	if err != nil {
+		return false, err
+	}
+	return resp.IsAdmin, nil
+}
+
 // withPeerAuth creates a new outgoing context with peer secret metadata.
 func (a *IdentityRPCOrgAdapter) withPeerAuth(ctx context.Context) context.Context {
 	if a.peerSecret == "" {

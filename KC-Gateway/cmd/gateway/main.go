@@ -244,6 +244,7 @@ func main() {
 			SkipMethods:      skipMethods,
 			EventWriter:      eventAdapter,
 			PlatformTenantID: cfg.General.TenantID,
+			AdminChecker:     orgAdapter,
 		})
 		if err != nil {
 			l.Error("Failed to create org resolver interceptor", "error", err)

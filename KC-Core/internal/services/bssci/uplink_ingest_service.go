@@ -363,7 +363,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 				payload.EpEUI, payload.BsEUI,
 				payload.RSSI, payload.SNR,
 				payload.RxTime, payload.PacketCnt,
-				payload.UserData,
+				payload.UserData, ulDataMsg.DecodedPayload,
 			); pubErr != nil {
 				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToPublishUplinkToMQTT,
 					"ep_eui", payload.EpEUI, "error", pubErr)
