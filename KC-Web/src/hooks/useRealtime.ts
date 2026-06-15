@@ -13,7 +13,6 @@ import {
   type ConnectionState,
   type RealtimeEvent,
   type RealtimeEventType,
-  type RealtimeStreamKind,
   realtimeService,
 } from "@services/realtime";
 import { useOrganization } from "@contexts/OrganizationContext";
@@ -196,7 +195,7 @@ function invalidateEndpoint(qc: QueryClient, epEui: string): void {
 // Query keys built from the lowercase canonical form would not match without
 // normalization. Strip separators and lowercase to align both forms.
 function normalizeEuiForQueryKey(eui: string): string {
-  return eui.replaceAll("-", "").toLowerCase();
+  return eui.replace(/-/g, "").toLowerCase();
 }
 
 /** Per-event-type targeted invalidations (run after the generic map). */

@@ -467,9 +467,9 @@ func TestCoerceUint64_AcceptsInt8(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), got)
 
-	max, err := coerceUint64(int8(math.MaxInt8))
+	maxVal, err := coerceUint64(int8(math.MaxInt8))
 	require.NoError(t, err)
-	assert.Equal(t, uint64(math.MaxInt8), max)
+	assert.Equal(t, uint64(math.MaxInt8), maxVal)
 }
 
 func TestCoerceUint64_AcceptsInt16(t *testing.T) {
@@ -477,9 +477,9 @@ func TestCoerceUint64_AcceptsInt16(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), got)
 
-	max, err := coerceUint64(int16(math.MaxInt16))
+	maxVal, err := coerceUint64(int16(math.MaxInt16))
 	require.NoError(t, err)
-	assert.Equal(t, uint64(math.MaxInt16), max)
+	assert.Equal(t, uint64(math.MaxInt16), maxVal)
 }
 
 func TestCoerceUint64_AcceptsInt32(t *testing.T) {
@@ -487,9 +487,9 @@ func TestCoerceUint64_AcceptsInt32(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), got)
 
-	max, err := coerceUint64(int32(math.MaxInt32))
+	maxVal, err := coerceUint64(int32(math.MaxInt32))
 	require.NoError(t, err)
-	assert.Equal(t, uint64(math.MaxInt32), max)
+	assert.Equal(t, uint64(math.MaxInt32), maxVal)
 }
 
 func TestCoerceUint64_RejectsNegativeSigned(t *testing.T) {
@@ -505,9 +505,9 @@ func TestCoerceUint32_AcceptsInt8(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint32(1), got)
 
-	max, err := coerceUint32(int8(math.MaxInt8))
+	maxVal, err := coerceUint32(int8(math.MaxInt8))
 	require.NoError(t, err)
-	assert.Equal(t, uint32(math.MaxInt8), max)
+	assert.Equal(t, uint32(math.MaxInt8), maxVal)
 }
 
 func TestCoerceUint32_AcceptsInt16(t *testing.T) {
@@ -515,9 +515,9 @@ func TestCoerceUint32_AcceptsInt16(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint32(1), got)
 
-	max, err := coerceUint32(int16(math.MaxInt16))
+	maxVal, err := coerceUint32(int16(math.MaxInt16))
 	require.NoError(t, err)
-	assert.Equal(t, uint32(math.MaxInt16), max)
+	assert.Equal(t, uint32(math.MaxInt16), maxVal)
 }
 
 func TestCoerceUint32_AcceptsInt32(t *testing.T) {
@@ -525,9 +525,9 @@ func TestCoerceUint32_AcceptsInt32(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint32(1), got)
 
-	max, err := coerceUint32(int32(math.MaxInt32))
+	maxVal, err := coerceUint32(int32(math.MaxInt32))
 	require.NoError(t, err)
-	assert.Equal(t, uint32(math.MaxInt32), max)
+	assert.Equal(t, uint32(math.MaxInt32), maxVal)
 }
 
 func TestCoerceUint32_RejectsNegativeSigned(t *testing.T) {
@@ -543,9 +543,9 @@ func TestCoerceUint16_AcceptsInt8(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint16(1), got)
 
-	max, err := coerceUint16(int8(math.MaxInt8))
+	maxVal, err := coerceUint16(int8(math.MaxInt8))
 	require.NoError(t, err)
-	assert.Equal(t, uint16(math.MaxInt8), max)
+	assert.Equal(t, uint16(math.MaxInt8), maxVal)
 }
 
 func TestCoerceUint16_AcceptsInt16(t *testing.T) {
@@ -553,9 +553,9 @@ func TestCoerceUint16_AcceptsInt16(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint16(1), got)
 
-	max, err := coerceUint16(int16(math.MaxInt16))
+	maxVal, err := coerceUint16(int16(math.MaxInt16))
 	require.NoError(t, err)
-	assert.Equal(t, uint16(math.MaxInt16), max)
+	assert.Equal(t, uint16(math.MaxInt16), maxVal)
 }
 
 func TestCoerceUint16_AcceptsInt32InRange(t *testing.T) {
