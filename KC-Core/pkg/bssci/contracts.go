@@ -128,7 +128,7 @@ type SCACIBroadcaster interface {
 // MQTTEventPublisher publishes device events to MQTT (no KC-MQTT imports in pkg/bssci)
 type MQTTEventPublisher interface {
 	PublishUplink(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64,
-		rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte) error
+		rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, decodedPayload []byte) error
 	PublishAttach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error
 	PublishDetach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error
 	PublishDownlinkResult(ctx context.Context, orgUUID string, epEUI uint64, queID uint64, result string) error

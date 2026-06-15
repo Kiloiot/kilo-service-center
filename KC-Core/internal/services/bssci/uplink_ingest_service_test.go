@@ -48,7 +48,7 @@ func newCapturingMQTTPublisher() *capturingMQTTPublisher {
 
 func (p *capturingMQTTPublisher) PublishUplink(_ context.Context, orgUUID string,
 	epEUI, bsEUI uint64, rssi, snr float64, rxTime int64,
-	packetCnt uint32, userData []byte) error {
+	packetCnt uint32, userData []byte, _ []byte) error {
 	p.uplinkCalls <- mqttUplinkCall{
 		OrgUUID:   orgUUID,
 		EpEUI:     epEUI,

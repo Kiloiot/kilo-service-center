@@ -33,6 +33,16 @@ type OrgResolverInterceptorConfig struct {
 
 	// PlatformTenantID fallback tenant for pre-auth security events
 	PlatformTenantID int64
+
+	// AdminChecker checks if a user is a server admin (optional).
+	// When set, server admins bypass the org mismatch check so they can
+	// operate on any organization (e.g. auto-provisioning).
+	AdminChecker AdminChecker
+}
+
+// AdminChecker checks whether a user is a server admin.
+type AdminChecker interface {
+	IsServerAdmin(ctx context.Context, userID string) (bool, error)
 }
 
 // OrgResolverInterceptor provides fail-closed organization validation for gRPC.
@@ -42,6 +52,7 @@ type OrgResolverInterceptor struct {
 	skipMethods      map[string]struct{}
 	eventWriter      grpcconst.EventWriter
 	platformTenantID int64
+	adminChecker     AdminChecker
 }
 
 // NewOrgResolverInterceptor creates a fail-closed org resolver interceptor.
@@ -67,6 +78,7 @@ func NewOrgResolverInterceptor(cfg OrgResolverInterceptorConfig) (*OrgResolverIn
 		skipMethods:      skipMap,
 		eventWriter:      cfg.EventWriter,
 		platformTenantID: cfg.PlatformTenantID,
+		adminChecker:     cfg.AdminChecker,
 	}, nil
 }
 
@@ -155,7 +167,13 @@ func (oi *OrgResolverInterceptor) resolveOrgContext(ctx context.Context, method 
 	}
 
 	if authHasIdentity {
-		if existingTenant != resolvedTenantID {
+		// Server admins can operate on any organization (cross-tenant access for provisioning)
+		isAdmin := false
+		if oi.adminChecker != nil && userErr == nil {
+			isAdmin, _ = oi.adminChecker.IsServerAdmin(ctx, existingUser)
+		}
+
+		if !isAdmin && existingTenant != resolvedTenantID {
 			oi.log.WarnContext(ctx, "gRPC org interceptor: tenant mismatch between auth and header",
 				"method", method,
 				"authTenant", existingTenant,
@@ -164,7 +182,7 @@ func (oi *OrgResolverInterceptor) resolveOrgContext(ctx context.Context, method 
 				grpcconst.ResolveErrorMessage(grpcconst.ErrTokenIdentityMismatch))
 		}
 
-		if orgErr == nil && existingOrg != orgUUID {
+		if !isAdmin && orgErr == nil && existingOrg != orgUUID {
 			oi.log.WarnContext(ctx, "gRPC org interceptor: org mismatch between auth and header",
 				"method", method,
 				"authOrg", existingOrg.String(),
@@ -214,7 +232,10 @@ func (oi *OrgResolverInterceptor) resolveOrgContext(ctx context.Context, method 
 			}
 		}
 
-		if orgErr != nil {
+		if orgErr != nil || isAdmin {
+			// For regular users: set org only if auth didn't provide one.
+			// For server admins: always override with the header org so they can
+			// operate on any organization (e.g. auto-provisioning API keys).
 			ctx = pkgcontext.WithOrganizationID(ctx, orgUUID)
 		}
 
