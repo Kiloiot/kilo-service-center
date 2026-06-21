@@ -22,6 +22,28 @@ A demo environment is available at [https://servicecenter.kiloiot.io/](https://s
 - **Username:** `demo@kiloiot.io`
 - **Password:** `demo1234`
 
+## Why MIOTY
+
+MIOTY is a next-generation LPWAN protocol standardized by ETSI ([TS 103 357](https://www.etsi.org/deliver/etsi_ts/103300_103399/103357/)) and developed at the Fraunhofer Institute. It operates in license-free sub-GHz spectrum and is built around **telegram splitting**: each message is divided into small sub-packets spread across frequency and time, then reassembled with forward error correction. The result is reliability in exactly the conditions where first-generation LPWAN technologies struggle — dense, interference-heavy industrial sites with thousands of co-located devices.
+
+| | |
+|---|---|
+| **1M+** | telegrams per base station, per day |
+| **15 km** | range in rural line-of-sight (up to) |
+| **20 yrs** | battery life on a single cell (up to) |
+| **~50%** | of sub-packets can drop and the message still arrives |
+
+### MIOTY vs. first-generation LPWAN (e.g. LoRaWAN)
+
+| Property | MIOTY | First-generation LPWAN |
+|---|---|---|
+| Interference handling | Telegram splitting + FEC; tolerates ~50% sub-packet loss | One packet per transmission; collisions drop the message |
+| Capacity at scale | 1M+ telegrams/day per base station; many overlapping transmissions decoded at once | Capacity walls as device density rises |
+| Range vs. robustness | Maintains both under load | Often trades range for capacity or robustness |
+| Standardization | ETSI TS 103 357 | Varies by technology |
+
+KiloCenter implements the service-center side of this stack — base stations, endpoints, uplink/downlink traffic, and application integrations — so you can run your own MIOTY network self-hosted.
+
 ## Production Use Notice
 
 The community edition is provided as-is without commercial support. Production use is at your own risk.
