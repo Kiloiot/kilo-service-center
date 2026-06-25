@@ -111,6 +111,10 @@ type CoreService struct {
 	// Federation services (optional - only wired in CE/ECE mode)
 	ceBootstrapSvc CEBootstrapHandler
 	ceRegistrySvc  CERegistryHandler
+
+	// Base station metrics readers (optional - set via WithBaseStationMetricsReaders)
+	availabilityReader  BaseStationAvailabilityReader
+	messageBucketReader BaseStationMessageBucketReader
 }
 
 // CoreServiceDeps bundles the required dependencies for NewCoreService.

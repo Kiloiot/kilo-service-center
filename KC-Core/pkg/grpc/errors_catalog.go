@@ -348,20 +348,24 @@ const (
 	ErrTokenAlertNotFound = "KC-GRPC-ERR-082"
 
 	// Base Station errors (KC-GRPC-ERR-091 to KC-GRPC-ERR-100)
-	ErrTokenBaseStationNotFound        = "KC-GRPC-ERR-091"
-	ErrTokenBaseStationOffline         = "KC-GRPC-ERR-092"
-	ErrTokenBaseStationRequired        = "KC-GRPC-ERR-093"
-	ErrTokenCreateBaseStationFailed    = "KC-GRPC-ERR-094"
-	ErrTokenGetBaseStationFailed       = "KC-GRPC-ERR-095"
-	ErrTokenUpdateBaseStationFailed    = "KC-GRPC-ERR-096"
-	ErrTokenDeleteBaseStationFailed    = "KC-GRPC-ERR-097"
-	ErrTokenListBaseStationsFailed     = "KC-GRPC-ERR-098"
-	ErrTokenGetBaseStationStatsFailed  = "KC-GRPC-ERR-099"
-	ErrTokenTenantAccessDenied         = "KC-GRPC-ERR-09A"
-	ErrTokenBaseStationEUIExists       = "KC-GRPC-ERR-09B"
-	ErrTokenUpdateBaseStationEUIFailed = "KC-GRPC-ERR-09C"
-	ErrTokenNewBaseStationEUIRequired  = "KC-GRPC-ERR-09D"
-	ErrTokenLatLonPairRequired         = "KC-GRPC-ERR-09E"
+	ErrTokenBaseStationNotFound       = "KC-GRPC-ERR-091"
+	ErrTokenBaseStationOffline        = "KC-GRPC-ERR-092"
+	ErrTokenBaseStationRequired       = "KC-GRPC-ERR-093"
+	ErrTokenCreateBaseStationFailed   = "KC-GRPC-ERR-094"
+	ErrTokenGetBaseStationFailed      = "KC-GRPC-ERR-095"
+	ErrTokenUpdateBaseStationFailed   = "KC-GRPC-ERR-096"
+	ErrTokenDeleteBaseStationFailed   = "KC-GRPC-ERR-097"
+	ErrTokenListBaseStationsFailed    = "KC-GRPC-ERR-098"
+	ErrTokenGetBaseStationStatsFailed = "KC-GRPC-ERR-099"
+	// Base station time-series metrics (availability / received messages).
+	ErrTokenGetBaseStationAvailabilityFailed     = "KC-GRPC-ERR-910"
+	ErrTokenGetBaseStationMessagesReceivedFailed = "KC-GRPC-ERR-911"
+	ErrTokenInvalidMetricsRequest                = "KC-GRPC-ERR-912"
+	ErrTokenTenantAccessDenied                   = "KC-GRPC-ERR-09A"
+	ErrTokenBaseStationEUIExists                 = "KC-GRPC-ERR-09B"
+	ErrTokenUpdateBaseStationEUIFailed           = "KC-GRPC-ERR-09C"
+	ErrTokenNewBaseStationEUIRequired            = "KC-GRPC-ERR-09D"
+	ErrTokenLatLonPairRequired                   = "KC-GRPC-ERR-09E"
 
 	// Endpoint errors (KC-GRPC-ERR-101 to KC-GRPC-ERR-110)
 	ErrTokenEndpointNotFound        = "KC-GRPC-ERR-101"
@@ -1798,6 +1802,21 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenGetBaseStationStatsFailed,
 		Message: "failed to get base station stats",
 		Code:    codes.Internal,
+	},
+	ErrTokenGetBaseStationAvailabilityFailed: {
+		Token:   ErrTokenGetBaseStationAvailabilityFailed,
+		Message: "failed to get base station availability",
+		Code:    codes.Internal,
+	},
+	ErrTokenGetBaseStationMessagesReceivedFailed: {
+		Token:   ErrTokenGetBaseStationMessagesReceivedFailed,
+		Message: "failed to get base station received messages",
+		Code:    codes.Internal,
+	},
+	ErrTokenInvalidMetricsRequest: {
+		Token:   ErrTokenInvalidMetricsRequest,
+		Message: "invalid base station metrics request",
+		Code:    codes.InvalidArgument,
 	},
 	ErrTokenTenantAccessDenied: {
 		Token:   ErrTokenTenantAccessDenied,

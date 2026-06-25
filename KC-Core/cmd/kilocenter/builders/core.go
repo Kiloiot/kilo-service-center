@@ -96,6 +96,9 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	// Wire base station event recorder for EUI change events
 	coreService = coreService.WithBSEventRecorder(infra.EventRecorder)
 
+	// Wire base station time-series metrics readers (availability + received messages)
+	coreService = coreService.WithBaseStationMetricsReaders(infra.Storage, infra.Storage)
+
 	// Wire system event recorder for CRUD event emissions
 	systemEventAdapter := coreAdapters.NewSystemEventStoreAdapter(
 		infra.Storage.SystemEvents(),
