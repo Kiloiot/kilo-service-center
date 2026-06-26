@@ -30,7 +30,7 @@ func (db *DB) GetBaseStationOnlineIntervals(ctx context.Context, tenantID, baseS
 	if err != nil {
 		return nil, fmt.Errorf("query base station online intervals: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var intervals []mioty.BaseStationOnlineInterval
 	for rows.Next() {
@@ -97,7 +97,7 @@ func (db *DB) CountBaseStationMessagesByBucket(ctx context.Context, tenantID int
 	if err != nil {
 		return nil, fmt.Errorf("query base station message buckets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	counts := make(map[int64]int64)
 	for rows.Next() {
