@@ -133,6 +133,24 @@ type KiloCenterServiceUpdateBaseStationEui = {
   readonly responseType: typeof core_pb.BaseStation;
 };
 
+type KiloCenterServiceGetBaseStationAvailability = {
+  readonly methodName: string;
+  readonly service: typeof KiloCenterService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.GetBaseStationAvailabilityRequest;
+  readonly responseType: typeof core_pb.GetBaseStationAvailabilityResponse;
+};
+
+type KiloCenterServiceGetBaseStationMessagesReceived = {
+  readonly methodName: string;
+  readonly service: typeof KiloCenterService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.GetBaseStationMessagesReceivedRequest;
+  readonly responseType: typeof core_pb.GetBaseStationMessagesReceivedResponse;
+};
+
 type KiloCenterServiceGetMessage = {
   readonly methodName: string;
   readonly service: typeof KiloCenterService;
@@ -1094,6 +1112,8 @@ export class KiloCenterService {
   static readonly ListBaseStations: KiloCenterServiceListBaseStations;
   static readonly GetBaseStationStats: KiloCenterServiceGetBaseStationStats;
   static readonly UpdateBaseStationEui: KiloCenterServiceUpdateBaseStationEui;
+  static readonly GetBaseStationAvailability: KiloCenterServiceGetBaseStationAvailability;
+  static readonly GetBaseStationMessagesReceived: KiloCenterServiceGetBaseStationMessagesReceived;
   static readonly GetMessage: KiloCenterServiceGetMessage;
   static readonly SendDownlink: KiloCenterServiceSendDownlink;
   static readonly RevokeDownlink: KiloCenterServiceRevokeDownlink;
@@ -1358,6 +1378,24 @@ export class KiloCenterServiceClient {
   updateBaseStationEui(
     requestMessage: core_pb.UpdateBaseStationEuiRequest,
     callback: (error: ServiceError|null, responseMessage: core_pb.BaseStation|null) => void
+  ): UnaryResponse;
+  getBaseStationAvailability(
+    requestMessage: core_pb.GetBaseStationAvailabilityRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.GetBaseStationAvailabilityResponse|null) => void
+  ): UnaryResponse;
+  getBaseStationAvailability(
+    requestMessage: core_pb.GetBaseStationAvailabilityRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.GetBaseStationAvailabilityResponse|null) => void
+  ): UnaryResponse;
+  getBaseStationMessagesReceived(
+    requestMessage: core_pb.GetBaseStationMessagesReceivedRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.GetBaseStationMessagesReceivedResponse|null) => void
+  ): UnaryResponse;
+  getBaseStationMessagesReceived(
+    requestMessage: core_pb.GetBaseStationMessagesReceivedRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.GetBaseStationMessagesReceivedResponse|null) => void
   ): UnaryResponse;
   getMessage(
     requestMessage: core_pb.GetMessageRequest,

@@ -60,7 +60,7 @@ func (s *KiloCenterServiceCompat) DetachEndPoint(ctx context.Context, req *pb.De
 	return s.core.DetachEndPoint(ctx, req)
 }
 
-// Base Stations (7)
+// Base Stations (9)
 
 func (s *KiloCenterServiceCompat) CreateBaseStation(ctx context.Context, req *pb.CreateBaseStationRequest) (*pb.BaseStation, error) {
 	return s.core.CreateBaseStation(ctx, req)
@@ -88,6 +88,14 @@ func (s *KiloCenterServiceCompat) GetBaseStationStats(ctx context.Context, req *
 
 func (s *KiloCenterServiceCompat) UpdateBaseStationEui(ctx context.Context, req *pb.UpdateBaseStationEuiRequest) (*pb.BaseStation, error) {
 	return s.core.UpdateBaseStationEui(ctx, req)
+}
+
+func (s *KiloCenterServiceCompat) GetBaseStationAvailability(ctx context.Context, req *pb.GetBaseStationAvailabilityRequest) (*pb.GetBaseStationAvailabilityResponse, error) {
+	return s.core.GetBaseStationAvailability(ctx, req)
+}
+
+func (s *KiloCenterServiceCompat) GetBaseStationMessagesReceived(ctx context.Context, req *pb.GetBaseStationMessagesReceivedRequest) (*pb.GetBaseStationMessagesReceivedResponse, error) {
+	return s.core.GetBaseStationMessagesReceived(ctx, req)
 }
 
 // Messages (1)

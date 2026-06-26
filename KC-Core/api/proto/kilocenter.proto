@@ -31,6 +31,10 @@ service KiloCenterService {
   rpc ListBaseStations(ListBaseStationsRequest) returns (ListBaseStationsResponse);
   rpc GetBaseStationStats(GetBaseStationStatsRequest) returns (GetBaseStationStatsResponse);
   rpc UpdateBaseStationEui(UpdateBaseStationEuiRequest) returns (BaseStation);
+  // Per-bucket availability (online fraction) time series for a base station.
+  rpc GetBaseStationAvailability(GetBaseStationAvailabilityRequest) returns (GetBaseStationAvailabilityResponse);
+  // Per-bucket received-message (RX uplink) counts time series for a base station.
+  rpc GetBaseStationMessagesReceived(GetBaseStationMessagesReceivedRequest) returns (GetBaseStationMessagesReceivedResponse);
 
   // Message operations
   rpc GetMessage(GetMessageRequest) returns (Message);
