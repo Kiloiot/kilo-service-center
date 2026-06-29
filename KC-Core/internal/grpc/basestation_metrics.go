@@ -16,6 +16,9 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 )
 
+// maxMetricsBuckets caps bucket count to bound handler allocation and the availability loop.
+const maxMetricsBuckets = 10000
+
 // BaseStationAvailabilityReader reads a base station's connected intervals, the
 // source for time-weighted availability. Narrow consumer-side port (ISP).
 type BaseStationAvailabilityReader interface {
@@ -191,7 +194,16 @@ func validateMetricsRequest(bsEui string, startTS, endTS *timestamppb.Timestamp,
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidMetricsRequest))
 	}
 
-	return eui, startTS.AsTime().UTC(), endTS.AsTime().UTC(), nil
+	start, end := startTS.AsTime().UTC(), endTS.AsTime().UTC()
+
+	// Reject huge bucket counts (tiny interval x huge range) before allocating.
+	if _, count := bucketRange(start, end, intervalSeconds); count > maxMetricsBuckets {
+		return zero, time.Time{}, time.Time{}, status.Error(
+			grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidMetricsRequest),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidMetricsRequest))
+	}
+
+	return eui, start, end, nil
 }
 
 // bucketRange returns the first UTC-aligned bucket index (epoch/interval) and the

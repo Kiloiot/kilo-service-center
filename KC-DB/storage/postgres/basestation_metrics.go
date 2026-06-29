@@ -53,11 +53,10 @@ func (db *DB) GetBaseStationOnlineIntervals(ctx context.Context, tenantID, baseS
 	return intervals, nil
 }
 
-// CountBaseStationMessagesByBucket returns received uplink-message counts grouped
-// into UTC-aligned buckets of intervalSeconds width over [start, end). The map is
-// keyed by bucket index (floor(epoch(received_at)/intervalSeconds)); absent buckets
-// have no entry and are zero-filled by the caller. Messages where the base station
-// is a secondary receiver (base_stations JSONB) are included, matching the stats path.
+// CountBaseStationMessagesByBucket counts received uplink data messages ('ulData' only)
+// per intervalSeconds bucket over [start, end), keyed by rx_time (BSSCI reception time, ns)
+// / intervalSeconds. Absent buckets are zero-filled by the caller; secondary receivers
+// (base_stations JSONB) are included.
 func (db *DB) CountBaseStationMessagesByBucket(ctx context.Context, tenantID int64, bsEui []byte,
 	start, end time.Time, intervalSeconds int64) (map[int64]int64, error) {
 
@@ -72,28 +71,30 @@ func (db *DB) CountBaseStationMessagesByBucket(ctx context.Context, tenantID int
 
 	const query = `
 		WITH matched AS (
-			SELECT m.received_at
+			SELECT m.rx_time
 			FROM messages m,
 				jsonb_array_elements(m.base_stations) AS elem
 			WHERE m.tenant_id = $1
 				AND (elem->>'bsEui')::bigint = $2
-				AND m.received_at >= $3
-				AND m.received_at < $4
+				AND m.command_type = $6
+				AND m.rx_time >= $3
+				AND m.rx_time < $4
 			UNION ALL
-			SELECT received_at
+			SELECT rx_time
 			FROM messages
 			WHERE tenant_id = $1
 				AND bs_eui = $2
+				AND command_type = $6
 				AND (base_stations IS NULL OR jsonb_array_length(base_stations) = 0)
-				AND received_at >= $3
-				AND received_at < $4
+				AND rx_time >= $3
+				AND rx_time < $4
 		)
-		SELECT floor(extract(epoch FROM received_at) / $5)::bigint AS bucket_index,
+		SELECT (rx_time / 1000000000 / $5)::bigint AS bucket_index,
 			COUNT(*) AS message_count
 		FROM matched
 		GROUP BY bucket_index`
 
-	rows, err := db.sqlxDB.QueryContext(ctx, query, tenantID, bsEuiUint, start, end, intervalSeconds)
+	rows, err := db.sqlxDB.QueryContext(ctx, query, tenantID, bsEuiUint, start.UnixNano(), end.UnixNano(), intervalSeconds, mioty.CmdULData)
 	if err != nil {
 		return nil, fmt.Errorf("query base station message buckets: %w", err)
 	}

@@ -54,7 +54,14 @@ func insertTestSession(t *testing.T, db *sqlx.DB, tenantID, bsID int64, snUUID b
 func insertTestMessage(t *testing.T, db *sqlx.DB, tenantID, bsEui, epEui int64,
 	receivedAt time.Time, baseStations *string) {
 	t.Helper()
-	var bs interface{}
+	insertTestMessageCmd(t, db, tenantID, bsEui, epEui, "ulData", receivedAt.UnixNano(), receivedAt, baseStations)
+}
+
+// insertTestMessageCmd inserts a message with explicit command_type and rx_time (ns).
+func insertTestMessageCmd(t *testing.T, db *sqlx.DB, tenantID, bsEui, epEui int64,
+	commandType string, rxTimeNs int64, receivedAt time.Time, baseStations *string) {
+	t.Helper()
+	var bs any
 	if baseStations != nil {
 		bs = *baseStations
 	}
@@ -62,8 +69,8 @@ func insertTestMessage(t *testing.T, db *sqlx.DB, tenantID, bsEui, epEui int64,
 		INSERT INTO messages (
 			id, tenant_id, ep_eui, bs_eui, op_id, packet_cnt, rx_time,
 			rssi, snr, command_type, dl_open, response_exp, dl_ack, received_at, base_stations
-		) VALUES ($1, $2, $3, $4, 0, 1, $5, -80.0, 10.0, 'ulData', false, false, false, $6, $7::jsonb)`,
-		uuid.NewString(), tenantID, epEui, bsEui, receivedAt.UnixNano(), receivedAt, bs,
+		) VALUES ($1, $2, $3, $4, 0, 1, $5, -80.0, 10.0, $6, false, false, false, $7, $8::jsonb)`,
+		uuid.NewString(), tenantID, epEui, bsEui, rxTimeNs, commandType, receivedAt, bs,
 	)
 	require.NoError(t, err, "insert message")
 }
@@ -160,4 +167,31 @@ func TestCountBaseStationMessagesByBucket_TenantIsolation(t *testing.T) {
 	counts, err := db.CountBaseStationMessagesByBucket(ctx, 100, []byte{0, 0, 0, 0, 0, 0, 0, 5}, start, end, 3600)
 	require.NoError(t, err)
 	assert.Empty(t, counts, "another tenant's messages are not counted")
+}
+
+func TestCountBaseStationMessagesByBucket_ExcludesNonUlData(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	sqlxDB, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+	db := &DB{sqlxDB: sqlxDB}
+	ctx := context.Background()
+	start, end := metricsWindow()
+	const tenantID, bsEui int64 = 100, 7
+	intervalSeconds := int64(3600)
+
+	// The only row that should be counted.
+	insertTestMessageCmd(t, sqlxDB, tenantID, bsEui, 1, "ulData", start.Add(10*time.Minute).UnixNano(), start.Add(10*time.Minute), nil)
+	// Propagate/completion rows (rx_time=0 in production) must be excluded.
+	insertTestMessageCmd(t, sqlxDB, tenantID, bsEui, 2, "attPrp", 0, start.Add(15*time.Minute), nil)
+	insertTestMessageCmd(t, sqlxDB, tenantID, bsEui, 3, "detPrp", 0, start.Add(20*time.Minute), nil)
+	insertTestMessageCmd(t, sqlxDB, tenantID, bsEui, 4, "attPrpCmp", 0, start.Add(25*time.Minute), nil)
+
+	counts, err := db.CountBaseStationMessagesByBucket(ctx, tenantID, []byte{0, 0, 0, 0, 0, 0, 0, 7}, start, end, intervalSeconds)
+	require.NoError(t, err)
+
+	bucket0 := start.Unix() / intervalSeconds
+	assert.Equal(t, int64(1), counts[bucket0], "only the ulData uplink is counted")
+	assert.Len(t, counts, 1, "propagate/completion messages are excluded")
 }
