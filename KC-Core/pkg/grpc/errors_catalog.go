@@ -358,9 +358,9 @@ const (
 	ErrTokenListBaseStationsFailed    = "KC-GRPC-ERR-098"
 	ErrTokenGetBaseStationStatsFailed = "KC-GRPC-ERR-099"
 	// Base station time-series metrics (availability / received messages).
-	ErrTokenGetBaseStationAvailabilityFailed     = "KC-GRPC-ERR-910"
-	ErrTokenGetBaseStationMessagesReceivedFailed = "KC-GRPC-ERR-911"
-	ErrTokenInvalidMetricsRequest                = "KC-GRPC-ERR-912"
+	ErrTokenGetBaseStationAvailabilityFailed     = "KC-GRPC-ERR-09F"
+	ErrTokenGetBaseStationMessagesReceivedFailed = "KC-GRPC-ERR-0A0"
+	ErrTokenInvalidMetricsRequest                = "KC-GRPC-ERR-0A1"
 	ErrTokenTenantAccessDenied                   = "KC-GRPC-ERR-09A"
 	ErrTokenBaseStationEUIExists                 = "KC-GRPC-ERR-09B"
 	ErrTokenUpdateBaseStationEUIFailed           = "KC-GRPC-ERR-09C"

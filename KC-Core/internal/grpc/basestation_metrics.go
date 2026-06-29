@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/status"
@@ -180,7 +181,8 @@ func validateMetricsRequest(bsEui string, startTS, endTS *timestamppb.Timestamp,
 	}
 
 	eui := models.EUIFromString(bsEui)
-	if eui == zero {
+	// Zero EUI = parse error or literal all-zero; only the former is invalid.
+	if eui == zero && !isAllZeroEUI(bsEui) {
 		return zero, time.Time{}, time.Time{}, status.Error(
 			grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBasestationEUIFormat),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBasestationEUIFormat))
@@ -203,7 +205,13 @@ func validateMetricsRequest(bsEui string, startTS, endTS *timestamppb.Timestamp,
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidMetricsRequest))
 	}
 
+	// Future end_time is allowed; buckets past now read 0.
 	return eui, start, end, nil
+}
+
+func isAllZeroEUI(s string) bool {
+	s = strings.ReplaceAll(strings.ReplaceAll(s, "-", ""), ":", "")
+	return len(s) == 16 && strings.Trim(s, "0") == ""
 }
 
 // bucketRange returns the first UTC-aligned bucket index (epoch/interval) and the

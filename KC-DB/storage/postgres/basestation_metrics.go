@@ -64,10 +64,10 @@ func (db *DB) CountBaseStationMessagesByBucket(ctx context.Context, tenantID int
 		return nil, fmt.Errorf("interval seconds must be positive, got %d", intervalSeconds)
 	}
 
-	var bsEuiUint uint64
-	if len(bsEui) == 8 {
-		bsEuiUint = binary.BigEndian.Uint64(bsEui)
+	if len(bsEui) != 8 {
+		return nil, fmt.Errorf("bsEui must be 8 bytes, got %d", len(bsEui))
 	}
+	bsEuiUint := binary.BigEndian.Uint64(bsEui)
 
 	const query = `
 		WITH matched AS (
