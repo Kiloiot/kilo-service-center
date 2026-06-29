@@ -1039,6 +1039,150 @@ export namespace GetBaseStationStatsResponse {
   }
 }
 
+export class GetBaseStationAvailabilityRequest extends jspb.Message {
+  getBseui(): string;
+  setBseui(value: string): void;
+
+  hasStartTime(): boolean;
+  clearStartTime(): void;
+  getStartTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setStartTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  hasEndTime(): boolean;
+  clearEndTime(): void;
+  getEndTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setEndTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  getIntervalSeconds(): number;
+  setIntervalSeconds(value: number): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): GetBaseStationAvailabilityRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: GetBaseStationAvailabilityRequest): GetBaseStationAvailabilityRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: GetBaseStationAvailabilityRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): GetBaseStationAvailabilityRequest;
+  static deserializeBinaryFromReader(message: GetBaseStationAvailabilityRequest, reader: jspb.BinaryReader): GetBaseStationAvailabilityRequest;
+}
+
+export namespace GetBaseStationAvailabilityRequest {
+  export type AsObject = {
+    bseui: string,
+    startTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    endTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    intervalSeconds: number,
+  }
+}
+
+export class GetBaseStationAvailabilityResponse extends jspb.Message {
+  getBseui(): string;
+  setBseui(value: string): void;
+
+  clearAvailabilityList(): void;
+  getAvailabilityList(): Array<number>;
+  setAvailabilityList(value: Array<number>): void;
+  addAvailability(value: number, index?: number): number;
+
+  getIntervalSeconds(): number;
+  setIntervalSeconds(value: number): void;
+
+  hasLastPointTimestamp(): boolean;
+  clearLastPointTimestamp(): void;
+  getLastPointTimestamp(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setLastPointTimestamp(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): GetBaseStationAvailabilityResponse.AsObject;
+  static toObject(includeInstance: boolean, msg: GetBaseStationAvailabilityResponse): GetBaseStationAvailabilityResponse.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: GetBaseStationAvailabilityResponse, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): GetBaseStationAvailabilityResponse;
+  static deserializeBinaryFromReader(message: GetBaseStationAvailabilityResponse, reader: jspb.BinaryReader): GetBaseStationAvailabilityResponse;
+}
+
+export namespace GetBaseStationAvailabilityResponse {
+  export type AsObject = {
+    bseui: string,
+    availabilityList: Array<number>,
+    intervalSeconds: number,
+    lastPointTimestamp?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+  }
+}
+
+export class GetBaseStationMessagesReceivedRequest extends jspb.Message {
+  getBseui(): string;
+  setBseui(value: string): void;
+
+  hasStartTime(): boolean;
+  clearStartTime(): void;
+  getStartTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setStartTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  hasEndTime(): boolean;
+  clearEndTime(): void;
+  getEndTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setEndTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  getIntervalSeconds(): number;
+  setIntervalSeconds(value: number): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): GetBaseStationMessagesReceivedRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: GetBaseStationMessagesReceivedRequest): GetBaseStationMessagesReceivedRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: GetBaseStationMessagesReceivedRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): GetBaseStationMessagesReceivedRequest;
+  static deserializeBinaryFromReader(message: GetBaseStationMessagesReceivedRequest, reader: jspb.BinaryReader): GetBaseStationMessagesReceivedRequest;
+}
+
+export namespace GetBaseStationMessagesReceivedRequest {
+  export type AsObject = {
+    bseui: string,
+    startTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    endTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    intervalSeconds: number,
+  }
+}
+
+export class GetBaseStationMessagesReceivedResponse extends jspb.Message {
+  getBseui(): string;
+  setBseui(value: string): void;
+
+  clearReceivedList(): void;
+  getReceivedList(): Array<number>;
+  setReceivedList(value: Array<number>): void;
+  addReceived(value: number, index?: number): number;
+
+  getIntervalSeconds(): number;
+  setIntervalSeconds(value: number): void;
+
+  hasLastPointTimestamp(): boolean;
+  clearLastPointTimestamp(): void;
+  getLastPointTimestamp(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setLastPointTimestamp(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): GetBaseStationMessagesReceivedResponse.AsObject;
+  static toObject(includeInstance: boolean, msg: GetBaseStationMessagesReceivedResponse): GetBaseStationMessagesReceivedResponse.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: GetBaseStationMessagesReceivedResponse, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): GetBaseStationMessagesReceivedResponse;
+  static deserializeBinaryFromReader(message: GetBaseStationMessagesReceivedResponse, reader: jspb.BinaryReader): GetBaseStationMessagesReceivedResponse;
+}
+
+export namespace GetBaseStationMessagesReceivedResponse {
+  export type AsObject = {
+    bseui: string,
+    receivedList: Array<number>,
+    intervalSeconds: number,
+    lastPointTimestamp?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+  }
+}
+
 export class GetMessageRequest extends jspb.Message {
   getId(): string;
   setId(value: string): void;

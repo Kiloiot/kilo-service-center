@@ -32,6 +32,10 @@ service CoreService {
   rpc ListBaseStations(ListBaseStationsRequest) returns (ListBaseStationsResponse);
   rpc GetBaseStationStats(GetBaseStationStatsRequest) returns (GetBaseStationStatsResponse);
   rpc UpdateBaseStationEui(UpdateBaseStationEuiRequest) returns (BaseStation);
+  // Per-bucket availability (online fraction) time series for a base station.
+  rpc GetBaseStationAvailability(GetBaseStationAvailabilityRequest) returns (GetBaseStationAvailabilityResponse);
+  // Per-bucket received-message (RX uplink) counts time series for a base station.
+  rpc GetBaseStationMessagesReceived(GetBaseStationMessagesReceivedRequest) returns (GetBaseStationMessagesReceivedResponse);
 
   // Message operations
   rpc GetMessage(GetMessageRequest) returns (Message);
@@ -396,6 +400,39 @@ message GetBaseStationStatsResponse {
   map<string, int64> endpoint_message_counts = 10;  // epEui -> count
   string status = 11;  // online, offline
   google.protobuf.Timestamp last_seen_at = 12;
+}
+
+// Base Station availability time series. Returns one online-fraction value per
+// UTC-aligned bucket over [start_time, end_time). Buckets are sorted ascending
+// by time, missing buckets are 0, and the array length spans the whole range.
+message GetBaseStationAvailabilityRequest {
+  string bsEui = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  int64 interval_seconds = 4;  // bucket width in seconds (UTC-aligned)
+}
+
+message GetBaseStationAvailabilityResponse {
+  string bsEui = 1;
+  repeated double availability = 2;  // 0..1 per bucket
+  int64 interval_seconds = 3;
+  google.protobuf.Timestamp last_point_timestamp = 4;  // start of the last bucket
+}
+
+// Base Station received-message (RX uplink) time series. Same bucket semantics
+// as availability: sorted ascending, missing buckets 0, full range.
+message GetBaseStationMessagesReceivedRequest {
+  string bsEui = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  int64 interval_seconds = 4;  // bucket width in seconds (UTC-aligned)
+}
+
+message GetBaseStationMessagesReceivedResponse {
+  string bsEui = 1;
+  repeated int64 received = 2;  // uplink message count per bucket
+  int64 interval_seconds = 3;
+  google.protobuf.Timestamp last_point_timestamp = 4;  // start of the last bucket
 }
 
 // ============================================================================

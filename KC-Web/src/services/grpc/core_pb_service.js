@@ -137,6 +137,24 @@ CoreService.UpdateBaseStationEui = {
   responseType: core_pb.BaseStation
 };
 
+CoreService.GetBaseStationAvailability = {
+  methodName: "GetBaseStationAvailability",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.GetBaseStationAvailabilityRequest,
+  responseType: core_pb.GetBaseStationAvailabilityResponse
+};
+
+CoreService.GetBaseStationMessagesReceived = {
+  methodName: "GetBaseStationMessagesReceived",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.GetBaseStationMessagesReceivedRequest,
+  responseType: core_pb.GetBaseStationMessagesReceivedResponse
+};
+
 CoreService.GetMessage = {
   methodName: "GetMessage",
   service: CoreService,
@@ -1227,6 +1245,68 @@ CoreServiceClient.prototype.updateBaseStationEui = function updateBaseStationEui
     callback = arguments[1];
   }
   var client = grpc.unary(CoreService.UpdateBaseStationEui, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+CoreServiceClient.prototype.getBaseStationAvailability = function getBaseStationAvailability(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.GetBaseStationAvailability, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+CoreServiceClient.prototype.getBaseStationMessagesReceived = function getBaseStationMessagesReceived(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.GetBaseStationMessagesReceived, {
     request: requestMessage,
     host: this.serviceHost,
     metadata: metadata,

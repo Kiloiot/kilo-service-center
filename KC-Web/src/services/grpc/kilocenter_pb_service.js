@@ -139,6 +139,24 @@ KiloCenterService.UpdateBaseStationEui = {
   responseType: core_pb.BaseStation
 };
 
+KiloCenterService.GetBaseStationAvailability = {
+  methodName: "GetBaseStationAvailability",
+  service: KiloCenterService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.GetBaseStationAvailabilityRequest,
+  responseType: core_pb.GetBaseStationAvailabilityResponse
+};
+
+KiloCenterService.GetBaseStationMessagesReceived = {
+  methodName: "GetBaseStationMessagesReceived",
+  service: KiloCenterService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.GetBaseStationMessagesReceivedRequest,
+  responseType: core_pb.GetBaseStationMessagesReceivedResponse
+};
+
 KiloCenterService.GetMessage = {
   methodName: "GetMessage",
   service: KiloCenterService,
@@ -1499,6 +1517,68 @@ KiloCenterServiceClient.prototype.updateBaseStationEui = function updateBaseStat
     callback = arguments[1];
   }
   var client = grpc.unary(KiloCenterService.UpdateBaseStationEui, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getBaseStationAvailability = function getBaseStationAvailability(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetBaseStationAvailability, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+KiloCenterServiceClient.prototype.getBaseStationMessagesReceived = function getBaseStationMessagesReceived(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(KiloCenterService.GetBaseStationMessagesReceived, {
     request: requestMessage,
     host: this.serviceHost,
     metadata: metadata,

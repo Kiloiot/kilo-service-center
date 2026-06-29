@@ -7,12 +7,11 @@
 package kilocenterv1
 
 import (
-	reflect "reflect"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	unsafe "unsafe"
 )
 
 const (
@@ -27,7 +26,7 @@ var File_kilocenter_proto protoreflect.FileDescriptor
 const file_kilocenter_proto_rawDesc = "" +
 	"\n" +
 	"\x10kilocenter.proto\x12\x11kilocenter.api.v1\x1a\x0eidentity.proto\x1a\n" +
-	"core.proto\x1a\x1bgoogle/protobuf/empty.proto2\x89d\n" +
+	"core.proto\x1a\x1bgoogle/protobuf/empty.proto2\xadf\n" +
 	"\x11KiloCenterService\x12W\n" +
 	"\x0eCreateEndPoint\x12(.kilocenter.api.v1.CreateEndPointRequest\x1a\x1b.kilocenter.api.v1.EndPoint\x12Q\n" +
 	"\vGetEndPoint\x12%.kilocenter.api.v1.GetEndPointRequest\x1a\x1b.kilocenter.api.v1.EndPoint\x12W\n" +
@@ -42,7 +41,9 @@ const file_kilocenter_proto_rawDesc = "" +
 	"\x11DeleteBaseStation\x12+.kilocenter.api.v1.DeleteBaseStationRequest\x1a\x16.google.protobuf.Empty\x12k\n" +
 	"\x10ListBaseStations\x12*.kilocenter.api.v1.ListBaseStationsRequest\x1a+.kilocenter.api.v1.ListBaseStationsResponse\x12t\n" +
 	"\x13GetBaseStationStats\x12-.kilocenter.api.v1.GetBaseStationStatsRequest\x1a..kilocenter.api.v1.GetBaseStationStatsResponse\x12f\n" +
-	"\x14UpdateBaseStationEui\x12..kilocenter.api.v1.UpdateBaseStationEuiRequest\x1a\x1e.kilocenter.api.v1.BaseStation\x12N\n" +
+	"\x14UpdateBaseStationEui\x12..kilocenter.api.v1.UpdateBaseStationEuiRequest\x1a\x1e.kilocenter.api.v1.BaseStation\x12\x89\x01\n" +
+	"\x1aGetBaseStationAvailability\x124.kilocenter.api.v1.GetBaseStationAvailabilityRequest\x1a5.kilocenter.api.v1.GetBaseStationAvailabilityResponse\x12\x95\x01\n" +
+	"\x1eGetBaseStationMessagesReceived\x128.kilocenter.api.v1.GetBaseStationMessagesReceivedRequest\x1a9.kilocenter.api.v1.GetBaseStationMessagesReceivedResponse\x12N\n" +
 	"\n" +
 	"GetMessage\x12$.kilocenter.api.v1.GetMessageRequest\x1a\x1a.kilocenter.api.v1.Message\x12_\n" +
 	"\fSendDownlink\x12&.kilocenter.api.v1.SendDownlinkRequest\x1a'.kilocenter.api.v1.SendDownlinkResponse\x12e\n" +
@@ -171,214 +172,218 @@ var file_kilocenter_proto_goTypes = []any{
 	(*ListBaseStationsRequest)(nil),                // 11: kilocenter.api.v1.ListBaseStationsRequest
 	(*GetBaseStationStatsRequest)(nil),             // 12: kilocenter.api.v1.GetBaseStationStatsRequest
 	(*UpdateBaseStationEuiRequest)(nil),            // 13: kilocenter.api.v1.UpdateBaseStationEuiRequest
-	(*GetMessageRequest)(nil),                      // 14: kilocenter.api.v1.GetMessageRequest
-	(*SendDownlinkRequest)(nil),                    // 15: kilocenter.api.v1.SendDownlinkRequest
-	(*RevokeDownlinkRequest)(nil),                  // 16: kilocenter.api.v1.RevokeDownlinkRequest
-	(*ListDownlinkQueueRequest)(nil),               // 17: kilocenter.api.v1.ListDownlinkQueueRequest
-	(*GetDownlinkResultsRequest)(nil),              // 18: kilocenter.api.v1.GetDownlinkResultsRequest
-	(*SendULTransmitRequest)(nil),                  // 19: kilocenter.api.v1.SendULTransmitRequest
-	(*BaseStationStatusRequest)(nil),               // 20: kilocenter.api.v1.BaseStationStatusRequest
-	(*InitiatePingRequest)(nil),                    // 21: kilocenter.api.v1.InitiatePingRequest
-	(*GetDLRXStatusRequest)(nil),                   // 22: kilocenter.api.v1.GetDLRXStatusRequest
-	(*QueryDLRXStatusRequest)(nil),                 // 23: kilocenter.api.v1.QueryDLRXStatusRequest
-	(*GetDLRXStatusQueriesRequest)(nil),            // 24: kilocenter.api.v1.GetDLRXStatusQueriesRequest
-	(*emptypb.Empty)(nil),                          // 25: google.protobuf.Empty
-	(*GetStatisticsRequest)(nil),                   // 26: kilocenter.api.v1.GetStatisticsRequest
-	(*LoginRequest)(nil),                           // 27: kilocenter.api.v1.LoginRequest
-	(*RefreshTokensRequest)(nil),                   // 28: kilocenter.api.v1.RefreshTokensRequest
-	(*GetProfileRequest)(nil),                      // 29: kilocenter.api.v1.GetProfileRequest
-	(*GetAuthSettingsRequest)(nil),                 // 30: kilocenter.api.v1.GetAuthSettingsRequest
-	(*LogoutRequest)(nil),                          // 31: kilocenter.api.v1.LogoutRequest
-	(*ChangePasswordRequest)(nil),                  // 32: kilocenter.api.v1.ChangePasswordRequest
-	(*ExchangeOIDCRequest)(nil),                    // 33: kilocenter.api.v1.ExchangeOIDCRequest
-	(*ExchangeOAuth2Request)(nil),                  // 34: kilocenter.api.v1.ExchangeOAuth2Request
-	(*RegisterAccountRequest)(nil),                 // 35: kilocenter.api.v1.RegisterAccountRequest
-	(*CreateUserRequest)(nil),                      // 36: kilocenter.api.v1.CreateUserRequest
-	(*GetUserRequest)(nil),                         // 37: kilocenter.api.v1.GetUserRequest
-	(*UpdateUserRequest)(nil),                      // 38: kilocenter.api.v1.UpdateUserRequest
-	(*DeleteUserRequest)(nil),                      // 39: kilocenter.api.v1.DeleteUserRequest
-	(*ListUsersRequest)(nil),                       // 40: kilocenter.api.v1.ListUsersRequest
-	(*UpdateUserPasswordRequest)(nil),              // 41: kilocenter.api.v1.UpdateUserPasswordRequest
-	(*CreateOrganizationRequest)(nil),              // 42: kilocenter.api.v1.CreateOrganizationRequest
-	(*GetOrganizationRequest)(nil),                 // 43: kilocenter.api.v1.GetOrganizationRequest
-	(*UpdateOrganizationRequest)(nil),              // 44: kilocenter.api.v1.UpdateOrganizationRequest
-	(*DeleteOrganizationRequest)(nil),              // 45: kilocenter.api.v1.DeleteOrganizationRequest
-	(*ListOrganizationsRequest)(nil),               // 46: kilocenter.api.v1.ListOrganizationsRequest
-	(*AddOrganizationUserRequest)(nil),             // 47: kilocenter.api.v1.AddOrganizationUserRequest
-	(*GetOrganizationUserRequest)(nil),             // 48: kilocenter.api.v1.GetOrganizationUserRequest
-	(*UpdateOrganizationUserRequest)(nil),          // 49: kilocenter.api.v1.UpdateOrganizationUserRequest
-	(*RemoveOrganizationUserRequest)(nil),          // 50: kilocenter.api.v1.RemoveOrganizationUserRequest
-	(*ListOrganizationUsersRequest)(nil),           // 51: kilocenter.api.v1.ListOrganizationUsersRequest
-	(*ListUserOrganizationsRequest)(nil),           // 52: kilocenter.api.v1.ListUserOrganizationsRequest
-	(*CreateApiKeyRequest)(nil),                    // 53: kilocenter.api.v1.CreateApiKeyRequest
-	(*GetApiKeyRequest)(nil),                       // 54: kilocenter.api.v1.GetApiKeyRequest
-	(*DeleteApiKeyRequest)(nil),                    // 55: kilocenter.api.v1.DeleteApiKeyRequest
-	(*ListApiKeysRequest)(nil),                     // 56: kilocenter.api.v1.ListApiKeysRequest
-	(*CreateIntegrationRequest)(nil),               // 57: kilocenter.api.v1.CreateIntegrationRequest
-	(*GetIntegrationRequest)(nil),                  // 58: kilocenter.api.v1.GetIntegrationRequest
-	(*UpdateIntegrationRequest)(nil),               // 59: kilocenter.api.v1.UpdateIntegrationRequest
-	(*DeleteIntegrationRequest)(nil),               // 60: kilocenter.api.v1.DeleteIntegrationRequest
-	(*ListIntegrationsRequest)(nil),                // 61: kilocenter.api.v1.ListIntegrationsRequest
-	(*GetAnalyticsOverviewRequest)(nil),            // 62: kilocenter.api.v1.GetAnalyticsOverviewRequest
-	(*GetActivityAnalyticsRequest)(nil),            // 63: kilocenter.api.v1.GetActivityAnalyticsRequest
-	(*GetSignalQualityAnalyticsRequest)(nil),       // 64: kilocenter.api.v1.GetSignalQualityAnalyticsRequest
-	(*ListEventsRequest)(nil),                      // 65: kilocenter.api.v1.ListEventsRequest
-	(*ListBaseStationActivityRequest)(nil),         // 66: kilocenter.api.v1.ListBaseStationActivityRequest
-	(*ListEndpointActivityRequest)(nil),            // 67: kilocenter.api.v1.ListEndpointActivityRequest
-	(*StreamEventsRequest)(nil),                    // 68: kilocenter.api.v1.StreamEventsRequest
-	(*ListAlertsRequest)(nil),                      // 69: kilocenter.api.v1.ListAlertsRequest
-	(*GetAlertSummaryRequest)(nil),                 // 70: kilocenter.api.v1.GetAlertSummaryRequest
-	(*ListScaciSessionsRequest)(nil),               // 71: kilocenter.api.v1.ListScaciSessionsRequest
-	(*GetScaciSessionRequest)(nil),                 // 72: kilocenter.api.v1.GetScaciSessionRequest
-	(*GetScaciStatisticsRequest)(nil),              // 73: kilocenter.api.v1.GetScaciStatisticsRequest
-	(*ListScaciErrorsRequest)(nil),                 // 74: kilocenter.api.v1.ListScaciErrorsRequest
-	(*ListScaciQueuesRequest)(nil),                 // 75: kilocenter.api.v1.ListScaciQueuesRequest
-	(*GetScaciStatusRequest)(nil),                  // 76: kilocenter.api.v1.GetScaciStatusRequest
-	(*GenerateCertificateRequest)(nil),             // 77: kilocenter.api.v1.GenerateCertificateRequest
-	(*DownloadCertificateRequest)(nil),             // 78: kilocenter.api.v1.DownloadCertificateRequest
-	(*DownloadBaseStationCertificateRequest)(nil),  // 79: kilocenter.api.v1.DownloadBaseStationCertificateRequest
-	(*GenerateServerCertificatesRequest)(nil),      // 80: kilocenter.api.v1.GenerateServerCertificatesRequest
-	(*RenewServerCertificatesRequest)(nil),         // 81: kilocenter.api.v1.RenewServerCertificatesRequest
-	(*GetServerCertificateStatusRequest)(nil),      // 82: kilocenter.api.v1.GetServerCertificateStatusRequest
-	(*CreateManufacturerRequest)(nil),              // 83: kilocenter.api.v1.CreateManufacturerRequest
-	(*GetManufacturerRequest)(nil),                 // 84: kilocenter.api.v1.GetManufacturerRequest
-	(*UpdateManufacturerRequest)(nil),              // 85: kilocenter.api.v1.UpdateManufacturerRequest
-	(*DeleteManufacturerRequest)(nil),              // 86: kilocenter.api.v1.DeleteManufacturerRequest
-	(*ListManufacturersRequest)(nil),               // 87: kilocenter.api.v1.ListManufacturersRequest
-	(*CreateDeviceModelRequest)(nil),               // 88: kilocenter.api.v1.CreateDeviceModelRequest
-	(*GetDeviceModelRequest)(nil),                  // 89: kilocenter.api.v1.GetDeviceModelRequest
-	(*UpdateDeviceModelRequest)(nil),               // 90: kilocenter.api.v1.UpdateDeviceModelRequest
-	(*DeleteDeviceModelRequest)(nil),               // 91: kilocenter.api.v1.DeleteDeviceModelRequest
-	(*ListDeviceModelsRequest)(nil),                // 92: kilocenter.api.v1.ListDeviceModelsRequest
-	(*CreateBlueprintRequest)(nil),                 // 93: kilocenter.api.v1.CreateBlueprintRequest
-	(*GetBlueprintRequest)(nil),                    // 94: kilocenter.api.v1.GetBlueprintRequest
-	(*UpdateBlueprintRequest)(nil),                 // 95: kilocenter.api.v1.UpdateBlueprintRequest
-	(*DeleteBlueprintRequest)(nil),                 // 96: kilocenter.api.v1.DeleteBlueprintRequest
-	(*ListBlueprintsRequest)(nil),                  // 97: kilocenter.api.v1.ListBlueprintsRequest
-	(*SetDefaultBlueprintRequest)(nil),             // 98: kilocenter.api.v1.SetDefaultBlueprintRequest
-	(*SubmitBlueprintToRegistryRequest)(nil),       // 99: kilocenter.api.v1.SubmitBlueprintToRegistryRequest
-	(*CreateDeviceModelWithBlueprintRequest)(nil),  // 100: kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest
-	(*DecodePreviewRequest)(nil),                   // 101: kilocenter.api.v1.DecodePreviewRequest
-	(*ListMessagesRequest)(nil),                    // 102: kilocenter.api.v1.ListMessagesRequest
-	(*StreamMessagesRequest)(nil),                  // 103: kilocenter.api.v1.StreamMessagesRequest
-	(*ListBaseStationMessagesRequest)(nil),         // 104: kilocenter.api.v1.ListBaseStationMessagesRequest
-	(*GetBaseStationMessageRequest)(nil),           // 105: kilocenter.api.v1.GetBaseStationMessageRequest
-	(*GetBaseStationMessageStatsRequest)(nil),      // 106: kilocenter.api.v1.GetBaseStationMessageStatsRequest
-	(*SearchBaseStationMessagesRequest)(nil),       // 107: kilocenter.api.v1.SearchBaseStationMessagesRequest
-	(*ExportBaseStationMessagesRequest)(nil),       // 108: kilocenter.api.v1.ExportBaseStationMessagesRequest
-	(*StreamBaseStationMessagesRequest)(nil),       // 109: kilocenter.api.v1.StreamBaseStationMessagesRequest
-	(*ListEndpointMessagesRequest)(nil),            // 110: kilocenter.api.v1.ListEndpointMessagesRequest
-	(*GetEndPointStatsRequest)(nil),                // 111: kilocenter.api.v1.GetEndPointStatsRequest
-	(*GetEndPointOperationsRequest)(nil),           // 112: kilocenter.api.v1.GetEndPointOperationsRequest
-	(*ListAllBaseStationLocationsRequest)(nil),     // 113: kilocenter.api.v1.ListAllBaseStationLocationsRequest
-	(*GetCEStatusRequest)(nil),                     // 114: kilocenter.api.v1.GetCEStatusRequest
-	(*CompleteCEOnboardingRequest)(nil),            // 115: kilocenter.api.v1.CompleteCEOnboardingRequest
-	(*ListCEInstancesRequest)(nil),                 // 116: kilocenter.api.v1.ListCEInstancesRequest
-	(*RevokeCEInstanceRequest)(nil),                // 117: kilocenter.api.v1.RevokeCEInstanceRequest
-	(*EndPoint)(nil),                               // 118: kilocenter.api.v1.EndPoint
-	(*ListEndPointsResponse)(nil),                  // 119: kilocenter.api.v1.ListEndPointsResponse
-	(*AttachEndPointResponse)(nil),                 // 120: kilocenter.api.v1.AttachEndPointResponse
-	(*DetachEndPointResponse)(nil),                 // 121: kilocenter.api.v1.DetachEndPointResponse
-	(*BaseStation)(nil),                            // 122: kilocenter.api.v1.BaseStation
-	(*ListBaseStationsResponse)(nil),               // 123: kilocenter.api.v1.ListBaseStationsResponse
-	(*GetBaseStationStatsResponse)(nil),            // 124: kilocenter.api.v1.GetBaseStationStatsResponse
-	(*Message)(nil),                                // 125: kilocenter.api.v1.Message
-	(*SendDownlinkResponse)(nil),                   // 126: kilocenter.api.v1.SendDownlinkResponse
-	(*RevokeDownlinkResponse)(nil),                 // 127: kilocenter.api.v1.RevokeDownlinkResponse
-	(*ListDownlinkQueueResponse)(nil),              // 128: kilocenter.api.v1.ListDownlinkQueueResponse
-	(*GetDownlinkResultsResponse)(nil),             // 129: kilocenter.api.v1.GetDownlinkResultsResponse
-	(*SendULTransmitResponse)(nil),                 // 130: kilocenter.api.v1.SendULTransmitResponse
-	(*BaseStationStatusResponse)(nil),              // 131: kilocenter.api.v1.BaseStationStatusResponse
-	(*InitiatePingResponse)(nil),                   // 132: kilocenter.api.v1.InitiatePingResponse
-	(*GetDLRXStatusResponse)(nil),                  // 133: kilocenter.api.v1.GetDLRXStatusResponse
-	(*QueryDLRXStatusResponse)(nil),                // 134: kilocenter.api.v1.QueryDLRXStatusResponse
-	(*GetDLRXStatusQueriesResponse)(nil),           // 135: kilocenter.api.v1.GetDLRXStatusQueriesResponse
-	(*SystemStatus)(nil),                           // 136: kilocenter.api.v1.SystemStatus
-	(*Statistics)(nil),                             // 137: kilocenter.api.v1.Statistics
-	(*ReleaseInfo)(nil),                            // 138: kilocenter.api.v1.ReleaseInfo
-	(*LoginResponse)(nil),                          // 139: kilocenter.api.v1.LoginResponse
-	(*RefreshTokensResponse)(nil),                  // 140: kilocenter.api.v1.RefreshTokensResponse
-	(*GetProfileResponse)(nil),                     // 141: kilocenter.api.v1.GetProfileResponse
-	(*GetAuthSettingsResponse)(nil),                // 142: kilocenter.api.v1.GetAuthSettingsResponse
-	(*LogoutResponse)(nil),                         // 143: kilocenter.api.v1.LogoutResponse
-	(*ChangePasswordResponse)(nil),                 // 144: kilocenter.api.v1.ChangePasswordResponse
-	(*CreateUserResponse)(nil),                     // 145: kilocenter.api.v1.CreateUserResponse
-	(*GetUserResponse)(nil),                        // 146: kilocenter.api.v1.GetUserResponse
-	(*UpdateUserResponse)(nil),                     // 147: kilocenter.api.v1.UpdateUserResponse
-	(*DeleteUserResponse)(nil),                     // 148: kilocenter.api.v1.DeleteUserResponse
-	(*ListUsersResponse)(nil),                      // 149: kilocenter.api.v1.ListUsersResponse
-	(*UpdateUserPasswordResponse)(nil),             // 150: kilocenter.api.v1.UpdateUserPasswordResponse
-	(*CreateOrganizationResponse)(nil),             // 151: kilocenter.api.v1.CreateOrganizationResponse
-	(*GetOrganizationResponse)(nil),                // 152: kilocenter.api.v1.GetOrganizationResponse
-	(*UpdateOrganizationResponse)(nil),             // 153: kilocenter.api.v1.UpdateOrganizationResponse
-	(*DeleteOrganizationResponse)(nil),             // 154: kilocenter.api.v1.DeleteOrganizationResponse
-	(*ListOrganizationsResponse)(nil),              // 155: kilocenter.api.v1.ListOrganizationsResponse
-	(*AddOrganizationUserResponse)(nil),            // 156: kilocenter.api.v1.AddOrganizationUserResponse
-	(*GetOrganizationUserResponse)(nil),            // 157: kilocenter.api.v1.GetOrganizationUserResponse
-	(*UpdateOrganizationUserResponse)(nil),         // 158: kilocenter.api.v1.UpdateOrganizationUserResponse
-	(*RemoveOrganizationUserResponse)(nil),         // 159: kilocenter.api.v1.RemoveOrganizationUserResponse
-	(*ListOrganizationUsersResponse)(nil),          // 160: kilocenter.api.v1.ListOrganizationUsersResponse
-	(*ListUserOrganizationsResponse)(nil),          // 161: kilocenter.api.v1.ListUserOrganizationsResponse
-	(*CreateApiKeyResponse)(nil),                   // 162: kilocenter.api.v1.CreateApiKeyResponse
-	(*GetApiKeyResponse)(nil),                      // 163: kilocenter.api.v1.GetApiKeyResponse
-	(*DeleteApiKeyResponse)(nil),                   // 164: kilocenter.api.v1.DeleteApiKeyResponse
-	(*ListApiKeysResponse)(nil),                    // 165: kilocenter.api.v1.ListApiKeysResponse
-	(*Integration)(nil),                            // 166: kilocenter.api.v1.Integration
-	(*ListIntegrationsResponse)(nil),               // 167: kilocenter.api.v1.ListIntegrationsResponse
-	(*GetAnalyticsOverviewResponse)(nil),           // 168: kilocenter.api.v1.GetAnalyticsOverviewResponse
-	(*GetActivityAnalyticsResponse)(nil),           // 169: kilocenter.api.v1.GetActivityAnalyticsResponse
-	(*GetSignalQualityAnalyticsResponse)(nil),      // 170: kilocenter.api.v1.GetSignalQualityAnalyticsResponse
-	(*ListEventsResponse)(nil),                     // 171: kilocenter.api.v1.ListEventsResponse
-	(*ListBaseStationActivityResponse)(nil),        // 172: kilocenter.api.v1.ListBaseStationActivityResponse
-	(*ListEndpointActivityResponse)(nil),           // 173: kilocenter.api.v1.ListEndpointActivityResponse
-	(*Event)(nil),                                  // 174: kilocenter.api.v1.Event
-	(*ListAlertsResponse)(nil),                     // 175: kilocenter.api.v1.ListAlertsResponse
-	(*GetAlertSummaryResponse)(nil),                // 176: kilocenter.api.v1.GetAlertSummaryResponse
-	(*ListScaciSessionsResponse)(nil),              // 177: kilocenter.api.v1.ListScaciSessionsResponse
-	(*GetScaciSessionResponse)(nil),                // 178: kilocenter.api.v1.GetScaciSessionResponse
-	(*GetScaciStatisticsResponse)(nil),             // 179: kilocenter.api.v1.GetScaciStatisticsResponse
-	(*ListScaciErrorsResponse)(nil),                // 180: kilocenter.api.v1.ListScaciErrorsResponse
-	(*ListScaciQueuesResponse)(nil),                // 181: kilocenter.api.v1.ListScaciQueuesResponse
-	(*GetScaciStatusResponse)(nil),                 // 182: kilocenter.api.v1.GetScaciStatusResponse
-	(*GenerateCertificateResponse)(nil),            // 183: kilocenter.api.v1.GenerateCertificateResponse
-	(*DownloadCertificateResponse)(nil),            // 184: kilocenter.api.v1.DownloadCertificateResponse
-	(*GenerateServerCertificatesResponse)(nil),     // 185: kilocenter.api.v1.GenerateServerCertificatesResponse
-	(*RenewServerCertificatesResponse)(nil),        // 186: kilocenter.api.v1.RenewServerCertificatesResponse
-	(*GetServerCertificateStatusResponse)(nil),     // 187: kilocenter.api.v1.GetServerCertificateStatusResponse
-	(*CreateManufacturerResponse)(nil),             // 188: kilocenter.api.v1.CreateManufacturerResponse
-	(*GetManufacturerResponse)(nil),                // 189: kilocenter.api.v1.GetManufacturerResponse
-	(*UpdateManufacturerResponse)(nil),             // 190: kilocenter.api.v1.UpdateManufacturerResponse
-	(*DeleteManufacturerResponse)(nil),             // 191: kilocenter.api.v1.DeleteManufacturerResponse
-	(*ListManufacturersResponse)(nil),              // 192: kilocenter.api.v1.ListManufacturersResponse
-	(*CreateDeviceModelResponse)(nil),              // 193: kilocenter.api.v1.CreateDeviceModelResponse
-	(*GetDeviceModelResponse)(nil),                 // 194: kilocenter.api.v1.GetDeviceModelResponse
-	(*UpdateDeviceModelResponse)(nil),              // 195: kilocenter.api.v1.UpdateDeviceModelResponse
-	(*DeleteDeviceModelResponse)(nil),              // 196: kilocenter.api.v1.DeleteDeviceModelResponse
-	(*ListDeviceModelsResponse)(nil),               // 197: kilocenter.api.v1.ListDeviceModelsResponse
-	(*CreateBlueprintResponse)(nil),                // 198: kilocenter.api.v1.CreateBlueprintResponse
-	(*GetBlueprintResponse)(nil),                   // 199: kilocenter.api.v1.GetBlueprintResponse
-	(*UpdateBlueprintResponse)(nil),                // 200: kilocenter.api.v1.UpdateBlueprintResponse
-	(*DeleteBlueprintResponse)(nil),                // 201: kilocenter.api.v1.DeleteBlueprintResponse
-	(*ListBlueprintsResponse)(nil),                 // 202: kilocenter.api.v1.ListBlueprintsResponse
-	(*SetDefaultBlueprintResponse)(nil),            // 203: kilocenter.api.v1.SetDefaultBlueprintResponse
-	(*SubmitBlueprintToRegistryResponse)(nil),      // 204: kilocenter.api.v1.SubmitBlueprintToRegistryResponse
-	(*CreateDeviceModelWithBlueprintResponse)(nil), // 205: kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse
-	(*DecodePreviewResponse)(nil),                  // 206: kilocenter.api.v1.DecodePreviewResponse
-	(*ListMessagesResponse)(nil),                   // 207: kilocenter.api.v1.ListMessagesResponse
-	(*ListBaseStationMessagesResponse)(nil),        // 208: kilocenter.api.v1.ListBaseStationMessagesResponse
-	(*GetBaseStationMessageResponse)(nil),          // 209: kilocenter.api.v1.GetBaseStationMessageResponse
-	(*GetBaseStationMessageStatsResponse)(nil),     // 210: kilocenter.api.v1.GetBaseStationMessageStatsResponse
-	(*SearchBaseStationMessagesResponse)(nil),      // 211: kilocenter.api.v1.SearchBaseStationMessagesResponse
-	(*ExportBaseStationMessagesResponse)(nil),      // 212: kilocenter.api.v1.ExportBaseStationMessagesResponse
-	(*BaseStationMessage)(nil),                     // 213: kilocenter.api.v1.BaseStationMessage
-	(*ListEndpointMessagesResponse)(nil),           // 214: kilocenter.api.v1.ListEndpointMessagesResponse
-	(*GetEndPointStatsResponse)(nil),               // 215: kilocenter.api.v1.GetEndPointStatsResponse
-	(*GetEndPointOperationsResponse)(nil),          // 216: kilocenter.api.v1.GetEndPointOperationsResponse
-	(*ListAllBaseStationLocationsResponse)(nil),    // 217: kilocenter.api.v1.ListAllBaseStationLocationsResponse
-	(*GetCEStatusResponse)(nil),                    // 218: kilocenter.api.v1.GetCEStatusResponse
-	(*CompleteCEOnboardingResponse)(nil),           // 219: kilocenter.api.v1.CompleteCEOnboardingResponse
-	(*ListCEInstancesResponse)(nil),                // 220: kilocenter.api.v1.ListCEInstancesResponse
-	(*RevokeCEInstanceResponse)(nil),               // 221: kilocenter.api.v1.RevokeCEInstanceResponse
+	(*GetBaseStationAvailabilityRequest)(nil),      // 14: kilocenter.api.v1.GetBaseStationAvailabilityRequest
+	(*GetBaseStationMessagesReceivedRequest)(nil),  // 15: kilocenter.api.v1.GetBaseStationMessagesReceivedRequest
+	(*GetMessageRequest)(nil),                      // 16: kilocenter.api.v1.GetMessageRequest
+	(*SendDownlinkRequest)(nil),                    // 17: kilocenter.api.v1.SendDownlinkRequest
+	(*RevokeDownlinkRequest)(nil),                  // 18: kilocenter.api.v1.RevokeDownlinkRequest
+	(*ListDownlinkQueueRequest)(nil),               // 19: kilocenter.api.v1.ListDownlinkQueueRequest
+	(*GetDownlinkResultsRequest)(nil),              // 20: kilocenter.api.v1.GetDownlinkResultsRequest
+	(*SendULTransmitRequest)(nil),                  // 21: kilocenter.api.v1.SendULTransmitRequest
+	(*BaseStationStatusRequest)(nil),               // 22: kilocenter.api.v1.BaseStationStatusRequest
+	(*InitiatePingRequest)(nil),                    // 23: kilocenter.api.v1.InitiatePingRequest
+	(*GetDLRXStatusRequest)(nil),                   // 24: kilocenter.api.v1.GetDLRXStatusRequest
+	(*QueryDLRXStatusRequest)(nil),                 // 25: kilocenter.api.v1.QueryDLRXStatusRequest
+	(*GetDLRXStatusQueriesRequest)(nil),            // 26: kilocenter.api.v1.GetDLRXStatusQueriesRequest
+	(*emptypb.Empty)(nil),                          // 27: google.protobuf.Empty
+	(*GetStatisticsRequest)(nil),                   // 28: kilocenter.api.v1.GetStatisticsRequest
+	(*LoginRequest)(nil),                           // 29: kilocenter.api.v1.LoginRequest
+	(*RefreshTokensRequest)(nil),                   // 30: kilocenter.api.v1.RefreshTokensRequest
+	(*GetProfileRequest)(nil),                      // 31: kilocenter.api.v1.GetProfileRequest
+	(*GetAuthSettingsRequest)(nil),                 // 32: kilocenter.api.v1.GetAuthSettingsRequest
+	(*LogoutRequest)(nil),                          // 33: kilocenter.api.v1.LogoutRequest
+	(*ChangePasswordRequest)(nil),                  // 34: kilocenter.api.v1.ChangePasswordRequest
+	(*ExchangeOIDCRequest)(nil),                    // 35: kilocenter.api.v1.ExchangeOIDCRequest
+	(*ExchangeOAuth2Request)(nil),                  // 36: kilocenter.api.v1.ExchangeOAuth2Request
+	(*RegisterAccountRequest)(nil),                 // 37: kilocenter.api.v1.RegisterAccountRequest
+	(*CreateUserRequest)(nil),                      // 38: kilocenter.api.v1.CreateUserRequest
+	(*GetUserRequest)(nil),                         // 39: kilocenter.api.v1.GetUserRequest
+	(*UpdateUserRequest)(nil),                      // 40: kilocenter.api.v1.UpdateUserRequest
+	(*DeleteUserRequest)(nil),                      // 41: kilocenter.api.v1.DeleteUserRequest
+	(*ListUsersRequest)(nil),                       // 42: kilocenter.api.v1.ListUsersRequest
+	(*UpdateUserPasswordRequest)(nil),              // 43: kilocenter.api.v1.UpdateUserPasswordRequest
+	(*CreateOrganizationRequest)(nil),              // 44: kilocenter.api.v1.CreateOrganizationRequest
+	(*GetOrganizationRequest)(nil),                 // 45: kilocenter.api.v1.GetOrganizationRequest
+	(*UpdateOrganizationRequest)(nil),              // 46: kilocenter.api.v1.UpdateOrganizationRequest
+	(*DeleteOrganizationRequest)(nil),              // 47: kilocenter.api.v1.DeleteOrganizationRequest
+	(*ListOrganizationsRequest)(nil),               // 48: kilocenter.api.v1.ListOrganizationsRequest
+	(*AddOrganizationUserRequest)(nil),             // 49: kilocenter.api.v1.AddOrganizationUserRequest
+	(*GetOrganizationUserRequest)(nil),             // 50: kilocenter.api.v1.GetOrganizationUserRequest
+	(*UpdateOrganizationUserRequest)(nil),          // 51: kilocenter.api.v1.UpdateOrganizationUserRequest
+	(*RemoveOrganizationUserRequest)(nil),          // 52: kilocenter.api.v1.RemoveOrganizationUserRequest
+	(*ListOrganizationUsersRequest)(nil),           // 53: kilocenter.api.v1.ListOrganizationUsersRequest
+	(*ListUserOrganizationsRequest)(nil),           // 54: kilocenter.api.v1.ListUserOrganizationsRequest
+	(*CreateApiKeyRequest)(nil),                    // 55: kilocenter.api.v1.CreateApiKeyRequest
+	(*GetApiKeyRequest)(nil),                       // 56: kilocenter.api.v1.GetApiKeyRequest
+	(*DeleteApiKeyRequest)(nil),                    // 57: kilocenter.api.v1.DeleteApiKeyRequest
+	(*ListApiKeysRequest)(nil),                     // 58: kilocenter.api.v1.ListApiKeysRequest
+	(*CreateIntegrationRequest)(nil),               // 59: kilocenter.api.v1.CreateIntegrationRequest
+	(*GetIntegrationRequest)(nil),                  // 60: kilocenter.api.v1.GetIntegrationRequest
+	(*UpdateIntegrationRequest)(nil),               // 61: kilocenter.api.v1.UpdateIntegrationRequest
+	(*DeleteIntegrationRequest)(nil),               // 62: kilocenter.api.v1.DeleteIntegrationRequest
+	(*ListIntegrationsRequest)(nil),                // 63: kilocenter.api.v1.ListIntegrationsRequest
+	(*GetAnalyticsOverviewRequest)(nil),            // 64: kilocenter.api.v1.GetAnalyticsOverviewRequest
+	(*GetActivityAnalyticsRequest)(nil),            // 65: kilocenter.api.v1.GetActivityAnalyticsRequest
+	(*GetSignalQualityAnalyticsRequest)(nil),       // 66: kilocenter.api.v1.GetSignalQualityAnalyticsRequest
+	(*ListEventsRequest)(nil),                      // 67: kilocenter.api.v1.ListEventsRequest
+	(*ListBaseStationActivityRequest)(nil),         // 68: kilocenter.api.v1.ListBaseStationActivityRequest
+	(*ListEndpointActivityRequest)(nil),            // 69: kilocenter.api.v1.ListEndpointActivityRequest
+	(*StreamEventsRequest)(nil),                    // 70: kilocenter.api.v1.StreamEventsRequest
+	(*ListAlertsRequest)(nil),                      // 71: kilocenter.api.v1.ListAlertsRequest
+	(*GetAlertSummaryRequest)(nil),                 // 72: kilocenter.api.v1.GetAlertSummaryRequest
+	(*ListScaciSessionsRequest)(nil),               // 73: kilocenter.api.v1.ListScaciSessionsRequest
+	(*GetScaciSessionRequest)(nil),                 // 74: kilocenter.api.v1.GetScaciSessionRequest
+	(*GetScaciStatisticsRequest)(nil),              // 75: kilocenter.api.v1.GetScaciStatisticsRequest
+	(*ListScaciErrorsRequest)(nil),                 // 76: kilocenter.api.v1.ListScaciErrorsRequest
+	(*ListScaciQueuesRequest)(nil),                 // 77: kilocenter.api.v1.ListScaciQueuesRequest
+	(*GetScaciStatusRequest)(nil),                  // 78: kilocenter.api.v1.GetScaciStatusRequest
+	(*GenerateCertificateRequest)(nil),             // 79: kilocenter.api.v1.GenerateCertificateRequest
+	(*DownloadCertificateRequest)(nil),             // 80: kilocenter.api.v1.DownloadCertificateRequest
+	(*DownloadBaseStationCertificateRequest)(nil),  // 81: kilocenter.api.v1.DownloadBaseStationCertificateRequest
+	(*GenerateServerCertificatesRequest)(nil),      // 82: kilocenter.api.v1.GenerateServerCertificatesRequest
+	(*RenewServerCertificatesRequest)(nil),         // 83: kilocenter.api.v1.RenewServerCertificatesRequest
+	(*GetServerCertificateStatusRequest)(nil),      // 84: kilocenter.api.v1.GetServerCertificateStatusRequest
+	(*CreateManufacturerRequest)(nil),              // 85: kilocenter.api.v1.CreateManufacturerRequest
+	(*GetManufacturerRequest)(nil),                 // 86: kilocenter.api.v1.GetManufacturerRequest
+	(*UpdateManufacturerRequest)(nil),              // 87: kilocenter.api.v1.UpdateManufacturerRequest
+	(*DeleteManufacturerRequest)(nil),              // 88: kilocenter.api.v1.DeleteManufacturerRequest
+	(*ListManufacturersRequest)(nil),               // 89: kilocenter.api.v1.ListManufacturersRequest
+	(*CreateDeviceModelRequest)(nil),               // 90: kilocenter.api.v1.CreateDeviceModelRequest
+	(*GetDeviceModelRequest)(nil),                  // 91: kilocenter.api.v1.GetDeviceModelRequest
+	(*UpdateDeviceModelRequest)(nil),               // 92: kilocenter.api.v1.UpdateDeviceModelRequest
+	(*DeleteDeviceModelRequest)(nil),               // 93: kilocenter.api.v1.DeleteDeviceModelRequest
+	(*ListDeviceModelsRequest)(nil),                // 94: kilocenter.api.v1.ListDeviceModelsRequest
+	(*CreateBlueprintRequest)(nil),                 // 95: kilocenter.api.v1.CreateBlueprintRequest
+	(*GetBlueprintRequest)(nil),                    // 96: kilocenter.api.v1.GetBlueprintRequest
+	(*UpdateBlueprintRequest)(nil),                 // 97: kilocenter.api.v1.UpdateBlueprintRequest
+	(*DeleteBlueprintRequest)(nil),                 // 98: kilocenter.api.v1.DeleteBlueprintRequest
+	(*ListBlueprintsRequest)(nil),                  // 99: kilocenter.api.v1.ListBlueprintsRequest
+	(*SetDefaultBlueprintRequest)(nil),             // 100: kilocenter.api.v1.SetDefaultBlueprintRequest
+	(*SubmitBlueprintToRegistryRequest)(nil),       // 101: kilocenter.api.v1.SubmitBlueprintToRegistryRequest
+	(*CreateDeviceModelWithBlueprintRequest)(nil),  // 102: kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest
+	(*DecodePreviewRequest)(nil),                   // 103: kilocenter.api.v1.DecodePreviewRequest
+	(*ListMessagesRequest)(nil),                    // 104: kilocenter.api.v1.ListMessagesRequest
+	(*StreamMessagesRequest)(nil),                  // 105: kilocenter.api.v1.StreamMessagesRequest
+	(*ListBaseStationMessagesRequest)(nil),         // 106: kilocenter.api.v1.ListBaseStationMessagesRequest
+	(*GetBaseStationMessageRequest)(nil),           // 107: kilocenter.api.v1.GetBaseStationMessageRequest
+	(*GetBaseStationMessageStatsRequest)(nil),      // 108: kilocenter.api.v1.GetBaseStationMessageStatsRequest
+	(*SearchBaseStationMessagesRequest)(nil),       // 109: kilocenter.api.v1.SearchBaseStationMessagesRequest
+	(*ExportBaseStationMessagesRequest)(nil),       // 110: kilocenter.api.v1.ExportBaseStationMessagesRequest
+	(*StreamBaseStationMessagesRequest)(nil),       // 111: kilocenter.api.v1.StreamBaseStationMessagesRequest
+	(*ListEndpointMessagesRequest)(nil),            // 112: kilocenter.api.v1.ListEndpointMessagesRequest
+	(*GetEndPointStatsRequest)(nil),                // 113: kilocenter.api.v1.GetEndPointStatsRequest
+	(*GetEndPointOperationsRequest)(nil),           // 114: kilocenter.api.v1.GetEndPointOperationsRequest
+	(*ListAllBaseStationLocationsRequest)(nil),     // 115: kilocenter.api.v1.ListAllBaseStationLocationsRequest
+	(*GetCEStatusRequest)(nil),                     // 116: kilocenter.api.v1.GetCEStatusRequest
+	(*CompleteCEOnboardingRequest)(nil),            // 117: kilocenter.api.v1.CompleteCEOnboardingRequest
+	(*ListCEInstancesRequest)(nil),                 // 118: kilocenter.api.v1.ListCEInstancesRequest
+	(*RevokeCEInstanceRequest)(nil),                // 119: kilocenter.api.v1.RevokeCEInstanceRequest
+	(*EndPoint)(nil),                               // 120: kilocenter.api.v1.EndPoint
+	(*ListEndPointsResponse)(nil),                  // 121: kilocenter.api.v1.ListEndPointsResponse
+	(*AttachEndPointResponse)(nil),                 // 122: kilocenter.api.v1.AttachEndPointResponse
+	(*DetachEndPointResponse)(nil),                 // 123: kilocenter.api.v1.DetachEndPointResponse
+	(*BaseStation)(nil),                            // 124: kilocenter.api.v1.BaseStation
+	(*ListBaseStationsResponse)(nil),               // 125: kilocenter.api.v1.ListBaseStationsResponse
+	(*GetBaseStationStatsResponse)(nil),            // 126: kilocenter.api.v1.GetBaseStationStatsResponse
+	(*GetBaseStationAvailabilityResponse)(nil),     // 127: kilocenter.api.v1.GetBaseStationAvailabilityResponse
+	(*GetBaseStationMessagesReceivedResponse)(nil), // 128: kilocenter.api.v1.GetBaseStationMessagesReceivedResponse
+	(*Message)(nil),                                // 129: kilocenter.api.v1.Message
+	(*SendDownlinkResponse)(nil),                   // 130: kilocenter.api.v1.SendDownlinkResponse
+	(*RevokeDownlinkResponse)(nil),                 // 131: kilocenter.api.v1.RevokeDownlinkResponse
+	(*ListDownlinkQueueResponse)(nil),              // 132: kilocenter.api.v1.ListDownlinkQueueResponse
+	(*GetDownlinkResultsResponse)(nil),             // 133: kilocenter.api.v1.GetDownlinkResultsResponse
+	(*SendULTransmitResponse)(nil),                 // 134: kilocenter.api.v1.SendULTransmitResponse
+	(*BaseStationStatusResponse)(nil),              // 135: kilocenter.api.v1.BaseStationStatusResponse
+	(*InitiatePingResponse)(nil),                   // 136: kilocenter.api.v1.InitiatePingResponse
+	(*GetDLRXStatusResponse)(nil),                  // 137: kilocenter.api.v1.GetDLRXStatusResponse
+	(*QueryDLRXStatusResponse)(nil),                // 138: kilocenter.api.v1.QueryDLRXStatusResponse
+	(*GetDLRXStatusQueriesResponse)(nil),           // 139: kilocenter.api.v1.GetDLRXStatusQueriesResponse
+	(*SystemStatus)(nil),                           // 140: kilocenter.api.v1.SystemStatus
+	(*Statistics)(nil),                             // 141: kilocenter.api.v1.Statistics
+	(*ReleaseInfo)(nil),                            // 142: kilocenter.api.v1.ReleaseInfo
+	(*LoginResponse)(nil),                          // 143: kilocenter.api.v1.LoginResponse
+	(*RefreshTokensResponse)(nil),                  // 144: kilocenter.api.v1.RefreshTokensResponse
+	(*GetProfileResponse)(nil),                     // 145: kilocenter.api.v1.GetProfileResponse
+	(*GetAuthSettingsResponse)(nil),                // 146: kilocenter.api.v1.GetAuthSettingsResponse
+	(*LogoutResponse)(nil),                         // 147: kilocenter.api.v1.LogoutResponse
+	(*ChangePasswordResponse)(nil),                 // 148: kilocenter.api.v1.ChangePasswordResponse
+	(*CreateUserResponse)(nil),                     // 149: kilocenter.api.v1.CreateUserResponse
+	(*GetUserResponse)(nil),                        // 150: kilocenter.api.v1.GetUserResponse
+	(*UpdateUserResponse)(nil),                     // 151: kilocenter.api.v1.UpdateUserResponse
+	(*DeleteUserResponse)(nil),                     // 152: kilocenter.api.v1.DeleteUserResponse
+	(*ListUsersResponse)(nil),                      // 153: kilocenter.api.v1.ListUsersResponse
+	(*UpdateUserPasswordResponse)(nil),             // 154: kilocenter.api.v1.UpdateUserPasswordResponse
+	(*CreateOrganizationResponse)(nil),             // 155: kilocenter.api.v1.CreateOrganizationResponse
+	(*GetOrganizationResponse)(nil),                // 156: kilocenter.api.v1.GetOrganizationResponse
+	(*UpdateOrganizationResponse)(nil),             // 157: kilocenter.api.v1.UpdateOrganizationResponse
+	(*DeleteOrganizationResponse)(nil),             // 158: kilocenter.api.v1.DeleteOrganizationResponse
+	(*ListOrganizationsResponse)(nil),              // 159: kilocenter.api.v1.ListOrganizationsResponse
+	(*AddOrganizationUserResponse)(nil),            // 160: kilocenter.api.v1.AddOrganizationUserResponse
+	(*GetOrganizationUserResponse)(nil),            // 161: kilocenter.api.v1.GetOrganizationUserResponse
+	(*UpdateOrganizationUserResponse)(nil),         // 162: kilocenter.api.v1.UpdateOrganizationUserResponse
+	(*RemoveOrganizationUserResponse)(nil),         // 163: kilocenter.api.v1.RemoveOrganizationUserResponse
+	(*ListOrganizationUsersResponse)(nil),          // 164: kilocenter.api.v1.ListOrganizationUsersResponse
+	(*ListUserOrganizationsResponse)(nil),          // 165: kilocenter.api.v1.ListUserOrganizationsResponse
+	(*CreateApiKeyResponse)(nil),                   // 166: kilocenter.api.v1.CreateApiKeyResponse
+	(*GetApiKeyResponse)(nil),                      // 167: kilocenter.api.v1.GetApiKeyResponse
+	(*DeleteApiKeyResponse)(nil),                   // 168: kilocenter.api.v1.DeleteApiKeyResponse
+	(*ListApiKeysResponse)(nil),                    // 169: kilocenter.api.v1.ListApiKeysResponse
+	(*Integration)(nil),                            // 170: kilocenter.api.v1.Integration
+	(*ListIntegrationsResponse)(nil),               // 171: kilocenter.api.v1.ListIntegrationsResponse
+	(*GetAnalyticsOverviewResponse)(nil),           // 172: kilocenter.api.v1.GetAnalyticsOverviewResponse
+	(*GetActivityAnalyticsResponse)(nil),           // 173: kilocenter.api.v1.GetActivityAnalyticsResponse
+	(*GetSignalQualityAnalyticsResponse)(nil),      // 174: kilocenter.api.v1.GetSignalQualityAnalyticsResponse
+	(*ListEventsResponse)(nil),                     // 175: kilocenter.api.v1.ListEventsResponse
+	(*ListBaseStationActivityResponse)(nil),        // 176: kilocenter.api.v1.ListBaseStationActivityResponse
+	(*ListEndpointActivityResponse)(nil),           // 177: kilocenter.api.v1.ListEndpointActivityResponse
+	(*Event)(nil),                                  // 178: kilocenter.api.v1.Event
+	(*ListAlertsResponse)(nil),                     // 179: kilocenter.api.v1.ListAlertsResponse
+	(*GetAlertSummaryResponse)(nil),                // 180: kilocenter.api.v1.GetAlertSummaryResponse
+	(*ListScaciSessionsResponse)(nil),              // 181: kilocenter.api.v1.ListScaciSessionsResponse
+	(*GetScaciSessionResponse)(nil),                // 182: kilocenter.api.v1.GetScaciSessionResponse
+	(*GetScaciStatisticsResponse)(nil),             // 183: kilocenter.api.v1.GetScaciStatisticsResponse
+	(*ListScaciErrorsResponse)(nil),                // 184: kilocenter.api.v1.ListScaciErrorsResponse
+	(*ListScaciQueuesResponse)(nil),                // 185: kilocenter.api.v1.ListScaciQueuesResponse
+	(*GetScaciStatusResponse)(nil),                 // 186: kilocenter.api.v1.GetScaciStatusResponse
+	(*GenerateCertificateResponse)(nil),            // 187: kilocenter.api.v1.GenerateCertificateResponse
+	(*DownloadCertificateResponse)(nil),            // 188: kilocenter.api.v1.DownloadCertificateResponse
+	(*GenerateServerCertificatesResponse)(nil),     // 189: kilocenter.api.v1.GenerateServerCertificatesResponse
+	(*RenewServerCertificatesResponse)(nil),        // 190: kilocenter.api.v1.RenewServerCertificatesResponse
+	(*GetServerCertificateStatusResponse)(nil),     // 191: kilocenter.api.v1.GetServerCertificateStatusResponse
+	(*CreateManufacturerResponse)(nil),             // 192: kilocenter.api.v1.CreateManufacturerResponse
+	(*GetManufacturerResponse)(nil),                // 193: kilocenter.api.v1.GetManufacturerResponse
+	(*UpdateManufacturerResponse)(nil),             // 194: kilocenter.api.v1.UpdateManufacturerResponse
+	(*DeleteManufacturerResponse)(nil),             // 195: kilocenter.api.v1.DeleteManufacturerResponse
+	(*ListManufacturersResponse)(nil),              // 196: kilocenter.api.v1.ListManufacturersResponse
+	(*CreateDeviceModelResponse)(nil),              // 197: kilocenter.api.v1.CreateDeviceModelResponse
+	(*GetDeviceModelResponse)(nil),                 // 198: kilocenter.api.v1.GetDeviceModelResponse
+	(*UpdateDeviceModelResponse)(nil),              // 199: kilocenter.api.v1.UpdateDeviceModelResponse
+	(*DeleteDeviceModelResponse)(nil),              // 200: kilocenter.api.v1.DeleteDeviceModelResponse
+	(*ListDeviceModelsResponse)(nil),               // 201: kilocenter.api.v1.ListDeviceModelsResponse
+	(*CreateBlueprintResponse)(nil),                // 202: kilocenter.api.v1.CreateBlueprintResponse
+	(*GetBlueprintResponse)(nil),                   // 203: kilocenter.api.v1.GetBlueprintResponse
+	(*UpdateBlueprintResponse)(nil),                // 204: kilocenter.api.v1.UpdateBlueprintResponse
+	(*DeleteBlueprintResponse)(nil),                // 205: kilocenter.api.v1.DeleteBlueprintResponse
+	(*ListBlueprintsResponse)(nil),                 // 206: kilocenter.api.v1.ListBlueprintsResponse
+	(*SetDefaultBlueprintResponse)(nil),            // 207: kilocenter.api.v1.SetDefaultBlueprintResponse
+	(*SubmitBlueprintToRegistryResponse)(nil),      // 208: kilocenter.api.v1.SubmitBlueprintToRegistryResponse
+	(*CreateDeviceModelWithBlueprintResponse)(nil), // 209: kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse
+	(*DecodePreviewResponse)(nil),                  // 210: kilocenter.api.v1.DecodePreviewResponse
+	(*ListMessagesResponse)(nil),                   // 211: kilocenter.api.v1.ListMessagesResponse
+	(*ListBaseStationMessagesResponse)(nil),        // 212: kilocenter.api.v1.ListBaseStationMessagesResponse
+	(*GetBaseStationMessageResponse)(nil),          // 213: kilocenter.api.v1.GetBaseStationMessageResponse
+	(*GetBaseStationMessageStatsResponse)(nil),     // 214: kilocenter.api.v1.GetBaseStationMessageStatsResponse
+	(*SearchBaseStationMessagesResponse)(nil),      // 215: kilocenter.api.v1.SearchBaseStationMessagesResponse
+	(*ExportBaseStationMessagesResponse)(nil),      // 216: kilocenter.api.v1.ExportBaseStationMessagesResponse
+	(*BaseStationMessage)(nil),                     // 217: kilocenter.api.v1.BaseStationMessage
+	(*ListEndpointMessagesResponse)(nil),           // 218: kilocenter.api.v1.ListEndpointMessagesResponse
+	(*GetEndPointStatsResponse)(nil),               // 219: kilocenter.api.v1.GetEndPointStatsResponse
+	(*GetEndPointOperationsResponse)(nil),          // 220: kilocenter.api.v1.GetEndPointOperationsResponse
+	(*ListAllBaseStationLocationsResponse)(nil),    // 221: kilocenter.api.v1.ListAllBaseStationLocationsResponse
+	(*GetCEStatusResponse)(nil),                    // 222: kilocenter.api.v1.GetCEStatusResponse
+	(*CompleteCEOnboardingResponse)(nil),           // 223: kilocenter.api.v1.CompleteCEOnboardingResponse
+	(*ListCEInstancesResponse)(nil),                // 224: kilocenter.api.v1.ListCEInstancesResponse
+	(*RevokeCEInstanceResponse)(nil),               // 225: kilocenter.api.v1.RevokeCEInstanceResponse
 }
 var file_kilocenter_proto_depIdxs = []int32{
 	0,   // 0: kilocenter.api.v1.KiloCenterService.CreateEndPoint:input_type -> kilocenter.api.v1.CreateEndPointRequest
@@ -395,232 +400,236 @@ var file_kilocenter_proto_depIdxs = []int32{
 	11,  // 11: kilocenter.api.v1.KiloCenterService.ListBaseStations:input_type -> kilocenter.api.v1.ListBaseStationsRequest
 	12,  // 12: kilocenter.api.v1.KiloCenterService.GetBaseStationStats:input_type -> kilocenter.api.v1.GetBaseStationStatsRequest
 	13,  // 13: kilocenter.api.v1.KiloCenterService.UpdateBaseStationEui:input_type -> kilocenter.api.v1.UpdateBaseStationEuiRequest
-	14,  // 14: kilocenter.api.v1.KiloCenterService.GetMessage:input_type -> kilocenter.api.v1.GetMessageRequest
-	15,  // 15: kilocenter.api.v1.KiloCenterService.SendDownlink:input_type -> kilocenter.api.v1.SendDownlinkRequest
-	16,  // 16: kilocenter.api.v1.KiloCenterService.RevokeDownlink:input_type -> kilocenter.api.v1.RevokeDownlinkRequest
-	17,  // 17: kilocenter.api.v1.KiloCenterService.ListDownlinkQueue:input_type -> kilocenter.api.v1.ListDownlinkQueueRequest
-	18,  // 18: kilocenter.api.v1.KiloCenterService.GetDownlinkResults:input_type -> kilocenter.api.v1.GetDownlinkResultsRequest
-	19,  // 19: kilocenter.api.v1.KiloCenterService.SendULTransmit:input_type -> kilocenter.api.v1.SendULTransmitRequest
-	20,  // 20: kilocenter.api.v1.KiloCenterService.RequestBaseStationStatus:input_type -> kilocenter.api.v1.BaseStationStatusRequest
-	21,  // 21: kilocenter.api.v1.KiloCenterService.InitiatePing:input_type -> kilocenter.api.v1.InitiatePingRequest
-	22,  // 22: kilocenter.api.v1.KiloCenterService.GetDLRXStatus:input_type -> kilocenter.api.v1.GetDLRXStatusRequest
-	23,  // 23: kilocenter.api.v1.KiloCenterService.QueryDLRXStatus:input_type -> kilocenter.api.v1.QueryDLRXStatusRequest
-	24,  // 24: kilocenter.api.v1.KiloCenterService.GetDLRXStatusQueries:input_type -> kilocenter.api.v1.GetDLRXStatusQueriesRequest
-	25,  // 25: kilocenter.api.v1.KiloCenterService.GetSystemStatus:input_type -> google.protobuf.Empty
-	26,  // 26: kilocenter.api.v1.KiloCenterService.GetStatistics:input_type -> kilocenter.api.v1.GetStatisticsRequest
-	25,  // 27: kilocenter.api.v1.KiloCenterService.GetReleaseInfo:input_type -> google.protobuf.Empty
-	27,  // 28: kilocenter.api.v1.KiloCenterService.Login:input_type -> kilocenter.api.v1.LoginRequest
-	28,  // 29: kilocenter.api.v1.KiloCenterService.RefreshTokens:input_type -> kilocenter.api.v1.RefreshTokensRequest
-	29,  // 30: kilocenter.api.v1.KiloCenterService.GetProfile:input_type -> kilocenter.api.v1.GetProfileRequest
-	30,  // 31: kilocenter.api.v1.KiloCenterService.GetAuthSettings:input_type -> kilocenter.api.v1.GetAuthSettingsRequest
-	31,  // 32: kilocenter.api.v1.KiloCenterService.Logout:input_type -> kilocenter.api.v1.LogoutRequest
-	32,  // 33: kilocenter.api.v1.KiloCenterService.ChangePassword:input_type -> kilocenter.api.v1.ChangePasswordRequest
-	33,  // 34: kilocenter.api.v1.KiloCenterService.ExchangeOIDC:input_type -> kilocenter.api.v1.ExchangeOIDCRequest
-	34,  // 35: kilocenter.api.v1.KiloCenterService.ExchangeOAuth2:input_type -> kilocenter.api.v1.ExchangeOAuth2Request
-	35,  // 36: kilocenter.api.v1.KiloCenterService.RegisterAccount:input_type -> kilocenter.api.v1.RegisterAccountRequest
-	36,  // 37: kilocenter.api.v1.KiloCenterService.CreateUser:input_type -> kilocenter.api.v1.CreateUserRequest
-	37,  // 38: kilocenter.api.v1.KiloCenterService.GetUser:input_type -> kilocenter.api.v1.GetUserRequest
-	38,  // 39: kilocenter.api.v1.KiloCenterService.UpdateUser:input_type -> kilocenter.api.v1.UpdateUserRequest
-	39,  // 40: kilocenter.api.v1.KiloCenterService.DeleteUser:input_type -> kilocenter.api.v1.DeleteUserRequest
-	40,  // 41: kilocenter.api.v1.KiloCenterService.ListUsers:input_type -> kilocenter.api.v1.ListUsersRequest
-	41,  // 42: kilocenter.api.v1.KiloCenterService.UpdateUserPassword:input_type -> kilocenter.api.v1.UpdateUserPasswordRequest
-	42,  // 43: kilocenter.api.v1.KiloCenterService.CreateOrganization:input_type -> kilocenter.api.v1.CreateOrganizationRequest
-	43,  // 44: kilocenter.api.v1.KiloCenterService.GetOrganization:input_type -> kilocenter.api.v1.GetOrganizationRequest
-	44,  // 45: kilocenter.api.v1.KiloCenterService.UpdateOrganization:input_type -> kilocenter.api.v1.UpdateOrganizationRequest
-	45,  // 46: kilocenter.api.v1.KiloCenterService.DeleteOrganization:input_type -> kilocenter.api.v1.DeleteOrganizationRequest
-	46,  // 47: kilocenter.api.v1.KiloCenterService.ListOrganizations:input_type -> kilocenter.api.v1.ListOrganizationsRequest
-	47,  // 48: kilocenter.api.v1.KiloCenterService.AddOrganizationUser:input_type -> kilocenter.api.v1.AddOrganizationUserRequest
-	48,  // 49: kilocenter.api.v1.KiloCenterService.GetOrganizationUser:input_type -> kilocenter.api.v1.GetOrganizationUserRequest
-	49,  // 50: kilocenter.api.v1.KiloCenterService.UpdateOrganizationUser:input_type -> kilocenter.api.v1.UpdateOrganizationUserRequest
-	50,  // 51: kilocenter.api.v1.KiloCenterService.RemoveOrganizationUser:input_type -> kilocenter.api.v1.RemoveOrganizationUserRequest
-	51,  // 52: kilocenter.api.v1.KiloCenterService.ListOrganizationUsers:input_type -> kilocenter.api.v1.ListOrganizationUsersRequest
-	52,  // 53: kilocenter.api.v1.KiloCenterService.ListUserOrganizations:input_type -> kilocenter.api.v1.ListUserOrganizationsRequest
-	53,  // 54: kilocenter.api.v1.KiloCenterService.CreateApiKey:input_type -> kilocenter.api.v1.CreateApiKeyRequest
-	54,  // 55: kilocenter.api.v1.KiloCenterService.GetApiKey:input_type -> kilocenter.api.v1.GetApiKeyRequest
-	55,  // 56: kilocenter.api.v1.KiloCenterService.DeleteApiKey:input_type -> kilocenter.api.v1.DeleteApiKeyRequest
-	56,  // 57: kilocenter.api.v1.KiloCenterService.ListApiKeys:input_type -> kilocenter.api.v1.ListApiKeysRequest
-	57,  // 58: kilocenter.api.v1.KiloCenterService.CreateIntegration:input_type -> kilocenter.api.v1.CreateIntegrationRequest
-	58,  // 59: kilocenter.api.v1.KiloCenterService.GetIntegration:input_type -> kilocenter.api.v1.GetIntegrationRequest
-	59,  // 60: kilocenter.api.v1.KiloCenterService.UpdateIntegration:input_type -> kilocenter.api.v1.UpdateIntegrationRequest
-	60,  // 61: kilocenter.api.v1.KiloCenterService.DeleteIntegration:input_type -> kilocenter.api.v1.DeleteIntegrationRequest
-	61,  // 62: kilocenter.api.v1.KiloCenterService.ListIntegrations:input_type -> kilocenter.api.v1.ListIntegrationsRequest
-	62,  // 63: kilocenter.api.v1.KiloCenterService.GetAnalyticsOverview:input_type -> kilocenter.api.v1.GetAnalyticsOverviewRequest
-	63,  // 64: kilocenter.api.v1.KiloCenterService.GetActivityAnalytics:input_type -> kilocenter.api.v1.GetActivityAnalyticsRequest
-	64,  // 65: kilocenter.api.v1.KiloCenterService.GetSignalQualityAnalytics:input_type -> kilocenter.api.v1.GetSignalQualityAnalyticsRequest
-	65,  // 66: kilocenter.api.v1.KiloCenterService.ListEvents:input_type -> kilocenter.api.v1.ListEventsRequest
-	66,  // 67: kilocenter.api.v1.KiloCenterService.ListBaseStationActivity:input_type -> kilocenter.api.v1.ListBaseStationActivityRequest
-	67,  // 68: kilocenter.api.v1.KiloCenterService.ListEndpointActivity:input_type -> kilocenter.api.v1.ListEndpointActivityRequest
-	68,  // 69: kilocenter.api.v1.KiloCenterService.StreamEvents:input_type -> kilocenter.api.v1.StreamEventsRequest
-	69,  // 70: kilocenter.api.v1.KiloCenterService.ListAlerts:input_type -> kilocenter.api.v1.ListAlertsRequest
-	70,  // 71: kilocenter.api.v1.KiloCenterService.GetAlertSummary:input_type -> kilocenter.api.v1.GetAlertSummaryRequest
-	71,  // 72: kilocenter.api.v1.KiloCenterService.ListScaciSessions:input_type -> kilocenter.api.v1.ListScaciSessionsRequest
-	72,  // 73: kilocenter.api.v1.KiloCenterService.GetScaciSession:input_type -> kilocenter.api.v1.GetScaciSessionRequest
-	73,  // 74: kilocenter.api.v1.KiloCenterService.GetScaciStatistics:input_type -> kilocenter.api.v1.GetScaciStatisticsRequest
-	74,  // 75: kilocenter.api.v1.KiloCenterService.ListScaciErrors:input_type -> kilocenter.api.v1.ListScaciErrorsRequest
-	75,  // 76: kilocenter.api.v1.KiloCenterService.ListScaciQueues:input_type -> kilocenter.api.v1.ListScaciQueuesRequest
-	76,  // 77: kilocenter.api.v1.KiloCenterService.GetScaciStatus:input_type -> kilocenter.api.v1.GetScaciStatusRequest
-	77,  // 78: kilocenter.api.v1.KiloCenterService.GenerateCertificate:input_type -> kilocenter.api.v1.GenerateCertificateRequest
-	78,  // 79: kilocenter.api.v1.KiloCenterService.DownloadCertificate:input_type -> kilocenter.api.v1.DownloadCertificateRequest
-	79,  // 80: kilocenter.api.v1.KiloCenterService.DownloadBaseStationCertificate:input_type -> kilocenter.api.v1.DownloadBaseStationCertificateRequest
-	80,  // 81: kilocenter.api.v1.KiloCenterService.GenerateServerCertificates:input_type -> kilocenter.api.v1.GenerateServerCertificatesRequest
-	81,  // 82: kilocenter.api.v1.KiloCenterService.RenewServerCertificates:input_type -> kilocenter.api.v1.RenewServerCertificatesRequest
-	82,  // 83: kilocenter.api.v1.KiloCenterService.GetServerCertificateStatus:input_type -> kilocenter.api.v1.GetServerCertificateStatusRequest
-	83,  // 84: kilocenter.api.v1.KiloCenterService.CreateManufacturer:input_type -> kilocenter.api.v1.CreateManufacturerRequest
-	84,  // 85: kilocenter.api.v1.KiloCenterService.GetManufacturer:input_type -> kilocenter.api.v1.GetManufacturerRequest
-	85,  // 86: kilocenter.api.v1.KiloCenterService.UpdateManufacturer:input_type -> kilocenter.api.v1.UpdateManufacturerRequest
-	86,  // 87: kilocenter.api.v1.KiloCenterService.DeleteManufacturer:input_type -> kilocenter.api.v1.DeleteManufacturerRequest
-	87,  // 88: kilocenter.api.v1.KiloCenterService.ListManufacturers:input_type -> kilocenter.api.v1.ListManufacturersRequest
-	88,  // 89: kilocenter.api.v1.KiloCenterService.CreateDeviceModel:input_type -> kilocenter.api.v1.CreateDeviceModelRequest
-	89,  // 90: kilocenter.api.v1.KiloCenterService.GetDeviceModel:input_type -> kilocenter.api.v1.GetDeviceModelRequest
-	90,  // 91: kilocenter.api.v1.KiloCenterService.UpdateDeviceModel:input_type -> kilocenter.api.v1.UpdateDeviceModelRequest
-	91,  // 92: kilocenter.api.v1.KiloCenterService.DeleteDeviceModel:input_type -> kilocenter.api.v1.DeleteDeviceModelRequest
-	92,  // 93: kilocenter.api.v1.KiloCenterService.ListDeviceModels:input_type -> kilocenter.api.v1.ListDeviceModelsRequest
-	93,  // 94: kilocenter.api.v1.KiloCenterService.CreateBlueprint:input_type -> kilocenter.api.v1.CreateBlueprintRequest
-	94,  // 95: kilocenter.api.v1.KiloCenterService.GetBlueprint:input_type -> kilocenter.api.v1.GetBlueprintRequest
-	95,  // 96: kilocenter.api.v1.KiloCenterService.UpdateBlueprint:input_type -> kilocenter.api.v1.UpdateBlueprintRequest
-	96,  // 97: kilocenter.api.v1.KiloCenterService.DeleteBlueprint:input_type -> kilocenter.api.v1.DeleteBlueprintRequest
-	97,  // 98: kilocenter.api.v1.KiloCenterService.ListBlueprints:input_type -> kilocenter.api.v1.ListBlueprintsRequest
-	98,  // 99: kilocenter.api.v1.KiloCenterService.SetDefaultBlueprint:input_type -> kilocenter.api.v1.SetDefaultBlueprintRequest
-	99,  // 100: kilocenter.api.v1.KiloCenterService.SubmitBlueprintToRegistry:input_type -> kilocenter.api.v1.SubmitBlueprintToRegistryRequest
-	100, // 101: kilocenter.api.v1.KiloCenterService.CreateDeviceModelWithBlueprint:input_type -> kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest
-	101, // 102: kilocenter.api.v1.KiloCenterService.DecodePreview:input_type -> kilocenter.api.v1.DecodePreviewRequest
-	102, // 103: kilocenter.api.v1.KiloCenterService.ListMessages:input_type -> kilocenter.api.v1.ListMessagesRequest
-	103, // 104: kilocenter.api.v1.KiloCenterService.StreamMessages:input_type -> kilocenter.api.v1.StreamMessagesRequest
-	104, // 105: kilocenter.api.v1.KiloCenterService.ListBaseStationMessages:input_type -> kilocenter.api.v1.ListBaseStationMessagesRequest
-	105, // 106: kilocenter.api.v1.KiloCenterService.GetBaseStationMessage:input_type -> kilocenter.api.v1.GetBaseStationMessageRequest
-	106, // 107: kilocenter.api.v1.KiloCenterService.GetBaseStationMessageStats:input_type -> kilocenter.api.v1.GetBaseStationMessageStatsRequest
-	107, // 108: kilocenter.api.v1.KiloCenterService.SearchBaseStationMessages:input_type -> kilocenter.api.v1.SearchBaseStationMessagesRequest
-	108, // 109: kilocenter.api.v1.KiloCenterService.ExportBaseStationMessages:input_type -> kilocenter.api.v1.ExportBaseStationMessagesRequest
-	109, // 110: kilocenter.api.v1.KiloCenterService.StreamBaseStationMessages:input_type -> kilocenter.api.v1.StreamBaseStationMessagesRequest
-	110, // 111: kilocenter.api.v1.KiloCenterService.ListEndpointMessages:input_type -> kilocenter.api.v1.ListEndpointMessagesRequest
-	111, // 112: kilocenter.api.v1.KiloCenterService.GetEndPointStats:input_type -> kilocenter.api.v1.GetEndPointStatsRequest
-	112, // 113: kilocenter.api.v1.KiloCenterService.GetEndPointOperations:input_type -> kilocenter.api.v1.GetEndPointOperationsRequest
-	113, // 114: kilocenter.api.v1.KiloCenterService.ListAllBaseStationLocations:input_type -> kilocenter.api.v1.ListAllBaseStationLocationsRequest
-	114, // 115: kilocenter.api.v1.KiloCenterService.GetCEStatus:input_type -> kilocenter.api.v1.GetCEStatusRequest
-	115, // 116: kilocenter.api.v1.KiloCenterService.CompleteCEOnboarding:input_type -> kilocenter.api.v1.CompleteCEOnboardingRequest
-	116, // 117: kilocenter.api.v1.KiloCenterService.ListCEInstances:input_type -> kilocenter.api.v1.ListCEInstancesRequest
-	117, // 118: kilocenter.api.v1.KiloCenterService.RevokeCEInstance:input_type -> kilocenter.api.v1.RevokeCEInstanceRequest
-	118, // 119: kilocenter.api.v1.KiloCenterService.CreateEndPoint:output_type -> kilocenter.api.v1.EndPoint
-	118, // 120: kilocenter.api.v1.KiloCenterService.GetEndPoint:output_type -> kilocenter.api.v1.EndPoint
-	118, // 121: kilocenter.api.v1.KiloCenterService.UpdateEndPoint:output_type -> kilocenter.api.v1.EndPoint
-	25,  // 122: kilocenter.api.v1.KiloCenterService.DeleteEndPoint:output_type -> google.protobuf.Empty
-	119, // 123: kilocenter.api.v1.KiloCenterService.ListEndPoints:output_type -> kilocenter.api.v1.ListEndPointsResponse
-	120, // 124: kilocenter.api.v1.KiloCenterService.AttachEndPoint:output_type -> kilocenter.api.v1.AttachEndPointResponse
-	121, // 125: kilocenter.api.v1.KiloCenterService.DetachEndPoint:output_type -> kilocenter.api.v1.DetachEndPointResponse
-	122, // 126: kilocenter.api.v1.KiloCenterService.CreateBaseStation:output_type -> kilocenter.api.v1.BaseStation
-	122, // 127: kilocenter.api.v1.KiloCenterService.GetBaseStation:output_type -> kilocenter.api.v1.BaseStation
-	122, // 128: kilocenter.api.v1.KiloCenterService.UpdateBaseStation:output_type -> kilocenter.api.v1.BaseStation
-	25,  // 129: kilocenter.api.v1.KiloCenterService.DeleteBaseStation:output_type -> google.protobuf.Empty
-	123, // 130: kilocenter.api.v1.KiloCenterService.ListBaseStations:output_type -> kilocenter.api.v1.ListBaseStationsResponse
-	124, // 131: kilocenter.api.v1.KiloCenterService.GetBaseStationStats:output_type -> kilocenter.api.v1.GetBaseStationStatsResponse
-	122, // 132: kilocenter.api.v1.KiloCenterService.UpdateBaseStationEui:output_type -> kilocenter.api.v1.BaseStation
-	125, // 133: kilocenter.api.v1.KiloCenterService.GetMessage:output_type -> kilocenter.api.v1.Message
-	126, // 134: kilocenter.api.v1.KiloCenterService.SendDownlink:output_type -> kilocenter.api.v1.SendDownlinkResponse
-	127, // 135: kilocenter.api.v1.KiloCenterService.RevokeDownlink:output_type -> kilocenter.api.v1.RevokeDownlinkResponse
-	128, // 136: kilocenter.api.v1.KiloCenterService.ListDownlinkQueue:output_type -> kilocenter.api.v1.ListDownlinkQueueResponse
-	129, // 137: kilocenter.api.v1.KiloCenterService.GetDownlinkResults:output_type -> kilocenter.api.v1.GetDownlinkResultsResponse
-	130, // 138: kilocenter.api.v1.KiloCenterService.SendULTransmit:output_type -> kilocenter.api.v1.SendULTransmitResponse
-	131, // 139: kilocenter.api.v1.KiloCenterService.RequestBaseStationStatus:output_type -> kilocenter.api.v1.BaseStationStatusResponse
-	132, // 140: kilocenter.api.v1.KiloCenterService.InitiatePing:output_type -> kilocenter.api.v1.InitiatePingResponse
-	133, // 141: kilocenter.api.v1.KiloCenterService.GetDLRXStatus:output_type -> kilocenter.api.v1.GetDLRXStatusResponse
-	134, // 142: kilocenter.api.v1.KiloCenterService.QueryDLRXStatus:output_type -> kilocenter.api.v1.QueryDLRXStatusResponse
-	135, // 143: kilocenter.api.v1.KiloCenterService.GetDLRXStatusQueries:output_type -> kilocenter.api.v1.GetDLRXStatusQueriesResponse
-	136, // 144: kilocenter.api.v1.KiloCenterService.GetSystemStatus:output_type -> kilocenter.api.v1.SystemStatus
-	137, // 145: kilocenter.api.v1.KiloCenterService.GetStatistics:output_type -> kilocenter.api.v1.Statistics
-	138, // 146: kilocenter.api.v1.KiloCenterService.GetReleaseInfo:output_type -> kilocenter.api.v1.ReleaseInfo
-	139, // 147: kilocenter.api.v1.KiloCenterService.Login:output_type -> kilocenter.api.v1.LoginResponse
-	140, // 148: kilocenter.api.v1.KiloCenterService.RefreshTokens:output_type -> kilocenter.api.v1.RefreshTokensResponse
-	141, // 149: kilocenter.api.v1.KiloCenterService.GetProfile:output_type -> kilocenter.api.v1.GetProfileResponse
-	142, // 150: kilocenter.api.v1.KiloCenterService.GetAuthSettings:output_type -> kilocenter.api.v1.GetAuthSettingsResponse
-	143, // 151: kilocenter.api.v1.KiloCenterService.Logout:output_type -> kilocenter.api.v1.LogoutResponse
-	144, // 152: kilocenter.api.v1.KiloCenterService.ChangePassword:output_type -> kilocenter.api.v1.ChangePasswordResponse
-	139, // 153: kilocenter.api.v1.KiloCenterService.ExchangeOIDC:output_type -> kilocenter.api.v1.LoginResponse
-	139, // 154: kilocenter.api.v1.KiloCenterService.ExchangeOAuth2:output_type -> kilocenter.api.v1.LoginResponse
-	139, // 155: kilocenter.api.v1.KiloCenterService.RegisterAccount:output_type -> kilocenter.api.v1.LoginResponse
-	145, // 156: kilocenter.api.v1.KiloCenterService.CreateUser:output_type -> kilocenter.api.v1.CreateUserResponse
-	146, // 157: kilocenter.api.v1.KiloCenterService.GetUser:output_type -> kilocenter.api.v1.GetUserResponse
-	147, // 158: kilocenter.api.v1.KiloCenterService.UpdateUser:output_type -> kilocenter.api.v1.UpdateUserResponse
-	148, // 159: kilocenter.api.v1.KiloCenterService.DeleteUser:output_type -> kilocenter.api.v1.DeleteUserResponse
-	149, // 160: kilocenter.api.v1.KiloCenterService.ListUsers:output_type -> kilocenter.api.v1.ListUsersResponse
-	150, // 161: kilocenter.api.v1.KiloCenterService.UpdateUserPassword:output_type -> kilocenter.api.v1.UpdateUserPasswordResponse
-	151, // 162: kilocenter.api.v1.KiloCenterService.CreateOrganization:output_type -> kilocenter.api.v1.CreateOrganizationResponse
-	152, // 163: kilocenter.api.v1.KiloCenterService.GetOrganization:output_type -> kilocenter.api.v1.GetOrganizationResponse
-	153, // 164: kilocenter.api.v1.KiloCenterService.UpdateOrganization:output_type -> kilocenter.api.v1.UpdateOrganizationResponse
-	154, // 165: kilocenter.api.v1.KiloCenterService.DeleteOrganization:output_type -> kilocenter.api.v1.DeleteOrganizationResponse
-	155, // 166: kilocenter.api.v1.KiloCenterService.ListOrganizations:output_type -> kilocenter.api.v1.ListOrganizationsResponse
-	156, // 167: kilocenter.api.v1.KiloCenterService.AddOrganizationUser:output_type -> kilocenter.api.v1.AddOrganizationUserResponse
-	157, // 168: kilocenter.api.v1.KiloCenterService.GetOrganizationUser:output_type -> kilocenter.api.v1.GetOrganizationUserResponse
-	158, // 169: kilocenter.api.v1.KiloCenterService.UpdateOrganizationUser:output_type -> kilocenter.api.v1.UpdateOrganizationUserResponse
-	159, // 170: kilocenter.api.v1.KiloCenterService.RemoveOrganizationUser:output_type -> kilocenter.api.v1.RemoveOrganizationUserResponse
-	160, // 171: kilocenter.api.v1.KiloCenterService.ListOrganizationUsers:output_type -> kilocenter.api.v1.ListOrganizationUsersResponse
-	161, // 172: kilocenter.api.v1.KiloCenterService.ListUserOrganizations:output_type -> kilocenter.api.v1.ListUserOrganizationsResponse
-	162, // 173: kilocenter.api.v1.KiloCenterService.CreateApiKey:output_type -> kilocenter.api.v1.CreateApiKeyResponse
-	163, // 174: kilocenter.api.v1.KiloCenterService.GetApiKey:output_type -> kilocenter.api.v1.GetApiKeyResponse
-	164, // 175: kilocenter.api.v1.KiloCenterService.DeleteApiKey:output_type -> kilocenter.api.v1.DeleteApiKeyResponse
-	165, // 176: kilocenter.api.v1.KiloCenterService.ListApiKeys:output_type -> kilocenter.api.v1.ListApiKeysResponse
-	166, // 177: kilocenter.api.v1.KiloCenterService.CreateIntegration:output_type -> kilocenter.api.v1.Integration
-	166, // 178: kilocenter.api.v1.KiloCenterService.GetIntegration:output_type -> kilocenter.api.v1.Integration
-	166, // 179: kilocenter.api.v1.KiloCenterService.UpdateIntegration:output_type -> kilocenter.api.v1.Integration
-	25,  // 180: kilocenter.api.v1.KiloCenterService.DeleteIntegration:output_type -> google.protobuf.Empty
-	167, // 181: kilocenter.api.v1.KiloCenterService.ListIntegrations:output_type -> kilocenter.api.v1.ListIntegrationsResponse
-	168, // 182: kilocenter.api.v1.KiloCenterService.GetAnalyticsOverview:output_type -> kilocenter.api.v1.GetAnalyticsOverviewResponse
-	169, // 183: kilocenter.api.v1.KiloCenterService.GetActivityAnalytics:output_type -> kilocenter.api.v1.GetActivityAnalyticsResponse
-	170, // 184: kilocenter.api.v1.KiloCenterService.GetSignalQualityAnalytics:output_type -> kilocenter.api.v1.GetSignalQualityAnalyticsResponse
-	171, // 185: kilocenter.api.v1.KiloCenterService.ListEvents:output_type -> kilocenter.api.v1.ListEventsResponse
-	172, // 186: kilocenter.api.v1.KiloCenterService.ListBaseStationActivity:output_type -> kilocenter.api.v1.ListBaseStationActivityResponse
-	173, // 187: kilocenter.api.v1.KiloCenterService.ListEndpointActivity:output_type -> kilocenter.api.v1.ListEndpointActivityResponse
-	174, // 188: kilocenter.api.v1.KiloCenterService.StreamEvents:output_type -> kilocenter.api.v1.Event
-	175, // 189: kilocenter.api.v1.KiloCenterService.ListAlerts:output_type -> kilocenter.api.v1.ListAlertsResponse
-	176, // 190: kilocenter.api.v1.KiloCenterService.GetAlertSummary:output_type -> kilocenter.api.v1.GetAlertSummaryResponse
-	177, // 191: kilocenter.api.v1.KiloCenterService.ListScaciSessions:output_type -> kilocenter.api.v1.ListScaciSessionsResponse
-	178, // 192: kilocenter.api.v1.KiloCenterService.GetScaciSession:output_type -> kilocenter.api.v1.GetScaciSessionResponse
-	179, // 193: kilocenter.api.v1.KiloCenterService.GetScaciStatistics:output_type -> kilocenter.api.v1.GetScaciStatisticsResponse
-	180, // 194: kilocenter.api.v1.KiloCenterService.ListScaciErrors:output_type -> kilocenter.api.v1.ListScaciErrorsResponse
-	181, // 195: kilocenter.api.v1.KiloCenterService.ListScaciQueues:output_type -> kilocenter.api.v1.ListScaciQueuesResponse
-	182, // 196: kilocenter.api.v1.KiloCenterService.GetScaciStatus:output_type -> kilocenter.api.v1.GetScaciStatusResponse
-	183, // 197: kilocenter.api.v1.KiloCenterService.GenerateCertificate:output_type -> kilocenter.api.v1.GenerateCertificateResponse
-	184, // 198: kilocenter.api.v1.KiloCenterService.DownloadCertificate:output_type -> kilocenter.api.v1.DownloadCertificateResponse
-	184, // 199: kilocenter.api.v1.KiloCenterService.DownloadBaseStationCertificate:output_type -> kilocenter.api.v1.DownloadCertificateResponse
-	185, // 200: kilocenter.api.v1.KiloCenterService.GenerateServerCertificates:output_type -> kilocenter.api.v1.GenerateServerCertificatesResponse
-	186, // 201: kilocenter.api.v1.KiloCenterService.RenewServerCertificates:output_type -> kilocenter.api.v1.RenewServerCertificatesResponse
-	187, // 202: kilocenter.api.v1.KiloCenterService.GetServerCertificateStatus:output_type -> kilocenter.api.v1.GetServerCertificateStatusResponse
-	188, // 203: kilocenter.api.v1.KiloCenterService.CreateManufacturer:output_type -> kilocenter.api.v1.CreateManufacturerResponse
-	189, // 204: kilocenter.api.v1.KiloCenterService.GetManufacturer:output_type -> kilocenter.api.v1.GetManufacturerResponse
-	190, // 205: kilocenter.api.v1.KiloCenterService.UpdateManufacturer:output_type -> kilocenter.api.v1.UpdateManufacturerResponse
-	191, // 206: kilocenter.api.v1.KiloCenterService.DeleteManufacturer:output_type -> kilocenter.api.v1.DeleteManufacturerResponse
-	192, // 207: kilocenter.api.v1.KiloCenterService.ListManufacturers:output_type -> kilocenter.api.v1.ListManufacturersResponse
-	193, // 208: kilocenter.api.v1.KiloCenterService.CreateDeviceModel:output_type -> kilocenter.api.v1.CreateDeviceModelResponse
-	194, // 209: kilocenter.api.v1.KiloCenterService.GetDeviceModel:output_type -> kilocenter.api.v1.GetDeviceModelResponse
-	195, // 210: kilocenter.api.v1.KiloCenterService.UpdateDeviceModel:output_type -> kilocenter.api.v1.UpdateDeviceModelResponse
-	196, // 211: kilocenter.api.v1.KiloCenterService.DeleteDeviceModel:output_type -> kilocenter.api.v1.DeleteDeviceModelResponse
-	197, // 212: kilocenter.api.v1.KiloCenterService.ListDeviceModels:output_type -> kilocenter.api.v1.ListDeviceModelsResponse
-	198, // 213: kilocenter.api.v1.KiloCenterService.CreateBlueprint:output_type -> kilocenter.api.v1.CreateBlueprintResponse
-	199, // 214: kilocenter.api.v1.KiloCenterService.GetBlueprint:output_type -> kilocenter.api.v1.GetBlueprintResponse
-	200, // 215: kilocenter.api.v1.KiloCenterService.UpdateBlueprint:output_type -> kilocenter.api.v1.UpdateBlueprintResponse
-	201, // 216: kilocenter.api.v1.KiloCenterService.DeleteBlueprint:output_type -> kilocenter.api.v1.DeleteBlueprintResponse
-	202, // 217: kilocenter.api.v1.KiloCenterService.ListBlueprints:output_type -> kilocenter.api.v1.ListBlueprintsResponse
-	203, // 218: kilocenter.api.v1.KiloCenterService.SetDefaultBlueprint:output_type -> kilocenter.api.v1.SetDefaultBlueprintResponse
-	204, // 219: kilocenter.api.v1.KiloCenterService.SubmitBlueprintToRegistry:output_type -> kilocenter.api.v1.SubmitBlueprintToRegistryResponse
-	205, // 220: kilocenter.api.v1.KiloCenterService.CreateDeviceModelWithBlueprint:output_type -> kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse
-	206, // 221: kilocenter.api.v1.KiloCenterService.DecodePreview:output_type -> kilocenter.api.v1.DecodePreviewResponse
-	207, // 222: kilocenter.api.v1.KiloCenterService.ListMessages:output_type -> kilocenter.api.v1.ListMessagesResponse
-	125, // 223: kilocenter.api.v1.KiloCenterService.StreamMessages:output_type -> kilocenter.api.v1.Message
-	208, // 224: kilocenter.api.v1.KiloCenterService.ListBaseStationMessages:output_type -> kilocenter.api.v1.ListBaseStationMessagesResponse
-	209, // 225: kilocenter.api.v1.KiloCenterService.GetBaseStationMessage:output_type -> kilocenter.api.v1.GetBaseStationMessageResponse
-	210, // 226: kilocenter.api.v1.KiloCenterService.GetBaseStationMessageStats:output_type -> kilocenter.api.v1.GetBaseStationMessageStatsResponse
-	211, // 227: kilocenter.api.v1.KiloCenterService.SearchBaseStationMessages:output_type -> kilocenter.api.v1.SearchBaseStationMessagesResponse
-	212, // 228: kilocenter.api.v1.KiloCenterService.ExportBaseStationMessages:output_type -> kilocenter.api.v1.ExportBaseStationMessagesResponse
-	213, // 229: kilocenter.api.v1.KiloCenterService.StreamBaseStationMessages:output_type -> kilocenter.api.v1.BaseStationMessage
-	214, // 230: kilocenter.api.v1.KiloCenterService.ListEndpointMessages:output_type -> kilocenter.api.v1.ListEndpointMessagesResponse
-	215, // 231: kilocenter.api.v1.KiloCenterService.GetEndPointStats:output_type -> kilocenter.api.v1.GetEndPointStatsResponse
-	216, // 232: kilocenter.api.v1.KiloCenterService.GetEndPointOperations:output_type -> kilocenter.api.v1.GetEndPointOperationsResponse
-	217, // 233: kilocenter.api.v1.KiloCenterService.ListAllBaseStationLocations:output_type -> kilocenter.api.v1.ListAllBaseStationLocationsResponse
-	218, // 234: kilocenter.api.v1.KiloCenterService.GetCEStatus:output_type -> kilocenter.api.v1.GetCEStatusResponse
-	219, // 235: kilocenter.api.v1.KiloCenterService.CompleteCEOnboarding:output_type -> kilocenter.api.v1.CompleteCEOnboardingResponse
-	220, // 236: kilocenter.api.v1.KiloCenterService.ListCEInstances:output_type -> kilocenter.api.v1.ListCEInstancesResponse
-	221, // 237: kilocenter.api.v1.KiloCenterService.RevokeCEInstance:output_type -> kilocenter.api.v1.RevokeCEInstanceResponse
-	119, // [119:238] is the sub-list for method output_type
-	0,   // [0:119] is the sub-list for method input_type
+	14,  // 14: kilocenter.api.v1.KiloCenterService.GetBaseStationAvailability:input_type -> kilocenter.api.v1.GetBaseStationAvailabilityRequest
+	15,  // 15: kilocenter.api.v1.KiloCenterService.GetBaseStationMessagesReceived:input_type -> kilocenter.api.v1.GetBaseStationMessagesReceivedRequest
+	16,  // 16: kilocenter.api.v1.KiloCenterService.GetMessage:input_type -> kilocenter.api.v1.GetMessageRequest
+	17,  // 17: kilocenter.api.v1.KiloCenterService.SendDownlink:input_type -> kilocenter.api.v1.SendDownlinkRequest
+	18,  // 18: kilocenter.api.v1.KiloCenterService.RevokeDownlink:input_type -> kilocenter.api.v1.RevokeDownlinkRequest
+	19,  // 19: kilocenter.api.v1.KiloCenterService.ListDownlinkQueue:input_type -> kilocenter.api.v1.ListDownlinkQueueRequest
+	20,  // 20: kilocenter.api.v1.KiloCenterService.GetDownlinkResults:input_type -> kilocenter.api.v1.GetDownlinkResultsRequest
+	21,  // 21: kilocenter.api.v1.KiloCenterService.SendULTransmit:input_type -> kilocenter.api.v1.SendULTransmitRequest
+	22,  // 22: kilocenter.api.v1.KiloCenterService.RequestBaseStationStatus:input_type -> kilocenter.api.v1.BaseStationStatusRequest
+	23,  // 23: kilocenter.api.v1.KiloCenterService.InitiatePing:input_type -> kilocenter.api.v1.InitiatePingRequest
+	24,  // 24: kilocenter.api.v1.KiloCenterService.GetDLRXStatus:input_type -> kilocenter.api.v1.GetDLRXStatusRequest
+	25,  // 25: kilocenter.api.v1.KiloCenterService.QueryDLRXStatus:input_type -> kilocenter.api.v1.QueryDLRXStatusRequest
+	26,  // 26: kilocenter.api.v1.KiloCenterService.GetDLRXStatusQueries:input_type -> kilocenter.api.v1.GetDLRXStatusQueriesRequest
+	27,  // 27: kilocenter.api.v1.KiloCenterService.GetSystemStatus:input_type -> google.protobuf.Empty
+	28,  // 28: kilocenter.api.v1.KiloCenterService.GetStatistics:input_type -> kilocenter.api.v1.GetStatisticsRequest
+	27,  // 29: kilocenter.api.v1.KiloCenterService.GetReleaseInfo:input_type -> google.protobuf.Empty
+	29,  // 30: kilocenter.api.v1.KiloCenterService.Login:input_type -> kilocenter.api.v1.LoginRequest
+	30,  // 31: kilocenter.api.v1.KiloCenterService.RefreshTokens:input_type -> kilocenter.api.v1.RefreshTokensRequest
+	31,  // 32: kilocenter.api.v1.KiloCenterService.GetProfile:input_type -> kilocenter.api.v1.GetProfileRequest
+	32,  // 33: kilocenter.api.v1.KiloCenterService.GetAuthSettings:input_type -> kilocenter.api.v1.GetAuthSettingsRequest
+	33,  // 34: kilocenter.api.v1.KiloCenterService.Logout:input_type -> kilocenter.api.v1.LogoutRequest
+	34,  // 35: kilocenter.api.v1.KiloCenterService.ChangePassword:input_type -> kilocenter.api.v1.ChangePasswordRequest
+	35,  // 36: kilocenter.api.v1.KiloCenterService.ExchangeOIDC:input_type -> kilocenter.api.v1.ExchangeOIDCRequest
+	36,  // 37: kilocenter.api.v1.KiloCenterService.ExchangeOAuth2:input_type -> kilocenter.api.v1.ExchangeOAuth2Request
+	37,  // 38: kilocenter.api.v1.KiloCenterService.RegisterAccount:input_type -> kilocenter.api.v1.RegisterAccountRequest
+	38,  // 39: kilocenter.api.v1.KiloCenterService.CreateUser:input_type -> kilocenter.api.v1.CreateUserRequest
+	39,  // 40: kilocenter.api.v1.KiloCenterService.GetUser:input_type -> kilocenter.api.v1.GetUserRequest
+	40,  // 41: kilocenter.api.v1.KiloCenterService.UpdateUser:input_type -> kilocenter.api.v1.UpdateUserRequest
+	41,  // 42: kilocenter.api.v1.KiloCenterService.DeleteUser:input_type -> kilocenter.api.v1.DeleteUserRequest
+	42,  // 43: kilocenter.api.v1.KiloCenterService.ListUsers:input_type -> kilocenter.api.v1.ListUsersRequest
+	43,  // 44: kilocenter.api.v1.KiloCenterService.UpdateUserPassword:input_type -> kilocenter.api.v1.UpdateUserPasswordRequest
+	44,  // 45: kilocenter.api.v1.KiloCenterService.CreateOrganization:input_type -> kilocenter.api.v1.CreateOrganizationRequest
+	45,  // 46: kilocenter.api.v1.KiloCenterService.GetOrganization:input_type -> kilocenter.api.v1.GetOrganizationRequest
+	46,  // 47: kilocenter.api.v1.KiloCenterService.UpdateOrganization:input_type -> kilocenter.api.v1.UpdateOrganizationRequest
+	47,  // 48: kilocenter.api.v1.KiloCenterService.DeleteOrganization:input_type -> kilocenter.api.v1.DeleteOrganizationRequest
+	48,  // 49: kilocenter.api.v1.KiloCenterService.ListOrganizations:input_type -> kilocenter.api.v1.ListOrganizationsRequest
+	49,  // 50: kilocenter.api.v1.KiloCenterService.AddOrganizationUser:input_type -> kilocenter.api.v1.AddOrganizationUserRequest
+	50,  // 51: kilocenter.api.v1.KiloCenterService.GetOrganizationUser:input_type -> kilocenter.api.v1.GetOrganizationUserRequest
+	51,  // 52: kilocenter.api.v1.KiloCenterService.UpdateOrganizationUser:input_type -> kilocenter.api.v1.UpdateOrganizationUserRequest
+	52,  // 53: kilocenter.api.v1.KiloCenterService.RemoveOrganizationUser:input_type -> kilocenter.api.v1.RemoveOrganizationUserRequest
+	53,  // 54: kilocenter.api.v1.KiloCenterService.ListOrganizationUsers:input_type -> kilocenter.api.v1.ListOrganizationUsersRequest
+	54,  // 55: kilocenter.api.v1.KiloCenterService.ListUserOrganizations:input_type -> kilocenter.api.v1.ListUserOrganizationsRequest
+	55,  // 56: kilocenter.api.v1.KiloCenterService.CreateApiKey:input_type -> kilocenter.api.v1.CreateApiKeyRequest
+	56,  // 57: kilocenter.api.v1.KiloCenterService.GetApiKey:input_type -> kilocenter.api.v1.GetApiKeyRequest
+	57,  // 58: kilocenter.api.v1.KiloCenterService.DeleteApiKey:input_type -> kilocenter.api.v1.DeleteApiKeyRequest
+	58,  // 59: kilocenter.api.v1.KiloCenterService.ListApiKeys:input_type -> kilocenter.api.v1.ListApiKeysRequest
+	59,  // 60: kilocenter.api.v1.KiloCenterService.CreateIntegration:input_type -> kilocenter.api.v1.CreateIntegrationRequest
+	60,  // 61: kilocenter.api.v1.KiloCenterService.GetIntegration:input_type -> kilocenter.api.v1.GetIntegrationRequest
+	61,  // 62: kilocenter.api.v1.KiloCenterService.UpdateIntegration:input_type -> kilocenter.api.v1.UpdateIntegrationRequest
+	62,  // 63: kilocenter.api.v1.KiloCenterService.DeleteIntegration:input_type -> kilocenter.api.v1.DeleteIntegrationRequest
+	63,  // 64: kilocenter.api.v1.KiloCenterService.ListIntegrations:input_type -> kilocenter.api.v1.ListIntegrationsRequest
+	64,  // 65: kilocenter.api.v1.KiloCenterService.GetAnalyticsOverview:input_type -> kilocenter.api.v1.GetAnalyticsOverviewRequest
+	65,  // 66: kilocenter.api.v1.KiloCenterService.GetActivityAnalytics:input_type -> kilocenter.api.v1.GetActivityAnalyticsRequest
+	66,  // 67: kilocenter.api.v1.KiloCenterService.GetSignalQualityAnalytics:input_type -> kilocenter.api.v1.GetSignalQualityAnalyticsRequest
+	67,  // 68: kilocenter.api.v1.KiloCenterService.ListEvents:input_type -> kilocenter.api.v1.ListEventsRequest
+	68,  // 69: kilocenter.api.v1.KiloCenterService.ListBaseStationActivity:input_type -> kilocenter.api.v1.ListBaseStationActivityRequest
+	69,  // 70: kilocenter.api.v1.KiloCenterService.ListEndpointActivity:input_type -> kilocenter.api.v1.ListEndpointActivityRequest
+	70,  // 71: kilocenter.api.v1.KiloCenterService.StreamEvents:input_type -> kilocenter.api.v1.StreamEventsRequest
+	71,  // 72: kilocenter.api.v1.KiloCenterService.ListAlerts:input_type -> kilocenter.api.v1.ListAlertsRequest
+	72,  // 73: kilocenter.api.v1.KiloCenterService.GetAlertSummary:input_type -> kilocenter.api.v1.GetAlertSummaryRequest
+	73,  // 74: kilocenter.api.v1.KiloCenterService.ListScaciSessions:input_type -> kilocenter.api.v1.ListScaciSessionsRequest
+	74,  // 75: kilocenter.api.v1.KiloCenterService.GetScaciSession:input_type -> kilocenter.api.v1.GetScaciSessionRequest
+	75,  // 76: kilocenter.api.v1.KiloCenterService.GetScaciStatistics:input_type -> kilocenter.api.v1.GetScaciStatisticsRequest
+	76,  // 77: kilocenter.api.v1.KiloCenterService.ListScaciErrors:input_type -> kilocenter.api.v1.ListScaciErrorsRequest
+	77,  // 78: kilocenter.api.v1.KiloCenterService.ListScaciQueues:input_type -> kilocenter.api.v1.ListScaciQueuesRequest
+	78,  // 79: kilocenter.api.v1.KiloCenterService.GetScaciStatus:input_type -> kilocenter.api.v1.GetScaciStatusRequest
+	79,  // 80: kilocenter.api.v1.KiloCenterService.GenerateCertificate:input_type -> kilocenter.api.v1.GenerateCertificateRequest
+	80,  // 81: kilocenter.api.v1.KiloCenterService.DownloadCertificate:input_type -> kilocenter.api.v1.DownloadCertificateRequest
+	81,  // 82: kilocenter.api.v1.KiloCenterService.DownloadBaseStationCertificate:input_type -> kilocenter.api.v1.DownloadBaseStationCertificateRequest
+	82,  // 83: kilocenter.api.v1.KiloCenterService.GenerateServerCertificates:input_type -> kilocenter.api.v1.GenerateServerCertificatesRequest
+	83,  // 84: kilocenter.api.v1.KiloCenterService.RenewServerCertificates:input_type -> kilocenter.api.v1.RenewServerCertificatesRequest
+	84,  // 85: kilocenter.api.v1.KiloCenterService.GetServerCertificateStatus:input_type -> kilocenter.api.v1.GetServerCertificateStatusRequest
+	85,  // 86: kilocenter.api.v1.KiloCenterService.CreateManufacturer:input_type -> kilocenter.api.v1.CreateManufacturerRequest
+	86,  // 87: kilocenter.api.v1.KiloCenterService.GetManufacturer:input_type -> kilocenter.api.v1.GetManufacturerRequest
+	87,  // 88: kilocenter.api.v1.KiloCenterService.UpdateManufacturer:input_type -> kilocenter.api.v1.UpdateManufacturerRequest
+	88,  // 89: kilocenter.api.v1.KiloCenterService.DeleteManufacturer:input_type -> kilocenter.api.v1.DeleteManufacturerRequest
+	89,  // 90: kilocenter.api.v1.KiloCenterService.ListManufacturers:input_type -> kilocenter.api.v1.ListManufacturersRequest
+	90,  // 91: kilocenter.api.v1.KiloCenterService.CreateDeviceModel:input_type -> kilocenter.api.v1.CreateDeviceModelRequest
+	91,  // 92: kilocenter.api.v1.KiloCenterService.GetDeviceModel:input_type -> kilocenter.api.v1.GetDeviceModelRequest
+	92,  // 93: kilocenter.api.v1.KiloCenterService.UpdateDeviceModel:input_type -> kilocenter.api.v1.UpdateDeviceModelRequest
+	93,  // 94: kilocenter.api.v1.KiloCenterService.DeleteDeviceModel:input_type -> kilocenter.api.v1.DeleteDeviceModelRequest
+	94,  // 95: kilocenter.api.v1.KiloCenterService.ListDeviceModels:input_type -> kilocenter.api.v1.ListDeviceModelsRequest
+	95,  // 96: kilocenter.api.v1.KiloCenterService.CreateBlueprint:input_type -> kilocenter.api.v1.CreateBlueprintRequest
+	96,  // 97: kilocenter.api.v1.KiloCenterService.GetBlueprint:input_type -> kilocenter.api.v1.GetBlueprintRequest
+	97,  // 98: kilocenter.api.v1.KiloCenterService.UpdateBlueprint:input_type -> kilocenter.api.v1.UpdateBlueprintRequest
+	98,  // 99: kilocenter.api.v1.KiloCenterService.DeleteBlueprint:input_type -> kilocenter.api.v1.DeleteBlueprintRequest
+	99,  // 100: kilocenter.api.v1.KiloCenterService.ListBlueprints:input_type -> kilocenter.api.v1.ListBlueprintsRequest
+	100, // 101: kilocenter.api.v1.KiloCenterService.SetDefaultBlueprint:input_type -> kilocenter.api.v1.SetDefaultBlueprintRequest
+	101, // 102: kilocenter.api.v1.KiloCenterService.SubmitBlueprintToRegistry:input_type -> kilocenter.api.v1.SubmitBlueprintToRegistryRequest
+	102, // 103: kilocenter.api.v1.KiloCenterService.CreateDeviceModelWithBlueprint:input_type -> kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest
+	103, // 104: kilocenter.api.v1.KiloCenterService.DecodePreview:input_type -> kilocenter.api.v1.DecodePreviewRequest
+	104, // 105: kilocenter.api.v1.KiloCenterService.ListMessages:input_type -> kilocenter.api.v1.ListMessagesRequest
+	105, // 106: kilocenter.api.v1.KiloCenterService.StreamMessages:input_type -> kilocenter.api.v1.StreamMessagesRequest
+	106, // 107: kilocenter.api.v1.KiloCenterService.ListBaseStationMessages:input_type -> kilocenter.api.v1.ListBaseStationMessagesRequest
+	107, // 108: kilocenter.api.v1.KiloCenterService.GetBaseStationMessage:input_type -> kilocenter.api.v1.GetBaseStationMessageRequest
+	108, // 109: kilocenter.api.v1.KiloCenterService.GetBaseStationMessageStats:input_type -> kilocenter.api.v1.GetBaseStationMessageStatsRequest
+	109, // 110: kilocenter.api.v1.KiloCenterService.SearchBaseStationMessages:input_type -> kilocenter.api.v1.SearchBaseStationMessagesRequest
+	110, // 111: kilocenter.api.v1.KiloCenterService.ExportBaseStationMessages:input_type -> kilocenter.api.v1.ExportBaseStationMessagesRequest
+	111, // 112: kilocenter.api.v1.KiloCenterService.StreamBaseStationMessages:input_type -> kilocenter.api.v1.StreamBaseStationMessagesRequest
+	112, // 113: kilocenter.api.v1.KiloCenterService.ListEndpointMessages:input_type -> kilocenter.api.v1.ListEndpointMessagesRequest
+	113, // 114: kilocenter.api.v1.KiloCenterService.GetEndPointStats:input_type -> kilocenter.api.v1.GetEndPointStatsRequest
+	114, // 115: kilocenter.api.v1.KiloCenterService.GetEndPointOperations:input_type -> kilocenter.api.v1.GetEndPointOperationsRequest
+	115, // 116: kilocenter.api.v1.KiloCenterService.ListAllBaseStationLocations:input_type -> kilocenter.api.v1.ListAllBaseStationLocationsRequest
+	116, // 117: kilocenter.api.v1.KiloCenterService.GetCEStatus:input_type -> kilocenter.api.v1.GetCEStatusRequest
+	117, // 118: kilocenter.api.v1.KiloCenterService.CompleteCEOnboarding:input_type -> kilocenter.api.v1.CompleteCEOnboardingRequest
+	118, // 119: kilocenter.api.v1.KiloCenterService.ListCEInstances:input_type -> kilocenter.api.v1.ListCEInstancesRequest
+	119, // 120: kilocenter.api.v1.KiloCenterService.RevokeCEInstance:input_type -> kilocenter.api.v1.RevokeCEInstanceRequest
+	120, // 121: kilocenter.api.v1.KiloCenterService.CreateEndPoint:output_type -> kilocenter.api.v1.EndPoint
+	120, // 122: kilocenter.api.v1.KiloCenterService.GetEndPoint:output_type -> kilocenter.api.v1.EndPoint
+	120, // 123: kilocenter.api.v1.KiloCenterService.UpdateEndPoint:output_type -> kilocenter.api.v1.EndPoint
+	27,  // 124: kilocenter.api.v1.KiloCenterService.DeleteEndPoint:output_type -> google.protobuf.Empty
+	121, // 125: kilocenter.api.v1.KiloCenterService.ListEndPoints:output_type -> kilocenter.api.v1.ListEndPointsResponse
+	122, // 126: kilocenter.api.v1.KiloCenterService.AttachEndPoint:output_type -> kilocenter.api.v1.AttachEndPointResponse
+	123, // 127: kilocenter.api.v1.KiloCenterService.DetachEndPoint:output_type -> kilocenter.api.v1.DetachEndPointResponse
+	124, // 128: kilocenter.api.v1.KiloCenterService.CreateBaseStation:output_type -> kilocenter.api.v1.BaseStation
+	124, // 129: kilocenter.api.v1.KiloCenterService.GetBaseStation:output_type -> kilocenter.api.v1.BaseStation
+	124, // 130: kilocenter.api.v1.KiloCenterService.UpdateBaseStation:output_type -> kilocenter.api.v1.BaseStation
+	27,  // 131: kilocenter.api.v1.KiloCenterService.DeleteBaseStation:output_type -> google.protobuf.Empty
+	125, // 132: kilocenter.api.v1.KiloCenterService.ListBaseStations:output_type -> kilocenter.api.v1.ListBaseStationsResponse
+	126, // 133: kilocenter.api.v1.KiloCenterService.GetBaseStationStats:output_type -> kilocenter.api.v1.GetBaseStationStatsResponse
+	124, // 134: kilocenter.api.v1.KiloCenterService.UpdateBaseStationEui:output_type -> kilocenter.api.v1.BaseStation
+	127, // 135: kilocenter.api.v1.KiloCenterService.GetBaseStationAvailability:output_type -> kilocenter.api.v1.GetBaseStationAvailabilityResponse
+	128, // 136: kilocenter.api.v1.KiloCenterService.GetBaseStationMessagesReceived:output_type -> kilocenter.api.v1.GetBaseStationMessagesReceivedResponse
+	129, // 137: kilocenter.api.v1.KiloCenterService.GetMessage:output_type -> kilocenter.api.v1.Message
+	130, // 138: kilocenter.api.v1.KiloCenterService.SendDownlink:output_type -> kilocenter.api.v1.SendDownlinkResponse
+	131, // 139: kilocenter.api.v1.KiloCenterService.RevokeDownlink:output_type -> kilocenter.api.v1.RevokeDownlinkResponse
+	132, // 140: kilocenter.api.v1.KiloCenterService.ListDownlinkQueue:output_type -> kilocenter.api.v1.ListDownlinkQueueResponse
+	133, // 141: kilocenter.api.v1.KiloCenterService.GetDownlinkResults:output_type -> kilocenter.api.v1.GetDownlinkResultsResponse
+	134, // 142: kilocenter.api.v1.KiloCenterService.SendULTransmit:output_type -> kilocenter.api.v1.SendULTransmitResponse
+	135, // 143: kilocenter.api.v1.KiloCenterService.RequestBaseStationStatus:output_type -> kilocenter.api.v1.BaseStationStatusResponse
+	136, // 144: kilocenter.api.v1.KiloCenterService.InitiatePing:output_type -> kilocenter.api.v1.InitiatePingResponse
+	137, // 145: kilocenter.api.v1.KiloCenterService.GetDLRXStatus:output_type -> kilocenter.api.v1.GetDLRXStatusResponse
+	138, // 146: kilocenter.api.v1.KiloCenterService.QueryDLRXStatus:output_type -> kilocenter.api.v1.QueryDLRXStatusResponse
+	139, // 147: kilocenter.api.v1.KiloCenterService.GetDLRXStatusQueries:output_type -> kilocenter.api.v1.GetDLRXStatusQueriesResponse
+	140, // 148: kilocenter.api.v1.KiloCenterService.GetSystemStatus:output_type -> kilocenter.api.v1.SystemStatus
+	141, // 149: kilocenter.api.v1.KiloCenterService.GetStatistics:output_type -> kilocenter.api.v1.Statistics
+	142, // 150: kilocenter.api.v1.KiloCenterService.GetReleaseInfo:output_type -> kilocenter.api.v1.ReleaseInfo
+	143, // 151: kilocenter.api.v1.KiloCenterService.Login:output_type -> kilocenter.api.v1.LoginResponse
+	144, // 152: kilocenter.api.v1.KiloCenterService.RefreshTokens:output_type -> kilocenter.api.v1.RefreshTokensResponse
+	145, // 153: kilocenter.api.v1.KiloCenterService.GetProfile:output_type -> kilocenter.api.v1.GetProfileResponse
+	146, // 154: kilocenter.api.v1.KiloCenterService.GetAuthSettings:output_type -> kilocenter.api.v1.GetAuthSettingsResponse
+	147, // 155: kilocenter.api.v1.KiloCenterService.Logout:output_type -> kilocenter.api.v1.LogoutResponse
+	148, // 156: kilocenter.api.v1.KiloCenterService.ChangePassword:output_type -> kilocenter.api.v1.ChangePasswordResponse
+	143, // 157: kilocenter.api.v1.KiloCenterService.ExchangeOIDC:output_type -> kilocenter.api.v1.LoginResponse
+	143, // 158: kilocenter.api.v1.KiloCenterService.ExchangeOAuth2:output_type -> kilocenter.api.v1.LoginResponse
+	143, // 159: kilocenter.api.v1.KiloCenterService.RegisterAccount:output_type -> kilocenter.api.v1.LoginResponse
+	149, // 160: kilocenter.api.v1.KiloCenterService.CreateUser:output_type -> kilocenter.api.v1.CreateUserResponse
+	150, // 161: kilocenter.api.v1.KiloCenterService.GetUser:output_type -> kilocenter.api.v1.GetUserResponse
+	151, // 162: kilocenter.api.v1.KiloCenterService.UpdateUser:output_type -> kilocenter.api.v1.UpdateUserResponse
+	152, // 163: kilocenter.api.v1.KiloCenterService.DeleteUser:output_type -> kilocenter.api.v1.DeleteUserResponse
+	153, // 164: kilocenter.api.v1.KiloCenterService.ListUsers:output_type -> kilocenter.api.v1.ListUsersResponse
+	154, // 165: kilocenter.api.v1.KiloCenterService.UpdateUserPassword:output_type -> kilocenter.api.v1.UpdateUserPasswordResponse
+	155, // 166: kilocenter.api.v1.KiloCenterService.CreateOrganization:output_type -> kilocenter.api.v1.CreateOrganizationResponse
+	156, // 167: kilocenter.api.v1.KiloCenterService.GetOrganization:output_type -> kilocenter.api.v1.GetOrganizationResponse
+	157, // 168: kilocenter.api.v1.KiloCenterService.UpdateOrganization:output_type -> kilocenter.api.v1.UpdateOrganizationResponse
+	158, // 169: kilocenter.api.v1.KiloCenterService.DeleteOrganization:output_type -> kilocenter.api.v1.DeleteOrganizationResponse
+	159, // 170: kilocenter.api.v1.KiloCenterService.ListOrganizations:output_type -> kilocenter.api.v1.ListOrganizationsResponse
+	160, // 171: kilocenter.api.v1.KiloCenterService.AddOrganizationUser:output_type -> kilocenter.api.v1.AddOrganizationUserResponse
+	161, // 172: kilocenter.api.v1.KiloCenterService.GetOrganizationUser:output_type -> kilocenter.api.v1.GetOrganizationUserResponse
+	162, // 173: kilocenter.api.v1.KiloCenterService.UpdateOrganizationUser:output_type -> kilocenter.api.v1.UpdateOrganizationUserResponse
+	163, // 174: kilocenter.api.v1.KiloCenterService.RemoveOrganizationUser:output_type -> kilocenter.api.v1.RemoveOrganizationUserResponse
+	164, // 175: kilocenter.api.v1.KiloCenterService.ListOrganizationUsers:output_type -> kilocenter.api.v1.ListOrganizationUsersResponse
+	165, // 176: kilocenter.api.v1.KiloCenterService.ListUserOrganizations:output_type -> kilocenter.api.v1.ListUserOrganizationsResponse
+	166, // 177: kilocenter.api.v1.KiloCenterService.CreateApiKey:output_type -> kilocenter.api.v1.CreateApiKeyResponse
+	167, // 178: kilocenter.api.v1.KiloCenterService.GetApiKey:output_type -> kilocenter.api.v1.GetApiKeyResponse
+	168, // 179: kilocenter.api.v1.KiloCenterService.DeleteApiKey:output_type -> kilocenter.api.v1.DeleteApiKeyResponse
+	169, // 180: kilocenter.api.v1.KiloCenterService.ListApiKeys:output_type -> kilocenter.api.v1.ListApiKeysResponse
+	170, // 181: kilocenter.api.v1.KiloCenterService.CreateIntegration:output_type -> kilocenter.api.v1.Integration
+	170, // 182: kilocenter.api.v1.KiloCenterService.GetIntegration:output_type -> kilocenter.api.v1.Integration
+	170, // 183: kilocenter.api.v1.KiloCenterService.UpdateIntegration:output_type -> kilocenter.api.v1.Integration
+	27,  // 184: kilocenter.api.v1.KiloCenterService.DeleteIntegration:output_type -> google.protobuf.Empty
+	171, // 185: kilocenter.api.v1.KiloCenterService.ListIntegrations:output_type -> kilocenter.api.v1.ListIntegrationsResponse
+	172, // 186: kilocenter.api.v1.KiloCenterService.GetAnalyticsOverview:output_type -> kilocenter.api.v1.GetAnalyticsOverviewResponse
+	173, // 187: kilocenter.api.v1.KiloCenterService.GetActivityAnalytics:output_type -> kilocenter.api.v1.GetActivityAnalyticsResponse
+	174, // 188: kilocenter.api.v1.KiloCenterService.GetSignalQualityAnalytics:output_type -> kilocenter.api.v1.GetSignalQualityAnalyticsResponse
+	175, // 189: kilocenter.api.v1.KiloCenterService.ListEvents:output_type -> kilocenter.api.v1.ListEventsResponse
+	176, // 190: kilocenter.api.v1.KiloCenterService.ListBaseStationActivity:output_type -> kilocenter.api.v1.ListBaseStationActivityResponse
+	177, // 191: kilocenter.api.v1.KiloCenterService.ListEndpointActivity:output_type -> kilocenter.api.v1.ListEndpointActivityResponse
+	178, // 192: kilocenter.api.v1.KiloCenterService.StreamEvents:output_type -> kilocenter.api.v1.Event
+	179, // 193: kilocenter.api.v1.KiloCenterService.ListAlerts:output_type -> kilocenter.api.v1.ListAlertsResponse
+	180, // 194: kilocenter.api.v1.KiloCenterService.GetAlertSummary:output_type -> kilocenter.api.v1.GetAlertSummaryResponse
+	181, // 195: kilocenter.api.v1.KiloCenterService.ListScaciSessions:output_type -> kilocenter.api.v1.ListScaciSessionsResponse
+	182, // 196: kilocenter.api.v1.KiloCenterService.GetScaciSession:output_type -> kilocenter.api.v1.GetScaciSessionResponse
+	183, // 197: kilocenter.api.v1.KiloCenterService.GetScaciStatistics:output_type -> kilocenter.api.v1.GetScaciStatisticsResponse
+	184, // 198: kilocenter.api.v1.KiloCenterService.ListScaciErrors:output_type -> kilocenter.api.v1.ListScaciErrorsResponse
+	185, // 199: kilocenter.api.v1.KiloCenterService.ListScaciQueues:output_type -> kilocenter.api.v1.ListScaciQueuesResponse
+	186, // 200: kilocenter.api.v1.KiloCenterService.GetScaciStatus:output_type -> kilocenter.api.v1.GetScaciStatusResponse
+	187, // 201: kilocenter.api.v1.KiloCenterService.GenerateCertificate:output_type -> kilocenter.api.v1.GenerateCertificateResponse
+	188, // 202: kilocenter.api.v1.KiloCenterService.DownloadCertificate:output_type -> kilocenter.api.v1.DownloadCertificateResponse
+	188, // 203: kilocenter.api.v1.KiloCenterService.DownloadBaseStationCertificate:output_type -> kilocenter.api.v1.DownloadCertificateResponse
+	189, // 204: kilocenter.api.v1.KiloCenterService.GenerateServerCertificates:output_type -> kilocenter.api.v1.GenerateServerCertificatesResponse
+	190, // 205: kilocenter.api.v1.KiloCenterService.RenewServerCertificates:output_type -> kilocenter.api.v1.RenewServerCertificatesResponse
+	191, // 206: kilocenter.api.v1.KiloCenterService.GetServerCertificateStatus:output_type -> kilocenter.api.v1.GetServerCertificateStatusResponse
+	192, // 207: kilocenter.api.v1.KiloCenterService.CreateManufacturer:output_type -> kilocenter.api.v1.CreateManufacturerResponse
+	193, // 208: kilocenter.api.v1.KiloCenterService.GetManufacturer:output_type -> kilocenter.api.v1.GetManufacturerResponse
+	194, // 209: kilocenter.api.v1.KiloCenterService.UpdateManufacturer:output_type -> kilocenter.api.v1.UpdateManufacturerResponse
+	195, // 210: kilocenter.api.v1.KiloCenterService.DeleteManufacturer:output_type -> kilocenter.api.v1.DeleteManufacturerResponse
+	196, // 211: kilocenter.api.v1.KiloCenterService.ListManufacturers:output_type -> kilocenter.api.v1.ListManufacturersResponse
+	197, // 212: kilocenter.api.v1.KiloCenterService.CreateDeviceModel:output_type -> kilocenter.api.v1.CreateDeviceModelResponse
+	198, // 213: kilocenter.api.v1.KiloCenterService.GetDeviceModel:output_type -> kilocenter.api.v1.GetDeviceModelResponse
+	199, // 214: kilocenter.api.v1.KiloCenterService.UpdateDeviceModel:output_type -> kilocenter.api.v1.UpdateDeviceModelResponse
+	200, // 215: kilocenter.api.v1.KiloCenterService.DeleteDeviceModel:output_type -> kilocenter.api.v1.DeleteDeviceModelResponse
+	201, // 216: kilocenter.api.v1.KiloCenterService.ListDeviceModels:output_type -> kilocenter.api.v1.ListDeviceModelsResponse
+	202, // 217: kilocenter.api.v1.KiloCenterService.CreateBlueprint:output_type -> kilocenter.api.v1.CreateBlueprintResponse
+	203, // 218: kilocenter.api.v1.KiloCenterService.GetBlueprint:output_type -> kilocenter.api.v1.GetBlueprintResponse
+	204, // 219: kilocenter.api.v1.KiloCenterService.UpdateBlueprint:output_type -> kilocenter.api.v1.UpdateBlueprintResponse
+	205, // 220: kilocenter.api.v1.KiloCenterService.DeleteBlueprint:output_type -> kilocenter.api.v1.DeleteBlueprintResponse
+	206, // 221: kilocenter.api.v1.KiloCenterService.ListBlueprints:output_type -> kilocenter.api.v1.ListBlueprintsResponse
+	207, // 222: kilocenter.api.v1.KiloCenterService.SetDefaultBlueprint:output_type -> kilocenter.api.v1.SetDefaultBlueprintResponse
+	208, // 223: kilocenter.api.v1.KiloCenterService.SubmitBlueprintToRegistry:output_type -> kilocenter.api.v1.SubmitBlueprintToRegistryResponse
+	209, // 224: kilocenter.api.v1.KiloCenterService.CreateDeviceModelWithBlueprint:output_type -> kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse
+	210, // 225: kilocenter.api.v1.KiloCenterService.DecodePreview:output_type -> kilocenter.api.v1.DecodePreviewResponse
+	211, // 226: kilocenter.api.v1.KiloCenterService.ListMessages:output_type -> kilocenter.api.v1.ListMessagesResponse
+	129, // 227: kilocenter.api.v1.KiloCenterService.StreamMessages:output_type -> kilocenter.api.v1.Message
+	212, // 228: kilocenter.api.v1.KiloCenterService.ListBaseStationMessages:output_type -> kilocenter.api.v1.ListBaseStationMessagesResponse
+	213, // 229: kilocenter.api.v1.KiloCenterService.GetBaseStationMessage:output_type -> kilocenter.api.v1.GetBaseStationMessageResponse
+	214, // 230: kilocenter.api.v1.KiloCenterService.GetBaseStationMessageStats:output_type -> kilocenter.api.v1.GetBaseStationMessageStatsResponse
+	215, // 231: kilocenter.api.v1.KiloCenterService.SearchBaseStationMessages:output_type -> kilocenter.api.v1.SearchBaseStationMessagesResponse
+	216, // 232: kilocenter.api.v1.KiloCenterService.ExportBaseStationMessages:output_type -> kilocenter.api.v1.ExportBaseStationMessagesResponse
+	217, // 233: kilocenter.api.v1.KiloCenterService.StreamBaseStationMessages:output_type -> kilocenter.api.v1.BaseStationMessage
+	218, // 234: kilocenter.api.v1.KiloCenterService.ListEndpointMessages:output_type -> kilocenter.api.v1.ListEndpointMessagesResponse
+	219, // 235: kilocenter.api.v1.KiloCenterService.GetEndPointStats:output_type -> kilocenter.api.v1.GetEndPointStatsResponse
+	220, // 236: kilocenter.api.v1.KiloCenterService.GetEndPointOperations:output_type -> kilocenter.api.v1.GetEndPointOperationsResponse
+	221, // 237: kilocenter.api.v1.KiloCenterService.ListAllBaseStationLocations:output_type -> kilocenter.api.v1.ListAllBaseStationLocationsResponse
+	222, // 238: kilocenter.api.v1.KiloCenterService.GetCEStatus:output_type -> kilocenter.api.v1.GetCEStatusResponse
+	223, // 239: kilocenter.api.v1.KiloCenterService.CompleteCEOnboarding:output_type -> kilocenter.api.v1.CompleteCEOnboardingResponse
+	224, // 240: kilocenter.api.v1.KiloCenterService.ListCEInstances:output_type -> kilocenter.api.v1.ListCEInstancesResponse
+	225, // 241: kilocenter.api.v1.KiloCenterService.RevokeCEInstance:output_type -> kilocenter.api.v1.RevokeCEInstanceResponse
+	121, // [121:242] is the sub-list for method output_type
+	0,   // [0:121] is the sub-list for method input_type
 	0,   // [0:0] is the sub-list for extension type_name
 	0,   // [0:0] is the sub-list for extension extendee
 	0,   // [0:0] is the sub-list for field type_name

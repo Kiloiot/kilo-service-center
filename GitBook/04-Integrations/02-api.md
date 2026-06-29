@@ -16,7 +16,7 @@ KiloCenter's API is defined across three proto files:
 
 | File | Description |
 |------|-------------|
-| `kilocenter.proto` | Unified backward-compatible service (all 117 RPCs) |
+| `kilocenter.proto` | Unified backward-compatible service (all 121 RPCs) |
 | `core.proto` | Core domain messages (endpoints, base stations, messages, downlinks, events, certificates, blueprints) |
 | `identity.proto` | Identity domain messages (users, organizations, API keys, auth) |
 
@@ -78,7 +78,7 @@ API tokens are created through KC-Web or the `CreateApiKey` RPC.
 | `AttachEndPoint` | AttachEndPointRequest | AttachEndPointResponse | Attach endpoint to base station |
 | `DetachEndPoint` | DetachEndPointRequest | DetachEndPointResponse | Detach endpoint from base station |
 
-### Base Stations (7)
+### Base Stations (9)
 
 | RPC | Request | Response | Description |
 |-----|---------|----------|-------------|
@@ -89,6 +89,8 @@ API tokens are created through KC-Web or the `CreateApiKey` RPC.
 | `ListBaseStations` | ListBaseStationsRequest | ListBaseStationsResponse | List base stations with pagination |
 | `GetBaseStationStats` | GetBaseStationStatsRequest | GetBaseStationStatsResponse | Get base station statistics |
 | `UpdateBaseStationEui` | UpdateBaseStationEuiRequest | BaseStation | Update base station EUI |
+| `GetBaseStationAvailability` | GetBaseStationAvailabilityRequest | GetBaseStationAvailabilityResponse | Per-bucket availability (online fraction) time series |
+| `GetBaseStationMessagesReceived` | GetBaseStationMessagesReceivedRequest | GetBaseStationMessagesReceivedResponse | Per-bucket received-message (RX uplink) count time series |
 
 #### BaseStation Location Fields
 

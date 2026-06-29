@@ -1237,6 +1237,14 @@ type BaseStationMessageStats struct {
 	LastMessageAt     *time.Time `json:"lastMessageAt,omitempty"`
 }
 
+// BaseStationOnlineInterval is a single connected interval for a base station,
+// derived from its sessions. End is nil while the session is still active, in
+// which case the interval is treated as open-ended up to "now".
+type BaseStationOnlineInterval struct {
+	Start time.Time
+	End   *time.Time
+}
+
 // ============================================================================
 // Analytics Types (for dashboard and reporting)
 // ============================================================================

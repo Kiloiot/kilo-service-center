@@ -130,7 +130,7 @@ func (r *BaseStationRepository) GetByEUI(ctx context.Context, tenantID int64, eu
 	err := r.db.GetContext(ctx, &bs, query, tenantID, eui)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("base station not found")
+			return nil, fmt.Errorf("base station not found: %w", storage.ErrNotFound)
 		}
 		return nil, fmt.Errorf("get base station: %w", err)
 	}
