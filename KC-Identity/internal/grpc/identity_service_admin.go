@@ -123,15 +123,12 @@ func (s *IdentityService) CreateOrganization(ctx context.Context, req *pb.Create
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNameRequired))
 	}
 
-	tenantID, err := grpcerrors.GetTenantFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+	// TenantID 0 makes the service provision a dedicated tenant per organization,
+	// so base stations (scoped only by tenant_id) stay isolated between organizations.
 	createReq := &grpcservices.OrganizationCreateRequest{
 		Name:        req.Name,
 		Description: req.Description,
-		TenantID:    tenantID,
+		TenantID:    0,
 	}
 
 	org, err := s.orgSvc.Create(ctx, createReq)
@@ -150,7 +147,7 @@ func (s *IdentityService) CreateOrganization(ctx context.Context, req *pb.Create
 			"name":  org.Name,
 		})
 		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
+			TenantID:    strconv.FormatInt(org.TenantID, 10),
 			EventType:   models.EventTypeOrgCreated,
 			Category:    models.EventCategoryAudit,
 			Severity:    models.EventSeverityInfo,
@@ -723,11 +720,6 @@ func (s *IdentityService) CreateApiKey(ctx context.Context, req *pb.CreateApiKey
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
 	}
 
-	tenantID, err := grpcerrors.GetTenantFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	// Extract org context for tenant isolation.
 	orgID, err := pkgcontext.GetOrganizationID(ctx)
 	if err != nil {
@@ -756,6 +748,20 @@ func (s *IdentityService) CreateApiKey(ctx context.Context, req *pb.CreateApiKey
 		}
 		userID = &uid
 	}
+
+	// Scope the key to the organization's own tenant, not the caller context: a base
+	// station created with this key inherits the key's tenant, so per-org tenants keep them isolated.
+	if s.orgSvc == nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
+	}
+	org, err := s.orgSvc.GetByIDUnscoped(ctx, orgID)
+	if err != nil {
+		s.log.ErrorContext(ctx, "resolve tenant for API key failed", "orgId", orgID.String(), "error", err)
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCreateApiKeyFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCreateApiKeyFailed))
+	}
+	tenantID := org.TenantID
 
 	createReq := &grpcservices.APIKeyCreateRequest{
 		TenantID: tenantID,
