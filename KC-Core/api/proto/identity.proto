@@ -435,6 +435,8 @@ message CreateApiKeyRequest {
   string name = 1;
   string key_type = 2;                    // "user" or "service_account"
   google.protobuf.Timestamp expires_at = 3;  // Optional
+  // Target org the key is scoped to; overrides the caller's context org.
+  string organization_id = 4;
 }
 
 message CreateApiKeyResponse {
