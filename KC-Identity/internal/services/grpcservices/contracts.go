@@ -81,6 +81,11 @@ type APIKeyService interface {
 // EventWriter writes system events to the event store.
 type EventWriter = grpcpkg.EventWriter
 
+// AuditEmitter emits audit events. Implemented by grpcpkg.AuditEmitter.
+type AuditEmitter interface {
+	EmitAudit(ctx context.Context, ev grpcpkg.AuditEvent)
+}
+
 // AuthTokens contains access and refresh tokens
 type AuthTokens struct {
 	AccessToken      string

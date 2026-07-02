@@ -286,25 +286,17 @@ func (s *IdentityService) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 	}
 
 	// Emit event when tenant context is available
-	tenantID, tenantErr := grpcerrors.GetTenantFromContext(ctx)
-	if tenantErr == nil && s.eventWriter != nil {
-		userIDStr := user.ID.String()
+	if tenantID, tenantErr := grpcerrors.GetTenantFromContext(ctx); tenantErr == nil {
 		sourceID := user.ID
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"email": req.Email})
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
+		s.audit.EmitAudit(ctx, grpcerrors.AuditEvent{
+			TenantID:    tenantID,
+			SourceID:    &sourceID,
 			EventType:   models.EventTypeUserCreated,
-			Category:    models.EventCategoryAudit,
-			Severity:    models.EventSeverityInfo,
 			Title:       models.EventTitleUserCreated,
 			Description: fmt.Sprintf(models.EventDescriptionUserCreated, req.Email),
-			SourceType:  models.SourceTypeAPI,
-			SourceID:    &sourceID,
 			SourceName:  req.Email,
-			UserID:      userIDStr,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			UserID:      user.ID.String(),
+			Details:     map[string]any{"email": req.Email},
 		})
 	}
 
@@ -410,25 +402,15 @@ func (s *IdentityService) UpdateUser(ctx context.Context, req *pb.UpdateUserRequ
 	}
 
 	// Emit event when tenant context is available
-	tenantID, tenantErr := grpcerrors.GetTenantFromContext(ctx)
-	if tenantErr == nil && s.eventWriter != nil {
-		detailsJSON, _ := json.Marshal(map[string]interface{}{
-			"userId": req.Id,
-			"email":  user.Email,
-		})
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
+	if tenantID, tenantErr := grpcerrors.GetTenantFromContext(ctx); tenantErr == nil {
+		s.audit.EmitAudit(ctx, grpcerrors.AuditEvent{
+			TenantID:    tenantID,
 			EventType:   models.EventTypeUserUpdated,
-			Category:    models.EventCategoryAudit,
-			Severity:    models.EventSeverityInfo,
 			Title:       models.EventTitleUserUpdated,
 			Description: fmt.Sprintf(models.EventDescriptionUserUpdated, user.Email),
-			SourceType:  models.SourceTypeAPI,
 			SourceName:  user.Email,
 			UserID:      req.Id,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			Details:     map[string]any{"userId": req.Id, "email": user.Email},
 		})
 	}
 
@@ -459,21 +441,14 @@ func (s *IdentityService) DeleteUser(ctx context.Context, req *pb.DeleteUserRequ
 	}
 
 	// Emit event when tenant context is available
-	tenantID, tenantErr := grpcerrors.GetTenantFromContext(ctx)
-	if tenantErr == nil && s.eventWriter != nil {
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"userId": req.Id})
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
+	if tenantID, tenantErr := grpcerrors.GetTenantFromContext(ctx); tenantErr == nil {
+		s.audit.EmitAudit(ctx, grpcerrors.AuditEvent{
+			TenantID:    tenantID,
 			EventType:   models.EventTypeUserDeleted,
-			Category:    models.EventCategoryAudit,
-			Severity:    models.EventSeverityInfo,
 			Title:       models.EventTitleUserDeleted,
 			Description: fmt.Sprintf(models.EventDescriptionUserDeleted, req.Id),
-			SourceType:  models.SourceTypeAPI,
 			UserID:      req.Id,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
+			Details:     map[string]any{"userId": req.Id},
 		})
 	}
 

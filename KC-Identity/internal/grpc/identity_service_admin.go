@@ -4,12 +4,9 @@ package grpc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
-	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/status"
@@ -139,28 +136,16 @@ func (s *IdentityService) CreateOrganization(ctx context.Context, req *pb.Create
 	}
 
 	// Emit CRUD event
-	if s.eventWriter != nil {
-		orgIDStr := org.OrgID.String()
-		sourceID := org.OrgID
-		detailsJSON, _ := json.Marshal(map[string]interface{}{
-			"orgId": orgIDStr,
-			"name":  org.Name,
-		})
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(org.TenantID, 10),
-			EventType:   models.EventTypeOrgCreated,
-			Category:    models.EventCategoryAudit,
-			Severity:    models.EventSeverityInfo,
-			Title:       models.EventTitleOrgCreated,
-			Description: fmt.Sprintf(models.EventDescriptionOrgCreated, org.Name),
-			SourceType:  models.SourceTypeAPI,
-			SourceID:    &sourceID,
-			SourceName:  org.Name,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		})
-	}
+	sourceID := org.OrgID
+	s.audit.EmitAudit(ctx, grpcerrors.AuditEvent{
+		TenantID:    org.TenantID,
+		SourceID:    &sourceID,
+		EventType:   models.EventTypeOrgCreated,
+		Title:       models.EventTitleOrgCreated,
+		Description: fmt.Sprintf(models.EventDescriptionOrgCreated, org.Name),
+		SourceName:  org.Name,
+		Details:     map[string]any{"orgId": org.OrgID.String(), "name": org.Name},
+	})
 
 	return &pb.CreateOrganizationResponse{
 		Organization: orgModelToProto(org),
@@ -215,28 +200,16 @@ func (s *IdentityService) UpdateOrganization(ctx context.Context, req *pb.Update
 	}
 
 	// Emit CRUD event
-	if s.eventWriter != nil {
-		orgIDStr := org.OrgID.String()
-		sourceID := org.OrgID
-		detailsJSON, _ := json.Marshal(map[string]interface{}{
-			"orgId": orgIDStr,
-			"name":  org.Name,
-		})
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
-			EventType:   models.EventTypeOrgUpdated,
-			Category:    models.EventCategoryAudit,
-			Severity:    models.EventSeverityInfo,
-			Title:       models.EventTitleOrgUpdated,
-			Description: fmt.Sprintf(models.EventDescriptionOrgUpdated, org.Name),
-			SourceType:  models.SourceTypeAPI,
-			SourceID:    &sourceID,
-			SourceName:  org.Name,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		})
-	}
+	sourceID := org.OrgID
+	s.audit.EmitAudit(ctx, grpcerrors.AuditEvent{
+		TenantID:    tenantID,
+		SourceID:    &sourceID,
+		EventType:   models.EventTypeOrgUpdated,
+		Title:       models.EventTitleOrgUpdated,
+		Description: fmt.Sprintf(models.EventDescriptionOrgUpdated, org.Name),
+		SourceName:  org.Name,
+		Details:     map[string]any{"orgId": org.OrgID.String(), "name": org.Name},
+	})
 
 	return &pb.UpdateOrganizationResponse{
 		Organization: orgModelToProto(org),
@@ -253,32 +226,68 @@ func (s *IdentityService) DeleteOrganization(ctx context.Context, req *pb.Delete
 		return nil, err
 	}
 
+	// Snapshot the org's keys before Delete removes them in-tx, so each can be audited.
+	deletedKeys := s.listOrgAPIKeys(ctx, tenantID, orgID)
+
 	if err := s.orgSvc.Delete(ctx, orgID, tenantID); err != nil {
 		s.log.ErrorContext(ctx, "delete organization failed", "org_id", req.Id, "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeleteOrgFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeleteOrgFailed))
 	}
 
-	// Emit CRUD event
-	if s.eventWriter != nil {
-		sourceID := orgID
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"orgId": req.Id})
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
-			EventType:   models.EventTypeOrgDeleted,
-			Category:    models.EventCategoryAudit,
-			Severity:    models.EventSeverityInfo,
-			Title:       models.EventTitleOrgDeleted,
-			Description: fmt.Sprintf(models.EventDescriptionOrgDeleted, req.Id),
-			SourceType:  models.SourceTypeAPI,
-			SourceID:    &sourceID,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		})
+	for _, k := range deletedKeys {
+		s.audit.EmitAudit(ctx, apiKeyDeletedAuditEvent(tenantID, orgID, k.ID, k.Name))
 	}
 
+	// Emit CRUD event
+	sourceID := orgID
+	s.audit.EmitAudit(ctx, grpcerrors.AuditEvent{
+		TenantID:    tenantID,
+		SourceID:    &sourceID,
+		EventType:   models.EventTypeOrgDeleted,
+		Title:       models.EventTitleOrgDeleted,
+		Description: fmt.Sprintf(models.EventDescriptionOrgDeleted, req.Id),
+		Details:     map[string]any{"orgId": req.Id},
+	})
+
 	return &pb.DeleteOrganizationResponse{Success: true}, nil
+}
+
+// apiKeyListPageSize is the page size for enumerating an org's API keys for the audit trail.
+const apiKeyListPageSize = 200
+
+// listOrgAPIKeys returns all API keys of an org (fully paginated), for the deletion audit.
+func (s *IdentityService) listOrgAPIKeys(ctx context.Context, tenantID int64, orgID uuid.UUID) []*models.APIKey {
+	if s.apiKeySvc == nil {
+		return nil
+	}
+	var all []*models.APIKey
+	for offset := 0; ; offset += apiKeyListPageSize {
+		batch, _, err := s.apiKeySvc.List(ctx, tenantID, orgID, nil, apiKeyListPageSize, offset)
+		if err != nil {
+			s.log.WarnContext(ctx, "list org api keys for audit failed", "org_id", orgID.String(), "error", err)
+			break
+		}
+		all = append(all, batch...)
+		if len(batch) < apiKeyListPageSize {
+			break
+		}
+	}
+	return all
+}
+
+// apiKeyDeletedAuditEvent builds the audit event for a deleted API key.
+func apiKeyDeletedAuditEvent(tenantID int64, orgID, keyID uuid.UUID, keyName string) grpcerrors.AuditEvent {
+	sourceID := orgID
+	return grpcerrors.AuditEvent{
+		TenantID:    tenantID,
+		SourceID:    &sourceID,
+		EventType:   models.EventTypeAPIKeyDeleted,
+		Title:       models.EventTitleAPIKeyDeleted,
+		Description: fmt.Sprintf(models.EventDescriptionAPIKeyDeletedFmt, keyName),
+		SourceName:  keyName,
+		Details:     map[string]any{"keyId": keyID.String(), "orgId": orgID.String()},
+	}
 }
 
 // ListOrganizations returns a list of organizations.
@@ -769,7 +778,7 @@ func (s *IdentityService) CreateApiKey(ctx context.Context, req *pb.CreateApiKey
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCreateApiKeyFailed))
 	}
 
-	s.emitAPIKeyCreatedEvent(ctx, req, resp, orgID, tenantID, userID)
+	s.audit.EmitAudit(ctx, apiKeyCreatedAuditEvent(req, resp, orgID, tenantID, userID))
 
 	return &pb.CreateApiKeyResponse{
 		RawKey: resp.Key,
@@ -815,12 +824,9 @@ func (s *IdentityService) resolveAPIKeyUserID(ctx context.Context, keyType strin
 	}
 }
 
-// emitAPIKeyCreatedEvent records a best-effort audit event for a created API key.
-func (s *IdentityService) emitAPIKeyCreatedEvent(ctx context.Context, req *pb.CreateApiKeyRequest, resp *grpcservices.APIKeyCreateResponse, orgID uuid.UUID, tenantID int64, userID *uuid.UUID) {
-	if s.eventWriter == nil {
-		return
-	}
-	detailsMap := map[string]interface{}{
+// apiKeyCreatedAuditEvent builds the audit event for a created API key.
+func apiKeyCreatedAuditEvent(req *pb.CreateApiKeyRequest, resp *grpcservices.APIKeyCreateResponse, orgID uuid.UUID, tenantID int64, userID *uuid.UUID) grpcerrors.AuditEvent {
+	details := map[string]any{
 		"keyId":     resp.APIKey.ID.String(),
 		"keyPrefix": resp.APIKey.KeyPrefix,
 		"keyType":   req.KeyType,
@@ -828,26 +834,20 @@ func (s *IdentityService) emitAPIKeyCreatedEvent(ctx context.Context, req *pb.Cr
 	}
 	var auditUserID string
 	if userID != nil {
-		detailsMap["userId"] = userID.String()
+		details["userId"] = userID.String()
 		auditUserID = userID.String()
 	}
-	detailsJSON, _ := json.Marshal(detailsMap)
 	sourceID := orgID
-	_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-		TenantID:    strconv.FormatInt(tenantID, 10),
+	return grpcerrors.AuditEvent{
+		TenantID:    tenantID,
+		SourceID:    &sourceID,
 		EventType:   models.EventTypeAPIKeyCreated,
-		Category:    models.EventCategoryAudit,
-		Severity:    models.EventSeverityInfo,
 		Title:       models.EventTitleAPIKeyCreated,
 		Description: fmt.Sprintf(models.EventDescriptionAPIKeyCreatedFmt, req.Name, orgID.String()),
-		SourceType:  models.SourceTypeAPI,
-		SourceID:    &sourceID,
 		SourceName:  req.Name,
 		UserID:      auditUserID,
-		Details:     detailsJSON,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-	})
+		Details:     details,
+	}
 }
 
 // GetApiKey returns an API key by ID.
@@ -940,31 +940,11 @@ func (s *IdentityService) DeleteApiKey(ctx context.Context, req *pb.DeleteApiKey
 	}
 
 	// Emit audit event for API key deletion.
-	if s.eventWriter != nil {
-		tenantID, _ := grpcerrors.GetTenantFromContext(ctx)
-		if keyName == "" {
-			keyName = req.Id
-		}
-		sourceID := orgID
-		detailsJSON, _ := json.Marshal(map[string]interface{}{
-			"keyId": req.Id,
-			"orgId": orgID.String(),
-		})
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
-			EventType:   models.EventTypeAPIKeyDeleted,
-			Category:    models.EventCategoryAudit,
-			Severity:    models.EventSeverityInfo,
-			Title:       models.EventTitleAPIKeyDeleted,
-			Description: fmt.Sprintf(models.EventDescriptionAPIKeyDeletedFmt, keyName),
-			SourceType:  models.SourceTypeAPI,
-			SourceID:    &sourceID,
-			SourceName:  keyName,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		})
+	if keyName == "" {
+		keyName = req.Id
 	}
+	tenantID, _ := grpcerrors.GetTenantFromContext(ctx)
+	s.audit.EmitAudit(ctx, apiKeyDeletedAuditEvent(tenantID, orgID, keyID, keyName))
 
 	return &pb.DeleteApiKeyResponse{
 		Success: true,

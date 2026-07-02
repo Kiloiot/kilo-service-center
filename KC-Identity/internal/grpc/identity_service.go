@@ -19,6 +19,7 @@ type IdentityService struct {
 	apiKeySvc        grpcservices.APIKeyService
 	registrationSvc  grpcservices.RegistrationService
 	eventWriter      grpcservices.EventWriter
+	audit            grpcservices.AuditEmitter
 	platformTenantID int64
 }
 
@@ -75,6 +76,12 @@ func (s *IdentityService) WithRegistrationService(svc grpcservices.RegistrationS
 // WithEventWriter sets the event writer for system events.
 func (s *IdentityService) WithEventWriter(w grpcservices.EventWriter) *IdentityService {
 	s.eventWriter = w
+	return s
+}
+
+// WithAuditEmitter sets the audit emitter for audit events.
+func (s *IdentityService) WithAuditEmitter(a grpcservices.AuditEmitter) *IdentityService {
+	s.audit = a
 	return s
 }
 
