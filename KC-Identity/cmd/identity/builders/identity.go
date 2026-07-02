@@ -2,6 +2,7 @@ package builders
 
 import (
 	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	grpcpkg "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	dbadapters "github.com/Kiloiot/kilo-service-center/KC-DB/storage/adapters"
@@ -28,6 +29,7 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 
 	identityService := identitygrpc.NewIdentityService()
 	identityService = identityService.WithEventWriter(infra.Storage.SystemEvents()).
+		WithAuditEmitter(grpcpkg.NewAuditEmitter(infra.Storage.SystemEvents())).
 		WithPlatformTenantID(infra.TenantID)
 
 	log.Info("Wiring Auth and Admin services...")

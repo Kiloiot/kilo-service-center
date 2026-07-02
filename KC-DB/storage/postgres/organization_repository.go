@@ -225,6 +225,12 @@ func (r *OrganizationRepository) Delete(ctx context.Context, orgID uuid.UUID, te
 		return fmt.Errorf("delete organization members: %w", err)
 	}
 
+	// api_keys.org_id is NO ACTION, so keys must be deleted before the org (same tx).
+	_, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE org_id = $1`, orgID)
+	if err != nil {
+		return fmt.Errorf("delete organization api keys: %w", err)
+	}
+
 	// Delete the organization (tenant-scoped)
 	result, err := tx.ExecContext(ctx, `DELETE FROM organizations WHERE org_id = $1 AND tenant_id = $2`, orgID, tenantID)
 	if err != nil {
