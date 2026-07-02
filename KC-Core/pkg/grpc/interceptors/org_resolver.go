@@ -234,15 +234,18 @@ func (oi *OrgResolverInterceptor) resolveOrgContext(ctx context.Context, method 
 
 		if orgErr != nil || isAdmin {
 			// For regular users: set org only if auth didn't provide one.
-			// For server admins: always override with the header org so they can
-			// operate on any organization (e.g. auto-provisioning API keys).
+			// For server admins: override with the header org to act on any organization.
 			ctx = pkgcontext.WithOrganizationID(ctx, orgUUID)
+		}
+		if isAdmin {
+			// Server admins also adopt the selected org's tenant, so tenant-scoped reads target it.
+			ctx = pkgcontext.WithTenantID(ctx, resolvedTenantID)
 		}
 
 		oi.log.DebugContext(ctx, "gRPC org interceptor: validated auth identity against headers",
 			"method", method,
 			"orgID", orgUUID.String(),
-			"tenantID", existingTenant)
+			"tenantID", resolvedTenantID)
 
 		return ctx, nil
 	}
