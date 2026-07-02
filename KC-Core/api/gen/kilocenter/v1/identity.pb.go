@@ -3527,12 +3527,14 @@ func (x *ListUserOrganizationsResponse) GetMemberships() []*UserMembership {
 }
 
 type CreateApiKeyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	KeyType       string                 `protobuf:"bytes,2,opt,name=key_type,json=keyType,proto3" json:"key_type,omitempty"`       // "user" or "service_account"
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // Optional
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Name      string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	KeyType   string                 `protobuf:"bytes,2,opt,name=key_type,json=keyType,proto3" json:"key_type,omitempty"`       // "user" or "service_account"
+	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"` // Optional
+	// Target org the key is scoped to; overrides the caller's context org.
+	OrganizationId string `protobuf:"bytes,4,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CreateApiKeyRequest) Reset() {
@@ -3584,6 +3586,13 @@ func (x *CreateApiKeyRequest) GetExpiresAt() *timestamppb.Timestamp {
 		return x.ExpiresAt
 	}
 	return nil
+}
+
+func (x *CreateApiKeyRequest) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
 }
 
 type CreateApiKeyResponse struct {
@@ -4334,12 +4343,13 @@ const file_identity_proto_rawDesc = "" +
 	"\x1cListUserOrganizationsRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"d\n" +
 	"\x1dListUserOrganizationsResponse\x12C\n" +
-	"\vmemberships\x18\x01 \x03(\v2!.kilocenter.api.v1.UserMembershipR\vmemberships\"\x7f\n" +
+	"\vmemberships\x18\x01 \x03(\v2!.kilocenter.api.v1.UserMembershipR\vmemberships\"\xa8\x01\n" +
 	"\x13CreateApiKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
 	"\bkey_type\x18\x02 \x01(\tR\akeyType\x129\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"c\n" +
+	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12'\n" +
+	"\x0forganization_id\x18\x04 \x01(\tR\x0eorganizationId\"c\n" +
 	"\x14CreateApiKeyResponse\x122\n" +
 	"\aapi_key\x18\x01 \x01(\v2\x19.kilocenter.api.v1.ApiKeyR\x06apiKey\x12\x17\n" +
 	"\araw_key\x18\x02 \x01(\tR\x06rawKey\"\"\n" +

@@ -720,11 +720,22 @@ func (s *IdentityService) CreateApiKey(ctx context.Context, req *pb.CreateApiKey
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
 	}
 
-	// Extract org context for tenant isolation.
-	orgID, err := pkgcontext.GetOrganizationID(ctx)
-	if err != nil {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgIDHeaderRequired),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgIDHeaderRequired))
+	// Prefer the request org: the context org is the caller's own, not the target.
+	var orgID uuid.UUID
+	if req.OrganizationId != "" {
+		parsed, parseErr := uuid.Parse(req.OrganizationId)
+		if parseErr != nil {
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgIDHeaderInvalid),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgIDHeaderInvalid))
+		}
+		orgID = parsed
+	} else {
+		ctxOrg, ctxErr := pkgcontext.GetOrganizationID(ctx)
+		if ctxErr != nil {
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgIDHeaderRequired),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgIDHeaderRequired))
+		}
+		orgID = ctxOrg
 	}
 
 	if req.Name == "" {
