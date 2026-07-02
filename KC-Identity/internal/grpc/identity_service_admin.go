@@ -720,22 +720,9 @@ func (s *IdentityService) CreateApiKey(ctx context.Context, req *pb.CreateApiKey
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
 	}
 
-	// Prefer the request org: the context org is the caller's own, not the target.
-	var orgID uuid.UUID
-	if req.OrganizationId != "" {
-		parsed, parseErr := uuid.Parse(req.OrganizationId)
-		if parseErr != nil {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgIDHeaderInvalid),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgIDHeaderInvalid))
-		}
-		orgID = parsed
-	} else {
-		ctxOrg, ctxErr := pkgcontext.GetOrganizationID(ctx)
-		if ctxErr != nil {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgIDHeaderRequired),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgIDHeaderRequired))
-		}
-		orgID = ctxOrg
+	orgID, err := s.resolveAPIKeyOrgID(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.Name == "" {
@@ -743,21 +730,9 @@ func (s *IdentityService) CreateApiKey(ctx context.Context, req *pb.CreateApiKey
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNameRequired))
 	}
 
-	// Validate key_type using model constants.
-	if req.KeyType != models.KeyTypeUser && req.KeyType != models.KeyTypeServiceAccount {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidApiKeyType),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidApiKeyType))
-	}
-
-	// User keys are tied to the authenticated user; service account keys have nil UserID.
-	var userID *uuid.UUID
-	if req.KeyType == models.KeyTypeUser {
-		uid, err := grpcerrors.GetUserFromContext(ctx)
-		if err != nil {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenMissingUserCtx),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenMissingUserCtx))
-		}
-		userID = &uid
+	userID, err := s.resolveAPIKeyUserID(ctx, req.KeyType)
+	if err != nil {
+		return nil, err
 	}
 
 	// Scope the key to the organization's own tenant, not the caller context: a base
@@ -794,42 +769,85 @@ func (s *IdentityService) CreateApiKey(ctx context.Context, req *pb.CreateApiKey
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCreateApiKeyFailed))
 	}
 
-	// Emit audit event for API key creation.
-	if s.eventWriter != nil {
-		detailsMap := map[string]interface{}{
-			"keyId":     resp.APIKey.ID.String(),
-			"keyPrefix": resp.APIKey.KeyPrefix,
-			"keyType":   req.KeyType,
-			"orgId":     orgID.String(),
-		}
-		var auditUserID string
-		if userID != nil {
-			detailsMap["userId"] = userID.String()
-			auditUserID = userID.String()
-		}
-		detailsJSON, _ := json.Marshal(detailsMap)
-		sourceID := orgID
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
-			EventType:   models.EventTypeAPIKeyCreated,
-			Category:    models.EventCategoryAudit,
-			Severity:    models.EventSeverityInfo,
-			Title:       models.EventTitleAPIKeyCreated,
-			Description: fmt.Sprintf(models.EventDescriptionAPIKeyCreatedFmt, req.Name, orgID.String()),
-			SourceType:  models.SourceTypeAPI,
-			SourceID:    &sourceID,
-			SourceName:  req.Name,
-			UserID:      auditUserID,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		})
-	}
+	s.emitAPIKeyCreatedEvent(ctx, req, resp, orgID, tenantID, userID)
 
 	return &pb.CreateApiKeyResponse{
 		RawKey: resp.Key,
 		ApiKey: apiKeyModelToProto(resp.APIKey),
 	}, nil
+}
+
+// resolveAPIKeyOrgID returns the org the key is scoped to: the request's org when
+// set, otherwise the caller's context org.
+func (s *IdentityService) resolveAPIKeyOrgID(ctx context.Context, req *pb.CreateApiKeyRequest) (uuid.UUID, error) {
+	if req.OrganizationId != "" {
+		orgID, err := uuid.Parse(req.OrganizationId)
+		if err != nil {
+			return uuid.Nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgIDHeaderInvalid),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgIDHeaderInvalid))
+		}
+		return orgID, nil
+	}
+	orgID, err := pkgcontext.GetOrganizationID(ctx)
+	if err != nil {
+		return uuid.Nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgIDHeaderRequired),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgIDHeaderRequired))
+	}
+	return orgID, nil
+}
+
+// resolveAPIKeyUserID validates key_type and returns the bound user: nil for
+// service-account keys, the authenticated user for user keys.
+func (s *IdentityService) resolveAPIKeyUserID(ctx context.Context, keyType string) (*uuid.UUID, error) {
+	switch keyType {
+	case models.KeyTypeServiceAccount:
+		return nil, nil
+	case models.KeyTypeUser:
+		uid, err := grpcerrors.GetUserFromContext(ctx)
+		if err != nil {
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenMissingUserCtx),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenMissingUserCtx))
+		}
+		return &uid, nil
+	default:
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidApiKeyType),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidApiKeyType))
+	}
+}
+
+// emitAPIKeyCreatedEvent records a best-effort audit event for a created API key.
+func (s *IdentityService) emitAPIKeyCreatedEvent(ctx context.Context, req *pb.CreateApiKeyRequest, resp *grpcservices.APIKeyCreateResponse, orgID uuid.UUID, tenantID int64, userID *uuid.UUID) {
+	if s.eventWriter == nil {
+		return
+	}
+	detailsMap := map[string]interface{}{
+		"keyId":     resp.APIKey.ID.String(),
+		"keyPrefix": resp.APIKey.KeyPrefix,
+		"keyType":   req.KeyType,
+		"orgId":     orgID.String(),
+	}
+	var auditUserID string
+	if userID != nil {
+		detailsMap["userId"] = userID.String()
+		auditUserID = userID.String()
+	}
+	detailsJSON, _ := json.Marshal(detailsMap)
+	sourceID := orgID
+	_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
+		TenantID:    strconv.FormatInt(tenantID, 10),
+		EventType:   models.EventTypeAPIKeyCreated,
+		Category:    models.EventCategoryAudit,
+		Severity:    models.EventSeverityInfo,
+		Title:       models.EventTitleAPIKeyCreated,
+		Description: fmt.Sprintf(models.EventDescriptionAPIKeyCreatedFmt, req.Name, orgID.String()),
+		SourceType:  models.SourceTypeAPI,
+		SourceID:    &sourceID,
+		SourceName:  req.Name,
+		UserID:      auditUserID,
+		Details:     detailsJSON,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	})
 }
 
 // GetApiKey returns an API key by ID.
