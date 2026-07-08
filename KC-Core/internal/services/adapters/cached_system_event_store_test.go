@@ -61,9 +61,9 @@ func TestCachedCount_ExpiryAfterTTL(t *testing.T) {
 	c.now = func() time.Time { return now }
 	f := &eventsservice.EventFilter{Categories: []string{"a"}}
 
-	c.CountEvents(context.Background(), 1, f)
+	_, _ = c.CountEvents(context.Background(), 1, f)
 	now = now.Add(11 * time.Second) // past TTL
-	c.CountEvents(context.Background(), 1, f)
+	_, _ = c.CountEvents(context.Background(), 1, f)
 
 	if got := atomic.LoadInt32(&inner.countCalls); got != 2 {
 		t.Fatalf("inner count calls = %d, want 2 (expired)", got)
@@ -91,13 +91,11 @@ func TestCachedCount_KeyVariesByFilterAndTenant(t *testing.T) {
 	c := NewCachedSystemEventStore(inner, 10*time.Second)
 	ctx := context.Background()
 
-	c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"a"}}) // miss -> 1
-	c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"b"}}) // miss -> 2
-	c.CountEvents(ctx, 2, &eventsservice.EventFilter{Categories: []string{"a"}}) // diff tenant -> 3
-	// category order must not matter (sorted key)
-	c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"b", "a"}}) // hit of tenant1/[a,b]? no — key is a,b
-	// same as first (tenant1/[a]) -> hit
-	c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"a"}})
+	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"a"}})      // miss -> 1
+	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"b"}})      // miss -> 2
+	_, _ = c.CountEvents(ctx, 2, &eventsservice.EventFilter{Categories: []string{"a"}})      // diff tenant -> 3
+	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"b", "a"}}) // sorted key "a,b" -> miss 4
+	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"a"}})      // same as first -> hit
 
 	if got := atomic.LoadInt32(&inner.countCalls); got != 4 {
 		t.Fatalf("inner count calls = %d, want 4", got)
@@ -109,8 +107,8 @@ func TestCachedCount_SortedCategoriesShareKey(t *testing.T) {
 	c := NewCachedSystemEventStore(inner, 10*time.Second)
 	ctx := context.Background()
 
-	c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"a", "b"}})
-	c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"b", "a"}}) // same key
+	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"a", "b"}})
+	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"b", "a"}}) // same key
 
 	if got := atomic.LoadInt32(&inner.countCalls); got != 1 {
 		t.Fatalf("inner count calls = %d, want 1 (order-independent key)", got)
@@ -121,8 +119,8 @@ func TestCachedCount_GetEventsPassthrough(t *testing.T) {
 	inner := &fakeStore{}
 	c := NewCachedSystemEventStore(inner, 10*time.Second)
 
-	c.GetEvents(context.Background(), 1, nil, 10, 0)
-	c.GetEvents(context.Background(), 1, nil, 10, 0)
+	_, _ = c.GetEvents(context.Background(), 1, nil, 10, 0)
+	_, _ = c.GetEvents(context.Background(), 1, nil, 10, 0)
 
 	if got := atomic.LoadInt32(&inner.getCalls); got != 2 {
 		t.Fatalf("inner GetEvents calls = %d, want 2 (never cached)", got)
