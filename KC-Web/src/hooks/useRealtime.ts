@@ -4,7 +4,7 @@
  * React hooks for realtime connection management and cache invalidation.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { QueryClient } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,12 +17,13 @@ import {
 } from "@services/realtime";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
-import { queryKeys } from "@config/query-keys";
 import {
   REALTIME_STREAM_KIND,
   TIMING_REALTIME_EVENT_STREAM_CATCHUP_DEBOUNCE_MS,
   TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS,
+  TIMING_REALTIME_INVALIDATION_WINDOW_MS,
 } from "@constants/app";
+import { queryKeys } from "@config/query-keys";
 
 /**
  * Event type to query keys invalidation mapping.
@@ -180,15 +181,19 @@ function extractEpEuiFromPayload(
   return undefined;
 }
 
-function invalidateBaseStation(qc: QueryClient, bsEui: string): void {
-  qc.invalidateQueries({ queryKey: queryKeys.baseStations.detail(bsEui) });
-  qc.invalidateQueries({ queryKey: queryKeys.baseStations.messages(bsEui) });
-  qc.invalidateQueries({ queryKey: queryKeys.baseStations.activity(bsEui) });
+function baseStationKeys(bsEui: string): (readonly unknown[])[] {
+  return [
+    queryKeys.baseStations.detail(bsEui),
+    queryKeys.baseStations.messages(bsEui),
+    queryKeys.baseStations.activity(bsEui),
+  ];
 }
 
-function invalidateEndpoint(qc: QueryClient, epEui: string): void {
-  qc.invalidateQueries({ queryKey: queryKeys.endpoints.detail(epEui) });
-  qc.invalidateQueries({ queryKey: queryKeys.endpoints.activity(epEui) });
+function endpointKeys(epEui: string): (readonly unknown[])[] {
+  return [
+    queryKeys.endpoints.detail(epEui),
+    queryKeys.endpoints.activity(epEui),
+  ];
 }
 
 // Backend audit events emit the EUI as uppercase hex (`%016X`), but React
@@ -198,25 +203,22 @@ function normalizeEuiForQueryKey(eui: string): string {
   return eui.replace(/-/g, "").toLowerCase();
 }
 
-/** Per-event-type targeted invalidations (run after the generic map). */
-function applyTargetedInvalidations(
-  qc: QueryClient,
-  event: RealtimeEvent,
-): void {
+/** Per-event-type targeted query keys (device detail/activity/downlink). */
+function targetedInvalidationKeys(event: RealtimeEvent): (readonly unknown[])[] {
   if (
     event.type === "basestation.online" ||
     event.type === "basestation.offline"
   ) {
     const bsEui = extractBsEuiFromPayload(event.payload);
-    if (bsEui) invalidateBaseStation(qc, bsEui);
-    return;
+    return bsEui ? baseStationKeys(bsEui) : [];
   }
 
   if (event.type === "uplink.received" && event.payload?.message) {
     const msg = event.payload.message as { bsEui?: string; epEui?: string };
-    if (msg.bsEui) invalidateBaseStation(qc, msg.bsEui);
-    if (msg.epEui) invalidateEndpoint(qc, msg.epEui);
-    return;
+    const keys: (readonly unknown[])[] = [];
+    if (msg.bsEui) keys.push(...baseStationKeys(msg.bsEui));
+    if (msg.epEui) keys.push(...endpointKeys(msg.epEui));
+    return keys;
   }
 
   if (
@@ -224,8 +226,7 @@ function applyTargetedInvalidations(
     event.type === "endpoint.detached"
   ) {
     const epEui = extractEpEuiFromPayload(event.payload);
-    if (epEui) invalidateEndpoint(qc, epEui);
-    return;
+    return epEui ? endpointKeys(epEui) : [];
   }
 
   if (
@@ -235,27 +236,16 @@ function applyTargetedInvalidations(
     event.type === "downlink.revoked"
   ) {
     const rawEpEui = extractEpEuiFromPayload(event.payload);
-    if (rawEpEui) {
-      const epEui = normalizeEuiForQueryKey(rawEpEui);
-      qc.invalidateQueries({ queryKey: queryKeys.endpoints.detail(epEui) });
-      qc.invalidateQueries({
-        queryKey: queryKeys.endpoints.downlinkQueuePrefix(epEui),
-      });
-      qc.invalidateQueries({
-        queryKey: queryKeys.endpoints.downlinkResultsPrefix(epEui),
-      });
-    }
+    if (!rawEpEui) return [];
+    const epEui = normalizeEuiForQueryKey(rawEpEui);
+    return [
+      queryKeys.endpoints.detail(epEui),
+      queryKeys.endpoints.downlinkQueuePrefix(epEui),
+      queryKeys.endpoints.downlinkResultsPrefix(epEui),
+    ];
   }
-}
 
-/**
- * Subscribe to every realtime event for the lifetime of the calling component
- * and dispatch each to the handler. Cleans up on unmount or handler change.
- */
-function useSubscriptionLifecycle(
-  handler: (event: RealtimeEvent) => void,
-): void {
-  useEffect(() => realtimeService.subscribeAll(handler), [handler]);
+  return [];
 }
 
 /**
@@ -302,27 +292,45 @@ export function useRealtimeConnection() {
 
 /**
  * Hook for automatic query invalidation based on realtime events.
- * Subscribes to all realtime events and invalidates relevant React Query caches.
+ *
+ * Invalidations are coalesced: each event adds its target query keys to a
+ * pending set, flushed at most once per TIMING_REALTIME_INVALIDATION_WINDOW_MS.
+ * Otherwise a busy tenant's stream refetches the dashboard lists on every
+ * event — a request storm.
  */
 export function useRealtimeInvalidation() {
   const queryClient = useQueryClient();
 
-  const handler = useCallback(
-    (event: RealtimeEvent) => {
-      const keys = EVENT_INVALIDATION_MAP[event.type];
-      if (keys) {
-        keys.forEach((key) => {
-          queryClient.invalidateQueries({
-            queryKey: key as readonly unknown[],
-          });
-        });
-      }
-      applyTargetedInvalidations(queryClient, event);
-    },
-    [queryClient],
-  );
+  useEffect(() => {
+    // Serialized key -> query key; dedups repeated keys within the window.
+    const pending = new Map<string, readonly unknown[]>();
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-  useSubscriptionLifecycle(handler);
+    const flush = () => {
+      flushTimer = null;
+      const keys = [...pending.values()];
+      pending.clear();
+      keys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
+    };
+
+    const handler = (event: RealtimeEvent) => {
+      const keys = [
+        ...(EVENT_INVALIDATION_MAP[event.type] ?? []),
+        ...targetedInvalidationKeys(event),
+      ];
+      if (keys.length === 0) return;
+      keys.forEach((key) => pending.set(JSON.stringify(key), key));
+      if (!flushTimer) {
+        flushTimer = setTimeout(flush, TIMING_REALTIME_INVALIDATION_WINDOW_MS);
+      }
+    };
+
+    const unsubscribe = realtimeService.subscribeAll(handler);
+    return () => {
+      unsubscribe();
+      if (flushTimer) clearTimeout(flushTimer);
+    };
+  }, [queryClient]);
 }
 
 type EventStreamFlight = {

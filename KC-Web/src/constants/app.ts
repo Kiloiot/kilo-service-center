@@ -111,6 +111,10 @@ export const TIMING_RECONNECT_MAX_DELAY = 30000; // Max delay cap for exponentia
 export const TIMING_REALTIME_EVENT_STREAM_CATCHUP_DEBOUNCE_MS = 500;
 export const TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS = 5000;
 
+// Realtime invalidations are coalesced into at most one flush per this window,
+// so a busy tenant's event stream can't drive a refetch-per-event storm.
+export const TIMING_REALTIME_INVALIDATION_WINDOW_MS = 2500;
+
 /**
  * TIMING object for React Query staleTime patterns.
  * Values are in SECONDS - multiply by 1000 for millisecond APIs (setTimeout, setInterval).
