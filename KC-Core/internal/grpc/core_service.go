@@ -1205,6 +1205,12 @@ func (s *CoreService) CreateBaseStation(ctx context.Context, req *pb.CreateBaseS
 	// Create base station in storage
 	created, err := s.basestationSvc.Create(ctx, baseStation)
 	if err != nil {
+		// Duplicate EUI must surface as AlreadyExists (409), not a generic Internal.
+		if errors.Is(err, kcerrors.ErrDuplicate) {
+			s.log.WarnContext(ctx, grpcerrors.LogBaseStationAlreadyExists, "eui", req.Basestation.BsEui, "tenant_id", tenantID)
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBaseStationEUIExists),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBaseStationEUIExists))
+		}
 		s.log.ErrorContext(ctx, "Failed to create base station", "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCreateBaseStationFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCreateBaseStationFailed))

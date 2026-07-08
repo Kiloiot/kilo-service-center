@@ -93,7 +93,8 @@ const (
 
 // Log message constants for BaseStation operations.
 const (
-	LogBaseStationCreating = "Creating base station"
+	LogBaseStationCreating      = "Creating base station"
+	LogBaseStationAlreadyExists = "Base station already exists"
 )
 
 // Log message constants for Endpoint operations.
