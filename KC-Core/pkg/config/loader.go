@@ -180,6 +180,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("grpc.max_send_msg_size", DefaultGRPCMaxSendMsgSize)
 	v.SetDefault("grpc.stream_poll_interval", DefaultGRPCStreamPollInterval)
 	v.SetDefault("grpc.stream_batch_size", DefaultGRPCStreamBatchSize)
+	v.SetDefault("grpc.count_cache_ttl", DefaultGRPCCountCacheTTL)
 	v.SetDefault("grpc.rbac_role_cache_ttl_seconds", DefaultRBACRoleCacheTTLSeconds)
 
 	// gRPC-web defaults

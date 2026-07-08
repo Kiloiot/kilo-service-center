@@ -544,6 +544,9 @@ const (
 	// DefaultGRPCStreamBatchSize is the streaming response batch size.
 	DefaultGRPCStreamBatchSize = 100
 
+	// DefaultGRPCCountCacheTTL is how long unary event COUNT(*) results are cached.
+	DefaultGRPCCountCacheTTL = "10s"
+
 	// DefaultRBACRoleCacheTTLSeconds is the default TTL for cached RBAC role lookups.
 	DefaultRBACRoleCacheTTLSeconds = 30
 )

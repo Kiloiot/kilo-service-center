@@ -154,6 +154,7 @@ type GRPCConfig struct {
 	MaxSendMsgSize          int              `mapstructure:"max_send_msg_size"`
 	StreamPollInterval      time.Duration    `mapstructure:"stream_poll_interval"`        // Polling interval for streaming RPCs
 	StreamBatchSize         int              `mapstructure:"stream_batch_size"`           // Batch size for streaming message responses
+	CountCacheTTL           time.Duration    `mapstructure:"count_cache_ttl"`             // TTL for cached event COUNT(*) results
 	Web                     GRPCWebConfig    `mapstructure:"web"`                         // gRPC-web config
 	HTTP                    HTTPServerConfig `mapstructure:"http"`                        // HTTP server timeouts
 	EnableReflection        bool             `mapstructure:"enable_reflection"`           // Enable gRPC reflection service (default: true)
