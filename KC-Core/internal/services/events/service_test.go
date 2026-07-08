@@ -31,88 +31,56 @@ func newMockEventStore() *mockEventStore {
 	}
 }
 
-func (m *mockEventStore) List(_ context.Context, _ int64, filter *EventFilter, limit, offset int) ([]*models.SystemEvent, int64, error) {
-	m.listCallCount++
-	m.lastFilter = filter
-	m.lastLimit = limit
-	m.lastOffset = offset
-	// Signal that List was called (non-blocking)
-	select {
-	case m.listCalled <- struct{}{}:
-	default:
+// matching applies the StartTime filter the real store would apply in SQL.
+func (m *mockEventStore) matching(filter *EventFilter) []*models.SystemEvent {
+	if filter == nil || filter.StartTime == nil {
+		return m.events
 	}
-	if m.err != nil {
-		return nil, 0, m.err
-	}
-	// Simulate DB filtering: only return events with CreatedAt > StartTime
-	// This validates that the in-loop filter in Stream() prevents duplicates
-	if filter != nil && filter.StartTime != nil {
-		startTime := time.Unix(*filter.StartTime, 0)
-		var filtered []*models.SystemEvent
-		for _, e := range m.events {
-			if e.CreatedAt.After(startTime) {
-				filtered = append(filtered, e)
-			}
+	startTime := time.Unix(*filter.StartTime, 0)
+	var filtered []*models.SystemEvent
+	for _, e := range m.events {
+		if e.CreatedAt.After(startTime) {
+			filtered = append(filtered, e)
 		}
-		return filtered, int64(len(filtered)), nil
 	}
-	return m.events, int64(len(m.events)), nil
+	return filtered
 }
 
-func (m *mockEventStore) ListByBaseStation(_ context.Context, _ int64, _ []byte, filter *EventFilter, limit, offset int) ([]*models.SystemEvent, int64, error) {
+func (m *mockEventStore) GetEvents(_ context.Context, _ int64, filter *EventFilter, limit, offset int) ([]*models.SystemEvent, error) {
 	m.listCallCount++
 	m.lastFilter = filter
 	m.lastLimit = limit
 	m.lastOffset = offset
-	// Signal that List was called (non-blocking)
+	// Signal that GetEvents was called (non-blocking)
 	select {
 	case m.listCalled <- struct{}{}:
 	default:
 	}
 	if m.err != nil {
-		return nil, 0, m.err
+		return nil, m.err
 	}
-	// Simulate DB filtering: only return events with CreatedAt > StartTime
-	// This validates that the in-loop filter in StreamByBaseStation() prevents duplicates
-	if filter != nil && filter.StartTime != nil {
-		startTime := time.Unix(*filter.StartTime, 0)
-		var filtered []*models.SystemEvent
-		for _, e := range m.events {
-			if e.CreatedAt.After(startTime) {
-				filtered = append(filtered, e)
-			}
-		}
-		return filtered, int64(len(filtered)), nil
-	}
-	return m.events, int64(len(m.events)), nil
+	return m.matching(filter), nil
 }
 
-func (m *mockEventStore) ListByEndPoint(_ context.Context, _ int64, _ []byte, filter *EventFilter, limit, offset int) ([]*models.SystemEvent, int64, error) {
-	m.listCallCount++
-	m.lastFilter = filter
-	m.lastLimit = limit
-	m.lastOffset = offset
-	// Signal that List was called (non-blocking)
-	select {
-	case m.listCalled <- struct{}{}:
-	default:
-	}
+func (m *mockEventStore) CountEvents(_ context.Context, _ int64, filter *EventFilter) (int64, error) {
 	if m.err != nil {
-		return nil, 0, m.err
+		return 0, m.err
 	}
-	// Simulate DB filtering: only return events with CreatedAt > StartTime
-	// This validates that the in-loop filter in StreamByEndPoint() prevents duplicates
-	if filter != nil && filter.StartTime != nil {
-		startTime := time.Unix(*filter.StartTime, 0)
-		var filtered []*models.SystemEvent
-		for _, e := range m.events {
-			if e.CreatedAt.After(startTime) {
-				filtered = append(filtered, e)
-			}
-		}
-		return filtered, int64(len(filtered)), nil
-	}
-	return m.events, int64(len(m.events)), nil
+	return int64(len(m.matching(filter))), nil
+}
+
+// mockResolver implements EUIResolver for testing.
+type mockResolver struct {
+	bsID *int64
+	epID *int64
+}
+
+func (m *mockResolver) ResolveBaseStationID(_ context.Context, _ int64, _ []byte) (*int64, error) {
+	return m.bsID, nil
+}
+
+func (m *mockResolver) ResolveEndpointID(_ context.Context, _ int64, _ []byte) (*int64, error) {
+	return m.epID, nil
 }
 
 // mockLogger implements logger.Logger for testing.
@@ -140,17 +108,17 @@ func TestNew_DefaultBatchSize(t *testing.T) {
 	log := &mockLogger{}
 
 	// Test with zero batch size - should clamp to default
-	svc := New(store, time.Second, 0, log)
+	svc := New(store, &mockResolver{}, time.Second, 0, log)
 	require.NotNil(t, svc)
 	assert.Equal(t, DefaultEventStreamBatchSize, svc.streamBatchSize)
 
 	// Test with negative batch size - should clamp to default
-	svc = New(store, time.Second, -10, log)
+	svc = New(store, &mockResolver{}, time.Second, -10, log)
 	require.NotNil(t, svc)
 	assert.Equal(t, DefaultEventStreamBatchSize, svc.streamBatchSize)
 
 	// Test with positive batch size - should use provided value
-	svc = New(store, time.Second, 50, log)
+	svc = New(store, &mockResolver{}, time.Second, 50, log)
 	require.NotNil(t, svc)
 	assert.Equal(t, 50, svc.streamBatchSize)
 }
@@ -164,7 +132,7 @@ func TestList_Success(t *testing.T) {
 		{ID: "2", TenantID: "1", Category: "test", CreatedAt: now},
 	}
 
-	svc := New(store, time.Second, 100, &mockLogger{})
+	svc := New(store, &mockResolver{}, time.Second, 100, &mockLogger{})
 	ctx := testutil.TestContext()
 
 	filters := &grpcservices.EventFilters{
@@ -180,7 +148,7 @@ func TestList_Success(t *testing.T) {
 // TestStream_ContextCancellation verifies that streaming stops when context is cancelled.
 func TestStream_ContextCancellation(t *testing.T) {
 	store := newMockEventStore()
-	svc := New(store, 10*time.Millisecond, 100, &mockLogger{})
+	svc := New(store, &mockResolver{}, 10*time.Millisecond, 100, &mockLogger{})
 
 	ctx, cancel := context.WithCancel(testutil.TestContext())
 
@@ -210,7 +178,7 @@ func TestStream_EmitsEvents(t *testing.T) {
 		{ID: "1", TenantID: "1", Category: "test", EventType: "test.event", CreatedAt: now},
 	}
 
-	svc := New(store, 10*time.Millisecond, 100, &mockLogger{})
+	svc := New(store, &mockResolver{}, 10*time.Millisecond, 100, &mockLogger{})
 	ctx, cancel := context.WithTimeout(testutil.TestContext(), 200*time.Millisecond)
 	defer cancel()
 
@@ -232,7 +200,7 @@ func TestStream_EmitsEvents(t *testing.T) {
 func TestStream_UsesBatchSize(t *testing.T) {
 	store := newMockEventStore()
 	batchSize := 25
-	svc := New(store, 10*time.Millisecond, batchSize, &mockLogger{})
+	svc := New(store, &mockResolver{}, 10*time.Millisecond, batchSize, &mockLogger{})
 
 	ctx, cancel := context.WithTimeout(testutil.TestContext(), 200*time.Millisecond)
 	defer cancel()
@@ -243,9 +211,9 @@ func TestStream_UsesBatchSize(t *testing.T) {
 	// Wait for at least one poll with synchronization (no time.Sleep)
 	select {
 	case <-store.listCalled:
-		// List was called
+		// GetEvents was called
 	case <-ctx.Done():
-		t.Fatal("timed out waiting for store.List to be called")
+		t.Fatal("timed out waiting for store.GetEvents to be called")
 	}
 
 	// Verify batch size was used in query
@@ -255,7 +223,7 @@ func TestStream_UsesBatchSize(t *testing.T) {
 // TestStreamByBaseStation_ContextCancellation verifies base station streaming cancellation.
 func TestStreamByBaseStation_ContextCancellation(t *testing.T) {
 	store := newMockEventStore()
-	svc := New(store, 10*time.Millisecond, 100, &mockLogger{})
+	svc := New(store, &mockResolver{}, 10*time.Millisecond, 100, &mockLogger{})
 
 	ctx, cancel := context.WithCancel(testutil.TestContext())
 	bsEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
@@ -281,7 +249,7 @@ func TestStreamByBaseStation_ContextCancellation(t *testing.T) {
 // TestStreamByEndPoint_ContextCancellation verifies endpoint streaming cancellation.
 func TestStreamByEndPoint_ContextCancellation(t *testing.T) {
 	store := newMockEventStore()
-	svc := New(store, 10*time.Millisecond, 100, &mockLogger{})
+	svc := New(store, &mockResolver{}, 10*time.Millisecond, 100, &mockLogger{})
 
 	ctx, cancel := context.WithCancel(testutil.TestContext())
 	epEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
@@ -342,7 +310,7 @@ func TestStream_NoDuplicatesOnSameTimestamp(t *testing.T) {
 		{ID: "2", TenantID: "1", Category: "test", EventType: "test.event", CreatedAt: now},
 	}
 
-	svc := New(store, 10*time.Millisecond, 100, &mockLogger{})
+	svc := New(store, &mockResolver{}, 10*time.Millisecond, 100, &mockLogger{})
 	ctx, cancel := context.WithTimeout(testutil.TestContext(), 300*time.Millisecond)
 	defer cancel()
 
@@ -387,7 +355,7 @@ func TestStreamByBaseStation_NoDuplicatesOnSameTimestamp(t *testing.T) {
 		{ID: "2", TenantID: "1", Category: "test", EventType: "test.event", CreatedAt: now},
 	}
 
-	svc := New(store, 10*time.Millisecond, 100, &mockLogger{})
+	svc := New(store, &mockResolver{}, 10*time.Millisecond, 100, &mockLogger{})
 	ctx, cancel := context.WithTimeout(testutil.TestContext(), 300*time.Millisecond)
 	defer cancel()
 
@@ -431,7 +399,7 @@ func TestStreamByEndPoint_NoDuplicatesOnSameTimestamp(t *testing.T) {
 		{ID: "2", TenantID: "1", Category: "test", EventType: "test.event", CreatedAt: now},
 	}
 
-	svc := New(store, 10*time.Millisecond, 100, &mockLogger{})
+	svc := New(store, &mockResolver{}, 10*time.Millisecond, 100, &mockLogger{})
 	ctx, cancel := context.WithTimeout(testutil.TestContext(), 300*time.Millisecond)
 	defer cancel()
 

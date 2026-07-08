@@ -100,11 +100,7 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	coreService = coreService.WithBaseStationMetricsReaders(infra.Storage, infra.Storage)
 
 	// Wire system event recorder for CRUD event emissions
-	systemEventAdapter := coreAdapters.NewSystemEventStoreAdapter(
-		infra.Storage.SystemEvents(),
-		infra.Storage.BaseStations(),
-		infra.Storage.EndPoints(),
-	)
+	systemEventAdapter := coreAdapters.NewSystemEventStoreAdapter(infra.Storage.SystemEvents())
 	coreService = coreService.WithEventWriter(systemEventAdapter)
 	log.Info("EventWriter wired")
 
@@ -209,11 +205,8 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 
 	// EventService
 	eventsSvc := eventsservice.New(
-		coreAdapters.NewSystemEventStoreAdapter(
-			infra.Storage.SystemEvents(),
-			infra.Storage.BaseStations(),
-			infra.Storage.EndPoints(),
-		),
+		coreAdapters.NewSystemEventStoreAdapter(infra.Storage.SystemEvents()),
+		coreAdapters.NewEUIResolver(infra.Storage.BaseStations(), infra.Storage.EndPoints()),
 		cfg.GRPC.StreamPollInterval,
 		cfg.GRPC.StreamBatchSize,
 		infra.LoggerIface,
