@@ -203,10 +203,14 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	coreService = coreService.WithSystemStatusService(systemStatusSvc)
 	log.Info("SystemStatusService wired")
 
-	// EventService
+	// Cache the heavy COUNT(*) so dashboard polling stays off Postgres.
+	eventStoreAdapter := coreAdapters.NewSystemEventStoreAdapter(infra.Storage.SystemEvents())
+	eventStore := coreAdapters.NewCachedSystemEventStore(eventStoreAdapter, cfg.GRPC.CountCacheTTL)
+	euiResolver := coreAdapters.NewEUIResolver(infra.Storage.BaseStations(), infra.Storage.EndPoints())
+
 	eventsSvc := eventsservice.New(
-		coreAdapters.NewSystemEventStoreAdapter(infra.Storage.SystemEvents()),
-		coreAdapters.NewEUIResolver(infra.Storage.BaseStations(), infra.Storage.EndPoints()),
+		eventStore,
+		euiResolver,
 		cfg.GRPC.StreamPollInterval,
 		cfg.GRPC.StreamBatchSize,
 		infra.LoggerIface,
