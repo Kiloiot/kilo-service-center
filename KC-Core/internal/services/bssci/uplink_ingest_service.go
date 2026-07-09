@@ -167,6 +167,9 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 	binary.BigEndian.PutUint64(epEuiBytes, payload.EpEUI)
 
 	servingTenantID := svc.tenantID
+	if opts.ServingTenantID > 0 {
+		servingTenantID = opts.ServingTenantID
+	}
 	var ownerTenantID int64
 	var isRoaming bool
 

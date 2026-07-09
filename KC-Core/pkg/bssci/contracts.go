@@ -510,6 +510,9 @@ type UplinkIngestOptions struct {
 	FederationCEID string
 	// FederationRelayID is the CE-generated relay UUID for idempotency; set when Source == UplinkSourceFederation.
 	FederationRelayID string
+	// ServingTenantID is the tenant resolved for the serving connection (BSSCI session or federation source).
+	// Zero falls back to the ingest service's instance tenant (single-tenant CE default).
+	ServingTenantID int64
 }
 
 // UplinkPayload is the canonical input to UplinkIngestService.
