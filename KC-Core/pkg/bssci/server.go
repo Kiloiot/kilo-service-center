@@ -3800,7 +3800,10 @@ func (s *Server) handleULData(_ *Server, session *Session, msg *Message, data ma
 			ResponseExp: responseExp,
 			DlAck:       dlAck,
 		}
-		result, ingestErr := s.uplinkIngestSvc.Ingest(ctx, payload, UplinkIngestOptions{Source: UplinkSourceBSSCI})
+		result, ingestErr := s.uplinkIngestSvc.Ingest(ctx, payload, UplinkIngestOptions{
+			Source:          UplinkSourceBSSCI,
+			ServingTenantID: resolvedTenant(session, s.tenantID),
+		})
 		if ingestErr != nil {
 			s.logger.ErrorContext(ctx, LogBSSCIUplinkIngestFailed,
 				"ep_eui", epEuiVal, "packet_cnt", packetCntVal, "error", ingestErr)
