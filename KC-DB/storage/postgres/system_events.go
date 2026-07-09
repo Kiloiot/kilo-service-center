@@ -155,6 +155,39 @@ func (s *SystemEventStore) recordBSSCIEvent(ctx context.Context, event *models.S
 	return s.insertEvent(ctx, event)
 }
 
+// appendDeviceScope narrows the query to a base station / endpoint: match by the FK
+// when present, else fall back to the source_name EUI. OR, not AND — attach/detach and
+// similar events carry only source_name, not the FK, so an AND would drop them.
+func appendDeviceScope(query string, args []interface{}, argNum int, filter interfaces.SystemEventFilter) (string, []interface{}, int) {
+	if filter.BaseStationID != nil && filter.BaseStationEUI != "" {
+		query += fmt.Sprintf(" AND (basestation_id = $%d OR LOWER(source_name) = LOWER($%d))", argNum, argNum+1)
+		args = append(args, *filter.BaseStationID, filter.BaseStationEUI)
+		argNum += 2
+	} else if filter.BaseStationID != nil {
+		query += fmt.Sprintf(" AND basestation_id = $%d", argNum)
+		args = append(args, *filter.BaseStationID)
+		argNum++
+	} else if filter.BaseStationEUI != "" {
+		query += fmt.Sprintf(" AND LOWER(source_name) = LOWER($%d)", argNum)
+		args = append(args, filter.BaseStationEUI)
+		argNum++
+	}
+	if filter.EndpointID != nil && filter.EndpointEUI != "" {
+		query += fmt.Sprintf(" AND (endpoint_id = $%d OR LOWER(source_name) = LOWER($%d))", argNum, argNum+1)
+		args = append(args, *filter.EndpointID, filter.EndpointEUI)
+		argNum += 2
+	} else if filter.EndpointID != nil {
+		query += fmt.Sprintf(" AND endpoint_id = $%d", argNum)
+		args = append(args, *filter.EndpointID)
+		argNum++
+	} else if filter.EndpointEUI != "" {
+		query += fmt.Sprintf(" AND LOWER(source_name) = LOWER($%d)", argNum)
+		args = append(args, filter.EndpointEUI)
+		argNum++
+	}
+	return query, args, argNum
+}
+
 // GetEvents retrieves events with filters
 func (s *SystemEventStore) GetEvents(ctx context.Context, filter interfaces.SystemEventFilter) ([]*models.SystemEvent, error) {
 	if filter.TenantID == "" {
@@ -213,31 +246,13 @@ func (s *SystemEventStore) GetEvents(ctx context.Context, filter interfaces.Syst
 		args = append(args, pq.Array(filter.Status))
 		argNum++
 	}
-	if filter.BaseStationID != nil {
-		query += fmt.Sprintf(" AND basestation_id = $%d", argNum)
-		args = append(args, *filter.BaseStationID)
-		argNum++
-	}
-	if filter.EndpointID != nil {
-		query += fmt.Sprintf(" AND endpoint_id = $%d", argNum)
-		args = append(args, *filter.EndpointID)
-		argNum++
-	}
 	if filter.SourceID != nil {
 		query += fmt.Sprintf(" AND source_id = $%d", argNum)
 		args = append(args, *filter.SourceID)
 		argNum++
 	}
-	if filter.BaseStationEUI != "" {
-		query += fmt.Sprintf(" AND LOWER(source_name) = LOWER($%d)", argNum)
-		args = append(args, filter.BaseStationEUI)
-		argNum++
-	}
-	if filter.EndpointEUI != "" {
-		query += fmt.Sprintf(" AND LOWER(source_name) = LOWER($%d)", argNum)
-		args = append(args, filter.EndpointEUI)
-		argNum++
-	}
+
+	query, args, argNum = appendDeviceScope(query, args, argNum, filter)
 
 	// Order by occurred_at DESC (most recent first) unless specified otherwise
 	orderBy := "occurred_at"
@@ -732,30 +747,13 @@ func (s *SystemEventStore) CountEvents(ctx context.Context, filter interfaces.Sy
 		args = append(args, pq.Array(filter.Status))
 		argNum++
 	}
-	if filter.BaseStationID != nil {
-		query += fmt.Sprintf(" AND basestation_id = $%d", argNum)
-		args = append(args, *filter.BaseStationID)
-		argNum++
-	}
-	if filter.EndpointID != nil {
-		query += fmt.Sprintf(" AND endpoint_id = $%d", argNum)
-		args = append(args, *filter.EndpointID)
-		argNum++
-	}
 	if filter.SourceID != nil {
 		query += fmt.Sprintf(" AND source_id = $%d", argNum)
 		args = append(args, *filter.SourceID)
 		argNum++
 	}
-	if filter.BaseStationEUI != "" {
-		query += fmt.Sprintf(" AND LOWER(source_name) = LOWER($%d)", argNum)
-		args = append(args, filter.BaseStationEUI)
-		argNum++
-	}
-	if filter.EndpointEUI != "" {
-		query += fmt.Sprintf(" AND LOWER(source_name) = LOWER($%d)", argNum)
-		args = append(args, filter.EndpointEUI)
-	}
+
+	query, args, _ = appendDeviceScope(query, args, argNum, filter)
 
 	var count int64
 	err := s.db.QueryRowContext(ctx, query, args...).Scan(&count)

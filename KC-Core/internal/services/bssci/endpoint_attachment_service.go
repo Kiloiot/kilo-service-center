@@ -290,6 +290,7 @@ func (s *endpointAttachmentService) logFailureEvent(
 		Status:      bssci.EventStatusNew,
 		SourceType:  bssci.EventSourceTypeEndpoint,
 		SourceName:  fmt.Sprintf("%016x", epEui),
+		EndpointID:  &endpointID,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -360,6 +361,7 @@ func (s *endpointAttachmentService) logStartEvent(
 		Status:      bssci.EventStatusNew,
 		SourceType:  bssci.EventSourceTypeEndpoint,
 		SourceName:  fmt.Sprintf("%016x", epEui),
+		EndpointID:  &endpointID,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
