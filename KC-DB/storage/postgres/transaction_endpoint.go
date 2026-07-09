@@ -92,7 +92,8 @@ func (r *transactionalEndPointRepository) Get(ctx context.Context, eui models.EU
 	endpoint := &models.EndPoint{}
 	var tags hstore.Hstore
 	var lastDetachSign []byte
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
+	var lastAttachedBsEui []byte
+	var lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
 	var propagateStatus sql.NullString
 
 	err := r.tx.QueryRowContext(ctx, query, eui[:]).Scan(
@@ -136,10 +137,7 @@ func (r *transactionalEndPointRepository) Get(ctx context.Context, eui models.EU
 	if len(lastDetachSign) > 0 {
 		endpoint.LastDetachSign = lastDetachSign
 	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
+	endpoint.LastAttachedBsEui = bsEuiPtr(lastAttachedBsEui)
 	if lastPropagateTime.Valid {
 		val := lastPropagateTime.Int64
 		endpoint.LastPropagateTime = &val
@@ -189,7 +187,8 @@ func (r *transactionalEndPointRepository) GetByTenant(ctx context.Context, tenan
 		endpoint := &models.EndPoint{}
 		var tags hstore.Hstore
 		var lastDetachSign []byte
-		var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
+		var lastAttachedBsEui []byte
+		var lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
 		var propagateStatus sql.NullString
 
 		err := rows.Scan(
@@ -229,10 +228,7 @@ func (r *transactionalEndPointRepository) GetByTenant(ctx context.Context, tenan
 		if len(lastDetachSign) > 0 {
 			endpoint.LastDetachSign = lastDetachSign
 		}
-		if lastAttachedBsEui.Valid {
-			val := lastAttachedBsEui.Int64
-			endpoint.LastAttachedBsEui = &val
-		}
+		endpoint.LastAttachedBsEui = bsEuiPtr(lastAttachedBsEui)
 		if lastPropagateTime.Valid {
 			val := lastPropagateTime.Int64
 			endpoint.LastPropagateTime = &val
@@ -736,7 +732,7 @@ func (r *transactionalEndPointRepository) GetEndpointWithKeysForDetachValidation
 func (r *transactionalEndPointRepository) GetPreferredBsEui(ctx context.Context, tenantID int64, epEui []byte) (*uint64, bool, error) {
 	query := `SELECT last_attached_bs_eui FROM endpoints WHERE tenant_id = $1 AND ep_eui = $2`
 
-	var preferredBs sql.NullInt64
+	var preferredBs []byte
 	err := r.tx.QueryRowContext(ctx, query, tenantID, epEui).Scan(&preferredBs)
 	if err == sql.ErrNoRows {
 		return nil, false, nil // No endpoint found
@@ -744,12 +740,8 @@ func (r *transactionalEndPointRepository) GetPreferredBsEui(ctx context.Context,
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get preferred BS: %w", err)
 	}
-	if !preferredBs.Valid {
-		return nil, false, nil // NULL value - no preference
+	if val := bsEuiPtr(preferredBs); val != nil {
+		return val, true, nil
 	}
-	if preferredBs.Int64 < 0 {
-		return nil, false, fmt.Errorf("invalid negative BS EUI: %d", preferredBs.Int64)
-	}
-	val := uint64(preferredBs.Int64) //#nosec G115 - validated non-negative above
-	return &val, true, nil
+	return nil, false, nil // NULL/empty - no preference
 }

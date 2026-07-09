@@ -456,15 +456,6 @@ func euiToUint64(eui []byte) uint64 {
 	return binary.BigEndian.Uint64(eui)
 }
 
-// euiToInt64 converts 8-byte EUI to int64 for endpoints.last_attached_bs_eui
-func euiToInt64(eui []byte) int64 {
-	if len(eui) != 8 {
-		return 0
-	}
-	// #nosec G115 - EUI values are opaque identifiers; overflow to negative is acceptable for storage
-	return int64(binary.BigEndian.Uint64(eui))
-}
-
 // UpdateEUI updates the Base Station EUI with transactional cascade to all dependent tables
 func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, oldEui, newEui []byte) (*models.BaseStation, error) {
 	// Validate EUI lengths
@@ -506,8 +497,6 @@ func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, o
 	// Calculate integer representations for BIGINT columns
 	oldUint64 := euiToUint64(oldEui)
 	newUint64 := euiToUint64(newEui)
-	oldInt64 := euiToInt64(oldEui)
-	newInt64 := euiToInt64(newEui)
 
 	// 3. Update all tables with bs_eui reference (transactional cascade)
 
@@ -590,8 +579,8 @@ func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, o
 		}
 	}
 
-	// BIGINT columns (int64 conversion): endpoints.last_attached_bs_eui
-	_, err = tx.ExecContext(ctx, "UPDATE endpoints SET last_attached_bs_eui = $1 WHERE last_attached_bs_eui = $2", newInt64, oldInt64)
+	// BYTEA columns: endpoints.last_attached_bs_eui
+	_, err = tx.ExecContext(ctx, "UPDATE endpoints SET last_attached_bs_eui = $1 WHERE last_attached_bs_eui = $2", newEui, oldEui)
 	if err != nil {
 		return nil, fmt.Errorf("update endpoints: %w", err)
 	}
