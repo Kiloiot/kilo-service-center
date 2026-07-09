@@ -6980,7 +6980,7 @@ func (s *Server) updateSessionCounters(session *Session) {
 		return
 	}
 
-	// Update the counters and last message time via repository
+	// Update the session operation counters via repository
 	// Convert SessionUUID from []byte to [16]byte
 	var sessionUUID [16]byte
 	copy(sessionUUID[:], session.SessionUUID)
