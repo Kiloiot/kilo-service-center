@@ -5686,6 +5686,20 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 				}
 			}
 
+			// Propagate re-fires on every BS reconnect; publish only on the real attach transition.
+			if s.mqttPublisher != nil && endpoint.EpStatus != EndpointStatusAttached {
+				if ownerOrg != uuid.Nil {
+					go func() {
+						if pubErr := s.mqttPublisher.PublishAttach(ownerCtx, ownerOrg.String(), epEUI, session.BaseStationEUI); pubErr != nil {
+							s.logger.WarnContext(ownerCtx, LogBSSCIFailedToPublishAttachEventToMQTT, "error", pubErr)
+						}
+					}()
+				} else {
+					s.logger.WarnContext(ownerCtx, LogBSSCIMQTTPublishSkippedOrgUnresolved,
+						"epEui", epEUI, "event", MQTTEventKeyAttach)
+				}
+			}
+
 			// BSSCI §3.8.3: Persist attPrpCmp to messages table
 			// Gated by hasEUI to ensure usable audit rows with valid ep_eui
 			// NOTE: This is separate from the attPrp row persisted at send time
@@ -6161,6 +6175,20 @@ func (s *Server) handleDetachPropagateComplete(_ *Server, session *Session, msg 
 						CreatedAt:   time.Now(),
 					}); err != nil {
 						s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCreateDetachmentEvent, "error", err)
+					}
+				}
+
+				// Propagate re-fires on every BS reconnect; publish only on the real detach transition.
+				if s.mqttPublisher != nil && epModel.EpStatus != endpoint.EndpointStatusDetached {
+					if ownerOrgUUID != uuid.Nil {
+						go func() {
+							if pubErr := s.mqttPublisher.PublishDetach(ownerCtx, ownerOrgUUID.String(), epEUI, session.BaseStationEUI); pubErr != nil {
+								s.logger.WarnContext(ownerCtx, LogBSSCIFailedToPublishDetachEventToMQTT, "error", pubErr)
+							}
+						}()
+					} else {
+						s.logger.WarnContext(ownerCtx, LogBSSCIMQTTPublishSkippedOrgUnresolved,
+							"epEui", epEUI, "event", MQTTEventKeyDetach)
 					}
 				}
 
