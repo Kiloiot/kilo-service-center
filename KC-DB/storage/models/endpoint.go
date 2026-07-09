@@ -140,7 +140,7 @@ type EndPoint struct {
 	LastAttachSubpackets *string `db:"last_attach_subpackets" json:"lastAttachSubpackets,omitempty"`
 
 	// MIOTY Detach telemetry fields per BSSCI v1.0.0 Section 5.7.1 (Finding 2)
-	LastAttachedBsEui   *int64  `db:"last_attached_bs_eui" json:"lastAttachedBsEui,omitempty"`     // Last BS EUI that handled attach/detach propagate
+	LastAttachedBsEui   *uint64 `db:"last_attached_bs_eui" json:"lastAttachedBsEui,omitempty"`     // Last BS EUI (BYTEA(8) in DB) that handled attach/detach propagate
 	LastPropagateTime   *int64  `db:"last_propagate_time" json:"lastPropagateTime,omitempty"`      // Unix UTC nanoseconds of last propagate operation
 	LastDetachTime      *int64  `db:"last_detach_time" json:"lastDetachTime,omitempty"`            // Unix UTC nanoseconds of last detach reception
 	LastDetachSign      []byte  `db:"last_detach_sign" json:"lastDetachSign,omitempty"`            // 4-byte endpoint signature from detach message

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
@@ -69,7 +70,16 @@ type attachNullables struct {
 	LastAttachRxTime     sql.NullInt64
 	LastAttachRxDuration sql.NullInt64
 	LastAttachSubpackets sql.NullString
-	LastAttachedBsEui    sql.NullInt64
+	LastAttachedBsEui    []byte // last_attached_bs_eui is BYTEA(8)
+}
+
+// bsEuiPtr maps a nullable BYTEA(8) last_attached_bs_eui to *uint64 (nil if NULL/malformed).
+func bsEuiPtr(b []byte) *uint64 {
+	if len(b) != 8 {
+		return nil
+	}
+	v := binary.BigEndian.Uint64(b)
+	return &v
 }
 
 func assignAttachFields(ep *models.EndPoint, n attachNullables) {
@@ -85,10 +95,7 @@ func assignAttachFields(ep *models.EndPoint, n attachNullables) {
 		v := n.LastAttachSubpackets.String
 		ep.LastAttachSubpackets = &v
 	}
-	if n.LastAttachedBsEui.Valid {
-		v := n.LastAttachedBsEui.Int64
-		ep.LastAttachedBsEui = &v
-	}
+	ep.LastAttachedBsEui = bsEuiPtr(n.LastAttachedBsEui)
 }
 
 // detachNullables groups the nullable scan targets for an endpoint's detach
@@ -221,7 +228,8 @@ func applyEndpointPostScan(
 	endpoint *models.EndPoint,
 	tags hstore.Hstore,
 	lastDetachSign []byte,
-	lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64,
+	lastAttachedBsEui []byte,
+	lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64,
 	propagateStatus sql.NullString,
 ) {
 	endpoint.Tags = make(map[string]string)
@@ -231,10 +239,7 @@ func applyEndpointPostScan(
 	if len(lastDetachSign) > 0 {
 		endpoint.LastDetachSign = lastDetachSign
 	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
+	endpoint.LastAttachedBsEui = bsEuiPtr(lastAttachedBsEui)
 	if lastPropagateTime.Valid {
 		val := lastPropagateTime.Int64
 		endpoint.LastPropagateTime = &val
@@ -261,7 +266,8 @@ func scanEndpointBaseRow(scanner interface {
 	endpoint := &models.EndPoint{}
 	var tags hstore.Hstore
 	var lastDetachSign []byte
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
+	var lastAttachedBsEui []byte
+	var lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
 	var propagateStatus sql.NullString
 
 	err := scanner.Scan(
@@ -306,7 +312,8 @@ func scanEndpointListRow(scanner interface {
 	endpoint := &models.EndPoint{}
 	var tags hstore.Hstore
 	var lastDetachSign []byte
-	var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
+	var lastAttachedBsEui []byte
+	var lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
 	var propagateStatus sql.NullString
 	var typeEUIBytes []byte
 	var attachCnt sql.NullInt64
@@ -374,10 +381,7 @@ func scanEndpointListRow(scanner interface {
 	if len(lastDetachSign) > 0 {
 		endpoint.LastDetachSign = lastDetachSign
 	}
-	if lastAttachedBsEui.Valid {
-		val := lastAttachedBsEui.Int64
-		endpoint.LastAttachedBsEui = &val
-	}
+	endpoint.LastAttachedBsEui = bsEuiPtr(lastAttachedBsEui)
 	if lastPropagateTime.Valid {
 		val := lastPropagateTime.Int64
 		endpoint.LastPropagateTime = &val
@@ -886,7 +890,8 @@ func (r *EndPointRepository) GetByTenant(ctx context.Context, tenantID int64) ([
 		endpoint := &models.EndPoint{}
 		var tags hstore.Hstore
 		var lastDetachSign []byte
-		var lastAttachedBsEui, lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
+		var lastAttachedBsEui []byte
+		var lastPropagateTime, lastDetachTime, lastDetachPacketCnt sql.NullInt64
 		var propagateStatus sql.NullString
 
 		// BSSCI §3.8.1/§5.8.1 attach propagate fields (NOT NULL with defaults)
