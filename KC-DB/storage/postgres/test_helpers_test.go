@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"testing"
@@ -95,15 +94,6 @@ func containsWildcards(pattern string) bool {
 		}
 	}
 	return false
-}
-
-// euiToBytes converts a uint64 EUI to an 8-byte big-endian slice for BYTEA columns.
-// The pq driver cannot serialize uint64 values with the high bit set directly to BYTEA,
-// so we must convert to []byte first.
-func euiToBytes(eui uint64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, eui)
-	return b
 }
 
 // createTestTenant creates a tenant for testing purposes

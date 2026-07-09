@@ -3055,11 +3055,10 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 
 		// Update endpoints table with detach telemetry (BSSCI §5.7.1 Finding 2)
 		// Use UpdateFields to persist last_detach_* columns (Update() doesn't touch them)
-		bsEuiInt := int64(session.BaseStationEUI) //nolint:gosec // G115: EUIs are 48-bit per MIOTY spec, safe for int64
 		packetCntInt := int64(packetCntUint)
 		propagateStatus := PropagateStatusDetachReceived
 		updates := map[string]interface{}{
-			"last_attached_bs_eui":   bsEuiInt,
+			"last_attached_bs_eui":   session.BaseStationEUIBytes(),
 			"last_propagate_time":    rxTime,
 			"last_detach_time":       rxTime,
 			"last_detach_sign":       sign,
@@ -5628,7 +5627,7 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 
 			// Update endpoint with attachment to this base station
 			attachUpdates := map[string]interface{}{
-				"last_attached_bs_eui": session.BaseStationEUI,
+				"last_attached_bs_eui": session.BaseStationEUIBytes(),
 				"last_propagate_time":  time.Now().UnixNano(),
 				"propagate_status":     PropagateStatusAttached,
 				"propagated":           true,
@@ -5843,7 +5842,7 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 				"last_detach_time":     time.Now().UnixNano(),
 				"propagate_status":     PropagateStatusDetaching, // In-flight status
 				"propagated":           false,
-				"last_attached_bs_eui": session.BaseStationEUI,
+				"last_attached_bs_eui": session.BaseStationEUIBytes(),
 			}
 
 			// Update the endpoint with detach propagate info

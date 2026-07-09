@@ -27,6 +27,21 @@ func NewMessageRepository(db *sqlx.DB) *MessageRepository {
 	return &MessageRepository{db: db}
 }
 
+// euiToBytes encodes a uint64 EUI-64 as 8 big-endian bytes for BYTEA columns.
+func euiToBytes(eui uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, eui)
+	return b
+}
+
+// euiFromBytes decodes an 8-byte big-endian BYTEA EUI-64 into uint64 (0 if malformed).
+func euiFromBytes(b []byte) uint64 {
+	if len(b) != 8 {
+		return 0
+	}
+	return binary.BigEndian.Uint64(b)
+}
+
 // CreateULDataMessage stores a new UL Data message in the database
 func (r *MessageRepository) CreateULDataMessage(ctx context.Context, msg *mioty.ULDataMessage) error {
 	// Validate tenant_id before any DB operation - defense against upstream bugs
@@ -149,7 +164,7 @@ func (r *MessageRepository) CreateULDataMessage(ctx context.Context, msg *mioty.
 	}
 
 	_, err = r.db.ExecContext(ctx, query,
-		msg.ID, msg.TenantID, ownerTenantID, msg.OrgUUID, msg.CommandType, msg.OpId, msg.EpEui, msg.BsEui,
+		msg.ID, msg.TenantID, ownerTenantID, msg.OrgUUID, msg.CommandType, msg.OpId, euiToBytes(msg.EpEui), euiToBytes(msg.BsEui),
 		msg.RxTime, msg.PacketCnt, msg.SNR, msg.RSSI, msg.UserData,
 		msg.DlOpen, msg.ResponseExp, msg.DlAck,
 		msg.RxDuration, msg.EqSnr, msg.Profile, msg.Mode, formatVal, subpacketsStr,
@@ -207,7 +222,7 @@ func (r *MessageRepository) UpdateULDataBaseStations(
 	}
 
 	result, err := r.db.ExecContext(ctx, query,
-		baseStationsStr, tenantID, epEui, packetCnt, rxTimeMin)
+		baseStationsStr, tenantID, euiToBytes(epEui), packetCnt, rxTimeMin)
 	if err != nil {
 		return fmt.Errorf("update base_stations: %w", err)
 	}
@@ -292,7 +307,7 @@ func (r *MessageRepository) CreateAttachMessage(ctx context.Context, msg *mioty.
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`
 
 	_, err = r.db.ExecContext(ctx, query,
-		msg.ID, msg.TenantID, nil, msg.CommandType, msg.OpId, epEui, bsEui,
+		msg.ID, msg.TenantID, nil, msg.CommandType, msg.OpId, euiToBytes(epEui), euiToBytes(bsEui),
 		msg.RxTime, msg.RxDuration, msg.PacketCnt, msg.SNR, msg.RSSI, msg.EqSnr,
 		&subpacketsStr,
 		false, false, false, // dl_open, response_exp, dl_ack - defaults for attach messages
@@ -375,7 +390,7 @@ func (r *MessageRepository) CreateDetachMessage(ctx context.Context, msg *mioty.
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`
 
 	_, err = r.db.ExecContext(ctx, query,
-		msg.ID, msg.TenantID, msg.OrgUUID, msg.CommandType, msg.OpId, epEui, bsEui,
+		msg.ID, msg.TenantID, msg.OrgUUID, msg.CommandType, msg.OpId, euiToBytes(epEui), euiToBytes(bsEui),
 		msg.RxTime, msg.RxDuration, msg.PacketCnt, msg.SNR, msg.RSSI, msg.EqSnr,
 		&subpacketsStr,
 		false, false, false, // dl_open, response_exp, dl_ack - defaults for detach messages
@@ -450,7 +465,7 @@ func (r *MessageRepository) CreateAttachPropagateMessage(ctx context.Context, ms
 		)`
 
 	_, err = r.db.ExecContext(ctx, query,
-		msg.ID, msg.TenantID, msg.OrgUUID, msg.CommandType, msg.OpId, msg.EpEui, bsEui,
+		msg.ID, msg.TenantID, msg.OrgUUID, msg.CommandType, msg.OpId, euiToBytes(msg.EpEui), euiToBytes(bsEui),
 		msg.NwkSnKey, &subpacketsStr,
 		0, 0, 0.0, 0.0, // rx_time, packet_cnt, snr, rssi - defaults for propagate messages
 		false, false, false, // dl_open, response_exp, dl_ack - defaults for propagate messages
@@ -514,7 +529,7 @@ func (r *MessageRepository) CreateDetachPropagateMessage(ctx context.Context, ms
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`
 
 	_, err = r.db.ExecContext(ctx, query,
-		msg.ID, msg.TenantID, msg.OrgUUID, msg.CommandType, msg.OpId, msg.EpEui, bsEui,
+		msg.ID, msg.TenantID, msg.OrgUUID, msg.CommandType, msg.OpId, euiToBytes(msg.EpEui), euiToBytes(bsEui),
 		&subpacketsStr,
 		0, 0, 0.0, 0.0, // rx_time, packet_cnt, snr, rssi - defaults for propagate messages
 		false, false, false, // dl_open, response_exp, dl_ack - defaults for propagate messages
@@ -601,8 +616,9 @@ func (r *MessageRepository) GetULDataMessage(ctx context.Context, id string, ten
 		FROM messages
 		WHERE id = $1 AND tenant_id = $2`
 
+	var epEuiB, bsEuiB []byte
 	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
-		&msg.ID, &msg.TenantID, &msg.OrgUUID, &msg.CommandType, &msg.OpId, &msg.EpEui, &msg.BsEui,
+		&msg.ID, &msg.TenantID, &msg.OrgUUID, &msg.CommandType, &msg.OpId, &epEuiB, &bsEuiB,
 		&msg.RxTime, &msg.PacketCnt, &msg.SNR, &msg.RSSI, &msg.UserData,
 		&msg.DlOpen, &msg.ResponseExp, &msg.DlAck,
 		&msg.RxDuration, &msg.EqSnr, &msg.Profile, &msg.Mode, &msg.Format, &subpacketsJSON,
@@ -617,6 +633,8 @@ func (r *MessageRepository) GetULDataMessage(ctx context.Context, id string, ten
 	if err != nil {
 		return nil, fmt.Errorf("get UL data message: %w", err)
 	}
+	msg.EpEui = euiFromBytes(epEuiB)
+	msg.BsEui = euiFromBytes(bsEuiB)
 
 	// Assign nullable fields
 	if decodedPayloadJSON != nil {
@@ -657,7 +675,7 @@ func (r *MessageRepository) GetULDataMessage(ctx context.Context, id string, ten
 func (r *MessageRepository) GetDetachMessage(ctx context.Context, id string, tenantID int64) (*mioty.DetachMessage, error) {
 	var msg mioty.DetachMessage
 	var subpacketsJSON []byte
-	var epEui, bsEui uint64
+	var epEuiB, bsEuiB []byte
 
 	// Query from canonical messages table (migration 047)
 	// Column mapping: op_id (not operation_id), bs_eui (not basestation_eui), ep_eui as BIGINT
@@ -671,7 +689,7 @@ func (r *MessageRepository) GetDetachMessage(ctx context.Context, id string, ten
 		WHERE id = $1 AND tenant_id = $2 AND command_type = $3`
 
 	err := r.db.QueryRowContext(ctx, query, id, tenantID, mioty.CmdDetach).Scan(
-		&msg.ID, &msg.TenantID, &msg.OrgUUID, &msg.CommandType, &msg.OpId, &epEui, &bsEui,
+		&msg.ID, &msg.TenantID, &msg.OrgUUID, &msg.CommandType, &msg.OpId, &epEuiB, &bsEuiB,
 		&msg.RxTime, &msg.PacketCnt, &msg.SNR, &msg.RSSI,
 		&msg.RxDuration, &msg.EqSnr, &subpacketsJSON,
 		&msg.ReceivedAt, &msg.ProcessedAt,
@@ -684,16 +702,12 @@ func (r *MessageRepository) GetDetachMessage(ctx context.Context, id string, ten
 		return nil, fmt.Errorf("get detach message: %w", err)
 	}
 
-	// Convert ep_eui from BIGINT to []byte
-	if epEui != 0 {
-		msg.EpEui = make([]byte, 8)
-		binary.BigEndian.PutUint64(msg.EpEui, epEui)
+	// ep_eui / bs_eui stored as BYTEA(8)
+	if len(epEuiB) == 8 {
+		msg.EpEui = epEuiB
 	}
-
-	// Convert bs_eui from BIGINT to []byte
-	if bsEui != 0 {
-		msg.BasestationEui = make([]byte, 8)
-		binary.BigEndian.PutUint64(msg.BasestationEui, bsEui)
+	if len(bsEuiB) == 8 {
+		msg.BasestationEui = bsEuiB
 	}
 
 	// Deserialize subpackets if present - extract detach-specific fields
@@ -779,7 +793,7 @@ func (r *MessageRepository) ListULDataMessages(ctx context.Context, filter mioty
 
 	if filter.EpEui != nil {
 		whereClauses = append(whereClauses, fmt.Sprintf("ep_eui = $%d", argCount))
-		args = append(args, *filter.EpEui)
+		args = append(args, euiToBytes(*filter.EpEui))
 		argCount++
 	}
 
@@ -787,7 +801,7 @@ func (r *MessageRepository) ListULDataMessages(ctx context.Context, filter mioty
 		// Include messages where BS is primary receiver OR secondary receiver in base_stations JSONB
 		bsContainment := fmt.Sprintf(`[{"bsEui":%d}]`, *filter.BsEui)
 		whereClauses = append(whereClauses, fmt.Sprintf("(bs_eui = $%d OR base_stations @> $%d::jsonb)", argCount, argCount+1))
-		args = append(args, *filter.BsEui, bsContainment)
+		args = append(args, euiToBytes(*filter.BsEui), bsContainment)
 		argCount += 2
 	}
 
@@ -805,7 +819,7 @@ func (r *MessageRepository) ListULDataMessages(ctx context.Context, filter mioty
 
 	if filter.SearchTerm != nil && *filter.SearchTerm != "" {
 		// Search across ep_eui, bs_eui, and hex-encoded user_data (case-insensitive)
-		searchClause := fmt.Sprintf("(CAST(ep_eui AS TEXT) ILIKE $%d OR CAST(bs_eui AS TEXT) ILIKE $%d OR encode(user_data, 'hex') ILIKE $%d)", argCount, argCount+1, argCount+2)
+		searchClause := fmt.Sprintf("(encode(ep_eui, 'hex') ILIKE $%d OR encode(bs_eui, 'hex') ILIKE $%d OR encode(user_data, 'hex') ILIKE $%d)", argCount, argCount+1, argCount+2)
 		whereClauses = append(whereClauses, searchClause)
 		searchPattern := "%" + *filter.SearchTerm + "%"
 		args = append(args, searchPattern, searchPattern, searchPattern)
@@ -861,8 +875,9 @@ func (r *MessageRepository) ListULDataMessages(ctx context.Context, filter mioty
 		var decodedPayloadJSON []byte
 		var decodeStatus, decodeErrorCode sql.NullString
 
+		var epEuiB, bsEuiB []byte
 		err := rows.Scan(
-			&msg.ID, &msg.TenantID, &msg.OrgUUID, &msg.CommandType, &msg.OpId, &msg.EpEui, &msg.BsEui,
+			&msg.ID, &msg.TenantID, &msg.OrgUUID, &msg.CommandType, &msg.OpId, &epEuiB, &bsEuiB,
 			&msg.RxTime, &msg.PacketCnt, &msg.SNR, &msg.RSSI, &msg.UserData,
 			&msg.DlOpen, &msg.ResponseExp, &msg.DlAck,
 			&msg.RxDuration, &msg.EqSnr, &msg.Profile, &msg.Mode, &msg.Format, &subpacketsJSON,
@@ -873,6 +888,8 @@ func (r *MessageRepository) ListULDataMessages(ctx context.Context, filter mioty
 		if err != nil {
 			return nil, 0, fmt.Errorf("scan message: %w", err)
 		}
+		msg.EpEui = euiFromBytes(epEuiB)
+		msg.BsEui = euiFromBytes(bsEuiB)
 		// Assign decoded payload if not NULL
 		if decodedPayloadJSON != nil {
 			msg.DecodedPayload = decodedPayloadJSON
@@ -920,7 +937,7 @@ func (r *MessageRepository) ListULDataMessages(ctx context.Context, filter mioty
 // GetMessageStatsByBaseStation returns message statistics for a specific base station.
 // Includes messages where the BS is a secondary receiver in base_stations JSONB.
 func (r *MessageRepository) GetMessageStatsByBaseStation(ctx context.Context, bsEui uint64, tenantID int64) (*mioty.MessageStats, error) {
-	query := `
+	query := fmt.Sprintf(`
 		WITH matched AS (
 			SELECT m.id, m.ep_eui,
 				(elem->>'rssi')::double precision AS bs_rssi,
@@ -928,7 +945,7 @@ func (r *MessageRepository) GetMessageStatsByBaseStation(ctx context.Context, bs
 			FROM messages m,
 				jsonb_array_elements(m.base_stations) AS elem
 			WHERE m.tenant_id = $1
-				AND (elem->>'bsEui')::bigint = $2
+				AND (elem->>'bsEui') = '%d'
 			UNION ALL
 			SELECT id, ep_eui, rssi, snr
 			FROM messages
@@ -941,10 +958,10 @@ func (r *MessageRepository) GetMessageStatsByBaseStation(ctx context.Context, bs
 			COALESCE(AVG(bs_rssi), 0) as avg_rssi,
 			COALESCE(AVG(bs_snr), 0) as avg_snr
 		FROM matched
-	`
+	`, bsEui)
 
 	var stats mioty.MessageStats
-	err := r.db.QueryRowContext(ctx, query, tenantID, bsEui).Scan(
+	err := r.db.QueryRowContext(ctx, query, tenantID, euiToBytes(bsEui)).Scan(
 		&stats.TotalCount,
 		&stats.UniqueEndpoints,
 		&stats.AvgRSSI,
@@ -961,7 +978,7 @@ func (r *MessageRepository) GetMessageStatsByBaseStation(ctx context.Context, bs
 // GetExtendedMessageStatsByBaseStation returns comprehensive message statistics including min/max values and time ranges.
 // Includes messages where the BS is a secondary receiver in base_stations JSONB.
 func (r *MessageRepository) GetExtendedMessageStatsByBaseStation(ctx context.Context, bsEui uint64, tenantID int64) (*mioty.MessageStats, error) {
-	query := `
+	query := fmt.Sprintf(`
 		WITH matched AS (
 			SELECT m.id, m.ep_eui, m.received_at,
 				(elem->>'rssi')::double precision AS bs_rssi,
@@ -969,7 +986,7 @@ func (r *MessageRepository) GetExtendedMessageStatsByBaseStation(ctx context.Con
 			FROM messages m,
 				jsonb_array_elements(m.base_stations) AS elem
 			WHERE m.tenant_id = $1
-				AND (elem->>'bsEui')::bigint = $2
+				AND (elem->>'bsEui') = '%d'
 			UNION ALL
 			SELECT id, ep_eui, received_at, rssi, snr
 			FROM messages
@@ -989,14 +1006,14 @@ func (r *MessageRepository) GetExtendedMessageStatsByBaseStation(ctx context.Con
 			MAX(received_at) as last_seen,
 			COUNT(DISTINCT DATE(received_at)) as active_days
 		FROM matched
-	`
+	`, bsEui)
 
 	var stats mioty.MessageStats
 	var minRSSI, maxRSSI, minSNR, maxSNR sql.NullFloat64
 	var firstSeen, lastSeen sql.NullTime
 	var activeDays sql.NullInt64
 
-	err := r.db.QueryRowContext(ctx, query, tenantID, bsEui).Scan(
+	err := r.db.QueryRowContext(ctx, query, tenantID, euiToBytes(bsEui)).Scan(
 		&stats.TotalCount,
 		&stats.UniqueEndpoints,
 		&stats.AvgRSSI,
@@ -1054,7 +1071,7 @@ func (r *MessageRepository) GetMessageStatsByEndpoint(ctx context.Context, epEui
 	`
 
 	var stats mioty.MessageStats
-	err := r.db.QueryRowContext(ctx, query, epEui, tenantID).Scan(
+	err := r.db.QueryRowContext(ctx, query, euiToBytes(epEui), tenantID).Scan(
 		&stats.TotalCount,
 		&stats.UniqueEndpoints, // This will actually be unique base stations for endpoints
 		&stats.AvgRSSI,
@@ -1198,10 +1215,24 @@ func (r *MessageRepository) GetTopEndpointsByActivity(ctx context.Context, tenan
 		LIMIT $4
 	`
 
-	var endpoints []mioty.EndpointActivity
-	err := r.db.SelectContext(ctx, &endpoints, query, tenantID, startTime, endTime, limit)
+	rows, err := r.db.QueryContext(ctx, query, tenantID, startTime, endTime, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get top endpoints by activity: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var endpoints []mioty.EndpointActivity
+	for rows.Next() {
+		var ep mioty.EndpointActivity
+		var epEuiB []byte
+		if err := rows.Scan(&epEuiB, &ep.MessageCount, &ep.LastSeen); err != nil {
+			return nil, fmt.Errorf("scan top endpoint: %w", err)
+		}
+		ep.EUI = euiFromBytes(epEuiB)
+		endpoints = append(endpoints, ep)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate top endpoints: %w", err)
 	}
 
 	return endpoints, nil
@@ -1264,10 +1295,24 @@ func (r *MessageRepository) GetSignalQualityByBaseStation(ctx context.Context, t
 		ORDER BY avg_rssi DESC
 	`
 
-	var stats []mioty.BaseStationSignalQuality
-	err := r.db.SelectContext(ctx, &stats, query, tenantID, startTime, endTime)
+	rows, err := r.db.QueryContext(ctx, query, tenantID, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("get signal quality by base station: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var stats []mioty.BaseStationSignalQuality
+	for rows.Next() {
+		var bs mioty.BaseStationSignalQuality
+		var bsEuiB []byte
+		if err := rows.Scan(&bsEuiB, &bs.AvgRSSI, &bs.AvgSNR, &bs.MessageCount); err != nil {
+			return nil, fmt.Errorf("scan signal quality: %w", err)
+		}
+		bs.EUI = euiFromBytes(bsEuiB)
+		stats = append(stats, bs)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate signal quality: %w", err)
 	}
 
 	return stats, nil
@@ -1287,7 +1332,7 @@ func (r *MessageRepository) GetBaseStationMessageStats(ctx context.Context, tena
 	bsContainment := fmt.Sprintf(`[{"bsEui":%d}]`, bsEuiUint)
 
 	// Use CTE to extract per-BS signal values from JSONB for accurate stats
-	baseQuery := `
+	baseQuery := fmt.Sprintf(`
 		WITH matched AS (
 			SELECT m.id, m.ep_eui, m.received_at,
 				(elem->>'rssi')::double precision AS bs_rssi,
@@ -1295,7 +1340,7 @@ func (r *MessageRepository) GetBaseStationMessageStats(ctx context.Context, tena
 			FROM messages m,
 				jsonb_array_elements(m.base_stations) AS elem
 			WHERE m.tenant_id = $1
-				AND (elem->>'bsEui')::bigint = $2
+				AND (elem->>'bsEui') = '%d'
 			UNION ALL
 			SELECT id, ep_eui, received_at, rssi, snr
 			FROM messages
@@ -1309,12 +1354,12 @@ func (r *MessageRepository) GetBaseStationMessageStats(ctx context.Context, tena
 			COALESCE(AVG(bs_snr), 0) as avg_snr,
 			MAX(received_at) as last_message_at
 		FROM matched
-	`
+	`, bsEuiUint)
 
-	args := []interface{}{tenantID, bsEuiUint}
+	args := []interface{}{tenantID, bsEui}
 	if startTime != nil && endTime != nil {
 		// Add time filter to both CTE branches
-		baseQuery = `
+		baseQuery = fmt.Sprintf(`
 		WITH matched AS (
 			SELECT m.id, m.ep_eui, m.received_at,
 				(elem->>'rssi')::double precision AS bs_rssi,
@@ -1322,7 +1367,7 @@ func (r *MessageRepository) GetBaseStationMessageStats(ctx context.Context, tena
 			FROM messages m,
 				jsonb_array_elements(m.base_stations) AS elem
 			WHERE m.tenant_id = $1
-				AND (elem->>'bsEui')::bigint = $2
+				AND (elem->>'bsEui') = '%d'
 				AND m.received_at BETWEEN $3 AND $4
 			UNION ALL
 			SELECT id, ep_eui, received_at, rssi, snr
@@ -1338,7 +1383,7 @@ func (r *MessageRepository) GetBaseStationMessageStats(ctx context.Context, tena
 			COALESCE(AVG(bs_snr), 0) as avg_snr,
 			MAX(received_at) as last_message_at
 		FROM matched
-		`
+		`, bsEuiUint)
 		args = append(args, *startTime, *endTime)
 	}
 
@@ -1377,21 +1422,21 @@ func (r *MessageRepository) GetBaseStationMessageStats(ctx context.Context, tena
 
 	// Messages today
 	err = r.db.QueryRowContext(ctx, periodQuery,
-		tenantID, bsEuiUint, bsContainment, todayStart).Scan(&stats.MessagesToday)
+		tenantID, bsEui, bsContainment, todayStart).Scan(&stats.MessagesToday)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("get today's message count: %w", err)
 	}
 
 	// Messages this week
 	err = r.db.QueryRowContext(ctx, periodQuery,
-		tenantID, bsEuiUint, bsContainment, weekStart).Scan(&stats.MessagesThisWeek)
+		tenantID, bsEui, bsContainment, weekStart).Scan(&stats.MessagesThisWeek)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("get this week's message count: %w", err)
 	}
 
 	// Messages this month
 	err = r.db.QueryRowContext(ctx, periodQuery,
-		tenantID, bsEuiUint, bsContainment, monthStart).Scan(&stats.MessagesThisMonth)
+		tenantID, bsEui, bsContainment, monthStart).Scan(&stats.MessagesThisMonth)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("get this month's message count: %w", err)
 	}
