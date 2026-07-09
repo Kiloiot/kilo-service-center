@@ -781,8 +781,7 @@ func (r *BaseStationSessionRepository) UpdateCountersAndTimestamp(ctx context.Co
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE basestation_sessions
 		SET sn_bs_op_id = $1,
-		    sn_sc_op_id = $2,
-		    last_message_at = NOW()
+		    sn_sc_op_id = $2
 		WHERE sn_sc_uuid = $3
 	`, bsOpId, scOpId, sessionUUID[:]) // Convert [16]byte to []byte for pq driver
 
