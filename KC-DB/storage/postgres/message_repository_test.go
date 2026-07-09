@@ -369,10 +369,10 @@ func TestUpdateULDataBaseStations_RowsAffectedPositive(t *testing.T) {
 	repo := NewMessageRepository(db)
 	ctx := testutil.TestContext()
 
-	// Create a UL data message directly via SQL to avoid CreateULDataMessage's dependencies
-	// Note: Use EUI without high bit set (< 2^63) to avoid pq driver limitation
+	// Create a UL data message directly via SQL to avoid CreateULDataMessage's dependencies.
+	// ep_eui/bs_eui are BYTEA(8); high-bit EUI now stores fine (was the BIGINT overflow).
 	msgID := uuid.New().String()
-	epEui := uint64(0x0011223344556688)
+	epEui := uint64(0xA011223344556688)
 	bsEui := uint64(0x0022334455667788)
 	packetCnt := uint32(42)
 	rxTime := time.Now().UnixNano()
@@ -382,7 +382,7 @@ func TestUpdateULDataBaseStations_RowsAffectedPositive(t *testing.T) {
 			id, tenant_id, ep_eui, bs_eui, op_id, packet_cnt, rx_time,
 			rssi, snr, command_type, dl_open, response_exp, dl_ack
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-		msgID, tenantID, epEui, bsEui, int64(12345), packetCnt, rxTime,
+		msgID, tenantID, epEuiToBytes(epEui), epEuiToBytes(bsEui), int64(12345), packetCnt, rxTime,
 		-80.0, 10.0, "ulData", false, false, false,
 	)
 	require.NoError(t, err, "Direct SQL insert must succeed")

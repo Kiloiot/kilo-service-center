@@ -1766,7 +1766,7 @@ func (r *EndPointRepository) UpdateServingTenant(ctx context.Context, eui models
 func (r *EndPointRepository) GetPreferredBsEui(ctx context.Context, tenantID int64, epEui []byte) (*uint64, bool, error) {
 	query := `SELECT last_attached_bs_eui FROM endpoints WHERE tenant_id = $1 AND ep_eui = $2`
 
-	var preferredBs sql.NullInt64
+	var preferredBs []byte
 	err := r.db.QueryRowContext(ctx, query, tenantID, epEui).Scan(&preferredBs)
 	if err == sql.ErrNoRows {
 		return nil, false, nil // No endpoint found
@@ -1774,12 +1774,9 @@ func (r *EndPointRepository) GetPreferredBsEui(ctx context.Context, tenantID int
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get preferred BS: %w", err)
 	}
-	if !preferredBs.Valid {
-		return nil, false, nil // NULL value - no preference
+	if len(preferredBs) != 8 {
+		return nil, false, nil // NULL or malformed - no preference
 	}
-	if preferredBs.Int64 < 0 {
-		return nil, false, fmt.Errorf("invalid negative BS EUI: %d", preferredBs.Int64)
-	}
-	val := uint64(preferredBs.Int64) //#nosec G115 - validated non-negative above
+	val := euiFromBytes(preferredBs)
 	return &val, true, nil
 }
