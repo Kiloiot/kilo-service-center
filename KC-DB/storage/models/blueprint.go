@@ -2,7 +2,9 @@
 package models
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +17,8 @@ import (
 type Blueprint struct {
 	ID               uuid.UUID       `db:"id" json:"id"`
 	DeviceModelID    uuid.UUID       `db:"device_model_id" json:"deviceModelId"`
-	TenantID         int64           `db:"tenant_id" json:"tenantId"`
+	TenantID         *int64          `db:"tenant_id" json:"tenantId,omitempty"`                    // NULL for System-owned rows
+	IsSystem         bool            `db:"is_system" json:"isSystem"`                              // true = System catalog, false = tenant Custom
 	Version          string          `db:"version" json:"version"`                                 // Semantic version (e.g., "1.0.0")
 	TypeEUI          []byte          `db:"type_eui" json:"typeEui"`                                // 8-byte MIOTY Type EUI (optional, resolved via device model fallback)
 	SpecJSON         json.RawMessage `db:"spec_json" json:"specJson"`                              // Blueprint specification JSON
@@ -31,10 +34,41 @@ type Blueprint struct {
 	DeviceModel *DeviceModel `db:"-" json:"deviceModel,omitempty"`
 }
 
+// BlueprintSnapshot is a self-contained decode snapshot (spec + provenance) so decoding is independent of the catalog lifecycle.
+type BlueprintSnapshot struct {
+	SpecJSON          json.RawMessage `json:"spec_json"`
+	Version           string          `json:"version"`
+	TypeEUI           string          `json:"type_eui"` // hex-encoded 8-byte Type EUI
+	SourceBlueprintID string          `json:"source_blueprint_id"`
+	IsSystem          bool            `json:"is_system"` // true = System catalog blueprint, false = tenant Custom
+	AdoptedAt         time.Time       `json:"adopted_at"`
+}
+
+// ToBlueprint synthesizes a runtime *Blueprint from the snapshot for decoding + provenance.
+func (s *BlueprintSnapshot) ToBlueprint() (*Blueprint, error) {
+	bp := &Blueprint{Version: s.Version, SpecJSON: s.SpecJSON}
+	if s.SourceBlueprintID != "" {
+		id, err := uuid.Parse(s.SourceBlueprintID)
+		if err != nil {
+			return nil, fmt.Errorf("parse source_blueprint_id: %w", err)
+		}
+		bp.ID = id
+	}
+	if s.TypeEUI != "" {
+		b, err := hex.DecodeString(s.TypeEUI)
+		if err != nil {
+			return nil, fmt.Errorf("decode snapshot type_eui: %w", err)
+		}
+		bp.TypeEUI = b
+	}
+	return bp, nil
+}
+
 // BlueprintCreateParams contains the parameters for creating a new blueprint
 type BlueprintCreateParams struct {
 	DeviceModelID uuid.UUID
 	TenantID      int64
+	IsSystem      bool // true = System row (tenant_id NULL); admin-gated at the handler
 	Version       string
 	TypeEUI       []byte // 8-byte MIOTY Type EUI (optional, resolved via device model fallback)
 	SpecJSON      json.RawMessage
@@ -52,6 +86,7 @@ type BlueprintUpdateParams struct {
 // BlueprintListParams contains the parameters for listing blueprints
 type BlueprintListParams struct {
 	TenantID      int64
+	IsSystem      bool       // true = System catalog, false = tenant Custom
 	DeviceModelID *uuid.UUID // Optional filter by device model
 	Limit         int
 	Offset        int

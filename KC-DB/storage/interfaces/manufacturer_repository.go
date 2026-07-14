@@ -23,15 +23,15 @@ type ManufacturerRepository interface {
 	List(ctx context.Context, params *models.ManufacturerListParams) ([]*models.Manufacturer, error)
 
 	// Count returns the total count of manufacturers for a tenant
-	Count(ctx context.Context, tenantID int64) (int64, error)
+	Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error)
 
-	// Update updates an existing manufacturer
-	Update(ctx context.Context, tenantID int64, id uuid.UUID, params *models.ManufacturerUpdateParams) error
+	// Update updates an existing manufacturer within the isSystem-selected ownership scope.
+	Update(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, params *models.ManufacturerUpdateParams) error
 
-	// Delete deletes a manufacturer by ID with tenant isolation
+	// Delete deletes a manufacturer by ID within the isSystem-selected ownership scope.
 	// Returns ErrRecordNotFound if manufacturer doesn't exist
 	// Returns ErrForeignKeyViolation if manufacturer has associated device models
-	Delete(ctx context.Context, tenantID int64, id uuid.UUID) error
+	Delete(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error
 
 	// SetVerified updates the is_verified flag for a manufacturer
 	SetVerified(ctx context.Context, tenantID int64, id uuid.UUID, verified bool) error

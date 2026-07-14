@@ -14,7 +14,8 @@ import (
 type DeviceModel struct {
 	ID             uuid.UUID `db:"id" json:"id"`
 	ManufacturerID uuid.UUID `db:"manufacturer_id" json:"manufacturerId"`
-	TenantID       int64     `db:"tenant_id" json:"tenantId"`
+	TenantID       *int64    `db:"tenant_id" json:"tenantId,omitempty"` // NULL for System-owned rows
+	IsSystem       bool      `db:"is_system" json:"isSystem"`           // true = System catalog, false = tenant Custom
 	Name           string    `db:"name" json:"name"`
 	Code           string    `db:"code" json:"code"`                  // URL-friendly slug, unique per manufacturer
 	TypeEUI        []byte    `db:"type_eui" json:"typeEui,omitempty"` // 8-byte MIOTY Type EUI (nullable)
@@ -32,6 +33,7 @@ type DeviceModel struct {
 type DeviceModelCreateParams struct {
 	ManufacturerID uuid.UUID
 	TenantID       int64
+	IsSystem       bool // true = System row (tenant_id NULL); admin-gated at the handler
 	Name           string
 	Code           string
 	TypeEUI        []byte // 8-byte MIOTY Type EUI (optional)
@@ -51,6 +53,7 @@ type DeviceModelUpdateParams struct {
 // DeviceModelListParams contains the parameters for listing device models
 type DeviceModelListParams struct {
 	TenantID       int64
+	IsSystem       bool       // true = System catalog, false = tenant Custom
 	ManufacturerID *uuid.UUID // Optional filter by manufacturer
 	Limit          int
 	Offset         int

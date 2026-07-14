@@ -28,23 +28,26 @@ func (r *transactionalDeviceModelRepository) Create(ctx context.Context, params 
 	model := &models.DeviceModel{
 		ID:             uuid.New(),
 		ManufacturerID: params.ManufacturerID,
-		TenantID:       params.TenantID,
+		IsSystem:       params.IsSystem,
 		Name:           params.Name,
 		Code:           params.Code,
 		TypeEUI:        params.TypeEUI,
 		Description:    params.Description,
 		DatasheetURL:   params.DatasheetURL,
 	}
+	if !params.IsSystem {
+		model.TenantID = &params.TenantID
+	}
 
 	query := `
 		INSERT INTO device_models (
-			id, manufacturer_id, tenant_id, name, code, type_eui, description, datasheet_url, created_at, updated_at
+			id, manufacturer_id, tenant_id, is_system, name, code, type_eui, description, datasheet_url, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
 		) RETURNING created_at, updated_at`
 
 	err := r.tx.QueryRowContext(ctx, query,
-		model.ID, model.ManufacturerID, model.TenantID, model.Name, model.Code,
+		model.ID, model.ManufacturerID, model.TenantID, model.IsSystem, model.Name, model.Code,
 		model.TypeEUI, model.Description, model.DatasheetURL,
 	).Scan(&model.CreatedAt, &model.UpdatedAt)
 	if err != nil {
@@ -342,11 +345,11 @@ func (r *transactionalDeviceModelRepository) ListWithManufacturer(ctx context.Co
 }
 
 // Count returns the total count of device models for a tenant within the transaction
-func (r *transactionalDeviceModelRepository) Count(ctx context.Context, tenantID int64) (int64, error) {
+func (r *transactionalDeviceModelRepository) Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error) {
 	var count int64
-	query := `SELECT COUNT(*) FROM device_models WHERE tenant_id = $1`
+	query := `SELECT COUNT(*) FROM device_models WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END)`
 
-	err := r.tx.QueryRowContext(ctx, query, tenantID).Scan(&count)
+	err := r.tx.QueryRowContext(ctx, query, tenantID, isSystem).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count device models: %w", err)
 	}
@@ -355,11 +358,11 @@ func (r *transactionalDeviceModelRepository) Count(ctx context.Context, tenantID
 }
 
 // CountByManufacturer returns the count of device models for a manufacturer within the transaction
-func (r *transactionalDeviceModelRepository) CountByManufacturer(ctx context.Context, tenantID int64, manufacturerID uuid.UUID) (int64, error) {
+func (r *transactionalDeviceModelRepository) CountByManufacturer(ctx context.Context, tenantID int64, isSystem bool, manufacturerID uuid.UUID) (int64, error) {
 	var count int64
-	query := `SELECT COUNT(*) FROM device_models WHERE tenant_id = $1 AND manufacturer_id = $2`
+	query := `SELECT COUNT(*) FROM device_models WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND manufacturer_id = $3`
 
-	err := r.tx.QueryRowContext(ctx, query, tenantID, manufacturerID).Scan(&count)
+	err := r.tx.QueryRowContext(ctx, query, tenantID, isSystem, manufacturerID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count device models by manufacturer: %w", err)
 	}
@@ -368,10 +371,10 @@ func (r *transactionalDeviceModelRepository) CountByManufacturer(ctx context.Con
 }
 
 // Update updates an existing device model within the transaction
-func (r *transactionalDeviceModelRepository) Update(ctx context.Context, tenantID int64, id uuid.UUID, params *models.DeviceModelUpdateParams) error {
+func (r *transactionalDeviceModelRepository) Update(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, params *models.DeviceModelUpdateParams) error {
 	setClauses := make([]string, 0)
-	args := []interface{}{tenantID, id}
-	argIndex := 3
+	args := []interface{}{tenantID, isSystem, id}
+	argIndex := 4
 
 	if params.Name != nil {
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIndex))
@@ -411,7 +414,7 @@ func (r *transactionalDeviceModelRepository) Update(ctx context.Context, tenantI
 
 	// #nosec G201 -- setClauses are constructed from safe column names with parameterized values
 	query := fmt.Sprintf(
-		"UPDATE device_models SET %s WHERE tenant_id = $1 AND id = $2",
+		"UPDATE device_models SET %s WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3",
 		strings.Join(setClauses, ", "),
 	)
 
@@ -436,11 +439,11 @@ func (r *transactionalDeviceModelRepository) Update(ctx context.Context, tenantI
 	return nil
 }
 
-// Delete deletes a device model by ID with tenant isolation within the transaction
-func (r *transactionalDeviceModelRepository) Delete(ctx context.Context, tenantID int64, id uuid.UUID) error {
-	query := `DELETE FROM device_models WHERE tenant_id = $1 AND id = $2`
+// Delete deletes a device model by ID within the isSystem-selected scope within the transaction
+func (r *transactionalDeviceModelRepository) Delete(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error {
+	query := `DELETE FROM device_models WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`
 
-	result, err := r.tx.ExecContext(ctx, query, tenantID, id)
+	result, err := r.tx.ExecContext(ctx, query, tenantID, isSystem, id)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23503" {

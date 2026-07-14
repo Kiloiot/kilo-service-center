@@ -30,17 +30,20 @@ func NewManufacturerRepository(db *sqlx.DB) interfaces.ManufacturerRepository {
 func (r *ManufacturerRepository) Create(ctx context.Context, params *models.ManufacturerCreateParams) (*models.Manufacturer, error) {
 	mfr := &models.Manufacturer{
 		ID:         uuid.New(),
-		TenantID:   params.TenantID,
+		IsSystem:   params.IsSystem,
 		Name:       params.Name,
 		Website:    params.Website,
 		IsVerified: false,
 	}
+	if !params.IsSystem {
+		mfr.TenantID = &params.TenantID
+	}
 
 	query := `
 		INSERT INTO manufacturers (
-			id, tenant_id, name, website, is_verified, created_at, updated_at
+			id, tenant_id, is_system, name, website, is_verified, created_at, updated_at
 		) VALUES (
-			:id, :tenant_id, :name, :website, :is_verified, NOW(), NOW()
+			:id, :tenant_id, :is_system, :name, :website, :is_verified, NOW(), NOW()
 		) RETURNING created_at, updated_at`
 
 	stmt, err := r.db.PrepareNamedContext(ctx, query)
@@ -68,10 +71,11 @@ func (r *ManufacturerRepository) Create(ctx context.Context, params *models.Manu
 // GetByID retrieves a manufacturer by ID with tenant isolation
 func (r *ManufacturerRepository) GetByID(ctx context.Context, tenantID int64, id uuid.UUID) (*models.Manufacturer, error) {
 	var mfr models.Manufacturer
+	// Resolve by id across both ownership scopes (tenant Custom + globally-visible System).
 	query := `
-		SELECT id, tenant_id, name, website, is_verified, created_at, updated_at
+		SELECT id, tenant_id, is_system, name, website, is_verified, created_at, updated_at
 		FROM manufacturers
-		WHERE tenant_id = $1 AND id = $2`
+		WHERE (tenant_id = $1 OR is_system) AND id = $2`
 
 	err := r.db.GetContext(ctx, &mfr, query, tenantID, id)
 	if err != nil {
@@ -88,21 +92,22 @@ func (r *ManufacturerRepository) GetByID(ctx context.Context, tenantID int64, id
 func (r *ManufacturerRepository) List(ctx context.Context, params *models.ManufacturerListParams) ([]*models.Manufacturer, error) {
 	var manufacturers []*models.Manufacturer
 
+	// Scope by is_system via a CASE so $1/$2 stay bound regardless of world — no arg renumbering.
 	query := `
 		SELECT
-			m.id, m.tenant_id, m.name, m.website, m.is_verified, m.created_at, m.updated_at,
+			m.id, m.tenant_id, m.is_system, m.name, m.website, m.is_verified, m.created_at, m.updated_at,
 			COALESCE(dm.model_count, 0) AS model_count
 		FROM manufacturers m
 		LEFT JOIN (
 			SELECT manufacturer_id, COUNT(*) AS model_count
 			FROM device_models
-			WHERE tenant_id = $1
+			WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END)
 			GROUP BY manufacturer_id
 		) dm ON dm.manufacturer_id = m.id
-		WHERE m.tenant_id = $1`
+		WHERE (CASE WHEN $2 THEN m.is_system ELSE m.tenant_id = $1 END)`
 
-	args := []interface{}{params.TenantID}
-	argIndex := 2
+	args := []interface{}{params.TenantID, params.IsSystem}
+	argIndex := 3
 
 	if params.SearchTerm != "" {
 		query += fmt.Sprintf(" AND m.name ILIKE $%d", argIndex)
@@ -132,11 +137,11 @@ func (r *ManufacturerRepository) List(ctx context.Context, params *models.Manufa
 }
 
 // Count returns the total count of manufacturers for a tenant
-func (r *ManufacturerRepository) Count(ctx context.Context, tenantID int64) (int64, error) {
+func (r *ManufacturerRepository) Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error) {
 	var count int64
-	query := `SELECT COUNT(*) FROM manufacturers WHERE tenant_id = $1`
+	query := `SELECT COUNT(*) FROM manufacturers WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END)`
 
-	err := r.db.GetContext(ctx, &count, query, tenantID)
+	err := r.db.GetContext(ctx, &count, query, tenantID, isSystem)
 	if err != nil {
 		return 0, fmt.Errorf("count manufacturers: %w", err)
 	}
@@ -145,10 +150,10 @@ func (r *ManufacturerRepository) Count(ctx context.Context, tenantID int64) (int
 }
 
 // Update updates an existing manufacturer
-func (r *ManufacturerRepository) Update(ctx context.Context, tenantID int64, id uuid.UUID, params *models.ManufacturerUpdateParams) error {
+func (r *ManufacturerRepository) Update(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, params *models.ManufacturerUpdateParams) error {
 	setClauses := make([]string, 0)
-	args := []interface{}{tenantID, id}
-	argIndex := 3
+	args := []interface{}{tenantID, isSystem, id}
+	argIndex := 4
 
 	if params.Name != nil {
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIndex))
@@ -167,8 +172,9 @@ func (r *ManufacturerRepository) Update(ctx context.Context, tenantID int64, id 
 
 	setClauses = append(setClauses, "updated_at = NOW()")
 
+	// #nosec G201 -- setClauses are constructed from safe column names with parameterized values
 	query := fmt.Sprintf(
-		"UPDATE manufacturers SET %s WHERE tenant_id = $1 AND id = $2",
+		"UPDATE manufacturers SET %s WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3",
 		strings.Join(setClauses, ", "),
 	)
 
@@ -193,11 +199,11 @@ func (r *ManufacturerRepository) Update(ctx context.Context, tenantID int64, id 
 	return nil
 }
 
-// Delete deletes a manufacturer by ID with tenant isolation
-func (r *ManufacturerRepository) Delete(ctx context.Context, tenantID int64, id uuid.UUID) error {
-	query := `DELETE FROM manufacturers WHERE tenant_id = $1 AND id = $2`
+// Delete deletes a manufacturer by ID within the isSystem-selected ownership scope
+func (r *ManufacturerRepository) Delete(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error {
+	query := `DELETE FROM manufacturers WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`
 
-	result, err := r.db.ExecContext(ctx, query, tenantID, id)
+	result, err := r.db.ExecContext(ctx, query, tenantID, isSystem, id)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23503" {

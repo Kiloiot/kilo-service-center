@@ -31,19 +31,22 @@ func (r *DeviceModelRepository) Create(ctx context.Context, params *models.Devic
 	model := &models.DeviceModel{
 		ID:             uuid.New(),
 		ManufacturerID: params.ManufacturerID,
-		TenantID:       params.TenantID,
+		IsSystem:       params.IsSystem,
 		Name:           params.Name,
 		Code:           params.Code,
 		TypeEUI:        params.TypeEUI,
 		Description:    params.Description,
 		DatasheetURL:   params.DatasheetURL,
 	}
+	if !params.IsSystem {
+		model.TenantID = &params.TenantID
+	}
 
 	query := `
 		INSERT INTO device_models (
-			id, manufacturer_id, tenant_id, name, code, type_eui, description, datasheet_url, created_at, updated_at
+			id, manufacturer_id, tenant_id, is_system, name, code, type_eui, description, datasheet_url, created_at, updated_at
 		) VALUES (
-			:id, :manufacturer_id, :tenant_id, :name, :code, :type_eui, :description, :datasheet_url, NOW(), NOW()
+			:id, :manufacturer_id, :tenant_id, :is_system, :name, :code, :type_eui, :description, :datasheet_url, NOW(), NOW()
 		) RETURNING created_at, updated_at`
 
 	stmt, err := r.db.PrepareNamedContext(ctx, query)
@@ -71,10 +74,11 @@ func (r *DeviceModelRepository) Create(ctx context.Context, params *models.Devic
 // GetByID retrieves a device model by ID with tenant isolation
 func (r *DeviceModelRepository) GetByID(ctx context.Context, tenantID int64, id uuid.UUID) (*models.DeviceModel, error) {
 	var model models.DeviceModel
+	// Resolve by id across both ownership scopes (tenant Custom + globally-visible System).
 	query := `
-		SELECT id, manufacturer_id, tenant_id, name, code, type_eui, description, datasheet_url, created_at, updated_at
+		SELECT id, manufacturer_id, tenant_id, is_system, name, code, type_eui, description, datasheet_url, created_at, updated_at
 		FROM device_models
-		WHERE tenant_id = $1 AND id = $2`
+		WHERE (tenant_id = $1 OR is_system) AND id = $2`
 
 	err := r.db.GetContext(ctx, &model, query, tenantID, id)
 	if err != nil {
@@ -168,21 +172,22 @@ func (r *DeviceModelRepository) ListByManufacturer(ctx context.Context, tenantID
 func (r *DeviceModelRepository) List(ctx context.Context, params *models.DeviceModelListParams) ([]*models.DeviceModel, error) {
 	var deviceModels []*models.DeviceModel
 
+	// Scope by is_system via a CASE so $1/$2 stay bound regardless of world — no arg renumbering.
 	query := `
 		SELECT
-			dm.id, dm.manufacturer_id, dm.tenant_id, dm.name, dm.code, dm.type_eui, dm.description, dm.datasheet_url, dm.created_at, dm.updated_at,
+			dm.id, dm.manufacturer_id, dm.tenant_id, dm.is_system, dm.name, dm.code, dm.type_eui, dm.description, dm.datasheet_url, dm.created_at, dm.updated_at,
 			COALESCE(bp.blueprint_count, 0) AS blueprint_count
 		FROM device_models dm
 		LEFT JOIN (
 			SELECT device_model_id, COUNT(*) AS blueprint_count
 			FROM blueprints
-			WHERE tenant_id = $1
+			WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END)
 			GROUP BY device_model_id
 		) bp ON bp.device_model_id = dm.id
-		WHERE dm.tenant_id = $1`
+		WHERE (CASE WHEN $2 THEN dm.is_system ELSE dm.tenant_id = $1 END)`
 
-	args := []interface{}{params.TenantID}
-	argIndex := 2
+	args := []interface{}{params.TenantID, params.IsSystem}
+	argIndex := 3
 
 	if params.ManufacturerID != nil {
 		query += fmt.Sprintf(" AND dm.manufacturer_id = $%d", argIndex)
@@ -266,11 +271,11 @@ func (r *DeviceModelRepository) ListWithManufacturer(ctx context.Context, params
 }
 
 // Count returns the total count of device models for a tenant
-func (r *DeviceModelRepository) Count(ctx context.Context, tenantID int64) (int64, error) {
+func (r *DeviceModelRepository) Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error) {
 	var count int64
-	query := `SELECT COUNT(*) FROM device_models WHERE tenant_id = $1`
+	query := `SELECT COUNT(*) FROM device_models WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END)`
 
-	err := r.db.GetContext(ctx, &count, query, tenantID)
+	err := r.db.GetContext(ctx, &count, query, tenantID, isSystem)
 	if err != nil {
 		return 0, fmt.Errorf("count device models: %w", err)
 	}
@@ -279,11 +284,11 @@ func (r *DeviceModelRepository) Count(ctx context.Context, tenantID int64) (int6
 }
 
 // CountByManufacturer returns the count of device models for a manufacturer
-func (r *DeviceModelRepository) CountByManufacturer(ctx context.Context, tenantID int64, manufacturerID uuid.UUID) (int64, error) {
+func (r *DeviceModelRepository) CountByManufacturer(ctx context.Context, tenantID int64, isSystem bool, manufacturerID uuid.UUID) (int64, error) {
 	var count int64
-	query := `SELECT COUNT(*) FROM device_models WHERE tenant_id = $1 AND manufacturer_id = $2`
+	query := `SELECT COUNT(*) FROM device_models WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND manufacturer_id = $3`
 
-	err := r.db.GetContext(ctx, &count, query, tenantID, manufacturerID)
+	err := r.db.GetContext(ctx, &count, query, tenantID, isSystem, manufacturerID)
 	if err != nil {
 		return 0, fmt.Errorf("count device models by manufacturer: %w", err)
 	}
@@ -292,10 +297,10 @@ func (r *DeviceModelRepository) CountByManufacturer(ctx context.Context, tenantI
 }
 
 // Update updates an existing device model
-func (r *DeviceModelRepository) Update(ctx context.Context, tenantID int64, id uuid.UUID, params *models.DeviceModelUpdateParams) error {
+func (r *DeviceModelRepository) Update(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, params *models.DeviceModelUpdateParams) error {
 	setClauses := make([]string, 0)
-	args := []interface{}{tenantID, id}
-	argIndex := 3
+	args := []interface{}{tenantID, isSystem, id}
+	argIndex := 4
 
 	if params.Name != nil {
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIndex))
@@ -333,8 +338,9 @@ func (r *DeviceModelRepository) Update(ctx context.Context, tenantID int64, id u
 
 	setClauses = append(setClauses, "updated_at = NOW()")
 
+	// #nosec G201 -- setClauses are constructed from safe column names with parameterized values
 	query := fmt.Sprintf(
-		"UPDATE device_models SET %s WHERE tenant_id = $1 AND id = $2",
+		"UPDATE device_models SET %s WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3",
 		strings.Join(setClauses, ", "),
 	)
 
@@ -359,11 +365,11 @@ func (r *DeviceModelRepository) Update(ctx context.Context, tenantID int64, id u
 	return nil
 }
 
-// Delete deletes a device model by ID with tenant isolation
-func (r *DeviceModelRepository) Delete(ctx context.Context, tenantID int64, id uuid.UUID) error {
-	query := `DELETE FROM device_models WHERE tenant_id = $1 AND id = $2`
+// Delete deletes a device model by ID within the isSystem-selected ownership scope
+func (r *DeviceModelRepository) Delete(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error {
+	query := `DELETE FROM device_models WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`
 
-	result, err := r.db.ExecContext(ctx, query, tenantID, id)
+	result, err := r.db.ExecContext(ctx, query, tenantID, isSystem, id)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23503" {
