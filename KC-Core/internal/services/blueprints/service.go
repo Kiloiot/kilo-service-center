@@ -1039,21 +1039,9 @@ func (s *Service) CreateDeviceModelWithBlueprint(ctx context.Context, req *grpcs
 		return nil, nil, fmt.Errorf("transaction starter not configured")
 	}
 
-	// Verify manufacturer exists before starting transaction
-	mfr, err := s.manufacturerRepo.GetByID(ctx, tenantID, req.ManufacturerID)
-	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
-			return nil, nil, ErrManufacturerNotFound
-		}
-		return nil, nil, fmt.Errorf("get manufacturer: %w", err)
+	if err := s.validateDeviceModelManufacturer(ctx, tenantID, req); err != nil {
+		return nil, nil, err
 	}
-	// Ownership homogeneity: model+blueprint created here inherit req.IsSystem; parent must match.
-	if mfr.IsSystem != req.IsSystem {
-		return nil, nil, ErrOwnershipMismatch
-	}
-
-	// Generate slug from name
-	baseSlug := generateSlug(req.Name)
 
 	// Extract typeEui from spec before transaction so it's available for model creation
 	specTypeEUI, err := extractTypeEUIFromSpec(req.DecoderScript)
@@ -1071,38 +1059,8 @@ func (s *Service) CreateDeviceModelWithBlueprint(ctx context.Context, req *grpcs
 		}
 	}()
 
-	// Try creating the device model with collision-safe slug
-	var model *models.DeviceModel
-	slug := baseSlug
-	for attempt := 0; attempt < blueprintconstants.ModelCodeMaxSuffixAttempts; attempt++ {
-		if attempt > 0 {
-			slug = fmt.Sprintf("%s"+blueprintconstants.ModelCodeSuffixFormat, baseSlug, attempt+1)
-			if len(slug) > blueprintconstants.ModelCodeMaxLength {
-				slug = slug[:blueprintconstants.ModelCodeMaxLength]
-			}
-		}
-
-		modelParams := &models.DeviceModelCreateParams{
-			TenantID:       tenantID,
-			IsSystem:       req.IsSystem,
-			ManufacturerID: req.ManufacturerID,
-			Name:           req.Name,
-			Code:           slug,
-			TypeEUI:        specTypeEUI,
-		}
-
-		model, err = tx.DeviceModels().Create(ctx, modelParams)
-		if err != nil {
-			if errors.Is(err, storage.ErrDuplicateKey) {
-				err = nil // Reset for next attempt
-				continue
-			}
-			return nil, nil, fmt.Errorf("create device model: %w", err)
-		}
-		break
-	}
-	if model == nil {
-		err = ErrSlugGenerationFailed
+	model, err := s.createDeviceModelWithSlug(ctx, tx, tenantID, req, specTypeEUI)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -1126,9 +1084,55 @@ func (s *Service) CreateDeviceModelWithBlueprint(ctx context.Context, req *grpcs
 	}
 
 	s.logger.InfoContext(ctx, "device model with blueprint created",
-		"model_id", model.ID, "blueprint_id", blueprint.ID, "slug", slug)
+		"model_id", model.ID, "blueprint_id", blueprint.ID, "slug", model.Code)
 
 	return model, blueprint, nil
+}
+
+func (s *Service) validateDeviceModelManufacturer(ctx context.Context, tenantID int64, req *grpcservices.DeviceModelWithBlueprintRequest) error {
+	mfr, err := s.manufacturerRepo.GetByID(ctx, tenantID, req.ManufacturerID)
+	if err != nil {
+		if errors.Is(err, interfaces.ErrRecordNotFound) {
+			return ErrManufacturerNotFound
+		}
+		return fmt.Errorf("get manufacturer: %w", err)
+	}
+	// Ownership homogeneity: model+blueprint created here inherit req.IsSystem; parent must match.
+	if mfr.IsSystem != req.IsSystem {
+		return ErrOwnershipMismatch
+	}
+	return nil
+}
+
+// Retries with a suffixed slug on code collisions; ErrSlugGenerationFailed when all attempts fail.
+func (s *Service) createDeviceModelWithSlug(ctx context.Context, tx interfaces.Transaction, tenantID int64, req *grpcservices.DeviceModelWithBlueprintRequest, specTypeEUI []byte) (*models.DeviceModel, error) {
+	baseSlug := generateSlug(req.Name)
+	slug := baseSlug
+	for attempt := 0; attempt < blueprintconstants.ModelCodeMaxSuffixAttempts; attempt++ {
+		if attempt > 0 {
+			slug = fmt.Sprintf("%s"+blueprintconstants.ModelCodeSuffixFormat, baseSlug, attempt+1)
+			if len(slug) > blueprintconstants.ModelCodeMaxLength {
+				slug = slug[:blueprintconstants.ModelCodeMaxLength]
+			}
+		}
+		modelParams := &models.DeviceModelCreateParams{
+			TenantID:       tenantID,
+			IsSystem:       req.IsSystem,
+			ManufacturerID: req.ManufacturerID,
+			Name:           req.Name,
+			Code:           slug,
+			TypeEUI:        specTypeEUI,
+		}
+		model, createErr := tx.DeviceModels().Create(ctx, modelParams)
+		if createErr != nil {
+			if errors.Is(createErr, storage.ErrDuplicateKey) {
+				continue
+			}
+			return nil, fmt.Errorf("create device model: %w", createErr)
+		}
+		return model, nil
+	}
+	return nil, ErrSlugGenerationFailed
 }
 
 // DecodePreview runs the blueprint decoder on a payload for preview.

@@ -1033,75 +1033,26 @@ func (s *CoreService) BulkAssignBlueprint(ctx context.Context, req *pb.BulkAssig
 	if err != nil {
 		return nil, err
 	}
-	if s.blueprintSvc == nil || s.endpointSvc == nil {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
-	}
-	if req.BlueprintId == "" {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintIDRequired),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintIDRequired))
-	}
-	blueprintID, err := uuid.Parse(req.BlueprintId)
+	blueprintID, err := s.validateBulkAssignPreconditions(req)
 	if err != nil {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBlueprintIDFormat))
+		return nil, err
 	}
 
 	// Validate before any mutation: no rollback, so reject a System blueprint up front.
 	if req.SetAsDefault {
-		bp, bpErr := s.blueprintSvc.GetBlueprint(ctx, blueprintID)
-		if bpErr != nil || bp == nil {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
-		}
-		if bp.IsSystem {
-			return nil, status.Error(codes.InvalidArgument, "set_as_default is not allowed for System blueprints")
+		if err := s.validateBulkAssignSetDefault(ctx, blueprintID); err != nil {
+			return nil, err
 		}
 	}
 
-	// Resolve target EUIs: an explicit list wins over device_model_id.
-	var euis []models.EUI
-	switch {
-	case len(req.EpEuis) > 0:
-		for _, e := range req.EpEuis {
-			euis = append(euis, models.EUIFromString(e))
-		}
-	case req.DeviceModelId != "":
-		modelID, parseErr := uuid.Parse(req.DeviceModelId)
-		if parseErr != nil {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidDeviceModelIDFormat),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidDeviceModelIDFormat))
-		}
-		targets, listErr := s.endpointSvc.ListByModelWithSnapshot(ctx, tenantID, modelID)
-		if listErr != nil {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenListEndpointsFailed),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenListEndpointsFailed))
-		}
-		for _, ep := range targets {
-			euis = append(euis, ep.EUI)
-		}
-	default:
-		return nil, status.Error(codes.InvalidArgument, "target required: set device_model_id or ep_euis")
+	euis, err := s.resolveBulkAssignTargets(ctx, tenantID, req)
+	if err != nil {
+		return nil, err
 	}
 
-	var affected int32
-	for _, eui := range euis {
-		// Load the full endpoint (list columns are partial and would clobber on Update).
-		ep, getErr := s.endpointSvc.GetByEUI(ctx, eui[:], tenantID)
-		if getErr != nil || ep == nil {
-			continue // best-effort per target: skip missing endpoints
-		}
-		if len(ep.BlueprintSnapshot) == 0 {
-			continue // skip catalog-default followers
-		}
-		if err := s.applyBlueprintSnapshot(ctx, ep, req.BlueprintId); err != nil {
-			return nil, err // same blueprint for all targets — a fetch/validation failure is fatal
-		}
-		if _, updErr := s.endpointSvc.Update(ctx, ep); updErr != nil {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointFailed),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointFailed))
-		}
-		affected++
+	affected, err := s.rematerializeSnapshotOnEndpoints(ctx, tenantID, req.BlueprintId, euis)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.SetAsDefault {
@@ -1113,6 +1064,89 @@ func (s *CoreService) BulkAssignBlueprint(ctx context.Context, req *pb.BulkAssig
 	}
 
 	return &pb.BulkAssignBlueprintResponse{AffectedCount: affected}, nil
+}
+
+func (s *CoreService) validateBulkAssignPreconditions(req *pb.BulkAssignBlueprintRequest) (uuid.UUID, error) {
+	if s.blueprintSvc == nil || s.endpointSvc == nil {
+		return uuid.Nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
+	}
+	if req.BlueprintId == "" {
+		return uuid.Nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintIDRequired),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintIDRequired))
+	}
+	blueprintID, parseErr := uuid.Parse(req.BlueprintId)
+	if parseErr != nil {
+		return uuid.Nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBlueprintIDFormat))
+	}
+	return blueprintID, nil
+}
+
+// System blueprint can't be a tenant default; reject before any mutation (no rollback).
+func (s *CoreService) validateBulkAssignSetDefault(ctx context.Context, blueprintID uuid.UUID) error {
+	bp, bpErr := s.blueprintSvc.GetBlueprint(ctx, blueprintID)
+	if bpErr != nil || bp == nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
+	}
+	if bp.IsSystem {
+		return status.Error(codes.InvalidArgument, "set_as_default is not allowed for System blueprints")
+	}
+	return nil
+}
+
+// Explicit ep_euis win over device_model_id (which expands to the tenant's snapshot-bearing endpoints).
+func (s *CoreService) resolveBulkAssignTargets(ctx context.Context, tenantID int64, req *pb.BulkAssignBlueprintRequest) ([]models.EUI, error) {
+	if len(req.EpEuis) > 0 {
+		euis := make([]models.EUI, 0, len(req.EpEuis))
+		for _, e := range req.EpEuis {
+			euis = append(euis, models.EUIFromString(e))
+		}
+		return euis, nil
+	}
+	if req.DeviceModelId == "" {
+		return nil, status.Error(codes.InvalidArgument, "target required: set device_model_id or ep_euis")
+	}
+	modelID, parseErr := uuid.Parse(req.DeviceModelId)
+	if parseErr != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidDeviceModelIDFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidDeviceModelIDFormat))
+	}
+	targets, listErr := s.endpointSvc.ListByModelWithSnapshot(ctx, tenantID, modelID)
+	if listErr != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenListEndpointsFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenListEndpointsFailed))
+	}
+	euis := make([]models.EUI, 0, len(targets))
+	for _, ep := range targets {
+		euis = append(euis, ep.EUI)
+	}
+	return euis, nil
+}
+
+// Skips missing endpoints and catalog-default followers; returns the affected count.
+func (s *CoreService) rematerializeSnapshotOnEndpoints(ctx context.Context, tenantID int64, blueprintID string, euis []models.EUI) (int32, error) {
+	var affected int32
+	for _, eui := range euis {
+		// Load the full endpoint (list columns are partial and would clobber on Update).
+		ep, getErr := s.endpointSvc.GetByEUI(ctx, eui[:], tenantID)
+		if getErr != nil || ep == nil {
+			continue // best-effort per target: skip missing endpoints
+		}
+		if len(ep.BlueprintSnapshot) == 0 {
+			continue // skip catalog-default followers
+		}
+		if err := s.applyBlueprintSnapshot(ctx, ep, blueprintID); err != nil {
+			return 0, err // same blueprint for all targets — a fetch/validation failure is fatal
+		}
+		if _, updErr := s.endpointSvc.Update(ctx, ep); updErr != nil {
+			return 0, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointFailed),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointFailed))
+		}
+		affected++
+	}
+	return affected, nil
 }
 
 // mapRegistryError translates service errors to gRPC catalog tokens.
