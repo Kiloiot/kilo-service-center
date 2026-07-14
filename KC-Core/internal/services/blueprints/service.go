@@ -31,7 +31,7 @@ var (
 	ErrBlueprintNotFound    = errors.New("blueprint not found")
 	ErrTenantIDRequired     = errors.New("tenant ID required")
 	// ErrOwnershipMismatch enforces a child's is_system to equal its parent's, else the per-model default index and model-code uniqueness break.
-	ErrOwnershipMismatch = errors.New("ownership mismatch: is_system must match parent")
+	ErrOwnershipMismatch    = errors.New("ownership mismatch: is_system must match parent")
 	ErrInvalidTypeEUIFormat = errors.New("invalid type EUI format")
 	ErrMissingTypeEUI       = errors.New("blueprint spec is missing required typeEui field")
 	ErrSlugGenerationFailed = errors.New("slug generation exhausted all suffix attempts")

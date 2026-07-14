@@ -283,9 +283,9 @@ func TestDecodePreview_MissingPayload(t *testing.T) {
 	}
 
 	req := &pb.DecodePreviewRequest{
-		Source:      &pb.DecodePreviewRequest_BlueprintId{BlueprintId: uuid.New().String()},
-		Payload:     nil,
-		FormatId:    0,
+		Source:   &pb.DecodePreviewRequest_BlueprintId{BlueprintId: uuid.New().String()},
+		Payload:  nil,
+		FormatId: 0,
 	}
 
 	_, err := svc.DecodePreview(ctx, req)
@@ -311,9 +311,9 @@ func TestDecodePreview_InvalidFormatID(t *testing.T) {
 	}
 
 	req := &pb.DecodePreviewRequest{
-		Source:      &pb.DecodePreviewRequest_BlueprintId{BlueprintId: uuid.New().String()},
-		Payload:     []byte{0x01, 0x02},
-		FormatId:    256,
+		Source:   &pb.DecodePreviewRequest_BlueprintId{BlueprintId: uuid.New().String()},
+		Payload:  []byte{0x01, 0x02},
+		FormatId: 256,
 	}
 
 	_, err := svc.DecodePreview(ctx, req)

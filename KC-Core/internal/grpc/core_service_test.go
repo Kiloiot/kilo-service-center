@@ -1527,7 +1527,9 @@ func TestUpdateEndPoint_SnapshotTrigger(t *testing.T) {
 		bp := &mockBlueprintSvcForEndpoint{
 			getDeviceModelResult: &models.DeviceModel{ID: newModel},
 			getDefaultForModelFn: func() (*models.Blueprint, error) { return nil, nil },
-			getBlueprintFn:       func(_ uuid.UUID) (*models.Blueprint, error) { return &models.Blueprint{ID: priorBp, DeviceModelID: priorModel}, nil },
+			getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) {
+				return &models.Blueprint{ID: priorBp, DeviceModelID: priorModel}, nil
+			},
 		}
 		require.NoError(t, run(ep, bp, modelReq))
 		assert.Equal(t, priorBp.String(), snapshotSourceID(ep.updateCapture.BlueprintSnapshot), "prior snapshot kept when new model has no default")
@@ -1538,7 +1540,9 @@ func TestUpdateEndPoint_SnapshotTrigger(t *testing.T) {
 		bp := &mockBlueprintSvcForEndpoint{
 			getDeviceModelResult: &models.DeviceModel{ID: newModel},
 			getDefaultForModelFn: func() (*models.Blueprint, error) { return nil, errors.New("db down") },
-			getBlueprintFn:       func(_ uuid.UUID) (*models.Blueprint, error) { return &models.Blueprint{ID: priorBp, DeviceModelID: priorModel}, nil },
+			getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) {
+				return &models.Blueprint{ID: priorBp, DeviceModelID: priorModel}, nil
+			},
 		}
 		require.Error(t, run(ep, bp, modelReq))
 		assert.Nil(t, ep.updateCapture, "update must not persist on infra failure")
@@ -1549,7 +1553,9 @@ func TestUpdateEndPoint_SnapshotTrigger(t *testing.T) {
 		bp := &mockBlueprintSvcForEndpoint{
 			getDeviceModelResult: &models.DeviceModel{ID: newModel},
 			getDefaultForModelFn: func() (*models.Blueprint, error) { return nil, errors.New("must not be called") },
-			getBlueprintFn:       func(_ uuid.UUID) (*models.Blueprint, error) { return &models.Blueprint{ID: priorBp, DeviceModelID: newModel}, nil },
+			getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) {
+				return &models.Blueprint{ID: priorBp, DeviceModelID: newModel}, nil
+			},
 		}
 		require.NoError(t, run(ep, bp, modelReq))
 		assert.Equal(t, priorBp.String(), snapshotSourceID(ep.updateCapture.BlueprintSnapshot), "snapshot preserved; no re-seed when pinned is native to new model")
