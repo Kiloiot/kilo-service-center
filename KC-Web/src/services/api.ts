@@ -28,7 +28,9 @@ import type {
   BaseStationReceptionAPI,
   BaseStationUI,
   BlueprintListItemAPI,
+  BlueprintScope,
   BlueprintUI,
+  BulkAssignBlueprintResponse,
   CertificateUI,
   CreateBlueprintRequest,
   CreateDeviceModelRequest,
@@ -151,6 +153,7 @@ function mapTransportBlueprintToUI(b: BlueprintTransportDTO): BlueprintUI {
     typeEui: b.typeEui,
     specJson,
     isDefault: b.isDefault,
+    isSystem: b.isSystem,
     registryRepo: b.registryRepo,
     registryCommitSha: b.registryCommitSha,
     registryVerified: b.registryVerified,
@@ -1810,14 +1813,15 @@ class ApiService {
   // Blueprint Feature: Manufacturers, Device Models, Blueprints
   // ============================================================================
 
-  async getManufacturers(): Promise<ManufacturerUI[]> {
-    const response = await grpcClient.listManufacturers();
+  async getManufacturers(scope?: BlueprintScope): Promise<ManufacturerUI[]> {
+    const response = await grpcClient.listManufacturers(scope === "system");
     return response.map((m) => ({
       id: m.id,
       tenantId: parseTenantIdOrZero(m.tenantId),
       name: m.name,
       website: m.website,
       isVerified: m.isVerified,
+      isSystem: m.isSystem,
       modelCount: m.modelCount,
       createdAt: m.createdAt?.toISOString() || "",
       updatedAt: m.updatedAt?.toISOString() || "",
@@ -1834,6 +1838,7 @@ class ApiService {
       name: response.name,
       website: response.website,
       isVerified: response.isVerified,
+      isSystem: response.isSystem,
       modelCount: response.modelCount,
       createdAt: response.createdAt?.toISOString() || "",
       updatedAt: response.updatedAt?.toISOString() || "",
@@ -1846,6 +1851,7 @@ class ApiService {
     const response = await grpcClient.createManufacturer({
       name: data.name,
       website: data.website,
+      isSystem: data.isSystem,
     });
 
     return {
@@ -1854,6 +1860,7 @@ class ApiService {
       name: response.name,
       website: response.website,
       isVerified: response.isVerified,
+      isSystem: response.isSystem,
       modelCount: response.modelCount,
       createdAt: response.createdAt?.toISOString() || "",
       updatedAt: response.updatedAt?.toISOString() || "",
@@ -1878,8 +1885,14 @@ class ApiService {
   // Device Models
   // ============================================================================
 
-  async getDeviceModels(manufacturerId: string): Promise<DeviceModelUI[]> {
-    const response = await grpcClient.listDeviceModels(manufacturerId);
+  async getDeviceModels(
+    manufacturerId: string,
+    scope?: BlueprintScope,
+  ): Promise<DeviceModelUI[]> {
+    const response = await grpcClient.listDeviceModels(
+      manufacturerId,
+      scope === "system",
+    );
     return response.map((m) => ({
       id: m.id,
       manufacturerId: m.manufacturerId,
@@ -1889,6 +1902,7 @@ class ApiService {
       typeEui: m.typeEui,
       description: m.description,
       datasheetUrl: m.datasheetUrl,
+      isSystem: m.isSystem,
       blueprintCount: m.blueprintCount,
       createdAt: m.createdAt?.toISOString() || "",
       updatedAt: m.updatedAt?.toISOString() || "",
@@ -1908,6 +1922,7 @@ class ApiService {
       typeEui: response.typeEui,
       description: response.description,
       datasheetUrl: response.datasheetUrl,
+      isSystem: response.isSystem,
       blueprintCount: response.blueprintCount,
       createdAt: response.createdAt?.toISOString() || "",
       updatedAt: response.updatedAt?.toISOString() || "",
@@ -1923,6 +1938,7 @@ class ApiService {
       code: data.code,
       typeEui: data.typeEui,
       description: data.description,
+      isSystem: data.isSystem,
     });
 
     return {
@@ -1934,6 +1950,7 @@ class ApiService {
       typeEui: response.typeEui,
       description: response.description,
       datasheetUrl: response.datasheetUrl,
+      isSystem: response.isSystem,
       blueprintCount: response.blueprintCount,
       createdAt: response.createdAt?.toISOString() || "",
       updatedAt: response.updatedAt?.toISOString() || "",
@@ -1969,6 +1986,7 @@ class ApiService {
       name: data.name,
       version: data.version,
       decoderScript: JSON.stringify(data.specJson),
+      isSystem: data.isSystem,
     });
 
     return {
@@ -1981,6 +1999,7 @@ class ApiService {
         typeEui: response.deviceModel.typeEui,
         description: response.deviceModel.description,
         datasheetUrl: response.deviceModel.datasheetUrl,
+        isSystem: response.deviceModel.isSystem,
         blueprintCount: response.deviceModel.blueprintCount || 1,
         createdAt: response.deviceModel.createdAt?.toISOString() || "",
         updatedAt: response.deviceModel.updatedAt?.toISOString() || "",
@@ -1993,14 +2012,21 @@ class ApiService {
   // Blueprints
   // ============================================================================
 
-  async getBlueprints(modelId: string): Promise<BlueprintListItemAPI[]> {
-    const response = await grpcClient.listBlueprints(modelId);
+  async getBlueprints(
+    modelId: string,
+    scope?: BlueprintScope,
+  ): Promise<BlueprintListItemAPI[]> {
+    const response = await grpcClient.listBlueprints(
+      modelId,
+      scope === "system",
+    );
     return response.map((b: BlueprintTransportDTO) => ({
       id: b.id,
       deviceModelId: b.deviceModelId,
       version: b.version,
       typeEui: b.typeEui,
       isDefault: b.isDefault,
+      isSystem: b.isSystem,
       createdAt: b.createdAt?.toISOString() || "",
     }));
   }
@@ -2020,6 +2046,7 @@ class ApiService {
       name: data.version,
       version: data.version,
       decoderScript: JSON.stringify(data.specJson),
+      isSystem: data.isSystem,
     });
 
     return mapTransportBlueprintToUI(response);
@@ -2041,6 +2068,19 @@ class ApiService {
 
   async setBlueprintDefault(id: string): Promise<void> {
     await grpcClient.setDefaultBlueprint(id);
+  }
+
+  async countModelSnapshotEndpoints(deviceModelId: string): Promise<number> {
+    return grpcClient.countEndpointsByDeviceModel(deviceModelId);
+  }
+
+  // setAsDefault also moves the model's default pointer.
+  async bulkAssignBlueprint(data: {
+    blueprintId: string;
+    deviceModelId: string;
+    setAsDefault: boolean;
+  }): Promise<BulkAssignBlueprintResponse> {
+    return grpcClient.bulkAssignBlueprint(data);
   }
 
   async decodePreview(

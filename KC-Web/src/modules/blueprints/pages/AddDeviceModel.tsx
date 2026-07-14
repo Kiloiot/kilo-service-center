@@ -7,13 +7,15 @@
  */
 
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   Alert,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
+  FormControlLabel,
   Paper,
   TextField,
   Typography,
@@ -21,18 +23,24 @@ import {
 import { useMutation } from "@tanstack/react-query";
 
 import { api } from "@services/api";
+import { useCapabilities } from "@hooks/useCapabilities";
 import { ROUTES } from "@constants/app";
 import { BLUEPRINT_LABELS } from "@constants/messages";
 
 import { useManufacturers } from "../hooks";
+import { unwrapBlueprintSpec } from "../utils/spec";
 
 /**
  * AddDeviceModel page component
  */
 export const AddDeviceModel: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const { data: manufacturers, isLoading: mfrsLoading } = useManufacturers();
+  const { isServerAdmin } = useCapabilities();
+
+  // Catalog scope is fixed by the tab the user came from (?scope=), not editable here.
+  const isSystem = searchParams.get("scope") === "system";
 
   const [manufacturerId, setManufacturerId] = useState("");
   const [name, setName] = useState("");
@@ -40,11 +48,16 @@ export const AddDeviceModel: React.FC = () => {
   const [specJsonText, setSpecJsonText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // System model needs a System manufacturer (ownership homogeneity), so the list follows scope.
+  const { data: manufacturers, isLoading: mfrsLoading } = useManufacturers(
+    isSystem ? "system" : "custom",
+  );
+
   const mutation = useMutation({
     mutationFn: () => {
       let specJson: object;
       try {
-        specJson = JSON.parse(specJsonText);
+        specJson = unwrapBlueprintSpec(JSON.parse(specJsonText)) as object;
       } catch {
         throw new Error(BLUEPRINT_LABELS.ERR_INVALID_JSON);
       }
@@ -53,6 +66,7 @@ export const AddDeviceModel: React.FC = () => {
         name,
         version,
         specJson,
+        isSystem,
       });
     },
     onSuccess: () => {
@@ -145,6 +159,17 @@ export const AddDeviceModel: React.FC = () => {
             },
           }}
         />
+
+        {isServerAdmin && (
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              // Locked indicator bound to the originating catalog tab (?scope=).
+              <Checkbox checked={isSystem} disabled />
+            }
+            label={BLUEPRINT_LABELS.LABEL_IS_SYSTEM}
+          />
+        )}
 
         <Box
           sx={{ display: "flex", gap: 2, mt: 3, justifyContent: "flex-end" }}

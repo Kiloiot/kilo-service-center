@@ -207,6 +207,7 @@ export interface BlueprintTransportDTO {
   typeEui: string;
   specJson: string;
   isDefault: boolean;
+  isSystem: boolean;
   registryRepo?: string;
   registryCommitSha?: string;
   registryVerified: boolean;
@@ -234,6 +235,7 @@ function mapProtoBlueprintToTransport(b: pb.Blueprint): BlueprintTransportDTO {
     typeEui: b.getTypeEui(),
     specJson,
     isDefault: b.getIsDefault(),
+    isSystem: b.getIsSystem(),
     registryRepo: b.getRegistryRepo() || undefined,
     registryCommitSha: b.getRegistryCommitSha() || undefined,
     registryVerified: b.getRegistryVerified(),
@@ -3655,7 +3657,7 @@ class GrpcClientService {
   /**
    * List manufacturers
    */
-  async listManufacturers(): Promise<
+  async listManufacturers(isSystem = false): Promise<
     Array<{
       id: string;
       name: string;
@@ -3665,12 +3667,14 @@ class GrpcClientService {
       contactEmail?: string;
       tenantId: string;
       isVerified: boolean;
+      isSystem: boolean;
       modelCount: number;
       createdAt?: Date;
       updatedAt?: Date;
     }>
   > {
     const request = new pb.ListManufacturersRequest();
+    request.setIsSystem(isSystem);
 
     const response = await this.promisify<
       pb.ListManufacturersRequest,
@@ -3686,6 +3690,7 @@ class GrpcClientService {
       contactEmail: m.getContactEmail() || undefined,
       tenantId: m.getTenantId(),
       isVerified: m.getIsVerified(),
+      isSystem: m.getIsSystem(),
       modelCount: m.getModelCount(),
       createdAt: m.getCreatedAt()?.toDate(),
       updatedAt: m.getUpdatedAt()?.toDate(),
@@ -3704,6 +3709,7 @@ class GrpcClientService {
     contactEmail?: string;
     tenantId: string;
     isVerified: boolean;
+    isSystem: boolean;
     modelCount: number;
     createdAt?: Date;
     updatedAt?: Date;
@@ -3729,6 +3735,7 @@ class GrpcClientService {
         contactEmail: m.getContactEmail() || undefined,
         tenantId: m.getTenantId(),
         isVerified: m.getIsVerified(),
+        isSystem: m.getIsSystem(),
         modelCount: m.getModelCount(),
         createdAt: m.getCreatedAt()?.toDate(),
         updatedAt: m.getUpdatedAt()?.toDate(),
@@ -3750,6 +3757,7 @@ class GrpcClientService {
     description?: string;
     website?: string;
     contactEmail?: string;
+    isSystem?: boolean;
   }): Promise<{
     id: string;
     name: string;
@@ -3759,6 +3767,7 @@ class GrpcClientService {
     contactEmail?: string;
     tenantId: string;
     isVerified: boolean;
+    isSystem: boolean;
     modelCount: number;
     createdAt?: Date;
     updatedAt?: Date;
@@ -3769,6 +3778,7 @@ class GrpcClientService {
     if (data.description) request.setDescription(data.description);
     if (data.website) request.setWebsite(data.website);
     if (data.contactEmail) request.setContactEmail(data.contactEmail);
+    if (data.isSystem) request.setIsSystem(data.isSystem);
 
     const response = await this.promisify<
       pb.CreateManufacturerRequest,
@@ -3792,6 +3802,7 @@ class GrpcClientService {
       contactEmail: m.getContactEmail() || undefined,
       tenantId: m.getTenantId(),
       isVerified: m.getIsVerified(),
+      isSystem: m.getIsSystem(),
       modelCount: m.getModelCount(),
       createdAt: m.getCreatedAt()?.toDate(),
       updatedAt: m.getUpdatedAt()?.toDate(),
@@ -3845,7 +3856,7 @@ class GrpcClientService {
   /**
    * List device models for a manufacturer
    */
-  async listDeviceModels(manufacturerId: string): Promise<
+  async listDeviceModels(manufacturerId: string, isSystem = false): Promise<
     Array<{
       id: string;
       manufacturerId: string;
@@ -3855,6 +3866,7 @@ class GrpcClientService {
       typeEui?: string;
       description?: string;
       datasheetUrl?: string;
+      isSystem: boolean;
       blueprintCount: number;
       createdAt?: Date;
       updatedAt?: Date;
@@ -3862,6 +3874,7 @@ class GrpcClientService {
   > {
     const request = new pb.ListDeviceModelsRequest();
     request.setManufacturerId(manufacturerId);
+    request.setIsSystem(isSystem);
 
     const response = await this.promisify<
       pb.ListDeviceModelsRequest,
@@ -3877,6 +3890,7 @@ class GrpcClientService {
       typeEui: m.getTypeEui() || undefined,
       description: m.getDescription() || undefined,
       datasheetUrl: m.getDatasheetUrl() || undefined,
+      isSystem: m.getIsSystem(),
       blueprintCount: m.getBlueprintCount(),
       createdAt: m.getCreatedAt()?.toDate(),
       updatedAt: m.getUpdatedAt()?.toDate(),
@@ -3895,6 +3909,7 @@ class GrpcClientService {
     typeEui?: string;
     description?: string;
     datasheetUrl?: string;
+    isSystem: boolean;
     blueprintCount: number;
     createdAt?: Date;
     updatedAt?: Date;
@@ -3920,6 +3935,7 @@ class GrpcClientService {
         typeEui: m.getTypeEui() || undefined,
         description: m.getDescription() || undefined,
         datasheetUrl: m.getDatasheetUrl() || undefined,
+        isSystem: m.getIsSystem(),
         blueprintCount: m.getBlueprintCount(),
         createdAt: m.getCreatedAt()?.toDate(),
         updatedAt: m.getUpdatedAt()?.toDate(),
@@ -3942,6 +3958,7 @@ class GrpcClientService {
       code: string;
       typeEui?: string;
       description?: string;
+      isSystem?: boolean;
     },
   ): Promise<{
     id: string;
@@ -3952,6 +3969,7 @@ class GrpcClientService {
     typeEui?: string;
     description?: string;
     datasheetUrl?: string;
+    isSystem: boolean;
     blueprintCount: number;
     createdAt?: Date;
     updatedAt?: Date;
@@ -3962,6 +3980,7 @@ class GrpcClientService {
     request.setCode(data.code);
     if (data.typeEui) request.setTypeEui(data.typeEui);
     if (data.description) request.setDescription(data.description);
+    if (data.isSystem) request.setIsSystem(data.isSystem);
 
     const response = await this.promisify<
       pb.CreateDeviceModelRequest,
@@ -3985,6 +4004,7 @@ class GrpcClientService {
       typeEui: m.getTypeEui() || undefined,
       description: m.getDescription() || undefined,
       datasheetUrl: m.getDatasheetUrl() || undefined,
+      isSystem: m.getIsSystem(),
       blueprintCount: m.getBlueprintCount(),
       createdAt: m.getCreatedAt()?.toDate(),
       updatedAt: m.getUpdatedAt()?.toDate(),
@@ -4033,9 +4053,13 @@ class GrpcClientService {
   /**
    * List blueprints for a device model
    */
-  async listBlueprints(modelId: string): Promise<Array<BlueprintTransportDTO>> {
+  async listBlueprints(
+    modelId: string,
+    isSystem = false,
+  ): Promise<Array<BlueprintTransportDTO>> {
     const request = new pb.ListBlueprintsRequest();
     request.setDeviceModelId(modelId);
+    request.setIsSystem(isSystem);
 
     const response = await this.promisify<
       pb.ListBlueprintsRequest,
@@ -4085,6 +4109,7 @@ class GrpcClientService {
       description?: string;
       decoderScript: string;
       isDefault?: boolean;
+      isSystem?: boolean;
     },
   ): Promise<BlueprintTransportDTO> {
     const request = new pb.CreateBlueprintRequest();
@@ -4094,6 +4119,7 @@ class GrpcClientService {
     request.setDecoderScript(stringToBytes(data.decoderScript));
     if (data.description) request.setDescription(data.description);
     if (data.isDefault !== undefined) request.setIsDefault(data.isDefault);
+    if (data.isSystem) request.setIsSystem(data.isSystem);
 
     const response = await this.promisify<
       pb.CreateBlueprintRequest,
@@ -4206,6 +4232,7 @@ class GrpcClientService {
     name: string;
     version: string;
     decoderScript: string;
+    isSystem?: boolean;
   }): Promise<{
     deviceModel: {
       id: string;
@@ -4216,6 +4243,7 @@ class GrpcClientService {
       typeEui: string;
       description: string;
       datasheetUrl: string;
+      isSystem: boolean;
       blueprintCount: number;
       createdAt?: Date;
       updatedAt?: Date;
@@ -4227,6 +4255,7 @@ class GrpcClientService {
     request.setName(data.name);
     request.setVersion(data.version);
     request.setDecoderScript(stringToBytes(data.decoderScript));
+    if (data.isSystem) request.setIsSystem(data.isSystem);
 
     const response = await this.promisify<
       pb.CreateDeviceModelWithBlueprintRequest,
@@ -4252,6 +4281,7 @@ class GrpcClientService {
         typeEui: model.getTypeEui(),
         description: model.getDescription(),
         datasheetUrl: model.getDatasheetUrl(),
+        isSystem: model.getIsSystem(),
         blueprintCount: model.getBlueprintCount(),
         createdAt: model.getCreatedAt()?.toDate(),
         updatedAt: model.getUpdatedAt()?.toDate(),
@@ -4303,6 +4333,47 @@ class GrpcClientService {
       formatId: response.getFormatId(),
       blueprintVersion: response.getBlueprintVersion() || undefined,
     };
+  }
+
+  /**
+   * Bulk re-materialize snapshot-bearing endpoints of a device model onto a
+   * target blueprint. setAsDefault also moves the model's default pointer.
+   */
+  async bulkAssignBlueprint(data: {
+    blueprintId: string;
+    deviceModelId: string;
+    epEuis?: string[];
+    setAsDefault: boolean;
+  }): Promise<{ affectedCount: number }> {
+    const request = new pb.BulkAssignBlueprintRequest();
+    request.setBlueprintId(data.blueprintId);
+    request.setDeviceModelId(data.deviceModelId);
+    if (data.epEuis?.length) request.setEpEuisList(data.epEuis);
+    request.setSetAsDefault(data.setAsDefault);
+
+    const response = await this.promisify<
+      pb.BulkAssignBlueprintRequest,
+      pb.BulkAssignBlueprintResponse
+    >(this.client.bulkAssignBlueprint)(request);
+
+    return { affectedCount: response.getAffectedCount() };
+  }
+
+  /**
+   * Count snapshot-bearing endpoints for a device model (bulk-migration preview).
+   * The device_model_id filter selects only endpoints carrying a snapshot.
+   */
+  async countEndpointsByDeviceModel(deviceModelId: string): Promise<number> {
+    const request = new pb.ListEndPointsRequest();
+    request.setDeviceModelId(deviceModelId);
+
+    const response = await this.promisify<
+      pb.ListEndPointsRequest,
+      pb.ListEndPointsResponse
+    >(this.client.listEndPoints)(request);
+
+    const total = response.getTotalCount();
+    return total || response.getEndpointsList().length;
   }
 
   // ============================================================================

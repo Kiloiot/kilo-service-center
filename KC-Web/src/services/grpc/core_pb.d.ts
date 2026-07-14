@@ -92,6 +92,14 @@ export class EndPoint extends jspb.Message {
   getDeviceModelId(): string;
   setDeviceModelId(value: string): void;
 
+  getBlueprintId(): string;
+  setBlueprintId(value: string): void;
+
+  getBlueprintSnapshot(): Uint8Array | string;
+  getBlueprintSnapshot_asU8(): Uint8Array;
+  getBlueprintSnapshot_asB64(): string;
+  setBlueprintSnapshot(value: Uint8Array | string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): EndPoint.AsObject;
   static toObject(includeInstance: boolean, msg: EndPoint): EndPoint.AsObject;
@@ -128,6 +136,8 @@ export namespace EndPoint {
     typeEui: Uint8Array | string,
     carrierOffset: number,
     deviceModelId: string,
+    blueprintId: string,
+    blueprintSnapshot: Uint8Array | string,
   }
 }
 
@@ -615,6 +625,9 @@ export class ListEndPointsRequest extends jspb.Message {
   getStatusFilter(): string;
   setStatusFilter(value: string): void;
 
+  getDeviceModelId(): string;
+  setDeviceModelId(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListEndPointsRequest.AsObject;
   static toObject(includeInstance: boolean, msg: ListEndPointsRequest): ListEndPointsRequest.AsObject;
@@ -631,6 +644,7 @@ export namespace ListEndPointsRequest {
     pageSize: number,
     pageToken: string,
     statusFilter: string,
+    deviceModelId: string,
   }
 }
 
@@ -4557,6 +4571,9 @@ export class CreateManufacturerRequest extends jspb.Message {
   getContactEmail(): string;
   setContactEmail(value: string): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): CreateManufacturerRequest.AsObject;
   static toObject(includeInstance: boolean, msg: CreateManufacturerRequest): CreateManufacturerRequest.AsObject;
@@ -4574,6 +4591,7 @@ export namespace CreateManufacturerRequest {
     description: string,
     website: string,
     contactEmail: string,
+    isSystem: boolean,
   }
 }
 
@@ -4746,6 +4764,9 @@ export class ListManufacturersRequest extends jspb.Message {
   getPageToken(): string;
   setPageToken(value: string): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListManufacturersRequest.AsObject;
   static toObject(includeInstance: boolean, msg: ListManufacturersRequest): ListManufacturersRequest.AsObject;
@@ -4760,6 +4781,7 @@ export namespace ListManufacturersRequest {
   export type AsObject = {
     pageSize: number,
     pageToken: string,
+    isSystem: boolean,
   }
 }
 
@@ -4831,6 +4853,9 @@ export class Manufacturer extends jspb.Message {
   getModelCount(): number;
   setModelCount(value: number): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): Manufacturer.AsObject;
   static toObject(includeInstance: boolean, msg: Manufacturer): Manufacturer.AsObject;
@@ -4854,6 +4879,7 @@ export namespace Manufacturer {
     tenantId: string,
     isVerified: boolean,
     modelCount: number,
+    isSystem: boolean,
   }
 }
 
@@ -4873,6 +4899,9 @@ export class CreateDeviceModelRequest extends jspb.Message {
   getDescription(): string;
   setDescription(value: string): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): CreateDeviceModelRequest.AsObject;
   static toObject(includeInstance: boolean, msg: CreateDeviceModelRequest): CreateDeviceModelRequest.AsObject;
@@ -4890,6 +4919,7 @@ export namespace CreateDeviceModelRequest {
     code: string,
     typeEui: string,
     description: string,
+    isSystem: boolean,
   }
 }
 
@@ -5057,6 +5087,9 @@ export class ListDeviceModelsRequest extends jspb.Message {
   getPageToken(): string;
   setPageToken(value: string): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListDeviceModelsRequest.AsObject;
   static toObject(includeInstance: boolean, msg: ListDeviceModelsRequest): ListDeviceModelsRequest.AsObject;
@@ -5072,6 +5105,7 @@ export namespace ListDeviceModelsRequest {
     manufacturerId: string,
     pageSize: number,
     pageToken: string,
+    isSystem: boolean,
   }
 }
 
@@ -5143,6 +5177,9 @@ export class DeviceModel extends jspb.Message {
   getBlueprintCount(): number;
   setBlueprintCount(value: number): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): DeviceModel.AsObject;
   static toObject(includeInstance: boolean, msg: DeviceModel): DeviceModel.AsObject;
@@ -5166,6 +5203,7 @@ export namespace DeviceModel {
     tenantId: string,
     datasheetUrl: string,
     blueprintCount: number,
+    isSystem: boolean,
   }
 }
 
@@ -5190,6 +5228,9 @@ export class CreateBlueprintRequest extends jspb.Message {
   getIsDefault(): boolean;
   setIsDefault(value: boolean): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): CreateBlueprintRequest.AsObject;
   static toObject(includeInstance: boolean, msg: CreateBlueprintRequest): CreateBlueprintRequest.AsObject;
@@ -5208,6 +5249,7 @@ export namespace CreateBlueprintRequest {
     description: string,
     decoderScript: Uint8Array | string,
     isDefault: boolean,
+    isSystem: boolean,
   }
 }
 
@@ -5385,6 +5427,9 @@ export class ListBlueprintsRequest extends jspb.Message {
   getPageToken(): string;
   setPageToken(value: string): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListBlueprintsRequest.AsObject;
   static toObject(includeInstance: boolean, msg: ListBlueprintsRequest): ListBlueprintsRequest.AsObject;
@@ -5400,6 +5445,7 @@ export namespace ListBlueprintsRequest {
     deviceModelId: string,
     pageSize: number,
     pageToken: string,
+    isSystem: boolean,
   }
 }
 
@@ -5543,6 +5589,60 @@ export namespace SubmitBlueprintToRegistryResponse {
   }
 }
 
+export class BulkAssignBlueprintRequest extends jspb.Message {
+  getBlueprintId(): string;
+  setBlueprintId(value: string): void;
+
+  getDeviceModelId(): string;
+  setDeviceModelId(value: string): void;
+
+  clearEpEuisList(): void;
+  getEpEuisList(): Array<string>;
+  setEpEuisList(value: Array<string>): void;
+  addEpEuis(value: string, index?: number): string;
+
+  getSetAsDefault(): boolean;
+  setSetAsDefault(value: boolean): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): BulkAssignBlueprintRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: BulkAssignBlueprintRequest): BulkAssignBlueprintRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: BulkAssignBlueprintRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): BulkAssignBlueprintRequest;
+  static deserializeBinaryFromReader(message: BulkAssignBlueprintRequest, reader: jspb.BinaryReader): BulkAssignBlueprintRequest;
+}
+
+export namespace BulkAssignBlueprintRequest {
+  export type AsObject = {
+    blueprintId: string,
+    deviceModelId: string,
+    epEuisList: Array<string>,
+    setAsDefault: boolean,
+  }
+}
+
+export class BulkAssignBlueprintResponse extends jspb.Message {
+  getAffectedCount(): number;
+  setAffectedCount(value: number): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): BulkAssignBlueprintResponse.AsObject;
+  static toObject(includeInstance: boolean, msg: BulkAssignBlueprintResponse): BulkAssignBlueprintResponse.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: BulkAssignBlueprintResponse, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): BulkAssignBlueprintResponse;
+  static deserializeBinaryFromReader(message: BulkAssignBlueprintResponse, reader: jspb.BinaryReader): BulkAssignBlueprintResponse;
+}
+
+export namespace BulkAssignBlueprintResponse {
+  export type AsObject = {
+    affectedCount: number,
+  }
+}
+
 export class Blueprint extends jspb.Message {
   getId(): string;
   setId(value: string): void;
@@ -5597,6 +5697,9 @@ export class Blueprint extends jspb.Message {
   getRegistryPrUrl(): string;
   setRegistryPrUrl(value: string): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): Blueprint.AsObject;
   static toObject(includeInstance: boolean, msg: Blueprint): Blueprint.AsObject;
@@ -5624,6 +5727,7 @@ export namespace Blueprint {
     registryCommitSha: string,
     registryVerified: boolean,
     registryPrUrl: string,
+    isSystem: boolean,
   }
 }
 
@@ -5642,6 +5746,9 @@ export class CreateDeviceModelWithBlueprintRequest extends jspb.Message {
   getDecoderScript_asB64(): string;
   setDecoderScript(value: Uint8Array | string): void;
 
+  getIsSystem(): boolean;
+  setIsSystem(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): CreateDeviceModelWithBlueprintRequest.AsObject;
   static toObject(includeInstance: boolean, msg: CreateDeviceModelWithBlueprintRequest): CreateDeviceModelWithBlueprintRequest.AsObject;
@@ -5658,6 +5765,7 @@ export namespace CreateDeviceModelWithBlueprintRequest {
     name: string,
     version: string,
     decoderScript: Uint8Array | string,
+    isSystem: boolean,
   }
 }
 
@@ -5690,8 +5798,17 @@ export namespace CreateDeviceModelWithBlueprintResponse {
 }
 
 export class DecodePreviewRequest extends jspb.Message {
+  hasBlueprintId(): boolean;
+  clearBlueprintId(): void;
   getBlueprintId(): string;
   setBlueprintId(value: string): void;
+
+  hasSpecJson(): boolean;
+  clearSpecJson(): void;
+  getSpecJson(): Uint8Array | string;
+  getSpecJson_asU8(): Uint8Array;
+  getSpecJson_asB64(): string;
+  setSpecJson(value: Uint8Array | string): void;
 
   getPayload(): Uint8Array | string;
   getPayload_asU8(): Uint8Array;
@@ -5701,6 +5818,7 @@ export class DecodePreviewRequest extends jspb.Message {
   getFormatId(): number;
   setFormatId(value: number): void;
 
+  getSourceCase(): DecodePreviewRequest.SourceCase;
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): DecodePreviewRequest.AsObject;
   static toObject(includeInstance: boolean, msg: DecodePreviewRequest): DecodePreviewRequest.AsObject;
@@ -5714,8 +5832,15 @@ export class DecodePreviewRequest extends jspb.Message {
 export namespace DecodePreviewRequest {
   export type AsObject = {
     blueprintId: string,
+    specJson: Uint8Array | string,
     payload: Uint8Array | string,
     formatId: number,
+  }
+
+  export enum SourceCase {
+    SOURCE_NOT_SET = 0,
+    BLUEPRINT_ID = 1,
+    SPEC_JSON = 4,
   }
 }
 

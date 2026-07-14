@@ -9,6 +9,8 @@
  * queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all })
  */
 
+import type { BlueprintScope } from "@api-types/api";
+
 // Filter types for query key generation
 export interface BaseStationFilters {
   search?: string;
@@ -191,18 +193,40 @@ export const queryKeys = {
   },
 
   // Blueprints
+  // Scope appended only when provided, so a scope-less invalidation stays a prefix of both scoped caches.
   blueprints: {
     all: ["blueprints"] as const,
-    manufacturers: () =>
-      [...queryKeys.blueprints.all, "manufacturers"] as const,
-    deviceModels: (manufacturerId: string) =>
-      [...queryKeys.blueprints.all, "deviceModels", manufacturerId] as const,
-    list: (deviceModelId: string) =>
-      [...queryKeys.blueprints.all, "list", deviceModelId] as const,
+    manufacturers: (scope?: BlueprintScope) =>
+      scope
+        ? ([...queryKeys.blueprints.all, "manufacturers", scope] as const)
+        : ([...queryKeys.blueprints.all, "manufacturers"] as const),
+    deviceModels: (manufacturerId: string, scope?: BlueprintScope) =>
+      scope
+        ? ([
+            ...queryKeys.blueprints.all,
+            "deviceModels",
+            manufacturerId,
+            scope,
+          ] as const)
+        : ([
+            ...queryKeys.blueprints.all,
+            "deviceModels",
+            manufacturerId,
+          ] as const),
+    list: (deviceModelId: string, scope?: BlueprintScope) =>
+      scope
+        ? ([...queryKeys.blueprints.all, "list", deviceModelId, scope] as const)
+        : ([...queryKeys.blueprints.all, "list", deviceModelId] as const),
     detail: (id: string) =>
       [...queryKeys.blueprints.all, "detail", id] as const,
     deviceModelDetail: (id: string) =>
       [...queryKeys.blueprints.all, "deviceModel", id] as const,
+    modelSnapshotCount: (deviceModelId: string) =>
+      [
+        ...queryKeys.blueprints.all,
+        "modelSnapshotCount",
+        deviceModelId,
+      ] as const,
   },
 } as const;
 

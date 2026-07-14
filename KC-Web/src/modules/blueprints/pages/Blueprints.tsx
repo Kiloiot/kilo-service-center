@@ -9,6 +9,7 @@ import React, { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import type {
+  BlueprintScope,
   CreateManufacturerRequest,
   DeviceModelUI,
   ManufacturerUI,
@@ -19,6 +20,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Collapse,
@@ -27,6 +29,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   List,
   ListItem,
@@ -34,6 +37,8 @@ import {
   ListItemIcon,
   ListItemText,
   Paper,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -41,6 +46,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@services/api";
+import { useCapabilities } from "@hooks/useCapabilities";
 import { formatTypeEUI } from "@utils/formatters";
 import { ROUTES } from "@constants/app";
 import { BLUEPRINT_LABELS } from "@constants/messages";
@@ -55,7 +61,9 @@ import {
   ExpandMore,
 } from "@theme/icons";
 
+import BulkMigrateDialog from "../components/BulkMigrateDialog";
 import ManufacturerFormFields from "../components/ManufacturerFormFields";
+import { unwrapBlueprintSpec } from "../utils/spec";
 
 /**
  * Blueprints page component
@@ -64,6 +72,11 @@ export const Blueprints: React.FC = () => {
   const navigate = useNavigate();
   const { mfrId, modelId } = useParams<{ mfrId?: string; modelId?: string }>();
   const queryClient = useQueryClient();
+  const { isServerAdmin } = useCapabilities();
+
+  const [scope, setScope] = useState<BlueprintScope>("custom");
+  // Creating in the System catalog is admin-only.
+  const canCreateInScope = scope === "custom" || isServerAdmin;
 
   // State for expanded manufacturers
   const [expandedMfrs, setExpandedMfrs] = useState<Set<string>>(new Set());
@@ -92,8 +105,8 @@ export const Blueprints: React.FC = () => {
     isLoading: mfrsLoading,
     error: mfrsError,
   } = useQuery({
-    queryKey: queryKeys.blueprints.manufacturers(),
-    queryFn: () => api.getManufacturers(),
+    queryKey: queryKeys.blueprints.manufacturers(scope),
+    queryFn: () => api.getManufacturers(scope),
   });
 
   const { data: routeModel } = useQuery({
@@ -160,9 +173,9 @@ export const Blueprints: React.FC = () => {
     navigate(ROUTES.BLUEPRINT_DETAIL.replace(":id", blueprintId));
   };
 
-  // Navigate to add model page
+  // Carry active scope so the form creates in the same tab.
   const handleAddModel = () => {
-    navigate(ROUTES.BLUEPRINT_MODEL_NEW);
+    navigate(`${ROUTES.BLUEPRINT_MODEL_NEW}?scope=${scope}`);
   };
 
   // Navigate to model detail to add a decoder (blueprint) to an existing model
@@ -182,14 +195,26 @@ export const Blueprints: React.FC = () => {
         }}
       >
         <Typography variant="h4">{BLUEPRINT_LABELS.PAGE_TITLE}</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setShowMfrDialog(true)}
-        >
-          {BLUEPRINT_LABELS.ADD_MANUFACTURER}
-        </Button>
+        {canCreateInScope && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setShowMfrDialog(true)}
+          >
+            {BLUEPRINT_LABELS.ADD_MANUFACTURER}
+          </Button>
+        )}
       </Box>
+
+      <Tabs
+        value={scope}
+        onChange={(_, value: BlueprintScope) => setScope(value)}
+        aria-label={BLUEPRINT_LABELS.SCOPE_TABS_ARIA}
+        sx={{ mb: 2 }}
+      >
+        <Tab value="custom" label={BLUEPRINT_LABELS.SCOPE_CUSTOM} />
+        <Tab value="system" label={BLUEPRINT_LABELS.SCOPE_SYSTEM} />
+      </Tabs>
 
       {/* Error display */}
       {mfrsError && (
@@ -222,6 +247,8 @@ export const Blueprints: React.FC = () => {
               <ManufacturerItem
                 key={mfr.id}
                 manufacturer={mfr}
+                scope={scope}
+                isServerAdmin={isServerAdmin}
                 isExpanded={expandedMfrs.has(mfr.id)}
                 onToggle={() => toggleMfr(mfr.id)}
                 expandedModels={expandedModels}
@@ -244,6 +271,8 @@ export const Blueprints: React.FC = () => {
       {/* Add Manufacturer Dialog */}
       <AddManufacturerDialog
         open={showMfrDialog}
+        scope={scope}
+        isServerAdmin={isServerAdmin}
         onClose={() => setShowMfrDialog(false)}
         onSuccess={() => {
           setShowMfrDialog(false);
@@ -340,6 +369,8 @@ export const Blueprints: React.FC = () => {
  */
 interface ManufacturerItemProps {
   manufacturer: ManufacturerUI;
+  scope: BlueprintScope;
+  isServerAdmin: boolean;
   isExpanded: boolean;
   onToggle: () => void;
   expandedModels: Set<string>;
@@ -355,6 +386,8 @@ interface ManufacturerItemProps {
 
 const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
   manufacturer,
+  scope,
+  isServerAdmin,
   isExpanded,
   onToggle,
   expandedModels,
@@ -367,10 +400,13 @@ const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
   onDeleteModel,
   onAddDecoder,
 }) => {
+  // System rows are mutable only by server admins; Custom rows by their tenant.
+  const canMutate = manufacturer.isSystem ? isServerAdmin : true;
+
   // Fetch models when expanded
   const { data: models, isLoading: modelsLoading } = useQuery({
-    queryKey: queryKeys.blueprints.deviceModels(manufacturer.id),
-    queryFn: () => api.getDeviceModels(manufacturer.id),
+    queryKey: queryKeys.blueprints.deviceModels(manufacturer.id, scope),
+    queryFn: () => api.getDeviceModels(manufacturer.id, scope),
     enabled: isExpanded,
   });
 
@@ -383,39 +419,54 @@ const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
             <IconButton size="small" onClick={onToggle}>
               {isExpanded ? <ExpandLess /> : <ExpandMore />}
             </IconButton>
-            <Tooltip title={BLUEPRINT_LABELS.ACTION_EDIT}>
-              <IconButton
+            {canMutate && (
+              <>
+                <Tooltip title={BLUEPRINT_LABELS.ACTION_EDIT}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit();
+                    }}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={BLUEPRINT_LABELS.ACTION_DELETE}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={BLUEPRINT_LABELS.ADD_MODEL}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddModel();
+                    }}
+                  >
+                    <AddIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+            {manufacturer.isSystem && (
+              <Chip
+                label={BLUEPRINT_LABELS.BADGE_SYSTEM}
                 size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit();
+                color="info"
+                sx={{
+                  textDecoration: "none",
+                  "& .MuiChip-label": { fontFamily: "inherit" },
                 }}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={BLUEPRINT_LABELS.ACTION_DELETE}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={BLUEPRINT_LABELS.ADD_MODEL}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAddModel();
-                }}
-              >
-                <AddIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+              />
+            )}
             {manufacturer.isVerified && (
               <Chip
                 label={BLUEPRINT_LABELS.BADGE_VERIFIED}
@@ -460,6 +511,8 @@ const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
             <DeviceModelItem
               key={model.id}
               model={model}
+              scope={scope}
+              isServerAdmin={isServerAdmin}
               isExpanded={expandedModels.has(model.id)}
               onToggle={() => onToggleModel(model.id)}
               onBlueprintClick={onBlueprintClick}
@@ -487,6 +540,8 @@ const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
  */
 interface DeviceModelItemProps {
   model: DeviceModelUI;
+  scope: BlueprintScope;
+  isServerAdmin: boolean;
   isExpanded: boolean;
   onToggle: () => void;
   onBlueprintClick: (id: string) => void;
@@ -497,6 +552,8 @@ interface DeviceModelItemProps {
 
 const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
   model,
+  scope,
+  isServerAdmin,
   isExpanded,
   onToggle,
   onBlueprintClick,
@@ -504,10 +561,13 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
   onDelete,
   onAddDecoder,
 }) => {
+  const canMutate = model.isSystem ? isServerAdmin : true;
+  const [showMigrate, setShowMigrate] = useState(false);
+
   // Fetch blueprints when expanded
   const { data: blueprints, isLoading: blueprintsLoading } = useQuery({
-    queryKey: queryKeys.blueprints.list(model.id),
-    queryFn: () => api.getBlueprints(model.id),
+    queryKey: queryKeys.blueprints.list(model.id, scope),
+    queryFn: () => api.getBlueprints(model.id, scope),
     enabled: isExpanded,
   });
 
@@ -521,39 +581,63 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
             <IconButton size="small" onClick={onToggle}>
               {isExpanded ? <ExpandLess /> : <ExpandMore />}
             </IconButton>
-            <Tooltip title={BLUEPRINT_LABELS.ADD_DECODER}>
-              <IconButton
+            <Button
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMigrate(true);
+              }}
+            >
+              {BLUEPRINT_LABELS.MIGRATE_DEVICES}
+            </Button>
+            {canMutate && (
+              <>
+                <Tooltip title={BLUEPRINT_LABELS.ADD_DECODER}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddDecoder();
+                    }}
+                  >
+                    <AddIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={BLUEPRINT_LABELS.ACTION_EDIT}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit();
+                    }}
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={BLUEPRINT_LABELS.ACTION_DELETE}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+            {model.isSystem && (
+              <Chip
+                label={BLUEPRINT_LABELS.BADGE_SYSTEM}
                 size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAddDecoder();
+                color="info"
+                sx={{
+                  textDecoration: "none",
+                  "& .MuiChip-label": { fontFamily: "inherit" },
                 }}
-              >
-                <AddIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={BLUEPRINT_LABELS.ACTION_EDIT}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={BLUEPRINT_LABELS.ACTION_DELETE}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+              />
+            )}
             <Chip
               label={`${blueprints?.length ?? model.blueprintCount} ${BLUEPRINT_LABELS.COL_BLUEPRINTS}`}
               size="small"
@@ -589,16 +673,25 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
             <ListItem key={bp.id} disablePadding sx={{ pl: 8 }}>
               <ListItemButton onClick={() => onBlueprintClick(bp.id)}>
                 <ListItemText
-                  primary={`v${bp.version}`}
+                  primary={bp.version}
                   secondary={formatTypeEUI(bp.typeEui)}
                 />
-                {bp.isDefault && (
-                  <Chip
-                    label={BLUEPRINT_LABELS.BADGE_DEFAULT}
-                    size="small"
-                    color="primary"
-                  />
-                )}
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  {bp.isSystem && (
+                    <Chip
+                      label={BLUEPRINT_LABELS.BADGE_SYSTEM}
+                      size="small"
+                      color="info"
+                    />
+                  )}
+                  {bp.isDefault && (
+                    <Chip
+                      label={BLUEPRINT_LABELS.BADGE_DEFAULT}
+                      size="small"
+                      color="primary"
+                    />
+                  )}
+                </Box>
               </ListItemButton>
             </ListItem>
           ))}
@@ -612,6 +705,14 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
           )}
         </List>
       </Collapse>
+
+      <BulkMigrateDialog
+        open={showMigrate}
+        deviceModelId={model.id}
+        scope={scope}
+        modelIsSystem={model.isSystem}
+        onClose={() => setShowMigrate(false)}
+      />
     </>
   );
 };
@@ -621,25 +722,38 @@ const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
  */
 interface AddManufacturerDialogProps {
   open: boolean;
+  scope: BlueprintScope;
+  isServerAdmin: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 const AddManufacturerDialog: React.FC<AddManufacturerDialogProps> = ({
   open,
+  scope,
+  isServerAdmin,
   onClose,
   onSuccess,
 }) => {
   const [formData, setFormData] = useState<CreateManufacturerRequest>({
     name: "",
+    isSystem: scope === "system",
   });
   const [error, setError] = useState<string | null>(null);
+
+  // Default the System toggle to match the active scope tab.
+  React.useEffect(() => {
+    if (open) {
+      setFormData({ name: "", isSystem: scope === "system" });
+      setError(null);
+    }
+  }, [open, scope]);
 
   const mutation = useMutation({
     mutationFn: (data: CreateManufacturerRequest) =>
       api.createManufacturer(data),
     onSuccess: () => {
-      setFormData({ name: "" });
+      setFormData({ name: "", isSystem: scope === "system" });
       setError(null);
       onSuccess();
     },
@@ -673,6 +787,16 @@ const AddManufacturerDialog: React.FC<AddManufacturerDialogProps> = ({
             setFormData({ ...formData, website: value })
           }
         />
+        {isServerAdmin && (
+          <FormControlLabel
+            sx={{ mt: 1 }}
+            control={
+              // Locked so a Custom-tab create can't silently produce a System row.
+              <Checkbox checked={!!formData.isSystem} disabled />
+            }
+            label={BLUEPRINT_LABELS.LABEL_IS_SYSTEM}
+          />
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{BLUEPRINT_LABELS.ACTION_CANCEL}</Button>
@@ -916,7 +1040,7 @@ const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({
 
       let parsedSpec: object;
       try {
-        parsedSpec = JSON.parse(specJson);
+        parsedSpec = unwrapBlueprintSpec(JSON.parse(specJson)) as object;
       } catch {
         throw new Error(BLUEPRINT_LABELS.ERR_INVALID_JSON);
       }
@@ -924,6 +1048,8 @@ const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({
       await api.createBlueprint(model.id, {
         version: version.trim(),
         specJson: parsedSpec,
+        // Child ownership mirrors the parent model (System vs Custom).
+        isSystem: model.isSystem,
       });
     },
     onSuccess: () => {

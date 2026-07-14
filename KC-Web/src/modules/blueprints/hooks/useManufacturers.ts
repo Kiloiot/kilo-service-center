@@ -6,6 +6,7 @@
  */
 
 import type {
+  BlueprintScope,
   CreateManufacturerRequest,
   UpdateManufacturerRequest,
 } from "@api-types/api";
@@ -17,10 +18,10 @@ import { queryKeys } from "@config/query-keys";
 /**
  * Hook to fetch all manufacturers
  */
-export function useManufacturers() {
+export function useManufacturers(scope?: BlueprintScope) {
   return useQuery({
-    queryKey: queryKeys.blueprints.manufacturers(),
-    queryFn: () => api.getManufacturers(),
+    queryKey: queryKeys.blueprints.manufacturers(scope),
+    queryFn: () => api.getManufacturers(scope),
   });
 }
 

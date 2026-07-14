@@ -662,6 +662,15 @@ type CoreServiceSubmitBlueprintToRegistry = {
   readonly responseType: typeof core_pb.SubmitBlueprintToRegistryResponse;
 };
 
+type CoreServiceBulkAssignBlueprint = {
+  readonly methodName: string;
+  readonly service: typeof CoreService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.BulkAssignBlueprintRequest;
+  readonly responseType: typeof core_pb.BulkAssignBlueprintResponse;
+};
+
 type CoreServiceCreateDeviceModelWithBlueprint = {
   readonly methodName: string;
   readonly service: typeof CoreService;
@@ -899,6 +908,7 @@ export class CoreService {
   static readonly ListBlueprints: CoreServiceListBlueprints;
   static readonly SetDefaultBlueprint: CoreServiceSetDefaultBlueprint;
   static readonly SubmitBlueprintToRegistry: CoreServiceSubmitBlueprintToRegistry;
+  static readonly BulkAssignBlueprint: CoreServiceBulkAssignBlueprint;
   static readonly CreateDeviceModelWithBlueprint: CoreServiceCreateDeviceModelWithBlueprint;
   static readonly DecodePreview: CoreServiceDecodePreview;
   static readonly ListMessages: CoreServiceListMessages;
@@ -1599,6 +1609,15 @@ export class CoreServiceClient {
   submitBlueprintToRegistry(
     requestMessage: core_pb.SubmitBlueprintToRegistryRequest,
     callback: (error: ServiceError|null, responseMessage: core_pb.SubmitBlueprintToRegistryResponse|null) => void
+  ): UnaryResponse;
+  bulkAssignBlueprint(
+    requestMessage: core_pb.BulkAssignBlueprintRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.BulkAssignBlueprintResponse|null) => void
+  ): UnaryResponse;
+  bulkAssignBlueprint(
+    requestMessage: core_pb.BulkAssignBlueprintRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.BulkAssignBlueprintResponse|null) => void
   ): UnaryResponse;
   createDeviceModelWithBlueprint(
     requestMessage: core_pb.CreateDeviceModelWithBlueprintRequest,

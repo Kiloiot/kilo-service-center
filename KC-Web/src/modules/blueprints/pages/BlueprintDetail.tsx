@@ -31,6 +31,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@services/api";
+import { useCapabilities } from "@hooks/useCapabilities";
 import {
   formatDateTime,
   formatDecodedPayload,
@@ -47,7 +48,9 @@ import {
   SaveIcon,
 } from "@theme/icons";
 
+import BulkMigrateDialog from "../components/BulkMigrateDialog";
 import { RegistrySubmitDialog } from "../components/RegistrySubmitDialog";
+import { unwrapBlueprintSpec } from "../utils/spec";
 
 /**
  * Returns the parsed blueprint spec object when text is valid JSON, or throws
@@ -65,11 +68,12 @@ function validateBlueprintSpecJson(text: string): object {
   if (parsed === null || typeof parsed !== "object") {
     throw new Error(BLUEPRINT_LABELS.ERR_INVALID_JSON);
   }
-  return parsed;
+  return unwrapBlueprintSpec(parsed) as object;
 }
 
 interface BlueprintDetailHeaderProps {
   blueprint: BlueprintUI;
+  canMutate: boolean;
   isEditing: boolean;
   isSavePending: boolean;
   isSetDefaultPending: boolean;
@@ -78,10 +82,12 @@ interface BlueprintDetailHeaderProps {
   onCancelEdit: () => void;
   onSetDefault: () => void;
   onSubmitToRegistry: () => void;
+  onMigrate: () => void;
 }
 
 const BlueprintDetailHeader: React.FC<BlueprintDetailHeaderProps> = ({
   blueprint,
+  canMutate,
   isEditing,
   isSavePending,
   isSetDefaultPending,
@@ -90,6 +96,7 @@ const BlueprintDetailHeader: React.FC<BlueprintDetailHeaderProps> = ({
   onCancelEdit,
   onSetDefault,
   onSubmitToRegistry,
+  onMigrate,
 }) => {
   const navigate = useNavigate();
   return (
@@ -101,6 +108,9 @@ const BlueprintDetailHeader: React.FC<BlueprintDetailHeaderProps> = ({
         {BLUEPRINT_LABELS.BLUEPRINT_VERSION_PREFIX}
         {blueprint.version}
       </Typography>
+      {blueprint.isSystem && (
+        <Chip label={BLUEPRINT_LABELS.BADGE_SYSTEM} color="info" />
+      )}
       {blueprint.isDefault && (
         <Chip label={BLUEPRINT_LABELS.BADGE_DEFAULT} color="primary" />
       )}
@@ -110,10 +120,15 @@ const BlueprintDetailHeader: React.FC<BlueprintDetailHeaderProps> = ({
       <Box sx={{ flex: 1 }} />
       {!isEditing && (
         <>
-          <Button startIcon={<EditIcon />} onClick={onStartEdit}>
-            {BLUEPRINT_LABELS.ACTION_EDIT}
+          <Button onClick={onMigrate}>
+            {BLUEPRINT_LABELS.MIGRATE_DEVICES}
           </Button>
-          {!blueprint.isDefault && (
+          {canMutate && (
+            <Button startIcon={<EditIcon />} onClick={onStartEdit}>
+              {BLUEPRINT_LABELS.ACTION_EDIT}
+            </Button>
+          )}
+          {canMutate && !blueprint.isDefault && (
             <Button
               variant="outlined"
               onClick={onSetDefault}
@@ -378,7 +393,9 @@ export const BlueprintDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const { isServerAdmin } = useCapabilities();
 
+  const [showMigrate, setShowMigrate] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedSpec, setEditedSpec] = useState<string>("");
   const [editedVersion, setEditedVersion] = useState<string>("");
@@ -508,6 +525,7 @@ export const BlueprintDetail: React.FC = () => {
     <Box sx={{ p: 3 }}>
       <BlueprintDetailHeader
         blueprint={blueprint}
+        canMutate={blueprint.isSystem ? isServerAdmin : true}
         isEditing={isEditing}
         isSavePending={updateMutation.isPending}
         isSetDefaultPending={setDefaultMutation.isPending}
@@ -516,6 +534,7 @@ export const BlueprintDetail: React.FC = () => {
         onCancelEdit={handleCancelEdit}
         onSetDefault={() => setDefaultMutation.mutate()}
         onSubmitToRegistry={() => setShowRegistryDialog(true)}
+        onMigrate={() => setShowMigrate(true)}
       />
 
       {editError && (
@@ -568,6 +587,15 @@ export const BlueprintDetail: React.FC = () => {
             });
           }
         }}
+      />
+
+      <BulkMigrateDialog
+        open={showMigrate}
+        deviceModelId={blueprint.deviceModelId}
+        scope={blueprint.isSystem ? "system" : "custom"}
+        modelIsSystem={blueprint.isSystem}
+        initialBlueprintId={blueprint.id}
+        onClose={() => setShowMigrate(false)}
       />
     </Box>
   );
