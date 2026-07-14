@@ -283,7 +283,7 @@ func TestDecodePreview_MissingPayload(t *testing.T) {
 	}
 
 	req := &pb.DecodePreviewRequest{
-		BlueprintId: uuid.New().String(),
+		Source:      &pb.DecodePreviewRequest_BlueprintId{BlueprintId: uuid.New().String()},
 		Payload:     nil,
 		FormatId:    0,
 	}
@@ -311,7 +311,7 @@ func TestDecodePreview_InvalidFormatID(t *testing.T) {
 	}
 
 	req := &pb.DecodePreviewRequest{
-		BlueprintId: uuid.New().String(),
+		Source:      &pb.DecodePreviewRequest_BlueprintId{BlueprintId: uuid.New().String()},
 		Payload:     []byte{0x01, 0x02},
 		FormatId:    256,
 	}
@@ -329,6 +329,47 @@ func TestDecodePreview_InvalidFormatID(t *testing.T) {
 	expectedCode := grpcerrors.GetGRPCCode(grpcerrors.ErrTokenPreviewInvalidFormatID)
 	if st.Code() != expectedCode {
 		t.Errorf("code mismatch: expected %v, got %v", expectedCode, st.Code())
+	}
+}
+
+func TestDecodePreview_NoSource(t *testing.T) {
+	ctx := testutil.TestContext()
+	svc := &CoreService{blueprintSvc: &blueprints.Service{}}
+
+	req := &pb.DecodePreviewRequest{Payload: []byte{0x01}}
+
+	_, err := svc.DecodePreview(ctx, req)
+	if err == nil {
+		t.Fatalf("expected error when no decode source is set")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("code mismatch: expected %v, got %v", codes.InvalidArgument, st.Code())
+	}
+}
+
+func TestDecodePreview_EmptyInlineSpec(t *testing.T) {
+	ctx := testutil.TestContext()
+	svc := &CoreService{blueprintSvc: &blueprints.Service{}}
+
+	req := &pb.DecodePreviewRequest{
+		Source:  &pb.DecodePreviewRequest_SpecJson{SpecJson: nil},
+		Payload: []byte{0x01},
+	}
+
+	_, err := svc.DecodePreview(ctx, req)
+	if err == nil {
+		t.Fatalf("expected error for empty inline spec")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("code mismatch: expected %v, got %v", codes.InvalidArgument, st.Code())
 	}
 }
 

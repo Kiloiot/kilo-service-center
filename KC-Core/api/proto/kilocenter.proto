@@ -171,6 +171,7 @@ service KiloCenterService {
   rpc ListBlueprints(ListBlueprintsRequest) returns (ListBlueprintsResponse);
   rpc SetDefaultBlueprint(SetDefaultBlueprintRequest) returns (SetDefaultBlueprintResponse);
   rpc SubmitBlueprintToRegistry(SubmitBlueprintToRegistryRequest) returns (SubmitBlueprintToRegistryResponse);
+  rpc BulkAssignBlueprint(BulkAssignBlueprintRequest) returns (BulkAssignBlueprintResponse);
 
   // Composite: Create device model + default blueprint atomically
   rpc CreateDeviceModelWithBlueprint(CreateDeviceModelWithBlueprintRequest) returns (CreateDeviceModelWithBlueprintResponse);

@@ -93,6 +93,7 @@ const (
 	CoreService_ListBlueprints_FullMethodName                 = "/kilocenter.api.v1.CoreService/ListBlueprints"
 	CoreService_SetDefaultBlueprint_FullMethodName            = "/kilocenter.api.v1.CoreService/SetDefaultBlueprint"
 	CoreService_SubmitBlueprintToRegistry_FullMethodName      = "/kilocenter.api.v1.CoreService/SubmitBlueprintToRegistry"
+	CoreService_BulkAssignBlueprint_FullMethodName            = "/kilocenter.api.v1.CoreService/BulkAssignBlueprint"
 	CoreService_CreateDeviceModelWithBlueprint_FullMethodName = "/kilocenter.api.v1.CoreService/CreateDeviceModelWithBlueprint"
 	CoreService_DecodePreview_FullMethodName                  = "/kilocenter.api.v1.CoreService/DecodePreview"
 	CoreService_ListMessages_FullMethodName                   = "/kilocenter.api.v1.CoreService/ListMessages"
@@ -215,6 +216,7 @@ type CoreServiceClient interface {
 	ListBlueprints(ctx context.Context, in *ListBlueprintsRequest, opts ...grpc.CallOption) (*ListBlueprintsResponse, error)
 	SetDefaultBlueprint(ctx context.Context, in *SetDefaultBlueprintRequest, opts ...grpc.CallOption) (*SetDefaultBlueprintResponse, error)
 	SubmitBlueprintToRegistry(ctx context.Context, in *SubmitBlueprintToRegistryRequest, opts ...grpc.CallOption) (*SubmitBlueprintToRegistryResponse, error)
+	BulkAssignBlueprint(ctx context.Context, in *BulkAssignBlueprintRequest, opts ...grpc.CallOption) (*BulkAssignBlueprintResponse, error)
 	// Composite: Create device model + default blueprint atomically
 	CreateDeviceModelWithBlueprint(ctx context.Context, in *CreateDeviceModelWithBlueprintRequest, opts ...grpc.CallOption) (*CreateDeviceModelWithBlueprintResponse, error)
 	// Blueprint decode preview
@@ -990,6 +992,16 @@ func (c *coreServiceClient) SubmitBlueprintToRegistry(ctx context.Context, in *S
 	return out, nil
 }
 
+func (c *coreServiceClient) BulkAssignBlueprint(ctx context.Context, in *BulkAssignBlueprintRequest, opts ...grpc.CallOption) (*BulkAssignBlueprintResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BulkAssignBlueprintResponse)
+	err := c.cc.Invoke(ctx, CoreService_BulkAssignBlueprint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *coreServiceClient) CreateDeviceModelWithBlueprint(ctx context.Context, in *CreateDeviceModelWithBlueprintRequest, opts ...grpc.CallOption) (*CreateDeviceModelWithBlueprintResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateDeviceModelWithBlueprintResponse)
@@ -1290,6 +1302,7 @@ type CoreServiceServer interface {
 	ListBlueprints(context.Context, *ListBlueprintsRequest) (*ListBlueprintsResponse, error)
 	SetDefaultBlueprint(context.Context, *SetDefaultBlueprintRequest) (*SetDefaultBlueprintResponse, error)
 	SubmitBlueprintToRegistry(context.Context, *SubmitBlueprintToRegistryRequest) (*SubmitBlueprintToRegistryResponse, error)
+	BulkAssignBlueprint(context.Context, *BulkAssignBlueprintRequest) (*BulkAssignBlueprintResponse, error)
 	// Composite: Create device model + default blueprint atomically
 	CreateDeviceModelWithBlueprint(context.Context, *CreateDeviceModelWithBlueprintRequest) (*CreateDeviceModelWithBlueprintResponse, error)
 	// Blueprint decode preview
@@ -1543,6 +1556,9 @@ func (UnimplementedCoreServiceServer) SetDefaultBlueprint(context.Context, *SetD
 }
 func (UnimplementedCoreServiceServer) SubmitBlueprintToRegistry(context.Context, *SubmitBlueprintToRegistryRequest) (*SubmitBlueprintToRegistryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitBlueprintToRegistry not implemented")
+}
+func (UnimplementedCoreServiceServer) BulkAssignBlueprint(context.Context, *BulkAssignBlueprintRequest) (*BulkAssignBlueprintResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BulkAssignBlueprint not implemented")
 }
 func (UnimplementedCoreServiceServer) CreateDeviceModelWithBlueprint(context.Context, *CreateDeviceModelWithBlueprintRequest) (*CreateDeviceModelWithBlueprintResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateDeviceModelWithBlueprint not implemented")
@@ -2925,6 +2941,24 @@ func _CoreService_SubmitBlueprintToRegistry_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CoreService_BulkAssignBlueprint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BulkAssignBlueprintRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).BulkAssignBlueprint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_BulkAssignBlueprint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).BulkAssignBlueprint(ctx, req.(*BulkAssignBlueprintRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CoreService_CreateDeviceModelWithBlueprint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateDeviceModelWithBlueprintRequest)
 	if err := dec(in); err != nil {
@@ -3529,6 +3563,10 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitBlueprintToRegistry",
 			Handler:    _CoreService_SubmitBlueprintToRegistry_Handler,
+		},
+		{
+			MethodName: "BulkAssignBlueprint",
+			Handler:    _CoreService_BulkAssignBlueprint_Handler,
 		},
 		{
 			MethodName: "CreateDeviceModelWithBlueprint",

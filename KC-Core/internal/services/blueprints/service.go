@@ -30,6 +30,8 @@ var (
 	ErrDeviceModelNotFound  = errors.New("device model not found")
 	ErrBlueprintNotFound    = errors.New("blueprint not found")
 	ErrTenantIDRequired     = errors.New("tenant ID required")
+	// ErrOwnershipMismatch enforces a child's is_system to equal its parent's, else the per-model default index and model-code uniqueness break.
+	ErrOwnershipMismatch = errors.New("ownership mismatch: is_system must match parent")
 	ErrInvalidTypeEUIFormat = errors.New("invalid type EUI format")
 	ErrMissingTypeEUI       = errors.New("blueprint spec is missing required typeEui field")
 	ErrSlugGenerationFailed = errors.New("slug generation exhausted all suffix attempts")
@@ -204,6 +206,7 @@ func (s *Service) CreateManufacturer(ctx context.Context, req *grpcservices.Manu
 
 	params := &models.ManufacturerCreateParams{
 		TenantID: tenantID,
+		IsSystem: req.IsSystem,
 		Name:     req.Name,
 		Website:  website,
 	}
@@ -243,7 +246,7 @@ func (s *Service) UpdateManufacturer(ctx context.Context, id uuid.UUID, req *grp
 		return nil, err
 	}
 
-	_, err = s.manufacturerRepo.GetByID(ctx, tenantID, id)
+	existing, err := s.manufacturerRepo.GetByID(ctx, tenantID, id)
 	if err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return nil, ErrManufacturerNotFound
@@ -260,7 +263,7 @@ func (s *Service) UpdateManufacturer(ctx context.Context, id uuid.UUID, req *grp
 		params.Website = req.Website
 	}
 
-	if err := s.manufacturerRepo.Update(ctx, tenantID, id, params); err != nil {
+	if err := s.manufacturerRepo.Update(ctx, tenantID, existing.IsSystem, id, params); err != nil {
 		s.logger.ErrorContext(ctx, "failed to update manufacturer", "id", id, "error", err)
 		return nil, fmt.Errorf("update manufacturer: %w", err)
 	}
@@ -282,7 +285,15 @@ func (s *Service) DeleteManufacturer(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 
-	if err := s.manufacturerRepo.Delete(ctx, tenantID, id); err != nil {
+	existing, err := s.manufacturerRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		if errors.Is(err, interfaces.ErrRecordNotFound) {
+			return ErrManufacturerNotFound
+		}
+		return fmt.Errorf("get manufacturer: %w", err)
+	}
+
+	if err := s.manufacturerRepo.Delete(ctx, tenantID, existing.IsSystem, id); err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return ErrManufacturerNotFound
 		}
@@ -295,7 +306,7 @@ func (s *Service) DeleteManufacturer(ctx context.Context, id uuid.UUID) error {
 }
 
 // ListManufacturers returns a list of manufacturers.
-func (s *Service) ListManufacturers(ctx context.Context, limit, offset int) ([]*models.Manufacturer, int64, error) {
+func (s *Service) ListManufacturers(ctx context.Context, isSystem bool, limit, offset int) ([]*models.Manufacturer, int64, error) {
 	tenantID, err := s.tenantIDFromContext(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -303,6 +314,7 @@ func (s *Service) ListManufacturers(ctx context.Context, limit, offset int) ([]*
 
 	params := &models.ManufacturerListParams{
 		TenantID: tenantID,
+		IsSystem: isSystem,
 		Limit:    limit,
 		Offset:   offset,
 	}
@@ -313,7 +325,7 @@ func (s *Service) ListManufacturers(ctx context.Context, limit, offset int) ([]*
 		return nil, 0, fmt.Errorf("list manufacturers: %w", err)
 	}
 
-	total, err := s.manufacturerRepo.Count(ctx, tenantID)
+	total, err := s.manufacturerRepo.Count(ctx, tenantID, isSystem)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to count manufacturers", "error", err)
 		return nil, 0, fmt.Errorf("count manufacturers: %w", err)
@@ -329,12 +341,16 @@ func (s *Service) CreateDeviceModel(ctx context.Context, req *grpcservices.Devic
 		return nil, err
 	}
 
-	_, err = s.manufacturerRepo.GetByID(ctx, tenantID, req.ManufacturerID)
+	mfr, err := s.manufacturerRepo.GetByID(ctx, tenantID, req.ManufacturerID)
 	if err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return nil, ErrManufacturerNotFound
 		}
 		return nil, fmt.Errorf("get manufacturer: %w", err)
+	}
+	// Ownership homogeneity: a Custom model can't hang off a System manufacturer (or vice versa).
+	if mfr.IsSystem != req.IsSystem {
+		return nil, ErrOwnershipMismatch
 	}
 
 	// Canonicalize model code: generate slug from name if empty, validate if provided
@@ -360,6 +376,7 @@ func (s *Service) CreateDeviceModel(ctx context.Context, req *grpcservices.Devic
 
 	params := &models.DeviceModelCreateParams{
 		TenantID:       tenantID,
+		IsSystem:       req.IsSystem,
 		ManufacturerID: req.ManufacturerID,
 		Name:           req.Name,
 		Code:           code,
@@ -422,7 +439,7 @@ func (s *Service) UpdateDeviceModel(ctx context.Context, id uuid.UUID, req *grpc
 		return nil, err
 	}
 
-	_, err = s.deviceModelRepo.GetByID(ctx, tenantID, id)
+	existing, err := s.deviceModelRepo.GetByID(ctx, tenantID, id)
 	if err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return nil, ErrDeviceModelNotFound
@@ -452,7 +469,7 @@ func (s *Service) UpdateDeviceModel(ctx context.Context, id uuid.UUID, req *grpc
 		params.DatasheetURL = req.DatasheetURL
 	}
 
-	if err := s.deviceModelRepo.Update(ctx, tenantID, id, params); err != nil {
+	if err := s.deviceModelRepo.Update(ctx, tenantID, existing.IsSystem, id, params); err != nil {
 		s.logger.ErrorContext(ctx, "failed to update device model", "id", id, "error", err)
 		return nil, fmt.Errorf("update device model: %w", err)
 	}
@@ -474,7 +491,15 @@ func (s *Service) DeleteDeviceModel(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 
-	if err := s.deviceModelRepo.Delete(ctx, tenantID, id); err != nil {
+	existing, err := s.deviceModelRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		if errors.Is(err, interfaces.ErrRecordNotFound) {
+			return ErrDeviceModelNotFound
+		}
+		return fmt.Errorf("get device model: %w", err)
+	}
+
+	if err := s.deviceModelRepo.Delete(ctx, tenantID, existing.IsSystem, id); err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return ErrDeviceModelNotFound
 		}
@@ -487,7 +512,7 @@ func (s *Service) DeleteDeviceModel(ctx context.Context, id uuid.UUID) error {
 }
 
 // ListDeviceModels returns a list of device models.
-func (s *Service) ListDeviceModels(ctx context.Context, manufacturerID *uuid.UUID, limit, offset int) ([]*models.DeviceModel, int64, error) {
+func (s *Service) ListDeviceModels(ctx context.Context, isSystem bool, manufacturerID *uuid.UUID, limit, offset int) ([]*models.DeviceModel, int64, error) {
 	tenantID, err := s.tenantIDFromContext(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -495,6 +520,7 @@ func (s *Service) ListDeviceModels(ctx context.Context, manufacturerID *uuid.UUI
 
 	params := &models.DeviceModelListParams{
 		TenantID: tenantID,
+		IsSystem: isSystem,
 		Limit:    limit,
 		Offset:   offset,
 	}
@@ -511,9 +537,9 @@ func (s *Service) ListDeviceModels(ctx context.Context, manufacturerID *uuid.UUI
 	// Use appropriate count method based on filter
 	var total int64
 	if manufacturerID != nil {
-		total, err = s.deviceModelRepo.CountByManufacturer(ctx, tenantID, *manufacturerID)
+		total, err = s.deviceModelRepo.CountByManufacturer(ctx, tenantID, isSystem, *manufacturerID)
 	} else {
-		total, err = s.deviceModelRepo.Count(ctx, tenantID)
+		total, err = s.deviceModelRepo.Count(ctx, tenantID, isSystem)
 	}
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to count device models", "error", err)
@@ -536,6 +562,10 @@ func (s *Service) CreateBlueprint(ctx context.Context, req *grpcservices.Bluepri
 			return nil, ErrDeviceModelNotFound
 		}
 		return nil, fmt.Errorf("get device model: %w", err)
+	}
+	// Ownership homogeneity: a Custom blueprint can't hang off a System model (or vice versa).
+	if model.IsSystem != req.IsSystem {
+		return nil, ErrOwnershipMismatch
 	}
 
 	// Extract typeEui from spec JSON if provided (per MIOTY spec section 2.2.3)
@@ -560,11 +590,23 @@ func (s *Service) CreateBlueprint(ctx context.Context, req *grpcservices.Bluepri
 
 	params := &models.BlueprintCreateParams{
 		TenantID:      tenantID,
+		IsSystem:      req.IsSystem,
 		DeviceModelID: req.DeviceModelID,
 		Version:       req.Version,
 		TypeEUI:       typeEUI,
 		SpecJSON:      req.SpecJSON,
 		IsDefault:     req.IsDefault,
+	}
+
+	// Auto-default: when the model has no current default, this blueprint becomes it so snapshot-less endpoints still resolve.
+	if !params.IsDefault {
+		def, defErr := s.blueprintRepo.GetDefaultForModel(ctx, tenantID, req.DeviceModelID)
+		if defErr != nil {
+			return nil, fmt.Errorf("check default blueprint for model: %w", defErr)
+		}
+		if def == nil {
+			params.IsDefault = true
+		}
 	}
 
 	blueprint, err := s.blueprintRepo.Create(ctx, params)
@@ -602,7 +644,7 @@ func (s *Service) UpdateBlueprint(ctx context.Context, id uuid.UUID, req *grpcse
 		return nil, err
 	}
 
-	_, err = s.blueprintRepo.GetByID(ctx, tenantID, id)
+	existing, err := s.blueprintRepo.GetByID(ctx, tenantID, id)
 	if err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return nil, ErrBlueprintNotFound
@@ -635,7 +677,7 @@ func (s *Service) UpdateBlueprint(ctx context.Context, id uuid.UUID, req *grpcse
 		params.IsDefault = req.IsDefault
 	}
 
-	if err := s.blueprintRepo.Update(ctx, tenantID, id, params); err != nil {
+	if err := s.blueprintRepo.Update(ctx, tenantID, existing.IsSystem, id, params); err != nil {
 		s.logger.ErrorContext(ctx, "failed to update blueprint", "id", id, "error", err)
 		return nil, fmt.Errorf("update blueprint: %w", err)
 	}
@@ -657,7 +699,15 @@ func (s *Service) DeleteBlueprint(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 
-	if err := s.blueprintRepo.Delete(ctx, tenantID, id); err != nil {
+	existing, err := s.blueprintRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		if errors.Is(err, interfaces.ErrRecordNotFound) {
+			return ErrBlueprintNotFound
+		}
+		return fmt.Errorf("get blueprint: %w", err)
+	}
+
+	if err := s.blueprintRepo.Delete(ctx, tenantID, existing.IsSystem, id); err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return ErrBlueprintNotFound
 		}
@@ -670,7 +720,7 @@ func (s *Service) DeleteBlueprint(ctx context.Context, id uuid.UUID) error {
 }
 
 // ListBlueprints returns a list of blueprints.
-func (s *Service) ListBlueprints(ctx context.Context, deviceModelID *uuid.UUID, limit, offset int) ([]*models.Blueprint, int64, error) {
+func (s *Service) ListBlueprints(ctx context.Context, isSystem bool, deviceModelID *uuid.UUID, limit, offset int) ([]*models.Blueprint, int64, error) {
 	tenantID, err := s.tenantIDFromContext(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -678,6 +728,7 @@ func (s *Service) ListBlueprints(ctx context.Context, deviceModelID *uuid.UUID, 
 
 	params := &models.BlueprintListParams{
 		TenantID: tenantID,
+		IsSystem: isSystem,
 		Limit:    limit,
 		Offset:   offset,
 	}
@@ -694,9 +745,9 @@ func (s *Service) ListBlueprints(ctx context.Context, deviceModelID *uuid.UUID, 
 	// Use appropriate count method based on filter
 	var total int64
 	if deviceModelID != nil {
-		total, err = s.blueprintRepo.CountByDeviceModel(ctx, tenantID, *deviceModelID)
+		total, err = s.blueprintRepo.CountByDeviceModel(ctx, tenantID, isSystem, *deviceModelID)
 	} else {
-		total, err = s.blueprintRepo.Count(ctx, tenantID)
+		total, err = s.blueprintRepo.Count(ctx, tenantID, isSystem)
 	}
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to count blueprints", "error", err)
@@ -713,7 +764,15 @@ func (s *Service) SetDefaultBlueprint(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 
-	if err := s.blueprintRepo.SetDefault(ctx, tenantID, id); err != nil {
+	existing, err := s.blueprintRepo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		if errors.Is(err, interfaces.ErrRecordNotFound) {
+			return ErrBlueprintNotFound
+		}
+		return fmt.Errorf("get blueprint: %w", err)
+	}
+
+	if err := s.blueprintRepo.SetDefault(ctx, tenantID, existing.IsSystem, id); err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return ErrBlueprintNotFound
 		}
@@ -939,7 +998,7 @@ func (s *Service) SubmitToRegistry(ctx context.Context, id uuid.UUID, req *grpcs
 
 	// Update blueprint with registry PR URL
 	repoPath := fmt.Sprintf("%s/%s", s.registryCfg.Owner, s.registryCfg.Repo)
-	if err := s.blueprintRepo.UpdateRegistryInfo(ctx, tenantID, id, repoPath, commitSHA, prURL, false); err != nil {
+	if err := s.blueprintRepo.UpdateRegistryInfo(ctx, tenantID, bp.IsSystem, id, repoPath, commitSHA, prURL, false); err != nil {
 		s.logger.ErrorContext(ctx, "failed to update registry info", "id", id, "error", err)
 		// Don't fail the operation - PR was created successfully
 	}
@@ -981,12 +1040,16 @@ func (s *Service) CreateDeviceModelWithBlueprint(ctx context.Context, req *grpcs
 	}
 
 	// Verify manufacturer exists before starting transaction
-	_, err = s.manufacturerRepo.GetByID(ctx, tenantID, req.ManufacturerID)
+	mfr, err := s.manufacturerRepo.GetByID(ctx, tenantID, req.ManufacturerID)
 	if err != nil {
 		if errors.Is(err, interfaces.ErrRecordNotFound) {
 			return nil, nil, ErrManufacturerNotFound
 		}
 		return nil, nil, fmt.Errorf("get manufacturer: %w", err)
+	}
+	// Ownership homogeneity: model+blueprint created here inherit req.IsSystem; parent must match.
+	if mfr.IsSystem != req.IsSystem {
+		return nil, nil, ErrOwnershipMismatch
 	}
 
 	// Generate slug from name
@@ -1021,6 +1084,7 @@ func (s *Service) CreateDeviceModelWithBlueprint(ctx context.Context, req *grpcs
 
 		modelParams := &models.DeviceModelCreateParams{
 			TenantID:       tenantID,
+			IsSystem:       req.IsSystem,
 			ManufacturerID: req.ManufacturerID,
 			Name:           req.Name,
 			Code:           slug,
@@ -1044,6 +1108,7 @@ func (s *Service) CreateDeviceModelWithBlueprint(ctx context.Context, req *grpcs
 
 	bpParams := &models.BlueprintCreateParams{
 		TenantID:      tenantID,
+		IsSystem:      req.IsSystem,
 		DeviceModelID: model.ID,
 		Version:       req.Version,
 		TypeEUI:       specTypeEUI,
@@ -1081,6 +1146,15 @@ func (s *Service) DecodePreview(ctx context.Context, blueprintID uuid.UUID, payl
 		return nil, fmt.Errorf("get blueprint: %w", err)
 	}
 
+	return s.runDecodePreview(ctx, bp, payload, formatID)
+}
+
+// DecodePreviewInline previews decoding against an unsaved inline spec (no catalog fetch).
+func (s *Service) DecodePreviewInline(ctx context.Context, specJSON, payload []byte, formatID uint8) (*grpcservices.DecodePreviewResult, error) {
+	return s.runDecodePreview(ctx, &models.Blueprint{SpecJSON: specJSON}, payload, formatID)
+}
+
+func (s *Service) runDecodePreview(ctx context.Context, bp *models.Blueprint, payload []byte, formatID uint8) (*grpcservices.DecodePreviewResult, error) {
 	if s.decoder == nil {
 		return nil, fmt.Errorf("decoder service not configured")
 	}
@@ -1153,11 +1227,12 @@ func (s *Service) prepareBlueprintContent(bp *models.Blueprint, manufacturerName
 	return base64.StdEncoding.EncodeToString(jsonContent), nil
 }
 
-// ResolveEffectiveTypeEUI returns the TypeEUI from the device model's default blueprint.
-// Mirrors the precedence logic in the BSSCI resolver (resolver.go:89-118):
-// 1. Fetch the model's default blueprint
-// 2. If found with a valid 8-byte TypeEUI, return it
-// 3. Otherwise return nil (no fallback to DeviceModel.TypeEUI)
+// GetDefaultForModel returns the device model's default blueprint (nil, nil when none).
+func (s *Service) GetDefaultForModel(ctx context.Context, tenantID int64, modelID uuid.UUID) (*models.Blueprint, error) {
+	return s.blueprintRepo.GetDefaultForModel(ctx, tenantID, modelID)
+}
+
+// ResolveEffectiveTypeEUI returns the default blueprint's 8-byte TypeEUI for a model, or nil when there's no default or valid TypeEUI (no fallback to DeviceModel.TypeEUI).
 func (s *Service) ResolveEffectiveTypeEUI(ctx context.Context, tenantID int64, modelID uuid.UUID) (*models.EUI, error) {
 	bp, err := s.blueprintRepo.GetDefaultForModel(ctx, tenantID, modelID)
 	if err != nil {

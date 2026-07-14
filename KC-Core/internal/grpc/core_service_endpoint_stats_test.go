@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -76,6 +77,10 @@ func (m *mockEndpointSvcForStats) Update(_ context.Context, _ *models.EndPoint) 
 
 func (m *mockEndpointSvcForStats) Delete(_ context.Context, _ []byte, _ int64) error {
 	return nil
+}
+
+func (m *mockEndpointSvcForStats) ListByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
 }
 
 func (m *mockEndpointSvcForStats) List(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {

@@ -50,6 +50,13 @@ func BuildGRPCServer(infra *Infrastructure) (*grpc.Server, grpc.Config, error) {
 		log.Info("RBAC policies configured for certificate management RPCs")
 	}
 
+	// Admin checker lets the fail-closed org resolver exempt server admins from the org-mismatch check.
+	var adminChecker interceptors.AdminChecker
+	if infra.IdentityInternalClient != nil {
+		adminChecker = grpc.NewAdminOrgAdapter(infra.IdentityInternalClient, cfg.InternalAuth.PeerSecret)
+		log.Info("AdminChecker wired into org resolver interceptor")
+	}
+
 	// Resolve RBAC cache TTL from config with bounds check
 	rbacCacheTTL := time.Duration(cfg.GRPC.RBACRoleCacheTTLSeconds) * time.Second
 	if cfg.GRPC.RBACRoleCacheTTLSeconds <= 0 {
@@ -78,6 +85,7 @@ func BuildGRPCServer(infra *Infrastructure) (*grpc.Server, grpc.Config, error) {
 		},
 		EventWriter:           infra.Storage.SystemEvents(),
 		PlatformTenantID:      cfg.General.TenantID,
+		AdminChecker:          adminChecker,
 		OrgResolver:           grpcOrgResolver,
 		TenantResolver:        grpcTenantResolver,
 		FailClosedOrgResolver: failClosedResolver,

@@ -77,6 +77,9 @@ type Config struct {
 	// PlatformTenantID fallback tenant for pre-auth security events
 	PlatformTenantID int64
 
+	// AdminChecker exempts server admins from the fail-closed org-mismatch check (nil = no bypass)
+	AdminChecker interceptors.AdminChecker
+
 	// gRPC-web configuration
 	GRPCWeb WebConfig
 
@@ -185,6 +188,7 @@ func NewServer(cfg Config) (*Server, error) {
 				SkipMethods:      skipMethods,
 				EventWriter:      cfg.EventWriter,
 				PlatformTenantID: cfg.PlatformTenantID,
+				AdminChecker:     cfg.AdminChecker,
 			})
 			if err != nil {
 				_ = listener.Close()

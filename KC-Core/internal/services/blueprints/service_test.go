@@ -23,6 +23,8 @@ import (
 	"github.com/google/uuid"
 )
 
+func i64ptr(v int64) *int64 { return &v }
+
 const (
 	registryOwner        = "org"
 	registryRepo         = "repo"
@@ -161,9 +163,14 @@ type mockBlueprintRepository struct {
 	getByIDFn            func(ctx context.Context, tenantID int64, id uuid.UUID) (*models.Blueprint, error)
 	getDefaultForModelFn func(ctx context.Context, tenantID int64, modelID uuid.UUID) (*models.Blueprint, error)
 	updateRegistryInfo   func(ctx context.Context, tenantID int64, id uuid.UUID, repo, commitSHA, prURL string, verified bool) error
+	createFn             func(ctx context.Context, p *models.BlueprintCreateParams) (*models.Blueprint, error)
+	countByDeviceModelFn func(ctx context.Context, tenantID int64, modelID uuid.UUID) (int64, error)
 }
 
-func (m *mockBlueprintRepository) Create(_ context.Context, _ *models.BlueprintCreateParams) (*models.Blueprint, error) {
+func (m *mockBlueprintRepository) Create(ctx context.Context, p *models.BlueprintCreateParams) (*models.Blueprint, error) {
+	if m.createFn != nil {
+		return m.createFn(ctx, p)
+	}
 	return nil, nil
 }
 
@@ -201,34 +208,86 @@ func (m *mockBlueprintRepository) ListWithModel(_ context.Context, _ *models.Blu
 	return nil, nil
 }
 
-func (m *mockBlueprintRepository) Count(_ context.Context, _ int64) (int64, error) {
+func (m *mockBlueprintRepository) Count(_ context.Context, _ int64, _ bool) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockBlueprintRepository) CountByDeviceModel(_ context.Context, _ int64, _ uuid.UUID) (int64, error) {
+func (m *mockBlueprintRepository) CountByDeviceModel(ctx context.Context, tenantID int64, _ bool, modelID uuid.UUID) (int64, error) {
+	if m.countByDeviceModelFn != nil {
+		return m.countByDeviceModelFn(ctx, tenantID, modelID)
+	}
 	return 0, nil
 }
 
-func (m *mockBlueprintRepository) Update(_ context.Context, _ int64, _ uuid.UUID, _ *models.BlueprintUpdateParams) error {
+// TestCreateBlueprint_AutoDefault: new blueprint self-heals to default when the model has none (overriding explicit false); respects false when a default exists.
+func TestCreateBlueprint_AutoDefault(t *testing.T) {
+	modelID := uuid.New()
+	dmRepo := &mockDeviceModelRepository{
+		getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.DeviceModel, error) {
+			return &models.DeviceModel{ID: modelID}, nil
+		},
+	}
+	cases := []struct {
+		name        string
+		hasDefault  bool
+		reqDefault  bool
+		wantDefault bool
+	}{
+		{"no default self-heals", false, false, true},
+		{"no default keeps explicit default", false, true, true},
+		{"existing default respects false", true, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured *models.BlueprintCreateParams
+			bpRepo := &mockBlueprintRepository{
+				getDefaultForModelFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Blueprint, error) {
+					if tc.hasDefault {
+						return &models.Blueprint{ID: uuid.New(), IsDefault: true}, nil
+					}
+					return nil, nil
+				},
+				createFn: func(_ context.Context, p *models.BlueprintCreateParams) (*models.Blueprint, error) {
+					captured = p
+					return &models.Blueprint{ID: uuid.New(), IsDefault: p.IsDefault}, nil
+				},
+			}
+			svc := New(&mockManufacturerRepository{}, dmRepo, bpRepo, 1, nil, &testLogger{})
+			if _, err := svc.CreateBlueprint(testutil.TestContext(), &grpcservices.BlueprintCreateRequest{
+				DeviceModelID: modelID, Version: "1.0.0", IsDefault: tc.reqDefault,
+			}); err != nil {
+				t.Fatalf("CreateBlueprint: %v", err)
+			}
+			if captured == nil {
+				t.Fatal("Create was not called")
+			}
+			if captured.IsDefault != tc.wantDefault {
+				t.Errorf("IsDefault = %v, want %v", captured.IsDefault, tc.wantDefault)
+			}
+		})
+	}
+}
+
+func (m *mockBlueprintRepository) Update(_ context.Context, _ int64, _ bool, _ uuid.UUID, _ *models.BlueprintUpdateParams) error {
 	return nil
 }
 
-func (m *mockBlueprintRepository) SetDefault(_ context.Context, _ int64, _ uuid.UUID) error {
+func (m *mockBlueprintRepository) SetDefault(_ context.Context, _ int64, _ bool, _ uuid.UUID) error {
 	return nil
 }
 
-func (m *mockBlueprintRepository) ClearDefault(_ context.Context, _ int64, _ uuid.UUID) error {
+func (m *mockBlueprintRepository) ClearDefault(_ context.Context, _ int64, _ bool, _ uuid.UUID) error {
 	return nil
 }
 
-func (m *mockBlueprintRepository) UpdateRegistryInfo(ctx context.Context, tenantID int64, id uuid.UUID, repo, commitSHA, prURL string, verified bool) error {
+func (m *mockBlueprintRepository) UpdateRegistryInfo(ctx context.Context, tenantID int64, _ bool, id uuid.UUID, repo, commitSHA, prURL string, verified bool) error {
 	if m.updateRegistryInfo != nil {
 		return m.updateRegistryInfo(ctx, tenantID, id, repo, commitSHA, prURL, verified)
 	}
 	return nil
 }
 
-func (m *mockBlueprintRepository) Delete(_ context.Context, _ int64, _ uuid.UUID) error {
+func (m *mockBlueprintRepository) Delete(_ context.Context, _ int64, _ bool, _ uuid.UUID) error {
 	return nil
 }
 
@@ -256,15 +315,15 @@ func (m *mockManufacturerRepository) List(_ context.Context, _ *models.Manufactu
 	return nil, nil
 }
 
-func (m *mockManufacturerRepository) Count(_ context.Context, _ int64) (int64, error) {
+func (m *mockManufacturerRepository) Count(_ context.Context, _ int64, _ bool) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockManufacturerRepository) Update(_ context.Context, _ int64, _ uuid.UUID, _ *models.ManufacturerUpdateParams) error {
+func (m *mockManufacturerRepository) Update(_ context.Context, _ int64, _ bool, _ uuid.UUID, _ *models.ManufacturerUpdateParams) error {
 	return nil
 }
 
-func (m *mockManufacturerRepository) Delete(_ context.Context, _ int64, _ uuid.UUID) error {
+func (m *mockManufacturerRepository) Delete(_ context.Context, _ int64, _ bool, _ uuid.UUID) error {
 	return nil
 }
 
@@ -313,22 +372,22 @@ func (m *mockDeviceModelRepository) ListWithManufacturer(_ context.Context, _ *m
 	return nil, nil
 }
 
-func (m *mockDeviceModelRepository) Count(_ context.Context, _ int64) (int64, error) {
+func (m *mockDeviceModelRepository) Count(_ context.Context, _ int64, _ bool) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockDeviceModelRepository) CountByManufacturer(_ context.Context, _ int64, _ uuid.UUID) (int64, error) {
+func (m *mockDeviceModelRepository) CountByManufacturer(_ context.Context, _ int64, _ bool, _ uuid.UUID) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockDeviceModelRepository) Update(ctx context.Context, tenantID int64, id uuid.UUID, params *models.DeviceModelUpdateParams) error {
+func (m *mockDeviceModelRepository) Update(ctx context.Context, tenantID int64, _ bool, id uuid.UUID, params *models.DeviceModelUpdateParams) error {
 	if m.updateFn != nil {
 		return m.updateFn(ctx, tenantID, id, params)
 	}
 	return nil
 }
 
-func (m *mockDeviceModelRepository) Delete(_ context.Context, _ int64, _ uuid.UUID) error {
+func (m *mockDeviceModelRepository) Delete(_ context.Context, _ int64, _ bool, _ uuid.UUID) error {
 	return nil
 }
 
@@ -444,7 +503,7 @@ func TestSubmitToRegistry_AlreadySubmitted(t *testing.T) {
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Blueprint, error) {
 				return &models.Blueprint{
 					ID:            uuid.New(),
-					TenantID:      1,
+					TenantID:      i64ptr(1),
 					DeviceModelID: uuid.New(),
 					Version:       "1.0.0",
 					TypeEUI:       []byte{0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF},
@@ -553,7 +612,7 @@ func TestSubmitToRegistry_Success(t *testing.T) {
 
 	blueprint := &models.Blueprint{
 		ID:            blueprintID,
-		TenantID:      1,
+		TenantID:      i64ptr(1),
 		DeviceModelID: modelID,
 		Version:       "1.0.1",
 		TypeEUI:       []byte{0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80},
@@ -583,12 +642,12 @@ func TestSubmitToRegistry_Success(t *testing.T) {
 	svc := New(
 		&mockManufacturerRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Manufacturer, error) {
-				return &models.Manufacturer{ID: mfrID, Name: "Weptech", TenantID: 1}, nil
+				return &models.Manufacturer{ID: mfrID, Name: "Weptech", TenantID: i64ptr(1)}, nil
 			},
 		},
 		&mockDeviceModelRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.DeviceModel, error) {
-				return &models.DeviceModel{ID: modelID, ManufacturerID: mfrID, Name: "Robin M", Code: "robin-m", TenantID: 1}, nil
+				return &models.DeviceModel{ID: modelID, ManufacturerID: mfrID, Name: "Robin M", Code: "robin-m", TenantID: i64ptr(1)}, nil
 			},
 		},
 		repo,
@@ -653,7 +712,7 @@ func TestSubmitToRegistry_UpdateRegistryInfo(t *testing.T) {
 
 	blueprint := &models.Blueprint{
 		ID:            blueprintID,
-		TenantID:      1,
+		TenantID:      i64ptr(1),
 		DeviceModelID: modelID,
 		Version:       "2.0.0",
 		TypeEUI:       []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11},
@@ -697,12 +756,12 @@ func TestSubmitToRegistry_UpdateRegistryInfo(t *testing.T) {
 	svc := New(
 		&mockManufacturerRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Manufacturer, error) {
-				return &models.Manufacturer{ID: mfrID, Name: "TestMfr", TenantID: 1}, nil
+				return &models.Manufacturer{ID: mfrID, Name: "TestMfr", TenantID: i64ptr(1)}, nil
 			},
 		},
 		&mockDeviceModelRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.DeviceModel, error) {
-				return &models.DeviceModel{ID: modelID, ManufacturerID: mfrID, Name: "TestModel", Code: "test-model", TenantID: 1}, nil
+				return &models.DeviceModel{ID: modelID, ManufacturerID: mfrID, Name: "TestModel", Code: "test-model", TenantID: i64ptr(1)}, nil
 			},
 		},
 		repo,
@@ -860,7 +919,7 @@ func TestDecodePreview_DecoderNotConfigured(t *testing.T) {
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Blueprint, error) {
 				return &models.Blueprint{
 					ID:       bpID,
-					TenantID: 1,
+					TenantID: i64ptr(1),
 					Version:  "1.0.0",
 					SpecJSON: []byte(`{"codec":"test"}`),
 				}, nil
@@ -912,7 +971,7 @@ func registryTestFixture() (uuid.UUID, uuid.UUID, uuid.UUID, *models.Blueprint) 
 	mfrID := uuid.New()
 	bp := &models.Blueprint{
 		ID:            blueprintID,
-		TenantID:      1,
+		TenantID:      i64ptr(1),
 		DeviceModelID: modelID,
 		Version:       "1.0.0",
 		TypeEUI:       []byte{0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80},
@@ -928,12 +987,12 @@ func registryTestService(t *testing.T, server *registryTestServer, bp *models.Bl
 	return New(
 		&mockManufacturerRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Manufacturer, error) {
-				return &models.Manufacturer{ID: mfrID, Name: mfrName, TenantID: 1}, nil
+				return &models.Manufacturer{ID: mfrID, Name: mfrName, TenantID: i64ptr(1)}, nil
 			},
 		},
 		&mockDeviceModelRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.DeviceModel, error) {
-				return &models.DeviceModel{ID: modelID, ManufacturerID: mfrID, Name: modelName, Code: modelCode, TenantID: 1}, nil
+				return &models.DeviceModel{ID: modelID, ManufacturerID: mfrID, Name: modelName, Code: modelCode, TenantID: i64ptr(1)}, nil
 			},
 		},
 		&mockBlueprintRepository{
@@ -1030,7 +1089,7 @@ func TestSubmitToRegistry_DeviceModelNotFound(t *testing.T) {
 	blueprintID := uuid.New()
 	bp := &models.Blueprint{
 		ID:            blueprintID,
-		TenantID:      1,
+		TenantID:      i64ptr(1),
 		DeviceModelID: uuid.New(),
 		Version:       "1.0.0",
 		TypeEUI:       []byte{0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80},
@@ -1073,7 +1132,7 @@ func TestSubmitToRegistry_ManufacturerNotFound(t *testing.T) {
 	mfrID := uuid.New()
 	bp := &models.Blueprint{
 		ID:            blueprintID,
-		TenantID:      1,
+		TenantID:      i64ptr(1),
 		DeviceModelID: modelID,
 		Version:       "1.0.0",
 		TypeEUI:       []byte{0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80},
@@ -1090,7 +1149,7 @@ func TestSubmitToRegistry_ManufacturerNotFound(t *testing.T) {
 		},
 		&mockDeviceModelRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.DeviceModel, error) {
-				return &models.DeviceModel{ID: modelID, ManufacturerID: mfrID, Name: "Test", Code: "test", TenantID: 1}, nil
+				return &models.DeviceModel{ID: modelID, ManufacturerID: mfrID, Name: "Test", Code: "test", TenantID: i64ptr(1)}, nil
 			},
 		},
 		&mockBlueprintRepository{
@@ -1382,7 +1441,7 @@ func TestCreateDeviceModel_EmptyCodeGeneratesSlug(t *testing.T) {
 	svc := New(
 		&mockManufacturerRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Manufacturer, error) {
-				return &models.Manufacturer{ID: uuid.New(), TenantID: 1}, nil
+				return &models.Manufacturer{ID: uuid.New(), TenantID: i64ptr(1)}, nil
 			},
 		},
 		&mockDeviceModelRepository{
@@ -1393,7 +1452,7 @@ func TestCreateDeviceModel_EmptyCodeGeneratesSlug(t *testing.T) {
 					ManufacturerID: params.ManufacturerID,
 					Name:           params.Name,
 					Code:           params.Code,
-					TenantID:       params.TenantID,
+					TenantID:       &params.TenantID,
 					CreatedAt:      time.Now(),
 					UpdatedAt:      time.Now(),
 				}, nil
@@ -1424,7 +1483,7 @@ func TestCreateDeviceModel_InvalidCodeRejected(t *testing.T) {
 	svc := New(
 		&mockManufacturerRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Manufacturer, error) {
-				return &models.Manufacturer{ID: uuid.New(), TenantID: 1}, nil
+				return &models.Manufacturer{ID: uuid.New(), TenantID: i64ptr(1)}, nil
 			},
 		},
 		&mockDeviceModelRepository{},
@@ -1451,7 +1510,7 @@ func TestCreateDeviceModel_ValidCodeCanonicalized(t *testing.T) {
 	svc := New(
 		&mockManufacturerRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Manufacturer, error) {
-				return &models.Manufacturer{ID: uuid.New(), TenantID: 1}, nil
+				return &models.Manufacturer{ID: uuid.New(), TenantID: i64ptr(1)}, nil
 			},
 		},
 		&mockDeviceModelRepository{
@@ -1462,7 +1521,7 @@ func TestCreateDeviceModel_ValidCodeCanonicalized(t *testing.T) {
 					ManufacturerID: params.ManufacturerID,
 					Name:           params.Name,
 					Code:           params.Code,
-					TenantID:       params.TenantID,
+					TenantID:       &params.TenantID,
 					CreatedAt:      time.Now(),
 					UpdatedAt:      time.Now(),
 				}, nil
@@ -1495,7 +1554,7 @@ func TestUpdateDeviceModel_InvalidCodeRejected(t *testing.T) {
 		&mockManufacturerRepository{},
 		&mockDeviceModelRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.DeviceModel, error) {
-				return &models.DeviceModel{ID: modelID, TenantID: 1, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
+				return &models.DeviceModel{ID: modelID, TenantID: i64ptr(1), CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
 			},
 		},
 		&mockBlueprintRepository{},
@@ -1522,7 +1581,7 @@ func TestUpdateDeviceModel_ValidCodeCanonicalized(t *testing.T) {
 		&mockManufacturerRepository{},
 		&mockDeviceModelRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.DeviceModel, error) {
-				return &models.DeviceModel{ID: modelID, TenantID: 1, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
+				return &models.DeviceModel{ID: modelID, TenantID: i64ptr(1), CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
 			},
 			updateFn: func(_ context.Context, _ int64, _ uuid.UUID, params *models.DeviceModelUpdateParams) error {
 				capturedCode = params.Code

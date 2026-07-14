@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -397,7 +398,104 @@ func (s *CoreService) WithCERegistryHandler(h CERegistryHandler) *CoreService {
 
 // EndPoint operations
 
-// CreateEndPoint creates a new endpoint
+func buildBlueprintSnapshot(bp *models.Blueprint) (json.RawMessage, error) {
+	return json.Marshal(models.BlueprintSnapshot{
+		SpecJSON:          bp.SpecJSON,
+		Version:           bp.Version,
+		TypeEUI:           hex.EncodeToString(bp.TypeEUI),
+		SourceBlueprintID: bp.ID.String(),
+		IsSystem:          bp.IsSystem,
+		AdoptedAt:         time.Now().UTC(),
+	})
+}
+
+func snapshotSourceID(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var snap models.BlueprintSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		return ""
+	}
+	return snap.SourceBlueprintID
+}
+
+func snapshotTypeEUI(raw json.RawMessage) *models.EUI {
+	if len(raw) == 0 {
+		return nil
+	}
+	var snap models.BlueprintSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil || snap.TypeEUI == "" {
+		return nil
+	}
+	b, err := hex.DecodeString(snap.TypeEUI)
+	if err != nil || len(b) != 8 {
+		return nil
+	}
+	var t models.EUI
+	copy(t[:], b)
+	return &t
+}
+
+func modelChanged(oldID, newID *uuid.UUID) bool {
+	switch {
+	case oldID == nil && newID == nil:
+		return false
+	case oldID == nil || newID == nil:
+		return true
+	default:
+		return *oldID != *newID
+	}
+}
+
+// applyBlueprintSnapshot materializes the blueprint snapshot onto the endpoint; model-membership mismatch is advisory (logged only).
+func (s *CoreService) applyBlueprintSnapshot(ctx context.Context, endpoint *models.EndPoint, blueprintID string) error {
+	if s.blueprintSvc == nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
+	}
+	bpUUID, parseErr := uuid.Parse(blueprintID)
+	if parseErr != nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBlueprintIDFormat))
+	}
+	bp, fetchErr := s.blueprintSvc.GetBlueprint(ctx, bpUUID)
+	if fetchErr != nil || bp == nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
+	}
+	if endpoint.DeviceModelID != nil && bp.DeviceModelID != *endpoint.DeviceModelID {
+		s.log.WarnContext(ctx, "selected blueprint belongs to a different device model",
+			"endpoint_eui", endpoint.EUI.String(), "blueprint_id", bp.ID,
+			"blueprint_model", bp.DeviceModelID, "endpoint_model", *endpoint.DeviceModelID)
+	}
+	raw, marshalErr := buildBlueprintSnapshot(bp)
+	if marshalErr != nil {
+		return status.Error(codes.Internal, "failed to build blueprint snapshot: "+marshalErr.Error())
+	}
+	dm := bp.DeviceModelID
+	endpoint.DeviceModelID = &dm
+	endpoint.TypeEUI = snapshotTypeEUI(raw)
+	endpoint.BlueprintSnapshot = raw
+	return nil
+}
+
+// pinnedBlueprintBelongsToModel reports whether the pinned snapshot source is native to the model; dangling/absent counts as not belonging.
+func (s *CoreService) pinnedBlueprintBelongsToModel(ctx context.Context, sourceID string, modelID uuid.UUID) bool {
+	if sourceID == "" || s.blueprintSvc == nil {
+		return false
+	}
+	id, err := uuid.Parse(sourceID)
+	if err != nil {
+		return false
+	}
+	bp, err := s.blueprintSvc.GetBlueprint(ctx, id)
+	if err != nil || bp == nil {
+		return false
+	}
+	return bp.DeviceModelID == modelID
+}
+
 func (s *CoreService) CreateEndPoint(ctx context.Context, req *pb.CreateEndPointRequest) (*pb.EndPoint, error) {
 	// Extract tenant from authenticated context
 	tenantID, err := GetTenantFromContext(ctx)
@@ -526,6 +624,12 @@ func (s *CoreService) CreateEndPoint(ctx context.Context, req *pb.CreateEndPoint
 		endpoint.TypeEUI = effectiveTypeEui
 	}
 
+	if req.Endpoint.BlueprintId != "" {
+		if err := s.applyBlueprintSnapshot(ctx, endpoint, req.Endpoint.BlueprintId); err != nil {
+			return nil, err
+		}
+	}
+
 	// Create endpoint in storage
 	created, err := s.endpointSvc.Create(ctx, endpoint)
 	if err != nil {
@@ -622,6 +726,7 @@ const (
 	fieldMaskCarrierOffset = "carrier_offset"
 	fieldMaskDeviceModelID = "device_model_id"
 	fieldMaskTypeEUI       = "type_eui"
+	fieldMaskBlueprintID   = "blueprint_id"
 
 	// EP Class values per MIOTY specification
 	epClassBidirectional  = "A"
@@ -678,6 +783,10 @@ func (s *CoreService) UpdateEndPoint(ctx context.Context, req *pb.UpdateEndPoint
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenGetEndpointFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenGetEndpointFailed))
 	}
+
+	// Captured before mask mutations — needed by the snapshot re-materialization trigger.
+	priorDeviceModelID := endpoint.DeviceModelID
+	priorSnapshotSourceID := snapshotSourceID(endpoint.BlueprintSnapshot)
 
 	// Selectively overwrite provided fields (preserve existing values otherwise)
 	if req.Endpoint.Name != "" {
@@ -813,6 +922,36 @@ func (s *CoreService) UpdateEndPoint(ctx context.Context, req *pb.UpdateEndPoint
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenResolveTypeEUIFailed))
 		}
 		endpoint.TypeEUI = effectiveTypeEui
+	}
+
+	if fieldInMask(mask, fieldMaskBlueprintID) && req.Endpoint.BlueprintId != "" && req.Endpoint.BlueprintId != priorSnapshotSourceID {
+		// Branch 1: explicit selection wins (also covers a simultaneous model change).
+		if err := s.applyBlueprintSnapshot(ctx, endpoint, req.Endpoint.BlueprintId); err != nil {
+			return nil, err
+		}
+	} else if modelChanged(priorDeviceModelID, endpoint.DeviceModelID) && endpoint.DeviceModelID != nil &&
+		!s.pinnedBlueprintBelongsToModel(ctx, priorSnapshotSourceID, *endpoint.DeviceModelID) {
+		// Branch 2: model changed and pinned blueprint isn't native → re-seed from new model's default (keep prior if none).
+		def, defErr := s.blueprintSvc.GetDefaultForModel(ctx, tenantID, *endpoint.DeviceModelID)
+		if defErr != nil {
+			// Infra failure — do not silently continue an update that touches the decode source.
+			s.log.ErrorContext(ctx, "failed to resolve new model default blueprint for re-seed",
+				"error", defErr, "endpoint_eui", endpoint.EUI.String())
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenResolveTypeEUIFailed),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenResolveTypeEUIFailed))
+		}
+		if def != nil {
+			if err := s.applyBlueprintSnapshot(ctx, endpoint, def.ID.String()); err != nil {
+				return nil, err
+			}
+		} else {
+			s.log.WarnContext(ctx, "device model changed to a model with no default blueprint; keeping prior snapshot",
+				"endpoint_eui", endpoint.EUI.String())
+		}
+	}
+	// type_eui follows the active snapshot (overrides the model-default normalization above).
+	if te := snapshotTypeEUI(endpoint.BlueprintSnapshot); te != nil {
+		endpoint.TypeEUI = te
 	}
 
 	// EUI change: atomic cascade + field update when new_ep_eui is set
@@ -1003,8 +1142,18 @@ func (s *CoreService) ListEndPoints(ctx context.Context, req *pb.ListEndPointsRe
 		}
 	}
 
-	// List endpoints from storage (use tenant from context)
-	endpoints, err := s.endpointSvc.List(ctx, tenantID, int(pageSize), offset)
+	// device_model_id filters to snapshot-bearing endpoints of one model (bulk coverage preview, unpaginated).
+	var endpoints []*models.EndPoint
+	if req.DeviceModelId != "" {
+		modelID, parseErr := uuid.Parse(req.DeviceModelId)
+		if parseErr != nil {
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidDeviceModelIDFormat),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidDeviceModelIDFormat))
+		}
+		endpoints, err = s.endpointSvc.ListByModelWithSnapshot(ctx, tenantID, modelID)
+	} else {
+		endpoints, err = s.endpointSvc.List(ctx, tenantID, int(pageSize), offset)
+	}
 	if err != nil {
 		s.log.ErrorContext(ctx, "Failed to list endpoints", "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenListEndpointsFailed),
@@ -1017,9 +1166,9 @@ func (s *CoreService) ListEndPoints(ctx context.Context, req *pb.ListEndPointsRe
 		pbEndPoints[i] = s.endpointToProto(endpoint)
 	}
 
-	// Generate next page token
+	// Generate next page token (model-filtered path is unpaginated)
 	nextPageToken := ""
-	if len(endpoints) == int(pageSize) {
+	if req.DeviceModelId == "" && len(endpoints) == int(pageSize) {
 		nextPageToken = fmt.Sprintf("%d", offset+int(pageSize))
 	}
 
@@ -2219,6 +2368,12 @@ func (s *CoreService) endpointToProto(endpoint *models.EndPoint) *pb.EndPoint {
 	if endpoint.DeviceModelID != nil {
 		result.DeviceModelId = endpoint.DeviceModelID.String()
 	}
+
+	// Echo the selector back from the materialized snapshot; empty when following catalog default.
+	if sourceID := snapshotSourceID(endpoint.BlueprintSnapshot); sourceID != "" {
+		result.BlueprintId = sourceID
+	}
+	result.BlueprintSnapshot = endpoint.BlueprintSnapshot // read-back: full snapshot for reload/fallback render
 
 	if endpoint.LastSeenAt != nil {
 		result.LastSeenAt = timestamppb.New(*endpoint.LastSeenAt)

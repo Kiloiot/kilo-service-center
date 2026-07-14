@@ -831,6 +831,10 @@ func (m *mockEndpointSvcForDuplicate) Delete(_ context.Context, _ []byte, _ int6
 	return nil
 }
 
+func (m *mockEndpointSvcForDuplicate) ListByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
 func (m *mockEndpointSvcForDuplicate) List(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -1354,6 +1358,204 @@ func TestEndpointToProto_MapsAllFields(t *testing.T) {
 	assert.Equal(t, int32(1200), pbEndpoint.CarrierOffset)
 }
 
+// TestEndpointToProto_EchoesBlueprintID: blueprint_id on the wire echoes the snapshot source_blueprint_id (empty when snapshot missing/invalid).
+func TestEndpointToProto_EchoesBlueprintID(t *testing.T) {
+	const sourceID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+	tests := []struct {
+		name     string
+		snapshot []byte
+		want     string
+	}{
+		{name: "snapshot with source id echoes it", snapshot: []byte(`{"source_blueprint_id":"` + sourceID + `","is_system":true}`), want: sourceID},
+		{name: "nil snapshot echoes empty", snapshot: nil, want: ""},
+		{name: "snapshot without source id echoes empty", snapshot: []byte(`{"is_system":false}`), want: ""},
+		{name: "malformed snapshot echoes empty", snapshot: []byte(`{not-json`), want: ""},
+	}
+	svc := &CoreService{log: &mockLogger{}}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint := &models.EndPoint{
+				EUI:               models.EUIFromString("0123456789abcdef"),
+				TenantID:          123,
+				BlueprintSnapshot: tt.snapshot,
+			}
+			assert.Equal(t, tt.want, svc.endpointToProto(endpoint).BlueprintId)
+		})
+	}
+}
+
+// TestApplyBlueprintSnapshot_Materializes: selected blueprint is copied into the snapshot; device_model + type_eui follow the blueprint.
+func TestApplyBlueprintSnapshot_Materializes(t *testing.T) {
+	bpModelID := uuid.New()
+	typeEUIBytes := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0x00, 0x00, 0x94}
+	bp := &models.Blueprint{
+		ID:            uuid.New(),
+		DeviceModelID: bpModelID,
+		Version:       "1.2.3",
+		TypeEUI:       typeEUIBytes,
+		SpecJSON:      []byte(`{"codec":"x"}`),
+	}
+	otherModel := uuid.New()
+	endpoint := &models.EndPoint{EUI: models.EUIFromString("0123456789abcdef"), DeviceModelID: &otherModel}
+
+	svc := &CoreService{log: &mockLogger{}, blueprintSvc: &mockBlueprintSvcForEndpoint{
+		getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) { return bp, nil },
+	}}
+
+	err := svc.applyBlueprintSnapshot(testutil.TestContext(), endpoint, bp.ID.String())
+	require.NoError(t, err)
+	require.NotEmpty(t, endpoint.BlueprintSnapshot)
+	require.NotNil(t, endpoint.DeviceModelID)
+	assert.Equal(t, bpModelID, *endpoint.DeviceModelID, "device model follows the blueprint")
+	require.NotNil(t, endpoint.TypeEUI)
+	assert.Equal(t, typeEUIBytes, endpoint.TypeEUI[:], "type_eui follows the blueprint")
+	assert.Equal(t, bp.ID.String(), snapshotSourceID(endpoint.BlueprintSnapshot), "snapshot records source blueprint id")
+}
+
+// TestApplyBlueprintSnapshot_Errors covers the failure branches; none must leave a partial snapshot.
+func TestApplyBlueprintSnapshot_Errors(t *testing.T) {
+	validID := uuid.NewString()
+	tests := []struct {
+		name        string
+		svc         grpcservices.BlueprintService
+		blueprintID string
+		wantCode    codes.Code
+	}{
+		{"service not configured", nil, validID, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured)},
+		{"invalid uuid", &mockBlueprintSvcForEndpoint{}, "not-a-uuid", grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat)},
+		{"blueprint not found", &mockBlueprintSvcForEndpoint{getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) { return nil, nil }}, validID, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound)},
+		{"fetch error", &mockBlueprintSvcForEndpoint{getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) { return nil, errors.New("db down") }}, validID, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &CoreService{log: &mockLogger{}}
+			if tt.svc != nil {
+				svc.blueprintSvc = tt.svc
+			}
+			endpoint := &models.EndPoint{EUI: models.EUIFromString("0123456789abcdef")}
+			err := svc.applyBlueprintSnapshot(testutil.TestContext(), endpoint, tt.blueprintID)
+			require.Error(t, err)
+			assert.Equal(t, tt.wantCode, status.Code(err))
+			assert.Empty(t, endpoint.BlueprintSnapshot, "no snapshot on error")
+		})
+	}
+}
+
+// TestUpdateEndPoint_SnapshotTrigger: three-branch re-materialization state machine whose failure modes are silent.
+func TestUpdateEndPoint_SnapshotTrigger(t *testing.T) {
+	priorModel, newModel := uuid.New(), uuid.New()
+	priorBp, newBp, newDefBp := uuid.New(), uuid.New(), uuid.New()
+	tePrior := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0x00, 0x00, 0x01}
+	teNew := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0x00, 0x00, 0x02}
+	teDef := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0x00, 0x00, 0x03}
+	const eui = "1122334455667788"
+
+	priorSnap, err := buildBlueprintSnapshot(&models.Blueprint{ID: priorBp, DeviceModelID: priorModel, TypeEUI: tePrior, Version: "1", SpecJSON: []byte(`{"a":1}`)})
+	require.NoError(t, err)
+	existing := func() *models.EndPoint {
+		m := priorModel
+		return &models.EndPoint{EUI: models.EUIFromString(eui), TenantID: 1, DeviceModelID: &m, BlueprintSnapshot: priorSnap}
+	}
+	run := func(ep *mockEndpointSvcForUpdate, bp *mockBlueprintSvcForEndpoint, req *pb.UpdateEndPointRequest) error {
+		svc := &CoreService{endpointSvc: ep, blueprintSvc: bp, log: &mockLogger{}}
+		_, e := svc.UpdateEndPoint(testutil.TestContextWithTenant(1), req)
+		return e
+	}
+	selReq := &pb.UpdateEndPointRequest{Endpoint: &pb.EndPoint{EpEui: eui, BlueprintId: newBp.String()}, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{fieldMaskBlueprintID}}}
+	modelReq := &pb.UpdateEndPointRequest{Endpoint: &pb.EndPoint{EpEui: eui, DeviceModelId: newModel.String()}, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{fieldMaskDeviceModelID}}}
+
+	t.Run("branch1 explicit selection re-materializes", func(t *testing.T) {
+		ep := &mockEndpointSvcForUpdate{getByEUIResult: existing()}
+		bp := &mockBlueprintSvcForEndpoint{getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) {
+			return &models.Blueprint{ID: newBp, DeviceModelID: newModel, TypeEUI: teNew, Version: "2", SpecJSON: []byte(`{"b":2}`)}, nil
+		}}
+		require.NoError(t, run(ep, bp, selReq))
+		got := ep.updateCapture
+		require.NotNil(t, got)
+		assert.Equal(t, newBp.String(), snapshotSourceID(got.BlueprintSnapshot), "snapshot re-forked to selected blueprint")
+		require.NotNil(t, got.DeviceModelID)
+		assert.Equal(t, newModel, *got.DeviceModelID, "device model follows selected blueprint")
+		require.NotNil(t, got.TypeEUI)
+		assert.Equal(t, teNew, got.TypeEUI[:], "type_eui follows the snapshot")
+	})
+
+	t.Run("branch1 snapshot type_eui overrides explicit mask write", func(t *testing.T) {
+		ep := &mockEndpointSvcForUpdate{getByEUIResult: existing()}
+		bp := &mockBlueprintSvcForEndpoint{getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) {
+			return &models.Blueprint{ID: newBp, DeviceModelID: newModel, TypeEUI: teNew, Version: "2", SpecJSON: []byte(`{}`)}, nil
+		}}
+		req := &pb.UpdateEndPointRequest{
+			Endpoint:   &pb.EndPoint{EpEui: eui, BlueprintId: newBp.String(), TypeEui: []byte{0xde, 0xad, 0xbe, 0xef, 0x00, 0x00, 0x00, 0x00}},
+			UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{fieldMaskBlueprintID, fieldMaskTypeEUI}},
+		}
+		require.NoError(t, run(ep, bp, req))
+		require.NotNil(t, ep.updateCapture.TypeEUI)
+		assert.Equal(t, teNew, ep.updateCapture.TypeEUI[:], "snapshot type_eui wins over explicit mask write")
+	})
+
+	t.Run("branch1 same blueprint id is a no-op", func(t *testing.T) {
+		ep := &mockEndpointSvcForUpdate{getByEUIResult: existing()}
+		bp := &mockBlueprintSvcForEndpoint{getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) { return nil, errors.New("must not fetch") }}
+		req := &pb.UpdateEndPointRequest{Endpoint: &pb.EndPoint{EpEui: eui, BlueprintId: priorBp.String()}, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{fieldMaskBlueprintID}}}
+		require.NoError(t, run(ep, bp, req))
+		assert.Equal(t, priorBp.String(), snapshotSourceID(ep.updateCapture.BlueprintSnapshot), "snapshot unchanged on same-id selection")
+	})
+
+	t.Run("branch2 model change re-seeds from new model default", func(t *testing.T) {
+		ep := &mockEndpointSvcForUpdate{getByEUIResult: existing()}
+		bp := &mockBlueprintSvcForEndpoint{
+			getDeviceModelResult: &models.DeviceModel{ID: newModel},
+			getDefaultForModelFn: func() (*models.Blueprint, error) {
+				return &models.Blueprint{ID: newDefBp, DeviceModelID: newModel, TypeEUI: teDef, Version: "9", SpecJSON: []byte(`{}`)}, nil
+			},
+			getBlueprintFn: func(id uuid.UUID) (*models.Blueprint, error) {
+				if id == priorBp { // pinned blueprint is native to the OLD model → re-seed
+					return &models.Blueprint{ID: priorBp, DeviceModelID: priorModel}, nil
+				}
+				return &models.Blueprint{ID: newDefBp, DeviceModelID: newModel, TypeEUI: teDef, Version: "9", SpecJSON: []byte(`{}`)}, nil
+			},
+		}
+		require.NoError(t, run(ep, bp, modelReq))
+		got := ep.updateCapture
+		assert.Equal(t, newDefBp.String(), snapshotSourceID(got.BlueprintSnapshot), "re-seeded to new model default")
+		require.NotNil(t, got.TypeEUI)
+		assert.Equal(t, teDef, got.TypeEUI[:], "type_eui follows re-seeded snapshot")
+	})
+
+	t.Run("branch2 new model without default keeps prior snapshot", func(t *testing.T) {
+		ep := &mockEndpointSvcForUpdate{getByEUIResult: existing()}
+		bp := &mockBlueprintSvcForEndpoint{
+			getDeviceModelResult: &models.DeviceModel{ID: newModel},
+			getDefaultForModelFn: func() (*models.Blueprint, error) { return nil, nil },
+			getBlueprintFn:       func(_ uuid.UUID) (*models.Blueprint, error) { return &models.Blueprint{ID: priorBp, DeviceModelID: priorModel}, nil },
+		}
+		require.NoError(t, run(ep, bp, modelReq))
+		assert.Equal(t, priorBp.String(), snapshotSourceID(ep.updateCapture.BlueprintSnapshot), "prior snapshot kept when new model has no default")
+	})
+
+	t.Run("branch2 default lookup error fails the update", func(t *testing.T) {
+		ep := &mockEndpointSvcForUpdate{getByEUIResult: existing()}
+		bp := &mockBlueprintSvcForEndpoint{
+			getDeviceModelResult: &models.DeviceModel{ID: newModel},
+			getDefaultForModelFn: func() (*models.Blueprint, error) { return nil, errors.New("db down") },
+			getBlueprintFn:       func(_ uuid.UUID) (*models.Blueprint, error) { return &models.Blueprint{ID: priorBp, DeviceModelID: priorModel}, nil },
+		}
+		require.Error(t, run(ep, bp, modelReq))
+		assert.Nil(t, ep.updateCapture, "update must not persist on infra failure")
+	})
+
+	t.Run("branch2 skipped when pinned blueprint is native to new model", func(t *testing.T) {
+		ep := &mockEndpointSvcForUpdate{getByEUIResult: existing()}
+		bp := &mockBlueprintSvcForEndpoint{
+			getDeviceModelResult: &models.DeviceModel{ID: newModel},
+			getDefaultForModelFn: func() (*models.Blueprint, error) { return nil, errors.New("must not be called") },
+			getBlueprintFn:       func(_ uuid.UUID) (*models.Blueprint, error) { return &models.Blueprint{ID: priorBp, DeviceModelID: newModel}, nil },
+		}
+		require.NoError(t, run(ep, bp, modelReq))
+		assert.Equal(t, priorBp.String(), snapshotSourceID(ep.updateCapture.BlueprintSnapshot), "snapshot preserved; no re-seed when pinned is native to new model")
+	})
+}
+
 // TestULDataMessageToBaseStationMessageProto_SetsDirection verifies ulDataMessageToBaseStationMessageProto
 // sets direction to "uplink" for all ULDataMessage conversions per MIOTY protocol semantics
 func TestULDataMessageToBaseStationMessageProto_SetsDirection(t *testing.T) {
@@ -1475,6 +1677,10 @@ func (m *mockEndpointSvcForUpdate) Update(_ context.Context, ep *models.EndPoint
 
 func (m *mockEndpointSvcForUpdate) Delete(_ context.Context, _ []byte, _ int64) error {
 	return nil
+}
+
+func (m *mockEndpointSvcForUpdate) ListByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
 }
 
 func (m *mockEndpointSvcForUpdate) List(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
@@ -2504,6 +2710,10 @@ func (m *mockEndpointSvcForUpdateErrors) Delete(_ context.Context, _ []byte, _ i
 	return nil
 }
 
+func (m *mockEndpointSvcForUpdateErrors) ListByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
 func (m *mockEndpointSvcForUpdateErrors) List(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -2904,11 +3114,20 @@ type mockBlueprintSvcForEndpoint struct {
 	resolveTypeEUIFn     func(ctx context.Context, tenantID int64, modelID uuid.UUID) (*models.EUI, error)
 	getDeviceModelResult *models.DeviceModel
 	getDeviceModelErr    error
+	getDefaultForModelFn func() (*models.Blueprint, error)
+	getBlueprintFn       func(id uuid.UUID) (*models.Blueprint, error)
 }
 
 func (m *mockBlueprintSvcForEndpoint) ResolveEffectiveTypeEUI(ctx context.Context, tenantID int64, modelID uuid.UUID) (*models.EUI, error) {
 	if m.resolveTypeEUIFn != nil {
 		return m.resolveTypeEUIFn(ctx, tenantID, modelID)
+	}
+	return nil, nil
+}
+
+func (m *mockBlueprintSvcForEndpoint) GetDefaultForModel(_ context.Context, _ int64, _ uuid.UUID) (*models.Blueprint, error) {
+	if m.getDefaultForModelFn != nil {
+		return m.getDefaultForModelFn()
 	}
 	return nil, nil
 }
@@ -2936,7 +3155,7 @@ func (m *mockBlueprintSvcForEndpoint) UpdateManufacturer(_ context.Context, _ uu
 func (m *mockBlueprintSvcForEndpoint) DeleteManufacturer(_ context.Context, _ uuid.UUID) error {
 	return nil
 }
-func (m *mockBlueprintSvcForEndpoint) ListManufacturers(_ context.Context, _, _ int) ([]*models.Manufacturer, int64, error) {
+func (m *mockBlueprintSvcForEndpoint) ListManufacturers(_ context.Context, _ bool, _, _ int) ([]*models.Manufacturer, int64, error) {
 	return nil, 0, nil
 }
 func (m *mockBlueprintSvcForEndpoint) CreateDeviceModel(_ context.Context, _ *grpcservices.DeviceModelCreateRequest) (*models.DeviceModel, error) {
@@ -2951,13 +3170,16 @@ func (m *mockBlueprintSvcForEndpoint) UpdateDeviceModel(_ context.Context, _ uui
 func (m *mockBlueprintSvcForEndpoint) DeleteDeviceModel(_ context.Context, _ uuid.UUID) error {
 	return nil
 }
-func (m *mockBlueprintSvcForEndpoint) ListDeviceModels(_ context.Context, _ *uuid.UUID, _, _ int) ([]*models.DeviceModel, int64, error) {
+func (m *mockBlueprintSvcForEndpoint) ListDeviceModels(_ context.Context, _ bool, _ *uuid.UUID, _, _ int) ([]*models.DeviceModel, int64, error) {
 	return nil, 0, nil
 }
 func (m *mockBlueprintSvcForEndpoint) CreateBlueprint(_ context.Context, _ *grpcservices.BlueprintCreateRequest) (*models.Blueprint, error) {
 	return nil, nil
 }
-func (m *mockBlueprintSvcForEndpoint) GetBlueprint(_ context.Context, _ uuid.UUID) (*models.Blueprint, error) {
+func (m *mockBlueprintSvcForEndpoint) GetBlueprint(_ context.Context, id uuid.UUID) (*models.Blueprint, error) {
+	if m.getBlueprintFn != nil {
+		return m.getBlueprintFn(id)
+	}
 	return nil, nil
 }
 func (m *mockBlueprintSvcForEndpoint) UpdateBlueprint(_ context.Context, _ uuid.UUID, _ *grpcservices.BlueprintUpdateRequest) (*models.Blueprint, error) {
@@ -2966,7 +3188,7 @@ func (m *mockBlueprintSvcForEndpoint) UpdateBlueprint(_ context.Context, _ uuid.
 func (m *mockBlueprintSvcForEndpoint) DeleteBlueprint(_ context.Context, _ uuid.UUID) error {
 	return nil
 }
-func (m *mockBlueprintSvcForEndpoint) ListBlueprints(_ context.Context, _ *uuid.UUID, _, _ int) ([]*models.Blueprint, int64, error) {
+func (m *mockBlueprintSvcForEndpoint) ListBlueprints(_ context.Context, _ bool, _ *uuid.UUID, _, _ int) ([]*models.Blueprint, int64, error) {
 	return nil, 0, nil
 }
 func (m *mockBlueprintSvcForEndpoint) SetDefaultBlueprint(_ context.Context, _ uuid.UUID) error {
@@ -2979,6 +3201,10 @@ func (m *mockBlueprintSvcForEndpoint) CreateDeviceModelWithBlueprint(_ context.C
 	return nil, nil, nil
 }
 func (m *mockBlueprintSvcForEndpoint) DecodePreview(_ context.Context, _ uuid.UUID, _ []byte, _ uint8) (*grpcservices.DecodePreviewResult, error) {
+	return nil, nil
+}
+
+func (m *mockBlueprintSvcForEndpoint) DecodePreviewInline(_ context.Context, _, _ []byte, _ uint8) (*grpcservices.DecodePreviewResult, error) {
 	return nil, nil
 }
 
