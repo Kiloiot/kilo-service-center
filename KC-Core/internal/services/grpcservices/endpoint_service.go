@@ -3,6 +3,8 @@ package grpcservices
 import (
 	"context"
 
+	"github.com/google/uuid"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -54,4 +56,9 @@ func (s *endpointService) Delete(ctx context.Context, eui []byte, tenantID int64
 // List lists endpoints for a tenant
 func (s *endpointService) List(ctx context.Context, tenantID int64, limit, offset int) ([]*models.EndPoint, error) {
 	return s.storage.ListEndPoints(ctx, tenantID, limit, offset)
+}
+
+// ListByModelWithSnapshot lists a tenant's snapshot-bearing endpoints for a device model.
+func (s *endpointService) ListByModelWithSnapshot(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) ([]*models.EndPoint, error) {
+	return s.storage.ListEndPointsByModelWithSnapshot(ctx, tenantID, deviceModelID)
 }

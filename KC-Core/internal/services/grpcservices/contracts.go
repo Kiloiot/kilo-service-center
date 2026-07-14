@@ -20,6 +20,7 @@ type EndpointService interface {
 	CheckEUIGloballyUnique(ctx context.Context, eui []byte) error
 	Delete(ctx context.Context, eui []byte, tenantID int64) error
 	List(ctx context.Context, tenantID int64, limit, offset int) ([]*models.EndPoint, error)
+	ListByModelWithSnapshot(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) ([]*models.EndPoint, error)
 }
 
 // EndpointAttachmentService handles endpoint attach/detach propagation operations
@@ -114,7 +115,7 @@ type BlueprintService interface {
 	GetManufacturer(ctx context.Context, id uuid.UUID) (*models.Manufacturer, error)
 	UpdateManufacturer(ctx context.Context, id uuid.UUID, req *ManufacturerUpdateRequest) (*models.Manufacturer, error)
 	DeleteManufacturer(ctx context.Context, id uuid.UUID) error
-	ListManufacturers(ctx context.Context, limit, offset int) ([]*models.Manufacturer, int64, error)
+	ListManufacturers(ctx context.Context, isSystem bool, limit, offset int) ([]*models.Manufacturer, int64, error)
 
 	// Device Models
 	CreateDeviceModel(ctx context.Context, req *DeviceModelCreateRequest) (*models.DeviceModel, error)
@@ -122,14 +123,14 @@ type BlueprintService interface {
 	GetDeviceModelForTenant(ctx context.Context, tenantID int64, id uuid.UUID) (*models.DeviceModel, error)
 	UpdateDeviceModel(ctx context.Context, id uuid.UUID, req *DeviceModelUpdateRequest) (*models.DeviceModel, error)
 	DeleteDeviceModel(ctx context.Context, id uuid.UUID) error
-	ListDeviceModels(ctx context.Context, manufacturerID *uuid.UUID, limit, offset int) ([]*models.DeviceModel, int64, error)
+	ListDeviceModels(ctx context.Context, isSystem bool, manufacturerID *uuid.UUID, limit, offset int) ([]*models.DeviceModel, int64, error)
 
 	// Blueprints
 	CreateBlueprint(ctx context.Context, req *BlueprintCreateRequest) (*models.Blueprint, error)
 	GetBlueprint(ctx context.Context, id uuid.UUID) (*models.Blueprint, error)
 	UpdateBlueprint(ctx context.Context, id uuid.UUID, req *BlueprintUpdateRequest) (*models.Blueprint, error)
 	DeleteBlueprint(ctx context.Context, id uuid.UUID) error
-	ListBlueprints(ctx context.Context, deviceModelID *uuid.UUID, limit, offset int) ([]*models.Blueprint, int64, error)
+	ListBlueprints(ctx context.Context, isSystem bool, deviceModelID *uuid.UUID, limit, offset int) ([]*models.Blueprint, int64, error)
 	SetDefaultBlueprint(ctx context.Context, id uuid.UUID) error
 	// SubmitToRegistry submits a blueprint to an external registry.
 	SubmitToRegistry(ctx context.Context, id uuid.UUID, req *RegistrySubmitRequest) (*RegistrySubmitResult, error)
@@ -140,9 +141,15 @@ type BlueprintService interface {
 	// DecodePreview runs the blueprint decoder on a payload for preview.
 	DecodePreview(ctx context.Context, blueprintID uuid.UUID, payload []byte, formatID uint8) (*DecodePreviewResult, error)
 
+	// DecodePreviewInline previews decoding against an unsaved inline spec.
+	DecodePreviewInline(ctx context.Context, specJSON, payload []byte, formatID uint8) (*DecodePreviewResult, error)
+
 	// ResolveEffectiveTypeEUI returns the TypeEUI from the device model's default blueprint.
 	// Returns nil without error when no default blueprint exists or it has no TypeEUI.
 	ResolveEffectiveTypeEUI(ctx context.Context, tenantID int64, modelID uuid.UUID) (*models.EUI, error)
+
+	// GetDefaultForModel returns the device model's default blueprint (nil, nil when none).
+	GetDefaultForModel(ctx context.Context, tenantID int64, modelID uuid.UUID) (*models.Blueprint, error)
 }
 
 // MessageListingService handles message listing and streaming operations
@@ -383,6 +390,7 @@ type ManufacturerCreateRequest struct {
 	Description string
 	Website     string
 	LogoURL     string
+	IsSystem    bool // admin-only: create a System catalog row (tenant_id NULL)
 }
 
 // ManufacturerUpdateRequest contains fields for updating a manufacturer
@@ -403,6 +411,7 @@ type DeviceModelCreateRequest struct {
 	TypeEUI        []byte // 8-byte MIOTY Type EUI (optional)
 	Description    string
 	DatasheetURL   string
+	IsSystem       bool // admin-only: create a System catalog row (tenant_id NULL)
 }
 
 // DeviceModelUpdateRequest contains fields for updating a device model
@@ -422,6 +431,7 @@ type BlueprintCreateRequest struct {
 	TypeEUI       []byte          // 8-byte MIOTY Type EUI (optional, resolved via device model)
 	SpecJSON      json.RawMessage // Blueprint specification JSON
 	IsDefault     bool
+	IsSystem      bool // admin-only: create a System catalog row (tenant_id NULL)
 }
 
 // BlueprintUpdateRequest contains fields for updating a blueprint
@@ -453,6 +463,7 @@ type DeviceModelWithBlueprintRequest struct {
 	Name           string          // Model name (slug auto-generated)
 	Version        string          // Blueprint version (e.g., "1.0.0")
 	DecoderScript  json.RawMessage // Blueprint specification JSON
+	IsSystem       bool            // admin-only: create System catalog rows (tenant_id NULL)
 }
 
 // DecodePreviewResult contains the result of a decode preview operation.

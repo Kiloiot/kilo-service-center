@@ -370,6 +370,10 @@ func (s *KiloCenterServiceCompat) DecodePreview(ctx context.Context, req *pb.Dec
 	return s.core.DecodePreview(ctx, req)
 }
 
+func (s *KiloCenterServiceCompat) BulkAssignBlueprint(ctx context.Context, req *pb.BulkAssignBlueprintRequest) (*pb.BulkAssignBlueprintResponse, error) {
+	return s.core.BulkAssignBlueprint(ctx, req)
+}
+
 // Messages listing/streaming (8)
 
 func (s *KiloCenterServiceCompat) ListMessages(ctx context.Context, req *pb.ListMessagesRequest) (*pb.ListMessagesResponse, error) {

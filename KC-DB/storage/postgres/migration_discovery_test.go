@@ -12,8 +12,8 @@ import (
 func TestMigrationDiscovery(t *testing.T) {
 	migrations := discoverMigrations(t)
 
-	// We have 129 migration files (numbered 1-135 with gaps at 24, 25, 26, 52, 78, 79)
-	assert.Len(t, migrations, 129, "Should discover exactly 129 migrations")
+	// We have 132 migration files (numbered 1-138 with gaps at 24, 25, 26, 52, 78, 79)
+	assert.Len(t, migrations, 132, "Should discover exactly 132 migrations")
 
 	// Verify migrations are sorted by number
 	for i := 1; i < len(migrations); i++ {
@@ -26,7 +26,7 @@ func TestMigrationDiscovery(t *testing.T) {
 	assert.NotEmpty(t, migrations[0].description, "Migration should have description")
 
 	// Verify last migration
-	assert.Equal(t, 135, migrations[len(migrations)-1].number, "Last migration should be #135")
+	assert.Equal(t, 138, migrations[len(migrations)-1].number, "Last migration should be #138")
 
 	// Verify specific migrations exist
 	expectedMigrations := map[int]string{
@@ -93,6 +93,9 @@ func TestMigrationDiscovery(t *testing.T) {
 		133: "add_endpoint_preshared_key",
 		134: "restore_tenant_cascade_fkeys",
 		135: "convert_message_eui_to_bytea",
+		136: "add_endpoint_blueprint_snapshot",
+		137: "catalog_ownership",
+		138: "blueprint_default_unique",
 	}
 
 	for num, expectedDesc := range expectedMigrations {

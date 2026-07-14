@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -24,6 +25,31 @@ import (
 // Manufacturer handlers
 
 // CreateManufacturer creates a new manufacturer.
+// requireServerAdmin gates System-catalog mutations; a userless (API-key) caller is non-admin (fail-closed).
+func (s *CoreService) requireServerAdmin(ctx context.Context) error {
+	if s.adminChecker == nil {
+		s.log.ErrorContext(ctx, "admin checker not configured")
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInternalError),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInternalError))
+	}
+	userID, err := GetUserFromContext(ctx)
+	if err != nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAdminRequired),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAdminRequired))
+	}
+	isAdmin, err := s.adminChecker.IsServerAdmin(ctx, userID.String())
+	if err != nil {
+		s.log.ErrorContext(ctx, "server admin check failed", "error", err)
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInternalError),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInternalError))
+	}
+	if !isAdmin {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAdminRequired),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAdminRequired))
+	}
+	return nil
+}
+
 func (s *CoreService) CreateManufacturer(ctx context.Context, req *pb.CreateManufacturerRequest) (*pb.CreateManufacturerResponse, error) {
 	if s.blueprintSvc == nil {
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
@@ -35,9 +61,16 @@ func (s *CoreService) CreateManufacturer(ctx context.Context, req *pb.CreateManu
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNameRequired))
 	}
 
+	if req.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	createReq := &grpcservices.ManufacturerCreateRequest{
-		Name:    req.Name,
-		Website: req.Website,
+		Name:     req.Name,
+		Website:  req.Website,
+		IsSystem: req.IsSystem,
 	}
 
 	manufacturer, err := s.blueprintSvc.CreateManufacturer(ctx, createReq)
@@ -109,6 +142,18 @@ func (s *CoreService) UpdateManufacturer(ctx context.Context, req *pb.UpdateManu
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
 	}
 
+	// System-catalog mutation is admin-only; resolve the target's ownership to decide.
+	existing, err := s.blueprintSvc.GetManufacturer(ctx, id)
+	if err != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenManufacturerNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenManufacturerNotFound))
+	}
+	if existing.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	updateReq := &grpcservices.ManufacturerUpdateRequest{}
 	if req.Name != "" {
 		updateReq.Name = &req.Name
@@ -153,6 +198,18 @@ func (s *CoreService) DeleteManufacturer(ctx context.Context, req *pb.DeleteManu
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
 	}
 
+	// System-catalog mutation is admin-only; resolve the target's ownership to decide.
+	existing, err := s.blueprintSvc.GetManufacturer(ctx, id)
+	if err != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenManufacturerNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenManufacturerNotFound))
+	}
+	if existing.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := s.blueprintSvc.DeleteManufacturer(ctx, id); err != nil {
 		s.log.ErrorContext(ctx, "delete manufacturer failed", "id", req.Id, "error", err)
 		if errors.Is(err, storage.ErrForeignKeyViolation) {
@@ -182,7 +239,7 @@ func (s *CoreService) ListManufacturers(ctx context.Context, req *pb.ListManufac
 		}
 	}
 
-	manufacturers, total, err := s.blueprintSvc.ListManufacturers(ctx, limit, offset)
+	manufacturers, total, err := s.blueprintSvc.ListManufacturers(ctx, req.IsSystem, limit, offset)
 	if err != nil {
 		s.log.ErrorContext(ctx, "list manufacturers failed", "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenListManufacturersFailed),
@@ -251,18 +308,27 @@ func (s *CoreService) CreateDeviceModel(ctx context.Context, req *pb.CreateDevic
 		}
 	}
 
+	if req.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	createReq := &grpcservices.DeviceModelCreateRequest{
 		ManufacturerID: manufacturerID,
 		Name:           req.Name,
 		Code:           req.Code,
 		TypeEUI:        typeEUI,
 		Description:    req.Description,
+		IsSystem:       req.IsSystem,
 	}
 
 	model, err := s.blueprintSvc.CreateDeviceModel(ctx, createReq)
 	if err != nil {
 		s.log.ErrorContext(ctx, "create device model failed", "name", req.Name, "error", err)
 		switch {
+		case errors.Is(err, blueprints.ErrOwnershipMismatch):
+			return nil, status.Error(codes.InvalidArgument, "is_system must match the parent manufacturer's ownership")
 		case errors.Is(err, blueprints.ErrManufacturerNotFound):
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenManufacturerNotFound),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenManufacturerNotFound))
@@ -334,6 +400,18 @@ func (s *CoreService) UpdateDeviceModel(ctx context.Context, req *pb.UpdateDevic
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
 	}
 
+	// System-catalog mutation is admin-only; resolve the target's ownership to decide.
+	existing, err := s.blueprintSvc.GetDeviceModel(ctx, id)
+	if err != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
+	}
+	if existing.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	updateReq := &grpcservices.DeviceModelUpdateRequest{}
 	if req.Name != "" {
 		updateReq.Name = &req.Name
@@ -370,6 +448,18 @@ func (s *CoreService) DeleteDeviceModel(ctx context.Context, req *pb.DeleteDevic
 	if err != nil {
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidIDFormat),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
+	}
+
+	// System-catalog mutation is admin-only; resolve the target's ownership to decide.
+	existing, err := s.blueprintSvc.GetDeviceModel(ctx, id)
+	if err != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
+	}
+	if existing.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.blueprintSvc.DeleteDeviceModel(ctx, id); err != nil {
@@ -411,7 +501,7 @@ func (s *CoreService) ListDeviceModels(ctx context.Context, req *pb.ListDeviceMo
 		manufacturerID = &id
 	}
 
-	models, total, err := s.blueprintSvc.ListDeviceModels(ctx, manufacturerID, limit, offset)
+	models, total, err := s.blueprintSvc.ListDeviceModels(ctx, req.IsSystem, manufacturerID, limit, offset)
 	if err != nil {
 		s.log.ErrorContext(ctx, "list device models failed", "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenListDeviceModelsFailed),
@@ -471,18 +561,27 @@ func (s *CoreService) CreateBlueprint(ctx context.Context, req *pb.CreateBluepri
 
 	// Proto uses Name/Description/DecoderScript; service uses TypeEUI/SpecJSON
 	// Map DecoderScript to SpecJSON for DB compatibility
+	if req.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	createReq := &grpcservices.BlueprintCreateRequest{
 		DeviceModelID: deviceModelID,
 		Version:       req.Version,
 		TypeEUI:       nil,               // Proto doesn't have TypeEUI; can be set later
 		SpecJSON:      req.DecoderScript, // Map DecoderScript to SpecJSON
 		IsDefault:     req.IsDefault,
+		IsSystem:      req.IsSystem,
 	}
 
 	blueprint, err := s.blueprintSvc.CreateBlueprint(ctx, createReq)
 	if err != nil {
 		s.log.ErrorContext(ctx, "create blueprint failed", "version", req.Version, "error", err)
 		switch {
+		case errors.Is(err, blueprints.ErrOwnershipMismatch):
+			return nil, status.Error(codes.InvalidArgument, "is_system must match the parent device model's ownership")
 		case errors.Is(err, blueprints.ErrDeviceModelNotFound):
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
@@ -557,6 +656,18 @@ func (s *CoreService) UpdateBlueprint(ctx context.Context, req *pb.UpdateBluepri
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
 	}
 
+	// System-catalog mutation is admin-only; resolve the target's ownership to decide.
+	existing, err := s.blueprintSvc.GetBlueprint(ctx, id)
+	if err != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
+	}
+	if existing.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	// Proto uses Name/Description/DecoderScript; service uses Version/TypeEUI/SpecJSON
 	updateReq := &grpcservices.BlueprintUpdateRequest{}
 	if req.Version != "" {
@@ -608,6 +719,18 @@ func (s *CoreService) DeleteBlueprint(ctx context.Context, req *pb.DeleteBluepri
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
 	}
 
+	// System-catalog mutation is admin-only; resolve the target's ownership to decide.
+	existing, err := s.blueprintSvc.GetBlueprint(ctx, id)
+	if err != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
+	}
+	if existing.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := s.blueprintSvc.DeleteBlueprint(ctx, id); err != nil {
 		s.log.ErrorContext(ctx, "delete blueprint failed", "id", req.Id, "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeleteBlueprintFailed),
@@ -643,7 +766,7 @@ func (s *CoreService) ListBlueprints(ctx context.Context, req *pb.ListBlueprints
 		deviceModelID = &id
 	}
 
-	blueprints, total, err := s.blueprintSvc.ListBlueprints(ctx, deviceModelID, limit, offset)
+	blueprints, total, err := s.blueprintSvc.ListBlueprints(ctx, req.IsSystem, deviceModelID, limit, offset)
 	if err != nil {
 		s.log.ErrorContext(ctx, "list blueprints failed", "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenListBlueprintsFailed),
@@ -689,6 +812,18 @@ func (s *CoreService) SetDefaultBlueprint(ctx context.Context, req *pb.SetDefaul
 	if err != nil {
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidIDFormat),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
+	}
+
+	// System-catalog mutation is admin-only; resolve the target's ownership to decide.
+	existing, err := s.blueprintSvc.GetBlueprint(ctx, id)
+	if err != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
+	}
+	if existing.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.blueprintSvc.SetDefaultBlueprint(ctx, id); err != nil {
@@ -788,17 +923,26 @@ func (s *CoreService) CreateDeviceModelWithBlueprint(ctx context.Context, req *p
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidManufacturerIDFormat))
 	}
 
+	if req.IsSystem {
+		if err := s.requireServerAdmin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	svcReq := &grpcservices.DeviceModelWithBlueprintRequest{
 		ManufacturerID: manufacturerID,
 		Name:           req.Name,
 		Version:        req.Version,
 		DecoderScript:  req.DecoderScript,
+		IsSystem:       req.IsSystem,
 	}
 
 	model, blueprint, err := s.blueprintSvc.CreateDeviceModelWithBlueprint(ctx, svcReq)
 	if err != nil {
 		s.log.ErrorContext(ctx, "create device model with blueprint failed", "name", req.Name, "error", err)
 		switch {
+		case errors.Is(err, blueprints.ErrOwnershipMismatch):
+			return nil, status.Error(codes.InvalidArgument, "is_system must match the parent manufacturer's ownership")
 		case errors.Is(err, blueprints.ErrManufacturerNotFound):
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenManufacturerNotFound),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenManufacturerNotFound))
@@ -833,37 +977,44 @@ func (s *CoreService) DecodePreview(ctx context.Context, req *pb.DecodePreviewRe
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
 	}
 
-	if req.BlueprintId == "" {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintIDRequired),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintIDRequired))
-	}
 	if len(req.Payload) == 0 {
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenPreviewPayloadRequired),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenPreviewPayloadRequired))
 	}
-
-	blueprintID, err := uuid.Parse(req.BlueprintId)
-	if err != nil {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBlueprintIDFormat))
-	}
-
 	if req.FormatId > 255 {
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenPreviewInvalidFormatID),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenPreviewInvalidFormatID))
 	}
 
-	result, err := s.blueprintSvc.DecodePreview(ctx, blueprintID, req.Payload, uint8(req.FormatId)) //nolint:gosec // bounds checked above
+	// Source is a oneof: a saved blueprint id, or an inline spec for previewing before save.
+	var (
+		result *grpcservices.DecodePreviewResult
+		err    error
+	)
+	switch src := req.GetSource().(type) {
+	case *pb.DecodePreviewRequest_BlueprintId:
+		blueprintID, parseErr := uuid.Parse(src.BlueprintId)
+		if parseErr != nil {
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBlueprintIDFormat))
+		}
+		result, err = s.blueprintSvc.DecodePreview(ctx, blueprintID, req.Payload, uint8(req.FormatId)) //nolint:gosec // bounds checked above
+	case *pb.DecodePreviewRequest_SpecJson:
+		if len(src.SpecJson) == 0 {
+			return nil, status.Error(codes.InvalidArgument, "spec_json is empty")
+		}
+		result, err = s.blueprintSvc.DecodePreviewInline(ctx, src.SpecJson, req.Payload, uint8(req.FormatId)) //nolint:gosec // bounds checked above
+	default:
+		return nil, status.Error(codes.InvalidArgument, "decode source required: set blueprint_id or spec_json")
+	}
 	if err != nil {
-		s.log.ErrorContext(ctx, "decode preview failed", "blueprint_id", req.BlueprintId, "error", err)
-		switch {
-		case errors.Is(err, blueprints.ErrBlueprintNotFound):
+		s.log.ErrorContext(ctx, "decode preview failed", "error", err)
+		if errors.Is(err, blueprints.ErrBlueprintNotFound) {
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
-		default:
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenPreviewDecodeFailed),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenPreviewDecodeFailed))
 		}
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenPreviewDecodeFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenPreviewDecodeFailed))
 	}
 
 	return &pb.DecodePreviewResponse{
@@ -874,6 +1025,128 @@ func (s *CoreService) DecodePreview(ctx context.Context, req *pb.DecodePreviewRe
 		FormatId:         uint32(result.FormatID),
 		BlueprintVersion: result.BlueprintVersion,
 	}, nil
+}
+
+// BulkAssignBlueprint re-materializes a blueprint onto snapshot-bearing endpoints; catalog-default followers are skipped.
+func (s *CoreService) BulkAssignBlueprint(ctx context.Context, req *pb.BulkAssignBlueprintRequest) (*pb.BulkAssignBlueprintResponse, error) {
+	tenantID, err := GetTenantFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	blueprintID, err := s.validateBulkAssignPreconditions(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate before any mutation: no rollback, so reject a System blueprint up front.
+	if req.SetAsDefault {
+		if err := s.validateBulkAssignSetDefault(ctx, blueprintID); err != nil {
+			return nil, err
+		}
+	}
+
+	euis, err := s.resolveBulkAssignTargets(ctx, tenantID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	affected, err := s.rematerializeSnapshotOnEndpoints(ctx, tenantID, req.BlueprintId, euis)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.SetAsDefault {
+		// Eligibility (exists, not System) was validated before the mutation loop.
+		if err := s.blueprintSvc.SetDefaultBlueprint(ctx, blueprintID); err != nil {
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenSetDefaultBlueprintFailed),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenSetDefaultBlueprintFailed))
+		}
+	}
+
+	return &pb.BulkAssignBlueprintResponse{AffectedCount: affected}, nil
+}
+
+func (s *CoreService) validateBulkAssignPreconditions(req *pb.BulkAssignBlueprintRequest) (uuid.UUID, error) {
+	if s.blueprintSvc == nil || s.endpointSvc == nil {
+		return uuid.Nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
+	}
+	if req.BlueprintId == "" {
+		return uuid.Nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintIDRequired),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintIDRequired))
+	}
+	blueprintID, parseErr := uuid.Parse(req.BlueprintId)
+	if parseErr != nil {
+		return uuid.Nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBlueprintIDFormat))
+	}
+	return blueprintID, nil
+}
+
+// System blueprint can't be a tenant default; reject before any mutation (no rollback).
+func (s *CoreService) validateBulkAssignSetDefault(ctx context.Context, blueprintID uuid.UUID) error {
+	bp, bpErr := s.blueprintSvc.GetBlueprint(ctx, blueprintID)
+	if bpErr != nil || bp == nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
+	}
+	if bp.IsSystem {
+		return status.Error(codes.InvalidArgument, "set_as_default is not allowed for System blueprints")
+	}
+	return nil
+}
+
+// Explicit ep_euis win over device_model_id (which expands to the tenant's snapshot-bearing endpoints).
+func (s *CoreService) resolveBulkAssignTargets(ctx context.Context, tenantID int64, req *pb.BulkAssignBlueprintRequest) ([]models.EUI, error) {
+	if len(req.EpEuis) > 0 {
+		euis := make([]models.EUI, 0, len(req.EpEuis))
+		for _, e := range req.EpEuis {
+			euis = append(euis, models.EUIFromString(e))
+		}
+		return euis, nil
+	}
+	if req.DeviceModelId == "" {
+		return nil, status.Error(codes.InvalidArgument, "target required: set device_model_id or ep_euis")
+	}
+	modelID, parseErr := uuid.Parse(req.DeviceModelId)
+	if parseErr != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidDeviceModelIDFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidDeviceModelIDFormat))
+	}
+	targets, listErr := s.endpointSvc.ListByModelWithSnapshot(ctx, tenantID, modelID)
+	if listErr != nil {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenListEndpointsFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenListEndpointsFailed))
+	}
+	euis := make([]models.EUI, 0, len(targets))
+	for _, ep := range targets {
+		euis = append(euis, ep.EUI)
+	}
+	return euis, nil
+}
+
+// Skips missing endpoints and catalog-default followers; returns the affected count.
+func (s *CoreService) rematerializeSnapshotOnEndpoints(ctx context.Context, tenantID int64, blueprintID string, euis []models.EUI) (int32, error) {
+	var affected int32
+	for _, eui := range euis {
+		// Load the full endpoint (list columns are partial and would clobber on Update).
+		ep, getErr := s.endpointSvc.GetByEUI(ctx, eui[:], tenantID)
+		if getErr != nil || ep == nil {
+			continue // best-effort per target: skip missing endpoints
+		}
+		if len(ep.BlueprintSnapshot) == 0 {
+			continue // skip catalog-default followers
+		}
+		if err := s.applyBlueprintSnapshot(ctx, ep, blueprintID); err != nil {
+			return 0, err // same blueprint for all targets — a fetch/validation failure is fatal
+		}
+		if _, updErr := s.endpointSvc.Update(ctx, ep); updErr != nil {
+			return 0, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointFailed),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointFailed))
+		}
+		affected++
+	}
+	return affected, nil
 }
 
 // mapRegistryError translates service errors to gRPC catalog tokens.
@@ -932,6 +1205,14 @@ func (s *CoreService) mapRegistryError(err error) error {
 
 // Helper functions
 
+// formatOptionalTenantID renders a nullable tenant id ("" for System rows).
+func formatOptionalTenantID(t *int64) string {
+	if t == nil {
+		return ""
+	}
+	return strconv.FormatInt(*t, 10)
+}
+
 func manufacturerToProto(m *models.Manufacturer) *pb.Manufacturer {
 	if m == nil {
 		return nil
@@ -941,8 +1222,9 @@ func manufacturerToProto(m *models.Manufacturer) *pb.Manufacturer {
 		Name:       m.Name,
 		CreatedAt:  timestamppb.New(m.CreatedAt),
 		UpdatedAt:  timestamppb.New(m.UpdatedAt),
-		TenantId:   strconv.FormatInt(m.TenantID, 10), // int64→string
+		TenantId:   formatOptionalTenantID(m.TenantID),
 		IsVerified: m.IsVerified,
+		IsSystem:   m.IsSystem,
 		ModelCount: int32(min(m.ModelCount, math.MaxInt32)), //nolint:gosec // count value bounded
 	}
 	if m.Website != nil {
@@ -963,7 +1245,8 @@ func deviceModelToProto(m *models.DeviceModel) *pb.DeviceModel {
 		TypeEui:        hex.EncodeToString(m.TypeEUI), // Convert bytes to hex string
 		CreatedAt:      timestamppb.New(m.CreatedAt),
 		UpdatedAt:      timestamppb.New(m.UpdatedAt),
-		TenantId:       strconv.FormatInt(m.TenantID, 10),           // int64→string
+		TenantId:       formatOptionalTenantID(m.TenantID),
+		IsSystem:       m.IsSystem,
 		BlueprintCount: int32(min(m.BlueprintCount, math.MaxInt32)), //nolint:gosec // count value bounded
 	}
 	if m.Description != nil {
@@ -990,6 +1273,7 @@ func blueprintToProto(b *models.Blueprint) *pb.Blueprint {
 		TypeEui:          hex.EncodeToString(b.TypeEUI), // []byte→hex string
 		SpecJson:         []byte(b.SpecJSON),            // json.RawMessage→bytes
 		RegistryVerified: b.RegistryVerified,
+		IsSystem:         b.IsSystem,
 	}
 	// Optional fields (pointers)
 	if b.RegistryRepo != nil {

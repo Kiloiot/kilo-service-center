@@ -50,6 +50,10 @@ func (m *MockStorage) DeleteEndPoint(ctx context.Context, endpointEUI []byte, te
 	return args.Error(0)
 }
 
+func (m *MockStorage) ListEndPointsByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
 func (m *MockStorage) ListEndPoints(ctx context.Context, tenantID int64, limit, offset int) ([]*models.EndPoint, error) {
 	args := m.Called(ctx, tenantID, limit, offset)
 	if args.Get(0) == nil {

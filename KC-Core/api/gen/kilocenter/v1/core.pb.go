@@ -42,20 +42,22 @@ type EndPoint struct {
 	UpdatedAt   *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	LastSeenAt  *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=last_seen_at,json=lastSeenAt,proto3" json:"last_seen_at,omitempty"`
 	// MIOTY protocol fields per BSSCI v1.0.0 Section 3.8.1
-	AttachStatus  string `protobuf:"bytes,13,opt,name=attach_status,json=attachStatus,proto3" json:"attach_status,omitempty"`       // attached, detached, attaching, pending
-	ShAddr        uint32 `protobuf:"varint,14,opt,name=sh_addr,json=shAddr,proto3" json:"sh_addr,omitempty"`                        // Short address
-	DualChan      bool   `protobuf:"varint,15,opt,name=dual_chan,json=dualChan,proto3" json:"dual_chan,omitempty"`                  // Dual-channel mode
-	Repetition    bool   `protobuf:"varint,16,opt,name=repetition,proto3" json:"repetition,omitempty"`                              // Repetition flag
-	WideCarrOff   bool   `protobuf:"varint,17,opt,name=wide_carr_off,json=wideCarrOff,proto3" json:"wide_carr_off,omitempty"`       // Wide carrier offset
-	LongBlkDist   bool   `protobuf:"varint,18,opt,name=long_blk_dist,json=longBlkDist,proto3" json:"long_blk_dist,omitempty"`       // Long block distance
-	AttachCnt     uint32 `protobuf:"varint,19,opt,name=attach_cnt,json=attachCnt,proto3" json:"attach_cnt,omitempty"`               // Attachment counter
-	PreAttach     bool   `protobuf:"varint,20,opt,name=pre_attach,json=preAttach,proto3" json:"pre_attach,omitempty"`               // Pre-attachment enabled
-	LastPacketCnt uint32 `protobuf:"varint,21,opt,name=last_packet_cnt,json=lastPacketCnt,proto3" json:"last_packet_cnt,omitempty"` // Last known packet counter (uint32)
-	TypeEui       []byte `protobuf:"bytes,22,opt,name=type_eui,json=typeEui,proto3" json:"type_eui,omitempty"`                      // 8-byte Type EUI for blueprint decoding
-	CarrierOffset int32  `protobuf:"varint,23,opt,name=carrier_offset,json=carrierOffset,proto3" json:"carrier_offset,omitempty"`   // Carrier offset in Hz
-	DeviceModelId string `protobuf:"bytes,24,opt,name=device_model_id,json=deviceModelId,proto3" json:"device_model_id,omitempty"`  // UUID reference to device_models.id for blueprint decoding
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AttachStatus      string `protobuf:"bytes,13,opt,name=attach_status,json=attachStatus,proto3" json:"attach_status,omitempty"`                // attached, detached, attaching, pending
+	ShAddr            uint32 `protobuf:"varint,14,opt,name=sh_addr,json=shAddr,proto3" json:"sh_addr,omitempty"`                                 // Short address
+	DualChan          bool   `protobuf:"varint,15,opt,name=dual_chan,json=dualChan,proto3" json:"dual_chan,omitempty"`                           // Dual-channel mode
+	Repetition        bool   `protobuf:"varint,16,opt,name=repetition,proto3" json:"repetition,omitempty"`                                       // Repetition flag
+	WideCarrOff       bool   `protobuf:"varint,17,opt,name=wide_carr_off,json=wideCarrOff,proto3" json:"wide_carr_off,omitempty"`                // Wide carrier offset
+	LongBlkDist       bool   `protobuf:"varint,18,opt,name=long_blk_dist,json=longBlkDist,proto3" json:"long_blk_dist,omitempty"`                // Long block distance
+	AttachCnt         uint32 `protobuf:"varint,19,opt,name=attach_cnt,json=attachCnt,proto3" json:"attach_cnt,omitempty"`                        // Attachment counter
+	PreAttach         bool   `protobuf:"varint,20,opt,name=pre_attach,json=preAttach,proto3" json:"pre_attach,omitempty"`                        // Pre-attachment enabled
+	LastPacketCnt     uint32 `protobuf:"varint,21,opt,name=last_packet_cnt,json=lastPacketCnt,proto3" json:"last_packet_cnt,omitempty"`          // Last known packet counter (uint32)
+	TypeEui           []byte `protobuf:"bytes,22,opt,name=type_eui,json=typeEui,proto3" json:"type_eui,omitempty"`                               // 8-byte Type EUI for blueprint decoding
+	CarrierOffset     int32  `protobuf:"varint,23,opt,name=carrier_offset,json=carrierOffset,proto3" json:"carrier_offset,omitempty"`            // Carrier offset in Hz
+	DeviceModelId     string `protobuf:"bytes,24,opt,name=device_model_id,json=deviceModelId,proto3" json:"device_model_id,omitempty"`           // UUID reference to device_models.id for blueprint decoding
+	BlueprintId       string `protobuf:"bytes,25,opt,name=blueprint_id,json=blueprintId,proto3" json:"blueprint_id,omitempty"`                   // Input selector: blueprint chosen for this endpoint; KC materializes its spec into blueprint_snapshot. Not a stored FK. On read echoes snapshot.source_blueprint_id.
+	BlueprintSnapshot []byte `protobuf:"bytes,26,opt,name=blueprint_snapshot,json=blueprintSnapshot,proto3" json:"blueprint_snapshot,omitempty"` // Read-only: materialized snapshot JSON (spec + provenance); empty = follows catalog default.
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *EndPoint) Reset() {
@@ -254,6 +256,20 @@ func (x *EndPoint) GetDeviceModelId() string {
 		return x.DeviceModelId
 	}
 	return ""
+}
+
+func (x *EndPoint) GetBlueprintId() string {
+	if x != nil {
+		return x.BlueprintId
+	}
+	return ""
+}
+
+func (x *EndPoint) GetBlueprintSnapshot() []byte {
+	if x != nil {
+		return x.BlueprintSnapshot
+	}
+	return nil
 }
 
 // BaseStation represents a MIOTY Base Station (BS)
@@ -998,7 +1014,7 @@ type UpdateEndPointRequest struct {
 	//
 	//	"sh_addr", "attach_cnt", "dual_chan", "repetition", "wide_carr_off",
 	//	"long_blk_dist", "pre_attach", "last_packet_cnt", "carrier_offset",
-	//	"nwk_sn_key", "app_key", "device_model_id", "type_eui"
+	//	"nwk_sn_key", "app_key", "device_model_id", "type_eui", "blueprint_id"
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// New EUI (16-char hex). If set, endpoint.ep_eui identifies the current endpoint
 	// and this field specifies the replacement EUI. Cascades to all dependent tables.
@@ -1116,6 +1132,7 @@ type ListEndPointsRequest struct {
 	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	StatusFilter  string                 `protobuf:"bytes,4,opt,name=status_filter,json=statusFilter,proto3" json:"status_filter,omitempty"`
+	DeviceModelId string                 `protobuf:"bytes,5,opt,name=device_model_id,json=deviceModelId,proto3" json:"device_model_id,omitempty"` // UUID - filter to one model (bulk coverage preview)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1174,6 +1191,13 @@ func (x *ListEndPointsRequest) GetPageToken() string {
 func (x *ListEndPointsRequest) GetStatusFilter() string {
 	if x != nil {
 		return x.StatusFilter
+	}
+	return ""
+}
+
+func (x *ListEndPointsRequest) GetDeviceModelId() string {
+	if x != nil {
+		return x.DeviceModelId
 	}
 	return ""
 }
@@ -8992,6 +9016,7 @@ type CreateManufacturerRequest struct {
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	Website       string                 `protobuf:"bytes,4,opt,name=website,proto3" json:"website,omitempty"`
 	ContactEmail  string                 `protobuf:"bytes,5,opt,name=contact_email,json=contactEmail,proto3" json:"contact_email,omitempty"`
+	IsSystem      bool                   `protobuf:"varint,6,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row; rejected for non-admins
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9059,6 +9084,13 @@ func (x *CreateManufacturerRequest) GetContactEmail() string {
 		return x.ContactEmail
 	}
 	return ""
+}
+
+func (x *CreateManufacturerRequest) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
 }
 
 type CreateManufacturerResponse struct {
@@ -9405,6 +9437,7 @@ type ListManufacturersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	IsSystem      bool                   `protobuf:"varint,3,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // true = list System catalog, false/absent = tenant Custom
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9451,6 +9484,13 @@ func (x *ListManufacturersRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListManufacturersRequest) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
 }
 
 type ListManufacturersResponse struct {
@@ -9524,9 +9564,10 @@ type Manufacturer struct {
 	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	// Fields from KC-DB/storage/models/manufacturer.go
-	TenantId      string `protobuf:"bytes,9,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`         // string per proto convention (line 198)
+	TenantId      string `protobuf:"bytes,9,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`         // string per proto convention (line 198); empty when is_system
 	IsVerified    bool   `protobuf:"varint,10,opt,name=is_verified,json=isVerified,proto3" json:"is_verified,omitempty"` // From manufacturer.go:19
 	ModelCount    int32  `protobuf:"varint,11,opt,name=model_count,json=modelCount,proto3" json:"model_count,omitempty"` // From manufacturer.go:24
+	IsSystem      bool   `protobuf:"varint,12,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`       // true = System catalog row, false = tenant Custom
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9638,6 +9679,13 @@ func (x *Manufacturer) GetModelCount() int32 {
 	return 0
 }
 
+func (x *Manufacturer) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
+}
+
 type CreateDeviceModelRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ManufacturerId string                 `protobuf:"bytes,1,opt,name=manufacturer_id,json=manufacturerId,proto3" json:"manufacturer_id,omitempty"` // UUID
@@ -9645,6 +9693,7 @@ type CreateDeviceModelRequest struct {
 	Code           string                 `protobuf:"bytes,3,opt,name=code,proto3" json:"code,omitempty"`
 	TypeEui        string                 `protobuf:"bytes,4,opt,name=type_eui,json=typeEui,proto3" json:"type_eui,omitempty"` // Hex (16 chars)
 	Description    string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
+	IsSystem       bool                   `protobuf:"varint,6,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row; rejected for non-admins
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -9712,6 +9761,13 @@ func (x *CreateDeviceModelRequest) GetDescription() string {
 		return x.Description
 	}
 	return ""
+}
+
+func (x *CreateDeviceModelRequest) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
 }
 
 type CreateDeviceModelResponse struct {
@@ -10043,6 +10099,7 @@ type ListDeviceModelsRequest struct {
 	ManufacturerId string                 `protobuf:"bytes,1,opt,name=manufacturer_id,json=manufacturerId,proto3" json:"manufacturer_id,omitempty"` // UUID - filter by manufacturer
 	PageSize       int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken      string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	IsSystem       bool                   `protobuf:"varint,4,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // true = list System catalog, false/absent = tenant Custom
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -10096,6 +10153,13 @@ func (x *ListDeviceModelsRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListDeviceModelsRequest) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
 }
 
 type ListDeviceModelsResponse struct {
@@ -10169,9 +10233,10 @@ type DeviceModel struct {
 	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	// Fields from KC-DB/storage/models/device_model.go
-	TenantId       string `protobuf:"bytes,9,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`                     // string per proto convention
+	TenantId       string `protobuf:"bytes,9,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`                     // string per proto convention; empty when is_system
 	DatasheetUrl   string `protobuf:"bytes,10,opt,name=datasheet_url,json=datasheetUrl,proto3" json:"datasheet_url,omitempty"`        // From device_model.go:22
 	BlueprintCount int32  `protobuf:"varint,11,opt,name=blueprint_count,json=blueprintCount,proto3" json:"blueprint_count,omitempty"` // Count from related blueprints
+	IsSystem       bool   `protobuf:"varint,12,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`                   // true = System catalog row, false = tenant Custom
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -10283,6 +10348,13 @@ func (x *DeviceModel) GetBlueprintCount() int32 {
 	return 0
 }
 
+func (x *DeviceModel) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
+}
+
 type CreateBlueprintRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DeviceModelId string                 `protobuf:"bytes,1,opt,name=device_model_id,json=deviceModelId,proto3" json:"device_model_id,omitempty"` // UUID
@@ -10291,6 +10363,7 @@ type CreateBlueprintRequest struct {
 	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	DecoderScript []byte                 `protobuf:"bytes,5,opt,name=decoder_script,json=decoderScript,proto3" json:"decoder_script,omitempty"` // JavaScript decoder
 	IsDefault     bool                   `protobuf:"varint,6,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
+	IsSystem      bool                   `protobuf:"varint,7,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row; rejected for non-admins
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10363,6 +10436,13 @@ func (x *CreateBlueprintRequest) GetDecoderScript() []byte {
 func (x *CreateBlueprintRequest) GetIsDefault() bool {
 	if x != nil {
 		return x.IsDefault
+	}
+	return false
+}
+
+func (x *CreateBlueprintRequest) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
 	}
 	return false
 }
@@ -10712,6 +10792,7 @@ type ListBlueprintsRequest struct {
 	DeviceModelId string                 `protobuf:"bytes,1,opt,name=device_model_id,json=deviceModelId,proto3" json:"device_model_id,omitempty"` // UUID - filter by device model
 	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	IsSystem      bool                   `protobuf:"varint,4,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // true = list System catalog, false/absent = tenant Custom
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10765,6 +10846,13 @@ func (x *ListBlueprintsRequest) GetPageToken() string {
 		return x.PageToken
 	}
 	return ""
+}
+
+func (x *ListBlueprintsRequest) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
 }
 
 type ListBlueprintsResponse struct {
@@ -11059,6 +11147,119 @@ func (x *SubmitBlueprintToRegistryResponse) GetBranchName() string {
 	return ""
 }
 
+// Bulk version migration: re-materialize a blueprint onto matching snapshot-bearing endpoints.
+type BulkAssignBlueprintRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BlueprintId   string                 `protobuf:"bytes,1,opt,name=blueprint_id,json=blueprintId,proto3" json:"blueprint_id,omitempty"`         // UUID to re-materialize
+	DeviceModelId string                 `protobuf:"bytes,2,opt,name=device_model_id,json=deviceModelId,proto3" json:"device_model_id,omitempty"` // UUID - target this model's snapshot-bearing endpoints
+	EpEuis        []string               `protobuf:"bytes,3,rep,name=ep_euis,json=epEuis,proto3" json:"ep_euis,omitempty"`                        // OR explicit EUIs (16-char hex); takes precedence over device_model_id
+	SetAsDefault  bool                   `protobuf:"varint,4,opt,name=set_as_default,json=setAsDefault,proto3" json:"set_as_default,omitempty"`   // also set model default (Custom only; rejected for System)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BulkAssignBlueprintRequest) Reset() {
+	*x = BulkAssignBlueprintRequest{}
+	mi := &file_core_proto_msgTypes[160]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BulkAssignBlueprintRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BulkAssignBlueprintRequest) ProtoMessage() {}
+
+func (x *BulkAssignBlueprintRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_core_proto_msgTypes[160]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BulkAssignBlueprintRequest.ProtoReflect.Descriptor instead.
+func (*BulkAssignBlueprintRequest) Descriptor() ([]byte, []int) {
+	return file_core_proto_rawDescGZIP(), []int{160}
+}
+
+func (x *BulkAssignBlueprintRequest) GetBlueprintId() string {
+	if x != nil {
+		return x.BlueprintId
+	}
+	return ""
+}
+
+func (x *BulkAssignBlueprintRequest) GetDeviceModelId() string {
+	if x != nil {
+		return x.DeviceModelId
+	}
+	return ""
+}
+
+func (x *BulkAssignBlueprintRequest) GetEpEuis() []string {
+	if x != nil {
+		return x.EpEuis
+	}
+	return nil
+}
+
+func (x *BulkAssignBlueprintRequest) GetSetAsDefault() bool {
+	if x != nil {
+		return x.SetAsDefault
+	}
+	return false
+}
+
+type BulkAssignBlueprintResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AffectedCount int32                  `protobuf:"varint,1,opt,name=affected_count,json=affectedCount,proto3" json:"affected_count,omitempty"` // endpoints re-materialized
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BulkAssignBlueprintResponse) Reset() {
+	*x = BulkAssignBlueprintResponse{}
+	mi := &file_core_proto_msgTypes[161]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BulkAssignBlueprintResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BulkAssignBlueprintResponse) ProtoMessage() {}
+
+func (x *BulkAssignBlueprintResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_core_proto_msgTypes[161]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BulkAssignBlueprintResponse.ProtoReflect.Descriptor instead.
+func (*BulkAssignBlueprintResponse) Descriptor() ([]byte, []int) {
+	return file_core_proto_rawDescGZIP(), []int{161}
+}
+
+func (x *BulkAssignBlueprintResponse) GetAffectedCount() int32 {
+	if x != nil {
+		return x.AffectedCount
+	}
+	return 0
+}
+
 type Blueprint struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                              // UUID
@@ -11077,13 +11278,14 @@ type Blueprint struct {
 	RegistryCommitSha string `protobuf:"bytes,13,opt,name=registry_commit_sha,json=registryCommitSha,proto3" json:"registry_commit_sha,omitempty"` // From blueprint.go:23
 	RegistryVerified  bool   `protobuf:"varint,14,opt,name=registry_verified,json=registryVerified,proto3" json:"registry_verified,omitempty"`     // From blueprint.go:24
 	RegistryPrUrl     string `protobuf:"bytes,15,opt,name=registry_pr_url,json=registryPrUrl,proto3" json:"registry_pr_url,omitempty"`             // From blueprint.go:26
+	IsSystem          bool   `protobuf:"varint,16,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`                             // true = System catalog row, false = tenant Custom
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Blueprint) Reset() {
 	*x = Blueprint{}
-	mi := &file_core_proto_msgTypes[160]
+	mi := &file_core_proto_msgTypes[162]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11095,7 +11297,7 @@ func (x *Blueprint) String() string {
 func (*Blueprint) ProtoMessage() {}
 
 func (x *Blueprint) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[160]
+	mi := &file_core_proto_msgTypes[162]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11108,7 +11310,7 @@ func (x *Blueprint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Blueprint.ProtoReflect.Descriptor instead.
 func (*Blueprint) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{160}
+	return file_core_proto_rawDescGZIP(), []int{162}
 }
 
 func (x *Blueprint) GetId() string {
@@ -11216,6 +11418,13 @@ func (x *Blueprint) GetRegistryPrUrl() string {
 	return ""
 }
 
+func (x *Blueprint) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
+}
+
 // Composite: atomic model + default blueprint creation
 type CreateDeviceModelWithBlueprintRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
@@ -11223,13 +11432,14 @@ type CreateDeviceModelWithBlueprintRequest struct {
 	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                           // Model name
 	Version        string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`                                     // Blueprint version (e.g. "1.0.0")
 	DecoderScript  []byte                 `protobuf:"bytes,4,opt,name=decoder_script,json=decoderScript,proto3" json:"decoder_script,omitempty"`    // Blueprint specification JSON
+	IsSystem       bool                   `protobuf:"varint,5,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`                  // admin-only System rows; rejected for non-admins
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CreateDeviceModelWithBlueprintRequest) Reset() {
 	*x = CreateDeviceModelWithBlueprintRequest{}
-	mi := &file_core_proto_msgTypes[161]
+	mi := &file_core_proto_msgTypes[163]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11241,7 +11451,7 @@ func (x *CreateDeviceModelWithBlueprintRequest) String() string {
 func (*CreateDeviceModelWithBlueprintRequest) ProtoMessage() {}
 
 func (x *CreateDeviceModelWithBlueprintRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[161]
+	mi := &file_core_proto_msgTypes[163]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11254,7 +11464,7 @@ func (x *CreateDeviceModelWithBlueprintRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use CreateDeviceModelWithBlueprintRequest.ProtoReflect.Descriptor instead.
 func (*CreateDeviceModelWithBlueprintRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{161}
+	return file_core_proto_rawDescGZIP(), []int{163}
 }
 
 func (x *CreateDeviceModelWithBlueprintRequest) GetManufacturerId() string {
@@ -11285,6 +11495,13 @@ func (x *CreateDeviceModelWithBlueprintRequest) GetDecoderScript() []byte {
 	return nil
 }
 
+func (x *CreateDeviceModelWithBlueprintRequest) GetIsSystem() bool {
+	if x != nil {
+		return x.IsSystem
+	}
+	return false
+}
+
 type CreateDeviceModelWithBlueprintResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DeviceModel   *DeviceModel           `protobuf:"bytes,1,opt,name=device_model,json=deviceModel,proto3" json:"device_model,omitempty"`
@@ -11295,7 +11512,7 @@ type CreateDeviceModelWithBlueprintResponse struct {
 
 func (x *CreateDeviceModelWithBlueprintResponse) Reset() {
 	*x = CreateDeviceModelWithBlueprintResponse{}
-	mi := &file_core_proto_msgTypes[162]
+	mi := &file_core_proto_msgTypes[164]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11307,7 +11524,7 @@ func (x *CreateDeviceModelWithBlueprintResponse) String() string {
 func (*CreateDeviceModelWithBlueprintResponse) ProtoMessage() {}
 
 func (x *CreateDeviceModelWithBlueprintResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[162]
+	mi := &file_core_proto_msgTypes[164]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11320,7 +11537,7 @@ func (x *CreateDeviceModelWithBlueprintResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use CreateDeviceModelWithBlueprintResponse.ProtoReflect.Descriptor instead.
 func (*CreateDeviceModelWithBlueprintResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{162}
+	return file_core_proto_rawDescGZIP(), []int{164}
 }
 
 func (x *CreateDeviceModelWithBlueprintResponse) GetDeviceModel() *DeviceModel {
@@ -11339,17 +11556,23 @@ func (x *CreateDeviceModelWithBlueprintResponse) GetBlueprint() *Blueprint {
 
 // Blueprint decode preview
 type DecodePreviewRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BlueprintId   string                 `protobuf:"bytes,1,opt,name=blueprint_id,json=blueprintId,proto3" json:"blueprint_id,omitempty"` // UUID of blueprint to use for decoding
-	Payload       []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`                            // Raw binary payload
-	FormatId      uint32                 `protobuf:"varint,3,opt,name=format_id,json=formatId,proto3" json:"format_id,omitempty"`         // MIOTY format ID
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Decode source: saved blueprint id, or inline spec for preview before save.
+	//
+	// Types that are valid to be assigned to Source:
+	//
+	//	*DecodePreviewRequest_BlueprintId
+	//	*DecodePreviewRequest_SpecJson
+	Source        isDecodePreviewRequest_Source `protobuf_oneof:"source"`
+	Payload       []byte                        `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`                    // Raw binary payload
+	FormatId      uint32                        `protobuf:"varint,3,opt,name=format_id,json=formatId,proto3" json:"format_id,omitempty"` // MIOTY format ID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DecodePreviewRequest) Reset() {
 	*x = DecodePreviewRequest{}
-	mi := &file_core_proto_msgTypes[163]
+	mi := &file_core_proto_msgTypes[165]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11361,7 +11584,7 @@ func (x *DecodePreviewRequest) String() string {
 func (*DecodePreviewRequest) ProtoMessage() {}
 
 func (x *DecodePreviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[163]
+	mi := &file_core_proto_msgTypes[165]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11374,14 +11597,32 @@ func (x *DecodePreviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecodePreviewRequest.ProtoReflect.Descriptor instead.
 func (*DecodePreviewRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{163}
+	return file_core_proto_rawDescGZIP(), []int{165}
+}
+
+func (x *DecodePreviewRequest) GetSource() isDecodePreviewRequest_Source {
+	if x != nil {
+		return x.Source
+	}
+	return nil
 }
 
 func (x *DecodePreviewRequest) GetBlueprintId() string {
 	if x != nil {
-		return x.BlueprintId
+		if x, ok := x.Source.(*DecodePreviewRequest_BlueprintId); ok {
+			return x.BlueprintId
+		}
 	}
 	return ""
+}
+
+func (x *DecodePreviewRequest) GetSpecJson() []byte {
+	if x != nil {
+		if x, ok := x.Source.(*DecodePreviewRequest_SpecJson); ok {
+			return x.SpecJson
+		}
+	}
+	return nil
 }
 
 func (x *DecodePreviewRequest) GetPayload() []byte {
@@ -11398,6 +11639,22 @@ func (x *DecodePreviewRequest) GetFormatId() uint32 {
 	return 0
 }
 
+type isDecodePreviewRequest_Source interface {
+	isDecodePreviewRequest_Source()
+}
+
+type DecodePreviewRequest_BlueprintId struct {
+	BlueprintId string `protobuf:"bytes,1,opt,name=blueprint_id,json=blueprintId,proto3,oneof"`
+}
+
+type DecodePreviewRequest_SpecJson struct {
+	SpecJson []byte `protobuf:"bytes,4,opt,name=spec_json,json=specJson,proto3,oneof"`
+}
+
+func (*DecodePreviewRequest_BlueprintId) isDecodePreviewRequest_Source() {}
+
+func (*DecodePreviewRequest_SpecJson) isDecodePreviewRequest_Source() {}
+
 type DecodePreviewResponse struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Success          bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -11412,7 +11669,7 @@ type DecodePreviewResponse struct {
 
 func (x *DecodePreviewResponse) Reset() {
 	*x = DecodePreviewResponse{}
-	mi := &file_core_proto_msgTypes[164]
+	mi := &file_core_proto_msgTypes[166]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11424,7 +11681,7 @@ func (x *DecodePreviewResponse) String() string {
 func (*DecodePreviewResponse) ProtoMessage() {}
 
 func (x *DecodePreviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[164]
+	mi := &file_core_proto_msgTypes[166]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11437,7 +11694,7 @@ func (x *DecodePreviewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecodePreviewResponse.ProtoReflect.Descriptor instead.
 func (*DecodePreviewResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{164}
+	return file_core_proto_rawDescGZIP(), []int{166}
 }
 
 func (x *DecodePreviewResponse) GetSuccess() bool {
@@ -11496,7 +11753,7 @@ type ListMessagesRequest struct {
 
 func (x *ListMessagesRequest) Reset() {
 	*x = ListMessagesRequest{}
-	mi := &file_core_proto_msgTypes[165]
+	mi := &file_core_proto_msgTypes[167]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11508,7 +11765,7 @@ func (x *ListMessagesRequest) String() string {
 func (*ListMessagesRequest) ProtoMessage() {}
 
 func (x *ListMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[165]
+	mi := &file_core_proto_msgTypes[167]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11521,7 +11778,7 @@ func (x *ListMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMessagesRequest.ProtoReflect.Descriptor instead.
 func (*ListMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{165}
+	return file_core_proto_rawDescGZIP(), []int{167}
 }
 
 func (x *ListMessagesRequest) GetPageSize() int32 {
@@ -11577,7 +11834,7 @@ type ListMessagesResponse struct {
 
 func (x *ListMessagesResponse) Reset() {
 	*x = ListMessagesResponse{}
-	mi := &file_core_proto_msgTypes[166]
+	mi := &file_core_proto_msgTypes[168]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11589,7 +11846,7 @@ func (x *ListMessagesResponse) String() string {
 func (*ListMessagesResponse) ProtoMessage() {}
 
 func (x *ListMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[166]
+	mi := &file_core_proto_msgTypes[168]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11602,7 +11859,7 @@ func (x *ListMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMessagesResponse.ProtoReflect.Descriptor instead.
 func (*ListMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{166}
+	return file_core_proto_rawDescGZIP(), []int{168}
 }
 
 func (x *ListMessagesResponse) GetMessages() []*Message {
@@ -11638,7 +11895,7 @@ type ListEndpointMessagesRequest struct {
 
 func (x *ListEndpointMessagesRequest) Reset() {
 	*x = ListEndpointMessagesRequest{}
-	mi := &file_core_proto_msgTypes[167]
+	mi := &file_core_proto_msgTypes[169]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11650,7 +11907,7 @@ func (x *ListEndpointMessagesRequest) String() string {
 func (*ListEndpointMessagesRequest) ProtoMessage() {}
 
 func (x *ListEndpointMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[167]
+	mi := &file_core_proto_msgTypes[169]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11663,7 +11920,7 @@ func (x *ListEndpointMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEndpointMessagesRequest.ProtoReflect.Descriptor instead.
 func (*ListEndpointMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{167}
+	return file_core_proto_rawDescGZIP(), []int{169}
 }
 
 func (x *ListEndpointMessagesRequest) GetEpEui() string {
@@ -11698,7 +11955,7 @@ type ListEndpointMessagesResponse struct {
 
 func (x *ListEndpointMessagesResponse) Reset() {
 	*x = ListEndpointMessagesResponse{}
-	mi := &file_core_proto_msgTypes[168]
+	mi := &file_core_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11710,7 +11967,7 @@ func (x *ListEndpointMessagesResponse) String() string {
 func (*ListEndpointMessagesResponse) ProtoMessage() {}
 
 func (x *ListEndpointMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[168]
+	mi := &file_core_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11723,7 +11980,7 @@ func (x *ListEndpointMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEndpointMessagesResponse.ProtoReflect.Descriptor instead.
 func (*ListEndpointMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{168}
+	return file_core_proto_rawDescGZIP(), []int{170}
 }
 
 func (x *ListEndpointMessagesResponse) GetMessages() []*Message {
@@ -11757,7 +12014,7 @@ type StreamMessagesRequest struct {
 
 func (x *StreamMessagesRequest) Reset() {
 	*x = StreamMessagesRequest{}
-	mi := &file_core_proto_msgTypes[169]
+	mi := &file_core_proto_msgTypes[171]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11769,7 +12026,7 @@ func (x *StreamMessagesRequest) String() string {
 func (*StreamMessagesRequest) ProtoMessage() {}
 
 func (x *StreamMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[169]
+	mi := &file_core_proto_msgTypes[171]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11782,7 +12039,7 @@ func (x *StreamMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamMessagesRequest.ProtoReflect.Descriptor instead.
 func (*StreamMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{169}
+	return file_core_proto_rawDescGZIP(), []int{171}
 }
 
 func (x *StreamMessagesRequest) GetEpEui() string {
@@ -11814,7 +12071,7 @@ type ListBaseStationMessagesRequest struct {
 
 func (x *ListBaseStationMessagesRequest) Reset() {
 	*x = ListBaseStationMessagesRequest{}
-	mi := &file_core_proto_msgTypes[170]
+	mi := &file_core_proto_msgTypes[172]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11826,7 +12083,7 @@ func (x *ListBaseStationMessagesRequest) String() string {
 func (*ListBaseStationMessagesRequest) ProtoMessage() {}
 
 func (x *ListBaseStationMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[170]
+	mi := &file_core_proto_msgTypes[172]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11839,7 +12096,7 @@ func (x *ListBaseStationMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBaseStationMessagesRequest.ProtoReflect.Descriptor instead.
 func (*ListBaseStationMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{170}
+	return file_core_proto_rawDescGZIP(), []int{172}
 }
 
 func (x *ListBaseStationMessagesRequest) GetBsEui() string {
@@ -11902,7 +12159,7 @@ type ListBaseStationMessagesResponse struct {
 
 func (x *ListBaseStationMessagesResponse) Reset() {
 	*x = ListBaseStationMessagesResponse{}
-	mi := &file_core_proto_msgTypes[171]
+	mi := &file_core_proto_msgTypes[173]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11914,7 +12171,7 @@ func (x *ListBaseStationMessagesResponse) String() string {
 func (*ListBaseStationMessagesResponse) ProtoMessage() {}
 
 func (x *ListBaseStationMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[171]
+	mi := &file_core_proto_msgTypes[173]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11927,7 +12184,7 @@ func (x *ListBaseStationMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBaseStationMessagesResponse.ProtoReflect.Descriptor instead.
 func (*ListBaseStationMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{171}
+	return file_core_proto_rawDescGZIP(), []int{173}
 }
 
 func (x *ListBaseStationMessagesResponse) GetMessages() []*BaseStationMessage {
@@ -11961,7 +12218,7 @@ type GetBaseStationMessageRequest struct {
 
 func (x *GetBaseStationMessageRequest) Reset() {
 	*x = GetBaseStationMessageRequest{}
-	mi := &file_core_proto_msgTypes[172]
+	mi := &file_core_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11973,7 +12230,7 @@ func (x *GetBaseStationMessageRequest) String() string {
 func (*GetBaseStationMessageRequest) ProtoMessage() {}
 
 func (x *GetBaseStationMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[172]
+	mi := &file_core_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11986,7 +12243,7 @@ func (x *GetBaseStationMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBaseStationMessageRequest.ProtoReflect.Descriptor instead.
 func (*GetBaseStationMessageRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{172}
+	return file_core_proto_rawDescGZIP(), []int{174}
 }
 
 func (x *GetBaseStationMessageRequest) GetBsEui() string {
@@ -12012,7 +12269,7 @@ type GetBaseStationMessageResponse struct {
 
 func (x *GetBaseStationMessageResponse) Reset() {
 	*x = GetBaseStationMessageResponse{}
-	mi := &file_core_proto_msgTypes[173]
+	mi := &file_core_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12024,7 +12281,7 @@ func (x *GetBaseStationMessageResponse) String() string {
 func (*GetBaseStationMessageResponse) ProtoMessage() {}
 
 func (x *GetBaseStationMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[173]
+	mi := &file_core_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12037,7 +12294,7 @@ func (x *GetBaseStationMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBaseStationMessageResponse.ProtoReflect.Descriptor instead.
 func (*GetBaseStationMessageResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{173}
+	return file_core_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *GetBaseStationMessageResponse) GetMessage() *BaseStationMessage {
@@ -12058,7 +12315,7 @@ type GetBaseStationMessageStatsRequest struct {
 
 func (x *GetBaseStationMessageStatsRequest) Reset() {
 	*x = GetBaseStationMessageStatsRequest{}
-	mi := &file_core_proto_msgTypes[174]
+	mi := &file_core_proto_msgTypes[176]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12070,7 +12327,7 @@ func (x *GetBaseStationMessageStatsRequest) String() string {
 func (*GetBaseStationMessageStatsRequest) ProtoMessage() {}
 
 func (x *GetBaseStationMessageStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[174]
+	mi := &file_core_proto_msgTypes[176]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12083,7 +12340,7 @@ func (x *GetBaseStationMessageStatsRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use GetBaseStationMessageStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetBaseStationMessageStatsRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{174}
+	return file_core_proto_rawDescGZIP(), []int{176}
 }
 
 func (x *GetBaseStationMessageStatsRequest) GetBsEui() string {
@@ -12116,7 +12373,7 @@ type GetBaseStationMessageStatsResponse struct {
 
 func (x *GetBaseStationMessageStatsResponse) Reset() {
 	*x = GetBaseStationMessageStatsResponse{}
-	mi := &file_core_proto_msgTypes[175]
+	mi := &file_core_proto_msgTypes[177]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12128,7 +12385,7 @@ func (x *GetBaseStationMessageStatsResponse) String() string {
 func (*GetBaseStationMessageStatsResponse) ProtoMessage() {}
 
 func (x *GetBaseStationMessageStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[175]
+	mi := &file_core_proto_msgTypes[177]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12141,7 +12398,7 @@ func (x *GetBaseStationMessageStatsResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use GetBaseStationMessageStatsResponse.ProtoReflect.Descriptor instead.
 func (*GetBaseStationMessageStatsResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{175}
+	return file_core_proto_rawDescGZIP(), []int{177}
 }
 
 func (x *GetBaseStationMessageStatsResponse) GetStats() *BaseStationMessageStats {
@@ -12167,7 +12424,7 @@ type SearchBaseStationMessagesRequest struct {
 
 func (x *SearchBaseStationMessagesRequest) Reset() {
 	*x = SearchBaseStationMessagesRequest{}
-	mi := &file_core_proto_msgTypes[176]
+	mi := &file_core_proto_msgTypes[178]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12179,7 +12436,7 @@ func (x *SearchBaseStationMessagesRequest) String() string {
 func (*SearchBaseStationMessagesRequest) ProtoMessage() {}
 
 func (x *SearchBaseStationMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[176]
+	mi := &file_core_proto_msgTypes[178]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12192,7 +12449,7 @@ func (x *SearchBaseStationMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchBaseStationMessagesRequest.ProtoReflect.Descriptor instead.
 func (*SearchBaseStationMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{176}
+	return file_core_proto_rawDescGZIP(), []int{178}
 }
 
 func (x *SearchBaseStationMessagesRequest) GetBsEui() string {
@@ -12262,7 +12519,7 @@ type SearchBaseStationMessagesResponse struct {
 
 func (x *SearchBaseStationMessagesResponse) Reset() {
 	*x = SearchBaseStationMessagesResponse{}
-	mi := &file_core_proto_msgTypes[177]
+	mi := &file_core_proto_msgTypes[179]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12274,7 +12531,7 @@ func (x *SearchBaseStationMessagesResponse) String() string {
 func (*SearchBaseStationMessagesResponse) ProtoMessage() {}
 
 func (x *SearchBaseStationMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[177]
+	mi := &file_core_proto_msgTypes[179]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12287,7 +12544,7 @@ func (x *SearchBaseStationMessagesResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use SearchBaseStationMessagesResponse.ProtoReflect.Descriptor instead.
 func (*SearchBaseStationMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{177}
+	return file_core_proto_rawDescGZIP(), []int{179}
 }
 
 func (x *SearchBaseStationMessagesResponse) GetMessages() []*BaseStationMessage {
@@ -12325,7 +12582,7 @@ type ExportBaseStationMessagesRequest struct {
 
 func (x *ExportBaseStationMessagesRequest) Reset() {
 	*x = ExportBaseStationMessagesRequest{}
-	mi := &file_core_proto_msgTypes[178]
+	mi := &file_core_proto_msgTypes[180]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12337,7 +12594,7 @@ func (x *ExportBaseStationMessagesRequest) String() string {
 func (*ExportBaseStationMessagesRequest) ProtoMessage() {}
 
 func (x *ExportBaseStationMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[178]
+	mi := &file_core_proto_msgTypes[180]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12350,7 +12607,7 @@ func (x *ExportBaseStationMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportBaseStationMessagesRequest.ProtoReflect.Descriptor instead.
 func (*ExportBaseStationMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{178}
+	return file_core_proto_rawDescGZIP(), []int{180}
 }
 
 func (x *ExportBaseStationMessagesRequest) GetBsEui() string {
@@ -12406,7 +12663,7 @@ type ExportBaseStationMessagesResponse struct {
 
 func (x *ExportBaseStationMessagesResponse) Reset() {
 	*x = ExportBaseStationMessagesResponse{}
-	mi := &file_core_proto_msgTypes[179]
+	mi := &file_core_proto_msgTypes[181]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12418,7 +12675,7 @@ func (x *ExportBaseStationMessagesResponse) String() string {
 func (*ExportBaseStationMessagesResponse) ProtoMessage() {}
 
 func (x *ExportBaseStationMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[179]
+	mi := &file_core_proto_msgTypes[181]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12431,7 +12688,7 @@ func (x *ExportBaseStationMessagesResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ExportBaseStationMessagesResponse.ProtoReflect.Descriptor instead.
 func (*ExportBaseStationMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{179}
+	return file_core_proto_rawDescGZIP(), []int{181}
 }
 
 func (x *ExportBaseStationMessagesResponse) GetContent() []byte {
@@ -12466,7 +12723,7 @@ type StreamBaseStationMessagesRequest struct {
 
 func (x *StreamBaseStationMessagesRequest) Reset() {
 	*x = StreamBaseStationMessagesRequest{}
-	mi := &file_core_proto_msgTypes[180]
+	mi := &file_core_proto_msgTypes[182]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12478,7 +12735,7 @@ func (x *StreamBaseStationMessagesRequest) String() string {
 func (*StreamBaseStationMessagesRequest) ProtoMessage() {}
 
 func (x *StreamBaseStationMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[180]
+	mi := &file_core_proto_msgTypes[182]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12491,7 +12748,7 @@ func (x *StreamBaseStationMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamBaseStationMessagesRequest.ProtoReflect.Descriptor instead.
 func (*StreamBaseStationMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{180}
+	return file_core_proto_rawDescGZIP(), []int{182}
 }
 
 func (x *StreamBaseStationMessagesRequest) GetBsEui() string {
@@ -12539,7 +12796,7 @@ type BaseStationMessage struct {
 
 func (x *BaseStationMessage) Reset() {
 	*x = BaseStationMessage{}
-	mi := &file_core_proto_msgTypes[181]
+	mi := &file_core_proto_msgTypes[183]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12551,7 +12808,7 @@ func (x *BaseStationMessage) String() string {
 func (*BaseStationMessage) ProtoMessage() {}
 
 func (x *BaseStationMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[181]
+	mi := &file_core_proto_msgTypes[183]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12564,7 +12821,7 @@ func (x *BaseStationMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BaseStationMessage.ProtoReflect.Descriptor instead.
 func (*BaseStationMessage) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{181}
+	return file_core_proto_rawDescGZIP(), []int{183}
 }
 
 func (x *BaseStationMessage) GetId() string {
@@ -12697,7 +12954,7 @@ type BaseStationMessageStats struct {
 
 func (x *BaseStationMessageStats) Reset() {
 	*x = BaseStationMessageStats{}
-	mi := &file_core_proto_msgTypes[182]
+	mi := &file_core_proto_msgTypes[184]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12709,7 +12966,7 @@ func (x *BaseStationMessageStats) String() string {
 func (*BaseStationMessageStats) ProtoMessage() {}
 
 func (x *BaseStationMessageStats) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[182]
+	mi := &file_core_proto_msgTypes[184]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12722,7 +12979,7 @@ func (x *BaseStationMessageStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BaseStationMessageStats.ProtoReflect.Descriptor instead.
 func (*BaseStationMessageStats) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{182}
+	return file_core_proto_rawDescGZIP(), []int{184}
 }
 
 func (x *BaseStationMessageStats) GetBsEui() string {
@@ -12804,7 +13061,7 @@ type GetEndPointStatsRequest struct {
 
 func (x *GetEndPointStatsRequest) Reset() {
 	*x = GetEndPointStatsRequest{}
-	mi := &file_core_proto_msgTypes[183]
+	mi := &file_core_proto_msgTypes[185]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12816,7 +13073,7 @@ func (x *GetEndPointStatsRequest) String() string {
 func (*GetEndPointStatsRequest) ProtoMessage() {}
 
 func (x *GetEndPointStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[183]
+	mi := &file_core_proto_msgTypes[185]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12829,7 +13086,7 @@ func (x *GetEndPointStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEndPointStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetEndPointStatsRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{183}
+	return file_core_proto_rawDescGZIP(), []int{185}
 }
 
 func (x *GetEndPointStatsRequest) GetEpEui() string {
@@ -12856,7 +13113,7 @@ type GetEndPointStatsResponse struct {
 
 func (x *GetEndPointStatsResponse) Reset() {
 	*x = GetEndPointStatsResponse{}
-	mi := &file_core_proto_msgTypes[184]
+	mi := &file_core_proto_msgTypes[186]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12868,7 +13125,7 @@ func (x *GetEndPointStatsResponse) String() string {
 func (*GetEndPointStatsResponse) ProtoMessage() {}
 
 func (x *GetEndPointStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[184]
+	mi := &file_core_proto_msgTypes[186]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12881,7 +13138,7 @@ func (x *GetEndPointStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEndPointStatsResponse.ProtoReflect.Descriptor instead.
 func (*GetEndPointStatsResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{184}
+	return file_core_proto_rawDescGZIP(), []int{186}
 }
 
 func (x *GetEndPointStatsResponse) GetEpEui() string {
@@ -12958,7 +13215,7 @@ type GetEndPointOperationsRequest struct {
 
 func (x *GetEndPointOperationsRequest) Reset() {
 	*x = GetEndPointOperationsRequest{}
-	mi := &file_core_proto_msgTypes[185]
+	mi := &file_core_proto_msgTypes[187]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12970,7 +13227,7 @@ func (x *GetEndPointOperationsRequest) String() string {
 func (*GetEndPointOperationsRequest) ProtoMessage() {}
 
 func (x *GetEndPointOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[185]
+	mi := &file_core_proto_msgTypes[187]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12983,7 +13240,7 @@ func (x *GetEndPointOperationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEndPointOperationsRequest.ProtoReflect.Descriptor instead.
 func (*GetEndPointOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{185}
+	return file_core_proto_rawDescGZIP(), []int{187}
 }
 
 func (x *GetEndPointOperationsRequest) GetEpEui() string {
@@ -13016,7 +13273,7 @@ type GetEndPointOperationsResponse struct {
 
 func (x *GetEndPointOperationsResponse) Reset() {
 	*x = GetEndPointOperationsResponse{}
-	mi := &file_core_proto_msgTypes[186]
+	mi := &file_core_proto_msgTypes[188]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13028,7 +13285,7 @@ func (x *GetEndPointOperationsResponse) String() string {
 func (*GetEndPointOperationsResponse) ProtoMessage() {}
 
 func (x *GetEndPointOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[186]
+	mi := &file_core_proto_msgTypes[188]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13041,7 +13298,7 @@ func (x *GetEndPointOperationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEndPointOperationsResponse.ProtoReflect.Descriptor instead.
 func (*GetEndPointOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{186}
+	return file_core_proto_rawDescGZIP(), []int{188}
 }
 
 func (x *GetEndPointOperationsResponse) GetOperations() []*EndPointOperation {
@@ -13065,7 +13322,7 @@ type EndPointOperation struct {
 
 func (x *EndPointOperation) Reset() {
 	*x = EndPointOperation{}
-	mi := &file_core_proto_msgTypes[187]
+	mi := &file_core_proto_msgTypes[189]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13077,7 +13334,7 @@ func (x *EndPointOperation) String() string {
 func (*EndPointOperation) ProtoMessage() {}
 
 func (x *EndPointOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[187]
+	mi := &file_core_proto_msgTypes[189]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13090,7 +13347,7 @@ func (x *EndPointOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndPointOperation.ProtoReflect.Descriptor instead.
 func (*EndPointOperation) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{187}
+	return file_core_proto_rawDescGZIP(), []int{189}
 }
 
 func (x *EndPointOperation) GetId() string {
@@ -13143,7 +13400,7 @@ type ListAllBaseStationLocationsRequest struct {
 
 func (x *ListAllBaseStationLocationsRequest) Reset() {
 	*x = ListAllBaseStationLocationsRequest{}
-	mi := &file_core_proto_msgTypes[188]
+	mi := &file_core_proto_msgTypes[190]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13155,7 +13412,7 @@ func (x *ListAllBaseStationLocationsRequest) String() string {
 func (*ListAllBaseStationLocationsRequest) ProtoMessage() {}
 
 func (x *ListAllBaseStationLocationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[188]
+	mi := &file_core_proto_msgTypes[190]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13168,7 +13425,7 @@ func (x *ListAllBaseStationLocationsRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ListAllBaseStationLocationsRequest.ProtoReflect.Descriptor instead.
 func (*ListAllBaseStationLocationsRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{188}
+	return file_core_proto_rawDescGZIP(), []int{190}
 }
 
 type BaseStationLocation struct {
@@ -13187,7 +13444,7 @@ type BaseStationLocation struct {
 
 func (x *BaseStationLocation) Reset() {
 	*x = BaseStationLocation{}
-	mi := &file_core_proto_msgTypes[189]
+	mi := &file_core_proto_msgTypes[191]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13199,7 +13456,7 @@ func (x *BaseStationLocation) String() string {
 func (*BaseStationLocation) ProtoMessage() {}
 
 func (x *BaseStationLocation) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[189]
+	mi := &file_core_proto_msgTypes[191]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13212,7 +13469,7 @@ func (x *BaseStationLocation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BaseStationLocation.ProtoReflect.Descriptor instead.
 func (*BaseStationLocation) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{189}
+	return file_core_proto_rawDescGZIP(), []int{191}
 }
 
 func (x *BaseStationLocation) GetBsEui() string {
@@ -13281,7 +13538,7 @@ type ListAllBaseStationLocationsResponse struct {
 
 func (x *ListAllBaseStationLocationsResponse) Reset() {
 	*x = ListAllBaseStationLocationsResponse{}
-	mi := &file_core_proto_msgTypes[190]
+	mi := &file_core_proto_msgTypes[192]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13293,7 +13550,7 @@ func (x *ListAllBaseStationLocationsResponse) String() string {
 func (*ListAllBaseStationLocationsResponse) ProtoMessage() {}
 
 func (x *ListAllBaseStationLocationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[190]
+	mi := &file_core_proto_msgTypes[192]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13306,7 +13563,7 @@ func (x *ListAllBaseStationLocationsResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ListAllBaseStationLocationsResponse.ProtoReflect.Descriptor instead.
 func (*ListAllBaseStationLocationsResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{190}
+	return file_core_proto_rawDescGZIP(), []int{192}
 }
 
 func (x *ListAllBaseStationLocationsResponse) GetLocations() []*BaseStationLocation {
@@ -13331,7 +13588,7 @@ type GetCEStatusRequest struct {
 
 func (x *GetCEStatusRequest) Reset() {
 	*x = GetCEStatusRequest{}
-	mi := &file_core_proto_msgTypes[191]
+	mi := &file_core_proto_msgTypes[193]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13343,7 +13600,7 @@ func (x *GetCEStatusRequest) String() string {
 func (*GetCEStatusRequest) ProtoMessage() {}
 
 func (x *GetCEStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[191]
+	mi := &file_core_proto_msgTypes[193]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13356,7 +13613,7 @@ func (x *GetCEStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCEStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetCEStatusRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{191}
+	return file_core_proto_rawDescGZIP(), []int{193}
 }
 
 type GetCEStatusResponse struct {
@@ -13375,7 +13632,7 @@ type GetCEStatusResponse struct {
 
 func (x *GetCEStatusResponse) Reset() {
 	*x = GetCEStatusResponse{}
-	mi := &file_core_proto_msgTypes[192]
+	mi := &file_core_proto_msgTypes[194]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13387,7 +13644,7 @@ func (x *GetCEStatusResponse) String() string {
 func (*GetCEStatusResponse) ProtoMessage() {}
 
 func (x *GetCEStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[192]
+	mi := &file_core_proto_msgTypes[194]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13400,7 +13657,7 @@ func (x *GetCEStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCEStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetCEStatusResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{192}
+	return file_core_proto_rawDescGZIP(), []int{194}
 }
 
 func (x *GetCEStatusResponse) GetOnboardingRequired() bool {
@@ -13440,7 +13697,7 @@ type CompleteCEOnboardingRequest struct {
 
 func (x *CompleteCEOnboardingRequest) Reset() {
 	*x = CompleteCEOnboardingRequest{}
-	mi := &file_core_proto_msgTypes[193]
+	mi := &file_core_proto_msgTypes[195]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13452,7 +13709,7 @@ func (x *CompleteCEOnboardingRequest) String() string {
 func (*CompleteCEOnboardingRequest) ProtoMessage() {}
 
 func (x *CompleteCEOnboardingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[193]
+	mi := &file_core_proto_msgTypes[195]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13465,7 +13722,7 @@ func (x *CompleteCEOnboardingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteCEOnboardingRequest.ProtoReflect.Descriptor instead.
 func (*CompleteCEOnboardingRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{193}
+	return file_core_proto_rawDescGZIP(), []int{195}
 }
 
 func (x *CompleteCEOnboardingRequest) GetCompanyName() string {
@@ -13485,7 +13742,7 @@ type CompleteCEOnboardingResponse struct {
 
 func (x *CompleteCEOnboardingResponse) Reset() {
 	*x = CompleteCEOnboardingResponse{}
-	mi := &file_core_proto_msgTypes[194]
+	mi := &file_core_proto_msgTypes[196]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13497,7 +13754,7 @@ func (x *CompleteCEOnboardingResponse) String() string {
 func (*CompleteCEOnboardingResponse) ProtoMessage() {}
 
 func (x *CompleteCEOnboardingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[194]
+	mi := &file_core_proto_msgTypes[196]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13510,7 +13767,7 @@ func (x *CompleteCEOnboardingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteCEOnboardingResponse.ProtoReflect.Descriptor instead.
 func (*CompleteCEOnboardingResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{194}
+	return file_core_proto_rawDescGZIP(), []int{196}
 }
 
 func (x *CompleteCEOnboardingResponse) GetCeId() string {
@@ -13544,7 +13801,7 @@ type CEInstanceInfo struct {
 
 func (x *CEInstanceInfo) Reset() {
 	*x = CEInstanceInfo{}
-	mi := &file_core_proto_msgTypes[195]
+	mi := &file_core_proto_msgTypes[197]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13556,7 +13813,7 @@ func (x *CEInstanceInfo) String() string {
 func (*CEInstanceInfo) ProtoMessage() {}
 
 func (x *CEInstanceInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[195]
+	mi := &file_core_proto_msgTypes[197]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13569,7 +13826,7 @@ func (x *CEInstanceInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CEInstanceInfo.ProtoReflect.Descriptor instead.
 func (*CEInstanceInfo) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{195}
+	return file_core_proto_rawDescGZIP(), []int{197}
 }
 
 func (x *CEInstanceInfo) GetCeId() string {
@@ -13646,7 +13903,7 @@ type ListCEInstancesRequest struct {
 
 func (x *ListCEInstancesRequest) Reset() {
 	*x = ListCEInstancesRequest{}
-	mi := &file_core_proto_msgTypes[196]
+	mi := &file_core_proto_msgTypes[198]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13658,7 +13915,7 @@ func (x *ListCEInstancesRequest) String() string {
 func (*ListCEInstancesRequest) ProtoMessage() {}
 
 func (x *ListCEInstancesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[196]
+	mi := &file_core_proto_msgTypes[198]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13671,7 +13928,7 @@ func (x *ListCEInstancesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCEInstancesRequest.ProtoReflect.Descriptor instead.
 func (*ListCEInstancesRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{196}
+	return file_core_proto_rawDescGZIP(), []int{198}
 }
 
 func (x *ListCEInstancesRequest) GetStatusFilter() string {
@@ -13706,7 +13963,7 @@ type ListCEInstancesResponse struct {
 
 func (x *ListCEInstancesResponse) Reset() {
 	*x = ListCEInstancesResponse{}
-	mi := &file_core_proto_msgTypes[197]
+	mi := &file_core_proto_msgTypes[199]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13718,7 +13975,7 @@ func (x *ListCEInstancesResponse) String() string {
 func (*ListCEInstancesResponse) ProtoMessage() {}
 
 func (x *ListCEInstancesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[197]
+	mi := &file_core_proto_msgTypes[199]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13731,7 +13988,7 @@ func (x *ListCEInstancesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCEInstancesResponse.ProtoReflect.Descriptor instead.
 func (*ListCEInstancesResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{197}
+	return file_core_proto_rawDescGZIP(), []int{199}
 }
 
 func (x *ListCEInstancesResponse) GetInstances() []*CEInstanceInfo {
@@ -13765,7 +14022,7 @@ type RevokeCEInstanceRequest struct {
 
 func (x *RevokeCEInstanceRequest) Reset() {
 	*x = RevokeCEInstanceRequest{}
-	mi := &file_core_proto_msgTypes[198]
+	mi := &file_core_proto_msgTypes[200]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13777,7 +14034,7 @@ func (x *RevokeCEInstanceRequest) String() string {
 func (*RevokeCEInstanceRequest) ProtoMessage() {}
 
 func (x *RevokeCEInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[198]
+	mi := &file_core_proto_msgTypes[200]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13790,7 +14047,7 @@ func (x *RevokeCEInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeCEInstanceRequest.ProtoReflect.Descriptor instead.
 func (*RevokeCEInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{198}
+	return file_core_proto_rawDescGZIP(), []int{200}
 }
 
 func (x *RevokeCEInstanceRequest) GetCeId() string {
@@ -13816,7 +14073,7 @@ type RevokeCEInstanceResponse struct {
 
 func (x *RevokeCEInstanceResponse) Reset() {
 	*x = RevokeCEInstanceResponse{}
-	mi := &file_core_proto_msgTypes[199]
+	mi := &file_core_proto_msgTypes[201]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13828,7 +14085,7 @@ func (x *RevokeCEInstanceResponse) String() string {
 func (*RevokeCEInstanceResponse) ProtoMessage() {}
 
 func (x *RevokeCEInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_core_proto_msgTypes[199]
+	mi := &file_core_proto_msgTypes[201]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13841,7 +14098,7 @@ func (x *RevokeCEInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeCEInstanceResponse.ProtoReflect.Descriptor instead.
 func (*RevokeCEInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_core_proto_rawDescGZIP(), []int{199}
+	return file_core_proto_rawDescGZIP(), []int{201}
 }
 
 func (x *RevokeCEInstanceResponse) GetSuccess() bool {
@@ -13856,7 +14113,7 @@ var File_core_proto protoreflect.FileDescriptor
 const file_core_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"core.proto\x12\x11kilocenter.api.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\x98\a\n" +
+	"core.proto\x12\x11kilocenter.api.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\xea\a\n" +
 	"\bEndPoint\x12\x14\n" +
 	"\x05epEui\x18\x01 \x01(\tR\x05epEui\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x12\n" +
@@ -13890,7 +14147,9 @@ const file_core_proto_rawDesc = "" +
 	"\x0flast_packet_cnt\x18\x15 \x01(\rR\rlastPacketCnt\x12\x19\n" +
 	"\btype_eui\x18\x16 \x01(\fR\atypeEui\x12%\n" +
 	"\x0ecarrier_offset\x18\x17 \x01(\x05R\rcarrierOffset\x12&\n" +
-	"\x0fdevice_model_id\x18\x18 \x01(\tR\rdeviceModelId\x1a7\n" +
+	"\x0fdevice_model_id\x18\x18 \x01(\tR\rdeviceModelId\x12!\n" +
+	"\fblueprint_id\x18\x19 \x01(\tR\vblueprintId\x12-\n" +
+	"\x12blueprint_snapshot\x18\x1a \x01(\fR\x11blueprintSnapshot\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8a\n" +
@@ -13992,13 +14251,14 @@ const file_core_proto_rawDesc = "" +
 	"new_ep_eui\x18\x03 \x01(\tR\bnewEpEui\"J\n" +
 	"\x15DeleteEndPointRequest\x12\x14\n" +
 	"\x05epEui\x18\x01 \x01(\tR\x05epEui\x12\x1b\n" +
-	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"\x94\x01\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"\xbc\x01\n" +
 	"\x14ListEndPointsRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\x12#\n" +
-	"\rstatus_filter\x18\x04 \x01(\tR\fstatusFilter\"\x9b\x01\n" +
+	"\rstatus_filter\x18\x04 \x01(\tR\fstatusFilter\x12&\n" +
+	"\x0fdevice_model_id\x18\x05 \x01(\tR\rdeviceModelId\"\x9b\x01\n" +
 	"\x15ListEndPointsResponse\x129\n" +
 	"\tendpoints\x18\x01 \x03(\v2\x1b.kilocenter.api.v1.EndPointR\tendpoints\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1f\n" +
@@ -14681,13 +14941,14 @@ const file_core_proto_rawDesc = "" +
 	"not_before\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tnotBefore\x127\n" +
 	"\tnot_after\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\x12*\n" +
 	"\x11days_until_expiry\x18\x05 \x01(\x05R\x0fdaysUntilExpiry\x12\x19\n" +
-	"\bis_valid\x18\x06 \x01(\bR\aisValid\"\xa4\x01\n" +
+	"\bis_valid\x18\x06 \x01(\bR\aisValid\"\xc1\x01\n" +
 	"\x19CreateManufacturerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x18\n" +
 	"\awebsite\x18\x04 \x01(\tR\awebsite\x12#\n" +
-	"\rcontact_email\x18\x05 \x01(\tR\fcontactEmail\"a\n" +
+	"\rcontact_email\x18\x05 \x01(\tR\fcontactEmail\x12\x1b\n" +
+	"\tis_system\x18\x06 \x01(\bR\bisSystem\"a\n" +
 	"\x1aCreateManufacturerResponse\x12C\n" +
 	"\fmanufacturer\x18\x01 \x01(\v2\x1f.kilocenter.api.v1.ManufacturerR\fmanufacturer\"(\n" +
 	"\x16GetManufacturerRequest\x12\x0e\n" +
@@ -14705,16 +14966,17 @@ const file_core_proto_rawDesc = "" +
 	"\x19DeleteManufacturerRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"6\n" +
 	"\x1aDeleteManufacturerResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"V\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"s\n" +
 	"\x18ListManufacturersRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tR\tpageToken\"\xab\x01\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x1b\n" +
+	"\tis_system\x18\x03 \x01(\bR\bisSystem\"\xab\x01\n" +
 	"\x19ListManufacturersResponse\x12E\n" +
 	"\rmanufacturers\x18\x01 \x03(\v2\x1f.kilocenter.api.v1.ManufacturerR\rmanufacturers\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1f\n" +
 	"\vtotal_count\x18\x03 \x01(\x05R\n" +
-	"totalCount\"\xfc\x02\n" +
+	"totalCount\"\x99\x03\n" +
 	"\fManufacturer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -14731,13 +14993,15 @@ const file_core_proto_rawDesc = "" +
 	" \x01(\bR\n" +
 	"isVerified\x12\x1f\n" +
 	"\vmodel_count\x18\v \x01(\x05R\n" +
-	"modelCount\"\xa8\x01\n" +
+	"modelCount\x12\x1b\n" +
+	"\tis_system\x18\f \x01(\bR\bisSystem\"\xc5\x01\n" +
 	"\x18CreateDeviceModelRequest\x12'\n" +
 	"\x0fmanufacturer_id\x18\x01 \x01(\tR\x0emanufacturerId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04code\x18\x03 \x01(\tR\x04code\x12\x19\n" +
 	"\btype_eui\x18\x04 \x01(\tR\atypeEui\x12 \n" +
-	"\vdescription\x18\x05 \x01(\tR\vdescription\"^\n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\x12\x1b\n" +
+	"\tis_system\x18\x06 \x01(\bR\bisSystem\"^\n" +
 	"\x19CreateDeviceModelResponse\x12A\n" +
 	"\fdevice_model\x18\x01 \x01(\v2\x1e.kilocenter.api.v1.DeviceModelR\vdeviceModel\"'\n" +
 	"\x15GetDeviceModelRequest\x12\x0e\n" +
@@ -14753,17 +15017,18 @@ const file_core_proto_rawDesc = "" +
 	"\x18DeleteDeviceModelRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"5\n" +
 	"\x19DeleteDeviceModelResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"~\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\x9b\x01\n" +
 	"\x17ListDeviceModelsRequest\x12'\n" +
 	"\x0fmanufacturer_id\x18\x01 \x01(\tR\x0emanufacturerId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\xa8\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x1b\n" +
+	"\tis_system\x18\x04 \x01(\bR\bisSystem\"\xa8\x01\n" +
 	"\x18ListDeviceModelsResponse\x12C\n" +
 	"\rdevice_models\x18\x01 \x03(\v2\x1e.kilocenter.api.v1.DeviceModelR\fdeviceModels\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1f\n" +
 	"\vtotal_count\x18\x03 \x01(\x05R\n" +
-	"totalCount\"\x8c\x03\n" +
+	"totalCount\"\xa9\x03\n" +
 	"\vDeviceModel\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12'\n" +
 	"\x0fmanufacturer_id\x18\x02 \x01(\tR\x0emanufacturerId\x12\x12\n" +
@@ -14778,7 +15043,8 @@ const file_core_proto_rawDesc = "" +
 	"\ttenant_id\x18\t \x01(\tR\btenantId\x12#\n" +
 	"\rdatasheet_url\x18\n" +
 	" \x01(\tR\fdatasheetUrl\x12'\n" +
-	"\x0fblueprint_count\x18\v \x01(\x05R\x0eblueprintCount\"\xd6\x01\n" +
+	"\x0fblueprint_count\x18\v \x01(\x05R\x0eblueprintCount\x12\x1b\n" +
+	"\tis_system\x18\f \x01(\bR\bisSystem\"\xf3\x01\n" +
 	"\x16CreateBlueprintRequest\x12&\n" +
 	"\x0fdevice_model_id\x18\x01 \x01(\tR\rdeviceModelId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
@@ -14786,7 +15052,8 @@ const file_core_proto_rawDesc = "" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x12%\n" +
 	"\x0edecoder_script\x18\x05 \x01(\fR\rdecoderScript\x12\x1d\n" +
 	"\n" +
-	"is_default\x18\x06 \x01(\bR\tisDefault\"U\n" +
+	"is_default\x18\x06 \x01(\bR\tisDefault\x12\x1b\n" +
+	"\tis_system\x18\a \x01(\bR\bisSystem\"U\n" +
 	"\x17CreateBlueprintResponse\x12:\n" +
 	"\tblueprint\x18\x01 \x01(\v2\x1c.kilocenter.api.v1.BlueprintR\tblueprint\"%\n" +
 	"\x13GetBlueprintRequest\x12\x0e\n" +
@@ -14804,12 +15071,13 @@ const file_core_proto_rawDesc = "" +
 	"\x16DeleteBlueprintRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"3\n" +
 	"\x17DeleteBlueprintResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"{\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\x98\x01\n" +
 	"\x15ListBlueprintsRequest\x12&\n" +
 	"\x0fdevice_model_id\x18\x01 \x01(\tR\rdeviceModelId\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x9f\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x1b\n" +
+	"\tis_system\x18\x04 \x01(\bR\bisSystem\"\x9f\x01\n" +
 	"\x16ListBlueprintsResponse\x12<\n" +
 	"\n" +
 	"blueprints\x18\x01 \x03(\v2\x1c.kilocenter.api.v1.BlueprintR\n" +
@@ -14833,7 +15101,14 @@ const file_core_proto_rawDesc = "" +
 	"\n" +
 	"commit_sha\x18\x03 \x01(\tR\tcommitSha\x12\x1f\n" +
 	"\vbranch_name\x18\x04 \x01(\tR\n" +
-	"branchName\"\xb1\x04\n" +
+	"branchName\"\xa6\x01\n" +
+	"\x1aBulkAssignBlueprintRequest\x12!\n" +
+	"\fblueprint_id\x18\x01 \x01(\tR\vblueprintId\x12&\n" +
+	"\x0fdevice_model_id\x18\x02 \x01(\tR\rdeviceModelId\x12\x17\n" +
+	"\aep_euis\x18\x03 \x03(\tR\x06epEuis\x12$\n" +
+	"\x0eset_as_default\x18\x04 \x01(\bR\fsetAsDefault\"D\n" +
+	"\x1bBulkAssignBlueprintResponse\x12%\n" +
+	"\x0eaffected_count\x18\x01 \x01(\x05R\raffectedCount\"\xce\x04\n" +
 	"\tBlueprint\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
 	"\x0fdevice_model_id\x18\x02 \x01(\tR\rdeviceModelId\x12\x12\n" +
@@ -14853,19 +15128,23 @@ const file_core_proto_rawDesc = "" +
 	"\rregistry_repo\x18\f \x01(\tR\fregistryRepo\x12.\n" +
 	"\x13registry_commit_sha\x18\r \x01(\tR\x11registryCommitSha\x12+\n" +
 	"\x11registry_verified\x18\x0e \x01(\bR\x10registryVerified\x12&\n" +
-	"\x0fregistry_pr_url\x18\x0f \x01(\tR\rregistryPrUrl\"\xa5\x01\n" +
+	"\x0fregistry_pr_url\x18\x0f \x01(\tR\rregistryPrUrl\x12\x1b\n" +
+	"\tis_system\x18\x10 \x01(\bR\bisSystem\"\xc2\x01\n" +
 	"%CreateDeviceModelWithBlueprintRequest\x12'\n" +
 	"\x0fmanufacturer_id\x18\x01 \x01(\tR\x0emanufacturerId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12%\n" +
-	"\x0edecoder_script\x18\x04 \x01(\fR\rdecoderScript\"\xa7\x01\n" +
+	"\x0edecoder_script\x18\x04 \x01(\fR\rdecoderScript\x12\x1b\n" +
+	"\tis_system\x18\x05 \x01(\bR\bisSystem\"\xa7\x01\n" +
 	"&CreateDeviceModelWithBlueprintResponse\x12A\n" +
 	"\fdevice_model\x18\x01 \x01(\v2\x1e.kilocenter.api.v1.DeviceModelR\vdeviceModel\x12:\n" +
-	"\tblueprint\x18\x02 \x01(\v2\x1c.kilocenter.api.v1.BlueprintR\tblueprint\"p\n" +
-	"\x14DecodePreviewRequest\x12!\n" +
-	"\fblueprint_id\x18\x01 \x01(\tR\vblueprintId\x12\x18\n" +
+	"\tblueprint\x18\x02 \x01(\v2\x1c.kilocenter.api.v1.BlueprintR\tblueprint\"\x9b\x01\n" +
+	"\x14DecodePreviewRequest\x12#\n" +
+	"\fblueprint_id\x18\x01 \x01(\tH\x00R\vblueprintId\x12\x1d\n" +
+	"\tspec_json\x18\x04 \x01(\fH\x00R\bspecJson\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload\x12\x1b\n" +
-	"\tformat_id\x18\x03 \x01(\rR\bformatId\"\xe6\x01\n" +
+	"\tformat_id\x18\x03 \x01(\rR\bformatIdB\b\n" +
+	"\x06source\"\xe6\x01\n" +
 	"\x15DecodePreviewResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12'\n" +
 	"\x0fdecoded_payload\x18\x02 \x01(\fR\x0edecodedPayload\x12\x1d\n" +
@@ -15075,7 +15354,7 @@ const file_core_proto_rawDesc = "" +
 	"\x05ce_id\x18\x01 \x01(\tR\x04ceId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"4\n" +
 	"\x18RevokeCEInstanceResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\xa9N\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\x9fO\n" +
 	"\vCoreService\x12W\n" +
 	"\x0eCreateEndPoint\x12(.kilocenter.api.v1.CreateEndPointRequest\x1a\x1b.kilocenter.api.v1.EndPoint\x12Q\n" +
 	"\vGetEndPoint\x12%.kilocenter.api.v1.GetEndPointRequest\x1a\x1b.kilocenter.api.v1.EndPoint\x12W\n" +
@@ -15152,7 +15431,8 @@ const file_core_proto_rawDesc = "" +
 	"\x0fDeleteBlueprint\x12).kilocenter.api.v1.DeleteBlueprintRequest\x1a*.kilocenter.api.v1.DeleteBlueprintResponse\x12e\n" +
 	"\x0eListBlueprints\x12(.kilocenter.api.v1.ListBlueprintsRequest\x1a).kilocenter.api.v1.ListBlueprintsResponse\x12t\n" +
 	"\x13SetDefaultBlueprint\x12-.kilocenter.api.v1.SetDefaultBlueprintRequest\x1a..kilocenter.api.v1.SetDefaultBlueprintResponse\x12\x86\x01\n" +
-	"\x19SubmitBlueprintToRegistry\x123.kilocenter.api.v1.SubmitBlueprintToRegistryRequest\x1a4.kilocenter.api.v1.SubmitBlueprintToRegistryResponse\x12\x95\x01\n" +
+	"\x19SubmitBlueprintToRegistry\x123.kilocenter.api.v1.SubmitBlueprintToRegistryRequest\x1a4.kilocenter.api.v1.SubmitBlueprintToRegistryResponse\x12t\n" +
+	"\x13BulkAssignBlueprint\x12-.kilocenter.api.v1.BulkAssignBlueprintRequest\x1a..kilocenter.api.v1.BulkAssignBlueprintResponse\x12\x95\x01\n" +
 	"\x1eCreateDeviceModelWithBlueprint\x128.kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest\x1a9.kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse\x12b\n" +
 	"\rDecodePreview\x12'.kilocenter.api.v1.DecodePreviewRequest\x1a(.kilocenter.api.v1.DecodePreviewResponse\x12_\n" +
 	"\fListMessages\x12&.kilocenter.api.v1.ListMessagesRequest\x1a'.kilocenter.api.v1.ListMessagesResponse\x12X\n" +
@@ -15184,7 +15464,7 @@ func file_core_proto_rawDescGZIP() []byte {
 	return file_core_proto_rawDescData
 }
 
-var file_core_proto_msgTypes = make([]protoimpl.MessageInfo, 207)
+var file_core_proto_msgTypes = make([]protoimpl.MessageInfo, 209)
 var file_core_proto_goTypes = []any{
 	(*EndPoint)(nil),                               // 0: kilocenter.api.v1.EndPoint
 	(*BaseStation)(nil),                            // 1: kilocenter.api.v1.BaseStation
@@ -15346,266 +15626,268 @@ var file_core_proto_goTypes = []any{
 	(*SetDefaultBlueprintResponse)(nil),            // 157: kilocenter.api.v1.SetDefaultBlueprintResponse
 	(*SubmitBlueprintToRegistryRequest)(nil),       // 158: kilocenter.api.v1.SubmitBlueprintToRegistryRequest
 	(*SubmitBlueprintToRegistryResponse)(nil),      // 159: kilocenter.api.v1.SubmitBlueprintToRegistryResponse
-	(*Blueprint)(nil),                              // 160: kilocenter.api.v1.Blueprint
-	(*CreateDeviceModelWithBlueprintRequest)(nil),  // 161: kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest
-	(*CreateDeviceModelWithBlueprintResponse)(nil), // 162: kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse
-	(*DecodePreviewRequest)(nil),                   // 163: kilocenter.api.v1.DecodePreviewRequest
-	(*DecodePreviewResponse)(nil),                  // 164: kilocenter.api.v1.DecodePreviewResponse
-	(*ListMessagesRequest)(nil),                    // 165: kilocenter.api.v1.ListMessagesRequest
-	(*ListMessagesResponse)(nil),                   // 166: kilocenter.api.v1.ListMessagesResponse
-	(*ListEndpointMessagesRequest)(nil),            // 167: kilocenter.api.v1.ListEndpointMessagesRequest
-	(*ListEndpointMessagesResponse)(nil),           // 168: kilocenter.api.v1.ListEndpointMessagesResponse
-	(*StreamMessagesRequest)(nil),                  // 169: kilocenter.api.v1.StreamMessagesRequest
-	(*ListBaseStationMessagesRequest)(nil),         // 170: kilocenter.api.v1.ListBaseStationMessagesRequest
-	(*ListBaseStationMessagesResponse)(nil),        // 171: kilocenter.api.v1.ListBaseStationMessagesResponse
-	(*GetBaseStationMessageRequest)(nil),           // 172: kilocenter.api.v1.GetBaseStationMessageRequest
-	(*GetBaseStationMessageResponse)(nil),          // 173: kilocenter.api.v1.GetBaseStationMessageResponse
-	(*GetBaseStationMessageStatsRequest)(nil),      // 174: kilocenter.api.v1.GetBaseStationMessageStatsRequest
-	(*GetBaseStationMessageStatsResponse)(nil),     // 175: kilocenter.api.v1.GetBaseStationMessageStatsResponse
-	(*SearchBaseStationMessagesRequest)(nil),       // 176: kilocenter.api.v1.SearchBaseStationMessagesRequest
-	(*SearchBaseStationMessagesResponse)(nil),      // 177: kilocenter.api.v1.SearchBaseStationMessagesResponse
-	(*ExportBaseStationMessagesRequest)(nil),       // 178: kilocenter.api.v1.ExportBaseStationMessagesRequest
-	(*ExportBaseStationMessagesResponse)(nil),      // 179: kilocenter.api.v1.ExportBaseStationMessagesResponse
-	(*StreamBaseStationMessagesRequest)(nil),       // 180: kilocenter.api.v1.StreamBaseStationMessagesRequest
-	(*BaseStationMessage)(nil),                     // 181: kilocenter.api.v1.BaseStationMessage
-	(*BaseStationMessageStats)(nil),                // 182: kilocenter.api.v1.BaseStationMessageStats
-	(*GetEndPointStatsRequest)(nil),                // 183: kilocenter.api.v1.GetEndPointStatsRequest
-	(*GetEndPointStatsResponse)(nil),               // 184: kilocenter.api.v1.GetEndPointStatsResponse
-	(*GetEndPointOperationsRequest)(nil),           // 185: kilocenter.api.v1.GetEndPointOperationsRequest
-	(*GetEndPointOperationsResponse)(nil),          // 186: kilocenter.api.v1.GetEndPointOperationsResponse
-	(*EndPointOperation)(nil),                      // 187: kilocenter.api.v1.EndPointOperation
-	(*ListAllBaseStationLocationsRequest)(nil),     // 188: kilocenter.api.v1.ListAllBaseStationLocationsRequest
-	(*BaseStationLocation)(nil),                    // 189: kilocenter.api.v1.BaseStationLocation
-	(*ListAllBaseStationLocationsResponse)(nil),    // 190: kilocenter.api.v1.ListAllBaseStationLocationsResponse
-	(*GetCEStatusRequest)(nil),                     // 191: kilocenter.api.v1.GetCEStatusRequest
-	(*GetCEStatusResponse)(nil),                    // 192: kilocenter.api.v1.GetCEStatusResponse
-	(*CompleteCEOnboardingRequest)(nil),            // 193: kilocenter.api.v1.CompleteCEOnboardingRequest
-	(*CompleteCEOnboardingResponse)(nil),           // 194: kilocenter.api.v1.CompleteCEOnboardingResponse
-	(*CEInstanceInfo)(nil),                         // 195: kilocenter.api.v1.CEInstanceInfo
-	(*ListCEInstancesRequest)(nil),                 // 196: kilocenter.api.v1.ListCEInstancesRequest
-	(*ListCEInstancesResponse)(nil),                // 197: kilocenter.api.v1.ListCEInstancesResponse
-	(*RevokeCEInstanceRequest)(nil),                // 198: kilocenter.api.v1.RevokeCEInstanceRequest
-	(*RevokeCEInstanceResponse)(nil),               // 199: kilocenter.api.v1.RevokeCEInstanceResponse
-	nil,                                            // 200: kilocenter.api.v1.EndPoint.TagsEntry
-	nil,                                            // 201: kilocenter.api.v1.BaseStation.TagsEntry
-	nil,                                            // 202: kilocenter.api.v1.GetBaseStationStatsResponse.EndpointMessageCountsEntry
-	nil,                                            // 203: kilocenter.api.v1.ReleaseInfo.ArtifactsEntry
-	nil,                                            // 204: kilocenter.api.v1.Statistics.EndpointMessageCountsEntry
-	nil,                                            // 205: kilocenter.api.v1.Statistics.BasestationMessageCountsEntry
-	nil,                                            // 206: kilocenter.api.v1.GenerateCertificateResponse.DownloadUrlsEntry
-	(*timestamppb.Timestamp)(nil),                  // 207: google.protobuf.Timestamp
-	(*wrapperspb.DoubleValue)(nil),                 // 208: google.protobuf.DoubleValue
-	(*wrapperspb.Int64Value)(nil),                  // 209: google.protobuf.Int64Value
-	(*structpb.Struct)(nil),                        // 210: google.protobuf.Struct
-	(*wrapperspb.StringValue)(nil),                 // 211: google.protobuf.StringValue
-	(*fieldmaskpb.FieldMask)(nil),                  // 212: google.protobuf.FieldMask
-	(*emptypb.Empty)(nil),                          // 213: google.protobuf.Empty
+	(*BulkAssignBlueprintRequest)(nil),             // 160: kilocenter.api.v1.BulkAssignBlueprintRequest
+	(*BulkAssignBlueprintResponse)(nil),            // 161: kilocenter.api.v1.BulkAssignBlueprintResponse
+	(*Blueprint)(nil),                              // 162: kilocenter.api.v1.Blueprint
+	(*CreateDeviceModelWithBlueprintRequest)(nil),  // 163: kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest
+	(*CreateDeviceModelWithBlueprintResponse)(nil), // 164: kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse
+	(*DecodePreviewRequest)(nil),                   // 165: kilocenter.api.v1.DecodePreviewRequest
+	(*DecodePreviewResponse)(nil),                  // 166: kilocenter.api.v1.DecodePreviewResponse
+	(*ListMessagesRequest)(nil),                    // 167: kilocenter.api.v1.ListMessagesRequest
+	(*ListMessagesResponse)(nil),                   // 168: kilocenter.api.v1.ListMessagesResponse
+	(*ListEndpointMessagesRequest)(nil),            // 169: kilocenter.api.v1.ListEndpointMessagesRequest
+	(*ListEndpointMessagesResponse)(nil),           // 170: kilocenter.api.v1.ListEndpointMessagesResponse
+	(*StreamMessagesRequest)(nil),                  // 171: kilocenter.api.v1.StreamMessagesRequest
+	(*ListBaseStationMessagesRequest)(nil),         // 172: kilocenter.api.v1.ListBaseStationMessagesRequest
+	(*ListBaseStationMessagesResponse)(nil),        // 173: kilocenter.api.v1.ListBaseStationMessagesResponse
+	(*GetBaseStationMessageRequest)(nil),           // 174: kilocenter.api.v1.GetBaseStationMessageRequest
+	(*GetBaseStationMessageResponse)(nil),          // 175: kilocenter.api.v1.GetBaseStationMessageResponse
+	(*GetBaseStationMessageStatsRequest)(nil),      // 176: kilocenter.api.v1.GetBaseStationMessageStatsRequest
+	(*GetBaseStationMessageStatsResponse)(nil),     // 177: kilocenter.api.v1.GetBaseStationMessageStatsResponse
+	(*SearchBaseStationMessagesRequest)(nil),       // 178: kilocenter.api.v1.SearchBaseStationMessagesRequest
+	(*SearchBaseStationMessagesResponse)(nil),      // 179: kilocenter.api.v1.SearchBaseStationMessagesResponse
+	(*ExportBaseStationMessagesRequest)(nil),       // 180: kilocenter.api.v1.ExportBaseStationMessagesRequest
+	(*ExportBaseStationMessagesResponse)(nil),      // 181: kilocenter.api.v1.ExportBaseStationMessagesResponse
+	(*StreamBaseStationMessagesRequest)(nil),       // 182: kilocenter.api.v1.StreamBaseStationMessagesRequest
+	(*BaseStationMessage)(nil),                     // 183: kilocenter.api.v1.BaseStationMessage
+	(*BaseStationMessageStats)(nil),                // 184: kilocenter.api.v1.BaseStationMessageStats
+	(*GetEndPointStatsRequest)(nil),                // 185: kilocenter.api.v1.GetEndPointStatsRequest
+	(*GetEndPointStatsResponse)(nil),               // 186: kilocenter.api.v1.GetEndPointStatsResponse
+	(*GetEndPointOperationsRequest)(nil),           // 187: kilocenter.api.v1.GetEndPointOperationsRequest
+	(*GetEndPointOperationsResponse)(nil),          // 188: kilocenter.api.v1.GetEndPointOperationsResponse
+	(*EndPointOperation)(nil),                      // 189: kilocenter.api.v1.EndPointOperation
+	(*ListAllBaseStationLocationsRequest)(nil),     // 190: kilocenter.api.v1.ListAllBaseStationLocationsRequest
+	(*BaseStationLocation)(nil),                    // 191: kilocenter.api.v1.BaseStationLocation
+	(*ListAllBaseStationLocationsResponse)(nil),    // 192: kilocenter.api.v1.ListAllBaseStationLocationsResponse
+	(*GetCEStatusRequest)(nil),                     // 193: kilocenter.api.v1.GetCEStatusRequest
+	(*GetCEStatusResponse)(nil),                    // 194: kilocenter.api.v1.GetCEStatusResponse
+	(*CompleteCEOnboardingRequest)(nil),            // 195: kilocenter.api.v1.CompleteCEOnboardingRequest
+	(*CompleteCEOnboardingResponse)(nil),           // 196: kilocenter.api.v1.CompleteCEOnboardingResponse
+	(*CEInstanceInfo)(nil),                         // 197: kilocenter.api.v1.CEInstanceInfo
+	(*ListCEInstancesRequest)(nil),                 // 198: kilocenter.api.v1.ListCEInstancesRequest
+	(*ListCEInstancesResponse)(nil),                // 199: kilocenter.api.v1.ListCEInstancesResponse
+	(*RevokeCEInstanceRequest)(nil),                // 200: kilocenter.api.v1.RevokeCEInstanceRequest
+	(*RevokeCEInstanceResponse)(nil),               // 201: kilocenter.api.v1.RevokeCEInstanceResponse
+	nil,                                            // 202: kilocenter.api.v1.EndPoint.TagsEntry
+	nil,                                            // 203: kilocenter.api.v1.BaseStation.TagsEntry
+	nil,                                            // 204: kilocenter.api.v1.GetBaseStationStatsResponse.EndpointMessageCountsEntry
+	nil,                                            // 205: kilocenter.api.v1.ReleaseInfo.ArtifactsEntry
+	nil,                                            // 206: kilocenter.api.v1.Statistics.EndpointMessageCountsEntry
+	nil,                                            // 207: kilocenter.api.v1.Statistics.BasestationMessageCountsEntry
+	nil,                                            // 208: kilocenter.api.v1.GenerateCertificateResponse.DownloadUrlsEntry
+	(*timestamppb.Timestamp)(nil),                  // 209: google.protobuf.Timestamp
+	(*wrapperspb.DoubleValue)(nil),                 // 210: google.protobuf.DoubleValue
+	(*wrapperspb.Int64Value)(nil),                  // 211: google.protobuf.Int64Value
+	(*structpb.Struct)(nil),                        // 212: google.protobuf.Struct
+	(*wrapperspb.StringValue)(nil),                 // 213: google.protobuf.StringValue
+	(*fieldmaskpb.FieldMask)(nil),                  // 214: google.protobuf.FieldMask
+	(*emptypb.Empty)(nil),                          // 215: google.protobuf.Empty
 }
 var file_core_proto_depIdxs = []int32{
-	200, // 0: kilocenter.api.v1.EndPoint.tags:type_name -> kilocenter.api.v1.EndPoint.TagsEntry
-	207, // 1: kilocenter.api.v1.EndPoint.created_at:type_name -> google.protobuf.Timestamp
-	207, // 2: kilocenter.api.v1.EndPoint.updated_at:type_name -> google.protobuf.Timestamp
-	207, // 3: kilocenter.api.v1.EndPoint.last_seen_at:type_name -> google.protobuf.Timestamp
-	208, // 4: kilocenter.api.v1.BaseStation.latitude:type_name -> google.protobuf.DoubleValue
-	208, // 5: kilocenter.api.v1.BaseStation.longitude:type_name -> google.protobuf.DoubleValue
-	208, // 6: kilocenter.api.v1.BaseStation.altitude:type_name -> google.protobuf.DoubleValue
-	201, // 7: kilocenter.api.v1.BaseStation.tags:type_name -> kilocenter.api.v1.BaseStation.TagsEntry
-	207, // 8: kilocenter.api.v1.BaseStation.created_at:type_name -> google.protobuf.Timestamp
-	207, // 9: kilocenter.api.v1.BaseStation.updated_at:type_name -> google.protobuf.Timestamp
-	207, // 10: kilocenter.api.v1.BaseStation.last_seen_at:type_name -> google.protobuf.Timestamp
-	209, // 11: kilocenter.api.v1.BaseStation.system_time:type_name -> google.protobuf.Int64Value
-	208, // 12: kilocenter.api.v1.BaseStation.duty_cycle:type_name -> google.protobuf.DoubleValue
-	209, // 13: kilocenter.api.v1.BaseStation.uptime_seconds:type_name -> google.protobuf.Int64Value
-	208, // 14: kilocenter.api.v1.BaseStation.temperature_celsius:type_name -> google.protobuf.DoubleValue
-	208, // 15: kilocenter.api.v1.BaseStation.cpu_load:type_name -> google.protobuf.DoubleValue
-	208, // 16: kilocenter.api.v1.BaseStation.memory_load:type_name -> google.protobuf.DoubleValue
-	210, // 17: kilocenter.api.v1.BaseStation.bs_config:type_name -> google.protobuf.Struct
-	207, // 18: kilocenter.api.v1.BaseStation.last_status_at:type_name -> google.protobuf.Timestamp
-	207, // 19: kilocenter.api.v1.BaseStation.location_updated_at:type_name -> google.protobuf.Timestamp
-	208, // 20: kilocenter.api.v1.BaseStationReceptionInfo.eq_snr:type_name -> google.protobuf.DoubleValue
-	209, // 21: kilocenter.api.v1.BaseStationReceptionInfo.rx_duration:type_name -> google.protobuf.Int64Value
-	211, // 22: kilocenter.api.v1.BaseStationReceptionInfo.profile:type_name -> google.protobuf.StringValue
-	211, // 23: kilocenter.api.v1.BaseStationReceptionInfo.mode:type_name -> google.protobuf.StringValue
-	208, // 24: kilocenter.api.v1.BaseStationReceptionInfo.dl_rx_snr:type_name -> google.protobuf.DoubleValue
-	208, // 25: kilocenter.api.v1.BaseStationReceptionInfo.dl_rx_rssi:type_name -> google.protobuf.DoubleValue
+	202, // 0: kilocenter.api.v1.EndPoint.tags:type_name -> kilocenter.api.v1.EndPoint.TagsEntry
+	209, // 1: kilocenter.api.v1.EndPoint.created_at:type_name -> google.protobuf.Timestamp
+	209, // 2: kilocenter.api.v1.EndPoint.updated_at:type_name -> google.protobuf.Timestamp
+	209, // 3: kilocenter.api.v1.EndPoint.last_seen_at:type_name -> google.protobuf.Timestamp
+	210, // 4: kilocenter.api.v1.BaseStation.latitude:type_name -> google.protobuf.DoubleValue
+	210, // 5: kilocenter.api.v1.BaseStation.longitude:type_name -> google.protobuf.DoubleValue
+	210, // 6: kilocenter.api.v1.BaseStation.altitude:type_name -> google.protobuf.DoubleValue
+	203, // 7: kilocenter.api.v1.BaseStation.tags:type_name -> kilocenter.api.v1.BaseStation.TagsEntry
+	209, // 8: kilocenter.api.v1.BaseStation.created_at:type_name -> google.protobuf.Timestamp
+	209, // 9: kilocenter.api.v1.BaseStation.updated_at:type_name -> google.protobuf.Timestamp
+	209, // 10: kilocenter.api.v1.BaseStation.last_seen_at:type_name -> google.protobuf.Timestamp
+	211, // 11: kilocenter.api.v1.BaseStation.system_time:type_name -> google.protobuf.Int64Value
+	210, // 12: kilocenter.api.v1.BaseStation.duty_cycle:type_name -> google.protobuf.DoubleValue
+	211, // 13: kilocenter.api.v1.BaseStation.uptime_seconds:type_name -> google.protobuf.Int64Value
+	210, // 14: kilocenter.api.v1.BaseStation.temperature_celsius:type_name -> google.protobuf.DoubleValue
+	210, // 15: kilocenter.api.v1.BaseStation.cpu_load:type_name -> google.protobuf.DoubleValue
+	210, // 16: kilocenter.api.v1.BaseStation.memory_load:type_name -> google.protobuf.DoubleValue
+	212, // 17: kilocenter.api.v1.BaseStation.bs_config:type_name -> google.protobuf.Struct
+	209, // 18: kilocenter.api.v1.BaseStation.last_status_at:type_name -> google.protobuf.Timestamp
+	209, // 19: kilocenter.api.v1.BaseStation.location_updated_at:type_name -> google.protobuf.Timestamp
+	210, // 20: kilocenter.api.v1.BaseStationReceptionInfo.eq_snr:type_name -> google.protobuf.DoubleValue
+	211, // 21: kilocenter.api.v1.BaseStationReceptionInfo.rx_duration:type_name -> google.protobuf.Int64Value
+	213, // 22: kilocenter.api.v1.BaseStationReceptionInfo.profile:type_name -> google.protobuf.StringValue
+	213, // 23: kilocenter.api.v1.BaseStationReceptionInfo.mode:type_name -> google.protobuf.StringValue
+	210, // 24: kilocenter.api.v1.BaseStationReceptionInfo.dl_rx_snr:type_name -> google.protobuf.DoubleValue
+	210, // 25: kilocenter.api.v1.BaseStationReceptionInfo.dl_rx_rssi:type_name -> google.protobuf.DoubleValue
 	2,   // 26: kilocenter.api.v1.BaseStationReceptionInfo.subpackets:type_name -> kilocenter.api.v1.SubpacketInfo
-	207, // 27: kilocenter.api.v1.Message.received_at:type_name -> google.protobuf.Timestamp
+	209, // 27: kilocenter.api.v1.Message.received_at:type_name -> google.protobuf.Timestamp
 	3,   // 28: kilocenter.api.v1.Message.base_stations:type_name -> kilocenter.api.v1.BaseStationReceptionInfo
 	0,   // 29: kilocenter.api.v1.CreateEndPointRequest.endpoint:type_name -> kilocenter.api.v1.EndPoint
 	0,   // 30: kilocenter.api.v1.UpdateEndPointRequest.endpoint:type_name -> kilocenter.api.v1.EndPoint
-	212, // 31: kilocenter.api.v1.UpdateEndPointRequest.update_mask:type_name -> google.protobuf.FieldMask
+	214, // 31: kilocenter.api.v1.UpdateEndPointRequest.update_mask:type_name -> google.protobuf.FieldMask
 	0,   // 32: kilocenter.api.v1.ListEndPointsResponse.endpoints:type_name -> kilocenter.api.v1.EndPoint
 	1,   // 33: kilocenter.api.v1.CreateBaseStationRequest.basestation:type_name -> kilocenter.api.v1.BaseStation
 	1,   // 34: kilocenter.api.v1.UpdateBaseStationRequest.basestation:type_name -> kilocenter.api.v1.BaseStation
-	212, // 35: kilocenter.api.v1.UpdateBaseStationRequest.update_mask:type_name -> google.protobuf.FieldMask
+	214, // 35: kilocenter.api.v1.UpdateBaseStationRequest.update_mask:type_name -> google.protobuf.FieldMask
 	1,   // 36: kilocenter.api.v1.ListBaseStationsResponse.basestations:type_name -> kilocenter.api.v1.BaseStation
-	207, // 37: kilocenter.api.v1.GetBaseStationStatsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 38: kilocenter.api.v1.GetBaseStationStatsRequest.end_time:type_name -> google.protobuf.Timestamp
-	207, // 39: kilocenter.api.v1.GetBaseStationStatsResponse.last_message_at:type_name -> google.protobuf.Timestamp
-	202, // 40: kilocenter.api.v1.GetBaseStationStatsResponse.endpoint_message_counts:type_name -> kilocenter.api.v1.GetBaseStationStatsResponse.EndpointMessageCountsEntry
-	207, // 41: kilocenter.api.v1.GetBaseStationStatsResponse.last_seen_at:type_name -> google.protobuf.Timestamp
-	207, // 42: kilocenter.api.v1.GetBaseStationAvailabilityRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 43: kilocenter.api.v1.GetBaseStationAvailabilityRequest.end_time:type_name -> google.protobuf.Timestamp
-	207, // 44: kilocenter.api.v1.GetBaseStationAvailabilityResponse.last_point_timestamp:type_name -> google.protobuf.Timestamp
-	207, // 45: kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 46: kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.end_time:type_name -> google.protobuf.Timestamp
-	207, // 47: kilocenter.api.v1.GetBaseStationMessagesReceivedResponse.last_point_timestamp:type_name -> google.protobuf.Timestamp
+	209, // 37: kilocenter.api.v1.GetBaseStationStatsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 38: kilocenter.api.v1.GetBaseStationStatsRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 39: kilocenter.api.v1.GetBaseStationStatsResponse.last_message_at:type_name -> google.protobuf.Timestamp
+	204, // 40: kilocenter.api.v1.GetBaseStationStatsResponse.endpoint_message_counts:type_name -> kilocenter.api.v1.GetBaseStationStatsResponse.EndpointMessageCountsEntry
+	209, // 41: kilocenter.api.v1.GetBaseStationStatsResponse.last_seen_at:type_name -> google.protobuf.Timestamp
+	209, // 42: kilocenter.api.v1.GetBaseStationAvailabilityRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 43: kilocenter.api.v1.GetBaseStationAvailabilityRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 44: kilocenter.api.v1.GetBaseStationAvailabilityResponse.last_point_timestamp:type_name -> google.protobuf.Timestamp
+	209, // 45: kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 46: kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 47: kilocenter.api.v1.GetBaseStationMessagesReceivedResponse.last_point_timestamp:type_name -> google.protobuf.Timestamp
 	35,  // 48: kilocenter.api.v1.ListDownlinkQueueResponse.messages:type_name -> kilocenter.api.v1.DownlinkMessage
-	207, // 49: kilocenter.api.v1.DownlinkMessage.created_at:type_name -> google.protobuf.Timestamp
-	207, // 50: kilocenter.api.v1.DownlinkMessage.scheduled_at:type_name -> google.protobuf.Timestamp
-	207, // 51: kilocenter.api.v1.DownlinkMessage.transmitted_at:type_name -> google.protobuf.Timestamp
-	207, // 52: kilocenter.api.v1.GetDownlinkResultsRequest.time_from:type_name -> google.protobuf.Timestamp
-	207, // 53: kilocenter.api.v1.GetDownlinkResultsRequest.time_to:type_name -> google.protobuf.Timestamp
+	209, // 49: kilocenter.api.v1.DownlinkMessage.created_at:type_name -> google.protobuf.Timestamp
+	209, // 50: kilocenter.api.v1.DownlinkMessage.scheduled_at:type_name -> google.protobuf.Timestamp
+	209, // 51: kilocenter.api.v1.DownlinkMessage.transmitted_at:type_name -> google.protobuf.Timestamp
+	209, // 52: kilocenter.api.v1.GetDownlinkResultsRequest.time_from:type_name -> google.protobuf.Timestamp
+	209, // 53: kilocenter.api.v1.GetDownlinkResultsRequest.time_to:type_name -> google.protobuf.Timestamp
 	35,  // 54: kilocenter.api.v1.GetDownlinkResultsResponse.results:type_name -> kilocenter.api.v1.DownlinkMessage
-	207, // 55: kilocenter.api.v1.ServiceStatus.checked_at:type_name -> google.protobuf.Timestamp
-	207, // 56: kilocenter.api.v1.SystemStatus.uptime:type_name -> google.protobuf.Timestamp
+	209, // 55: kilocenter.api.v1.ServiceStatus.checked_at:type_name -> google.protobuf.Timestamp
+	209, // 56: kilocenter.api.v1.SystemStatus.uptime:type_name -> google.protobuf.Timestamp
 	44,  // 57: kilocenter.api.v1.SystemStatus.services:type_name -> kilocenter.api.v1.ServiceStatus
-	203, // 58: kilocenter.api.v1.ReleaseInfo.artifacts:type_name -> kilocenter.api.v1.ReleaseInfo.ArtifactsEntry
-	207, // 59: kilocenter.api.v1.GetStatisticsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 60: kilocenter.api.v1.GetStatisticsRequest.end_time:type_name -> google.protobuf.Timestamp
+	205, // 58: kilocenter.api.v1.ReleaseInfo.artifacts:type_name -> kilocenter.api.v1.ReleaseInfo.ArtifactsEntry
+	209, // 59: kilocenter.api.v1.GetStatisticsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 60: kilocenter.api.v1.GetStatisticsRequest.end_time:type_name -> google.protobuf.Timestamp
 	49,  // 61: kilocenter.api.v1.Statistics.message_counts:type_name -> kilocenter.api.v1.TimeSeriesData
-	204, // 62: kilocenter.api.v1.Statistics.endpoint_message_counts:type_name -> kilocenter.api.v1.Statistics.EndpointMessageCountsEntry
-	205, // 63: kilocenter.api.v1.Statistics.basestation_message_counts:type_name -> kilocenter.api.v1.Statistics.BasestationMessageCountsEntry
-	207, // 64: kilocenter.api.v1.TimeSeriesData.timestamp:type_name -> google.protobuf.Timestamp
-	207, // 65: kilocenter.api.v1.DLRXStatus.created_at:type_name -> google.protobuf.Timestamp
-	207, // 66: kilocenter.api.v1.GetDLRXStatusRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 67: kilocenter.api.v1.GetDLRXStatusRequest.end_time:type_name -> google.protobuf.Timestamp
+	206, // 62: kilocenter.api.v1.Statistics.endpoint_message_counts:type_name -> kilocenter.api.v1.Statistics.EndpointMessageCountsEntry
+	207, // 63: kilocenter.api.v1.Statistics.basestation_message_counts:type_name -> kilocenter.api.v1.Statistics.BasestationMessageCountsEntry
+	209, // 64: kilocenter.api.v1.TimeSeriesData.timestamp:type_name -> google.protobuf.Timestamp
+	209, // 65: kilocenter.api.v1.DLRXStatus.created_at:type_name -> google.protobuf.Timestamp
+	209, // 66: kilocenter.api.v1.GetDLRXStatusRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 67: kilocenter.api.v1.GetDLRXStatusRequest.end_time:type_name -> google.protobuf.Timestamp
 	50,  // 68: kilocenter.api.v1.GetDLRXStatusResponse.statuses:type_name -> kilocenter.api.v1.DLRXStatus
-	207, // 69: kilocenter.api.v1.DLRXStatusQuery.requested_at:type_name -> google.protobuf.Timestamp
-	207, // 70: kilocenter.api.v1.DLRXStatusQuery.received_at:type_name -> google.protobuf.Timestamp
-	207, // 71: kilocenter.api.v1.GetDLRXStatusQueriesRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 72: kilocenter.api.v1.GetDLRXStatusQueriesRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 69: kilocenter.api.v1.DLRXStatusQuery.requested_at:type_name -> google.protobuf.Timestamp
+	209, // 70: kilocenter.api.v1.DLRXStatusQuery.received_at:type_name -> google.protobuf.Timestamp
+	209, // 71: kilocenter.api.v1.GetDLRXStatusQueriesRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 72: kilocenter.api.v1.GetDLRXStatusQueriesRequest.end_time:type_name -> google.protobuf.Timestamp
 	55,  // 73: kilocenter.api.v1.GetDLRXStatusQueriesResponse.queries:type_name -> kilocenter.api.v1.DLRXStatusQuery
 	57,  // 74: kilocenter.api.v1.GetDLRXStatusQueriesResponse.stats:type_name -> kilocenter.api.v1.DLRXStatusQueryStats
-	210, // 75: kilocenter.api.v1.Integration.config:type_name -> google.protobuf.Struct
-	210, // 76: kilocenter.api.v1.Integration.event_filter:type_name -> google.protobuf.Struct
-	207, // 77: kilocenter.api.v1.Integration.created_at:type_name -> google.protobuf.Timestamp
-	207, // 78: kilocenter.api.v1.Integration.updated_at:type_name -> google.protobuf.Timestamp
-	210, // 79: kilocenter.api.v1.CreateIntegrationRequest.config:type_name -> google.protobuf.Struct
-	210, // 80: kilocenter.api.v1.CreateIntegrationRequest.event_filter:type_name -> google.protobuf.Struct
-	210, // 81: kilocenter.api.v1.UpdateIntegrationRequest.config:type_name -> google.protobuf.Struct
-	210, // 82: kilocenter.api.v1.UpdateIntegrationRequest.event_filter:type_name -> google.protobuf.Struct
+	212, // 75: kilocenter.api.v1.Integration.config:type_name -> google.protobuf.Struct
+	212, // 76: kilocenter.api.v1.Integration.event_filter:type_name -> google.protobuf.Struct
+	209, // 77: kilocenter.api.v1.Integration.created_at:type_name -> google.protobuf.Timestamp
+	209, // 78: kilocenter.api.v1.Integration.updated_at:type_name -> google.protobuf.Timestamp
+	212, // 79: kilocenter.api.v1.CreateIntegrationRequest.config:type_name -> google.protobuf.Struct
+	212, // 80: kilocenter.api.v1.CreateIntegrationRequest.event_filter:type_name -> google.protobuf.Struct
+	212, // 81: kilocenter.api.v1.UpdateIntegrationRequest.config:type_name -> google.protobuf.Struct
+	212, // 82: kilocenter.api.v1.UpdateIntegrationRequest.event_filter:type_name -> google.protobuf.Struct
 	59,  // 83: kilocenter.api.v1.ListIntegrationsResponse.integrations:type_name -> kilocenter.api.v1.Integration
-	207, // 84: kilocenter.api.v1.GetAnalyticsOverviewRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 85: kilocenter.api.v1.GetAnalyticsOverviewRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 84: kilocenter.api.v1.GetAnalyticsOverviewRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 85: kilocenter.api.v1.GetAnalyticsOverviewRequest.end_time:type_name -> google.protobuf.Timestamp
 	72,  // 86: kilocenter.api.v1.GetAnalyticsOverviewResponse.overview:type_name -> kilocenter.api.v1.AnalyticsOverview
-	207, // 87: kilocenter.api.v1.GetActivityAnalyticsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 88: kilocenter.api.v1.GetActivityAnalyticsRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 87: kilocenter.api.v1.GetActivityAnalyticsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 88: kilocenter.api.v1.GetActivityAnalyticsRequest.end_time:type_name -> google.protobuf.Timestamp
 	74,  // 89: kilocenter.api.v1.GetActivityAnalyticsResponse.activity:type_name -> kilocenter.api.v1.ActivityAnalytics
-	207, // 90: kilocenter.api.v1.GetSignalQualityAnalyticsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 91: kilocenter.api.v1.GetSignalQualityAnalyticsRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 90: kilocenter.api.v1.GetSignalQualityAnalyticsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 91: kilocenter.api.v1.GetSignalQualityAnalyticsRequest.end_time:type_name -> google.protobuf.Timestamp
 	76,  // 92: kilocenter.api.v1.GetSignalQualityAnalyticsResponse.signal_quality:type_name -> kilocenter.api.v1.SignalQualityAnalytics
-	207, // 93: kilocenter.api.v1.AnalyticsOverview.start_time:type_name -> google.protobuf.Timestamp
-	207, // 94: kilocenter.api.v1.AnalyticsOverview.end_time:type_name -> google.protobuf.Timestamp
-	207, // 95: kilocenter.api.v1.AnalyticsOverview.first_message:type_name -> google.protobuf.Timestamp
-	207, // 96: kilocenter.api.v1.AnalyticsOverview.last_message:type_name -> google.protobuf.Timestamp
+	209, // 93: kilocenter.api.v1.AnalyticsOverview.start_time:type_name -> google.protobuf.Timestamp
+	209, // 94: kilocenter.api.v1.AnalyticsOverview.end_time:type_name -> google.protobuf.Timestamp
+	209, // 95: kilocenter.api.v1.AnalyticsOverview.first_message:type_name -> google.protobuf.Timestamp
+	209, // 96: kilocenter.api.v1.AnalyticsOverview.last_message:type_name -> google.protobuf.Timestamp
 	73,  // 97: kilocenter.api.v1.AnalyticsOverview.hourly_activity:type_name -> kilocenter.api.v1.HourlyActivity
-	207, // 98: kilocenter.api.v1.HourlyActivity.hour:type_name -> google.protobuf.Timestamp
-	207, // 99: kilocenter.api.v1.ActivityAnalytics.start_time:type_name -> google.protobuf.Timestamp
-	207, // 100: kilocenter.api.v1.ActivityAnalytics.end_time:type_name -> google.protobuf.Timestamp
+	209, // 98: kilocenter.api.v1.HourlyActivity.hour:type_name -> google.protobuf.Timestamp
+	209, // 99: kilocenter.api.v1.ActivityAnalytics.start_time:type_name -> google.protobuf.Timestamp
+	209, // 100: kilocenter.api.v1.ActivityAnalytics.end_time:type_name -> google.protobuf.Timestamp
 	75,  // 101: kilocenter.api.v1.ActivityAnalytics.time_slots:type_name -> kilocenter.api.v1.TimeSlotActivity
-	207, // 102: kilocenter.api.v1.TimeSlotActivity.slot:type_name -> google.protobuf.Timestamp
-	207, // 103: kilocenter.api.v1.SignalQualityAnalytics.start_time:type_name -> google.protobuf.Timestamp
-	207, // 104: kilocenter.api.v1.SignalQualityAnalytics.end_time:type_name -> google.protobuf.Timestamp
+	209, // 102: kilocenter.api.v1.TimeSlotActivity.slot:type_name -> google.protobuf.Timestamp
+	209, // 103: kilocenter.api.v1.SignalQualityAnalytics.start_time:type_name -> google.protobuf.Timestamp
+	209, // 104: kilocenter.api.v1.SignalQualityAnalytics.end_time:type_name -> google.protobuf.Timestamp
 	77,  // 105: kilocenter.api.v1.SignalQualityAnalytics.overall:type_name -> kilocenter.api.v1.SignalQualityOverall
 	78,  // 106: kilocenter.api.v1.SignalQualityAnalytics.by_base_station:type_name -> kilocenter.api.v1.BaseStationSignalQuality
-	207, // 107: kilocenter.api.v1.ListEventsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 108: kilocenter.api.v1.ListEventsRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 107: kilocenter.api.v1.ListEventsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 108: kilocenter.api.v1.ListEventsRequest.end_time:type_name -> google.protobuf.Timestamp
 	92,  // 109: kilocenter.api.v1.ListEventsResponse.events:type_name -> kilocenter.api.v1.Event
-	207, // 110: kilocenter.api.v1.ListBaseStationActivityRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 111: kilocenter.api.v1.ListBaseStationActivityRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 110: kilocenter.api.v1.ListBaseStationActivityRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 111: kilocenter.api.v1.ListBaseStationActivityRequest.end_time:type_name -> google.protobuf.Timestamp
 	83,  // 112: kilocenter.api.v1.ListBaseStationActivityResponse.items:type_name -> kilocenter.api.v1.BaseStationActivityItem
-	207, // 113: kilocenter.api.v1.BaseStationActivityItem.occurred_at:type_name -> google.protobuf.Timestamp
+	209, // 113: kilocenter.api.v1.BaseStationActivityItem.occurred_at:type_name -> google.protobuf.Timestamp
 	92,  // 114: kilocenter.api.v1.BaseStationActivityItem.event:type_name -> kilocenter.api.v1.Event
-	181, // 115: kilocenter.api.v1.BaseStationActivityItem.message:type_name -> kilocenter.api.v1.BaseStationMessage
-	207, // 116: kilocenter.api.v1.ListEndpointActivityRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 117: kilocenter.api.v1.ListEndpointActivityRequest.end_time:type_name -> google.protobuf.Timestamp
+	183, // 115: kilocenter.api.v1.BaseStationActivityItem.message:type_name -> kilocenter.api.v1.BaseStationMessage
+	209, // 116: kilocenter.api.v1.ListEndpointActivityRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 117: kilocenter.api.v1.ListEndpointActivityRequest.end_time:type_name -> google.protobuf.Timestamp
 	86,  // 118: kilocenter.api.v1.ListEndpointActivityResponse.items:type_name -> kilocenter.api.v1.EndpointActivityItem
-	207, // 119: kilocenter.api.v1.EndpointActivityItem.occurred_at:type_name -> google.protobuf.Timestamp
+	209, // 119: kilocenter.api.v1.EndpointActivityItem.occurred_at:type_name -> google.protobuf.Timestamp
 	92,  // 120: kilocenter.api.v1.EndpointActivityItem.event:type_name -> kilocenter.api.v1.Event
 	4,   // 121: kilocenter.api.v1.EndpointActivityItem.message:type_name -> kilocenter.api.v1.Message
-	207, // 122: kilocenter.api.v1.StreamEventsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 123: kilocenter.api.v1.StreamEventsRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 122: kilocenter.api.v1.StreamEventsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 123: kilocenter.api.v1.StreamEventsRequest.end_time:type_name -> google.protobuf.Timestamp
 	93,  // 124: kilocenter.api.v1.ListAlertsResponse.alerts:type_name -> kilocenter.api.v1.Alert
 	94,  // 125: kilocenter.api.v1.GetAlertSummaryResponse.summary:type_name -> kilocenter.api.v1.AlertSummary
-	207, // 126: kilocenter.api.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
-	207, // 127: kilocenter.api.v1.Alert.timestamp:type_name -> google.protobuf.Timestamp
+	209, // 126: kilocenter.api.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
+	209, // 127: kilocenter.api.v1.Alert.timestamp:type_name -> google.protobuf.Timestamp
 	93,  // 128: kilocenter.api.v1.AlertSummary.recent:type_name -> kilocenter.api.v1.Alert
 	107, // 129: kilocenter.api.v1.ListScaciSessionsResponse.sessions:type_name -> kilocenter.api.v1.ScaciSession
 	107, // 130: kilocenter.api.v1.GetScaciSessionResponse.session:type_name -> kilocenter.api.v1.ScaciSession
-	207, // 131: kilocenter.api.v1.GetScaciStatisticsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 132: kilocenter.api.v1.GetScaciStatisticsRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 131: kilocenter.api.v1.GetScaciStatisticsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 132: kilocenter.api.v1.GetScaciStatisticsRequest.end_time:type_name -> google.protobuf.Timestamp
 	108, // 133: kilocenter.api.v1.GetScaciStatisticsResponse.statistics:type_name -> kilocenter.api.v1.ScaciStatistics
-	207, // 134: kilocenter.api.v1.ListScaciErrorsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 135: kilocenter.api.v1.ListScaciErrorsRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 134: kilocenter.api.v1.ListScaciErrorsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 135: kilocenter.api.v1.ListScaciErrorsRequest.end_time:type_name -> google.protobuf.Timestamp
 	109, // 136: kilocenter.api.v1.ListScaciErrorsResponse.errors:type_name -> kilocenter.api.v1.ScaciError
 	110, // 137: kilocenter.api.v1.ListScaciQueuesResponse.queue_entries:type_name -> kilocenter.api.v1.ScaciQueueEntry
 	111, // 138: kilocenter.api.v1.GetScaciStatusResponse.status:type_name -> kilocenter.api.v1.ScaciStatus
-	207, // 139: kilocenter.api.v1.ScaciSession.connected_at:type_name -> google.protobuf.Timestamp
-	207, // 140: kilocenter.api.v1.ScaciSession.last_activity_at:type_name -> google.protobuf.Timestamp
-	207, // 141: kilocenter.api.v1.ScaciStatistics.uptime_since:type_name -> google.protobuf.Timestamp
-	207, // 142: kilocenter.api.v1.ScaciError.occurred_at:type_name -> google.protobuf.Timestamp
-	207, // 143: kilocenter.api.v1.ScaciQueueEntry.queued_at:type_name -> google.protobuf.Timestamp
-	207, // 144: kilocenter.api.v1.ScaciQueueEntry.processed_at:type_name -> google.protobuf.Timestamp
-	207, // 145: kilocenter.api.v1.ScaciStatus.uptime_since:type_name -> google.protobuf.Timestamp
-	206, // 146: kilocenter.api.v1.GenerateCertificateResponse.download_urls:type_name -> kilocenter.api.v1.GenerateCertificateResponse.DownloadUrlsEntry
-	207, // 147: kilocenter.api.v1.GenerateCertificateResponse.expires_at:type_name -> google.protobuf.Timestamp
-	207, // 148: kilocenter.api.v1.GenerateServerCertificatesResponse.expires_at:type_name -> google.protobuf.Timestamp
-	207, // 149: kilocenter.api.v1.RenewServerCertificatesResponse.expires_at:type_name -> google.protobuf.Timestamp
+	209, // 139: kilocenter.api.v1.ScaciSession.connected_at:type_name -> google.protobuf.Timestamp
+	209, // 140: kilocenter.api.v1.ScaciSession.last_activity_at:type_name -> google.protobuf.Timestamp
+	209, // 141: kilocenter.api.v1.ScaciStatistics.uptime_since:type_name -> google.protobuf.Timestamp
+	209, // 142: kilocenter.api.v1.ScaciError.occurred_at:type_name -> google.protobuf.Timestamp
+	209, // 143: kilocenter.api.v1.ScaciQueueEntry.queued_at:type_name -> google.protobuf.Timestamp
+	209, // 144: kilocenter.api.v1.ScaciQueueEntry.processed_at:type_name -> google.protobuf.Timestamp
+	209, // 145: kilocenter.api.v1.ScaciStatus.uptime_since:type_name -> google.protobuf.Timestamp
+	208, // 146: kilocenter.api.v1.GenerateCertificateResponse.download_urls:type_name -> kilocenter.api.v1.GenerateCertificateResponse.DownloadUrlsEntry
+	209, // 147: kilocenter.api.v1.GenerateCertificateResponse.expires_at:type_name -> google.protobuf.Timestamp
+	209, // 148: kilocenter.api.v1.GenerateServerCertificatesResponse.expires_at:type_name -> google.protobuf.Timestamp
+	209, // 149: kilocenter.api.v1.RenewServerCertificatesResponse.expires_at:type_name -> google.protobuf.Timestamp
 	123, // 150: kilocenter.api.v1.GetServerCertificateStatusResponse.server_cert:type_name -> kilocenter.api.v1.CertificateStatus
 	123, // 151: kilocenter.api.v1.GetServerCertificateStatusResponse.ca_cert:type_name -> kilocenter.api.v1.CertificateStatus
-	207, // 152: kilocenter.api.v1.CertificateStatus.not_before:type_name -> google.protobuf.Timestamp
-	207, // 153: kilocenter.api.v1.CertificateStatus.not_after:type_name -> google.protobuf.Timestamp
+	209, // 152: kilocenter.api.v1.CertificateStatus.not_before:type_name -> google.protobuf.Timestamp
+	209, // 153: kilocenter.api.v1.CertificateStatus.not_after:type_name -> google.protobuf.Timestamp
 	134, // 154: kilocenter.api.v1.CreateManufacturerResponse.manufacturer:type_name -> kilocenter.api.v1.Manufacturer
 	134, // 155: kilocenter.api.v1.GetManufacturerResponse.manufacturer:type_name -> kilocenter.api.v1.Manufacturer
 	134, // 156: kilocenter.api.v1.UpdateManufacturerResponse.manufacturer:type_name -> kilocenter.api.v1.Manufacturer
 	134, // 157: kilocenter.api.v1.ListManufacturersResponse.manufacturers:type_name -> kilocenter.api.v1.Manufacturer
-	207, // 158: kilocenter.api.v1.Manufacturer.created_at:type_name -> google.protobuf.Timestamp
-	207, // 159: kilocenter.api.v1.Manufacturer.updated_at:type_name -> google.protobuf.Timestamp
+	209, // 158: kilocenter.api.v1.Manufacturer.created_at:type_name -> google.protobuf.Timestamp
+	209, // 159: kilocenter.api.v1.Manufacturer.updated_at:type_name -> google.protobuf.Timestamp
 	145, // 160: kilocenter.api.v1.CreateDeviceModelResponse.device_model:type_name -> kilocenter.api.v1.DeviceModel
 	145, // 161: kilocenter.api.v1.GetDeviceModelResponse.device_model:type_name -> kilocenter.api.v1.DeviceModel
 	145, // 162: kilocenter.api.v1.UpdateDeviceModelResponse.device_model:type_name -> kilocenter.api.v1.DeviceModel
 	145, // 163: kilocenter.api.v1.ListDeviceModelsResponse.device_models:type_name -> kilocenter.api.v1.DeviceModel
-	207, // 164: kilocenter.api.v1.DeviceModel.created_at:type_name -> google.protobuf.Timestamp
-	207, // 165: kilocenter.api.v1.DeviceModel.updated_at:type_name -> google.protobuf.Timestamp
-	160, // 166: kilocenter.api.v1.CreateBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
-	160, // 167: kilocenter.api.v1.GetBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
-	160, // 168: kilocenter.api.v1.UpdateBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
-	160, // 169: kilocenter.api.v1.ListBlueprintsResponse.blueprints:type_name -> kilocenter.api.v1.Blueprint
-	160, // 170: kilocenter.api.v1.SetDefaultBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
-	207, // 171: kilocenter.api.v1.Blueprint.created_at:type_name -> google.protobuf.Timestamp
-	207, // 172: kilocenter.api.v1.Blueprint.updated_at:type_name -> google.protobuf.Timestamp
+	209, // 164: kilocenter.api.v1.DeviceModel.created_at:type_name -> google.protobuf.Timestamp
+	209, // 165: kilocenter.api.v1.DeviceModel.updated_at:type_name -> google.protobuf.Timestamp
+	162, // 166: kilocenter.api.v1.CreateBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
+	162, // 167: kilocenter.api.v1.GetBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
+	162, // 168: kilocenter.api.v1.UpdateBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
+	162, // 169: kilocenter.api.v1.ListBlueprintsResponse.blueprints:type_name -> kilocenter.api.v1.Blueprint
+	162, // 170: kilocenter.api.v1.SetDefaultBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
+	209, // 171: kilocenter.api.v1.Blueprint.created_at:type_name -> google.protobuf.Timestamp
+	209, // 172: kilocenter.api.v1.Blueprint.updated_at:type_name -> google.protobuf.Timestamp
 	145, // 173: kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse.device_model:type_name -> kilocenter.api.v1.DeviceModel
-	160, // 174: kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
-	207, // 175: kilocenter.api.v1.ListMessagesRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 176: kilocenter.api.v1.ListMessagesRequest.end_time:type_name -> google.protobuf.Timestamp
+	162, // 174: kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse.blueprint:type_name -> kilocenter.api.v1.Blueprint
+	209, // 175: kilocenter.api.v1.ListMessagesRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 176: kilocenter.api.v1.ListMessagesRequest.end_time:type_name -> google.protobuf.Timestamp
 	4,   // 177: kilocenter.api.v1.ListMessagesResponse.messages:type_name -> kilocenter.api.v1.Message
 	4,   // 178: kilocenter.api.v1.ListEndpointMessagesResponse.messages:type_name -> kilocenter.api.v1.Message
-	207, // 179: kilocenter.api.v1.ListBaseStationMessagesRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 180: kilocenter.api.v1.ListBaseStationMessagesRequest.end_time:type_name -> google.protobuf.Timestamp
-	181, // 181: kilocenter.api.v1.ListBaseStationMessagesResponse.messages:type_name -> kilocenter.api.v1.BaseStationMessage
-	181, // 182: kilocenter.api.v1.GetBaseStationMessageResponse.message:type_name -> kilocenter.api.v1.BaseStationMessage
-	207, // 183: kilocenter.api.v1.GetBaseStationMessageStatsRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 184: kilocenter.api.v1.GetBaseStationMessageStatsRequest.end_time:type_name -> google.protobuf.Timestamp
-	182, // 185: kilocenter.api.v1.GetBaseStationMessageStatsResponse.stats:type_name -> kilocenter.api.v1.BaseStationMessageStats
-	207, // 186: kilocenter.api.v1.SearchBaseStationMessagesRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 187: kilocenter.api.v1.SearchBaseStationMessagesRequest.end_time:type_name -> google.protobuf.Timestamp
-	181, // 188: kilocenter.api.v1.SearchBaseStationMessagesResponse.messages:type_name -> kilocenter.api.v1.BaseStationMessage
-	207, // 189: kilocenter.api.v1.ExportBaseStationMessagesRequest.start_time:type_name -> google.protobuf.Timestamp
-	207, // 190: kilocenter.api.v1.ExportBaseStationMessagesRequest.end_time:type_name -> google.protobuf.Timestamp
-	207, // 191: kilocenter.api.v1.BaseStationMessage.received_at:type_name -> google.protobuf.Timestamp
+	209, // 179: kilocenter.api.v1.ListBaseStationMessagesRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 180: kilocenter.api.v1.ListBaseStationMessagesRequest.end_time:type_name -> google.protobuf.Timestamp
+	183, // 181: kilocenter.api.v1.ListBaseStationMessagesResponse.messages:type_name -> kilocenter.api.v1.BaseStationMessage
+	183, // 182: kilocenter.api.v1.GetBaseStationMessageResponse.message:type_name -> kilocenter.api.v1.BaseStationMessage
+	209, // 183: kilocenter.api.v1.GetBaseStationMessageStatsRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 184: kilocenter.api.v1.GetBaseStationMessageStatsRequest.end_time:type_name -> google.protobuf.Timestamp
+	184, // 185: kilocenter.api.v1.GetBaseStationMessageStatsResponse.stats:type_name -> kilocenter.api.v1.BaseStationMessageStats
+	209, // 186: kilocenter.api.v1.SearchBaseStationMessagesRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 187: kilocenter.api.v1.SearchBaseStationMessagesRequest.end_time:type_name -> google.protobuf.Timestamp
+	183, // 188: kilocenter.api.v1.SearchBaseStationMessagesResponse.messages:type_name -> kilocenter.api.v1.BaseStationMessage
+	209, // 189: kilocenter.api.v1.ExportBaseStationMessagesRequest.start_time:type_name -> google.protobuf.Timestamp
+	209, // 190: kilocenter.api.v1.ExportBaseStationMessagesRequest.end_time:type_name -> google.protobuf.Timestamp
+	209, // 191: kilocenter.api.v1.BaseStationMessage.received_at:type_name -> google.protobuf.Timestamp
 	3,   // 192: kilocenter.api.v1.BaseStationMessage.base_stations:type_name -> kilocenter.api.v1.BaseStationReceptionInfo
-	207, // 193: kilocenter.api.v1.BaseStationMessageStats.first_message_at:type_name -> google.protobuf.Timestamp
-	207, // 194: kilocenter.api.v1.BaseStationMessageStats.last_message_at:type_name -> google.protobuf.Timestamp
-	207, // 195: kilocenter.api.v1.GetEndPointStatsResponse.first_seen:type_name -> google.protobuf.Timestamp
-	207, // 196: kilocenter.api.v1.GetEndPointStatsResponse.last_seen:type_name -> google.protobuf.Timestamp
-	187, // 197: kilocenter.api.v1.GetEndPointOperationsResponse.operations:type_name -> kilocenter.api.v1.EndPointOperation
-	207, // 198: kilocenter.api.v1.EndPointOperation.created_at:type_name -> google.protobuf.Timestamp
-	208, // 199: kilocenter.api.v1.BaseStationLocation.altitude:type_name -> google.protobuf.DoubleValue
-	189, // 200: kilocenter.api.v1.ListAllBaseStationLocationsResponse.locations:type_name -> kilocenter.api.v1.BaseStationLocation
-	207, // 201: kilocenter.api.v1.CEInstanceInfo.first_seen_at:type_name -> google.protobuf.Timestamp
-	207, // 202: kilocenter.api.v1.CEInstanceInfo.last_heartbeat_at:type_name -> google.protobuf.Timestamp
-	195, // 203: kilocenter.api.v1.ListCEInstancesResponse.instances:type_name -> kilocenter.api.v1.CEInstanceInfo
+	209, // 193: kilocenter.api.v1.BaseStationMessageStats.first_message_at:type_name -> google.protobuf.Timestamp
+	209, // 194: kilocenter.api.v1.BaseStationMessageStats.last_message_at:type_name -> google.protobuf.Timestamp
+	209, // 195: kilocenter.api.v1.GetEndPointStatsResponse.first_seen:type_name -> google.protobuf.Timestamp
+	209, // 196: kilocenter.api.v1.GetEndPointStatsResponse.last_seen:type_name -> google.protobuf.Timestamp
+	189, // 197: kilocenter.api.v1.GetEndPointOperationsResponse.operations:type_name -> kilocenter.api.v1.EndPointOperation
+	209, // 198: kilocenter.api.v1.EndPointOperation.created_at:type_name -> google.protobuf.Timestamp
+	210, // 199: kilocenter.api.v1.BaseStationLocation.altitude:type_name -> google.protobuf.DoubleValue
+	191, // 200: kilocenter.api.v1.ListAllBaseStationLocationsResponse.locations:type_name -> kilocenter.api.v1.BaseStationLocation
+	209, // 201: kilocenter.api.v1.CEInstanceInfo.first_seen_at:type_name -> google.protobuf.Timestamp
+	209, // 202: kilocenter.api.v1.CEInstanceInfo.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	197, // 203: kilocenter.api.v1.ListCEInstancesResponse.instances:type_name -> kilocenter.api.v1.CEInstanceInfo
 	5,   // 204: kilocenter.api.v1.CoreService.CreateEndPoint:input_type -> kilocenter.api.v1.CreateEndPointRequest
 	6,   // 205: kilocenter.api.v1.CoreService.GetEndPoint:input_type -> kilocenter.api.v1.GetEndPointRequest
 	7,   // 206: kilocenter.api.v1.CoreService.UpdateEndPoint:input_type -> kilocenter.api.v1.UpdateEndPointRequest
@@ -15633,9 +15915,9 @@ var file_core_proto_depIdxs = []int32{
 	51,  // 228: kilocenter.api.v1.CoreService.GetDLRXStatus:input_type -> kilocenter.api.v1.GetDLRXStatusRequest
 	53,  // 229: kilocenter.api.v1.CoreService.QueryDLRXStatus:input_type -> kilocenter.api.v1.QueryDLRXStatusRequest
 	56,  // 230: kilocenter.api.v1.CoreService.GetDLRXStatusQueries:input_type -> kilocenter.api.v1.GetDLRXStatusQueriesRequest
-	213, // 231: kilocenter.api.v1.CoreService.GetSystemStatus:input_type -> google.protobuf.Empty
+	215, // 231: kilocenter.api.v1.CoreService.GetSystemStatus:input_type -> google.protobuf.Empty
 	47,  // 232: kilocenter.api.v1.CoreService.GetStatistics:input_type -> kilocenter.api.v1.GetStatisticsRequest
-	213, // 233: kilocenter.api.v1.CoreService.GetReleaseInfo:input_type -> google.protobuf.Empty
+	215, // 233: kilocenter.api.v1.CoreService.GetReleaseInfo:input_type -> google.protobuf.Empty
 	60,  // 234: kilocenter.api.v1.CoreService.CreateIntegration:input_type -> kilocenter.api.v1.CreateIntegrationRequest
 	61,  // 235: kilocenter.api.v1.CoreService.GetIntegration:input_type -> kilocenter.api.v1.GetIntegrationRequest
 	62,  // 236: kilocenter.api.v1.CoreService.UpdateIntegration:input_type -> kilocenter.api.v1.UpdateIntegrationRequest
@@ -15679,117 +15961,119 @@ var file_core_proto_depIdxs = []int32{
 	154, // 274: kilocenter.api.v1.CoreService.ListBlueprints:input_type -> kilocenter.api.v1.ListBlueprintsRequest
 	156, // 275: kilocenter.api.v1.CoreService.SetDefaultBlueprint:input_type -> kilocenter.api.v1.SetDefaultBlueprintRequest
 	158, // 276: kilocenter.api.v1.CoreService.SubmitBlueprintToRegistry:input_type -> kilocenter.api.v1.SubmitBlueprintToRegistryRequest
-	161, // 277: kilocenter.api.v1.CoreService.CreateDeviceModelWithBlueprint:input_type -> kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest
-	163, // 278: kilocenter.api.v1.CoreService.DecodePreview:input_type -> kilocenter.api.v1.DecodePreviewRequest
-	165, // 279: kilocenter.api.v1.CoreService.ListMessages:input_type -> kilocenter.api.v1.ListMessagesRequest
-	169, // 280: kilocenter.api.v1.CoreService.StreamMessages:input_type -> kilocenter.api.v1.StreamMessagesRequest
-	170, // 281: kilocenter.api.v1.CoreService.ListBaseStationMessages:input_type -> kilocenter.api.v1.ListBaseStationMessagesRequest
-	172, // 282: kilocenter.api.v1.CoreService.GetBaseStationMessage:input_type -> kilocenter.api.v1.GetBaseStationMessageRequest
-	174, // 283: kilocenter.api.v1.CoreService.GetBaseStationMessageStats:input_type -> kilocenter.api.v1.GetBaseStationMessageStatsRequest
-	176, // 284: kilocenter.api.v1.CoreService.SearchBaseStationMessages:input_type -> kilocenter.api.v1.SearchBaseStationMessagesRequest
-	178, // 285: kilocenter.api.v1.CoreService.ExportBaseStationMessages:input_type -> kilocenter.api.v1.ExportBaseStationMessagesRequest
-	180, // 286: kilocenter.api.v1.CoreService.StreamBaseStationMessages:input_type -> kilocenter.api.v1.StreamBaseStationMessagesRequest
-	167, // 287: kilocenter.api.v1.CoreService.ListEndpointMessages:input_type -> kilocenter.api.v1.ListEndpointMessagesRequest
-	183, // 288: kilocenter.api.v1.CoreService.GetEndPointStats:input_type -> kilocenter.api.v1.GetEndPointStatsRequest
-	185, // 289: kilocenter.api.v1.CoreService.GetEndPointOperations:input_type -> kilocenter.api.v1.GetEndPointOperationsRequest
-	188, // 290: kilocenter.api.v1.CoreService.ListAllBaseStationLocations:input_type -> kilocenter.api.v1.ListAllBaseStationLocationsRequest
-	191, // 291: kilocenter.api.v1.CoreService.GetCEStatus:input_type -> kilocenter.api.v1.GetCEStatusRequest
-	193, // 292: kilocenter.api.v1.CoreService.CompleteCEOnboarding:input_type -> kilocenter.api.v1.CompleteCEOnboardingRequest
-	196, // 293: kilocenter.api.v1.CoreService.ListCEInstances:input_type -> kilocenter.api.v1.ListCEInstancesRequest
-	198, // 294: kilocenter.api.v1.CoreService.RevokeCEInstance:input_type -> kilocenter.api.v1.RevokeCEInstanceRequest
-	0,   // 295: kilocenter.api.v1.CoreService.CreateEndPoint:output_type -> kilocenter.api.v1.EndPoint
-	0,   // 296: kilocenter.api.v1.CoreService.GetEndPoint:output_type -> kilocenter.api.v1.EndPoint
-	0,   // 297: kilocenter.api.v1.CoreService.UpdateEndPoint:output_type -> kilocenter.api.v1.EndPoint
-	213, // 298: kilocenter.api.v1.CoreService.DeleteEndPoint:output_type -> google.protobuf.Empty
-	10,  // 299: kilocenter.api.v1.CoreService.ListEndPoints:output_type -> kilocenter.api.v1.ListEndPointsResponse
-	12,  // 300: kilocenter.api.v1.CoreService.AttachEndPoint:output_type -> kilocenter.api.v1.AttachEndPointResponse
-	14,  // 301: kilocenter.api.v1.CoreService.DetachEndPoint:output_type -> kilocenter.api.v1.DetachEndPointResponse
-	1,   // 302: kilocenter.api.v1.CoreService.CreateBaseStation:output_type -> kilocenter.api.v1.BaseStation
-	1,   // 303: kilocenter.api.v1.CoreService.GetBaseStation:output_type -> kilocenter.api.v1.BaseStation
-	1,   // 304: kilocenter.api.v1.CoreService.UpdateBaseStation:output_type -> kilocenter.api.v1.BaseStation
-	213, // 305: kilocenter.api.v1.CoreService.DeleteBaseStation:output_type -> google.protobuf.Empty
-	21,  // 306: kilocenter.api.v1.CoreService.ListBaseStations:output_type -> kilocenter.api.v1.ListBaseStationsResponse
-	23,  // 307: kilocenter.api.v1.CoreService.GetBaseStationStats:output_type -> kilocenter.api.v1.GetBaseStationStatsResponse
-	1,   // 308: kilocenter.api.v1.CoreService.UpdateBaseStationEui:output_type -> kilocenter.api.v1.BaseStation
-	25,  // 309: kilocenter.api.v1.CoreService.GetBaseStationAvailability:output_type -> kilocenter.api.v1.GetBaseStationAvailabilityResponse
-	27,  // 310: kilocenter.api.v1.CoreService.GetBaseStationMessagesReceived:output_type -> kilocenter.api.v1.GetBaseStationMessagesReceivedResponse
-	4,   // 311: kilocenter.api.v1.CoreService.GetMessage:output_type -> kilocenter.api.v1.Message
-	30,  // 312: kilocenter.api.v1.CoreService.SendDownlink:output_type -> kilocenter.api.v1.SendDownlinkResponse
-	32,  // 313: kilocenter.api.v1.CoreService.RevokeDownlink:output_type -> kilocenter.api.v1.RevokeDownlinkResponse
-	34,  // 314: kilocenter.api.v1.CoreService.ListDownlinkQueue:output_type -> kilocenter.api.v1.ListDownlinkQueueResponse
-	37,  // 315: kilocenter.api.v1.CoreService.GetDownlinkResults:output_type -> kilocenter.api.v1.GetDownlinkResultsResponse
-	39,  // 316: kilocenter.api.v1.CoreService.SendULTransmit:output_type -> kilocenter.api.v1.SendULTransmitResponse
-	41,  // 317: kilocenter.api.v1.CoreService.RequestBaseStationStatus:output_type -> kilocenter.api.v1.BaseStationStatusResponse
-	43,  // 318: kilocenter.api.v1.CoreService.InitiatePing:output_type -> kilocenter.api.v1.InitiatePingResponse
-	52,  // 319: kilocenter.api.v1.CoreService.GetDLRXStatus:output_type -> kilocenter.api.v1.GetDLRXStatusResponse
-	54,  // 320: kilocenter.api.v1.CoreService.QueryDLRXStatus:output_type -> kilocenter.api.v1.QueryDLRXStatusResponse
-	58,  // 321: kilocenter.api.v1.CoreService.GetDLRXStatusQueries:output_type -> kilocenter.api.v1.GetDLRXStatusQueriesResponse
-	45,  // 322: kilocenter.api.v1.CoreService.GetSystemStatus:output_type -> kilocenter.api.v1.SystemStatus
-	48,  // 323: kilocenter.api.v1.CoreService.GetStatistics:output_type -> kilocenter.api.v1.Statistics
-	46,  // 324: kilocenter.api.v1.CoreService.GetReleaseInfo:output_type -> kilocenter.api.v1.ReleaseInfo
-	59,  // 325: kilocenter.api.v1.CoreService.CreateIntegration:output_type -> kilocenter.api.v1.Integration
-	59,  // 326: kilocenter.api.v1.CoreService.GetIntegration:output_type -> kilocenter.api.v1.Integration
-	59,  // 327: kilocenter.api.v1.CoreService.UpdateIntegration:output_type -> kilocenter.api.v1.Integration
-	213, // 328: kilocenter.api.v1.CoreService.DeleteIntegration:output_type -> google.protobuf.Empty
-	65,  // 329: kilocenter.api.v1.CoreService.ListIntegrations:output_type -> kilocenter.api.v1.ListIntegrationsResponse
-	67,  // 330: kilocenter.api.v1.CoreService.GetAnalyticsOverview:output_type -> kilocenter.api.v1.GetAnalyticsOverviewResponse
-	69,  // 331: kilocenter.api.v1.CoreService.GetActivityAnalytics:output_type -> kilocenter.api.v1.GetActivityAnalyticsResponse
-	71,  // 332: kilocenter.api.v1.CoreService.GetSignalQualityAnalytics:output_type -> kilocenter.api.v1.GetSignalQualityAnalyticsResponse
-	80,  // 333: kilocenter.api.v1.CoreService.ListEvents:output_type -> kilocenter.api.v1.ListEventsResponse
-	82,  // 334: kilocenter.api.v1.CoreService.ListBaseStationActivity:output_type -> kilocenter.api.v1.ListBaseStationActivityResponse
-	85,  // 335: kilocenter.api.v1.CoreService.ListEndpointActivity:output_type -> kilocenter.api.v1.ListEndpointActivityResponse
-	92,  // 336: kilocenter.api.v1.CoreService.StreamEvents:output_type -> kilocenter.api.v1.Event
-	89,  // 337: kilocenter.api.v1.CoreService.ListAlerts:output_type -> kilocenter.api.v1.ListAlertsResponse
-	91,  // 338: kilocenter.api.v1.CoreService.GetAlertSummary:output_type -> kilocenter.api.v1.GetAlertSummaryResponse
-	96,  // 339: kilocenter.api.v1.CoreService.ListScaciSessions:output_type -> kilocenter.api.v1.ListScaciSessionsResponse
-	98,  // 340: kilocenter.api.v1.CoreService.GetScaciSession:output_type -> kilocenter.api.v1.GetScaciSessionResponse
-	100, // 341: kilocenter.api.v1.CoreService.GetScaciStatistics:output_type -> kilocenter.api.v1.GetScaciStatisticsResponse
-	102, // 342: kilocenter.api.v1.CoreService.ListScaciErrors:output_type -> kilocenter.api.v1.ListScaciErrorsResponse
-	104, // 343: kilocenter.api.v1.CoreService.ListScaciQueues:output_type -> kilocenter.api.v1.ListScaciQueuesResponse
-	106, // 344: kilocenter.api.v1.CoreService.GetScaciStatus:output_type -> kilocenter.api.v1.GetScaciStatusResponse
-	113, // 345: kilocenter.api.v1.CoreService.GenerateCertificate:output_type -> kilocenter.api.v1.GenerateCertificateResponse
-	115, // 346: kilocenter.api.v1.CoreService.DownloadCertificate:output_type -> kilocenter.api.v1.DownloadCertificateResponse
-	115, // 347: kilocenter.api.v1.CoreService.DownloadBaseStationCertificate:output_type -> kilocenter.api.v1.DownloadCertificateResponse
-	118, // 348: kilocenter.api.v1.CoreService.GenerateServerCertificates:output_type -> kilocenter.api.v1.GenerateServerCertificatesResponse
-	120, // 349: kilocenter.api.v1.CoreService.RenewServerCertificates:output_type -> kilocenter.api.v1.RenewServerCertificatesResponse
-	122, // 350: kilocenter.api.v1.CoreService.GetServerCertificateStatus:output_type -> kilocenter.api.v1.GetServerCertificateStatusResponse
-	125, // 351: kilocenter.api.v1.CoreService.CreateManufacturer:output_type -> kilocenter.api.v1.CreateManufacturerResponse
-	127, // 352: kilocenter.api.v1.CoreService.GetManufacturer:output_type -> kilocenter.api.v1.GetManufacturerResponse
-	129, // 353: kilocenter.api.v1.CoreService.UpdateManufacturer:output_type -> kilocenter.api.v1.UpdateManufacturerResponse
-	131, // 354: kilocenter.api.v1.CoreService.DeleteManufacturer:output_type -> kilocenter.api.v1.DeleteManufacturerResponse
-	133, // 355: kilocenter.api.v1.CoreService.ListManufacturers:output_type -> kilocenter.api.v1.ListManufacturersResponse
-	136, // 356: kilocenter.api.v1.CoreService.CreateDeviceModel:output_type -> kilocenter.api.v1.CreateDeviceModelResponse
-	138, // 357: kilocenter.api.v1.CoreService.GetDeviceModel:output_type -> kilocenter.api.v1.GetDeviceModelResponse
-	140, // 358: kilocenter.api.v1.CoreService.UpdateDeviceModel:output_type -> kilocenter.api.v1.UpdateDeviceModelResponse
-	142, // 359: kilocenter.api.v1.CoreService.DeleteDeviceModel:output_type -> kilocenter.api.v1.DeleteDeviceModelResponse
-	144, // 360: kilocenter.api.v1.CoreService.ListDeviceModels:output_type -> kilocenter.api.v1.ListDeviceModelsResponse
-	147, // 361: kilocenter.api.v1.CoreService.CreateBlueprint:output_type -> kilocenter.api.v1.CreateBlueprintResponse
-	149, // 362: kilocenter.api.v1.CoreService.GetBlueprint:output_type -> kilocenter.api.v1.GetBlueprintResponse
-	151, // 363: kilocenter.api.v1.CoreService.UpdateBlueprint:output_type -> kilocenter.api.v1.UpdateBlueprintResponse
-	153, // 364: kilocenter.api.v1.CoreService.DeleteBlueprint:output_type -> kilocenter.api.v1.DeleteBlueprintResponse
-	155, // 365: kilocenter.api.v1.CoreService.ListBlueprints:output_type -> kilocenter.api.v1.ListBlueprintsResponse
-	157, // 366: kilocenter.api.v1.CoreService.SetDefaultBlueprint:output_type -> kilocenter.api.v1.SetDefaultBlueprintResponse
-	159, // 367: kilocenter.api.v1.CoreService.SubmitBlueprintToRegistry:output_type -> kilocenter.api.v1.SubmitBlueprintToRegistryResponse
-	162, // 368: kilocenter.api.v1.CoreService.CreateDeviceModelWithBlueprint:output_type -> kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse
-	164, // 369: kilocenter.api.v1.CoreService.DecodePreview:output_type -> kilocenter.api.v1.DecodePreviewResponse
-	166, // 370: kilocenter.api.v1.CoreService.ListMessages:output_type -> kilocenter.api.v1.ListMessagesResponse
-	4,   // 371: kilocenter.api.v1.CoreService.StreamMessages:output_type -> kilocenter.api.v1.Message
-	171, // 372: kilocenter.api.v1.CoreService.ListBaseStationMessages:output_type -> kilocenter.api.v1.ListBaseStationMessagesResponse
-	173, // 373: kilocenter.api.v1.CoreService.GetBaseStationMessage:output_type -> kilocenter.api.v1.GetBaseStationMessageResponse
-	175, // 374: kilocenter.api.v1.CoreService.GetBaseStationMessageStats:output_type -> kilocenter.api.v1.GetBaseStationMessageStatsResponse
-	177, // 375: kilocenter.api.v1.CoreService.SearchBaseStationMessages:output_type -> kilocenter.api.v1.SearchBaseStationMessagesResponse
-	179, // 376: kilocenter.api.v1.CoreService.ExportBaseStationMessages:output_type -> kilocenter.api.v1.ExportBaseStationMessagesResponse
-	181, // 377: kilocenter.api.v1.CoreService.StreamBaseStationMessages:output_type -> kilocenter.api.v1.BaseStationMessage
-	168, // 378: kilocenter.api.v1.CoreService.ListEndpointMessages:output_type -> kilocenter.api.v1.ListEndpointMessagesResponse
-	184, // 379: kilocenter.api.v1.CoreService.GetEndPointStats:output_type -> kilocenter.api.v1.GetEndPointStatsResponse
-	186, // 380: kilocenter.api.v1.CoreService.GetEndPointOperations:output_type -> kilocenter.api.v1.GetEndPointOperationsResponse
-	190, // 381: kilocenter.api.v1.CoreService.ListAllBaseStationLocations:output_type -> kilocenter.api.v1.ListAllBaseStationLocationsResponse
-	192, // 382: kilocenter.api.v1.CoreService.GetCEStatus:output_type -> kilocenter.api.v1.GetCEStatusResponse
-	194, // 383: kilocenter.api.v1.CoreService.CompleteCEOnboarding:output_type -> kilocenter.api.v1.CompleteCEOnboardingResponse
-	197, // 384: kilocenter.api.v1.CoreService.ListCEInstances:output_type -> kilocenter.api.v1.ListCEInstancesResponse
-	199, // 385: kilocenter.api.v1.CoreService.RevokeCEInstance:output_type -> kilocenter.api.v1.RevokeCEInstanceResponse
-	295, // [295:386] is the sub-list for method output_type
-	204, // [204:295] is the sub-list for method input_type
+	160, // 277: kilocenter.api.v1.CoreService.BulkAssignBlueprint:input_type -> kilocenter.api.v1.BulkAssignBlueprintRequest
+	163, // 278: kilocenter.api.v1.CoreService.CreateDeviceModelWithBlueprint:input_type -> kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest
+	165, // 279: kilocenter.api.v1.CoreService.DecodePreview:input_type -> kilocenter.api.v1.DecodePreviewRequest
+	167, // 280: kilocenter.api.v1.CoreService.ListMessages:input_type -> kilocenter.api.v1.ListMessagesRequest
+	171, // 281: kilocenter.api.v1.CoreService.StreamMessages:input_type -> kilocenter.api.v1.StreamMessagesRequest
+	172, // 282: kilocenter.api.v1.CoreService.ListBaseStationMessages:input_type -> kilocenter.api.v1.ListBaseStationMessagesRequest
+	174, // 283: kilocenter.api.v1.CoreService.GetBaseStationMessage:input_type -> kilocenter.api.v1.GetBaseStationMessageRequest
+	176, // 284: kilocenter.api.v1.CoreService.GetBaseStationMessageStats:input_type -> kilocenter.api.v1.GetBaseStationMessageStatsRequest
+	178, // 285: kilocenter.api.v1.CoreService.SearchBaseStationMessages:input_type -> kilocenter.api.v1.SearchBaseStationMessagesRequest
+	180, // 286: kilocenter.api.v1.CoreService.ExportBaseStationMessages:input_type -> kilocenter.api.v1.ExportBaseStationMessagesRequest
+	182, // 287: kilocenter.api.v1.CoreService.StreamBaseStationMessages:input_type -> kilocenter.api.v1.StreamBaseStationMessagesRequest
+	169, // 288: kilocenter.api.v1.CoreService.ListEndpointMessages:input_type -> kilocenter.api.v1.ListEndpointMessagesRequest
+	185, // 289: kilocenter.api.v1.CoreService.GetEndPointStats:input_type -> kilocenter.api.v1.GetEndPointStatsRequest
+	187, // 290: kilocenter.api.v1.CoreService.GetEndPointOperations:input_type -> kilocenter.api.v1.GetEndPointOperationsRequest
+	190, // 291: kilocenter.api.v1.CoreService.ListAllBaseStationLocations:input_type -> kilocenter.api.v1.ListAllBaseStationLocationsRequest
+	193, // 292: kilocenter.api.v1.CoreService.GetCEStatus:input_type -> kilocenter.api.v1.GetCEStatusRequest
+	195, // 293: kilocenter.api.v1.CoreService.CompleteCEOnboarding:input_type -> kilocenter.api.v1.CompleteCEOnboardingRequest
+	198, // 294: kilocenter.api.v1.CoreService.ListCEInstances:input_type -> kilocenter.api.v1.ListCEInstancesRequest
+	200, // 295: kilocenter.api.v1.CoreService.RevokeCEInstance:input_type -> kilocenter.api.v1.RevokeCEInstanceRequest
+	0,   // 296: kilocenter.api.v1.CoreService.CreateEndPoint:output_type -> kilocenter.api.v1.EndPoint
+	0,   // 297: kilocenter.api.v1.CoreService.GetEndPoint:output_type -> kilocenter.api.v1.EndPoint
+	0,   // 298: kilocenter.api.v1.CoreService.UpdateEndPoint:output_type -> kilocenter.api.v1.EndPoint
+	215, // 299: kilocenter.api.v1.CoreService.DeleteEndPoint:output_type -> google.protobuf.Empty
+	10,  // 300: kilocenter.api.v1.CoreService.ListEndPoints:output_type -> kilocenter.api.v1.ListEndPointsResponse
+	12,  // 301: kilocenter.api.v1.CoreService.AttachEndPoint:output_type -> kilocenter.api.v1.AttachEndPointResponse
+	14,  // 302: kilocenter.api.v1.CoreService.DetachEndPoint:output_type -> kilocenter.api.v1.DetachEndPointResponse
+	1,   // 303: kilocenter.api.v1.CoreService.CreateBaseStation:output_type -> kilocenter.api.v1.BaseStation
+	1,   // 304: kilocenter.api.v1.CoreService.GetBaseStation:output_type -> kilocenter.api.v1.BaseStation
+	1,   // 305: kilocenter.api.v1.CoreService.UpdateBaseStation:output_type -> kilocenter.api.v1.BaseStation
+	215, // 306: kilocenter.api.v1.CoreService.DeleteBaseStation:output_type -> google.protobuf.Empty
+	21,  // 307: kilocenter.api.v1.CoreService.ListBaseStations:output_type -> kilocenter.api.v1.ListBaseStationsResponse
+	23,  // 308: kilocenter.api.v1.CoreService.GetBaseStationStats:output_type -> kilocenter.api.v1.GetBaseStationStatsResponse
+	1,   // 309: kilocenter.api.v1.CoreService.UpdateBaseStationEui:output_type -> kilocenter.api.v1.BaseStation
+	25,  // 310: kilocenter.api.v1.CoreService.GetBaseStationAvailability:output_type -> kilocenter.api.v1.GetBaseStationAvailabilityResponse
+	27,  // 311: kilocenter.api.v1.CoreService.GetBaseStationMessagesReceived:output_type -> kilocenter.api.v1.GetBaseStationMessagesReceivedResponse
+	4,   // 312: kilocenter.api.v1.CoreService.GetMessage:output_type -> kilocenter.api.v1.Message
+	30,  // 313: kilocenter.api.v1.CoreService.SendDownlink:output_type -> kilocenter.api.v1.SendDownlinkResponse
+	32,  // 314: kilocenter.api.v1.CoreService.RevokeDownlink:output_type -> kilocenter.api.v1.RevokeDownlinkResponse
+	34,  // 315: kilocenter.api.v1.CoreService.ListDownlinkQueue:output_type -> kilocenter.api.v1.ListDownlinkQueueResponse
+	37,  // 316: kilocenter.api.v1.CoreService.GetDownlinkResults:output_type -> kilocenter.api.v1.GetDownlinkResultsResponse
+	39,  // 317: kilocenter.api.v1.CoreService.SendULTransmit:output_type -> kilocenter.api.v1.SendULTransmitResponse
+	41,  // 318: kilocenter.api.v1.CoreService.RequestBaseStationStatus:output_type -> kilocenter.api.v1.BaseStationStatusResponse
+	43,  // 319: kilocenter.api.v1.CoreService.InitiatePing:output_type -> kilocenter.api.v1.InitiatePingResponse
+	52,  // 320: kilocenter.api.v1.CoreService.GetDLRXStatus:output_type -> kilocenter.api.v1.GetDLRXStatusResponse
+	54,  // 321: kilocenter.api.v1.CoreService.QueryDLRXStatus:output_type -> kilocenter.api.v1.QueryDLRXStatusResponse
+	58,  // 322: kilocenter.api.v1.CoreService.GetDLRXStatusQueries:output_type -> kilocenter.api.v1.GetDLRXStatusQueriesResponse
+	45,  // 323: kilocenter.api.v1.CoreService.GetSystemStatus:output_type -> kilocenter.api.v1.SystemStatus
+	48,  // 324: kilocenter.api.v1.CoreService.GetStatistics:output_type -> kilocenter.api.v1.Statistics
+	46,  // 325: kilocenter.api.v1.CoreService.GetReleaseInfo:output_type -> kilocenter.api.v1.ReleaseInfo
+	59,  // 326: kilocenter.api.v1.CoreService.CreateIntegration:output_type -> kilocenter.api.v1.Integration
+	59,  // 327: kilocenter.api.v1.CoreService.GetIntegration:output_type -> kilocenter.api.v1.Integration
+	59,  // 328: kilocenter.api.v1.CoreService.UpdateIntegration:output_type -> kilocenter.api.v1.Integration
+	215, // 329: kilocenter.api.v1.CoreService.DeleteIntegration:output_type -> google.protobuf.Empty
+	65,  // 330: kilocenter.api.v1.CoreService.ListIntegrations:output_type -> kilocenter.api.v1.ListIntegrationsResponse
+	67,  // 331: kilocenter.api.v1.CoreService.GetAnalyticsOverview:output_type -> kilocenter.api.v1.GetAnalyticsOverviewResponse
+	69,  // 332: kilocenter.api.v1.CoreService.GetActivityAnalytics:output_type -> kilocenter.api.v1.GetActivityAnalyticsResponse
+	71,  // 333: kilocenter.api.v1.CoreService.GetSignalQualityAnalytics:output_type -> kilocenter.api.v1.GetSignalQualityAnalyticsResponse
+	80,  // 334: kilocenter.api.v1.CoreService.ListEvents:output_type -> kilocenter.api.v1.ListEventsResponse
+	82,  // 335: kilocenter.api.v1.CoreService.ListBaseStationActivity:output_type -> kilocenter.api.v1.ListBaseStationActivityResponse
+	85,  // 336: kilocenter.api.v1.CoreService.ListEndpointActivity:output_type -> kilocenter.api.v1.ListEndpointActivityResponse
+	92,  // 337: kilocenter.api.v1.CoreService.StreamEvents:output_type -> kilocenter.api.v1.Event
+	89,  // 338: kilocenter.api.v1.CoreService.ListAlerts:output_type -> kilocenter.api.v1.ListAlertsResponse
+	91,  // 339: kilocenter.api.v1.CoreService.GetAlertSummary:output_type -> kilocenter.api.v1.GetAlertSummaryResponse
+	96,  // 340: kilocenter.api.v1.CoreService.ListScaciSessions:output_type -> kilocenter.api.v1.ListScaciSessionsResponse
+	98,  // 341: kilocenter.api.v1.CoreService.GetScaciSession:output_type -> kilocenter.api.v1.GetScaciSessionResponse
+	100, // 342: kilocenter.api.v1.CoreService.GetScaciStatistics:output_type -> kilocenter.api.v1.GetScaciStatisticsResponse
+	102, // 343: kilocenter.api.v1.CoreService.ListScaciErrors:output_type -> kilocenter.api.v1.ListScaciErrorsResponse
+	104, // 344: kilocenter.api.v1.CoreService.ListScaciQueues:output_type -> kilocenter.api.v1.ListScaciQueuesResponse
+	106, // 345: kilocenter.api.v1.CoreService.GetScaciStatus:output_type -> kilocenter.api.v1.GetScaciStatusResponse
+	113, // 346: kilocenter.api.v1.CoreService.GenerateCertificate:output_type -> kilocenter.api.v1.GenerateCertificateResponse
+	115, // 347: kilocenter.api.v1.CoreService.DownloadCertificate:output_type -> kilocenter.api.v1.DownloadCertificateResponse
+	115, // 348: kilocenter.api.v1.CoreService.DownloadBaseStationCertificate:output_type -> kilocenter.api.v1.DownloadCertificateResponse
+	118, // 349: kilocenter.api.v1.CoreService.GenerateServerCertificates:output_type -> kilocenter.api.v1.GenerateServerCertificatesResponse
+	120, // 350: kilocenter.api.v1.CoreService.RenewServerCertificates:output_type -> kilocenter.api.v1.RenewServerCertificatesResponse
+	122, // 351: kilocenter.api.v1.CoreService.GetServerCertificateStatus:output_type -> kilocenter.api.v1.GetServerCertificateStatusResponse
+	125, // 352: kilocenter.api.v1.CoreService.CreateManufacturer:output_type -> kilocenter.api.v1.CreateManufacturerResponse
+	127, // 353: kilocenter.api.v1.CoreService.GetManufacturer:output_type -> kilocenter.api.v1.GetManufacturerResponse
+	129, // 354: kilocenter.api.v1.CoreService.UpdateManufacturer:output_type -> kilocenter.api.v1.UpdateManufacturerResponse
+	131, // 355: kilocenter.api.v1.CoreService.DeleteManufacturer:output_type -> kilocenter.api.v1.DeleteManufacturerResponse
+	133, // 356: kilocenter.api.v1.CoreService.ListManufacturers:output_type -> kilocenter.api.v1.ListManufacturersResponse
+	136, // 357: kilocenter.api.v1.CoreService.CreateDeviceModel:output_type -> kilocenter.api.v1.CreateDeviceModelResponse
+	138, // 358: kilocenter.api.v1.CoreService.GetDeviceModel:output_type -> kilocenter.api.v1.GetDeviceModelResponse
+	140, // 359: kilocenter.api.v1.CoreService.UpdateDeviceModel:output_type -> kilocenter.api.v1.UpdateDeviceModelResponse
+	142, // 360: kilocenter.api.v1.CoreService.DeleteDeviceModel:output_type -> kilocenter.api.v1.DeleteDeviceModelResponse
+	144, // 361: kilocenter.api.v1.CoreService.ListDeviceModels:output_type -> kilocenter.api.v1.ListDeviceModelsResponse
+	147, // 362: kilocenter.api.v1.CoreService.CreateBlueprint:output_type -> kilocenter.api.v1.CreateBlueprintResponse
+	149, // 363: kilocenter.api.v1.CoreService.GetBlueprint:output_type -> kilocenter.api.v1.GetBlueprintResponse
+	151, // 364: kilocenter.api.v1.CoreService.UpdateBlueprint:output_type -> kilocenter.api.v1.UpdateBlueprintResponse
+	153, // 365: kilocenter.api.v1.CoreService.DeleteBlueprint:output_type -> kilocenter.api.v1.DeleteBlueprintResponse
+	155, // 366: kilocenter.api.v1.CoreService.ListBlueprints:output_type -> kilocenter.api.v1.ListBlueprintsResponse
+	157, // 367: kilocenter.api.v1.CoreService.SetDefaultBlueprint:output_type -> kilocenter.api.v1.SetDefaultBlueprintResponse
+	159, // 368: kilocenter.api.v1.CoreService.SubmitBlueprintToRegistry:output_type -> kilocenter.api.v1.SubmitBlueprintToRegistryResponse
+	161, // 369: kilocenter.api.v1.CoreService.BulkAssignBlueprint:output_type -> kilocenter.api.v1.BulkAssignBlueprintResponse
+	164, // 370: kilocenter.api.v1.CoreService.CreateDeviceModelWithBlueprint:output_type -> kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse
+	166, // 371: kilocenter.api.v1.CoreService.DecodePreview:output_type -> kilocenter.api.v1.DecodePreviewResponse
+	168, // 372: kilocenter.api.v1.CoreService.ListMessages:output_type -> kilocenter.api.v1.ListMessagesResponse
+	4,   // 373: kilocenter.api.v1.CoreService.StreamMessages:output_type -> kilocenter.api.v1.Message
+	173, // 374: kilocenter.api.v1.CoreService.ListBaseStationMessages:output_type -> kilocenter.api.v1.ListBaseStationMessagesResponse
+	175, // 375: kilocenter.api.v1.CoreService.GetBaseStationMessage:output_type -> kilocenter.api.v1.GetBaseStationMessageResponse
+	177, // 376: kilocenter.api.v1.CoreService.GetBaseStationMessageStats:output_type -> kilocenter.api.v1.GetBaseStationMessageStatsResponse
+	179, // 377: kilocenter.api.v1.CoreService.SearchBaseStationMessages:output_type -> kilocenter.api.v1.SearchBaseStationMessagesResponse
+	181, // 378: kilocenter.api.v1.CoreService.ExportBaseStationMessages:output_type -> kilocenter.api.v1.ExportBaseStationMessagesResponse
+	183, // 379: kilocenter.api.v1.CoreService.StreamBaseStationMessages:output_type -> kilocenter.api.v1.BaseStationMessage
+	170, // 380: kilocenter.api.v1.CoreService.ListEndpointMessages:output_type -> kilocenter.api.v1.ListEndpointMessagesResponse
+	186, // 381: kilocenter.api.v1.CoreService.GetEndPointStats:output_type -> kilocenter.api.v1.GetEndPointStatsResponse
+	188, // 382: kilocenter.api.v1.CoreService.GetEndPointOperations:output_type -> kilocenter.api.v1.GetEndPointOperationsResponse
+	192, // 383: kilocenter.api.v1.CoreService.ListAllBaseStationLocations:output_type -> kilocenter.api.v1.ListAllBaseStationLocationsResponse
+	194, // 384: kilocenter.api.v1.CoreService.GetCEStatus:output_type -> kilocenter.api.v1.GetCEStatusResponse
+	196, // 385: kilocenter.api.v1.CoreService.CompleteCEOnboarding:output_type -> kilocenter.api.v1.CompleteCEOnboardingResponse
+	199, // 386: kilocenter.api.v1.CoreService.ListCEInstances:output_type -> kilocenter.api.v1.ListCEInstancesResponse
+	201, // 387: kilocenter.api.v1.CoreService.RevokeCEInstance:output_type -> kilocenter.api.v1.RevokeCEInstanceResponse
+	296, // [296:388] is the sub-list for method output_type
+	204, // [204:296] is the sub-list for method input_type
 	204, // [204:204] is the sub-list for extension type_name
 	204, // [204:204] is the sub-list for extension extendee
 	0,   // [0:204] is the sub-list for field type_name
@@ -15808,13 +16092,17 @@ func file_core_proto_init() {
 		(*EndpointActivityItem_Event)(nil),
 		(*EndpointActivityItem_Message)(nil),
 	}
+	file_core_proto_msgTypes[165].OneofWrappers = []any{
+		(*DecodePreviewRequest_BlueprintId)(nil),
+		(*DecodePreviewRequest_SpecJson)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_core_proto_rawDesc), len(file_core_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   207,
+			NumMessages:   209,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -258,6 +258,12 @@ func (db *DB) ListEndPoints(ctx context.Context, tenantID int64, limit, offset i
 	return repo.ListByTenantPaginated(ctx, tenantID, limit, offset)
 }
 
+// ListEndPointsByModelWithSnapshot lists a tenant's snapshot-bearing endpoints for a device model.
+func (db *DB) ListEndPointsByModelWithSnapshot(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) ([]*models.EndPoint, error) {
+	// concrete repo: method is not on the interfaces.EndpointRepository port (avoids a fleet of test-fake stubs)
+	return (&EndPointRepository{db: db.sqlxDB}).ListByModelWithSnapshot(ctx, tenantID, deviceModelID)
+}
+
 // BaseStation operations
 
 // CreateBaseStation creates a new base station

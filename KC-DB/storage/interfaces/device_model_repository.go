@@ -35,16 +35,16 @@ type DeviceModelRepository interface {
 	ListWithManufacturer(ctx context.Context, params *models.DeviceModelListParams) ([]*models.DeviceModelWithManufacturer, error)
 
 	// Count returns the total count of device models for a tenant
-	Count(ctx context.Context, tenantID int64) (int64, error)
+	Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error)
 
 	// CountByManufacturer returns the count of device models for a manufacturer
-	CountByManufacturer(ctx context.Context, tenantID int64, manufacturerID uuid.UUID) (int64, error)
+	CountByManufacturer(ctx context.Context, tenantID int64, isSystem bool, manufacturerID uuid.UUID) (int64, error)
 
-	// Update updates an existing device model
-	Update(ctx context.Context, tenantID int64, id uuid.UUID, params *models.DeviceModelUpdateParams) error
+	// Update updates an existing device model within the isSystem-selected ownership scope.
+	Update(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, params *models.DeviceModelUpdateParams) error
 
-	// Delete deletes a device model by ID with tenant isolation
+	// Delete deletes a device model by ID within the isSystem-selected ownership scope.
 	// Returns ErrRecordNotFound if device model doesn't exist
 	// Returns ErrForeignKeyViolation if device model has associated blueprints
-	Delete(ctx context.Context, tenantID int64, id uuid.UUID) error
+	Delete(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error
 }

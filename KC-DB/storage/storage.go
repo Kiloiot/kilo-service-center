@@ -47,6 +47,7 @@ type Storage interface {
 	CheckEndPointEUIUnique(ctx context.Context, eui []byte) error
 	DeleteEndPoint(ctx context.Context, eui []byte, tenantID int64) error
 	ListEndPoints(ctx context.Context, tenantID int64, limit, offset int) ([]*models.EndPoint, error)
+	ListEndPointsByModelWithSnapshot(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) ([]*models.EndPoint, error)
 
 	// BaseStation operations (uses canonical models.BaseStation)
 	CreateBaseStation(ctx context.Context, baseStation *models.BaseStation) (*models.BaseStation, error)

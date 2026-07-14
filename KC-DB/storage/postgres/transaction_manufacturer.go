@@ -27,21 +27,24 @@ var _ interfaces.ManufacturerRepository = (*transactionalManufacturerRepository)
 func (r *transactionalManufacturerRepository) Create(ctx context.Context, params *models.ManufacturerCreateParams) (*models.Manufacturer, error) {
 	mfr := &models.Manufacturer{
 		ID:         uuid.New(),
-		TenantID:   params.TenantID,
+		IsSystem:   params.IsSystem,
 		Name:       params.Name,
 		Website:    params.Website,
 		IsVerified: false,
 	}
+	if !params.IsSystem {
+		mfr.TenantID = &params.TenantID
+	}
 
 	query := `
 		INSERT INTO manufacturers (
-			id, tenant_id, name, website, is_verified, created_at, updated_at
+			id, tenant_id, is_system, name, website, is_verified, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, NOW(), NOW()
+			$1, $2, $3, $4, $5, $6, NOW(), NOW()
 		) RETURNING created_at, updated_at`
 
 	err := r.tx.QueryRowContext(ctx, query,
-		mfr.ID, mfr.TenantID, mfr.Name,
+		mfr.ID, mfr.TenantID, mfr.IsSystem, mfr.Name,
 		mfr.Website, mfr.IsVerified,
 	).Scan(&mfr.CreatedAt, &mfr.UpdatedAt)
 	if err != nil {
@@ -161,11 +164,11 @@ func (r *transactionalManufacturerRepository) List(ctx context.Context, params *
 }
 
 // Count returns the total count of manufacturers for a tenant within the transaction
-func (r *transactionalManufacturerRepository) Count(ctx context.Context, tenantID int64) (int64, error) {
+func (r *transactionalManufacturerRepository) Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error) {
 	var count int64
-	query := `SELECT COUNT(*) FROM manufacturers WHERE tenant_id = $1`
+	query := `SELECT COUNT(*) FROM manufacturers WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END)`
 
-	err := r.tx.QueryRowContext(ctx, query, tenantID).Scan(&count)
+	err := r.tx.QueryRowContext(ctx, query, tenantID, isSystem).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count manufacturers: %w", err)
 	}
@@ -174,10 +177,10 @@ func (r *transactionalManufacturerRepository) Count(ctx context.Context, tenantI
 }
 
 // Update updates an existing manufacturer within the transaction
-func (r *transactionalManufacturerRepository) Update(ctx context.Context, tenantID int64, id uuid.UUID, params *models.ManufacturerUpdateParams) error {
+func (r *transactionalManufacturerRepository) Update(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, params *models.ManufacturerUpdateParams) error {
 	setClauses := make([]string, 0)
-	args := []interface{}{tenantID, id}
-	argIndex := 3
+	args := []interface{}{tenantID, isSystem, id}
+	argIndex := 4
 
 	if params.Name != nil {
 		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIndex))
@@ -198,7 +201,7 @@ func (r *transactionalManufacturerRepository) Update(ctx context.Context, tenant
 
 	// #nosec G201 -- setClauses are constructed from safe column names with parameterized values
 	query := fmt.Sprintf(
-		"UPDATE manufacturers SET %s WHERE tenant_id = $1 AND id = $2",
+		"UPDATE manufacturers SET %s WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3",
 		strings.Join(setClauses, ", "),
 	)
 
@@ -223,11 +226,11 @@ func (r *transactionalManufacturerRepository) Update(ctx context.Context, tenant
 	return nil
 }
 
-// Delete deletes a manufacturer by ID with tenant isolation within the transaction
-func (r *transactionalManufacturerRepository) Delete(ctx context.Context, tenantID int64, id uuid.UUID) error {
-	query := `DELETE FROM manufacturers WHERE tenant_id = $1 AND id = $2`
+// Delete deletes a manufacturer by ID within the isSystem-selected scope within the transaction
+func (r *transactionalManufacturerRepository) Delete(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error {
+	query := `DELETE FROM manufacturers WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`
 
-	result, err := r.tx.ExecContext(ctx, query, tenantID, id)
+	result, err := r.tx.ExecContext(ctx, query, tenantID, isSystem, id)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23503" {

@@ -111,6 +111,9 @@ type EndPoint struct {
 	DeviceModelID   *uuid.UUID      `db:"device_model_id" json:"deviceModelId,omitempty"`    // UUID reference to device_models.id
 	CalibrationData json.RawMessage `db:"calibration_data" json:"calibrationData,omitempty"` // Per-device calibration overrides for blueprint decoding
 
+	// Per-device decode snapshot; NULL = follow catalog default. []byte (not RawMessage) so a NULL column scans cleanly.
+	BlueprintSnapshot []byte `db:"blueprint_snapshot" json:"blueprintSnapshot,omitempty"`
+
 	// Propagation Status (Migration 022)
 	Propagated       bool       `db:"propagated" json:"propagated"`                // Propagation status (default false)
 	PropagatedAt     *time.Time `db:"propagated_at" json:"propagatedAt,omitempty"` // Last propagation timestamp (nullable)

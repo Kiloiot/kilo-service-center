@@ -128,6 +128,7 @@ service CoreService {
   rpc ListBlueprints(ListBlueprintsRequest) returns (ListBlueprintsResponse);
   rpc SetDefaultBlueprint(SetDefaultBlueprintRequest) returns (SetDefaultBlueprintResponse);
   rpc SubmitBlueprintToRegistry(SubmitBlueprintToRegistryRequest) returns (SubmitBlueprintToRegistryResponse);
+  rpc BulkAssignBlueprint(BulkAssignBlueprintRequest) returns (BulkAssignBlueprintResponse);
 
   // Composite: Create device model + default blueprint atomically
   rpc CreateDeviceModelWithBlueprint(CreateDeviceModelWithBlueprintRequest) returns (CreateDeviceModelWithBlueprintResponse);
@@ -195,6 +196,8 @@ message EndPoint {
   bytes type_eui = 22; // 8-byte Type EUI for blueprint decoding
   int32 carrier_offset = 23; // Carrier offset in Hz
   string device_model_id = 24; // UUID reference to device_models.id for blueprint decoding
+  string blueprint_id = 25; // Input selector (not a stored FK); materialized into blueprint_snapshot, echoed on read.
+  bytes blueprint_snapshot = 26; // Read-only materialized snapshot; empty = follows catalog default.
 }
 
 // BaseStation represents a MIOTY Base Station (BS)
@@ -291,7 +294,7 @@ message UpdateEndPointRequest {
   // Supported mask paths: "name", "description", "ep_class", "status",
   //   "sh_addr", "attach_cnt", "dual_chan", "repetition", "wide_carr_off",
   //   "long_blk_dist", "pre_attach", "last_packet_cnt", "carrier_offset",
-  //   "nwk_sn_key", "app_key", "device_model_id", "type_eui"
+  //   "nwk_sn_key", "app_key", "device_model_id", "type_eui", "blueprint_id"
   google.protobuf.FieldMask update_mask = 2;
   // New EUI (16-char hex). If set, endpoint.ep_eui identifies the current endpoint
   // and this field specifies the replacement EUI. Cascades to all dependent tables.
@@ -308,6 +311,7 @@ message ListEndPointsRequest {
   int32 page_size = 2;
   string page_token = 3;
   string status_filter = 4;
+  string device_model_id = 5;  // UUID - filter to one model (bulk coverage preview)
 }
 
 message ListEndPointsResponse {
@@ -1202,6 +1206,7 @@ message CreateManufacturerRequest {
   string description = 3;
   string website = 4;
   string contact_email = 5;
+  bool is_system = 6;   // admin-only System row
 }
 
 message CreateManufacturerResponse {
@@ -1239,6 +1244,7 @@ message DeleteManufacturerResponse {
 message ListManufacturersRequest {
   int32 page_size = 1;
   string page_token = 2;
+  bool is_system = 3;   // true = list System catalog, false/absent = tenant Custom
 }
 
 message ListManufacturersResponse {
@@ -1257,9 +1263,10 @@ message Manufacturer {
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
   // Fields from KC-DB/storage/models/manufacturer.go
-  string tenant_id = 9;           // string per proto convention (line 198)
+  string tenant_id = 9;           // string per proto convention; empty when is_system
   bool is_verified = 10;          // From manufacturer.go:19
   int32 model_count = 11;         // From manufacturer.go:24
+  bool is_system = 12;            // true = System catalog row, false = tenant Custom
 }
 
 // ============================================================================
@@ -1272,6 +1279,7 @@ message CreateDeviceModelRequest {
   string code = 3;
   string type_eui = 4;         // Hex (16 chars)
   string description = 5;
+  bool is_system = 6;          // admin-only System row
 }
 
 message CreateDeviceModelResponse {
@@ -1308,6 +1316,7 @@ message ListDeviceModelsRequest {
   string manufacturer_id = 1;  // UUID - filter by manufacturer
   int32 page_size = 2;
   string page_token = 3;
+  bool is_system = 4;   // true = list System catalog, false/absent = tenant Custom
 }
 
 message ListDeviceModelsResponse {
@@ -1326,9 +1335,10 @@ message DeviceModel {
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
   // Fields from KC-DB/storage/models/device_model.go
-  string tenant_id = 9;           // string per proto convention
+  string tenant_id = 9;           // string per proto convention; empty when is_system
   string datasheet_url = 10;      // From device_model.go:22
   int32 blueprint_count = 11;     // Count from related blueprints
+  bool is_system = 12;            // true = System catalog row, false = tenant Custom
 }
 
 // ============================================================================
@@ -1342,6 +1352,7 @@ message CreateBlueprintRequest {
   string description = 4;
   bytes decoder_script = 5;    // JavaScript decoder
   bool is_default = 6;
+  bool is_system = 7;          // admin-only System row
 }
 
 message CreateBlueprintResponse {
@@ -1380,6 +1391,7 @@ message ListBlueprintsRequest {
   string device_model_id = 1;  // UUID - filter by device model
   int32 page_size = 2;
   string page_token = 3;
+  bool is_system = 4;   // true = list System catalog, false/absent = tenant Custom
 }
 
 message ListBlueprintsResponse {
@@ -1411,6 +1423,18 @@ message SubmitBlueprintToRegistryResponse {
   string branch_name = 4;
 }
 
+// Bulk version migration: re-materialize a blueprint onto matching snapshot-bearing endpoints.
+message BulkAssignBlueprintRequest {
+  string blueprint_id = 1;     // UUID to re-materialize
+  string device_model_id = 2;  // UUID - target this model's snapshot-bearing endpoints
+  repeated string ep_euis = 3; // OR explicit EUIs (16-char hex); takes precedence over device_model_id
+  bool set_as_default = 4;     // also set model default (Custom only; rejected for System)
+}
+
+message BulkAssignBlueprintResponse {
+  int32 affected_count = 1;    // endpoints re-materialized
+}
+
 message Blueprint {
   string id = 1;              // UUID
   string device_model_id = 2; // UUID
@@ -1428,6 +1452,7 @@ message Blueprint {
   string registry_commit_sha = 13; // From blueprint.go:23
   bool registry_verified = 14;    // From blueprint.go:24
   string registry_pr_url = 15;    // From blueprint.go:26
+  bool is_system = 16;            // true = System catalog row, false = tenant Custom
 }
 
 // Composite: atomic model + default blueprint creation
@@ -1436,6 +1461,7 @@ message CreateDeviceModelWithBlueprintRequest {
   string name = 2;             // Model name
   string version = 3;          // Blueprint version (e.g. "1.0.0")
   bytes decoder_script = 4;    // Blueprint specification JSON
+  bool is_system = 5;          // admin-only System rows
 }
 
 message CreateDeviceModelWithBlueprintResponse {
@@ -1445,7 +1471,11 @@ message CreateDeviceModelWithBlueprintResponse {
 
 // Blueprint decode preview
 message DecodePreviewRequest {
-  string blueprint_id = 1;     // UUID of blueprint to use for decoding
+  // Decode source: saved blueprint id, or inline spec for preview before save.
+  oneof source {
+    string blueprint_id = 1;
+    bytes spec_json = 4;
+  }
   bytes payload = 2;           // Raw binary payload
   uint32 format_id = 3;        // MIOTY format ID
 }

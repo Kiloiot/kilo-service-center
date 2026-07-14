@@ -1994,6 +1994,11 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "invalid device_model_id format",
 		Code:    codes.InvalidArgument,
 	},
+	ErrTokenInvalidBlueprintIDFormat: {
+		Token:   ErrTokenInvalidBlueprintIDFormat,
+		Message: "invalid blueprint_id format",
+		Code:    codes.InvalidArgument,
+	},
 	ErrTokenInvalidEUIFormat: {
 		Token:   ErrTokenInvalidEUIFormat,
 		Message: "invalid EUI format",

@@ -1158,6 +1158,9 @@ export interface OrganizationUsersListResponse {
 // Blueprint Feature: Device Catalog and Payload Decoding Types
 // ============================================================================
 
+// Which catalog a list query targets: "system" (shared) vs "custom" (tenant-owned).
+export type BlueprintScope = "system" | "custom";
+
 /**
  * ManufacturerAPI represents the API response format for manufacturers.
  * Uses camelCase per backend JSON conventions.
@@ -1168,6 +1171,7 @@ export interface ManufacturerAPI {
   name: string;
   website?: string;
   isVerified: boolean;
+  isSystem: boolean;
   modelCount?: number; // Populated on list queries
   createdAt: string;
   updatedAt: string;
@@ -1182,6 +1186,7 @@ export interface ManufacturerUI {
   name: string;
   website?: string;
   isVerified: boolean;
+  isSystem: boolean;
   modelCount: number;
   createdAt: string;
   updatedAt: string;
@@ -1189,10 +1194,12 @@ export interface ManufacturerUI {
 
 /**
  * CreateManufacturerRequest represents the request body for creating a manufacturer.
+ * isSystem is admin-only; the server rejects it for non-admin callers.
  */
 export interface CreateManufacturerRequest {
   name: string;
   website?: string;
+  isSystem?: boolean;
 }
 
 /**
@@ -1224,6 +1231,7 @@ export interface DeviceModelAPI {
   typeEui?: string; // 16-char hex (8 bytes)
   description?: string;
   datasheetUrl?: string;
+  isSystem: boolean;
   blueprintCount?: number; // Populated on list queries
   createdAt: string;
   updatedAt: string;
@@ -1243,6 +1251,7 @@ export interface DeviceModelUI {
   typeEui?: string;
   description?: string;
   datasheetUrl?: string;
+  isSystem: boolean;
   blueprintCount: number;
   createdAt: string;
   updatedAt: string;
@@ -1251,6 +1260,7 @@ export interface DeviceModelUI {
 
 /**
  * CreateDeviceModelRequest represents the request body for creating a device model.
+ * isSystem is admin-only; the server rejects it for non-admin callers.
  */
 export interface CreateDeviceModelRequest {
   name: string;
@@ -1258,17 +1268,20 @@ export interface CreateDeviceModelRequest {
   typeEui?: string; // 16-char hex (8 bytes)
   description?: string;
   datasheetUrl?: string;
+  isSystem?: boolean;
 }
 
 /**
  * CreateDeviceModelWithBlueprintRequest creates a model + default blueprint atomically.
  * Code and type_eui are auto-generated server-side.
+ * isSystem is admin-only; the server rejects it for non-admin callers.
  */
 export interface CreateDeviceModelWithBlueprintRequest {
   manufacturerId: string;
   name: string;
   version: string;
   specJson: object;
+  isSystem?: boolean;
 }
 
 /**
@@ -1300,6 +1313,7 @@ export interface BlueprintAPI {
   typeEui: string; // 16-char hex (8 bytes)
   specJson: object; // Blueprint specification JSON
   isDefault: boolean;
+  isSystem: boolean;
   registryRepo?: string;
   registryCommitSha?: string;
   registryVerified: boolean;
@@ -1319,6 +1333,7 @@ export interface BlueprintUI {
   typeEui: string;
   specJson: object;
   isDefault: boolean;
+  isSystem: boolean;
   registryRepo?: string;
   registryCommitSha?: string;
   registryVerified: boolean;
@@ -1336,16 +1351,19 @@ export interface BlueprintListItemAPI {
   version: string;
   typeEui: string;
   isDefault: boolean;
+  isSystem: boolean;
   createdAt: string;
 }
 
 /**
  * CreateBlueprintRequest represents the request body for creating a blueprint.
+ * isSystem is admin-only; the server rejects it for non-admin callers.
  */
 export interface CreateBlueprintRequest {
   version: string;
   typeEui?: string; // 16-char hex (8 bytes), optional for models without Type EUI
   specJson: object; // Blueprint specification JSON
+  isSystem?: boolean;
 }
 
 /**
@@ -1362,6 +1380,17 @@ export interface UpdateBlueprintRequest {
 export interface BlueprintsListResponse {
   blueprints: BlueprintListItemAPI[];
   total: number;
+}
+
+// setAsDefault also moves the model's default pointer (custom models only).
+export interface BulkAssignBlueprintRequest {
+  blueprintId: string;
+  deviceModelId: string;
+  setAsDefault: boolean;
+}
+
+export interface BulkAssignBlueprintResponse {
+  affectedCount: number;
 }
 
 /**

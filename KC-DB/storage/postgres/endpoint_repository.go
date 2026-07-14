@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"github.com/lib/pq/hstore"
@@ -205,7 +206,8 @@ const endpointBaseSelectColumns = `
 	tags, created_at, updated_at, sh_addr,
 	last_attached_bs_eui, last_propagate_time, last_detach_time,
 	last_detach_sign, last_detach_packet_cnt, propagate_status,
-	ep_status, device_model_id`
+	ep_status, device_model_id,
+	blueprint_snapshot`
 
 // endpointListSelectColumns defines columns for paginated list queries (no key material).
 // Column order MUST match scanEndpointListRow field order.
@@ -292,6 +294,7 @@ func scanEndpointBaseRow(scanner interface {
 		&lastDetachSign, &lastDetachPacketCnt, &propagateStatus,
 		&endpoint.EpStatus,
 		&endpoint.DeviceModelID,
+		&endpoint.BlueprintSnapshot,
 	)
 	if err != nil {
 		return nil, err
@@ -418,7 +421,8 @@ const endpointTenantLookupColumns = `
 	last_detach_sign, last_detach_packet_cnt, propagate_status,
 	last_attach_rx_time, last_attach_rx_duration,
 	last_snr, last_rssi, last_eq_snr, last_profile, last_attach_subpackets,
-	ep_status, device_model_id`
+	ep_status, device_model_id,
+	blueprint_snapshot`
 
 // scanEndpointTenantLookupRow scans a row produced by endpointTenantLookupColumns
 // into *models.EndPoint with full nullable resolution. Returns the raw scan
@@ -470,6 +474,7 @@ func scanEndpointTenantLookupRow(scanner interface {
 		&radio.LastSNR, &radio.LastRSSI, &radio.LastEqSNR, &radio.LastProfile, &attach.LastAttachSubpackets,
 		&endpoint.EpStatus,
 		&endpoint.DeviceModelID,
+		&endpoint.BlueprintSnapshot,
 	)
 	if err != nil {
 		return nil, err
@@ -512,7 +517,8 @@ const endpointDetailColumns = `
 	last_rx_time, last_rx_duration, packet_cnt,
 	last_dl_open, last_response_exp, last_dl_ack,
 	endpoint_class,
-	device_model_id`
+	device_model_id,
+	blueprint_snapshot`
 
 // scanEndpointDetailRow scans a row produced by endpointDetailColumns into
 // *models.EndPoint with full nullable resolution. Returns the raw scan error.
@@ -578,6 +584,7 @@ func scanEndpointDetailRow(scanner interface {
 		&endpoint.EPClass,
 		// Blueprint device model.
 		&endpoint.DeviceModelID,
+		&endpoint.BlueprintSnapshot,
 	)
 	if err != nil {
 		return nil, err
@@ -751,8 +758,9 @@ func (r *EndPointRepository) Create(ctx context.Context, endpoint *models.EndPoi
 			propagated, propagation_count, device_model_id,
 			endpoint_class, bidi, pre_attach, type_eui,
 			attach_cnt, last_packet_cnt,
-			dual_chan, repetition, wide_carr_off, long_blk_dist
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+			dual_chan, repetition, wide_carr_off, long_blk_dist,
+			blueprint_snapshot
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
 		RETURNING id, created_at, updated_at`
 
 	// NwkSnKey validation is enforced at the handler/service layer.
@@ -790,6 +798,12 @@ func (r *EndPointRepository) Create(ctx context.Context, endpoint *models.EndPoi
 		attachCntParam = int64(*endpoint.AttachCnt)
 	}
 
+	// JSONB: nil must be SQL NULL (empty bytea is invalid JSON).
+	var blueprintSnapshotParam interface{}
+	if len(endpoint.BlueprintSnapshot) > 0 {
+		blueprintSnapshotParam = []byte(endpoint.BlueprintSnapshot)
+	}
+
 	err := r.db.QueryRowContext(ctx, query,
 		endpoint.EUI[:],
 		endpoint.Name,
@@ -817,6 +831,7 @@ func (r *EndPointRepository) Create(ctx context.Context, endpoint *models.EndPoi
 		endpoint.Repetition,
 		endpoint.WideCarrOff,
 		endpoint.LongBlkDist,
+		blueprintSnapshotParam,
 	).Scan(&endpoint.ID, &endpoint.CreatedAt, &endpoint.UpdatedAt)
 
 	if err != nil {
@@ -1030,12 +1045,51 @@ func (r *EndPointRepository) ListByTenantPaginated(ctx context.Context, tenantID
 	return endpoints, nil
 }
 
+// ListByModelWithSnapshot returns a tenant's snapshot-bearing endpoints for a device model.
+func (r *EndPointRepository) ListByModelWithSnapshot(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) ([]*models.EndPoint, error) {
+	query := `SELECT` + endpointListSelectColumns + `
+		FROM endpoints
+		WHERE tenant_id = $1 AND device_model_id = $2 AND blueprint_snapshot IS NOT NULL
+		ORDER BY created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, tenantID, deviceModelID)
+	if err != nil {
+		return nil, fmt.Errorf("list endpoints by model: %w", err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows in endpoint query: %v", err)
+		}
+	}()
+
+	var endpoints []*models.EndPoint
+	for rows.Next() {
+		endpoint, err := scanEndpointListRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate endpoints: %w", err)
+	}
+
+	return endpoints, nil
+}
+
 // Update updates an endpoint with tenant isolation
 func (r *EndPointRepository) Update(ctx context.Context, endpoint *models.EndPoint) error {
 	// Prepare nullable type_eui parameter
 	var typeEuiParam interface{}
 	if endpoint.TypeEUI != nil {
 		typeEuiParam = endpoint.TypeEUI[:]
+	}
+
+	// COALESCE preserves the existing snapshot on nil (materialization never clears via Update).
+	var blueprintSnapshotParam interface{}
+	if len(endpoint.BlueprintSnapshot) > 0 {
+		blueprintSnapshotParam = []byte(endpoint.BlueprintSnapshot)
 	}
 
 	query := `
@@ -1064,7 +1118,8 @@ func (r *EndPointRepository) Update(ctx context.Context, endpoint *models.EndPoi
 			device_model_id = $24,
 			attach_cnt = $25,
 			last_packet_cnt = $26,
-			type_eui = $27
+			type_eui = $27,
+			blueprint_snapshot = COALESCE($28, blueprint_snapshot)
 		WHERE id = $1 AND tenant_id = $2
 		RETURNING updated_at`
 
@@ -1103,6 +1158,7 @@ func (r *EndPointRepository) Update(ctx context.Context, endpoint *models.EndPoi
 		endpoint.AttachCnt,
 		endpoint.LastPacketCnt,
 		typeEuiParam,
+		blueprintSnapshotParam,
 	).Scan(&endpoint.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -1191,6 +1247,12 @@ func (r *EndPointRepository) UpdateWithEUI(ctx context.Context, tenantID int64, 
 		typeEuiParam = endpoint.TypeEUI[:]
 	}
 
+	// COALESCE preserves the existing snapshot on nil (materialization never clears via Update).
+	var blueprintSnapshotParam interface{}
+	if len(endpoint.BlueprintSnapshot) > 0 {
+		blueprintSnapshotParam = []byte(endpoint.BlueprintSnapshot)
+	}
+
 	// Update endpoints table: set new EUI + all fields
 	updateQuery := `
 		UPDATE endpoints SET
@@ -1218,7 +1280,8 @@ func (r *EndPointRepository) UpdateWithEUI(ctx context.Context, tenantID int64, 
 			device_model_id = $24,
 			attach_cnt = $25,
 			last_packet_cnt = $26,
-			type_eui = $27
+			type_eui = $27,
+			blueprint_snapshot = COALESCE($28, blueprint_snapshot)
 		WHERE id = $1 AND tenant_id = $2
 		RETURNING updated_at`
 
@@ -1250,6 +1313,7 @@ func (r *EndPointRepository) UpdateWithEUI(ctx context.Context, tenantID int64, 
 		endpoint.AttachCnt,
 		endpoint.LastPacketCnt,
 		typeEuiParam,
+		blueprintSnapshotParam,
 	).Scan(&endpoint.UpdatedAt)
 	if err != nil {
 		var pqErr *pq.Error

@@ -1744,9 +1744,27 @@ export const BLUEPRINT_LABELS = {
   ADD_MODEL: "Add Model",
   ADD_BLUEPRINT: "Add Blueprint",
   ADD_DECODER: "Add Decoder",
-  SET_DEFAULT: "Set as Default",
+  SET_DEFAULT: "Default for new devices",
   SUBMIT_TO_REGISTRY: "Submit to Registry",
   TEST_DECODE: "Test Decode",
+
+  // Catalog scope (System vs tenant Custom)
+  SCOPE_SYSTEM: "System",
+  SCOPE_CUSTOM: "Custom",
+  SCOPE_TABS_ARIA: "catalog scope",
+
+  // System catalog authoring (admin only)
+  LABEL_IS_SYSTEM: "Add to System catalog",
+  HELPER_IS_SYSTEM: "System entries are shared with all tenants (admin only).",
+
+  // Bulk device migration
+  MIGRATE_DEVICES: "Migrate Devices",
+  MIGRATE_DIALOG_TITLE: "Migrate Devices to This Blueprint",
+  MIGRATE_SET_AS_DEFAULT: "Also set as default for new devices",
+  MIGRATE_CONFIRM: "Migrate",
+  MIGRATE_MIGRATING: "Migrating...",
+  MSG_MIGRATE_SUCCESS: "Devices migrated successfully",
+  ERR_MIGRATE_FAILED: "Failed to migrate devices",
 
   // Form labels - Manufacturer
   LABEL_NAME: "Name",
@@ -1807,7 +1825,7 @@ export const BLUEPRINT_LABELS = {
   MSG_BLUEPRINT_CREATED: "Blueprint created successfully",
   MSG_BLUEPRINT_UPDATED: "Blueprint updated successfully",
   MSG_BLUEPRINT_DELETED: "Blueprint deleted successfully",
-  MSG_BLUEPRINT_SET_DEFAULT: "Blueprint set as default",
+  MSG_BLUEPRINT_SET_DEFAULT: "Default for new devices",
 
   // Error messages
   ERR_LOAD_MANUFACTURERS: "Failed to load manufacturers",
@@ -1842,6 +1860,13 @@ export const BLUEPRINT_LABELS = {
   // Misc
   BADGE_DEFAULT: "Default",
   BADGE_VERIFIED: "Verified",
+  BADGE_SYSTEM: "System",
+
+  // Bulk migration affected-count phrasing (count interpolated in component)
+  MIGRATE_AFFECTED_PREFIX: "This will re-materialize ",
+  MIGRATE_AFFECTED_SUFFIX: " device snapshot(s) onto this blueprint.",
+  MIGRATE_NO_DEVICES:
+    "No device snapshots reference this model — nothing to migrate.",
 
   // Navigation
   BACK_TO_BLUEPRINTS: "Back to Blueprints",

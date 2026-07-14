@@ -232,6 +232,68 @@ func TestCreate_BasicFields(t *testing.T) {
 	assert.NotZero(t, endpoint.UpdatedAt, "UpdatedAt should be set")
 }
 
+// TestBlueprintSnapshot_RoundTrip verifies blueprint_snapshot round-trips and a nil Update preserves the existing snapshot (COALESCE).
+func TestBlueprintSnapshot_RoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	db := setupEndpointTestDB(t)
+	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
+	createTestTenant(t, db, 501, "TestTenant501")
+	cleanupEndpointTestData(t, db, "TestSnap%")
+	defer cleanupEndpointTestData(t, db, "TestSnap%")
+
+	repo := NewEndPointRepository(db)
+	ctx := testutil.TestContext()
+
+	var eui models.EUI
+	copy(eui[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x51})
+	snap := []byte(`{"spec_json":{"format":1},"version":"1.0.0","type_eui":"70b3d59cd0000094","is_system":false}`)
+
+	ep := &models.EndPoint{
+		EUI: eui, Name: "TestSnap-EP1", TenantID: 501, EPClass: "A",
+		NwkSnKey: make([]byte, 16), AppKey: make([]byte, 16), Tags: make(map[string]string),
+		BlueprintSnapshot: snap,
+	}
+	require.NoError(t, repo.Create(ctx, ep))
+
+	got, err := repo.GetByEUI(ctx, 501, eui[:])
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.JSONEq(t, string(snap), string(got.BlueprintSnapshot), "snapshot must round-trip via GetByEUI")
+
+	byID, err := repo.GetByID(ctx, got.ID, 501)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(snap), string(byID.BlueprintSnapshot), "snapshot must round-trip via GetByID")
+
+	got.BlueprintSnapshot = nil
+	got.Name = "TestSnap-EP1-upd"
+	require.NoError(t, repo.Update(ctx, got))
+	after, err := repo.GetByID(ctx, got.ID, 501)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(snap), string(after.BlueprintSnapshot), "nil-snapshot Update must preserve existing (COALESCE)")
+
+	// Non-nil Update must replace: guards a $N/COALESCE slip a nil-preserve test alone wouldn't catch.
+	newSnap := []byte(`{"spec_json":{"format":2},"version":"2.0.0","type_eui":"70b3d59cd0000099","is_system":true}`)
+	after.BlueprintSnapshot = newSnap
+	require.NoError(t, repo.Update(ctx, after))
+	replaced, err := repo.GetByID(ctx, after.ID, 501)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(newSnap), string(replaced.BlueprintSnapshot), "non-nil Update must replace the snapshot")
+
+	// Snapshot-less endpoint reads back NULL cleanly (the []byte scan fix).
+	var eui2 models.EUI
+	copy(eui2[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x52})
+	ep2 := &models.EndPoint{
+		EUI: eui2, Name: "TestSnap-EP2", TenantID: 501, EPClass: "A",
+		NwkSnKey: make([]byte, 16), AppKey: make([]byte, 16), Tags: make(map[string]string),
+	}
+	require.NoError(t, repo.Create(ctx, ep2))
+	got2, err := repo.GetByEUI(ctx, 501, eui2[:])
+	require.NoError(t, err)
+	assert.Nil(t, got2.BlueprintSnapshot, "snapshot-less endpoint scans NULL as nil")
+}
+
 // TestGetByEUI_ReturnsCorrectEndpoint verifies retrieval by EUI and tenant
 func TestGetByEUI_ReturnsCorrectEndpoint(t *testing.T) {
 	if testing.Short() {

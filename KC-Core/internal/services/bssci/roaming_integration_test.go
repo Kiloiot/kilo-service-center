@@ -427,6 +427,10 @@ func (m *MockStorageWithRoaming) UpdateEndPoint(_ context.Context, _ *models.End
 func (m *MockStorageWithRoaming) DeleteEndPoint(_ context.Context, _ []byte, _ int64) error {
 	return nil
 }
+func (m *MockStorageWithRoaming) ListEndPointsByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
 func (m *MockStorageWithRoaming) ListEndPoints(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }

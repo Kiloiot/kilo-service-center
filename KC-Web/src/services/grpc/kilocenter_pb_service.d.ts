@@ -934,6 +934,15 @@ type KiloCenterServiceSubmitBlueprintToRegistry = {
   readonly responseType: typeof core_pb.SubmitBlueprintToRegistryResponse;
 };
 
+type KiloCenterServiceBulkAssignBlueprint = {
+  readonly methodName: string;
+  readonly service: typeof KiloCenterService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.BulkAssignBlueprintRequest;
+  readonly responseType: typeof core_pb.BulkAssignBlueprintResponse;
+};
+
 type KiloCenterServiceCreateDeviceModelWithBlueprint = {
   readonly methodName: string;
   readonly service: typeof KiloCenterService;
@@ -1201,6 +1210,7 @@ export class KiloCenterService {
   static readonly ListBlueprints: KiloCenterServiceListBlueprints;
   static readonly SetDefaultBlueprint: KiloCenterServiceSetDefaultBlueprint;
   static readonly SubmitBlueprintToRegistry: KiloCenterServiceSubmitBlueprintToRegistry;
+  static readonly BulkAssignBlueprint: KiloCenterServiceBulkAssignBlueprint;
   static readonly CreateDeviceModelWithBlueprint: KiloCenterServiceCreateDeviceModelWithBlueprint;
   static readonly DecodePreview: KiloCenterServiceDecodePreview;
   static readonly ListMessages: KiloCenterServiceListMessages;
@@ -2171,6 +2181,15 @@ export class KiloCenterServiceClient {
   submitBlueprintToRegistry(
     requestMessage: core_pb.SubmitBlueprintToRegistryRequest,
     callback: (error: ServiceError|null, responseMessage: core_pb.SubmitBlueprintToRegistryResponse|null) => void
+  ): UnaryResponse;
+  bulkAssignBlueprint(
+    requestMessage: core_pb.BulkAssignBlueprintRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.BulkAssignBlueprintResponse|null) => void
+  ): UnaryResponse;
+  bulkAssignBlueprint(
+    requestMessage: core_pb.BulkAssignBlueprintRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.BulkAssignBlueprintResponse|null) => void
   ): UnaryResponse;
   createDeviceModelWithBlueprint(
     requestMessage: core_pb.CreateDeviceModelWithBlueprintRequest,

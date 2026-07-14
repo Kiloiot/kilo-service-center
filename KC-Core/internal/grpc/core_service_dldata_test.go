@@ -34,6 +34,10 @@ func (f *fakeEndpointSvc) Update(_ context.Context, _ *models.EndPoint) (*models
 	return nil, nil
 }
 func (f *fakeEndpointSvc) Delete(_ context.Context, _ []byte, _ int64) error { return nil }
+func (f *fakeEndpointSvc) ListByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
 func (f *fakeEndpointSvc) List(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -58,6 +62,10 @@ func (f *fakeLegacyStorage) UpdateEndPoint(_ context.Context, _ *models.EndPoint
 	return nil, nil
 }
 func (f *fakeLegacyStorage) DeleteEndPoint(_ context.Context, _ []byte, _ int64) error { return nil }
+func (f *fakeLegacyStorage) ListEndPointsByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
 func (f *fakeLegacyStorage) ListEndPoints(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }

@@ -61,6 +61,10 @@ func (m *mockEndpointSvcIsolation) Delete(ctx context.Context, eui []byte, tenan
 	return nil
 }
 
+func (m *mockEndpointSvcIsolation) ListByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
 func (m *mockEndpointSvcIsolation) List(ctx context.Context, tenantID int64, limit, offset int) ([]*models.EndPoint, error) {
 	m.capturedTenantIDs = append(m.capturedTenantIDs, tenantID)
 	if m.listFunc != nil {

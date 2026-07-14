@@ -85,6 +85,23 @@ func (s *ResolverService) ResolveBlueprintForEndpoint(
 	endpoint *models.EndPoint,
 	formatID *uint8,
 ) (*models.Blueprint, error) {
+	// Snapshot is the highest-priority decode source; on a malformed snapshot, fall through to catalog resolution.
+	if len(endpoint.BlueprintSnapshot) > 0 {
+		var snap models.BlueprintSnapshot
+		if err := json.Unmarshal(endpoint.BlueprintSnapshot, &snap); err != nil {
+			s.log.Warn("failed to parse endpoint blueprint snapshot",
+				"endpoint_eui", endpoint.EUI.String(), "error", err)
+		} else if bp, err := snap.ToBlueprint(); err != nil {
+			s.log.Warn("invalid endpoint blueprint snapshot",
+				"endpoint_eui", endpoint.EUI.String(), "error", err)
+		} else {
+			s.log.Debug("Resolved blueprint from endpoint snapshot",
+				"endpoint_eui", endpoint.EUI.String(),
+				"blueprint_id", bp.ID, "version", bp.Version)
+			return bp, nil
+		}
+	}
+
 	// Check if endpoint has a device model assigned
 	if endpoint.DeviceModelID != nil {
 		// TypeEUI precedence rule: Must get Type EUI from model's default blueprint

@@ -40,25 +40,24 @@ type BlueprintRepository interface {
 	ListWithModel(ctx context.Context, params *models.BlueprintListParams) ([]*models.BlueprintWithModel, error)
 
 	// Count returns the total count of blueprints for a tenant
-	Count(ctx context.Context, tenantID int64) (int64, error)
+	Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error)
 
 	// CountByDeviceModel returns the count of blueprints for a device model
-	CountByDeviceModel(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) (int64, error)
+	CountByDeviceModel(ctx context.Context, tenantID int64, isSystem bool, deviceModelID uuid.UUID) (int64, error)
 
-	// Update updates an existing blueprint
-	Update(ctx context.Context, tenantID int64, id uuid.UUID, params *models.BlueprintUpdateParams) error
+	// Update updates an existing blueprint within the isSystem-selected ownership scope.
+	Update(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, params *models.BlueprintUpdateParams) error
 
-	// SetDefault sets a blueprint as the default for its device model
-	// Clears any existing default for the same model
-	SetDefault(ctx context.Context, tenantID int64, id uuid.UUID) error
+	// SetDefault sets a blueprint as its device model's default within the isSystem-selected scope, clearing any existing default.
+	SetDefault(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error
 
-	// ClearDefault clears the default flag for a blueprint
-	ClearDefault(ctx context.Context, tenantID int64, id uuid.UUID) error
+	// ClearDefault clears the default flag for a blueprint within the isSystem-selected scope.
+	ClearDefault(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error
 
-	// UpdateRegistryInfo updates the GitHub registry metadata for a blueprint
-	UpdateRegistryInfo(ctx context.Context, tenantID int64, id uuid.UUID, repo, commitSHA, prURL string, verified bool) error
+	// UpdateRegistryInfo updates the GitHub registry metadata for a blueprint within the isSystem-selected scope.
+	UpdateRegistryInfo(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, repo, commitSHA, prURL string, verified bool) error
 
-	// Delete deletes a blueprint by ID with tenant isolation
+	// Delete deletes a blueprint by ID within the isSystem-selected ownership scope.
 	// Returns ErrRecordNotFound if blueprint doesn't exist
-	Delete(ctx context.Context, tenantID int64, id uuid.UUID) error
+	Delete(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error
 }

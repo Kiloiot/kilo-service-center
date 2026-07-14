@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -397,7 +398,104 @@ func (s *CoreService) WithCERegistryHandler(h CERegistryHandler) *CoreService {
 
 // EndPoint operations
 
-// CreateEndPoint creates a new endpoint
+func buildBlueprintSnapshot(bp *models.Blueprint) (json.RawMessage, error) {
+	return json.Marshal(models.BlueprintSnapshot{
+		SpecJSON:          bp.SpecJSON,
+		Version:           bp.Version,
+		TypeEUI:           hex.EncodeToString(bp.TypeEUI),
+		SourceBlueprintID: bp.ID.String(),
+		IsSystem:          bp.IsSystem,
+		AdoptedAt:         time.Now().UTC(),
+	})
+}
+
+func snapshotSourceID(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var snap models.BlueprintSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		return ""
+	}
+	return snap.SourceBlueprintID
+}
+
+func snapshotTypeEUI(raw json.RawMessage) *models.EUI {
+	if len(raw) == 0 {
+		return nil
+	}
+	var snap models.BlueprintSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil || snap.TypeEUI == "" {
+		return nil
+	}
+	b, err := hex.DecodeString(snap.TypeEUI)
+	if err != nil || len(b) != 8 {
+		return nil
+	}
+	var t models.EUI
+	copy(t[:], b)
+	return &t
+}
+
+func modelChanged(oldID, newID *uuid.UUID) bool {
+	switch {
+	case oldID == nil && newID == nil:
+		return false
+	case oldID == nil || newID == nil:
+		return true
+	default:
+		return *oldID != *newID
+	}
+}
+
+// applyBlueprintSnapshot materializes the blueprint snapshot onto the endpoint; model-membership mismatch is advisory (logged only).
+func (s *CoreService) applyBlueprintSnapshot(ctx context.Context, endpoint *models.EndPoint, blueprintID string) error {
+	if s.blueprintSvc == nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
+	}
+	bpUUID, parseErr := uuid.Parse(blueprintID)
+	if parseErr != nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBlueprintIDFormat))
+	}
+	bp, fetchErr := s.blueprintSvc.GetBlueprint(ctx, bpUUID)
+	if fetchErr != nil || bp == nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
+	}
+	if endpoint.DeviceModelID != nil && bp.DeviceModelID != *endpoint.DeviceModelID {
+		s.log.WarnContext(ctx, "selected blueprint belongs to a different device model",
+			"endpoint_eui", endpoint.EUI.String(), "blueprint_id", bp.ID,
+			"blueprint_model", bp.DeviceModelID, "endpoint_model", *endpoint.DeviceModelID)
+	}
+	raw, marshalErr := buildBlueprintSnapshot(bp)
+	if marshalErr != nil {
+		return status.Error(codes.Internal, "failed to build blueprint snapshot: "+marshalErr.Error())
+	}
+	dm := bp.DeviceModelID
+	endpoint.DeviceModelID = &dm
+	endpoint.TypeEUI = snapshotTypeEUI(raw)
+	endpoint.BlueprintSnapshot = raw
+	return nil
+}
+
+// pinnedBlueprintBelongsToModel reports whether the pinned snapshot source is native to the model; dangling/absent counts as not belonging.
+func (s *CoreService) pinnedBlueprintBelongsToModel(ctx context.Context, sourceID string, modelID uuid.UUID) bool {
+	if sourceID == "" || s.blueprintSvc == nil {
+		return false
+	}
+	id, err := uuid.Parse(sourceID)
+	if err != nil {
+		return false
+	}
+	bp, err := s.blueprintSvc.GetBlueprint(ctx, id)
+	if err != nil || bp == nil {
+		return false
+	}
+	return bp.DeviceModelID == modelID
+}
+
 func (s *CoreService) CreateEndPoint(ctx context.Context, req *pb.CreateEndPointRequest) (*pb.EndPoint, error) {
 	// Extract tenant from authenticated context
 	tenantID, err := GetTenantFromContext(ctx)
@@ -526,6 +624,12 @@ func (s *CoreService) CreateEndPoint(ctx context.Context, req *pb.CreateEndPoint
 		endpoint.TypeEUI = effectiveTypeEui
 	}
 
+	if req.Endpoint.BlueprintId != "" {
+		if err := s.applyBlueprintSnapshot(ctx, endpoint, req.Endpoint.BlueprintId); err != nil {
+			return nil, err
+		}
+	}
+
 	// Create endpoint in storage
 	created, err := s.endpointSvc.Create(ctx, endpoint)
 	if err != nil {
@@ -622,6 +726,7 @@ const (
 	fieldMaskCarrierOffset = "carrier_offset"
 	fieldMaskDeviceModelID = "device_model_id"
 	fieldMaskTypeEUI       = "type_eui"
+	fieldMaskBlueprintID   = "blueprint_id"
 
 	// EP Class values per MIOTY specification
 	epClassBidirectional  = "A"
@@ -635,51 +740,100 @@ func fieldInMask(mask *fieldmaskpb.FieldMask, field string) bool {
 
 // UpdateEndPoint updates an endpoint
 func (s *CoreService) UpdateEndPoint(ctx context.Context, req *pb.UpdateEndPointRequest) (*pb.EndPoint, error) {
-	// Get authenticated tenant ID from context
-	tenantID, err := GetTenantFromContext(ctx)
+	endpoint, tenantID, err := s.loadEndpointForUpdate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validate request BEFORE accessing fields to prevent nil pointer dereference
+	// Captured before mask mutations — needed by the snapshot re-materialization trigger.
+	priorDeviceModelID := endpoint.DeviceModelID
+	priorSnapshotSourceID := snapshotSourceID(endpoint.BlueprintSnapshot)
+
+	applyEndpointBasicFields(endpoint, req)
+
+	// FieldMask is required for partial updates
+	mask := req.GetUpdateMask()
+	if mask == nil || len(mask.GetPaths()) == 0 {
+		return nil, status.Error(
+			grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateMaskRequired),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateMaskRequired))
+	}
+
+	if err := applyEndpointMaskedFields(endpoint, req, mask); err != nil {
+		return nil, err
+	}
+
+	if err := s.resolveEndpointDeviceModel(ctx, tenantID, endpoint, req, mask); err != nil {
+		return nil, err
+	}
+	if err := s.normalizeEndpointTypeEUIFromModel(ctx, tenantID, endpoint); err != nil {
+		return nil, err
+	}
+	if err := s.applyEndpointSnapshotTrigger(ctx, tenantID, endpoint, req, mask, priorDeviceModelID, priorSnapshotSourceID); err != nil {
+		return nil, err
+	}
+	// type_eui follows the active snapshot (overrides the model-default normalization above).
+	if te := snapshotTypeEUI(endpoint.BlueprintSnapshot); te != nil {
+		endpoint.TypeEUI = te
+	}
+
+	endpoint, euiChanged, err := s.changeEndpointEUI(ctx, tenantID, endpoint, req)
+	if err != nil {
+		return nil, err
+	}
+	if !euiChanged {
+		updated, persistErr := s.persistEndpointUpdate(ctx, endpoint)
+		if persistErr != nil {
+			return nil, persistErr
+		}
+		endpoint = updated
+	}
+
+	s.emitEndpointUpdatedEvent(ctx, tenantID, endpoint, req.Endpoint.EpEui)
+
+	return s.endpointToProto(endpoint), nil
+}
+
+func (s *CoreService) loadEndpointForUpdate(ctx context.Context, req *pb.UpdateEndPointRequest) (*models.EndPoint, int64, error) {
+	tenantID, err := GetTenantFromContext(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
 	if req.Endpoint == nil {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointRequired),
+		return nil, 0, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointRequired),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointRequired))
 	}
 	if req.Endpoint.EpEui == "" {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointEUIRequired),
+		return nil, 0, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointEUIRequired),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointEUIRequired))
 	}
-
-	// Now safe to log after validation
 	s.log.InfoContext(ctx, "Updating endpoint", "eui", req.Endpoint.EpEui, "tenant_id", tenantID)
 
 	eui := models.EUIFromString(req.Endpoint.EpEui)
 	if eui == (models.EUI{}) {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidEndpointEUIFormat),
+		return nil, 0, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidEndpointEUIFormat),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidEndpointEUIFormat))
 	}
-
-	// Validate tenant ID in request matches authenticated tenant (if provided)
 	tenantStr := strconv.FormatInt(tenantID, 10)
 	if req.Endpoint.TenantId != "" && req.Endpoint.TenantId != tenantStr {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenTenantAccessDenied),
+		return nil, 0, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenTenantAccessDenied),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenTenantAccessDenied))
 	}
 
-	// Fetch existing endpoint to preserve fields not in update request
 	endpoint, err := s.endpointSvc.GetByEUI(ctx, eui[:], tenantID)
 	if err == storage.ErrNotFound {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointNotFound),
+		return nil, 0, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointNotFound),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointNotFound))
 	}
 	if err != nil {
 		s.log.ErrorContext(ctx, "Failed to get endpoint for update", "error", err)
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenGetEndpointFailed),
+		return nil, 0, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenGetEndpointFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenGetEndpointFailed))
 	}
+	return endpoint, tenantID, nil
+}
 
-	// Selectively overwrite provided fields (preserve existing values otherwise)
+func applyEndpointBasicFields(endpoint *models.EndPoint, req *pb.UpdateEndPointRequest) {
 	if req.Endpoint.Name != "" {
 		endpoint.Name = req.Endpoint.Name
 	}
@@ -705,20 +859,28 @@ func (s *CoreService) UpdateEndPoint(ctx context.Context, req *pb.UpdateEndPoint
 		endpoint.EPClass = req.Endpoint.EpClass
 		endpoint.Bidi = (req.Endpoint.EpClass == epClassBidirectional)
 	}
+}
 
-	// FieldMask is required for partial updates
-	mask := req.GetUpdateMask()
-	if mask == nil || len(mask.GetPaths()) == 0 {
-		return nil, status.Error(
-			grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateMaskRequired),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateMaskRequired))
+func applyMaskedTypeEUI(endpoint *models.EndPoint, req *pb.UpdateEndPointRequest) error {
+	if len(req.Endpoint.TypeEui) == 0 {
+		endpoint.TypeEUI = nil
+		return nil
 	}
+	if len(req.Endpoint.TypeEui) != 8 {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidTypeEUIFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidTypeEUIFormat))
+	}
+	var parsed models.EUI
+	copy(parsed[:], req.Endpoint.TypeEui)
+	endpoint.TypeEUI = &parsed
+	return nil
+}
 
-	// MIOTY configuration fields - update only if explicitly included in mask
-	// Note: Proto attach_status is UNMAPPED per spec - no model field exists
+// Proto attach_status is UNMAPPED per spec — no model field exists.
+func applyEndpointMaskedFields(endpoint *models.EndPoint, req *pb.UpdateEndPointRequest, mask *fieldmaskpb.FieldMask) error {
 	if fieldInMask(mask, fieldMaskShAddr) {
 		if req.Endpoint.ShAddr > math.MaxUint16 {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenShortAddressOverflow),
+			return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenShortAddressOverflow),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenShortAddressOverflow))
 		}
 		addr := uint16(req.Endpoint.ShAddr) //nolint:gosec // Bounds checked above
@@ -734,8 +896,6 @@ func (s *CoreService) UpdateEndPoint(ctx context.Context, req *pb.UpdateEndPoint
 	if fieldInMask(mask, fieldMaskCarrierOffset) {
 		endpoint.CarrierOffset = int(req.Endpoint.CarrierOffset)
 	}
-
-	// Boolean fields: update only when mask explicitly includes them
 	if fieldInMask(mask, fieldMaskDualChan) {
 		endpoint.DualChan = req.Endpoint.DualChan
 	}
@@ -751,169 +911,175 @@ func (s *CoreService) UpdateEndPoint(ctx context.Context, req *pb.UpdateEndPoint
 	if fieldInMask(mask, fieldMaskPreAttach) {
 		endpoint.PreAttach = req.Endpoint.PreAttach
 	}
-
-	// TypeEUI: update with explicit clear support when included in mask
 	if fieldInMask(mask, fieldMaskTypeEUI) {
-		if len(req.Endpoint.TypeEui) == 0 {
-			endpoint.TypeEUI = nil
-		} else if len(req.Endpoint.TypeEui) != 8 {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidTypeEUIFormat),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidTypeEUIFormat))
-		} else {
-			var parsed models.EUI
-			copy(parsed[:], req.Endpoint.TypeEui)
-			endpoint.TypeEUI = &parsed
-		}
+		return applyMaskedTypeEUI(endpoint, req)
 	}
+	return nil
+}
 
-	// Device model association for blueprint decoding
-	if fieldInMask(mask, fieldMaskDeviceModelID) {
-		if req.Endpoint.DeviceModelId == "" {
-			endpoint.DeviceModelID = nil
-		} else {
-			if s.blueprintSvc == nil {
-				return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
-					grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
-			}
-			modelUUID, parseErr := uuid.Parse(req.Endpoint.DeviceModelId)
-			if parseErr != nil {
-				return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidDeviceModelIDFormat),
-					grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidDeviceModelIDFormat))
-			}
-			if _, lookupErr := s.blueprintSvc.GetDeviceModelForTenant(ctx, tenantID, modelUUID); lookupErr != nil {
-				return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
-					grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
-			}
-			endpoint.DeviceModelID = &modelUUID
-
-			// Resolve TypeEUI from device model's default blueprint (model is authoritative)
-			effectiveTypeEui, resolveErr := s.blueprintSvc.ResolveEffectiveTypeEUI(ctx, tenantID, modelUUID)
-			if resolveErr != nil {
-				return nil, status.Error(
-					grpcerrors.GetGRPCCode(grpcerrors.ErrTokenResolveTypeEUIFailed),
-					grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenResolveTypeEUIFailed))
-			}
-			endpoint.TypeEUI = effectiveTypeEui
-		}
+func (s *CoreService) resolveEndpointDeviceModel(ctx context.Context, tenantID int64, endpoint *models.EndPoint, req *pb.UpdateEndPointRequest, mask *fieldmaskpb.FieldMask) error {
+	if !fieldInMask(mask, fieldMaskDeviceModelID) {
+		return nil
 	}
-
-	// Post-field normalization: enforce model→typeEui precedence.
-	// Covers updates that touch type_eui without touching device_model_id —
-	// existing DeviceModelID still governs TypeEUI.
-	if endpoint.DeviceModelID != nil {
-		if s.blueprintSvc == nil {
-			return nil, status.Error(
-				grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
-		}
-		effectiveTypeEui, resolveErr := s.blueprintSvc.ResolveEffectiveTypeEUI(ctx, tenantID, *endpoint.DeviceModelID)
-		if resolveErr != nil {
-			return nil, status.Error(
-				grpcerrors.GetGRPCCode(grpcerrors.ErrTokenResolveTypeEUIFailed),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenResolveTypeEUIFailed))
-		}
-		endpoint.TypeEUI = effectiveTypeEui
+	if req.Endpoint.DeviceModelId == "" {
+		endpoint.DeviceModelID = nil
+		return nil
 	}
-
-	// EUI change: atomic cascade + field update when new_ep_eui is set
-	euiChanged := false
-	if req.NewEpEui != "" {
-		newEui := models.EUIFromString(req.NewEpEui)
-		if newEui == (models.EUI{}) {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidEndpointEUIFormat),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidEndpointEUIFormat))
-		}
-		if newEui != endpoint.EUI {
-			euiChanged = true
-			// Uniqueness check (optimistic fast-path; repo also catches constraint race)
-			if checkErr := s.endpointSvc.CheckEUIGloballyUnique(ctx, newEui[:]); checkErr != nil {
-				if errors.Is(checkErr, storage.ErrAlreadyExists) {
-					return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointExists),
-						grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointExists))
-				}
-				s.log.ErrorContext(ctx, "Failed to check EUI uniqueness", "error", checkErr)
-				return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointEUIFailed),
-					grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointEUIFailed))
-			}
-			oldEui := endpoint.EUI
-			endpoint.EUI = newEui
-			updated, updateErr := s.endpointSvc.UpdateWithEUI(ctx, tenantID, oldEui[:], endpoint)
-			if updateErr != nil {
-				if errors.Is(updateErr, storage.ErrAlreadyExists) {
-					return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointExists),
-						grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointExists))
-				}
-				if errors.Is(updateErr, storage.ErrForeignKeyViolation) {
-					return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
-						grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
-				}
-				if errors.Is(updateErr, storage.ErrNwkKeyLength) {
-					return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenNwkSnKeyLength),
-						grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNwkSnKeyLength))
-				}
-				if errors.Is(updateErr, storage.ErrAppKeyLength) {
-					return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAppKeyLength),
-						grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAppKeyLength))
-				}
-				s.log.ErrorContext(ctx, "Failed to update endpoint EUI", "error", updateErr)
-				return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointEUIFailed),
-					grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointEUIFailed))
-			}
-			endpoint = updated
-		}
+	if s.blueprintSvc == nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
 	}
+	modelUUID, parseErr := uuid.Parse(req.Endpoint.DeviceModelId)
+	if parseErr != nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidDeviceModelIDFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidDeviceModelIDFormat))
+	}
+	if _, lookupErr := s.blueprintSvc.GetDeviceModelForTenant(ctx, tenantID, modelUUID); lookupErr != nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
+	}
+	endpoint.DeviceModelID = &modelUUID
+	return nil
+}
 
-	// Persist non-EUI field changes (UpdateWithEUI already handles both atomically)
-	if !euiChanged {
-		updated, updateErr := s.endpointSvc.Update(ctx, endpoint)
-		if errors.Is(updateErr, storage.ErrNotFound) {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointNotFound),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointNotFound))
-		}
-		if errors.Is(updateErr, storage.ErrAlreadyExists) {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointExists),
+// Model default is authoritative for type_eui.
+func (s *CoreService) normalizeEndpointTypeEUIFromModel(ctx context.Context, tenantID int64, endpoint *models.EndPoint) error {
+	if endpoint.DeviceModelID == nil {
+		return nil
+	}
+	if s.blueprintSvc == nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
+	}
+	effectiveTypeEui, resolveErr := s.blueprintSvc.ResolveEffectiveTypeEUI(ctx, tenantID, *endpoint.DeviceModelID)
+	if resolveErr != nil {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenResolveTypeEUIFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenResolveTypeEUIFailed))
+	}
+	endpoint.TypeEUI = effectiveTypeEui
+	return nil
+}
+
+// Explicit selection wins; else re-seed from the new model's default when the model changed and the pinned blueprint isn't native.
+func (s *CoreService) applyEndpointSnapshotTrigger(ctx context.Context, tenantID int64, endpoint *models.EndPoint, req *pb.UpdateEndPointRequest, mask *fieldmaskpb.FieldMask, priorDeviceModelID *uuid.UUID, priorSnapshotSourceID string) error {
+	if fieldInMask(mask, fieldMaskBlueprintID) && req.Endpoint.BlueprintId != "" && req.Endpoint.BlueprintId != priorSnapshotSourceID {
+		return s.applyBlueprintSnapshot(ctx, endpoint, req.Endpoint.BlueprintId)
+	}
+	reSeed := modelChanged(priorDeviceModelID, endpoint.DeviceModelID) && endpoint.DeviceModelID != nil &&
+		!s.pinnedBlueprintBelongsToModel(ctx, priorSnapshotSourceID, *endpoint.DeviceModelID)
+	if !reSeed {
+		return nil
+	}
+	def, defErr := s.blueprintSvc.GetDefaultForModel(ctx, tenantID, *endpoint.DeviceModelID)
+	if defErr != nil {
+		// Infra failure — do not silently continue an update that touches the decode source.
+		s.log.ErrorContext(ctx, "failed to resolve new model default blueprint for re-seed",
+			"error", defErr, "endpoint_eui", endpoint.EUI.String())
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenResolveTypeEUIFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenResolveTypeEUIFailed))
+	}
+	if def == nil {
+		s.log.WarnContext(ctx, "device model changed to a model with no default blueprint; keeping prior snapshot",
+			"endpoint_eui", endpoint.EUI.String())
+		return nil
+	}
+	return s.applyBlueprintSnapshot(ctx, endpoint, def.ID.String())
+}
+
+// Maps storage errors common to both persist paths; nil when unmatched (caller applies its default).
+func mapEndpointPersistError(err error) error {
+	switch {
+	case errors.Is(err, storage.ErrAlreadyExists):
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointExists),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointExists))
+	case errors.Is(err, storage.ErrForeignKeyViolation):
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
+	case errors.Is(err, storage.ErrNwkKeyLength):
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenNwkSnKeyLength),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNwkSnKeyLength))
+	case errors.Is(err, storage.ErrAppKeyLength):
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAppKeyLength),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAppKeyLength))
+	default:
+		return nil
+	}
+}
+
+// Atomic EUI-change cascade when new_ep_eui is set; reports whether the EUI changed.
+func (s *CoreService) changeEndpointEUI(ctx context.Context, tenantID int64, endpoint *models.EndPoint, req *pb.UpdateEndPointRequest) (*models.EndPoint, bool, error) {
+	if req.NewEpEui == "" {
+		return endpoint, false, nil
+	}
+	newEui := models.EUIFromString(req.NewEpEui)
+	if newEui == (models.EUI{}) {
+		return nil, false, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidEndpointEUIFormat),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidEndpointEUIFormat))
+	}
+	if newEui == endpoint.EUI {
+		return endpoint, false, nil
+	}
+	// Uniqueness check (optimistic fast-path; repo also catches constraint race)
+	if checkErr := s.endpointSvc.CheckEUIGloballyUnique(ctx, newEui[:]); checkErr != nil {
+		if errors.Is(checkErr, storage.ErrAlreadyExists) {
+			return nil, false, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointExists),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointExists))
 		}
-		if errors.Is(updateErr, storage.ErrForeignKeyViolation) {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
-		}
-		if errors.Is(updateErr, storage.ErrNwkKeyLength) {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenNwkSnKeyLength),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNwkSnKeyLength))
-		}
-		if errors.Is(updateErr, storage.ErrAppKeyLength) {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAppKeyLength),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAppKeyLength))
-		}
-		if updateErr != nil {
-			s.log.ErrorContext(ctx, "Failed to update endpoint", "error", updateErr)
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointFailed),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointFailed))
-		}
-		endpoint = updated
+		s.log.ErrorContext(ctx, "Failed to check EUI uniqueness", "error", checkErr)
+		return nil, false, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointEUIFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointEUIFailed))
 	}
-
-	// Emit CRUD event
-	if s.eventWriter != nil {
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"epEui": req.Endpoint.EpEui})
-		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-			TenantID:    strconv.FormatInt(tenantID, 10),
-			EventType:   models.EventTypeEndpointUpdated,
-			Category:    models.EventCategoryEndpoint,
-			Severity:    models.EventSeverityInfo,
-			Title:       models.EventTitleEndpointUpdated,
-			Description: fmt.Sprintf(models.EventDescriptionEndpointUpdated, req.Endpoint.EpEui),
-			SourceType:  models.SourceTypeEndpoint,
-			SourceName:  req.Endpoint.EpEui,
-			EndpointID:  &endpoint.ID,
-			Details:     detailsJSON,
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-		})
+	oldEui := endpoint.EUI
+	endpoint.EUI = newEui
+	updated, updateErr := s.endpointSvc.UpdateWithEUI(ctx, tenantID, oldEui[:], endpoint)
+	if updateErr != nil {
+		if mapped := mapEndpointPersistError(updateErr); mapped != nil {
+			return nil, false, mapped
+		}
+		s.log.ErrorContext(ctx, "Failed to update endpoint EUI", "error", updateErr)
+		return nil, false, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointEUIFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointEUIFailed))
 	}
+	return updated, true, nil
+}
 
-	return s.endpointToProto(endpoint), nil
+// Persists non-EUI changes; EUI changes are already persisted atomically by UpdateWithEUI.
+func (s *CoreService) persistEndpointUpdate(ctx context.Context, endpoint *models.EndPoint) (*models.EndPoint, error) {
+	updated, updateErr := s.endpointSvc.Update(ctx, endpoint)
+	if errors.Is(updateErr, storage.ErrNotFound) {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointNotFound),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointNotFound))
+	}
+	if mapped := mapEndpointPersistError(updateErr); mapped != nil {
+		return nil, mapped
+	}
+	if updateErr != nil {
+		s.log.ErrorContext(ctx, "Failed to update endpoint", "error", updateErr)
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUpdateEndpointFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUpdateEndpointFailed))
+	}
+	return updated, nil
+}
+
+func (s *CoreService) emitEndpointUpdatedEvent(ctx context.Context, tenantID int64, endpoint *models.EndPoint, epEui string) {
+	if s.eventWriter == nil {
+		return
+	}
+	detailsJSON, _ := json.Marshal(map[string]interface{}{"epEui": epEui})
+	_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
+		TenantID:    strconv.FormatInt(tenantID, 10),
+		EventType:   models.EventTypeEndpointUpdated,
+		Category:    models.EventCategoryEndpoint,
+		Severity:    models.EventSeverityInfo,
+		Title:       models.EventTitleEndpointUpdated,
+		Description: fmt.Sprintf(models.EventDescriptionEndpointUpdated, epEui),
+		SourceType:  models.SourceTypeEndpoint,
+		SourceName:  epEui,
+		EndpointID:  &endpoint.ID,
+		Details:     detailsJSON,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	})
 }
 
 // DeleteEndPoint deletes an endpoint
@@ -1003,8 +1169,18 @@ func (s *CoreService) ListEndPoints(ctx context.Context, req *pb.ListEndPointsRe
 		}
 	}
 
-	// List endpoints from storage (use tenant from context)
-	endpoints, err := s.endpointSvc.List(ctx, tenantID, int(pageSize), offset)
+	// device_model_id filters to snapshot-bearing endpoints of one model (bulk coverage preview, unpaginated).
+	var endpoints []*models.EndPoint
+	if req.DeviceModelId != "" {
+		modelID, parseErr := uuid.Parse(req.DeviceModelId)
+		if parseErr != nil {
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidDeviceModelIDFormat),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidDeviceModelIDFormat))
+		}
+		endpoints, err = s.endpointSvc.ListByModelWithSnapshot(ctx, tenantID, modelID)
+	} else {
+		endpoints, err = s.endpointSvc.List(ctx, tenantID, int(pageSize), offset)
+	}
 	if err != nil {
 		s.log.ErrorContext(ctx, "Failed to list endpoints", "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenListEndpointsFailed),
@@ -1017,9 +1193,9 @@ func (s *CoreService) ListEndPoints(ctx context.Context, req *pb.ListEndPointsRe
 		pbEndPoints[i] = s.endpointToProto(endpoint)
 	}
 
-	// Generate next page token
+	// Generate next page token (model-filtered path is unpaginated)
 	nextPageToken := ""
-	if len(endpoints) == int(pageSize) {
+	if req.DeviceModelId == "" && len(endpoints) == int(pageSize) {
 		nextPageToken = fmt.Sprintf("%d", offset+int(pageSize))
 	}
 
@@ -2219,6 +2395,12 @@ func (s *CoreService) endpointToProto(endpoint *models.EndPoint) *pb.EndPoint {
 	if endpoint.DeviceModelID != nil {
 		result.DeviceModelId = endpoint.DeviceModelID.String()
 	}
+
+	// Echo the selector back from the materialized snapshot; empty when following catalog default.
+	if sourceID := snapshotSourceID(endpoint.BlueprintSnapshot); sourceID != "" {
+		result.BlueprintId = sourceID
+	}
+	result.BlueprintSnapshot = endpoint.BlueprintSnapshot // read-back: full snapshot for reload/fallback render
 
 	if endpoint.LastSeenAt != nil {
 		result.LastSeenAt = timestamppb.New(*endpoint.LastSeenAt)
