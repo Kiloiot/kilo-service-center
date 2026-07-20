@@ -1465,7 +1465,7 @@ func (r *MessageRepository) GetBaseStationEndpointCounts(ctx context.Context, te
 		WHERE tenant_id = $1 AND (bs_eui = $2 OR base_stations @> $3::jsonb)
 	`
 
-	args := []interface{}{tenantID, bsEuiUint, bsContainment}
+	args := []interface{}{tenantID, bsEui, bsContainment}
 	if startTime != nil && endTime != nil {
 		query += " AND received_at BETWEEN $4 AND $5"
 		args = append(args, *startTime, *endTime)
@@ -1486,13 +1486,13 @@ func (r *MessageRepository) GetBaseStationEndpointCounts(ctx context.Context, te
 
 	counts := make(map[string]int64)
 	for rows.Next() {
-		var epEui uint64
+		var epEuiBytes []byte
 		var count int64
-		if err := rows.Scan(&epEui, &count); err != nil {
+		if err := rows.Scan(&epEuiBytes, &count); err != nil {
 			return nil, fmt.Errorf("scan endpoint count: %w", err)
 		}
-		// Convert uint64 to hex string
-		counts[fmt.Sprintf("%016X", epEui)] = count
+		// ep_eui is BYTEA(8); convert to uint64 for the hex key.
+		counts[fmt.Sprintf("%016X", euiFromBytes(epEuiBytes))] = count
 	}
 
 	if err := rows.Err(); err != nil {
@@ -1517,7 +1517,7 @@ func (r *MessageRepository) GetBaseStationLastSeen(ctx context.Context, tenantID
 	var lastSeen sql.NullTime
 	err := r.db.QueryRowContext(ctx,
 		`SELECT MAX(received_at) FROM messages WHERE tenant_id = $1 AND (bs_eui = $2 OR base_stations @> $3::jsonb)`,
-		tenantID, bsEuiUint, bsContainment).Scan(&lastSeen)
+		tenantID, bsEui, bsContainment).Scan(&lastSeen)
 
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("get base station last seen: %w", err)
@@ -1527,11 +1527,12 @@ func (r *MessageRepository) GetBaseStationLastSeen(ctx context.Context, tenantID
 		return &lastSeen.Time, nil
 	}
 
-	// If no messages, check basestation_sessions for last connect time
+	// no messages: last session start; basestation_sessions has no bs_eui, so join basestations.
 	err = r.db.QueryRowContext(ctx,
-		`SELECT MAX(connected_at) FROM basestation_sessions
-		 WHERE tenant_id = $1 AND bs_eui = $2`,
-		tenantID, bsEuiUint).Scan(&lastSeen)
+		`SELECT MAX(s.started_at) FROM basestation_sessions s
+		 JOIN basestations b ON b.id = s.basestation_id
+		 WHERE s.tenant_id = $1 AND b.bs_eui = $2`,
+		tenantID, bsEui).Scan(&lastSeen)
 
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("get base station session last seen: %w", err)
