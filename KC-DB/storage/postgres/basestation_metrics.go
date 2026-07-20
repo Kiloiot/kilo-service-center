@@ -83,7 +83,7 @@ func (db *DB) CountBaseStationMessagesByBucket(ctx context.Context, tenantID int
 			SELECT rx_time
 			FROM messages
 			WHERE tenant_id = $1
-				AND bs_eui = $2
+				AND bs_eui = $7
 				AND command_type = $6
 				AND (base_stations IS NULL OR jsonb_array_length(base_stations) = 0)
 				AND rx_time >= $3
@@ -94,7 +94,8 @@ func (db *DB) CountBaseStationMessagesByBucket(ctx context.Context, tenantID int
 		FROM matched
 		GROUP BY bucket_index`
 
-	rows, err := db.sqlxDB.QueryContext(ctx, query, tenantID, bsEuiUint, start.UnixNano(), end.UnixNano(), intervalSeconds, mioty.CmdULData)
+	// $7 matches the BYTEA bs_eui column; $2 the numeric bsEui in base_stations JSONB.
+	rows, err := db.sqlxDB.QueryContext(ctx, query, tenantID, bsEuiUint, start.UnixNano(), end.UnixNano(), intervalSeconds, mioty.CmdULData, bsEui)
 	if err != nil {
 		return nil, fmt.Errorf("query base station message buckets: %w", err)
 	}

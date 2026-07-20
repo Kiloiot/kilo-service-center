@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func metricsWindow() (start, end time.Time) {
 func insertTestBaseStation(t *testing.T, db *sqlx.DB, eui models.EUI, tenantID int64, name string) int64 {
 	t.Helper()
 	var id int64
-	// basestations.bs_eui is BYTEA(8) (unlike messages.bs_eui which is BIGINT);
+	// basestations.bs_eui and messages.ep_eui/bs_eui are BYTEA(8).
 	// a bssci base station requires service_center_url (check_bssci_config).
 	err := db.QueryRow(`
 		INSERT INTO basestations (tenant_id, bs_eui, name, connection_type, service_center_url)
@@ -70,7 +71,7 @@ func insertTestMessageCmd(t *testing.T, db *sqlx.DB, tenantID, bsEui, epEui int6
 			id, tenant_id, ep_eui, bs_eui, op_id, packet_cnt, rx_time,
 			rssi, snr, command_type, dl_open, response_exp, dl_ack, received_at, base_stations
 		) VALUES ($1, $2, $3, $4, 0, 1, $5, -80.0, 10.0, $6, false, false, false, $7, $8::jsonb)`,
-		uuid.NewString(), tenantID, epEui, bsEui, rxTimeNs, commandType, receivedAt, bs,
+		uuid.NewString(), tenantID, euiToBytes(uint64(epEui)), euiToBytes(uint64(bsEui)), rxTimeNs, commandType, receivedAt, bs,
 	)
 	require.NoError(t, err, "insert message")
 }
@@ -194,4 +195,84 @@ func TestCountBaseStationMessagesByBucket_ExcludesNonUlData(t *testing.T) {
 	bucket0 := start.Unix() / intervalSeconds
 	assert.Equal(t, int64(1), counts[bucket0], "only the ulData uplink is counted")
 	assert.Len(t, counts, 1, "propagate/completion messages are excluded")
+}
+
+func TestGetBaseStationEndpointCounts_PrimaryAndSecondary(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	sqlxDB, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+	repo := NewMessageRepository(sqlxDB)
+	ctx := context.Background()
+	start, _ := metricsWindow()
+	const tenantID, bsEui int64 = 100, 5
+
+	// ep 10 primary (x2); ep 20 secondary receiver (JSONB); ep 30 another bs (excluded).
+	insertTestMessage(t, sqlxDB, tenantID, bsEui, 10, start.Add(1*time.Minute), nil)
+	insertTestMessage(t, sqlxDB, tenantID, bsEui, 10, start.Add(2*time.Minute), nil)
+	secondary := `[{"bsEui":5,"rssi":-85.0,"snr":8.0}]`
+	insertTestMessage(t, sqlxDB, tenantID, 99, 20, start.Add(3*time.Minute), &secondary)
+	insertTestMessage(t, sqlxDB, tenantID, 99, 30, start.Add(4*time.Minute), nil)
+	insertTestMessage(t, sqlxDB, 200, bsEui, 10, start.Add(5*time.Minute), nil) // other tenant
+
+	counts, err := repo.GetBaseStationEndpointCounts(ctx, tenantID, []byte{0, 0, 0, 0, 0, 0, 0, 5}, nil, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(2), counts[fmt.Sprintf("%016X", uint64(10))], "two primary messages for ep 10")
+	assert.Equal(t, int64(1), counts[fmt.Sprintf("%016X", uint64(20))], "one secondary-receiver message for ep 20")
+	_, has30 := counts[fmt.Sprintf("%016X", uint64(30))]
+	assert.False(t, has30, "endpoint seen only by another bs is excluded")
+	assert.Len(t, counts, 2, "only ep 10 and ep 20 for this bs/tenant")
+}
+
+func TestGetBaseStationLastSeen_FromMessages(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	sqlxDB, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+	repo := NewMessageRepository(sqlxDB)
+	ctx := context.Background()
+	start, _ := metricsWindow()
+	const tenantID, bsEui int64 = 100, 5
+
+	insertTestMessage(t, sqlxDB, tenantID, bsEui, 10, start.Add(1*time.Minute), nil) // primary, older
+	latest := start.Add(5 * time.Minute)
+	secondary := `[{"bsEui":5,"rssi":-80.0,"snr":9.0}]`
+	insertTestMessage(t, sqlxDB, tenantID, 99, 20, latest, &secondary) // secondary, newest
+
+	lastSeen, err := repo.GetBaseStationLastSeen(ctx, tenantID, []byte{0, 0, 0, 0, 0, 0, 0, 5})
+	require.NoError(t, err)
+	require.NotNil(t, lastSeen)
+	assert.WithinDuration(t, latest, *lastSeen, time.Second, "newest received_at, including secondary receiver")
+}
+
+func TestGetBaseStationLastSeen_SessionFallbackAndEmpty(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	sqlxDB, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+	repo := NewMessageRepository(sqlxDB)
+	ctx := context.Background()
+	start, _ := metricsWindow()
+	const tenantID int64 = 100
+
+	createTestTenant(t, sqlxDB, tenantID, "TestTenant100")
+	bsID := insertTestBaseStation(t, sqlxDB, models.EUI{0, 0, 0, 0, 0, 0, 0, 5}, tenantID, "no-msg-bs")
+	sessionStart := start.Add(30 * time.Minute)
+	ended := sessionStart.Add(time.Hour)
+	insertTestSession(t, sqlxDB, tenantID, bsID, 1, sessionStart, &ended)
+
+	// no messages → session fallback (started_at).
+	lastSeen, err := repo.GetBaseStationLastSeen(ctx, tenantID, []byte{0, 0, 0, 0, 0, 0, 0, 5})
+	require.NoError(t, err)
+	require.NotNil(t, lastSeen)
+	assert.WithinDuration(t, sessionStart, *lastSeen, time.Second, "falls back to session start")
+
+	// Never-connected bs (no messages, no sessions) → nil, not a 502.
+	none, err := repo.GetBaseStationLastSeen(ctx, tenantID, []byte{0, 0, 0, 0, 0, 0, 0, 9})
+	require.NoError(t, err)
+	assert.Nil(t, none, "no messages and no sessions returns nil")
 }
