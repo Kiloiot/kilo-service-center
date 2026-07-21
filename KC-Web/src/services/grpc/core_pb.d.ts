@@ -1497,8 +1497,8 @@ export class DownlinkMessage extends jspb.Message {
   getExpOnly(): boolean;
   setExpOnly(value: boolean): void;
 
-  getQueId(): number;
-  setQueId(value: number): void;
+  getQueId(): string;
+  setQueId(value: string): void;
 
   getAttempts(): number;
   setAttempts(value: number): void;
@@ -1550,7 +1550,7 @@ export namespace DownlinkMessage {
     responsePrio: boolean,
     dlWindReq: boolean,
     expOnly: boolean,
-    queId: number,
+    queId: string,
     attempts: number,
     maxAttempts: number,
     transmissionPacketCnt: number,
@@ -1748,8 +1748,8 @@ export class BaseStationStatusResponse extends jspb.Message {
   getMessage(): string;
   setMessage(value: string): void;
 
-  getOpId(): number;
-  setOpId(value: number): void;
+  getOpId(): string;
+  setOpId(value: string): void;
 
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): BaseStationStatusResponse.AsObject;
@@ -1765,7 +1765,7 @@ export namespace BaseStationStatusResponse {
   export type AsObject = {
     success: boolean,
     message: string,
-    opId: number,
+    opId: string,
   }
 }
 
@@ -1796,8 +1796,8 @@ export class InitiatePingResponse extends jspb.Message {
   getMessage(): string;
   setMessage(value: string): void;
 
-  getOpId(): number;
-  setOpId(value: number): void;
+  getOpId(): string;
+  setOpId(value: string): void;
 
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): InitiatePingResponse.AsObject;
@@ -1813,7 +1813,7 @@ export namespace InitiatePingResponse {
   export type AsObject = {
     success: boolean,
     message: string,
-    opId: number,
+    opId: string,
   }
 }
 
@@ -2279,8 +2279,8 @@ export class DLRXStatusQuery extends jspb.Message {
   getBsEui(): string;
   setBsEui(value: string): void;
 
-  getOpId(): number;
-  setOpId(value: number): void;
+  getOpId(): string;
+  setOpId(value: string): void;
 
   getStatus(): string;
   setStatus(value: string): void;
@@ -2312,7 +2312,7 @@ export namespace DLRXStatusQuery {
   export type AsObject = {
     epEui: string,
     bsEui: string,
-    opId: number,
+    opId: string,
     status: string,
     requestedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     receivedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
