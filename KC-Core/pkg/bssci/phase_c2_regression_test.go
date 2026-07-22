@@ -123,7 +123,6 @@ func (r *recordingLogger) getEntriesByLevel(level string) []logEntry {
 }
 
 // testServerWithStubPropagation: REMOVED - no longer needed.
-// Tests now inject stub functions via Server.broadcastFn hook directly.
 
 // Detach Propagate Regression Tests
 // These tests validate fixes for critical blockers in detach propagate implementation
@@ -137,7 +136,6 @@ func Test_wrapOutboundMessage_TypedStruct(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	tests := []struct {
 		name        string
@@ -226,7 +224,6 @@ func Test_wrapOutboundMessage_AlreadyMessage(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	original := &Message{
 		Command: mioty.CmdError,
@@ -256,7 +253,6 @@ func Test_wrapOutboundMessage_Map(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	inputMap := map[string]interface{}{
 		"command": mioty.CmdAttachComplete,
@@ -482,7 +478,6 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
@@ -516,7 +511,6 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 		config: &Config{},
 		logger: logger2,
 	}
-	server2.broadcastFn = server2.SendAttachPropagateToAll
 
 	validMsg := &Message{
 		Command: mioty.CmdConnectResponse,

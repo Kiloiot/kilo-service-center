@@ -9,12 +9,13 @@
 package scaci
 
 import (
-	"context"
 	"testing"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -48,7 +49,7 @@ func TestHandleStatus_RecordsOperation(t *testing.T) {
 
 	// Simulate the recording logic
 	err := mockRecorder.Record(
-		context.Background(),
+		testutil.TestContext(),
 		session,
 		opId,
 		CmdStatus,
@@ -88,7 +89,7 @@ func TestHandleStatus_UpdatesStateToAcknowledged(t *testing.T) {
 
 	// Simulate the state update logic
 	err := mockOpRepo.UpdateOperationState(
-		context.Background(),
+		testutil.TestContext(),
 		session.ID,
 		opId,
 		models.OperationStateAcknowledged,
@@ -130,7 +131,7 @@ func TestHandleStatusComplete_MarksCompleted(t *testing.T) {
 
 	// Simulate the state update logic
 	err := mockOpRepo.UpdateOperationState(
-		context.Background(),
+		testutil.TestContext(),
 		session.ID,
 		opId,
 		models.OperationStateCompleted,
@@ -168,7 +169,7 @@ func TestHandleStatus_RecordingFailure_ContinuesHandling(t *testing.T) {
 	).Return(assert.AnError)
 
 	err := mockRecorder.Record(
-		context.Background(),
+		testutil.TestContext(),
 		session,
 		opId,
 		CmdStatus,

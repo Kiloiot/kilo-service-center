@@ -37,6 +37,24 @@ func bssciAddr() string {
 	return "localhost:5000"
 }
 
+// bssciTLSConfig builds the probe's BSSCI TLS client configuration. The BSSCI
+// listener requires mutual TLS, so the probe authenticates like a real base
+// station: BSSCI_CLIENT_CERT and BSSCI_CLIENT_KEY name a CA-signed client
+// certificate pair.
+func bssciTLSConfig(t *testing.T) *tls.Config {
+	t.Helper()
+	cfg := &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+	certFile := os.Getenv("BSSCI_CLIENT_CERT")
+	keyFile := os.Getenv("BSSCI_CLIENT_KEY")
+	if certFile == "" || keyFile == "" {
+		t.Fatalf("BSSCI_CLIENT_CERT and BSSCI_CLIENT_KEY must point at a CA-signed client certificate pair (the BSSCI listener requires mutual TLS)")
+	}
+	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	require.NoError(t, err, "load BSSCI client certificate pair")
+	cfg.Certificates = []tls.Certificate{pair}
+	return cfg
+}
+
 // probeResult captures structured probe output for automation.
 type probeResult struct {
 	Probe      string `json:"probe"`
@@ -149,6 +167,101 @@ func seedTestEndpoint(t *testing.T) {
 			t.Fatalf("failed to seed test endpoint: %v", err)
 		}
 	}
+
+	// The BSSCI connect handler only accepts registered base stations, so the
+	// probe's station is seeded the same way.
+	var bsResp pb.BaseStation
+	err = conn.Invoke(ctx, "/kilocenter.api.v1.CoreService/CreateBaseStation",
+		&pb.CreateBaseStationRequest{
+			Basestation: &pb.BaseStation{
+				BsEui: "0000000000000001",
+				Name:  "probe-test-basestation",
+			},
+		}, &bsResp)
+	if err != nil {
+		st, _ := status.FromError(err)
+		if st.Code() != codes.AlreadyExists {
+			t.Fatalf("failed to seed test base station: %v", err)
+		}
+	}
+}
+
+// awaitFrame reads frames until the wanted command arrives, servicing the
+// SC-initiated operations a live Service Center interleaves with responses
+// (e.g. attach-propagate reconciliation after connect): attPrp/detPrp get
+// their response so the SC can complete its handshake, and completes are
+// consumed silently.
+func awaitFrame(t *testing.T, conn net.Conn, want string) map[string]interface{} {
+	t.Helper()
+	for range [16]int{} {
+		resp := readFrame(t, conn)
+		cmd, _ := resp["command"].(string)
+		if cmd == want {
+			return resp
+		}
+		switch cmd {
+		case mioty.CmdAttachPropagate:
+			writeFrame(t, conn, mioty.AttachPropagateResponse{
+				BaseMessage: mioty.BaseMessage{CommandType: mioty.CmdAttachPropagateResponse, OpId: frameOpID(resp)},
+			})
+		case mioty.CmdDetachPropagate:
+			writeFrame(t, conn, mioty.DetachPropagateResponse{
+				BaseMessage: mioty.BaseMessage{CommandType: mioty.CmdDetachPropagateResponse, OpId: frameOpID(resp)},
+			})
+		case mioty.CmdStatus:
+			writeFrame(t, conn, mioty.StatusResponse{
+				BaseMessage: mioty.BaseMessage{CommandType: mioty.CmdStatusResponse, OpId: frameOpID(resp)},
+				Code:        0,
+				Message:     "ok",
+				Time:        time.Now().UnixNano(),
+				DutyCycle:   0,
+			})
+		case mioty.CmdAttachPropagateComplete, mioty.CmdDetachPropagateComplete,
+			mioty.CmdStatusComplete, mioty.CmdPing:
+			// Consumed; nothing to answer at this layer.
+		default:
+			require.Equal(t, want, cmd, "expected %s, got %v", want, cmd)
+		}
+	}
+	t.Fatalf("no %s frame within 16 reads", want)
+	return nil
+}
+
+// freshSessionUUID builds a unique BS session UUID so every probe run starts
+// a new session instead of resuming the previous run's operation counters.
+func freshSessionUUID() [16]byte {
+	var id [16]byte
+	binary.BigEndian.PutUint64(id[0:8], uint64(time.Now().UnixNano()))
+	binary.BigEndian.PutUint64(id[8:16], uint64(os.Getpid()))
+	return id
+}
+
+// freshPacketCnt returns a per-run monotonic MIOTY packet counter so repeated
+// probe runs never collide in the deduplicator.
+func freshPacketCnt() uint32 {
+	return uint32(time.Now().Unix() & 0x7FFFFFFF) //nolint:gosec
+}
+
+// frameOpID extracts the operation ID from a decoded frame.
+func frameOpID(resp map[string]interface{}) int64 {
+	switch v := resp["opId"].(type) {
+	case int64:
+		return v
+	case int8:
+		return int64(v)
+	case int16:
+		return int64(v)
+	case int32:
+		return int64(v)
+	case uint64:
+		return int64(v)
+	case int:
+		return int64(v)
+	case float64:
+		return int64(v)
+	default:
+		return 0
+	}
 }
 
 // TestMIOTYLoopProbe verifies the BS → SC → app path via BSSCI protocol.
@@ -166,7 +279,7 @@ func TestMIOTYLoopProbe(t *testing.T) {
 		conn, err := tls.DialWithDialer(
 			&net.Dialer{Timeout: 5 * time.Second},
 			"tcp", addr,
-			&tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			bssciTLSConfig(t),
 		)
 		if err != nil {
 			reportResult(t, probeResult{Probe: "bssci_connect", Status: "fail",
@@ -185,10 +298,10 @@ func TestMIOTYLoopProbe(t *testing.T) {
 				Version:     mioty.MIOTYProtocolVersion,
 				BsEui:       1,
 				Bidi:        true,
-				SnBsUuid:    [16]byte{1},
+				SnBsUuid:    freshSessionUUID(),
 			}
 			writeFrame(t, conn, conReq)
-			resp := readFrame(t, conn)
+			resp := awaitFrame(t, conn, mioty.CmdConnectResponse)
 			require.Equal(t, mioty.CmdConnectResponse, resp["command"],
 				"expected conRsp, got %v", resp["command"])
 
@@ -203,7 +316,9 @@ func TestMIOTYLoopProbe(t *testing.T) {
 		// Compute CMAC signature matching seeded NwkSnKey per MIOTY radio spec §3.7.1.3.
 		// EpEui=2 matches "0000000000000002" seeded in seedTestEndpoint.
 		t.Run("Step3_AttachHandshake", func(t *testing.T) {
-			var attachCnt uint32 = 1
+			// Monotonic across probe runs: replay protection requires the
+			// attach counter to advance beyond the endpoint's stored value.
+			attachCnt := uint32(time.Now().Unix() & 0xFFFFFF)
 			sign := computeAttachSignature(2, attachCnt, probeNwkSnKey)
 			att := mioty.Attach{
 				BaseMessage: mioty.BaseMessage{CommandType: mioty.CmdAttach, OpId: 1},
@@ -216,7 +331,7 @@ func TestMIOTYLoopProbe(t *testing.T) {
 				Sign:        sign,
 			}
 			writeFrame(t, conn, att)
-			resp := readFrame(t, conn)
+			resp := awaitFrame(t, conn, mioty.CmdAttachResponse)
 			require.Equal(t, mioty.CmdAttachResponse, resp["command"],
 				"expected attRsp, got %v", resp["command"])
 
@@ -233,13 +348,13 @@ func TestMIOTYLoopProbe(t *testing.T) {
 				BaseMessage: mioty.BaseMessage{CommandType: mioty.CmdULData, OpId: 2},
 				EpEui:       2,
 				RxTime:      time.Now().UnixNano(),
-				PacketCnt:   1,
+				PacketCnt:   freshPacketCnt(),
 				Snr:         12.0,
 				Rssi:        -75.0,
 				UserData:    []byte{0xDE, 0xAD},
 			}
 			writeFrame(t, conn, ul)
-			resp := readFrame(t, conn)
+			resp := awaitFrame(t, conn, mioty.CmdULDataResponse)
 			require.Equal(t, mioty.CmdULDataResponse, resp["command"],
 				"expected ulDataRsp, got %v", resp["command"])
 

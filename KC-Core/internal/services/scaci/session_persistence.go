@@ -74,7 +74,7 @@ func (p *sessionPersistence) PersistConnectAsync(session *scaci.Session, certFin
 			}
 
 			if err := p.sessionRepo.UpdateSession(ctx, session.TenantID, session.ID, updateReq); err != nil {
-				p.logger.Error(scaci.LogSCACIUpdateSessionFailed, "error", err)
+				p.logger.ErrorContext(ctx, scaci.LogSCACIUpdateSessionFailed, "error", err)
 			}
 		} else {
 			// Create new session (fresh connection)

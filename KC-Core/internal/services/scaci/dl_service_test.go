@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -71,7 +73,7 @@ func TestDLService_RevokeDownlink_Success(t *testing.T) {
 
 	// Create service and call
 	svc := NewDLService(mockScheduler, nil, log)
-	bsEui, errToken := svc.RevokeDownlink(context.Background(), queId, tenantID)
+	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), queId, tenantID)
 
 	// Assert results
 	assert.Equal(t, expectedBsEui, bsEui)
@@ -99,7 +101,7 @@ func TestDLService_RevokeDownlink_QueueNotFound_MapsToDownlinkNotFound(t *testin
 
 	// Create service and call
 	svc := NewDLService(mockScheduler, nil, log)
-	bsEui, errToken := svc.RevokeDownlink(context.Background(), queId, tenantID)
+	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), queId, tenantID)
 
 	// Assert results
 	assert.Equal(t, uint64(0), bsEui)
@@ -127,7 +129,7 @@ func TestDLService_RevokeDownlink_NoResources_MapsToSchedulerUnavailable(t *test
 
 	// Create service and call
 	svc := NewDLService(mockScheduler, nil, log)
-	bsEui, errToken := svc.RevokeDownlink(context.Background(), queId, tenantID)
+	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), queId, tenantID)
 
 	// Assert results
 	assert.Equal(t, uint64(0), bsEui)

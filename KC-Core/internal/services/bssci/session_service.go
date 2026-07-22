@@ -106,7 +106,7 @@ func (s *sessionService) HandleResume(ctx context.Context, session *bssci.Sessio
 	// with the version selected for this connection (BSSCI rev1 §4.3: patch
 	// differences are compatible; major/minor must match).
 	if !resumeVersionCompatible(restoredSession.NegotiatedVersion, session.NegotiatedVersion) {
-		s.logger.WarnContext(ctx, "Resume rejected: persisted negotiated version incompatible with the selected version",
+		s.logger.WarnContext(ctx, bssci.LogBSSCIResumeRejectedVersionIncompatible,
 			"bsEui", bsEUI,
 			"persistedVersion", restoredSession.NegotiatedVersion,
 			"selectedVersion", session.NegotiatedVersion)
@@ -156,7 +156,7 @@ func majorMinor(v string) (string, string, bool) {
 func (s *sessionService) resumeCountersConsistent(ctx context.Context, bsEUI uint64, bsOpId, scOpId *int64, knownBsOpId, knownScOpId int64) bool {
 	if bsOpId != nil && *bsOpId > knownBsOpId {
 		// The BS requires a minimum operation state the SC does not know
-		s.logger.WarnContext(ctx, "Resume rejected: required BS operation ID beyond persisted state",
+		s.logger.WarnContext(ctx, bssci.LogBSSCIResumeRejectedBsOpIDBeyondPersisted,
 			"bsEui", bsEUI,
 			"requiredBsOpId", *bsOpId,
 			"persistedBsOpId", knownBsOpId)
@@ -164,14 +164,14 @@ func (s *sessionService) resumeCountersConsistent(ctx context.Context, bsEUI uin
 	}
 	if scOpId != nil && *scOpId < knownScOpId {
 		// The BS claims a more negative SC operation ID than the SC issued
-		s.logger.WarnContext(ctx, "Resume rejected: claimed SC operation ID beyond issued state",
+		s.logger.WarnContext(ctx, bssci.LogBSSCIResumeRejectedScOpIDBeyondIssued,
 			"bsEui", bsEUI,
 			"claimedScOpId", *scOpId,
 			"issuedScOpId", knownScOpId)
 		return false
 	}
 	if scOpId != nil && *scOpId != knownScOpId {
-		s.logger.WarnContext(ctx, "Resume accepted with stale BS counter (SC is authoritative)",
+		s.logger.WarnContext(ctx, bssci.LogBSSCIResumeAcceptedStaleBsCounter,
 			"bsEui", bsEUI,
 			"bsReportedScOpId", *scOpId,
 			"scAuthoritativeOpId", knownScOpId)

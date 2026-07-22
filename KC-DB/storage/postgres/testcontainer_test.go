@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"net/url"
@@ -19,6 +18,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	testcontainerspostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestContainerConfig holds parsed connection details from testcontainer DSN
@@ -34,7 +35,7 @@ type TestContainerConfig struct {
 // Useful for migration tests that need to test applying migrations themselves
 // Returns *sqlx.DB connection, parsed config with dynamic port, and cleanup function
 func SetupPostgresContainerWithoutMigrations(t *testing.T) (*sqlx.DB, *TestContainerConfig, func()) {
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Start PostgreSQL container
 	postgresContainer, err := testcontainerspostgres.Run(ctx,
@@ -78,7 +79,7 @@ func SetupPostgresContainerWithoutMigrations(t *testing.T) (*sqlx.DB, *TestConta
 // Returns *sqlx.DB connection and cleanup function
 // The DSN is parsed to extract dynamic host/port for CI compatibility
 func SetupPostgresContainer(t *testing.T) (*sqlx.DB, func()) {
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Start PostgreSQL container
 	postgresContainer, err := testcontainerspostgres.Run(ctx,

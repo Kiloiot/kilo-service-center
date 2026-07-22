@@ -97,7 +97,11 @@ func (c *RelayClient) Start(ctx context.Context) error {
 	c.ceID = inst.CEID
 	c.company = inst.CompanyName
 
-	relayCtx, cancel := context.WithCancel(ctx)
+	// The relay loop must outlive the caller's context: Start is reached from
+	// request-scoped paths (CompleteCEOnboarding), and inheriting their
+	// cancellation would kill the loop as soon as the RPC returns. Stop()
+	// remains the only shutdown path.
+	relayCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	c.cancelRelay = cancel
 	go c.loop(relayCtx, inst)
 	return nil

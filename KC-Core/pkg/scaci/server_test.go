@@ -14,18 +14,16 @@ package scaci
 import (
 	"testing"
 
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // testLogger creates a logger for testing that captures log output.
 func testLogger() logger.Logger {
-	core, _ := observer.New(zapcore.DebugLevel)
-	return logger.FromZap(zap.New(core))
+	return bsscitest.NewRecordingLogger()
 }
 
 // ============================================================================

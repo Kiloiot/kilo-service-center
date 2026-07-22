@@ -29,6 +29,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// Certificate generator flags and canonical certificate file names.
+const (
+	certGenFlagDir  = "-dir"
+	certGenFlagDays = "-days"
+
+	caCertFileName     = "ca.crt"
+	caKeyFileName      = "ca.key"
+	serverCertFileName = "server.crt"
+)
+
 // KeyEncryptor is the narrow key-encryption contract the certificate service
 // consumes (implemented by crypto.KeyEncryptor).
 type KeyEncryptor interface {
@@ -110,7 +120,7 @@ func New(cfg *config.Config, log logger.Logger, bsRepo interfaces.BaseStationRep
 	}
 
 	if _, err := os.Stat(certsDir); err != nil {
-		log.WarnContext(ctx, "Certificate directory not found",
+		log.WarnContext(ctx, pkggrpc.LogCertDirectoryNotFound,
 			"path", certsDir,
 			"hint", "Run certgen to generate certificates before starting")
 	}
@@ -119,7 +129,7 @@ func New(cfg *config.Config, log logger.Logger, bsRepo interfaces.BaseStationRep
 	serverValidityDays := cfg.Certificates.ServerValidityDays
 	if serverValidityDays <= 0 {
 		serverValidityDays = config.DefaultCertificatesServerValidityDays
-		log.WarnContext(ctx, "Invalid server_validity_days, using default", "default", serverValidityDays)
+		log.WarnContext(ctx, pkggrpc.LogCertInvalidServerValidityDays, "default", serverValidityDays)
 	}
 
 	// Ensure temp directory exists
@@ -197,8 +207,8 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 
 	// Copy the existing CA certificate from KC-Core instead of generating a new one
 	kcCoreCertsPath := s.certsDir
-	caCertSrc := filepath.Clean(filepath.Join(kcCoreCertsPath, "ca.crt"))
-	caCertDst := filepath.Join(certDir, "ca.crt")
+	caCertSrc := filepath.Clean(filepath.Join(kcCoreCertsPath, caCertFileName))
+	caCertDst := filepath.Join(certDir, caCertFileName)
 
 	// Copy CA certificate
 	caCertData, err := os.ReadFile(caCertSrc) // #nosec G304 - path validated via filepath.Clean
@@ -221,8 +231,8 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 	s.logger.InfoContext(ctx, pkggrpc.LogCertCACertCopied, "from", caCertSrc, "to", caCertDst)
 
 	// Also copy the CA key so we can sign client certificates
-	caKeySrc := filepath.Clean(filepath.Join(kcCoreCertsPath, "ca.key"))
-	caKeyDst := filepath.Join(certDir, "ca.key")
+	caKeySrc := filepath.Clean(filepath.Join(kcCoreCertsPath, caKeyFileName))
+	caKeyDst := filepath.Join(certDir, caKeyFileName)
 
 	caKeyData, err := os.ReadFile(caKeySrc) // #nosec G304 - path validated via filepath.Clean
 	if err != nil {
@@ -243,8 +253,8 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 
 	// Execute certificate generation with -client-only flag
 	genArgs := []string{
-		"-dir", certDir,
-		"-days", fmt.Sprintf("%d", req.ValidityDays),
+		certGenFlagDir, certDir,
+		certGenFlagDays, fmt.Sprintf("%d", req.ValidityDays),
 		"-client", bsEUIDashed,
 		"-client-only",
 	}
@@ -354,10 +364,10 @@ func (s *Service) DownloadCertificateByID(ctx context.Context, certType, certID 
 	var filename, downloadName string
 	switch certType {
 	case pkggrpc.CertTypeCA:
-		filename = "ca.crt"
+		filename = caCertFileName
 		downloadName = "kilocenter-ca-certificate.crt"
 	case "server":
-		filename = "server.crt"
+		filename = serverCertFileName
 		downloadName = fmt.Sprintf("basestation-%s-server-certificate.crt", euiPart)
 	case pkggrpc.CertTypeClient:
 		filename = "client.crt"
@@ -437,8 +447,8 @@ func (s *Service) GenerateServerCertificates(ctx context.Context) error {
 	// Execute certificate generation for server certificates
 	serverHostname := s.deriveServerHostname()
 	genArgs := []string{
-		"-dir", kcCorePath,
-		"-days", fmt.Sprintf("%d", s.serverValidityDays),
+		certGenFlagDir, kcCorePath,
+		certGenFlagDays, fmt.Sprintf("%d", s.serverValidityDays),
 		"-server", serverHostname,
 	}
 	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenExecuting, "command", s.certGenPath, "args", genArgs, "hostname", serverHostname)
@@ -465,23 +475,23 @@ func (s *Service) RenewServerCertificates(ctx context.Context) error {
 	kcCorePath := s.certsDir
 
 	// Require existing server certificate (nothing to renew otherwise)
-	if _, err := os.Stat(filepath.Join(kcCorePath, "server.crt")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(kcCorePath, serverCertFileName)); os.IsNotExist(err) {
 		return pkggrpc.NewTokenError(pkggrpc.ErrTokenNoCertsToRenew, nil)
 	}
 
 	// Require CA files (-server-only needs them to sign)
-	if _, err := os.Stat(filepath.Join(kcCorePath, "ca.crt")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(kcCorePath, caCertFileName)); os.IsNotExist(err) {
 		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertReadFailed, nil)
 	}
-	if _, err := os.Stat(filepath.Join(kcCorePath, "ca.key")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(kcCorePath, caKeyFileName)); os.IsNotExist(err) {
 		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCAKeyReadFailed, nil)
 	}
 
 	// Execute certgen with -server-only to regenerate server cert without touching the CA
 	serverHostname := s.deriveServerHostname()
 	genArgs := []string{
-		"-dir", kcCorePath,
-		"-days", fmt.Sprintf("%d", s.serverValidityDays),
+		certGenFlagDir, kcCorePath,
+		certGenFlagDays, fmt.Sprintf("%d", s.serverValidityDays),
 		"-server", serverHostname,
 		"-server-only",
 	}
@@ -510,7 +520,7 @@ func (s *Service) GetServerCertificateStatus(_ context.Context) (*grpcservices.C
 	kcCorePath := s.certsDir
 
 	// Check server certificate
-	serverCertPath := filepath.Join(kcCorePath, "server.crt")
+	serverCertPath := filepath.Join(kcCorePath, serverCertFileName)
 	if serverInfo := s.getCertificateInfo(serverCertPath); serverInfo != nil {
 		status.HasServerCert = true
 		status.ServerCertExpiry = &serverInfo.ExpiryDate
@@ -520,7 +530,7 @@ func (s *Service) GetServerCertificateStatus(_ context.Context) (*grpcservices.C
 	}
 
 	// Check CA certificate
-	caCertPath := filepath.Join(kcCorePath, "ca.crt")
+	caCertPath := filepath.Join(kcCorePath, caCertFileName)
 	if caInfo := s.getCertificateInfo(caCertPath); caInfo != nil {
 		status.HasCACert = true
 		status.CACertExpiry = &caInfo.ExpiryDate
@@ -672,9 +682,9 @@ func (s *Service) persistCertsToBaseStation(ctx context.Context, certDir string,
 	}
 
 	// Read certificate files with proper error handling
-	caCertData, err := os.ReadFile(filepath.Join(certDir, "ca.crt")) // #nosec G304 - path from UUID-based certDir
+	caCertData, err := os.ReadFile(filepath.Join(certDir, caCertFileName)) // #nosec G304 - path from UUID-based certDir
 	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertFileReadFailed, "file", "ca.crt", "error", err)
+		s.logger.ErrorContext(ctx, pkggrpc.LogCertFileReadFailed, "file", caCertFileName, "error", err)
 		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertReadFailed, nil)
 	}
 	clientCertData, err := os.ReadFile(filepath.Join(certDir, "client.crt")) // #nosec G304 - path from UUID-based certDir

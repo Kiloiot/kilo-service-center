@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockMembershipLookup implements MembershipLookup for testing.
@@ -29,7 +31,7 @@ func TestGetUserMembership_ValidRequest(t *testing.T) {
 	mock := &mockMembershipLookup{role: "admin", isActive: true}
 	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
 
-	resp, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	resp, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
@@ -48,7 +50,7 @@ func TestGetUserMembership_InactiveUser(t *testing.T) {
 	mock := &mockMembershipLookup{role: "viewer", isActive: false}
 	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
 
-	resp, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	resp, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
@@ -67,7 +69,7 @@ func TestGetUserMembership_EmptyOrgID(t *testing.T) {
 	mock := &mockMembershipLookup{role: "admin", isActive: true}
 	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
 
-	_, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "",
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
@@ -93,7 +95,7 @@ func TestGetUserMembership_EmptyUserID(t *testing.T) {
 	mock := &mockMembershipLookup{role: "admin", isActive: true}
 	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
 
-	_, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
 		UserId: "",
 	})
@@ -119,7 +121,7 @@ func TestGetUserMembership_InvalidOrgIDFormat(t *testing.T) {
 	mock := &mockMembershipLookup{role: "admin", isActive: true}
 	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
 
-	_, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "not-a-uuid",
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
@@ -145,7 +147,7 @@ func TestGetUserMembership_InvalidUserIDFormat(t *testing.T) {
 	mock := &mockMembershipLookup{role: "admin", isActive: true}
 	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
 
-	_, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
 		UserId: "not-a-uuid",
 	})
@@ -171,7 +173,7 @@ func TestGetUserMembership_NotFound(t *testing.T) {
 	mock := &mockMembershipLookup{err: storage.ErrNotFound}
 	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
 
-	_, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
@@ -197,7 +199,7 @@ func TestGetUserMembership_RepoFailure(t *testing.T) {
 	mock := &mockMembershipLookup{err: fmt.Errorf("database connection lost")}
 	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
 
-	_, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
@@ -222,7 +224,7 @@ func TestGetUserMembership_RepoFailure(t *testing.T) {
 func TestGetUserMembership_NilMembershipService(t *testing.T) {
 	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
 
-	_, err := svc.GetUserMembership(context.Background(), &pb.GetUserMembershipRequest{
+	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
 		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
@@ -258,7 +260,7 @@ func TestCheckServerAdmin_AdminUser(t *testing.T) {
 	mock := &mockUserLookup{user: &models.User{IsAdmin: true}}
 	svc := NewIdentityInternalService(nil, nil, nil, mock, nil)
 
-	resp, err := svc.CheckServerAdmin(context.Background(), &pb.CheckServerAdminRequest{
+	resp, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
 	if err != nil {
@@ -273,7 +275,7 @@ func TestCheckServerAdmin_NonAdminUser(t *testing.T) {
 	mock := &mockUserLookup{user: &models.User{IsAdmin: false}}
 	svc := NewIdentityInternalService(nil, nil, nil, mock, nil)
 
-	resp, err := svc.CheckServerAdmin(context.Background(), &pb.CheckServerAdminRequest{
+	resp, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
 	if err != nil {
@@ -287,7 +289,7 @@ func TestCheckServerAdmin_NonAdminUser(t *testing.T) {
 func TestCheckServerAdmin_InvalidUUID(t *testing.T) {
 	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
 
-	_, err := svc.CheckServerAdmin(context.Background(), &pb.CheckServerAdminRequest{
+	_, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "not-a-uuid",
 	})
 	if err == nil {
@@ -303,7 +305,7 @@ func TestCheckServerAdmin_InvalidUUID(t *testing.T) {
 func TestCheckServerAdmin_EmptyUserID(t *testing.T) {
 	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
 
-	_, err := svc.CheckServerAdmin(context.Background(), &pb.CheckServerAdminRequest{
+	_, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "",
 	})
 	if err == nil {
@@ -315,7 +317,7 @@ func TestCheckServerAdmin_UserNotFound(t *testing.T) {
 	mock := &mockUserLookup{err: storage.ErrNotFound}
 	svc := NewIdentityInternalService(nil, nil, nil, mock, nil)
 
-	_, err := svc.CheckServerAdmin(context.Background(), &pb.CheckServerAdminRequest{
+	_, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
 	if err == nil {
@@ -330,7 +332,7 @@ func TestCheckServerAdmin_UserNotFound(t *testing.T) {
 func TestCheckServerAdmin_NilUserSvc(t *testing.T) {
 	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
 
-	_, err := svc.CheckServerAdmin(context.Background(), &pb.CheckServerAdminRequest{
+	_, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
 	})
 	if err == nil {
@@ -357,7 +359,7 @@ func TestRecordPlatformEvent_WithEventWriter(t *testing.T) {
 	writer := &mockEventWriter{}
 	svc := NewIdentityInternalService(nil, nil, nil, nil, writer)
 
-	resp, err := svc.RecordPlatformEvent(context.Background(), &pb.RecordPlatformEventRequest{
+	resp, err := svc.RecordPlatformEvent(testutil.TestContext(), &pb.RecordPlatformEventRequest{
 		TenantId:    1,
 		EventType:   "service.started",
 		Category:    "system",
@@ -399,7 +401,7 @@ func TestRecordPlatformEvent_WithEventWriter(t *testing.T) {
 func TestRecordPlatformEvent_NilEventWriter(t *testing.T) {
 	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
 
-	resp, err := svc.RecordPlatformEvent(context.Background(), &pb.RecordPlatformEventRequest{
+	resp, err := svc.RecordPlatformEvent(testutil.TestContext(), &pb.RecordPlatformEventRequest{
 		TenantId:    1,
 		EventType:   "service.started",
 		Category:    "system",

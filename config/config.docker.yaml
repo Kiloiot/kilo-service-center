@@ -40,6 +40,10 @@ protocol:
   dlrx_cleanup_interval: 60
   duplicate_window: 300
   message_encoding: "msgpack"
+  bsci_certificate_poll_interval: "10s"
+  # Service Center EUI. Empty defers to KILOCENTER_PROTOCOL_SC_EUI, the legacy
+  # SERVICE_CENTER_EUI environment variable, or the built-in default.
+  sc_eui: ""
 
 certificates:
   certgen_path: "/usr/local/bin/certgen"

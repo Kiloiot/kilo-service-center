@@ -18,6 +18,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockEndpointRepo implements interfaces.EndpointRepository for testing
@@ -220,7 +222,7 @@ func TestEndpointService_Register_ValidationGuards(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errToken := svc.Register(context.Background(), tt.req, 1)
+			errToken := svc.Register(testutil.TestContext(), tt.req, 1)
 
 			if tt.wantNoErr {
 				assert.Empty(t, errToken, "expected no error token")
@@ -250,7 +252,7 @@ func TestEndpointService_Register_StoresUnsignedValues(t *testing.T) {
 		PacketCnt: 4294967295, // Max uint32
 	}
 
-	errToken := svc.Register(context.Background(), req, 1)
+	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Register should succeed with max values")
 
 	// Verify the endpoint was created with correct values
@@ -286,7 +288,7 @@ func TestEndpointService_Deregister_ValidationGuards(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errToken := svc.Deregister(context.Background(), tt.epEui, 1)
+			errToken := svc.Deregister(testutil.TestContext(), tt.epEui, 1)
 			assert.Equal(t, tt.wantErr, errToken)
 		})
 	}
@@ -320,7 +322,7 @@ func TestEndpointService_GetByEUI_ValidationGuards(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ep, errToken := svc.GetByEUI(context.Background(), 1, tt.eui)
+			ep, errToken := svc.GetByEUI(testutil.TestContext(), 1, tt.eui)
 
 			assert.Equal(t, tt.wantErr, errToken)
 			if tt.wantEpNil {
@@ -356,7 +358,7 @@ func TestRegister_AllFields_PersistsCorrectly(t *testing.T) {
 		LongBlkDist: true,
 	}
 
-	errToken := svc.Register(context.Background(), req, 1)
+	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Register should succeed with all fields")
 
 	// Verify UpdateFields was called with exact DB column names
@@ -411,7 +413,7 @@ func TestRegister_ZeroEpEui_ReturnsError(t *testing.T) {
 		NwkKey: validNwkKey,
 	}
 
-	errToken := svc.Register(context.Background(), req, 1)
+	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Equal(t, scaci.ErrMissingEpEui, errToken, "Zero EpEui must return ErrMissingEpEui")
 }
 
@@ -432,7 +434,7 @@ func TestRegister_MaxShAddr_65535(t *testing.T) {
 		ShAddr: 65535, // Max uint16
 	}
 
-	errToken := svc.Register(context.Background(), req, 1)
+	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Max uint16 ShAddr should succeed")
 
 	// Verify stored as int32(65535) without truncation
@@ -457,7 +459,7 @@ func TestRegister_MaxAttachCnt_4294967295(t *testing.T) {
 		AttachCnt: 4294967295, // Max uint32
 	}
 
-	errToken := svc.Register(context.Background(), req, 1)
+	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Max uint32 AttachCnt should succeed")
 
 	// Verify stored as int64(4294967295) without truncation
@@ -482,7 +484,7 @@ func TestRegister_MaxPacketCnt_4294967295(t *testing.T) {
 		PacketCnt: 4294967295, // Max uint32
 	}
 
-	errToken := svc.Register(context.Background(), req, 1)
+	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Max uint32 PacketCnt should succeed")
 
 	// Verify stored as int64(4294967295) without truncation

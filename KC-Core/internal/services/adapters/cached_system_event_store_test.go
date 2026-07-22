@@ -10,6 +10,8 @@ import (
 
 	eventsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/events"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 type fakeStore struct {
@@ -41,11 +43,11 @@ func TestCachedCount_HitWithinTTL(t *testing.T) {
 	c := NewCachedSystemEventStore(inner, 10*time.Second)
 	f := &eventsservice.EventFilter{Categories: []string{"a"}}
 
-	v1, err := c.CountEvents(context.Background(), 1, f)
+	v1, err := c.CountEvents(testutil.TestContext(), 1, f)
 	if err != nil || v1 != 42 {
 		t.Fatalf("first: got (%d,%v), want (42,nil)", v1, err)
 	}
-	v2, _ := c.CountEvents(context.Background(), 1, f)
+	v2, _ := c.CountEvents(testutil.TestContext(), 1, f)
 	if v2 != 42 {
 		t.Fatalf("second: got %d, want 42", v2)
 	}
@@ -61,9 +63,9 @@ func TestCachedCount_ExpiryAfterTTL(t *testing.T) {
 	c.now = func() time.Time { return now }
 	f := &eventsservice.EventFilter{Categories: []string{"a"}}
 
-	_, _ = c.CountEvents(context.Background(), 1, f)
+	_, _ = c.CountEvents(testutil.TestContext(), 1, f)
 	now = now.Add(11 * time.Second) // past TTL
-	_, _ = c.CountEvents(context.Background(), 1, f)
+	_, _ = c.CountEvents(testutil.TestContext(), 1, f)
 
 	if got := atomic.LoadInt32(&inner.countCalls); got != 2 {
 		t.Fatalf("inner count calls = %d, want 2 (expired)", got)
@@ -75,10 +77,10 @@ func TestCachedCount_ErrorsNotCached(t *testing.T) {
 	c := NewCachedSystemEventStore(inner, 10*time.Second)
 	f := &eventsservice.EventFilter{Categories: []string{"a"}}
 
-	if _, err := c.CountEvents(context.Background(), 1, f); err == nil {
+	if _, err := c.CountEvents(testutil.TestContext(), 1, f); err == nil {
 		t.Fatal("want error")
 	}
-	if _, err := c.CountEvents(context.Background(), 1, f); err == nil {
+	if _, err := c.CountEvents(testutil.TestContext(), 1, f); err == nil {
 		t.Fatal("want error")
 	}
 	if got := atomic.LoadInt32(&inner.countCalls); got != 2 {
@@ -89,7 +91,7 @@ func TestCachedCount_ErrorsNotCached(t *testing.T) {
 func TestCachedCount_KeyVariesByFilterAndTenant(t *testing.T) {
 	inner := &fakeStore{countVal: 1}
 	c := NewCachedSystemEventStore(inner, 10*time.Second)
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"a"}})      // miss -> 1
 	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"b"}})      // miss -> 2
@@ -105,7 +107,7 @@ func TestCachedCount_KeyVariesByFilterAndTenant(t *testing.T) {
 func TestCachedCount_SortedCategoriesShareKey(t *testing.T) {
 	inner := &fakeStore{countVal: 1}
 	c := NewCachedSystemEventStore(inner, 10*time.Second)
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"a", "b"}})
 	_, _ = c.CountEvents(ctx, 1, &eventsservice.EventFilter{Categories: []string{"b", "a"}}) // same key
@@ -119,8 +121,8 @@ func TestCachedCount_GetEventsPassthrough(t *testing.T) {
 	inner := &fakeStore{}
 	c := NewCachedSystemEventStore(inner, 10*time.Second)
 
-	_, _ = c.GetEvents(context.Background(), 1, nil, 10, 0)
-	_, _ = c.GetEvents(context.Background(), 1, nil, 10, 0)
+	_, _ = c.GetEvents(testutil.TestContext(), 1, nil, 10, 0)
+	_, _ = c.GetEvents(testutil.TestContext(), 1, nil, 10, 0)
 
 	if got := atomic.LoadInt32(&inner.getCalls); got != 2 {
 		t.Fatalf("inner GetEvents calls = %d, want 2 (never cached)", got)
@@ -140,7 +142,7 @@ func TestCachedCount_SingleflightCollapse(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			v, _ := c.CountEvents(context.Background(), 1, f)
+			v, _ := c.CountEvents(testutil.TestContext(), 1, f)
 			results[i] = v
 		}(i)
 	}

@@ -14,6 +14,8 @@ import (
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestTenantFilteringInTriggerEndpointPropagate verifies ATT-02: endpoint propagation
@@ -50,7 +52,7 @@ func TestTenantFilteringInTriggerEndpointPropagate(t *testing.T) {
 	}
 
 	// ATT-02: Add tenant context (required by propagation service)
-	ctx := pkgcontext.WithTenantID(context.Background(), endpointTenant)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), endpointTenant)
 	err := env.service.TriggerEndpointPropagate(ctx, endpoint.ID, sessions)
 
 	require.NoError(t, err, "propagation should succeed")
@@ -107,7 +109,7 @@ func TestPropagateStatusFilteringInReconcile(t *testing.T) {
 		TenantID:       tenantID,
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	err := env.service.ReconcileBaseStation(ctx, session, nil)
 
 	require.NoError(t, err, "reconciliation should succeed")
@@ -145,7 +147,7 @@ func TestRoamingPolicyEnforcement(t *testing.T) {
 	}
 
 	// ATT-03: Add endpoint tenant context
-	ctx := pkgcontext.WithTenantID(context.Background(), endpointTenant)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), endpointTenant)
 	err := env.service.TriggerEndpointPropagate(ctx, endpoint.ID, sessions)
 
 	// ATT-03: Should succeed but not send any propagates (blocked by roaming policy)
@@ -175,7 +177,7 @@ func TestUnidirectionalEndpointPropagated(t *testing.T) {
 		TenantID:       tenantID,
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	err := env.service.ReconcileBaseStation(ctx, session, nil)
 
 	require.NoError(t, err, "reconciliation should succeed")
@@ -214,7 +216,7 @@ func TestMultiBSPropagation(t *testing.T) {
 		TenantID: tenantID,
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	err := env.service.ReconcileBaseStation(ctx, sessionBSB, nil)
 
 	require.NoError(t, err, "reconciliation should succeed")

@@ -10,6 +10,15 @@
 -- cannot be losslessly projected into the 000047-era shape, so rows are kept
 -- queryable in place rather than re-identified. An empty legacy archive is dropped
 -- only after its row count is proven zero.
+--
+-- Ownership contract after this migration:
+--   * The canonical messages_archive receives ALL new archival writes; the
+--     legacy table is never inserted into again.
+--   * The legacy table preserves its original schema losslessly.
+--   * Identity maintenance (EUI renames) and archival statistics cover BOTH
+--     tables (repository helper updateLegacyArchiveEUI and GetArchivalStats
+--     resolve the legacy table via to_regclass).
+--   * The partition listing excludes both archive tables.
 
 -- Restore archival tracking columns on the live table.
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false;
@@ -81,6 +90,20 @@ BEGIN
             EXECUTE 'ALTER TABLE messages_archive RENAME TO messages_archive_pre000139';
             IF to_regclass('messages_archive_pkey') IS NOT NULL THEN
                 EXECUTE 'ALTER INDEX messages_archive_pkey RENAME TO messages_archive_pre000139_pkey';
+            END IF;
+            -- The query indexes stay attached to the renamed table; free
+            -- their canonical names for the corrected table
+            IF to_regclass('idx_messages_archive_ep_eui') IS NOT NULL THEN
+                EXECUTE 'ALTER INDEX idx_messages_archive_ep_eui RENAME TO idx_messages_archive_pre000139_ep_eui';
+            END IF;
+            IF to_regclass('idx_messages_archive_tenant_id') IS NOT NULL THEN
+                EXECUTE 'ALTER INDEX idx_messages_archive_tenant_id RENAME TO idx_messages_archive_pre000139_tenant_id';
+            END IF;
+            IF to_regclass('idx_messages_archive_received_at') IS NOT NULL THEN
+                EXECUTE 'ALTER INDEX idx_messages_archive_received_at RENAME TO idx_messages_archive_pre000139_received_at';
+            END IF;
+            IF to_regclass('idx_messages_archive_archived_at') IS NOT NULL THEN
+                EXECUTE 'ALTER INDEX idx_messages_archive_archived_at RENAME TO idx_messages_archive_pre000139_archived_at';
             END IF;
             RAISE NOTICE 'KC-MIG-000139: preserved % legacy archive row(s) in messages_archive_pre000139', legacy_rows;
         ELSE

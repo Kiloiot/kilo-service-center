@@ -17,7 +17,7 @@ type BSSCIServiceBundle struct {
 	VersionNegotiator   bssci.VersionNegotiator
 	DownlinkSvc         bssci.DownlinkService
 	StatusSvc           bssci.StatusService
-	ConnectionSvc       bssci.ConnectionService
+	ConnectionSvc       bssci.BaseStationConnectionRegistry
 	Broadcaster         bssci.SCACIBroadcaster         // Initially unwired - set via SetSCACIServer
 	EPStatusBroadcaster bssci.SCACIEPStatusBroadcaster // EPStatus adapter - set via SetSCACIEPStatusServer
 	QueueSerializer     bssci.QueueSerializer
@@ -45,6 +45,7 @@ func NewBSSCIServices(
 	storage interfaces.Storage,
 	systemEventStore interfaces.SystemEventStore,
 	queueStore *postgres.DownlinkQueueReader,
+	connectionMgr *basestation.ConnectionManager,
 	log logger.Logger,
 	tenantID int64,
 	orgResolver org.Resolver,
@@ -68,7 +69,7 @@ func NewBSSCIServices(
 	)
 	// StatusService uses PendingOperationRepository
 	statusSvc := NewStatusService(pendingOps, pendingOpsMu, storage.PendingOperations(), log)
-	connectionSvc := NewConnectionService(log)
+	connectionSvc := NewConnectionRegistry(connectionMgr, log)
 	queueSerializer := NewQueueSerializer()
 	auditLogger := NewAuditLogger(systemEventStore)
 	tenantResolver := NewTenantResolver(queueStore)

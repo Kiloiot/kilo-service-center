@@ -31,6 +31,21 @@ DO $$
 BEGIN
     IF to_regclass('messages_archive_pre000139') IS NOT NULL THEN
         EXECUTE 'ALTER TABLE messages_archive_pre000139 RENAME TO messages_archive';
+        IF to_regclass('messages_archive_pre000139_pkey') IS NOT NULL THEN
+            EXECUTE 'ALTER INDEX messages_archive_pre000139_pkey RENAME TO messages_archive_pkey';
+        END IF;
+        IF to_regclass('idx_messages_archive_pre000139_ep_eui') IS NOT NULL THEN
+            EXECUTE 'ALTER INDEX idx_messages_archive_pre000139_ep_eui RENAME TO idx_messages_archive_ep_eui';
+        END IF;
+        IF to_regclass('idx_messages_archive_pre000139_tenant_id') IS NOT NULL THEN
+            EXECUTE 'ALTER INDEX idx_messages_archive_pre000139_tenant_id RENAME TO idx_messages_archive_tenant_id';
+        END IF;
+        IF to_regclass('idx_messages_archive_pre000139_received_at') IS NOT NULL THEN
+            EXECUTE 'ALTER INDEX idx_messages_archive_pre000139_received_at RENAME TO idx_messages_archive_received_at';
+        END IF;
+        IF to_regclass('idx_messages_archive_pre000139_archived_at') IS NOT NULL THEN
+            EXECUTE 'ALTER INDEX idx_messages_archive_pre000139_archived_at RENAME TO idx_messages_archive_archived_at';
+        END IF;
         RAISE NOTICE 'KC-MIG-000139-DOWN: restored preserved legacy archive';
         RETURN;
     END IF;

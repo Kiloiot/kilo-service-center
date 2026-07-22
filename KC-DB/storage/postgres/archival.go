@@ -416,31 +416,73 @@ func (s *ArchivalService) GetArchivalStats(ctx context.Context) (*ArchivalStats,
 		stats.NewestMainMessage = &newestMain.Time
 	}
 
-	// Get archive table stats
+	// Canonical archive stats (raw byte sizes so combined totals can be
+	// summed numerically; pg_size_pretty strings cannot be added)
 	archiveQuery := `
-		SELECT 
+		SELECT
 			COUNT(*) as total_messages,
 			MIN(received_at) as oldest_message,
 			MAX(received_at) as newest_message,
-			pg_size_pretty(pg_total_relation_size('messages_archive')) as table_size
+			pg_total_relation_size('messages_archive') as table_bytes
 		FROM messages_archive`
 
 	var oldestArchive, newestArchive sql.NullTime
+	var canonicalBytes int64
 	err = s.db.QueryRowContext(ctx, archiveQuery).Scan(
-		&stats.ArchiveTableCount,
+		&stats.CanonicalArchiveCount,
 		&oldestArchive,
 		&newestArchive,
-		&stats.ArchiveTableSize,
+		&canonicalBytes,
 	)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("get archive table stats: %w", err)
 	}
 
-	if oldestArchive.Valid {
-		stats.OldestArchiveMessage = &oldestArchive.Time
+	// Legacy archive stats: the pre-000139 table preserves rows the canonical
+	// rebuild could not losslessly project. It is optional (to_regclass) and
+	// combined statistics cover both tables.
+	var legacyBytes int64
+	var legacyExists *string
+	if err := s.db.QueryRowContext(ctx, `SELECT to_regclass('messages_archive_pre000139')::text`).Scan(&legacyExists); err != nil {
+		return nil, fmt.Errorf("check legacy archive presence: %w", err)
 	}
-	if newestArchive.Valid {
-		stats.NewestArchiveMessage = &newestArchive.Time
+	var oldestLegacy, newestLegacy sql.NullTime
+	if legacyExists != nil {
+		legacyQuery := `
+			SELECT
+				COUNT(*) as total_messages,
+				MIN(received_at) as oldest_message,
+				MAX(received_at) as newest_message,
+				pg_total_relation_size('messages_archive_pre000139') as table_bytes
+			FROM messages_archive_pre000139`
+		if err := s.db.QueryRowContext(ctx, legacyQuery).Scan(
+			&stats.LegacyArchiveCount,
+			&oldestLegacy,
+			&newestLegacy,
+			&legacyBytes,
+		); err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("get legacy archive stats: %w", err)
+		}
+	}
+
+	// Combined totals across both archive tables
+	stats.ArchiveTableCount = stats.CanonicalArchiveCount + stats.LegacyArchiveCount
+	stats.CanonicalArchiveSize = prettyBytes(canonicalBytes)
+	stats.LegacyArchiveSize = prettyBytes(legacyBytes)
+	stats.ArchiveTableSize = prettyBytes(canonicalBytes + legacyBytes)
+
+	// Oldest/newest across both tables
+	for _, cand := range []sql.NullTime{oldestArchive, oldestLegacy} {
+		if cand.Valid && (stats.OldestArchiveMessage == nil || cand.Time.Before(*stats.OldestArchiveMessage)) {
+			t := cand.Time
+			stats.OldestArchiveMessage = &t
+		}
+	}
+	for _, cand := range []sql.NullTime{newestArchive, newestLegacy} {
+		if cand.Valid && (stats.NewestArchiveMessage == nil || cand.Time.After(*stats.NewestArchiveMessage)) {
+			t := cand.Time
+			stats.NewestArchiveMessage = &t
+		}
 	}
 
 	// Get partition info
@@ -449,8 +491,9 @@ func (s *ArchivalService) GetArchivalStats(ctx context.Context) (*ArchivalStats,
 			tablename,
 			pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
 		FROM pg_tables 
-		WHERE tablename LIKE 'messages_%' 
+		WHERE tablename LIKE 'messages_%'
 		  AND tablename != 'messages_archive'
+		  AND tablename != 'messages_archive_pre000139'
 		ORDER BY tablename`
 
 	rows, err := s.db.QueryContext(ctx, partitionQuery)
@@ -475,7 +518,9 @@ func (s *ArchivalService) GetArchivalStats(ctx context.Context) (*ArchivalStats,
 	return stats, nil
 }
 
-// ArchivalStats contains statistics about archived messages
+// ArchivalStats contains statistics about archived messages. The combined
+// ArchiveTableCount/ArchiveTableSize cover the canonical archive plus the
+// preserved pre-000139 legacy archive; the split fields expose each side.
 type ArchivalStats struct {
 	MainTableCount    int64
 	MainTableArchived int64
@@ -483,12 +528,33 @@ type ArchivalStats struct {
 	OldestMainMessage *time.Time
 	NewestMainMessage *time.Time
 
-	ArchiveTableCount    int64
-	ArchiveTableSize     string
-	OldestArchiveMessage *time.Time
-	NewestArchiveMessage *time.Time
+	ArchiveTableCount     int64
+	ArchiveTableSize      string
+	CanonicalArchiveCount int64
+	CanonicalArchiveSize  string
+	LegacyArchiveCount    int64
+	LegacyArchiveSize     string
+	OldestArchiveMessage  *time.Time
+	NewestArchiveMessage  *time.Time
 
 	Partitions []PartitionInfo
+}
+
+// prettyBytes renders a byte count in the pg_size_pretty style used by the
+// other size fields, computed client-side so combined totals stay numeric.
+func prettyBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d bytes", n)
+	}
+	units := []string{"kB", "MB", "GB", "TB", "PB"}
+	value := float64(n)
+	idx := -1
+	for value >= unit && idx < len(units)-1 {
+		value /= unit
+		idx++
+	}
+	return fmt.Sprintf("%.0f %s", value, units[idx])
 }
 
 // PartitionInfo contains information about a message partition

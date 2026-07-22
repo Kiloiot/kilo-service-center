@@ -4,9 +4,15 @@ package proxy
 
 import (
 	"context"
+	"net"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	grpcproxy "github.com/mwitkow/grpc-proxy/proxy"
+	"google.golang.org/grpc/metadata"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
@@ -19,12 +25,119 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// gatewayAddr returns the gateway address from env or default.
-func gatewayAddr() string {
-	if addr := os.Getenv("GATEWAY_ADDR"); addr != "" {
-		return addr
+// startMatrixGateway starts a self-contained in-process gateway: the
+// production SelectUpstream routing and metadata sanitization in front of
+// fake core/identity upstreams (which answer NotFound for every routed call,
+// so anything that reaches them is provably not Unimplemented), with the real
+// auth interceptor enabled and no credentials supplied. The matrix therefore
+// verifies routing, internal-service blocking, and auth gating without any
+// external stack.
+// matrixCoreStub serves the public CoreService surface the matrix asserts on.
+type matrixCoreStub struct {
+	pb.UnimplementedCoreServiceServer
+}
+
+func (matrixCoreStub) GetReleaseInfo(_ context.Context, _ *emptypb.Empty) (*pb.ReleaseInfo, error) {
+	return &pb.ReleaseInfo{Version: "matrix-fake"}, nil
+}
+
+// matrixCompatCoreStub serves the KiloCenterService compat methods routed to core.
+type matrixCompatCoreStub struct {
+	pb.UnimplementedKiloCenterServiceServer
+}
+
+func (matrixCompatCoreStub) GetReleaseInfo(_ context.Context, _ *emptypb.Empty) (*pb.ReleaseInfo, error) {
+	return &pb.ReleaseInfo{Version: "matrix-fake"}, nil
+}
+
+// matrixIdentityStub serves the public IdentityService surface; the other
+// public methods answer a domain error (never Unimplemented).
+type matrixIdentityStub struct {
+	pb.UnimplementedIdentityServiceServer
+}
+
+func (matrixIdentityStub) GetAuthSettings(_ context.Context, _ *pb.GetAuthSettingsRequest) (*pb.GetAuthSettingsResponse, error) {
+	return &pb.GetAuthSettingsResponse{Settings: &pb.AuthSettings{}}, nil
+}
+
+func (matrixIdentityStub) Login(_ context.Context, _ *pb.LoginRequest) (*pb.LoginResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func (matrixIdentityStub) RefreshTokens(_ context.Context, _ *pb.RefreshTokensRequest) (*pb.RefreshTokensResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func (matrixIdentityStub) ExchangeOIDC(_ context.Context, _ *pb.ExchangeOIDCRequest) (*pb.LoginResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func (matrixIdentityStub) ExchangeOAuth2(_ context.Context, _ *pb.ExchangeOAuth2Request) (*pb.LoginResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func (matrixIdentityStub) RegisterAccount(_ context.Context, _ *pb.RegisterAccountRequest) (*pb.LoginResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func startMatrixGateway(t *testing.T) string {
+	t.Helper()
+	logger.Initialize("error", "text")
+	l := logger.Get()
+
+	fakeUpstream := func(register func(*grpc.Server)) net.Listener {
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		srv := grpc.NewServer(grpc.UnknownServiceHandler(func(_ interface{}, _ grpc.ServerStream) error {
+			return status.Error(codes.NotFound, "matrix fake upstream")
+		}))
+		register(srv)
+		go func() { _ = srv.Serve(lis) }()
+		t.Cleanup(srv.GracefulStop)
+		return lis
 	}
-	return "localhost:9090"
+
+	coreLis := fakeUpstream(func(srv *grpc.Server) {
+		pb.RegisterCoreServiceServer(srv, &matrixCoreStub{})
+		pb.RegisterKiloCenterServiceServer(srv, &matrixCompatCoreStub{})
+	})
+	identityLis := fakeUpstream(func(srv *grpc.Server) {
+		pb.RegisterIdentityServiceServer(srv, &matrixIdentityStub{})
+	})
+
+	dial := func(addr string) *grpc.ClientConn {
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = conn.Close() })
+		return conn
+	}
+	coreConn := dial(coreLis.Addr().String())
+	identityConn := dial(identityLis.Addr().String())
+
+	authInterceptor, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	require.NoError(t, err)
+	_ = l
+
+	director := func(ctx context.Context, fullMethod string) (context.Context, grpc.ClientConnInterface, error) {
+		upstream, selErr := SelectUpstream(fullMethod, coreConn, identityConn)
+		if selErr != nil {
+			return nil, nil, selErr
+		}
+		outMD := SanitizeAndInject(ctx)
+		return metadata.NewOutgoingContext(ctx, outMD), upstream, nil
+	}
+
+	gatewayServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(authInterceptor.UnaryInterceptor()),
+		grpc.ChainStreamInterceptor(authInterceptor.StreamInterceptor()),
+		grpc.UnknownServiceHandler(grpcproxy.TransparentHandler(director)),
+	)
+	gatewayLis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	go func() { _ = gatewayServer.Serve(gatewayLis) }()
+	t.Cleanup(gatewayServer.GracefulStop)
+
+	return gatewayLis.Addr().String()
 }
 
 // publicMethods that should return OK or domain error (NOT Unimplemented) via gateway.
@@ -102,7 +215,21 @@ var identityServiceUnaryMethods = []string{
 }
 
 func TestVerificationMatrix(t *testing.T) {
-	conn, err := grpc.NewClient(gatewayAddr(),
+	runVerificationMatrix(t, startMatrixGateway(t))
+}
+
+// TestVerificationMatrixExternal runs the same matrix against a running
+// gateway (full-stack smoke); it skips unless GATEWAY_ADDR is set.
+func TestVerificationMatrixExternal(t *testing.T) {
+	addr := os.Getenv("GATEWAY_ADDR")
+	if addr == "" {
+		t.Skip("GATEWAY_ADDR not set; external gateway matrix skipped (in-process matrix covers routing)")
+	}
+	runVerificationMatrix(t, addr)
+}
+
+func runVerificationMatrix(t *testing.T, addr string) {
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()

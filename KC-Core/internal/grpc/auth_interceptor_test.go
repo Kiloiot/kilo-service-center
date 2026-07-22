@@ -14,6 +14,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -97,7 +99,7 @@ func TestAuthInterceptor_OpaqueToken_CallsAPIKeyAuth(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: grpcerrors.BearerPrefix + rawToken,
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler, captured := captureHandler()
 	_, err = ai.UnaryInterceptor()(ctx, nil, nonPublicInfo(), handler)
@@ -136,7 +138,7 @@ func TestAuthInterceptor_JWTShaped_NotAPIKeyFallback(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: grpcerrors.BearerPrefix + jwtToken,
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -180,7 +182,7 @@ func TestAuthInterceptor_APIKey_ValidUserKey(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: grpcerrors.BearerPrefix + rawToken,
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler, captured := captureHandler()
 	_, err = ai.UnaryInterceptor()(ctx, nil, nonPublicInfo(), handler)
@@ -243,7 +245,7 @@ func TestAuthInterceptor_APIKey_ValidServiceAccountKey(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: grpcerrors.BearerPrefix + rawToken,
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler, captured := captureHandler()
 	_, err = ai.UnaryInterceptor()(ctx, nil, nonPublicInfo(), handler)
@@ -294,7 +296,7 @@ func TestAuthInterceptor_APIKey_Expired(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: grpcerrors.BearerPrefix + rawToken,
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -336,7 +338,7 @@ func TestAuthInterceptor_APIKey_Inactive(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: grpcerrors.BearerPrefix + rawToken,
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -375,7 +377,7 @@ func TestAuthInterceptor_APIKey_UnknownHash(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: grpcerrors.BearerPrefix + rawToken,
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -412,7 +414,7 @@ func TestAuthInterceptor_OpaqueToken_NoAPIKeyAuth(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: grpcerrors.BearerPrefix + opaqueToken,
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -447,7 +449,7 @@ func TestAuthInterceptor_AuthDisabled(t *testing.T) {
 		}
 		return "ok", nil
 	}
-	_, err = ai.UnaryInterceptor()(context.Background(), nil, nonPublicInfo(), handler)
+	_, err = ai.UnaryInterceptor()(testutil.TestContext(), nil, nonPublicInfo(), handler)
 	if err != nil {
 		t.Fatalf("unexpected error when auth disabled: %v", err)
 	}
@@ -466,7 +468,7 @@ func TestAuthInterceptor_MissingMetadata(t *testing.T) {
 		t.Error("handler should not be called")
 		return nil, nil
 	}
-	_, err = ai.UnaryInterceptor()(context.Background(), nil, nonPublicInfo(), handler)
+	_, err = ai.UnaryInterceptor()(testutil.TestContext(), nil, nonPublicInfo(), handler)
 	if err == nil {
 		t.Fatal("expected error for missing metadata")
 	}
@@ -490,7 +492,7 @@ func TestAuthInterceptor_MissingBearerPrefix(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyAuthorization: "NotBearer sometoken",
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")

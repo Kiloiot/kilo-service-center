@@ -38,7 +38,7 @@ func (s *CoreService) GenerateCertificate(ctx context.Context, req *pb.GenerateC
 	// minting a certificate for any EUI.
 	tenantID, tenantErr := GetTenantFromContext(ctx)
 	if tenantErr != nil || tenantID <= 0 {
-		s.log.WarnContext(ctx, "certificate issuance requires tenant context", "bs_eui", req.BsEui, "error", tenantErr)
+		s.log.WarnContext(ctx, grpcerrors.LogCertIssuanceRequiresTenant, "bs_eui", req.BsEui, "error", tenantErr)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenMissingTenantCtx),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenMissingTenantCtx))
 	}
@@ -52,7 +52,7 @@ func (s *CoreService) GenerateCertificate(ctx context.Context, req *pb.GenerateC
 
 	resp, err := s.certSvc.GenerateCertificate(ctx, certReq)
 	if err != nil {
-		s.log.ErrorContext(ctx, "generate certificate failed", "bs_eui", req.BsEui, "error", err)
+		s.log.ErrorContext(ctx, grpcerrors.LogGenerateCertificateFailed, "bs_eui", req.BsEui, "error", err)
 
 		// Typed catalog errors survive the service boundary: match on the
 		// token, never on error text
@@ -236,7 +236,7 @@ func (s *CoreService) GetServerCertificateStatus(ctx context.Context, _ *pb.GetS
 
 	certStatus, err := s.certSvc.GetServerCertificateStatus(ctx)
 	if err != nil {
-		s.log.ErrorContext(ctx, "get server certificate status failed", "error", err)
+		s.log.ErrorContext(ctx, grpcerrors.LogGetServerCertStatusFailed, "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCertStatusFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCertStatusFailed))
 	}

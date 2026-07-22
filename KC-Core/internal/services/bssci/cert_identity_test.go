@@ -15,6 +15,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // makeTestCert creates a real self-signed x509 certificate with the given CN.
@@ -79,7 +81,7 @@ func TestCertIdentity_EUICN_ResolvesRegisteredStation(t *testing.T) {
 	}
 	resolver := NewCertificateIdentityResolver(repo, orgResolver, &mockLoggerForDispatch{})
 
-	identity, err := resolver.ResolveCertificateIdentity(context.Background(), makeTestCert(t, "CA-FE-CA-FE-CA-FE-CA-FE"))
+	identity, err := resolver.ResolveCertificateIdentity(testutil.TestContext(), makeTestCert(t, "CA-FE-CA-FE-CA-FE-CA-FE"))
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), identity.TenantID)
@@ -95,7 +97,7 @@ func TestCertIdentity_EUICN_UnregisteredStationRejected(t *testing.T) {
 	repo := &certIdentityBSRepo{getErr: errors.New("not found")}
 	resolver := NewCertificateIdentityResolver(repo, &certIdentityOrgResolver{}, &mockLoggerForDispatch{})
 
-	_, err := resolver.ResolveCertificateIdentity(context.Background(), makeTestCert(t, "CA-FE-CA-FE-CA-FE-CA-FE"))
+	_, err := resolver.ResolveCertificateIdentity(testutil.TestContext(), makeTestCert(t, "CA-FE-CA-FE-CA-FE-CA-FE"))
 
 	require.Error(t, err, "an unregistered EUI CN must not resolve")
 }
@@ -108,7 +110,7 @@ func TestCertIdentity_OrgCN_DelegatesToOrgResolver(t *testing.T) {
 	orgResolver := &certIdentityOrgResolver{resolveCertOrg: orgID, resolveCertTenant: 9}
 	resolver := NewCertificateIdentityResolver(&mockBaseStationRepo{}, orgResolver, &mockLoggerForDispatch{})
 
-	identity, err := resolver.ResolveCertificateIdentity(context.Background(), makeTestCert(t, "org-"+orgID.String()))
+	identity, err := resolver.ResolveCertificateIdentity(testutil.TestContext(), makeTestCert(t, "org-"+orgID.String()))
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, orgResolver.resolveCertCalls, "org CNs delegate to ResolveCert")
@@ -123,7 +125,7 @@ func TestCertIdentity_OrgCN_DelegateFailurePropagates(t *testing.T) {
 	orgResolver := &certIdentityOrgResolver{resolveCertErr: errors.New("unknown org")}
 	resolver := NewCertificateIdentityResolver(&mockBaseStationRepo{}, orgResolver, &mockLoggerForDispatch{})
 
-	_, err := resolver.ResolveCertificateIdentity(context.Background(), makeTestCert(t, "org-unknown"))
+	_, err := resolver.ResolveCertificateIdentity(testutil.TestContext(), makeTestCert(t, "org-unknown"))
 
 	require.Error(t, err)
 }

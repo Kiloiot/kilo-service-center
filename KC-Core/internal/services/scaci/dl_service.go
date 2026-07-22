@@ -152,7 +152,7 @@ func (dls *dlService) QueueDownlink(
 	}
 
 	// Success - use queuedQueId from scheduler (may differ from request)
-	dls.logger.Debug(scaci.LogSCACIDLDataQueueProcessed,
+	dls.logger.DebugContext(ctx, scaci.LogSCACIDLDataQueueProcessed,
 		"queId", queuedQueId,
 		"bsEui", bsEui,
 		"epEui", req.EpEui)
@@ -221,7 +221,7 @@ func (dls *dlService) RevokeDownlink(
 	}
 
 	// Success
-	dls.logger.Debug(scaci.LogSCACIDLRevokeSuccessful,
+	dls.logger.DebugContext(ctx, scaci.LogSCACIDLRevokeSuccessful,
 		"queId", queId,
 		"bsEui", bsEui,
 		"tenantId", tenantID)

@@ -1,16 +1,17 @@
 package bssci
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestVMHandlerSignatures validates all VM handler function signatures
@@ -47,7 +48,7 @@ func TestVMHandlerSignatures(t *testing.T) {
 			MACType:       1,
 			Timestamp:     time.Now(),
 		}
-		ctx := context.Background()
+		ctx := testutil.TestContext()
 		err := server.statusSvc.RecordPendingOperation(ctx, session, -1, pendingOp, session.DbSessionID)
 		require.NoError(t, err, "Failed to record pending operation")
 
@@ -77,7 +78,7 @@ func TestVMHandlerSignatures(t *testing.T) {
 			MACType:       1,
 			Timestamp:     time.Now(),
 		}
-		ctx := context.Background()
+		ctx := testutil.TestContext()
 		err := server.statusSvc.RecordPendingOperation(ctx, session, -2, pendingOp, session.DbSessionID)
 		require.NoError(t, err, "Failed to record pending operation")
 
@@ -107,7 +108,7 @@ func TestVMHandlerSignatures(t *testing.T) {
 			Endpoint:      []byte{0, 0, 0, 0, 0, 0, 0, 1},
 			Timestamp:     time.Now(),
 		}
-		ctx := context.Background()
+		ctx := testutil.TestContext()
 		err := server.statusSvc.RecordPendingOperation(ctx, session, -3, pendingOp, session.DbSessionID)
 		require.NoError(t, err, "Failed to record pending operation")
 
@@ -138,7 +139,7 @@ func TestVMHandlerSignatures(t *testing.T) {
 // Only unsolicited BS-initiated operations (like handleVMDLData) return unsupported errors
 func TestVMCommunityEditionStubs(t *testing.T) {
 	server := createTestServerWithSession()
-	conn := &testutil.TestConn{Encoding: "msgpack"}
+	conn := &bsscitest.TestConn{Encoding: "msgpack"}
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
 			BaseStationEUI: TestEpEui01,
@@ -295,7 +296,7 @@ func TestVMActiveTypesTracking(t *testing.T) {
 			MACType:       1,
 			Timestamp:     time.Now(),
 		}
-		ctx := context.Background()
+		ctx := testutil.TestContext()
 		err := server.statusSvc.RecordPendingOperation(ctx, session, -1, pendingOp, session.DbSessionID)
 		require.NoError(t, err, "Failed to record pending operation")
 
@@ -323,7 +324,7 @@ func TestVMActiveTypesTracking(t *testing.T) {
 			MACType:       1,
 			Timestamp:     time.Now(),
 		}
-		ctx := context.Background()
+		ctx := testutil.TestContext()
 		err := server.statusSvc.RecordPendingOperation(ctx, session, -2, pendingOp, session.DbSessionID)
 		require.NoError(t, err, "Failed to record pending operation")
 
@@ -349,7 +350,7 @@ func TestVMActiveTypesTracking(t *testing.T) {
 			Endpoint:      []byte{0, 0, 0, 0, 0, 0, 0, 1},
 			Timestamp:     time.Now(),
 		}
-		ctx := context.Background()
+		ctx := testutil.TestContext()
 		err := server.statusSvc.RecordPendingOperation(ctx, session, -3, pendingOp, session.DbSessionID)
 		require.NoError(t, err, "Failed to record pending operation")
 

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	bssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
@@ -21,9 +23,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // --- Mock Implementations for Detach Propagate Complete Integration Tests ---
@@ -846,9 +845,9 @@ func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
 	storageImpl := &detPrpCapturingStorage{miotyMessages: msgRepo, endpointRepo: endpointRepo, pendingOps: pendingOps}
 	eventStore := &detPrpCapturingEventStore{}
 
-	// Zap observer logger so the test can assert the failure log token.
-	core, recorded := observer.New(zapcore.DebugLevel)
-	testLogger := logger.FromZap(zap.New(core))
+	// Recording logger so the test can assert the failure log token.
+	recorded := bsscitest.NewRecordingLogger()
+	testLogger := recorded
 
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
 	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
@@ -897,8 +896,8 @@ func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
 
 	// Log assertion: the handler must emit LogBSSCIFailedToSendDetachPropagateComplete at error level.
 	var found bool
-	for _, entry := range recorded.All() {
-		if entry.Level == zapcore.ErrorLevel && entry.Message == bssci.LogBSSCIFailedToSendDetachPropagateComplete {
+	for _, entry := range recorded.AllAtLeast("DEBUG") {
+		if entry.Level == "ERROR" && entry.Message == bssci.LogBSSCIFailedToSendDetachPropagateComplete {
 			found = true
 			break
 		}

@@ -1,12 +1,13 @@
 package bssci_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"testing"
 	"time"
+
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -14,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestProtocolEdgeCases verifies BSSCI §2.4 and §2.5 edge case handling
@@ -813,7 +814,7 @@ func TestConResumeCountersIndependentlyOptional(t *testing.T) {
 // just field conversion logic without attach handler provisioning dependencies.
 func TestTypeBytesIntegration(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	tests := []struct {
 		name         string
@@ -912,8 +913,8 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 		for _, encoding := range []string{"json", "msgpack"} {
 			t.Run(tt.desc+"_"+encoding, func(t *testing.T) {
 				// Use observing logger to verify WARN logs for unknown fields
-				observedCore, observedLogs := observer.New(zap.WarnLevel)
-				testLogger := logger.FromZap(zap.New(observedCore))
+				observedLogs := bsscitest.NewRecordingLogger() // captures WARN+
+				testLogger := observedLogs
 				mockConn := &edgeMockConn{encoding: encoding}
 				mockConn.Reset()
 
@@ -955,8 +956,8 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 				}
 
 				// Verify unknown field warnings were logged
-				allLogs := observedLogs.All()
-				warnLogs := observedLogs.FilterMessage("Unknown field in message - dropping for forward compatibility").All()
+				allLogs := observedLogs.AllAtLeast("WARN")
+				warnLogs := observedLogs.FilterMessage("Unknown field in message - dropping for forward compatibility")
 				require.GreaterOrEqual(t, len(warnLogs), 1,
 					"%s should log WARN for unknown fields (found %d WARN logs total, %d 'unknown field' logs)",
 					tt.desc, len(allLogs), len(warnLogs))
@@ -964,7 +965,7 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 				// Verify log contains command name in context
 				foundCommandLog := false
 				for _, log := range warnLogs {
-					fields := log.ContextMap()
+					fields := log.FieldMap()
 					if cmd, ok := fields["command"].(string); ok && cmd == tt.command {
 						foundCommandLog = true
 						break

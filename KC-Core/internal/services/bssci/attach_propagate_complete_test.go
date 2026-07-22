@@ -9,6 +9,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestAttachPropagateCompletionMetadataExtraction validates that the attPrpCmp
@@ -162,7 +164,7 @@ func TestAttachPropagateCompletionPersistence(t *testing.T) {
 	}
 
 	// Call mock store
-	err := mockStore.CreateAttachPropagateMessage(context.Background(), completionMsg)
+	err := mockStore.CreateAttachPropagateMessage(testutil.TestContext(), completionMsg)
 	require.NoError(t, err)
 
 	// Verify message was captured
@@ -201,7 +203,7 @@ func TestAttachPropagateCompletionNoPendingOp(t *testing.T) {
 		Status:      pkgbssci.EventStatusNew,
 	}
 
-	err := mockEventStore.CreateEvent(context.Background(), completionEvent)
+	err := mockEventStore.CreateEvent(testutil.TestContext(), completionEvent)
 	require.NoError(t, err)
 
 	// Verify event was created

@@ -128,7 +128,6 @@ func TestValidateAllCatalogCommands(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
@@ -157,7 +156,6 @@ func TestValidationMissingCommand(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
@@ -192,7 +190,6 @@ func TestValidationMissingOpId(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
@@ -278,7 +275,6 @@ func TestValidationExtraField(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
@@ -314,7 +310,6 @@ func TestValidationUnknownCommand(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
@@ -350,7 +345,6 @@ func TestValidationMarshalFailure(t *testing.T) {
 		logger: logger,
 	}
 
-	server.broadcastFn = server.SendAttachPropagateToAll
 	_ = server
 
 	// Create a struct with unmarshalable field (channel type)
@@ -386,7 +380,6 @@ func TestValidationStructMessages(t *testing.T) {
 		logger: logger,
 	}
 
-	server.broadcastFn = server.SendAttachPropagateToAll
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
 			ID:          "test-session",

@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -706,7 +708,7 @@ func TestPersistHeartbeatAsync_CallsUpdateHeartbeat(t *testing.T) {
 		TenantID: 42,
 	}
 
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	mockRepo.waitForCompletion()
 
 	assert.True(t, mockRepo.wasHeartbeatCalled(), "UpdateHeartbeat should be called")
@@ -728,7 +730,7 @@ func TestPersistHeartbeatAsync_CorrectIDs(t *testing.T) {
 		TenantID: expectedTenantID,
 	}
 
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	mockRepo.waitForCompletion()
 
 	tenantID, sessionID := mockRepo.getLastHeartbeatIDs()
@@ -745,7 +747,7 @@ func TestPersistHeartbeatAsync_SkipsNilSession(t *testing.T) {
 	svc := NewSessionPersistence(mockRepo, log)
 
 	// Should not panic
-	svc.PersistHeartbeatAsync(context.Background(), nil)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), nil)
 
 	// Give goroutine time to execute if it were to (it shouldn't)
 	time.Sleep(50 * time.Millisecond)
@@ -766,7 +768,7 @@ func TestPersistHeartbeatAsync_SkipsZeroID(t *testing.T) {
 		TenantID: 42,
 	}
 
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 
 	// Give goroutine time to execute if it were to (it shouldn't)
 	time.Sleep(50 * time.Millisecond)
@@ -790,7 +792,7 @@ func TestPersistHeartbeatAsync_NonBlocking(t *testing.T) {
 	}
 
 	start := time.Now()
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	elapsed := time.Since(start)
 
 	// Should return almost immediately (not wait for 500ms mock delay)
@@ -826,7 +828,7 @@ func TestPersistHeartbeatAsync_LogsErrorOnFailure(t *testing.T) {
 	}
 
 	// Should not panic even with error
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	mockRepo.waitForCompletion()
 
 	// Error is logged but method completes normally
@@ -851,7 +853,7 @@ func TestPersistHeartbeatAsync_WarnContextFields(t *testing.T) {
 		TenantID: expectedTenantID,
 	}
 
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	mockRepo.waitForCompletion()
 
 	// Wait for WarnContext call (deterministic)

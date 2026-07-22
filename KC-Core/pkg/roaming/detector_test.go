@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // Mock for EndpointOwnershipResolver
@@ -111,7 +113,7 @@ func TestDetector_DetectRoaming(t *testing.T) {
 			detector := NewDetector(config, mockResolver, mockRecorder)
 
 			isRoaming, ownerTenantID, err := detector.DetectRoaming(
-				context.Background(),
+				testutil.TestContext(),
 				tt.epEui,
 				tt.servingTenantID,
 			)
@@ -178,7 +180,7 @@ func TestDetector_ValidateRoamingAllowed(t *testing.T) {
 			config := &DetectorConfig{}
 			detector := NewDetector(config, mockResolver, mockRecorder)
 
-			err := detector.ValidateRoamingAllowed(context.Background(), tt.ownerTenantID, tt.servingTenantID)
+			err := detector.ValidateRoamingAllowed(testutil.TestContext(), tt.ownerTenantID, tt.servingTenantID)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -239,9 +241,9 @@ func TestDetector_RecordEvents(t *testing.T) {
 
 			var err error
 			if tt.isAttach {
-				err = detector.RecordAttachEvent(context.Background(), tt.epEui, 1, 2, []byte{0xAA, 0xBB})
+				err = detector.RecordAttachEvent(testutil.TestContext(), tt.epEui, 1, 2, []byte{0xAA, 0xBB})
 			} else {
-				err = detector.RecordDetachEvent(context.Background(), tt.epEui, 1, 2, []byte{0xCC, 0xDD})
+				err = detector.RecordDetachEvent(testutil.TestContext(), tt.epEui, 1, 2, []byte{0xCC, 0xDD})
 			}
 
 			if tt.wantErr {
@@ -270,7 +272,7 @@ func TestDetector_CacheIntegration(t *testing.T) {
 	}
 	detector := NewDetector(config, mockResolver, mockRecorder)
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// First call - should hit database
 	isRoaming1, owner1, err1 := detector.DetectRoaming(ctx, epEui, 2)
@@ -316,7 +318,7 @@ func TestDetector_Metrics(t *testing.T) {
 	detector := NewDetector(config, mockResolver, mockRecorder)
 
 	// Perform detection
-	_, _, err := detector.DetectRoaming(context.Background(), epEui, 2)
+	_, _, err := detector.DetectRoaming(testutil.TestContext(), epEui, 2)
 	require.NoError(t, err)
 
 	// Get metrics

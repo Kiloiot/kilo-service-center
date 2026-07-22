@@ -21,31 +21,13 @@ import (
 // mockConnectionService implements ConnectionService for testing error catalog behavior
 type mockConnectionService struct {
 	shouldFail      bool
-	getCalled       bool
 	globalCalled    bool
 	registerCalled  bool
 	tenantID        int64 // tenant ID returned by GetBaseStationGlobal (default 1)
 	lastRegisterCtx context.Context
 }
 
-func (m *mockConnectionService) GetBaseStation(_ context.Context, _ [8]byte, _ *basestation.ConnectionManager) (*basestation.BaseStation, error) {
-	m.getCalled = true
-	if m.shouldFail {
-		return nil, errors.New("base station not found in database")
-	}
-	tid := m.tenantID
-	if tid == 0 {
-		tid = 1
-	}
-	return &basestation.BaseStation{
-		ID:       1,
-		TenantID: tid,
-		EUI:      [8]byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF},
-		Name:     "Test Base Station",
-	}, nil
-}
-
-func (m *mockConnectionService) GetBaseStationGlobal(_ context.Context, _ [8]byte, _ *basestation.ConnectionManager) (*basestation.BaseStation, error) {
+func (m *mockConnectionService) GetBaseStationGlobal(_ context.Context, _ [8]byte) (*basestation.BaseStation, error) {
 	m.globalCalled = true
 	if m.shouldFail {
 		return nil, errors.New("base station not found in database")
@@ -66,7 +48,7 @@ func (m *mockConnectionService) SaveSessionEncoding(_ context.Context, _ int64, 
 	return nil
 }
 
-func (m *mockConnectionService) RegisterConnection(ctx context.Context, _ *bssci.Session, _ *basestation.BaseStation, _ *basestation.ConnectionManager) error {
+func (m *mockConnectionService) RegisterConnection(ctx context.Context, _ *bssci.Session, _ *basestation.BaseStation) error {
 	m.registerCalled = true
 	m.lastRegisterCtx = ctx
 	return nil

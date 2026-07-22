@@ -15,8 +15,6 @@ func NewServerForTesting(log logger.Logger) *Server {
 		sessions: make(map[string]*Session),
 		// mu relies on zero-value initialization (valid for sync.RWMutex)
 	}
-	// Initialize broadcast hook (tests can override)
-	s.broadcastFn = s.SendAttachPropagateToAll
 	return s
 }
 

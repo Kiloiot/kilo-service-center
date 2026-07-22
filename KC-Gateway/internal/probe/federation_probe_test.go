@@ -4,6 +4,7 @@ package probe
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/binary"
 	"fmt"
@@ -78,13 +79,23 @@ func ceDBDSN() string {
 	return "postgres://kilocenter:changeme@localhost:5433/kilocenter_fed_ce?sslmode=disable"
 }
 
-// dialBSSCI opens a plaintext TCP connection to the given BSSCI address.
-// TLS dial is not used in CE test config, which runs plaintext for simplicity.
-func dialBSSCIPlain(t *testing.T, addr string) net.Conn {
+// dialBSSCI opens a mutual-TLS connection to the given BSSCI address using
+// the shared probe client certificate (BSSCI requires mutual TLS).
+func dialBSSCI(t *testing.T, addr string) net.Conn {
 	t.Helper()
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	conn, err := tls.DialWithDialer(
+		&net.Dialer{Timeout: 5 * time.Second},
+		"tcp", addr, bssciTLSConfig(t))
 	require.NoError(t, err, "dial BSSCI at %s", addr)
 	return conn
+}
+
+// euiBytes renders an EUI as the 8-byte big-endian BYTEA value the messages
+// schema stores.
+func euiBytes(eui uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, eui)
+	return b
 }
 
 // seedEndpointOn ensures an endpoint with the given EUI exists on the KC-Core at coreAddr.
@@ -144,22 +155,59 @@ func openDB(t *testing.T, dsn string) *sql.DB {
 	return db
 }
 
+// seedBaseStationOn ensures a base station with the given EUI exists on the
+// KC-Core at coreAddr; the BSSCI connect handler only accepts registered
+// stations.
+func seedBaseStationOn(t *testing.T, coreAddr string, bsEUI uint64) {
+	t.Helper()
+	conn, err := grpc.NewClient(coreAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err, "connect to KC-Core at %s", coreAddr)
+	defer func() { _ = conn.Close() }()
+
+	euiHex := fmt.Sprintf("%016x", bsEUI)
+	md := metadata.Pairs(
+		grpcconst.MetadataKeyInternalTenantID, "1",
+		grpcconst.MetadataKeyInternalOrgID, "11111111-2222-3333-4444-555555555555",
+		grpcconst.MetadataKeyInternalUserID, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+	)
+	ctx := metadata.NewOutgoingContext(context.Background(), md)
+
+	var resp pb.BaseStation
+	err = conn.Invoke(ctx, "/kilocenter.api.v1.CoreService/CreateBaseStation",
+		&pb.CreateBaseStationRequest{
+			Basestation: &pb.BaseStation{
+				BsEui: euiHex,
+				Name:  fmt.Sprintf("probe-fed-bs-%s", euiHex),
+			},
+		}, &resp)
+	if err != nil {
+		st, _ := status.FromError(err)
+		if st.Code() != codes.AlreadyExists {
+			t.Fatalf("seed base station %s on %s: %v", euiHex, coreAddr, err)
+		}
+	}
+}
+
 // bssciConnect performs BSSCI version negotiation (con → conRsp → conCmp) using bsEUI.
+// The station is registered on the CE core first, and every call starts a new
+// session so operation counters never resume from a previous run.
 // Returns the open connection for subsequent operations.
 func bssciConnect(t *testing.T, addr string, bsEUI uint64) net.Conn {
 	t.Helper()
-	conn := dialBSSCIPlain(t, addr)
+	seedBaseStationOn(t, ceCoreAddr(), bsEUI)
+	conn := dialBSSCI(t, addr)
 
 	conReq := mioty.Connect{
 		BaseMessage: mioty.BaseMessage{CommandType: mioty.CmdConnect, OpId: 0},
 		Version:     mioty.MIOTYProtocolVersion,
 		BsEui:       bsEUI,
 		Bidi:        true,
-		SnBsUuid:    [16]byte{byte(bsEUI)},
+		SnBsUuid:    freshSessionUUID(),
 	}
 	writeFrame(t, conn, conReq)
 
-	resp := readFrame(t, conn)
+	resp := awaitFrame(t, conn, mioty.CmdConnectResponse)
 	require.Equal(t, mioty.CmdConnectResponse, resp["command"],
 		"expected conRsp, got %v", resp["command"])
 
@@ -177,14 +225,14 @@ func bssciSendULData(t *testing.T, conn net.Conn, epEUI uint64, opID int64, user
 		BaseMessage: mioty.BaseMessage{CommandType: mioty.CmdULData, OpId: opID},
 		EpEui:       epEUI,
 		RxTime:      time.Now().UnixNano(),
-		PacketCnt:   1,
+		PacketCnt:   freshPacketCnt(),
 		Snr:         12.0,
 		Rssi:        -75.0,
 		UserData:    userData,
 	}
 	writeFrame(t, conn, ul)
 
-	resp := readFrame(t, conn)
+	resp := awaitFrame(t, conn, mioty.CmdULDataResponse)
 	require.Equal(t, mioty.CmdULDataResponse, resp["command"],
 		"expected ulDataRsp, got %v", resp["command"])
 
@@ -198,7 +246,7 @@ func bssciSendULData(t *testing.T, conn net.Conn, epEUI uint64, opID int64, user
 func bssciSendULDataWithFrame(t *testing.T, conn net.Conn, ul mioty.ULData) {
 	t.Helper()
 	writeFrame(t, conn, ul)
-	resp := readFrame(t, conn)
+	resp := awaitFrame(t, conn, mioty.CmdULDataResponse)
 	require.Equal(t, mioty.CmdULDataResponse, resp["command"],
 		"expected ulDataRsp, got %v", resp["command"])
 	writeFrame(t, conn, mioty.ULDataComplete{
@@ -347,7 +395,7 @@ func TestFederationRelayUnknownULData(t *testing.T) {
 		BaseMessage: mioty.BaseMessage{CommandType: mioty.CmdULData, OpId: 1},
 		EpEui:       epEUI,
 		RxTime:      time.Now().UnixNano(),
-		PacketCnt:   1,
+		PacketCnt:   freshPacketCnt(),
 		Snr:         12.0,
 		Rssi:        -75.0,
 		UserData:    payload,
@@ -384,14 +432,14 @@ func TestFederationRelayUnknownULData(t *testing.T) {
 	require.Equal(t, int64(bsEUI), ceBsEUI) //nolint:gosec
 
 	// ECE messages: verify the relayed uplink was stored with the synthetic BS EUI and correct payload.
-	var msgBsEUI int64
+	var msgBsEUI []byte
 	var msgPayload []byte
 	err = eceDB.QueryRow(
 		`SELECT m.bs_eui, m.user_data FROM messages m WHERE m.id = $1::uuid`,
 		messageIDStr.String,
 	).Scan(&msgBsEUI, &msgPayload)
 	require.NoError(t, err, "ECE message must exist for message_id %s", messageIDStr.String)
-	require.Equal(t, int64(0x7000000000000001), msgBsEUI, "ECE message must carry synthetic BS EUI") //nolint:gosec
+	require.Equal(t, euiBytes(0x7000000000000001), msgBsEUI, "ECE message must carry synthetic BS EUI")
 	require.Equal(t, payload, msgPayload)
 
 	// ECE messages: verify uplink flags were forwarded correctly.
@@ -420,7 +468,7 @@ func TestFederationRelayUnknownULData(t *testing.T) {
 	var ceCount int
 	err = ceDB.QueryRow(
 		`SELECT COUNT(*) FROM messages WHERE ep_eui = $1 AND created_at >= $2`,
-		int64(epEUI), runStart, //nolint:gosec
+		euiBytes(epEUI), runStart,
 	).Scan(&ceCount)
 	require.NoError(t, err)
 	require.Equal(t, 0, ceCount, "CE should not store messages for endpoints it does not own")
@@ -466,7 +514,7 @@ func TestFederationKnownEndpointStaysLocal(t *testing.T) {
 		var count int
 		err := ceDB.QueryRow(
 			`SELECT COUNT(*) FROM messages WHERE ep_eui = $1 AND created_at >= $2`,
-			int64(epEUI), runStart, //nolint:gosec
+			euiBytes(epEUI), runStart,
 		).Scan(&count)
 		return err == nil && count > 0
 	})
@@ -658,7 +706,7 @@ func TestFederationRevocationStopsRelay(t *testing.T) {
 	// Send an uplink after revocation; it must stay pending and never reach ECE.
 	postRevokePayload := uniquePayload([]byte{0xCA, 0xFE})
 
-	bssciSendULData(t, bssciConn, epEUI, 5, postRevokePayload)
+	bssciSendULData(t, bssciConn, epEUI, 11, postRevokePayload)
 	time.Sleep(5 * time.Second)
 
 	var outboxRelayID string

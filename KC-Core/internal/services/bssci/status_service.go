@@ -48,7 +48,7 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 	// operation whose recovery record does not exist.
 	operationData, err := json.Marshal(op.Message)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "Failed to marshal pending operation",
+		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToMarshalPendingOperation,
 			"error", err,
 			"opId", opId)
 		return err
@@ -58,7 +58,7 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 	if op.Metadata != nil {
 		metadataBytes, err := json.Marshal(op.Metadata)
 		if err != nil {
-			s.logger.ErrorContext(ctx, "Failed to marshal pending operation metadata",
+			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToMarshalPendingOperationMetadata,
 				"error", err,
 				"opId", opId)
 			return err
@@ -92,7 +92,7 @@ func (s *statusService) RecordPendingOperations(ctx context.Context, session *bs
 	for _, op := range ops {
 		operationData, err := json.Marshal(op.Message)
 		if err != nil {
-			s.logger.ErrorContext(ctx, "Failed to marshal pending operation",
+			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToMarshalPendingOperation,
 				"error", err,
 				"opId", op.OperationID)
 			return err
@@ -102,7 +102,7 @@ func (s *statusService) RecordPendingOperations(ctx context.Context, session *bs
 		if op.Metadata != nil {
 			metadataBytes, err := json.Marshal(op.Metadata)
 			if err != nil {
-				s.logger.ErrorContext(ctx, "Failed to marshal pending operation metadata",
+				s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToMarshalPendingOperationMetadata,
 					"error", err,
 					"opId", op.OperationID)
 				return err

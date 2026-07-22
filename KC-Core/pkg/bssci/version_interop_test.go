@@ -17,6 +17,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // interopSCEui exercises exact outbound encoding: the high bit is set and the
@@ -27,15 +29,11 @@ const interopSCEui = uint64(0xFFFFFFFFFFFFFFFF)
 // base station registered under tenant 1 (any EUI accepted).
 type interopConnectionService struct{}
 
-func (interopConnectionService) GetBaseStation(_ context.Context, eui [8]byte, _ *basestation.ConnectionManager) (*basestation.BaseStation, error) {
+func (interopConnectionService) GetBaseStationGlobal(_ context.Context, eui [8]byte) (*basestation.BaseStation, error) {
 	return &basestation.BaseStation{ID: 1, TenantID: 1, EUI: eui, Name: "Interop BS"}, nil
 }
 
-func (interopConnectionService) GetBaseStationGlobal(_ context.Context, eui [8]byte, _ *basestation.ConnectionManager) (*basestation.BaseStation, error) {
-	return &basestation.BaseStation{ID: 1, TenantID: 1, EUI: eui, Name: "Interop BS"}, nil
-}
-
-func (interopConnectionService) RegisterConnection(_ context.Context, _ *Session, _ *basestation.BaseStation, _ *basestation.ConnectionManager) error {
+func (interopConnectionService) RegisterConnection(_ context.Context, _ *Session, _ *basestation.BaseStation) error {
 	return nil
 }
 
@@ -78,7 +76,7 @@ func startInteropServerWithConfig(t *testing.T, encoding string, mutate func(*Co
 		mutate(server.config)
 	}
 	server.RegisterHandlers()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testutil.TestContext())
 	server.ctx = ctx
 	server.cancel = cancel
 	t.Cleanup(cancel)

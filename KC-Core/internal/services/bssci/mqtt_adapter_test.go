@@ -10,6 +10,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockDeviceEventPublisher records PublishDeviceEvent calls.
@@ -58,7 +60,7 @@ func TestMQTTAdapter_PublishUplink_CorrectPayloadAndTopic(t *testing.T) {
 	mock := &mockDeviceEventPublisher{}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishUplink(context.Background(), "org-uuid-123",
+	err := adapter.PublishUplink(testutil.TestContext(), "org-uuid-123",
 		0x70B3D59CD00009E6, 0xABCDEF1234567890,
 		-80.5, 15.2, 1700000000000000000, 42, []byte("hello"), nil)
 
@@ -85,7 +87,7 @@ func TestMQTTAdapter_PublishUplink_ZeroPaddedEUI(t *testing.T) {
 	mock := &mockDeviceEventPublisher{}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishUplink(context.Background(), "org", 0x00000001, 0x00000002,
+	err := adapter.PublishUplink(testutil.TestContext(), "org", 0x00000001, 0x00000002,
 		0, 0, 0, 0, nil, nil)
 
 	require.NoError(t, err)
@@ -103,7 +105,7 @@ func TestMQTTAdapter_PublishAttach_CorrectPayload(t *testing.T) {
 	mock := &mockDeviceEventPublisher{}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishAttach(context.Background(), "org-uuid",
+	err := adapter.PublishAttach(testutil.TestContext(), "org-uuid",
 		0x70B3D59CD00009E6, 0xABCDEF1234567890)
 
 	require.NoError(t, err)
@@ -125,7 +127,7 @@ func TestMQTTAdapter_PublishDetach_CorrectPayload(t *testing.T) {
 	mock := &mockDeviceEventPublisher{}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishDetach(context.Background(), "org-uuid",
+	err := adapter.PublishDetach(testutil.TestContext(), "org-uuid",
 		0x70B3D59CD00009E6, 0xABCDEF1234567890)
 
 	require.NoError(t, err)
@@ -145,7 +147,7 @@ func TestMQTTAdapter_PublishDownlinkResult_CorrectPayload(t *testing.T) {
 	mock := &mockDeviceEventPublisher{}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishDownlinkResult(context.Background(), "org-uuid",
+	err := adapter.PublishDownlinkResult(testutil.TestContext(), "org-uuid",
 		0x70B3D59CD00009E6, 12345, "success")
 
 	require.NoError(t, err)
@@ -165,7 +167,7 @@ func TestMQTTAdapter_PropagatesPublishError(t *testing.T) {
 	mock := &mockDeviceEventPublisher{returnErr: fmt.Errorf("broker down")}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishUplink(context.Background(), "org", 1, 2, 0, 0, 0, 0, nil, nil)
+	err := adapter.PublishUplink(testutil.TestContext(), "org", 1, 2, 0, 0, 0, 0, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "broker down")
 }

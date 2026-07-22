@@ -101,6 +101,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		infra.Storage,
 		infra.SystemEventStore,
 		infra.QueueStore,
+		infra.ConnectionMgr,
 		infra.LoggerIface,
 		infra.TenantID,
 		infra.OrgResolverSvc,

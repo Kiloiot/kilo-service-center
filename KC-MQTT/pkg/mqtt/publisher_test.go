@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockPublisher records Publish calls for verification.
@@ -49,7 +51,7 @@ func TestPublishDeviceEvent_RejectsEmptyOrgUUID(t *testing.T) {
 	t.Parallel()
 	pub := &TopicPublisher{client: &mockPublisher{}, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(context.Background(), "", "0123456789abcdef", DeviceEventUp, []byte("test"))
+	err := pub.PublishDeviceEvent(testutil.TestContext(), "", "0123456789abcdef", DeviceEventUp, []byte("test"))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ErrDeviceEventEmptyOrgUUID)
@@ -59,7 +61,7 @@ func TestPublishDeviceEvent_RejectsEmptyEUIHex(t *testing.T) {
 	t.Parallel()
 	pub := &TopicPublisher{client: &mockPublisher{}, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(context.Background(), "org-uuid", "", DeviceEventUp, []byte("test"))
+	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "", DeviceEventUp, []byte("test"))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ErrDeviceEventEmptyEUIHex)
@@ -70,7 +72,7 @@ func TestPublishDeviceEvent_UplinkUsesUplinkQoS(t *testing.T) {
 	mock := &mockPublisher{}
 	pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(context.Background(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
+	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
 
 	require.NoError(t, err)
 	call := mock.lastCall()
@@ -83,7 +85,7 @@ func TestPublishDeviceEvent_AttachUsesEventsQoS(t *testing.T) {
 	mock := &mockPublisher{}
 	pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(context.Background(), "org-uuid", "0123456789abcdef", DeviceEventAttach, []byte("test"))
+	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventAttach, []byte("test"))
 
 	require.NoError(t, err)
 	call := mock.lastCall()
@@ -96,7 +98,7 @@ func TestPublishDeviceEvent_DetachUsesEventsQoS(t *testing.T) {
 	mock := &mockPublisher{}
 	pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(context.Background(), "org-uuid", "0123456789abcdef", DeviceEventDetach, []byte("test"))
+	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventDetach, []byte("test"))
 
 	require.NoError(t, err)
 	call := mock.lastCall()
@@ -109,7 +111,7 @@ func TestPublishDeviceEvent_DownlinkResultUsesEventsQoS(t *testing.T) {
 	mock := &mockPublisher{}
 	pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(context.Background(), "org-uuid", "0123456789abcdef", DeviceEventDownlinkResult, []byte("test"))
+	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventDownlinkResult, []byte("test"))
 
 	require.NoError(t, err)
 	call := mock.lastCall()
@@ -122,7 +124,7 @@ func TestPublishDeviceEvent_PropagatesPublishError(t *testing.T) {
 	mock := &mockPublisher{returnErr: fmt.Errorf("broker unavailable")}
 	pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(context.Background(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
+	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "broker unavailable")
@@ -133,7 +135,7 @@ func TestPublishDeviceEvent_NotRetained(t *testing.T) {
 	mock := &mockPublisher{}
 	pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(context.Background(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
+	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
 
 	require.NoError(t, err)
 	call := mock.lastCall()

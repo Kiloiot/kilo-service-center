@@ -11,6 +11,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -139,7 +141,7 @@ func TestRecordOutboundError_UsesDefaultCodeWhenCatalogCodeIsZero(t *testing.T) 
 	).Return(nil)
 
 	posixCode, _, err := recorder.RecordOutboundError(
-		context.Background(),
+		testutil.TestContext(),
 		session,
 		1,            // opId
 		CmdError,     // command
@@ -198,7 +200,7 @@ func TestRecordOutboundError_UsesCatalogCodeWhenNonZero(t *testing.T) {
 	).Return(nil)
 
 	posixCode, _, err := recorder.RecordOutboundError(
-		context.Background(),
+		testutil.TestContext(),
 		session,
 		1,
 		CmdError,
@@ -242,7 +244,7 @@ func TestCompleteErrorHandshake_CallsCompleteFailedOperation(t *testing.T) {
 		}),
 	).Return(nil)
 
-	err := recorder.CompleteErrorHandshake(context.Background(), session, 1)
+	err := recorder.CompleteErrorHandshake(testutil.TestContext(), session, 1)
 
 	assert.NoError(t, err)
 	mockRepo.AssertExpectations(t)
@@ -255,7 +257,7 @@ func TestCompleteErrorHandshake_NilRepoReturnsNil(t *testing.T) {
 
 	session := &Session{ID: 100, TenantID: 42}
 
-	err := recorder.CompleteErrorHandshake(context.Background(), session, 1)
+	err := recorder.CompleteErrorHandshake(testutil.TestContext(), session, 1)
 	assert.NoError(t, err)
 }
 
@@ -267,7 +269,7 @@ func TestCompleteErrorHandshake_ZeroSessionIDReturnsNil(t *testing.T) {
 
 	session := &Session{ID: 0, TenantID: 42}
 
-	err := recorder.CompleteErrorHandshake(context.Background(), session, 1)
+	err := recorder.CompleteErrorHandshake(testutil.TestContext(), session, 1)
 	assert.NoError(t, err)
 	// CompleteFailedOperation should NOT be called
 	mockRepo.AssertNotCalled(t, "CompleteFailedOperation")
@@ -290,7 +292,7 @@ func TestCompleteErrorHandshake_PropagatesRepoError(t *testing.T) {
 		mock.Anything,
 	).Return(expectedErr)
 
-	err := recorder.CompleteErrorHandshake(context.Background(), session, 1)
+	err := recorder.CompleteErrorHandshake(testutil.TestContext(), session, 1)
 
 	assert.Error(t, err)
 	assert.Equal(t, expectedErr, err)
@@ -338,7 +340,7 @@ func TestRecordInboundError_PersistsACError(t *testing.T) {
 		message,
 	).Return(nil)
 
-	err := recorder.RecordInboundError(context.Background(), session, 1, posixCode, message)
+	err := recorder.RecordInboundError(testutil.TestContext(), session, 1, posixCode, message)
 
 	assert.NoError(t, err)
 	mockRepo.AssertExpectations(t)

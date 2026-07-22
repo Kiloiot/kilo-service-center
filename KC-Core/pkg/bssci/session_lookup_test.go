@@ -2,7 +2,6 @@
 package bssci
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -10,6 +9,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // createTestServerWithSessions creates a test server with pre-registered sessions
@@ -24,7 +25,7 @@ func createTestServerWithSessions(t *testing.T, sessions []*Session) *Server {
 	server := NewTestServerWithMemoryStatusService(log, nil, nil, 1)
 
 	// Initialize context to prevent nil pointer panics in logging
-	server.SetContextForTests(context.Background())
+	server.SetContextForTests(testutil.TestContext())
 
 	// Register test sessions
 	for _, session := range sessions {

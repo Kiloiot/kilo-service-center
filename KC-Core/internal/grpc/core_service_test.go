@@ -1055,7 +1055,7 @@ func TestGRPCCreateEndpoint_MissingTenant(t *testing.T) {
 	}
 
 	// Intentionally bare context — tests unauthenticated failure path
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	req := &pb.CreateEndPointRequest{
 		Endpoint: &pb.EndPoint{EpEui: "0x1122334455667788", Name: "Test", NwkSnKey: make([]byte, 16)},
@@ -2244,7 +2244,8 @@ func (s *stubStatusSvc) RecordPendingOperations(_ context.Context, _ *bssci.Sess
 	return nil
 }
 
-func (s *stubStatusSvc) RestorePendingOperation(_ *bssci.Session, _ int64, _ *bssci.PendingOperation) {}
+func (s *stubStatusSvc) RestorePendingOperation(_ *bssci.Session, _ int64, _ *bssci.PendingOperation) {
+}
 func (s *stubStatusSvc) GetPendingOperation(_ *bssci.Session, _ int64) (*bssci.PendingOperation, error) {
 	return nil, nil
 }
@@ -3898,7 +3899,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			orgMapper:    &locOrgMapper{},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
@@ -3933,7 +3934,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.NoError(t, err)
@@ -3958,7 +3959,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			orgMapper:    &locOrgMapper{},
 		}
 
-		ctx := context.Background()
+		ctx := testutil.TestContext()
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
 		assert.Nil(t, resp)
@@ -3971,7 +3972,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			orgMapper:    &locOrgMapper{},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
@@ -4002,7 +4003,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
@@ -4019,7 +4020,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			orgMapper: &locOrgMapper{},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
@@ -4043,7 +4044,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			// orgMapper intentionally nil
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)

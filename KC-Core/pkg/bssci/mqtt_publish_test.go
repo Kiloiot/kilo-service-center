@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockMQTTEventPublisher records calls to MQTTEventPublisher methods.
@@ -255,7 +257,7 @@ func TestHandleAttachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
 			"epEui": int64(0x70B3D59CD00009E6),
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 1001, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1001, pendingOp, 42)
 	require.NoError(t, err)
 
 	msg := &Message{Command: mioty.CmdAttachComplete, OpId: 1001}
@@ -287,7 +289,7 @@ func TestHandleDetachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
 			"epEui": int64(0x70B3D59CD00009E6),
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 2001, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2001, pendingOp, 42)
 	require.NoError(t, err)
 
 	msg := &Message{Command: mioty.CmdDetachComplete, OpId: 2001}
@@ -330,7 +332,7 @@ func TestHandleAttachComplete_PublishesMQTTWithOwnerOrg(t *testing.T) {
 			"endpointTenantID": int64(99),
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 1001, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1001, pendingOp, 42)
 	require.NoError(t, err)
 
 	syncMock.ExpectCall(1)
@@ -381,7 +383,7 @@ func TestHandleAttachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 			"endpointTenantID": int64(999), // no mapping for this tenant
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 1002, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1002, pendingOp, 42)
 	require.NoError(t, err)
 
 	msg := &Message{Command: mioty.CmdAttachComplete, OpId: 1002}
@@ -422,7 +424,7 @@ func TestHandleDetachComplete_PublishesMQTTWithTypedMetaOrg(t *testing.T) {
 			"orgUuid": ownerOrg.String(),
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 2001, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2001, pendingOp, 42)
 	require.NoError(t, err)
 
 	syncMock.ExpectCall(1)
@@ -468,7 +470,7 @@ func TestHandleDetachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 			// No orgUuid in metadata
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 2002, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2002, pendingOp, 42)
 	require.NoError(t, err)
 
 	msg := &Message{Command: mioty.CmdDetachComplete, OpId: 2002}
@@ -533,7 +535,7 @@ func TestHandleULData_PublishesMQTTUplink(t *testing.T) {
 			DbSessionID:      1,
 			Encoding:         EncodingJSON,
 		},
-		Conn: &testutil.TestConn{Encoding: "json"},
+		Conn: &bsscitest.TestConn{Encoding: "json"},
 	}
 
 	// Build UL data map with required fields
@@ -598,7 +600,7 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 			DbSessionID:      1,
 			Encoding:         EncodingJSON,
 		},
-		Conn: &testutil.TestConn{Encoding: "json"},
+		Conn: &bsscitest.TestConn{Encoding: "json"},
 	}
 
 	data := map[string]interface{}{
@@ -652,7 +654,7 @@ func TestHandleDLDataResult_PublishesMQTTDLResult(t *testing.T) {
 			DbSessionID:      1,
 			Encoding:         EncodingJSON,
 		},
-		Conn: &testutil.TestConn{Encoding: "json"},
+		Conn: &bsscitest.TestConn{Encoding: "json"},
 	}
 
 	// Build DL result data map (handleDLDataResult uses type assertions directly)
@@ -706,7 +708,7 @@ func TestHandleDLDataResult_OrgUnresolved_SkipsPublish(t *testing.T) {
 			DbSessionID:      1,
 			Encoding:         EncodingJSON,
 		},
-		Conn: &testutil.TestConn{Encoding: "json"},
+		Conn: &bsscitest.TestConn{Encoding: "json"},
 	}
 
 	data := map[string]interface{}{

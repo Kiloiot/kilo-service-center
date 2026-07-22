@@ -11,6 +11,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockPendingOperationRepositoryWithCallTracking extends mockPendingOperationRepository with call count tracking
@@ -89,7 +91,7 @@ func TestStatusServiceMultiSessionIsolation(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Same opId used across all sessions (simulates concurrent downlink operations)
 	opId := int64(-100)
@@ -218,7 +220,7 @@ func TestStatusServiceCachePopulationForNewOperations(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Record a NEW operation (simulates initDLDataQue calling persistPendingOperation)
 	opId := int64(-200)
@@ -280,7 +282,7 @@ func TestStatusServiceSingleWriterPattern(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	opId := int64(-300)
 
 	op := &bssci.PendingOperation{

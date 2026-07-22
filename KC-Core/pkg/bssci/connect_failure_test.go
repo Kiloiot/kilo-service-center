@@ -15,15 +15,11 @@ import (
 // connection registration, exercising the activation compensation path.
 type failingRegistrationConnSvc struct{}
 
-func (failingRegistrationConnSvc) GetBaseStation(_ context.Context, eui [8]byte, _ *basestation.ConnectionManager) (*basestation.BaseStation, error) {
+func (failingRegistrationConnSvc) GetBaseStationGlobal(_ context.Context, eui [8]byte) (*basestation.BaseStation, error) {
 	return &basestation.BaseStation{ID: 1, TenantID: 1, EUI: eui, Name: "Test BS"}, nil
 }
 
-func (failingRegistrationConnSvc) GetBaseStationGlobal(_ context.Context, eui [8]byte, _ *basestation.ConnectionManager) (*basestation.BaseStation, error) {
-	return &basestation.BaseStation{ID: 1, TenantID: 1, EUI: eui, Name: "Test BS"}, nil
-}
-
-func (failingRegistrationConnSvc) RegisterConnection(_ context.Context, _ *Session, _ *basestation.BaseStation, _ *basestation.ConnectionManager) error {
+func (failingRegistrationConnSvc) RegisterConnection(_ context.Context, _ *Session, _ *basestation.BaseStation) error {
 	return errors.New("registration failed")
 }
 

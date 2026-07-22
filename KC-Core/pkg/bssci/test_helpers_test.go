@@ -48,7 +48,7 @@ func NewTestServer(
 	sessionSvc SessionService,
 	downlinkSvc DownlinkService,
 	statusSvc StatusService,
-	connectionSvc ConnectionService,
+	connectionSvc BaseStationConnectionRegistry,
 	broadcaster SCACIBroadcaster,
 	queueSerializer QueueSerializer,
 	auditLogger AuditLogger,
@@ -60,28 +60,27 @@ func NewTestServer(
 	}
 
 	s := &Server{
-		logger:            log,
-		storage:           storage,
-		eventStore:        eventStore,
-		tenantID:          tenantID,
-		sessionSvc:        sessionSvc,
-		downlinkSvc:       downlinkSvc,
-		statusSvc:         statusSvc,
-		connectionSvc:     connectionSvc,
-		broadcaster:       broadcaster,
-		queueSerializer:   queueSerializer,
-		auditLogger:       auditLogger,
-		tenantResolver:    tenantResolver,
-		versionNegotiator: staticTestVersionNegotiator{},
-		handlers:          make(map[string]HandlerFunc), // Initialize handlers map for tests
-		sessions:          make(map[string]*Session),    // Initialize sessions map for tests
+		logger:             log,
+		storage:            storage,
+		eventStore:         eventStore,
+		tenantID:           tenantID,
+		sessionSvc:         sessionSvc,
+		downlinkSvc:        downlinkSvc,
+		statusSvc:          statusSvc,
+		connectionRegistry: connectionSvc,
+		broadcaster:        broadcaster,
+		queueSerializer:    queueSerializer,
+		auditLogger:        auditLogger,
+		tenantResolver:     tenantResolver,
+		versionNegotiator:  staticTestVersionNegotiator{},
+		handlers:           make(map[string]HandlerFunc), // Initialize handlers map for tests
+		sessions:           make(map[string]*Session),    // Initialize sessions map for tests
 	}
 	// Wire endpointRepo if storage is available (prevents nil panics in resolveEndpointTenantID)
 	if storage != nil {
 		s.endpointRepo = storage.EndPoints()
 	}
 	// Initialize broadcast hook (tests can override)
-	s.broadcastFn = s.SendAttachPropagateToAll
 	return s
 }
 
@@ -265,7 +264,7 @@ func NewTestServerWithBaseStationRepo(
 	sessionSvc SessionService,
 	downlinkSvc DownlinkService,
 	statusSvc StatusService,
-	connectionSvc ConnectionService,
+	connectionSvc BaseStationConnectionRegistry,
 	broadcaster SCACIBroadcaster,
 	queueSerializer QueueSerializer,
 	auditLogger AuditLogger,
@@ -277,23 +276,22 @@ func NewTestServerWithBaseStationRepo(
 	}
 
 	s := &Server{
-		logger:            log,
-		storage:           storage,
-		basestationRepo:   basestationRepo,
-		tenantID:          tenantID,
-		sessionSvc:        sessionSvc,
-		downlinkSvc:       downlinkSvc,
-		statusSvc:         statusSvc,
-		connectionSvc:     connectionSvc,
-		broadcaster:       broadcaster,
-		queueSerializer:   queueSerializer,
-		auditLogger:       auditLogger,
-		tenantResolver:    tenantResolver,
-		versionNegotiator: staticTestVersionNegotiator{},
-		sessions:          make(map[string]*Session),
+		logger:             log,
+		storage:            storage,
+		basestationRepo:    basestationRepo,
+		tenantID:           tenantID,
+		sessionSvc:         sessionSvc,
+		downlinkSvc:        downlinkSvc,
+		statusSvc:          statusSvc,
+		connectionRegistry: connectionSvc,
+		broadcaster:        broadcaster,
+		queueSerializer:    queueSerializer,
+		auditLogger:        auditLogger,
+		tenantResolver:     tenantResolver,
+		versionNegotiator:  staticTestVersionNegotiator{},
+		sessions:           make(map[string]*Session),
 	}
 	// Initialize broadcast hook (tests can override)
-	s.broadcastFn = s.SendAttachPropagateToAll
 	return s
 }
 
@@ -582,7 +580,7 @@ func CreateTestServices(log logger.Logger, _ interfaces.SystemEventStore) (
 	SessionService,
 	DownlinkService,
 	StatusService,
-	ConnectionService,
+	BaseStationConnectionRegistry,
 	SCACIBroadcaster,
 	QueueSerializer,
 	AuditLogger,

@@ -1,7 +1,6 @@
 package bssci
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -9,6 +8,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestPendingOpsCompositeKey verifies that the sessionOpKey composite key
@@ -63,7 +64,7 @@ func TestPendingOpsCompositeKey(t *testing.T) {
 	}
 
 	// Use StatusService to store operations
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	err := server.statusSvc.RecordPendingOperation(ctx, session1, sharedOpID, op1, session1.DbSessionID)
 	require.NoError(t, err, "Should record session 1 operation")
 	err = server.statusSvc.RecordPendingOperation(ctx, session2, sharedOpID, op2, session2.DbSessionID)
@@ -125,7 +126,7 @@ func TestPendingOpsSessionIsolation(t *testing.T) {
 	}
 
 	// Store 15 operations using StatusService (3 sessions x 5 operations each)
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	for sessionIdx, session := range sessions {
 		for opIdx, opType := range operationTypes {
 			opID := int64(opIdx + 1)
@@ -254,7 +255,7 @@ func TestPendingOperationSessionSlug(t *testing.T) {
 			DbSessionID: 1,
 		},
 	}
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	err := server.statusSvc.RecordPendingOperation(ctx, session, opID, op, session.DbSessionID)
 	require.NoError(t, err, "Should record pending operation")
 
@@ -286,7 +287,7 @@ func TestPendingOpsRaceCondition(t *testing.T) {
 		{ProtocolSessionState: ProtocolSessionState{ID: "concurrent-2", DbSessionID: 2}},
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Simulate sequential operations (real concurrent testing with -race flag)
 	for i, session := range sessions {

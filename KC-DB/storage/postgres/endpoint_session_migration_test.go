@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"testing"
@@ -12,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // Test lazy migration from base64-encoded GCM to raw GCM format in GetActive()
@@ -21,7 +22,7 @@ func TestGetActive_LazyMigration(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
 
@@ -110,7 +111,7 @@ func TestGetActive_NoMigrationWhenAlreadyRaw(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
 
@@ -185,7 +186,7 @@ func TestGetActive_TenantIsolationInMigration(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	db := setupTestDB(t)
 	defer cleanupTestDB(t, db)
 
@@ -309,7 +310,7 @@ func cleanupTestDB(t *testing.T, db *DB) {
 	t.Helper()
 
 	// Clean up test data
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Delete test sessions
 	_, err := db.conn.ExecContext(ctx, `

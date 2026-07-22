@@ -4,29 +4,38 @@ import (
 	"context"
 	"time"
 
+	"encoding/binary"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
-type connectionService struct {
-	logger logger.Logger
+// connectionRegistry adapts basestation.ConnectionManager to the narrow
+// bssci.BaseStationConnectionRegistry contract the connect flow consumes.
+type connectionRegistry struct {
+	manager *basestation.ConnectionManager
+	logger  logger.Logger
 }
 
-// NewConnectionService creates a new connection service
-func NewConnectionService(log logger.Logger) bssci.ConnectionService {
-	return &connectionService{
-		logger: log,
+// NewConnectionRegistry captures the concrete connection manager so callers
+// depend only on the registry contract.
+func NewConnectionRegistry(manager *basestation.ConnectionManager, log logger.Logger) bssci.BaseStationConnectionRegistry {
+	return &connectionRegistry{
+		manager: manager,
+		logger:  log,
 	}
 }
 
-// GetBaseStation retrieves basestation via ConnectionManager (tenant-scoped via context)
-func (c *connectionService) GetBaseStation(ctx context.Context, eui [8]byte, mgr *basestation.ConnectionManager) (*basestation.BaseStation, error) {
-	bs, err := mgr.GetBaseStation(ctx, eui)
+// GetBaseStationGlobal retrieves a base station by EUI across all tenants.
+// Used during the BSSCI connect handshake before the tenant is resolved.
+func (c *connectionRegistry) GetBaseStationGlobal(ctx context.Context, eui [8]byte) (*basestation.BaseStation, error) {
+	bs, err := c.manager.GetBaseStationGlobal(ctx, eui)
 	if err != nil || bs == nil {
-		c.logger.Error(bssci.LogBSSCIBaseStationNotFoundInDatabase,
-			"euiHex", formatEUI(eui),
+		c.logger.ErrorContext(ctx, bssci.LogBSSCIBaseStationNotFoundInDatabase,
+			"euiHex", pkgmioty.FormatEUI64(binary.BigEndian.Uint64(eui[:])),
 			"error", err)
 		return nil, bssci.NewCatalogError(bssci.ErrBaseStationNotRegistered, bssci.POSIX_EPERM)
 	}
@@ -34,23 +43,9 @@ func (c *connectionService) GetBaseStation(ctx context.Context, eui [8]byte, mgr
 	return bs, nil
 }
 
-// GetBaseStationGlobal retrieves basestation by EUI across all tenants.
-// Used during BSSCI connect handshake before tenant is resolved.
-func (c *connectionService) GetBaseStationGlobal(ctx context.Context, eui [8]byte, mgr *basestation.ConnectionManager) (*basestation.BaseStation, error) {
-	bs, err := mgr.GetBaseStationGlobal(ctx, eui)
-	if err != nil || bs == nil {
-		c.logger.Error(bssci.LogBSSCIBaseStationNotFoundInDatabase,
-			"euiHex", formatEUI(eui),
-			"error", err)
-		return nil, bssci.NewCatalogError(bssci.ErrBaseStationNotRegistered, bssci.POSIX_EPERM)
-	}
-
-	return bs, nil
-}
-
-// RegisterConnection updates basestation connection status via REAL ConnectionManager
-func (c *connectionService) RegisterConnection(ctx context.Context, session *bssci.Session, _ *basestation.BaseStation, mgr *basestation.ConnectionManager) error {
-	// Build connection status matching the real ConnectionStatus struct
+// RegisterConnection publishes the session's live connection and marks the
+// base station online.
+func (c *connectionRegistry) RegisterConnection(ctx context.Context, session *bssci.Session, _ *basestation.BaseStation) error {
 	status := &basestation.ConnectionStatus{
 		IsOnline:       true,
 		LastSeen:       time.Now(),
@@ -58,37 +53,14 @@ func (c *connectionService) RegisterConnection(ctx context.Context, session *bss
 		SessionID:      session.ID,
 	}
 
-	// Convert EUI to [8]byte for UpdateConnectionStatus
 	euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
 
-	err := mgr.UpdateConnectionStatus(ctx, euiBytes, status)
-	if err != nil {
-		c.logger.Error("Failed to update basestation connection status",
+	if err := c.manager.UpdateConnectionStatus(ctx, euiBytes, status); err != nil {
+		c.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateConnectionStatus,
 			"error", err,
 			"bsEui", session.BaseStationEUI)
 		return err
 	}
 
 	return nil
-}
-
-// formatEUI formats an 8-byte EUI as a hex string
-func formatEUI(eui [8]byte) string {
-	return string([]byte{
-		hexDigit(eui[0] >> 4), hexDigit(eui[0] & 0x0F),
-		hexDigit(eui[1] >> 4), hexDigit(eui[1] & 0x0F),
-		hexDigit(eui[2] >> 4), hexDigit(eui[2] & 0x0F),
-		hexDigit(eui[3] >> 4), hexDigit(eui[3] & 0x0F),
-		hexDigit(eui[4] >> 4), hexDigit(eui[4] & 0x0F),
-		hexDigit(eui[5] >> 4), hexDigit(eui[5] & 0x0F),
-		hexDigit(eui[6] >> 4), hexDigit(eui[6] & 0x0F),
-		hexDigit(eui[7] >> 4), hexDigit(eui[7] & 0x0F),
-	})
-}
-
-func hexDigit(n byte) byte {
-	if n < 10 {
-		return '0' + n
-	}
-	return 'A' + (n - 10)
 }

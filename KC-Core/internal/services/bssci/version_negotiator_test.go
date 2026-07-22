@@ -1,7 +1,6 @@
 package bssciservices
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -9,6 +8,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestNewVersionNegotiatorSetValidation verifies the constructor rejects
@@ -77,7 +78,7 @@ func TestNegotiateSelection(t *testing.T) {
 			neg, err := NewVersionNegotiator(tt.supported, &mockLogger{})
 			require.NoError(t, err)
 
-			selected, negErr := neg.Negotiate(context.Background(), tt.requested)
+			selected, negErr := neg.Negotiate(testutil.TestContext(), tt.requested)
 			if tt.errToken != "" {
 				require.Error(t, negErr)
 				catErr, ok := negErr.(*bssci.CatalogError)
@@ -106,7 +107,7 @@ func TestNegotiatePatchIgnored(t *testing.T) {
 	for _, patch := range []int{0, 1, 5, 99} {
 		requested := fmt.Sprintf("%d.%d.%d", scMajor, scMinor, patch)
 		t.Run(fmt.Sprintf("patch_%d", patch), func(t *testing.T) {
-			selected, negErr := neg.Negotiate(context.Background(), requested)
+			selected, negErr := neg.Negotiate(testutil.TestContext(), requested)
 			require.NoError(t, negErr, "Patch diff should not cause incompatibility (BSSCI-2.3-01)")
 			assert.Equal(t, mioty.MIOTYProtocolVersion, selected)
 		})

@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockRoleResolver records calls and returns preconfigured results.
@@ -48,7 +50,7 @@ const testMethod = "/kilocenter.api.v1.CoreService/TestMethod"
 
 // newTestContext returns a context populated with a random org UUID and user ID.
 func newTestContext() context.Context {
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	ctx = pkgcontext.WithOrganizationID(ctx, uuid.New())
 	ctx = pkgcontext.WithUserID(ctx, uuid.New().String())
 	return ctx
@@ -136,7 +138,7 @@ func TestMissingUserInContext(t *testing.T) {
 	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
 
 	// Context with org but no user
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	ctx = pkgcontext.WithOrganizationID(ctx, uuid.New())
 
 	_, err := invokeInterceptor(t, interceptor, ctx)
@@ -158,7 +160,7 @@ func TestMissingOrgInContext(t *testing.T) {
 	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
 
 	// Context with user but no org
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	ctx = pkgcontext.WithUserID(ctx, uuid.New().String())
 
 	_, err := invokeInterceptor(t, interceptor, ctx)
@@ -182,7 +184,7 @@ func TestUnknownRPCPassthrough(t *testing.T) {
 	// Call a method not in the policy map
 	unary := interceptor.UnaryInterceptor()
 	info := &grpc.UnaryServerInfo{FullMethod: "/kilocenter.api.v1.CoreService/UnknownMethod"}
-	resp, err := unary(context.Background(), nil, info, passHandler)
+	resp, err := unary(testutil.TestContext(), nil, info, passHandler)
 	if err != nil {
 		t.Fatalf("expected passthrough for unknown RPC, got: %v", err)
 	}

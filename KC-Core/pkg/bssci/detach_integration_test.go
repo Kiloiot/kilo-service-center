@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
@@ -21,6 +21,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestDetachThreeWayHandshake validates that the detach → detRsp → detCmp flow
@@ -181,7 +183,7 @@ func TestDetachAuditEventRecorded(t *testing.T) {
 type detachTestEnv struct {
 	server  *Server
 	session *Session
-	conn    *testutil.TestConn
+	conn    *bsscitest.TestConn
 	repo    *fakeEndpointRepo
 	events  *recordingEventStore
 }
@@ -220,7 +222,7 @@ func newDetachTestEnv(t *testing.T, cfg *Config, endpoint *models.EndPoint) *det
 		t.Fatalf("endpoint repository not configured")
 	}
 
-	conn := &testutil.TestConn{Encoding: "json"}
+	conn := &bsscitest.TestConn{Encoding: "json"}
 	// Default tenant to 1 if endpoint is nil (unknown endpoint test case)
 	sessionTenant := int64(1)
 	if endpoint != nil {
@@ -896,7 +898,7 @@ func TestFakeEndpointRepoBasics(t *testing.T) {
 	endpoint := buildTestEndpoint(knownEui, tenant100)
 	repo := newFakeEndpointRepo(endpoint)
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	euiBytes := make([]byte, 8)
 
 	// Test 1: Same-tenant lookup should succeed

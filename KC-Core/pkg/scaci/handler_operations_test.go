@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // createTestServer creates a Server with minimal dependencies for handleULDataTransmit tests.
@@ -1013,7 +1015,7 @@ func TestRevokeEndpointDownlinks_NilDLSvc_Graceful(t *testing.T) {
 		dlSvc:  nil, // nil to test defensive guard
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	var eui [8]byte
 	binary.BigEndian.PutUint64(eui[:], 0x1234567890ABCDEF)
 
@@ -2062,7 +2064,7 @@ func TestProcessDLDataQueueCore_NoDirectStatusWriteOnSuccess(t *testing.T) {
 		UserData:  [][]byte{{0x01, 0x02, 0x03}},
 	}
 
-	result, errToken, posixCode := server.processDLDataQueueCore(context.Background(), session, opID, req)
+	result, errToken, posixCode := server.processDLDataQueueCore(testutil.TestContext(), session, opID, req)
 	require.NotNil(t, result)
 	assert.Equal(t, uint64(queID), result.QueID)
 	assert.Equal(t, "", errToken)
@@ -2118,7 +2120,7 @@ func TestProcessDLDataQueueCore_NoDirectStatusWriteOnSchedulerFailure(t *testing
 		UserData:  [][]byte{{0xAA}},
 	}
 
-	result, errToken, posixCode := server.processDLDataQueueCore(context.Background(), session, opID, req)
+	result, errToken, posixCode := server.processDLDataQueueCore(testutil.TestContext(), session, opID, req)
 	assert.Nil(t, result)
 	assert.Equal(t, errSchedulerUnavailable, errToken)
 	assert.Equal(t, POSIX_ENOTSUP, posixCode)

@@ -144,13 +144,13 @@ func (hs *handshakeService) ValidateConnect(
 ) (*scaci.Session, *scaci.ConnectResponse, string) {
 	// Guard 1: Nil certificate check (prevents panic on cert.Subject)
 	if cert == nil {
-		hs.logger.Error(scaci.LogSCACINoClientCertificate)
+		hs.logger.ErrorContext(ctx, scaci.LogSCACINoClientCertificate)
 		return nil, nil, scaci.ErrNilCertificate
 	}
 
 	// Guard 2: Nil resolver check (defensive - shouldn't happen if wired correctly)
 	if hs.orgResolver == nil {
-		hs.logger.Error(scaci.LogSCACIOrgResolverNotInjected)
+		hs.logger.ErrorContext(ctx, scaci.LogSCACIOrgResolverNotInjected)
 		return nil, nil, scaci.ErrNilCertificate
 	}
 
@@ -167,7 +167,7 @@ func (hs *handshakeService) ValidateConnect(
 	if err != nil {
 		// Strict mode: fail-closed on org resolution failure (production/managed cloud)
 		if hs.strictOrgResolution {
-			hs.logger.Error(scaci.LogSCACICertificateMappingFailed,
+			hs.logger.ErrorContext(ctx, scaci.LogSCACICertificateMappingFailed,
 				"error", err,
 				"certCN", cert.Subject.CommonName,
 				"strictMode", true)
@@ -175,7 +175,7 @@ func (hs *handshakeService) ValidateConnect(
 		}
 
 		// Community mode: fall back to default tenant ID
-		hs.logger.Warn("Certificate org resolution failed, using community fallback",
+		hs.logger.WarnContext(ctx, "Certificate org resolution failed, using community fallback",
 			"error", err,
 			"certCN", cert.Subject.CommonName,
 			"defaultTenantID", hs.defaultTenantID)
@@ -183,14 +183,14 @@ func (hs *handshakeService) ValidateConnect(
 		tenantID = hs.defaultTenantID
 		orgID, err = hs.orgResolver.GetDefaultOrgForTenant(ctx, tenantID)
 		if err != nil {
-			hs.logger.Error(scaci.LogSCACICertificateMappingFailed,
+			hs.logger.ErrorContext(ctx, scaci.LogSCACICertificateMappingFailed,
 				"error", err,
 				"tenantID", tenantID)
 			return nil, nil, scaci.ErrCertificateTenantResolutionFailed
 		}
 	}
 
-	hs.logger.Debug(scaci.LogSCACIProcessingConnect,
+	hs.logger.DebugContext(ctx, scaci.LogSCACIProcessingConnect,
 		"tenantID", tenantID,
 		"orgID", orgID.String(),
 		"certCN", cert.Subject.CommonName)
@@ -220,7 +220,7 @@ func (hs *handshakeService) ValidateConnect(
 			req.Version, // SCACI §§2.1-2.3: validate version matches stored negotiated_version
 		)
 		if errToken != "" {
-			hs.logger.Warn(scaci.LogSCACIResumeFailed,
+			hs.logger.WarnContext(ctx, scaci.LogSCACIResumeFailed,
 				"acEui", pkgmioty.FormatEUI64(req.AcEui),
 				"reason", errToken)
 			// Resume failure is not fatal - create new session instead
@@ -233,7 +233,7 @@ func (hs *handshakeService) ValidateConnect(
 			if err == nil && dbSession != nil {
 				// Validate certificate tenant matches stored session tenant
 				if dbSession.TenantID != tenantID {
-					hs.logger.Error(scaci.LogSCACICrossTenantResumeRejected,
+					hs.logger.ErrorContext(ctx, scaci.LogSCACICrossTenantResumeRejected,
 						"certTenantID", tenantID,
 						"sessionTenantID", dbSession.TenantID)
 					// Fail-closed: reject cross-tenant resume attempts
@@ -245,7 +245,7 @@ func (hs *handshakeService) ValidateConnect(
 				session.Resumed = true
 				canResume = true
 
-				hs.logger.Info(scaci.LogSCACISessionResumed,
+				hs.logger.InfoContext(ctx, scaci.LogSCACISessionResumed,
 					"acEui", pkgmioty.FormatEUI64(req.AcEui),
 					"snAcUuid", scaci.FormatUUID(req.SnAcUUID))
 			}
@@ -258,7 +258,7 @@ func (hs *handshakeService) ValidateConnect(
 		session.OrganizationID = orgID
 		canResume = false
 
-		hs.logger.Info(scaci.LogSCACINewSessionCreated,
+		hs.logger.InfoContext(ctx, scaci.LogSCACINewSessionCreated,
 			"acEui", pkgmioty.FormatEUI64(req.AcEui),
 			"snScUuid", scaci.FormatUUID(session.SnScUUID),
 			"orgID", orgID.String())
@@ -287,11 +287,11 @@ func (hs *handshakeService) ValidateConnect(
 	// TODO: Validate software version (non-fatal per SCACI §3.3.2 - swVersion is optional)
 	switch hs.scSwVersion {
 	case "":
-		hs.logger.Warn("Software version not configured - ConnectResponse will omit swVersion field",
+		hs.logger.WarnContext(ctx, "Software version not configured - ConnectResponse will omit swVersion field",
 			"tenantID", tenantID,
 			"acEui", pkgmioty.FormatEUI64(req.AcEui))
 	case "dev", "dev-local":
-		hs.logger.Warn("Using development software version in ConnectResponse",
+		hs.logger.WarnContext(ctx, "Using development software version in ConnectResponse",
 			"swVersion", hs.scSwVersion,
 			"tenantID", tenantID,
 			"acEui", pkgmioty.FormatEUI64(req.AcEui))
@@ -404,7 +404,7 @@ func (hs *handshakeService) ResolveResume(
 	// Convert acUUID to [16]byte for repository call
 	var acUUIDBytes [16]byte
 	if len(acUUID) != 16 {
-		hs.logger.Error(scaci.LogSCACIInvalidAcUUIDLength,
+		hs.logger.ErrorContext(ctx, scaci.LogSCACIInvalidAcUUIDLength,
 			"length", len(acUUID))
 		return false, scaci.ErrSnAcUUIDZero
 	}
@@ -414,14 +414,14 @@ func (hs *handshakeService) ResolveResume(
 	// Pass both acOpId and scOpId for full opId parity validation per SCACI-S.1-05/3.2-03
 	resumptionInfo, err := hs.sessionRepo.CheckSessionResumable(ctx, tenantID, acUUIDBytes, acOpId, scOpId)
 	if err != nil {
-		hs.logger.Debug(scaci.LogSCACIResumeFailed,
+		hs.logger.DebugContext(ctx, scaci.LogSCACIResumeFailed,
 			"error", err,
 			"tenantID", tenantID)
 		return false, scaci.ErrNoActiveSession
 	}
 
 	if resumptionInfo == nil {
-		hs.logger.Debug(scaci.LogSCACINoResumableSession,
+		hs.logger.DebugContext(ctx, scaci.LogSCACINoResumableSession,
 			"tenantID", tenantID)
 		return false, scaci.ErrNoActiveSession
 	}
@@ -429,7 +429,7 @@ func (hs *handshakeService) ResolveResume(
 	// Validate operation ID consistency
 	// CheckSessionResumable already validated this
 	if !resumptionInfo.CanResume {
-		hs.logger.Warn(scaci.LogSCACISessionCannotResume,
+		hs.logger.WarnContext(ctx, scaci.LogSCACISessionCannotResume,
 			"acOpId", acOpId,
 			"scOpId", scOpId,
 			"reason", resumptionInfo.ReasonIfNotResumable)
@@ -444,7 +444,7 @@ func (hs *handshakeService) ResolveResume(
 
 		// Fail-closed on parse errors (should not happen if versions were validated at connect)
 		if storedErr != nil || reqErr != nil {
-			hs.logger.Warn(scaci.LogSCACIVersionMismatchOnResume,
+			hs.logger.WarnContext(ctx, scaci.LogSCACIVersionMismatchOnResume,
 				"storedVersion", resumptionInfo.NegotiatedVersion,
 				"requestVersion", requestVersion,
 				"storedParseErr", storedErr,
@@ -455,7 +455,7 @@ func (hs *handshakeService) ResolveResume(
 
 		// §2.3: Compare major.minor only, ignore patch
 		if storedMajor != reqMajor || storedMinor != reqMinor {
-			hs.logger.Warn(scaci.LogSCACIVersionMismatchOnResume,
+			hs.logger.WarnContext(ctx, scaci.LogSCACIVersionMismatchOnResume,
 				"storedMajor", storedMajor, "storedMinor", storedMinor,
 				"reqMajor", reqMajor, "reqMinor", reqMinor,
 				"tenantID", tenantID)

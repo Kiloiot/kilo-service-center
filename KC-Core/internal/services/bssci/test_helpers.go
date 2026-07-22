@@ -870,7 +870,7 @@ func CreateTestServices(log logger.Logger, eventStore interfaces.SystemEventStor
 	bssci.SessionService,
 	bssci.DownlinkService,
 	bssci.StatusService,
-	bssci.ConnectionService,
+	bssci.BaseStationConnectionRegistry,
 	bssci.SCACIBroadcaster,
 	bssci.QueueSerializer,
 	bssci.AuditLogger,
@@ -895,8 +895,9 @@ func CreateTestServices(log logger.Logger, eventStore interfaces.SystemEventStor
 	var testMu sync.RWMutex
 	statusSvc := NewStatusService(&testPendingOps, &testMu, &mockPendingOperationRepository{}, log)
 
-	// ConnectionService - stateless, only needs logger
-	connectionSvc := NewConnectionService(log)
+	// Connection registry over a nil manager mock is unusable; tests that
+	// exercise registration provide their own fake
+	var connectionSvc bssci.BaseStationConnectionRegistry
 
 	// SCACIForwarder - initially unwired, safe to call (returns nil if no SCACI)
 	broadcaster := NewSCACIForwarder(log)

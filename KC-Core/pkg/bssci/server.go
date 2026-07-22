@@ -115,15 +115,15 @@ type Server struct {
 	storage       interfaces.Storage             // Uses repository interfaces
 
 	// Injected services
-	sessionSvc        SessionService
-	versionNegotiator VersionNegotiator
-	downlinkSvc       DownlinkService
-	statusSvc         StatusService
-	connectionSvc     ConnectionService
-	broadcaster       SCACIBroadcaster
-	queueSerializer   QueueSerializer // Downlink response frame builder
-	auditLogger       AuditLogger     // Downlink audit event recorder
-	tenantResolver    TenantResolver  // Queue-to-tenant mapping (replaces queueTenants map)
+	sessionSvc         SessionService
+	versionNegotiator  VersionNegotiator
+	downlinkSvc        DownlinkService
+	statusSvc          StatusService
+	connectionRegistry BaseStationConnectionRegistry
+	broadcaster        SCACIBroadcaster
+	queueSerializer    QueueSerializer // Downlink response frame builder
+	auditLogger        AuditLogger     // Downlink audit event recorder
+	tenantResolver     TenantResolver  // Queue-to-tenant mapping (replaces queueTenants map)
 
 	// Organization resolution
 	orgResolver org.Resolver // Organization UUID → tenant ID resolution
@@ -172,14 +172,6 @@ type Server struct {
 	// Resolves blueprints and decodes payloads for uplink messages
 	blueprintDecoder  BlueprintDecoder
 	blueprintResolver BlueprintResolver
-
-	// broadcastFn allows tests to inject stub implementations for SendAttachPropagateToAll.
-	// Production code initializes this to s.SendAttachPropagateToAll in constructors.
-	broadcastFn func(endpointEUI uint64, nwkSnKey []byte, shortAddr uint16, bidirectional bool, lastPacketCnt uint32, dualChannel bool, repetition uint8, wideCarrOff bool, longBlkDist bool) []error
-
-	// testNormalizationSpy allows tests to observe normalization decisions in handleMessage.
-	// Production code leaves this nil. Tests set it to capture (command, shouldNormalize) pairs.
-	testNormalizationSpy func(cmd string, normalized bool)
 }
 
 // Compile-time interface assertions
@@ -740,7 +732,7 @@ func NewServer(
 	versionNegotiator VersionNegotiator,
 	downlinkSvc DownlinkService,
 	statusSvc StatusService,
-	connectionSvc ConnectionService,
+	connectionRegistry BaseStationConnectionRegistry,
 	broadcaster SCACIBroadcaster,
 	queueSerializer QueueSerializer,
 	auditLogger AuditLogger,
@@ -758,7 +750,7 @@ func NewServer(
 	// Initialize key encryptor for sensitive data
 	keyEncryptor, err := crypto.NewKeyEncryptor()
 	if err != nil {
-		log.Warn(LogBSSCIFailedToInitializeKeyEncryptor, "error", err)
+		log.WarnContext(ctx, LogBSSCIFailedToInitializeKeyEncryptor, "error", err)
 		// Continue without encryption rather than failing
 	}
 
@@ -778,22 +770,19 @@ func NewServer(
 		endpointRepo:    endpointRepo,
 		keyEncryptor:    keyEncryptor,
 		// Injected services
-		sessionSvc:        sessionSvc,
-		versionNegotiator: versionNegotiator,
-		downlinkSvc:       downlinkSvc,
-		statusSvc:         statusSvc,
-		connectionSvc:     connectionSvc,
-		queueSerializer:   queueSerializer,
-		auditLogger:       auditLogger,
-		tenantResolver:    tenantResolver,
-		broadcaster:       broadcaster,
+		sessionSvc:         sessionSvc,
+		versionNegotiator:  versionNegotiator,
+		downlinkSvc:        downlinkSvc,
+		statusSvc:          statusSvc,
+		connectionRegistry: connectionRegistry,
+		queueSerializer:    queueSerializer,
+		auditLogger:        auditLogger,
+		tenantResolver:     tenantResolver,
+		broadcaster:        broadcaster,
 		// Organization resolution
 		orgResolver:     orgResolver,
 		defaultTenantID: defaultTenantID,
 	}
-
-	// Initialize broadcast hook for production (tests can override)
-	s.broadcastFn = s.SendAttachPropagateToAll
 
 	// Register command handlers
 	s.registerHandlers()
@@ -1582,6 +1571,15 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 }
 
+// shouldNormalizeCommand reports whether an incoming command's payload must be
+// normalized: only BS->SC and bidirectional inbound commands are, so the SC
+// never validates its own outbound responses, and unknown commands are skipped
+// as a safe default for forward compatibility (BSSCI §2.4).
+func shouldNormalizeCommand(command string) bool {
+	direction, exists := CommandDirectionMap[command]
+	return exists && (direction == DirectionBStoSC || direction == DirectionBidirectional)
+}
+
 // handleMessage routes messages to appropriate handlers
 func (s *Server) handleMessage(session *Session, msg *Message, data map[string]interface{}) error {
 	// BSSCI §2.4: Normalize incoming payload to validate fields and detect unknown fields
@@ -1589,17 +1587,8 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 	// Issue #3-4 Fix: Only normalize BS→SC commands (inbound) to avoid validating our own SC→BS responses
 	ctx := s.sessionContext(session)
 
-	// Check if this command should be normalized (only BS→SC and bidirectional inbound commands)
-	direction, exists := CommandDirectionMap[msg.Command]
-	shouldNormalize := exists && (direction == DirectionBStoSC || direction == DirectionBidirectional)
-
-	// Notify test spy if present (for TestNormalizationOnlyForBStoSCCommands)
-	if s.testNormalizationSpy != nil {
-		s.testNormalizationSpy(msg.Command, shouldNormalize)
-	}
-
 	// Only normalize inbound BS→SC and bidirectional commands (skip SC→BS responses and unknown commands for safety)
-	if shouldNormalize {
+	if shouldNormalizeCommand(msg.Command) {
 		normalizedData, err := normalizePayload(ctx, s.logger, msg.Command, data)
 		if err != nil {
 			// Normalization failed (mandatory field missing, invalid type, etc.)
@@ -1893,18 +1882,25 @@ func (s *Server) startDLRXQueryExpiryWorker() {
 			case <-s.ctx.Done():
 				return
 			case <-ticker.C:
-				cutoff := time.Now().Add(-s.dlrxQueryTimeout())
-				expired, err := s.storage.DLRXStatus().ExpireDLRXStatusQuery(s.safeCtx(), cutoff)
-				if err != nil {
-					s.logger.WarnContext(s.safeCtx(), LogBSSCIDLRXQueryExpirySweepFailed, "error", err)
-					continue
-				}
-				if expired > 0 {
-					s.logger.InfoContext(s.safeCtx(), LogBSSCIDLRXQueriesExpired, "count", expired)
-				}
+				s.sweepExpiredDLRXQueries(time.Now())
 			}
 		}
 	}()
+}
+
+// sweepExpiredDLRXQueries expires every dlRxStatQry older than the configured
+// timeout relative to now. It is the worker's per-tick body, separated so the
+// cutoff arithmetic is testable without the ticker.
+func (s *Server) sweepExpiredDLRXQueries(now time.Time) {
+	cutoff := now.Add(-s.dlrxQueryTimeout())
+	expired, err := s.storage.DLRXStatus().ExpireDLRXStatusQuery(s.safeCtx(), cutoff)
+	if err != nil {
+		s.logger.WarnContext(s.safeCtx(), LogBSSCIDLRXQueryExpirySweepFailed, "error", err)
+		return
+	}
+	if expired > 0 {
+		s.logger.InfoContext(s.safeCtx(), LogBSSCIDLRXQueriesExpired, "count", expired)
+	}
 }
 
 // rejectConnect fails the connect operation per BSSCI §5.17: an error frame
@@ -2011,7 +2007,7 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	// the error/errorAck sequence before any conRsp is offered
 	ctx := s.sessionContext(session)
 	euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
-	baseStation, bsErr := s.connectionSvc.GetBaseStationGlobal(ctx, euiBytes, s.connectionMgr)
+	baseStation, bsErr := s.connectionRegistry.GetBaseStationGlobal(ctx, euiBytes)
 	if bsErr != nil || baseStation == nil {
 		s.logger.ErrorContext(ctx, LogBSSCIBaseStationNotFoundInDatabase,
 			"eui", session.BaseStationEUI,
@@ -2319,7 +2315,7 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 	// Step 2: register the live connection and base-station online status. A
 	// failure here compensates the just-persisted session and closes without
 	// publishing anything to the live registries.
-	if err := s.connectionSvc.RegisterConnection(ctx, session, baseStation, s.connectionMgr); err != nil {
+	if err := s.connectionRegistry.RegisterConnection(ctx, session, baseStation); err != nil {
 		s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateConnectionStatus,
 			"eui", session.BaseStationEUI,
 			"error", err)

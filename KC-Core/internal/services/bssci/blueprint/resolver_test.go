@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // stubBlueprintRepo overrides only the methods a test exercises; any other call panics.
@@ -65,7 +67,7 @@ func TestResolveBlueprintForEndpoint_SnapshotFirst(t *testing.T) {
 			}
 			svc := NewResolverService(logger.NewNop(), repo, nil, nil)
 
-			bp, err := svc.ResolveBlueprintForEndpoint(context.Background(), 1, ep, nil)
+			bp, err := svc.ResolveBlueprintForEndpoint(testutil.TestContext(), 1, ep, nil)
 			require.NoError(t, err)
 			require.NotNil(t, bp)
 			assert.Equal(t, tt.wantID, bp.ID)

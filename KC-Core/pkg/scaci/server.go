@@ -753,7 +753,7 @@ func (s *Server) sendErrorWithCatalog(conn net.Conn, session *Session, opId int6
 		posixCode, message, err = s.errorRecorder.RecordOutboundError(
 			ctx, session, opId, CmdError, errorToken, defaultCode, detail)
 		if err != nil {
-			s.logger.Warn(LogSCACIRecordEventFailed, "error", err)
+			s.logger.WarnContext(ctx, LogSCACIRecordEventFailed, "error", err)
 		}
 	} else {
 		// Fallback to catalog lookup only (no persistence - legacy or nil session)
@@ -788,7 +788,7 @@ func (s *Server) sendErrorWithCatalog(conn net.Conn, session *Session, opId int6
 		logFields = append(logFields, "context", detail)
 	}
 
-	s.logger.Warn(LogSCACIErrorReceived, logFields...)
+	s.logger.WarnContext(ctx, LogSCACIErrorReceived, logFields...)
 
 	// Send on wire (errorToken NOT included per spec - internal only)
 	return s.sendError(conn, session, opId, posixCode, message, nil)
@@ -1128,7 +1128,7 @@ func (s *Server) persistOpIDsPair(sessionID, tenantID, acOpId, scOpId int64) {
 		ctx, cancel := context.WithTimeout(context.Background(), SessionPersistTimeout)
 		defer cancel()
 		if err := s.sessionRepo.UpdateOperationIDs(ctx, tid, sid, acId, scId); err != nil {
-			s.logger.Error(LogSCACIPersistOpIDsPairFailed, "sessionID", sid, "error", err)
+			s.logger.ErrorContext(ctx, LogSCACIPersistOpIDsPairFailed, "sessionID", sid, "error", err)
 		}
 	}(sessionID, tenantID, acOpId, scOpId)
 }
@@ -1592,7 +1592,7 @@ func (s *Server) BroadcastEPStatus(ctx context.Context, tenantID int64, data *EP
 	s.sessionsMu.RUnlock()
 
 	if len(targets) == 0 {
-		s.logger.Debug(LogSCACINoActiveACsForTenant, "tenantId", tenantID)
+		s.logger.DebugContext(ctx, LogSCACINoActiveACsForTenant, "tenantId", tenantID)
 		return nil // No connected ACs, not an error
 	}
 
@@ -1648,7 +1648,7 @@ func (s *Server) BroadcastEPStatus(ctx context.Context, tenantID int64, data *EP
 		t.session.WriteMu.Unlock()
 
 		if err != nil {
-			s.logger.Error(LogSCACISendEPStatusFailed,
+			s.logger.ErrorContext(ctx, LogSCACISendEPStatusFailed,
 				"acEui", pkgmioty.FormatEUI64(t.session.AcEui),
 				"error", err)
 			return err
@@ -1703,7 +1703,7 @@ func (s *Server) BroadcastEPStatus(ctx context.Context, tenantID int64, data *EP
 			opCancel() // Cancel immediately after operation, not deferred
 
 			if err != nil {
-				s.logger.Warn(LogSCACIRecordEPStatusOpFailed,
+				s.logger.WarnContext(ctx, LogSCACIRecordEPStatusOpFailed,
 					"opId", opId,
 					"error", err)
 				// Continue - operation tracking is for resume, not critical path

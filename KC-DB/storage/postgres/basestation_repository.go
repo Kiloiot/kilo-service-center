@@ -544,6 +544,12 @@ func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, o
 		return nil, fmt.Errorf("update messages_archive: %w", err)
 	}
 
+	// Preserved legacy archive (pre-000139) participates in identity
+	// maintenance so its rows never carry a stale EUI
+	if err := updateLegacyArchiveEUI(ctx, tx, legacyArchiveBsEUI, newEui, oldEui); err != nil {
+		return nil, fmt.Errorf("update messages_archive_pre000139: %w", err)
+	}
+
 	// BYTEA columns: endpoints.last_attached_bs_eui
 	_, err = tx.ExecContext(ctx, "UPDATE endpoints SET last_attached_bs_eui = $1 WHERE last_attached_bs_eui = $2", newEui, oldEui)
 	if err != nil {

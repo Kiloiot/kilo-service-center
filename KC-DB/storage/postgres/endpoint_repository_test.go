@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -1582,7 +1581,7 @@ func TestStreamAllForPropagation_UsesCorrectColumnName(t *testing.T) {
 		WillReturnRows(rows)
 
 	// Execute StreamAllForPropagation
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	endpoints, err := repo.StreamAllForPropagation(ctx, 0, 100)
 	require.NoError(t, err, "StreamAllForPropagation should succeed")
 	require.Len(t, endpoints, 1, "Should return 1 endpoint")
@@ -1651,7 +1650,7 @@ func TestStreamAllForPropagation_QueryTextValidation(t *testing.T) {
 	mock.ExpectQuery("").WillReturnRows(rows)
 
 	// Execute - the custom matcher will verify column names
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	_, err = repo.StreamAllForPropagation(ctx, 0, 100)
 	require.NoError(t, err, "StreamAllForPropagation should succeed with correct column name")
 

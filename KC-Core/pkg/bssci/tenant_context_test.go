@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // stubSessionService is a no-op session service for smoke tests
@@ -96,7 +98,7 @@ func TestAttachPropagateTenantField(t *testing.T) {
 	env.server.mu.Unlock()
 
 	// Execute attach propagate (Issue #1 fix ensures endpointTenantID is used)
-	err := env.server.SendAttachPropagateToSession(context.Background(), env.session, endpoint)
+	err := env.server.SendAttachPropagateToSession(testutil.TestContext(), env.session, endpoint)
 	require.NoError(t, err, "SendAttachPropagateToSession should succeed with cross-tenant scenario")
 
 	t.Logf("PASS: Issue #1 smoke test: Attach propagate succeeded with endpoint tenant %d and session tenant %d",
@@ -158,7 +160,7 @@ func TestDetachCompleteTelemetryFields(t *testing.T) {
 				},
 				CreatedAt: time.Now(),
 			}
-			ctx := context.Background()
+			ctx := testutil.TestContext()
 			err := env.server.statusSvc.RecordPendingOperation(ctx, env.session, opID, pendingOp, env.session.DbSessionID)
 			require.NoError(t, err, "Failed to record pending operation")
 
@@ -253,7 +255,7 @@ func TestDetachCompleteOwnerContext(t *testing.T) {
 				Metadata:      metadata,
 				CreatedAt:     time.Now(),
 			}
-			ctx := context.Background()
+			ctx := testutil.TestContext()
 			err := env.server.statusSvc.RecordPendingOperation(ctx, env.session, opID, pendingOp, env.session.DbSessionID)
 			require.NoError(t, err, "Failed to record pending operation")
 

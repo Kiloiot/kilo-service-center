@@ -154,18 +154,18 @@ type StatusService interface {
 	ExtractQueueMetadata(session *Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string)
 }
 
-// ConnectionService wraps REAL basestation.ConnectionManager operations
-// Preserves: GetBaseStation, UpdateConnectionStatus, EventRecorder
-type ConnectionService interface {
-	// GetBaseStation via connectionMgr (tenant-scoped via context)
-	GetBaseStation(ctx context.Context, eui [8]byte, mgr *basestation.ConnectionManager) (*basestation.BaseStation, error)
-
+// BaseStationConnectionRegistry owns the live-connection operations the
+// connect flow consumes: registration lookup across tenants (the tenant is
+// not yet authenticated during the handshake) and live-connection
+// registration. The concrete connection manager is captured by the adapter at
+// construction, never passed per call.
+type BaseStationConnectionRegistry interface {
 	// GetBaseStationGlobal retrieves a base station by EUI across all tenants.
-	// Used during BSSCI connect handshake when tenant is not yet resolved.
-	GetBaseStationGlobal(ctx context.Context, eui [8]byte, mgr *basestation.ConnectionManager) (*basestation.BaseStation, error)
+	GetBaseStationGlobal(ctx context.Context, eui [8]byte) (*basestation.BaseStation, error)
 
-	// RegisterConnection updates basestation status
-	RegisterConnection(ctx context.Context, session *Session, baseStation *basestation.BaseStation, mgr *basestation.ConnectionManager) error
+	// RegisterConnection publishes the session's live connection and marks the
+	// base station online.
+	RegisterConnection(ctx context.Context, session *Session, baseStation *basestation.BaseStation) error
 }
 
 // CertificateIdentity is the tenant/organization identity resolved from a

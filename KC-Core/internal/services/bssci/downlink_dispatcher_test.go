@@ -13,6 +13,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockLoggerForDispatch is a minimal mock implementing logger.Logger
@@ -288,7 +290,7 @@ func TestDispatchIfAvailable_Success(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 42, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	if err != nil {
@@ -322,7 +324,7 @@ func TestDispatchIfAvailable_DlRxStatQryPassthrough(t *testing.T) {
 		dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 		dispatched, err := dispatcher.DispatchIfAvailable(
-			context.Background(), 42, uuid.New(), testDispatchSession(),
+			testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 			0xAABBCCDDEEFF0011, false, false)
 		if err != nil || !dispatched {
 			t.Fatalf("dlRxStatQry=%v: unexpected result dispatched=%v err=%v", want, dispatched, err)
@@ -338,7 +340,7 @@ func TestDispatchIfAvailable_NoPendingDownlinks(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 42, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	if err != nil {
@@ -361,7 +363,7 @@ func TestDispatchIfAvailable_NoTenantContext(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 0, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 0, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	if err != nil {
@@ -381,7 +383,7 @@ func TestDispatchIfAvailable_TransactionBeginError(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 42, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	// Should gracefully degrade, not return error (don't fail uplink)
@@ -401,7 +403,7 @@ func TestDispatchIfAvailable_ReservationCommitError(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 42, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	if err != nil {
@@ -424,7 +426,7 @@ func TestDispatchIfAvailable_SendFunctionError_ReleasesToPending(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 42, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	if err == nil {
@@ -454,7 +456,7 @@ func TestDispatchIfAvailable_AmbiguousSendError_StaysReserved(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 42, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	if !errors.Is(err, bssci.ErrAmbiguousWrite) {
@@ -481,7 +483,7 @@ func TestDispatchIfAvailable_MarkQueuedError_ReportsDispatched(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 42, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	// The send happened: the dispatch is reported and the row stays reserved
@@ -515,7 +517,7 @@ func TestDispatchIfAvailable_UsesUserDataIfPresent(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn)
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
-		context.Background(), 42, uuid.New(), testDispatchSession(),
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(),
 		0xAABBCCDDEEFF0011, true, false)
 
 	if err != nil {
@@ -541,7 +543,7 @@ func TestDispatchQueue_Success(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchQueue(
-		context.Background(), 42, uuid.New(), testDispatchSession(), 777, 0xAABBCCDDEEFF0011)
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(), 777, 0xAABBCCDDEEFF0011)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -570,7 +572,7 @@ func TestDispatchQueue_NoMatchingPendingRow(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchQueue(
-		context.Background(), 42, uuid.New(), testDispatchSession(), 777, 0xAABBCCDDEEFF0011)
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(), 777, 0xAABBCCDDEEFF0011)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -592,7 +594,7 @@ func TestDispatchQueue_ReservationError(t *testing.T) {
 	dispatcher := NewDownlinkDispatcher(&mockLoggerForDispatch{}, storageM, sendFn.Send)
 
 	dispatched, err := dispatcher.DispatchQueue(
-		context.Background(), 42, uuid.New(), testDispatchSession(), 777, 0xAABBCCDDEEFF0011)
+		testutil.TestContext(), 42, uuid.New(), testDispatchSession(), 777, 0xAABBCCDDEEFF0011)
 
 	if err == nil {
 		t.Fatal("expected reservation error to propagate")

@@ -15,16 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // =============================================================================
@@ -395,8 +393,8 @@ func TestReplayEPStatus_MissingEpEui_ReturnsErrorAndLogs(t *testing.T) {
 	}
 
 	// Capture log output with observer at Error level
-	observedCore, observedLogs := observer.New(zapcore.ErrorLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures ERROR+
+	testLogger := observedLogs
 
 	s := &Server{
 		logger: testLogger,
@@ -415,20 +413,15 @@ func TestReplayEPStatus_MissingEpEui_ReturnsErrorAndLogs(t *testing.T) {
 	assert.Contains(t, err.Error(), "missing/invalid epEui")
 
 	// Assert: LogSCACIReplayEPStatusInvalidData was logged
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("ERROR")
 	found := false
 	for _, entry := range logs {
 		if entry.Message == LogSCACIReplayEPStatusInvalidData {
 			found = true
 			// Verify context fields
-			for _, field := range entry.Context {
-				if field.Key == "opId" {
-					assert.Equal(t, int64(-100), field.Integer)
-				}
-				if field.Key == "field" {
-					assert.Equal(t, "epEui", field.String)
-				}
-			}
+			entryFields := entry.FieldMap()
+			assert.Equal(t, int64(-100), entryFields["opId"])
+			assert.Equal(t, "epEui", entryFields["field"])
 			break
 		}
 	}
@@ -456,8 +449,8 @@ func TestReplayEPStatus_MissingEpStatus_ReturnsErrorAndLogs(t *testing.T) {
 	}
 
 	// Capture log output with observer at Error level
-	observedCore, observedLogs := observer.New(zapcore.ErrorLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures ERROR+
+	testLogger := observedLogs
 
 	s := &Server{
 		logger: testLogger,
@@ -476,19 +469,14 @@ func TestReplayEPStatus_MissingEpStatus_ReturnsErrorAndLogs(t *testing.T) {
 	assert.Contains(t, err.Error(), "missing/invalid epStatus")
 
 	// Assert: LogSCACIReplayEPStatusInvalidData was logged with field="epStatus"
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("ERROR")
 	found := false
 	for _, entry := range logs {
 		if entry.Message == LogSCACIReplayEPStatusInvalidData {
 			found = true
-			for _, field := range entry.Context {
-				if field.Key == "opId" {
-					assert.Equal(t, int64(-101), field.Integer)
-				}
-				if field.Key == "field" {
-					assert.Equal(t, "epStatus", field.String)
-				}
-			}
+			entryFields := entry.FieldMap()
+			assert.Equal(t, int64(-101), entryFields["opId"])
+			assert.Equal(t, "epStatus", entryFields["field"])
 			break
 		}
 	}
@@ -516,8 +504,8 @@ func TestReplayEPStatus_InvalidEpEuiHex_ReturnsErrorAndLogs(t *testing.T) {
 	}
 
 	// Capture log output at Error level
-	observedCore, observedLogs := observer.New(zapcore.ErrorLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures ERROR+
+	testLogger := observedLogs
 
 	s := &Server{
 		logger: testLogger,
@@ -535,7 +523,7 @@ func TestReplayEPStatus_InvalidEpEuiHex_ReturnsErrorAndLogs(t *testing.T) {
 	assert.Contains(t, err.Error(), "parse epEui")
 
 	// Assert: error log with epEui field
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("ERROR")
 	found := false
 	for _, entry := range logs {
 		if entry.Message == LogSCACIReplayEPStatusInvalidData {
@@ -568,8 +556,8 @@ func TestReplayEPStatus_InvalidNonceBase64_LogsWarning(t *testing.T) {
 	}
 
 	// Capture log output at Warn level
-	observedCore, observedLogs := observer.New(zapcore.WarnLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures WARN+
+	testLogger := observedLogs
 
 	s := &Server{
 		logger: testLogger,
@@ -593,16 +581,13 @@ func TestReplayEPStatus_InvalidNonceBase64_LogsWarning(t *testing.T) {
 	// Focus on warning log.
 
 	// Assert: warning log for nonce field
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("WARN")
 	found := false
 	for _, entry := range logs {
 		if entry.Message == LogSCACIReplayEPStatusFieldDecodeErr {
 			found = true
-			for _, field := range entry.Context {
-				if field.Key == "field" {
-					assert.Equal(t, "nonce", field.String)
-				}
-			}
+			entryFields := entry.FieldMap()
+			assert.Equal(t, "nonce", entryFields["field"])
 			break
 		}
 	}
@@ -635,8 +620,8 @@ func TestReplayEPStatus_InvalidSubpackets_LogsWarning(t *testing.T) {
 	}
 
 	// Capture log output at Warn level
-	observedCore, observedLogs := observer.New(zapcore.WarnLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures WARN+
+	testLogger := observedLogs
 
 	s := &Server{
 		logger: testLogger,
@@ -655,16 +640,13 @@ func TestReplayEPStatus_InvalidSubpackets_LogsWarning(t *testing.T) {
 	_ = serverConn.Close()
 
 	// Assert: warning log for subpackets field
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("WARN")
 	found := false
 	for _, entry := range logs {
 		if entry.Message == LogSCACIReplayEPStatusFieldDecodeErr {
 			found = true
-			for _, field := range entry.Context {
-				if field.Key == "field" {
-					assert.Equal(t, "subpackets", field.String)
-				}
-			}
+			entryFields := entry.FieldMap()
+			assert.Equal(t, "subpackets", entryFields["field"])
 			break
 		}
 	}
@@ -732,8 +714,7 @@ func TestReplayEPStatus_PreservesTelemetryFields(t *testing.T) {
 	}
 
 	// Setup logger to capture any errors
-	observedCore, _ := observer.New(zapcore.DebugLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	testLogger := bsscitest.NewRecordingLogger()
 
 	s := &Server{
 		logger: testLogger,

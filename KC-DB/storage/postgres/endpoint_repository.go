@@ -1374,6 +1374,12 @@ func (r *EndPointRepository) UpdateWithEUI(ctx context.Context, tenantID int64, 
 		return nil, fmt.Errorf("update messages_archive.ep_eui: %w", err)
 	}
 
+	// Preserved legacy archive (pre-000139) participates in identity
+	// maintenance so its rows never carry a stale EUI
+	if err := updateLegacyArchiveEUI(ctx, tx, legacyArchiveEpEUI, newEui, oldEui); err != nil {
+		return nil, fmt.Errorf("update messages_archive_pre000139.ep_eui: %w", err)
+	}
+
 	// BYTEA columns: mioty_message_deduplication.ep_eui
 	_, err = tx.ExecContext(ctx, "UPDATE mioty_message_deduplication SET ep_eui = $1 WHERE ep_eui = $2", newEui, oldEui)
 	if err != nil {

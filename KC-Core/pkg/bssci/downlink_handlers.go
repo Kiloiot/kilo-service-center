@@ -334,9 +334,9 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 	// the counter once for the whole pair, persist the pending records, then
 	// write the frames. IDs are never rolled back. The query ID is allocated
 	// first so its pending row precedes the queue row in reissue order.
-	var qryOpId int64
+	var qryOpID int64
 	if dlRxStatQry {
-		qryOpId = session.NextScOpID()
+		qryOpID = session.NextScOpID()
 	}
 	opId := session.NextScOpID()
 	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
@@ -449,21 +449,21 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 	if dlRxStatQry {
 		qryMsg = map[string]interface{}{
 			"command": mioty.CmdDLRxStatusQuery,
-			"opId":    qryOpId,
+			"opId":    qryOpID,
 			"epEui":   epEui,
 		}
-		if err := s.persistDLRXQueryCorrelation(session, qryOpId, epEui, euiBytes); err != nil {
+		if err := s.persistDLRXQueryCorrelation(session, qryOpID, epEui, euiBytes); err != nil {
 			return err
 		}
 		pair := []*PendingOperation{
-			s.buildPendingOperation(session, qryOpId, mioty.CmdDLRxStatusQuery, qryMsg, euiBytes, nil),
+			s.buildPendingOperation(session, qryOpID, mioty.CmdDLRxStatusQuery, qryMsg, euiBytes, nil),
 			s.buildPendingOperation(session, opId, mioty.CmdDLDataQueue, msg, euiBytes, metadata),
 		}
 		if err := s.persistPendingOperationBatch(session, pair); err != nil {
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLDataQueOperation,
 				"sessionID", sessionID,
 				"opId", opId,
-				"qryOpId", qryOpId,
+				"qryOpID", qryOpID,
 				"error", err)
 			return err
 		}
@@ -484,14 +484,14 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 			if errors.Is(err, ErrAmbiguousWrite) {
 				// Both recovery rows are preserved; resume reissues the pair
 				// with its original IDs.
-				s.closeTransportAfterWriteFailure(session, qryOpId, err)
+				s.closeTransportAfterWriteFailure(session, qryOpID, err)
 			} else {
 				// Nothing reached the wire - remove both recovery rows.
-				for _, cleanupOpId := range []int64{qryOpId, opId} {
-					if cleanupErr := s.removePendingOperation(session, cleanupOpId); cleanupErr != nil {
+				for _, cleanupOpID := range []int64{qryOpID, opId} {
+					if cleanupErr := s.removePendingOperation(session, cleanupOpID); cleanupErr != nil {
 						s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToClearPersistedPendingOperation,
 							"sessionID", session.DbSessionID,
-							"opId", cleanupOpId,
+							"opId", cleanupOpID,
 							"error", cleanupErr)
 					}
 				}
@@ -743,7 +743,7 @@ func (s *Server) handleDLDataRevokeResponse(_ *Server, session *Session, msg *Me
 		}
 
 		// Fallback for non-catalog errors (shouldn't happen after service refactor)
-		s.logger.ErrorContext(s.sessionContext(session), "Unexpected non-catalog error from ProcessRevokeResponse",
+		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIUnexpectedRevokeResponseError,
 			"error", err,
 			"opId", msg.OpId)
 		if sendErr := s.sendErrorReplacingOperation(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errDatabaseUpdateFailed)); sendErr != nil {
@@ -1046,7 +1046,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	}
 	// Validate SNR is finite and within plausible range per BSSCI §5.15.1
 	if errToken := validateFiniteFloat(dlRxSnr, mioty.DLRxSnrMinDB, mioty.DLRxSnrMaxDB); errToken != "" {
-		s.logger.WarnContext(s.sessionContext(session), "DL RX status SNR validation failed",
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIDLRXStatusSNRValidationFailed,
 			"epEui", dlRxStatus.EpEui,
 			"dlRxSnr", dlRxSnr,
 			"error", errToken)
@@ -1067,7 +1067,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	}
 	// Validate RSSI is finite and within plausible range per BSSCI §5.15.1
 	if errToken := validateFiniteFloat(dlRxRssi, mioty.DLRxRssiMinDBm, mioty.DLRxRssiMaxDBm); errToken != "" {
-		s.logger.WarnContext(s.sessionContext(session), "DL RX status RSSI validation failed",
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIDLRXStatusRSSIValidationFailed,
 			"epEui", dlRxStatus.EpEui,
 			"dlRxRssi", dlRxRssi,
 			"error", errToken)
@@ -1092,7 +1092,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	// Resolve endpoint owner tenant for roaming scenarios
 	tenantID, err := s.resolveEndpointTenantID(ctx, session, dlRxStatus.EpEui)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "Failed to resolve endpoint tenant for DL RX status",
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToResolveEndpointTenantForDLRXStatus,
 			"error", err,
 			"epEui", dlRxStatus.EpEui)
 		if err := s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errFailedToPersistDLRXStatus)); err != nil {
@@ -1139,7 +1139,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 				msg.OpId,   // Audit: BS opId (different namespace)
 			)
 			if err != nil {
-				s.logger.ErrorContext(ownerCtx, "Failed to correlate DL RX query",
+				s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToCorrelateDLRXQuery,
 					"epEui", dlRxStatus.EpEui,
 					"opId", msg.OpId,
 					"error", err)
@@ -1147,7 +1147,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 			}
 
 			if !found {
-				s.logger.WarnContext(ownerCtx, "Unsolicited DL RX status (no pending query)",
+				s.logger.WarnContext(ownerCtx, LogBSSCIUnsolicitedDLRXStatus,
 					"epEui", dlRxStatus.EpEui,
 					"tenant", tenantID,
 					"bsEui", session.BaseStationEUI)
@@ -1160,7 +1160,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	// Resolve endpoint owner's organization UUID (BSSCI §5.15)
 	epOwnerOrgUUID, err := s.resolveOwnerOrgUUID(ownerCtx, tenantID, epEuiBytes)
 	if err != nil {
-		s.logger.ErrorContext(ownerCtx, "Failed to resolve endpoint owner org for DL RX status persistence",
+		s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToResolveEndpointOwnerOrgForDLRXStatus,
 			"error", err,
 			"tenant", tenantID,
 			"epEui", dlRxStatus.EpEui)

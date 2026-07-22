@@ -305,9 +305,11 @@ type PendingOperation struct {
 	OperationType string          `db:"operation_type"`
 	EndpointEUI   []byte          `db:"endpoint_eui"`
 	OperationData json.RawMessage `db:"operation_data"`
-	Metadata      json.RawMessage `db:"metadata"`
-	CreatedAt     time.Time       `db:"created_at"`
-	UpdatedAt     time.Time       `db:"updated_at"`
+	// Metadata is []byte rather than json.RawMessage: the column is nullable,
+	// and database/sql can scan NULL into *[]byte but not *json.RawMessage.
+	Metadata  []byte    `db:"metadata"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 // Storage defines the main storage interface combining all repositories

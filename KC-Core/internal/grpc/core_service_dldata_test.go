@@ -287,7 +287,8 @@ func (f *fakeStatusSvc) RecordPendingOperations(_ context.Context, _ *bssci.Sess
 	return nil
 }
 
-func (f *fakeStatusSvc) RestorePendingOperation(_ *bssci.Session, _ int64, _ *bssci.PendingOperation) {}
+func (f *fakeStatusSvc) RestorePendingOperation(_ *bssci.Session, _ int64, _ *bssci.PendingOperation) {
+}
 func (f *fakeStatusSvc) GetPendingOperation(_ *bssci.Session, _ int64) (*bssci.PendingOperation, error) {
 	return nil, nil
 }

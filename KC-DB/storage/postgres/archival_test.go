@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"encoding/binary"
 	"testing"
 	"time"
@@ -10,6 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // archivalMessageParams describes a minimal messages row for archival tests.
@@ -63,7 +64,7 @@ func TestArchivalServiceMessages(t *testing.T) {
 	log := logger.Get()
 	service := NewArchivalService(sqlxDB.DB, log)
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// High-bit EUI64 (> max int64) proves the BYTEA storage path survives the
 	// archival round-trip without signed overflow.

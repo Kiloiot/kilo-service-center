@@ -1,7 +1,6 @@
 package bssciservices
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -14,6 +13,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 func newResumeTestService(t *testing.T, tenantID int64) (*sessionService, *mockBaseStationSessionRepo) {
@@ -68,7 +69,7 @@ func TestHandleResume_DBLookup_BySnBsUuid(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:],
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:],
 		int64Ptr(1000), int64Ptr(-500), 0x123456789ABCDEF0)
 
 	require.Equal(t, bssci.ResumeCompatible, outcome.Disposition)
@@ -99,7 +100,7 @@ func TestHandleResume_AbsentCounters(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0xAABB)
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:], nil, nil, 0xAABB)
 
 	require.Equal(t, bssci.ResumeCompatible, outcome.Disposition)
 	require.NotNil(t, outcome.Previous)
@@ -123,7 +124,7 @@ func TestHandleResume_StaleScCounterAccepted(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:],
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:],
 		int64Ptr(400), int64Ptr(-700), 0xCCDD)
 
 	require.Equal(t, bssci.ResumeCompatible, outcome.Disposition)
@@ -147,7 +148,7 @@ func TestHandleResume_RequiredBsOpIdBeyondPersisted(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:],
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:],
 		int64Ptr(1001), int64Ptr(-500), 0xEEFF)
 
 	assert.Equal(t, bssci.ResumeInconsistent, outcome.Disposition)
@@ -168,7 +169,7 @@ func TestHandleResume_ClaimedScOpIdBeyondIssued(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:],
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:],
 		int64Ptr(1000), int64Ptr(-501), 0xEEFF)
 
 	assert.Equal(t, bssci.ResumeInconsistent, outcome.Disposition)
@@ -190,7 +191,7 @@ func TestHandleResume_TerminatedNotResumable(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:], nil, nil, 0x1234)
 
 	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition, "terminated sessions must not resume")
 }
@@ -209,7 +210,7 @@ func TestHandleResume_ActiveNotResumableFromDB(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:], nil, nil, 0x1234)
 
 	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition, "only disconnected sessions are resumable from persistence")
 }
@@ -224,7 +225,7 @@ func TestHandleResume_ShortUUID_SkipsDBLookup(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, []byte{0x01, 0x02},
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, []byte{0x01, 0x02},
 		int64Ptr(100), int64Ptr(-50), 0x123456789ABCDEF0)
 
 	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition)
@@ -240,7 +241,7 @@ func TestHandleResume_NilUUID_SkipsDBLookup(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, nil,
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, nil,
 		int64Ptr(100), int64Ptr(-50), 0x123456789ABCDEF0)
 
 	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition)
@@ -257,7 +258,7 @@ func TestHandleResume_NoDBMatch_ReturnNil(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, unknownUUID[:],
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, unknownUUID[:],
 		int64Ptr(100), int64Ptr(-50), 0x123456789ABCDEF0)
 
 	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition)
@@ -276,7 +277,7 @@ func TestHandleResume_TenantIsolation(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	wrongOutcome := svc.HandleResume(context.Background(), wrongTenantSession, bsUUID[:],
+	wrongOutcome := svc.HandleResume(testutil.TestContext(), wrongTenantSession, bsUUID[:],
 		int64Ptr(5000), int64Ptr(-2500), 0x1122334455667788)
 	assert.Equal(t, bssci.ResumeNoMatch, wrongOutcome.Disposition, "cross-tenant UUID collisions must not resume")
 
@@ -285,7 +286,7 @@ func TestHandleResume_TenantIsolation(t *testing.T) {
 			ResolvedTenantID: 500,
 		},
 	}
-	correctOutcome := svc.HandleResume(context.Background(), correctTenantSession, bsUUID[:],
+	correctOutcome := svc.HandleResume(testutil.TestContext(), correctTenantSession, bsUUID[:],
 		int64Ptr(5000), int64Ptr(-2500), 0x1122334455667788)
 	require.Equal(t, bssci.ResumeCompatible, correctOutcome.Disposition)
 	require.NotNil(t, correctOutcome.Previous)
@@ -374,7 +375,7 @@ func TestPersistSessionResumeUpdatesProtocolVersion(t *testing.T) {
 		},
 	}
 
-	err := svc.PersistSession(context.Background(), session, nil, true, nil)
+	err := svc.PersistSession(testutil.TestContext(), session, nil, true, nil)
 	require.NoError(t, err)
 
 	// Verify repository row now has protocol_version populated and the resume
@@ -414,7 +415,7 @@ func TestMarkDisconnected_StaleConnectionDoesNotTouchNewerSession(t *testing.T) 
 			Encoding:          "msgpack",
 		},
 	}
-	require.NoError(t, svc.PersistSession(context.Background(), sessionB, nil, true, nil))
+	require.NoError(t, svc.PersistSession(testutil.TestContext(), sessionB, nil, true, nil))
 	require.Equal(t, models.SessionStatusActive, dbSession.Status)
 
 	// Connection A's deferred cleanup runs after B took over
@@ -425,7 +426,7 @@ func TestMarkDisconnected_StaleConnectionDoesNotTouchNewerSession(t *testing.T) 
 			DbSessionID:      77,
 		},
 	}
-	require.NoError(t, svc.MarkDisconnected(context.Background(), sessionA))
+	require.NoError(t, svc.MarkDisconnected(testutil.TestContext(), sessionA))
 
 	// B remains active and resumable state is untouched by A's cleanup
 	assert.Equal(t, models.SessionStatusActive, dbSession.Status,
@@ -433,7 +434,7 @@ func TestMarkDisconnected_StaleConnectionDoesNotTouchNewerSession(t *testing.T) 
 	assert.Nil(t, dbSession.EndedAt)
 
 	// B's own later cleanup does transition the session
-	require.NoError(t, svc.MarkDisconnected(context.Background(), sessionB))
+	require.NoError(t, svc.MarkDisconnected(testutil.TestContext(), sessionB))
 	assert.Equal(t, models.SessionStatusDisconnected, dbSession.Status)
 	assert.True(t, dbSession.CanResume)
 	assert.NotNil(t, dbSession.EndedAt)
@@ -452,7 +453,7 @@ func TestHandleResume_InfrastructureFailure(t *testing.T) {
 			ResolvedTenantID: 100,
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:], nil, nil, 0x1234)
 
 	assert.Equal(t, bssci.ResumeInfrastructureFailure, outcome.Disposition)
 	require.Error(t, outcome.Err)
@@ -476,7 +477,7 @@ func TestHandleResume_VersionIncompatible(t *testing.T) {
 			NegotiatedVersion: "1.0.0",
 		},
 	}
-	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:], nil, nil, 0x1234)
 
 	assert.Equal(t, bssci.ResumeInconsistent, outcome.Disposition)
 	require.NotNil(t, outcome.Previous, "the stale session is returned for termination")

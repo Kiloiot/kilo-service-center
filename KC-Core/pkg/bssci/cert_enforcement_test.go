@@ -17,6 +17,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // makeEnforcementCert creates a real self-signed certificate and its PEM.
@@ -94,7 +96,7 @@ func TestVerifyCertificateFingerprint_Match(t *testing.T) {
 		TLSCertFingerprint: crypto.CertFingerprintSHA256(cert.Raw),
 	}
 
-	assert.NoError(t, server.verifyCertificateFingerprint(context.Background(), session))
+	assert.NoError(t, server.verifyCertificateFingerprint(testutil.TestContext(), session))
 }
 
 // TestVerifyCertificateFingerprint_ForgedSameCNRejected: a different
@@ -108,7 +110,7 @@ func TestVerifyCertificateFingerprint_ForgedSameCNRejected(t *testing.T) {
 		TLSCertFingerprint: crypto.CertFingerprintSHA256(otherCert.Raw),
 	}
 
-	assert.Error(t, server.verifyCertificateFingerprint(context.Background(), session),
+	assert.Error(t, server.verifyCertificateFingerprint(testutil.TestContext(), session),
 		"a forged certificate sharing the CN must be rejected")
 }
 
@@ -123,7 +125,7 @@ func TestVerifyCertificateFingerprint_BlankBackfillsFromStoredPEM(t *testing.T) 
 		TLSCertificate: pemData,
 	}
 
-	require.NoError(t, server.verifyCertificateFingerprint(context.Background(), session))
+	require.NoError(t, server.verifyCertificateFingerprint(testutil.TestContext(), session))
 	assert.Equal(t, 1, directory.backfillCalls, "the derived fingerprint is persisted")
 }
 
@@ -139,7 +141,7 @@ func TestVerifyCertificateFingerprint_BlankStoredPEMOtherCertRejected(t *testing
 		TLSCertificate: otherPEM,
 	}
 
-	require.Error(t, server.verifyCertificateFingerprint(context.Background(), session))
+	require.Error(t, server.verifyCertificateFingerprint(testutil.TestContext(), session))
 	assert.Zero(t, directory.backfillCalls, "a mismatch must never be persisted")
 }
 
@@ -150,7 +152,7 @@ func TestVerifyCertificateFingerprint_BlankNoStoredCertRejected(t *testing.T) {
 	server, session, _, _ := newEnforcementServer(t, directory)
 	directory.station = RegisteredBaseStation{ID: 7, TenantID: 42}
 
-	assert.Error(t, server.verifyCertificateFingerprint(context.Background(), session))
+	assert.Error(t, server.verifyCertificateFingerprint(testutil.TestContext(), session))
 }
 
 // TestVerifyCertificateFingerprint_BackfillRaceReloadsAndCompares: a lost
@@ -168,7 +170,7 @@ func TestVerifyCertificateFingerprint_BackfillRaceReloadsAndCompares(t *testing.
 		TLSCertFingerprint: crypto.CertFingerprintSHA256(cert.Raw),
 	}
 
-	require.NoError(t, server.verifyCertificateFingerprint(context.Background(), session))
+	require.NoError(t, server.verifyCertificateFingerprint(testutil.TestContext(), session))
 	assert.Equal(t, 2, directory.getCalls, "the lost race reloads the row")
 
 	// A concurrent writer that stored a DIFFERENT fingerprint rejects
@@ -176,7 +178,7 @@ func TestVerifyCertificateFingerprint_BackfillRaceReloadsAndCompares(t *testing.
 	server2, session2, _, pemData2 := newEnforcementServer(t, directory2)
 	directory2.station = RegisteredBaseStation{ID: 7, TenantID: 42, TLSCertificate: pemData2}
 	directory2.reloadStation = &RegisteredBaseStation{ID: 7, TenantID: 42, TLSCertFingerprint: "deadbeef"}
-	assert.Error(t, server2.verifyCertificateFingerprint(context.Background(), session2))
+	assert.Error(t, server2.verifyCertificateFingerprint(testutil.TestContext(), session2))
 }
 
 // TestVerifyCertificateFingerprint_LookupFailureRejects: an unreadable
@@ -185,7 +187,7 @@ func TestVerifyCertificateFingerprint_LookupFailureRejects(t *testing.T) {
 	directory := &fakeBSDirectory{getErr: errors.New("db down")}
 	server, session, _, _ := newEnforcementServer(t, directory)
 
-	assert.Error(t, server.verifyCertificateFingerprint(context.Background(), session))
+	assert.Error(t, server.verifyCertificateFingerprint(testutil.TestContext(), session))
 }
 
 // TestConnectStrictMode_CertSubjectEUIMismatchRejected: in strict mode an

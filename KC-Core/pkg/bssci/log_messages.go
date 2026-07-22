@@ -1173,4 +1173,30 @@ const (
 	LogBSSCIUplinkIngestFailed = "Uplink ingest failed"
 	// LogBSSCIUsingDevelopmentSoftwareVersionInConnectResponse is logged when using development software version in ConnectResponse.
 	LogBSSCIUsingDevelopmentSoftwareVersionInConnectResponse = "Using development software version in ConnectResponse"
+	// LogBSSCIResumeRejectedVersionIncompatible is logged when a resume is rejected because the persisted negotiated version is incompatible with the selected version.
+	LogBSSCIResumeRejectedVersionIncompatible = "Resume rejected: persisted negotiated version incompatible with the selected version"
+	// LogBSSCIResumeRejectedBsOpIDBeyondPersisted is logged when a resume is rejected because the required BS operation ID is beyond the persisted state.
+	LogBSSCIResumeRejectedBsOpIDBeyondPersisted = "Resume rejected: required BS operation ID beyond persisted state"
+	// LogBSSCIResumeRejectedScOpIDBeyondIssued is logged when a resume is rejected because the claimed SC operation ID is beyond the issued state.
+	LogBSSCIResumeRejectedScOpIDBeyondIssued = "Resume rejected: claimed SC operation ID beyond issued state"
+	// LogBSSCIResumeAcceptedStaleBsCounter is logged when a resume is accepted with a stale BS counter.
+	LogBSSCIResumeAcceptedStaleBsCounter = "Resume accepted with stale BS counter (SC is authoritative)"
+	// LogBSSCIFailedToMarshalPendingOperation is logged when a pending operation cannot be marshaled for persistence.
+	LogBSSCIFailedToMarshalPendingOperation = "Failed to marshal pending operation"
+	// LogBSSCIFailedToMarshalPendingOperationMetadata is logged when pending operation metadata cannot be marshaled for persistence.
+	LogBSSCIFailedToMarshalPendingOperationMetadata = "Failed to marshal pending operation metadata"
+	// LogBSSCIUnexpectedRevokeResponseError is logged when ProcessRevokeResponse returns a non-catalog error.
+	LogBSSCIUnexpectedRevokeResponseError = "Unexpected non-catalog error from ProcessRevokeResponse"
+	// LogBSSCIDLRXStatusSNRValidationFailed is logged when the dlRxSnr value in a DL RX status report fails validation.
+	LogBSSCIDLRXStatusSNRValidationFailed = "DL RX status SNR validation failed"
+	// LogBSSCIDLRXStatusRSSIValidationFailed is logged when the dlRxRssi value in a DL RX status report fails validation.
+	LogBSSCIDLRXStatusRSSIValidationFailed = "DL RX status RSSI validation failed"
+	// LogBSSCIFailedToResolveEndpointTenantForDLRXStatus is logged when the endpoint tenant cannot be resolved for a DL RX status report.
+	LogBSSCIFailedToResolveEndpointTenantForDLRXStatus = "Failed to resolve endpoint tenant for DL RX status"
+	// LogBSSCIFailedToCorrelateDLRXQuery is logged when a DL RX status report cannot be correlated with its pending query.
+	LogBSSCIFailedToCorrelateDLRXQuery = "Failed to correlate DL RX query"
+	// LogBSSCIUnsolicitedDLRXStatus is logged when a DL RX status report arrives without a pending query.
+	LogBSSCIUnsolicitedDLRXStatus = "Unsolicited DL RX status (no pending query)"
+	// LogBSSCIFailedToResolveEndpointOwnerOrgForDLRXStatus is logged when the endpoint owner organization cannot be resolved for DL RX status persistence.
+	LogBSSCIFailedToResolveEndpointOwnerOrgForDLRXStatus = "Failed to resolve endpoint owner org for DL RX status persistence"
 )
