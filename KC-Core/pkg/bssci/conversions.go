@@ -78,9 +78,10 @@ func parseVersionComponent(s string) (int, bool) {
 			return 0, false
 		}
 	}
-	v, err := strconv.ParseUint(s, 10, 31)
+	// Digits already validated above; Atoi rejects overflow of the native int.
+	v, err := strconv.Atoi(s)
 	if err != nil {
 		return 0, false
 	}
-	return int(v), true
+	return v, true
 }

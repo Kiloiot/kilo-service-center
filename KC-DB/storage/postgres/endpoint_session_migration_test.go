@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"testing"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/crypto"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +36,7 @@ func TestGetActive_LazyMigration(t *testing.T) {
 	// Create test endpoint and session with legacy base64-encoded key
 	tenantID := int64(1001)
 	endpointID := int64(2001)
-	sessionID := int64(3001)
+	sessionID := uuid.NewString()
 
 	// Create a test session key (16 bytes for testing)
 	cleartextKey := []byte("test-session-key")
@@ -125,7 +125,7 @@ func TestGetActive_NoMigrationWhenAlreadyRaw(t *testing.T) {
 	// Create test endpoint and session with RAW GCM key
 	tenantID := int64(1002)
 	endpointID := int64(2002)
-	sessionID := int64(3002)
+	sessionID := uuid.NewString()
 
 	// Create a test session key
 	cleartextKey := []byte("test-session-key")
@@ -201,7 +201,7 @@ func TestGetActive_TenantIsolationInMigration(t *testing.T) {
 	tenant1ID := int64(1003)
 	tenant2ID := int64(1004)
 	endpointID := int64(2003)
-	sessionID := int64(3003)
+	sessionID := uuid.NewString()
 
 	// Create keys
 	key1 := []byte("tenant1-sess-key")
@@ -282,27 +282,27 @@ func TestGetActive_TenantIsolationInMigration(t *testing.T) {
 func setupTestDB(t *testing.T) *DB {
 	t.Helper()
 
-	// Use test database connection
-	connStr := "host=localhost port=5433 user=kilocenter password=changeme dbname=kilocenter sslmode=disable"
-	conn, err := sql.Open("postgres", connStr)
-	if err != nil {
-		t.Fatalf("Failed to connect to test database: %v", err)
-	}
+	sqlxDB, cleanup := SetupPostgresContainer(t)
+	t.Cleanup(cleanup)
 
-	// Test connection
-	if err := conn.Ping(); err != nil {
-		t.Fatalf("Failed to ping test database: %v", err)
+	// Seed the tenant rows referenced by the lazy-migration tests
+	for id, name := range map[int64]string{
+		1001: "MigrationTenant1001",
+		1002: "MigrationTenant1002",
+		1003: "MigrationTenant1003",
+		1004: "MigrationTenant1004",
+	} {
+		createTestTenant(t, sqlxDB, id, name)
 	}
 
 	logger.Initialize("error", "json")
 	log := logger.Get()
 
-	db := &DB{
-		conn: conn,
-		log:  log,
+	return &DB{
+		conn:   sqlxDB.DB,
+		sqlxDB: sqlxDB,
+		log:    log,
 	}
-
-	return db
 }
 
 func cleanupTestDB(t *testing.T, db *DB) {

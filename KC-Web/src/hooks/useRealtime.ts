@@ -383,8 +383,11 @@ function useCatchUpOnStreamReconnect(): void {
   });
 
   useEffect(() => {
+    // Snapshot the ref once: the flight state object is stable for the effect's
+    // lifetime, and the cleanup must not re-read the ref (react-hooks/exhaustive-deps).
+    const flight = flightRef.current;
+
     const scheduleInvalidate = () => {
-      const flight = flightRef.current;
       if (flight.pendingInvalidate) {
         clearTimeout(flight.pendingInvalidate);
       }
@@ -404,7 +407,6 @@ function useCatchUpOnStreamReconnect(): void {
 
     const unsubscribe = realtimeService.onConnectionEvent((evt) => {
       if (evt.streamKind !== REALTIME_STREAM_KIND.EVENT) return;
-      const flight = flightRef.current;
 
       if (evt.type === "realtime_connected") {
         const isReconnect = flight.hasConnected && !flight.connected;
@@ -423,7 +425,6 @@ function useCatchUpOnStreamReconnect(): void {
 
     return () => {
       unsubscribe();
-      const flight = flightRef.current;
       if (flight.pendingInvalidate) {
         clearTimeout(flight.pendingInvalidate);
         flight.pendingInvalidate = null;

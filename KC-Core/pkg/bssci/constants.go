@@ -294,9 +294,9 @@ const (
 	DLQueueStatusScheduled   = "scheduled"   // Scheduler selected for transmission
 	DLQueueStatusReserved    = "reserved"    // Reserved for auto-dispatch (transient, within transaction)
 	DLQueueStatusQueued      = "queued"      // Sent to BS via dlDataQue, awaiting transmission
-	DLQueueStatusTransmitted = "transmitted" // BS transmitted downlink (dlDataQueCmp success)
+	DLQueueStatusTransmitted = "transmitted" // BS reported successful transmission via dlDataRes (BSSCI 5.14)
 	DLQueueStatusDelivered   = "delivered"   // Endpoint acknowledged receipt (if ack requested)
-	DLQueueStatusFailed      = "failed"      // Transmission failed (dlDataQueCmp error)
+	DLQueueStatusFailed      = "failed"      // BS reported transmission failure via dlDataRes (BSSCI 5.14)
 	DLQueueStatusExpired     = "expired"     // Validity period elapsed before transmission
 	DLQueueStatusRevoked     = "revoked"     // Revoked via dlDataRev before transmission
 	DLQueueStatusAcked       = "acked"       // Endpoint acknowledgment received (dlDataRes)

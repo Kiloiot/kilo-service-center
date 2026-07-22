@@ -35,7 +35,7 @@ func NewStatusService(pendingOps *map[bssci.SessionOpKey]*bssci.PendingOperation
 }
 
 // RecordPendingOperation stores operation in map + DB using SessionOpKey composite key
-// Real map from server.go:135, DB table: bssci_pending_operations
+// Persists to DB table bssci_pending_operations and mirrors into the shared cache
 func (s *statusService) RecordPendingOperation(ctx context.Context, session *bssci.Session, opId int64, op *bssci.PendingOperation, dbSessionID int64) error {
 	// 1. Update in-memory cache using SessionOpKey composite key
 	key := bssci.SessionOpKey{
@@ -50,7 +50,7 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 	// Marshal Message map → operation_data JSON
 	operationData, err := json.Marshal(op.Message)
 	if err != nil {
-		s.logger.Error("Failed to marshal pending operation",
+		s.logger.ErrorContext(ctx, "Failed to marshal pending operation",
 			"error", err,
 			"opId", opId)
 		return err

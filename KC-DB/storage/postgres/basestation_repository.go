@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -448,14 +447,6 @@ func (r *BaseStationRepository) GetStatistics(ctx context.Context, tenantID int6
 	return &stats, nil
 }
 
-// euiToUint64 converts 8-byte EUI to uint64 for BIGINT columns in messages tables
-func euiToUint64(eui []byte) uint64 {
-	if len(eui) != 8 {
-		return 0
-	}
-	return binary.BigEndian.Uint64(eui)
-}
-
 // UpdateEUI updates the Base Station EUI with transactional cascade to all dependent tables
 func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, oldEui, newEui []byte) (*models.BaseStation, error) {
 	// Validate EUI lengths
@@ -493,10 +484,6 @@ func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, o
 	if err != nil {
 		return nil, fmt.Errorf("get base station: %w", err)
 	}
-
-	// Calculate integer representations for BIGINT columns
-	oldUint64 := euiToUint64(oldEui)
-	newUint64 := euiToUint64(newEui)
 
 	// 3. Update all tables with bs_eui reference (transactional cascade)
 
@@ -545,38 +532,16 @@ func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, o
 		return nil, fmt.Errorf("update mioty_basestation_status: %w", err)
 	}
 
-	// Schema-aware update: messages.bs_eui can be BYTEA (migration 001) or BIGINT (migration 047)
-	var messagesColType string
-	err = tx.GetContext(ctx, &messagesColType, `
-		SELECT data_type
-		FROM information_schema.columns
-		WHERE table_name = 'messages' AND column_name = 'bs_eui'
-	`)
+	// BYTEA columns: messages.bs_eui (8-byte big-endian per migration 000135)
+	_, err = tx.ExecContext(ctx, "UPDATE messages SET bs_eui = $1 WHERE bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("detect messages column type: %w", err)
+		return nil, fmt.Errorf("update messages: %w", err)
 	}
 
-	if messagesColType == "bytea" {
-		// BYTEA columns: use raw bytes
-		_, err = tx.ExecContext(ctx, "UPDATE messages SET bs_eui = $1 WHERE bs_eui = $2", newEui, oldEui)
-		if err != nil {
-			return nil, fmt.Errorf("update messages (bytea): %w", err)
-		}
-		_, err = tx.ExecContext(ctx, "UPDATE messages_archive SET bs_eui = $1 WHERE bs_eui = $2", newEui, oldEui)
-		if err != nil {
-			return nil, fmt.Errorf("update messages_archive (bytea): %w", err)
-		}
-	} else {
-		// BIGINT columns (uint64 conversion): messages.bs_eui
-		_, err = tx.ExecContext(ctx, "UPDATE messages SET bs_eui = $1 WHERE bs_eui = $2", newUint64, oldUint64)
-		if err != nil {
-			return nil, fmt.Errorf("update messages: %w", err)
-		}
-		// BIGINT columns (uint64 conversion): messages_archive.bs_eui
-		_, err = tx.ExecContext(ctx, "UPDATE messages_archive SET bs_eui = $1 WHERE bs_eui = $2", newUint64, oldUint64)
-		if err != nil {
-			return nil, fmt.Errorf("update messages_archive: %w", err)
-		}
+	// BYTEA columns: messages_archive.bs_eui (rebuilt LIKE messages by migration 000139)
+	_, err = tx.ExecContext(ctx, "UPDATE messages_archive SET bs_eui = $1 WHERE bs_eui = $2", newEui, oldEui)
+	if err != nil {
+		return nil, fmt.Errorf("update messages_archive: %w", err)
 	}
 
 	// BYTEA columns: endpoints.last_attached_bs_eui
@@ -629,7 +594,7 @@ func (r *BaseStationRepository) ListWithStats(ctx context.Context, tenantID int6
 			FROM messages
 			WHERE tenant_id = $1
 			GROUP BY bs_eui
-		) m ON ('x' || encode(b.bs_eui, 'hex'))::bit(64)::bigint = m.bs_eui
+		) m ON b.bs_eui = m.bs_eui
 		WHERE b.tenant_id = $1
 		ORDER BY b.last_seen_at DESC NULLS LAST
 		LIMIT $2 OFFSET $3

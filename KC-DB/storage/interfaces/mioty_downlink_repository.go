@@ -43,7 +43,7 @@ type MIOTYDownlinkRepository interface {
 
 	// MarkReservedAsQueued transitions reserved → queued with transmission metadata.
 	// Sets status='queued', transmission_time, tx_bs_eui. transmission_result stays NULL.
-	// packetCnt is nullable - pass nil if unknown (dlDataQueCmp will update later).
+	// packetCnt is nullable - pass nil if unknown (set from the dlDataRes transmission result, BSSCI 5.14).
 	// orgID filters by organization; nil = no org filter (backward compatible)
 	MarkReservedAsQueued(ctx context.Context, queID uint64, tenantID int64, bsEUI uint64, txTime int64, packetCnt *uint32, orgID *uuid.UUID) error
 }

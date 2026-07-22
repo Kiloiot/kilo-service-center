@@ -1362,37 +1362,16 @@ func (r *EndPointRepository) UpdateWithEUI(ctx context.Context, tenantID int64, 
 		return nil, fmt.Errorf("update dl_rx_status_queries.ep_eui: %w", err)
 	}
 
-	// BIGINT columns: messages.ep_eui (uses uint64 representation)
-	oldUint64 := euiToUint64(oldEui)
-	newUint64 := euiToUint64(newEui)
-	_, err = tx.ExecContext(ctx, "UPDATE messages SET ep_eui = $1 WHERE ep_eui = $2", newUint64, oldUint64)
+	// BYTEA columns: messages.ep_eui (8-byte big-endian per migration 000135)
+	_, err = tx.ExecContext(ctx, "UPDATE messages SET ep_eui = $1 WHERE ep_eui = $2", newEui, oldEui)
 	if err != nil {
 		return nil, fmt.Errorf("update messages.ep_eui: %w", err)
 	}
 
-	// Schema-aware update: messages_archive.ep_eui can be BYTEA (migration 001) or BIGINT (if future migration aligns it)
-	var archiveEpColType string
-	err = tx.GetContext(ctx, &archiveEpColType, `
-		SELECT data_type
-		FROM information_schema.columns
-		WHERE table_name = 'messages_archive' AND column_name = 'ep_eui'
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("detect messages_archive.ep_eui column type: %w", err)
-	}
-	if archiveEpColType == "bytea" {
-		_, err = tx.ExecContext(ctx, "UPDATE messages_archive SET ep_eui = $1 WHERE ep_eui = $2", newEui, oldEui)
-	} else {
-		_, err = tx.ExecContext(ctx, "UPDATE messages_archive SET ep_eui = $1 WHERE ep_eui = $2", newUint64, oldUint64)
-	}
+	// BYTEA columns: messages_archive.ep_eui (rebuilt LIKE messages by migration 000139)
+	_, err = tx.ExecContext(ctx, "UPDATE messages_archive SET ep_eui = $1 WHERE ep_eui = $2", newEui, oldEui)
 	if err != nil {
 		return nil, fmt.Errorf("update messages_archive.ep_eui: %w", err)
-	}
-
-	// BYTEA columns: mioty_messages.ep_eui (nullable)
-	_, err = tx.ExecContext(ctx, "UPDATE mioty_messages SET ep_eui = $1 WHERE ep_eui = $2", newEui, oldEui)
-	if err != nil {
-		return nil, fmt.Errorf("update mioty_messages.ep_eui: %w", err)
 	}
 
 	// BYTEA columns: mioty_message_deduplication.ep_eui

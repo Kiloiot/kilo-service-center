@@ -29,6 +29,7 @@ import {
   Typography,
 } from "@mui/material";
 
+import SearchField from "@components/common/SearchField";
 import { useOrganization as useOrganizationContext } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { useCapabilities } from "@hooks/useCapabilities";
@@ -44,8 +45,6 @@ import {
   ORG_USERS_PAGE,
 } from "@constants/messages";
 import { AddIcon, ArrowBackIcon, PeopleIcon } from "@theme/icons";
-
-import SearchField from "@components/common/SearchField";
 
 import AddUserDialog from "../components/AddUserDialog";
 import OrganizationUserDialog from "../components/OrganizationUserDialog";

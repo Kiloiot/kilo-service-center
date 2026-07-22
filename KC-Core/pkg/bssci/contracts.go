@@ -20,7 +20,7 @@ type VersionNegotiator interface {
 	Negotiate(ctx context.Context, requested string) (selected string, err error)
 }
 
-// SessionService handles connect/resume with REAL persistence (server.go:611-1004)
+// SessionService handles connect/resume with REAL persistence
 // Preserves: sessionsByUUID map, DbSessionId, HandshakeComplete, DB persistence
 type SessionService interface {
 	// HandleResume validates a session resume request (BSSCI §5.3.1): resume
@@ -29,18 +29,18 @@ type SessionService interface {
 	// is not asserted. Returns the resumable session or nil for a fresh start.
 	HandleResume(ctx context.Context, session *Session, bsUUID []byte, bsOpId, scOpId *int64, bsEUI uint64) (*Session, error)
 
-	// PersistSession writes to basestation_sessions table (server.go:852-950)
+	// PersistSession writes to basestation_sessions table
 	// Uses real *sql.DB, updates DbSessionId, handles resume UPDATE vs new INSERT
 	// BSSCI §5.3: Accepts connectInfo to persist arbitrary key-value pairs from connect message
 	PersistSession(ctx context.Context, session *Session, baseStation *basestation.BaseStation, isResume bool, connectInfo json.RawMessage) error
 
-	// StoreSessionByUUID adds to sessionsByUUID map (server.go:760-764)
+	// StoreSessionByUUID adds to sessionsByUUID map
 	StoreSessionByUUID(session *Session)
 
-	// MarkHandshakeComplete sets HandshakeComplete=true (server.go:1004)
+	// MarkHandshakeComplete sets HandshakeComplete=true
 	MarkHandshakeComplete(session *Session)
 
-	// RemoveSession cleans sessionsByUUID map on disconnect (server.go:438)
+	// RemoveSession cleans sessionsByUUID map on disconnect
 	RemoveSession(session *Session)
 
 	// TerminateSession marks a session as terminated in the database
@@ -126,13 +126,13 @@ type ConnectionService interface {
 	RegisterConnection(ctx context.Context, session *Session, baseStation *basestation.BaseStation, mgr *basestation.ConnectionManager) error
 }
 
-// SCACIBroadcaster forwards via real scaciBroadcaster interface (server.go:39-40)
+// SCACIBroadcaster forwards via real scaciBroadcaster interface
 // Matches the exact signatures from scaciBroadcaster to enable proper delegation
 type SCACIBroadcaster interface {
-	// BroadcastULData forwards uplink data to SCACI clients (server.go:39)
+	// BroadcastULData forwards uplink data to SCACI clients
 	BroadcastULData(ctx context.Context, tenantID int64, data *mioty.ULDataMessage) error
 
-	// BroadcastDLDataResult forwards downlink results to SCACI clients (server.go:40)
+	// BroadcastDLDataResult forwards downlink results to SCACI clients
 	BroadcastDLDataResult(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error
 }
 

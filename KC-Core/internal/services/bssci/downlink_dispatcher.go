@@ -133,7 +133,7 @@ func (d *downlinkDispatcher) DispatchIfAvailable(
 	}
 
 	// 4. Mark sent with transmission metadata
-	// packetCnt = nil (unknown until dlDataQueCmp returns actual value)
+	// packetCnt = nil (unknown until the transmission result arrives via dlDataRes, BSSCI 5.14)
 	// Pass nil for orgID since BSSCI dispatcher uses tenant-level isolation
 	txTime := time.Now().UnixNano()
 	if err := tx.MIOTYDownlinks().MarkReservedAsQueued(
@@ -142,7 +142,7 @@ func (d *downlinkDispatcher) DispatchIfAvailable(
 		ownerTenantID,
 		session.BaseStationEUI,
 		txTime,
-		nil, // packetCnt - dlDataQueCmp will update
+		nil, // packetCnt - set when the dlDataRes transmission result arrives
 		nil, // orgID - BSSCI uses tenant-level isolation
 	); err != nil {
 		d.logger.ErrorContext(ownerCtx, bssci.LogDispatcherMarkSentFailed,

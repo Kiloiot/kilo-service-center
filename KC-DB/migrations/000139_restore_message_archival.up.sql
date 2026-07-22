@@ -1,7 +1,15 @@
 -- Migration 000139: restore message archival columns and rebuild messages_archive.
 -- Migration 000047 rebuilt the messages table without the archived/archived_at
--- columns while messages_archive kept the pre-000047 column layout, so the
--- archival copy from messages into messages_archive failed at runtime.
+-- columns while messages_archive kept the pre-000047 (001-era) column layout, so
+-- the archival copy from messages into messages_archive failed at runtime.
+--
+-- Non-destructive rebuild: the new archive is created under a temporary name with
+-- an explicit column list mirroring the live messages table, then swapped in.
+-- A legacy archive that still holds rows is PRESERVED under
+-- messages_archive_pre000139 -- its 001-era layout (BIGINT id, payload/frame_count)
+-- cannot be losslessly projected into the 000047-era shape, so rows are kept
+-- queryable in place rather than re-identified. An empty legacy archive is dropped
+-- only after its row count is proven zero.
 
 -- Restore archival tracking columns on the live table.
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false;
@@ -10,14 +18,81 @@ ALTER TABLE messages ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP WITH TIME ZO
 -- Partial index used by the archival sweep and the purge of archived rows.
 CREATE INDEX IF NOT EXISTS idx_messages_archived ON messages(archived, received_at) WHERE archived = false;
 
--- Rebuild the archive table so its column layout matches the live table.
-DROP TABLE IF EXISTS messages_archive;
-CREATE TABLE messages_archive (
-    LIKE messages INCLUDING DEFAULTS INCLUDING CONSTRAINTS
+-- Build the corrected archive under a temporary name with an explicit column
+-- list (kept in sync with the messages layout as of this migration).
+CREATE TABLE messages_archive_new_000139 (
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    tenant_id BIGINT NOT NULL,
+    command_type VARCHAR(20) NOT NULL DEFAULT 'ulData',
+    op_id BIGINT NOT NULL,
+    ep_eui BYTEA NOT NULL,
+    bs_eui BYTEA NOT NULL,
+    rx_time BIGINT NOT NULL,
+    packet_cnt INTEGER NOT NULL,
+    snr DOUBLE PRECISION NOT NULL,
+    rssi DOUBLE PRECISION NOT NULL,
+    user_data BYTEA,
+    dl_open BOOLEAN NOT NULL DEFAULT false,
+    response_exp BOOLEAN NOT NULL DEFAULT false,
+    dl_ack BOOLEAN NOT NULL DEFAULT false,
+    rx_duration BIGINT,
+    eq_snr DOUBLE PRECISION,
+    profile VARCHAR(20),
+    mode VARCHAR(20),
+    format SMALLINT DEFAULT 0,
+    subpackets JSONB,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    processed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    org_uuid UUID,
+    owner_tenant_id BIGINT,
+    base_stations JSONB,
+    duplicate BOOLEAN NOT NULL DEFAULT false,
+    decoded_payload JSONB,
+    blueprint_type_eui BYTEA,
+    blueprint_version_id UUID,
+    decode_status VARCHAR(32) DEFAULT 'pending',
+    decode_error_code VARCHAR(64),
+    nwk_sn_key BYTEA,
+    archived BOOLEAN NOT NULL DEFAULT false,
+    archived_at TIMESTAMPTZ,
+    CONSTRAINT messages_archive_new_000139_pkey PRIMARY KEY (id),
+    CONSTRAINT messages_archive_valid_euis CHECK (length(ep_eui) = 8 AND length(bs_eui) = 8),
+    CONSTRAINT messages_archive_valid_tenant_id CHECK (tenant_id > 0),
+    CONSTRAINT messages_archive_valid_owner_tenant_id CHECK (owner_tenant_id IS NULL OR owner_tenant_id > 0),
+    CONSTRAINT messages_archive_valid_packet_cnt CHECK (packet_cnt >= 0),
+    CONSTRAINT messages_archive_valid_format CHECK (format >= 0 AND format <= 255),
+    CONSTRAINT messages_archive_blueprint_type_eui_check CHECK (blueprint_type_eui IS NULL OR length(blueprint_type_eui) = 8)
 );
 
--- Primary key keeps the copy-if-absent archival insert deduplicated.
-ALTER TABLE messages_archive ADD PRIMARY KEY (id);
+-- Preserve or retire the legacy archive, then swap the corrected table in.
+DO $$
+DECLARE
+    legacy_rows BIGINT;
+BEGIN
+    IF to_regclass('messages_archive') IS NOT NULL THEN
+        EXECUTE 'SELECT COUNT(*) FROM messages_archive' INTO legacy_rows;
+        IF legacy_rows > 0 THEN
+            -- 001-era rows cannot be losslessly projected into the 000047-era
+            -- shape; keep them queryable under a preserved name. Free the
+            -- canonical index name so the corrected table can claim it.
+            EXECUTE 'DROP TRIGGER IF EXISTS set_messages_archive_timestamp ON messages_archive';
+            EXECUTE 'ALTER TABLE messages_archive RENAME TO messages_archive_pre000139';
+            IF to_regclass('messages_archive_pkey') IS NOT NULL THEN
+                EXECUTE 'ALTER INDEX messages_archive_pkey RENAME TO messages_archive_pre000139_pkey';
+            END IF;
+            RAISE NOTICE 'KC-MIG-000139: preserved % legacy archive row(s) in messages_archive_pre000139', legacy_rows;
+        ELSE
+            -- Proven empty: nothing to preserve.
+            EXECUTE 'DROP TABLE messages_archive';
+            RAISE NOTICE 'KC-MIG-000139: legacy archive was empty; dropped';
+        END IF;
+    END IF;
+
+    EXECUTE 'ALTER TABLE messages_archive_new_000139 RENAME TO messages_archive';
+    EXECUTE 'ALTER INDEX messages_archive_new_000139_pkey RENAME TO messages_archive_pkey';
+END $$;
 
 -- Query indexes for the archive table (names follow migration 014).
 CREATE INDEX idx_messages_archive_ep_eui ON messages_archive(ep_eui);

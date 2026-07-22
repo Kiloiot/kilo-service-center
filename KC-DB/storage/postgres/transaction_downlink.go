@@ -142,7 +142,7 @@ func (r *transactionalMIOTYDownlinkRepository) ReserveNextPendingDownlink(
 
 // MarkReservedAsQueued transitions reserved → queued with transmission metadata
 // Aligns with UpdateDownlinkResult pattern from postgres.go
-// packetCnt is nullable - pass nil if unknown (dlDataQueCmp will update later)
+// packetCnt is nullable - pass nil if unknown (set from the dlDataRes transmission result, BSSCI 5.14)
 // orgID filters by organization; nil = no org filter (backward compatible)
 func (r *transactionalMIOTYDownlinkRepository) MarkReservedAsQueued(
 	ctx context.Context,
@@ -180,7 +180,7 @@ func (r *transactionalMIOTYDownlinkRepository) MarkReservedAsQueued(
 		args = append(args, *orgID)
 	}
 
-	// NOTE: transmission_result stays NULL here (not 'sent') because result unknown until dlDataQueCmp
+	// NOTE: transmission_result stays NULL here (not 'sent') because the result arrives via dlDataRes (BSSCI 5.14)
 	// Status 'queued' indicates "sent to BS, awaiting actual transmission"
 	// nolint:gosec // G201: orgFilter is a static string (empty or " AND (...)" with parameterized value), not user input
 	query := fmt.Sprintf(`

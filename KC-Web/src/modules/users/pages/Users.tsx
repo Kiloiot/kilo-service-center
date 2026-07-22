@@ -25,6 +25,7 @@ import {
   Typography,
 } from "@mui/material";
 
+import SearchField from "@components/common/SearchField";
 import { useSession } from "@contexts/SessionContext";
 import { ORG_MEMBER_STATUS, ORG_ROLE, ROUTES } from "@constants/app";
 import { ERR_LOAD_USERS, USERS_PAGE } from "@constants/messages";
@@ -35,8 +36,6 @@ import {
   PeopleIcon,
   SuccessIcon,
 } from "@theme/icons";
-
-import SearchField from "@components/common/SearchField";
 
 import AddUserDialog from "../components/AddUserDialog";
 import UsersTableBase, { type OrderBy } from "../components/UsersTableBase";

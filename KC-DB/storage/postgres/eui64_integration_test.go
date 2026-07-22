@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -70,6 +70,61 @@ func TestEUI64BaseStationPersistence(t *testing.T) {
 	}
 }
 
+// TestEUI64BaseStationListWithStats verifies the message-statistics join
+// matches BYTEA bs_eui values across the full unsigned range (regression:
+// the join previously cast basestations.bs_eui to signed BIGINT).
+func TestEUI64BaseStationListWithStats(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+
+	const tenantID = int64(403)
+	createTestTenant(t, db, tenantID, "TestTenantEUI64Stats")
+
+	repo := NewBaseStationRepository(db)
+	ctx := testutil.TestContext()
+
+	const bsEUI = uint64(0xCAFECAFECAFECAFE)
+	var euiArr models.EUI
+	copy(euiArr[:], eui64Bytes(bsEUI))
+
+	bs := &models.BaseStation{
+		EUI:              euiArr,
+		TenantID:         tenantID,
+		Name:             "TestEUI64-Stats-BS",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
+	}
+	require.NoError(t, repo.Create(ctx, bs))
+
+	received := time.Now()
+	insertArchivalMessage(t, db, archivalMessageParams{
+		TenantID: tenantID, EpEUI: 0x8000000000000001, BsEUI: bsEUI, ReceivedAt: received,
+	})
+	insertArchivalMessage(t, db, archivalMessageParams{
+		TenantID: tenantID, EpEUI: 0xFFFFFFFFFFFFFFFF, BsEUI: bsEUI, ReceivedAt: received,
+	})
+
+	stats, total, err := repo.ListWithStats(ctx, tenantID, 10, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+
+	var found *BaseStationWithStats
+	for _, s := range stats {
+		if string(s.BsEui) == string(eui64Bytes(bsEUI)) {
+			found = s
+			break
+		}
+	}
+	require.NotNil(t, found, "high-bit BS must appear in ListWithStats")
+	assert.Equal(t, 2, found.MessageCount,
+		"messages with high-bit bs_eui must join to the base station")
+	assert.Equal(t, 2, found.UniqueEndpoints)
+}
+
 // TestEUI64MessagePersistence verifies uplink messages carrying full-range
 // endpoint and base station EUIs survive the message store round-trip.
 func TestEUI64MessagePersistence(t *testing.T) {
@@ -120,7 +175,7 @@ func TestEUI64EndpointPersistence(t *testing.T) {
 	for _, eui := range eui64MatrixValues {
 		var stored []byte
 		require.NoError(t, db.QueryRow(`
-			INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, sh_addr, nwk_sn_key, bidi)
+			INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, sh_addr, nwk_key, bidi)
 			VALUES ($1, $1, $2, $3, $4, $5, true)
 			RETURNING ep_eui`,
 			tenantID, eui64Bytes(eui), "TestEUI64-EP", 0x1234,

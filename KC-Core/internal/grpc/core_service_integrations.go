@@ -382,9 +382,9 @@ func integrationToProto(integration *models.Integration) *pb.Integration {
 	}
 
 	// Convert event filter JSON to Struct
-	if integration.EventFilter != nil {
+	if integration.EventFilter.Valid {
 		var filterMap map[string]interface{}
-		if err := json.Unmarshal(integration.EventFilter, &filterMap); err == nil {
+		if err := json.Unmarshal(integration.EventFilter.Data, &filterMap); err == nil {
 			if filterStruct, err := structpb.NewStruct(filterMap); err == nil {
 				pb.EventFilter = filterStruct
 			}

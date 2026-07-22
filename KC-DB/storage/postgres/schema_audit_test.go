@@ -21,7 +21,14 @@ func TestSchemaBaseline(t *testing.T) {
 	defer cleanup()
 
 	timestamp := time.Now().Format("20060102-150405")
-	outputFile := fmt.Sprintf("../../../compliance/evidence/schema-audit-%s.md", timestamp)
+	// Evidence is written outside the public module tree (repo hygiene:
+	// kilocenter-modules must not carry internal compliance artefacts);
+	// override with SCHEMA_AUDIT_EVIDENCE_DIR when the internal layout differs
+	evidenceDir := os.Getenv("SCHEMA_AUDIT_EVIDENCE_DIR")
+	if evidenceDir == "" {
+		evidenceDir = "../../../../compliance/evidence/automation"
+	}
+	outputFile := fmt.Sprintf("%s/schema-audit-%s.md", evidenceDir, timestamp)
 
 	var output strings.Builder
 	output.WriteString("# Database Schema Audit\n\n")

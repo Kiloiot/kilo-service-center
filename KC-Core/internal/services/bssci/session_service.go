@@ -19,7 +19,7 @@ import (
 )
 
 type sessionService struct {
-	sessionsByUUID   map[string]*bssci.Session               // REAL map from server.go:84
+	sessionsByUUID   map[string]*bssci.Session               // REAL map
 	bsSessionRepo    interfaces.BaseStationSessionRepository // Repository interface for session persistence
 	bsRepo           interfaces.BaseStationRepository        // Base station repository
 	systemEventStore interfaces.SystemEventStore             // System event store (injected separately, not from storage)
@@ -182,8 +182,7 @@ func (s *sessionService) hydrateSessionFromDB(dbSession *models.BaseStationSessi
 }
 
 // PersistSession writes to basestation_sessions table using repository interface
-// Refactored from raw SQL (server.go:852-950) to use BaseStationSessionRepository
-// TODO: Full implementation pending - repository methods need to support ON CONFLICT logic
+// Refactored from raw SQL to use BaseStationSessionRepository
 func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Session, baseStation *basestation.BaseStation, isResume bool, connectInfo json.RawMessage) error {
 	// BSSCI §3.3.1: Connect info overwritten on each resume (user decision)
 	// Only update connect_info when provided - avoid NULL overwrites
@@ -212,13 +211,13 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 		if err == nil && dbSession != nil {
 			// Terminate stale session before creating new one
 			if err := s.bsSessionRepo.TerminateSession(ctx, s.resolvedTenantID(session), dbSession.ID); err != nil {
-				s.logger.Error(bssci.LogBSSCIFailedToTerminateStaleSession,
+				s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateStaleSession,
 					"error", err,
 					"staleSessionID", dbSession.ID,
 					"baseStationEui", session.BaseStationEUI)
 				// Continue with new session creation despite termination error
 			} else {
-				s.logger.Info(bssci.LogBSSCITerminatedStaleSession,
+				s.logger.InfoContext(ctx, bssci.LogBSSCITerminatedStaleSession,
 					"staleSessionID", dbSession.ID,
 					"baseStationEui", session.BaseStationEUI)
 			}
@@ -303,7 +302,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 			SnScOpId: &zero,
 		}
 		if err = s.bsSessionRepo.UpdateSession(ctx, s.resolvedTenantID(session), dbSession.ID, updateReq); err != nil {
-			s.logger.Error(bssci.LogBSSCIFailedToUpdateDatabaseSession,
+			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
 				"error", err,
 				"sessionID", session.DbSessionID)
 			return fmt.Errorf("failed to initialize session counters: %w", err)
@@ -311,7 +310,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 
 		// Convert bs.EUI ([8]byte) to uint64 for logging
 		hexEUI := binary.BigEndian.Uint64(baseStation.EUI[:])
-		s.logger.Info(bssci.LogBSSCIDatabaseSessionCreated,
+		s.logger.InfoContext(ctx, bssci.LogBSSCIDatabaseSessionCreated,
 			"sessionID", session.DbSessionID,
 			"bsEui", fmt.Sprintf("%016X", hexEUI))
 
@@ -324,7 +323,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 
 		dbSession, err := s.bsSessionRepo.GetSessionByScUUID(ctx, s.resolvedTenantID(session), scUUID)
 		if err != nil {
-			s.logger.Error(bssci.LogBSSCIFailedToUpdateDatabaseSession,
+			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
 				"error", err,
 				"baseStationEui", session.BaseStationEUI)
 			return err
@@ -340,7 +339,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 			session.ConnectInfo = dbSession.ConnectInfo.Data
 		}
 
-		s.logger.Info(bssci.LogBSSCIDatabaseSessionUpdated,
+		s.logger.InfoContext(ctx, bssci.LogBSSCIDatabaseSessionUpdated,
 			"dbSessionID", session.DbSessionID,
 			"baseStationEui", session.BaseStationEUI,
 			"restoredScOpId", session.LastScOpId,
@@ -354,7 +353,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 				session.Encoding = dbSession.Encoding
 			} else {
 				// Invalid encoding in DB - fall back to BSSCI spec default (MessagePack)
-				s.logger.Warn(bssci.LogBSSCIInvalidEncodingInDatabase,
+				s.logger.WarnContext(ctx, bssci.LogBSSCIInvalidEncodingInDatabase,
 					"dbEncoding", dbSession.Encoding,
 					"sessionID", dbSession.ID)
 				session.Encoding = bssci.EncodingMessagePack
@@ -394,14 +393,14 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 
 		err = s.bsSessionRepo.UpdateSession(ctx, s.resolvedTenantID(session), dbSession.ID, updateReq)
 		if err != nil {
-			s.logger.Error(bssci.LogBSSCIFailedToUpdateDatabaseSession,
+			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
 				"error", err,
 				"baseStationEui", session.BaseStationEUI)
 			return err
 		}
 
 		session.DbSessionID = dbSession.ID
-		s.logger.Info(bssci.LogBSSCIDatabaseSessionUpdated,
+		s.logger.InfoContext(ctx, bssci.LogBSSCIDatabaseSessionUpdated,
 			"dbSessionID", session.DbSessionID,
 			"baseStationEui", session.BaseStationEUI)
 	}
@@ -410,7 +409,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 }
 
 // StoreSessionByUUID adds session to sessionsByUUID map
-// Real map storage from server.go:760-764
+// Real map storage
 func (s *sessionService) StoreSessionByUUID(session *bssci.Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -420,7 +419,7 @@ func (s *sessionService) StoreSessionByUUID(session *bssci.Session) {
 }
 
 // MarkHandshakeComplete sets HandshakeComplete=true
-// Real handshake marker from server.go:1004
+// Real handshake marker
 func (s *sessionService) MarkHandshakeComplete(session *bssci.Session) {
 	// BSSCI-3.3-03: Mark handshake as complete BEFORE reissuing any pending operations
 	// This allows resumed operations to proceed without being blocked
@@ -443,7 +442,7 @@ func (s *sessionService) MarkDisconnected(ctx context.Context, session *bssci.Se
 }
 
 // RemoveSession cleans sessionsByUUID map on disconnect
-// Real cleanup from server.go:438
+// Real cleanup
 func (s *sessionService) RemoveSession(session *bssci.Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -478,7 +477,7 @@ func (s *sessionService) UpdateSessionCounters(ctx context.Context, session *bss
 
 	err := s.bsSessionRepo.UpdateSession(ctx, s.resolvedTenantID(session), session.DbSessionID, updateReq)
 	if err != nil {
-		s.logger.Error(bssci.LogBSSCIFailedToUpdateDatabaseSession,
+		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
 			"error", err,
 			"sessionID", session.DbSessionID,
 			"bsOpId", session.LastBsOpId,
@@ -522,7 +521,7 @@ func (s *sessionService) TerminateSession(ctx context.Context, session *bssci.Se
 
 	err := s.bsSessionRepo.TerminateSession(ctx, s.resolvedTenantID(session), session.DbSessionID)
 	if err != nil {
-		s.logger.Error(bssci.LogBSSCIFailedToTerminateSession,
+		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateSession,
 			"error", err,
 			"sessionID", session.DbSessionID,
 			"eui", session.BaseStationEUI)

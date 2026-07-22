@@ -96,7 +96,12 @@ func TestBaseStationRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) 
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) {
 		assert.Equal(t, "23505", string(pqErr.Code), "Should be PostgreSQL unique violation")
-		assert.Equal(t, "unique_bs_eui", pqErr.Constraint, "Should reference global EUI constraint from migration 000080")
+		// Two unique constraints guard bs_eui: the original column constraint
+		// (basestations_eui_key, renamed with the column in migration 000060)
+		// and unique_bs_eui from migration 000080; either proves global
+		// uniqueness enforcement
+		assert.Contains(t, []string{"unique_bs_eui", "basestations_eui_key"}, pqErr.Constraint,
+			"Should reference a global EUI uniqueness constraint")
 	}
 
 	// Alternative check: Error should mention "already exists" or "unique"
@@ -327,6 +332,7 @@ func TestBaseStation_CreateWithLocation(t *testing.T) {
 		TenantID:          100,
 		Name:              "TestCreateWithLoc-BS1",
 		ConnectionType:    models.ConnectionTypeBSSCI,
+		ServiceCenterURL:  testServiceCenterURLPtr(),
 		Latitude:          &lat,
 		Longitude:         &lon,
 		Altitude:          &alt,
@@ -383,6 +389,7 @@ func TestBaseStation_UpdatePreservesUnmodifiedLocation(t *testing.T) {
 		TenantID:          100,
 		Name:              "TestUpdatePreserve-BS1",
 		ConnectionType:    models.ConnectionTypeBSSCI,
+		ServiceCenterURL:  testServiceCenterURLPtr(),
 		Latitude:          &lat,
 		Longitude:         &lon,
 		Altitude:          &alt,

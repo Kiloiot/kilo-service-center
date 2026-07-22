@@ -49,7 +49,6 @@ func (c *connectionService) GetBaseStationGlobal(ctx context.Context, eui [8]byt
 }
 
 // RegisterConnection updates basestation connection status via REAL ConnectionManager
-// Real path from server.go:967-979
 func (c *connectionService) RegisterConnection(ctx context.Context, session *bssci.Session, _ *basestation.BaseStation, mgr *basestation.ConnectionManager) error {
 	// Build connection status matching the real ConnectionStatus struct
 	status := &basestation.ConnectionStatus{

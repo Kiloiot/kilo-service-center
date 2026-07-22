@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -477,7 +476,10 @@ func (s *CoreService) applyBlueprintSnapshot(ctx context.Context, endpoint *mode
 	}
 	raw, marshalErr := buildBlueprintSnapshot(bp)
 	if marshalErr != nil {
-		return status.Error(codes.Internal, "failed to build blueprint snapshot: "+marshalErr.Error())
+		s.log.ErrorContext(ctx, "failed to build blueprint snapshot",
+			"blueprint_id", bp.ID, "error", marshalErr)
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintSnapshotBuildFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintSnapshotBuildFailed))
 	}
 	dm := bp.DeviceModelID
 	endpoint.DeviceModelID = &dm
@@ -2665,10 +2667,8 @@ func (s *CoreService) RequestBaseStationStatus(ctx context.Context, req *pb.Base
 		"bs_eui", bsEui,
 		"tenant_id", tenantID)
 
-	bsEuiBytes := make([]byte, 8)
-	for i := 7; i >= 0; i-- {
-		bsEuiBytes[i] = byte(bsEui >> uint(8*(7-i))) // #nosec G115 - i is bounded 0-7, no overflow
-	}
+	bsEuiArr := mioty.EUI64(bsEui).ToBytes()
+	bsEuiBytes := bsEuiArr[:]
 
 	// Verify tenant ownership first
 	bs, err := s.basestationSvc.GetByEUI(ctx, bsEuiBytes, tenantID)
@@ -2737,10 +2737,8 @@ func (s *CoreService) InitiatePing(ctx context.Context, req *pb.InitiatePingRequ
 		"bs_eui", bsEui,
 		"tenant_id", tenantID)
 
-	bsEuiBytes := make([]byte, 8)
-	for i := 7; i >= 0; i-- {
-		bsEuiBytes[i] = byte(bsEui >> uint(8*(7-i))) // #nosec G115 - i is bounded 0-7, no overflow
-	}
+	bsEuiArr := mioty.EUI64(bsEui).ToBytes()
+	bsEuiBytes := bsEuiArr[:]
 
 	// Verify tenant ownership
 	_, err = s.basestationSvc.GetByEUI(ctx, bsEuiBytes, tenantID)

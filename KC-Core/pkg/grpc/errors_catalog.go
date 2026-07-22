@@ -168,6 +168,15 @@ const (
 	ErrTokenPreviewInvalidPayload  = "KC-GRPC-ERR-06D" // Payload bytes failed validation/parsing
 	ErrTokenInvalidModelCode       = "KC-GRPC-ERR-06E" // Model code format validation failed
 
+	// Blueprint ownership/decode errors (KC-GRPC-ERR-0A3 to KC-GRPC-ERR-0A9)
+	ErrTokenSystemOwnershipManufacturerMismatch = "KC-GRPC-ERR-0A3" // is_system flag conflicts with parent manufacturer ownership
+	ErrTokenSystemOwnershipDeviceModelMismatch  = "KC-GRPC-ERR-0A4" // is_system flag conflicts with parent device model ownership
+	ErrTokenSpecJSONEmpty                       = "KC-GRPC-ERR-0A5" // Decode request carried an empty spec_json
+	ErrTokenDecodeSourceRequired                = "KC-GRPC-ERR-0A6" // Decode request needs blueprint_id or spec_json
+	ErrTokenSystemBlueprintDefaultNotAllowed    = "KC-GRPC-ERR-0A7" // System blueprints cannot be set as tenant defaults
+	ErrTokenAssignTargetRequired                = "KC-GRPC-ERR-0A8" // Assign request needs device_model_id or ep_euis
+	ErrTokenBlueprintSnapshotBuildFailed        = "KC-GRPC-ERR-0A9" // Blueprint snapshot serialization failed
+
 	// Integration operation errors (KC-GRPC-ERR-400 to KC-GRPC-ERR-410)
 	// Integration CRUD tokens
 	ErrTokenCreateIntegrationFailed = "KC-GRPC-ERR-400"
@@ -1052,6 +1061,41 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenInvalidModelCode,
 		Message: "invalid model code: must contain only lowercase alphanumeric characters and hyphens",
 		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSystemOwnershipManufacturerMismatch: {
+		Token:   ErrTokenSystemOwnershipManufacturerMismatch,
+		Message: "is_system must match the parent manufacturer's ownership",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSystemOwnershipDeviceModelMismatch: {
+		Token:   ErrTokenSystemOwnershipDeviceModelMismatch,
+		Message: "is_system must match the parent device model's ownership",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSpecJSONEmpty: {
+		Token:   ErrTokenSpecJSONEmpty,
+		Message: "spec_json is empty",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenDecodeSourceRequired: {
+		Token:   ErrTokenDecodeSourceRequired,
+		Message: "decode source required: set blueprint_id or spec_json",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSystemBlueprintDefaultNotAllowed: {
+		Token:   ErrTokenSystemBlueprintDefaultNotAllowed,
+		Message: "set_as_default is not allowed for System blueprints",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenAssignTargetRequired: {
+		Token:   ErrTokenAssignTargetRequired,
+		Message: "target required: set device_model_id or ep_euis",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenBlueprintSnapshotBuildFailed: {
+		Token:   ErrTokenBlueprintSnapshotBuildFailed,
+		Message: "failed to build blueprint snapshot",
+		Code:    codes.Internal,
 	},
 
 	// Integration operation errors

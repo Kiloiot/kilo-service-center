@@ -10,7 +10,6 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -329,7 +328,8 @@ func (s *CoreService) CreateDeviceModel(ctx context.Context, req *pb.CreateDevic
 		s.log.ErrorContext(ctx, "create device model failed", "name", req.Name, "error", err)
 		switch {
 		case errors.Is(err, blueprints.ErrOwnershipMismatch):
-			return nil, status.Error(codes.InvalidArgument, "is_system must match the parent manufacturer's ownership")
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenSystemOwnershipManufacturerMismatch),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenSystemOwnershipManufacturerMismatch))
 		case errors.Is(err, blueprints.ErrManufacturerNotFound):
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenManufacturerNotFound),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenManufacturerNotFound))
@@ -582,7 +582,8 @@ func (s *CoreService) CreateBlueprint(ctx context.Context, req *pb.CreateBluepri
 		s.log.ErrorContext(ctx, "create blueprint failed", "version", req.Version, "error", err)
 		switch {
 		case errors.Is(err, blueprints.ErrOwnershipMismatch):
-			return nil, status.Error(codes.InvalidArgument, "is_system must match the parent device model's ownership")
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenSystemOwnershipDeviceModelMismatch),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenSystemOwnershipDeviceModelMismatch))
 		case errors.Is(err, blueprints.ErrDeviceModelNotFound):
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDeviceModelNotFound),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDeviceModelNotFound))
@@ -943,7 +944,8 @@ func (s *CoreService) CreateDeviceModelWithBlueprint(ctx context.Context, req *p
 		s.log.ErrorContext(ctx, "create device model with blueprint failed", "name", req.Name, "error", err)
 		switch {
 		case errors.Is(err, blueprints.ErrOwnershipMismatch):
-			return nil, status.Error(codes.InvalidArgument, "is_system must match the parent manufacturer's ownership")
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenSystemOwnershipManufacturerMismatch),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenSystemOwnershipManufacturerMismatch))
 		case errors.Is(err, blueprints.ErrManufacturerNotFound):
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenManufacturerNotFound),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenManufacturerNotFound))
@@ -1002,11 +1004,13 @@ func (s *CoreService) DecodePreview(ctx context.Context, req *pb.DecodePreviewRe
 		result, err = s.blueprintSvc.DecodePreview(ctx, blueprintID, req.Payload, uint8(req.FormatId)) //nolint:gosec // bounds checked above
 	case *pb.DecodePreviewRequest_SpecJson:
 		if len(src.SpecJson) == 0 {
-			return nil, status.Error(codes.InvalidArgument, "spec_json is empty")
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenSpecJSONEmpty),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenSpecJSONEmpty))
 		}
 		result, err = s.blueprintSvc.DecodePreviewInline(ctx, src.SpecJson, req.Payload, uint8(req.FormatId)) //nolint:gosec // bounds checked above
 	default:
-		return nil, status.Error(codes.InvalidArgument, "decode source required: set blueprint_id or spec_json")
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenDecodeSourceRequired),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenDecodeSourceRequired))
 	}
 	if err != nil {
 		s.log.ErrorContext(ctx, "decode preview failed", "error", err)
@@ -1092,7 +1096,8 @@ func (s *CoreService) validateBulkAssignSetDefault(ctx context.Context, blueprin
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
 	}
 	if bp.IsSystem {
-		return status.Error(codes.InvalidArgument, "set_as_default is not allowed for System blueprints")
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenSystemBlueprintDefaultNotAllowed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenSystemBlueprintDefaultNotAllowed))
 	}
 	return nil
 }
@@ -1107,7 +1112,8 @@ func (s *CoreService) resolveBulkAssignTargets(ctx context.Context, tenantID int
 		return euis, nil
 	}
 	if req.DeviceModelId == "" {
-		return nil, status.Error(codes.InvalidArgument, "target required: set device_model_id or ep_euis")
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAssignTargetRequired),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAssignTargetRequired))
 	}
 	modelID, parseErr := uuid.Parse(req.DeviceModelId)
 	if parseErr != nil {

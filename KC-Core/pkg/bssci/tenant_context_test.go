@@ -16,10 +16,6 @@ import (
 // stubSessionService is a no-op session service for smoke tests
 type stubSessionService struct{}
 
-func (s *stubSessionService) ValidateVersion(_ string) error {
-	return nil // No-op for smoke tests
-}
-
 func (s *stubSessionService) HandleResume(_ context.Context, _ *Session, _ []byte, _, _ *int64, _ uint64) (*Session, error) {
 	return nil, nil // No-op for smoke tests
 }

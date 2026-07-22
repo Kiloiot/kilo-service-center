@@ -116,7 +116,7 @@ func (dls *dlService) QueueDownlink(
 		return 0, 0, scaci.ErrSchedulerUnavailable
 	}
 
-	dls.logger.Debug(scaci.LogSCACIDLQueueServiceInvoked,
+	dls.logger.DebugContext(ctx, scaci.LogSCACIDLQueueServiceInvoked,
 		"queId", req.QueId,
 		"epEui", req.EpEui,
 		"tenantId", tenantID)

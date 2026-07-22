@@ -19,6 +19,7 @@ import {
   Typography,
 } from "@mui/material";
 
+import SearchField from "@components/common/SearchField";
 import { useSession } from "@contexts/SessionContext";
 import { useOrganizations } from "@hooks/useOrganizations";
 import { ORG_STATE, ROUTES } from "@constants/app";
@@ -33,8 +34,6 @@ import {
   ErrorIcon,
   SuccessIcon,
 } from "@theme/icons";
-
-import SearchField from "@components/common/SearchField";
 
 import AddOrganizationDialog from "../components/AddOrganizationDialog";
 import OrganizationsTable from "../components/OrganizationsTable";
