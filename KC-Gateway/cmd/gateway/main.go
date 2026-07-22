@@ -110,13 +110,19 @@ func breakerStreamInterceptor(
 		// Streaming RPCs (including all proxied calls via
 		// UnknownServiceHandler) run outside the breaker's execution slots: a
 		// long-lived stream must not hold a half-open probe slot for its
-		// whole lifetime. The breaker still gates admission, and the stream's
-		// terminal error still feeds its counters - except when the client
+		// whole lifetime. Streams are therefore admitted only while the
+		// breaker is closed - a half-open breaker probes recovery through the
+		// slot-accounted unary path, and unbounded streams admitted beside
+		// those probes would bypass MaxRequests entirely. The stream's
+		// terminal error still feeds the counters - except when the client
 		// tore the stream down (context canceled), which the transparent
 		// proxy surfaces as codes.Internal "failed proxying s2c" and must not
 		// count as an upstream failure.
-		if breaker.State() == resilience.BreakerOpen {
+		switch breaker.State() {
+		case resilience.BreakerOpen:
 			return status.Error(codes.Unavailable, "upstream circuit breaker is open")
+		case resilience.BreakerHalfOpen:
+			return status.Error(codes.Unavailable, "upstream circuit breaker is recovering")
 		}
 
 		err := handler(srv, ss)

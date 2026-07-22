@@ -111,6 +111,54 @@ func TestBreakerStream_OpenBreakerRejectsStreams(t *testing.T) {
 	assert.False(t, handlerCalled, "an open breaker must reject before the handler runs")
 }
 
+// TestBreakerStream_HalfOpenRejectsStreams: a half-open breaker admits only
+// slot-accounted unary probes; streams are rejected with the recovering
+// message until the probes close the breaker again.
+func TestBreakerStream_HalfOpenRejectsStreams(t *testing.T) {
+	cfg := config.GatewayResilienceConfig{
+		CBMaxRequests:      3,
+		CBInterval:         time.Minute,
+		CBTimeout:          50 * time.Millisecond,
+		CBFailureThreshold: 1,
+	}
+	core := resilience.NewUpstreamBreaker("core", cfg)
+	identity := resilience.NewUpstreamBreaker("identity", cfg)
+	interceptor := breakerStreamInterceptor(core, identity, 0)
+
+	fail := func(_ interface{}, _ grpc.ServerStream) error {
+		return status.Error(codes.Unavailable, "upstream gone")
+	}
+	_ = interceptor(nil, &fakeServerStream{ctx: testutil.TestContext()}, streamInfo("/x/Stream"), fail)
+	require.Equal(t, resilience.BreakerOpen, core.State())
+
+	// After CBTimeout the breaker transitions to half-open on next inspection
+	time.Sleep(60 * time.Millisecond)
+	require.Equal(t, resilience.BreakerHalfOpen, core.State())
+
+	handlerCalled := false
+	err := interceptor(nil, &fakeServerStream{ctx: testutil.TestContext()}, streamInfo("/x/Stream"), func(_ interface{}, _ grpc.ServerStream) error {
+		handlerCalled = true
+		return nil
+	})
+	require.Error(t, err)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+	assert.Contains(t, err.Error(), "circuit breaker is recovering")
+	assert.False(t, handlerCalled, "a half-open breaker must not admit streams")
+
+	// Successful unary probes close the breaker (CBMaxRequests consecutive
+	// successes), after which streams flow again.
+	unary := "/kilocenter.api.v1.KiloCenterService/ListEndPoints"
+	require.True(t, unaryMethods[unary], "fixture must use a real unary method")
+	ok := func(_ interface{}, _ grpc.ServerStream) error { return nil }
+	for i := 0; i < int(cfg.CBMaxRequests); i++ {
+		require.NoError(t, interceptor(nil, &fakeServerStream{ctx: testutil.TestContext()}, streamInfo(unary), ok))
+	}
+	require.Equal(t, resilience.BreakerClosed, core.State())
+
+	require.NoError(t, interceptor(nil, &fakeServerStream{ctx: testutil.TestContext()}, streamInfo("/x/Stream"), ok),
+		"streams must be admitted again once the probes closed the breaker")
+}
+
 // TestBreakerStream_SuccessfulStreamRecordsSuccess: clean stream completion
 // resets the consecutive-failure count.
 func TestBreakerStream_SuccessfulStreamRecordsSuccess(t *testing.T) {
