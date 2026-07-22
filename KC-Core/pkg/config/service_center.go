@@ -32,6 +32,10 @@ func ValidateServiceCenterConfig(cfg *ProtocolConfig) error {
 		return fmt.Errorf("protocol.ack_timeout must be positive milliseconds, got %d", cfg.AckTimeout)
 	}
 
+	if cfg.ConnectionEstablishmentTimeout <= 0 {
+		return fmt.Errorf("protocol.connection_establishment_timeout must be positive milliseconds, got %d", cfg.ConnectionEstablishmentTimeout)
+	}
+
 	if cfg.DuplicateWindow <= 0 {
 		return fmt.Errorf("protocol.duplicate_window must be positive seconds, got %d", cfg.DuplicateWindow)
 	}

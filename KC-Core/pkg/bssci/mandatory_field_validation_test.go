@@ -386,11 +386,13 @@ func TestStatusMandatoryFields(t *testing.T) {
 				queueSerializer, auditLogger, tenantResolver)
 
 			session := &Session{
-				ID:                "test-session",
-				BaseStationEUI:    TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          "json",
-				HandshakeComplete: true,
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    TestBsEui01,
+					Encoding:          "json",
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			msg := &Message{
@@ -463,9 +465,11 @@ func TestConnectMandatoryFields(t *testing.T) {
 			})
 
 			session := &Session{
-				ID:       "test-session",
-				Conn:     mockConn,
-				Encoding: "json",
+				ProtocolSessionState: ProtocolSessionState{
+					ID:       "test-session",
+					Encoding: "json",
+				},
+				Conn: mockConn,
 			}
 
 			msg := &Message{
@@ -509,12 +513,14 @@ func TestRollbackOnSendFailure(t *testing.T) {
 		queueSerializer, auditLogger, tenantResolver)
 
 	session := &Session{
-		ID:                "test-session",
-		BaseStationEUI:    TestBsEui01,
-		Conn:              mockConn,
-		Encoding:          "json",
-		HandshakeComplete: true,
-		LastScOpId:        -5,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-session",
+			BaseStationEUI:    TestBsEui01,
+			Encoding:          "json",
+			HandshakeComplete: true,
+			LastScOpId:        -5,
+		},
+		Conn: mockConn,
 	}
 
 	server.RegisterSession(session)
@@ -676,11 +682,13 @@ func TestAttachMandatoryFields(t *testing.T) {
 				queueSerializer, auditLogger, tenantResolver)
 
 			session := &Session{
-				ID:                "test-session",
-				BaseStationEUI:    TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          "json",
-				HandshakeComplete: true,
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    TestBsEui01,
+					Encoding:          "json",
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			msg := &Message{
@@ -765,10 +773,12 @@ func TestULDataMandatoryFields(t *testing.T) {
 				server.SetDeduplicator(NewMessageDeduplicator(5 * time.Minute))
 
 				session := &Session{
-					ID:             "test-session",
-					BaseStationEUI: TestBsEui04,
-					Conn:           mockConn,
-					Encoding:       "json",
+					ProtocolSessionState: ProtocolSessionState{
+						ID:             "test-session",
+						BaseStationEUI: TestBsEui04,
+						Encoding:       "json",
+					},
+					Conn: mockConn,
 				}
 
 				msg := &Message{
@@ -853,11 +863,13 @@ func TestULDataMandatoryFields(t *testing.T) {
 			server.SetDeduplicator(NewMessageDeduplicator(5 * time.Minute))
 
 			session := &Session{
-				ID:                "test-session",
-				BaseStationEUI:    TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          "json",
-				HandshakeComplete: true,
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    TestBsEui01,
+					Encoding:          "json",
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			msg := &Message{
@@ -991,11 +1003,13 @@ func TestDLDataResultMandatoryFields(t *testing.T) {
 				queueSerializer, auditLogger, tenantResolver)
 
 			session := &Session{
-				ID:                "test-session",
-				BaseStationEUI:    TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          "json",
-				HandshakeComplete: true,
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    TestBsEui01,
+					Encoding:          "json",
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			msg := &Message{
@@ -1158,13 +1172,15 @@ func TestDetachMandatoryFields(t *testing.T) {
 			server.RegisterHandlers()
 
 			session := &Session{
-				ID:                "test-detach-validation",
-				BaseStationEUI:    TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          "msgpack",
-				HandshakeComplete: true,
-				BsOpId:            0,
-				ScOpId:            0,
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-detach-validation",
+					BaseStationEUI:    TestBsEui01,
+					Encoding:          "msgpack",
+					HandshakeComplete: true,
+					BsOpId:            0,
+					ScOpId:            0,
+				},
+				Conn: mockConn,
 			}
 
 			msg := &Message{
@@ -1252,13 +1268,16 @@ func TestAttachNonceValidation(t *testing.T) {
 			server.RegisterHandlers()
 
 			session := &Session{
-				ID:                "test-session",
-				BaseStationEUI:    TestBsEui01,
-				ResolvedTenantID:  1, // Must match endpoint.TenantID
-				DbSessionID:       1, // Required for pending operation persistence
-				Conn:              mockConn,
-				Encoding:          "json",
-				HandshakeComplete: true,
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    TestBsEui01,
+					ResolvedTenantID:  1,
+					Encoding:          "json",
+					HandshakeComplete: true,
+					// Required for pending operation persistence
+					DbSessionID: 1,
+				},
+				Conn: mockConn,
 			}
 
 			data := buildValidAttachData("nonce", tt.nonce)
@@ -1342,13 +1361,15 @@ func TestAttachSignValidation(t *testing.T) {
 			server.RegisterHandlers()
 
 			session := &Session{
-				ID:                "test-session",
-				BaseStationEUI:    TestBsEui01,
-				ResolvedTenantID:  1,
-				DbSessionID:       1,
-				Conn:              mockConn,
-				Encoding:          "json",
-				HandshakeComplete: true,
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    TestBsEui01,
+					ResolvedTenantID:  1,
+					DbSessionID:       1,
+					Encoding:          "json",
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			data := buildValidAttachData("sign", tt.sign)
@@ -1437,13 +1458,15 @@ func TestAttachCounterRange(t *testing.T) {
 			server.RegisterHandlers()
 
 			session := &Session{
-				ID:                "test-session",
-				BaseStationEUI:    TestBsEui01,
-				ResolvedTenantID:  1,
-				DbSessionID:       1,
-				Conn:              mockConn,
-				Encoding:          "json",
-				HandshakeComplete: true,
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    TestBsEui01,
+					ResolvedTenantID:  1,
+					DbSessionID:       1,
+					Encoding:          "json",
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			var data map[string]interface{}

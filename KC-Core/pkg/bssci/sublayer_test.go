@@ -56,11 +56,13 @@ func TestBSSCI_4_01_unsupported_sublayer(t *testing.T) {
 		queueSerializer, auditLogger, tenantResolver)
 
 	session := &bssci.Session{
-		ID:                "test-session",
-		BaseStationEUI:    bssci.TestBsEui01,
-		Conn:              mockConn,
-		Encoding:          "json",
-		HandshakeComplete: true,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-session",
+			BaseStationEUI:    bssci.TestBsEui01,
+			Encoding:          "json",
+			HandshakeComplete: true,
+		},
+		Conn: mockConn,
 	}
 
 	server.RegisterSession(session)

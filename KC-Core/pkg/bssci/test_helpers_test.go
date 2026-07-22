@@ -95,11 +95,6 @@ func (s *Server) CallHandleDLDataResult(session *Session, msg *Message, data map
 	return s.handleDLDataResult(s, session, msg, data)
 }
 
-// CallHandleDLRXStatusQueryComplete exposes the unexported handleDLRXStatusQueryComplete method for testing.
-func (s *Server) CallHandleDLRXStatusQueryComplete(session *Session, msg *Message, data map[string]interface{}) error {
-	return s.handleDLRXStatusQueryComplete(s, session, msg, data)
-}
-
 // RegisterHandlers exposes the unexported registerHandlers method for testing.
 func (s *Server) RegisterHandlers() {
 	s.registerHandlers()
@@ -176,11 +171,6 @@ func (s *Server) CallHandleStatusResponse(session *Session, msg *Message, data m
 // 	}
 // 	return nil
 // }
-
-// CallHandleStatusComplete exposes the unexported handleStatusComplete method for testing.
-func (s *Server) CallHandleStatusComplete(session *Session, msg *Message, data map[string]interface{}) error {
-	return s.handleStatusComplete(s, session, msg, data)
-}
 
 // CallHandleAttachPropagateResponse exposes the unexported handleAttachPropagateResponse method for testing.
 func (s *Server) CallHandleAttachPropagateResponse(session *Session, msg *Message, data map[string]interface{}) error {
@@ -367,7 +357,7 @@ func newMockSessionService() *mockSessionService {
 	}
 }
 
-func (m *mockSessionService) HandleResume(_ context.Context, _ *Session, bsUUID []byte, bsOpId, scOpId *int64, _ uint64) (*Session, error) {
+func (m *mockSessionService) HandleResume(_ context.Context, _ *Session, bsUUID []byte, bsOpId, scOpId *int64, _ uint64) ResumeOutcome {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -376,16 +366,16 @@ func (m *mockSessionService) HandleResume(_ context.Context, _ *Session, bsUUID 
 	if existingSession, exists := m.sessionsByUUID[key]; exists {
 		// Mirror production constraint semantics: absent constraints pass;
 		// required BS operation ID beyond known state or claimed SC
-		// operation ID beyond issued state rejects
+		// operation ID beyond issued state is an inconsistent resume
 		if bsOpId != nil && *bsOpId > existingSession.LastBsOpId {
-			return nil, nil
+			return ResumeOutcome{Disposition: ResumeInconsistent, Previous: existingSession, Err: ErrResumeCounterMismatch}
 		}
 		if scOpId != nil && *scOpId < existingSession.LastScOpId {
-			return nil, nil
+			return ResumeOutcome{Disposition: ResumeInconsistent, Previous: existingSession, Err: ErrResumeCounterMismatch}
 		}
-		return existingSession, nil
+		return ResumeOutcome{Disposition: ResumeCompatible, Previous: existingSession}
 	}
-	return nil, nil // No valid resume
+	return ResumeOutcome{Disposition: ResumeNoMatch} // No valid resume
 }
 
 func (m *mockSessionService) PersistSession(_ context.Context, session *Session, _ *basestation.BaseStation, isResume bool, connectInfo json.RawMessage) error {

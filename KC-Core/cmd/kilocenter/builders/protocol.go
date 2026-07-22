@@ -81,6 +81,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		MessageEncoding:                  cfg.Protocol.MessageEncoding,
 		DetachSignatureValidationEnabled: cfg.Protocol.DetachSignatureValidationEnabled,
 		OperationAckTimeout:              time.Duration(cfg.Protocol.AckTimeout) * time.Millisecond,
+		ConnectionEstablishmentTimeout:   time.Duration(cfg.Protocol.ConnectionEstablishmentTimeout) * time.Millisecond,
 		DuplicateWindow:                  time.Duration(cfg.Protocol.DuplicateWindow) * time.Second,
 		CertificatePollInterval:          cfg.Protocol.BSCICertificatePollInterval,
 	}

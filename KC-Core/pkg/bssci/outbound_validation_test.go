@@ -131,9 +131,11 @@ func TestValidateAllCatalogCommands(t *testing.T) {
 	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	for _, command := range commands {
@@ -158,9 +160,11 @@ func TestValidationMissingCommand(t *testing.T) {
 	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	// Message without command field
@@ -191,9 +195,11 @@ func TestValidationMissingOpId(t *testing.T) {
 	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	// Message without opId field - should fail validation (MIOTY requires opId on all frames)
@@ -275,9 +281,11 @@ func TestValidationExtraField(t *testing.T) {
 	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	// Valid payload with extra field
@@ -309,9 +317,11 @@ func TestValidationUnknownCommand(t *testing.T) {
 	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	// Message with unknown command
@@ -378,9 +388,11 @@ func TestValidationStructMessages(t *testing.T) {
 
 	server.broadcastFn = server.SendAttachPropagateToAll
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	t.Run("ConnectResponse_struct", func(t *testing.T) {

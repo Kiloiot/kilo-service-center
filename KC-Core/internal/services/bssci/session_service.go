@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -55,36 +56,25 @@ func (s *sessionService) resolvedTenantID(session *bssci.Session) int64 {
 	return s.tenantID // CRITICAL: Use s.tenantID, not s.defaultTenantID
 }
 
-// HandleResume validates a session resume request per BSSCI §5.3.1. Resume
+// HandleResume evaluates a session resume request per BSSCI §5.3.1 against the
+// DB-authoritative resumable-session lookup and returns a typed outcome. Resume
 // identity is snBsUuid scoped by tenant and base station EUI. The optional
-// snBsOpId (minimum required known BS operation ID) and snScOpId (maximum
-// known SC operation ID) constraints are asserted only when present:
-// a required BS operation ID above what is persisted means the service
-// center cannot satisfy the base station's minimum state; a claimed SC
-// operation ID below what was issued is impossible without tampering.
-// After acceptance the authoritative persisted counters are restored, not
-// the constraint values reported in the connect message.
-func (s *sessionService) HandleResume(ctx context.Context, session *bssci.Session, bsUUID []byte, bsOpId, scOpId *int64, bsEUI uint64) (*bssci.Session, error) {
+// snBsOpId (minimum required known BS operation ID) and snScOpId (maximum known
+// SC operation ID) constraints are asserted only when present. A lookup failure
+// yields ResumeInfrastructureFailure (reject the connect, never a silent fresh
+// session); incompatible counters or negotiated version yield ResumeInconsistent
+// (terminate the stale session, then fresh); a clean match yields
+// ResumeCompatible with the hydrated session, which is NOT published into any
+// live registry here - the caller activates it after conCmp.
+func (s *sessionService) HandleResume(ctx context.Context, session *bssci.Session, bsUUID []byte, bsOpId, scOpId *int64, bsEUI uint64) bssci.ResumeOutcome {
 	if len(bsUUID) != 16 {
-		return nil, nil
+		return bssci.ResumeOutcome{Disposition: bssci.ResumeNoMatch}
 	}
 
-	// In-memory lookup first: same tenant, base station EUI, and BS UUID
-	s.mu.RLock()
-	for _, sess := range s.sessionsByUUID {
-		if sess.BaseStationEUI != bsEUI || sess.BsUUID == nil || string(sess.BsUUID) != string(bsUUID) {
-			continue
-		}
-		if !s.resumeCountersConsistent(ctx, bsEUI, bsOpId, scOpId, sess.LastBsOpId, sess.LastScOpId) {
-			continue
-		}
-		s.mu.RUnlock()
-		return sess, nil
-	}
-	s.mu.RUnlock()
-
-	// Database fallback: only a disconnected, resumable session scoped by
-	// tenant, base station EUI, and snBsUuid qualifies (BSSCI §5.3.1)
+	// DB-authoritative lookup: only a disconnected, resumable session scoped
+	// by tenant, base station EUI, and snBsUuid qualifies (BSSCI §5.3.1). The
+	// in-memory registry is never consulted for resume - an active session
+	// must never be handed out as resumable.
 	var bsUUIDArray [16]byte
 	copy(bsUUIDArray[:], bsUUID)
 	euiBytes := make([]byte, 8)
@@ -92,23 +82,73 @@ func (s *sessionService) HandleResume(ctx context.Context, session *bssci.Sessio
 
 	dbSession, err := s.bsSessionRepo.FindResumableSession(ctx, s.resolvedTenantID(session), euiBytes, bsUUIDArray)
 	if err != nil {
-		return nil, fmt.Errorf("resumable session lookup failed: %w", err)
+		// A lookup failure must not degrade into a fresh session while the
+		// old resumable state lingers; reject the connect instead.
+		return bssci.ResumeOutcome{
+			Disposition: bssci.ResumeInfrastructureFailure,
+			Err:         fmt.Errorf("resumable session lookup failed: %w", err),
+		}
 	}
 	if dbSession == nil {
-		return nil, nil // No match - fresh session
-	}
-
-	if !s.resumeCountersConsistent(ctx, bsEUI, bsOpId, scOpId, dbSession.SnBsOpId, dbSession.SnScOpId) {
-		return nil, bssci.ErrResumeCounterMismatch
+		return bssci.ResumeOutcome{Disposition: bssci.ResumeNoMatch}
 	}
 
 	restoredSession := s.hydrateSessionFromDB(dbSession, bsEUI)
 
-	s.mu.Lock()
-	s.sessionsByUUID[string(restoredSession.SessionUUID)] = restoredSession
-	s.mu.Unlock()
+	if !s.resumeCountersConsistent(ctx, bsEUI, bsOpId, scOpId, dbSession.SnBsOpId, dbSession.SnScOpId) {
+		return bssci.ResumeOutcome{
+			Disposition: bssci.ResumeInconsistent,
+			Previous:    restoredSession,
+			Err:         bssci.ErrResumeCounterMismatch,
+		}
+	}
 
-	return restoredSession, nil
+	// A resumable session's persisted negotiated version must be compatible
+	// with the version selected for this connection (BSSCI rev1 §4.3: patch
+	// differences are compatible; major/minor must match).
+	if !resumeVersionCompatible(restoredSession.NegotiatedVersion, session.NegotiatedVersion) {
+		s.logger.WarnContext(ctx, "Resume rejected: persisted negotiated version incompatible with the selected version",
+			"bsEui", bsEUI,
+			"persistedVersion", restoredSession.NegotiatedVersion,
+			"selectedVersion", session.NegotiatedVersion)
+		return bssci.ResumeOutcome{
+			Disposition: bssci.ResumeInconsistent,
+			Previous:    restoredSession,
+			Err:         bssci.ErrResumeCounterMismatch,
+		}
+	}
+
+	// The hydrated session is NOT published into any live registry here; the
+	// caller activates it after conCmp.
+	return bssci.ResumeOutcome{Disposition: bssci.ResumeCompatible, Previous: restoredSession}
+}
+
+// resumeVersionCompatible reports whether a persisted negotiated version can
+// resume under a newly selected version. An empty version on either side
+// (legacy rows, or a caller that has not recorded the negotiated version)
+// cannot assert incompatibility and is treated as compatible; otherwise the
+// major and minor components must match (BSSCI rev1 §4.3 - patch differences
+// are compatible).
+func resumeVersionCompatible(persisted, selected string) bool {
+	if persisted == "" || selected == "" || persisted == selected {
+		return true
+	}
+	pMaj, pMin, pOK := majorMinor(persisted)
+	sMaj, sMin, sOK := majorMinor(selected)
+	if !pOK || !sOK {
+		return false
+	}
+	return pMaj == sMaj && pMin == sMin
+}
+
+// majorMinor parses the major and minor components of a "major.minor.patch"
+// version string.
+func majorMinor(v string) (string, string, bool) {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
 }
 
 // resumeCountersConsistent applies the BSSCI §5.3.1 resume constraints
@@ -164,20 +204,21 @@ func (s *sessionService) hydrateSessionFromDB(dbSession *models.BaseStationSessi
 	}
 
 	return &bssci.Session{
-		DbSessionID:       dbSession.ID,          // int64 → int64
-		SessionUUID:       dbSession.SnScUuid[:], // [16]byte → []byte
-		BsUUID:            dbSession.SnBsUuid[:], // [16]byte → []byte
-		LastBsOpId:        dbSession.SnBsOpId,    // int64 → int64 (BSSCI §3.2)
-		LastScOpId:        dbSession.SnScOpId,    // int64 → int64 (BSSCI §3.2)
-		Encoding:          dbSession.Encoding,    // string → string (BSSCI §1)
-		ClientVersion:     clientVersion,         // string → string (BSSCI §4-4.5)
-		NegotiatedVersion: negotiatedVersion,     // string → string (BSSCI §4-4.5)
-		OrganizationID:    orgID,                 // *uuid.UUID → uuid.UUID (nil-safe)
-		ResolvedTenantID:  dbSession.TenantID,    // int64 → int64
-		BaseStationEUI:    bsEUI,                 // From parameter (validated by caller)
-		IsResumed:         true,                  // Mark as resumed session (BSSCI §5.3.2)
-		// Lifecycle fields (ID, Conn, Connected, LastSeen, etc.) initialized by caller (handleConnect)
-		// ActiveVMTypes, stopStatus channel created by caller as needed
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			DbSessionID:       dbSession.ID,          // int64 → int64
+			SessionUUID:       dbSession.SnScUuid[:], // [16]byte → []byte
+			BsUUID:            dbSession.SnBsUuid[:], // [16]byte → []byte
+			LastBsOpId:        dbSession.SnBsOpId,    // int64 → int64 (BSSCI §3.2)
+			LastScOpId:        dbSession.SnScOpId,    // int64 → int64 (BSSCI §3.2)
+			Encoding:          dbSession.Encoding,    // string → string (BSSCI §1)
+			ClientVersion:     clientVersion,         // string → string (BSSCI §4-4.5)
+			NegotiatedVersion: negotiatedVersion,     // string → string (BSSCI §4-4.5)
+			OrganizationID:    orgID,                 // *uuid.UUID → uuid.UUID (nil-safe)
+			ResolvedTenantID:  dbSession.TenantID,    // int64 → int64
+			BaseStationEUI:    bsEUI,                 // From parameter (validated by caller)
+			IsResumed:         true,                  // Mark as resumed session (BSSCI §5.3.2)
+		},
+		// Transport fields (Conn, Connected, LastSeen, etc.) initialized by caller (handleConnect)
 	}
 }
 
@@ -209,18 +250,18 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 		// New session - terminate any stale session first per BSSCI §3 "new session starts, discarding state"
 		dbSession, err := s.bsSessionRepo.GetActiveSessionByBaseStation(ctx, s.resolvedTenantID(session), baseStation.ID)
 		if err == nil && dbSession != nil {
-			// Terminate stale session before creating new one
+			// A failure to retire the stale session must abort activation:
+			// creating a new session on top would leave two active sessions.
 			if err := s.bsSessionRepo.TerminateSession(ctx, s.resolvedTenantID(session), dbSession.ID); err != nil {
 				s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateStaleSession,
 					"error", err,
 					"staleSessionID", dbSession.ID,
 					"baseStationEui", session.BaseStationEUI)
-				// Continue with new session creation despite termination error
-			} else {
-				s.logger.InfoContext(ctx, bssci.LogBSSCITerminatedStaleSession,
-					"staleSessionID", dbSession.ID,
-					"baseStationEui", session.BaseStationEUI)
+				return fmt.Errorf("terminate stale session before activation: %w", err)
 			}
+			s.logger.InfoContext(ctx, bssci.LogBSSCITerminatedStaleSession,
+				"staleSessionID", dbSession.ID,
+				"baseStationEui", session.BaseStationEUI)
 		}
 
 		// No existing session (or terminated) - create new one via repository
@@ -452,9 +493,14 @@ func (s *sessionService) RemoveSession(session *bssci.Session) {
 		return
 	}
 
-	// Use same key format as StoreSessionByUUID (line 242)
 	uuidKey := string(session.SessionUUID)
-	delete(s.sessionsByUUID, uuidKey)
+	// Connection-identity guard: a reconnect may have already replaced this
+	// UUID with a newer live session. Remove only when the stored entry is
+	// still this exact connection, so connection A's cleanup cannot evict
+	// connection B.
+	if stored, ok := s.sessionsByUUID[uuidKey]; ok && stored.ID == session.ID {
+		delete(s.sessionsByUUID, uuidKey)
+	}
 }
 
 // UpdateEncoding persists the negotiated message encoding to the database

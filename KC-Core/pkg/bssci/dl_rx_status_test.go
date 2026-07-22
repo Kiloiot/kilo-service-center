@@ -26,10 +26,15 @@ func TestDLRXStatusHandlerValidation(t *testing.T) {
 
 	// Create test session with mock connection
 	session := &bssci.Session{
-		BaseStationEUI: bssci.TestBsEui01,
-		DbSessionID:    12345,                                   // int64, not string
-		Encoding:       "msgpack",                               // Session encoding must match TestConn encoding (Issue #3-4 Fix A2)
-		Conn:           &testutil.TestConn{Encoding: "msgpack"}, // Add mock connection to prevent nil pointer
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			BaseStationEUI: bssci.TestBsEui01,
+			DbSessionID:    12345,
+			// int64, not string
+			Encoding: "msgpack",
+		},
+		// Session encoding must match TestConn encoding (Issue #3-4 Fix A2)
+		Conn: &testutil.TestConn{Encoding: "msgpack"},
+		// Add mock connection to prevent nil pointer
 	}
 
 	tests := []struct {
@@ -153,41 +158,6 @@ func TestDLRXStatusPersistence(t *testing.T) {
 	// 4. Timestamp generation
 }
 
-// TestDLRXStatusQueryComplete tests cleanup of pending operations
-func TestDLRXStatusQueryComplete(t *testing.T) {
-	logger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssci.CreateTestServices(logger, nil)
-	server := bssci.NewTestServer(logger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-
-	// Add a pending operation (access via unexported field now impossible from external test)
-	// This test needs to be revised or moved to internal package
-
-	// Create test session
-	session := &bssci.Session{
-		BaseStationEUI: bssci.TestBsEui01,
-		DbSessionID:    12345,
-	}
-
-	msg := &bssci.Message{
-		Command: "dlRxStatQryCmp",
-		OpId:    int64(-100),
-	}
-
-	// Call handler
-	err := server.CallHandleDLRXStatusQueryComplete(session, msg, nil)
-
-	// Without database, this will fail, but we're testing it doesn't panic
-	// In a real integration test with database, we'd verify cleanup
-	if err != nil {
-		// Expected error due to nil database
-		t.Logf("Expected error without database: %v", err)
-	}
-
-	// Verify memory cleanup (if handler got that far)
-	// In a real test with DB, we'd assert the operation was removed
-}
-
 // TestHandlerRegistration verifies all DL RX status handlers are registered
 func TestHandlerRegistration(t *testing.T) {
 	// Create real services for test
@@ -205,7 +175,6 @@ func TestHandlerRegistration(t *testing.T) {
 		"dlRxStatRsp",
 		"dlRxStatCmp",
 		"dlRxStatQryRsp",
-		"dlRxStatQryCmp",
 	}
 
 	for _, cmd := range expectedHandlers {
@@ -213,8 +182,9 @@ func TestHandlerRegistration(t *testing.T) {
 		assert.NotNil(t, server.Handlers()[cmd], "Handler for %s should not be nil", cmd)
 	}
 
-	// Verify dlRxStatQry is NOT registered (SC-initiated only)
+	// Verify SC-initiated commands and SC-sent completions are NOT registered inbound
 	assert.NotContains(t, server.Handlers(), "dlRxStatQry", "dlRxStatQry should not have a handler (SC-initiated)")
+	assert.NotContains(t, server.Handlers(), "dlRxStatQryCmp", "dlRxStatQryCmp is SC-sent; no inbound handler")
 }
 
 // TestValidationCommandList verifies DL RX commands are in validation list

@@ -121,10 +121,12 @@ func TestStatusResponseSendsCompletion(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-status-session",
-		BaseStationEUI: 0x1122334455667788,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-status-session",
+			BaseStationEUI: 0x1122334455667788,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	// Create statusRsp message with all mandatory fields
@@ -207,10 +209,12 @@ func TestStatusMandatoryFieldValidation(t *testing.T) {
 
 			mockConn := &statusMockConn{}
 			session := &bssci.Session{
-				ID:             "test-validation-session",
-				BaseStationEUI: 0x1122334455667788,
-				Conn:           mockConn,
-				Encoding:       "msgpack",
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:             "test-validation-session",
+					BaseStationEUI: 0x1122334455667788,
+					Encoding:       "msgpack",
+				},
+				Conn: mockConn,
 			}
 
 			statusMsg := &bssci.Message{
@@ -246,10 +250,12 @@ func TestStatusOptionalFieldHandling(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-optional-session",
-		BaseStationEUI: 0x1122334455667788,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-optional-session",
+			BaseStationEUI: 0x1122334455667788,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	// statusRsp with only mandatory fields (no optional fields)
@@ -281,10 +287,12 @@ func TestStatusWithAllFields(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-all-fields-session",
-		BaseStationEUI: 0x1122334455667788,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-all-fields-session",
+			BaseStationEUI: 0x1122334455667788,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	// statusRsp with all optional fields
@@ -435,11 +443,14 @@ func TestStatusResponseRespectsTenantIsolation(t *testing.T) {
 
 	// Session with ResolvedTenantID = 42 (different from server's default tenant 1)
 	session := &bssci.Session{
-		ID:               "test-tenant-isolation",
-		BaseStationEUI:   0x1122334455667788,
-		Conn:             mockConn,
-		Encoding:         "msgpack",
-		ResolvedTenantID: 42, // This should be used instead of server's tenantID (1)
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:               "test-tenant-isolation",
+			BaseStationEUI:   0x1122334455667788,
+			Encoding:         "msgpack",
+			ResolvedTenantID: 42,
+		},
+		Conn: mockConn,
+		// This should be used instead of server's tenantID (1)
 	}
 
 	// Create statusRsp with mandatory fields
@@ -624,10 +635,12 @@ func TestStatusResponsePersistsGeoLocation(t *testing.T) {
 
 			mockConn := &statusMockConn{}
 			session := &bssci.Session{
-				ID:             "test-geolocation",
-				BaseStationEUI: 0x1122334455667788,
-				Conn:           mockConn,
-				Encoding:       "msgpack",
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:             "test-geolocation",
+					BaseStationEUI: 0x1122334455667788,
+					Encoding:       "msgpack",
+				},
+				Conn: mockConn,
 			}
 
 			// Create statusRsp with mandatory fields and geoLocation
@@ -970,10 +983,12 @@ func TestStatusGetByEUIFailure(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-db-error-getbyeui",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-db-error-getbyeui",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1017,10 +1032,12 @@ func TestStatusUpdateFailure(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-update-error",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-update-error",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1063,10 +1080,12 @@ func TestStatusHistoryPersistenceFailure(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-history-error",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-history-error",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1114,109 +1133,6 @@ func TestStatusHistoryPersistenceFailure(t *testing.T) {
 
 // ========== StatusComplete Error Path Tests ==========
 
-// mockStatusService is a mock for status service that can inject RemovePendingOperation errors
-type mockStatusService struct {
-	removePendingOpError error
-	removePendingOpCalls int
-}
-
-func (m *mockStatusService) RemovePendingOperation(_ context.Context, _ *bssci.Session, _ int64) error {
-	m.removePendingOpCalls++
-	return m.removePendingOpError
-}
-
-func (m *mockStatusService) RecordPendingOperation(_ context.Context, _ *bssci.Session, _ int64, _ *bssci.PendingOperation, _ int64) error {
-	return nil
-}
-
-func (m *mockStatusService) GetPendingOperation(_ *bssci.Session, _ int64) (*bssci.PendingOperation, error) {
-	return nil, nil
-}
-
-func (m *mockStatusService) CleanupPendingOp(_ *bssci.Session, _ int64) {
-}
-
-func (m *mockStatusService) ExtractQueueMetadata(_ *bssci.Session, _ int64) (uint64, int64, string) {
-	return 0, 0, ""
-}
-
-// TestStatusCompletePendingOperationFailure verifies BSSCI §3.5.3 lines 916-930:
-// removePendingOperation errors should be logged but NOT bubble up as handler errors.
-// The statusCmp handler should complete successfully even if cleanup fails.
-//
-// Lines validated: status_handlers.go:259-273
-func TestStatusCompletePendingOperationFailure(t *testing.T) {
-	logger := logger.NewNop()
-
-	sessionSvc, downlinkSvc, _, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
-
-	// Replace statusSvc with our mock that fails on RemovePendingOperation
-	mockStatusSvc := &mockStatusService{
-		removePendingOpError: assert.AnError,
-	}
-
-	server := bssci.NewTestServer(logger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, mockStatusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-
-	mockConn := &statusMockConn{}
-	session := &bssci.Session{
-		ID:             "test-statuscmp-cleanup-error",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
-		DbSessionID:    42,
-	}
-
-	statusCmpMsg := &bssci.Message{
-		Command: "statusCmp",
-		OpId:    -5,
-	}
-
-	err := server.CallHandleStatusComplete(session, statusCmpMsg, nil)
-	require.NoError(t, err, "Handler must not return error even if RemovePendingOperation fails")
-
-	// Verify RemovePendingOperation was attempted
-	assert.Equal(t, 1, mockStatusSvc.removePendingOpCalls, "RemovePendingOperation should have been called once")
-}
-
-// TestStatusCompleteIdempotency verifies BSSCI §3.5.3:
-// Receiving duplicate statusCmp messages (e.g., due to retry) should be handled gracefully.
-// Multiple calls should not cause errors even if pending operation was already removed.
-//
-// Lines validated: status_handlers.go:259-273
-func TestStatusCompleteIdempotency(t *testing.T) {
-	logger := logger.NewNop()
-
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
-	server := bssci.NewTestServer(logger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-
-	mockConn := &statusMockConn{}
-	session := &bssci.Session{
-		ID:             "test-statuscmp-idempotent",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
-		DbSessionID:    43,
-	}
-
-	statusCmpMsg := &bssci.Message{
-		Command: "statusCmp",
-		OpId:    -6,
-	}
-
-	// First call - should succeed
-	err := server.CallHandleStatusComplete(session, statusCmpMsg, nil)
-	require.NoError(t, err, "First statusCmp should succeed")
-
-	// Second call with same opId - should also succeed (idempotent)
-	err = server.CallHandleStatusComplete(session, statusCmpMsg, nil)
-	require.NoError(t, err, "Duplicate statusCmp should be handled gracefully")
-
-	// No messages should be sent in response to statusCmp (it's the final step)
-	assert.Empty(t, mockConn.sentMessages, "No messages should be sent in response to statusCmp")
-}
-
 // ========== GeoLocation Edge Case Tests ==========
 
 // TestStatusGeoLocationStringFormat verifies BSSCI §3.5.2 lines 820-844:
@@ -1235,10 +1151,12 @@ func TestStatusGeoLocationStringFormat(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-geo-string",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-string",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1282,10 +1200,12 @@ func TestStatusGeoLocationPartialArray(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-geo-partial",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-partial",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1329,10 +1249,12 @@ func TestStatusGeoLocationNonNumericArray(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-geo-nonnumeric",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-nonnumeric",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1376,10 +1298,12 @@ func TestStatusGeoLocationNestedObject(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-geo-nested",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-nested",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1437,10 +1361,12 @@ func TestStatusMissingCodeFieldShortCircuits(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-missing-code",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-missing-code",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	// statusRsp missing mandatory 'code' field
@@ -1487,10 +1413,12 @@ func TestStatusInvalidMessageTypeShortCircuits(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-invalid-message-type",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-invalid-message-type",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	// statusRsp with non-string 'message' field
@@ -1537,10 +1465,12 @@ func TestStatusInvalidTimeTypeShortCircuits(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-invalid-time-type",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-invalid-time-type",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	// statusRsp with string 'time' field (should be int64)
@@ -1612,11 +1542,13 @@ func TestStatusTenantIsolationUnderUpdateFailure(t *testing.T) {
 
 	// Session with resolved tenant ID = 99 (different from server default)
 	session := &bssci.Session{
-		ID:               "test-tenant-isolation-update-fail",
-		BaseStationEUI:   bssci.TestBsEui04,
-		Conn:             mockConn,
-		Encoding:         "msgpack",
-		ResolvedTenantID: 99,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:               "test-tenant-isolation-update-fail",
+			BaseStationEUI:   bssci.TestBsEui04,
+			Encoding:         "msgpack",
+			ResolvedTenantID: 99,
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1681,11 +1613,13 @@ func TestStatusTenantIsolationUnderHistoryFailure(t *testing.T) {
 
 	// Session with resolved tenant ID = 88 (different from server default)
 	session := &bssci.Session{
-		ID:               "test-tenant-isolation-history-fail",
-		BaseStationEUI:   bssci.TestBsEui04,
-		Conn:             mockConn,
-		Encoding:         "msgpack",
-		ResolvedTenantID: 88,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:               "test-tenant-isolation-history-fail",
+			BaseStationEUI:   bssci.TestBsEui04,
+			Encoding:         "msgpack",
+			ResolvedTenantID: 88,
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1740,10 +1674,12 @@ func TestStatusHistoryPersistenceSuccess(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-history-success",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-history-success",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -1822,10 +1758,12 @@ func TestStatusHistorySkippedWhenStorageNil(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-history-nil-storage",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-history-nil-storage",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -2035,11 +1973,14 @@ func TestStatusResponseConcurrentUpdates(t *testing.T) {
 	mockConn := &statusMockConn{}
 
 	session := &bssci.Session{
-		ID:               "test-concurrent-status",
-		BaseStationEUI:   bssci.TestBsEui04,
-		Conn:             mockConn,
-		Encoding:         "msgpack",
-		ResolvedTenantID: sessionTenantID, // Use non-default tenant to catch regressions
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:               "test-concurrent-status",
+			BaseStationEUI:   bssci.TestBsEui04,
+			Encoding:         "msgpack",
+			ResolvedTenantID: sessionTenantID,
+		},
+		Conn: mockConn,
+		// Use non-default tenant to catch regressions
 	}
 
 	numGoroutines := 10
@@ -2145,10 +2086,12 @@ func TestStatusHandler_ValidGeoLocation_SetsGPSSource(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-geo-gps-source",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-gps-source",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	beforeCall := time.Now()
@@ -2224,10 +2167,12 @@ func TestStatusHandler_OutOfRangeLatLon_SkipsAll(t *testing.T) {
 
 			mockConn := &statusMockConn{}
 			session := &bssci.Session{
-				ID:             "test-geo-out-of-range",
-				BaseStationEUI: bssci.TestBsEui04,
-				Conn:           mockConn,
-				Encoding:       "msgpack",
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:             "test-geo-out-of-range",
+					BaseStationEUI: bssci.TestBsEui04,
+					Encoding:       "msgpack",
+				},
+				Conn: mockConn,
 			}
 
 			statusMsg := &bssci.Message{
@@ -2274,10 +2219,12 @@ func TestStatusHandler_ZeroGeoLocation_SkipsAll(t *testing.T) {
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
-		ID:             "test-geo-zero",
-		BaseStationEUI: bssci.TestBsEui04,
-		Conn:           mockConn,
-		Encoding:       "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-zero",
+			BaseStationEUI: bssci.TestBsEui04,
+			Encoding:       "msgpack",
+		},
+		Conn: mockConn,
 	}
 
 	statusMsg := &bssci.Message{
@@ -2346,10 +2293,12 @@ func TestStatusHandler_PartialTriple_SkipsAll(t *testing.T) {
 
 			mockConn := &statusMockConn{}
 			session := &bssci.Session{
-				ID:             "test-geo-partial-triple",
-				BaseStationEUI: bssci.TestBsEui04,
-				Conn:           mockConn,
-				Encoding:       "msgpack",
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:             "test-geo-partial-triple",
+					BaseStationEUI: bssci.TestBsEui04,
+					Encoding:       "msgpack",
+				},
+				Conn: mockConn,
 			}
 
 			statusMsg := &bssci.Message{

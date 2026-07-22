@@ -44,8 +44,10 @@ func TestAtomicSendRollback(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
-				BaseStationEUI: TestEpEui01,
-				LastScOpId:     tt.initialOpId,
+				ProtocolSessionState: ProtocolSessionState{
+					BaseStationEUI: TestEpEui01,
+					LastScOpId:     tt.initialOpId,
+				},
 			}
 
 			// Step 1: Decrement operation ID (atomic send-and-persist pattern)
@@ -76,8 +78,10 @@ func TestAtomicSendRollback(t *testing.T) {
 // correctly rollback operation IDs without causing counter drift.
 func TestMultipleRollbacks(t *testing.T) {
 	session := &Session{
-		BaseStationEUI: TestEpEui01,
-		LastScOpId:     0,
+		ProtocolSessionState: ProtocolSessionState{
+			BaseStationEUI: TestEpEui01,
+			LastScOpId:     0,
+		},
 	}
 
 	numAttempts := 5
@@ -112,8 +116,10 @@ func TestMultipleRollbacks(t *testing.T) {
 // a mix of successful and failed operations, maintaining counter integrity.
 func TestMixedSuccessFailure(t *testing.T) {
 	session := &Session{
-		BaseStationEUI: TestEpEui01,
-		LastScOpId:     0,
+		ProtocolSessionState: ProtocolSessionState{
+			BaseStationEUI: TestEpEui01,
+			LastScOpId:     0,
+		},
 	}
 
 	operations := []struct {
@@ -153,8 +159,10 @@ func TestMixedSuccessFailure(t *testing.T) {
 // operation ID doesn't affect tracking of other pending operations.
 func TestRollbackPreservesPendingOperations(t *testing.T) {
 	session := &Session{
-		BaseStationEUI: TestEpEui01,
-		LastScOpId:     0,
+		ProtocolSessionState: ProtocolSessionState{
+			BaseStationEUI: TestEpEui01,
+			LastScOpId:     0,
+		},
 	}
 
 	// Track pending operations manually (simulating pendingOps map)
@@ -202,8 +210,10 @@ func TestRollbackPreservesPendingOperations(t *testing.T) {
 // under concurrent access scenarios.
 func TestRollbackWithConcurrency(t *testing.T) {
 	session := &Session{
-		BaseStationEUI: TestEpEui01,
-		LastScOpId:     0,
+		ProtocolSessionState: ProtocolSessionState{
+			BaseStationEUI: TestEpEui01,
+			LastScOpId:     0,
+		},
 	}
 
 	numGoroutines := 10
@@ -265,8 +275,10 @@ func TestRollbackWithConcurrency(t *testing.T) {
 // across rollback scenarios, maintaining BSSCI §5.2 correctness.
 func TestRollbackIntegrity(t *testing.T) {
 	session := &Session{
-		BaseStationEUI: TestEpEui01,
-		LastScOpId:     0,
+		ProtocolSessionState: ProtocolSessionState{
+			BaseStationEUI: TestEpEui01,
+			LastScOpId:     0,
+		},
 	}
 
 	usedOpIds := make(map[int64]bool)

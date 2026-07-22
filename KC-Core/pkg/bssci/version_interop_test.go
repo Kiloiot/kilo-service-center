@@ -353,3 +353,100 @@ func TestBSSCIVersionInterop_OliverScenario(t *testing.T) {
 	pingRsp := h.readFrame()
 	assert.Equal(t, mioty.CmdPingResponse, frameCommand(pingRsp))
 }
+
+// TestBSSCIVersionInterop_StateMachineEdges drives illegal handshake
+// sequences over real framed traffic. Each must produce an error frame (never
+// a normal response) and enter the error/errorAck sequence (§5.17).
+func TestBSSCIVersionInterop_StateMachineEdges(t *testing.T) {
+	t.Run("InboundConRspRejected", func(t *testing.T) {
+		// conRsp is SC-initiated (SCtoBS); a base station sending it before
+		// the handshake is a protocol-ordering violation
+		h := startInteropServer(t, EncodingJSON)
+		h.writeFrame(map[string]interface{}{
+			"command": mioty.CmdConnectResponse,
+			"opId":    int64(0),
+			"version": mioty.MIOTYProtocolVersion,
+		})
+		errFrame := h.readFrame()
+		require.Equal(t, mioty.CmdError, frameCommand(errFrame),
+			"an inbound conRsp must be rejected, not handled")
+	})
+
+	t.Run("ConCmpBeforeCon", func(t *testing.T) {
+		// conCmp before con completes an operation that never started
+		h := startInteropServer(t, EncodingJSON)
+		h.writeFrame(map[string]interface{}{"command": mioty.CmdConnectComplete, "opId": int64(0)})
+		errFrame := h.readFrame()
+		require.Equal(t, mioty.CmdError, frameCommand(errFrame))
+	})
+
+	t.Run("PreHandshakeCommandRejected", func(t *testing.T) {
+		// a normal operation before the connect handshake completes
+		h := startInteropServer(t, EncodingJSON)
+		h.writeFrame(map[string]interface{}{"command": mioty.CmdPing, "opId": int64(1)})
+		errFrame := h.readFrame()
+		require.Equal(t, mioty.CmdError, frameCommand(errFrame),
+			"a pre-handshake command must be rejected with an error, entering the errorAck sequence")
+	})
+
+	t.Run("DuplicateCon", func(t *testing.T) {
+		// a second con while the first connect operation is in flight
+		h := startInteropServer(t, EncodingJSON)
+		h.writeFrame(connectPayload("1.0.0", uint64(0x70B3D59CD00009E6)))
+		conRsp := h.readFrame()
+		require.Equal(t, mioty.CmdConnectResponse, frameCommand(conRsp))
+
+		// conRsp sent, awaiting conCmp - a duplicate con is out of order
+		h.writeFrame(connectPayload("1.0.0", uint64(0x70B3D59CD00009E6)))
+		errFrame := h.readFrame()
+		require.Equal(t, mioty.CmdError, frameCommand(errFrame),
+			"a duplicate con while awaiting conCmp must be rejected")
+	})
+}
+
+// TestBSSCIVersionInterop_ErrorAlwaysAcksNeverCompletes verifies BSSCI §5.17:
+// an inbound error on an active session is answered with errorAck, never with
+// an operation-specific completion, and the operation type is never guessed.
+func TestBSSCIVersionInterop_ErrorAlwaysAcksNeverCompletes(t *testing.T) {
+	h := startInteropServer(t, EncodingJSON)
+
+	h.writeFrame(connectPayload("1.0.0", uint64(0x70B3D59CD00009E6)))
+	require.Equal(t, mioty.CmdConnectResponse, frameCommand(h.readFrame()))
+	h.writeFrame(map[string]interface{}{"command": mioty.CmdConnectComplete, "opId": int64(0)})
+
+	// An inbound error for a negative (SC-initiated) opId with no tracked
+	// pending operation must be acknowledged with errorAck - the old behavior
+	// guessed detach-propagate and answered with detPrpCmp.
+	h.writeFrame(map[string]interface{}{
+		"command": mioty.CmdError,
+		"opId":    int64(-1),
+		"code":    int64(POSIX_EPROTO),
+		"message": "operation failed",
+	})
+	ack := h.readFrame()
+	require.Equal(t, mioty.CmdErrorAck, frameCommand(ack),
+		"an inbound error must be answered with errorAck, never a *Cmp")
+}
+
+// TestBSSCIVersionInterop_InboundServiceCenterCommandRejected verifies BSSCI
+// direction enforcement: a base station sending a command the service center
+// itself initiates (statusCmp, dlDataQueCmp) is rejected before dispatch.
+func TestBSSCIVersionInterop_InboundServiceCenterCommandRejected(t *testing.T) {
+	for _, cmd := range []string{mioty.CmdStatusComplete, mioty.CmdDLDataQueueComplete, mioty.CmdStatus} {
+		t.Run(cmd, func(t *testing.T) {
+			h := startInteropServer(t, EncodingJSON)
+			h.writeFrame(connectPayload("1.0.0", uint64(0x70B3D59CD00009E6)))
+			require.Equal(t, mioty.CmdConnectResponse, frameCommand(h.readFrame()))
+			h.writeFrame(map[string]interface{}{"command": mioty.CmdConnectComplete, "opId": int64(0)})
+
+			// The base station illegally sends an SC-initiated command
+			h.writeFrame(map[string]interface{}{"command": cmd, "opId": int64(-3)})
+			errFrame := h.readFrame()
+			require.Equal(t, mioty.CmdError, frameCommand(errFrame),
+				"an inbound SC-initiated command must be rejected with an error")
+			code, err := coerceInt64(errFrame["code"])
+			require.NoError(t, err)
+			assert.Equal(t, int64(POSIX_EPROTO), code)
+		})
+	}
+}

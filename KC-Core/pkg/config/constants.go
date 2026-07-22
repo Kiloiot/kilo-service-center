@@ -389,6 +389,9 @@ const (
 	// DefaultProtocolAckTimeout is the acknowledgement timeout in milliseconds.
 	DefaultProtocolAckTimeout = 5000
 
+	// DefaultProtocolConnectionEstablishmentTimeout bounds a fresh connection before its con arrives, in milliseconds.
+	DefaultProtocolConnectionEstablishmentTimeout = 30000
+
 	// DefaultProtocolDuplicateWindow is the duplicate detection window in seconds.
 	DefaultProtocolDuplicateWindow = 300
 

@@ -227,13 +227,16 @@ func newDetachTestEnv(t *testing.T, cfg *Config, endpoint *models.EndPoint) *det
 		sessionTenant = endpoint.TenantID
 	}
 	session := &Session{
-		ID:               "session-detach",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: sessionTenant,
-		DbSessionID:      1, // Non-zero to enable database persistence for crash recovery tests
-		Encoding:         EncodingJSON,
-		Conn:             conn,
-		SessionUUID:      uuidBytes(),
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "session-detach",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: sessionTenant,
+			// Non-zero to enable database persistence for crash recovery tests
+			DbSessionID: 1,
+			SessionUUID: uuidBytes(),
+			Encoding:    EncodingJSON,
+		},
+		Conn: conn,
 	}
 
 	return &detachTestEnv{

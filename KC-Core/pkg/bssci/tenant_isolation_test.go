@@ -19,26 +19,43 @@ func TestResolvedTenantUsesServerTenant(t *testing.T) {
 			expected:       1,
 		},
 		{
-			name:           "unresolved_session_uses_server_tenant",
-			session:        &Session{ResolvedTenantID: 0},
+			name: "unresolved_session_uses_server_tenant",
+			session: &Session{
+				ProtocolSessionState: ProtocolSessionState{
+					ResolvedTenantID: 0,
+				},
+			},
 			serverTenantID: 1,
 			expected:       1,
 		},
 		{
-			name:           "resolved_session_uses_own_tenant",
-			session:        &Session{ResolvedTenantID: 42},
+			name: "resolved_session_uses_own_tenant",
+			session: &Session{
+				ProtocolSessionState: ProtocolSessionState{
+					ResolvedTenantID: 42,
+				},
+			},
 			serverTenantID: 1,
 			expected:       42,
 		},
 		{
-			name:           "cert_resolved_tenant_overrides_server_default",
-			session:        &Session{ResolvedTenantID: 99},
+			name: "cert_resolved_tenant_overrides_server_default",
+			session: &Session{
+				ProtocolSessionState: ProtocolSessionState{
+					ResolvedTenantID: 99,
+				},
+			},
 			serverTenantID: 1,
 			expected:       99,
 		},
 		{
-			name:           "fallback_when_tenant_not_resolved",
-			session:        &Session{ResolvedTenantID: 0, BaseStationEUI: 123456},
+			name: "fallback_when_tenant_not_resolved",
+			session: &Session{
+				ProtocolSessionState: ProtocolSessionState{
+					ResolvedTenantID: 0,
+					BaseStationEUI:   123456,
+				},
+			},
 			serverTenantID: 5,
 			expected:       5,
 		},
@@ -75,8 +92,12 @@ func TestResolvedTenantServerTenantNotDefaultTenant(t *testing.T) {
 		description      string
 	}{
 		{
-			name:             "community_mode_tenant_mismatch",
-			session:          &Session{ResolvedTenantID: 0},
+			name: "community_mode_tenant_mismatch",
+			session: &Session{
+				ProtocolSessionState: ProtocolSessionState{
+					ResolvedTenantID: 0,
+				},
+			},
 			serverTenantID:   1,
 			defaultTenantID:  100, // Wrong fallback
 			expectedTenantID: 1,   // Should use serverTenantID
@@ -91,8 +112,13 @@ func TestResolvedTenantServerTenantNotDefaultTenant(t *testing.T) {
 			description:      "Multi-tenant: each server instance has dedicated tenantID",
 		},
 		{
-			name:             "cert_resolution_pending",
-			session:          &Session{ResolvedTenantID: 0, BaseStationEUI: TestEpEui01},
+			name: "cert_resolution_pending",
+			session: &Session{
+				ProtocolSessionState: ProtocolSessionState{
+					ResolvedTenantID: 0,
+					BaseStationEUI:   TestEpEui01,
+				},
+			},
 			serverTenantID:   42,
 			defaultTenantID:  1,
 			expectedTenantID: 42,

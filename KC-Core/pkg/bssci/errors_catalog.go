@@ -12,6 +12,7 @@ const (
 	errBaseStationNotRegistered = "bssci.error.base_station_not_registered"
 	errResumeCounterMismatch    = "bssci.error.resume_counter_mismatch"
 	errInvalidResumeCounters    = "bssci.error.invalid_resume_counters"
+	errSessionResumeUnavailable = "bssci.error.session_resume_unavailable"
 
 	// Protocol/framing errors
 	errInvalidMessageFormat  = "bssci.error.invalid_message_format"
@@ -51,21 +52,22 @@ const (
 	errInvalidConnectCompleteOpId  = "bssci.error.invalid_connect_complete_op_id"
 
 	// Connect operation errors (BSSCI §3.3)
-	errMissingBsEui            = "bssci.error.missing_bs_eui"
-	errInvalidBsEui            = "bssci.error.invalid_bs_eui"
-	errInvalidUUIDByteType     = "bssci.error.invalid_uuid_byte_type"
-	errInvalidUUIDLength       = "bssci.error.invalid_uuid_length"
-	errUnsupportedUUIDType     = "bssci.error.unsupported_uuid_type"
-	errUUIDDataNil             = "bssci.error.uuid_data_nil"
-	errNoConnectedBaseStations = "bssci.error.no_connected_base_stations"
-	errFailedToLoadCA          = "bssci.error.failed_to_load_ca"
-	errFailedToParseCA         = "bssci.error.failed_to_parse_ca"
-	errFailedToLoadTLS         = "bssci.error.failed_to_load_tls"
-	errFailedToStartTLS        = "bssci.error.failed_to_start_tls"
-	errCommandBeforeHandshake  = "bssci.error.command_before_handshake"
-	errInvalidHandshakeState   = "bssci.error.invalid_handshake_state"
-	errMissingProtocolVersion  = "bssci.error.missing_protocol_version"
-	errMissingBidiFlag         = "bssci.error.missing_bidi_flag"
+	errMissingBsEui                = "bssci.error.missing_bs_eui"
+	errInvalidBsEui                = "bssci.error.invalid_bs_eui"
+	errInvalidUUIDByteType         = "bssci.error.invalid_uuid_byte_type"
+	errInvalidUUIDLength           = "bssci.error.invalid_uuid_length"
+	errUnsupportedUUIDType         = "bssci.error.unsupported_uuid_type"
+	errUUIDDataNil                 = "bssci.error.uuid_data_nil"
+	errNoConnectedBaseStations     = "bssci.error.no_connected_base_stations"
+	errFailedToLoadCA              = "bssci.error.failed_to_load_ca"
+	errFailedToParseCA             = "bssci.error.failed_to_parse_ca"
+	errFailedToLoadTLS             = "bssci.error.failed_to_load_tls"
+	errFailedToStartTLS            = "bssci.error.failed_to_start_tls"
+	errCommandBeforeHandshake      = "bssci.error.command_before_handshake"
+	errInboundServiceCenterCommand = "bssci.error.inbound_service_center_command"
+	errInvalidHandshakeState       = "bssci.error.invalid_handshake_state"
+	errMissingProtocolVersion      = "bssci.error.missing_protocol_version"
+	errMissingBidiFlag             = "bssci.error.missing_bidi_flag"
 
 	// Attach operation errors (BSSCI §3.6)
 	errMissingEpEui                = "bssci.error.missing_ep_eui"
@@ -200,10 +202,11 @@ const (
 	errDetachPropagateRejected = "bssci.error.detach_propagate_rejected"
 
 	// Status operation errors
-	errFailedToSendStatusRequest = "bssci.error.failed_to_send_status_request"
-	errMissingStatusCode         = "bssci.error.missing_status_code"
-	errMissingStatusMessage      = "bssci.error.missing_status_message"
-	errMissingStatusTime         = "bssci.error.missing_status_time"
+	errFailedToSendStatusRequest             = "bssci.error.failed_to_send_status_request"
+	errFailedToPersistPendingStatusOperation = "bssci.error.failed_to_persist_pending_status_operation"
+	errMissingStatusCode                     = "bssci.error.missing_status_code"
+	errMissingStatusMessage                  = "bssci.error.missing_status_message"
+	errMissingStatusTime                     = "bssci.error.missing_status_time"
 
 	// Management HTTP API errors (BSSCI §3.6 attach/§3.7 detach propagation)
 	// Exported for use by pkg/management HTTP handlers
@@ -332,6 +335,12 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.base_station_not_registered",
 		Message:     "Base station not registered",
 		SpecSection: "§3.3",
+		Severity:    SeverityError,
+	},
+	errSessionResumeUnavailable: {
+		Token:       "bssci.error.session_resume_unavailable",
+		Message:     "Session resume temporarily unavailable; retry",
+		SpecSection: "§5.3",
 		Severity:    SeverityError,
 	},
 	errResumeCounterMismatch: {
@@ -589,6 +598,12 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Message:     "Operation not allowed before connect handshake completes",
 		SpecSection: "§3.3",
 		Severity:    "protocol_violation",
+	},
+	errInboundServiceCenterCommand: {
+		Token:       "bssci.error.inbound_service_center_command",
+		Message:     "Inbound service-center-initiated command is not permitted",
+		SpecSection: "§5.5",
+		Severity:    SeverityError,
 	},
 	errInvalidHandshakeState: {
 		Token:       "bssci.error.invalid_handshake_state",
@@ -1255,6 +1270,12 @@ var errorDefinitions = map[string]ErrorDefinition{
 	errFailedToSendStatusRequest: {
 		Token:       "bssci.error.failed_to_send_status_request",
 		Message:     "Failed to send status request",
+		SpecSection: "§3.5",
+		Severity:    SeverityError,
+	},
+	errFailedToPersistPendingStatusOperation: {
+		Token:       "bssci.error.failed_to_persist_pending_status_operation",
+		Message:     "Failed to persist pending status operation",
 		SpecSection: "§3.5",
 		Severity:    SeverityError,
 	},

@@ -265,14 +265,16 @@ func newProfileTestFixture(t *testing.T, initialProfile string) *profileTestFixt
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
-		ID:                "test-profile-session",
-		BaseStationEUI:    TestBsEui01,
-		ResolvedTenantID:  1,
-		DbSessionID:       1,
-		Encoding:          EncodingJSON,
-		Conn:              testConn,
-		SessionUUID:       uuidBytes(),
-		HandshakeComplete: true,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-profile-session",
+			BaseStationEUI:    TestBsEui01,
+			ResolvedTenantID:  1,
+			DbSessionID:       1,
+			Encoding:          EncodingJSON,
+			SessionUUID:       uuidBytes(),
+			HandshakeComplete: true,
+		},
+		Conn: testConn,
 	}
 
 	return &profileTestFixture{
@@ -526,14 +528,16 @@ func TestDetachProfileGuardNonRegression(t *testing.T) {
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
-		ID:                "test-detach-profile-session",
-		BaseStationEUI:    TestBsEui01,
-		ResolvedTenantID:  1,
-		DbSessionID:       1,
-		Encoding:          EncodingJSON,
-		Conn:              testConn,
-		SessionUUID:       uuidBytes(),
-		HandshakeComplete: true,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-detach-profile-session",
+			BaseStationEUI:    TestBsEui01,
+			ResolvedTenantID:  1,
+			DbSessionID:       1,
+			Encoding:          EncodingJSON,
+			SessionUUID:       uuidBytes(),
+			HandshakeComplete: true,
+		},
+		Conn: testConn,
 	}
 
 	// Build detach message with empty profile

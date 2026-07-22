@@ -440,13 +440,15 @@ func createTestEndpoint(epEui uint64, tenantID int64) *models.EndPoint {
 // createTestSession creates a test BSSCI session with given BS EUI
 func createTestSession(bsEui uint64, tenantID int64, conn net.Conn) *bssci.Session {
 	return &bssci.Session{
-		ID:                "test-ul-dedup-session",
-		BaseStationEUI:    bsEui,
-		Conn:              conn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  tenantID,
-		DbSessionID:       1,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-ul-dedup-session",
+			BaseStationEUI:    bsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  tenantID,
+			DbSessionID:       1,
+		},
+		Conn: conn,
 	}
 }
 

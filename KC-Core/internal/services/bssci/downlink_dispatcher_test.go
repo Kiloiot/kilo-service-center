@@ -237,8 +237,10 @@ func TestDispatchIfAvailable_Success(t *testing.T) {
 	)
 
 	session := &bssci.Session{
-		ID:             "test-session-123",
-		BaseStationEUI: 0x1234567890ABCDEF,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-session-123",
+			BaseStationEUI: 0x1234567890ABCDEF,
+		},
 	}
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
@@ -284,7 +286,11 @@ func TestDispatchIfAvailable_NoPendingDownlinks(t *testing.T) {
 		sendFn.Send,
 	)
 
-	session := &bssci.Session{ID: "test-session"}
+	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID: "test-session",
+		},
+	}
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
 		context.Background(),
@@ -317,7 +323,11 @@ func TestDispatchIfAvailable_NoTenantContext(t *testing.T) {
 		sendFn.Send,
 	)
 
-	session := &bssci.Session{ID: "test-session"}
+	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID: "test-session",
+		},
+	}
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
 		context.Background(),
@@ -352,7 +362,11 @@ func TestDispatchIfAvailable_TransactionBeginError(t *testing.T) {
 		sendFn.Send,
 	)
 
-	session := &bssci.Session{ID: "test-session"}
+	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID: "test-session",
+		},
+	}
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
 		context.Background(),
@@ -395,7 +409,11 @@ func TestDispatchIfAvailable_SendFunctionError(t *testing.T) {
 		sendFn.Send,
 	)
 
-	session := &bssci.Session{ID: "test-session"}
+	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID: "test-session",
+		},
+	}
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
 		context.Background(),
@@ -441,7 +459,11 @@ func TestDispatchIfAvailable_MarkQueuedError(t *testing.T) {
 		sendFn.Send,
 	)
 
-	session := &bssci.Session{ID: "test-session"}
+	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID: "test-session",
+		},
+	}
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
 		context.Background(),
@@ -487,7 +509,11 @@ func TestDispatchIfAvailable_CommitError(t *testing.T) {
 		sendFn.Send,
 	)
 
-	session := &bssci.Session{ID: "test-session"}
+	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID: "test-session",
+		},
+	}
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
 		context.Background(),
@@ -535,7 +561,11 @@ func TestDispatchIfAvailable_UsesUserDataIfPresent(t *testing.T) {
 		sendFn,
 	)
 
-	session := &bssci.Session{ID: "test-session"}
+	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID: "test-session",
+		},
+	}
 
 	dispatched, err := dispatcher.DispatchIfAvailable(
 		context.Background(),

@@ -202,8 +202,12 @@ type Config struct {
 	DetachSignatureValidationEnabled bool   // BSSCI §5.7.1: Enable detach signature validation
 	// OperationAckTimeout bounds how long the service center waits for the
 	// next handshake message (conCmp or errorAck) after sending conRsp or a
-	// connect-stage error. Also bounds reads before the connect operation.
+	// connect-stage error (states AwaitingConnectComplete/AwaitingConnectErrorAck).
 	OperationAckTimeout time.Duration
+	// ConnectionEstablishmentTimeout bounds a freshly accepted connection
+	// before the base station sends its con (state AwaitingConnect), so an
+	// idle socket cannot hold resources indefinitely.
+	ConnectionEstablishmentTimeout time.Duration
 	// DuplicateWindow is the uplink deduplication window
 	DuplicateWindow time.Duration
 	// CertificatePollInterval is the certificate change poll interval
@@ -233,29 +237,19 @@ const (
 	ConnectStateTerminal
 )
 
-// Session represents a connected Base Station session
+// ProtocolSessionState is the transport-free domain state of a Base Station
+// session: identity, negotiated protocol parameters, resume/handshake state,
+// and operation counters. Application services (connect, lifecycle, resume)
+// operate on this state and never on the transport-bearing Session.
 //
 //revive:disable:var-naming BsOpId/ScOpId/LastBsOpId/LastScOpId use lowercase 'd' per MIOTY BSSCI §3.2
-type Session struct {
+type ProtocolSessionState struct {
 	ID                string
 	BaseStationEUI    uint64
-	Conn              net.Conn
-	Connected         time.Time
-	LastSeen          time.Time
 	ClientVersion     string // BS-provided version (raw client claim for audit)
 	NegotiatedVersion string // SC canonical version (BSSCI §4-4.5)
-	Vendor            string
-	Model             string
-	Name              string
-	SoftwareVersion   string
-	Bidirectional     bool
-	GeoLocation       []float64
 	SessionUUID       []byte
-	// MIOTY session fields
-	DbSessionID      int64              // Database session ID (BIGINT) for persistence
-	UserProvidedName string             // User-provided base station name
-	ActiveVMTypes    map[uint64][]uint8 // Track active Variable MAC types per endpoint
-	stopStatus       chan struct{}      // Channel to stop status mechanism
+	DbSessionID       int64 // Database session ID (BIGINT) for persistence
 	// Session resume fields (BSSCI-3.3)
 	BsUUID      []byte          // Base Station UUID for session resume
 	BsOpId      int64           // Last known Base Station operation ID
@@ -270,15 +264,36 @@ type Session struct {
 	// Message encoding (BSSCI Section 1)
 	Encoding string // Message encoding: "json" or "msgpack" (negotiated on first message)
 	// Organization resolution
-	OrganizationID   uuid.UUID         // Kilo Cloud org UUID (from TLS cert or community fallback)
-	ResolvedTenantID int64             // Tenant ID resolved from cert/org (vs server default s.tenantID)
-	ClientCert       *x509.Certificate // TLS client certificate for org resolution
+	OrganizationID   uuid.UUID // Kilo Cloud org UUID (from TLS cert or community fallback)
+	ResolvedTenantID int64     // Tenant ID resolved from cert/org (vs server default s.tenantID)
 	// Connect handshake state machine (BSSCI §3.3/§5.17)
 	ConnectState ConnectState
+	// mu is the domain concurrency guard for counter/state mutation.
+	mu sync.Mutex
+}
+
+// Session represents a connected Base Station session: the transport-free
+// ProtocolSessionState plus the live transport resources (socket, certificate,
+// background channels) that never cross an application-service boundary.
+type Session struct {
+	ProtocolSessionState
+	Conn            net.Conn
+	Connected       time.Time
+	LastSeen        time.Time
+	Vendor          string
+	Model           string
+	Name            string
+	SoftwareVersion string
+	Bidirectional   bool
+	GeoLocation     []float64
+	// MIOTY session fields
+	UserProvidedName string             // User-provided base station name
+	ActiveVMTypes    map[uint64][]uint8 // Track active Variable MAC types per endpoint
+	stopStatus       chan struct{}      // Channel to stop status mechanism
+	ClientCert       *x509.Certificate  // TLS client certificate for org resolution
 	// pendingBaseStation caches the registration looked up during the connect
 	// request so connect-complete does not repeat the lookup
 	pendingBaseStation *basestation.BaseStation
-	mu                 sync.Mutex
 }
 
 // BaseStationEUIBytes converts the BaseStationEUI uint64 to a byte slice.
@@ -812,7 +827,6 @@ func (s *Server) registerHandlers() {
 	s.handlers[mioty.CmdPingComplete] = s.handlePingComplete
 	// Status response handlers (SC-initiated, so no status handler for BS-initiated)
 	s.handlers[mioty.CmdStatusResponse] = s.handleStatusResponse
-	s.handlers[mioty.CmdStatusComplete] = s.handleStatusComplete
 	s.handlers[mioty.CmdAttach] = s.handleAttach
 	s.handlers[mioty.CmdAttachComplete] = s.handleAttachComplete
 	s.handlers[mioty.CmdDetach] = s.handleDetach
@@ -821,14 +835,11 @@ func (s *Server) registerHandlers() {
 	s.handlers[mioty.CmdULDataComplete] = s.handleULDataComplete
 	// UL Data Transmit response handlers (SC-initiated, so no ulDataTx handler)
 	s.handlers[mioty.CmdULDataTransmitResponse] = s.handleULDataTxResponse
-	s.handlers[mioty.CmdULDataTransmitComplete] = s.handleULDataTxComplete
 	s.handlers[mioty.CmdError] = s.handleError
 	s.handlers[mioty.CmdErrorAck] = s.handleErrorAck
 	// Attach/Detach Propagate handlers
 	s.handlers[mioty.CmdAttachPropagateResponse] = s.handleAttachPropagateResponse
-	s.handlers[mioty.CmdAttachPropagateComplete] = s.handleAttachPropagateComplete
 	s.handlers[mioty.CmdDetachPropagateResponse] = s.handleDetachPropagateResponse
-	s.handlers[mioty.CmdDetachPropagateComplete] = s.handleDetachPropagateComplete
 	// DL Data Result handlers (BSSCI §3.14)
 	s.handlers[mioty.CmdDLDataResult] = s.handleDLDataResult
 	s.handlers[mioty.CmdDLDataResultResponse] = s.handleDLDataResultResponse
@@ -839,13 +850,10 @@ func (s *Server) registerHandlers() {
 	s.handlers[mioty.CmdDLRxStatusComplete] = s.handleDLRXStatusComplete
 	// DL RX Status Query response handlers (BSSCI §3.16 - SC-initiated, so no dlRxStatQry handler)
 	s.handlers[mioty.CmdDLRxStatusQueryResponse] = s.handleDLRXStatusQueryResponse
-	s.handlers[mioty.CmdDLRxStatusQueryComplete] = s.handleDLRXStatusQueryComplete
 	// DL Data Revoke response handlers (BSSCI §3.13 - SC-initiated)
 	s.handlers[mioty.CmdDLDataRevokeResponse] = s.handleDLDataRevokeResponse
-	s.handlers[mioty.CmdDLDataRevokeComplete] = s.handleDLDataRevokeComplete
 	// DL Data Queue response handlers (BSSCI §3.12 - SC-initiated)
 	s.handlers[mioty.CmdDLDataQueueResponse] = s.handleDLDataQueueResponse
-	s.handlers[mioty.CmdDLDataQueueComplete] = s.handleDLDataQueueComplete
 	// VM handlers (BSSCI §4.1-4.3)
 	s.handlers[mioty.CmdVMActivate] = s.handleVMActivate
 	s.handlers[mioty.CmdVMActivateResponse] = s.handleVMActivateResponse
@@ -1014,12 +1022,14 @@ func (s *Server) handleConnection(conn net.Conn) {
 	s.logger.InfoContext(s.safeCtx(), LogBSSCINewConnection, "remote", conn.RemoteAddr().String())
 
 	session := &Session{
-		ID:               uuid.New().String(),
-		Conn:             conn,
-		Connected:        time.Now(),
-		LastSeen:         time.Now(),
-		ResolvedTenantID: s.defaultTenantID, // Initialize to server default
-		// Encoding left empty - detected on first frame per BSSCI Section 1
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               uuid.New().String(),
+			ResolvedTenantID: s.defaultTenantID, // Initialize to server default
+			// Encoding left empty - detected on first frame per BSSCI Section 1
+		},
+		Conn:      conn,
+		Connected: time.Now(),
+		LastSeen:  time.Now(),
 	}
 
 	// Extract TLS client certificate and resolve organization
@@ -1167,8 +1177,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 			}
 		}
 
-		// Clean up pending operations for this session (bulk delete)
-		if session.DbSessionID != 0 && s.storage != nil {
+		// Pending operations survive an unexpected loss of an active session:
+		// they are reissued with their original opIds on resume (BSSCI §4/§5.3).
+		// Only a terminal session (rejected, provisional, or terminated above)
+		// has its rows removed.
+		if session.DbSessionID != 0 && s.storage != nil && !wasActive {
 			// Guard against nil repository before calling methods
 			pendingOpsRepo := s.storage.PendingOperations()
 			if pendingOpsRepo != nil {
@@ -1194,13 +1207,19 @@ func (s *Server) handleConnection(conn net.Conn) {
 		default:
 		}
 
-		// Read deadline follows the handshake state: bounded while the connect
-		// operation is in flight (con/conRsp/error awaiting their next message),
-		// cleared once the session is active - liveness of active sessions is
+		// Read deadline follows the handshake state: a fresh connection is
+		// bounded by the establishment timeout until con arrives; after conRsp
+		// or a connect-stage error the ack timeout bounds the wait for conCmp
+		// or errorAck; an active session reads without a deadline - liveness is
 		// the ping operation's job (BSSCI §5.4)
-		deadline := time.Time{}
-		if session.ConnectState != ConnectStateComplete {
+		var deadline time.Time
+		switch session.ConnectState {
+		case ConnectStateAwaitingConnect:
+			deadline = time.Now().Add(s.connectionEstablishmentTimeout())
+		case ConnectStateAwaitingConnectComplete, ConnectStateAwaitingConnectErrorAck:
 			deadline = time.Now().Add(s.operationAckTimeout())
+		default:
+			// Complete/Terminal: no read deadline
 		}
 		if err := conn.SetReadDeadline(deadline); err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSetReadDeadline, "error", err)
@@ -1395,13 +1414,15 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 				errToken = errConditionalRuleFailed
 			}
 
+			// During the connect handshake a normalization failure enters the
+			// unified error sequence: the error replaces conRsp/conCmp and
+			// awaits errorAck (§5.17), and a failed error write terminates the
+			// connection. After activation it is a per-operation error.
+			if !session.HandshakeComplete {
+				return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errToken)
+			}
 			if sendErr := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errToken)); sendErr != nil {
 				s.logger.ErrorContext(ctx, LogBSSCIFailedToSendErrorResponse, "error", sendErr)
-			}
-			// A malformed connect request enters the handshake error sequence:
-			// the error above replaces conRsp and awaits errorAck (§5.17)
-			if msg.Command == mioty.CmdConnect && session.ConnectState == ConnectStateAwaitingConnect {
-				session.ConnectState = ConnectStateAwaitingConnectErrorAck
 			}
 			return nil // Error sent via protocol, don't close connection
 		}
@@ -1412,9 +1433,12 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 	// BSSCI-3.3-03: No operations allowed until connect handshake is complete
 	// Only con, conRsp, conCmp, error, and errorAck are permitted during handshake
 	if !session.HandshakeComplete {
+		// conRsp is SC-initiated (SCtoBS): the base station must never send it.
+		// Only con, conCmp, error, and errorAck are legal inbound during the
+		// handshake; anything else - including an inbound conRsp - is a
+		// protocol-ordering violation.
 		allowedCommands := map[string]bool{
 			mioty.CmdConnect:         true,
-			mioty.CmdConnectResponse: true,
 			mioty.CmdConnectComplete: true,
 			mioty.CmdError:           true,
 			mioty.CmdErrorAck:        true,
@@ -1423,14 +1447,12 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 		if !allowedCommands[msg.Command] {
 			s.logger.WarnContext(s.safeCtx(), LogBSSCIRejectingCommandBeforeHandshake,
 				"command", msg.Command,
-				"handshake_complete", session.HandshakeComplete,
+				"connectState", int(session.ConnectState),
 				"opId", msg.OpId,
 				"bsEui", session.BaseStationEUI)
-			if err := s.sendError(session, msg.OpId, POSIX_EPROTO,
-				ResolveErrorMessage(errCommandBeforeHandshake)); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-			}
-			return nil // Don't close connection, just reject the command
+			// Route through the unified reject so the error is followed by an
+			// errorAck exchange (§5.17) and a failed write terminates cleanly
+			return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errCommandBeforeHandshake)
 		}
 	}
 
@@ -1441,6 +1463,25 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 		if !strings.HasPrefix(msg.Command, "rc.") && !strings.HasPrefix(msg.Command, "vm.") {
 			// Send error for unsupported sublayer
 			if err := s.sendError(session, msg.OpId, POSIX_ENOTSUP, ResolveErrorMessage(errUnsupportedSublayerPrefix)); err != nil {
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
+			}
+			return nil // Don't close connection
+		}
+	}
+
+	// Direction enforcement (BSSCI §5.5/§5.11-5.16): a command the service
+	// center itself sends (DirectionSCtoBS) must never be processed inbound.
+	// A base station sending e.g. statusCmp or dlDataQueCmp is a protocol
+	// violation. The vm.* sublayer is exempt here - its enforcement lands with
+	// the ECE-reserved VM work. Connect-stage SCtoBS handling (conRsp) is
+	// already covered by the pre-handshake gate above.
+	if !strings.HasPrefix(msg.Command, "vm.") {
+		if cmdDirection, known := CommandDirectionMap[msg.Command]; known && cmdDirection == DirectionSCtoBS {
+			s.logger.WarnContext(s.safeCtx(), LogBSSCIRejectingInboundServiceCenterCommand,
+				"command", msg.Command,
+				"opId", msg.OpId,
+				"bsEui", session.BaseStationEUI)
+			if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInboundServiceCenterCommand)); err != nil {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 			}
 			return nil // Don't close connection
@@ -1528,6 +1569,15 @@ func (s *Server) operationAckTimeout() time.Duration {
 		return s.config.OperationAckTimeout
 	}
 	return defaultOperationAckTimeout
+}
+
+// connectionEstablishmentTimeout returns the configured bound for a freshly
+// accepted connection to send its con, falling back to the package default.
+func (s *Server) connectionEstablishmentTimeout() time.Duration {
+	if s.config != nil && s.config.ConnectionEstablishmentTimeout > 0 {
+		return s.config.ConnectionEstablishmentTimeout
+	}
+	return defaultConnectionEstablishmentTimeout
 }
 
 // duplicateWindow returns the configured uplink deduplication window, falling
@@ -1697,7 +1747,6 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	// BSSCI-3.3: Session resume handling
 	var snResume bool
 	var previousSession *Session
-	var err error
 
 	// Resume identity is snBsUuid scoped by tenant and base station EUI
 	// (rev1 §5.3.1: the con message carries snBsUuid, snBsOpId, snScOpId -
@@ -1721,22 +1770,36 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 			scOpId = &scOp
 		}
 
-		// Delegate resume validation to SessionService
-		previousSession, err = s.sessionSvc.HandleResume(ctx, session, bsUUID, bsOpId, scOpId, session.BaseStationEUI)
-		if err != nil {
-			// Log error but continue with new session
-			s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCheckSessionResume,
-				"error", err,
+		// Delegate resume validation to SessionService, which returns a typed
+		// outcome so infrastructure failures and inconsistent state never
+		// silently degrade into a fresh session
+		outcome := s.sessionSvc.HandleResume(ctx, session, bsUUID, bsOpId, scOpId, session.BaseStationEUI)
+		switch outcome.Disposition {
+		case ResumeInfrastructureFailure:
+			// A lookup failure must reject the connect before conRsp; the old
+			// resumable state stays intact for a later successful resume
+			s.logger.ErrorContext(ctx, LogBSSCIFailedToCheckSessionResume,
+				"error", outcome.Err,
 				"eui", session.BaseStationEUI)
-		}
-
-		// A resumable session must belong to the tenant authorized above;
-		// cross-tenant UUID collisions never resume
-		if previousSession != nil && previousSession.ResolvedTenantID != session.ResolvedTenantID {
-			s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCheckSessionResume,
-				"eui", session.BaseStationEUI,
-				"sessionTenant", session.ResolvedTenantID,
-				"previousTenant", previousSession.ResolvedTenantID)
+			return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
+		case ResumeInconsistent:
+			// Incompatible counters or version: atomically terminate the old
+			// session (can_resume=false, pending ops removed) then start fresh
+			s.logger.WarnContext(ctx, LogBSSCIFailedToCheckSessionResume,
+				"error", outcome.Err,
+				"eui", session.BaseStationEUI)
+			if outcome.Previous != nil {
+				if err := s.terminateInconsistentResume(ctx, outcome.Previous); err != nil {
+					s.logger.ErrorContext(ctx, LogBSSCIFailedToTerminateSession,
+						"error", err,
+						"eui", session.BaseStationEUI)
+					return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
+				}
+			}
+			previousSession = nil
+		case ResumeCompatible:
+			previousSession = outcome.Previous
+		default:
 			previousSession = nil
 		}
 
@@ -1831,6 +1894,25 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	return nil
 }
 
+// terminateInconsistentResume atomically retires a resumable session whose
+// reported counters or negotiated version are incompatible with the current
+// connect: it terminates the session (status=terminated, can_resume=false)
+// and removes its pending operations so the base station starts genuinely
+// fresh. The previous session is a DB-hydrated snapshot, never a live one.
+func (s *Server) terminateInconsistentResume(ctx context.Context, previous *Session) error {
+	if err := s.sessionSvc.TerminateSession(ctx, previous); err != nil {
+		return fmt.Errorf("terminate inconsistent resume session: %w", err)
+	}
+	if previous.DbSessionID != 0 && s.storage != nil {
+		if pendingOpsRepo := s.storage.PendingOperations(); pendingOpsRepo != nil {
+			if _, err := pendingOpsRepo.DeleteBySession(ctx, previous.DbSessionID); err != nil {
+				return fmt.Errorf("remove pending operations of inconsistent resume session: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 // handleConnectComplete handles the connect complete operation. The connect
 // operation is already complete at the protocol level when conCmp arrives, so
 // failures past this point never send a BSSCI error - partial persistence is
@@ -1864,8 +1946,14 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 		return fmt.Errorf("%s: EUI %016X", ResolveErrorMessage(errBaseStationNotRegistered), session.BaseStationEUI)
 	}
 
-	// Persist the session; the operation is protocol-complete, so a
-	// persistence failure closes the connection without a BSSCI error
+	// Activation is one application operation: persist the session and register
+	// the live connection/status BEFORE publishing to the in-memory registries.
+	// The operation is protocol-complete, so any failure closes the connection
+	// without a BSSCI error - partial state is compensated and the base station
+	// reconnects.
+
+	// Step 1: persist the session row (terminates a stale active session first,
+	// aborting on failure rather than leaving two active sessions)
 	if err := s.sessionSvc.PersistSession(ctx, session, baseStation, session.IsResumed, session.ConnectInfo); err != nil {
 		s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistSession,
 			"error", err,
@@ -1874,14 +1962,31 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 		return fmt.Errorf("session persistence failed after conCmp: %w", err)
 	}
 
-	// Activation: only a fully persisted session enters the live-session map
+	// Step 2: register the live connection and base-station online status. A
+	// failure here compensates the just-persisted session and closes without
+	// publishing anything to the live registries.
+	if err := s.connectionSvc.RegisterConnection(ctx, session, baseStation, s.connectionMgr); err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateConnectionStatus,
+			"eui", session.BaseStationEUI,
+			"error", err)
+		if termErr := s.sessionSvc.TerminateSession(ctx, session); termErr != nil {
+			s.logger.ErrorContext(ctx, LogBSSCIFailedToTerminateSession,
+				"error", termErr,
+				"eui", session.BaseStationEUI)
+		}
+		session.ConnectState = ConnectStateTerminal
+		return fmt.Errorf("connection registration failed after conCmp: %w", err)
+	}
+
+	// Step 3: both durable steps succeeded - publish to the live-session map
 	// and the resumable index
 	s.mu.Lock()
 	s.sessions[session.ID] = session
 	s.mu.Unlock()
 	s.sessionSvc.StoreSessionByUUID(session)
 
-	// Update the base station's bidi capability and GPS location in the database
+	// Update the base station's bidi capability and GPS location in the
+	// database (non-critical enrichment; failure is logged, not fatal)
 	if s.basestationRepo != nil {
 		updates := map[string]interface{}{
 			"bidi": session.Bidirectional,
@@ -1904,13 +2009,6 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 				"eui", session.BaseStationEUI,
 				"bidi", session.Bidirectional)
 		}
-	}
-
-	// Delegate connection registration to ConnectionService
-	if err := s.connectionSvc.RegisterConnection(ctx, session, baseStation, s.connectionMgr); err != nil {
-		s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateConnectionStatus,
-			"eui", session.BaseStationEUI,
-			"error", err)
 	}
 
 	// BSSCI-3.3-03: Delegate handshake completion to SessionService
@@ -3941,101 +4039,37 @@ func (s *Server) handleError(_ *Server, session *Session, msg *Message, data map
 		return fmt.Errorf("base station rejected connect response: code=%d %s", code, message)
 	}
 
-	// Check if this error is related to a pending operation
-	// Base stations sometimes send error messages instead of proper response messages
-	// We must complete the three-way handshake to prevent timeout loops
-	// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation access
-	var pendingOp *PendingOperation
-	var err error
-	if s.statusSvc != nil {
-		pendingOp, err = s.statusSvc.GetPendingOperation(session, int64(msg.OpId))
+	// BSSCI §5.17: an inbound error is answered ONLY with errorAck - never with
+	// an operation-specific *Cmp, and the operation type is never guessed. The
+	// error and errorAck replace the normal response/completion sequence.
+	errorAckMsg := map[string]interface{}{
+		"command": mioty.CmdErrorAck,
+		"opId":    msg.OpId,
 	}
-	hasPendingOp := err == nil
+	if sendErr := s.sendMessage(session, errorAckMsg); sendErr != nil {
+		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorAck, "error", sendErr)
+		return sendErr
+	}
 
-	// For Service Center initiated operations (negative opId), always try to complete
-	// the handshake even if we don't have the operation in our tracking
-	isServiceCenterOp := msg.OpId < 0
-
-	if (hasPendingOp && pendingOp != nil) || isServiceCenterOp {
-		// Determine operation type
-		var operationType string
-		if pendingOp != nil {
-			operationType = pendingOp.OperationType
-		} else {
-			// For Service Center operations without tracking, guess based on recent state
-			// Service Center uses negative opIds for attach/detach propagate operations
-			// This is our best guess - most SC operations are propagate operations
-			if msg.OpId < 0 {
-				// Default to detach propagate as it's most common for error scenarios
-				operationType = mioty.CmdDetachPropagate
-			} else {
-				operationType = "unknown"
-			}
+	// Typed compensation only for an operation this service center is actually
+	// tracking (an errored operation is finalized without updating domain
+	// state). An unmatched error is acknowledged and audited but touches no
+	// unrelated pending state.
+	var pendingOp *PendingOperation
+	if s.statusSvc != nil {
+		if op, lookupErr := s.statusSvc.GetPendingOperation(session, int64(msg.OpId)); lookupErr == nil {
+			pendingOp = op
 		}
-
-		s.logger.InfoContext(s.safeCtx(), LogBSSCICompletingThreeWayHandshakeForError,
-			"opId", msg.OpId,
-			"operationType", operationType)
-
-		// Send appropriate completion message based on operation type
-		var completionCommand string
-		switch operationType {
-		case mioty.CmdAttachPropagate:
-			completionCommand = mioty.CmdAttachPropagateComplete
-		case mioty.CmdDetachPropagate:
-			completionCommand = mioty.CmdDetachPropagateComplete
-		default:
-			// For other operations, acknowledge with errorAck per BSSCI-4-02
-			errorAckMsg := map[string]interface{}{
-				"command": mioty.CmdErrorAck,
-				"opId":    msg.OpId,
-			}
-			if err := s.sendMessage(session, errorAckMsg); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorAck, "error", err)
-			}
-			return nil
-		}
-
-		// Send completion message
-		completionMsg := map[string]interface{}{
-			"command": completionCommand,
-			"opId":    msg.OpId,
-		}
-
-		if err := s.sendMessage(session, completionMsg); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendCompletionMessageForErrorOperation,
-				"error", err,
-				"command", completionCommand)
-			return err
-		}
-
-		// For error cases, we do NOT call the completion handler
-		// The completion handler should only be called for successful operations
-		// When the base station sends an error (e.g., "unknown endpoint"),
-		// we complete the handshake but don't update our database state
+	}
+	if pendingOp != nil {
 		s.logger.InfoContext(s.safeCtx(), LogBSSCIErrorOperationHandshakeCompletedDatabaseNotUpdated,
 			"opId", msg.OpId,
-			"operationType", operationType)
-
-		// Clean up the pending operation from database and memory
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both cache and DB removal
+			"operationType", pendingOp.OperationType)
 		if err := s.removePendingOperation(session, msg.OpId); err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperationFromDatabase,
 				"error", err,
 				"opId", msg.OpId)
 		}
-		// Note: No manual fallback - trust StatusService single-writer pattern
-
-		return nil
-	}
-
-	// For non-pending operations, just acknowledge per BSSCI-4-02
-	errorAckMsg := map[string]interface{}{
-		"command": mioty.CmdErrorAck,
-		"opId":    msg.OpId,
-	}
-	if err := s.sendMessage(session, errorAckMsg); err != nil {
-		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorAck, "error", err)
 	}
 
 	return nil

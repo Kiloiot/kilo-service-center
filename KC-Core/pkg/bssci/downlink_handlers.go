@@ -89,31 +89,18 @@ func (s *Server) handleDLDataQueueResponse(_ *Server, session *Session, msg *Mes
 		}
 	}
 
-	// Send dlDataQueCmp to complete the three-way handshake via queue serializer
+	// The service center completes its own SC-initiated dlDataQue operation
+	// (BSSCI §3.12): it sends dlDataQueCmp and finalizes the pending operation.
+	// A spec-compliant base station never returns dlDataQueCmp, so the pending
+	// row is removed here or it leaks.
 	complete := s.queueSerializer.BuildDLDataQueueComplete(msg.OpId)
-	return s.sendMessage(session, complete)
-}
-
-// handleDLDataQueueComplete handles dlDataQueCmp from base station
-func (s *Server) handleDLDataQueueComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
-	if session == nil {
-		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
+	if err := s.sendMessage(session, complete); err != nil {
+		return err
 	}
-
-	s.logger.InfoContext(s.sessionContext(session), LogBSSCIDLDataQueueOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
-
-	// Remove pending operation from database
-	// Delegate to StatusService for map + DB cleanup
-	// BSSCI §§5.11-5.12.3 Gap 1: Use removePendingOperation helper (has dual-path logic)
 	if err := s.removePendingOperation(session, msg.OpId); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDB,
-			"sessionID", session.DbSessionID,
-			"opId", msg.OpId,
-			"error", err)
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err, "opId", msg.OpId)
 	}
-
 	return nil
 }
 
@@ -164,7 +151,10 @@ func (s *Server) handleDLDataResult(_ *Server, session *Session, msg *Message, d
 	if s.mqttPublisher != nil && s.tenantResolver != nil && dlResult.QueId > 0 && dlResult.QueId <= uint64(math.MaxInt64) {
 		if tenantStr, resolveErr := s.tenantResolver.ResolveTenant(ctx, int64(dlResult.QueId)); resolveErr == nil {
 			if tid, parseErr := strconv.ParseInt(tenantStr, 10, 64); parseErr == nil && s.orgResolver != nil {
-				if orgUUID, orgErr := s.orgResolver.GetDefaultOrgForTenant(s.safeCtx(), tid); orgErr == nil {
+				// A Nil org UUID means the organization is unresolved; its
+				// string form is non-empty, so guard on the value not the
+				// string, or the publish would fire for an unresolved org.
+				if orgUUID, orgErr := s.orgResolver.GetDefaultOrgForTenant(s.safeCtx(), tid); orgErr == nil && orgUUID != uuid.Nil {
 					mqttOrgStr = orgUUID.String()
 				}
 			}
@@ -738,104 +728,17 @@ func (s *Server) handleDLDataRevokeResponse(_ *Server, session *Session, msg *Me
 		}
 	}
 
-	// Send response message returned by service
-	return s.sendMessage(session, responseMsg)
-}
-
-// handleDLDataRevokeComplete handles dlDataRevCmp from base station
-func (s *Server) handleDLDataRevokeComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
-	if session == nil {
-		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
+	// The service center completes its own SC-initiated dlDataRev operation
+	// (BSSCI §3.13): it sends dlDataRevCmp and finalizes the pending operation.
+	// A spec-compliant base station never returns dlDataRevCmp, so the pending
+	// row is removed here or it leaks.
+	if err := s.sendMessage(session, responseMsg); err != nil {
+		return err
 	}
-
-	// Get queId from pending operation metadata before cleanup
-	// StatusService is the only path for pending operation storage
-	var queId uint64
-	pendingOp, err := s.statusSvc.GetPendingOperation(session, int64(msg.OpId))
-	if err != nil {
-		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToGetPendingOperation,
-			"opId", msg.OpId, "error", err)
-	}
-	if pendingOp != nil && pendingOp.Metadata != nil {
-		if qid, ok := pendingOp.Metadata["queId"].(uint64); ok {
-			queId = qid
-		} else if qid, ok := pendingOp.Metadata["queId"].(int64); ok {
-			// Range guard for int64 -> uint64 conversion
-			if qid >= 0 {
-				queId = uint64(qid)
-			} else {
-				s.logger.WarnContext(s.sessionContext(session), LogBSSCINegativeQueueIDInMetadata,
-					"queId", qid,
-					"opId", msg.OpId)
-			}
-		} else if qid, ok := pendingOp.Metadata["queId"].(float64); ok {
-			queId = uint64(qid)
-		}
-	}
-
-	// Resolve owner tenant FIRST - REQUIRED
-	var ownerTenantStr string
-	if queId > 0 {
-		ctx := s.sessionContext(session)
-		tidStr, err := s.tenantResolver.ResolveTenant(ctx, int64(queId))
-		if err != nil {
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCICannotResolveTenantForRevokeComplete,
-				"queue_id", queId,
-				"opId", msg.OpId,
-				"error", err)
-
-			// Still clean up pending operation to avoid stuck state
-			// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation removal
-			if cleanupErr := s.removePendingOperation(session, msg.OpId); cleanupErr != nil {
-				s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperation,
-					"error", cleanupErr, "opId", msg.OpId)
-			}
-
-			return s.sendError(session, msg.OpId, POSIX_EPROTO,
-				ResolveErrorMessage(errCannotResolveTenantForQueue))
-		}
-		ownerTenantStr = tidStr
-
-		// Queue-to-tenant mapping already unregistered by ProcessRevokeResponse in handleDLDataRevokeResponse
-	} else {
-		// No queue ID - can't proceed but not an error
-		s.logger.WarnContext(s.sessionContext(session), LogBSSCINoQueueIDInRevokeComplete,
-			"opId", msg.OpId)
-		// Still clean up pending operation
-		// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation removal
-		if err := s.removePendingOperation(session, msg.OpId); err != nil {
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperation,
-				"error", err, "opId", msg.OpId)
-		}
-		return nil
-	}
-
-	// Clear base station ownership in database (set to NULL)
-	if s.storage != nil && queId > 0 {
-		ctx := s.sessionContext(session)
-		// Use resolved tenant
-		tenantIDStr := ownerTenantStr
-		if err := s.storage.MIOTYDownlinks().UpdateDownlinkBaseStation(ctx, queId, tenantIDStr, 0); err != nil {
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToClearDownlinkBaseStationOwnership,
-				"queId", queId,
-				"error", err)
-		}
-	}
-
-	// Clean up pending operation
-	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both cache and DB removal
 	if err := s.removePendingOperation(session, msg.OpId); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDB,
-			"sessionID", session.DbSessionID,
-			"opId", msg.OpId,
-			"error", err)
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err, "opId", msg.OpId)
 	}
-	// Note: No manual fallback - trust StatusService single-writer pattern
-
-	s.logger.InfoContext(s.sessionContext(session), LogBSSCIDLDataRevokeOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
-
 	return nil
 }
 
@@ -1404,36 +1307,21 @@ func (s *Server) handleDLRXStatusQueryResponse(_ *Server, session *Session, msg 
 		"bsEui", session.BaseStationEUI,
 		"opId", msg.OpId)
 
-	// Send dlRxStatQryCmp to complete the three-way handshake
+	// The service center completes its own SC-initiated dlRxStatQry operation
+	// (BSSCI §3.16): it sends dlRxStatQryCmp and finalizes the pending
+	// operation. A spec-compliant base station never returns dlRxStatQryCmp,
+	// so the pending row is removed here or it leaks.
 	complete := map[string]interface{}{
 		"command": mioty.CmdDLRxStatusQueryComplete,
 		"opId":    msg.OpId,
 	}
-
-	return s.sendMessage(session, complete)
-}
-
-// handleDLRXStatusQueryComplete handles dlRxStatQryCmp from base station
-func (s *Server) handleDLRXStatusQueryComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
-	if session == nil {
-		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
+	if err := s.sendMessage(session, complete); err != nil {
+		return err
 	}
-
-	s.logger.InfoContext(s.sessionContext(session), LogBSSCIDLRxStatusQueryOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
-
-	// dlRxStat already marked 'received' by handleDLRXStatus.
-	// This Complete handler finalizes the three-way handshake only.
-
-	// THEN remove from database
-	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
 	if err := s.removePendingOperation(session, msg.OpId); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDB,
-			"error", err,
-			"opId", msg.OpId)
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err, "opId", msg.OpId)
 	}
-
 	return nil
 }
 

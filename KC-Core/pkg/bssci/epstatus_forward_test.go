@@ -265,11 +265,13 @@ func TestHandleAttachComplete_BroadcastsEPStatus(t *testing.T) {
 
 	// Setup session
 	session := &Session{
-		ID:               "test-attach-epstatus",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-epstatus",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending attach operation via StatusService with metadata
@@ -344,11 +346,13 @@ func TestHandleDetachComplete_BroadcastsEPStatus(t *testing.T) {
 
 	// Setup session
 	session := &Session{
-		ID:               "test-detach-epstatus",
-		BaseStationEUI:   0x1234567890ABCDEF,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      2,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-epstatus",
+			BaseStationEUI:   0x1234567890ABCDEF,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      2,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending detach operation via StatusService with metadata
@@ -420,11 +424,13 @@ func TestHandleAttachComplete_NilBroadcaster_NoPanic(t *testing.T) {
 	// NOTE: No SetSCACIEPStatusBroadcaster call - broadcaster is nil
 
 	session := &Session{
-		ID:               "test-attach-nil-broadcaster",
-		BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      3,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-nil-broadcaster",
+			BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      3,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending attach operation (use int64 for epEui to match handleAttachComplete)
@@ -471,11 +477,13 @@ func TestHandleAttachComplete_BroadcastsEPStatus_FullTelemetry(t *testing.T) {
 
 	// Setup session
 	session := &Session{
-		ID:               "test-attach-full-telemetry",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      5,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-full-telemetry",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      5,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending attach operation with ALL OTA fields per SCACI §3.13.1
@@ -575,11 +583,13 @@ func TestHandleDetachComplete_BroadcastsEPStatus_SignEqSnrFallback(t *testing.T)
 
 	// Setup session
 	session := &Session{
-		ID:               "test-detach-sign-eqsnr",
-		BaseStationEUI:   0x1234567890ABCDEF,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      6,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-sign-eqsnr",
+			BaseStationEUI:   0x1234567890ABCDEF,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      6,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending detach operation with sign and eqSnr
@@ -662,11 +672,13 @@ func TestHandleDetachComplete_NilBroadcaster_NoPanic(t *testing.T) {
 	// NOTE: No SetSCACIEPStatusBroadcaster call - broadcaster is nil
 
 	session := &Session{
-		ID:               "test-detach-nil-broadcaster",
-		BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      4,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-nil-broadcaster",
+			BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      4,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending detach operation (use uint64 for epEui to match handleDetachComplete)

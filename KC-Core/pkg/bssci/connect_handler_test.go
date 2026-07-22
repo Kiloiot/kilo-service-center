@@ -206,11 +206,13 @@ func TestHandleConnectCompleteUnregisteredBaseStationUsesErrorCatalog(t *testing
 	bsEUI := bssci.TestBsEui01
 	mockConn := &mockConnForConnect{}
 	session := &bssci.Session{
-		ID:               "test-session-1",
-		BaseStationEUI:   bsEUI,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-session-1",
+			BaseStationEUI: bsEUI,
+			SessionUUID:    make([]byte, 16), // Required for handleConnectComplete
+		},
 		UserProvidedName: "Unregistered BS",
 		Conn:             mockConn,
-		SessionUUID:      make([]byte, 16), // Required for handleConnectComplete
 	}
 
 	// Registration is validated during the connect request, before conRsp
@@ -275,13 +277,17 @@ func TestConnectAdoptsRegisteredTenantCommunityFallback(t *testing.T) {
 
 	mockConn := &mockConnForConnect{}
 	session := &bssci.Session{
-		ID:               "test-cross-tenant",
-		BaseStationEUI:   bssci.TestBsEui01,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:               "test-cross-tenant",
+			BaseStationEUI:   bssci.TestBsEui01,
+			SessionUUID:      make([]byte, 16),
+			ResolvedTenantID: 1,
+			// Starts with server default
+			IsResumed: true,
+		},
 		UserProvidedName: "External BS",
 		Conn:             mockConn,
-		SessionUUID:      make([]byte, 16),
-		ResolvedTenantID: 1,    // Starts with server default
-		IsResumed:        true, // Skip PersistSession DbSessionID assignment (avoids nil storage in loadPendingOperations)
+		// Skip PersistSession DbSessionID assignment (avoids nil storage in loadPendingOperations)
 	}
 
 	connectData := map[string]interface{}{
@@ -339,11 +345,14 @@ func TestConnectTenantMismatchRejected(t *testing.T) {
 
 	mockConn := &mockConnForConnect{}
 	session := &bssci.Session{
-		ID:               "test-tenant-mismatch",
-		BaseStationEUI:   bssci.TestBsEui01,
-		Conn:             mockConn,
-		SessionUUID:      make([]byte, 16),
-		ResolvedTenantID: 1, // Certificate resolved to tenant 1; BS registered under 4
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:               "test-tenant-mismatch",
+			BaseStationEUI:   bssci.TestBsEui01,
+			SessionUUID:      make([]byte, 16),
+			ResolvedTenantID: 1,
+		},
+		Conn: mockConn,
+		// Certificate resolved to tenant 1; BS registered under 4
 	}
 
 	connectData := map[string]interface{}{
@@ -399,13 +408,15 @@ func TestConnectCompleteDefaultTenantUnchanged(t *testing.T) {
 
 	mockConn := &mockConnForConnect{}
 	session := &bssci.Session{
-		ID:               "test-default-tenant",
-		BaseStationEUI:   bssci.TestBsEui01,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:               "test-default-tenant",
+			BaseStationEUI:   bssci.TestBsEui01,
+			SessionUUID:      make([]byte, 16),
+			ResolvedTenantID: 1,
+			IsResumed:        true,
+		},
 		UserProvidedName: "Local BS",
 		Conn:             mockConn,
-		SessionUUID:      make([]byte, 16),
-		ResolvedTenantID: 1,
-		IsResumed:        true,
 	}
 
 	connectData := map[string]interface{}{
@@ -450,11 +461,13 @@ func TestConnectHandler_ValidGeoLocation_PersistsToDB(t *testing.T) {
 
 	mockConn := &mockConnForConnect{}
 	session := &bssci.Session{
-		ID:               "test-geo-connect-valid",
-		BaseStationEUI:   bssci.TestBsEui01,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-connect-valid",
+			BaseStationEUI: bssci.TestBsEui01,
+			SessionUUID:    make([]byte, 16),
+		},
 		UserProvidedName: "GeoLocation BS",
 		Conn:             mockConn,
-		SessionUUID:      make([]byte, 16),
 	}
 
 	// handleConnect parses geoLocation from conRsp data into session.GeoLocation
@@ -522,11 +535,13 @@ func TestConnectHandler_InvalidGeoLocation_NoPersistence(t *testing.T) {
 
 	mockConn := &mockConnForConnect{}
 	session := &bssci.Session{
-		ID:               "test-geo-connect-invalid",
-		BaseStationEUI:   bssci.TestBsEui01,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-connect-invalid",
+			BaseStationEUI: bssci.TestBsEui01,
+			SessionUUID:    make([]byte, 16),
+		},
 		UserProvidedName: "Invalid Geo BS",
 		Conn:             mockConn,
-		SessionUUID:      make([]byte, 16),
 	}
 
 	// geoLocation as a string (wrong type — should be array)
@@ -581,11 +596,13 @@ func TestConnectHandler_OutOfRangeGeoLocation_NoPersistence(t *testing.T) {
 
 	mockConn := &mockConnForConnect{}
 	session := &bssci.Session{
-		ID:               "test-geo-connect-outofrange",
-		BaseStationEUI:   bssci.TestBsEui01,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:             "test-geo-connect-outofrange",
+			BaseStationEUI: bssci.TestBsEui01,
+			SessionUUID:    make([]byte, 16),
+		},
 		UserProvidedName: "OutOfRange Geo BS",
 		Conn:             mockConn,
-		SessionUUID:      make([]byte, 16),
 	}
 
 	// Latitude = 200.0 exceeds LatitudeMax (90.0)

@@ -20,14 +20,49 @@ type VersionNegotiator interface {
 	Negotiate(ctx context.Context, requested string) (selected string, err error)
 }
 
+// ResumeDisposition classifies the outcome of a session resume attempt so the
+// connect flow never silently degrades an infrastructure failure or an
+// inconsistent counter state into a fresh session.
+type ResumeDisposition int
+
+const (
+	// ResumeNoMatch: no resumable session exists; start a fresh session.
+	ResumeNoMatch ResumeDisposition = iota
+	// ResumeCompatible: a resumable session was found and its constraints
+	// hold; Previous carries the authoritative persisted session state.
+	ResumeCompatible
+	// ResumeInconsistent: a resumable session exists but the reported
+	// counters or negotiated version are incompatible. The caller must
+	// atomically terminate it (can_resume=false, pending ops removed) before
+	// starting a fresh session.
+	ResumeInconsistent
+	// ResumeInfrastructureFailure: the resume lookup itself failed (e.g. a
+	// database outage). The caller must reject the connect, never proceed
+	// with a fresh session that would strand the old resumable state.
+	ResumeInfrastructureFailure
+)
+
+// ResumeOutcome is the typed result of HandleResume.
+type ResumeOutcome struct {
+	Disposition ResumeDisposition
+	// Previous is the resumable session (ResumeCompatible) or the stale
+	// session to terminate (ResumeInconsistent); nil otherwise.
+	Previous *Session
+	// Err carries the underlying cause for ResumeInfrastructureFailure and
+	// the mismatch detail for ResumeInconsistent.
+	Err error
+}
+
 // SessionService handles connect/resume with REAL persistence
 // Preserves: sessionsByUUID map, DbSessionId, HandshakeComplete, DB persistence
 type SessionService interface {
-	// HandleResume validates a session resume request (BSSCI §5.3.1): resume
-	// identity is snBsUuid scoped by tenant and base station EUI. The optional
-	// snBsOpId/snScOpId constraints are pointers - absent means the constraint
-	// is not asserted. Returns the resumable session or nil for a fresh start.
-	HandleResume(ctx context.Context, session *Session, bsUUID []byte, bsOpId, scOpId *int64, bsEUI uint64) (*Session, error)
+	// HandleResume evaluates a session resume request (BSSCI §5.3.1) against
+	// the DB-authoritative resumable-session lookup (tenant + base station EUI
+	// + snBsUuid + disconnected + can_resume). The optional snBsOpId/snScOpId
+	// constraints are pointers - absent means the constraint is not asserted.
+	// It never publishes the hydrated session into any live registry; the
+	// caller activates it. Returns a typed ResumeOutcome.
+	HandleResume(ctx context.Context, session *Session, bsUUID []byte, bsOpId, scOpId *int64, bsEUI uint64) ResumeOutcome
 
 	// PersistSession writes to basestation_sessions table
 	// Uses real *sql.DB, updates DbSessionId, handles resume UPDATE vs new INSERT

@@ -325,8 +325,10 @@ func Test_SendAttachPropagateBySessionID_SessionValidation(t *testing.T) {
 	t.Run("ExistingSession", func(t *testing.T) {
 		// Add a session
 		session := &Session{
-			ID:             "valid-session",
-			BaseStationEUI: TestBsEui02,
+			ProtocolSessionState: ProtocolSessionState{
+				ID:             "valid-session",
+				BaseStationEUI: TestBsEui02,
+			},
 		}
 		server.RegisterSession(session)
 
@@ -350,9 +352,11 @@ func Test_PersistSession_ConnectInfoConditional(t *testing.T) {
 
 	t.Run("NilConnectInfo_PreservesExisting", func(t *testing.T) {
 		session := &Session{
-			ID:             "test-session",
-			BaseStationEUI: TestBsEui04,
-			ConnectInfo:    json.RawMessage(`{"vendor":"existing"}`),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:             "test-session",
+				BaseStationEUI: TestBsEui04,
+				ConnectInfo:    json.RawMessage(`{"vendor":"existing"}`),
+			},
 		}
 
 		// Simulate PersistSession logic with nil connectInfo
@@ -372,9 +376,11 @@ func Test_PersistSession_ConnectInfoConditional(t *testing.T) {
 
 	t.Run("NonNilConnectInfo_Overwrites", func(t *testing.T) {
 		session := &Session{
-			ID:             "test-session",
-			BaseStationEUI: TestBsEui04,
-			ConnectInfo:    json.RawMessage(`{"vendor":"old"}`),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:             "test-session",
+				BaseStationEUI: TestBsEui04,
+				ConnectInfo:    json.RawMessage(`{"vendor":"old"}`),
+			},
 		}
 
 		// Simulate PersistSession logic with new connectInfo
@@ -391,9 +397,11 @@ func Test_PersistSession_ConnectInfoConditional(t *testing.T) {
 
 	t.Run("EmptyConnectInfo_Overwrites", func(t *testing.T) {
 		session := &Session{
-			ID:             "test-session",
-			BaseStationEUI: TestBsEui04,
-			ConnectInfo:    json.RawMessage(`{"vendor":"old"}`),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:             "test-session",
+				BaseStationEUI: TestBsEui04,
+				ConnectInfo:    json.RawMessage(`{"vendor":"old"}`),
+			},
 		}
 
 		// Empty JSON is different from nil - should still overwrite
@@ -430,9 +438,11 @@ func Test_SendAttachPropagateBySessionID_SessionSpecific(t *testing.T) {
 			logger: newRecordingLogger(),
 			sessions: map[string]*Session{
 				"valid-session": {
-					ID:             "valid-session",
-					BaseStationEUI: TestBsEui02,
-					Bidirectional:  true,
+					ProtocolSessionState: ProtocolSessionState{
+						ID:             "valid-session",
+						BaseStationEUI: TestBsEui02,
+					},
+					Bidirectional: true,
 				},
 			},
 		}
@@ -475,9 +485,11 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:             "test-session",
-		BaseStationEUI: TestBsEui04,
-		Encoding:       EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:             "test-session",
+			BaseStationEUI: TestBsEui04,
+			Encoding:       EncodingJSON,
+		},
 	}
 
 	// Test 1: Invalid message missing command field

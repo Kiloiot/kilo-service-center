@@ -497,13 +497,15 @@ func TestAttachPropagateCompletionIntegration_WithPendingOp(t *testing.T) {
 	// Create mock connection
 	mockConn := &attPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-attprp-integration",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1, // Required for pending operation processing
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-attprp-integration",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1, // Required for pending operation processing
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -617,12 +619,14 @@ func TestAttachPropagateCompletionIntegration_NoPendingOp(t *testing.T) {
 	// Create mock connection
 	mockConn := &attPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-attprp-no-pendingop",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-attprp-no-pendingop",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -798,13 +802,15 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 
 	mockConn := &attPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-attprp-rejected",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-attprp-rejected",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 

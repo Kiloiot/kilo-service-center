@@ -238,11 +238,13 @@ func TestHandleAttachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
 
 	// mqttPublisher is nil (default)
 	session := &Session{
-		ID:               "test-nil-mqtt-attach",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-nil-mqtt-attach",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	pendingOp := &PendingOperation{
@@ -268,11 +270,13 @@ func TestHandleDetachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
 	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
 
 	session := &Session{
-		ID:               "test-nil-mqtt-detach",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-nil-mqtt-detach",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	pendingOp := &PendingOperation{
@@ -307,11 +311,13 @@ func TestHandleAttachComplete_PublishesMQTTWithOwnerOrg(t *testing.T) {
 	}
 
 	session := &Session{
-		ID:               "test-attach-mqtt",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-mqtt",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	epEUI := int64(0x70B3D59CD00009E6)
@@ -357,11 +363,13 @@ func TestHandleAttachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	}
 
 	session := &Session{
-		ID:               "test-attach-no-org",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-no-org",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	pendingOp := &PendingOperation{
@@ -395,11 +403,13 @@ func TestHandleDetachComplete_PublishesMQTTWithTypedMetaOrg(t *testing.T) {
 	server.SetMQTTPublisher(syncMock)
 
 	session := &Session{
-		ID:               "test-detach-mqtt",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-mqtt",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	epEUI := uint64(0x70B3D59CD00009E6)
@@ -440,11 +450,13 @@ func TestHandleDetachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	server.SetMQTTPublisher(mock)
 
 	session := &Session{
-		ID:               "test-detach-no-org",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-no-org",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	pendingOp := &PendingOperation{
@@ -514,12 +526,14 @@ func TestHandleULData_PublishesMQTTUplink(t *testing.T) {
 
 	// Create session with TestConn to absorb sendMessage writes
 	session := &Session{
-		ID:               "test-uldata-mqtt",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
-		Conn:             &testutil.TestConn{Encoding: "json"},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-uldata-mqtt",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
+		Conn: &testutil.TestConn{Encoding: "json"},
 	}
 
 	// Build UL data map with required fields
@@ -577,12 +591,14 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 	server.SetMQTTPublisher(mock)
 
 	session := &Session{
-		ID:               "test-uldata-no-org",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
-		Conn:             &testutil.TestConn{Encoding: "json"},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-uldata-no-org",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
+		Conn: &testutil.TestConn{Encoding: "json"},
 	}
 
 	data := map[string]interface{}{
@@ -629,12 +645,14 @@ func TestHandleDLDataResult_PublishesMQTTDLResult(t *testing.T) {
 
 	// Session with TestConn for sendMessage
 	session := &Session{
-		ID:               "test-dlresult-mqtt",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
-		Conn:             &testutil.TestConn{Encoding: "json"},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-dlresult-mqtt",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
+		Conn: &testutil.TestConn{Encoding: "json"},
 	}
 
 	// Build DL result data map (handleDLDataResult uses type assertions directly)
@@ -681,12 +699,14 @@ func TestHandleDLDataResult_OrgUnresolved_SkipsPublish(t *testing.T) {
 	server.SetMQTTPublisher(mock)
 
 	session := &Session{
-		ID:               "test-dlresult-no-org",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
-		Conn:             &testutil.TestConn{Encoding: "json"},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-dlresult-no-org",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
+		Conn: &testutil.TestConn{Encoding: "json"},
 	}
 
 	data := map[string]interface{}{

@@ -111,12 +111,14 @@ func TestSCOriginatedOperations(t *testing.T) {
 					queueSerializer, auditLogger, tenantResolver)
 
 				session := &bssci.Session{
-					ID:                "test-session",
-					BaseStationEUI:    bssci.TestBsEui04,
-					Conn:              mockConn,
-					Encoding:          encoding,
-					LastScOpId:        -1,
-					HandshakeComplete: true,
+					ProtocolSessionState: bssci.ProtocolSessionState{
+						ID:                "test-session",
+						BaseStationEUI:    bssci.TestBsEui04,
+						Encoding:          encoding,
+						LastScOpId:        -1,
+						HandshakeComplete: true,
+					},
+					Conn: mockConn,
 				}
 
 				// Register session with server for operations that look up by sessionID
@@ -254,11 +256,13 @@ func TestBSOriginatedResponseHandlers(t *testing.T) {
 					queueSerializer, auditLogger, tenantResolver)
 
 				session := &bssci.Session{
-					ID:                "test-session",
-					BaseStationEUI:    bssci.TestBsEui04,
-					Conn:              mockConn,
-					Encoding:          encoding,
-					HandshakeComplete: true,
+					ProtocolSessionState: bssci.ProtocolSessionState{
+						ID:                "test-session",
+						BaseStationEUI:    bssci.TestBsEui04,
+						Encoding:          encoding,
+						HandshakeComplete: true,
+					},
+					Conn: mockConn,
 				}
 
 				// Setup message data
@@ -340,13 +344,15 @@ func newAssemblySession(t *testing.T, encoding, sessionID string) (*bssci.Server
 		queueSerializer, auditLogger, tenantResolver)
 
 	session := &bssci.Session{
-		ID:                sessionID,
-		BaseStationEUI:    bssci.TestBsEui04,
-		Conn:              mockConn,
-		Encoding:          encoding,
-		LastScOpId:        -1,
-		HandshakeComplete: true,
-		Bidirectional:     true,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                sessionID,
+			BaseStationEUI:    bssci.TestBsEui04,
+			Encoding:          encoding,
+			LastScOpId:        -1,
+			HandshakeComplete: true,
+		},
+		Conn:          mockConn,
+		Bidirectional: true,
 	}
 
 	server.RegisterSession(session)

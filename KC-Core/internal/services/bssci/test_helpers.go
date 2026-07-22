@@ -124,6 +124,7 @@ func (m *mockBaseStationRepo) ListAllLocations(_ context.Context) ([]*models.Bas
 type mockBaseStationSessionRepo struct {
 	nextID   int64
 	sessions map[int64]*models.BaseStationSession
+	findErr  error // when set, FindResumableSession returns it (infra-failure tests)
 	mu       sync.Mutex
 }
 
@@ -371,6 +372,10 @@ func (m *mockBaseStationSessionRepo) MarkDisconnected(_ context.Context, tenantI
 func (m *mockBaseStationSessionRepo) FindResumableSession(_ context.Context, tenantID int64, _ []byte, snBsUUID [16]byte) (*models.BaseStationSession, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
 
 	for _, session := range m.sessions {
 		if session.TenantID != tenantID {

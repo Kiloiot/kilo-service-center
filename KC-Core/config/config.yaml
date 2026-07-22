@@ -31,6 +31,7 @@ protocol:
   # Protocol parameters
   max_retransmissions: 3
   ack_timeout: 5000
+  connection_establishment_timeout: 30000
   duplicate_window: 300
   message_encoding: "msgpack"
 

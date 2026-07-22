@@ -693,26 +693,9 @@ var messageRegistry = map[string]*MessageSpec{
 				SpecRef:      "§3.1.1 - Maximum known SC opId to resume",
 			},
 		},
-		ConditionalRules: []ConditionalRule{
-			{
-				// Rule 1: If snBsOpId is present, snScOpId must also be present
-				Condition: func(data map[string]interface{}) bool {
-					return data["snBsOpId"] != nil
-				},
-				Required:  []string{"snScOpId"},
-				Forbidden: []string{},
-				ErrorMsg:  "snScOpId required when snBsOpId present (session resume mutual presence per MIOTY radio spec §3.6.5.3)",
-			},
-			{
-				// Rule 2: If snScOpId is present, snBsOpId must also be present
-				Condition: func(data map[string]interface{}) bool {
-					return data["snScOpId"] != nil
-				},
-				Required:  []string{"snBsOpId"},
-				Forbidden: []string{},
-				ErrorMsg:  "snBsOpId required when snScOpId present (session resume mutual presence per MIOTY radio spec §3.6.5.3)",
-			},
-		},
+		// snBsOpId and snScOpId are independently optional (BSSCI rev1
+		// §5.3.1): each asserts its own resume constraint; absence means the
+		// constraint is not asserted. No mutual-presence coupling.
 	},
 
 	mioty.CmdConnectResponse: {

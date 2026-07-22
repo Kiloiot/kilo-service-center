@@ -89,11 +89,13 @@ func TestBSSCI_2_4_01_forward_compat_extra_fields(t *testing.T) {
 			server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 			session := &bssci.Session{
-				ID:                "test-session",
-				BaseStationEUI:    bssci.TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          encoding,
-				HandshakeComplete: true,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    bssci.TestBsEui01,
+					Encoding:          encoding,
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			// statusRsp with extra unknown field "futureFeature"
@@ -156,9 +158,11 @@ func TestBSSCI_5_3_2_minor_version_negotiated_down(t *testing.T) {
 			server.SetConnectionManager(nil)
 
 			session := &bssci.Session{
-				ID:       "test-session-negotiate-down",
-				Conn:     mockConn,
-				Encoding: encoding,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:       "test-session-negotiate-down",
+					Encoding: encoding,
+				},
+				Conn: mockConn,
 			}
 
 			requestedMajor, requestedMinor, _, cerr := bssci.ParseVersion(mioty.MIOTYProtocolVersion)
@@ -226,9 +230,11 @@ func TestBSSCI_5_3_1_missing_version_rejected(t *testing.T) {
 			server.SetConfig(config)
 
 			session := &bssci.Session{
-				ID:       "test-session",
-				Conn:     mockConn,
-				Encoding: encoding,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:       "test-session",
+					Encoding: encoding,
+				},
+				Conn: mockConn,
 			}
 
 			// Connect without the mandatory version field (rev1 §5.3.1;
@@ -314,11 +320,13 @@ func TestBSSCI_2_5_02_reject_malformed_values(t *testing.T) {
 					queueSerializer, auditLogger, tenantResolver)
 
 				session := &bssci.Session{
-					ID:                "test-session",
-					BaseStationEUI:    bssci.TestBsEui01,
-					Conn:              mockConn,
-					Encoding:          encoding,
-					HandshakeComplete: true,
+					ProtocolSessionState: bssci.ProtocolSessionState{
+						ID:                "test-session",
+						BaseStationEUI:    bssci.TestBsEui01,
+						Encoding:          encoding,
+						HandshakeComplete: true,
+					},
+					Conn: mockConn,
 				}
 
 				msg := &bssci.Message{
@@ -365,11 +373,13 @@ func TestBSSCI_2_5_03_numeric_field_types(t *testing.T) {
 			server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 			session := &bssci.Session{
-				ID:                "test-session",
-				BaseStationEUI:    bssci.TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          encoding,
-				HandshakeComplete: true,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    bssci.TestBsEui01,
+					Encoding:          encoding,
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			// All fields are properly typed
@@ -431,11 +441,13 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 		mockConn.Reset()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: true,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: true,
+			},
+			Conn: mockConn,
 		}
 
 		// statusRsp missing mandatory "code" field
@@ -471,11 +483,13 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 		mockConn.Reset()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: true,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: true,
+			},
+			Conn: mockConn,
 		}
 
 		// statusRsp with string "code" instead of int64
@@ -508,11 +522,13 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 		mockConn.Reset()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: true,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: true,
+			},
+			Conn: mockConn,
 		}
 
 		// ulData with responseExp=true but dlOpen=false - conditional rule violation
@@ -555,11 +571,13 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 		mockConn.Reset()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: true,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: true,
+			},
+			Conn: mockConn,
 		}
 
 		// For now, use same responseExp scenario but verify it doesn't match generic token
@@ -596,9 +614,10 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 	})
 }
 
-// TestConConditionalRules verifies MIOTY radio spec §3.6.5.3 session resume mutual presence validation
-// Tests the ConditionalRules added to con command in message_metadata.go:669-688
-func TestConConditionalRules(t *testing.T) {
+// TestConResumeCountersIndependentlyOptional verifies BSSCI rev1 §5.3.1:
+// snBsOpId and snScOpId are each independently optional in the con message.
+// Any combination (neither, either alone, both) must be accepted.
+func TestConResumeCountersIndependentlyOptional(t *testing.T) {
 	testLogger := logger.NewNop()
 
 	sessionSvc, downlinkSvc, statusSvc, _, broadcaster,
@@ -623,11 +642,14 @@ func TestConConditionalRules(t *testing.T) {
 		server.RegisterHandlers()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: false, // Fresh connection
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: false,
+			},
+			Conn: mockConn,
+			// Fresh connection
 		}
 
 		// New connection without resume fields - should succeed
@@ -661,14 +683,16 @@ func TestConConditionalRules(t *testing.T) {
 		server.RegisterHandlers()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: false,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: false,
+			},
+			Conn: mockConn,
 		}
 
-		// Resume with BOTH snBsOpId and snScOpId - mutual presence satisfied
+		// Both counters together assert both constraints
 		data := map[string]interface{}{
 			"version":  "1.0.0",
 			"bsEui":    bssci.TestBsEui01,
@@ -695,27 +719,28 @@ func TestConConditionalRules(t *testing.T) {
 		assert.Equal(t, "conRsp", mockConn.sentMessages[0]["command"])
 	})
 
-	t.Run("Resume_OnlySnBsOpId_FailsConditionalRule", func(t *testing.T) {
+	t.Run("Resume_OnlySnBsOpId_Accepted", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
 		mockConn.Reset()
 		server.RegisterHandlers()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: false,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: false,
+			},
+			Conn: mockConn,
 		}
 
-		// Resume with ONLY snBsOpId - violates mutual presence rule
+		// snBsOpId alone asserts only the BS-counter constraint (§5.3.1)
 		data := map[string]interface{}{
 			"version":  "1.0.0",
 			"bsEui":    bssci.TestBsEui01,
 			"bidi":     true,
 			"snBsUuid": []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-			"snBsOpId": int64(100), // BS counter present
-			// snScOpId MISSING - triggers conditional rule failure
+			"snBsOpId": int64(100),
 		}
 
 		msg := &bssci.Message{
@@ -725,39 +750,35 @@ func TestConConditionalRules(t *testing.T) {
 		}
 
 		err := server.CallHandleMessage(session, msg, data)
-		assert.NoError(t, err, "handleMessage should not return error (sends error frame instead)")
+		assert.NoError(t, err, "handleMessage should accept snBsOpId without snScOpId")
 
-		// Should send error frame (not conRsp)
-		require.Len(t, mockConn.sentMessages, 1)
-		assert.Equal(t, "error", mockConn.sentMessages[0]["command"])
-
-		errorMessage, ok := mockConn.sentMessages[0]["message"].(string)
-		require.True(t, ok)
-		assert.Equal(t, "Conditional field requirement failed", errorMessage,
-			"Error response should use catalog message without leaking rule text")
+		require.GreaterOrEqual(t, len(mockConn.sentMessages), 1)
+		assert.Equal(t, "conRsp", mockConn.sentMessages[0]["command"],
+			"a lone snBsOpId is a valid resume constraint")
 	})
 
-	t.Run("Resume_OnlySnScOpId_FailsConditionalRule", func(t *testing.T) {
+	t.Run("Resume_OnlySnScOpId_Accepted", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
 		mockConn.Reset()
 		server.RegisterHandlers()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: false,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: false,
+			},
+			Conn: mockConn,
 		}
 
-		// Resume with ONLY snScOpId - violates mutual presence rule
+		// snScOpId alone asserts only the SC-counter constraint (§5.3.1)
 		data := map[string]interface{}{
 			"version":  "1.0.0",
 			"bsEui":    bssci.TestBsEui01,
 			"bidi":     true,
 			"snBsUuid": []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-			"snScOpId": int64(-50), // SC counter present
-			// snBsOpId MISSING - triggers conditional rule failure
+			"snScOpId": int64(-50),
 		}
 
 		msg := &bssci.Message{
@@ -767,16 +788,11 @@ func TestConConditionalRules(t *testing.T) {
 		}
 
 		err := server.CallHandleMessage(session, msg, data)
-		assert.NoError(t, err, "handleMessage should not return error (sends error frame instead)")
+		assert.NoError(t, err, "handleMessage should accept snScOpId without snBsOpId")
 
-		// Should send error frame (not conRsp)
-		require.Len(t, mockConn.sentMessages, 1)
-		assert.Equal(t, "error", mockConn.sentMessages[0]["command"])
-
-		errorMessage, ok := mockConn.sentMessages[0]["message"].(string)
-		require.True(t, ok)
-		assert.Equal(t, "Conditional field requirement failed", errorMessage,
-			"Error response should use catalog message without leaking rule text")
+		require.GreaterOrEqual(t, len(mockConn.sentMessages), 1)
+		assert.Equal(t, "conRsp", mockConn.sentMessages[0]["command"],
+			"a lone snScOpId is a valid resume constraint")
 	})
 }
 
@@ -911,11 +927,13 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 				server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 				session := &bssci.Session{
-					ID:                "test-session",
-					BaseStationEUI:    bssci.TestBsEui01,
-					Conn:              mockConn,
-					Encoding:          encoding,
-					HandshakeComplete: true,
+					ProtocolSessionState: bssci.ProtocolSessionState{
+						ID:                "test-session",
+						BaseStationEUI:    bssci.TestBsEui01,
+						Encoding:          encoding,
+						HandshakeComplete: true,
+					},
+					Conn: mockConn,
 				}
 
 				msg := &bssci.Message{

@@ -36,10 +36,13 @@ func TestNormalizationOnlyForBStoSCCommands(t *testing.T) {
 		{mioty.CmdDetachPropagate, false, "SC→BS", "Detach propagate (SC initiates)"},
 		{mioty.CmdDLDataQueue, false, "SC→BS", "DL data queue (SC initiates)"},
 		{mioty.CmdAttachResponse, false, "SC→BS", "Attach response to BS"},
+		{mioty.CmdStatus, false, "SC→BS", "Status (SC initiates, BSSCI 5.5)"},
+		{mioty.CmdStatusComplete, false, "SC→BS", "Status completion (SC sends)"},
+		{mioty.CmdDLDataQueueComplete, false, "SC→BS", "DL queue completion (SC sends)"},
 
 		// Bidirectional: Can be initiated by either party (normalize when received)
 		{mioty.CmdPing, true, "Bidirectional", "Ping (can be initiated by either party)"},
-		{mioty.CmdStatus, true, "Bidirectional", "Status (can be initiated by either party)"},
+		{mioty.CmdPingResponse, true, "Bidirectional", "Ping response (either party)"},
 		{mioty.CmdError, true, "Bidirectional", "Error (can be initiated by either party)"},
 	}
 
@@ -65,11 +68,13 @@ func TestNormalizationOnlyForBStoSCCommands(t *testing.T) {
 
 			// Create minimal session with mock connection
 			session := &Session{
-				ID:                "test-session",
-				DbSessionID:       1,
-				Encoding:          "json",
-				HandshakeComplete: true,                 // Allow non-handshake commands
-				Conn:              &testutil.TestConn{}, // Mock connection to prevent nil pointer crash
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "test-session",
+					DbSessionID:       1,
+					Encoding:          "json",
+					HandshakeComplete: true,
+				},
+				Conn: &testutil.TestConn{},
 			}
 
 			// Build valid minimal payload for this command
@@ -176,11 +181,13 @@ func TestNormalizationSkipsUnknownCommands(t *testing.T) {
 
 	// Create minimal session
 	session := &Session{
-		ID:                "test-session",
-		DbSessionID:       1,
-		Encoding:          "json",
-		HandshakeComplete: true,
-		Conn:              &testutil.TestConn{},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-session",
+			DbSessionID:       1,
+			Encoding:          "json",
+			HandshakeComplete: true,
+		},
+		Conn: &testutil.TestConn{},
 	}
 
 	// Test with unknown command

@@ -485,13 +485,16 @@ func TestDetachPropagateCompletionIntegration_MessagePersistence(t *testing.T) {
 	// Create mock connection
 	mockConn := &detPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-detprp-integration",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1, // Required for pending operation processing
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-detprp-integration",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1,
+		},
+		Conn: mockConn,
+		// Required for pending operation processing
 	}
 	server.RegisterSession(session)
 
@@ -607,12 +610,14 @@ func TestDetachPropagateCompletionIntegration_NoPendingOp(t *testing.T) {
 	// Create mock connection
 	mockConn := &detPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-detprp-no-pendingop",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-detprp-no-pendingop",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -673,13 +678,15 @@ func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
 
 	mockConn := &detPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-detprp-rejected",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-detprp-rejected",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -846,13 +853,15 @@ func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
 
 	mockConn := &detPrpFailingWriteConn{}
 	session := &bssci.Session{
-		ID:                "test-detprp-send-failure",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-detprp-send-failure",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 

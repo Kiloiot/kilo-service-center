@@ -559,15 +559,17 @@ func TestQueryDLRXStatus_Success(t *testing.T) {
 		testSessions: make(map[string]*bssci.Session),
 	}
 	mockDir.AddTestSession(&bssci.Session{
-		ID:                "session-ready",
-		BaseStationEUI:    0x1122334455667788,
-		Bidirectional:     true,
-		HandshakeComplete: true,
-		ResolvedTenantID:  42,
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
-		ClientVersion:     "1.0.0",
-		NegotiatedVersion: "1.0.0",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "session-ready",
+			BaseStationEUI:    0x1122334455667788,
+			HandshakeComplete: true,
+			ResolvedTenantID:  42,
+			ClientVersion:     "1.0.0",
+			NegotiatedVersion: "1.0.0",
+		},
+		Bidirectional: true,
+		Connected:     time.Now(),
+		LastSeen:      time.Now(),
 	})
 
 	mockCmd := &mockDownlinkCmd{
@@ -691,12 +693,15 @@ func TestQueryDLRXStatus_SessionNotReady(t *testing.T) {
 		testSessions: make(map[string]*bssci.Session),
 	}
 	mockDir.AddTestSession(&bssci.Session{
-		ID:                "incomplete-handshake",
-		BaseStationEUI:    0x1122334455667788,
-		Bidirectional:     true,
-		HandshakeComplete: false, // Handshake NOT complete
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "incomplete-handshake",
+			BaseStationEUI:    0x1122334455667788,
+			HandshakeComplete: false,
+		},
+		Bidirectional: true,
+		// Handshake NOT complete
+		Connected: time.Now(),
+		LastSeen:  time.Now(),
 	})
 
 	svc := &CoreService{
@@ -731,12 +736,15 @@ func TestQueryDLRXStatus_SessionNotBidirectional(t *testing.T) {
 		testSessions: make(map[string]*bssci.Session),
 	}
 	mockDir.AddTestSession(&bssci.Session{
-		ID:                "unidirectional",
-		BaseStationEUI:    0x1122334455667788,
-		Bidirectional:     false, // NOT bidirectional
-		HandshakeComplete: true,
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "unidirectional",
+			BaseStationEUI:    0x1122334455667788,
+			HandshakeComplete: true,
+		},
+		// NOT bidirectional
+		Bidirectional: false,
+		Connected:     time.Now(),
+		LastSeen:      time.Now(),
 	})
 
 	svc := &CoreService{

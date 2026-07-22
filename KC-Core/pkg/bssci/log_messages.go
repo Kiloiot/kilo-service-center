@@ -53,6 +53,8 @@ const (
 	LogBSSCIHandshakeComplete = "handshake complete"
 	// LogBSSCIRejectingCommandBeforeHandshake logs when a command is rejected due to incomplete handshake
 	LogBSSCIRejectingCommandBeforeHandshake = "Rejecting command before handshake complete"
+	// LogBSSCIRejectingInboundServiceCenterCommand logs when a base station sends a service-center-initiated command
+	LogBSSCIRejectingInboundServiceCenterCommand = "Rejecting inbound service-center-initiated command from base station"
 	// LogBSSCIConnectHandshakeNotComplete logs when connect handshake is incomplete
 	LogBSSCIConnectHandshakeNotComplete = "Connect handshake not complete for session"
 	// LogBSSCIConnectHandshakeNotCompleteDL logs when connect handshake is incomplete for downlink
@@ -296,8 +298,6 @@ const (
 
 	// LogBSSCIReceivedDLDataQueRspFromBaseStation is a log message constant
 	LogBSSCIReceivedDLDataQueRspFromBaseStation = "Received dlDataQueRsp from base station"
-	// LogBSSCIDLDataQueueOperationCompleted is a log message constant
-	LogBSSCIDLDataQueueOperationCompleted = "DL data queue operation completed"
 	// LogBSSCIReceivedDLRxStatFromBaseStation is a log message constant
 	LogBSSCIReceivedDLRxStatFromBaseStation = "Received dlRxStat from base station"
 	// LogBSSCIReceivedDLRxStatRspFromBaseStation is a log message constant
@@ -306,16 +306,12 @@ const (
 	LogBSSCIReceivedDLRxStatQryRspFromBaseStation = "Received dlRxStatQryRsp from base station"
 	// LogBSSCIDLRxStatusOperationCompleted is a log message constant
 	LogBSSCIDLRxStatusOperationCompleted = "DL RX status operation completed"
-	// LogBSSCIDLRxStatusQueryOperationCompleted is a log message constant
-	LogBSSCIDLRxStatusQueryOperationCompleted = "DL RX status query operation completed"
 	// LogBSSCISentDLRxStatQryToBaseStation is a log message constant
 	LogBSSCISentDLRxStatQryToBaseStation = "Sent dlRxStatQry to base station"
 	// LogBSSCIPersistedDLRxStatus is a log message constant
 	LogBSSCIPersistedDLRxStatus = "Persisted DL RX status"
 	// LogBSSCIReceivedDLDataRevRspFromBaseStation is a log message constant
 	LogBSSCIReceivedDLDataRevRspFromBaseStation = "Received dlDataRevRsp from base station"
-	// LogBSSCIDLDataRevokeOperationCompleted is a log message constant
-	LogBSSCIDLDataRevokeOperationCompleted = "DL data revoke operation completed"
 	// LogBSSCISentDLDataRevToBaseStation is a log message constant
 	LogBSSCISentDLDataRevToBaseStation = "Sent dlDataRev to base station"
 	// LogBSSCIInvalidQueueIDInRevokeResponse is a log message constant
@@ -485,8 +481,6 @@ const (
 	LogBSSCISendingStatusRequestToBaseStation = "Sending status request to base station"
 	// LogBSSCIReceivedStatusRspFromBaseStation is a log message constant
 	LogBSSCIReceivedStatusRspFromBaseStation = "Received statusRsp from base station"
-	// LogBSSCIStatusOperationCompleted is a log message constant
-	LogBSSCIStatusOperationCompleted = "Status operation completed"
 	// LogBSSCIStatusMechanismAlreadyRunningForSession is a log message constant
 	LogBSSCIStatusMechanismAlreadyRunningForSession = "Status mechanism already running for session"
 	// LogBSSCIStoppingStatusMechanism is a log message constant
@@ -501,8 +495,6 @@ const (
 	LogBSSCIFailedToGetBaseStationByEUI = "Failed to get base station by EUI"
 	// LogBSSCIFailedToPersistPendingStatusOperation is a log message constant
 	LogBSSCIFailedToPersistPendingStatusOperation = "Failed to persist pending status operation"
-	// LogBSSCIFailedToRemovePendingStatusOperation is a log message constant
-	LogBSSCIFailedToRemovePendingStatusOperation = "Failed to remove pending status operation"
 	// LogBSSCIFailedToUpdateBaseStationStatus is a log message constant
 	LogBSSCIFailedToUpdateBaseStationStatus = "Failed to update base station status"
 	// LogBSSCIFailedToPersistStatusHistory is a log message constant
@@ -645,8 +637,6 @@ const (
 
 	// LogBSSCIDeduplicationError is a log message constant
 	LogBSSCIDeduplicationError = "Deduplication error"
-	// LogBSSCICompletingThreeWayHandshakeForError is a log message constant
-	LogBSSCICompletingThreeWayHandshakeForError = "Completing three-way handshake for error operation"
 	// LogBSSCIErrorOperationHandshakeCompletedDatabaseNotUpdated is a log message constant
 	LogBSSCIErrorOperationHandshakeCompletedDatabaseNotUpdated = "Error operation handshake completed, database state NOT updated"
 	// LogBSSCIBaseStationReportedError is a log message constant
@@ -681,8 +671,6 @@ const (
 	LogBSSCIErrorAckSent = "Sent errorAck to base station for failed operation"
 	// LogBSSCIAcknowledgingErrorForUnknownOperation is a log message constant per BSSCI §5.17
 	LogBSSCIAcknowledgingErrorForUnknownOperation = "Acknowledging error for unknown operation per BSSCI §5.17"
-	// LogBSSCIFailedToSendCompletionMessageForErrorOperation is a log message constant
-	LogBSSCIFailedToSendCompletionMessageForErrorOperation = "Failed to send completion message for error operation"
 	// LogBSSCIFailedToStoreMessage is a log message constant
 	LogBSSCIFailedToStoreMessage = "Failed to store message"
 	// LogBSSCIFailedToStoreULDataCompletionEvent is a log message constant

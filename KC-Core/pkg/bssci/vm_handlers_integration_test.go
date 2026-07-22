@@ -30,11 +30,13 @@ func setupVMTestServer(_ *testing.T) (*Server, *Session, *bsscitest.TestConn) {
 	// Create session with unique ID
 	sessionID := fmt.Sprintf("test-session-%d", time.Now().UnixNano())
 	session := &Session{
-		ID:               sessionID,
-		BaseStationEUI:   0x1122334455667788,
-		ResolvedTenantID: 123,
-		Conn:             conn,
-		DbSessionID:      456,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               sessionID,
+			BaseStationEUI:   0x1122334455667788,
+			ResolvedTenantID: 123,
+			DbSessionID:      456,
+		},
+		Conn: conn,
 	}
 
 	// Add session to server (sessions map uses session.ID, not BaseStationEUI)

@@ -2,6 +2,7 @@ package bssciservices
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -32,6 +33,8 @@ func seedResumableSession(repo *mockBaseStationSessionRepo, id, tenantID int64, 
 	protocolVersion := mioty.MIOTYProtocolVersion
 	session := &models.BaseStationSession{
 		ID:              id,
+		CanResume:       true,
+		Encoding:        "msgpack",
 		BaseStationID:   1,
 		TenantID:        tenantID,
 		SnBsUuid:        bsUUID,
@@ -39,8 +42,6 @@ func seedResumableSession(repo *mockBaseStationSessionRepo, id, tenantID int64, 
 		SnBsOpId:        bsOpId,
 		SnScOpId:        scOpId,
 		Status:          models.SessionStatusDisconnected,
-		CanResume:       true,
-		Encoding:        "msgpack",
 		ProtocolVersion: &protocolVersion,
 		StartedAt:       time.Now().Add(-1 * time.Hour),
 	}
@@ -62,12 +63,17 @@ func TestHandleResume_DBLookup_BySnBsUuid(t *testing.T) {
 	dbSession := seedResumableSession(mockRepo, 42, 100, bsUUID, scUUID, 1000, -500)
 	dbSession.OrganizationID = &orgID
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, bsUUID[:],
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:],
 		int64Ptr(1000), int64Ptr(-500), 0x123456789ABCDEF0)
 
-	require.NoError(t, err)
-	require.NotNil(t, restoredSession)
+	require.Equal(t, bssci.ResumeCompatible, outcome.Disposition)
+	require.NotNil(t, outcome.Previous)
+	restoredSession := outcome.Previous
 	assert.Equal(t, int64(42), restoredSession.DbSessionID)
 	assert.Equal(t, scUUID[:], restoredSession.SessionUUID)
 	assert.Equal(t, bsUUID[:], restoredSession.BsUUID)
@@ -88,11 +94,16 @@ func TestHandleResume_AbsentCounters(t *testing.T) {
 	bsUUID := [16]byte{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30}
 	seedResumableSession(mockRepo, 43, 100, bsUUID, [16]byte{0x31}, 2000, -900)
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0xAABB)
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0xAABB)
 
-	require.NoError(t, err)
-	require.NotNil(t, restoredSession)
+	require.Equal(t, bssci.ResumeCompatible, outcome.Disposition)
+	require.NotNil(t, outcome.Previous)
+	restoredSession := outcome.Previous
 	assert.Equal(t, int64(2000), restoredSession.LastBsOpId,
 		"authoritative persisted counters restored when constraints absent")
 	assert.Equal(t, int64(-900), restoredSession.LastScOpId)
@@ -107,12 +118,17 @@ func TestHandleResume_StaleScCounterAccepted(t *testing.T) {
 	bsUUID := [16]byte{0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50}
 	seedResumableSession(mockRepo, 44, 100, bsUUID, [16]byte{0x51}, 500, -800)
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, bsUUID[:],
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:],
 		int64Ptr(400), int64Ptr(-700), 0xCCDD)
 
-	require.NoError(t, err)
-	require.NotNil(t, restoredSession)
+	require.Equal(t, bssci.ResumeCompatible, outcome.Disposition)
+	require.NotNil(t, outcome.Previous)
+	restoredSession := outcome.Previous
 	assert.Equal(t, int64(-800), restoredSession.LastScOpId,
 		"the authoritative persisted SC counter is restored, not the stale reported one")
 }
@@ -126,12 +142,16 @@ func TestHandleResume_RequiredBsOpIdBeyondPersisted(t *testing.T) {
 	bsUUID := [16]byte{0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70}
 	seedResumableSession(mockRepo, 45, 100, bsUUID, [16]byte{0x71}, 1000, -500)
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, bsUUID[:],
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:],
 		int64Ptr(1001), int64Ptr(-500), 0xEEFF)
 
-	require.ErrorIs(t, err, bssci.ErrResumeCounterMismatch)
-	assert.Nil(t, restoredSession)
+	assert.Equal(t, bssci.ResumeInconsistent, outcome.Disposition)
+	assert.ErrorIs(t, outcome.Err, bssci.ErrResumeCounterMismatch)
 }
 
 // TestHandleResume_ClaimedScOpIdBeyondIssued verifies rejection when the base
@@ -143,12 +163,16 @@ func TestHandleResume_ClaimedScOpIdBeyondIssued(t *testing.T) {
 	bsUUID := [16]byte{0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F, 0x90}
 	seedResumableSession(mockRepo, 46, 100, bsUUID, [16]byte{0x91}, 1000, -500)
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, bsUUID[:],
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:],
 		int64Ptr(1000), int64Ptr(-501), 0xEEFF)
 
-	require.ErrorIs(t, err, bssci.ErrResumeCounterMismatch)
-	assert.Nil(t, restoredSession)
+	assert.Equal(t, bssci.ResumeInconsistent, outcome.Disposition)
+	assert.ErrorIs(t, outcome.Err, bssci.ErrResumeCounterMismatch)
 }
 
 // TestHandleResume_TerminatedNotResumable verifies terminated sessions never
@@ -161,11 +185,14 @@ func TestHandleResume_TerminatedNotResumable(t *testing.T) {
 	session.Status = models.SessionStatusTerminated
 	session.CanResume = false
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
 
-	require.NoError(t, err)
-	assert.Nil(t, restoredSession, "terminated sessions must not resume")
+	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition, "terminated sessions must not resume")
 }
 
 // TestHandleResume_ActiveNotResumableFromDB verifies only disconnected
@@ -177,11 +204,14 @@ func TestHandleResume_ActiveNotResumableFromDB(t *testing.T) {
 	session := seedResumableSession(mockRepo, 48, 100, bsUUID, [16]byte{0xD1}, 100, -50)
 	session.Status = models.SessionStatusActive
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
 
-	require.NoError(t, err)
-	assert.Nil(t, restoredSession, "only disconnected sessions are resumable from persistence")
+	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition, "only disconnected sessions are resumable from persistence")
 }
 
 // TestHandleResume_ShortUUID_SkipsDBLookup verifies malformed UUIDs never
@@ -189,12 +219,15 @@ func TestHandleResume_ActiveNotResumableFromDB(t *testing.T) {
 func TestHandleResume_ShortUUID_SkipsDBLookup(t *testing.T) {
 	svc, _ := newResumeTestService(t, 100)
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, []byte{0x01, 0x02},
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, []byte{0x01, 0x02},
 		int64Ptr(100), int64Ptr(-50), 0x123456789ABCDEF0)
 
-	require.NoError(t, err)
-	assert.Nil(t, restoredSession)
+	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition)
 }
 
 // TestHandleResume_NilUUID_SkipsDBLookup verifies nil UUIDs never reach the
@@ -202,12 +235,15 @@ func TestHandleResume_ShortUUID_SkipsDBLookup(t *testing.T) {
 func TestHandleResume_NilUUID_SkipsDBLookup(t *testing.T) {
 	svc, _ := newResumeTestService(t, 100)
 
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, nil,
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, nil,
 		int64Ptr(100), int64Ptr(-50), 0x123456789ABCDEF0)
 
-	require.NoError(t, err)
-	assert.Nil(t, restoredSession)
+	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition)
 }
 
 // TestHandleResume_NoDBMatch_ReturnNil verifies unknown UUIDs fall back to a
@@ -216,12 +252,15 @@ func TestHandleResume_NoDBMatch_ReturnNil(t *testing.T) {
 	svc, _ := newResumeTestService(t, 100)
 
 	unknownUUID := [16]byte{0xDE, 0xAD, 0xBE, 0xEF}
-	testSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), testSession, unknownUUID[:],
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, unknownUUID[:],
 		int64Ptr(100), int64Ptr(-50), 0x123456789ABCDEF0)
 
-	require.NoError(t, err)
-	assert.Nil(t, restoredSession)
+	assert.Equal(t, bssci.ResumeNoMatch, outcome.Disposition)
 }
 
 // TestHandleResume_TenantIsolation verifies a session persisted under another
@@ -232,18 +271,25 @@ func TestHandleResume_TenantIsolation(t *testing.T) {
 	bsUUID := [16]byte{0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xF0}
 	seedResumableSession(mockRepo, 49, 500, bsUUID, [16]byte{0xF1}, 5000, -2500)
 
-	wrongTenantSession := &bssci.Session{ResolvedTenantID: 100}
-	restoredSession, err := svc.HandleResume(context.Background(), wrongTenantSession, bsUUID[:],
+	wrongTenantSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	wrongOutcome := svc.HandleResume(context.Background(), wrongTenantSession, bsUUID[:],
 		int64Ptr(5000), int64Ptr(-2500), 0x1122334455667788)
-	require.NoError(t, err)
-	assert.Nil(t, restoredSession, "cross-tenant UUID collisions must not resume")
+	assert.Equal(t, bssci.ResumeNoMatch, wrongOutcome.Disposition, "cross-tenant UUID collisions must not resume")
 
-	correctTenantSession := &bssci.Session{ResolvedTenantID: 500}
-	restoredSession, err = svc.HandleResume(context.Background(), correctTenantSession, bsUUID[:],
+	correctTenantSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 500,
+		},
+	}
+	correctOutcome := svc.HandleResume(context.Background(), correctTenantSession, bsUUID[:],
 		int64Ptr(5000), int64Ptr(-2500), 0x1122334455667788)
-	require.NoError(t, err)
-	require.NotNil(t, restoredSession)
-	assert.Equal(t, int64(500), restoredSession.ResolvedTenantID)
+	require.Equal(t, bssci.ResumeCompatible, correctOutcome.Disposition)
+	require.NotNil(t, correctOutcome.Previous)
+	assert.Equal(t, int64(500), correctOutcome.Previous.ResolvedTenantID)
 }
 
 func TestHydrateSessionFromDB_OrganizationIDNilSafety(t *testing.T) {
@@ -275,6 +321,9 @@ func TestHydrateSessionFromDB_OrganizationIDNilSafety(t *testing.T) {
 
 			dbSession := &models.BaseStationSession{
 				ID:             45,
+				CanResume:      true,
+				Encoding:       "json",
+				OrganizationID: tc.orgID,
 				BaseStationID:  4,
 				TenantID:       700,
 				SnBsUuid:       [16]byte{},
@@ -282,9 +331,6 @@ func TestHydrateSessionFromDB_OrganizationIDNilSafety(t *testing.T) {
 				SnBsOpId:       4000,
 				SnScOpId:       -2000,
 				Status:         models.SessionStatusDisconnected,
-				CanResume:      true,
-				Encoding:       "json",
-				OrganizationID: tc.orgID,
 				StartedAt:      time.Now(),
 			}
 
@@ -306,6 +352,8 @@ func TestPersistSessionResumeUpdatesProtocolVersion(t *testing.T) {
 	bsUUID := [16]byte{0x0A, 0x09, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA}
 	mockRepo.sessions[99] = &models.BaseStationSession{
 		ID:            99,
+		CanResume:     true,
+		Encoding:      "msgpack",
 		BaseStationID: 10,
 		TenantID:      800,
 		SnBsUuid:      bsUUID,
@@ -313,17 +361,17 @@ func TestPersistSessionResumeUpdatesProtocolVersion(t *testing.T) {
 		SnBsOpId:      3000,
 		SnScOpId:      -1500,
 		Status:        models.SessionStatusDisconnected,
-		CanResume:     true,
-		Encoding:      "msgpack",
 	}
 
 	session := &bssci.Session{
-		ID:                "resume-connection-1",
-		ResolvedTenantID:  800,
-		SessionUUID:       append([]byte(nil), scUUID[:]...),
-		BsUUID:            append([]byte(nil), bsUUID[:]...),
-		NegotiatedVersion: mioty.MIOTYProtocolVersion,
-		Encoding:          "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "resume-connection-1",
+			ResolvedTenantID:  800,
+			SessionUUID:       append([]byte(nil), scUUID[:]...),
+			BsUUID:            append([]byte(nil), bsUUID[:]...),
+			NegotiatedVersion: mioty.MIOTYProtocolVersion,
+			Encoding:          "msgpack",
+		},
 	}
 
 	err := svc.PersistSession(context.Background(), session, nil, true, nil)
@@ -356,22 +404,26 @@ func TestMarkDisconnected_StaleConnectionDoesNotTouchNewerSession(t *testing.T) 
 
 	// Connection B resumed and activated the session
 	sessionB := &bssci.Session{
-		ID:                "connection-b",
-		ResolvedTenantID:  900,
-		DbSessionID:       77,
-		SessionUUID:       append([]byte(nil), scUUID[:]...),
-		BsUUID:            append([]byte(nil), bsUUID[:]...),
-		NegotiatedVersion: mioty.MIOTYProtocolVersion,
-		Encoding:          "msgpack",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "connection-b",
+			ResolvedTenantID:  900,
+			DbSessionID:       77,
+			SessionUUID:       append([]byte(nil), scUUID[:]...),
+			BsUUID:            append([]byte(nil), bsUUID[:]...),
+			NegotiatedVersion: mioty.MIOTYProtocolVersion,
+			Encoding:          "msgpack",
+		},
 	}
 	require.NoError(t, svc.PersistSession(context.Background(), sessionB, nil, true, nil))
 	require.Equal(t, models.SessionStatusActive, dbSession.Status)
 
 	// Connection A's deferred cleanup runs after B took over
 	sessionA := &bssci.Session{
-		ID:               "connection-a",
-		ResolvedTenantID: 900,
-		DbSessionID:      77,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:               "connection-a",
+			ResolvedTenantID: 900,
+			DbSessionID:      77,
+		},
 	}
 	require.NoError(t, svc.MarkDisconnected(context.Background(), sessionA))
 
@@ -385,4 +437,47 @@ func TestMarkDisconnected_StaleConnectionDoesNotTouchNewerSession(t *testing.T) 
 	assert.Equal(t, models.SessionStatusDisconnected, dbSession.Status)
 	assert.True(t, dbSession.CanResume)
 	assert.NotNil(t, dbSession.EndedAt)
+}
+
+// TestHandleResume_InfrastructureFailure verifies a resumable-session lookup
+// failure yields ResumeInfrastructureFailure so the connect is rejected rather
+// than silently degraded into a fresh session that strands the old state.
+func TestHandleResume_InfrastructureFailure(t *testing.T) {
+	svc, mockRepo := newResumeTestService(t, 100)
+	mockRepo.findErr = errors.New("database unavailable")
+
+	bsUUID := [16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID: 100,
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
+
+	assert.Equal(t, bssci.ResumeInfrastructureFailure, outcome.Disposition)
+	require.Error(t, outcome.Err)
+	assert.Nil(t, outcome.Previous, "no session is handed back on an infrastructure failure")
+}
+
+// TestHandleResume_VersionIncompatible verifies a resumable session persisted
+// under an incompatible negotiated version is rejected as inconsistent so its
+// stale state can be terminated (BSSCI rev1 §4.3).
+func TestHandleResume_VersionIncompatible(t *testing.T) {
+	svc, mockRepo := newResumeTestService(t, 100)
+
+	bsUUID := [16]byte{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30}
+	session := seedResumableSession(mockRepo, 55, 100, bsUUID, [16]byte{0x31}, 100, -50)
+	incompatible := "2.0.0"
+	session.ProtocolVersion = &incompatible
+
+	testSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ResolvedTenantID:  100,
+			NegotiatedVersion: "1.0.0",
+		},
+	}
+	outcome := svc.HandleResume(context.Background(), testSession, bsUUID[:], nil, nil, 0x1234)
+
+	assert.Equal(t, bssci.ResumeInconsistent, outcome.Disposition)
+	require.NotNil(t, outcome.Previous, "the stale session is returned for termination")
 }

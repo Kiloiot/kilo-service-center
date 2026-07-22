@@ -18,10 +18,12 @@ import (
 func TestVMHandlerSignatures(t *testing.T) {
 	server := createTestServerWithSession()
 	session := &Session{
-		ID:             "test-session-vm",
-		BaseStationEUI: TestEpEui01,
-		Name:           "test-bs",
-		DbSessionID:    1,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:             "test-session-vm",
+			BaseStationEUI: TestEpEui01,
+			DbSessionID:    1,
+		},
+		Name: "test-bs",
 	}
 	msg := &Message{
 		Command: mioty.CmdVMActivate,
@@ -138,10 +140,12 @@ func TestVMCommunityEditionStubs(t *testing.T) {
 	server := createTestServerWithSession()
 	conn := &testutil.TestConn{Encoding: "msgpack"}
 	session := &Session{
-		BaseStationEUI: TestEpEui01,
-		Name:           "test-bs",
-		DbSessionID:    1,
-		Conn:           conn,
+		ProtocolSessionState: ProtocolSessionState{
+			BaseStationEUI: TestEpEui01,
+			DbSessionID:    1,
+		},
+		Name: "test-bs",
+		Conn: conn,
 	}
 	msg := &Message{
 		Command: mioty.CmdVMDLData,
@@ -230,11 +234,13 @@ func TestVMSendMethods(t *testing.T) {
 
 	// Register test session
 	session := &Session{
-		ID:             "test-session-vm",
-		BaseStationEUI: TestEpEui01,
-		Name:           "test-bs-vm",
-		DbSessionID:    1,
-		LastScOpId:     -1,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:             "test-session-vm",
+			BaseStationEUI: TestEpEui01,
+			DbSessionID:    1,
+			LastScOpId:     -1,
+		},
+		Name: "test-bs-vm",
 	}
 	server.RegisterSession(session)
 
@@ -267,10 +273,12 @@ func TestVMSendMethods(t *testing.T) {
 func TestVMActiveTypesTracking(t *testing.T) {
 	server := createTestServerWithSession()
 	session := &Session{
-		BaseStationEUI: TestEpEui01,
-		Name:           "test-bs",
-		DbSessionID:    1,
-		ActiveVMTypes:  make(map[uint64][]uint8),
+		ProtocolSessionState: ProtocolSessionState{
+			BaseStationEUI: TestEpEui01,
+			DbSessionID:    1,
+		},
+		Name:          "test-bs",
+		ActiveVMTypes: make(map[uint64][]uint8),
 	}
 	msg := &Message{
 		Command: mioty.CmdVMActivateResponse,

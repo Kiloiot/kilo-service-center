@@ -26,10 +26,11 @@ type ProtocolConfig struct {
 	SCALogStatusOperations bool      `mapstructure:"scaci_log_status_operations"` // Log Status operations to audit trail (default: true)
 
 	// Protocol Parameters
-	MaxRetransmissions int    `mapstructure:"max_retransmissions"`
-	AckTimeout         int    `mapstructure:"ack_timeout"`      // milliseconds
-	DuplicateWindow    int    `mapstructure:"duplicate_window"` // seconds
-	MessageEncoding    string `mapstructure:"message_encoding"` // json, msgpack
+	MaxRetransmissions             int    `mapstructure:"max_retransmissions"`
+	AckTimeout                     int    `mapstructure:"ack_timeout"`                      // milliseconds
+	ConnectionEstablishmentTimeout int    `mapstructure:"connection_establishment_timeout"` // milliseconds
+	DuplicateWindow                int    `mapstructure:"duplicate_window"`                 // seconds
+	MessageEncoding                string `mapstructure:"message_encoding"`                 // json, msgpack
 
 	// BSCICertificatePollInterval is the base station certificate change poll interval
 	BSCICertificatePollInterval time.Duration `mapstructure:"bsci_certificate_poll_interval"`

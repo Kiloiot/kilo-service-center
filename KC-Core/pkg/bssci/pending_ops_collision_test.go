@@ -25,15 +25,19 @@ func TestPendingOpsCompositeKey(t *testing.T) {
 
 	// Create two sessions with different IDs
 	session1 := &Session{
-		ID:             session1ID,
-		DbSessionID:    1,
-		BaseStationEUI: TestBsEuiMulti01,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:             session1ID,
+			DbSessionID:    1,
+			BaseStationEUI: TestBsEuiMulti01,
+		},
 	}
 
 	session2 := &Session{
-		ID:             session2ID,
-		DbSessionID:    2,
-		BaseStationEUI: TestBsEuiMulti02,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:             session2ID,
+			DbSessionID:    2,
+			BaseStationEUI: TestBsEuiMulti02,
+		},
 	}
 
 	// Create server with StatusService
@@ -99,9 +103,9 @@ func TestPendingOpsSessionIsolation(t *testing.T) {
 
 	// Create three sessions simulating three base stations
 	sessions := []*Session{
-		{ID: "bs-alpha", DbSessionID: 1, BaseStationEUI: 0xAAAAAAAAAAAAAAAA},
-		{ID: "bs-beta", DbSessionID: 2, BaseStationEUI: 0xBBBBBBBBBBBBBBBB},
-		{ID: "bs-gamma", DbSessionID: 3, BaseStationEUI: 0xCCCCCCCCCCCCCCCC},
+		{ProtocolSessionState: ProtocolSessionState{ID: "bs-alpha", DbSessionID: 1, BaseStationEUI: 0xAAAAAAAAAAAAAAAA}},
+		{ProtocolSessionState: ProtocolSessionState{ID: "bs-beta", DbSessionID: 2, BaseStationEUI: 0xBBBBBBBBBBBBBBBB}},
+		{ProtocolSessionState: ProtocolSessionState{ID: "bs-gamma", DbSessionID: 3, BaseStationEUI: 0xCCCCCCCCCCCCCCCC}},
 	}
 
 	// Create server with StatusService
@@ -174,8 +178,10 @@ func TestMakeSessionOpKey(t *testing.T) {
 	t.Parallel()
 
 	session := &Session{
-		ID:          "test-session-123",
-		DbSessionID: 42,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session-123",
+			DbSessionID: 42,
+		},
 	}
 
 	opID := int64(999)
@@ -190,8 +196,10 @@ func TestMakeSessionOpKey(t *testing.T) {
 
 	// Test 2: Different sessions produce different keys
 	session2 := &Session{
-		ID:          "test-session-456",
-		DbSessionID: 43,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session-456",
+			DbSessionID: 43,
+		},
 	}
 
 	key3 := makeSessionOpKey(session2, opID)
@@ -240,7 +248,12 @@ func TestPendingOperationSessionSlug(t *testing.T) {
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc,
 		broadcaster, queueSerializer, auditLogger, tenantResolver)
 
-	session := &Session{ID: sessionID, DbSessionID: 1}
+	session := &Session{
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          sessionID,
+			DbSessionID: 1,
+		},
+	}
 	ctx := context.Background()
 	err := server.statusSvc.RecordPendingOperation(ctx, session, opID, op, session.DbSessionID)
 	require.NoError(t, err, "Should record pending operation")
@@ -269,8 +282,8 @@ func TestPendingOpsRaceCondition(t *testing.T) {
 	// `go test -race` which is part of the plan's "Run regression suite with race detector" step.
 
 	sessions := []*Session{
-		{ID: "concurrent-1", DbSessionID: 1},
-		{ID: "concurrent-2", DbSessionID: 2},
+		{ProtocolSessionState: ProtocolSessionState{ID: "concurrent-1", DbSessionID: 1}},
+		{ProtocolSessionState: ProtocolSessionState{ID: "concurrent-2", DbSessionID: 2}},
 	}
 
 	ctx := context.Background()

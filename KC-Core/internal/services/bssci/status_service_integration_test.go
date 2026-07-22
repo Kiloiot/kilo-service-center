@@ -64,16 +64,22 @@ func TestStatusServiceMultiSessionIsolation(t *testing.T) {
 
 	// Create three sessions from different base stations
 	session1 := &bssci.Session{
-		ID:          "session-bs1",
-		DbSessionID: 1001,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "session-bs1",
+			DbSessionID: 1001,
+		},
 	}
 	session2 := &bssci.Session{
-		ID:          "session-bs2",
-		DbSessionID: 1002,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "session-bs2",
+			DbSessionID: 1002,
+		},
 	}
 	session3 := &bssci.Session{
-		ID:          "session-bs3",
-		DbSessionID: 1003,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "session-bs3",
+			DbSessionID: 1003,
+		},
 	}
 
 	ctx := context.Background()
@@ -199,8 +205,10 @@ func TestStatusServiceCachePopulationForNewOperations(t *testing.T) {
 	statusSvc := NewStatusService(&pendingOps, &mu, mockRepo, log)
 
 	session := &bssci.Session{
-		ID:          "test-session",
-		DbSessionID: 2001,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 2001,
+		},
 	}
 
 	ctx := context.Background()
@@ -259,8 +267,10 @@ func TestStatusServiceSingleWriterPattern(t *testing.T) {
 	statusSvc := NewStatusService(&pendingOps, &mu, mockRepo, log)
 
 	session := &bssci.Session{
-		ID:          "single-writer-test",
-		DbSessionID: 3001,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "single-writer-test",
+			DbSessionID: 3001,
+		},
 	}
 
 	ctx := context.Background()

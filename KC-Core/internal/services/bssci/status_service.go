@@ -37,17 +37,15 @@ func NewStatusService(pendingOps *map[bssci.SessionOpKey]*bssci.PendingOperation
 // RecordPendingOperation stores operation in map + DB using SessionOpKey composite key
 // Persists to DB table bssci_pending_operations and mirrors into the shared cache
 func (s *statusService) RecordPendingOperation(ctx context.Context, session *bssci.Session, opId int64, op *bssci.PendingOperation, dbSessionID int64) error {
-	// 1. Update in-memory cache using SessionOpKey composite key
 	key := bssci.SessionOpKey{
 		SessionID:   session.ID,
 		OperationID: opId,
 	}
-	s.mu.Lock()
-	(*s.pendingOps)[key] = op
-	s.mu.Unlock()
 
-	// 2. Convert in-memory types to repository types
-	// Marshal Message map → operation_data JSON
+	// The database is authoritative: persist first, then mirror into the cache.
+	// If the durable write fails the operation is not recorded anywhere, so a
+	// caller that treats a persistence failure as fatal cannot send an
+	// operation whose recovery record does not exist.
 	operationData, err := json.Marshal(op.Message)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "Failed to marshal pending operation",
@@ -56,12 +54,11 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 		return err
 	}
 
-	// Marshal Metadata map → metadata JSON (nullable)
 	var metadataJSON json.RawMessage
 	if op.Metadata != nil {
 		metadataBytes, err := json.Marshal(op.Metadata)
 		if err != nil {
-			s.logger.Error("Failed to marshal pending operation metadata",
+			s.logger.ErrorContext(ctx, "Failed to marshal pending operation metadata",
 				"error", err,
 				"opId", opId)
 			return err
@@ -69,15 +66,21 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 		metadataJSON = json.RawMessage(metadataBytes)
 	}
 
-	// 3. Persist via repository - USE CALLER'S CONTEXT
-	return s.repo.Create(ctx, &interfaces.PendingOperationRequest{
+	if err := s.repo.Create(ctx, &interfaces.PendingOperationRequest{
 		SessionID:     dbSessionID, // Use DB session ID (not in-memory session.ID)
 		OperationID:   opId,
 		OperationType: op.OperationType,
 		EndpointEUI:   op.Endpoint,
 		OperationData: json.RawMessage(operationData),
 		Metadata:      metadataJSON, // nil → SQL NULL
-	})
+	}); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	(*s.pendingOps)[key] = op
+	s.mu.Unlock()
+	return nil
 }
 
 // GetPendingOperation retrieves operation from REAL map using SessionOpKey composite key
@@ -98,9 +101,14 @@ func (s *statusService) GetPendingOperation(session *bssci.Session, opId int64) 
 	return op, nil
 }
 
-// RemovePendingOperation cleans map + DB using SessionOpKey composite key
+// RemovePendingOperation cleans DB + map using SessionOpKey composite key.
+// The database is removed first: if the durable delete fails, the cache entry
+// (and its live retry state) is preserved so the operation is not lost.
 func (s *statusService) RemovePendingOperation(ctx context.Context, session *bssci.Session, opId int64) error {
-	// 1. Remove from cache using SessionOpKey
+	if err := s.repo.DeleteBySessionAndOperation(ctx, session.DbSessionID, opId); err != nil {
+		return err
+	}
+
 	key := bssci.SessionOpKey{
 		SessionID:   session.ID,
 		OperationID: opId,
@@ -108,9 +116,7 @@ func (s *statusService) RemovePendingOperation(ctx context.Context, session *bss
 	s.mu.Lock()
 	delete(*s.pendingOps, key)
 	s.mu.Unlock()
-
-	// 2. Remove from DB via repository
-	return s.repo.DeleteBySessionAndOperation(ctx, session.DbSessionID, opId)
+	return nil
 }
 
 // ExtractQueueMetadata extracts endpoint EUI, queue ID, and tenant ID from pending operation metadata.

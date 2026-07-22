@@ -209,8 +209,9 @@ func TestMultiBSPropagation(t *testing.T) {
 	// NEW base station BS-B connects
 	sessionBSB := propagation.BaseStationSession{
 		ID:             "session-bs-b",
-		BaseStationEUI: 0x1122334455667788, // Different BS
-		TenantID:       tenantID,
+		BaseStationEUI: 0x1122334455667788,
+		// Different BS
+		TenantID: tenantID,
 	}
 
 	ctx := context.Background()

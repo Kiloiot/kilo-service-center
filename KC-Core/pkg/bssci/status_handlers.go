@@ -250,27 +250,24 @@ func (s *Server) handleStatusResponse(_ *Server, session *Session, msg *Message,
 		}
 	}
 
-	// Send statusCmp to complete three-way handshake
+	// The service center completes its own SC-initiated status operation
+	// (BSSCI §3.5): after the base station's statusRsp, the SC sends statusCmp
+	// and finalizes the pending operation. Because the SC sends the completion
+	// itself, a spec-compliant base station never returns statusCmp, so the
+	// pending row must be removed here or it leaks.
 	complete := map[string]interface{}{
 		"command": mioty.CmdStatusComplete,
 		"opId":    msg.OpId,
 	}
-	return s.sendMessage(session, complete)
-}
-
-// handleStatusComplete handles statusCmp from base station
-func (s *Server) handleStatusComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
-	// Remove completed operation from pending operations for MIOTY session session resume
-	if err := s.removePendingOperation(session, msg.OpId); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingStatusOperation,
-			"error", err,
-			"opId", msg.OpId,
-			"sessionId", session.DbSessionID)
+	if err := s.sendMessage(session, complete); err != nil {
+		return err
 	}
-
-	s.logger.DebugContext(s.sessionContext(session), LogBSSCIStatusOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
+	// Finalize only after the completion write succeeded; a failed remove
+	// preserves the pending operation for recovery.
+	if err := s.removePendingOperation(session, msg.OpId); err != nil {
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err, "opId", msg.OpId)
+	}
 	return nil
 }
 
@@ -343,10 +340,16 @@ func (s *Server) SendStatusRequest(session interface{}) (int64, error) {
 		"bsEui", sess.BaseStationEUI,
 		"opId", opId)
 
-	// Persist pending operation for MIOTY session session resume
+	// The recovery record must be durable before the operation goes on the
+	// wire: an SC operation whose pending row was never persisted cannot be
+	// reissued on resume. A persistence failure rolls the operation ID back
+	// and aborts the send.
 	if err := s.persistPendingOperation(sess, opId, mioty.CmdStatus, statusRequest, nil, nil); err != nil {
 		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToPersistPendingStatusOperation, "error", err)
-		// Continue anyway - persistence failure shouldn't block operation
+		sess.mu.Lock()
+		sess.LastScOpId++
+		sess.mu.Unlock()
+		return 0, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistPendingStatusOperation), err)
 	}
 
 	// Send message with rollback guard (BSSCI §5.2)

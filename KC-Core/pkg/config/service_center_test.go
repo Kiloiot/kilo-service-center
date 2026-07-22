@@ -336,12 +336,13 @@ func TestValidateServiceCenterConfig_TLSDisabled(t *testing.T) {
 
 func TestValidateServiceCenterConfig_Valid(t *testing.T) {
 	cfg := &ProtocolConfig{
-		BSCIHost:                    "bssci.mioty.local",
-		BSCIPort:                    5000,
-		BSCITLS:                     TLSConfig{Enabled: true},
-		AckTimeout:                  DefaultProtocolAckTimeout,
-		DuplicateWindow:             DefaultProtocolDuplicateWindow,
-		BSCICertificatePollInterval: DefaultProtocolCertificatePollInterval,
+		BSCIHost:                       "bssci.mioty.local",
+		BSCIPort:                       5000,
+		BSCITLS:                        TLSConfig{Enabled: true},
+		AckTimeout:                     DefaultProtocolAckTimeout,
+		ConnectionEstablishmentTimeout: DefaultProtocolConnectionEstablishmentTimeout,
+		DuplicateWindow:                DefaultProtocolDuplicateWindow,
+		BSCICertificatePollInterval:    DefaultProtocolCertificatePollInterval,
 	}
 
 	err := ValidateServiceCenterConfig(cfg)
@@ -353,12 +354,13 @@ func TestValidateServiceCenterConfig_Valid(t *testing.T) {
 func TestValidateServiceCenterConfig_TimingBounds(t *testing.T) {
 	base := func() *ProtocolConfig {
 		return &ProtocolConfig{
-			BSCIHost:                    "bssci.mioty.local",
-			BSCIPort:                    5000,
-			BSCITLS:                     TLSConfig{Enabled: true},
-			AckTimeout:                  DefaultProtocolAckTimeout,
-			DuplicateWindow:             DefaultProtocolDuplicateWindow,
-			BSCICertificatePollInterval: DefaultProtocolCertificatePollInterval,
+			BSCIHost:                       "bssci.mioty.local",
+			BSCIPort:                       5000,
+			BSCITLS:                        TLSConfig{Enabled: true},
+			AckTimeout:                     DefaultProtocolAckTimeout,
+			ConnectionEstablishmentTimeout: DefaultProtocolConnectionEstablishmentTimeout,
+			DuplicateWindow:                DefaultProtocolDuplicateWindow,
+			BSCICertificatePollInterval:    DefaultProtocolCertificatePollInterval,
 		}
 	}
 
@@ -366,6 +368,12 @@ func TestValidateServiceCenterConfig_TimingBounds(t *testing.T) {
 	zeroAck.AckTimeout = 0
 	if err := ValidateServiceCenterConfig(zeroAck); err == nil {
 		t.Error("zero ack_timeout must fail validation")
+	}
+
+	zeroEstablish := base()
+	zeroEstablish.ConnectionEstablishmentTimeout = 0
+	if err := ValidateServiceCenterConfig(zeroEstablish); err == nil {
+		t.Error("zero connection_establishment_timeout must fail validation")
 	}
 
 	negativeWindow := base()

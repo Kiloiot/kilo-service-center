@@ -38,14 +38,16 @@ func createTestServerWithSessions(t *testing.T, sessions []*Session) *Server {
 // where a session is found with correct handshake and bidirectional state
 func TestFindSessionForEndpointAttachment_Success(t *testing.T) {
 	session := &Session{
-		ID:                "test-session-ready",
-		BaseStationEUI:    TestBsEui04,
-		HandshakeComplete: true,
-		Bidirectional:     true,
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
-		ClientVersion:     "1.0.0",
-		NegotiatedVersion: "1.0.0",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-session-ready",
+			BaseStationEUI:    TestBsEui04,
+			HandshakeComplete: true,
+			ClientVersion:     "1.0.0",
+			NegotiatedVersion: "1.0.0",
+		},
+		Bidirectional: true,
+		Connected:     time.Now(),
+		LastSeen:      time.Now(),
 	}
 
 	server := createTestServerWithSessions(t, []*Session{session})
@@ -75,12 +77,15 @@ func TestFindSessionForEndpointAttachment_SessionNotFound(t *testing.T) {
 // when session exists but doesn't support bidirectional operations
 func TestFindSessionForEndpointAttachment_NotBidirectional(t *testing.T) {
 	session := &Session{
-		ID:                "unidirectional-session",
-		BaseStationEUI:    TestBsEui02,
-		HandshakeComplete: true,
-		Bidirectional:     false, // Not bidirectional
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "unidirectional-session",
+			BaseStationEUI:    TestBsEui02,
+			HandshakeComplete: true,
+		},
+		Bidirectional: false,
+		// Not bidirectional
+		Connected: time.Now(),
+		LastSeen:  time.Now(),
 	}
 
 	server := createTestServerWithSessions(t, []*Session{session})
@@ -97,12 +102,15 @@ func TestFindSessionForEndpointAttachment_NotBidirectional(t *testing.T) {
 // when session exists but handshake hasn't completed (BSSCI §3.3)
 func TestFindSessionForEndpointAttachment_HandshakeIncomplete(t *testing.T) {
 	session := &Session{
-		ID:                "incomplete-handshake",
-		BaseStationEUI:    TestEpEui01,
-		HandshakeComplete: false, // Handshake not complete
-		Bidirectional:     true,
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "incomplete-handshake",
+			BaseStationEUI:    TestEpEui01,
+			HandshakeComplete: false,
+		},
+		// Handshake not complete
+		Bidirectional: true,
+		Connected:     time.Now(),
+		LastSeen:      time.Now(),
 	}
 
 	server := createTestServerWithSessions(t, []*Session{session})
@@ -136,12 +144,14 @@ func TestFindSessionForEndpointAttachment_ErrorSentinels(t *testing.T) {
 		{
 			name: "SessionNotReady sentinel",
 			session: &Session{
-				ID:                "not-ready",
-				BaseStationEUI:    TestBsEuiMulti01,
-				HandshakeComplete: false,
-				Bidirectional:     true,
-				Connected:         time.Now(),
-				LastSeen:          time.Now(),
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "not-ready",
+					BaseStationEUI:    TestBsEuiMulti01,
+					HandshakeComplete: false,
+				},
+				Bidirectional: true,
+				Connected:     time.Now(),
+				LastSeen:      time.Now(),
 			},
 			bsEui:             TestBsEuiMulti01,
 			expectedSentinel:  ErrSessionNotReady,
@@ -150,12 +160,14 @@ func TestFindSessionForEndpointAttachment_ErrorSentinels(t *testing.T) {
 		{
 			name: "SessionNotBidirectional sentinel",
 			session: &Session{
-				ID:                "not-bidi",
-				BaseStationEUI:    TestBsEuiMulti02,
-				HandshakeComplete: true,
-				Bidirectional:     false,
-				Connected:         time.Now(),
-				LastSeen:          time.Now(),
+				ProtocolSessionState: ProtocolSessionState{
+					ID:                "not-bidi",
+					BaseStationEUI:    TestBsEuiMulti02,
+					HandshakeComplete: true,
+				},
+				Bidirectional: false,
+				Connected:     time.Now(),
+				LastSeen:      time.Now(),
 			},
 			bsEui:             TestBsEuiMulti02,
 			expectedSentinel:  ErrSessionNotBidirectional,
@@ -188,28 +200,34 @@ func TestFindSessionForEndpointAttachment_ErrorSentinels(t *testing.T) {
 func TestFindSessionForEndpointAttachment_MultipleSessionsPicksCorrect(t *testing.T) {
 	sessions := []*Session{
 		{
-			ID:                "session-1",
-			BaseStationEUI:    TestBsEuiMulti01,
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "session-1",
+				BaseStationEUI:    TestBsEuiMulti01,
+				HandshakeComplete: true,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 		{
-			ID:                "session-2-target",
-			BaseStationEUI:    TestBsEuiMulti02,
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "session-2-target",
+				BaseStationEUI:    TestBsEuiMulti02,
+				HandshakeComplete: true,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 		{
-			ID:                "session-3",
-			BaseStationEUI:    TestBsEuiMulti03,
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "session-3",
+				BaseStationEUI:    TestBsEuiMulti03,
+				HandshakeComplete: true,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 	}
 
@@ -235,31 +253,37 @@ func TestSelectBidirectionalSession_DeterministicFallback(t *testing.T) {
 	// The session with lowest EUI (0x0001) should always be selected
 	sessions := []*Session{
 		{
-			ID:                "session-high",
-			BaseStationEUI:    0x0000000000009999, // High EUI
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			ResolvedTenantID:  tenantID,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "session-high",
+				BaseStationEUI:    0x0000000000009999,
+				HandshakeComplete: true,
+				ResolvedTenantID:  tenantID,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 		{
-			ID:                "session-lowest",
-			BaseStationEUI:    0x0000000000000001, // Lowest EUI - should be selected
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			ResolvedTenantID:  tenantID,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "session-lowest",
+				BaseStationEUI:    0x0000000000000001,
+				HandshakeComplete: true,
+				ResolvedTenantID:  tenantID,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 		{
-			ID:                "session-mid",
-			BaseStationEUI:    0x0000000000005555, // Mid EUI
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			ResolvedTenantID:  tenantID,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "session-mid",
+				BaseStationEUI:    0x0000000000005555,
+				HandshakeComplete: true,
+				ResolvedTenantID:  tenantID,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 	}
 
@@ -286,31 +310,37 @@ func TestSelectBidirectionalSession_DeterministicFallback_TenantIsolation(t *tes
 
 	sessions := []*Session{
 		{
-			ID:                "tenant2-lowest",
-			BaseStationEUI:    0x0000000000000001, // Lowest overall, but wrong tenant
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			ResolvedTenantID:  tenant2,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "tenant2-lowest",
+				BaseStationEUI:    0x0000000000000001, // Lowest overall, but wrong tenant
+				HandshakeComplete: true,
+				ResolvedTenantID:  tenant2,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 		{
-			ID:                "tenant1-lowest",
-			BaseStationEUI:    0x0000000000000100, // Lowest for tenant1
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			ResolvedTenantID:  tenant1,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "tenant1-lowest",
+				BaseStationEUI:    0x0000000000000100,
+				HandshakeComplete: true,
+				ResolvedTenantID:  tenant1,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 		{
-			ID:                "tenant1-higher",
-			BaseStationEUI:    0x0000000000000200, // Higher for tenant1
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			ResolvedTenantID:  tenant1,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "tenant1-higher",
+				BaseStationEUI:    0x0000000000000200,
+				HandshakeComplete: true,
+				ResolvedTenantID:  tenant1,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 	}
 
@@ -334,22 +364,26 @@ func TestSelectBidirectionalSession_SpecificBsEui(t *testing.T) {
 
 	sessions := []*Session{
 		{
-			ID:                "session-lowest",
-			BaseStationEUI:    0x0000000000000001, // Lowest EUI
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			ResolvedTenantID:  tenantID,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "session-lowest",
+				BaseStationEUI:    0x0000000000000001,
+				HandshakeComplete: true,
+				ResolvedTenantID:  tenantID,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 		{
-			ID:                "session-target",
-			BaseStationEUI:    targetEui, // Requested target
-			HandshakeComplete: true,
-			Bidirectional:     true,
-			ResolvedTenantID:  tenantID,
-			Connected:         time.Now(),
-			LastSeen:          time.Now(),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:                "session-target",
+				BaseStationEUI:    targetEui,
+				HandshakeComplete: true,
+				ResolvedTenantID:  tenantID,
+			},
+			Bidirectional: true,
+			Connected:     time.Now(),
+			LastSeen:      time.Now(),
 		},
 	}
 

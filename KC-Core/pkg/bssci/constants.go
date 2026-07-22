@@ -24,6 +24,9 @@ const (
 	// defaultOperationAckTimeout bounds handshake waits (conCmp/errorAck after conRsp or a connect-stage error)
 	defaultOperationAckTimeout = 30 * time.Second
 
+	// defaultConnectionEstablishmentTimeout bounds a fresh connection before its con arrives
+	defaultConnectionEstablishmentTimeout = 30 * time.Second
+
 	// defaultDuplicateWindow is the uplink deduplication window per MIOTY spec
 	defaultDuplicateWindow = 5 * time.Minute
 

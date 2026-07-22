@@ -101,14 +101,16 @@ func TestAttachReplayProtection_RejectReplay(t *testing.T) {
 	// Create TestConn and session
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
-		ID:                "test-session-replay",
-		BaseStationEUI:    TestBsEui01,
-		ResolvedTenantID:  1,
-		DbSessionID:       1,
-		Encoding:          EncodingJSON,
-		Conn:              testConn,
-		SessionUUID:       uuidBytes(),
-		HandshakeComplete: true,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-session-replay",
+			BaseStationEUI:    TestBsEui01,
+			ResolvedTenantID:  1,
+			DbSessionID:       1,
+			Encoding:          EncodingJSON,
+			SessionUUID:       uuidBytes(),
+			HandshakeComplete: true,
+		},
+		Conn: testConn,
 	}
 
 	const opID = int64(1)
@@ -219,14 +221,16 @@ func TestAttachReplayProtection_RejectLowerCounter(t *testing.T) {
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
-		ID:                "test-session-lower",
-		BaseStationEUI:    TestBsEui01,
-		ResolvedTenantID:  1,
-		DbSessionID:       1,
-		Encoding:          EncodingJSON,
-		Conn:              testConn,
-		SessionUUID:       uuidBytes(),
-		HandshakeComplete: true,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-session-lower",
+			BaseStationEUI:    TestBsEui01,
+			ResolvedTenantID:  1,
+			DbSessionID:       1,
+			Encoding:          EncodingJSON,
+			SessionUUID:       uuidBytes(),
+			HandshakeComplete: true,
+		},
+		Conn: testConn,
 	}
 
 	signFloats := make([]interface{}, 4)
@@ -315,14 +319,16 @@ func TestAttachReplayProtection_RolloverEdgeCase(t *testing.T) {
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
-		ID:                "test-session-rollover",
-		BaseStationEUI:    TestBsEui01,
-		ResolvedTenantID:  1,
-		DbSessionID:       1,
-		Encoding:          EncodingJSON,
-		Conn:              testConn,
-		SessionUUID:       uuidBytes(),
-		HandshakeComplete: true,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-session-rollover",
+			BaseStationEUI:    TestBsEui01,
+			ResolvedTenantID:  1,
+			DbSessionID:       1,
+			Encoding:          EncodingJSON,
+			SessionUUID:       uuidBytes(),
+			HandshakeComplete: true,
+		},
+		Conn: testConn,
 	}
 
 	signFloats := make([]interface{}, 4)
@@ -406,14 +412,16 @@ func TestAttachReplayProtection_FirstAttachNilCounter(t *testing.T) {
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
-		ID:                "test-session-first",
-		BaseStationEUI:    TestBsEui01,
-		ResolvedTenantID:  1,
-		DbSessionID:       1,
-		Encoding:          EncodingJSON,
-		Conn:              testConn,
-		SessionUUID:       uuidBytes(),
-		HandshakeComplete: true,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-session-first",
+			BaseStationEUI:    TestBsEui01,
+			ResolvedTenantID:  1,
+			DbSessionID:       1,
+			Encoding:          EncodingJSON,
+			SessionUUID:       uuidBytes(),
+			HandshakeComplete: true,
+		},
+		Conn: testConn,
 	}
 
 	signFloats := make([]interface{}, 4)

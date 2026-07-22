@@ -66,9 +66,11 @@ func TestVMPrefixGuardAllowsRegisteredHandlers(t *testing.T) {
 			// Create test connection
 			conn := &testConn{}
 			session := &Session{
-				HandshakeComplete: true,
-				Conn:              conn,
-				Encoding:          EncodingJSON,
+				ProtocolSessionState: ProtocolSessionState{
+					HandshakeComplete: true,
+					Encoding:          EncodingJSON,
+				},
+				Conn: conn,
 			}
 
 			// Register handler that flips boolean
