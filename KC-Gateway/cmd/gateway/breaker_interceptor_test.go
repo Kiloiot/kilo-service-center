@@ -159,6 +159,67 @@ func TestBreakerStream_HalfOpenRejectsStreams(t *testing.T) {
 		"streams must be admitted again once the probes closed the breaker")
 }
 
+// TestBreakerStream_OldStreamCannotAlterHalfOpenRecovery: a stream admitted
+// while the breaker was closed but finishing during half-open must not
+// consume a probe slot or flip the breaker - recovery belongs exclusively to
+// the slot-accounted unary probes.
+func TestBreakerStream_OldStreamCannotAlterHalfOpenRecovery(t *testing.T) {
+	cfg := config.GatewayResilienceConfig{
+		CBMaxRequests:      2,
+		CBInterval:         time.Minute,
+		CBTimeout:          50 * time.Millisecond,
+		CBFailureThreshold: 1,
+	}
+	core := resilience.NewUpstreamBreaker("core", cfg)
+	identity := resilience.NewUpstreamBreaker("identity", cfg)
+	interceptor := breakerStreamInterceptor(core, identity, 0)
+
+	// Old stream admitted while closed; its handler blocks until released.
+	// The handler signals admission so the breaker is guaranteed to trip
+	// only after the old stream is already running.
+	release := make(chan error)
+	admitted := make(chan struct{})
+	oldStreamDone := make(chan error, 1)
+	go func() {
+		oldStreamDone <- interceptor(nil, &fakeServerStream{ctx: testutil.TestContext()}, streamInfo("/x/Stream"),
+			func(_ interface{}, _ grpc.ServerStream) error {
+				close(admitted)
+				return <-release
+			})
+	}()
+	<-admitted
+
+	// Trip the breaker through another stream, then advance to half-open.
+	_ = interceptor(nil, &fakeServerStream{ctx: testutil.TestContext()}, streamInfo("/x/Stream"),
+		func(_ interface{}, _ grpc.ServerStream) error {
+			return status.Error(codes.Unavailable, "upstream gone")
+		})
+	require.Equal(t, resilience.BreakerOpen, core.State())
+	time.Sleep(60 * time.Millisecond)
+	require.Equal(t, resilience.BreakerHalfOpen, core.State())
+
+	// The old stream finishes - successfully and then (via a second run)
+	// with an error; neither may move the breaker out of half-open.
+	release <- nil
+	require.NoError(t, <-oldStreamDone)
+	assert.Equal(t, resilience.BreakerHalfOpen, core.State(),
+		"an old stream's success must not close a half-open breaker")
+
+	core.RecordResult(status.Error(codes.Unavailable, "late stream failure"))
+	assert.Equal(t, resilience.BreakerHalfOpen, core.State(),
+		"an old stream's failure must not reopen a half-open breaker")
+
+	// The unary probes alone complete recovery.
+	unary := "/kilocenter.api.v1.KiloCenterService/ListEndPoints"
+	require.True(t, unaryMethods[unary])
+	ok := func(_ interface{}, _ grpc.ServerStream) error { return nil }
+	for i := 0; i < int(cfg.CBMaxRequests); i++ {
+		require.NoError(t, interceptor(nil, &fakeServerStream{ctx: testutil.TestContext()}, streamInfo(unary), ok))
+	}
+	assert.Equal(t, resilience.BreakerClosed, core.State(),
+		"recovery is decided by the unary probes")
+}
+
 // TestBreakerStream_SuccessfulStreamRecordsSuccess: clean stream completion
 // resets the consecutive-failure count.
 func TestBreakerStream_SuccessfulStreamRecordsSuccess(t *testing.T) {
