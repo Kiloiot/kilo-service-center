@@ -109,7 +109,8 @@ func TestPersistAttachSession_CreatesSessionAndCommits(t *testing.T) {
 }
 
 // TestPersistAttachSession_UpdateFailureRollsBack: an endpoint update failure
-// rolls the transaction back and propagates the raw error.
+// rolls the transaction back; the wrapped error keeps the cause matchable
+// via errors.Is.
 func TestPersistAttachSession_UpdateFailureRollsBack(t *testing.T) {
 	st, tx := newPersistFixture()
 	updateErr := errors.New("update failed")
