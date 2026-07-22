@@ -7,6 +7,13 @@ const (
 	// ErrConfigUnmarshalFmt formats config unmarshal errors.
 	ErrConfigUnmarshalFmt = "error unmarshaling config: %w"
 
+	// ErrSCEUIInvalidFmt formats Service Center EUI parse failures with the offending source.
+	ErrSCEUIInvalidFmt = "invalid Service Center EUI from %s: %w"
+
+	// LogDeprecatedServiceCenterEUIEnv warns that the legacy SERVICE_CENTER_EUI variable supplied
+	// the Service Center EUI. Emitted by the consumer because config loading has no logger.
+	LogDeprecatedServiceCenterEUIEnv = "SERVICE_CENTER_EUI is deprecated; set KILOCENTER_PROTOCOL_SC_EUI or protocol.sc_eui instead"
+
 	// ErrServerNameRequired indicates server_name is missing.
 	ErrServerNameRequired = "server name is required"
 	// ErrUnsupportedStorageTypeFmt formats unsupported storage type errors.

@@ -1725,6 +1725,9 @@ export class BaseStationStatusRequest extends jspb.Message {
   getBsEui(): number;
   setBsEui(value: number): void;
 
+  getBsEuiHex(): string;
+  setBsEuiHex(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): BaseStationStatusRequest.AsObject;
   static toObject(includeInstance: boolean, msg: BaseStationStatusRequest): BaseStationStatusRequest.AsObject;
@@ -1738,6 +1741,7 @@ export class BaseStationStatusRequest extends jspb.Message {
 export namespace BaseStationStatusRequest {
   export type AsObject = {
     bsEui: number,
+    bsEuiHex: string,
   }
 }
 
@@ -1773,6 +1777,9 @@ export class InitiatePingRequest extends jspb.Message {
   getBsEui(): number;
   setBsEui(value: number): void;
 
+  getBsEuiHex(): string;
+  setBsEuiHex(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): InitiatePingRequest.AsObject;
   static toObject(includeInstance: boolean, msg: InitiatePingRequest): InitiatePingRequest.AsObject;
@@ -1786,6 +1793,7 @@ export class InitiatePingRequest extends jspb.Message {
 export namespace InitiatePingRequest {
   export type AsObject = {
     bsEui: number,
+    bsEuiHex: string,
   }
 }
 

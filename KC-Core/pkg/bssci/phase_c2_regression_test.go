@@ -490,7 +490,7 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 		},
 	}
 
-	err := server.validateOutboundMessage(session, invalidMsg)
+	err := server.validateOutboundMessage(session, invalidMsg.Data.(map[string]interface{}))
 	if err == nil {
 		t.Error("Expected validation error for missing command field")
 	}
@@ -519,7 +519,7 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 		},
 	}
 
-	err = server2.validateOutboundMessage(session, validMsg.Data)
+	err = server2.validateOutboundMessage(session, validMsg.Data.(map[string]interface{}))
 	if err != nil {
 		t.Errorf("Valid message should not fail validation: %v", err)
 	}

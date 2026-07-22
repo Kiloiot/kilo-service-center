@@ -45,6 +45,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// gatewayServiceName identifies KC-Gateway as the source of health and system events.
+const gatewayServiceName = "kc-gateway"
+
 // unaryMethods enumerates all unary RPCs from service descriptors.
 // Used to apply per-RPC timeout only to unary calls (not streams).
 var unaryMethods = func() map[string]bool {
@@ -134,7 +137,7 @@ func main() {
 		Enabled:    cfg.Monitoring.TracingEnabled,
 		Endpoint:   cfg.Monitoring.TracingEndpoint,
 		SampleRate: cfg.Monitoring.TracingSampleRate,
-	}, "kc-gateway")
+	}, gatewayServiceName)
 	if err != nil {
 		l.Error("Failed to init tracing", "error", err)
 	} else {
@@ -145,7 +148,7 @@ func main() {
 		Enabled: cfg.Monitoring.MetricsEnabled,
 		Port:    cfg.Monitoring.MetricsPort,
 		Path:    cfg.Monitoring.MetricsPath,
-	}, "kc-gateway")
+	}, gatewayServiceName)
 	if err != nil {
 		l.Error("Failed to init metrics", "error", err)
 	} else {
@@ -479,7 +482,7 @@ func main() {
 	hostname, _ := os.Hostname()
 	{
 		details, _ := json.Marshal(map[string]interface{}{
-			"service": "kc-gateway",
+			"service": gatewayServiceName,
 			"host":    hostname,
 			"ports":   map[string]int{"grpc-web": cfg.GRPC.Port, "health": cfg.Gateway.HealthPort},
 		})
@@ -491,7 +494,7 @@ func main() {
 			Title:       fmt.Sprintf(models.EventTitleServiceStartedFmt, "KC-Gateway", hostname),
 			Description: fmt.Sprintf(models.EventDescriptionServiceStartedFmt, "KC-Gateway", "1.0.0", fmt.Sprintf("gRPC-web :%d, Health :%d", cfg.GRPC.Port, cfg.Gateway.HealthPort)),
 			SourceType:  models.SourceTypeSystem,
-			SourceName:  "kc-gateway",
+			SourceName:  gatewayServiceName,
 			Details:     details,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
@@ -513,7 +516,7 @@ func main() {
 			Title:       fmt.Sprintf(models.EventTitleServiceStoppedFmt, "KC-Gateway", hostname),
 			Description: fmt.Sprintf(models.EventDescriptionServiceStoppedFmt, "KC-Gateway", "1.0.0"),
 			SourceType:  models.SourceTypeSystem,
-			SourceName:  "kc-gateway",
+			SourceName:  gatewayServiceName,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		})

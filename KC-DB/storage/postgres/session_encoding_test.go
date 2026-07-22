@@ -294,7 +294,7 @@ func TestUpdateEncoding_PersistsChange(t *testing.T) {
 	assert.Equal(t, bssci.EncodingMessagePack, session.Encoding)
 
 	// Update encoding to JSON
-	err = repo.UpdateEncoding(ctx, session.ID, bssci.EncodingJSON)
+	err = repo.UpdateEncoding(ctx, session.TenantID, session.ID, bssci.EncodingJSON)
 	require.NoError(t, err)
 
 	// Verify update was persisted

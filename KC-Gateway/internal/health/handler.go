@@ -13,6 +13,9 @@ import (
 	"google.golang.org/grpc/connectivity"
 )
 
+// statusHealthy is the health endpoint status value for a passing check.
+const statusHealthy = "healthy"
+
 // Handler provides gateway health check endpoints.
 type Handler struct {
 	core            *grpc.ClientConn
@@ -44,7 +47,7 @@ func checkConn(conn *grpc.ClientConn) (string, bool) {
 // ServeHealth handles the /health endpoint with upstream and breaker state.
 func (h *Handler) ServeHealth(w http.ResponseWriter, _ *http.Request) {
 	resp := map[string]interface{}{
-		"status":    "healthy",
+		"status":    statusHealthy,
 		"service":   "kc-gateway",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
@@ -97,7 +100,7 @@ func (h *Handler) ServeReady(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if ready {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"healthy"}`))
+		_, _ = w.Write([]byte(`{"status":"` + statusHealthy + `"}`))
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"status":"unhealthy"}`))
@@ -115,7 +118,7 @@ func ServeLive(w http.ResponseWriter, _ *http.Request) {
 func ServePing(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"healthy"}`))
+	_, _ = w.Write([]byte(`{"status":"` + statusHealthy + `"}`))
 }
 
 // StartHealthServer starts the HTTP health endpoint with all standard paths.
@@ -134,6 +137,7 @@ func StartHealthServer(ctx context.Context, port int, core, identity *grpc.Clien
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	//nolint:gosec // G118: shutdown deliberately uses a fresh context - the parent is already done
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

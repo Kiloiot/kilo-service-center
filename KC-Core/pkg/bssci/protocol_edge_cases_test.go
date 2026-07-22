@@ -3,6 +3,7 @@ package bssci_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -125,9 +126,81 @@ func TestBSSCI_2_4_01_forward_compat_extra_fields(t *testing.T) {
 	}
 }
 
-// TestBSSCI_2_4_02_optional_fields_default verifies optional fields get defaults
-// per BSSCI §2.4-02 (optional fields must have sensible defaults)
-func TestBSSCI_2_4_02_optional_fields_default(t *testing.T) {
+// TestBSSCI_5_3_2_minor_version_negotiated_down verifies conRsp version
+// arbitration (rev1 §4.2, §5.3.2): a base station requesting a newer minor
+// version is answered with the service center's selected version and the
+// session continues.
+func TestBSSCI_5_3_2_minor_version_negotiated_down(t *testing.T) {
+	for _, encoding := range []string{"json", "msgpack"} {
+		t.Run(encoding, func(t *testing.T) {
+			testLogger := logger.NewNop()
+			mockConn := &edgeMockConn{encoding: encoding}
+			mockConn.Reset()
+
+			sessionSvc, downlinkSvc, statusSvc, _, broadcaster,
+				queueSerializer, auditLogger, tenantResolver, mockStorage :=
+				bssci.CreateTestServices(testLogger, nil)
+
+			server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
+				sessionSvc, downlinkSvc, statusSvc, &mockConnectionService{tenantID: 1}, broadcaster,
+				queueSerializer, auditLogger, tenantResolver)
+
+			config := &bssci.Config{
+				ServiceCenterEUI: bssci.TestScEui01,
+				Vendor:           "test-vendor",
+				Model:            "test-model",
+				Name:             "test-sc",
+				SoftwareVersion:  "1.0.0",
+			}
+			server.SetConfig(config)
+			server.SetConnectionManager(nil)
+
+			session := &bssci.Session{
+				ID:       "test-session-negotiate-down",
+				Conn:     mockConn,
+				Encoding: encoding,
+			}
+
+			requestedMajor, requestedMinor, _, cerr := bssci.ParseVersion(mioty.MIOTYProtocolVersion)
+			require.Nil(t, cerr)
+			requested := fmt.Sprintf("%d.%d.%d", requestedMajor, requestedMinor+1, 0)
+
+			data := map[string]interface{}{
+				"version": requested,
+				"bsEui":   bssci.TestBsEui01,
+				"bidi":    true,
+			}
+
+			msg := &bssci.Message{
+				Command: "con",
+				OpId:    0,
+				Data:    data,
+			}
+
+			require.NoError(t, server.CallHandleConnect(session, msg, data),
+				"Newer-minor connect must negotiate down, not fail")
+
+			assert.Equal(t, requested, session.ClientVersion,
+				"Raw base station version must be kept for audit")
+			assert.Equal(t, mioty.MIOTYProtocolVersion, session.NegotiatedVersion,
+				"Negotiated version must be the service center's selected version")
+
+			var conRsp map[string]interface{}
+			for _, sentMsg := range mockConn.sentMessages {
+				if cmd, ok := sentMsg["command"].(string); ok && cmd == mioty.CmdConnectResponse {
+					conRsp = sentMsg
+				}
+			}
+			require.NotNil(t, conRsp, "conRsp must be sent for a negotiated connect")
+			assert.Equal(t, mioty.MIOTYProtocolVersion, conRsp["version"],
+				"conRsp must carry the selected version per §5.3.2")
+		})
+	}
+}
+
+// TestBSSCI_5_3_1_missing_version_rejected verifies the mandatory connect
+// version field is enforced (rev1 §5.3.1)
+func TestBSSCI_5_3_1_missing_version_rejected(t *testing.T) {
 	for _, encoding := range []string{"json", "msgpack"} {
 		t.Run(encoding, func(t *testing.T) {
 			testLogger := logger.NewNop()
@@ -158,7 +231,8 @@ func TestBSSCI_2_4_02_optional_fields_default(t *testing.T) {
 				Encoding: encoding,
 			}
 
-			// Connect without optional version field
+			// Connect without the mandatory version field (rev1 §5.3.1;
+			// message metadata declares version Required)
 			data := map[string]interface{}{
 				"bsEui": bssci.TestBsEui01,
 				"bidi":  true,
@@ -170,21 +244,24 @@ func TestBSSCI_2_4_02_optional_fields_default(t *testing.T) {
 				Data:    data,
 			}
 
-			_ = server.CallHandleConnect(session, msg, data)
+			err := server.CallHandleConnect(session, msg, data)
+			require.NoError(t, err,
+				"Rejected connect awaits errorAck instead of closing (§5.17)")
+			assert.Equal(t, bssci.ConnectStateAwaitingConnectErrorAck, session.ConnectState,
+				"Rejected connect must await the base station's errorAck")
 
-			// VERIFY DEFAULT WAS APPLIED (not just absence of error)
-			assert.Equal(t, mioty.MIOTYProtocolVersion, session.NegotiatedVersion,
-				"Server must populate default version per §2.4-02")
+			// No version may be negotiated for a rejected connect
+			assert.Empty(t, session.NegotiatedVersion,
+				"Rejected connect must not populate a negotiated version")
 
-			// Should not send error about missing version
+			// An error frame must be sent to the base station
+			sawError := false
 			for _, sentMsg := range mockConn.sentMessages {
 				if cmd, ok := sentMsg["command"].(string); ok && cmd == "error" {
-					if errMsg, hasMsg := sentMsg["message"].(string); hasMsg {
-						assert.NotContains(t, errMsg, "version",
-							"Optional version should default per §2.4-02")
-					}
+					sawError = true
 				}
 			}
+			assert.True(t, sawError, "Missing mandatory version must produce an error frame")
 		})
 	}
 }
@@ -524,12 +601,12 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 func TestConConditionalRules(t *testing.T) {
 	testLogger := logger.NewNop()
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
+	sessionSvc, downlinkSvc, statusSvc, _, broadcaster,
 		queueSerializer, auditLogger, tenantResolver, mockStorage :=
 		bssci.CreateTestServices(testLogger, nil)
 
 	server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
+		sessionSvc, downlinkSvc, statusSvc, &mockConnectionService{tenantID: 1}, broadcaster,
 		queueSerializer, auditLogger, tenantResolver)
 	server.SetConfig(&bssci.Config{
 		ServiceCenterEUI: bssci.TestScEui01,
@@ -538,6 +615,7 @@ func TestConConditionalRules(t *testing.T) {
 		Name:             "TestSC",
 		SoftwareVersion:  "1.0.0",
 	})
+	server.SetConnectionManager(nil)
 
 	t.Run("NewConnect_NoResumeFields_Success", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}

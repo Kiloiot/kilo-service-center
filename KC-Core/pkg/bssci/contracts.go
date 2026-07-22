@@ -11,17 +11,23 @@ import (
 	"github.com/google/uuid"
 )
 
+// VersionNegotiator selects the BSSCI protocol version for a connection per
+// rev1 §4.1-§4.3 and the §5.3.2 conRsp arbitration rule: the base station
+// requests its newest supported version; the service center answers with the
+// version it will speak (always an exact member of its supported set), and the
+// base station agrees by completing the operation or rejects it with an error.
+type VersionNegotiator interface {
+	Negotiate(ctx context.Context, requested string) (selected string, err error)
+}
+
 // SessionService handles connect/resume with REAL persistence (server.go:611-1004)
 // Preserves: sessionsByUUID map, DbSessionId, HandshakeComplete, DB persistence
 type SessionService interface {
-	// ValidateVersion checks string version (server.go:622-637)
-	ValidateVersion(version string) error
-
-	// HandleResume checks sessionsByUUID, validates counters (server.go:667-746)
-	// Preserves exact resume logic including scUUIDToMatch handling
-	// Returns existing session if resume valid, nil otherwise
-	// Session parameter provides tenant context via session.ResolvedTenantID for DB queries
-	HandleResume(session *Session, bsUUID []byte, scUUIDToMatch []byte, bsOpId, scOpId int64, bsEUI uint64) (*Session, error)
+	// HandleResume validates a session resume request (BSSCI §5.3.1): resume
+	// identity is snBsUuid scoped by tenant and base station EUI. The optional
+	// snBsOpId/snScOpId constraints are pointers - absent means the constraint
+	// is not asserted. Returns the resumable session or nil for a fresh start.
+	HandleResume(ctx context.Context, session *Session, bsUUID []byte, bsOpId, scOpId *int64, bsEUI uint64) (*Session, error)
 
 	// PersistSession writes to basestation_sessions table (server.go:852-950)
 	// Uses real *sql.DB, updates DbSessionId, handles resume UPDATE vs new INSERT
@@ -42,8 +48,13 @@ type SessionService interface {
 	TerminateSession(ctx context.Context, session *Session) error
 
 	// UpdateEncoding persists negotiated message encoding to database (BSSCI Section 1)
-	// Called when encoding is detected on first message
-	UpdateEncoding(ctx context.Context, sessionID int64, encoding string) error
+	// Called when encoding is detected on first message; tenant-scoped
+	UpdateEncoding(ctx context.Context, tenantID, sessionID int64, encoding string) error
+
+	// MarkDisconnected marks an active session disconnected and resumable
+	// after unexpected connection loss, guarded by the session's connection
+	// ID so a newer connection is never marked offline by stale cleanup
+	MarkDisconnected(ctx context.Context, session *Session) error
 
 	// UpdateSessionCounters persists operation ID counters to database (BSSCI §5.2)
 	// Called immediately after successful SC-initiated operations.

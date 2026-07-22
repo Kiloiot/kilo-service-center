@@ -108,9 +108,7 @@ function applyEndpointAddressChanges(
   }
   if (form.carrierOffset !== original.carrierOffset) {
     changes.carrierOffset =
-      form.carrierOffset !== ""
-        ? parseInt(form.carrierOffset, 10)
-        : undefined;
+      form.carrierOffset !== "" ? parseInt(form.carrierOffset, 10) : undefined;
   }
 }
 

@@ -22,6 +22,14 @@ import (
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
+// Integration audit event detail keys.
+const (
+	integrationDetailKeyID     = "integrationId"
+	integrationDetailKeyName   = "name"
+	integrationDetailKeyType   = "type"
+	integrationDetailKeyStatus = "status"
+)
+
 // CreateIntegration creates a new integration.
 func (s *CoreService) CreateIntegration(ctx context.Context, req *pb.CreateIntegrationRequest) (*pb.Integration, error) {
 	if s.integrationSvc == nil {
@@ -91,11 +99,11 @@ func (s *CoreService) CreateIntegration(ctx context.Context, req *pb.CreateInteg
 	if s.eventWriter != nil {
 		sourceID := orgID
 		detailsJSON, _ := json.Marshal(map[string]interface{}{
-			"integrationId": integration.ID,
-			"name":          req.Name,
-			"type":          req.Type,
-			"status":        integration.Status,
-			"orgId":         orgID.String(),
+			integrationDetailKeyID:     integration.ID,
+			integrationDetailKeyName:   req.Name,
+			integrationDetailKeyType:   req.Type,
+			integrationDetailKeyStatus: integration.Status,
+			"orgId":                    orgID.String(),
 		})
 		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 			TenantID:    strconv.FormatInt(tenantID, 10),
@@ -211,10 +219,10 @@ func (s *CoreService) UpdateIntegration(ctx context.Context, req *pb.UpdateInteg
 	// Emit audit event for integration update.
 	if s.eventWriter != nil {
 		detailsMap := map[string]interface{}{
-			"integrationId": integration.ID,
-			"name":          integration.Name,
-			"type":          integration.Type,
-			"status":        integration.Status,
+			integrationDetailKeyID:     integration.ID,
+			integrationDetailKeyName:   integration.Name,
+			integrationDetailKeyType:   integration.Type,
+			integrationDetailKeyStatus: integration.Status,
 		}
 		evt := &models.SystemEvent{
 			TenantID:    strconv.FormatInt(tenantID, 10),
@@ -281,9 +289,9 @@ func (s *CoreService) DeleteIntegration(ctx context.Context, req *pb.DeleteInteg
 			sourceName = strconv.FormatInt(req.Id, 10)
 		}
 		detailsMap := map[string]interface{}{
-			"integrationId": req.Id,
-			"type":          integrationType,
-			"status":        integrationStatus,
+			integrationDetailKeyID:     req.Id,
+			integrationDetailKeyType:   integrationType,
+			integrationDetailKeyStatus: integrationStatus,
 		}
 		evt := &models.SystemEvent{
 			TenantID:    strconv.FormatInt(tenantID, 10),

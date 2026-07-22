@@ -3,6 +3,7 @@ package postgres
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -161,7 +162,8 @@ func TestSchemaBaseline(t *testing.T) {
 		output.WriteString("\n")
 	}
 
-	// Write to file
+	// Write to file (the evidence directory is not tracked in every checkout)
+	require.NoError(t, os.MkdirAll(filepath.Dir(outputFile), 0o755))
 	err = os.WriteFile(outputFile, []byte(output.String()), 0644)
 	require.NoError(t, err)
 

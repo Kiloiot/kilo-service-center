@@ -361,11 +361,13 @@ const (
 	ErrTokenGetBaseStationAvailabilityFailed     = "KC-GRPC-ERR-09F"
 	ErrTokenGetBaseStationMessagesReceivedFailed = "KC-GRPC-ERR-0A0"
 	ErrTokenInvalidMetricsRequest                = "KC-GRPC-ERR-0A1"
-	ErrTokenTenantAccessDenied                   = "KC-GRPC-ERR-09A"
-	ErrTokenBaseStationEUIExists                 = "KC-GRPC-ERR-09B"
-	ErrTokenUpdateBaseStationEUIFailed           = "KC-GRPC-ERR-09C"
-	ErrTokenNewBaseStationEUIRequired            = "KC-GRPC-ERR-09D"
-	ErrTokenLatLonPairRequired                   = "KC-GRPC-ERR-09E"
+	// Conflicting bs_eui and bs_eui_hex values in the same request.
+	ErrTokenBaseStationEUIMismatch     = "KC-GRPC-ERR-0A2"
+	ErrTokenTenantAccessDenied         = "KC-GRPC-ERR-09A"
+	ErrTokenBaseStationEUIExists       = "KC-GRPC-ERR-09B"
+	ErrTokenUpdateBaseStationEUIFailed = "KC-GRPC-ERR-09C"
+	ErrTokenNewBaseStationEUIRequired  = "KC-GRPC-ERR-09D"
+	ErrTokenLatLonPairRequired         = "KC-GRPC-ERR-09E"
 
 	// Endpoint errors (KC-GRPC-ERR-101 to KC-GRPC-ERR-110)
 	ErrTokenEndpointNotFound        = "KC-GRPC-ERR-101"
@@ -1816,6 +1818,11 @@ var errorCatalog = map[string]ErrorDefinition{
 	ErrTokenInvalidMetricsRequest: {
 		Token:   ErrTokenInvalidMetricsRequest,
 		Message: "invalid base station metrics request",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenBaseStationEUIMismatch: {
+		Token:   ErrTokenBaseStationEUIMismatch,
+		Message: "bs_eui and bs_eui_hex refer to different base stations",
 		Code:    codes.InvalidArgument,
 	},
 	ErrTokenTenantAccessDenied: {

@@ -134,9 +134,7 @@ const OrganizationInfoCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
     <CardContent>
       <Box display="flex" alignItems="center" gap={2} mb={3}>
         <BusinessIcon sx={{ fontSize: 40, color: "primary.main" }} />
-        <Typography variant="h6">
-          {ORGANIZATIONS_PAGE.DETAILS_TITLE}
-        </Typography>
+        <Typography variant="h6">{ORGANIZATIONS_PAGE.DETAILS_TITLE}</Typography>
       </Box>
 
       <Grid container spacing={2}>

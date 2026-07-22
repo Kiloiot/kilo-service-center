@@ -12,6 +12,16 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
+// archivedMessageColumns enumerates the messages columns copied into
+// messages_archive (identical layout per migration 000139). Naming the columns
+// makes schema drift between the two tables surface as an explicit SQL error
+// instead of silently misaligned positional inserts.
+const archivedMessageColumns = `id, tenant_id, command_type, op_id, ep_eui, bs_eui, rx_time, packet_cnt,
+		snr, rssi, user_data, dl_open, response_exp, dl_ack, rx_duration, eq_snr, profile, mode, format,
+		subpackets, received_at, processed_at, created_at, updated_at, org_uuid, owner_tenant_id,
+		base_stations, duplicate, decoded_payload, blueprint_type_eui, blueprint_version_id,
+		decode_status, decode_error_code, nwk_sn_key, archived, archived_at`
+
 // ArchivalService handles message archiving operations
 type ArchivalService struct {
 	db     *sql.DB
@@ -46,15 +56,15 @@ func (s *ArchivalService) ArchiveOldMessages(ctx context.Context, olderThan time
 	}()
 
 	// First, copy messages to archive table
-	query := `
-		INSERT INTO messages_archive 
-		SELECT * FROM messages 
-		WHERE received_at < $1 
+	query := fmt.Sprintf(`
+		INSERT INTO messages_archive (%s)
+		SELECT %s FROM messages
+		WHERE received_at < $1
 		  AND archived = false
 		  AND NOT EXISTS (
-		    SELECT 1 FROM messages_archive 
+		    SELECT 1 FROM messages_archive
 		    WHERE messages_archive.id = messages.id
-		  )`
+		  )`, archivedMessageColumns, archivedMessageColumns)
 
 	result, err := tx.ExecContext(ctx, query, cutoffTime)
 	if err != nil {

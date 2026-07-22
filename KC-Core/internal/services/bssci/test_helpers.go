@@ -3,6 +3,7 @@ package bssciservices
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
@@ -231,8 +232,17 @@ func (m *mockBaseStationSessionRepo) UpdateSession(_ context.Context, _ int64, s
 		if req.LastPingAt != nil {
 			session.LastPingAt = req.LastPingAt
 		}
+		if req.EndedAt != nil && req.ClearEndedAt {
+			return fmt.Errorf("update request cannot set and clear ended_at at once")
+		}
 		if req.EndedAt != nil {
 			session.EndedAt = req.EndedAt
+		}
+		if req.ClearEndedAt {
+			session.EndedAt = nil
+		}
+		if req.CanResume != nil {
+			session.CanResume = *req.CanResume
 		}
 		if req.ConnectionId != nil {
 			session.ConnectionId = req.ConnectionId
@@ -278,7 +288,7 @@ func (m *mockBaseStationSessionRepo) UpdatePing(_ context.Context, _ int64, sess
 	return nil
 }
 
-func (m *mockBaseStationSessionRepo) UpdateEncoding(_ context.Context, sessionID int64, encoding string) error {
+func (m *mockBaseStationSessionRepo) UpdateEncoding(_ context.Context, _, sessionID int64, encoding string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -334,21 +344,48 @@ func (m *mockBaseStationSessionRepo) CleanupExpiredSessions(_ context.Context, _
 	return 0, nil
 }
 
-// UpdateCountersAndTimestamp updates operation counters by session UUID
-func (m *mockBaseStationSessionRepo) UpdateCountersAndTimestamp(_ context.Context, sessionUUID [16]byte, bsOpId, scOpId int64) error {
+// MarkDisconnected marks a session disconnected and resumable when the
+// stored connection ID still matches (mirrors the conditional production
+// update; zero matches is not an error)
+func (m *mockBaseStationSessionRepo) MarkDisconnected(_ context.Context, tenantID, sessionID int64, connectionID string, endedAt time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Find session by UUID and update counters
-	for _, session := range m.sessions {
-		if session.SnScUuid == sessionUUID {
-			session.SnBsOpId = bsOpId
-			session.SnScOpId = scOpId
-			session.UpdatedAt = time.Now()
-			return nil
-		}
+	session, ok := m.sessions[sessionID]
+	if !ok || session.TenantID != tenantID {
+		return nil
 	}
-	return nil // Session not found - non-fatal for mock
+	if session.ConnectionId == nil || *session.ConnectionId != connectionID {
+		return nil
+	}
+	session.Status = models.SessionStatusDisconnected
+	session.CanResume = true
+	ended := endedAt
+	session.EndedAt = &ended
+	session.UpdatedAt = time.Now()
+	return nil
+}
+
+// FindResumableSession mirrors the production lookup: tenant + base station
+// EUI + snBsUuid with status=disconnected and can_resume=true
+func (m *mockBaseStationSessionRepo) FindResumableSession(_ context.Context, tenantID int64, _ []byte, snBsUUID [16]byte) (*models.BaseStationSession, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, session := range m.sessions {
+		if session.TenantID != tenantID {
+			continue
+		}
+		if session.SnBsUuid != snBsUUID {
+			continue
+		}
+		if !session.CanResumeSession() {
+			continue
+		}
+		copied := *session
+		return &copied, nil
+	}
+	return nil, nil
 }
 
 // mockPendingOperationRepository implements interfaces.PendingOperationRepository for testing

@@ -1599,23 +1599,16 @@ func (s *Server) QueueDownlink(req *mioty.DLDataQueue, tenantID int64) (queuedQu
 		}
 	}
 
-	// Call existing SendDLDataQueue to handle the BSSCI protocol details
+	// Call existing SendDLDataQueue to handle the BSSCI protocol details.
+	// The SCACI-only dlRxStatQry hint is not part of mioty.DLDataQueue and is
+	// honoured by the auto-dispatcher (which reads DlRxStatQry from the
+	// storage.DownlinkMessage row and pairs the §3.16 query with the queue
+	// operation), not here.
 	err = s.SendDLDataQueue(sessionID, req.EpEui, payloads, queId,
 		prio, req.CntDepend, packetCnt, format,
 		responseExp, responsePrio, dlWindReq, expOnly, tenantID)
 	if err != nil {
 		return 0, 0, err
-	}
-
-	// Auto-trigger DL RX status query if requested (BSSCI §3.16)
-	if req.DlRxStatQry != nil && *req.DlRxStatQry {
-		if qryErr := s.SendDLRXStatusQuery(sessionID, req.EpEui); qryErr != nil {
-			s.logger.Warn(ResolveErrorMessage(errFailedToSendDlRxStatQry),
-				"sessionID", sessionID,
-				"epEui", req.EpEui,
-				"error", qryErr)
-			// Downlink already queued — log and continue
-		}
 	}
 
 	// Return the queue ID and selected base station EUI

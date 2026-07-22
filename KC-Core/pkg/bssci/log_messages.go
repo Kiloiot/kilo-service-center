@@ -553,6 +553,8 @@ const (
 	LogBSSCIInvalidServerProtocolVersion = "Invalid server protocol version"
 	// LogBSSCIMinorVersionMismatch is a log message constant
 	LogBSSCIMinorVersionMismatch = "Minor version mismatch"
+	// LogBSSCIMinorVersionNegotiatedDown is logged when a base station requests a newer minor version and the session continues at the service center's selected version (BSSCI §5.3.2)
+	LogBSSCIMinorVersionNegotiatedDown = "Minor version newer than service center, negotiating down"
 	// LogBSSCIBaseStationConnected is a log message constant
 	LogBSSCIBaseStationConnected = "Base Station connected"
 	// LogBSSCIBaseStationFoundInDatabase is a log message constant
@@ -880,6 +882,8 @@ const (
 	LogBSSCIResolvedRoamingEndpointTenant = "Resolved roaming endpoint tenant via database lookup"
 	// LogBSSCIEUIPrecisionLoss is logged when EUI value exceeds float64 safe integer range (>2^53) during type conversion
 	LogBSSCIEUIPrecisionLoss = "EUI precision loss - value exceeds float64 safe integer range"
+	// LogBSSCINumericPrecisionLoss is logged when a non-EUI numeric field value exceeds the exact integer range of its wire float representation
+	LogBSSCINumericPrecisionLoss = "Numeric precision loss - value exceeds exact float integer range"
 
 	// ========================================================================
 	// Propagation Reconciliation (17 constants)

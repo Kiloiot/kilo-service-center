@@ -15,6 +15,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -65,10 +66,7 @@ func (s *endpointAttachmentService) AttachEndPoint(ctx context.Context, epEui st
 	}
 
 	// Convert uint64 to models.EUI (8 bytes, big-endian)
-	var eui models.EUI
-	for i := 0; i < 8; i++ {
-		eui[7-i] = byte(euiU64 >> (i * 8))
-	}
+	eui := models.EUI(mioty.EUI64(euiU64).ToBytes())
 
 	// Get endpoint using repository
 	endpoint, err := s.endpointRepo.GetByEUI(ctx, tenantID, eui[:])
@@ -134,10 +132,7 @@ func (s *endpointAttachmentService) DetachEndPoint(ctx context.Context, epEui st
 	}
 
 	// Convert uint64 to models.EUI (8 bytes, big-endian)
-	var eui models.EUI
-	for i := 0; i < 8; i++ {
-		eui[7-i] = byte(euiU64 >> (i * 8))
-	}
+	eui := models.EUI(mioty.EUI64(euiU64).ToBytes())
 
 	// Get endpoint using repository
 	endpoint, err := s.endpointRepo.GetByEUI(ctx, tenantID, eui[:])

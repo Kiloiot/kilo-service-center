@@ -18,6 +18,13 @@ import (
 	"time"
 )
 
+// Certificate subject identity shared by the CA and issued certificates.
+const (
+	certSubjectOrganization = "KiloCenter"
+	certSubjectProvince     = "California"
+	certSubjectLocality     = "San Francisco"
+)
+
 func main() {
 	var (
 		certDir      = flag.String("dir", "certs", "Directory to store certificates")
@@ -151,11 +158,11 @@ func generateCA(validYears int) (*x509.Certificate, *rsa.PrivateKey, error) {
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
-			Organization:       []string{"KiloCenter"},
+			Organization:       []string{certSubjectOrganization},
 			OrganizationalUnit: []string{"MIOTY Certificate Authority"},
 			Country:            []string{"US"},
-			Province:           []string{"California"},
-			Locality:           []string{"San Francisco"},
+			Province:           []string{certSubjectProvince},
+			Locality:           []string{certSubjectLocality},
 			CommonName:         "KiloCenter Root CA",
 		},
 		NotBefore:             time.Now(),
@@ -197,11 +204,11 @@ func generateClientCert(caCert *x509.Certificate, caKey *rsa.PrivateKey, clientN
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization:       []string{"KiloCenter"},
+			Organization:       []string{certSubjectOrganization},
 			OrganizationalUnit: []string{"MIOTY Base Station"},
 			Country:            []string{"US"},
-			Province:           []string{"California"},
-			Locality:           []string{"San Francisco"},
+			Province:           []string{certSubjectProvince},
+			Locality:           []string{certSubjectLocality},
 			CommonName:         clientName,
 		},
 		NotBefore:   time.Now(),
@@ -236,11 +243,11 @@ func generateServerCert(caCert *x509.Certificate, caKey *rsa.PrivateKey, serverN
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject: pkix.Name{
-			Organization:       []string{"KiloCenter"},
+			Organization:       []string{certSubjectOrganization},
 			OrganizationalUnit: []string{"MIOTY Service Center"},
 			Country:            []string{"US"},
-			Province:           []string{"California"},
-			Locality:           []string{"San Francisco"},
+			Province:           []string{certSubjectProvince},
+			Locality:           []string{certSubjectLocality},
 			CommonName:         serverName,
 		},
 		NotBefore:   time.Now(),

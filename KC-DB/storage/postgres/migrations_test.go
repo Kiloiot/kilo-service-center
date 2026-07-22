@@ -282,11 +282,16 @@ func TestMigrationRunner(t *testing.T) {
 		err := RunMigrationsFromPath(db, config, "../../migrations")
 		assert.NoError(t, err)
 
-		// Check final version (should be 118 after all migrations)
+		// Check final version against the highest discovered migration number
+		migrations := discoverMigrations(t)
+		require.NotEmpty(t, migrations)
+		expectedVersion := migrations[len(migrations)-1].number
+
 		var version int
 		err = db.QueryRow("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").Scan(&version)
 		require.NoError(t, err)
-		assert.Equal(t, 118, version, "Final migration version should be 118")
+		assert.Equal(t, expectedVersion, version,
+			"Final migration version should match the highest migration file")
 	})
 }
 

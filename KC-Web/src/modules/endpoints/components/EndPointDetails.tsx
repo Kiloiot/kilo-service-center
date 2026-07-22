@@ -106,12 +106,7 @@ const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
   onDeleteClick,
 }) => (
   <>
-    <Box
-      display="flex"
-      justifyContent="flex-end"
-      alignItems="center"
-      mb={2}
-    >
+    <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
       <Box>
         <Tooltip title={ENDPOINT_DETAILS.TOOLTIP_EDIT}>
           <IconButton size="small" onClick={onEdit}>
@@ -169,9 +164,7 @@ const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
           </Typography>
           <Box display="flex" alignItems="center" gap={1}>
             <Chip
-              label={
-                endpointData.attachStatus || ENDPOINT_DETAILS.TERM_UNKNOWN
-              }
+              label={endpointData.attachStatus || ENDPOINT_DETAILS.TERM_UNKNOWN}
               color={
                 endpointData.attachStatus === "attached"
                   ? "success"
@@ -532,7 +525,9 @@ const EndPointDetails: React.FC<EndPointDetailsProps> = ({
               <>
                 <br />
                 <br />
-                <strong>{ENDPOINT_DETAILS.DIALOG_DELETE_NOTE_PREFIX}</strong>{" "}
+                <strong>
+                  {ENDPOINT_DETAILS.DIALOG_DELETE_NOTE_PREFIX}
+                </strong>{" "}
                 {ENDPOINT_DETAILS.DIALOG_DELETE_NOTE}
               </>
             )}

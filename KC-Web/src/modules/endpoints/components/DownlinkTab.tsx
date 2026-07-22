@@ -97,12 +97,7 @@ import {
   VAL_PACKET_CNT_RANGE,
   VAL_PRIORITY_RANGE,
 } from "@constants/messages";
-import {
-  AddIcon,
-  DeleteIcon,
-  ExpandMoreIcon,
-  SendIcon,
-} from "@theme/icons";
+import { AddIcon, DeleteIcon, ExpandMoreIcon, SendIcon } from "@theme/icons";
 
 interface DownlinkTabProps {
   epEui: string;
@@ -694,7 +689,9 @@ export function DownlinkTab({ epEui }: DownlinkTabProps) {
                               fontSize: "0.75rem",
                             }}
                           >
-                            {msg.payload ? formatHexPayload(msg.payload) : "(empty)"}
+                            {msg.payload
+                              ? formatHexPayload(msg.payload)
+                              : "(empty)"}
                           </Typography>
                         </TableCell>
                         <TableCell>

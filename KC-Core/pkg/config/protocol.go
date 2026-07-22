@@ -31,6 +31,9 @@ type ProtocolConfig struct {
 	DuplicateWindow    int    `mapstructure:"duplicate_window"` // seconds
 	MessageEncoding    string `mapstructure:"message_encoding"` // json, msgpack
 
+	// BSCICertificatePollInterval is the base station certificate change poll interval
+	BSCICertificatePollInterval time.Duration `mapstructure:"bsci_certificate_poll_interval"`
+
 	// Automatic Propagation Reconciliation
 	Propagation PropagationConfig `mapstructure:"propagation"`
 
@@ -42,6 +45,16 @@ type ProtocolConfig struct {
 	// Service Center Identity - exposed via GetReleaseInfo
 	SCVendor string `mapstructure:"sc_vendor"` // Service Center vendor name (e.g., "Kilo")
 	SCModel  string `mapstructure:"sc_model"`  // Service Center model (e.g., "KiloCenter")
+
+	// SCEUI is the Service Center EUI as a canonical 16-hex string. Load resolves it with
+	// precedence: KILOCENTER_PROTOCOL_SC_EUI env var > explicit file value >
+	// legacy SERVICE_CENTER_EUI env var > centralized default.
+	SCEUI string `mapstructure:"sc_eui"`
+	// SCEUIValue is the numeric form of SCEUI, derived during Load so consumers never re-parse.
+	SCEUIValue uint64 `mapstructure:"-" yaml:"-"`
+	// SCEUILegacyEnvUsed records that the deprecated SERVICE_CENTER_EUI variable supplied the
+	// EUI; the first consumer emits the deprecation warning since Load has no logger.
+	SCEUILegacyEnvUsed bool `mapstructure:"-" yaml:"-"`
 }
 
 // PropagationConfig contains automatic endpoint propagation settings

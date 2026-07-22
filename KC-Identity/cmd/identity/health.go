@@ -11,6 +11,13 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
+// Health endpoint identity and status values.
+const (
+	identityServiceName = "kc-identity"
+	healthStatusHealthy = "healthy"
+	healthKeyHealthy    = "healthy"
+)
+
 // healthHandler provides health check endpoints for KC-Identity.
 type healthHandler struct {
 	db *sql.DB
@@ -19,8 +26,8 @@ type healthHandler struct {
 // ServeHTTP handles the /health endpoint.
 func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
-		"status":    "healthy",
-		"service":   "kc-identity",
+		"status":    healthStatusHealthy,
+		"service":   identityServiceName,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -28,13 +35,13 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.db != nil {
 		if err := h.db.PingContext(r.Context()); err != nil {
 			resp["status"] = "unhealthy"
-			resp["database"] = map[string]interface{}{"healthy": false, "error": err.Error()}
+			resp["database"] = map[string]interface{}{healthKeyHealthy: false, "error": err.Error()}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
-		resp["database"] = map[string]interface{}{"healthy": true}
+		resp["database"] = map[string]interface{}{healthKeyHealthy: true}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -87,6 +94,7 @@ func startHealthServer(ctx context.Context, port int, db *sql.DB) {
 		IdleTimeout:       120 * time.Second,
 	}
 
+	//nolint:gosec // G118: shutdown deliberately uses a fresh context - the parent is already done
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

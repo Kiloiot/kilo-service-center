@@ -213,14 +213,15 @@ func TestHandleConnectCompleteUnregisteredBaseStationUsesErrorCatalog(t *testing
 		SessionUUID:      make([]byte, 16), // Required for handleConnectComplete
 	}
 
-	// Create connectComplete message (opId must be 0 per BSSCI §3.3)
-	msg := &bssci.Message{
-		OpId:    0,
-		Command: "conCmp",
+	// Registration is validated during the connect request, before conRsp
+	connectData := map[string]interface{}{
+		"version": mioty.MIOTYProtocolVersion,
+		"bsEui":   int64(0x0123456789ABCDEF),
+		"bidi":    true,
 	}
-
-	// Execute: Call handleConnectComplete (where GetBaseStation is called)
-	_ = server.CallHandleConnectComplete(session, msg, map[string]interface{}{})
+	msg := &bssci.Message{OpId: 0, Command: "con", Data: connectData}
+	require.NoError(t, server.CallHandleConnect(session, msg, connectData),
+		"rejected connect awaits errorAck instead of closing")
 
 	// Primary verification: Error was sent to base station using catalog
 	// (This is the key requirement - using error catalog instead of literals)
@@ -233,23 +234,14 @@ func TestHandleConnectCompleteUnregisteredBaseStationUsesErrorCatalog(t *testing
 	assert.Equal(t, expectedMessage, mockConn.lastErrorMessage,
 		"Error message should come from error catalog, not be hardcoded")
 
-	// Verify: GetBaseStationGlobal was called (global lookup during connect)
-	assert.True(t, mockConnectionSvc.globalCalled, "GetBaseStationGlobal should be called during connect complete")
-
-	t.Logf("PASS: GetBaseStationGlobal called: %v", mockConnectionSvc.globalCalled)
-	t.Logf("PASS: Error code sent: %d (POSIX_EPERM)", mockConn.lastErrorCode)
-	t.Logf("PASS: Catalog message: %s", mockConn.lastErrorMessage)
+	// Verify: GetBaseStationGlobal was called before any conRsp
+	assert.True(t, mockConnectionSvc.globalCalled, "GetBaseStationGlobal should be called during connect")
 }
 
-// TestHandleConnectRegisteredBaseStationSuccess verifies successful connect path
-func TestHandleConnectRegisteredBaseStationSuccess(t *testing.T) {
-	t.Skip("Requires full database setup - covered by existing integration tests")
-}
-
-// TestConnectCompleteRepairsSessionTenant verifies that handleConnectComplete repairs
-// the session's ResolvedTenantID when GetBaseStationGlobal returns a base station
-// registered under a different tenant than the server's default.
-func TestConnectCompleteRepairsSessionTenant(t *testing.T) {
+// TestConnectAdoptsRegisteredTenantCommunityFallback verifies that with
+// organization enforcement disabled, the connect request adopts the base
+// station's registered tenant before the response is offered.
+func TestConnectAdoptsRegisteredTenantCommunityFallback(t *testing.T) {
 	testLogger := &NopLogger{}
 
 	// Mock returns base station registered under tenant 4 (not server default 1)
@@ -292,23 +284,83 @@ func TestConnectCompleteRepairsSessionTenant(t *testing.T) {
 		IsResumed:        true, // Skip PersistSession DbSessionID assignment (avoids nil storage in loadPendingOperations)
 	}
 
-	msg := &bssci.Message{OpId: 0, Command: "conCmp"}
-	_ = server.CallHandleConnectComplete(session, msg, map[string]interface{}{})
+	connectData := map[string]interface{}{
+		"version": mioty.MIOTYProtocolVersion,
+		"bsEui":   int64(0x0123456789ABCDEF),
+		"bidi":    true,
+	}
+	conMsg := &bssci.Message{OpId: 0, Command: "con", Data: connectData}
+	require.NoError(t, server.CallHandleConnect(session, conMsg, connectData))
 
 	// GetBaseStationGlobal was called (not tenant-scoped GetBaseStation)
 	assert.True(t, mockConnectionSvc.globalCalled,
-		"handleConnectComplete must use GetBaseStationGlobal for tenant-agnostic lookup")
+		"connect must use GetBaseStationGlobal for tenant-agnostic lookup")
 
-	// Session tenant repaired from 1 → 4
+	// Community fallback adopts the registered tenant 1 → 4
 	assert.Equal(t, int64(4), session.ResolvedTenantID,
-		"Session ResolvedTenantID must be repaired to base station's registered tenant")
+		"Session ResolvedTenantID must adopt the base station's registered tenant")
 
 	// No error sent (base station found)
 	assert.False(t, mockConn.errorSent, "No error should be sent for registered base station")
 
+	msg := &bssci.Message{OpId: 0, Command: "conCmp"}
+	_ = server.CallHandleConnectComplete(session, msg, map[string]interface{}{})
+
 	// RegisterConnection was called (connection status updated)
 	assert.True(t, mockConnectionSvc.registerCalled,
-		"RegisterConnection must be called after successful lookup")
+		"RegisterConnection must be called after successful completion")
+}
+
+// TestConnectTenantMismatchRejected verifies that with organization
+// enforcement enabled, a certificate tenant that does not match the base
+// station's registered tenant is rejected without revealing that the EUI
+// exists under another tenant.
+func TestConnectTenantMismatchRejected(t *testing.T) {
+	testLogger := &NopLogger{}
+
+	mockConnectionSvc := &mockConnectionService{tenantID: 4}
+
+	sessionSvc, downlinkSvc, statusSvc, _, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, nil)
+
+	server := bssci.NewTestServer(
+		testLogger, nil, nil, 1,
+		sessionSvc, downlinkSvc, statusSvc, mockConnectionSvc,
+		broadcaster, queueSerializer, auditLogger, tenantResolver,
+	)
+	server.SetConfig(&bssci.Config{
+		ServiceCenterEUI:      bssci.TestScEui01,
+		Vendor:                "Test Vendor",
+		Model:                 "Test Model",
+		Name:                  "Test SC",
+		SoftwareVersion:       "1.0.0",
+		OrgEnforcementEnabled: true,
+	})
+	server.SetConnectionManager(nil)
+
+	mockConn := &mockConnForConnect{}
+	session := &bssci.Session{
+		ID:               "test-tenant-mismatch",
+		BaseStationEUI:   bssci.TestBsEui01,
+		Conn:             mockConn,
+		SessionUUID:      make([]byte, 16),
+		ResolvedTenantID: 1, // Certificate resolved to tenant 1; BS registered under 4
+	}
+
+	connectData := map[string]interface{}{
+		"version": mioty.MIOTYProtocolVersion,
+		"bsEui":   int64(0x0123456789ABCDEF),
+		"bidi":    true,
+	}
+	conMsg := &bssci.Message{OpId: 0, Command: "con", Data: connectData}
+	require.NoError(t, server.CallHandleConnect(session, conMsg, connectData),
+		"rejected connect awaits errorAck instead of closing")
+
+	require.True(t, mockConn.errorSent, "Tenant mismatch must be rejected")
+	assert.Equal(t, bssci.POSIX_EPERM, mockConn.lastErrorCode)
+	assert.Equal(t, bssci.ResolveErrorMessage(bssci.ErrBaseStationNotRegistered), mockConn.lastErrorMessage,
+		"Rejection must not reveal that the EUI exists under another tenant")
+	assert.Equal(t, int64(1), session.ResolvedTenantID,
+		"Certificate tenant must not be overwritten on rejection")
 }
 
 // TestConnectCompleteDefaultTenantUnchanged verifies that when a base station
@@ -356,6 +408,14 @@ func TestConnectCompleteDefaultTenantUnchanged(t *testing.T) {
 		IsResumed:        true,
 	}
 
+	connectData := map[string]interface{}{
+		"version": mioty.MIOTYProtocolVersion,
+		"bsEui":   int64(0x0123456789ABCDEF),
+		"bidi":    true,
+	}
+	conMsg := &bssci.Message{OpId: 0, Command: "con", Data: connectData}
+	require.NoError(t, server.CallHandleConnect(session, conMsg, connectData))
+
 	msg := &bssci.Message{OpId: 0, Command: "conCmp"}
 	_ = server.CallHandleConnectComplete(session, msg, map[string]interface{}{})
 
@@ -399,6 +459,7 @@ func TestConnectHandler_ValidGeoLocation_PersistsToDB(t *testing.T) {
 
 	// handleConnect parses geoLocation from conRsp data into session.GeoLocation
 	connectData := map[string]interface{}{
+		"version":     mioty.MIOTYProtocolVersion,
 		"bsEui":       int64(0x0123456789ABCDEF),
 		"bidi":        true,
 		"geoLocation": []interface{}{float64(48.8566), float64(2.3522), float64(35.0)},
@@ -470,6 +531,7 @@ func TestConnectHandler_InvalidGeoLocation_NoPersistence(t *testing.T) {
 
 	// geoLocation as a string (wrong type — should be array)
 	connectData := map[string]interface{}{
+		"version":     mioty.MIOTYProtocolVersion,
 		"bsEui":       int64(0x0123456789ABCDEF),
 		"bidi":        true,
 		"geoLocation": "48.8566,2.3522,35.0",
@@ -528,6 +590,7 @@ func TestConnectHandler_OutOfRangeGeoLocation_NoPersistence(t *testing.T) {
 
 	// Latitude = 200.0 exceeds LatitudeMax (90.0)
 	connectData := map[string]interface{}{
+		"version":     mioty.MIOTYProtocolVersion,
 		"bsEui":       int64(0x0123456789ABCDEF),
 		"bidi":        true,
 		"geoLocation": []interface{}{float64(200.0), float64(13.4050), float64(34.0)},

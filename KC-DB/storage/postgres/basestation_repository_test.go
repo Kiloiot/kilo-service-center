@@ -38,6 +38,13 @@ func cleanupBaseStationTestData(t *testing.T, db *sqlx.DB, namePattern string) {
 // TestBaseStationRepository_Create_RejectsCrossTenantDuplicate verifies that
 // migration 000080 enforces global EUI uniqueness across all tenants for base stations
 // **CRITICAL**: Requires testcontainer with migration 000080 applied (constraint verified in testcontainer.go)
+// testServiceCenterURLPtr satisfies the check_bssci_config constraint for
+// bssci-type fixtures (service_center_url must be present).
+func testServiceCenterURLPtr() *string {
+	url := "tls://kilocenter.local:5000"
+	return &url
+}
+
 func TestBaseStationRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
@@ -60,10 +67,11 @@ func TestBaseStationRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) 
 
 	// Create base station in tenant 100 - should succeed
 	bs1 := &models.BaseStation{
-		EUI:            eui,
-		TenantID:       100,
-		Name:           "TestCrossTenant-T100-BS1",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              eui,
+		TenantID:         100,
+		Name:             "TestCrossTenant-T100-BS1",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 
 	err := repo.Create(ctx, bs1)
@@ -72,10 +80,11 @@ func TestBaseStationRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) 
 
 	// Attempt to create same EUI in tenant 200 - should fail with global uniqueness violation
 	bs2 := &models.BaseStation{
-		EUI:            eui, // Same EUI as tenant 100
-		TenantID:       200, // Different tenant
-		Name:           "TestCrossTenant-T200-BS2",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              eui, // Same EUI as tenant 100
+		TenantID:         200, // Different tenant
+		Name:             "TestCrossTenant-T200-BS2",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 
 	err = repo.Create(ctx, bs2)
@@ -112,10 +121,11 @@ func TestBaseStationRepository_Create_AllowsSameTenantDifferentEUI(t *testing.T)
 
 	// Create first base station
 	bs1 := &models.BaseStation{
-		EUI:            models.EUI{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11},
-		TenantID:       100,
-		Name:           "TestSameTenant-BS1",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              models.EUI{0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11},
+		TenantID:         100,
+		Name:             "TestSameTenant-BS1",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 
 	err := repo.Create(ctx, bs1)
@@ -124,10 +134,11 @@ func TestBaseStationRepository_Create_AllowsSameTenantDifferentEUI(t *testing.T)
 
 	// Create second base station with different EUI - should succeed
 	bs2 := &models.BaseStation{
-		EUI:            models.EUI{0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22}, // Different EUI
-		TenantID:       100,                                                        // Same tenant
-		Name:           "TestSameTenant-BS2",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              models.EUI{0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22}, // Different EUI
+		TenantID:         100,                                                        // Same tenant
+		Name:             "TestSameTenant-BS2",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 
 	err = repo.Create(ctx, bs2)
@@ -160,10 +171,11 @@ func TestBaseStationRepository_UpdateEUI_Success(t *testing.T) {
 
 	// Create base station with old EUI
 	bs := &models.BaseStation{
-		EUI:            oldEui,
-		TenantID:       100,
-		Name:           "TestUpdateEUI-BS1",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              oldEui,
+		TenantID:         100,
+		Name:             "TestUpdateEUI-BS1",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 
 	err := repo.Create(ctx, bs)
@@ -201,19 +213,21 @@ func TestBaseStationRepository_UpdateEUI_ErrAlreadyExists(t *testing.T) {
 
 	// Create two base stations with different EUIs
 	bs1 := &models.BaseStation{
-		EUI:            eui1,
-		TenantID:       100,
-		Name:           "TestUpdateEUIExists-BS1",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              eui1,
+		TenantID:         100,
+		Name:             "TestUpdateEUIExists-BS1",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 	err := repo.Create(ctx, bs1)
 	require.NoError(t, err)
 
 	bs2 := &models.BaseStation{
-		EUI:            eui2,
-		TenantID:       100,
-		Name:           "TestUpdateEUIExists-BS2",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              eui2,
+		TenantID:         100,
+		Name:             "TestUpdateEUIExists-BS2",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 	err = repo.Create(ctx, bs2)
 	require.NoError(t, err)
@@ -245,10 +259,11 @@ func TestBaseStationRepository_UpdateEUI_ErrNotFound(t *testing.T) {
 
 	// Create base station in tenant 100
 	bs := &models.BaseStation{
-		EUI:            oldEui,
-		TenantID:       100,
-		Name:           "TestUpdateEUINotFound-BS1",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              oldEui,
+		TenantID:         100,
+		Name:             "TestUpdateEUINotFound-BS1",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 	err := repo.Create(ctx, bs)
 	require.NoError(t, err)
@@ -438,34 +453,37 @@ func TestBaseStationRepository_ListAllLocations(t *testing.T) {
 
 	// Tenant 100: base station WITH coordinates
 	bs1 := &models.BaseStation{
-		EUI:            models.EUI{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
-		TenantID:       100,
-		Name:           "TestListAllLoc-A-WithCoords",
-		ConnectionType: models.ConnectionTypeBSSCI,
-		Latitude:       &lat1,
-		Longitude:      &lon1,
+		EUI:              models.EUI{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08},
+		TenantID:         100,
+		Name:             "TestListAllLoc-A-WithCoords",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
+		Latitude:         &lat1,
+		Longitude:        &lon1,
 	}
 	err := repo.Create(ctx, bs1)
 	require.NoError(t, err)
 
 	// Tenant 200: base station WITH coordinates
 	bs2 := &models.BaseStation{
-		EUI:            models.EUI{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18},
-		TenantID:       200,
-		Name:           "TestListAllLoc-B-WithCoords",
-		ConnectionType: models.ConnectionTypeBSSCI,
-		Latitude:       &lat2,
-		Longitude:      &lon2,
+		EUI:              models.EUI{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18},
+		TenantID:         200,
+		Name:             "TestListAllLoc-B-WithCoords",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
+		Latitude:         &lat2,
+		Longitude:        &lon2,
 	}
 	err = repo.Create(ctx, bs2)
 	require.NoError(t, err)
 
 	// Tenant 100: base station WITHOUT coordinates
 	bs3 := &models.BaseStation{
-		EUI:            models.EUI{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28},
-		TenantID:       100,
-		Name:           "TestListAllLoc-C-NoCoords",
-		ConnectionType: models.ConnectionTypeBSSCI,
+		EUI:              models.EUI{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28},
+		TenantID:         100,
+		Name:             "TestListAllLoc-C-NoCoords",
+		ConnectionType:   models.ConnectionTypeBSSCI,
+		ServiceCenterURL: testServiceCenterURLPtr(),
 	}
 	err = repo.Create(ctx, bs3)
 	require.NoError(t, err)

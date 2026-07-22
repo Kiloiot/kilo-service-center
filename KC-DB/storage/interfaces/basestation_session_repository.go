@@ -36,7 +36,7 @@ type BaseStationSessionRepository interface {
 
 	// UpdateEncoding updates the message encoding for a session (json or msgpack)
 	// This is called when encoding is negotiated on first message per BSSCI Section 1
-	UpdateEncoding(ctx context.Context, sessionID int64, encoding string) error
+	UpdateEncoding(ctx context.Context, tenantID, sessionID int64, encoding string) error
 
 	// TerminateSession marks a session as terminated
 	TerminateSession(ctx context.Context, tenantID, sessionID int64) error
@@ -56,9 +56,15 @@ type BaseStationSessionRepository interface {
 	// CleanupExpiredSessions removes old terminated sessions (housekeeping)
 	CleanupExpiredSessions(ctx context.Context, olderThan int64) (int64, error) // olderThan in hours
 
-	// UpdateCountersAndTimestamp updates operation counters by session UUID
-	// NOTE: sessionUUID is [16]byte to match database CHECK constraint (length = 16)
-	UpdateCountersAndTimestamp(ctx context.Context, sessionUUID [16]byte, bsOpId, scOpId int64) error
+	// MarkDisconnected marks a session disconnected and resumable, but only
+	// while the stored connection ID still matches - a newer connection that
+	// already replaced this one is left untouched (zero rows is not an error)
+	MarkDisconnected(ctx context.Context, tenantID, sessionID int64, connectionID string, endedAt time.Time) error
+
+	// FindResumableSession finds the resumable session for a base station:
+	// scoped by tenant, base station EUI, and snBsUuid, with
+	// status=disconnected and can_resume=true (BSSCI §5.3.1)
+	FindResumableSession(ctx context.Context, tenantID int64, bsEUI []byte, snBsUUID [16]byte) (*models.BaseStationSession, error)
 }
 
 // SessionStatistics represents aggregated session statistics

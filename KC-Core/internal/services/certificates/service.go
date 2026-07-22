@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -22,6 +23,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/crypto"
 	pkggrpc "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/google/uuid"
 )
@@ -117,11 +120,14 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		"name", req.BaseStationName,
 		"validity_days", req.ValidityDays)
 
-	// Validate Base Station EUI format
-	if !isValidEUI(req.BsEUI) {
-		s.logger.WarnContext(ctx, pkggrpc.LogCertInvalidEUI, "bs_eui", req.BsEUI)
+	// Validate and normalize the Base Station EUI (accepts dashed, colon-separated, or plain 16-hex)
+	euiValue, euiErr := validation.ParseEUI(req.BsEUI)
+	if euiErr != nil {
+		s.logger.WarnContext(ctx, pkggrpc.LogCertInvalidEUI, "bs_eui", req.BsEUI, "error", euiErr)
 		return nil, fmt.Errorf("%s: %s", pkggrpc.ErrTokenInvalidBasestationEUIFormat, pkggrpc.ResolveErrorMessage(pkggrpc.ErrTokenInvalidBasestationEUIFormat))
 	}
+	// Canonical uppercase-dashed form used as the certificate CN and in stored metadata
+	bsEUIDashed := mioty.FormatEUI64Dashed(euiValue)
 
 	// Validate validity days (max 3 years = 1095 days)
 	if req.ValidityDays < 1 || req.ValidityDays > 1095 {
@@ -165,7 +171,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCACertReadFailed, err)
 	}
 
-	if err := os.WriteFile(caCertDst, caCertData, 0600); err != nil {
+	if err := os.WriteFile(caCertDst, caCertData, 0600); err != nil { //nolint:gosec // G703: path built from configured cert dir and canonically validated EUI
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertCACertCopyFailed, "error", err)
 		if rmErr := os.RemoveAll(certDir); rmErr != nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
@@ -188,7 +194,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCAKeyReadFailed, err)
 	}
 
-	if err := os.WriteFile(caKeyDst, caKeyData, 0600); err != nil {
+	if err := os.WriteFile(caKeyDst, caKeyData, 0600); err != nil { //nolint:gosec // G703: path built from configured cert dir and canonically validated EUI
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertCAKeyCopyFailed, "error", err)
 		if rmErr := os.RemoveAll(certDir); rmErr != nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
@@ -200,7 +206,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 	cmd := exec.Command(s.certGenPath,
 		"-dir", certDir,
 		"-days", fmt.Sprintf("%d", req.ValidityDays),
-		"-client", req.BsEUI,
+		"-client", bsEUIDashed,
 		"-client-only",
 	)
 
@@ -241,7 +247,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 
 	// Save certificate info for later retrieval
 	certInfoData := map[string]interface{}{
-		"bsEui":        req.BsEUI,
+		"bsEui":        bsEUIDashed,
 		"createdAt":    time.Now().Format(time.RFC3339),
 		"expiresAt":    certExpiryStr,
 		"validityDays": req.ValidityDays,
@@ -253,11 +259,9 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 
 	// Persist certs to base station when dependencies are configured
 	if s.bsRepo != nil && s.keyEncryptor != nil && req.TenantID > 0 {
-		euiBytes, parseErr := hex.DecodeString(strings.ReplaceAll(req.BsEUI, "-", ""))
-		if parseErr == nil && len(euiBytes) == 8 {
-			if persistErr := s.persistCertsToBaseStation(ctx, certDir, euiBytes, req.TenantID, certExpiryTime); persistErr != nil {
-				s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", persistErr)
-			}
+		euiBytes := binary.BigEndian.AppendUint64(nil, euiValue)
+		if persistErr := s.persistCertsToBaseStation(ctx, certDir, euiBytes, req.TenantID, certExpiryTime); persistErr != nil {
+			s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", persistErr)
 		}
 	} else if s.bsRepo != nil && s.keyEncryptor == nil && req.TenantID > 0 {
 		s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", pkggrpc.ErrTokenServiceNotConfigured)
@@ -275,7 +279,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 	}
 
 	return &grpcservices.CertificateResponse{
-		BsEUI:            req.BsEUI,
+		BsEUI:            bsEUIDashed,
 		ServiceCenterURL: serviceCenterURL,
 		DownloadURLs:     downloadUrls,
 		ExpiresAt:        &expiresAt,
@@ -576,27 +580,6 @@ func (s *Service) getCertificateInfo(certPath string) *certInfo {
 		Subject:    subject,
 		Issuer:     issuer,
 	}
-}
-
-// isValidEUI validates the Base Station EUI format (XX-XX-XX-XX-XX-XX-XX-XX)
-func isValidEUI(eui string) bool {
-	if len(eui) != 23 {
-		return false
-	}
-
-	for i, ch := range eui {
-		if (i+1)%3 == 0 {
-			if ch != '-' {
-				return false
-			}
-		} else {
-			if (ch < '0' || ch > '9') && (ch < 'A' || ch > 'F') && (ch < 'a' || ch > 'f') {
-				return false
-			}
-		}
-	}
-
-	return true
 }
 
 // GetStoredCertificate retrieves TLS certificates stored in base station record.

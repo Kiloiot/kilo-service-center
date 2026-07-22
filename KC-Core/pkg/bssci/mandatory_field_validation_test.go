@@ -94,7 +94,7 @@ func buildValidAttachData(overrideField string, overrideValue interface{}) map[s
 
 	data := map[string]interface{}{
 		"epEui":       float64(TestEpEui01),
-		"rxTime":      float64(time.Now().UnixNano()),
+		"rxTime":      time.Now().UnixNano(),
 		"snr":         float64(10.5),
 		"rssi":        float64(-85.0),
 		"attachCnt":   attachCnt,
@@ -119,7 +119,7 @@ func buildAttachDataWithCnt(attachCnt int64) map[string]interface{} {
 
 	return map[string]interface{}{
 		"epEui":       float64(TestEpEui01),
-		"rxTime":      float64(time.Now().UnixNano()),
+		"rxTime":      time.Now().UnixNano(),
 		"snr":         float64(10.5),
 		"rssi":        float64(-85.0),
 		"attachCnt":   attachCnt,
@@ -1191,9 +1191,9 @@ func TestDetachMandatoryFields(t *testing.T) {
 
 			code, hasCode := errorMsg["code"]
 			assert.True(t, hasCode, "Error must include code")
-			codeVal, ok := code.(float64)
-			require.True(t, ok, "code must be float64, got %T", code)
-			assert.Equal(t, float64(tt.expectedErrorCode), codeVal,
+			codeVal, err := coerceInt64(code)
+			require.NoError(t, err, "code must be numeric, got %T", code)
+			assert.Equal(t, int64(tt.expectedErrorCode), codeVal,
 				"Missing %s must return POSIX 71 (EPROTO) per BSSCI §4", tt.missingField)
 		})
 	}

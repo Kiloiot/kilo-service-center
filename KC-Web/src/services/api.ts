@@ -406,7 +406,9 @@ type GrpcBaseStationMessage = Awaited<
 >["messages"][number];
 
 /** Maps a gRPC base station message to the UI message shape */
-function mapBaseStationMessageToUI(m: GrpcBaseStationMessage): BaseStationMessageAPI {
+function mapBaseStationMessageToUI(
+  m: GrpcBaseStationMessage,
+): BaseStationMessageAPI {
   return {
     id: m.id,
     bsEui: m.bsEui,

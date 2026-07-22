@@ -14,6 +14,7 @@ import (
 // BSSCIServiceBundle packages all BSSCI service dependencies
 type BSSCIServiceBundle struct {
 	SessionSvc          bssci.SessionService
+	VersionNegotiator   bssci.VersionNegotiator
 	DownlinkSvc         bssci.DownlinkService
 	StatusSvc           bssci.StatusService
 	ConnectionSvc       bssci.ConnectionService
@@ -49,8 +50,14 @@ func NewBSSCIServices(
 	orgResolver org.Resolver,
 	pendingOps *map[bssci.SessionOpKey]*bssci.PendingOperation,
 	pendingOpsMu *sync.RWMutex,
-) *BSSCIServiceBundle {
+	supportedProtocolVersions []string,
+) (*BSSCIServiceBundle, error) {
 	// Create services in dependency order
+	versionNegotiator, err := NewVersionNegotiator(supportedProtocolVersions, log)
+	if err != nil {
+		return nil, err
+	}
+
 	// SessionService uses repository interfaces
 	sessionSvc := NewSessionService(
 		storage.BaseStationSessions(),
@@ -88,6 +95,7 @@ func NewBSSCIServices(
 
 	return &BSSCIServiceBundle{
 		SessionSvc:          sessionSvc,
+		VersionNegotiator:   versionNegotiator,
 		DownlinkSvc:         downlinkSvc,
 		StatusSvc:           statusSvc,
 		ConnectionSvc:       connectionSvc,
@@ -96,5 +104,5 @@ func NewBSSCIServices(
 		QueueSerializer:     queueSerializer,
 		AuditLogger:         auditLogger,
 		TenantResolver:      tenantResolver,
-	}
+	}, nil
 }

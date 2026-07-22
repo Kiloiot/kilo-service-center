@@ -205,7 +205,7 @@ func (r *BlueprintRepository) ListByDeviceModel(ctx context.Context, tenantID in
 	}
 
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex)
+		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, offset)
 	}
 
@@ -246,7 +246,7 @@ func (r *BlueprintRepository) List(ctx context.Context, params *models.Blueprint
 	}
 
 	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex)
+		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, params.Offset)
 	}
 
@@ -291,7 +291,7 @@ func (r *BlueprintRepository) ListWithModel(ctx context.Context, params *models.
 	}
 
 	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex)
+		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, params.Offset)
 	}
 

@@ -90,6 +90,17 @@ type BaseMessage struct {
 	OpId        int64  `json:"opId" msgpack:"opId"`       // Operation ID (signed: positive for BS, negative for SC)
 }
 
+// EnvelopeCommand returns the wire command mnemonic, exposing the message
+// envelope without serialization round-trips.
+func (m BaseMessage) EnvelopeCommand() string {
+	return m.CommandType
+}
+
+// EnvelopeOpID returns the operation ID of the message envelope.
+func (m BaseMessage) EnvelopeOpID() int64 {
+	return m.OpId
+}
+
 // Type definitions per MIOTY BSSCI v1.0.0 specification
 type (
 	// EUI64 represents an 8-byte Extended Unique Identifier

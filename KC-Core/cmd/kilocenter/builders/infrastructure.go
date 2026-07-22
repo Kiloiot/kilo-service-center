@@ -118,8 +118,8 @@ func BuildInfrastructure(ctx context.Context, cfg *pkgconfig.Config, versionInfo
 			Category:    models.EventCategoryError,
 			Severity:    models.EventSeverityError,
 			Title:       models.EventTitleMigrationFailed,
-			Description: fmt.Sprintf(models.EventDescriptionMigrationFailedFmt, "kc-core", migErr.Error()),
-			SourceName:  "kc-core",
+			Description: fmt.Sprintf(models.EventDescriptionMigrationFailedFmt, coreServiceSourceName, migErr.Error()),
+			SourceName:  coreServiceSourceName,
 			SourceType:  models.SourceTypeSystem,
 		}); evtErr != nil {
 			log.Error("failed to emit migration.failed event", logger.Err(evtErr))
@@ -134,8 +134,8 @@ func BuildInfrastructure(ctx context.Context, cfg *pkgconfig.Config, versionInfo
 		Category:    models.EventCategorySystem,
 		Severity:    models.EventSeverityInfo,
 		Title:       models.EventTitleMigrationApplied,
-		Description: fmt.Sprintf(models.EventDescriptionMigrationAppliedFmt, dbVersion, "kc-core"),
-		SourceName:  "kc-core",
+		Description: fmt.Sprintf(models.EventDescriptionMigrationAppliedFmt, dbVersion, coreServiceSourceName),
+		SourceName:  coreServiceSourceName,
 		SourceType:  models.SourceTypeSystem,
 	}); evtErr != nil {
 		log.Error("failed to emit migration.applied event", logger.Err(evtErr))

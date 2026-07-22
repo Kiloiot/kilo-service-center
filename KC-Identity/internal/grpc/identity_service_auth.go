@@ -41,7 +41,7 @@ func (s *IdentityService) Login(ctx context.Context, req *pb.LoginRequest) (*pb.
 
 	result, err := s.authSvc.Login(ctx, req.Email, req.Password)
 	if err != nil {
-		s.log.ErrorContext(ctx, "login failed", "email", req.Email, "error", err)
+		s.log.ErrorContext(ctx, "login failed", userFieldEmail, req.Email, "error", err)
 		s.emitSecurityEvent(ctx, models.EventTypeAuthLoginFailed, models.EventTitleAuthLoginFailed, "Login", "invalid credentials for "+req.Email)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidCredentials),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidCredentials))
@@ -280,7 +280,7 @@ func (s *IdentityService) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 
 	user, err := s.adminUserSvc.Create(ctx, createReq)
 	if err != nil {
-		s.log.ErrorContext(ctx, "create user failed", "email", req.Email, "error", err)
+		s.log.ErrorContext(ctx, "create user failed", userFieldEmail, req.Email, "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCreateUserFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCreateUserFailed))
 	}
@@ -296,7 +296,7 @@ func (s *IdentityService) CreateUser(ctx context.Context, req *pb.CreateUserRequ
 			Description: fmt.Sprintf(models.EventDescriptionUserCreated, req.Email),
 			SourceName:  req.Email,
 			UserID:      user.ID.String(),
-			Details:     map[string]any{"email": req.Email},
+			Details:     map[string]any{userFieldEmail: req.Email},
 		})
 	}
 

@@ -28,6 +28,18 @@ func ValidateServiceCenterConfig(cfg *ProtocolConfig) error {
 		return errors.New("protocol.bsci_tls.enabled must be true (BSSCI requires mutual TLS)")
 	}
 
+	if cfg.AckTimeout <= 0 {
+		return fmt.Errorf("protocol.ack_timeout must be positive milliseconds, got %d", cfg.AckTimeout)
+	}
+
+	if cfg.DuplicateWindow <= 0 {
+		return fmt.Errorf("protocol.duplicate_window must be positive seconds, got %d", cfg.DuplicateWindow)
+	}
+
+	if cfg.BSCICertificatePollInterval <= 0 {
+		return fmt.Errorf("protocol.bsci_certificate_poll_interval must be a positive duration, got %s", cfg.BSCICertificatePollInterval)
+	}
+
 	return nil
 }
 

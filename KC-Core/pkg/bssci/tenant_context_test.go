@@ -20,7 +20,7 @@ func (s *stubSessionService) ValidateVersion(_ string) error {
 	return nil // No-op for smoke tests
 }
 
-func (s *stubSessionService) HandleResume(_ *Session, _ []byte, _ []byte, _, _ int64, _ uint64) (*Session, error) {
+func (s *stubSessionService) HandleResume(_ context.Context, _ *Session, _ []byte, _, _ *int64, _ uint64) (*Session, error) {
 	return nil, nil // No-op for smoke tests
 }
 
@@ -40,11 +40,15 @@ func (s *stubSessionService) RemoveSession(_ *Session) {
 	// No-op for smoke tests
 }
 
+func (s *stubSessionService) MarkDisconnected(_ context.Context, _ *Session) error {
+	return nil
+}
+
 func (s *stubSessionService) TerminateSession(_ context.Context, _ *Session) error {
 	return nil // No-op for smoke tests
 }
 
-func (s *stubSessionService) UpdateEncoding(_ context.Context, _ int64, _ string) error {
+func (s *stubSessionService) UpdateEncoding(_ context.Context, _, _ int64, _ string) error {
 	return nil // No-op for smoke tests
 }
 

@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
@@ -61,8 +62,8 @@ func (s *CoreService) GenerateCertificate(ctx context.Context, req *pb.GenerateC
 	// Emit audit event for certificate generation.
 	if s.eventWriter != nil {
 		detailsMap := map[string]interface{}{
-			"bsEui":        req.BsEui,
-			"validityDays": req.ValidityDays,
+			bssci.EventKeyBsEui: req.BsEui,
+			"validityDays":      req.ValidityDays,
 		}
 		if req.BaseStationName != "" {
 			detailsMap["baseStationName"] = req.BaseStationName

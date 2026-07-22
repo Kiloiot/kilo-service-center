@@ -55,267 +55,89 @@ func (s *sessionService) resolvedTenantID(session *bssci.Session) int64 {
 	return s.tenantID // CRITICAL: Use s.tenantID, not s.defaultTenantID
 }
 
-// ValidateVersion checks protocol version compatibility (BSSCI 2.1-2.2)
-// Returns specific CatalogError tokens per BSSCI 2.1-2.2.
-func (s *sessionService) ValidateVersion(version string) error {
-	// Parse base station version
-	bsMajor, bsMinor, _, cerr := bssci.ParseVersion(version)
-	if cerr != nil {
-		// Pass through specific error token from parseVersion
-		// (errInvalidVersionFormat, errInvalidMajorVersion, errInvalidMinorVersion, errInvalidPatchVersion)
-		return cerr
+// HandleResume validates a session resume request per BSSCI §5.3.1. Resume
+// identity is snBsUuid scoped by tenant and base station EUI. The optional
+// snBsOpId (minimum required known BS operation ID) and snScOpId (maximum
+// known SC operation ID) constraints are asserted only when present:
+// a required BS operation ID above what is persisted means the service
+// center cannot satisfy the base station's minimum state; a claimed SC
+// operation ID below what was issued is impossible without tampering.
+// After acceptance the authoritative persisted counters are restored, not
+// the constraint values reported in the connect message.
+func (s *sessionService) HandleResume(ctx context.Context, session *bssci.Session, bsUUID []byte, bsOpId, scOpId *int64, bsEUI uint64) (*bssci.Session, error) {
+	if len(bsUUID) != 16 {
+		return nil, nil
 	}
 
-	// Parse server version
-	scMajor, scMinor, _, cerr := bssci.ParseVersion(mioty.MIOTYProtocolVersion)
-	if cerr != nil {
-		// This should never happen unless MIOTYProtocolVersion is misconfigured
-		s.logger.Error(bssci.LogBSSCIInvalidServerProtocolVersion, "version", mioty.MIOTYProtocolVersion)
-		return bssci.NewCatalogError(bssci.ErrVersionIncompatible, bssci.POSIX_EPROTO)
+	// In-memory lookup first: same tenant, base station EUI, and BS UUID
+	s.mu.RLock()
+	for _, sess := range s.sessionsByUUID {
+		if sess.BaseStationEUI != bsEUI || sess.BsUUID == nil || string(sess.BsUUID) != string(bsUUID) {
+			continue
+		}
+		if !s.resumeCountersConsistent(ctx, bsEUI, bsOpId, scOpId, sess.LastBsOpId, sess.LastScOpId) {
+			continue
+		}
+		s.mu.RUnlock()
+		return sess, nil
+	}
+	s.mu.RUnlock()
+
+	// Database fallback: only a disconnected, resumable session scoped by
+	// tenant, base station EUI, and snBsUuid qualifies (BSSCI §5.3.1)
+	var bsUUIDArray [16]byte
+	copy(bsUUIDArray[:], bsUUID)
+	euiBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(euiBytes, bsEUI)
+
+	dbSession, err := s.bsSessionRepo.FindResumableSession(ctx, s.resolvedTenantID(session), euiBytes, bsUUIDArray)
+	if err != nil {
+		return nil, fmt.Errorf("resumable session lookup failed: %w", err)
+	}
+	if dbSession == nil {
+		return nil, nil // No match - fresh session
 	}
 
-	// Major version must match exactly (BSSCI 2.1)
-	if bsMajor != scMajor {
-		s.logger.Warn(bssci.LogBSSCIVersionIncompatible,
-			"bsVersion", version,
-			"bsMajor", bsMajor,
-			"scMajor", scMajor)
-		return bssci.NewCatalogError(bssci.ErrUnsupportedMajorVersion, bssci.POSIX_EPROTO)
+	if !s.resumeCountersConsistent(ctx, bsEUI, bsOpId, scOpId, dbSession.SnBsOpId, dbSession.SnScOpId) {
+		return nil, bssci.ErrResumeCounterMismatch
 	}
 
-	// Minor version must match for compatibility (BSSCI 2.2)
-	// Different minor versions should terminate the connection
-	if bsMinor != scMinor {
-		s.logger.Warn(bssci.LogBSSCIMinorVersionMismatch,
-			"bsMinor", bsMinor,
-			"scMinor", scMinor,
-			"bsVersion", version,
-			"scVersion", mioty.MIOTYProtocolVersion)
-		return bssci.NewCatalogError(bssci.ErrUnsupportedMinorVersion, bssci.POSIX_EPROTO)
-	}
+	restoredSession := s.hydrateSessionFromDB(dbSession, bsEUI)
 
-	return nil
+	s.mu.Lock()
+	s.sessionsByUUID[string(restoredSession.SessionUUID)] = restoredSession
+	s.mu.Unlock()
+
+	return restoredSession, nil
 }
 
-// HandleResume checks sessionsByUUID and validates counters
-// EXACT resume logic from server.go:694-750
-// Session parameter provides tenant context via session.ResolvedTenantID for DB queries
-func (s *sessionService) HandleResume(session *bssci.Session, bsUUID []byte, scUUIDToMatch []byte, bsOpId, scOpId int64, bsEUI uint64) (*bssci.Session, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Look for an existing session with this BS EUI and BS UUID
-	// EXACT logic from server.go:696-722
-	for scUUIDStr, sess := range s.sessionsByUUID {
-		// Check if this is the right session:
-		// 1. Same base station EUI
-		// 2. Same base station UUID (if we stored it)
-		// 3. If SC UUID was provided, it should match
-		if sess.BaseStationEUI == bsEUI {
-			if scUUIDToMatch != nil {
-				// BS provided the SC UUID - must match exactly (server.go:703-708)
-				if string(sess.SessionUUID) == string(scUUIDToMatch) {
-					// Validate counters per BSSCI §5.2
-					// BS counter must not move backwards (monotonicity)
-					if bsOpId < sess.LastBsOpId {
-						s.logger.Warn("Resume rejected: BS operation counter moved backwards (in-memory)",
-							"bsEui", bsEUI,
-							"providedBsOpId", bsOpId,
-							"expectedBsOpId", sess.LastBsOpId,
-							"scUuid", fmt.Sprintf("%x", scUUIDToMatch))
-						continue // Try next session
-					}
-					// SC counter validation: SC is authoritative (BSSCI §3.2)
-					// Accept if BS's scOpId >= sess.LastScOpId (stale or matches)
-					if scOpId < sess.LastScOpId {
-						s.logger.Warn("Resume rejected: BS claims SC counter beyond in-memory value",
-							"bsEui", bsEUI,
-							"providedScOpId", scOpId,
-							"expectedScOpId", sess.LastScOpId,
-							"scUuid", fmt.Sprintf("%x", scUUIDToMatch))
-						continue // Try next session
-					}
-					if scOpId != sess.LastScOpId {
-						s.logger.Warn("Resume accepted with stale BS counter (in-memory, SC authoritative)",
-							"bsEui", bsEUI,
-							"bsReportedScOpId", scOpId,
-							"scAuthoritativeOpId", sess.LastScOpId,
-							"scUuid", fmt.Sprintf("%x", scUUIDToMatch))
-					}
-					return sess, nil
-				}
-			} else if sess.BsUUID != nil && string(sess.BsUUID) == string(bsUUID) {
-				// No SC UUID provided, but BS UUID matches (server.go:709-712)
-				// Validate counters per BSSCI §5.2
-				if bsOpId < sess.LastBsOpId {
-					s.logger.Warn("Resume rejected: BS operation counter moved backwards (in-memory)",
-						"bsEui", bsEUI,
-						"providedBsOpId", bsOpId,
-						"expectedBsOpId", sess.LastBsOpId,
-						"bsUuid", fmt.Sprintf("%x", bsUUID))
-					continue // Try next session
-				}
-				// SC counter validation: SC is authoritative (BSSCI §3.2)
-				if scOpId < sess.LastScOpId {
-					s.logger.Warn("Resume rejected: BS claims SC counter beyond in-memory value",
-						"bsEui", bsEUI,
-						"providedScOpId", scOpId,
-						"expectedScOpId", sess.LastScOpId,
-						"bsUuid", fmt.Sprintf("%x", bsUUID))
-					continue // Try next session
-				}
-				if scOpId != sess.LastScOpId {
-					s.logger.Warn("Resume accepted with stale BS counter (in-memory, SC authoritative)",
-						"bsEui", bsEUI,
-						"bsReportedScOpId", scOpId,
-						"scAuthoritativeOpId", sess.LastScOpId,
-						"bsUuid", fmt.Sprintf("%x", bsUUID))
-				}
-				return sess, nil
-			} else if sess.BsUUID == nil {
-				// Older session without BS UUID stored, use SC UUID as key (server.go:713-719)
-				if scUUIDStr != "" {
-					// Validate counters per BSSCI §5.2
-					if bsOpId < sess.LastBsOpId {
-						s.logger.Warn("Resume rejected: BS operation counter moved backwards (in-memory)",
-							"bsEui", bsEUI,
-							"providedBsOpId", bsOpId,
-							"expectedBsOpId", sess.LastBsOpId)
-						continue // Try next session
-					}
-					// SC counter validation: SC is authoritative (BSSCI §3.2)
-					if scOpId < sess.LastScOpId {
-						s.logger.Warn("Resume rejected: BS claims SC counter beyond in-memory value",
-							"bsEui", bsEUI,
-							"providedScOpId", scOpId,
-							"expectedScOpId", sess.LastScOpId)
-						continue // Try next session
-					}
-					if scOpId != sess.LastScOpId {
-						s.logger.Warn("Resume accepted with stale BS counter (in-memory, SC authoritative)",
-							"bsEui", bsEUI,
-							"bsReportedScOpId", scOpId,
-							"scAuthoritativeOpId", sess.LastScOpId)
-					}
-					return sess, nil
-				}
-			}
-		}
+// resumeCountersConsistent applies the BSSCI §5.3.1 resume constraints
+// against persisted counters. Absent constraints (nil) are not asserted;
+// equality is always valid.
+func (s *sessionService) resumeCountersConsistent(ctx context.Context, bsEUI uint64, bsOpId, scOpId *int64, knownBsOpId, knownScOpId int64) bool {
+	if bsOpId != nil && *bsOpId > knownBsOpId {
+		// The BS requires a minimum operation state the SC does not know
+		s.logger.WarnContext(ctx, "Resume rejected: required BS operation ID beyond persisted state",
+			"bsEui", bsEUI,
+			"requiredBsOpId", *bsOpId,
+			"persistedBsOpId", knownBsOpId)
+		return false
 	}
-
-	// Database fallback: try to restore session from persistence layer
-	// BSSCI §5.3/§5.3.1: session should be resumable across disconnects
-	ctx := context.Background() // No request context available in HandleResume
-
-	// Try GetSessionByScUuid first (primary lookup)
-	if len(scUUIDToMatch) == 16 {
-		var scUUIDArray [16]byte
-		copy(scUUIDArray[:], scUUIDToMatch)
-
-		dbSession, err := s.bsSessionRepo.GetSessionByScUUID(ctx, s.resolvedTenantID(session), scUUIDArray)
-		if err == nil && dbSession != nil {
-			// Validate operation counters per BSSCI §5.2
-			// BS counter must not move backwards (equality allowed for idempotent resume)
-			if bsOpId < dbSession.SnBsOpId {
-				s.logger.WarnContext(ctx, "Resume rejected: BS operation counter moved backwards",
-					"bsEui", bsEUI,
-					"providedBsOpId", bsOpId,
-					"expectedBsOpId", dbSession.SnBsOpId,
-					"scUuid", fmt.Sprintf("%x", scUUIDArray))
-				return nil, bssci.ErrResumeCounterMismatch
-			}
-			// SC counter validation: SC is authoritative for its own operation IDs (BSSCI §3.2)
-			// BS may have a stale (less negative) counter from a crash before SC persisted.
-			// Accept if BS's reported scOpId >= dbSession.SnScOpId (i.e., BS is stale or matches).
-			// Reject only if BS claims a more negative value than SC has (impossible without tampering).
-			if scOpId < dbSession.SnScOpId {
-				// BS claims to have seen a more negative SC opId than SC ever issued - reject
-				s.logger.WarnContext(ctx, "Resume rejected: BS claims SC counter beyond DB value",
-					"bsEui", bsEUI,
-					"providedScOpId", scOpId,
-					"expectedScOpId", dbSession.SnScOpId,
-					"scUuid", fmt.Sprintf("%x", scUUIDArray))
-				return nil, bssci.ErrResumeCounterMismatch
-			}
-			if scOpId != dbSession.SnScOpId {
-				// BS has a stale counter - log but accept (SC will continue from its authoritative value)
-				s.logger.WarnContext(ctx, "Resume accepted with stale BS counter (SC is authoritative)",
-					"bsEui", bsEUI,
-					"bsReportedScOpId", scOpId,
-					"scAuthoritativeOpId", dbSession.SnScOpId,
-					"scUuid", fmt.Sprintf("%x", scUUIDArray))
-			}
-
-			// Counters valid - hydrate and return
-			restoredSession := s.hydrateSessionFromDB(dbSession, bsEUI)
-
-			// Re-populate in-memory map (requires lock upgrade)
-			s.mu.RUnlock()
-			s.mu.Lock()
-			uuidKey := string(restoredSession.SessionUUID)
-			s.sessionsByUUID[uuidKey] = restoredSession
-			s.mu.Unlock()
-			s.mu.RLock() // Restore read lock for deferred RUnlock
-
-			return restoredSession, nil
-		}
+	if scOpId != nil && *scOpId < knownScOpId {
+		// The BS claims a more negative SC operation ID than the SC issued
+		s.logger.WarnContext(ctx, "Resume rejected: claimed SC operation ID beyond issued state",
+			"bsEui", bsEUI,
+			"claimedScOpId", *scOpId,
+			"issuedScOpId", knownScOpId)
+		return false
 	}
-
-	// Try GetSessionByBsUuid fallback (secondary lookup)
-	if len(bsUUID) == 16 {
-		var bsUUIDArray [16]byte
-		copy(bsUUIDArray[:], bsUUID)
-
-		dbSession, err := s.bsSessionRepo.GetSessionByBsUUID(ctx, s.resolvedTenantID(session), bsUUIDArray)
-		if err == nil && dbSession != nil {
-			// Validate operation counters per BSSCI §5.2
-			// BS counter must not move backwards (equality allowed for idempotent resume)
-			if bsOpId < dbSession.SnBsOpId {
-				s.logger.WarnContext(ctx, "Resume rejected: BS operation counter moved backwards",
-					"bsEui", bsEUI,
-					"providedBsOpId", bsOpId,
-					"expectedBsOpId", dbSession.SnBsOpId,
-					"bsUuid", fmt.Sprintf("%x", bsUUIDArray))
-				return nil, bssci.ErrResumeCounterMismatch
-			}
-			// SC counter validation: SC is authoritative for its own operation IDs (BSSCI §3.2)
-			// BS may have a stale (less negative) counter from a crash before SC persisted.
-			// Accept if BS's reported scOpId >= dbSession.SnScOpId (i.e., BS is stale or matches).
-			// Reject only if BS claims a more negative value than SC has (impossible without tampering).
-			if scOpId < dbSession.SnScOpId {
-				// BS claims to have seen a more negative SC opId than SC ever issued - reject
-				s.logger.WarnContext(ctx, "Resume rejected: BS claims SC counter beyond DB value",
-					"bsEui", bsEUI,
-					"providedScOpId", scOpId,
-					"expectedScOpId", dbSession.SnScOpId,
-					"bsUuid", fmt.Sprintf("%x", bsUUIDArray))
-				return nil, bssci.ErrResumeCounterMismatch
-			}
-			if scOpId != dbSession.SnScOpId {
-				// BS has a stale counter - log but accept (SC will continue from its authoritative value)
-				s.logger.WarnContext(ctx, "Resume accepted with stale BS counter (SC is authoritative)",
-					"bsEui", bsEUI,
-					"bsReportedScOpId", scOpId,
-					"scAuthoritativeOpId", dbSession.SnScOpId,
-					"bsUuid", fmt.Sprintf("%x", bsUUIDArray))
-			}
-
-			// Counters valid - hydrate and return
-			restoredSession := s.hydrateSessionFromDB(dbSession, bsEUI)
-
-			// Re-populate in-memory map (requires lock upgrade)
-			s.mu.RUnlock()
-			s.mu.Lock()
-			uuidKey := string(restoredSession.SessionUUID)
-			s.sessionsByUUID[uuidKey] = restoredSession
-			s.mu.Unlock()
-			s.mu.RLock() // Restore read lock for deferred RUnlock
-
-			return restoredSession, nil
-		}
+	if scOpId != nil && *scOpId != knownScOpId {
+		s.logger.WarnContext(ctx, "Resume accepted with stale BS counter (SC is authoritative)",
+			"bsEui", bsEUI,
+			"bsReportedScOpId", *scOpId,
+			"scAuthoritativeOpId", knownScOpId)
 	}
-
-	return nil, nil // No DB match - fallback to fresh session
+	return true
 }
 
 // hydrateSessionFromDB creates a bssci.Session from a database record
@@ -547,16 +369,27 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 			session.ResolvedTenantID = dbSession.TenantID
 		}
 
-		// Build update request (persist negotiated protocol version)
+		// Resume activation is atomic: active status, resumability, connection
+		// metadata, encoding, negotiated version, organization, and a cleared
+		// end timestamp land in one update
 		negotiated := session.NegotiatedVersion
-		activeStatus := models.SessionStatusActive // Transition from terminated to active on resume
+		activeStatus := models.SessionStatusActive
+		canResume := true
+		connectionID := session.ID
 		updateReq := &models.BaseStationSessionUpdateRequest{
-			Status:          &activeStatus, // Fix: Update status from terminated to active on resume
+			Status:          &activeStatus,
+			CanResume:       &canResume,
+			ClearEndedAt:    true,
 			SnBsOpId:        &session.LastBsOpId,
 			SnScOpId:        &session.LastScOpId,
+			ConnectionId:    &connectionID,
 			RemoteAddr:      remoteAddr,
-			Encoding:        &session.Encoding, // Update encoding if it changed
-			ProtocolVersion: &negotiated,       // BSSCI §4-4.5: persist negotiated version
+			Encoding:        &session.Encoding,
+			ProtocolVersion: &negotiated, // BSSCI §4-4.5: persist negotiated version
+		}
+		if session.OrganizationID != uuid.Nil {
+			orgID := session.OrganizationID
+			updateReq.OrganizationID = &orgID
 		}
 
 		err = s.bsSessionRepo.UpdateSession(ctx, s.resolvedTenantID(session), dbSession.ID, updateReq)
@@ -594,6 +427,21 @@ func (s *sessionService) MarkHandshakeComplete(session *bssci.Session) {
 	session.HandshakeComplete = true
 }
 
+// MarkDisconnected marks an active session disconnected and resumable after
+// unexpected connection loss. The repository update is guarded by the
+// session's connection ID: if a reconnect already replaced this connection,
+// zero rows match and the newer session stays active.
+func (s *sessionService) MarkDisconnected(ctx context.Context, session *bssci.Session) error {
+	if session.DbSessionID == 0 {
+		return fmt.Errorf("cannot mark session disconnected: not persisted (DbSessionID=0)")
+	}
+	err := s.bsSessionRepo.MarkDisconnected(ctx, s.resolvedTenantID(session), session.DbSessionID, session.ID, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to mark session disconnected: %w", err)
+	}
+	return nil
+}
+
 // RemoveSession cleans sessionsByUUID map on disconnect
 // Real cleanup from server.go:438
 func (s *sessionService) RemoveSession(session *bssci.Session) {
@@ -612,8 +460,8 @@ func (s *sessionService) RemoveSession(session *bssci.Session) {
 
 // UpdateEncoding persists the negotiated message encoding to the database
 // Called when encoding is detected on first message per BSSCI Section 1
-func (s *sessionService) UpdateEncoding(ctx context.Context, sessionID int64, encoding string) error {
-	return s.bsSessionRepo.UpdateEncoding(ctx, sessionID, encoding)
+func (s *sessionService) UpdateEncoding(ctx context.Context, tenantID, sessionID int64, encoding string) error {
+	return s.bsSessionRepo.UpdateEncoding(ctx, tenantID, sessionID, encoding)
 }
 
 // UpdateSessionCounters persists operation ID counters to database (BSSCI §5.2).

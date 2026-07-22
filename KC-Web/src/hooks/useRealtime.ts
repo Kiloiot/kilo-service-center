@@ -204,7 +204,9 @@ function normalizeEuiForQueryKey(eui: string): string {
 }
 
 /** Per-event-type targeted query keys (device detail/activity/downlink). */
-function targetedInvalidationKeys(event: RealtimeEvent): (readonly unknown[])[] {
+function targetedInvalidationKeys(
+  event: RealtimeEvent,
+): (readonly unknown[])[] {
   if (
     event.type === "basestation.online" ||
     event.type === "basestation.offline"
@@ -389,7 +391,10 @@ function useCatchUpOnStreamReconnect(): void {
       flight.pendingInvalidate = setTimeout(() => {
         flight.pendingInvalidate = null;
         const now = Date.now();
-        if (now - flight.lastInvalidateAt < TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS) {
+        if (
+          now - flight.lastInvalidateAt <
+          TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS
+        ) {
           return;
         }
         flight.lastInvalidateAt = now;

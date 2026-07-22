@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -122,7 +123,7 @@ func (r *BaseStationSessionRepository) GetActiveSessionByBaseStation(ctx context
 			encoding, protocol_version, connect_info,
 			created_at, updated_at
 		FROM basestation_sessions
-		WHERE basestation_id = $1 AND tenant_id = $2 AND status IN ('active', 'resumed')
+		WHERE basestation_id = $1 AND tenant_id = $2 AND status = 'active'
 		ORDER BY started_at DESC
 		LIMIT 1`
 
@@ -203,9 +204,23 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 		argPos++
 	}
 
+	if req.EndedAt != nil && req.ClearEndedAt {
+		return fmt.Errorf("update request cannot set and clear ended_at at once")
+	}
+
 	if req.EndedAt != nil {
 		updates = append(updates, fmt.Sprintf("ended_at = $%d", argPos))
 		args = append(args, *req.EndedAt)
+		argPos++
+	}
+
+	if req.ClearEndedAt {
+		updates = append(updates, "ended_at = NULL")
+	}
+
+	if req.CanResume != nil {
+		updates = append(updates, fmt.Sprintf("can_resume = $%d", argPos))
+		args = append(args, *req.CanResume)
 		argPos++
 	}
 
@@ -327,7 +342,7 @@ func (r *BaseStationSessionRepository) UpdatePing(ctx context.Context, tenantID,
 
 // UpdateEncoding updates the message encoding for a session
 // This is called when encoding is negotiated on first message per BSSCI Section 1
-func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, sessionID int64, encoding string) error {
+func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, tenantID, sessionID int64, encoding string) error {
 	// Validate encoding value
 	if encoding != bssci.EncodingJSON && encoding != bssci.EncodingMessagePack {
 		return fmt.Errorf("invalid encoding: must be '%s' or '%s', got '%s'", bssci.EncodingJSON, bssci.EncodingMessagePack, encoding)
@@ -337,9 +352,9 @@ func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, sessi
 		UPDATE basestation_sessions
 		SET encoding = $1,
 		    updated_at = NOW()
-		WHERE id = $2`
+		WHERE id = $2 AND tenant_id = $3`
 
-	result, err := r.db.ExecContext(ctx, query, encoding, sessionID)
+	result, err := r.db.ExecContext(ctx, query, encoding, sessionID, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to update encoding: %w", err)
 	}
@@ -350,7 +365,7 @@ func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, sessi
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("session not found: id=%d", sessionID)
+		return fmt.Errorf("session not found: id=%d tenant=%d", sessionID, tenantID)
 	}
 
 	return nil
@@ -361,6 +376,7 @@ func (r *BaseStationSessionRepository) TerminateSession(ctx context.Context, ten
 	query := `
 		UPDATE basestation_sessions
 		SET status = $1,
+		    can_resume = false,
 		    ended_at = $2,
 		    updated_at = $2
 		WHERE id = $3 AND tenant_id = $4`
@@ -392,7 +408,7 @@ func (r *BaseStationSessionRepository) TerminateAllSessions(ctx context.Context,
 		    updated_at = $2
 		WHERE basestation_id = $3
 		  AND tenant_id = $4
-		  AND status IN ('active', 'resumed')`
+		  AND status = 'active'`
 
 	now := time.Now()
 	_, err := r.db.ExecContext(ctx, query, models.SessionStatusTerminated, now, baseStationID, tenantID)
@@ -448,7 +464,7 @@ func (r *BaseStationSessionRepository) ListSessions(ctx context.Context, filter 
 	}
 
 	if filter.ActiveOnly {
-		whereClauses = append(whereClauses, "status IN ('active', 'resumed')")
+		whereClauses = append(whereClauses, "status = 'active'")
 	}
 
 	if filter.Since != nil {
@@ -516,9 +532,9 @@ func (r *BaseStationSessionRepository) GetSessionStatistics(ctx context.Context,
 	query := `
 		SELECT
 			COUNT(*) as total_sessions,
-			COUNT(*) FILTER (WHERE status IN ('active', 'resumed')) as active_sessions,
+			COUNT(*) FILTER (WHERE status = 'active') as active_sessions,
 			COUNT(*) FILTER (WHERE status = 'terminated') as terminated_sessions,
-			COUNT(*) FILTER (WHERE can_resume = true AND status IN ('active', 'resumed')) as resumable_sessions,
+			COUNT(*) FILTER (WHERE can_resume = true AND status = 'disconnected') as resumable_sessions,
 			COALESCE(
 				AVG(EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at)) / 3600),
 				0
@@ -775,15 +791,59 @@ func (r *BaseStationSessionRepository) scanSessionFromRows(rows *sql.Rows) (*mod
 	return session, nil
 }
 
-// UpdateCountersAndTimestamp updates operation counters by session UUID
-// Replaces direct GetDB().Exec() calls in bssci.Server.updateSessionCounters (line 4288)
-func (r *BaseStationSessionRepository) UpdateCountersAndTimestamp(ctx context.Context, sessionUUID [16]byte, bsOpId, scOpId int64) error {
-	_, err := r.db.ExecContext(ctx, `
+// MarkDisconnected marks a session disconnected and resumable, guarded by
+// the stored connection ID: when a reconnect already replaced this
+// connection, the update matches zero rows and the newer session is left
+// untouched (not an error).
+func (r *BaseStationSessionRepository) MarkDisconnected(ctx context.Context, tenantID, sessionID int64, connectionID string, endedAt time.Time) error {
+	query := `
 		UPDATE basestation_sessions
-		SET sn_bs_op_id = $1,
-		    sn_sc_op_id = $2
-		WHERE sn_sc_uuid = $3
-	`, bsOpId, scOpId, sessionUUID[:]) // Convert [16]byte to []byte for pq driver
+		SET status = $1,
+		    can_resume = true,
+		    ended_at = $2,
+		    updated_at = $2
+		WHERE id = $3 AND tenant_id = $4 AND connection_id = $5`
 
-	return err
+	if _, err := r.db.ExecContext(ctx, query, models.SessionStatusDisconnected, endedAt, sessionID, tenantID, connectionID); err != nil {
+		return fmt.Errorf("failed to mark session disconnected: %w", err)
+	}
+	return nil
+}
+
+// FindResumableSession finds the resumable session for a base station,
+// scoped by tenant, base station EUI, and snBsUuid, requiring
+// status=disconnected and can_resume=true (BSSCI §5.3.1)
+func (r *BaseStationSessionRepository) FindResumableSession(ctx context.Context, tenantID int64, bsEUI []byte, snBsUUID [16]byte) (*models.BaseStationSession, error) {
+	query := `
+		SELECT s.id, s.basestation_id, s.tenant_id, s.sn_bs_uuid, s.sn_sc_uuid,
+		       s.sn_bs_op_id, s.sn_sc_op_id, s.status, s.connection_id, s.remote_addr,
+		       s.started_at, s.last_ping_at, s.ended_at, s.can_resume, s.encoding,
+		       s.protocol_version, s.connect_info, s.organization_id, s.created_at, s.updated_at
+		FROM basestation_sessions s
+		JOIN basestations b ON b.id = s.basestation_id
+		WHERE s.tenant_id = $1
+		  AND b.bs_eui = $2
+		  AND s.sn_bs_uuid = $3
+		  AND s.status = $4
+		  AND s.can_resume = true
+		ORDER BY s.started_at DESC
+		LIMIT 1`
+
+	session := &models.BaseStationSession{}
+	var snBsUUIDBytes, snScUUIDBytes []byte
+	err := r.db.QueryRowContext(ctx, query, tenantID, bsEUI, snBsUUID[:], models.SessionStatusDisconnected).Scan(
+		&session.ID, &session.BaseStationID, &session.TenantID, &snBsUUIDBytes, &snScUUIDBytes,
+		&session.SnBsOpId, &session.SnScOpId, &session.Status, &session.ConnectionId, &session.RemoteAddr,
+		&session.StartedAt, &session.LastPingAt, &session.EndedAt, &session.CanResume, &session.Encoding,
+		&session.ProtocolVersion, &session.ConnectInfo, &session.OrganizationID, &session.CreatedAt, &session.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to find resumable session: %w", err)
+	}
+	copy(session.SnBsUuid[:], snBsUUIDBytes)
+	copy(session.SnScUuid[:], snScUUIDBytes)
+	return session, nil
 }

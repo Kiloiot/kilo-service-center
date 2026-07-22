@@ -50,6 +50,7 @@ func (s *CoreService) requireServerAdmin(ctx context.Context) error {
 	return nil
 }
 
+// CreateManufacturer creates a device manufacturer catalog entry.
 func (s *CoreService) CreateManufacturer(ctx context.Context, req *pb.CreateManufacturerRequest) (*pb.CreateManufacturerResponse, error) {
 	if s.blueprintSvc == nil {
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),

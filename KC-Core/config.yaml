@@ -110,6 +110,7 @@ protocol:
   # Service Center Identity (DEFER-007) - exposed via gRPC GetReleaseInfo
   sc_vendor: "Kilo"             # Vendor name (displayed to operators)
   sc_model: "KiloCenter"        # Model name (Community or Enterprise SKU)
+  # sc_eui: "4B43000000000001"  # Service Center EUI (16 hex chars; env override: KILOCENTER_PROTOCOL_SC_EUI)
 
 grpc:
   port: 50051                      # Internal only (gateway owns :9090)

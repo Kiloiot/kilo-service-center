@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -248,7 +249,7 @@ func buildDetachPayload(epEui uint64) map[string]interface{} {
 	return map[string]interface{}{
 		"command":   mioty.CmdDetach,
 		"epEui":     float64(epEui),
-		"rxTime":    float64(time.Now().UnixNano()),
+		"rxTime":    time.Now().UnixNano(),
 		"packetCnt": float64(10),
 		"snr":       float64(12.5),
 		"rssi":      float64(-85.2),
@@ -739,7 +740,8 @@ func TestDetachCrossTenantLookup(t *testing.T) {
 }
 
 // TestDetachPayloadNormalization verifies DET-03: handler correctly processes
-// payload with mixed float64 types and signature arrays (from JSON unmarshaling).
+// payload with json.Number values and signature arrays (the shapes produced by
+// strict JSON decoding with UseNumber).
 func TestDetachPayloadNormalization(t *testing.T) {
 	t.Parallel()
 
@@ -754,19 +756,21 @@ func TestDetachPayloadNormalization(t *testing.T) {
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
-	// DET-03: Payload with mixed float64 types (from JSON unmarshaling)
+	// DET-03: Payload with json.Number values (from strict JSON decoding);
+	// rxTime exceeds 2^53 and must survive exactly
 	payload := map[string]interface{}{
 		"command":    mioty.CmdDetach,
-		"epEui":      float64(epEui),                    // Will be normalized to uint64
-		"bsEui":      float64(0xABCDEF123456),           // Will be normalized to uint64
-		"rxTime":     float64(1699876543000000000),      // Will be normalized to int64
-		"packetCnt":  float64(42),                       // Will be normalized to uint32
-		"snr":        float64(15.7),                     // Stays float64
-		"rssi":       float64(-92.3),                    // Stays float64
-		"eqSnr":      float64(14.2),                     // Stays float64
-		"profile":    "eu1",                             // Stays string
-		"rxDuration": float64(500),                      // Will be normalized to int64
-		"sign":       []interface{}{1.0, 2.0, 3.0, 4.0}, // Will be normalized to []byte
+		"epEui":      json.Number(strconv.FormatUint(epEui, 10)), // Will be normalized to uint64
+		"bsEui":      json.Number("188900967593046"),             // Will be normalized to uint64
+		"rxTime":     json.Number("1699876543000000000"),         // Will be normalized to int64
+		"packetCnt":  json.Number("42"),                          // Will be normalized to uint32
+		"snr":        json.Number("15.7"),                        // Becomes float64
+		"rssi":       json.Number("-92.3"),                       // Becomes float64
+		"eqSnr":      json.Number("14.2"),                        // Becomes float64
+		"profile":    "eu1",                                      // Stays string
+		"rxDuration": json.Number("500"),                         // Will be normalized to int64
+		"sign": []interface{}{json.Number("1"), json.Number("2"),
+			json.Number("3"), json.Number("4")}, // Will be normalized to []byte
 	}
 
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}

@@ -84,12 +84,12 @@ func (ra *RepositoryAdapter) RegisterBaseStation(ctx context.Context, reg *Regis
 		if getErr == nil && existingBS != nil {
 			// Update existing basestation
 			updates := map[string]interface{}{
-				"name":            baseStation.Name,
-				"connection_type": baseStation.ConnectionType,
-				"is_online":       true,
-				"vendor":          baseStation.Vendor,
-				"model":           baseStation.Model,
-				"sw_version":      baseStation.Version,
+				"name":                 baseStation.Name,
+				fieldKeyConnectionType: baseStation.ConnectionType,
+				fieldKeyIsOnline:       true,
+				"vendor":               baseStation.Vendor,
+				"model":                baseStation.Model,
+				"sw_version":           baseStation.Version,
 			}
 
 			// Unconditional override for BSSCI connections in updates map
@@ -213,9 +213,9 @@ func (ra *RepositoryAdapter) UpdateConnectionStatus(ctx context.Context, eui [8]
 
 	// Update connection status
 	updates := map[string]interface{}{
-		"is_online":       status.IsOnline,
-		"last_seen_at":    status.LastSeen,
-		"connection_type": string(status.ConnectionType),
+		fieldKeyIsOnline:       status.IsOnline,
+		fieldKeyLastSeenAt:     status.LastSeen,
+		fieldKeyConnectionType: string(status.ConnectionType),
 	}
 
 	if status.SessionID != "" {
@@ -223,6 +223,33 @@ func (ra *RepositoryAdapter) UpdateConnectionStatus(ctx context.Context, eui [8]
 	}
 
 	return ra.repo.Update(ctx, tenant, dbBaseStation.ID, updates)
+}
+
+// DisconnectIfCurrent implements the conditional offline transition: the
+// update applies only while the stored session_uuid still belongs to the
+// disconnecting connection, so late cleanup from a replaced connection never
+// marks the newer session offline.
+func (ra *RepositoryAdapter) DisconnectIfCurrent(ctx context.Context, eui [8]byte, connectionID string, lastSeen time.Time) (bool, error) {
+	tenant := ra.effectiveTenant(ctx)
+	dbBaseStation, err := ra.repo.GetByEUI(ctx, tenant, eui[:])
+	if err != nil {
+		return false, fmt.Errorf("failed to get basestation: %w", err)
+	}
+	if dbBaseStation == nil {
+		return false, nil
+	}
+	if dbBaseStation.SessionUUID == nil || *dbBaseStation.SessionUUID != connectionID {
+		return false, nil
+	}
+
+	updates := map[string]interface{}{
+		fieldKeyIsOnline:   false,
+		fieldKeyLastSeenAt: lastSeen,
+	}
+	if err := ra.repo.Update(ctx, tenant, dbBaseStation.ID, updates); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ListBaseStations implements BaseStationStore interface

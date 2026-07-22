@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	pkggrpc "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -70,6 +71,74 @@ func TestDownloadCertificateByID_ShortCertID(t *testing.T) {
 	expectedFilename := "basestation-abc123-client-certificate.crt"
 	if filename != expectedFilename {
 		t.Fatalf("filename = %q, want %q", filename, expectedFilename)
+	}
+}
+
+// newGenerateTestService builds a Service whose certgen binary is absent so that
+// GenerateCertificate proceeds past EUI validation but fails at the generator check.
+func newGenerateTestService(t *testing.T) *Service {
+	t.Helper()
+	tmpDir := t.TempDir()
+	return &Service{
+		config:             &config.Config{},
+		logger:             &mockLogger{},
+		certGenPath:        filepath.Join(tmpDir, "certgen-missing"),
+		certsDir:           tmpDir,
+		tempDir:            filepath.Join(tmpDir, "temp"),
+		serverValidityDays: config.DefaultCertificatesServerValidityDays,
+		protocolConfig:     &config.ProtocolConfig{},
+	}
+}
+
+func TestGenerateCertificate_RejectsMalformedEUI(t *testing.T) {
+	svc := newGenerateTestService(t)
+	ctx := testutil.TestContext()
+
+	_, err := svc.GenerateCertificate(ctx, &grpcservices.CertificateRequest{
+		BsEUI:        "not-a-valid-eui",
+		ValidityDays: 365,
+	})
+	if err == nil {
+		t.Fatal("expected error for malformed EUI, got nil")
+	}
+	if !strings.Contains(err.Error(), pkggrpc.ErrTokenInvalidBasestationEUIFormat) {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), pkggrpc.ErrTokenInvalidBasestationEUIFormat)
+	}
+}
+
+func TestGenerateCertificate_AcceptsDashedHighBitEUI(t *testing.T) {
+	svc := newGenerateTestService(t)
+	ctx := testutil.TestContext()
+
+	_, err := svc.GenerateCertificate(ctx, &grpcservices.CertificateRequest{
+		BsEUI:        "CA-FE-CA-FE-CA-FE-CA-FE",
+		ValidityDays: 365,
+	})
+	if err == nil {
+		t.Fatal("expected generator-not-found error, got nil")
+	}
+	// EUI validation must succeed; the failure comes from the absent certgen binary.
+	if strings.Contains(err.Error(), pkggrpc.ErrTokenInvalidBasestationEUIFormat) {
+		t.Errorf("dashed high-bit EUI was rejected as invalid: %v", err)
+	}
+	if !strings.Contains(err.Error(), pkggrpc.ErrTokenCertGeneratorNotFound) {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), pkggrpc.ErrTokenCertGeneratorNotFound)
+	}
+}
+
+func TestGenerateCertificate_AcceptsPlainHexEUI(t *testing.T) {
+	svc := newGenerateTestService(t)
+	ctx := testutil.TestContext()
+
+	_, err := svc.GenerateCertificate(ctx, &grpcservices.CertificateRequest{
+		BsEUI:        "cafecafecafecafe",
+		ValidityDays: 365,
+	})
+	if err == nil {
+		t.Fatal("expected generator-not-found error, got nil")
+	}
+	if strings.Contains(err.Error(), pkggrpc.ErrTokenInvalidBasestationEUIFormat) {
+		t.Errorf("plain 16-hex EUI was rejected as invalid: %v", err)
 	}
 }
 

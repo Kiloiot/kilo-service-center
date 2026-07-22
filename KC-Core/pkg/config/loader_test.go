@@ -89,6 +89,160 @@ registry_provider:
 	}
 }
 
+// writeSCEUIConfig writes a minimal config file, optionally including a protocol.sc_eui value.
+func writeSCEUIConfig(t *testing.T, scEUIYAML string) string {
+	t.Helper()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	yaml := "general:\n  server_name: \"test\"\n"
+	if scEUIYAML != "" {
+		yaml += "protocol:\n  sc_eui: \"" + scEUIYAML + "\"\n"
+	}
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	return cfgPath
+}
+
+// clearSCEUIEnv unsets both Service Center EUI environment variables for the test.
+func clearSCEUIEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv(EnvProtocolSCEUI, "")
+	t.Setenv(EnvLegacyServiceCenterEUI, "")
+}
+
+func TestLoad_SCEUIDefault(t *testing.T) {
+	clearSCEUIEnv(t)
+	cfg, err := Load(writeSCEUIConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Protocol.SCEUI != DefaultProtocolSCEUI {
+		t.Errorf("SCEUI = %q, want %q", cfg.Protocol.SCEUI, DefaultProtocolSCEUI)
+	}
+	if cfg.Protocol.SCEUIValue != 0x4B43000000000001 {
+		t.Errorf("SCEUIValue = %#016x, want 0x4B43000000000001", cfg.Protocol.SCEUIValue)
+	}
+	if cfg.Protocol.SCEUILegacyEnvUsed {
+		t.Error("SCEUILegacyEnvUsed = true, want false for default")
+	}
+}
+
+func TestLoad_SCEUIFromFile(t *testing.T) {
+	clearSCEUIEnv(t)
+	cfg, err := Load(writeSCEUIConfig(t, "CA-FE-CA-FE-CA-FE-CA-FE"))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Protocol.SCEUIValue != 0xCAFECAFECAFECAFE {
+		t.Errorf("SCEUIValue = %#016x, want 0xCAFECAFECAFECAFE", cfg.Protocol.SCEUIValue)
+	}
+	if cfg.Protocol.SCEUI != "CAFECAFECAFECAFE" {
+		t.Errorf("SCEUI = %q, want canonical %q", cfg.Protocol.SCEUI, "CAFECAFECAFECAFE")
+	}
+}
+
+func TestLoad_SCEUIModernEnvWinsOverFile(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv(EnvProtocolSCEUI, "0102030405060708")
+	cfg, err := Load(writeSCEUIConfig(t, "CAFECAFECAFECAFE"))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Protocol.SCEUIValue != 0x0102030405060708 {
+		t.Errorf("SCEUIValue = %#016x, want 0x0102030405060708", cfg.Protocol.SCEUIValue)
+	}
+}
+
+func TestLoad_SCEUILegacyEnvDecimal(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv(EnvLegacyServiceCenterEUI, "1234567890")
+	cfg, err := Load(writeSCEUIConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Protocol.SCEUIValue != 1234567890 {
+		t.Errorf("SCEUIValue = %d, want 1234567890", cfg.Protocol.SCEUIValue)
+	}
+	if cfg.Protocol.SCEUI != "00000000499602D2" {
+		t.Errorf("SCEUI = %q, want canonical %q", cfg.Protocol.SCEUI, "00000000499602D2")
+	}
+	if !cfg.Protocol.SCEUILegacyEnvUsed {
+		t.Error("SCEUILegacyEnvUsed = false, want true")
+	}
+}
+
+func TestLoad_SCEUILegacyEnvHexHighBit(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv(EnvLegacyServiceCenterEUI, "0xCAFECAFECAFECAFE")
+	cfg, err := Load(writeSCEUIConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Protocol.SCEUIValue != 0xCAFECAFECAFECAFE {
+		t.Errorf("SCEUIValue = %#016x, want 0xCAFECAFECAFECAFE", cfg.Protocol.SCEUIValue)
+	}
+	if !cfg.Protocol.SCEUILegacyEnvUsed {
+		t.Error("SCEUILegacyEnvUsed = false, want true")
+	}
+}
+
+func TestLoad_SCEUIMalformedModernEnvFails(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv(EnvProtocolSCEUI, "not-an-eui")
+	t.Setenv(EnvLegacyServiceCenterEUI, "0x4B43000000000001")
+	if _, err := Load(writeSCEUIConfig(t, "CAFECAFECAFECAFE")); err == nil {
+		t.Fatal("expected load failure for malformed modern env value, got nil")
+	}
+}
+
+func TestLoad_SCEUIMalformedFileFails(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv(EnvLegacyServiceCenterEUI, "0x4B43000000000001")
+	if _, err := Load(writeSCEUIConfig(t, "ZZZZ")); err == nil {
+		t.Fatal("expected load failure for malformed file value, got nil")
+	}
+}
+
+func TestLoad_SCEUIMalformedLegacyFails(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv(EnvLegacyServiceCenterEUI, "banana")
+	if _, err := Load(writeSCEUIConfig(t, "")); err == nil {
+		t.Fatal("expected load failure for malformed legacy env value, got nil")
+	}
+}
+
+func TestLoad_SCEUILegacyIgnoredWhenModernEnvSet(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv(EnvProtocolSCEUI, "CAFECAFECAFECAFE")
+	t.Setenv(EnvLegacyServiceCenterEUI, "banana")
+	cfg, err := Load(writeSCEUIConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Protocol.SCEUIValue != 0xCAFECAFECAFECAFE {
+		t.Errorf("SCEUIValue = %#016x, want 0xCAFECAFECAFECAFE", cfg.Protocol.SCEUIValue)
+	}
+	if cfg.Protocol.SCEUILegacyEnvUsed {
+		t.Error("SCEUILegacyEnvUsed = true, want false when modern env supplies the value")
+	}
+}
+
+func TestLoad_SCEUILegacyIgnoredWhenFileSet(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv(EnvLegacyServiceCenterEUI, "1234567890")
+	cfg, err := Load(writeSCEUIConfig(t, "0102030405060708"))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Protocol.SCEUIValue != 0x0102030405060708 {
+		t.Errorf("SCEUIValue = %#016x, want 0x0102030405060708", cfg.Protocol.SCEUIValue)
+	}
+	if cfg.Protocol.SCEUILegacyEnvUsed {
+		t.Error("SCEUILegacyEnvUsed = true, want false when file supplies the value")
+	}
+}
+
 func TestInternalTrustStartupFailsWithGRPCWeb(t *testing.T) {
 	cfg := &Config{
 		General: GeneralConfig{ServerName: "test"},

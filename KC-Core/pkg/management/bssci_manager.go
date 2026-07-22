@@ -12,6 +12,12 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
+// JSON response field keys for management endpoints.
+const (
+	responseKeySuccess = "success"
+	responseKeyErrors  = "errors"
+)
+
 // BSSCIManager manages BSSCI operations for API access
 type BSSCIManager struct {
 	server       *bssci.Server
@@ -159,7 +165,7 @@ func (m *BSSCIManager) handleAttachPropagate(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]bool{"success": true}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]bool{responseKeySuccess: true}); err != nil {
 		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), "error", err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), http.StatusInternalServerError)
 		return
@@ -244,16 +250,16 @@ func (m *BSSCIManager) handleAttachPropagateAll(w http.ResponseWriter, r *http.R
 				"error", err)
 		}
 		response = map[string]interface{}{
-			"success": false,
-			"errors":  errorMessages,
+			responseKeySuccess: false,
+			responseKeyErrors:  errorMessages,
 		}
 	} else {
 		m.logger.Info("Attach propagate sent successfully to all sessions",
 			"endpointEUI", req.EndpointEUI,
 			"sessionCount", len(m.server.GetConnectedSessions()))
 		response = map[string]interface{}{
-			"success": true,
-			"errors":  []string{},
+			responseKeySuccess: true,
+			responseKeyErrors:  []string{},
 		}
 	}
 
@@ -352,7 +358,7 @@ func (m *BSSCIManager) handleDetachPropagate(w http.ResponseWriter, r *http.Requ
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]bool{"success": true}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]bool{responseKeySuccess: true}); err != nil {
 		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), "error", err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), http.StatusInternalServerError)
 		return
@@ -386,16 +392,16 @@ func (m *BSSCIManager) handleDetachPropagateAll(w http.ResponseWriter, r *http.R
 				"error", err)
 		}
 		response = map[string]interface{}{
-			"success": false,
-			"errors":  errorMessages,
+			responseKeySuccess: false,
+			responseKeyErrors:  errorMessages,
 		}
 	} else {
 		m.logger.Info("Detach propagate sent successfully to all sessions",
 			"endpointEUI", req.EndpointEUI,
 			"sessionCount", len(m.server.GetConnectedSessions()))
 		response = map[string]interface{}{
-			"success": true,
-			"errors":  []string{},
+			responseKeySuccess: true,
+			responseKeyErrors:  []string{},
 		}
 	}
 

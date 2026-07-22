@@ -50,12 +50,7 @@ interface EndpointsHeaderProps {
 }
 
 const EndpointsHeader: React.FC<EndpointsHeaderProps> = ({ onAddClick }) => (
-  <Box
-    display="flex"
-    justifyContent="space-between"
-    alignItems="center"
-    mb={3}
-  >
+  <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
     <Typography variant="h4" component="h1">
       {ENDPOINTS_PAGE.TITLE}
     </Typography>
@@ -79,9 +74,7 @@ const EndpointsStatsCards: React.FC<EndpointsStatsCardsProps> = ({
       <Card>
         <CardContent>
           <Box display="flex" alignItems="center">
-            <EndPointIcon
-              sx={{ fontSize: 40, color: "primary.main", mr: 2 }}
-            />
+            <EndPointIcon sx={{ fontSize: 40, color: "primary.main", mr: 2 }} />
             <Box>
               <Typography color="text.secondary" variant="body2">
                 {ENDPOINTS_PAGE.TOTAL_ENDPOINTS}
@@ -216,19 +209,14 @@ const EndpointsTableSection: React.FC<EndpointsTableSectionProps> = ({
                 </Typography>
               </TableCell>
               <TableCell>
-                <Typography
-                  variant="body2"
-                  sx={(theme) => getMonoBody2(theme)}
-                >
+                <Typography variant="body2" sx={(theme) => getMonoBody2(theme)}>
                   {endPoint.epEui}
                 </Typography>
               </TableCell>
               <TableCell>
                 <Chip
                   label={endPoint.status}
-                  color={
-                    endPoint.status === "active" ? "success" : "default"
-                  }
+                  color={endPoint.status === "active" ? "success" : "default"}
                   size="small"
                 />
               </TableCell>

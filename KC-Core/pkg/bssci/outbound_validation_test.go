@@ -341,11 +341,7 @@ func TestValidationMarshalFailure(t *testing.T) {
 	}
 
 	server.broadcastFn = server.SendAttachPropagateToAll
-	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
-	}
+	_ = server
 
 	// Create a struct with unmarshalable field (channel type)
 	type UnmarshalableMsg struct {
@@ -360,7 +356,7 @@ func TestValidationMarshalFailure(t *testing.T) {
 		Chan:    make(chan int),
 	}
 
-	err := server.validateOutboundMessage(session, invalidMsg)
+	_, err := outboundValidationProjection(invalidMsg)
 	if err == nil {
 		t.Error("Expected error for unmarshalable message")
 	}
@@ -407,7 +403,11 @@ func TestValidationStructMessages(t *testing.T) {
 			SnScUuid: uuid,
 		}
 
-		err := server.validateOutboundMessage(session, connectRsp)
+		projection, projErr := outboundValidationProjection(connectRsp)
+		if projErr != nil {
+			t.Fatalf("Projection failed for ConnectResponse struct: %v", projErr)
+		}
+		err := server.validateOutboundMessage(session, projection)
 		if err != nil {
 			t.Errorf("Validation failed for ConnectResponse struct: %v", err)
 		}
@@ -427,7 +427,11 @@ func TestValidationStructMessages(t *testing.T) {
 			TxTime:   &txTime,
 		}
 
-		err := server.validateOutboundMessage(session, vmDlData)
+		projection, projErr := outboundValidationProjection(vmDlData)
+		if projErr != nil {
+			t.Fatalf("Projection failed for VMDLData struct: %v", projErr)
+		}
+		err := server.validateOutboundMessage(session, projection)
 		if err != nil {
 			t.Errorf("Validation failed for VMDLData struct: %v", err)
 		}

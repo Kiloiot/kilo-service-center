@@ -7,6 +7,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 type connectionService struct {
@@ -59,10 +60,7 @@ func (c *connectionService) RegisterConnection(ctx context.Context, session *bss
 	}
 
 	// Convert EUI to [8]byte for UpdateConnectionStatus
-	var euiBytes [8]byte
-	for i := 7; i >= 0; i-- {
-		euiBytes[i] = byte(session.BaseStationEUI >> (8 * (7 - i)))
-	}
+	euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
 
 	err := mgr.UpdateConnectionStatus(ctx, euiBytes, status)
 	if err != nil {

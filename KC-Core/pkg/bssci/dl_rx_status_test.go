@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	bssciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci"
 	bssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -192,8 +193,10 @@ func TestHandlerRegistration(t *testing.T) {
 	// Create real services for test
 	logger := logger.NewNop()
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(logger, nil)
+	versionNegotiator, err := bssciservices.NewVersionNegotiator([]string{mioty.MIOTYProtocolVersion}, logger)
+	require.NoError(t, err, "NewVersionNegotiator should build from the canonical version")
 	server, err := bssci.NewServer(&bssci.Config{}, logger, nil, nil, nil, nil, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, nil, 1)
+		sessionSvc, versionNegotiator, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, nil, 1)
 	require.NoError(t, err, "NewServer should not return error with valid StatusService")
 	server.RegisterHandlers()
 

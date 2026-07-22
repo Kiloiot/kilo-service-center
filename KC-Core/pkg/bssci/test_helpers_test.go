@@ -12,11 +12,34 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // NewTestServer creates a Server instance for testing with access to unexported fields.
 // This helper lives in package bssci (not bssci_test) so it can set internal fields.
 // Uses interfaces.Storage for dependency inversion. StatusService is mandatory (panics if nil).
+
+// staticTestVersionNegotiator mirrors the production negotiator semantics for
+// the supported set {mioty.MIOTYProtocolVersion}: same-major requests select
+// the canonical service center version; other majors and lower minors return
+// the production catalog errors.
+type staticTestVersionNegotiator struct{}
+
+func (staticTestVersionNegotiator) Negotiate(_ context.Context, requested string) (string, error) {
+	reqMajor, reqMinor, _, cerr := ParseVersion(requested)
+	if cerr != nil {
+		return "", cerr
+	}
+	scMajor, scMinor, _, _ := ParseVersion(mioty.MIOTYProtocolVersion)
+	if reqMajor != scMajor {
+		return "", NewCatalogError(ErrUnsupportedMajorVersion, POSIX_EPROTO)
+	}
+	if reqMinor < scMinor {
+		return "", NewCatalogError(ErrUnsupportedMinorVersion, POSIX_EPROTO)
+	}
+	return mioty.MIOTYProtocolVersion, nil
+}
+
 func NewTestServer(
 	log logger.Logger,
 	storage interfaces.Storage,
@@ -37,20 +60,21 @@ func NewTestServer(
 	}
 
 	s := &Server{
-		logger:          log,
-		storage:         storage,
-		eventStore:      eventStore,
-		tenantID:        tenantID,
-		sessionSvc:      sessionSvc,
-		downlinkSvc:     downlinkSvc,
-		statusSvc:       statusSvc,
-		connectionSvc:   connectionSvc,
-		broadcaster:     broadcaster,
-		queueSerializer: queueSerializer,
-		auditLogger:     auditLogger,
-		tenantResolver:  tenantResolver,
-		handlers:        make(map[string]HandlerFunc), // Initialize handlers map for tests
-		sessions:        make(map[string]*Session),    // Initialize sessions map for tests
+		logger:            log,
+		storage:           storage,
+		eventStore:        eventStore,
+		tenantID:          tenantID,
+		sessionSvc:        sessionSvc,
+		downlinkSvc:       downlinkSvc,
+		statusSvc:         statusSvc,
+		connectionSvc:     connectionSvc,
+		broadcaster:       broadcaster,
+		queueSerializer:   queueSerializer,
+		auditLogger:       auditLogger,
+		tenantResolver:    tenantResolver,
+		versionNegotiator: staticTestVersionNegotiator{},
+		handlers:          make(map[string]HandlerFunc), // Initialize handlers map for tests
+		sessions:          make(map[string]*Session),    // Initialize sessions map for tests
 	}
 	// Wire endpointRepo if storage is available (prevents nil panics in resolveEndpointTenantID)
 	if storage != nil {
@@ -263,19 +287,20 @@ func NewTestServerWithBaseStationRepo(
 	}
 
 	s := &Server{
-		logger:          log,
-		storage:         storage,
-		basestationRepo: basestationRepo,
-		tenantID:        tenantID,
-		sessionSvc:      sessionSvc,
-		downlinkSvc:     downlinkSvc,
-		statusSvc:       statusSvc,
-		connectionSvc:   connectionSvc,
-		broadcaster:     broadcaster,
-		queueSerializer: queueSerializer,
-		auditLogger:     auditLogger,
-		tenantResolver:  tenantResolver,
-		sessions:        make(map[string]*Session),
+		logger:            log,
+		storage:           storage,
+		basestationRepo:   basestationRepo,
+		tenantID:          tenantID,
+		sessionSvc:        sessionSvc,
+		downlinkSvc:       downlinkSvc,
+		statusSvc:         statusSvc,
+		connectionSvc:     connectionSvc,
+		broadcaster:       broadcaster,
+		queueSerializer:   queueSerializer,
+		auditLogger:       auditLogger,
+		tenantResolver:    tenantResolver,
+		versionNegotiator: staticTestVersionNegotiator{},
+		sessions:          make(map[string]*Session),
 	}
 	// Initialize broadcast hook (tests can override)
 	s.broadcastFn = s.SendAttachPropagateToAll
@@ -342,25 +367,23 @@ func newMockSessionService() *mockSessionService {
 	}
 }
 
-func (m *mockSessionService) ValidateVersion(version string) error {
-	// Accept any non-empty version for tests
-	if version == "" {
-		return fmt.Errorf("version required")
-	}
-	return nil
-}
-
-func (m *mockSessionService) HandleResume(_ *Session, bsUUID []byte, _ []byte, bsOpId, scOpId int64, _ uint64) (*Session, error) {
+func (m *mockSessionService) HandleResume(_ context.Context, _ *Session, bsUUID []byte, bsOpId, scOpId *int64, _ uint64) (*Session, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	// Look up session by UUID using uppercase hex (matches production)
 	key := strings.ToUpper(hex.EncodeToString(bsUUID))
 	if existingSession, exists := m.sessionsByUUID[key]; exists {
-		// Validate counters match
-		if existingSession.BsOpId == bsOpId && existingSession.ScOpId == scOpId {
-			return existingSession, nil
+		// Mirror production constraint semantics: absent constraints pass;
+		// required BS operation ID beyond known state or claimed SC
+		// operation ID beyond issued state rejects
+		if bsOpId != nil && *bsOpId > existingSession.LastBsOpId {
+			return nil, nil
 		}
+		if scOpId != nil && *scOpId < existingSession.LastScOpId {
+			return nil, nil
+		}
+		return existingSession, nil
 	}
 	return nil, nil // No valid resume
 }
@@ -425,12 +448,19 @@ func (m *mockSessionService) RemoveSession(session *Session) {
 	}
 }
 
+func (m *mockSessionService) MarkDisconnected(_ context.Context, session *Session) error {
+	if session.DbSessionID == 0 {
+		return fmt.Errorf("cannot mark session disconnected: not persisted (DbSessionID=0)")
+	}
+	return nil
+}
+
 func (m *mockSessionService) TerminateSession(_ context.Context, session *Session) error {
 	m.RemoveSession(session)
 	return nil
 }
 
-func (m *mockSessionService) UpdateEncoding(_ context.Context, sessionID int64, encoding string) error {
+func (m *mockSessionService) UpdateEncoding(_ context.Context, _ int64, sessionID int64, encoding string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

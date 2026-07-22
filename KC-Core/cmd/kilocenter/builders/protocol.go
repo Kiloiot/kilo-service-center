@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 )
@@ -49,15 +48,10 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 
 	log.Info("Initializing mandatory BSSCI server...")
 
-	// Service Center EUI - can be overridden by environment variable
-	serviceCenterEUI := uint64(0x4B43000000000001) // Default: "KC" prefix + unique ID
-	if scEUIStr := os.Getenv("SERVICE_CENTER_EUI"); scEUIStr != "" {
-		if parsed, err := strconv.ParseUint(scEUIStr, 0, 64); err == nil {
-			serviceCenterEUI = parsed
-			log.Info("Using Service Center EUI from environment", "eui", fmt.Sprintf("0x%016X", serviceCenterEUI))
-		} else {
-			log.Info("Invalid SERVICE_CENTER_EUI format, using default", "eui", fmt.Sprintf("0x%016X", serviceCenterEUI))
-		}
+	// Service Center EUI is resolved and validated during config load (pkg/config Load)
+	serviceCenterEUI := cfg.Protocol.SCEUIValue
+	if cfg.Protocol.SCEUILegacyEnvUsed {
+		log.WarnContext(ctx, pkgconfig.LogDeprecatedServiceCenterEUIEnv, "sc_eui", cfg.Protocol.SCEUI)
 	}
 
 	// Resolve software version from release manifest with config fallback
@@ -79,13 +73,16 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		TLSCACert:                        cfg.Protocol.BSCITLS.CAFile,
 		TLSMinVersion:                    cfg.Protocol.BSCITLS.MinVersion,
 		ServiceCenterEUI:                 serviceCenterEUI,
-		Vendor:                           "Kilo",
-		Model:                            "KiloCenter",
+		Vendor:                           cfg.Protocol.SCVendor,
+		Model:                            cfg.Protocol.SCModel,
 		Name:                             cfg.General.ServerName,
 		SoftwareVersion:                  softwareVersion,
 		OrgEnforcementEnabled:            cfg.General.OrgEnforcementEnabled,
 		MessageEncoding:                  cfg.Protocol.MessageEncoding,
 		DetachSignatureValidationEnabled: cfg.Protocol.DetachSignatureValidationEnabled,
+		OperationAckTimeout:              time.Duration(cfg.Protocol.AckTimeout) * time.Millisecond,
+		DuplicateWindow:                  time.Duration(cfg.Protocol.DuplicateWindow) * time.Second,
+		CertificatePollInterval:          cfg.Protocol.BSCICertificatePollInterval,
 	}
 
 	// Create BSSCI service bundles
@@ -95,7 +92,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	pendingOps := make(map[bssci.SessionOpKey]*bssci.PendingOperation)
 	var pendingOpsMu sync.RWMutex
 
-	bssciSvcBundle := bssciservices.NewBSSCIServices(
+	bssciSvcBundle, err := bssciservices.NewBSSCIServices(
 		infra.Storage,
 		infra.SystemEventStore,
 		infra.QueueStore,
@@ -104,7 +101,11 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		infra.OrgResolverSvc,
 		&pendingOps,
 		&pendingOpsMu,
+		[]string{mioty.MIOTYProtocolVersion},
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build BSSCI services: %w", err)
+	}
 
 	bssciInfra := &bssciservices.BSSCIInfrastructure{
 		ConnectionMgr:    infra.ConnectionMgr,
@@ -129,6 +130,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		bssciInfra.EndpointRepo,
 		infra.TenantID,
 		bssciSvcBundle.SessionSvc,
+		bssciSvcBundle.VersionNegotiator,
 		bssciSvcBundle.DownlinkSvc,
 		bssciSvcBundle.StatusSvc,
 		bssciSvcBundle.ConnectionSvc,

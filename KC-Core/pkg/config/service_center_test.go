@@ -336,14 +336,48 @@ func TestValidateServiceCenterConfig_TLSDisabled(t *testing.T) {
 
 func TestValidateServiceCenterConfig_Valid(t *testing.T) {
 	cfg := &ProtocolConfig{
-		BSCIHost: "bssci.mioty.local",
-		BSCIPort: 5000,
-		BSCITLS:  TLSConfig{Enabled: true},
+		BSCIHost:                    "bssci.mioty.local",
+		BSCIPort:                    5000,
+		BSCITLS:                     TLSConfig{Enabled: true},
+		AckTimeout:                  DefaultProtocolAckTimeout,
+		DuplicateWindow:             DefaultProtocolDuplicateWindow,
+		BSCICertificatePollInterval: DefaultProtocolCertificatePollInterval,
 	}
 
 	err := ValidateServiceCenterConfig(cfg)
 	if err != nil {
 		t.Errorf("ValidateServiceCenterConfig() should pass with valid config, got error: %v", err)
+	}
+}
+
+func TestValidateServiceCenterConfig_TimingBounds(t *testing.T) {
+	base := func() *ProtocolConfig {
+		return &ProtocolConfig{
+			BSCIHost:                    "bssci.mioty.local",
+			BSCIPort:                    5000,
+			BSCITLS:                     TLSConfig{Enabled: true},
+			AckTimeout:                  DefaultProtocolAckTimeout,
+			DuplicateWindow:             DefaultProtocolDuplicateWindow,
+			BSCICertificatePollInterval: DefaultProtocolCertificatePollInterval,
+		}
+	}
+
+	zeroAck := base()
+	zeroAck.AckTimeout = 0
+	if err := ValidateServiceCenterConfig(zeroAck); err == nil {
+		t.Error("zero ack_timeout must fail validation")
+	}
+
+	negativeWindow := base()
+	negativeWindow.DuplicateWindow = -1
+	if err := ValidateServiceCenterConfig(negativeWindow); err == nil {
+		t.Error("negative duplicate_window must fail validation")
+	}
+
+	zeroPoll := base()
+	zeroPoll.BSCICertificatePollInterval = 0
+	if err := ValidateServiceCenterConfig(zeroPoll); err == nil {
+		t.Error("zero bsci_certificate_poll_interval must fail validation")
 	}
 }
 
