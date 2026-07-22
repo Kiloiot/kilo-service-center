@@ -84,25 +84,47 @@ func breakerStreamInterceptor(
 			breaker = identityBreaker
 		}
 
-		err := breaker.Execute(func() error {
-			// Apply per-RPC timeout only for unary methods identified
-			// by service descriptor. Streaming RPCs (including all proxied
-			// calls via UnknownServiceHandler) are not timed out.
-			if rpcTimeout > 0 && unaryMethods[info.FullMethod] {
-				ctx, cancel := context.WithTimeout(ss.Context(), rpcTimeout)
-				defer cancel()
-				ss = &contextServerStream{ServerStream: ss, ctx: ctx}
-			}
-			return handler(srv, ss)
-		})
+		// Unary methods run inside the breaker with the per-RPC timeout:
+		// they are short-lived, so occupying an execution slot is correct
+		// and client cancellations already surface as codes.Canceled.
+		if unaryMethods[info.FullMethod] {
+			err := breaker.Execute(func() error {
+				if rpcTimeout > 0 {
+					ctx, cancel := context.WithTimeout(ss.Context(), rpcTimeout)
+					defer cancel()
+					ss = &contextServerStream{ServerStream: ss, ctx: ctx}
+				}
+				return handler(srv, ss)
+			})
 
-		// Map gobreaker rejection errors to gRPC Unavailable for client failover
-		if errors.Is(err, gobreaker.ErrOpenState) {
+			// Map gobreaker rejection errors to gRPC Unavailable for client failover
+			if errors.Is(err, gobreaker.ErrOpenState) {
+				return status.Error(codes.Unavailable, "upstream circuit breaker is open")
+			}
+			if errors.Is(err, gobreaker.ErrTooManyRequests) {
+				return status.Error(codes.Unavailable, "upstream circuit breaker is recovering")
+			}
+			return err
+		}
+
+		// Streaming RPCs (including all proxied calls via
+		// UnknownServiceHandler) run outside the breaker's execution slots: a
+		// long-lived stream must not hold a half-open probe slot for its
+		// whole lifetime. The breaker still gates admission, and the stream's
+		// terminal error still feeds its counters - except when the client
+		// tore the stream down (context canceled), which the transparent
+		// proxy surfaces as codes.Internal "failed proxying s2c" and must not
+		// count as an upstream failure.
+		if breaker.State() == resilience.BreakerOpen {
 			return status.Error(codes.Unavailable, "upstream circuit breaker is open")
 		}
-		if errors.Is(err, gobreaker.ErrTooManyRequests) {
-			return status.Error(codes.Unavailable, "upstream circuit breaker is recovering")
+
+		err := handler(srv, ss)
+		if err != nil && ss.Context().Err() != nil {
+			// Client-initiated teardown: benign, not an upstream failure.
+			return err
 		}
+		breaker.RecordResult(err)
 		return err
 	}
 }
