@@ -50,7 +50,9 @@ func TestConfigureRuntimeRejectsDoubleCall(t *testing.T) {
 }
 
 // TestConfigureRuntimeRejectedAfterStart: a serving instance cannot be
-// reconfigured.
+// reconfigured. The started flag is set directly: a real committed Start
+// requires the full production dependency set (~19 stub collaborators for a
+// test), while this guard reads exactly the field Start commits.
 func TestConfigureRuntimeRejectedAfterStart(t *testing.T) {
 	server := newResumeReissueServer(t)
 	server.mu.Lock()
@@ -60,6 +62,38 @@ func TestConfigureRuntimeRejectedAfterStart(t *testing.T) {
 	err := server.ConfigureRuntime(newRuntimeDeps())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "after Start")
+}
+
+// TestStartLifecycle drives the real Start/Stop entry points on a partially
+// wired server: a wiring failure leaves the server startable (started never
+// commits), Stop is idempotent, and a stopped server cannot be restarted.
+func TestStartLifecycle(t *testing.T) {
+	server := newResumeReissueServer(t)
+
+	err := server.Start()
+	require.Error(t, err, "Start before ConfigureRuntime must fail")
+	assert.Contains(t, err.Error(), "ConfigureRuntime")
+
+	require.NoError(t, server.ConfigureRuntime(newRuntimeDeps()))
+
+	err = server.Start()
+	require.Error(t, err, "the test harness is deliberately under-wired")
+	assert.Contains(t, err.Error(), "wiring incomplete")
+
+	// A failed validation must not commit lifecycle state: the same error
+	// repeats instead of "already started".
+	err = server.Start()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "wiring incomplete",
+		"a failed Start must leave the server startable")
+
+	require.NoError(t, server.Stop())
+	require.NoError(t, server.Stop(), "Stop must be idempotent")
+
+	err = server.Start()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stopped",
+		"a stopped server must not restart")
 }
 
 // TestValidateRuntimeWiringReportsMissingDependency: an incompletely wired
