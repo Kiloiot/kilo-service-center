@@ -2627,7 +2627,7 @@ func TestDownloadBaseStationCertificate_InvalidCertType(t *testing.T) {
 		storedFunc: func(_ context.Context, _ int64, _ []byte, certType string) ([]byte, string, error) {
 			// Service rejects invalid cert types
 			if certType != grpcerrors.CertTypeCA && certType != grpcerrors.CertTypeClient && certType != grpcerrors.CertTypeKey {
-				return nil, "", fmt.Errorf("%s", grpcerrors.ErrTokenCertTypeRequired)
+				return nil, "", grpcerrors.NewTokenError(grpcerrors.ErrTokenCertTypeRequired, nil)
 			}
 			return nil, "", nil
 		},

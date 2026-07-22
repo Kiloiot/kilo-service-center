@@ -2,6 +2,8 @@
 package grpc
 
 import (
+	"errors"
+
 	"google.golang.org/grpc/codes"
 )
 
@@ -2244,4 +2246,37 @@ func ResolveErrorMessage(token string) string {
 // GetGRPCCode returns the gRPC status code for an error token
 func GetGRPCCode(token string) codes.Code {
 	return GetErrorDefinition(token).Code
+}
+
+// TokenError is a typed catalog error that carries its token across service
+// boundaries, so callers match on the token via errors.As instead of
+// substring inspection of the error text.
+type TokenError struct {
+	Token string
+	Err   error
+}
+
+// Error renders the token with its resolved catalog message and any cause.
+func (e *TokenError) Error() string {
+	if e.Err != nil {
+		return e.Token + ": " + e.Err.Error()
+	}
+	return e.Token + ": " + ResolveErrorMessage(e.Token)
+}
+
+// Unwrap exposes the underlying cause for errors.Is/As chains.
+func (e *TokenError) Unwrap() error { return e.Err }
+
+// NewTokenError wraps a cause with a catalog token. cause may be nil.
+func NewTokenError(token string, cause error) *TokenError {
+	return &TokenError{Token: token, Err: cause}
+}
+
+// TokenOf extracts the catalog token from an error chain.
+func TokenOf(err error) (string, bool) {
+	var te *TokenError
+	if errors.As(err, &te) {
+		return te.Token, true
+	}
+	return "", false
 }

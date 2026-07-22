@@ -927,3 +927,7 @@ func CreateTestServices(log logger.Logger, eventStore interfaces.SystemEventStor
 
 	return sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStore
 }
+
+func (m *mockBaseStationRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
+	return true, nil
+}

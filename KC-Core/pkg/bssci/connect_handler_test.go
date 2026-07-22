@@ -631,3 +631,7 @@ func TestConnectHandler_OutOfRangeGeoLocation_NoPersistence(t *testing.T) {
 	assert.NotContains(t, trackingRepo.updatesMap, "location_source", "location_source should not be set for out-of-range")
 	assert.NotContains(t, trackingRepo.updatesMap, "location_updated_at", "location_updated_at should not be set for out-of-range")
 }
+
+func (m *geoLocationTrackingRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
+	return true, nil
+}

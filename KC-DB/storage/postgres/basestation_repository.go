@@ -691,3 +691,24 @@ type BaseStationWithStats struct {
 	AvgRSSI         float64        `db:"avg_rssi"`
 	AvgSNR          float64        `db:"avg_snr"`
 }
+
+// UpdateTLSFingerprintIfBlank persists the certificate fingerprint only while
+// the stored tls_cert_fingerprint is still NULL or empty (see interface
+// contract). The conditional WHERE makes the backfill race-safe: a concurrent
+// writer wins and this call reports false so the caller reloads and compares.
+func (r *BaseStationRepository) UpdateTLSFingerprintIfBlank(ctx context.Context, tenantID, id int64, fingerprint string) (bool, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE basestations
+		SET tls_cert_fingerprint = $1, updated_at = NOW()
+		WHERE tenant_id = $2 AND id = $3
+		  AND (tls_cert_fingerprint IS NULL OR tls_cert_fingerprint = '')
+	`, fingerprint, tenantID, id)
+	if err != nil {
+		return false, fmt.Errorf("backfill tls fingerprint: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("backfill tls fingerprint rows: %w", err)
+	}
+	return rows > 0, nil
+}

@@ -4,12 +4,12 @@ package certificates
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -29,6 +29,32 @@ import (
 	"github.com/google/uuid"
 )
 
+// KeyEncryptor is the narrow key-encryption contract the certificate service
+// consumes (implemented by crypto.KeyEncryptor).
+type KeyEncryptor interface {
+	EncryptKey(key []byte) (string, error)
+	DecryptKey(encrypted string) ([]byte, error)
+}
+
+// CertGenRunner executes the certificate generator with the given arguments.
+// Injected so tests can produce real PEM material without the external
+// certgen binary; the default runner shells out to the configured path.
+type CertGenRunner func(ctx context.Context, certGenPath string, args ...string) (stdout, stderr string, err error)
+
+// execCertGen is the production CertGenRunner: it runs the certgen binary,
+// reporting a typed generator-not-found error when the binary is absent.
+func execCertGen(ctx context.Context, certGenPath string, args ...string) (string, string, error) {
+	if _, err := os.Stat(certGenPath); err != nil {
+		return "", "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGeneratorNotFound, errors.New(certGenPath))
+	}
+	cmd := exec.CommandContext(ctx, certGenPath, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
 // Service implements grpcservices.CertificateService.
 type Service struct {
 	config             *config.Config
@@ -39,11 +65,22 @@ type Service struct {
 	serverValidityDays int
 	protocolConfig     *config.ProtocolConfig
 	bsRepo             interfaces.BaseStationRepository
-	keyEncryptor       *crypto.KeyEncryptor
+	keyEncryptor       KeyEncryptor
+	certGen            CertGenRunner
 }
 
-// New creates a new certificate service.
-func New(cfg *config.Config, log logger.Logger) *Service {
+// New creates a new certificate service. The base-station repository and key
+// encryptor are mandatory: ownership verification and durable persistence are
+// part of issuance, so an incompletely wired service must never be able to
+// mint a certificate. certGen may be nil (defaults to running the configured
+// certgen binary).
+func New(cfg *config.Config, log logger.Logger, bsRepo interfaces.BaseStationRepository, keyEncryptor KeyEncryptor, certGen CertGenRunner) (*Service, error) {
+	if bsRepo == nil || keyEncryptor == nil {
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenServiceNotConfigured, nil)
+	}
+	if certGen == nil {
+		certGen = execCertGen
+	}
 	ctx := context.Background()
 
 	// Use certificate config paths if available, fall back to constants
@@ -98,19 +135,10 @@ func New(cfg *config.Config, log logger.Logger) *Service {
 		tempDir:            tempDir,
 		serverValidityDays: serverValidityDays,
 		protocolConfig:     &cfg.Protocol,
-	}
-}
-
-// WithBaseStationRepo adds TLS persistence capability.
-func (s *Service) WithBaseStationRepo(repo interfaces.BaseStationRepository) *Service {
-	s.bsRepo = repo
-	return s
-}
-
-// WithKeyEncryptor adds private key encryption capability.
-func (s *Service) WithKeyEncryptor(enc *crypto.KeyEncryptor) *Service {
-	s.keyEncryptor = enc
-	return s
+		bsRepo:             bsRepo,
+		keyEncryptor:       keyEncryptor,
+		certGen:            certGen,
+	}, nil
 }
 
 // GenerateCertificate generates a new certificate for a base station.
@@ -124,7 +152,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 	euiValue, euiErr := validation.ParseEUI(req.BsEUI)
 	if euiErr != nil {
 		s.logger.WarnContext(ctx, pkggrpc.LogCertInvalidEUI, "bs_eui", req.BsEUI, "error", euiErr)
-		return nil, fmt.Errorf("%s: %s", pkggrpc.ErrTokenInvalidBasestationEUIFormat, pkggrpc.ResolveErrorMessage(pkggrpc.ErrTokenInvalidBasestationEUIFormat))
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenInvalidBasestationEUIFormat, nil)
 	}
 	// Canonical uppercase-dashed form used as the certificate CN and in stored metadata
 	bsEUIDashed := mioty.FormatEUI64Dashed(euiValue)
@@ -132,20 +160,26 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 	// Validate validity days (max 3 years = 1095 days)
 	if req.ValidityDays < 1 || req.ValidityDays > 1095 {
 		s.logger.WarnContext(ctx, pkggrpc.LogCertInvalidValidityDays, "validity_days", req.ValidityDays)
-		return nil, fmt.Errorf("%s: %s", pkggrpc.ErrTokenInvalidValidityPeriod, pkggrpc.ResolveErrorMessage(pkggrpc.ErrTokenInvalidValidityPeriod))
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenInvalidValidityPeriod, nil)
+	}
+
+	// Certificate issuance is tenant-scoped: without a tenant, a certificate
+	// could be minted for any EUI. Fail closed.
+	if req.TenantID <= 0 {
+		s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped,
+			"bs_eui", req.BsEUI, "tenant_id", req.TenantID)
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenMissingTenantCtx, nil)
 	}
 
 	// Tenant ownership must be verified BEFORE any file or certgen work: the
 	// requesting tenant must already own a base station registered with this
 	// EUI, or a certificate could be minted for another tenant's station
 	// (cross-tenant impersonation). Fail closed.
-	if s.bsRepo != nil && req.TenantID > 0 {
-		euiBytes := binary.BigEndian.AppendUint64(nil, euiValue)
-		if _, ownErr := s.bsRepo.GetByEUI(ctx, req.TenantID, euiBytes); ownErr != nil {
-			s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped,
-				"bs_eui", req.BsEUI, "tenant_id", req.TenantID, "error", ownErr)
-			return nil, fmt.Errorf("%s", pkggrpc.ErrTokenBaseStationNotFound)
-		}
+	euiBytes := binary.BigEndian.AppendUint64(nil, euiValue)
+	if _, ownErr := s.bsRepo.GetByEUI(ctx, req.TenantID, euiBytes); ownErr != nil {
+		s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped,
+			"bs_eui", req.BsEUI, "tenant_id", req.TenantID, "error", ownErr)
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenBaseStationNotFound, ownErr)
 	}
 
 	// Generate unique ID for this certificate set
@@ -156,18 +190,10 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 	// Create temporary directory for certificates
 	if err := os.MkdirAll(certDir, 0750); err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertDirCreateFailed, "error", err)
-		return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCertDirCreateFailed, err)
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCertDirCreateFailed, err)
 	}
 
-	// Log the certgen path and check if it exists
 	s.logger.InfoContext(ctx, pkggrpc.LogCertGeneratorPathInfo, "path", s.certGenPath)
-	if _, err := os.Stat(s.certGenPath); err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertGeneratorNotFound, "path", s.certGenPath, "error", err)
-		if rmErr := os.RemoveAll(certDir); rmErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
-		}
-		return nil, fmt.Errorf("%s: %s", pkggrpc.ErrTokenCertGeneratorNotFound, s.certGenPath)
-	}
 
 	// Copy the existing CA certificate from KC-Core instead of generating a new one
 	kcCoreCertsPath := s.certsDir
@@ -181,7 +207,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		if rmErr := os.RemoveAll(certDir); rmErr != nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
 		}
-		return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCACertReadFailed, err)
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertReadFailed, err)
 	}
 
 	if err := os.WriteFile(caCertDst, caCertData, 0600); err != nil { //nolint:gosec // G703: path built from configured cert dir and canonically validated EUI
@@ -189,7 +215,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		if rmErr := os.RemoveAll(certDir); rmErr != nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
 		}
-		return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCACertCopyFailed, err)
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertCopyFailed, err)
 	}
 
 	s.logger.InfoContext(ctx, pkggrpc.LogCertCACertCopied, "from", caCertSrc, "to", caCertDst)
@@ -204,7 +230,7 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		if rmErr := os.RemoveAll(certDir); rmErr != nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
 		}
-		return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCAKeyReadFailed, err)
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCAKeyReadFailed, err)
 	}
 
 	if err := os.WriteFile(caKeyDst, caKeyData, 0600); err != nil { //nolint:gosec // G703: path built from configured cert dir and canonically validated EUI
@@ -212,35 +238,34 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		if rmErr := os.RemoveAll(certDir); rmErr != nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
 		}
-		return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCAKeyCopyFailed, err)
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCAKeyCopyFailed, err)
 	}
 
-	// Execute certificate generation command with -client-only flag
-	cmd := exec.Command(s.certGenPath,
+	// Execute certificate generation with -client-only flag
+	genArgs := []string{
 		"-dir", certDir,
 		"-days", fmt.Sprintf("%d", req.ValidityDays),
 		"-client", bsEUIDashed,
 		"-client-only",
-	)
+	}
+	s.logger.InfoContext(ctx, pkggrpc.LogCertGenerationExecuting, "command", s.certGenPath, "args", genArgs)
 
-	s.logger.InfoContext(ctx, pkggrpc.LogCertGenerationExecuting, "command", s.certGenPath, "args", cmd.Args[1:])
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
+	stdout, stderr, err := s.certGen(ctx, s.certGenPath, genArgs...)
+	if err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertGenerationFailed, "error", err)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout.String())
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr.String())
+		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout)
+		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr)
 		if rmErr := os.RemoveAll(certDir); rmErr != nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
 		}
-		return nil, fmt.Errorf("%s: %s", pkggrpc.ErrTokenCertGenerationFailed, stderr.String())
+		if _, typed := pkggrpc.TokenOf(err); typed {
+			return nil, err
+		}
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, fmt.Errorf("%s: %w", stderr, err))
 	}
 
 	s.logger.InfoContext(ctx, pkggrpc.LogCertGenerationSuccess)
-	s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout.String())
+	s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout)
 
 	// Read the generated certificate to extract expiry date
 	certPath := filepath.Join(certDir, "client.crt")
@@ -274,17 +299,12 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 	// encrypted key cannot be durably recorded on the base station, no
 	// certificate is returned and the temporary artifacts are removed, so a
 	// station never receives a certificate the service center did not persist.
-	if s.bsRepo != nil && s.keyEncryptor != nil && req.TenantID > 0 {
-		euiBytes := binary.BigEndian.AppendUint64(nil, euiValue)
-		if persistErr := s.persistCertsToBaseStation(ctx, certDir, euiBytes, req.TenantID, certExpiryTime); persistErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", persistErr)
-			if rmErr := os.RemoveAll(certDir); rmErr != nil {
-				s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
-			}
-			return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCertPersistenceFailed, persistErr)
+	if persistErr := s.persistCertsToBaseStation(ctx, certDir, euiBytes, req.TenantID, certExpiryTime); persistErr != nil {
+		s.logger.ErrorContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", persistErr)
+		if rmErr := os.RemoveAll(certDir); rmErr != nil {
+			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
 		}
-	} else if s.bsRepo != nil && s.keyEncryptor == nil && req.TenantID > 0 {
-		s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", pkggrpc.ErrTokenServiceNotConfigured)
+		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCertPersistenceFailed, persistErr)
 	}
 
 	// Build canonical Service Center URL from config
@@ -347,7 +367,7 @@ func (s *Service) DownloadCertificateByID(ctx context.Context, certType, certID 
 		downloadName = fmt.Sprintf("basestation-%s-private-key.key", euiPart)
 	default:
 		s.logger.ErrorContext(ctx, pkggrpc.LogDownloadCertFailed, "cert_type", certType, "error", "invalid cert type")
-		return nil, "", fmt.Errorf("%s", pkggrpc.ErrTokenCertTypeRequired)
+		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertTypeRequired, nil)
 	}
 
 	// Build file path
@@ -355,13 +375,13 @@ func (s *Service) DownloadCertificateByID(ctx context.Context, certType, certID 
 
 	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return nil, "", fmt.Errorf("%s: %s", pkggrpc.ErrTokenCertNotFound, certType)
+		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, errors.New(certType))
 	}
 
 	// Read file
 	data, err := os.ReadFile(filePath) // #nosec G304 - validated certType and UUID certID
 	if err != nil {
-		return nil, "", fmt.Errorf("%s: %w", pkggrpc.ErrTokenCertNotFound, err)
+		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, err)
 	}
 
 	// If this was the private key, schedule cleanup
@@ -411,34 +431,27 @@ func (s *Service) GenerateServerCertificates(ctx context.Context) error {
 	// Ensure directory exists
 	if err := os.MkdirAll(kcCorePath, 0750); err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertsDirCreateFailed, "error", err)
-		return fmt.Errorf("%s: %w", pkggrpc.ErrTokenCertDirCreateFailed, err)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertDirCreateFailed, err)
 	}
 
-	// Check if certgen exists
-	if _, err := os.Stat(s.certGenPath); err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertGeneratorNotFound, "path", s.certGenPath, "error", err)
-		return fmt.Errorf("%s: %s", pkggrpc.ErrTokenCertGeneratorNotFound, s.certGenPath)
-	}
-
-	// Execute certificate generation command for server certificates
+	// Execute certificate generation for server certificates
 	serverHostname := s.deriveServerHostname()
-	cmd := exec.Command(s.certGenPath,
+	genArgs := []string{
 		"-dir", kcCorePath,
 		"-days", fmt.Sprintf("%d", s.serverValidityDays),
 		"-server", serverHostname,
-	)
+	}
+	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenExecuting, "command", s.certGenPath, "args", genArgs, "hostname", serverHostname)
 
-	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenExecuting, "command", s.certGenPath, "args", cmd.Args[1:], "hostname", serverHostname)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
+	stdout, stderr, err := s.certGen(ctx, s.certGenPath, genArgs...)
+	if err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogServerCertGenFailed, "error", err)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout.String())
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr.String())
-		return fmt.Errorf("%s: %s", pkggrpc.ErrTokenCertServerGenerationFailed, stderr.String())
+		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout)
+		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr)
+		if _, typed := pkggrpc.TokenOf(err); typed {
+			return err
+		}
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertServerGenerationFailed, fmt.Errorf("%s: %w", stderr, err))
 	}
 
 	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenSuccess)
@@ -453,43 +466,36 @@ func (s *Service) RenewServerCertificates(ctx context.Context) error {
 
 	// Require existing server certificate (nothing to renew otherwise)
 	if _, err := os.Stat(filepath.Join(kcCorePath, "server.crt")); os.IsNotExist(err) {
-		return fmt.Errorf("%s", pkggrpc.ErrTokenNoCertsToRenew)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenNoCertsToRenew, nil)
 	}
 
 	// Require CA files (-server-only needs them to sign)
 	if _, err := os.Stat(filepath.Join(kcCorePath, "ca.crt")); os.IsNotExist(err) {
-		return fmt.Errorf("%s: %s", pkggrpc.ErrTokenCACertReadFailed, pkggrpc.ResolveErrorMessage(pkggrpc.ErrTokenCACertReadFailed))
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertReadFailed, nil)
 	}
 	if _, err := os.Stat(filepath.Join(kcCorePath, "ca.key")); os.IsNotExist(err) {
-		return fmt.Errorf("%s: %s", pkggrpc.ErrTokenCAKeyReadFailed, pkggrpc.ResolveErrorMessage(pkggrpc.ErrTokenCAKeyReadFailed))
-	}
-
-	// Check if certgen exists
-	if _, err := os.Stat(s.certGenPath); err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertGeneratorNotFound, "path", s.certGenPath, "error", err)
-		return fmt.Errorf("%s: %s", pkggrpc.ErrTokenCertGeneratorNotFound, s.certGenPath)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCAKeyReadFailed, nil)
 	}
 
 	// Execute certgen with -server-only to regenerate server cert without touching the CA
 	serverHostname := s.deriveServerHostname()
-	cmd := exec.Command(s.certGenPath,
+	genArgs := []string{
 		"-dir", kcCorePath,
 		"-days", fmt.Sprintf("%d", s.serverValidityDays),
 		"-server", serverHostname,
 		"-server-only",
-	)
+	}
+	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenExecuting, "command", s.certGenPath, "args", genArgs, "hostname", serverHostname)
 
-	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenExecuting, "command", s.certGenPath, "args", cmd.Args[1:], "hostname", serverHostname)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
+	stdout, stderr, err := s.certGen(ctx, s.certGenPath, genArgs...)
+	if err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogServerCertGenFailed, "error", err)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout.String())
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr.String())
-		return fmt.Errorf("%s: %s", pkggrpc.ErrTokenCertServerGenerationFailed, stderr.String())
+		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout)
+		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr)
+		if _, typed := pkggrpc.TokenOf(err); typed {
+			return err
+		}
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertServerGenerationFailed, fmt.Errorf("%s: %w", stderr, err))
 	}
 
 	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenSuccess)
@@ -605,19 +611,19 @@ func (s *Service) getCertificateInfo(certPath string) *certInfo {
 // GetStoredCertificate retrieves TLS certificates stored in base station record.
 func (s *Service) GetStoredCertificate(ctx context.Context, tenantID int64, bsEui []byte, certType string) ([]byte, string, error) {
 	if s.bsRepo == nil {
-		return nil, "", fmt.Errorf("%s", pkggrpc.ErrTokenServiceNotConfigured)
+		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenServiceNotConfigured, nil)
 	}
 
 	// Validate cert type using canonical constants
 	if certType != pkggrpc.CertTypeCA && certType != pkggrpc.CertTypeClient && certType != pkggrpc.CertTypeKey {
 		s.logger.ErrorContext(ctx, pkggrpc.LogDownloadCertFailed, "cert_type", certType, "error", pkggrpc.ErrTokenCertTypeRequired)
-		return nil, "", fmt.Errorf("%s", pkggrpc.ErrTokenCertTypeRequired)
+		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertTypeRequired, nil)
 	}
 
 	bs, err := s.bsRepo.GetByEUI(ctx, tenantID, bsEui)
 	if err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertBSNotFound, "bs_eui", hex.EncodeToString(bsEui), "error", err)
-		return nil, "", fmt.Errorf("%s: %w", pkggrpc.ErrTokenBaseStationNotFound, err)
+		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenBaseStationNotFound, err)
 	}
 
 	euiHex := hex.EncodeToString(bsEui)
@@ -627,28 +633,28 @@ func (s *Service) GetStoredCertificate(ctx context.Context, tenantID int64, bsEu
 	switch certType {
 	case pkggrpc.CertTypeCA:
 		if bs.TLSCACertificate == nil || *bs.TLSCACertificate == "" {
-			return nil, "", fmt.Errorf("%s", pkggrpc.ErrTokenCertNotFound)
+			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, nil)
 		}
 		data = []byte(*bs.TLSCACertificate)
 		filename = fmt.Sprintf("basestation-%s-ca-certificate.crt", euiHex)
 	case pkggrpc.CertTypeClient:
 		if bs.TLSCertificate == nil || *bs.TLSCertificate == "" {
-			return nil, "", fmt.Errorf("%s", pkggrpc.ErrTokenCertNotFound)
+			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, nil)
 		}
 		data = []byte(*bs.TLSCertificate)
 		filename = fmt.Sprintf("basestation-%s-client-certificate.crt", euiHex)
 	case pkggrpc.CertTypeKey:
 		if bs.TLSKey == nil || *bs.TLSKey == "" {
-			return nil, "", fmt.Errorf("%s", pkggrpc.ErrTokenCertNotFound)
+			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, nil)
 		}
 		if s.keyEncryptor == nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogDownloadCertFailed, "bs_eui", euiHex, "error", pkggrpc.ErrTokenServiceNotConfigured)
-			return nil, "", fmt.Errorf("%s", pkggrpc.ErrTokenServiceNotConfigured)
+			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenServiceNotConfigured, nil)
 		}
 		decrypted, decryptErr := s.keyEncryptor.DecryptKey(*bs.TLSKey)
 		if decryptErr != nil {
 			s.logger.ErrorContext(ctx, pkggrpc.LogDownloadCertFailed, "bs_eui", euiHex, "error", decryptErr)
-			return nil, "", fmt.Errorf("%s", pkggrpc.ErrTokenCertNotFound)
+			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, nil)
 		}
 		data = decrypted
 		filename = fmt.Sprintf("basestation-%s-private-key.key", euiHex)
@@ -662,44 +668,44 @@ func (s *Service) persistCertsToBaseStation(ctx context.Context, certDir string,
 	// First lookup the base station to get its ID (Update requires int64 ID, not EUI)
 	bs, err := s.bsRepo.GetByEUI(ctx, tenantID, bsEui)
 	if err != nil {
-		return fmt.Errorf("%s", pkggrpc.ErrTokenBaseStationNotFound)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenBaseStationNotFound, nil)
 	}
 
 	// Read certificate files with proper error handling
 	caCertData, err := os.ReadFile(filepath.Join(certDir, "ca.crt")) // #nosec G304 - path from UUID-based certDir
 	if err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertFileReadFailed, "file", "ca.crt", "error", err)
-		return fmt.Errorf("%s", pkggrpc.ErrTokenCACertReadFailed)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertReadFailed, nil)
 	}
 	clientCertData, err := os.ReadFile(filepath.Join(certDir, "client.crt")) // #nosec G304 - path from UUID-based certDir
 	if err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertFileReadFailed, "file", "client.crt", "error", err)
-		return fmt.Errorf("%s", pkggrpc.ErrTokenCertGenerationFailed)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
 	}
 	clientKeyData, err := os.ReadFile(filepath.Join(certDir, "client.key")) // #nosec G304 - path from UUID-based certDir
 	if err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertFileReadFailed, "file", "client.key", "error", err)
-		return fmt.Errorf("%s", pkggrpc.ErrTokenCertGenerationFailed)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
 	}
 
 	// Parse certificate and compute fingerprint for audit/identity
 	block, _ := pem.Decode(clientCertData)
 	if block == nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertPEMBlockParseFailed, "file", "client.crt")
-		return fmt.Errorf("%s", pkggrpc.ErrTokenCertGenerationFailed)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertParseFailed, "file", "client.crt", "error", err)
-		return fmt.Errorf("%s", pkggrpc.ErrTokenCertGenerationFailed)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
 	}
-	fingerprint := fmt.Sprintf("%x", sha256.Sum256(cert.Raw))
+	fingerprint := crypto.CertFingerprintSHA256(cert.Raw)
 
 	// Encrypt private key (required for storage)
 	encrypted, encErr := s.keyEncryptor.EncryptKey(clientKeyData)
 	if encErr != nil {
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertGenerationFailed, "operation", "encrypt", "error", encErr)
-		return fmt.Errorf("%s", pkggrpc.ErrTokenCertGenerationFailed)
+		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
 	}
 
 	updates := map[string]interface{}{

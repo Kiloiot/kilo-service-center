@@ -150,6 +150,16 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		return nil, fmt.Errorf("failed to create BSSCI server: %w (StatusService is mandatory for pending operation tracking)", err)
 	}
 
+	// Certificate identity: the CE composite resolver handles EUI CNs against
+	// the registered stations and delegates org-<UUID> CNs to the deployment's
+	// org resolver; the directory backs connect-time fingerprint enforcement
+	bssciServer.SetCertificateIdentityResolver(bssciservices.NewCertificateIdentityResolver(
+		bssciInfra.BasestationRepo,
+		bssciInfra.OrgResolver,
+		infra.LoggerIface,
+	))
+	bssciServer.SetBaseStationDirectory(bssciservices.NewRegisteredBaseStationDirectory(bssciInfra.BasestationRepo))
+
 	// Create propagation service (depends on Server as AttachPropagateSender)
 	propagationSvc := bssciservices.NewPropagationService(
 		bssciInfra.EndpointRepo,

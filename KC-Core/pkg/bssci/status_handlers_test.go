@@ -2329,3 +2329,19 @@ func TestStatusHandler_PartialTriple_SkipsAll(t *testing.T) {
 		})
 	}
 }
+
+func (m *tenantTrackingBaseStationRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
+	return true, nil
+}
+
+func (m *errorInjectingBaseStationRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
+	return true, nil
+}
+
+func (m *panicOnCallBaseStationRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
+	return true, nil
+}
+
+func (m *concurrentTrackingRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
+	return true, nil
+}

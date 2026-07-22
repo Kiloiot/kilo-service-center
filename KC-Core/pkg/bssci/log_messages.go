@@ -117,6 +117,16 @@ const (
 	LogBSSCIReceivedErrorAckFromBaseStation = "Received errorAck from base station"
 	// LogBSSCIFailedToResolveOwnerOrgForDLRxQuery is a log message constant
 	LogBSSCIFailedToResolveOwnerOrgForDLRxQuery = "Failed to resolve endpoint owner org for DL RX query tracking"
+	// LogBSSCICertIdentityDefaultOrgLookupFailed is a log message constant
+	LogBSSCICertIdentityDefaultOrgLookupFailed = "Failed to resolve default organization for certificate identity"
+	// LogBSSCICertIdentityRejectedStrictMode is a log message constant
+	LogBSSCICertIdentityRejectedStrictMode = "Certificate identity resolution failed; closing connection (org enforcement enabled)"
+	// LogBSSCICertFingerprintMismatch is a log message constant
+	LogBSSCICertFingerprintMismatch = "Presented certificate does not match the registered fingerprint"
+	// LogBSSCICertFingerprintBackfilled is a log message constant
+	LogBSSCICertFingerprintBackfilled = "Backfilled certificate fingerprint from stored PEM"
+	// LogBSSCICertSubjectEUIMismatch is a log message constant
+	LogBSSCICertSubjectEUIMismatch = "Certificate subject EUI does not match the connect bsEui"
 	// LogBSSCIUnsolicitedErrorAck is a log message constant
 	LogBSSCIUnsolicitedErrorAck = "Ignoring errorAck with no matching sent error"
 	// LogBSSCIClosingConnectionAfterWriteFailure is a log message constant

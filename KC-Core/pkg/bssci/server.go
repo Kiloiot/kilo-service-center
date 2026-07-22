@@ -126,8 +126,13 @@ type Server struct {
 	tenantResolver    TenantResolver  // Queue-to-tenant mapping (replaces queueTenants map)
 
 	// Organization resolution
-	orgResolver     org.Resolver // Organization UUID → tenant ID resolution
-	defaultTenantID int64        // Community mode fallback tenant ID
+	orgResolver org.Resolver // Organization UUID → tenant ID resolution
+	// Certificate identity enforcement (strict mode): resolver maps the TLS
+	// client certificate to a tenant/org identity at accept; the directory
+	// reads registered station identity for connect-time enforcement
+	certIdentityResolver CertificateIdentityResolver
+	bsDirectory          RegisteredBaseStationDirectory
+	defaultTenantID      int64 // Community mode fallback tenant ID
 
 	// Keep essential infrastructure
 	deduplicator    *MessageDeduplicator
@@ -334,6 +339,10 @@ type Session struct {
 	// and never survives resume; connect handshake errors (opId 0) are tracked
 	// by ConnectState instead. Guarded by the ProtocolSessionState mutex.
 	pendingErrorAcks map[int64]errorAckDisposition
+	// certSubjectEUI is the base station EUI encoded in the TLS client
+	// certificate CN (CE issuance scheme), enforced against the connect
+	// bsEui in strict mode; nil for org-<UUID> certificates.
+	certSubjectEUI *uint64
 	// resumePendingOps is the strictly decoded pending-operation snapshot
 	// loaded during a compatible resume, held on the provisional connection
 	// until conCmp activation restores the cache and reissues the eligible
@@ -839,6 +848,93 @@ func (s *Server) SetDetachValidator(validator DetachSignatureValidator) {
 	s.detachValidator = validator
 }
 
+// SetCertificateIdentityResolver wires certificate-identity resolution for
+// TLS accept (CE composite resolver; ECE inherits it through the builders).
+func (s *Server) SetCertificateIdentityResolver(resolver CertificateIdentityResolver) {
+	s.certIdentityResolver = resolver
+}
+
+// SetBaseStationDirectory wires the registered-station directory used for
+// connect-time certificate enforcement.
+func (s *Server) SetBaseStationDirectory(directory RegisteredBaseStationDirectory) {
+	s.bsDirectory = directory
+}
+
+// defaultOrgForSessionTenant resolves the default organization for the
+// session's current tenant (community fallback path); uuid.Nil when
+// unresolvable.
+func (s *Server) defaultOrgForSessionTenant(ctx context.Context, session *Session) uuid.UUID {
+	if s.orgResolver == nil {
+		return uuid.Nil
+	}
+	orgID, err := s.orgResolver.GetDefaultOrgForTenant(ctx, session.ResolvedTenantID)
+	if err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToResolveDefaultOrgForBSSCISession,
+			"error", err,
+			"tenantID", session.ResolvedTenantID)
+		return uuid.Nil
+	}
+	return orgID
+}
+
+// verifyCertificateFingerprint enforces the stored-certificate binding in
+// strict mode: the presented client certificate's SHA-256 fingerprint must
+// equal the registered station's stored fingerprint. Rows issued before
+// fingerprints were stored are backfilled from the stored PEM after the
+// presented certificate matched it (upgrade path); blank fingerprint with no
+// stored certificate is rejected.
+func (s *Server) verifyCertificateFingerprint(ctx context.Context, session *Session) error {
+	registered, err := s.bsDirectory.GetGlobal(ctx, session.BaseStationEUI)
+	if err != nil {
+		return fmt.Errorf("registered station lookup: %w", err)
+	}
+
+	presented := crypto.CertFingerprintSHA256(session.ClientCert.Raw)
+
+	stored := registered.TLSCertFingerprint
+	if stored == "" {
+		if registered.TLSCertificate == "" {
+			return fmt.Errorf("station %016X has no stored certificate identity", session.BaseStationEUI)
+		}
+		derived, deriveErr := crypto.CertFingerprintFromPEM([]byte(registered.TLSCertificate))
+		if deriveErr != nil {
+			return fmt.Errorf("station %016X stored certificate unparsable: %w", session.BaseStationEUI, deriveErr)
+		}
+		if derived != presented {
+			s.logger.WarnContext(ctx, LogBSSCICertFingerprintMismatch,
+				"bsEui", session.BaseStationEUI)
+			return fmt.Errorf("station %016X presented certificate does not match stored certificate", session.BaseStationEUI)
+		}
+		updated, backfillErr := s.bsDirectory.BackfillFingerprintIfBlank(ctx, registered.TenantID, registered.ID, derived)
+		if backfillErr != nil {
+			return fmt.Errorf("station %016X fingerprint backfill: %w", session.BaseStationEUI, backfillErr)
+		}
+		if !updated {
+			// A concurrent writer set the fingerprint first: reload and compare
+			reloaded, reloadErr := s.bsDirectory.GetGlobal(ctx, session.BaseStationEUI)
+			if reloadErr != nil {
+				return fmt.Errorf("registered station reload: %w", reloadErr)
+			}
+			if reloaded.TLSCertFingerprint != presented {
+				s.logger.WarnContext(ctx, LogBSSCICertFingerprintMismatch,
+					"bsEui", session.BaseStationEUI)
+				return fmt.Errorf("station %016X presented certificate does not match registered fingerprint", session.BaseStationEUI)
+			}
+			return nil
+		}
+		s.logger.InfoContext(ctx, LogBSSCICertFingerprintBackfilled,
+			"bsEui", session.BaseStationEUI)
+		return nil
+	}
+
+	if stored != presented {
+		s.logger.WarnContext(ctx, LogBSSCICertFingerprintMismatch,
+			"bsEui", session.BaseStationEUI)
+		return fmt.Errorf("station %016X presented certificate does not match registered fingerprint", session.BaseStationEUI)
+	}
+	return nil
+}
+
 // SetDownlinkDispatcher wires the auto-dispatch service (BSSCI §5.10.2)
 // Called after service construction to enable dlOpen=true automatic dispatch.
 func (s *Server) SetDownlinkDispatcher(dispatcher DownlinkDispatcher) {
@@ -1126,26 +1222,51 @@ func (s *Server) handleConnection(conn net.Conn) {
 			var tenantID int64
 			var err error
 
-			if s.orgResolver != nil {
+			switch {
+			case s.certIdentityResolver != nil:
+				identity, resolveErr := s.certIdentityResolver.ResolveCertificateIdentity(ctx, cert)
+				if resolveErr != nil {
+					// Strict mode: an unresolvable certificate closes the
+					// connection before any con is read - no default-tenant
+					// fallback (the fallback would let an unknown certificate
+					// operate under the server's default tenant)
+					if s.config != nil && s.config.OrgEnforcementEnabled {
+						s.logger.ErrorContext(ctx, LogBSSCICertIdentityRejectedStrictMode,
+							"error", resolveErr,
+							"certCN", cert.Subject.CommonName)
+						return
+					}
+					// Community fallback: default tenant + its default org
+					s.logger.WarnContext(ctx, LogBSSCICertOrgResolutionFailedUsingCommunityFallback,
+						"error", resolveErr,
+						"certCN", cert.Subject.CommonName,
+						"tenantID", session.ResolvedTenantID)
+					orgID = s.defaultOrgForSessionTenant(ctx, session)
+				} else {
+					session.ResolvedTenantID = identity.TenantID
+					session.certSubjectEUI = identity.SubjectEUI
+					orgID = identity.OrganizationID
+					s.logger.InfoContext(ctx, LogBSSCICertOrgResolutionSucceeded,
+						"orgID", orgID.String(),
+						"tenantID", identity.TenantID,
+						"certCN", cert.Subject.CommonName)
+				}
+			case s.orgResolver != nil:
 				orgID, tenantID, err = s.orgResolver.ResolveCert(ctx, cert)
 				if err != nil {
-					// Certificate-based resolution failed - use community fallback
+					// Certificate-based resolution failed
+					if s.config != nil && s.config.OrgEnforcementEnabled {
+						s.logger.ErrorContext(ctx, LogBSSCICertIdentityRejectedStrictMode,
+							"error", err,
+							"certCN", cert.Subject.CommonName)
+						return
+					}
+					// Community fallback: default tenant + its default org
 					s.logger.WarnContext(ctx, LogBSSCICertOrgResolutionFailedUsingCommunityFallback,
 						"error", err,
 						"certCN", cert.Subject.CommonName,
 						"tenantID", session.ResolvedTenantID)
-
-					// Get default org for the server's default tenant
-					orgID, err = s.orgResolver.GetDefaultOrgForTenant(ctx, session.ResolvedTenantID)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToResolveDefaultOrgForBSSCISession,
-							"error", err,
-							"tenantID", session.ResolvedTenantID)
-						// Continue with nil UUID - will be NULL in database
-						orgID = uuid.Nil
-						// ResolvedTenantID already set to s.defaultTenantID in session init
-					}
-					// else: fallback succeeded, ResolvedTenantID still s.defaultTenantID
+					orgID = s.defaultOrgForSessionTenant(ctx, session)
 				} else {
 					// SUCCESS: cert resolution worked, use resolved tenant
 					session.ResolvedTenantID = tenantID
@@ -1154,8 +1275,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 						"tenantID", tenantID,
 						"certCN", cert.Subject.CommonName)
 				}
-			} else {
-				// No org resolver - community edition
+			default:
+				// No resolver - community edition
 				orgID = uuid.Nil
 			}
 
@@ -1907,6 +2028,29 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 				"eui", session.BaseStationEUI,
 				"certTenant", session.ResolvedTenantID)
 			return s.rejectConnect(session, msg.OpId, POSIX_EPERM, errBaseStationNotRegistered)
+		}
+
+		// EUI-CN certificates bind the certificate to one station: the
+		// asserted EUI must equal the connect bsEui (defense-in-depth beyond
+		// the spec's mutual-TLS requirement; org-<UUID> certificates carry no
+		// station identity and skip this check)
+		if session.certSubjectEUI != nil && *session.certSubjectEUI != session.BaseStationEUI {
+			s.logger.WarnContext(ctx, LogBSSCICertSubjectEUIMismatch,
+				"certEui", *session.certSubjectEUI,
+				"bsEui", session.BaseStationEUI)
+			return s.rejectConnect(session, msg.OpId, POSIX_EPERM, errBaseStationNotRegistered)
+		}
+
+		// The presented certificate must match the registered station's
+		// stored fingerprint (both CN forms); rejection stays
+		// indistinguishable from an unregistered station
+		if session.ClientCert != nil && s.bsDirectory != nil {
+			if fpErr := s.verifyCertificateFingerprint(ctx, session); fpErr != nil {
+				s.logger.WarnContext(ctx, LogBSSCICertFingerprintMismatch,
+					"eui", session.BaseStationEUI,
+					"error", fpErr)
+				return s.rejectConnect(session, msg.OpId, POSIX_EPERM, errBaseStationNotRegistered)
+			}
 		}
 	} else if baseStation.TenantID > 0 {
 		// Community fallback: adopt the registered base station tenant and

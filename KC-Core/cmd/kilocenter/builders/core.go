@@ -147,10 +147,12 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	coreService = coreService.WithScaciMonitoringService(scaciMonitoringSvc)
 	log.Info("ScaciMonitoringService wired")
 
-	// CertificateService
-	certificateSvc := certificatesservice.New(cfg, infra.LoggerIface).
-		WithBaseStationRepo(infra.Storage.BaseStations()).
-		WithKeyEncryptor(infra.KeyEncryptor)
+	// CertificateService: repository and encryptor are mandatory constructor
+	// inputs (ownership verification and persistence are part of issuance)
+	certificateSvc, certErr := certificatesservice.New(cfg, infra.LoggerIface, infra.Storage.BaseStations(), infra.KeyEncryptor, nil)
+	if certErr != nil {
+		log.Fatal(LogFailedCreateCoreService, logger.Err(certErr))
+	}
 	coreService = coreService.WithCertificateService(certificateSvc)
 	log.Info("CertificateService wired")
 

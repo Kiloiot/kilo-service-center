@@ -54,12 +54,18 @@ func (s *CoreService) GenerateCertificate(ctx context.Context, req *pb.GenerateC
 	if err != nil {
 		s.log.ErrorContext(ctx, "generate certificate failed", "bs_eui", req.BsEui, "error", err)
 
-		// Detect missing server CA and return an actionable error
-		errStr := err.Error()
-		if strings.Contains(errStr, grpcerrors.ErrTokenCACertReadFailed) ||
-			strings.Contains(errStr, grpcerrors.ErrTokenCAKeyReadFailed) {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCACertReadFailed),
-				grpcerrors.MsgServerCertRequiredBeforeBS)
+		// Typed catalog errors survive the service boundary: match on the
+		// token, never on error text
+		if token, ok := grpcerrors.TokenOf(err); ok {
+			switch token {
+			case grpcerrors.ErrTokenCACertReadFailed, grpcerrors.ErrTokenCAKeyReadFailed:
+				// Missing server CA gets the actionable setup message
+				return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCACertReadFailed),
+					grpcerrors.MsgServerCertRequiredBeforeBS)
+			default:
+				return nil, status.Error(grpcerrors.GetGRPCCode(token),
+					grpcerrors.ResolveErrorMessage(token))
+			}
 		}
 
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCertGenerationFailed),
@@ -130,7 +136,7 @@ func (s *CoreService) DownloadCertificate(ctx context.Context, req *pb.DownloadC
 	if err != nil {
 		s.log.ErrorContext(ctx, grpcerrors.LogDownloadCertFailed, "cert_type", req.CertType, "cert_id", req.Id, "error", err)
 		// Preserve service-level error tokens (don't mask invalid cert_type)
-		if strings.Contains(err.Error(), grpcerrors.ErrTokenCertTypeRequired) {
+		if token, ok := grpcerrors.TokenOf(err); ok && token == grpcerrors.ErrTokenCertTypeRequired {
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCertTypeRequired),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCertTypeRequired))
 		}
@@ -300,7 +306,7 @@ func (s *CoreService) DownloadBaseStationCertificate(ctx context.Context, req *p
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
 		}
-		if strings.Contains(err.Error(), grpcerrors.ErrTokenCertTypeRequired) {
+		if token, ok := grpcerrors.TokenOf(err); ok && token == grpcerrors.ErrTokenCertTypeRequired {
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCertTypeRequired),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCertTypeRequired))
 		}

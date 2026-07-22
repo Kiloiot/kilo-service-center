@@ -2,6 +2,7 @@ package bssci
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
@@ -165,6 +166,51 @@ type ConnectionService interface {
 
 	// RegisterConnection updates basestation status
 	RegisterConnection(ctx context.Context, session *Session, baseStation *basestation.BaseStation, mgr *basestation.ConnectionManager) error
+}
+
+// CertificateIdentity is the tenant/organization identity resolved from a
+// base station's TLS client certificate. SubjectEUI is set only when the
+// certificate CN encodes a base station EUI-64 (the CE issuance scheme);
+// legacy org-<UUID> CNs carry no station identity.
+type CertificateIdentity struct {
+	OrganizationID uuid.UUID
+	TenantID       int64
+	SubjectEUI     *uint64
+}
+
+// CertificateIdentityResolver resolves the identity asserted by a TLS client
+// certificate at connection accept. The CE composite implementation resolves
+// dashed-EUI CNs against the registered base stations and delegates other CN
+// forms (org-<UUID>) to the deployment's organization resolver.
+type CertificateIdentityResolver interface {
+	ResolveCertificateIdentity(ctx context.Context, cert *x509.Certificate) (CertificateIdentity, error)
+}
+
+// RegisteredBaseStation is the persistent registration identity of a base
+// station as the BSSCI connect path consumes it. It deliberately carries no
+// organization ID - organization context is resolved separately - and no
+// live-connection state, which belongs to the connection registry.
+type RegisteredBaseStation struct {
+	ID                 int64
+	TenantID           int64
+	EUI                uint64
+	Name               string
+	TLSCertificate     string
+	TLSCertFingerprint string
+}
+
+// RegisteredBaseStationDirectory reads registered station identity for
+// certificate enforcement during connect and backfills the certificate
+// fingerprint for rows issued before fingerprints were stored.
+type RegisteredBaseStationDirectory interface {
+	// GetGlobal returns the registration for an EUI across all tenants
+	// (tenant is not yet authenticated at TLS accept).
+	GetGlobal(ctx context.Context, eui uint64) (RegisteredBaseStation, error)
+
+	// BackfillFingerprintIfBlank persists the fingerprint only while the
+	// stored value is still blank; reports whether a row was updated (false
+	// signals a concurrent writer - reload and compare).
+	BackfillFingerprintIfBlank(ctx context.Context, tenantID, id int64, fingerprint string) (bool, error)
 }
 
 // SCACIBroadcaster forwards via real scaciBroadcaster interface
