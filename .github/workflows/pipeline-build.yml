@@ -85,15 +85,45 @@ jobs:
           done
 
   # The KC-DB postgres suite runs against real testcontainers-managed
-  # PostgreSQL instances; it takes ~15 minutes and runs in parallel with the
-  # image builds rather than gating them.
+  # PostgreSQL instances, plus a migrated service database for the
+  # env-DB-backed schema tests (SetupEnvDBOrSkip fail-fasts when CI=true).
+  # It takes ~15 minutes and gates image publication.
   test-postgres:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.5
+        env:
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_USER: kilocenter
+          POSTGRES_DB: kilocenter
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5433
+      DB_NAME: kilocenter
+      DB_USER: kilocenter
+      DB_PASSWORD: changeme
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.work
+      - name: Install golang-migrate
+        run: |
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+      - name: Run database migrations
+        run: |
+          migrate -path KC-DB/migrations \
+            -database "postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=disable" \
+            up
       - name: Run KC-DB postgres integration tests
         run: |
           (cd KC-DB && go test -timeout 25m ./storage/postgres/...)
