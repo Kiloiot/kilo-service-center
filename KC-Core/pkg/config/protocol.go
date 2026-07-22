@@ -31,6 +31,10 @@ type ProtocolConfig struct {
 	ConnectionEstablishmentTimeout int    `mapstructure:"connection_establishment_timeout"` // milliseconds
 	DuplicateWindow                int    `mapstructure:"duplicate_window"`                 // seconds
 	MessageEncoding                string `mapstructure:"message_encoding"`                 // json, msgpack
+	StatusRequestInterval          int    `mapstructure:"status_request_interval"`          // seconds
+	StatusRequestInitialDelay      int    `mapstructure:"status_request_initial_delay"`     // seconds
+	DLRXQueryTimeout               int    `mapstructure:"dlrx_query_timeout"`               // seconds
+	DLRXCleanupInterval            int    `mapstructure:"dlrx_cleanup_interval"`            // seconds
 
 	// BSCICertificatePollInterval is the base station certificate change poll interval
 	BSCICertificatePollInterval time.Duration `mapstructure:"bsci_certificate_poll_interval"`

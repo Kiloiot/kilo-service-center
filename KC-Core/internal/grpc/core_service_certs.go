@@ -33,8 +33,15 @@ func (s *CoreService) GenerateCertificate(ctx context.Context, req *pb.GenerateC
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBasestationEUIRequired))
 	}
 
-	// Get tenant ID for certificate persistence (optional - persistence skipped if unavailable)
-	tenantID, _ := GetTenantFromContext(ctx)
+	// Tenant context is mandatory: certificate issuance is scoped to the tenant
+	// that owns the base station, and issuing without a tenant would allow
+	// minting a certificate for any EUI.
+	tenantID, tenantErr := GetTenantFromContext(ctx)
+	if tenantErr != nil || tenantID <= 0 {
+		s.log.WarnContext(ctx, "certificate issuance requires tenant context", "bs_eui", req.BsEui, "error", tenantErr)
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenMissingTenantCtx),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenMissingTenantCtx))
+	}
 
 	certReq := &grpcservices.CertificateRequest{
 		BsEUI:           req.BsEui,

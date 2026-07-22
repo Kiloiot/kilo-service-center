@@ -55,6 +55,10 @@ const (
 	LogBSSCIRejectingCommandBeforeHandshake = "Rejecting command before handshake complete"
 	// LogBSSCIRejectingInboundServiceCenterCommand logs when a base station sends a service-center-initiated command
 	LogBSSCIRejectingInboundServiceCenterCommand = "Rejecting inbound service-center-initiated command from base station"
+	// LogBSSCIDLRXQueryExpirySweepFailed logs a failed dlRxStatQry expiry sweep
+	LogBSSCIDLRXQueryExpirySweepFailed = "DL RX status query expiry sweep failed"
+	// LogBSSCIDLRXQueriesExpired logs the count of expired dlRxStatQry queries
+	LogBSSCIDLRXQueriesExpired = "Expired stale DL RX status queries"
 	// LogBSSCIConnectHandshakeNotComplete logs when connect handshake is incomplete
 	LogBSSCIConnectHandshakeNotComplete = "Connect handshake not complete for session"
 	// LogBSSCIConnectHandshakeNotCompleteDL logs when connect handshake is incomplete for downlink

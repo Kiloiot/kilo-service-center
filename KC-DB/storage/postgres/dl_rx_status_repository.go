@@ -305,10 +305,11 @@ func (r *DLRXStatusRepository) CreateDLRXStatusQuery(ctx context.Context, tenant
 	return nil
 }
 
-// MarkDLRXStatusReceived marks the OLDEST pending query for tenant+endpoint as received
-// Correlates by tenant+endpoint only, selecting oldest pending (BSSCI §5.15)
-// BS opId lives in different namespace - stored for audit, NOT used in WHERE clause
-// Returns true if a pending query was found and updated, false otherwise
+// MarkDLRXStatusReceived marks the OLDEST pending query for the tenant, endpoint,
+// AND expected base station as received (BSSCI §5.15). Correlating on the expected
+// bs_eui prevents a report from one base station satisfying a concurrent query
+// issued for a different base station. The actual BS EUI/opId are recorded for
+// audit. Returns true if a matching pending query was found and updated.
 func (r *DLRXStatusRepository) MarkDLRXStatusReceived(ctx context.Context, tenantID int64, epEui []byte, bsEui []byte, bsOpID int64) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbconfig.DefaultQueryTimeout)
 	defer cancel()
@@ -319,6 +320,7 @@ func (r *DLRXStatusRepository) MarkDLRXStatusReceived(ctx context.Context, tenan
 			SELECT id FROM dl_rx_status_queries
 			WHERE tenant_id = $1
 			  AND ep_eui = $2
+			  AND bs_eui = $3
 			  AND status = 'pending'
 			ORDER BY requested_at ASC
 			LIMIT 1

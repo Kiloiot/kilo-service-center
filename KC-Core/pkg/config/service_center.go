@@ -36,6 +36,22 @@ func ValidateServiceCenterConfig(cfg *ProtocolConfig) error {
 		return fmt.Errorf("protocol.connection_establishment_timeout must be positive milliseconds, got %d", cfg.ConnectionEstablishmentTimeout)
 	}
 
+	if cfg.StatusRequestInterval <= 0 {
+		return fmt.Errorf("protocol.status_request_interval must be positive seconds, got %d", cfg.StatusRequestInterval)
+	}
+
+	if cfg.StatusRequestInitialDelay < 0 {
+		return fmt.Errorf("protocol.status_request_initial_delay must not be negative, got %d", cfg.StatusRequestInitialDelay)
+	}
+
+	if cfg.DLRXQueryTimeout <= 0 {
+		return fmt.Errorf("protocol.dlrx_query_timeout must be positive seconds, got %d", cfg.DLRXQueryTimeout)
+	}
+
+	if cfg.DLRXCleanupInterval <= 0 {
+		return fmt.Errorf("protocol.dlrx_cleanup_interval must be positive seconds, got %d", cfg.DLRXCleanupInterval)
+	}
+
 	if cfg.DuplicateWindow <= 0 {
 		return fmt.Errorf("protocol.duplicate_window must be positive seconds, got %d", cfg.DuplicateWindow)
 	}

@@ -434,3 +434,67 @@ func TestNew_ServerValidityDaysFallsBackToDefault(t *testing.T) {
 			config.DefaultCertificatesServerValidityDays, svc.serverValidityDays)
 	}
 }
+
+// newGenerateTestServiceWithRepo mirrors newGenerateTestService but injects a
+// base-station repository so the tenant-ownership check runs.
+func newGenerateTestServiceWithRepo(t *testing.T, repo *mockBaseStationRepo) *Service {
+	t.Helper()
+	tmpDir := t.TempDir()
+	return &Service{
+		config:             &config.Config{},
+		logger:             &mockLogger{},
+		certGenPath:        filepath.Join(tmpDir, "certgen-missing"),
+		certsDir:           tmpDir,
+		tempDir:            filepath.Join(tmpDir, "temp"),
+		serverValidityDays: config.DefaultCertificatesServerValidityDays,
+		protocolConfig:     &config.ProtocolConfig{},
+		bsRepo:             repo,
+	}
+}
+
+// TestGenerateCertificate_CrossTenantDenied verifies a certificate cannot be
+// minted for an EUI the requesting tenant does not own: the ownership lookup
+// fails, so issuance is rejected before any certgen work.
+func TestGenerateCertificate_CrossTenantDenied(t *testing.T) {
+	svc := newGenerateTestServiceWithRepo(t, &mockBaseStationRepo{getErr: errors.New("not found for tenant")})
+	ctx := testutil.TestContext()
+
+	_, err := svc.GenerateCertificate(ctx, &grpcservices.CertificateRequest{
+		BsEUI:        "cafecafecafecafe",
+		ValidityDays: 365,
+		TenantID:     42,
+	})
+	if err == nil {
+		t.Fatal("expected cross-tenant issuance to be denied")
+	}
+	if !strings.Contains(err.Error(), pkggrpc.ErrTokenBaseStationNotFound) {
+		t.Errorf("error = %q, want base-station-not-found ownership rejection", err.Error())
+	}
+	// Must fail BEFORE reaching the (missing) certgen binary.
+	if strings.Contains(err.Error(), pkggrpc.ErrTokenCertGeneratorNotFound) {
+		t.Errorf("ownership check must run before generation, got %q", err.Error())
+	}
+}
+
+// TestGenerateCertificate_OwnedProceedsToGeneration verifies that when the
+// requesting tenant owns the EUI, issuance proceeds past the ownership check
+// (and here fails only at the intentionally-absent certgen binary).
+func TestGenerateCertificate_OwnedProceedsToGeneration(t *testing.T) {
+	svc := newGenerateTestServiceWithRepo(t, &mockBaseStationRepo{bs: &models.BaseStation{ID: 1, TenantID: 42}})
+	ctx := testutil.TestContext()
+
+	_, err := svc.GenerateCertificate(ctx, &grpcservices.CertificateRequest{
+		BsEUI:        "cafecafecafecafe",
+		ValidityDays: 365,
+		TenantID:     42,
+	})
+	if err == nil {
+		t.Fatal("expected certgen-missing failure after a passing ownership check")
+	}
+	if strings.Contains(err.Error(), pkggrpc.ErrTokenBaseStationNotFound) {
+		t.Errorf("ownership check must pass for an owned EUI, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), pkggrpc.ErrTokenCertGeneratorNotFound) {
+		t.Errorf("error = %q, want it to reach the certgen step", err.Error())
+	}
+}

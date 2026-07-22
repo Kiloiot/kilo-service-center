@@ -135,6 +135,19 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		return nil, fmt.Errorf("%s: %s", pkggrpc.ErrTokenInvalidValidityPeriod, pkggrpc.ResolveErrorMessage(pkggrpc.ErrTokenInvalidValidityPeriod))
 	}
 
+	// Tenant ownership must be verified BEFORE any file or certgen work: the
+	// requesting tenant must already own a base station registered with this
+	// EUI, or a certificate could be minted for another tenant's station
+	// (cross-tenant impersonation). Fail closed.
+	if s.bsRepo != nil && req.TenantID > 0 {
+		euiBytes := binary.BigEndian.AppendUint64(nil, euiValue)
+		if _, ownErr := s.bsRepo.GetByEUI(ctx, req.TenantID, euiBytes); ownErr != nil {
+			s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped,
+				"bs_eui", req.BsEUI, "tenant_id", req.TenantID, "error", ownErr)
+			return nil, fmt.Errorf("%s", pkggrpc.ErrTokenBaseStationNotFound)
+		}
+	}
+
 	// Generate unique ID for this certificate set
 	certID := uuid.New().String()
 	certDir := filepath.Join(s.tempDir, certID)
@@ -257,11 +270,18 @@ func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.Cer
 		s.logger.ErrorContext(ctx, pkggrpc.LogCertInfoWriteFailed, "error", err)
 	}
 
-	// Persist certs to base station when dependencies are configured
+	// Persistence is part of issuance: if the generated certificate and its
+	// encrypted key cannot be durably recorded on the base station, no
+	// certificate is returned and the temporary artifacts are removed, so a
+	// station never receives a certificate the service center did not persist.
 	if s.bsRepo != nil && s.keyEncryptor != nil && req.TenantID > 0 {
 		euiBytes := binary.BigEndian.AppendUint64(nil, euiValue)
 		if persistErr := s.persistCertsToBaseStation(ctx, certDir, euiBytes, req.TenantID, certExpiryTime); persistErr != nil {
-			s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", persistErr)
+			s.logger.ErrorContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", persistErr)
+			if rmErr := os.RemoveAll(certDir); rmErr != nil {
+				s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
+			}
+			return nil, fmt.Errorf("%s: %w", pkggrpc.ErrTokenCertPersistenceFailed, persistErr)
 		}
 	} else if s.bsRepo != nil && s.keyEncryptor == nil && req.TenantID > 0 {
 		s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", pkggrpc.ErrTokenServiceNotConfigured)

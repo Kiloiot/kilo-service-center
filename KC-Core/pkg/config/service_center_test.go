@@ -341,6 +341,10 @@ func TestValidateServiceCenterConfig_Valid(t *testing.T) {
 		BSCITLS:                        TLSConfig{Enabled: true},
 		AckTimeout:                     DefaultProtocolAckTimeout,
 		ConnectionEstablishmentTimeout: DefaultProtocolConnectionEstablishmentTimeout,
+		StatusRequestInterval:          DefaultProtocolStatusRequestInterval,
+		StatusRequestInitialDelay:      DefaultProtocolStatusRequestInitialDelay,
+		DLRXQueryTimeout:               DefaultProtocolDLRXQueryTimeout,
+		DLRXCleanupInterval:            DefaultProtocolDLRXCleanupInterval,
 		DuplicateWindow:                DefaultProtocolDuplicateWindow,
 		BSCICertificatePollInterval:    DefaultProtocolCertificatePollInterval,
 	}
@@ -359,6 +363,10 @@ func TestValidateServiceCenterConfig_TimingBounds(t *testing.T) {
 			BSCITLS:                        TLSConfig{Enabled: true},
 			AckTimeout:                     DefaultProtocolAckTimeout,
 			ConnectionEstablishmentTimeout: DefaultProtocolConnectionEstablishmentTimeout,
+			StatusRequestInterval:          DefaultProtocolStatusRequestInterval,
+			StatusRequestInitialDelay:      DefaultProtocolStatusRequestInitialDelay,
+			DLRXQueryTimeout:               DefaultProtocolDLRXQueryTimeout,
+			DLRXCleanupInterval:            DefaultProtocolDLRXCleanupInterval,
 			DuplicateWindow:                DefaultProtocolDuplicateWindow,
 			BSCICertificatePollInterval:    DefaultProtocolCertificatePollInterval,
 		}
@@ -374,6 +382,24 @@ func TestValidateServiceCenterConfig_TimingBounds(t *testing.T) {
 	zeroEstablish.ConnectionEstablishmentTimeout = 0
 	if err := ValidateServiceCenterConfig(zeroEstablish); err == nil {
 		t.Error("zero connection_establishment_timeout must fail validation")
+	}
+
+	zeroStatusInterval := base()
+	zeroStatusInterval.StatusRequestInterval = 0
+	if err := ValidateServiceCenterConfig(zeroStatusInterval); err == nil {
+		t.Error("zero status_request_interval must fail validation")
+	}
+
+	zeroDLRXTimeout := base()
+	zeroDLRXTimeout.DLRXQueryTimeout = 0
+	if err := ValidateServiceCenterConfig(zeroDLRXTimeout); err == nil {
+		t.Error("zero dlrx_query_timeout must fail validation")
+	}
+
+	zeroDLRXCleanup := base()
+	zeroDLRXCleanup.DLRXCleanupInterval = 0
+	if err := ValidateServiceCenterConfig(zeroDLRXCleanup); err == nil {
+		t.Error("zero dlrx_cleanup_interval must fail validation")
 	}
 
 	negativeWindow := base()

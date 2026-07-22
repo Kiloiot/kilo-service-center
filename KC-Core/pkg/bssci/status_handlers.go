@@ -10,13 +10,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-const (
-	// StatusRequestInterval defines how often to request status from base stations
-	StatusRequestInterval = 30 * time.Second
-	// StatusRequestInitialDelay defines the initial delay before first status request
-	StatusRequestInitialDelay = 5 * time.Second
-)
-
 // handleStatusResponse handles statusRsp from base station per MIOTY BSSCI v1.0.0 Section 3.5.2
 func (s *Server) handleStatusResponse(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
 	if session == nil {
@@ -289,10 +282,10 @@ func (s *Server) startStatusMechanism(session *Session) {
 	session.mu.Unlock()
 
 	go func() {
-		ticker := time.NewTicker(StatusRequestInterval)
+		ticker := time.NewTicker(s.statusRequestInterval())
 		defer ticker.Stop()
 
-		time.Sleep(StatusRequestInitialDelay)
+		time.Sleep(s.statusRequestInitialDelay())
 		if _, err := s.SendStatusRequest(session); err != nil {
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIInitialStatusRequestFailed,
 				"bsEui", session.BaseStationEUI,

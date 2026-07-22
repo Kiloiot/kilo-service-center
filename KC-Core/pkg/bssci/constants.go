@@ -32,6 +32,15 @@ const (
 
 	// defaultCertificatePollInterval is the certificate change poll interval
 	defaultCertificatePollInterval = 10 * time.Second
+
+	// defaultStatusRequestInterval is how often the SC polls a base station for status
+	defaultStatusRequestInterval = 30 * time.Second
+	// defaultStatusRequestInitialDelay delays the first status poll after connect
+	defaultStatusRequestInitialDelay = 5 * time.Second
+	// defaultDLRXQueryTimeout expires an unanswered dlRxStatQry
+	defaultDLRXQueryTimeout = 300 * time.Second
+	// defaultDLRXCleanupInterval is the dlRxStatQry expiry sweep cadence
+	defaultDLRXCleanupInterval = 60 * time.Second
 )
 
 // Exact float integer bounds for wire numeric coercion.

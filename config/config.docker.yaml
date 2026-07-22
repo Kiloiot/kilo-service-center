@@ -33,6 +33,11 @@ protocol:
   # Protocol parameters
   max_retransmissions: 3
   ack_timeout: 5000
+  connection_establishment_timeout: 30000
+  status_request_interval: 30
+  status_request_initial_delay: 5
+  dlrx_query_timeout: 300
+  dlrx_cleanup_interval: 60
   duplicate_window: 300
   message_encoding: "msgpack"
 

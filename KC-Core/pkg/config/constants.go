@@ -392,6 +392,15 @@ const (
 	// DefaultProtocolConnectionEstablishmentTimeout bounds a fresh connection before its con arrives, in milliseconds.
 	DefaultProtocolConnectionEstablishmentTimeout = 30000
 
+	// DefaultProtocolStatusRequestInterval is how often the SC polls a base station for status, in seconds.
+	DefaultProtocolStatusRequestInterval = 30
+	// DefaultProtocolStatusRequestInitialDelay delays the first status poll after connect, in seconds.
+	DefaultProtocolStatusRequestInitialDelay = 5
+	// DefaultProtocolDLRXQueryTimeout expires an unanswered dlRxStatQry after this many seconds.
+	DefaultProtocolDLRXQueryTimeout = 300
+	// DefaultProtocolDLRXCleanupInterval is the dlRxStatQry expiry sweep cadence, in seconds.
+	DefaultProtocolDLRXCleanupInterval = 60
+
 	// DefaultProtocolDuplicateWindow is the duplicate detection window in seconds.
 	DefaultProtocolDuplicateWindow = 300
 

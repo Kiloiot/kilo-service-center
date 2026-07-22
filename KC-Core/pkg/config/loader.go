@@ -167,6 +167,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("protocol.max_retransmissions", DefaultProtocolMaxRetransmissions)
 	v.SetDefault("protocol.ack_timeout", DefaultProtocolAckTimeout)
 	v.SetDefault("protocol.connection_establishment_timeout", DefaultProtocolConnectionEstablishmentTimeout)
+	v.SetDefault("protocol.status_request_interval", DefaultProtocolStatusRequestInterval)
+	v.SetDefault("protocol.status_request_initial_delay", DefaultProtocolStatusRequestInitialDelay)
+	v.SetDefault("protocol.dlrx_query_timeout", DefaultProtocolDLRXQueryTimeout)
+	v.SetDefault("protocol.dlrx_cleanup_interval", DefaultProtocolDLRXCleanupInterval)
 	v.SetDefault("protocol.duplicate_window", DefaultProtocolDuplicateWindow)
 	v.SetDefault("protocol.bsci_certificate_poll_interval", DefaultProtocolCertificatePollInterval)
 

@@ -212,6 +212,14 @@ type Config struct {
 	DuplicateWindow time.Duration
 	// CertificatePollInterval is the certificate change poll interval
 	CertificatePollInterval time.Duration
+	// StatusRequestInterval is how often the SC polls a base station for status
+	StatusRequestInterval time.Duration
+	// StatusRequestInitialDelay delays the first status poll after connect
+	StatusRequestInitialDelay time.Duration
+	// DLRXQueryTimeout expires an unanswered dlRxStatQry after this duration
+	DLRXQueryTimeout time.Duration
+	// DLRXCleanupInterval is the dlRxStatQry expiry sweep cadence
+	DLRXCleanupInterval time.Duration
 	// DisableAttachPersistence is TEST-ONLY: skips DB persistence in attach handler.
 	// MUST remain false in production. Used by tests to exercise replay protection without transaction stubs.
 	DisableAttachPersistence bool
@@ -883,6 +891,9 @@ func certsExist(certFile, keyFile, caFile string) bool {
 // (e.g., fresh deployment before certs are generated via UI), the listener
 // is deferred and a background goroutine polls until the certificates appear.
 func (s *Server) Start() error {
+	// The dlRxStatQry expiry sweep runs independently of the TLS listener path.
+	s.startDLRXQueryExpiryWorker()
+
 	if certsExist(s.config.TLSCert, s.config.TLSKey, s.config.TLSCACert) {
 		return s.startTLSListener()
 	}
@@ -1596,6 +1607,74 @@ func certificatePollInterval(cfg *Config) time.Duration {
 		return cfg.CertificatePollInterval
 	}
 	return defaultCertificatePollInterval
+}
+
+// statusRequestInterval returns the configured status poll interval, falling
+// back to the package default when unset.
+func (s *Server) statusRequestInterval() time.Duration {
+	if s.config != nil && s.config.StatusRequestInterval > 0 {
+		return s.config.StatusRequestInterval
+	}
+	return defaultStatusRequestInterval
+}
+
+// statusRequestInitialDelay returns the configured delay before the first
+// status poll, falling back to the package default when unset.
+func (s *Server) statusRequestInitialDelay() time.Duration {
+	if s.config != nil && s.config.StatusRequestInitialDelay > 0 {
+		return s.config.StatusRequestInitialDelay
+	}
+	return defaultStatusRequestInitialDelay
+}
+
+// dlrxQueryTimeout returns the configured dlRxStatQry expiry, falling back to
+// the package default when unset.
+func (s *Server) dlrxQueryTimeout() time.Duration {
+	if s.config != nil && s.config.DLRXQueryTimeout > 0 {
+		return s.config.DLRXQueryTimeout
+	}
+	return defaultDLRXQueryTimeout
+}
+
+// dlrxCleanupInterval returns the configured dlRxStatQry expiry sweep cadence,
+// falling back to the package default when unset.
+func (s *Server) dlrxCleanupInterval() time.Duration {
+	if s.config != nil && s.config.DLRXCleanupInterval > 0 {
+		return s.config.DLRXCleanupInterval
+	}
+	return defaultDLRXCleanupInterval
+}
+
+// startDLRXQueryExpiryWorker runs a background sweep that expires dlRxStatQry
+// queries whose unsolicited dlRxStat report never arrived (BSSCI §5.16), so
+// they do not linger pending forever. The worker stops when the server context
+// is cancelled.
+func (s *Server) startDLRXQueryExpiryWorker() {
+	if s.storage == nil || s.storage.DLRXStatus() == nil {
+		return
+	}
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ticker := time.NewTicker(s.dlrxCleanupInterval())
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-ticker.C:
+				cutoff := time.Now().Add(-s.dlrxQueryTimeout())
+				expired, err := s.storage.DLRXStatus().ExpireDLRXStatusQuery(s.safeCtx(), cutoff)
+				if err != nil {
+					s.logger.WarnContext(s.safeCtx(), LogBSSCIDLRXQueryExpirySweepFailed, "error", err)
+					continue
+				}
+				if expired > 0 {
+					s.logger.InfoContext(s.safeCtx(), LogBSSCIDLRXQueriesExpired, "count", expired)
+				}
+			}
+		}
+	}()
 }
 
 // rejectConnect fails the connect operation per BSSCI §5.17: an error frame

@@ -125,6 +125,7 @@ const (
 	ErrTokenCertGeneratorNotFound      = "KC-GRPC-ERR-03A"
 	ErrTokenCACertReadFailed           = "KC-GRPC-ERR-03B"
 	ErrTokenCACertCopyFailed           = "KC-GRPC-ERR-03C"
+	ErrTokenCertPersistenceFailed      = "KC-GRPC-ERR-0AA"
 	ErrTokenCAKeyReadFailed            = "KC-GRPC-ERR-03D"
 	ErrTokenCAKeyCopyFailed            = "KC-GRPC-ERR-03E"
 	ErrTokenInvalidValidityPeriod      = "KC-GRPC-ERR-03F"
@@ -874,6 +875,11 @@ var errorCatalog = map[string]ErrorDefinition{
 	ErrTokenCACertCopyFailed: {
 		Token:   ErrTokenCACertCopyFailed,
 		Message: "failed to copy CA certificate",
+		Code:    codes.Internal,
+	},
+	ErrTokenCertPersistenceFailed: {
+		Token:   ErrTokenCertPersistenceFailed,
+		Message: "failed to persist issued certificate; no certificate was returned",
 		Code:    codes.Internal,
 	},
 	ErrTokenCAKeyReadFailed: {

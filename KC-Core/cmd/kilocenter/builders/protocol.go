@@ -84,6 +84,10 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		ConnectionEstablishmentTimeout:   time.Duration(cfg.Protocol.ConnectionEstablishmentTimeout) * time.Millisecond,
 		DuplicateWindow:                  time.Duration(cfg.Protocol.DuplicateWindow) * time.Second,
 		CertificatePollInterval:          cfg.Protocol.BSCICertificatePollInterval,
+		StatusRequestInterval:            time.Duration(cfg.Protocol.StatusRequestInterval) * time.Second,
+		StatusRequestInitialDelay:        time.Duration(cfg.Protocol.StatusRequestInitialDelay) * time.Second,
+		DLRXQueryTimeout:                 time.Duration(cfg.Protocol.DLRXQueryTimeout) * time.Second,
+		DLRXCleanupInterval:              time.Duration(cfg.Protocol.DLRXCleanupInterval) * time.Second,
 	}
 
 	// Create BSSCI service bundles

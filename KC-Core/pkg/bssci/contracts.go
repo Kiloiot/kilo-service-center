@@ -26,17 +26,17 @@ type VersionNegotiator interface {
 type ResumeDisposition int
 
 const (
-	// ResumeNoMatch: no resumable session exists; start a fresh session.
+	// ResumeNoMatch means no resumable session exists; start a fresh session.
 	ResumeNoMatch ResumeDisposition = iota
-	// ResumeCompatible: a resumable session was found and its constraints
+	// ResumeCompatible means a resumable session was found and its constraints
 	// hold; Previous carries the authoritative persisted session state.
 	ResumeCompatible
-	// ResumeInconsistent: a resumable session exists but the reported
+	// ResumeInconsistent means a resumable session exists but the reported
 	// counters or negotiated version are incompatible. The caller must
 	// atomically terminate it (can_resume=false, pending ops removed) before
 	// starting a fresh session.
 	ResumeInconsistent
-	// ResumeInfrastructureFailure: the resume lookup itself failed (e.g. a
+	// ResumeInfrastructureFailure means the resume lookup itself failed (e.g. a
 	// database outage). The caller must reject the connect, never proceed
 	// with a fresh session that would strand the old resumable state.
 	ResumeInfrastructureFailure
