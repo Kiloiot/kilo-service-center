@@ -433,7 +433,7 @@ func (p *endpointAttachmentPersistence) PersistAttachSession(ctx context.Context
 	if err := tx.EndPoints().UpdateFields(ctx, rec.TenantID, rec.EndpointID, rec.EndpointUpdates); err != nil {
 		commitErr = err
 		p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateEndpointAttachMetadata, "error", err)
-		return err
+		return err // Preserves sentinel: handlers match repository errors via errors.Is
 	}
 
 	endpointIDStr := fmt.Sprintf("%d", rec.EndpointID)
@@ -441,7 +441,7 @@ func (p *endpointAttachmentPersistence) PersistAttachSession(ctx context.Context
 	if getErr != nil {
 		commitErr = getErr
 		p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToLoadEndpointSession, "error", getErr)
-		return getErr
+		return getErr // Preserves sentinel: handlers match repository errors via errors.Is
 	}
 
 	now := time.Now().UTC()
@@ -468,7 +468,7 @@ func (p *endpointAttachmentPersistence) PersistAttachSession(ctx context.Context
 		if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
 			commitErr = err
 			p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateEndpointSession, "error", err)
-			return err
+			return err // Preserves sentinel: handlers match repository errors via errors.Is
 		}
 	} else {
 		newSession := &models.EndPointSession{
@@ -487,14 +487,14 @@ func (p *endpointAttachmentPersistence) PersistAttachSession(ctx context.Context
 		if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
 			commitErr = err
 			p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToCreateEndpointSession, "error", err)
-			return err
+			return err // Preserves sentinel: handlers match repository errors via errors.Is
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		commitErr = err
 		p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToCommitAttachTransaction, "error", err)
-		return err
+		return err // Preserves sentinel: handlers match repository errors via errors.Is
 	}
 	commitErr = nil
 	return nil
