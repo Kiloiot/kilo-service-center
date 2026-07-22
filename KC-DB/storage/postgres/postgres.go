@@ -1246,14 +1246,21 @@ func (w *dbDownlinkWrapper) RevokeDownlink(ctx context.Context, queId int64, ten
 	return (*DB)(w).RevokeDownlink(ctx, queId, tenantID)
 }
 
-// ReserveNextPendingDownlink is tx-only; use Transaction.MIOTYDownlinks()
+// ReserveNextPendingDownlink is tx-only (FOR UPDATE SKIP LOCKED); use Transaction.MIOTYDownlinks()
 func (w *dbDownlinkWrapper) ReserveNextPendingDownlink(_ context.Context, _ int64, _ []byte, _ uint64, _ *uuid.UUID) (*storage.DownlinkMessage, error) {
 	return nil, ErrNotImplemented
 }
 
-// MarkReservedAsQueued is tx-only; use Transaction.MIOTYDownlinks()
-func (w *dbDownlinkWrapper) MarkReservedAsQueued(_ context.Context, _ uint64, _ int64, _ uint64, _ int64, _ *uint32, _ *uuid.UUID) error {
-	return ErrNotImplemented
+// ReservePendingDownlinkByQueueID reserves one exact pending row as a single
+// atomic UPDATE, so it is available outside a transaction context.
+func (w *dbDownlinkWrapper) ReservePendingDownlinkByQueueID(ctx context.Context, tenantID int64, organizationID *uuid.UUID, queueID uint64, epEUI []byte, bsEUI uint64) (*storage.DownlinkMessage, error) {
+	return reservePendingDownlinkByQueueID(ctx, w.conn, tenantID, organizationID, queueID, epEUI, bsEUI)
+}
+
+// MarkReservedAsQueued confirms a reservation as queued (idempotent single
+// statement), so it is available outside a transaction context.
+func (w *dbDownlinkWrapper) MarkReservedAsQueued(ctx context.Context, queID uint64, tenantID int64, bsEUI uint64, txTime int64, packetCnt *uint32, orgID *uuid.UUID) error {
+	return markReservedAsQueued(ctx, w.conn, queID, tenantID, bsEUI, txTime, packetCnt, orgID)
 }
 
 // SCACISessions returns the SCACI Session repository

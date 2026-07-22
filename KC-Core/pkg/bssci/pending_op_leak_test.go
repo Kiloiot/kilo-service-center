@@ -41,10 +41,13 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 	}
 
 	cases := []struct {
-		name    string
-		opType  string
-		respCmd string
-		invoke  func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error
+		name     string
+		opType   string
+		respCmd  string
+		endpoint []byte
+		metadata map[string]interface{}
+		setup    func(s *Server)
+		invoke   func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error
 	}{
 		{
 			name:    "status",
@@ -52,6 +55,29 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 			respCmd: mioty.CmdStatusResponse,
 			invoke: func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error {
 				return s.handleStatusResponse(s, sess, msg, data)
+			},
+		},
+		{
+			name:     "dlDataQue",
+			opType:   mioty.CmdDLDataQueue,
+			respCmd:  mioty.CmdDLDataQueueResponse,
+			endpoint: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77},
+			metadata: map[string]interface{}{"queId": int64(42), "tenantID": "1"},
+			invoke: func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error {
+				return s.handleDLDataQueueResponse(s, sess, msg, data)
+			},
+		},
+		{
+			name:     "dlDataRev",
+			opType:   mioty.CmdDLDataRevoke,
+			respCmd:  mioty.CmdDLDataRevokeResponse,
+			endpoint: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77},
+			metadata: map[string]interface{}{"queId": int64(42), "tenantID": "1"},
+			setup: func(s *Server) {
+				s.downlinkSvc = &mqttTestDownlinkService{}
+			},
+			invoke: func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error {
+				return s.handleDLDataRevokeResponse(s, sess, msg, data)
 			},
 		},
 		{
@@ -67,12 +93,20 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			server, statusSvc, session := newServer(t)
+			if tc.setup != nil {
+				tc.setup(server)
+			}
 			const opID = int64(-7)
 
+			metadata := tc.metadata
+			if metadata == nil {
+				metadata = map[string]interface{}{}
+			}
 			pendingOp := &PendingOperation{
 				OperationType: tc.opType,
+				Endpoint:      tc.endpoint,
 				CreatedAt:     time.Now(),
-				Metadata:      map[string]interface{}{},
+				Metadata:      metadata,
 			}
 			require.NoError(t, statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, session.DbSessionID))
 			_, err := statusSvc.GetPendingOperation(session, opID)
@@ -81,7 +115,7 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 			data := map[string]interface{}{
 				"command": tc.respCmd,
 				"opId":    opID,
-				// status response mandatory fields (ignored by dlRxStatQry)
+				// status response mandatory fields (ignored by the others)
 				"code":    int64(0),
 				"message": "ok",
 				"time":    time.Now().UnixNano(),

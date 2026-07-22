@@ -204,9 +204,15 @@ const (
 	// Status operation errors
 	errFailedToSendStatusRequest             = "bssci.error.failed_to_send_status_request"
 	errFailedToPersistPendingStatusOperation = "bssci.error.failed_to_persist_pending_status_operation"
-	errMissingStatusCode                     = "bssci.error.missing_status_code"
-	errMissingStatusMessage                  = "bssci.error.missing_status_message"
-	errMissingStatusTime                     = "bssci.error.missing_status_time"
+
+	// SC-initiated operation durability errors (BSSCI rev1 §5.2 / classic §3.2)
+	errPendingOpSessionNotPersisted    = "bssci.error.pending_op_session_not_persisted"
+	errFailedToPersistPendingOperation = "bssci.error.failed_to_persist_pending_operation"
+	errFailedToPersistSessionCounters  = "bssci.error.failed_to_persist_session_counters"
+	errFailedToPersistDLRxCorrelation  = "bssci.error.failed_to_persist_dlrx_correlation"
+	errMissingStatusCode               = "bssci.error.missing_status_code"
+	errMissingStatusMessage            = "bssci.error.missing_status_message"
+	errMissingStatusTime               = "bssci.error.missing_status_time"
 
 	// Management HTTP API errors (BSSCI §3.6 attach/§3.7 detach propagation)
 	// Exported for use by pkg/management HTTP handlers
@@ -1277,6 +1283,30 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.failed_to_persist_pending_status_operation",
 		Message:     "Failed to persist pending status operation",
 		SpecSection: "§3.5",
+		Severity:    SeverityError,
+	},
+	errPendingOpSessionNotPersisted: {
+		Token:       "bssci.error.pending_op_session_not_persisted",
+		Message:     "SC operation requires a persisted session before its recovery record can be written",
+		SpecSection: "§3.2",
+		Severity:    SeverityError,
+	},
+	errFailedToPersistPendingOperation: {
+		Token:       "bssci.error.failed_to_persist_pending_operation",
+		Message:     "Failed to persist pending operation recovery record",
+		SpecSection: "§3.2",
+		Severity:    SeverityError,
+	},
+	errFailedToPersistSessionCounters: {
+		Token:       "bssci.error.failed_to_persist_session_counters",
+		Message:     "Failed to persist session operation counters",
+		SpecSection: "§3.2",
+		Severity:    SeverityError,
+	},
+	errFailedToPersistDLRxCorrelation: {
+		Token:       "bssci.error.failed_to_persist_dlrx_correlation",
+		Message:     "Failed to persist DL RX status query correlation record",
+		SpecSection: "§3.16",
 		Severity:    SeverityError,
 	},
 	errMissingStatusCode: {

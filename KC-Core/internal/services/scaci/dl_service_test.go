@@ -22,7 +22,7 @@ type mockDownlinkScheduler struct {
 	mock.Mock
 }
 
-func (m *mockDownlinkScheduler) QueueDownlink(req *mioty.DLDataQueue, tenantID int64) (uint64, uint64, error) {
+func (m *mockDownlinkScheduler) QueueDownlink(_ context.Context, req *mioty.DLDataQueue, tenantID int64) (uint64, uint64, error) {
 	args := m.Called(req, tenantID)
 	return args.Get(0).(uint64), args.Get(1).(uint64), args.Error(2)
 }

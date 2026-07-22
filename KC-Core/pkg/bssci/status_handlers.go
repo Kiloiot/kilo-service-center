@@ -3,6 +3,7 @@ package bssci
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -318,11 +319,16 @@ func (s *Server) SendStatusRequest(session interface{}) (int64, error) {
 		return 0, fmt.Errorf("%s", ResolveErrorMessage(errInvalidSessionType))
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	sess.mu.Lock()
-	sess.LastScOpId--
-	opId := sess.LastScOpId
-	sess.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back on failure.
+	opId, err := s.beginScOperation(sess)
+	if err != nil {
+		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToSendStatusRequest,
+			"bsEui", sess.BaseStationEUI,
+			"error", err)
+		return 0, err
+	}
 
 	statusRequest := map[string]interface{}{
 		"command": mioty.CmdStatus,
@@ -335,42 +341,29 @@ func (s *Server) SendStatusRequest(session interface{}) (int64, error) {
 
 	// The recovery record must be durable before the operation goes on the
 	// wire: an SC operation whose pending row was never persisted cannot be
-	// reissued on resume. A persistence failure rolls the operation ID back
-	// and aborts the send.
+	// reissued on resume. A persistence failure aborts the send, leaving only
+	// a consumed-ID gap.
 	if err := s.persistPendingOperation(sess, opId, mioty.CmdStatus, statusRequest, nil, nil); err != nil {
 		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToPersistPendingStatusOperation, "error", err)
-		sess.mu.Lock()
-		sess.LastScOpId++
-		sess.mu.Unlock()
 		return 0, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistPendingStatusOperation), err)
 	}
 
-	// Send message with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(sess, statusRequest); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		sess.mu.Lock()
-		sess.LastScOpId++
-		sess.mu.Unlock()
-
 		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToSendStatusRequest,
 			"bsEui", sess.BaseStationEUI,
 			"error", err)
-		// Clean up pending operation since sending failed
-		if cleanupErr := s.removePendingOperation(sess, opId); cleanupErr != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(sess, opId, err)
+		} else if cleanupErr := s.removePendingOperation(sess, opId); cleanupErr != nil {
+			// Nothing reached the wire; the pending row is removed so resume
+			// does not reissue an operation that was never sent.
 			s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToCleanupPendingOpAfterSendFailure,
 				"error", cleanupErr,
 				"opId", opId)
 		}
 		return 0, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendStatusRequest), err)
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(sess), sess); err != nil {
-		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sess.ID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	return opId, nil

@@ -46,6 +46,46 @@ func (r *pendingOperationRepository) Create(ctx context.Context, req *interfaces
 	return err
 }
 
+// CreateBatch inserts or updates several pending operations in one local
+// transaction so a multi-frame sequence is recorded all-or-nothing. Requests
+// are inserted in slice order so the id column preserves reissue order.
+func (r *pendingOperationRepository) CreateBatch(ctx context.Context, reqs []*interfaces.PendingOperationRequest) error {
+	if len(reqs) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	for _, req := range reqs {
+		var metadataArg interface{}
+		if req.Metadata != nil {
+			metadataArg = req.Metadata
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO bssci_pending_operations
+			(basestation_session_id, operation_id, operation_type, endpoint_eui, operation_data, metadata)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (basestation_session_id, operation_id)
+			DO UPDATE SET
+				operation_type = EXCLUDED.operation_type,
+				endpoint_eui = EXCLUDED.endpoint_eui,
+				operation_data = EXCLUDED.operation_data,
+				metadata = EXCLUDED.metadata,
+				updated_at = NOW()
+		`, req.SessionID, req.OperationID, req.OperationType, req.EndpointEUI, req.OperationData, metadataArg); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 // UpdateMetadata updates only the metadata field
 func (r *pendingOperationRepository) UpdateMetadata(ctx context.Context, sessionID int64, operationID int64, metadata json.RawMessage) error {
 	_, err := r.db.ExecContext(ctx, `
@@ -106,7 +146,7 @@ func (r *pendingOperationRepository) GetBySession(ctx context.Context, sessionID
 		       operation_data, metadata, created_at, updated_at
 		FROM bssci_pending_operations
 		WHERE basestation_session_id = $1
-		ORDER BY created_at ASC
+		ORDER BY created_at ASC, id ASC
 	`, sessionID)
 
 	return ops, err

@@ -83,6 +83,71 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 	return nil
 }
 
+// RecordPendingOperations durably records several operations in one repository
+// transaction and mirrors them into the cache only after the transaction
+// commits, so a multi-frame sequence never has partially persisted recovery
+// state.
+func (s *statusService) RecordPendingOperations(ctx context.Context, session *bssci.Session, ops []*bssci.PendingOperation, dbSessionID int64) error {
+	reqs := make([]*interfaces.PendingOperationRequest, 0, len(ops))
+	for _, op := range ops {
+		operationData, err := json.Marshal(op.Message)
+		if err != nil {
+			s.logger.ErrorContext(ctx, "Failed to marshal pending operation",
+				"error", err,
+				"opId", op.OperationID)
+			return err
+		}
+
+		var metadataJSON json.RawMessage
+		if op.Metadata != nil {
+			metadataBytes, err := json.Marshal(op.Metadata)
+			if err != nil {
+				s.logger.ErrorContext(ctx, "Failed to marshal pending operation metadata",
+					"error", err,
+					"opId", op.OperationID)
+				return err
+			}
+			metadataJSON = json.RawMessage(metadataBytes)
+		}
+
+		reqs = append(reqs, &interfaces.PendingOperationRequest{
+			SessionID:     dbSessionID,
+			OperationID:   op.OperationID,
+			OperationType: op.OperationType,
+			EndpointEUI:   op.Endpoint,
+			OperationData: json.RawMessage(operationData),
+			Metadata:      metadataJSON,
+		})
+	}
+
+	if err := s.repo.CreateBatch(ctx, reqs); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	for _, op := range ops {
+		key := bssci.SessionOpKey{
+			SessionID:   session.ID,
+			OperationID: op.OperationID,
+		}
+		(*s.pendingOps)[key] = op
+	}
+	s.mu.Unlock()
+	return nil
+}
+
+// RestorePendingOperation hydrates the cache from an already authoritative DB
+// row without writing it back (session resume path).
+func (s *statusService) RestorePendingOperation(session *bssci.Session, opId int64, op *bssci.PendingOperation) {
+	key := bssci.SessionOpKey{
+		SessionID:   session.ID,
+		OperationID: opId,
+	}
+	s.mu.Lock()
+	(*s.pendingOps)[key] = op
+	s.mu.Unlock()
+}
+
 // GetPendingOperation retrieves operation from REAL map using SessionOpKey composite key
 func (s *statusService) GetPendingOperation(session *bssci.Session, opId int64) (*bssci.PendingOperation, error) {
 	key := bssci.SessionOpKey{
@@ -171,28 +236,4 @@ func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64)
 	}
 
 	return endpointEUI, queueID, tenantID
-}
-
-// CleanupPendingOp removes pending operation from in-memory map only using SessionOpKey.
-// Uses SessionOpKey composite key for multi-session support (BSSCI §5.11-5.12.3).
-//
-// This method provides controlled access to the pendingOps map for cleanup operations
-// where DB persistence is not required or has already been handled separately.
-//
-// For complete cleanup (map + DB), use RemovePendingOperation instead.
-//
-// Parameters:
-//   - session: Session containing SessionID for composite key construction
-//   - opId: Operation ID to remove from map
-//
-// Thread Safety: Method handles mutex locking internally
-func (s *statusService) CleanupPendingOp(session *bssci.Session, opId int64) {
-	key := bssci.SessionOpKey{
-		SessionID:   session.ID,
-		OperationID: opId,
-	}
-
-	s.mu.Lock()
-	delete(*s.pendingOps, key)
-	s.mu.Unlock()
 }

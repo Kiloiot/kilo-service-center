@@ -498,8 +498,12 @@ func TestConnectMandatoryFields(t *testing.T) {
 	}
 }
 
-// TestRollbackOnSendFailure verifies LastScOpId restored on send failure per BSSCI §3.2
-func TestRollbackOnSendFailure(t *testing.T) {
+// TestSendFailureConsumesOpIDAndPreservesOperation verifies the durable-order
+// contract (BSSCI rev1 §5.2 / classic §3.2): a wire write failure never rolls
+// the SC operation counter back (a rollback would race concurrent allocations
+// and reissue a live ID), and the persisted pending operation survives for
+// resume reissue with its original ID.
+func TestSendFailureConsumesOpIDAndPreservesOperation(t *testing.T) {
 	testLogger := logger.NewNop()
 	mockConn := &validationMockConn{}
 	mockConn.Reset()
@@ -518,6 +522,7 @@ func TestRollbackOnSendFailure(t *testing.T) {
 			BaseStationEUI:    TestBsEui01,
 			Encoding:          "json",
 			HandshakeComplete: true,
+			DbSessionID:       1,
 			LastScOpId:        -5,
 		},
 		Conn: mockConn,
@@ -530,8 +535,16 @@ func TestRollbackOnSendFailure(t *testing.T) {
 	_, err := server.SendStatusRequest(session)
 
 	require.Error(t, err, "SendStatusRequest should fail when write fails")
-	assert.Equal(t, initialOpId, session.LastScOpId,
-		"LastScOpId should be restored on send failure")
+	require.ErrorIs(t, err, ErrAmbiguousWrite,
+		"a wire write failure is an ambiguous write")
+	assert.Equal(t, initialOpId-1, session.LastScOpId,
+		"the consumed operation ID is never rolled back")
+
+	// The recovery record survives the ambiguous write so resume reissues the
+	// operation with its original ID
+	pendingOp, getErr := statusSvc.GetPendingOperation(session, initialOpId-1)
+	require.NoError(t, getErr, "pending operation must be preserved for resume")
+	assert.Equal(t, mioty.CmdStatus, pendingOp.OperationType)
 }
 
 // TestAttachMandatoryFields verifies BSSCI §3.6.1 mandatory field validation for attach handler

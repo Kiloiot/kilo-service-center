@@ -96,15 +96,17 @@ func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []b
 		return 0, fmt.Errorf("%s %016X", ResolveErrorMessage(errBaseStationNotBidirectional), session.BaseStationEUI)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
-
 	// Validate key length
 	if len(nwkSnKey) != 16 {
 		return 0, fmt.Errorf("%s, got %d", ResolveErrorMessage(errNwkSnKeyInvalidLength), len(nwkSnKey))
+	}
+
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return 0, err
 	}
 
 	// Encrypt key for storage ONLY (not for transmission)
@@ -190,14 +192,15 @@ func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []b
 		sanitizedMsg["profile"] = profile
 	}
 
-	// Persist operation for session resume (with encrypted key in metadata)
+	// The recovery record must be durable before the frame is written; a
+	// persistence failure aborts the send, leaving only a consumed-ID gap.
 	if err := s.persistPendingOperation(session, opId, mioty.CmdULDataTransmit,
 		sanitizedMsg, euiBytes, metadata); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistULDataTxOperation,
 			"sessionID", sessionID,
 			"opId", opId,
 			"error", err)
-		// Continue anyway - operation can still proceed
+		return 0, err
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISendingULDataTransmit,
@@ -208,22 +211,20 @@ func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []b
 		"shAddr", shAddr,
 		"userDataLen", len(userData))
 
-	// Send message with CLEAR key to base station (rollback guard for BSSCI §5.2)
+	// Send message with CLEAR key to base station
 	if err := s.sendMessage(session, msg); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
+			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationAfterSendFailure,
+				"sessionID", session.DbSessionID,
+				"opId", opId,
+				"error", cleanupErr)
+		}
 		return 0, err
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-		s.logger.Error(LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	return opId, nil
@@ -397,18 +398,9 @@ func (s *Server) reconstitueULDataTxMessage(sanitizedMsg map[string]interface{},
 			}
 			msg["userData"] = userDataArray
 		} else {
-			// Safe type conversion for opId from JSON
-			var opId int64
-			switch v := sanitizedMsg["opId"].(type) {
-			case float64:
-				opId = int64(v)
-			case int64:
-				opId = v
-			case int:
-				opId = int64(v)
-			default:
-				opId = 0 // Fallback if type is unexpected
-			}
+			// Canonical operation ID coercion covers legacy float64 values and
+			// the strict json.Number resume decode
+			opId, _ := parseOpID(sanitizedMsg["opId"])
 
 			s.logger.WarnContext(ctx, LogBSSCIUserDataMissingFromBothSources,
 				"opId", opId)

@@ -129,6 +129,17 @@ type StatusService interface {
 	// RecordPendingOperation stores in map + DB using SessionOpKey composite key
 	RecordPendingOperation(ctx context.Context, session *Session, opId int64, op *PendingOperation, dbSessionID int64) error
 
+	// RecordPendingOperations durably records several operations in one
+	// repository transaction (all-or-nothing) and mirrors them into the cache
+	// only after the transaction commits. Used for multi-frame sequences such
+	// as the dlRxStatQry/dlDataQue pair whose recovery records must never be
+	// partially persisted.
+	RecordPendingOperations(ctx context.Context, session *Session, ops []*PendingOperation, dbSessionID int64) error
+
+	// RestorePendingOperation hydrates the in-memory cache from an already
+	// authoritative DB row without writing it back (session resume path).
+	RestorePendingOperation(session *Session, opId int64, op *PendingOperation)
+
 	// GetPendingOperation retrieves from map using SessionOpKey composite key
 	GetPendingOperation(session *Session, opId int64) (*PendingOperation, error)
 
@@ -140,11 +151,6 @@ type StatusService interface {
 	// Returns tenantID for proper roaming tenant isolation (BSSCI §5.12).
 	// Session parameter required for SessionOpKey composite key lookup.
 	ExtractQueueMetadata(session *Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string)
-
-	// CleanupPendingOp removes pending operation from in-memory map only using SessionOpKey.
-	// Enables handlers to clean up map without direct mutex access.
-	// DB cleanup should use RemovePendingOperation for complete cleanup.
-	CleanupPendingOp(session *Session, opId int64)
 }
 
 // ConnectionService wraps REAL basestation.ConnectionManager operations
@@ -221,9 +227,13 @@ type EPStatusData struct {
 
 // DownlinkCommander sends downlink commands to base stations
 type DownlinkCommander interface {
+	// SendDLDataQueue queues downlink data; dlRxStatQry pairs a BSSCI
+	// dlRxStatQry operation (rev1 §5.16 / classic §3.16) ahead of the queue
+	// frame per the SCACI §3.10.1 hint.
 	SendDLDataQueue(sessionID string, epEui uint64, payloads [][]byte, queId int64,
 		prio float32, cntDepend bool, packetCnt []int64, format uint8,
-		responseExp bool, responsePrio bool, dlWindReq bool, expOnly bool, tenantID int64) error
+		responseExp bool, responsePrio bool, dlWindReq bool, expOnly bool, tenantID int64,
+		dlRxStatQry bool) error
 	SendDLDataRevoke(sessionID string, epEui uint64, queId uint64) error
 	SendDLRXStatusQuery(sessionID string, epEui uint64) error
 }
@@ -717,6 +727,21 @@ type DownlinkDispatcher interface {
 		epEUI uint64,
 		responseExp bool,
 		dlAck bool,
+	) (dispatched bool, err error)
+
+	// DispatchQueue reserves one exact pending queue row (by queue ID, tenant,
+	// and endpoint EUI) and dispatches it over the given session. Used for
+	// SCACI-initiated immediate delivery (SCACI §3.10.1) so both delivery
+	// paths share the dispatcher's pending→reserved→queued lifecycle.
+	// Returns dispatched=false with nil error when no matching pending row
+	// exists (already dispatched, revoked, or foreign).
+	DispatchQueue(
+		ownerCtx context.Context,
+		ownerTenantID int64,
+		ownerOrgUUID uuid.UUID,
+		session *Session,
+		queueID uint64,
+		epEUI uint64,
 	) (dispatched bool, err error)
 }
 

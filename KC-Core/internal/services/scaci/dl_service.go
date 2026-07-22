@@ -123,7 +123,7 @@ func (dls *dlService) QueueDownlink(
 
 	// Delegate to BSSCI scheduler
 	// IMPORTANT: queuedQueId may differ from req.QueId if BSSCI normalizes it
-	queuedQueId, bsEui, err := dls.dlScheduler.QueueDownlink(req, tenantID)
+	queuedQueId, bsEui, err := dls.dlScheduler.QueueDownlink(ctx, req, tenantID)
 
 	if err != nil {
 		dls.logger.ErrorContext(ctx, scaci.LogSCACIEnqueueDownlinkFailed,

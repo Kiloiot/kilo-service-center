@@ -537,6 +537,9 @@ type stubPendingOperationRepo struct{}
 func (stubPendingOperationRepo) Create(context.Context, *interfaces.PendingOperationRequest) error {
 	return nil
 }
+func (stubPendingOperationRepo) CreateBatch(context.Context, []*interfaces.PendingOperationRequest) error {
+	return nil
+}
 func (stubPendingOperationRepo) UpdateMetadata(context.Context, int64, int64, json.RawMessage) error {
 	return nil
 }

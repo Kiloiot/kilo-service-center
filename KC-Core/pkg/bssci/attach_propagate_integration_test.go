@@ -334,6 +334,15 @@ type attPrpCapturingPendingOps struct {
 func (r *attPrpCapturingPendingOps) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
 	return nil
 }
+
+func (r *attPrpCapturingPendingOps) CreateBatch(ctx context.Context, reqs []*interfaces.PendingOperationRequest) error {
+	for _, req := range reqs {
+		if err := r.Create(ctx, req); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (r *attPrpCapturingPendingOps) UpdateMetadata(_ context.Context, sessionID, operationID int64, metadata json.RawMessage) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

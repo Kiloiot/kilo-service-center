@@ -481,3 +481,30 @@ func TestHandleResume_VersionIncompatible(t *testing.T) {
 	assert.Equal(t, bssci.ResumeInconsistent, outcome.Disposition)
 	require.NotNil(t, outcome.Previous, "the stale session is returned for termination")
 }
+
+// TestHydrateSessionNullVersionStaysEmpty verifies a legacy NULL
+// protocol_version hydrates as empty rather than a fabricated version:
+// resumeVersionCompatible treats empty as "cannot assert incompatibility" and
+// the resume activation backfills the newly selected version.
+func TestHydrateSessionNullVersionStaysEmpty(t *testing.T) {
+	svc, _ := newResumeTestService(t, 700)
+
+	dbSession := &models.BaseStationSession{
+		ID:            46,
+		CanResume:     true,
+		Encoding:      "json",
+		BaseStationID: 4,
+		TenantID:      700,
+		Status:        models.SessionStatusDisconnected,
+		StartedAt:     time.Now(),
+		// ProtocolVersion deliberately nil (legacy row)
+	}
+
+	result := svc.hydrateSessionFromDB(dbSession, 0x1234567890ABCDEF)
+
+	assert.Empty(t, result.NegotiatedVersion,
+		"a NULL persisted version must stay empty until compatibility evaluation")
+	assert.Empty(t, result.ClientVersion)
+	assert.True(t, resumeVersionCompatible(result.NegotiatedVersion, "1.0.0"),
+		"an empty persisted version cannot assert incompatibility")
+}

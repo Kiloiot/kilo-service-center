@@ -26,6 +26,13 @@ func (m *mockPendingOperationRepositoryWithCallTracking) Create(_ context.Contex
 	return nil
 }
 
+func (m *mockPendingOperationRepositoryWithCallTracking) CreateBatch(_ context.Context, reqs []*interfaces.PendingOperationRequest) error {
+	m.mu.Lock()
+	m.createCallCount += len(reqs)
+	m.mu.Unlock()
+	return nil
+}
+
 func (m *mockPendingOperationRepositoryWithCallTracking) UpdateMetadata(_ context.Context, _ int64, _ int64, _ json.RawMessage) error {
 	return nil
 }

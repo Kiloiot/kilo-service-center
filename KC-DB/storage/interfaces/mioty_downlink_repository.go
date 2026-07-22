@@ -30,19 +30,30 @@ type MIOTYDownlinkRepository interface {
 	UpdateDownlinkBaseStation(ctx context.Context, queId uint64, tenantID string, bsEUI uint64) error
 	RevokeDownlink(ctx context.Context, queId int64, tenantID string) error
 
-	// Transactional Dispatch Methods (BSSCI §5.10.2)
-	// These methods are ONLY valid within a transaction context via Transaction.MIOTYDownlinks()
-	// Non-transactional *DB implementations return ErrNotImplemented
+	// Dispatch Methods (BSSCI rev1 §5.12 / classic §3.12)
 
 	// ReserveNextPendingDownlink selects+reserves highest-priority pending downlink for dispatch.
-	// Uses FOR UPDATE SKIP LOCKED to avoid blocking concurrent dispatchers.
+	// Uses FOR UPDATE SKIP LOCKED to avoid blocking concurrent dispatchers, so it
+	// is ONLY valid within a transaction context via Transaction.MIOTYDownlinks();
+	// the non-transactional *DB implementation returns ErrNotImplemented.
 	// Returns nil, nil if no pending downlinks available (not an error).
 	// tenantID is int64 (owner tenant, not session tenant for roaming safety).
 	// orgID filters by organization; nil = no org filter (backward compatible)
 	ReserveNextPendingDownlink(ctx context.Context, tenantID int64, epEUI []byte, bsEUI uint64, orgID *uuid.UUID) (*storage.DownlinkMessage, error)
 
+	// ReservePendingDownlinkByQueueID atomically reserves one exact pending
+	// queue row for dispatch. The row transitions pending → reserved only when
+	// que_id, tenant_id, and ep_eui all match; when organizationID is supplied
+	// the row's organization_id must match it exactly (a NULL organization row
+	// never satisfies an org-scoped request). Returns nil, nil when no row in
+	// 'pending' state matches (already dispatched, revoked, or foreign).
+	ReservePendingDownlinkByQueueID(ctx context.Context, tenantID int64, organizationID *uuid.UUID, queueID uint64, epEUI []byte, bsEUI uint64) (*storage.DownlinkMessage, error)
+
 	// MarkReservedAsQueued transitions reserved → queued with transmission metadata.
 	// Sets status='queued', transmission_time, tx_bs_eui. transmission_result stays NULL.
+	// Idempotent: a row already in 'queued' state succeeds without modification;
+	// any other state returns an error. Available on both the regular repository
+	// and the transactional wrapper.
 	// packetCnt is nullable - pass nil if unknown (set from the dlDataRes transmission result, BSSCI 5.14).
 	// orgID filters by organization; nil = no org filter (backward compatible)
 	MarkReservedAsQueued(ctx context.Context, queID uint64, tenantID int64, bsEUI uint64, txTime int64, packetCnt *uint32, orgID *uuid.UUID) error

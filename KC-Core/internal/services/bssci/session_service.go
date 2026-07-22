@@ -14,7 +14,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 )
@@ -192,15 +191,14 @@ func (s *sessionService) hydrateSessionFromDB(dbSession *models.BaseStationSessi
 		orgID = uuid.Nil // Safe default when pointer is nil
 	}
 
-	// Handle ProtocolVersion hydration (BSSCI §4-4.5)
+	// Handle ProtocolVersion hydration (BSSCI §4-4.5). A legacy NULL stays
+	// empty: resumeVersionCompatible treats it as "cannot assert
+	// incompatibility" and the resume activation persists the newly selected
+	// version, backfilling the row instead of fabricating a version here.
 	var negotiatedVersion, clientVersion string
 	if dbSession.ProtocolVersion != nil {
 		negotiatedVersion = *dbSession.ProtocolVersion
 		clientVersion = *dbSession.ProtocolVersion // Initially same as negotiated
-	} else {
-		// Fallback for old sessions without stored version
-		negotiatedVersion = mioty.MIOTYProtocolVersion
-		clientVersion = mioty.MIOTYProtocolVersion
 	}
 
 	return &bssci.Session{

@@ -115,6 +115,12 @@ const (
 	LogBSSCIVersionIncompatible = "Version incompatible"
 	// LogBSSCIReceivedErrorAckFromBaseStation is a log message constant
 	LogBSSCIReceivedErrorAckFromBaseStation = "Received errorAck from base station"
+	// LogBSSCIFailedToResolveOwnerOrgForDLRxQuery is a log message constant
+	LogBSSCIFailedToResolveOwnerOrgForDLRxQuery = "Failed to resolve endpoint owner org for DL RX query tracking"
+	// LogBSSCIUnsolicitedErrorAck is a log message constant
+	LogBSSCIUnsolicitedErrorAck = "Ignoring errorAck with no matching sent error"
+	// LogBSSCIClosingConnectionAfterWriteFailure is a log message constant
+	LogBSSCIClosingConnectionAfterWriteFailure = "Closing connection after ambiguous frame write; pending operations preserved for resume"
 	// LogBSSCISendingBSSCIError is a log message constant
 	LogBSSCISendingBSSCIError = "Sending BSSCI error"
 	// LogBSSCIPersistedPendingOperation is a log message constant
@@ -634,6 +640,10 @@ const (
 	LogDispatcherSendFailed = "Downlink dispatcher: send failed"
 	// LogDispatcherMarkSentFailed is logged when marking downlink as queued fails
 	LogDispatcherMarkSentFailed = "Downlink dispatcher: mark queued failed"
+	// LogDispatcherReleaseFailed is logged when releasing a reservation back to pending fails
+	LogDispatcherReleaseFailed = "Downlink dispatcher: failed to release reservation to pending"
+	// LogBSSCIFailedToConfirmDownlinkQueued is a log message constant
+	LogBSSCIFailedToConfirmDownlinkQueued = "Failed to confirm downlink queue row as queued after dlDataQueRsp"
 	// LogDispatcherTxCommitFailed is logged when transaction commit fails
 	LogDispatcherTxCommitFailed = "Downlink dispatcher: commit failed"
 	// LogDispatcherSuccess is logged when downlink successfully dispatched

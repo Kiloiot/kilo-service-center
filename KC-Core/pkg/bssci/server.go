@@ -280,6 +280,32 @@ type ProtocolSessionState struct {
 	mu sync.Mutex
 }
 
+// NextScOpID allocates the next Service Center operation ID for this session
+// (negative, strictly decrementing per BSSCI rev1 §5.2 / classic §3.2). The
+// consumed ID is never rolled back on a later failure: a rollback would race
+// concurrent allocations and reissue an ID already held by an in-flight
+// operation, so a failed operation simply leaves a harmless gap.
+func (p *ProtocolSessionState) NextScOpID() int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.LastScOpId--
+	return p.LastScOpId
+}
+
+// errorAckDisposition classifies what the errorAck answering a sent error
+// frame is allowed to do (BSSCI rev1 §5.17 / classic §3.17).
+type errorAckDisposition int
+
+const (
+	// errorAckAckOnly: the errorAck merely closes the error exchange; it must
+	// not touch any pending operation.
+	errorAckAckOnly errorAckDisposition = iota
+	// errorAckFinalizePendingOperation: the sent error replaced the normal
+	// response/completion of a known pending SC operation, so the errorAck
+	// completes that operation and its pending row is finalized.
+	errorAckFinalizePendingOperation
+)
+
 // Session represents a connected Base Station session: the transport-free
 // ProtocolSessionState plus the live transport resources (socket, certificate,
 // background channels) that never cross an application-service boundary.
@@ -302,6 +328,44 @@ type Session struct {
 	// pendingBaseStation caches the registration looked up during the connect
 	// request so connect-complete does not repeat the lookup
 	pendingBaseStation *basestation.BaseStation
+	// pendingErrorAcks tracks the nonzero operation IDs for which this service
+	// center has sent an error frame and awaits the base station's errorAck
+	// (BSSCI rev1 §5.17 / classic §3.17). The exchange is connection-scoped
+	// and never survives resume; connect handshake errors (opId 0) are tracked
+	// by ConnectState instead. Guarded by the ProtocolSessionState mutex.
+	pendingErrorAcks map[int64]errorAckDisposition
+	// resumePendingOps is the strictly decoded pending-operation snapshot
+	// loaded during a compatible resume, held on the provisional connection
+	// until conCmp activation restores the cache and reissues the eligible
+	// operations (BSSCI rev1 §5.3.1 / classic §3.3.1).
+	resumePendingOps []*PendingOperation
+}
+
+// registerPendingErrorAck records that an error frame was sent for opId and a
+// matching errorAck is now expected. opId 0 (connect) is never registered.
+func (s *Session) registerPendingErrorAck(opId int64, disposition errorAckDisposition) {
+	if opId == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pendingErrorAcks == nil {
+		s.pendingErrorAcks = make(map[int64]errorAckDisposition)
+	}
+	s.pendingErrorAcks[opId] = disposition
+}
+
+// consumePendingErrorAck removes and returns the awaited-errorAck entry for
+// opId. ok is false when no error frame was sent for that operation on this
+// connection, in which case the errorAck is unsolicited.
+func (s *Session) consumePendingErrorAck(opId int64) (errorAckDisposition, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	disposition, ok := s.pendingErrorAcks[opId]
+	if ok {
+		delete(s.pendingErrorAcks, opId)
+	}
+	return disposition, ok
 }
 
 // BaseStationEUIBytes converts the BaseStationEUI uint64 to a byte slice.
@@ -1331,8 +1395,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 			RawPayload: payload, // Capture original wire bytes for forensic analysis
 		}
 
-		// BSSCI-3.2: Validate operation ID (except for connect which is special)
-		if command != mioty.CmdConnect {
+		// BSSCI-3.2: Validate operation ID. Connect is special (always opId
+		// 0), and error/errorAck are exempt: they carry the opId of the
+		// operation whose sequence they replace (rev1 §5.17 / classic §3.17),
+		// in either direction, so they never start a new sequence position.
+		if command != mioty.CmdConnect && command != mioty.CmdError && command != mioty.CmdErrorAck {
 			// Determine if this is a base station initiated operation
 			// Base station operations: positive IDs (and opId=0 for connect handshake per BSSCI §5.3)
 			// Service center operations: negative IDs
@@ -1343,6 +1410,17 @@ func (s *Server) handleConnection(conn net.Conn) {
 					"command", command,
 					"opId", opId,
 					"error_token", errToken)
+				// During the connect handshake the rejection enters the
+				// unified error/errorAck sequence (rev1 §5.17 / classic
+				// §3.17): the acknowledgement completes the failed exchange
+				// and closes. An active session with a broken operation-ID
+				// sequence closes immediately so resume restores counter sync.
+				if !session.HandshakeComplete {
+					if err := s.rejectConnect(session, opId, POSIX_EPROTO, errToken); err != nil {
+						return
+					}
+					continue
+				}
 				if err := s.sendError(session, opId, POSIX_EPROTO, ResolveErrorMessage(errToken)); err != nil {
 					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 				}
@@ -1558,19 +1636,50 @@ func (s *Server) sendMessage(session *Session, msg interface{}) error {
 	//nolint:gosec // G115: int->uint32 safe, guarded by range check at line 664
 	binary.LittleEndian.PutUint32(header[8:], uint32(len(payload)))
 
-	// Send header and payload
+	// Send header and payload. Any failure past this point is an ambiguous
+	// write: part of the frame may already be on the wire, so the connection's
+	// framing can no longer be trusted and callers must close it and rely on
+	// session resume for recovery (BSSCI rev1 §5.3.1 / classic §3.3.1).
 	session.mu.Lock()
 	defer session.mu.Unlock()
 
-	if _, err := session.Conn.Write(header); err != nil {
-		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToWriteHeader), err)
+	n, err := session.Conn.Write(header)
+	if err != nil {
+		return fmt.Errorf("%s: %w: %w", ResolveErrorMessage(errFailedToWriteHeader), ErrAmbiguousWrite, err)
+	}
+	if n < len(header) {
+		return fmt.Errorf("%s: %w: short write %d/%d", ResolveErrorMessage(errFailedToWriteHeader), ErrAmbiguousWrite, n, len(header))
 	}
 
-	if _, err := session.Conn.Write(payload); err != nil {
-		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToWritePayload), err)
+	n, err = session.Conn.Write(payload)
+	if err != nil {
+		return fmt.Errorf("%s: %w: %w", ResolveErrorMessage(errFailedToWritePayload), ErrAmbiguousWrite, err)
+	}
+	if n < len(payload) {
+		return fmt.Errorf("%s: %w: short write %d/%d", ResolveErrorMessage(errFailedToWritePayload), ErrAmbiguousWrite, n, len(payload))
 	}
 
 	return nil
+}
+
+// ErrAmbiguousWrite reports a frame write that failed after bytes may have
+// reached the wire. The transport framing can no longer be trusted; callers
+// close the connection and rely on session resume (with the original
+// operation IDs) for recovery instead of retrying on the same connection.
+var ErrAmbiguousWrite = errors.New("ambiguous frame write")
+
+// closeTransportAfterWriteFailure closes the session transport after an
+// ambiguous frame write. Persisted pending operations are deliberately
+// preserved: the disconnect path marks the session resumable and resume
+// reissues the operations with their original IDs.
+func (s *Server) closeTransportAfterWriteFailure(session *Session, opId int64, cause error) {
+	s.logger.ErrorContext(s.sessionContext(session), LogBSSCIClosingConnectionAfterWriteFailure,
+		"bsEui", session.BaseStationEUI,
+		"opId", opId,
+		"error", cause)
+	if session.Conn != nil {
+		_ = session.Conn.Close()
+	}
 }
 
 // operationAckTimeout returns the configured handshake wait bound, falling
@@ -1896,10 +2005,32 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 			session.OrganizationID = previousSession.OrganizationID     // Restore org from previous session
 			session.ResolvedTenantID = previousSession.ResolvedTenantID // Restore tenant from previous session
 
+			// Load and strictly decode the persisted pending operations BEFORE
+			// conRsp: an infrastructure or decode failure rejects the resume
+			// instead of silently losing protocol state. The validated snapshot
+			// stays on the provisional connection until conCmp activates it.
+			pendingOps, loadErr := s.loadPendingOperations(session)
+			if loadErr != nil {
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToLoadPendingOperationsForSessionResume,
+					"error", loadErr,
+					"sessionID", session.DbSessionID)
+				return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
+			}
+			session.resumePendingOps = pendingOps
+
+			// Counter floor: the SC counter must be at or below every persisted
+			// negative operation ID, so reissued IDs are never re-allocated
+			for _, op := range pendingOps {
+				if op.OperationID < 0 && op.OperationID < session.LastScOpId {
+					session.LastScOpId = op.OperationID
+				}
+			}
+			session.ScOpId = session.LastScOpId
+
 			s.logger.InfoContext(s.safeCtx(), LogBSSCIResumingPreviousSession,
 				"eui", session.BaseStationEUI,
 				"bsOpId", session.BsOpId,
-				"scOpId", session.ScOpId,
+				"scOpId", session.LastScOpId,
 				"dbSessionId", session.DbSessionID,
 				"orgID", session.OrganizationID.String(),
 				"tenantID", session.ResolvedTenantID)
@@ -2102,88 +2233,85 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 		}
 	}
 
-	// Start status mechanism for this session
+	// MIOTY session resume: restore the validated pending-operation snapshot
+	// loaded before conRsp (never re-read or re-written here - the DB rows are
+	// already authoritative), reissue the eligible operations in deterministic
+	// order with their original IDs, and only then start status polling so the
+	// first status request cannot interleave with the reissue sequence.
+	if pendingOps := session.resumePendingOps; len(pendingOps) > 0 {
+		session.resumePendingOps = nil
+		s.logger.InfoContext(ctx, LogBSSCIResumingSessionWithPendingOps,
+			"bsEui", session.BaseStationEUI,
+			"sessionID", session.DbSessionID,
+			"pendingCount", len(pendingOps))
+
+		for _, op := range pendingOps {
+			s.logger.DebugContext(ctx, LogBSSCIProcessingPendingOperationForResume,
+				"opId", op.OperationID,
+				"type", op.OperationType)
+
+			// Reconstitute operations BEFORE storing or sending
+			if op.OperationType == mioty.CmdULDataTransmit && op.Metadata != nil {
+				reconstituted, err := s.reconstitueULDataTxMessage(op.Message, op.Metadata, op)
+				if err != nil {
+					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteULDataTxSkipping,
+						"error", err,
+						"opId", op.OperationID)
+					continue
+				}
+				op.Message = reconstituted
+			} else if op.OperationType == mioty.CmdDLDataQueue && op.Metadata != nil {
+				// Reconstitute dlDataQue with counter-dependent payloads
+				reconstituted, err := s.reconstitueDLDataQueMessage(op.Message, op.Metadata, op)
+				if err != nil {
+					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataQueSkipping,
+						"error", err,
+						"opId", op.OperationID)
+					continue
+				}
+				op.Message = reconstituted
+			} else if op.OperationType == mioty.CmdDLDataRevoke && op.Metadata != nil {
+				// Reconstitute mioty.CmdDLDataRevoke with proper integer types
+				reconstituted, err := s.reconstitueDLDataRevMessage(op.Message, op.Metadata)
+				if err != nil {
+					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataRevSkipping,
+						"error", err,
+						"opId", op.OperationID)
+					continue
+				}
+				op.Message = reconstituted
+			}
+
+			// Cache-only hydration: the loaded DB rows are authoritative and
+			// must not be UPSERTed back. BS-initiated (positive) operations
+			// are hydrated for response correlation but never transmitted.
+			if s.statusSvc != nil {
+				s.statusSvc.RestorePendingOperation(session, op.OperationID, op)
+			}
+
+			if !isResumableScOperation(op.OperationID, op.OperationType) {
+				continue
+			}
+
+			// Normalize message types to fix JSON float64 conversion before reissuing
+			normalizedMsg := s.normalizeMessageTypes(op.Message, op.OperationType)
+			if err := s.sendMessage(session, normalizedMsg); err != nil {
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToReissuePendingOperation,
+					"error", err,
+					"opId", op.OperationID,
+					"type", op.OperationType)
+			}
+		}
+	} else if session.DbSessionID > 0 {
+		s.logger.DebugContext(ctx, LogBSSCINoPendingOperationsToResume,
+			"bsEui", session.BaseStationEUI,
+			"sessionID", session.DbSessionID)
+	}
+
+	// Start status mechanism only after the reissue sequence completed
 	s.startStatusMechanism(session)
 	s.logger.InfoContext(ctx, LogBSSCIStartedStatusMechanismForBaseStation,
 		"bsEui", session.BaseStationEUI)
-
-	// MIOTY session resume: Load and reissue pending operations
-	if session.DbSessionID > 0 {
-		pendingOps, err := s.loadPendingOperations(session)
-		if err != nil {
-			s.logger.ErrorContext(ctx, LogBSSCIFailedToLoadPendingOperationsForSessionResume,
-				"error", err,
-				"sessionID", session.DbSessionID)
-		} else if len(pendingOps) > 0 {
-			s.logger.InfoContext(ctx, LogBSSCIResumingSessionWithPendingOps,
-				"bsEui", session.BaseStationEUI,
-				"sessionID", session.DbSessionID,
-				"pendingCount", len(pendingOps))
-
-			// Reissue all pending operations per MIOTY BSSCI v1.0.0 session resume requirements
-			for _, op := range pendingOps {
-				s.logger.DebugContext(ctx, LogBSSCIProcessingPendingOperationForResume,
-					"opId", op.OperationID,
-					"type", op.OperationType)
-
-				// Reconstitute operations BEFORE storing or sending
-				if op.OperationType == mioty.CmdULDataTransmit && op.Metadata != nil {
-					reconstituted, err := s.reconstitueULDataTxMessage(op.Message, op.Metadata, op)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteULDataTxSkipping,
-							"error", err,
-							"opId", op.OperationID)
-						continue
-					}
-					op.Message = reconstituted
-				} else if op.OperationType == mioty.CmdDLDataQueue && op.Metadata != nil {
-					// Reconstitute dlDataQue with counter-dependent payloads
-					reconstituted, err := s.reconstitueDLDataQueMessage(op.Message, op.Metadata, op)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataQueSkipping,
-							"error", err,
-							"opId", op.OperationID)
-						continue
-					}
-					op.Message = reconstituted
-				} else if op.OperationType == mioty.CmdDLDataRevoke && op.Metadata != nil {
-					// Reconstitute mioty.CmdDLDataRevoke with proper integer types
-					reconstituted, err := s.reconstitueDLDataRevMessage(op.Message, op.Metadata)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataRevSkipping,
-							"error", err,
-							"opId", op.OperationID)
-						continue
-					}
-					op.Message = reconstituted
-				}
-
-				// Delegate pending operation storage to StatusService
-				// BSSCI §§5.11-5.12.3 Gap 1: Guard against nil statusSvc (test compatibility)
-				if s.statusSvc != nil {
-					if err := s.statusSvc.RecordPendingOperation(ctx, session, op.OperationID, op, session.DbSessionID); err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToRecordPendingOperation,
-							"error", err,
-							"opId", op.OperationID)
-						// Continue - operation can still be reissued
-					}
-				}
-
-				// Normalize message types to fix JSON float64 conversion before reissuing
-				normalizedMsg := s.normalizeMessageTypes(op.Message, op.OperationType)
-				if err := s.sendMessage(session, normalizedMsg); err != nil {
-					s.logger.ErrorContext(ctx, LogBSSCIFailedToReissuePendingOperation,
-						"error", err,
-						"opId", op.OperationID,
-						"type", op.OperationType)
-				}
-			}
-		} else {
-			s.logger.DebugContext(ctx, LogBSSCINoPendingOperationsToResume,
-				"bsEui", session.BaseStationEUI,
-				"sessionID", session.DbSessionID)
-		}
-	}
 
 	// BSSCI §5.8.3: Trigger automatic attach propagate reconciliation for newly connected BS
 	// Replay all bidirectional endpoints to the newly connected base station
@@ -2275,11 +2403,13 @@ func (s *Server) SendPing(sessionID string) error {
 		return fmt.Errorf("%s for session %s", ResolveErrorMessage(errCannotSendPing), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID and
+	// persist the counter before the frame is written; never roll back. Ping
+	// is idempotent liveness traffic, so no pending record is persisted.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	msg := map[string]interface{}{
 		"command": mioty.CmdPing,
@@ -2291,22 +2421,11 @@ func (s *Server) SendPing(sessionID string) error {
 		"bsEui", session.BaseStationEUI,
 		"opId", opId)
 
-	// Send with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, msg); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
+		if errors.Is(err, ErrAmbiguousWrite) {
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		}
 		return err
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	return nil
@@ -2338,11 +2457,13 @@ func (s *Server) InitiatePing(ctx context.Context, baseStationEUI uint64, tenant
 			baseStationEUI, sessionTenantID, tenantID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID and
+	// persist the counter before the frame is written; never roll back. Ping
+	// is idempotent liveness traffic, so no pending record is persisted.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return 0, err
+	}
 
 	msg := map[string]interface{}{
 		"command": mioty.CmdPing,
@@ -2354,22 +2475,11 @@ func (s *Server) InitiatePing(ctx context.Context, baseStationEUI uint64, tenant
 		"bsEui", session.BaseStationEUI,
 		"opId", opId)
 
-	// Send with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, msg); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
+		if errors.Is(err, ErrAmbiguousWrite) {
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		}
 		return 0, err
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(ctx, session); err != nil {
-		s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", session.ID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	return opId, nil
@@ -3229,8 +3339,11 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 		typedMetadata.EndpointID = endpoint.ID
 	}
 
-	// Persist pending operation via StatusService (handles both DB + map with SessionOpKey)
-	// BSSCI §5.7: StatusService is single writer for crash safety (guard against zero DbSessionID)
+	// Persist pending operation via StatusService (handles both DB + map with SessionOpKey).
+	// This row is a crash-resume aid for a BS-initiated operation (positive
+	// opId): the abort-before-send rule protects SC-initiated recovery only,
+	// and aborting here would drop a live detach on a transient DB failure, so
+	// persistence stays best-effort (BSSCI §5.7).
 	if session.DbSessionID != 0 {
 		if err := s.persistPendingOperation(session, int64(msg.OpId), mioty.CmdDetach, data, euiBytes, metadataMap); err != nil {
 			s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToPersistPendingOperationMigrationNeeded,
@@ -4174,9 +4287,21 @@ func (s *Server) handleErrorAck(_ *Server, session *Session, msg *Message, _ map
 		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errInvalidHandshakeState)
 	}
 
-	// For SC-initiated operations (negative opId), clean up pending operation
-	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both cache and DB removal
-	if msg.OpId < 0 {
+	// An errorAck is only meaningful when this service center actually sent an
+	// error frame for that operation on this connection (BSSCI rev1 §5.17 /
+	// classic §3.17). Consuming the recorded expectation prevents a spurious
+	// or forged errorAck from finalizing an unrelated in-flight operation.
+	disposition, awaited := session.consumePendingErrorAck(msg.OpId)
+	if !awaited {
+		s.logger.WarnContext(s.safeCtx(), LogBSSCIUnsolicitedErrorAck,
+			"opId", msg.OpId,
+			"baseStationEUI", session.BaseStationEUI)
+		return nil
+	}
+
+	// Only an error that replaced a pending SC operation's normal sequence may
+	// finalize that operation; ack-only errors touch no pending state.
+	if disposition == errorAckFinalizePendingOperation && msg.OpId < 0 {
 		if err := s.removePendingOperation(session, msg.OpId); err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperationAfterErrorAck,
 				"error", err,
@@ -4185,8 +4310,13 @@ func (s *Server) handleErrorAck(_ *Server, session *Session, msg *Message, _ map
 		}
 	}
 
-	// For BS-initiated operations (positive opId), just log - no cleanup needed
-	// The base station is acknowledging our error message
+	// An errorAck that completes an error sent during the connect handshake
+	// finishes the failed exchange: the state machine goes Terminal and the
+	// connection closes (BSSCI rev1 §5.17 / classic §3.17)
+	if session.ConnectState == ConnectStateAwaitingConnectErrorAck {
+		session.ConnectState = ConnectStateTerminal
+		return fmt.Errorf("connect-stage error acknowledged by the base station; closing")
+	}
 
 	return nil
 }
@@ -4305,6 +4435,46 @@ func decodeJSONFrame(rawFrame []byte) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("%s: trailing content after JSON frame", ResolveErrorMessage(errInvalidMessageFormat))
 	}
 	return data, nil
+}
+
+// normalizeStrictDecodedMap converts a strict-decoded (UseNumber) map into the
+// value shapes the legacy decoder produced: integral numbers within the exact
+// float64 range become float64 (so existing consumers keep working), while
+// integers beyond that range stay exact as int64/uint64 - this is what
+// preserves full-range EUI-64 and counter values across resume.
+func normalizeStrictDecodedMap(m map[string]interface{}) map[string]interface{} {
+	for k, v := range m {
+		m[k] = normalizeStrictDecodedValue(v)
+	}
+	return m
+}
+
+func normalizeStrictDecodedValue(v interface{}) interface{} {
+	switch t := v.(type) {
+	case json.Number:
+		if i, err := jsonNumberToInt64(t); err == nil {
+			if i >= -int64(maxExactFloat64Integer) && i <= int64(maxExactFloat64Integer) {
+				return float64(i)
+			}
+			return i
+		}
+		if u, err := jsonNumberToUint64(t); err == nil {
+			return u
+		}
+		if f, err := t.Float64(); err == nil {
+			return f
+		}
+		return t
+	case map[string]interface{}:
+		return normalizeStrictDecodedMap(t)
+	case []interface{}:
+		for i, e := range t {
+			t[i] = normalizeStrictDecodedValue(e)
+		}
+		return t
+	default:
+		return v
+	}
 }
 
 func getStringField(data map[string]interface{}, key string, defaultValue string) string {
@@ -4475,25 +4645,27 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 	}
 
 	// Extract endpointID (optional for backward compatibility with old pending operations)
+	// Canonical numeric coercion accepts both legacy float64-decoded values and
+	// the strict json.Number decode used on resume (exact uint64/int64 range).
 	var endpointID int64
-	if idFloat, ok := m["endpointID"].(float64); ok {
-		endpointID = int64(idFloat)
+	if id, err := coerceInt64(m["endpointID"]); err == nil {
+		endpointID = id
 	}
 
-	packetCntFloat, ok := m["packetCnt"].(float64)
-	if !ok {
+	packetCntInt, err := coerceInt64(m["packetCnt"])
+	if err != nil {
 		return nil
 	}
-	rxTimeFloat, ok := m["rxTime"].(float64)
-	if !ok {
+	rxTime, err := coerceInt64(m["rxTime"])
+	if err != nil {
 		return nil
 	}
-	snr, ok := m["snr"].(float64)
-	if !ok {
+	snr, err := coerceFloat64(m["snr"])
+	if err != nil {
 		return nil
 	}
-	rssi, ok := m["rssi"].(float64)
-	if !ok {
+	rssi, err := coerceFloat64(m["rssi"])
+	if err != nil {
 		return nil
 	}
 
@@ -4517,7 +4689,7 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 	}
 
 	// Build typed metadata with safe conversions (using conversions.go helpers)
-	packetCnt, errToken := safeUint32(int64(packetCntFloat), "packetCnt")
+	packetCnt, errToken := safeUint32(packetCntInt, "packetCnt")
 	if errToken != "" {
 		return nil // Failed conversion
 	}
@@ -4527,14 +4699,14 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 		EndpointID: endpointID,
 		PacketCnt:  packetCnt,
 		Signature:  signature,
-		RxTime:     int64(rxTimeFloat),
+		RxTime:     rxTime,
 		SNR:        snr,
 		RSSI:       rssi,
 	}
 
 	// Extract tenantId (optional for backward compatibility with old pending operations)
-	if tenantIdFloat, ok := m["tenantId"].(float64); ok {
-		result.TenantID = int64(tenantIdFloat)
+	if tenantID, err := coerceInt64(m["tenantId"]); err == nil {
+		result.TenantID = tenantID
 	}
 
 	// Extract orgUuid (optional for backward compatibility)
@@ -4545,14 +4717,13 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 	}
 
 	// Optional fields
-	if eqSnrFloat, ok := m["eqSnr"].(float64); ok {
-		result.EqSnr = &eqSnrFloat
+	if eqSnr, err := coerceFloat64(m["eqSnr"]); err == nil && m["eqSnr"] != nil {
+		result.EqSnr = &eqSnr
 	}
 	if profileStr, ok := m["profile"].(string); ok {
 		result.Profile = &profileStr
 	}
-	if rxDurFloat, ok := m["rxDuration"].(float64); ok {
-		rxDur := int64(rxDurFloat)
+	if rxDur, err := coerceInt64(m["rxDuration"]); err == nil && m["rxDuration"] != nil {
 		result.RxDuration = &rxDur
 	}
 
@@ -5041,10 +5212,13 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 	}
 
 	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	// Convert repetition uint8 to boolean (non-zero means repetition enabled)
 	repetitionBool := repetition > 0
@@ -5102,9 +5276,11 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 		metadata["organizationId"] = ownerOrgUUID.String()
 	}
 
+	// The recovery record must be durable before the frame is written; a
+	// persistence failure aborts the send, leaving only a consumed-ID gap.
 	if err := s.persistPendingOperation(session, opId, mioty.CmdAttachPropagate, message, euiBytes, metadata); err != nil {
 		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistPendingOperation, "error", err)
-		// Continue anyway - persistence failure shouldn't block operation
+		return err
 	}
 
 	// Update endpoint in database with attach propagate information
@@ -5229,21 +5405,17 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 	// which creates a single "attPrp" event. Removed duplicate "attach_propagate_initiated" events
 	// that were creating 2 extra records per operation.
 
-	// Send with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, message); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up persisted operation (guard for community builds)
-		if session.DbSessionID > 0 {
-			if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToClearPersistedPendingOperation,
-					"sessionID", session.DbSessionID,
-					"opId", opId,
-					"error", cleanupErr)
-			}
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToClearPersistedPendingOperation,
+				"sessionID", session.DbSessionID,
+				"opId", opId,
+				"error", cleanupErr)
 		}
 
 		return err
@@ -5304,17 +5476,6 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 					"opId", opId)
 				// Continue - persistence failure shouldn't block operation
 			}
-		}
-	}
-
-	// Success - persist counter to DB for session resume
-	if s.sessionSvc != nil {
-		if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
-				"error", err,
-				"sessionID", session.ID,
-				"opId", opId)
-			// Don't fail the operation - message was sent successfully
 		}
 	}
 
@@ -5853,11 +6014,13 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 		return fmt.Errorf("%s for session %s", ResolveErrorMessage(errHandshakeNotComplete), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	s.logger.InfoContext(s.safeCtx(), LogBSSCISendingDetachPropagate,
 		"sessionID", sessionID,
@@ -5885,9 +6048,11 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 		metadata["organizationId"] = ownerOrgUUID.String()
 	}
 
+	// The recovery record must be durable before the frame is written; a
+	// persistence failure aborts the send, leaving only a consumed-ID gap.
 	if err := s.persistPendingOperation(session, opId, mioty.CmdDetachPropagate, message, euiBytes, metadata); err != nil {
 		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistPendingOperation, "error", err)
-		// Continue anyway - persistence failure shouldn't block operation
+		return err
 	}
 
 	// Update endpoint in database to mark detach propagate initiated
@@ -5966,35 +6131,20 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 		}
 	}
 
-	// Send with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, message); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up persisted operation (guard for community builds)
-		if session.DbSessionID > 0 {
-			if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToClearPersistedPendingOperation,
-					"sessionID", session.DbSessionID,
-					"opId", opId,
-					"error", cleanupErr)
-			}
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToClearPersistedPendingOperation,
+				"sessionID", session.DbSessionID,
+				"opId", opId,
+				"error", cleanupErr)
 		}
 
 		return err
-	}
-
-	// Success - persist counter to DB for session resume
-	if s.sessionSvc != nil {
-		if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
-				"error", err,
-				"sessionID", session.ID,
-				"opId", opId)
-			// Don't fail the operation - message was sent successfully
-		}
 	}
 
 	return nil
@@ -6291,17 +6441,61 @@ func (s *Server) handleDetachPropagateComplete(_ *Server, session *Session, msg 
 
 // Database persistence methods for MIOTY session resume
 
+// beginScOperation allocates the next SC operation ID and durably persists the
+// session counters before any frame is written (BSSCI rev1 §5.2 / classic
+// §3.2). The durable order for every SC-issued operation is: allocate the ID,
+// persist the counter, persist the pending record (recoverable operations
+// only), then write the frame. A failure after allocation leaves a harmless
+// consumed-ID gap; the counter is never rolled back because a rollback races
+// concurrent allocations.
+func (s *Server) beginScOperation(session *Session) (int64, error) {
+	opId := session.NextScOpID()
+	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
+		return 0, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistSessionCounters), err)
+	}
+	return opId, nil
+}
+
 // persistPendingOperation stores a pending operation via StatusService (BSSCI §5.11-5.12.3 single writer)
 // StatusService handles both DB persistence and in-memory map update using SessionOpKey composite key
 func (s *Server) persistPendingOperation(session *Session, opId int64, opType string, message map[string]interface{}, euiBytes []byte, metadata map[string]interface{}) error {
 	ctx := s.safeCtx()
 
+	// An SC operation without a persisted session has no recovery identity;
+	// letting it on the wire would make it unrecoverable after a crash. This
+	// is an inconsistent-session error, never a silent no-persistence mode.
 	if session.DbSessionID == 0 {
-		s.logger.WarnContext(ctx, LogBSSCIDatabaseNotAvailableForPendingOpPersistence)
-		return nil
+		s.logger.ErrorContext(ctx, LogBSSCIDatabaseNotAvailableForPendingOpPersistence,
+			"opId", opId,
+			"opType", opType)
+		return NewCatalogError(errPendingOpSessionNotPersisted, POSIX_EPROTO)
 	}
 
-	// Extract MACType and Data from metadata if present (for VM operations)
+	pendingOp := s.buildPendingOperation(session, opId, opType, message, euiBytes, metadata)
+
+	// StatusService is the single path for pending operation persistence. A
+	// failure is surfaced to the caller: an SC operation whose recovery record
+	// was never durably written must not go on the wire.
+	if err := s.statusSvc.RecordPendingOperation(ctx, session, opId, pendingOp, session.DbSessionID); err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistPendingOperationMigrationNeeded,
+			"error", err,
+			"sessionID", session.DbSessionID,
+			"opId", opId)
+		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistPendingOperation), err)
+	}
+
+	s.logger.DebugContext(ctx, LogBSSCIPersistedPendingOperation,
+		"sessionID", session.DbSessionID,
+		"opId", opId,
+		"opType", opType)
+
+	return nil
+}
+
+// buildPendingOperation assembles the recovery record for an SC-initiated
+// operation, extracting the VM MACType and payload data from metadata when
+// present.
+func (s *Server) buildPendingOperation(session *Session, opId int64, opType string, message map[string]interface{}, euiBytes []byte, metadata map[string]interface{}) *PendingOperation {
 	var macType int
 	var data []byte
 	if metadata != nil {
@@ -6330,8 +6524,7 @@ func (s *Server) persistPendingOperation(session *Session, opId int64, opType st
 		}
 	}
 
-	// Build complete PendingOperation struct
-	pendingOp := &PendingOperation{
+	return &PendingOperation{
 		SessionSlug:   session.ID,
 		OperationID:   opId,
 		OperationType: opType,
@@ -6342,21 +6535,29 @@ func (s *Server) persistPendingOperation(session *Session, opId int64, opType st
 		Metadata:      metadata,
 		CreatedAt:     time.Now(),
 	}
+}
 
-	// StatusService is the single path for pending operation persistence
-	if err := s.statusSvc.RecordPendingOperation(ctx, session, opId, pendingOp, session.DbSessionID); err != nil {
-		// Log but don't fail - pending operations are best effort
-		s.logger.WarnContext(ctx, LogBSSCIFailedToPersistPendingOperationMigrationNeeded,
-			"error", err,
-			"sessionID", session.DbSessionID,
-			"opId", opId)
-		return nil
+// persistPendingOperationBatch durably records several recovery records in one
+// repository transaction (all-or-nothing) so a multi-frame sequence such as
+// the dlRxStatQry/dlDataQue pair never has a partially persisted recovery
+// state. The same inconsistent-session rule as persistPendingOperation
+// applies.
+func (s *Server) persistPendingOperationBatch(session *Session, ops []*PendingOperation) error {
+	ctx := s.safeCtx()
+
+	if session.DbSessionID == 0 {
+		s.logger.ErrorContext(ctx, LogBSSCIDatabaseNotAvailableForPendingOpPersistence,
+			"opCount", len(ops))
+		return NewCatalogError(errPendingOpSessionNotPersisted, POSIX_EPROTO)
 	}
 
-	s.logger.DebugContext(ctx, LogBSSCIPersistedPendingOperation,
-		"sessionID", session.DbSessionID,
-		"opId", opId,
-		"opType", opType)
+	if err := s.statusSvc.RecordPendingOperations(ctx, session, ops, session.DbSessionID); err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistPendingOperationMigrationNeeded,
+			"error", err,
+			"sessionID", session.DbSessionID,
+			"opCount", len(ops))
+		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistPendingOperation), err)
+	}
 
 	return nil
 }
@@ -6410,6 +6611,25 @@ func (s *Server) removePendingOperation(session *Session, opId int64) error {
 	return s.statusSvc.RemovePendingOperation(ctx, session, opId)
 }
 
+// isResumableScOperation reports whether a persisted pending operation may be
+// reissued on session resume: only SC-initiated (negative ID) non-VM commands
+// qualify (BSSCI rev1 §5.3.1 / classic §3.3.1). BS-initiated operations are
+// hydrated for response correlation but never transmitted by the SC, and VM
+// operations require re-established endpoint VM state before reissue.
+func isResumableScOperation(opID int64, opType string) bool {
+	if opID >= 0 {
+		return false
+	}
+	switch opType {
+	case mioty.CmdStatus, mioty.CmdAttachPropagate, mioty.CmdDetachPropagate,
+		mioty.CmdULDataTransmit, mioty.CmdDLDataQueue, mioty.CmdDLDataRevoke,
+		mioty.CmdDLRxStatusQuery:
+		return true
+	default:
+		return false
+	}
+}
+
 // loadPendingOperations loads pending operations from database for session resume (Issue #3: accepts *Session for SessionSlug field)
 func (s *Server) loadPendingOperations(session *Session) ([]*PendingOperation, error) {
 	sessionID := session.DbSessionID
@@ -6436,24 +6656,31 @@ func (s *Server) loadPendingOperations(session *Session) ([]*PendingOperation, e
 		metadataJSON := repoOp.Metadata
 		createdAt := repoOp.CreatedAt
 
-		// Deserialize operation data
-		var operationData map[string]interface{}
-		if err := json.Unmarshal(operationDataJSON, &operationData); err != nil {
+		// Deserialize operation data with the strict frame decoder (UseNumber,
+		// single object, trailing content rejected) so uint64 EUI values
+		// survive resume exactly. A malformed persisted operation is an
+		// infrastructure inconsistency: the caller rejects the resume rather
+		// than silently losing protocol state.
+		operationData, err := decodeJSONFrame(operationDataJSON)
+		if err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUnmarshalOperationData,
 				"error", err,
 				"opId", opId)
-			continue
+			return nil, fmt.Errorf("%s: opId %d: %w", ResolveErrorMessage(errFailedToDecode), opId, err)
 		}
+		operationData = normalizeStrictDecodedMap(operationData)
 
-		// Deserialize metadata
+		// Deserialize metadata under the same strict rules
 		var metadata map[string]interface{}
 		if len(metadataJSON) > 0 {
-			if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+			metadata, err = decodeJSONFrame(metadataJSON)
+			if err != nil {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUnmarshalMetadata,
 					"error", err,
 					"opId", opId)
-				metadata = make(map[string]interface{})
+				return nil, fmt.Errorf("%s: opId %d metadata: %w", ResolveErrorMessage(errFailedToDecode), opId, err)
 			}
+			metadata = normalizeStrictDecodedMap(metadata)
 		} else {
 			metadata = make(map[string]interface{})
 		}
@@ -6876,7 +7103,29 @@ func (s *Server) sendError(session *Session, opId int64, code int, message strin
 		"code", code,
 		"message", message)
 
-	return s.sendMessage(session, errorMsg)
+	if err := s.sendMessage(session, errorMsg); err != nil {
+		return err
+	}
+
+	// The base station will answer with errorAck (BSSCI rev1 §5.17 / classic
+	// §3.17). Record the expectation so handleErrorAck only acts on
+	// acknowledgements this service center actually solicited. Plain
+	// rejections are ack-only; sendErrorReplacingOperation registers the
+	// finalizing disposition for errors that replace a pending SC operation.
+	session.registerPendingErrorAck(opId, errorAckAckOnly)
+	return nil
+}
+
+// sendErrorReplacingOperation sends an error frame that replaces the normal
+// response/completion sequence of a known pending SC operation (BSSCI rev1
+// §5.17 / classic §3.17). The base station's errorAck then completes that
+// operation, so the errorAck is registered with the finalizing disposition.
+func (s *Server) sendErrorReplacingOperation(session *Session, opId int64, code int, message string) error {
+	if err := s.sendError(session, opId, code, message); err != nil {
+		return err
+	}
+	session.registerPendingErrorAck(opId, errorAckFinalizePendingOperation)
+	return nil
 }
 
 // sendCatalogError resolves catalog error token and sends error message

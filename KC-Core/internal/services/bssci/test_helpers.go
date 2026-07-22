@@ -400,6 +400,10 @@ func (m *mockPendingOperationRepository) Create(_ context.Context, _ *interfaces
 	return nil
 }
 
+func (m *mockPendingOperationRepository) CreateBatch(_ context.Context, _ []*interfaces.PendingOperationRequest) error {
+	return nil
+}
+
 func (m *mockPendingOperationRepository) UpdateMetadata(_ context.Context, _ int64, _ int64, _ json.RawMessage) error {
 	return nil
 }
@@ -614,6 +618,10 @@ func (m *mockMIOTYDownlinkRepository) RevokeDownlink(_ context.Context, _ int64,
 // Transaction-only methods (return ErrNotImplemented in non-tx context)
 // orgID parameter enables organization-scoped reservation
 func (m *mockMIOTYDownlinkRepository) ReserveNextPendingDownlink(_ context.Context, _ int64, _ []byte, _ uint64, _ *uuid.UUID) (*storage.DownlinkMessage, error) {
+	return nil, nil // No pending downlinks in basic mock
+}
+
+func (m *mockMIOTYDownlinkRepository) ReservePendingDownlinkByQueueID(_ context.Context, _ int64, _ *uuid.UUID, _ uint64, _ []byte, _ uint64) (*storage.DownlinkMessage, error) {
 	return nil, nil // No pending downlinks in basic mock
 }
 

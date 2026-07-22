@@ -304,7 +304,7 @@ const (
 const (
 	DLQueueStatusPending     = "pending"     // Queued awaiting scheduler processing
 	DLQueueStatusScheduled   = "scheduled"   // Scheduler selected for transmission
-	DLQueueStatusReserved    = "reserved"    // Reserved for auto-dispatch (transient, within transaction)
+	DLQueueStatusReserved    = "reserved"    // Durably reserved for dispatch; confirmed queued after the wire send
 	DLQueueStatusQueued      = "queued"      // Sent to BS via dlDataQue, awaiting transmission
 	DLQueueStatusTransmitted = "transmitted" // BS reported successful transmission via dlDataRes (BSSCI 5.14)
 	DLQueueStatusDelivered   = "delivered"   // Endpoint acknowledged receipt (if ack requested)

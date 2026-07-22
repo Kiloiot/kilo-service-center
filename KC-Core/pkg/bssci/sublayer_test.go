@@ -61,6 +61,7 @@ func TestBSSCI_4_01_unsupported_sublayer(t *testing.T) {
 			BaseStationEUI:    bssci.TestBsEui01,
 			Encoding:          "json",
 			HandshakeComplete: true,
+			DbSessionID:       1,
 		},
 		Conn: mockConn,
 	}

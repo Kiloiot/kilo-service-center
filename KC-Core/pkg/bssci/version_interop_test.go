@@ -51,6 +51,13 @@ type interopHarness struct {
 
 func startInteropServer(t *testing.T, encoding string) *interopHarness {
 	t.Helper()
+	return startInteropServerWithConfig(t, encoding, nil)
+}
+
+// startInteropServerWithConfig starts the framed harness with a config
+// mutation hook so timeout tests can shrink the handshake deadlines.
+func startInteropServerWithConfig(t *testing.T, encoding string, mutate func(*Config)) *interopHarness {
+	t.Helper()
 
 	log := logger.NewNop()
 	sessionSvc, downlinkSvc, statusSvc, _, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(log, nil)
@@ -66,6 +73,9 @@ func startInteropServer(t *testing.T, encoding string) *interopHarness {
 		SoftwareVersion:     "1.0.0",
 		MessageEncoding:     encoding,
 		OperationAckTimeout: 2 * time.Second,
+	}
+	if mutate != nil {
+		mutate(server.config)
 	}
 	server.RegisterHandlers()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -387,6 +397,28 @@ func TestBSSCIVersionInterop_StateMachineEdges(t *testing.T) {
 		errFrame := h.readFrame()
 		require.Equal(t, mioty.CmdError, frameCommand(errFrame),
 			"a pre-handshake command must be rejected with an error, entering the errorAck sequence")
+
+		// Completing the error/errorAck exchange ends the failed handshake:
+		// the state machine goes Terminal and the connection closes
+		h.writeFrame(map[string]interface{}{"command": mioty.CmdErrorAck, "opId": int64(1)})
+		h.expectClosed()
+	})
+
+	t.Run("InboundConRspRejectedErrorAckTerminates", func(t *testing.T) {
+		// The full §5.17 sequence for a connect-stage rejection: error frame,
+		// then the base station's errorAck completes the failed operation and
+		// the connection closes
+		h := startInteropServer(t, EncodingJSON)
+		h.writeFrame(map[string]interface{}{
+			"command": mioty.CmdConnectResponse,
+			"opId":    int64(0),
+			"version": mioty.MIOTYProtocolVersion,
+		})
+		errFrame := h.readFrame()
+		require.Equal(t, mioty.CmdError, frameCommand(errFrame))
+
+		h.writeFrame(map[string]interface{}{"command": mioty.CmdErrorAck, "opId": int64(0)})
+		h.expectClosed()
 	})
 
 	t.Run("DuplicateCon", func(t *testing.T) {
@@ -449,4 +481,56 @@ func TestBSSCIVersionInterop_InboundServiceCenterCommandRejected(t *testing.T) {
 			assert.Equal(t, int64(POSIX_EPROTO), code)
 		})
 	}
+}
+
+// TestBSSCIConnectTimeouts drives the handshake deadline state machine over
+// real framed traffic (net.Pipe honors read deadlines): each timeout closes
+// the socket after provisional cleanup WITHOUT sending an error frame to the
+// peer that timed out, and activation clears the deadline entirely.
+func TestBSSCIConnectTimeouts(t *testing.T) {
+	shortTimeouts := func(cfg *Config) {
+		cfg.ConnectionEstablishmentTimeout = 150 * time.Millisecond
+		cfg.OperationAckTimeout = 150 * time.Millisecond
+	}
+
+	t.Run("EstablishmentTimeout", func(t *testing.T) {
+		// No con arrives within the establishment window: the connection
+		// closes silently (a Read observing EOF proves no error frame was
+		// written first)
+		h := startInteropServerWithConfig(t, EncodingJSON, shortTimeouts)
+		h.expectClosed()
+	})
+
+	t.Run("ConCmpTimeout", func(t *testing.T) {
+		// conRsp sent but conCmp never arrives: the ack deadline closes the
+		// connection without an extra error frame
+		h := startInteropServerWithConfig(t, EncodingJSON, shortTimeouts)
+		h.writeFrame(connectPayload("1.0.0", uint64(0x70B3D59CD00009E6)))
+		require.Equal(t, mioty.CmdConnectResponse, frameCommand(h.readFrame()))
+		h.expectClosed()
+	})
+
+	t.Run("ErrorAckTimeout", func(t *testing.T) {
+		// A connect-stage error was sent but the errorAck never arrives: the
+		// ack deadline closes the connection
+		h := startInteropServerWithConfig(t, EncodingJSON, shortTimeouts)
+		h.writeFrame(map[string]interface{}{"command": mioty.CmdPing, "opId": int64(1)})
+		require.Equal(t, mioty.CmdError, frameCommand(h.readFrame()))
+		h.expectClosed()
+	})
+
+	t.Run("ActivationClearsDeadline", func(t *testing.T) {
+		// After conCmp the session reads without a deadline: an idle period
+		// far beyond both timeouts must not close the connection
+		h := startInteropServerWithConfig(t, EncodingJSON, shortTimeouts)
+		h.writeFrame(connectPayload("1.0.0", uint64(0x70B3D59CD00009E6)))
+		require.Equal(t, mioty.CmdConnectResponse, frameCommand(h.readFrame()))
+		h.writeFrame(map[string]interface{}{"command": mioty.CmdConnectComplete, "opId": int64(0)})
+
+		time.Sleep(500 * time.Millisecond)
+
+		h.writeFrame(map[string]interface{}{"command": mioty.CmdPing, "opId": int64(1)})
+		require.Equal(t, mioty.CmdPingResponse, frameCommand(h.readFrame()),
+			"an active session must survive idle periods beyond the handshake timeouts")
+	})
 }

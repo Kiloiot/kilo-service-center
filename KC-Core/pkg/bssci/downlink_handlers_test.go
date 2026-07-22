@@ -73,6 +73,7 @@ func TestSendDLDataRevoke_BuildsMessage_PersistsMetadata(t *testing.T) {
 			Encoding:          EncodingMessagePack,
 			LastScOpId:        -1,
 			HandshakeComplete: true,
+			DbSessionID:       1,
 		},
 		Conn:          mockConn,
 		Bidirectional: true,

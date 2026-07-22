@@ -14,10 +14,28 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+// assemblyDLRXRepo is a no-op DLRXStatusRepository: only the correlation write
+// used by SendDLRXStatusQuery is implemented.
+type assemblyDLRXRepo struct {
+	interfaces.DLRXStatusRepository
+}
+
+func (assemblyDLRXRepo) CreateDLRXStatusQuery(_ context.Context, _ int64, _ *uuid.UUID, _, _ []byte, _ int64) error {
+	return nil
+}
+
+// assemblyStorage provides the minimal storage surface for SC-originated send
+// tests: a working DL RX correlation repository and nil-safe accessors.
+type assemblyStorage struct{ capturingStorage }
+
+func (s *assemblyStorage) MIOTYMessages() interfaces.MIOTYMessageRepository { return nil }
+func (s *assemblyStorage) DLRXStatus() interfaces.DLRXStatusRepository      { return assemblyDLRXRepo{} }
 
 // TestSCOriginatedMessageAssembly verifies BSSCI §2.5-01:
 // Every mandatory field must be populated when assembling Service Center-originated
@@ -103,10 +121,10 @@ func TestSCOriginatedOperations(t *testing.T) {
 
 				// Create test server and session
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-					queueSerializer, auditLogger, tenantResolver, mockStorage :=
+					queueSerializer, auditLogger, tenantResolver, _ :=
 					bssci.CreateTestServices(testLogger, nil)
 
-				server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
+				server := bssci.NewTestServer(testLogger, &assemblyStorage{}, nil, 1,
 					sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 					queueSerializer, auditLogger, tenantResolver)
 
@@ -117,6 +135,7 @@ func TestSCOriginatedOperations(t *testing.T) {
 						Encoding:          encoding,
 						LastScOpId:        -1,
 						HandshakeComplete: true,
+						DbSessionID:       1,
 					},
 					Conn: mockConn,
 				}
@@ -248,10 +267,10 @@ func TestBSOriginatedResponseHandlers(t *testing.T) {
 
 				// Create test server
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-					queueSerializer, auditLogger, tenantResolver, mockStorage :=
+					queueSerializer, auditLogger, tenantResolver, _ :=
 					bssci.CreateTestServices(testLogger, nil)
 
-				server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
+				server := bssci.NewTestServer(testLogger, &assemblyStorage{}, nil, 1,
 					sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 					queueSerializer, auditLogger, tenantResolver)
 
@@ -261,6 +280,7 @@ func TestBSOriginatedResponseHandlers(t *testing.T) {
 						BaseStationEUI:    bssci.TestBsEui04,
 						Encoding:          encoding,
 						HandshakeComplete: true,
+						DbSessionID:       1,
 					},
 					Conn: mockConn,
 				}
@@ -336,10 +356,10 @@ func newAssemblySession(t *testing.T, encoding, sessionID string) (*bssci.Server
 	mockConn.Reset()
 
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-		queueSerializer, auditLogger, tenantResolver, mockStorage :=
+		queueSerializer, auditLogger, tenantResolver, _ :=
 		bssci.CreateTestServices(logger.NewNop(), nil)
 
-	server := bssci.NewTestServer(logger.NewNop(), mockStorage, &mockEventStore{}, 1,
+	server := bssci.NewTestServer(logger.NewNop(), &assemblyStorage{}, &mockEventStore{}, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 		queueSerializer, auditLogger, tenantResolver)
 
@@ -350,6 +370,7 @@ func newAssemblySession(t *testing.T, encoding, sessionID string) (*bssci.Server
 			Encoding:          encoding,
 			LastScOpId:        -1,
 			HandshakeComplete: true,
+			DbSessionID:       1,
 		},
 		Conn:          mockConn,
 		Bidirectional: true,
@@ -476,7 +497,7 @@ func testSendDLDataQueue(t *testing.T, encoding string) {
 	packetCnt := []int64{}
 
 	err := server.SendDLDataQueue(session.ID, epEui, payloads, queId,
-		0, false, packetCnt, 0, false, false, false, false, 1)
+		0, false, packetCnt, 0, false, false, false, false, 1, false)
 	require.NoError(t, err, "SendDLDataQueue should succeed")
 
 	require.Len(t, mockConn.sentMessages, 1, "Should send exactly one message")
@@ -562,7 +583,7 @@ func testSendDLDataQueueCounterDependent(t *testing.T, encoding string) {
 	packetCnt := []int64{100, 200, 300} // Counter-dependent packet counts
 
 	err := server.SendDLDataQueue(session.ID, epEui, payloads, queId,
-		0, true, packetCnt, 0, false, false, false, false, 1)
+		0, true, packetCnt, 0, false, false, false, false, 1, false)
 	require.NoError(t, err, "SendDLDataQueue with cntDepend should succeed")
 
 	require.Len(t, mockConn.sentMessages, 1, "Should send exactly one message")
@@ -607,7 +628,7 @@ func testSendDLDataQueueACKOnly(t *testing.T, encoding string) {
 
 	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 		[][]byte{}, 1001, 0, false, nil, 0,
-		false, false, false, false, 1)
+		false, false, false, false, 1, false)
 	require.NoError(t, err, "ACK-only SendDLDataQueue should succeed")
 	require.Len(t, mockConn.sentMessages, 1)
 	msg := mockConn.sentMessages[0]
@@ -637,7 +658,7 @@ func testSendDLDataQueueOptionalFlagsTrue(t *testing.T, encoding string) {
 
 	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 		[][]byte{{0x02}}, 1002, 0.5, false, nil, 0,
-		true, true, true, true, 1)
+		true, true, true, true, 1, false)
 	require.NoError(t, err)
 	require.Len(t, mockConn.sentMessages, 1)
 	msg := mockConn.sentMessages[0]
@@ -657,7 +678,7 @@ func testSendDLDataQueueOptionalFlagsFalse(t *testing.T, encoding string) {
 
 	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 		[][]byte{{0x02}}, 1003, 0.5, false, nil, 0,
-		false, false, false, false, 1)
+		false, false, false, false, 1, false)
 	require.NoError(t, err)
 	require.Len(t, mockConn.sentMessages, 1)
 	msg := mockConn.sentMessages[0]
@@ -686,7 +707,7 @@ func testSendDLDataQueueFormatBoundary(t *testing.T, encoding string) {
 
 			err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 				[][]byte{{0x02}}, 1004, 0.5, false, nil, tc.format,
-				false, false, false, false, 1)
+				false, false, false, false, 1, false)
 			require.NoError(t, err)
 			require.Len(t, mockConn.sentMessages, 1)
 			msg := mockConn.sentMessages[0]
@@ -724,7 +745,7 @@ func testSendDLDataQueuePrioAlwaysPresent(t *testing.T, encoding string) {
 
 			err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 				[][]byte{{0x02}}, 1005, prio, false, nil, 0,
-				false, false, false, false, 1)
+				false, false, false, false, 1, false)
 			require.NoError(t, err)
 			require.Len(t, mockConn.sentMessages, 1)
 			msg := mockConn.sentMessages[0]

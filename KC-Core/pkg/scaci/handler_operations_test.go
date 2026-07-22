@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -2018,9 +2017,10 @@ func TestHandleDLDataQueue_NonCntDependMultiPayload_ReturnsEINVAL(t *testing.T) 
 	mockRecorder.AssertNotCalled(t, "Record")
 }
 
-// TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSuccess verifies queued status updates
-// target que_id (SCACI queue ID) instead of internal DB row id.
-func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSuccess(t *testing.T) {
+// TestProcessDLDataQueueCore_NoDirectStatusWriteOnSuccess verifies the SCACI
+// handler performs no direct queue status write on success: the downlink
+// dispatcher is the single owner of pending → reserved → queued.
+func TestProcessDLDataQueueCore_NoDirectStatusWriteOnSuccess(t *testing.T) {
 	const (
 		tenantID int64  = 1
 		opID     int64  = 101
@@ -2044,8 +2044,6 @@ func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSuccess(t *testing.T) {
 	mockDL.On("QueueDownlink", mock.Anything, mock.MatchedBy(func(req *mioty.DLDataQueue) bool {
 		return req != nil && req.QueId == queID
 	}), tenantID).Return(queID, bsEUI, "")
-	mockDL.On("UpdateDownlinkStatus", mock.Anything, "7000001", bssci.DLQueueStatusQueued, mock.Anything).
-		Return(nil).Once()
 
 	server := &Server{
 		logger:      testLogger(),
@@ -2070,13 +2068,16 @@ func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSuccess(t *testing.T) {
 	assert.Equal(t, "", errToken)
 	assert.Equal(t, 0, posixCode)
 
+	mockDL.AssertNotCalled(t, "UpdateDownlinkStatus", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	mockDL.AssertExpectations(t)
 	mockEndpoint.AssertExpectations(t)
 }
 
-// TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSchedulerFailure verifies failed status updates
-// target que_id (SCACI queue ID) when scheduler coordination fails.
-func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSchedulerFailure(t *testing.T) {
+// TestProcessDLDataQueueCore_NoDirectStatusWriteOnSchedulerFailure verifies the
+// SCACI handler performs no direct queue status write when scheduler
+// coordination fails: the row stays pending so the dlOpen auto-dispatch path
+// can still deliver it.
+func TestProcessDLDataQueueCore_NoDirectStatusWriteOnSchedulerFailure(t *testing.T) {
 	const (
 		tenantID int64  = 1
 		opID     int64  = 102
@@ -2099,8 +2100,6 @@ func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSchedulerFailure(t *tes
 	mockDL.On("QueueDownlink", mock.Anything, mock.MatchedBy(func(req *mioty.DLDataQueue) bool {
 		return req != nil && req.QueId == queID
 	}), tenantID).Return(uint64(0), uint64(0), errSchedulerUnavailable)
-	mockDL.On("UpdateDownlinkStatus", mock.Anything, "7000002", bssci.DLQueueStatusFailed, mock.Anything).
-		Return(nil).Once()
 
 	server := &Server{
 		logger:      testLogger(),
@@ -2124,6 +2123,7 @@ func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSchedulerFailure(t *tes
 	assert.Equal(t, errSchedulerUnavailable, errToken)
 	assert.Equal(t, POSIX_ENOTSUP, posixCode)
 
+	mockDL.AssertNotCalled(t, "UpdateDownlinkStatus", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	mockDL.AssertExpectations(t)
 	mockEndpoint.AssertExpectations(t)
 }

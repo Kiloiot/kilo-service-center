@@ -498,14 +498,40 @@ type memoryStatusService struct {
 	pendingOps *map[SessionOpKey]*PendingOperation
 	mu         *sync.RWMutex
 	logger     logger.Logger
+	// recordErr, when set, is returned by Record* calls to exercise the
+	// persist-failure abort path (no wire frame, counter gap only).
+	recordErr error
 }
 
 func (m *memoryStatusService) RecordPendingOperation(_ context.Context, session *Session, opId int64, op *PendingOperation, _ int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.recordErr != nil {
+		return m.recordErr
+	}
 	key := makeSessionOpKey(session, opId)
 	(*m.pendingOps)[key] = op
 	return nil
+}
+
+func (m *memoryStatusService) RecordPendingOperations(_ context.Context, session *Session, ops []*PendingOperation, _ int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.recordErr != nil {
+		return m.recordErr
+	}
+	for _, op := range ops {
+		key := makeSessionOpKey(session, op.OperationID)
+		(*m.pendingOps)[key] = op
+	}
+	return nil
+}
+
+func (m *memoryStatusService) RestorePendingOperation(session *Session, opId int64, op *PendingOperation) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := makeSessionOpKey(session, opId)
+	(*m.pendingOps)[key] = op
 }
 
 func (m *memoryStatusService) GetPendingOperation(session *Session, opId int64) (*PendingOperation, error) {
@@ -543,13 +569,6 @@ func (m *memoryStatusService) ExtractQueueMetadata(session *Session, opId int64)
 
 func (m *memoryStatusService) ProcessOperationStatusUpdate(_ context.Context, _ *Session, _ int64, _ string) error {
 	return nil
-}
-
-func (m *memoryStatusService) CleanupPendingOp(session *Session, opId int64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	key := makeSessionOpKey(session, opId)
-	delete(*m.pendingOps, key)
 }
 
 // Canonical test mocks defined in test_mocks_test.go (same package, test-only compilation).
