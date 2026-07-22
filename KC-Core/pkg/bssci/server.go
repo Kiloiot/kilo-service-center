@@ -115,7 +115,6 @@ type Server struct {
 	downlinkSvc        DownlinkService
 	statusSvc          StatusService
 	connectionRegistry BaseStationConnectionRegistry
-	broadcaster        SCACIBroadcaster
 	queueSerializer    QueueSerializer // Downlink response frame builder
 	auditLogger        AuditLogger     // Downlink audit event recorder
 	tenantResolver     TenantResolver  // Queue-to-tenant mapping (replaces queueTenants map)
@@ -158,6 +157,10 @@ type Server struct {
 	// runtimeConfigured records that ConfigureRuntime supplied the circular
 	// dependencies; Start refuses to run without them.
 	runtimeConfigured bool
+
+	// started records that Start ran; late runtime reconfiguration of a
+	// serving instance is rejected.
+	started bool
 
 	// Relay outbox writer for CE mode: enqueues unknown-endpoint uplinks for federation relay
 	relayOutbox RelayOutboxWriter
@@ -736,7 +739,6 @@ type Dependencies struct {
 	DownlinkSvc        DownlinkService
 	StatusSvc          StatusService
 	ConnectionRegistry BaseStationConnectionRegistry
-	Broadcaster        SCACIBroadcaster
 	QueueSerializer    QueueSerializer
 	AuditLogger        AuditLogger
 	TenantResolver     TenantResolver
@@ -822,7 +824,6 @@ func NewServer(cfg *Config, log logger.Logger, deps Dependencies) (*Server, erro
 		queueSerializer:    deps.QueueSerializer,
 		auditLogger:        deps.AuditLogger,
 		tenantResolver:     deps.TenantResolver,
-		broadcaster:        deps.Broadcaster,
 
 		orgResolver:     deps.OrgDirectory,
 		defaultTenantID: deps.DefaultTenantID,
@@ -850,6 +851,14 @@ func NewServer(cfg *Config, log logger.Logger, deps Dependencies) (*Server, erro
 // the propagation service and the downlink dispatcher are constructed
 // against the live *Server and injected back here.
 func (s *Server) ConfigureRuntime(deps RuntimeDependencies) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.started {
+		return fmt.Errorf("runtime cannot be reconfigured after Start")
+	}
+	if s.runtimeConfigured {
+		return fmt.Errorf("runtime already configured")
+	}
 	if deps.Propagation == nil {
 		return fmt.Errorf("propagation service is required")
 	}
@@ -862,6 +871,50 @@ func (s *Server) ConfigureRuntime(deps RuntimeDependencies) error {
 	s.propagationSvc = deps.Propagation
 	s.downlinkDispatcher = deps.DownlinkDispatcher
 	s.runtimeConfigured = true
+	return nil
+}
+
+// validateRuntimeWiring rejects Start on an incompletely wired server: every
+// dependency the composition root wires unconditionally must be present, so a
+// wiring regression fails at startup instead of as a nil dereference under
+// traffic. Feature-controlled collaborators (MQTT, key protection, detach
+// validation, federation outbox) stay optional.
+func (s *Server) validateRuntimeWiring() error {
+	required := []struct {
+		name    string
+		missing bool
+	}{
+		{"session service", s.sessionSvc == nil},
+		{"version negotiator", s.versionNegotiator == nil},
+		{"downlink service", s.downlinkSvc == nil},
+		{"status service", s.statusSvc == nil},
+		{"connection registry", s.connectionRegistry == nil},
+		{"queue serializer", s.queueSerializer == nil},
+		{"audit logger", s.auditLogger == nil},
+		{"tenant resolver", s.tenantResolver == nil},
+		{"event store", s.eventStore == nil},
+		{"base station store", s.basestationRepo == nil},
+		{"endpoint directory", s.endpointRepo == nil},
+		{"attach persistence", s.attachPersistence == nil},
+		{"organization directory", s.orgResolver == nil},
+		{"certificate identity resolver", s.certIdentityResolver == nil},
+		{"base station directory", s.bsDirectory == nil},
+		{"uplink ingest service", s.uplinkIngestSvc == nil},
+		{"roaming service", s.roamingSvc == nil},
+		{"disposition resolver", s.dispositionResolver == nil},
+		{"blueprint decoder", s.blueprintDecoder == nil},
+		{"blueprint resolver", s.blueprintResolver == nil},
+		{"SCACI endpoint status broadcaster", s.scaciEPStatusBroadcaster == nil},
+		{"protocol message store", s.protocolMessages == nil},
+		{"DL RX status store", s.dlrxStore == nil},
+		{"base station status store", s.bsStatusStore == nil},
+		{"downlink queue store", s.downlinkQueueStore == nil},
+	}
+	for _, dep := range required {
+		if dep.missing {
+			return fmt.Errorf("%s is required", dep.name)
+		}
+	}
 	return nil
 }
 
@@ -1018,11 +1071,15 @@ func certsExist(certFile, keyFile, caFile string) bool {
 func (s *Server) Start() error {
 	// The composition root must supply the circular dependencies before the
 	// server accepts traffic; an incompletely wired server refuses to start.
+	s.mu.Lock()
 	if !s.runtimeConfigured {
+		s.mu.Unlock()
 		return fmt.Errorf("server runtime not configured: call ConfigureRuntime before Start")
 	}
-	if s.uplinkIngestSvc == nil {
-		return fmt.Errorf("uplink ingest service is required")
+	s.started = true
+	s.mu.Unlock()
+	if err := s.validateRuntimeWiring(); err != nil {
+		return fmt.Errorf("server wiring incomplete: %w", err)
 	}
 
 	// The dlRxStatQry expiry sweep runs independently of the TLS listener path.
@@ -1347,18 +1404,23 @@ func (s *Server) handleConnection(conn net.Conn) {
 		// Pending operations survive an unexpected loss of an active session:
 		// they are reissued with their original opIds on resume (BSSCI §4/§5.3).
 		// Only a terminal session (rejected, provisional, or terminated above)
-		// has its rows removed.
-		if session.DbSessionID != 0 && s.statusSvc != nil && !wasActive {
-			count, err := s.statusSvc.DeletePendingOperations(ctx, session)
-			if err != nil {
-				s.logger.ErrorContext(ctx, LogBSSCIFailedToDeletePendingOperations,
-					"error", err,
-					"sessionID", session.DbSessionID)
-			} else if count > 0 {
-				s.logger.InfoContext(ctx, LogBSSCIDeletedPendingOperations,
-					"sessionID", session.DbSessionID,
-					"count", count)
+		// has its rows removed. The cache is swept in every case - the runtime
+		// session ID dies with this connection, so its entries are unreachable
+		// and a resume re-hydrates from the persisted rows.
+		if s.statusSvc != nil {
+			if session.DbSessionID != 0 && !wasActive {
+				count, err := s.statusSvc.DeletePendingOperations(ctx, session)
+				if err != nil {
+					s.logger.ErrorContext(ctx, LogBSSCIFailedToDeletePendingOperations,
+						"error", err,
+						"sessionID", session.DbSessionID)
+				} else if count > 0 {
+					s.logger.InfoContext(ctx, LogBSSCIDeletedPendingOperations,
+						"sessionID", session.DbSessionID,
+						"count", count)
+				}
 			}
+			s.statusSvc.EvictCachedOperations(session)
 		}
 	}()
 
@@ -2250,6 +2312,21 @@ func (s *Server) terminateInconsistentResume(ctx context.Context, previous *Sess
 	return nil
 }
 
+// removeIrrecoverablePendingOperation deletes the persisted row of a pending
+// operation that failed reconstitution during resume. Without the delete the
+// corrupt row would be re-read and re-skipped on every future resume.
+func (s *Server) removeIrrecoverablePendingOperation(ctx context.Context, session *Session, opID int64) {
+	if s.statusSvc == nil {
+		return
+	}
+	if err := s.statusSvc.RemovePendingOperation(ctx, session, opID); err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err,
+			"opId", opID,
+			"sessionID", session.DbSessionID)
+	}
+}
+
 // handleConnectComplete handles the connect complete operation. The connect
 // operation is already complete at the protocol level when conCmp arrives, so
 // failures past this point never send a BSSCI error - partial persistence is
@@ -2377,13 +2454,16 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 				"opId", op.OperationID,
 				"type", op.OperationType)
 
-			// Reconstitute operations BEFORE storing or sending
+			// Reconstitute operations BEFORE storing or sending. An operation
+			// that cannot be reconstituted is irrecoverable: its persisted row
+			// is removed so it does not resurface on every future resume.
 			if op.OperationType == mioty.CmdULDataTransmit && op.Metadata != nil {
 				reconstituted, err := s.reconstitueULDataTxMessage(op.Message, op.Metadata, op)
 				if err != nil {
 					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteULDataTxSkipping,
 						"error", err,
 						"opId", op.OperationID)
+					s.removeIrrecoverablePendingOperation(ctx, session, op.OperationID)
 					continue
 				}
 				op.Message = reconstituted
@@ -2394,6 +2474,7 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataQueSkipping,
 						"error", err,
 						"opId", op.OperationID)
+					s.removeIrrecoverablePendingOperation(ctx, session, op.OperationID)
 					continue
 				}
 				op.Message = reconstituted
@@ -2404,6 +2485,7 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataRevSkipping,
 						"error", err,
 						"opId", op.OperationID)
+					s.removeIrrecoverablePendingOperation(ctx, session, op.OperationID)
 					continue
 				}
 				op.Message = reconstituted
@@ -2423,10 +2505,13 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 			// Normalize message types to fix JSON float64 conversion before reissuing
 			normalizedMsg := s.normalizeMessageTypes(op.Message, op.OperationType)
 			if err := s.sendMessage(session, normalizedMsg); err != nil {
+				// A send failure means the connection is broken; the remaining
+				// operations stay persisted and reissue on the next resume.
 				s.logger.ErrorContext(ctx, LogBSSCIFailedToReissuePendingOperation,
 					"error", err,
 					"opId", op.OperationID,
 					"type", op.OperationType)
+				break
 			}
 		}
 	} else if session.DbSessionID > 0 {

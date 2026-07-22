@@ -170,6 +170,13 @@ type StatusService interface {
 	// only after the DB deletion succeeds, evicts the session's cached
 	// operations. A failed deletion leaves the cache untouched.
 	DeletePendingOperations(ctx context.Context, session *Session) (int64, error)
+
+	// EvictCachedOperations removes the session's cached operations without
+	// touching the persisted rows. Called on every connection teardown: the
+	// runtime session ID dies with the connection, so its cache entries are
+	// unreachable afterwards, while the DB rows remain the durable source for
+	// a later resume.
+	EvictCachedOperations(session *Session)
 }
 
 // PersistedOperation is a raw persisted pending-operation row returned for

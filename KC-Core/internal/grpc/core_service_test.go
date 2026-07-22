@@ -2269,6 +2269,8 @@ func (s *stubStatusSvc) DeletePendingOperations(_ context.Context, _ *bssci.Sess
 	return 0, nil
 }
 
+func (s *stubStatusSvc) EvictCachedOperations(_ *bssci.Session) {}
+
 type stubDownlinkScheduler struct{}
 
 func (s *stubDownlinkScheduler) QueueDownlink(_ context.Context, _ *mioty.DLDataQueue, _ int64) (uint64, uint64, error) {

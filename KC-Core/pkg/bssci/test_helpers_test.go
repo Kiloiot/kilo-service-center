@@ -53,7 +53,7 @@ func NewTestServer(
 	downlinkSvc DownlinkService,
 	statusSvc StatusService,
 	connectionSvc BaseStationConnectionRegistry,
-	broadcaster SCACIBroadcaster,
+	_ SCACIBroadcaster,
 	queueSerializer QueueSerializer,
 	auditLogger AuditLogger,
 	tenantResolver TenantResolver,
@@ -71,7 +71,6 @@ func NewTestServer(
 		downlinkSvc:        downlinkSvc,
 		statusSvc:          statusSvc,
 		connectionRegistry: connectionSvc,
-		broadcaster:        broadcaster,
 		queueSerializer:    queueSerializer,
 		auditLogger:        auditLogger,
 		tenantResolver:     tenantResolver,
@@ -304,7 +303,7 @@ func NewTestServerWithBaseStationRepo(
 	downlinkSvc DownlinkService,
 	statusSvc StatusService,
 	connectionSvc BaseStationConnectionRegistry,
-	broadcaster SCACIBroadcaster,
+	_ SCACIBroadcaster,
 	queueSerializer QueueSerializer,
 	auditLogger AuditLogger,
 	tenantResolver TenantResolver,
@@ -322,7 +321,6 @@ func NewTestServerWithBaseStationRepo(
 		downlinkSvc:        downlinkSvc,
 		statusSvc:          statusSvc,
 		connectionRegistry: connectionSvc,
-		broadcaster:        broadcaster,
 		queueSerializer:    queueSerializer,
 		auditLogger:        auditLogger,
 		tenantResolver:     tenantResolver,
@@ -541,6 +539,12 @@ type memoryStatusService struct {
 	// metadataUpdates records UpdatePendingOperationMetadata calls so tests
 	// can assert the persistence path now owned by the StatusService.
 	metadataUpdates []StatusMetadataUpdate
+	// removedOps records RemovePendingOperation calls (durable deletes) so
+	// tests can assert irrecoverable rows are removed during resume.
+	removedOps []int64
+	// deleteSessionCalls counts DeletePendingOperations calls so teardown
+	// tests can assert persisted rows of an active session are preserved.
+	deleteSessionCalls int
 }
 
 // StatusMetadataUpdate captures one UpdatePendingOperationMetadata call.
@@ -606,6 +610,7 @@ func (m *memoryStatusService) GetPendingOperation(session *Session, opId int64) 
 func (m *memoryStatusService) RemovePendingOperation(_ context.Context, session *Session, opId int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.removedOps = append(m.removedOps, opId)
 	key := makeSessionOpKey(session, opId)
 	delete(*m.pendingOps, key)
 	return nil
@@ -647,6 +652,7 @@ func (m *memoryStatusService) PersistedOperations(_ context.Context, _ int64) ([
 func (m *memoryStatusService) DeletePendingOperations(_ context.Context, session *Session) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.deleteSessionCalls++
 	var count int64
 	for key := range *m.pendingOps {
 		if key.SessionID == session.ID {
@@ -655,6 +661,16 @@ func (m *memoryStatusService) DeletePendingOperations(_ context.Context, session
 		}
 	}
 	return count, nil
+}
+
+func (m *memoryStatusService) EvictCachedOperations(session *Session) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key := range *m.pendingOps {
+		if key.SessionID == session.ID {
+			delete(*m.pendingOps, key)
+		}
+	}
 }
 
 func (m *memoryStatusService) ProcessOperationStatusUpdate(_ context.Context, _ *Session, _ int64, _ string) error {

@@ -312,6 +312,8 @@ func (f *fakeStatusSvc) DeletePendingOperations(_ context.Context, _ *bssci.Sess
 	return 0, nil
 }
 
+func (f *fakeStatusSvc) EvictCachedOperations(_ *bssci.Session) {}
+
 // fakeDownlinkCmd implements bssci.DownlinkCommander (minimal for SendDownlink tests)
 type fakeDownlinkCmd struct {
 	lastPacketCnt []int64 // Captures packet counter values sent to base station

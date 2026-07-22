@@ -248,6 +248,14 @@ func (s *statusService) DeletePendingOperations(ctx context.Context, session *bs
 	if err != nil {
 		return 0, err
 	}
+	s.EvictCachedOperations(session)
+	return count, nil
+}
+
+// EvictCachedOperations removes the session's cached operations only; the
+// persisted rows stay in place for a later resume. The runtime session ID is
+// unreachable after teardown, so unswept entries would leak forever.
+func (s *statusService) EvictCachedOperations(session *bssci.Session) {
 	s.mu.Lock()
 	for key := range *s.pendingOps {
 		if key.SessionID == session.ID {
@@ -255,7 +263,6 @@ func (s *statusService) DeletePendingOperations(ctx context.Context, session *bs
 		}
 	}
 	s.mu.Unlock()
-	return count, nil
 }
 
 func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string) {
