@@ -33,135 +33,78 @@ func NewSessionPersistence(
 }
 
 // connectSnapshot is the immutable copy of every session field the async
-// persistence goroutine reads. Capturing it before the goroutine starts
-// prevents races with caller mutations of the live session; all fields are
-// value types, and metadata is deep-copied.
+// resume-persistence goroutine reads. Capturing it before the goroutine
+// starts prevents races with caller mutations of the live session; all
+// fields are value types, and metadata is deep-copied.
 type connectSnapshot struct {
-	Resumed        bool
-	ID             int64
-	TenantID       int64
-	OrganizationID uuid.UUID
-	AcEuiBytes     [8]byte
-	SnAcUUID       scaci.UUID16
-	SnScUUID       scaci.UUID16
-	AcOpIdCounter  int64
-	ScOpIdCounter  int64
-	Metadata       map[string]interface{}
+	Resumed       bool
+	ID            int64
+	TenantID      int64
+	AcOpIdCounter int64
+	ScOpIdCounter int64
+	Metadata      map[string]interface{}
 }
 
-// PersistConnectAsync handles async session creation/update after Connect handshake.
-// Encapsulates the persistence pattern in a service (handlers orchestrate, services execute).
-// The caller's ctx contributes tenant/org log fields only: the goroutine detaches from
-// its cancellation so persistence outlives the connection that triggered it.
-func (p *sessionPersistence) PersistConnectAsync(ctx context.Context, session *scaci.Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) {
-	// CRITICAL: snapshot BEFORE the goroutine to prevent races with caller
-	// mutations; metadata is deep-copied exactly once.
+// PersistResumeAsync updates the persisted row of a resumed session after
+// the Connect handshake (heartbeat, status, TLS evidence, counters,
+// metadata). Fresh sessions are persisted synchronously via
+// PersistConnectSync, so this path never creates rows and never mutates the
+// live session: the goroutine reads only the immutable snapshot taken before
+// it starts. The caller's ctx contributes tenant/org log fields only; the
+// goroutine detaches from its cancellation so persistence outlives the
+// connection that triggered it.
+func (p *sessionPersistence) PersistResumeAsync(ctx context.Context, session *scaci.Session, tlsVersion, cipherSuite string) {
+	// Snapshot BEFORE the goroutine to prevent races with caller mutations;
+	// metadata is deep-copied exactly once.
 	snap := connectSnapshot{
-		Resumed:        session.Resumed,
-		ID:             session.ID,
-		TenantID:       session.TenantID,
-		OrganizationID: session.OrganizationID,
-		AcEuiBytes:     session.GetAcEuiBytes(),
-		SnAcUUID:       session.SnAcUUID,
-		SnScUUID:       session.SnScUUID,
-		AcOpIdCounter:  session.AcOpIdCounter,
-		ScOpIdCounter:  session.ScOpIdCounter,
-		Metadata:       deepCopyMetadata(session.Metadata),
+		Resumed:       session.Resumed,
+		ID:            session.ID,
+		TenantID:      session.TenantID,
+		AcOpIdCounter: session.AcOpIdCounter,
+		ScOpIdCounter: session.ScOpIdCounter,
+		Metadata:      deepCopyMetadata(session.Metadata),
 	}
-	metadataCopy := snap.Metadata
+
+	if !snap.Resumed || snap.ID <= 0 {
+		p.logger.ErrorContext(ctx, scaci.LogSCACIPersistSessionFailed,
+			"error", "PersistResumeAsync requires a resumed session with a persisted ID")
+		return
+	}
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), scaci.ConnectPersistTimeout)
 		defer cancel()
 
-		if snap.Resumed && snap.ID > 0 {
-			// Update existing session (resumed connection)
-			now := time.Now()
-			status := "active"
+		now := time.Now()
+		status := "active"
 
-			// Prepare TLS evidence pointers for resume per SCACI §1
-			var tlsVer, cipherSt *string
-			if tlsVersion != "" {
-				tlsVer = &tlsVersion
-			}
-			if cipherSuite != "" {
-				cipherSt = &cipherSuite
-			}
+		// TLS evidence pointers for resume per SCACI §1
+		var tlsVer, cipherSt *string
+		if tlsVersion != "" {
+			tlsVer = &tlsVersion
+		}
+		if cipherSuite != "" {
+			cipherSt = &cipherSuite
+		}
 
-			updateReq := &models.SCACISessionUpdateRequest{
-				LastHeartbeat: &now,
-				Status:        &status,
-				TLSVersion:    tlsVer,       // Update TLS evidence on resume
-				CipherSuite:   cipherSt,     // Update cipher suite on resume
-				Metadata:      metadataCopy, // Use pre-copied metadata (no re-copy)
-			}
+		updateReq := &models.SCACISessionUpdateRequest{
+			LastHeartbeat: &now,
+			Status:        &status,
+			TLSVersion:    tlsVer,
+			CipherSuite:   cipherSt,
+			Metadata:      snap.Metadata,
+		}
 
-			// Only persist opId counters if they're non-zero (preserve "opId 0 after connect")
-			if snap.AcOpIdCounter > 0 {
-				updateReq.LastOpIDAc = &snap.AcOpIdCounter
-			}
-			if snap.ScOpIdCounter < 0 {
-				updateReq.LastOpIDSc = &snap.ScOpIdCounter
-			}
+		// Only persist opId counters if they're non-zero (preserve "opId 0 after connect")
+		if snap.AcOpIdCounter > 0 {
+			updateReq.LastOpIDAc = &snap.AcOpIdCounter
+		}
+		if snap.ScOpIdCounter < 0 {
+			updateReq.LastOpIDSc = &snap.ScOpIdCounter
+		}
 
-			if err := p.sessionRepo.UpdateSession(ctx, snap.TenantID, snap.ID, updateReq); err != nil {
-				p.logger.ErrorContext(ctx, scaci.LogSCACIUpdateSessionFailed, "error", err)
-			}
-		} else {
-			// Create new session (fresh connection)
-			var certFP, certSubj, remAddr, tlsVer, cipherSt *string
-			if certFingerprint != "" {
-				certFP = &certFingerprint
-			}
-			if certSubject != "" {
-				certSubj = &certSubject
-			}
-			if remoteAddr != "" {
-				remAddr = &remoteAddr
-			}
-			// TLS evidence per SCACI §1
-			if tlsVersion != "" {
-				tlsVer = &tlsVersion
-			}
-			if cipherSuite != "" {
-				cipherSt = &cipherSuite
-			}
-
-			// Set organization ID if not nil
-			var orgID *uuid.UUID
-			if snap.OrganizationID != uuid.Nil {
-				orgID = &snap.OrganizationID
-			}
-
-			// Set negotiated version - defaults to ProtocolVersionString if empty
-			negVer := negotiatedVersion
-			if negVer == "" {
-				negVer = scaci.ProtocolVersionString
-			}
-
-			createReq := &models.SCACISessionCreateRequest{
-				TenantID:               snap.TenantID,
-				OrganizationID:         orgID,
-				AcEUI:                  snap.AcEuiBytes,
-				SnAcUUID:               snap.SnAcUUID,
-				SnScUUID:               snap.SnScUUID,
-				CertificateFingerprint: certFP,
-				ClientCertSubject:      certSubj,
-				RemoteAddr:             remAddr,
-				TLSVersion:             tlsVer,
-				CipherSuite:            cipherSt,
-				NegotiatedVersion:      negVer, // SCACI §§2.1-2.3: persist for resume validation
-				CanResume:              true,
-				Metadata:               metadataCopy, // Use pre-copied metadata (no re-copy)
-			}
-
-			if dbSession, err := p.sessionRepo.CreateSession(ctx, createReq); err != nil {
-				p.logger.ErrorContext(ctx, scaci.LogSCACIPersistSessionFailed, "error", err)
-			} else {
-				// Store DB ID in runtime session
-				// Note: This updates the session object passed by reference
-				session.ID = dbSession.ID
-			}
+		if err := p.sessionRepo.UpdateSession(ctx, snap.TenantID, snap.ID, updateReq); err != nil {
+			p.logger.ErrorContext(ctx, scaci.LogSCACIUpdateSessionFailed, "error", err)
 		}
 	}()
 }
@@ -170,12 +113,12 @@ func (p *sessionPersistence) PersistConnectAsync(ctx context.Context, session *s
 // Used for fresh connects only - ensures session.ID is assigned BEFORE operation logging
 // so that Connect audit rows have real session IDs (SCACI §3.3-04 audit trail).
 //
-// Resumed sessions continue using PersistConnectAsync (they already have session.ID > 0).
+// Resumed sessions use PersistResumeAsync (they already have session.ID > 0).
 func (p *sessionPersistence) PersistConnectSync(ctx context.Context, session *scaci.Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) (int64, error) {
 	createCtx, cancel := context.WithTimeout(ctx, scaci.ConnectPersistTimeout)
 	defer cancel()
 
-	// Reuse exact model construction from PersistConnectAsync for single source of truth
+	// Pointer-field construction for the create request
 	var certFP, certSubj, remAddr, tlsVer, cipherSt *string
 	if certFingerprint != "" {
 		certFP = &certFingerprint

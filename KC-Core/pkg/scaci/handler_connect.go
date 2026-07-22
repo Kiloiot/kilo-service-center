@@ -255,20 +255,9 @@ func (s *Server) handleConnectComplete(conn net.Conn, session *Session, opId int
 		return conn.Close()
 	}
 
-	// Capture TLS state before goroutine
+	// Capture TLS version and cipher suite per SCACI §1 evidence requirements
 	tlsConn := conn.(*tls.Conn)
 	state := tlsConn.ConnectionState()
-
-	var certFingerprint, certSubject string
-	if len(state.PeerCertificates) > 0 {
-		cert := state.PeerCertificates[0]
-		hash := sha256.Sum256(cert.Raw)
-		certFingerprint = hex.EncodeToString(hash[:])
-		certSubject = cert.Subject.String()
-	}
-	remoteAddr := conn.RemoteAddr().String()
-
-	// Capture TLS version and cipher suite per SCACI §1 evidence requirements
 	tlsVersion := TLSVersionName(state.Version)
 	cipherSuite := tls.CipherSuiteName(state.CipherSuite)
 
@@ -302,11 +291,10 @@ func (s *Server) handleConnectComplete(conn net.Conn, session *Session, opId int
 		}
 	}
 
-	// Persist async - delegate to SessionPersistence service
-	// Use session.NegotiatedVersion set during handleConnect (SCACI §§2.1-2.3)
-	// Skip if session was sync-persisted in handleConnect (SyncPersisted flag set for fresh sessions)
+	// Persist the resume update async - fresh sessions were sync-persisted in
+	// handleConnect (SyncPersisted flag), so only resumed sessions reach this.
 	if !session.SyncPersisted {
-		s.sessionPersistence.PersistConnectAsync(s.sessionContext(session), session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, session.NegotiatedVersion)
+		s.sessionPersistence.PersistResumeAsync(s.sessionContext(session), session, tlsVersion, cipherSuite)
 	}
 
 	// SCACI §1: Replay pending operations on successful session resume

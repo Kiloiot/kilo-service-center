@@ -216,16 +216,16 @@ func (m *MockOperationRecorder) Record(
 // MockSessionPersistence implements SessionPersistence interface for testing
 //
 // Provides mocks for:
-//   - PersistConnectAsync: Session creation/update after Connect
+//   - PersistResumeAsync: Resumed-session update after Connect
 //   - PersistConnectSync: Synchronous session creation for audit trail
 //   - PersistHeartbeatAsync: SCACI §3.4 ping heartbeat persistence
 type MockSessionPersistence struct {
 	mock.Mock
 }
 
-// PersistConnectAsync mocks SessionPersistence.PersistConnectAsync
-func (m *MockSessionPersistence) PersistConnectAsync(ctx context.Context, session *Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) {
-	m.Called(ctx, session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion)
+// PersistResumeAsync mocks SessionPersistence.PersistResumeAsync
+func (m *MockSessionPersistence) PersistResumeAsync(ctx context.Context, session *Session, tlsVersion, cipherSuite string) {
+	m.Called(ctx, session, tlsVersion, cipherSuite)
 }
 
 // PersistConnectSync mocks SessionPersistence.PersistConnectSync
