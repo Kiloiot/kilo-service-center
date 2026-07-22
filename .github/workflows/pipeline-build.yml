@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - dev
+      - "**"
     tags-ignore:
       - "v*"
   pull_request:
@@ -73,8 +72,8 @@ jobs:
           go-version-file: go.work
       - name: Run Go tests (unit only, no DB/infra)
         run: |
-          echo "::group::Testing KC-Core"
-          (cd KC-Core && go test -short -timeout 5m ./...)
+          echo "::group::Testing KC-Core (full suite)"
+          (cd KC-Core && go test -timeout 10m ./...)
           echo "::endgroup::"
           echo "::group::Testing KC-DB (postgres suite runs in test-postgres)"
           (cd KC-DB && go test -short -timeout 3m $(go list ./... | grep -v /postgres))
@@ -100,7 +99,8 @@ jobs:
           (cd KC-DB && go test -timeout 25m ./storage/postgres/...)
 
   build-kc-core:
-    needs: [generate-version, lint, test]
+    needs: [generate-version, lint, test, test-postgres]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -121,7 +121,8 @@ jobs:
           tags: ${{ needs.generate-version.outputs.registry }}/kc-core:${{ needs.generate-version.outputs.version }}
 
   build-kc-gateway:
-    needs: [generate-version, lint, test]
+    needs: [generate-version, lint, test, test-postgres]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -142,7 +143,8 @@ jobs:
           tags: ${{ needs.generate-version.outputs.registry }}/kc-gateway:${{ needs.generate-version.outputs.version }}
 
   build-kc-identity:
-    needs: [generate-version, lint, test]
+    needs: [generate-version, lint, test, test-postgres]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -163,7 +165,8 @@ jobs:
           tags: ${{ needs.generate-version.outputs.registry }}/kc-identity:${{ needs.generate-version.outputs.version }}
 
   build-kc-web:
-    needs: [generate-version, lint, test]
+    needs: [generate-version, lint, test, test-postgres]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
