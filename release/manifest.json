@@ -1,7 +1,7 @@
 {
-  "version": "v1.2.0+02c1841",
-  "buildTime": "2026-07-22T19:02:09Z",
-  "gitCommit": "02c1841e577a9afecf250500fa75d51260dc928b",
+  "version": "v1.2.0+c9efdb9",
+  "buildTime": "2026-07-22T21:02:45Z",
+  "gitCommit": "c9efdb9618771af93a507c1a20332b027763e1eb",
   "gitBranch": "CHIRP-3538-bssci-version-negotiation-eui64",
   "buildUser": "timkrav",
   "goVersion": "go1.26.4",
