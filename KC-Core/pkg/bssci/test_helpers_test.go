@@ -545,6 +545,9 @@ type memoryStatusService struct {
 	// deleteSessionCalls counts DeletePendingOperations calls so teardown
 	// tests can assert persisted rows of an active session are preserved.
 	deleteSessionCalls int
+	// persistedRows backs PersistedOperations for resume tests that inject
+	// raw rows (including malformed ones) into the load path.
+	persistedRows []PersistedOperation
 }
 
 // StatusMetadataUpdate captures one UpdatePendingOperationMetadata call.
@@ -646,7 +649,9 @@ func (m *memoryStatusService) UpdatePendingOperationMetadata(_ context.Context, 
 }
 
 func (m *memoryStatusService) PersistedOperations(_ context.Context, _ int64) ([]PersistedOperation, error) {
-	return nil, nil
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]PersistedOperation(nil), m.persistedRows...), nil
 }
 
 func (m *memoryStatusService) DeletePendingOperations(_ context.Context, session *Session) (int64, error) {

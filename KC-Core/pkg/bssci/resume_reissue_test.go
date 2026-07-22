@@ -3,6 +3,8 @@ package bssci
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -22,6 +24,8 @@ import (
 type countingConn struct {
 	frames    int
 	failWrite bool
+	closes    int
+	buf       bytes.Buffer
 }
 
 func (c *countingConn) Read(_ []byte) (int, error) { return 0, net.ErrClosed }
@@ -32,9 +36,33 @@ func (c *countingConn) Write(b []byte) (int, error) {
 	if c.failWrite {
 		return 0, net.ErrClosed
 	}
+	c.buf.Write(b)
 	return len(b), nil
 }
-func (c *countingConn) Close() error                       { return nil }
+
+// writtenCommands decodes the buffered outbound frames and returns their
+// command names in order.
+func (c *countingConn) writtenCommands(t *testing.T) []string {
+	t.Helper()
+	var commands []string
+	raw := c.buf.Bytes()
+	for len(raw) >= HeaderSize {
+		require.True(t, bytes.Equal(raw[:8], mioty.MIOTYFrameIdentifier[:]), "frame identifier")
+		payloadLen := int(binary.LittleEndian.Uint32(raw[8:HeaderSize]))
+		require.LessOrEqual(t, HeaderSize+payloadLen, len(raw), "complete frame")
+		decoded, err := decodeMessage(raw[HeaderSize:HeaderSize+payloadLen], EncodingJSON)
+		require.NoError(t, err)
+		cmd, _ := decoded["command"].(string)
+		commands = append(commands, cmd)
+		raw = raw[HeaderSize+payloadLen:]
+	}
+	return commands
+}
+
+func (c *countingConn) Close() error {
+	c.closes++
+	return nil
+}
 func (c *countingConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
 func (c *countingConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
 func (c *countingConn) SetDeadline(_ time.Time) error      { return nil }
@@ -109,9 +137,10 @@ func statusReissueOp(opID int64) *PendingOperation {
 	}
 }
 
-// TestResumeReissueAbortsOnSendFailure: once a reissue send fails the
-// connection is broken, so the loop stops instead of attempting the remaining
-// operations; their rows stay persisted for the next resume.
+// TestResumeReissueAbortsOnSendFailure: a reissue send failure aborts
+// activation - handleConnectComplete errors, the ambiguous-write transport is
+// closed, and status polling never starts. The rows stay persisted for the
+// next resume.
 func TestResumeReissueAbortsOnSendFailure(t *testing.T) {
 	server := newResumeReissueServer(t)
 	conn := &countingConn{failWrite: true}
@@ -122,41 +151,109 @@ func TestResumeReissueAbortsOnSendFailure(t *testing.T) {
 	t.Cleanup(func() { stopSessionStatus(session) })
 
 	msg := &Message{OpId: 0, Command: mioty.CmdConnectComplete}
-	require.NoError(t, server.handleConnectComplete(server, session, msg, nil))
+	err := server.handleConnectComplete(server, session, msg, nil)
+	require.Error(t, err, "a failed reissue must abort connect completion")
+	require.ErrorIs(t, err, ErrAmbiguousWrite)
 
 	assert.Equal(t, 1, conn.frames,
 		"the first failed send must abort the reissue loop before the second operation")
+	assert.Positive(t, conn.closes,
+		"an ambiguous write must close the transport")
+
+	session.mu.Lock()
+	stopStatus := session.stopStatus
+	session.mu.Unlock()
+	assert.Nil(t, stopStatus, "status polling must not start after an aborted reissue")
 }
 
-// TestResumeRemovesIrrecoverableOperation: an operation whose payload cannot
-// be reconstituted is deleted durably so it does not resurface on every
-// future resume, and the loop continues with the remaining operations.
-func TestResumeRemovesIrrecoverableOperation(t *testing.T) {
-	server := newResumeReissueServer(t)
-	statusSvc := server.statusSvc.(*memoryStatusService)
-	conn := &countingConn{}
-	corrupt := &PendingOperation{
-		OperationID:   -3,
-		OperationType: mioty.CmdULDataTransmit,
-		Message:       map[string]interface{}{"command": mioty.CmdULDataTransmit, "opId": int64(-3)},
-		Metadata:      map[string]interface{}{"bogus": true},
+// malformedResumeRow persists as a valid strict-decodable row whose metadata
+// cannot be semantically reconstructed: ulDataTx and dlDataRev fail on the
+// missing key/typed fields, dlDataQue on an undecodable payload.
+func malformedResumeRow(opID int64, opType string) PersistedOperation {
+	metadata := `{"bogus":true}`
+	if opType == mioty.CmdDLDataQueue {
+		metadata = `{"payloads":["%%%not-base64%%%"]}`
 	}
-	session := newResumeSession(conn, []*PendingOperation{
-		corrupt,
-		statusReissueOp(-4),
-	})
-	t.Cleanup(func() { stopSessionStatus(session) })
+	return PersistedOperation{
+		OperationID:   opID,
+		OperationType: opType,
+		OperationData: []byte(fmt.Sprintf(`{"command":%q,"opId":%d}`, opType, opID)),
+		Metadata:      []byte(metadata),
+	}
+}
 
-	msg := &Message{OpId: 0, Command: mioty.CmdConnectComplete}
-	require.NoError(t, server.handleConnectComplete(server, session, msg, nil))
+// TestResumeRejectedWhenReconstructionFails: a persisted operation that
+// cannot be semantically rebuilt rejects the whole resume with EAGAIN before
+// conRsp - no row is deleted, no queue state changes, and no session
+// activates. Covers all three payload-bearing operation types.
+func TestResumeRejectedWhenReconstructionFails(t *testing.T) {
+	for _, opType := range []string{mioty.CmdULDataTransmit, mioty.CmdDLDataQueue, mioty.CmdDLDataRevoke} {
+		t.Run(opType, func(t *testing.T) {
+			server := newResumeReissueServer(t)
+			statusSvc := server.statusSvc.(*memoryStatusService)
+			sessionSvc := server.sessionSvc.(*mockSessionService)
 
-	statusSvc.mu.RLock()
-	removed := append([]int64(nil), statusSvc.removedOps...)
-	statusSvc.mu.RUnlock()
-	assert.Equal(t, []int64{-3}, removed,
-		"the irrecoverable operation's persisted row must be removed")
-	assert.Equal(t, 1, conn.frames,
-		"the valid operation after the corrupt one must still be reissued")
+			// A resumable prior session identified by its snBsUuid
+			prevUUID := make([]byte, 16)
+			for i := range prevUUID {
+				prevUUID[i] = byte(i + 1)
+			}
+			prev := &Session{ProtocolSessionState: ProtocolSessionState{
+				ID:             "previous-runtime-session",
+				BaseStationEUI: TestBsEui01,
+				SessionUUID:    prevUUID,
+				DbSessionID:    7,
+				LastScOpId:     -1,
+			}}
+			sessionSvc.StoreSessionByUUID(prev)
+
+			statusSvc.mu.Lock()
+			statusSvc.persistedRows = []PersistedOperation{malformedResumeRow(-2, opType)}
+			statusSvc.mu.Unlock()
+
+			conn := &countingConn{}
+			session := &Session{
+				ProtocolSessionState: ProtocolSessionState{
+					ID:             "resume-reject-session",
+					BaseStationEUI: TestBsEui01,
+					Encoding:       EncodingJSON,
+				},
+				Conn: conn,
+			}
+
+			snBsUUID := make([]interface{}, 16)
+			for i := range snBsUUID {
+				snBsUUID[i] = int64(i + 1)
+			}
+			connectData := map[string]interface{}{
+				"command":  mioty.CmdConnect,
+				"opId":     int64(0),
+				"version":  mioty.MIOTYProtocolVersion,
+				"bsEui":    int64(TestBsEui01),
+				"bidi":     true,
+				"snBsUuid": snBsUUID,
+			}
+			msg := &Message{OpId: 0, Command: mioty.CmdConnect, Data: connectData}
+			require.NoError(t, server.handleConnect(server, session, msg, connectData),
+				"a rejected connect awaits errorAck instead of failing the handler")
+
+			commands := conn.writtenCommands(t)
+			require.Equal(t, []string{mioty.CmdError}, commands,
+				"the resume must be rejected with an error frame and never reach conRsp")
+
+			statusSvc.mu.RLock()
+			rows := len(statusSvc.persistedRows)
+			removed := len(statusSvc.removedOps)
+			statusSvc.mu.RUnlock()
+			assert.Equal(t, 1, rows, "the malformed row must be preserved for operator inspection")
+			assert.Zero(t, removed, "no persisted row may be deleted on a rejected resume")
+
+			server.mu.Lock()
+			live := len(server.sessions)
+			server.mu.Unlock()
+			assert.Zero(t, live, "no session may activate on a rejected resume")
+		})
+	}
 }
 
 // TestTeardownEvictsCacheKeepsRows: when an active session's connection is

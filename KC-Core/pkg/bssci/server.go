@@ -158,9 +158,13 @@ type Server struct {
 	// dependencies; Start refuses to run without them.
 	runtimeConfigured bool
 
-	// started records that Start ran; late runtime reconfiguration of a
-	// serving instance is rejected.
+	// started records that Start committed; late runtime reconfiguration and
+	// double starts are rejected.
 	started bool
+
+	// stopped records that Stop ran; a stopped server cannot be restarted
+	// and repeated Stop calls are no-ops.
+	stopped bool
 
 	// Relay outbox writer for CE mode: enqueues unknown-endpoint uplinks for federation relay
 	relayOutbox RelayOutboxWriter
@@ -1068,25 +1072,39 @@ func certsExist(certFile, keyFile, caFile string) bool {
 // Start starts the BSSCI server. If TLS certificates are not yet available
 // (e.g., fresh deployment before certs are generated via UI), the listener
 // is deferred and a background goroutine polls until the certificates appear.
+// A validation failure leaves the server in its pre-Start state so the
+// composition root can complete the wiring and try again; a successful Start
+// is committed exactly once and cannot follow Stop.
 func (s *Server) Start() error {
 	// The composition root must supply the circular dependencies before the
 	// server accepts traffic; an incompletely wired server refuses to start.
 	s.mu.Lock()
-	if !s.runtimeConfigured {
+	switch {
+	case s.stopped:
+		s.mu.Unlock()
+		return fmt.Errorf("server already stopped: a stopped server cannot be restarted")
+	case s.started:
+		s.mu.Unlock()
+		return fmt.Errorf("server already started")
+	case !s.runtimeConfigured:
 		s.mu.Unlock()
 		return fmt.Errorf("server runtime not configured: call ConfigureRuntime before Start")
 	}
-	s.started = true
-	s.mu.Unlock()
 	if err := s.validateRuntimeWiring(); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("server wiring incomplete: %w", err)
 	}
-
-	// The dlRxStatQry expiry sweep runs independently of the TLS listener path.
-	s.startDLRXQueryExpiryWorker()
+	s.started = true
+	s.mu.Unlock()
 
 	if certsExist(s.config.TLSCert, s.config.TLSKey, s.config.TLSCACert) {
-		return s.startTLSListener()
+		if err := s.startTLSListener(); err != nil {
+			return err
+		}
+		// Background work starts only once the listener is committed, so an
+		// immediate TLS failure leaves nothing running.
+		s.startDLRXQueryExpiryWorker()
+		return nil
 	}
 
 	s.logger.WarnContext(s.safeCtx(), LogBSSCICertsNotFound,
@@ -1121,6 +1139,7 @@ func (s *Server) waitForCertsAndStart() {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIDeferredListenerFailed, "error", err)
 				continue
 			}
+			s.startDLRXQueryExpiryWorker()
 			return
 		}
 	}
@@ -1178,6 +1197,14 @@ func (s *Server) startTLSListener() error {
 
 // Stop stops the BSSCI server
 func (s *Server) Stop() error {
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return nil
+	}
+	s.stopped = true
+	s.mu.Unlock()
+
 	s.cancel()
 	if s.listener != nil {
 		if err := s.listener.Close(); err != nil {
@@ -2207,6 +2234,17 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 					"sessionID", session.DbSessionID)
 				return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
 			}
+
+			// Semantic reconstruction also happens BEFORE conRsp: a resumable
+			// operation that cannot be rebuilt rejects the resume in the same
+			// way, preserving every row and its queue state instead of
+			// silently dropping recoverable work after activation.
+			if recErr := s.reconstituteResumeOperations(ctx, pendingOps); recErr != nil {
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstitutePendingOperation,
+					"error", recErr,
+					"sessionID", session.DbSessionID)
+				return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
+			}
 			session.resumePendingOps = pendingOps
 
 			// Counter floor: the SC counter must be at or below every persisted
@@ -2312,19 +2350,39 @@ func (s *Server) terminateInconsistentResume(ctx context.Context, previous *Sess
 	return nil
 }
 
-// removeIrrecoverablePendingOperation deletes the persisted row of a pending
-// operation that failed reconstitution during resume. Without the delete the
-// corrupt row would be re-read and re-skipped on every future resume.
-func (s *Server) removeIrrecoverablePendingOperation(ctx context.Context, session *Session, opID int64) {
-	if s.statusSvc == nil {
-		return
+// reconstituteResumeOperations semantically rebuilds every payload-bearing
+// pending operation in place before the resume is offered. Any failure
+// rejects the whole resume so no row or downlink queue state is ever
+// mutated for work the service center can no longer represent on the wire.
+func (s *Server) reconstituteResumeOperations(ctx context.Context, pendingOps []*PendingOperation) error {
+	for _, op := range pendingOps {
+		if op.Metadata == nil {
+			continue
+		}
+		var (
+			reconstituted map[string]interface{}
+			err           error
+		)
+		switch op.OperationType {
+		case mioty.CmdULDataTransmit:
+			reconstituted, err = s.reconstitueULDataTxMessage(op.Message, op.Metadata, op)
+		case mioty.CmdDLDataQueue:
+			reconstituted, err = s.reconstitueDLDataQueMessage(op.Message, op.Metadata, op)
+		case mioty.CmdDLDataRevoke:
+			reconstituted, err = s.reconstitueDLDataRevMessage(op.Message, op.Metadata)
+		default:
+			continue
+		}
+		if err != nil {
+			s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstitutePendingOperation,
+				"error", err,
+				"opId", op.OperationID,
+				"type", op.OperationType)
+			return fmt.Errorf("reconstitute pending operation %d (%s): %w", op.OperationID, op.OperationType, err)
+		}
+		op.Message = reconstituted
 	}
-	if err := s.statusSvc.RemovePendingOperation(ctx, session, opID); err != nil {
-		s.logger.ErrorContext(ctx, LogBSSCIFailedToRemovePendingOperationFromDatabase,
-			"error", err,
-			"opId", opID,
-			"sessionID", session.DbSessionID)
-	}
+	return nil
 }
 
 // handleConnectComplete handles the connect complete operation. The connect
@@ -2454,46 +2512,10 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 				"opId", op.OperationID,
 				"type", op.OperationType)
 
-			// Reconstitute operations BEFORE storing or sending. An operation
-			// that cannot be reconstituted is irrecoverable: its persisted row
-			// is removed so it does not resurface on every future resume.
-			if op.OperationType == mioty.CmdULDataTransmit && op.Metadata != nil {
-				reconstituted, err := s.reconstitueULDataTxMessage(op.Message, op.Metadata, op)
-				if err != nil {
-					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteULDataTxSkipping,
-						"error", err,
-						"opId", op.OperationID)
-					s.removeIrrecoverablePendingOperation(ctx, session, op.OperationID)
-					continue
-				}
-				op.Message = reconstituted
-			} else if op.OperationType == mioty.CmdDLDataQueue && op.Metadata != nil {
-				// Reconstitute dlDataQue with counter-dependent payloads
-				reconstituted, err := s.reconstitueDLDataQueMessage(op.Message, op.Metadata, op)
-				if err != nil {
-					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataQueSkipping,
-						"error", err,
-						"opId", op.OperationID)
-					s.removeIrrecoverablePendingOperation(ctx, session, op.OperationID)
-					continue
-				}
-				op.Message = reconstituted
-			} else if op.OperationType == mioty.CmdDLDataRevoke && op.Metadata != nil {
-				// Reconstitute mioty.CmdDLDataRevoke with proper integer types
-				reconstituted, err := s.reconstitueDLDataRevMessage(op.Message, op.Metadata)
-				if err != nil {
-					s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataRevSkipping,
-						"error", err,
-						"opId", op.OperationID)
-					s.removeIrrecoverablePendingOperation(ctx, session, op.OperationID)
-					continue
-				}
-				op.Message = reconstituted
-			}
-
 			// Cache-only hydration: the loaded DB rows are authoritative and
 			// must not be UPSERTed back. BS-initiated (positive) operations
 			// are hydrated for response correlation but never transmitted.
+			// Semantic reconstruction already happened before conRsp.
 			if s.statusSvc != nil {
 				s.statusSvc.RestorePendingOperation(session, op.OperationID, op)
 			}
@@ -2505,13 +2527,17 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 			// Normalize message types to fix JSON float64 conversion before reissuing
 			normalizedMsg := s.normalizeMessageTypes(op.Message, op.OperationType)
 			if err := s.sendMessage(session, normalizedMsg); err != nil {
-				// A send failure means the connection is broken; the remaining
-				// operations stay persisted and reissue on the next resume.
+				// A send failure means the connection is broken: abort
+				// activation so status polling never starts on a dead
+				// transport. The rows stay persisted for the next resume.
 				s.logger.ErrorContext(ctx, LogBSSCIFailedToReissuePendingOperation,
 					"error", err,
 					"opId", op.OperationID,
 					"type", op.OperationType)
-				break
+				if errors.Is(err, ErrAmbiguousWrite) {
+					s.closeTransportAfterWriteFailure(session, op.OperationID, err)
+				}
+				return fmt.Errorf("reissue pending operation %d after resume: %w", op.OperationID, err)
 			}
 		}
 	} else if session.DbSessionID > 0 {

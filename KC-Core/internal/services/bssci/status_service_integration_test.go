@@ -17,8 +17,9 @@ import (
 
 // mockPendingOperationRepositoryWithCallTracking extends mockPendingOperationRepository with call count tracking
 type mockPendingOperationRepositoryWithCallTracking struct {
-	createCallCount int
-	mu              sync.Mutex
+	createCallCount          int
+	deleteBySessionCallCount int
+	mu                       sync.Mutex
 }
 
 func (m *mockPendingOperationRepositoryWithCallTracking) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
@@ -48,6 +49,9 @@ func (m *mockPendingOperationRepositoryWithCallTracking) DeleteByOperation(_ con
 }
 
 func (m *mockPendingOperationRepositoryWithCallTracking) DeleteBySession(_ context.Context, _ int64) (int64, error) {
+	m.mu.Lock()
+	m.deleteBySessionCallCount++
+	m.mu.Unlock()
 	return 0, nil
 }
 
@@ -318,4 +322,42 @@ func TestStatusServiceSingleWriterPattern(t *testing.T) {
 	assert.Equal(t, 2, mockRepo.createCallCount, "Should have 2 DB writes (initial + update)")
 
 	t.Logf("PASS: Single writer pattern enforced")
+}
+
+// TestStatusServiceEvictCachedOperationsCacheOnly verifies the teardown sweep
+// on the production statusService: only the dead session's cached entries are
+// removed, other sessions' entries survive, and the repository (the durable
+// rows a later resume hydrates from) is never touched.
+func TestStatusServiceEvictCachedOperationsCacheOnly(t *testing.T) {
+	pendingOps := make(map[bssci.SessionOpKey]*bssci.PendingOperation)
+	var mu sync.RWMutex
+
+	log := logger.NewNop()
+	mockRepo := &mockPendingOperationRepositoryWithCallTracking{}
+	statusSvc := NewStatusService(&pendingOps, &mu, mockRepo, log)
+
+	dead := &bssci.Session{ProtocolSessionState: bssci.ProtocolSessionState{ID: "dead-session", DbSessionID: 2001}}
+	alive := &bssci.Session{ProtocolSessionState: bssci.ProtocolSessionState{ID: "alive-session", DbSessionID: 2002}}
+
+	ctx := testutil.TestContext()
+	for opID := int64(-1); opID >= -3; opID-- {
+		require.NoError(t, statusSvc.RecordPendingOperation(ctx, dead, opID,
+			&bssci.PendingOperation{SessionSlug: dead.ID, OperationID: opID, OperationType: "attPrp"}, dead.DbSessionID))
+	}
+	require.NoError(t, statusSvc.RecordPendingOperation(ctx, alive, -1,
+		&bssci.PendingOperation{SessionSlug: alive.ID, OperationID: -1, OperationType: "attPrp"}, alive.DbSessionID))
+
+	statusSvc.EvictCachedOperations(dead)
+
+	mu.RLock()
+	remaining := len(pendingOps)
+	_, aliveKept := pendingOps[bssci.SessionOpKey{SessionID: alive.ID, OperationID: -1}]
+	mu.RUnlock()
+	assert.Equal(t, 1, remaining, "only the surviving session's entry may remain")
+	assert.True(t, aliveKept, "other sessions' cached operations must survive the sweep")
+
+	mockRepo.mu.Lock()
+	deletes := mockRepo.deleteBySessionCallCount
+	mockRepo.mu.Unlock()
+	assert.Zero(t, deletes, "eviction is cache-only; persisted rows stay for resume")
 }

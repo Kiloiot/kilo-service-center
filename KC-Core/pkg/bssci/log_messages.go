@@ -717,12 +717,9 @@ const (
 	LogBSSCIFailedToUnmarshalOperationData = "Failed to unmarshal operation data"
 	// LogBSSCIFailedToUnmarshalMetadata is a log message constant
 	LogBSSCIFailedToUnmarshalMetadata = "Failed to unmarshal metadata"
-	// LogBSSCIFailedToReconstituteDLDataQueSkipping is a log message constant
-	LogBSSCIFailedToReconstituteDLDataQueSkipping = "Failed to reconstitute dlDataQue, skipping"
-	// LogBSSCIFailedToReconstituteDLDataRevSkipping is a log message constant
-	LogBSSCIFailedToReconstituteDLDataRevSkipping = "Failed to reconstitute dlDataRev, skipping"
-	// LogBSSCIFailedToReconstituteULDataTxSkipping is a log message constant
-	LogBSSCIFailedToReconstituteULDataTxSkipping = "Failed to reconstitute ulDataTx, skipping"
+	// LogBSSCIFailedToReconstitutePendingOperation indicates a persisted
+	// operation could not be semantically rebuilt; the resume is rejected.
+	LogBSSCIFailedToReconstitutePendingOperation = "Failed to reconstitute pending operation, rejecting resume"
 	// LogBSSCIFailedToReissuePendingOperation is a log message constant
 	LogBSSCIFailedToReissuePendingOperation = "Failed to reissue pending operation"
 	// LogBSSCIFailedToRemovePendingOperation is a log message constant
