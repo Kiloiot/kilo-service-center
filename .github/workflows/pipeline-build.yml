@@ -73,10 +73,10 @@ jobs:
           go-version-file: go.work
       - name: Run Go tests (unit only, no DB/infra)
         run: |
-          echo "::group::Testing KC-Core (skip bssci integration)"
-          (cd KC-Core && go test -short -timeout 3m $(go list ./... | grep -v /pkg/bssci$))
+          echo "::group::Testing KC-Core"
+          (cd KC-Core && go test -short -timeout 5m ./...)
           echo "::endgroup::"
-          echo "::group::Testing KC-DB (skip postgres integration)"
+          echo "::group::Testing KC-DB (postgres suite runs in test-postgres)"
           (cd KC-DB && go test -short -timeout 3m $(go list ./... | grep -v /postgres))
           echo "::endgroup::"
           for mod in KC-Gateway KC-Identity KC-MQTT pkg; do
@@ -84,6 +84,20 @@ jobs:
             (cd "$mod" && go test -short -timeout 3m ./...)
             echo "::endgroup::"
           done
+
+  # The KC-DB postgres suite runs against real testcontainers-managed
+  # PostgreSQL instances; it takes ~15 minutes and runs in parallel with the
+  # image builds rather than gating them.
+  test-postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+      - name: Run KC-DB postgres integration tests
+        run: |
+          (cd KC-DB && go test -timeout 25m ./storage/postgres/...)
 
   build-kc-core:
     needs: [generate-version, lint, test]
