@@ -165,8 +165,19 @@ func TestHandlerRegistration(t *testing.T) {
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(logger, nil)
 	versionNegotiator, err := bssciservices.NewVersionNegotiator([]string{mioty.MIOTYProtocolVersion}, logger)
 	require.NoError(t, err, "NewVersionNegotiator should build from the canonical version")
-	server, err := bssci.NewServer(&bssci.Config{}, logger, nil, nil, nil, nil, nil, 1,
-		sessionSvc, versionNegotiator, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, nil, 1)
+	server, err := bssci.NewServer(&bssci.Config{}, logger, bssci.Dependencies{
+		SessionSvc:         sessionSvc,
+		VersionNegotiator:  versionNegotiator,
+		DownlinkSvc:        downlinkSvc,
+		StatusSvc:          statusSvc,
+		ConnectionRegistry: connectionSvc,
+		Broadcaster:        broadcaster,
+		QueueSerializer:    queueSerializer,
+		AuditLogger:        auditLogger,
+		TenantResolver:     tenantResolver,
+		TenantID:           1,
+		DefaultTenantID:    1,
+	})
 	require.NoError(t, err, "NewServer should not return error with valid StatusService")
 	server.RegisterHandlers()
 

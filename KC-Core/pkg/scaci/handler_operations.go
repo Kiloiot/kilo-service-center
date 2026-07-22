@@ -444,7 +444,7 @@ func (s *Server) handleDeregisterComplete(conn net.Conn, session *Session, opId 
 	}
 
 	// Trigger BSSCI detach propagation to base stations
-	if errs := s.endpointSvc.PropagateDetachToAll(epEui); len(errs) > 0 {
+	if errs := s.endpointSvc.PropagateDetachToAll(ctx, epEui); len(errs) > 0 {
 		detachErrorCount = len(errs)
 		s.logger.WarnContext(s.sessionContext(session), LogSCACIDetachPropagationErrors, "count", detachErrorCount)
 	} else {

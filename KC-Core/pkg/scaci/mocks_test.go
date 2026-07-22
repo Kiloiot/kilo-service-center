@@ -66,8 +66,8 @@ func (m *MockHandshakeService) ValidateConnect(
 }
 
 // NegotiateVersion mocks HandshakeService.NegotiateVersion
-func (m *MockHandshakeService) NegotiateVersion(clientVersion string) (string, string) {
-	args := m.Called(clientVersion)
+func (m *MockHandshakeService) NegotiateVersion(ctx context.Context, clientVersion string) (string, string) {
+	args := m.Called(ctx, clientVersion)
 	return args.String(0), args.String(1)
 }
 
@@ -169,8 +169,8 @@ type MockSessionValidator struct {
 }
 
 // ValidateConnectFields mocks SessionValidator.ValidateConnectFields
-func (m *MockSessionValidator) ValidateConnectFields(req *Connect, opId int64) string {
-	args := m.Called(req, opId)
+func (m *MockSessionValidator) ValidateConnectFields(req *Connect) string {
+	args := m.Called(req)
 	return args.String(0)
 }
 
@@ -183,8 +183,8 @@ type MockCertificateVerifier struct {
 }
 
 // VerifyCertificate mocks CertificateVerifier.VerifyCertificate
-func (m *MockCertificateVerifier) VerifyCertificate(cert *x509.Certificate) string {
-	args := m.Called(cert)
+func (m *MockCertificateVerifier) VerifyCertificate(ctx context.Context, cert *x509.Certificate) string {
+	args := m.Called(ctx, cert)
 	return args.String(0)
 }
 
@@ -224,8 +224,8 @@ type MockSessionPersistence struct {
 }
 
 // PersistConnectAsync mocks SessionPersistence.PersistConnectAsync
-func (m *MockSessionPersistence) PersistConnectAsync(session *Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) {
-	m.Called(session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion)
+func (m *MockSessionPersistence) PersistConnectAsync(ctx context.Context, session *Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) {
+	m.Called(ctx, session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion)
 }
 
 // PersistConnectSync mocks SessionPersistence.PersistConnectSync
@@ -344,8 +344,8 @@ func (m *MockDLService) GetDownlinkByPacketCnt(
 // ============================================================================
 
 // PropagateDetachToAll mocks EndpointService.PropagateDetachToAll
-func (m *MockEndpointService) PropagateDetachToAll(epEui uint64) []error {
-	args := m.Called(epEui)
+func (m *MockEndpointService) PropagateDetachToAll(ctx context.Context, epEui uint64) []error {
+	args := m.Called(ctx, epEui)
 	if args.Get(0) == nil {
 		return nil
 	}

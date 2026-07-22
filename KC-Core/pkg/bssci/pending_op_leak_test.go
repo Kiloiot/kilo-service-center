@@ -24,7 +24,7 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 		server := NewTestServer(log, storage, nil, 1,
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 		server.config = &Config{MessageEncoding: EncodingJSON}
-		server.storage = storage
+		server.SetStorageForTest(storage)
 		server.RegisterHandlers()
 		session := &Session{
 			ProtocolSessionState: ProtocolSessionState{

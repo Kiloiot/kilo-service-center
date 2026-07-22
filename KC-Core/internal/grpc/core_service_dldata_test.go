@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -297,6 +298,18 @@ func (f *fakeStatusSvc) RemovePendingOperation(_ context.Context, _ *bssci.Sessi
 }
 func (f *fakeStatusSvc) ExtractQueueMetadata(_ *bssci.Session, _ int64) (uint64, int64, string) {
 	return 0, 0, ""
+}
+
+func (f *fakeStatusSvc) UpdatePendingOperationMetadata(_ context.Context, _ *bssci.Session, _ int64, _ map[string]interface{}, _ json.RawMessage) error {
+	return nil
+}
+
+func (f *fakeStatusSvc) PersistedOperations(_ context.Context, _ int64) ([]bssci.PersistedOperation, error) {
+	return nil, nil
+}
+
+func (f *fakeStatusSvc) DeletePendingOperations(_ context.Context, _ *bssci.Session) (int64, error) {
+	return 0, nil
 }
 
 // fakeDownlinkCmd implements bssci.DownlinkCommander (minimal for SendDownlink tests)

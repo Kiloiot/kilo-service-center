@@ -382,9 +382,9 @@ func (es *endpointService) GetGlobal(
 //
 // Returns:
 //   - []error: Slice of errors (one per failed BS), empty if all succeeded or propagator nil
-func (es *endpointService) PropagateDetachToAll(epEui uint64) []error {
+func (es *endpointService) PropagateDetachToAll(ctx context.Context, epEui uint64) []error {
 	if es.detachPropagator == nil {
-		es.logger.Debug("DetachPropagator not available, skipping propagation",
+		es.logger.DebugContext(ctx, scaci.LogSCACIDetachPropagatorUnavailable,
 			"epEui", pkgmioty.FormatEUI64(epEui))
 		return nil
 	}

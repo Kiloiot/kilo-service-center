@@ -215,7 +215,7 @@ func TestPersistConnectAsync_FreshSession_WritesOrganizationID(t *testing.T) {
 	}
 
 	// Call persistence (async)
-	svc.PersistConnectAsync(session, "cert-fingerprint", "CN=test", "192.168.1.1:5001",
+	svc.PersistConnectAsync(testutil.TestContext(), session, "cert-fingerprint", "CN=test", "192.168.1.1:5001",
 		"TLS 1.3", "TLS_AES_256_GCM_SHA384", scaci.ProtocolVersionString)
 
 	// Wait for async goroutine to complete (deterministic)
@@ -249,7 +249,7 @@ func TestPersistConnectAsync_FreshSession_NilOrgID(t *testing.T) {
 		Resumed:        false,
 	}
 
-	svc.PersistConnectAsync(session, "", "", "", "", "", scaci.ProtocolVersionString)
+	svc.PersistConnectAsync(testutil.TestContext(), session, "", "", "", "", "", scaci.ProtocolVersionString)
 	mockRepo.waitForCompletion()
 
 	require.True(t, mockRepo.wasCreateCalled())
@@ -277,7 +277,7 @@ func TestPersistConnectAsync_ResumedSession_PreservesOrgID(t *testing.T) {
 		Resumed:        true, // Resumed session
 	}
 
-	svc.PersistConnectAsync(session, "", "", "", "TLS 1.3", "TLS_AES_256_GCM_SHA384", scaci.ProtocolVersionString)
+	svc.PersistConnectAsync(testutil.TestContext(), session, "", "", "", "TLS 1.3", "TLS_AES_256_GCM_SHA384", scaci.ProtocolVersionString)
 	mockRepo.waitForCompletion()
 
 	// Assert UpdateSession was called (not CreateSession)
@@ -317,7 +317,7 @@ func TestPersistConnectAsync_FreshSession_WritesTLSEvidence(t *testing.T) {
 	tlsVersion := "TLS 1.3"
 	cipherSuite := "TLS_AES_256_GCM_SHA384"
 
-	svc.PersistConnectAsync(session, certFingerprint, "CN=test-ac", "10.0.0.1:5001",
+	svc.PersistConnectAsync(testutil.TestContext(), session, certFingerprint, "CN=test-ac", "10.0.0.1:5001",
 		tlsVersion, cipherSuite, scaci.ProtocolVersionString)
 	mockRepo.waitForCompletion()
 
@@ -359,7 +359,7 @@ func TestPersistConnectAsync_ResumedSession_UpdatesTLSEvidence(t *testing.T) {
 	newTLSVersion := "TLS 1.3"
 	newCipherSuite := "TLS_CHACHA20_POLY1305_SHA256"
 
-	svc.PersistConnectAsync(session, "", "", "", newTLSVersion, newCipherSuite, scaci.ProtocolVersionString)
+	svc.PersistConnectAsync(testutil.TestContext(), session, "", "", "", newTLSVersion, newCipherSuite, scaci.ProtocolVersionString)
 	mockRepo.waitForCompletion()
 
 	require.True(t, mockRepo.wasUpdateCalled())
@@ -402,7 +402,7 @@ func TestPersistConnectAsync_NonBlocking(t *testing.T) {
 	}
 
 	start := time.Now()
-	svc.PersistConnectAsync(session, "", "", "", "", "", scaci.ProtocolVersionString)
+	svc.PersistConnectAsync(testutil.TestContext(), session, "", "", "", "", "", scaci.ProtocolVersionString)
 	elapsed := time.Since(start)
 
 	// Should return almost immediately (not wait for 500ms mock delay)
@@ -431,7 +431,7 @@ func TestPersistConnectAsync_NegotiatedVersionDefault(t *testing.T) {
 	}
 
 	// Pass empty negotiatedVersion
-	svc.PersistConnectAsync(session, "", "", "", "", "", "")
+	svc.PersistConnectAsync(testutil.TestContext(), session, "", "", "", "", "", "")
 	mockRepo.waitForCompletion()
 
 	require.True(t, mockRepo.wasCreateCalled())
@@ -513,7 +513,7 @@ func TestPersistConnectAsync_FreshSession_WritesNestedMetadata(t *testing.T) {
 		},
 	}
 
-	svc.PersistConnectAsync(session, "", "", "", "", "", scaci.ProtocolVersionString)
+	svc.PersistConnectAsync(testutil.TestContext(), session, "", "", "", "", "", scaci.ProtocolVersionString)
 	mockRepo.waitForCompletion()
 
 	require.True(t, mockRepo.wasCreateCalled(), "CreateSession should be called for fresh session")
@@ -565,7 +565,7 @@ func TestPersistConnectAsync_ResumedSession_WritesNestedMetadata(t *testing.T) {
 		},
 	}
 
-	svc.PersistConnectAsync(session, "", "", "", "TLS 1.3", "TLS_AES_256_GCM_SHA384", scaci.ProtocolVersionString)
+	svc.PersistConnectAsync(testutil.TestContext(), session, "", "", "", "TLS 1.3", "TLS_AES_256_GCM_SHA384", scaci.ProtocolVersionString)
 	mockRepo.waitForCompletion()
 
 	require.True(t, mockRepo.wasUpdateCalled(), "UpdateSession should be called for resumed session")

@@ -732,9 +732,9 @@ func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
 		"wire message must be cataloged via ErrDetachPropagateFailed")
 
 	// Pending-op metadata persistence.
-	update := pendingOps.LastUpdate()
-	require.NotNil(t, update, "UpdateMetadata must be called once on the rejected path")
-	require.Equal(t, 1, pendingOps.UpdateCalls(), "exactly one UpdateMetadata call")
+	updates := bssci.StatusMetadataUpdates(statusSvc)
+	require.Len(t, updates, 1, "exactly one metadata persistence call on the rejected path")
+	update := updates[0]
 	var metadata map[string]interface{}
 	require.NoError(t, json.Unmarshal(update.Metadata, &metadata))
 	assert.Equal(t, true, metadata["failed"], "metadata.failed must be true")

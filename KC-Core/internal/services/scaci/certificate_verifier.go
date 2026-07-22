@@ -21,6 +21,7 @@
 package scaciservices
 
 import (
+	"context"
 	"crypto/x509"
 	"time"
 
@@ -70,9 +71,9 @@ func NewCertificateVerifier(
 //
 // Returns:
 //   - string: Error token if validation fails, "" on success
-func (cv *certificateVerifier) VerifyCertificate(cert *x509.Certificate) string {
+func (cv *certificateVerifier) VerifyCertificate(ctx context.Context, cert *x509.Certificate) string {
 	if cert == nil {
-		cv.logger.Error(scaci.LogSCACINoClientCertificate)
+		cv.logger.ErrorContext(ctx, scaci.LogSCACINoClientCertificate)
 		return scaci.ErrNilCertificate
 	}
 
@@ -80,7 +81,7 @@ func (cv *certificateVerifier) VerifyCertificate(cert *x509.Certificate) string 
 
 	// Check 1: Certificate expiry validation
 	if now.Before(cert.NotBefore) {
-		cv.logger.Error(scaci.LogSCACICertNotYetValid,
+		cv.logger.ErrorContext(ctx, scaci.LogSCACICertNotYetValid,
 			"notBefore", cert.NotBefore,
 			"now", now,
 			"subject", cert.Subject.String())
@@ -88,7 +89,7 @@ func (cv *certificateVerifier) VerifyCertificate(cert *x509.Certificate) string 
 	}
 
 	if now.After(cert.NotAfter) {
-		cv.logger.Error(scaci.LogSCACICertExpired,
+		cv.logger.ErrorContext(ctx, scaci.LogSCACICertExpired,
 			"notAfter", cert.NotAfter,
 			"now", now,
 			"subject", cert.Subject.String())
@@ -105,7 +106,7 @@ func (cv *certificateVerifier) VerifyCertificate(cert *x509.Certificate) string 
 	}
 
 	if !hasClientAuth {
-		cv.logger.Error(scaci.LogSCACICertMissingClientAuth,
+		cv.logger.ErrorContext(ctx, scaci.LogSCACICertMissingClientAuth,
 			"subject", cert.Subject.String(),
 			"extKeyUsage", cert.ExtKeyUsage)
 		return scaci.ErrCertMissingClientAuth
@@ -113,12 +114,12 @@ func (cv *certificateVerifier) VerifyCertificate(cert *x509.Certificate) string 
 
 	// Check 3: Subject validation (basic presence check)
 	if cert.Subject.CommonName == "" && len(cert.Subject.Organization) == 0 {
-		cv.logger.Error(scaci.LogSCACICertInvalidSubject,
+		cv.logger.ErrorContext(ctx, scaci.LogSCACICertInvalidSubject,
 			"subject", cert.Subject.String())
 		return scaci.ErrCertInvalidSubject
 	}
 
-	cv.logger.Debug(scaci.LogSCACICertValidationPassed,
+	cv.logger.DebugContext(ctx, scaci.LogSCACICertValidationPassed,
 		"subject", cert.Subject.String(),
 		"cn", cert.Subject.CommonName,
 		"notBefore", cert.NotBefore,

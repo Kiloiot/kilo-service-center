@@ -21,12 +21,12 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"            // Organization resolver for propagation context
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"    // BSSCI §5.8-5.8.3 attach propagation contracts
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler"      // Import neutral scheduler contracts
+
+	// Organization resolver for propagation context
+	// BSSCI §5.8-5.8.3 attach propagation contracts
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler" // Import neutral scheduler contracts
 	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/encoding"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
@@ -126,9 +126,9 @@ type Server struct {
 	sessions   map[net.Conn]*Session
 	sessionsMu sync.RWMutex
 
-	// Dependencies
-	sessionRepo   interfaces.SCACISessionRepository
-	operationRepo interfaces.SCACIOperationRepository // Operation lifecycle tracking (three-way handshake - cross-cutting concern)
+	// Dependencies (narrow consumer-owned storage contracts)
+	sessionRepo   SessionCounterStore
+	operationRepo OperationStore // Operation lifecycle tracking (three-way handshake - cross-cutting concern)
 
 	// Domain services
 	handshakeSvc HandshakeService // Connect/version negotiation/session resumption
@@ -144,11 +144,11 @@ type Server struct {
 	errorRecorder      ErrorRecorder      // Error persistence and events (§3.14)
 
 	// Organization resolution
-	orgResolver org.Resolver // Organization UUID → tenant ID resolution for propagation context
+	orgResolver OrganizationDirectory // Default organization lookup for propagation context
 
 	// BSSCI propagation (§5.8-5.8.3)
-	sessionSnapshotProvider propagation.SessionSnapshotProvider // Provides connected BS sessions
-	propagationSvc          propagation.Service                 // Orchestrates attach/detach propagation
+	sessionSnapshotProvider SessionSnapshotSource // Provides connected BS sessions
+	propagationSvc          EndpointPropagator    // Orchestrates attach propagation
 
 	// Sublayer handlers (SCACI §4)
 	// sublayerHandlers maps sublayer commands (e.g., "rc.dir") to handlers
@@ -188,8 +188,8 @@ type Server struct {
 func NewServer(
 	cfg *Config,
 	log logger.Logger,
-	sessionRepo interfaces.SCACISessionRepository,
-	operationRepo interfaces.SCACIOperationRepository,
+	sessionRepo SessionCounterStore,
+	operationRepo OperationStore,
 	handshakeSvc HandshakeService,
 	endpointSvc EndpointService,
 	ulSvc ULService,
@@ -198,9 +198,10 @@ func NewServer(
 	sessionValidator SessionValidator,
 	operationRecorder OperationRecorder,
 	sessionPersistence SessionPersistence,
-	orgResolver org.Resolver,
-	sessionSnapshotProvider propagation.SessionSnapshotProvider,
-	propagationSvc propagation.Service,
+	orgResolver OrganizationDirectory,
+	sessionSnapshotProvider SessionSnapshotSource,
+	propagationSvc EndpointPropagator,
+	errorRecorder ErrorRecorder,
 ) (*Server, error) {
 	// Validate required dependencies (fail-fast pattern per BSSCI server.go:641-644)
 	if cfg == nil {
@@ -254,6 +255,7 @@ func NewServer(
 		sessionValidator:        sessionValidator,
 		operationRecorder:       operationRecorder,
 		sessionPersistence:      sessionPersistence,
+		errorRecorder:           errorRecorder,
 		orgResolver:             orgResolver,
 		sessionSnapshotProvider: sessionSnapshotProvider,
 		propagationSvc:          propagationSvc,
@@ -262,18 +264,22 @@ func NewServer(
 	}, nil
 }
 
-// SetErrorRecorder sets the ErrorRecorder per SCACI §3.14
-//
-// This setter allows wiring the ErrorRecorder after server construction,
-// supporting gradual rollout and testing scenarios where the recorder
-// may not be available at construction time.
-func (s *Server) SetErrorRecorder(er ErrorRecorder) {
-	s.errorRecorder = er
+// safeCtx returns the context for pre-session and lifecycle logging. SCACI
+// lifecycle is owned by the shutdown channel, so this is a plain Background
+// context: it contributes no cancellation, only a consistent *Context logging
+// call shape.
+func (s *Server) safeCtx() context.Context {
+	return context.Background()
 }
 
 // sessionContext creates a context enriched with SCACI session metadata for structured logging.
 // The logger's extractContextFields will automatically inject tenant_id and organization_id.
+// Rooted in context.Background() on purpose: it carries values, never cancellation.
+// Nil-safe: a nil session yields the plain pre-session context.
 func (s *Server) sessionContext(session *Session) context.Context {
+	if session == nil {
+		return s.safeCtx()
+	}
 	ctx := context.Background()
 
 	// SCACI sessions carry their own tenant ID
@@ -317,7 +323,7 @@ func (s *Server) Start() error {
 		return s.startTLSListener()
 	}
 
-	s.logger.Warn(LogSCACICertsNotFound,
+	s.logger.WarnContext(s.safeCtx(), LogSCACICertsNotFound,
 		"cert", s.config.TLS.CertFile,
 		"key", s.config.TLS.KeyFile,
 		"ca", s.config.TLS.CAFile)
@@ -339,15 +345,15 @@ func (s *Server) waitForCertsAndStart() {
 	for {
 		select {
 		case <-s.shutdown:
-			s.logger.Info(LogSCACIDeferredListenerCancelled)
+			s.logger.InfoContext(s.safeCtx(), LogSCACIDeferredListenerCancelled)
 			return
 		case <-ticker.C:
 			if !scaciCertsExist(s.config.TLS) {
 				continue
 			}
-			s.logger.Info(LogSCACICertsDetected)
+			s.logger.InfoContext(s.safeCtx(), LogSCACICertsDetected)
 			if err := s.startTLSListener(); err != nil {
-				s.logger.Error(LogSCACIDeferredListenerFailed, "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogSCACIDeferredListenerFailed, "error", err)
 				continue
 			}
 			return
@@ -368,7 +374,7 @@ func (s *Server) startTLSListener() error {
 	}
 
 	s.listener = listener
-	s.logger.Info(LogSCACIServerListening,
+	s.logger.InfoContext(s.safeCtx(), LogSCACIServerListening,
 		"address", s.config.ListenAddr,
 		"tls", "required",
 		"spec", "MIOTY SCACI v1.0.0")
@@ -392,7 +398,7 @@ func (s *Server) startTLSListener() error {
 // Returns:
 //   - error: Shutdown error (currently always nil)
 func (s *Server) Stop() error {
-	s.logger.Info(LogSCACIServerStopping)
+	s.logger.InfoContext(s.safeCtx(), LogSCACIServerStopping)
 	close(s.shutdown)
 
 	if s.listener != nil {
@@ -400,7 +406,7 @@ func (s *Server) Stop() error {
 	}
 
 	s.wg.Wait()
-	s.logger.Info(LogSCACIServerStopped)
+	s.logger.InfoContext(s.safeCtx(), LogSCACIServerStopped)
 	return nil
 }
 
@@ -421,7 +427,7 @@ func (s *Server) acceptConnections() {
 			case <-s.shutdown:
 				return // Expected during shutdown
 			default:
-				s.logger.Error(LogSCACIAcceptConnectionFailed, "error", err)
+				s.logger.ErrorContext(s.safeCtx(), LogSCACIAcceptConnectionFailed, "error", err)
 				continue
 			}
 		}
@@ -510,24 +516,24 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// Extract client certificate from TLS connection
 	tlsConn, ok := conn.(*tls.Conn)
 	if !ok {
-		s.logger.Error(LogSCACIConnectionNotTLS)
+		s.logger.ErrorContext(s.safeCtx(), LogSCACIConnectionNotTLS)
 		return
 	}
 
 	// Force TLS handshake to get client certificate
 	if err := tlsConn.Handshake(); err != nil {
-		s.logger.Error(LogSCACITLSHandshakeFailed, "error", err)
+		s.logger.ErrorContext(s.safeCtx(), LogSCACITLSHandshakeFailed, "error", err)
 		return
 	}
 
 	state := tlsConn.ConnectionState()
 	if len(state.PeerCertificates) == 0 {
-		s.logger.Error(LogSCACINoClientCertificate)
+		s.logger.ErrorContext(s.safeCtx(), LogSCACINoClientCertificate)
 		return
 	}
 
 	clientCert := state.PeerCertificates[0]
-	s.logger.Info(LogSCACIConnectionEstablished,
+	s.logger.InfoContext(s.safeCtx(), LogSCACIConnectionEstablished,
 		"remote", conn.RemoteAddr().String(),
 		"cert_cn", clientCert.Subject.CommonName)
 
@@ -547,10 +553,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		frame, err := s.readFrame(conn)
 		if err != nil {
 			if err == io.EOF {
-				s.logger.Info(LogSCACIConnectionClosed,
+				s.logger.InfoContext(s.sessionContext(session), LogSCACIConnectionClosed,
 					"remote", conn.RemoteAddr().String())
 			} else {
-				s.logger.Error(LogSCACIReadFrameFailed, "error", err)
+				s.logger.ErrorContext(s.sessionContext(session), LogSCACIReadFrameFailed, "error", err)
 			}
 			return
 		}
@@ -560,7 +566,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		if err := msgpack.Unmarshal(frame.Payload, &msg); err != nil {
 			// Fallback to JSON decode per SCACI §1 dual-codec support
 			if jsonErr := json.Unmarshal(frame.Payload, &msg); jsonErr != nil {
-				s.logger.Error(LogSCACIDecodeMessagePackFailed,
+				s.logger.ErrorContext(s.sessionContext(session), LogSCACIDecodeMessagePackFailed,
 					"msgpack_error", err,
 					"json_error", jsonErr)
 				_ = s.sendErrorWithCatalog(conn, session, 0, POSIX_EINVAL, errInvalidMessageFormat)
@@ -571,25 +577,25 @@ func (s *Server) handleConnection(conn net.Conn) {
 		// Extract command and opId (required per §3.2)
 		command, ok := msg["command"].(string)
 		if !ok {
-			s.logger.Error(LogSCACIMissingCommandField)
+			s.logger.ErrorContext(s.sessionContext(session), LogSCACIMissingCommandField)
 			_ = s.sendErrorWithCatalog(conn, session, 0, POSIX_EINVAL, errMissingCommandField)
 			continue
 		}
 
 		opId, ok := normalizeInt64(msg["opId"])
 		if !ok {
-			s.logger.Error(LogSCACIMissingOpIDField)
+			s.logger.ErrorContext(s.sessionContext(session), LogSCACIMissingOpIDField)
 			_ = s.sendErrorWithCatalog(conn, session, 0, POSIX_EINVAL, errMissingOpIdField)
 			continue
 		}
 
-		s.logger.Debug(LogSCACIReceivedMessage,
+		s.logger.DebugContext(s.sessionContext(session), LogSCACIReceivedMessage,
 			"command", command,
 			"opId", opId)
 
 		// Special handling for Connect (must be first message)
 		if session == nil && command != CmdConnect {
-			s.logger.Error(LogSCACIFirstMessageMustBeConnect,
+			s.logger.ErrorContext(s.sessionContext(session), LogSCACIFirstMessageMustBeConnect,
 				"command", command)
 			_ = s.sendErrorWithCatalog(conn, session, opId, POSIX_EINVAL, errConnectRequired)
 			return
@@ -597,7 +603,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 		// Route message to handler
 		if err := s.routeMessage(conn, &session, clientCert, command, opId, frame.Payload); err != nil {
-			s.logger.Error(LogSCACIHandlerError,
+			s.logger.ErrorContext(s.sessionContext(session), LogSCACIHandlerError,
 				"command", command,
 				"opId", opId,
 				"error", err)
@@ -680,7 +686,7 @@ func (s *Server) sendFrame(conn net.Conn, payload []byte) error {
 //
 // sendError is the internal transport helper for sendErrorWithCatalog.
 // All protocol errors should go through sendErrorWithCatalog for catalog consistency.
-func (s *Server) sendError(conn net.Conn, _ *Session, opId int64, code int, message string, errorToken *string) error {
+func (s *Server) sendError(conn net.Conn, session *Session, opId int64, code int, message string, errorToken *string) error {
 	// Dereference errorToken if not nil (ErrorToken is string, not *string, per spec)
 	tokenStr := ""
 	if errorToken != nil {
@@ -699,12 +705,12 @@ func (s *Server) sendError(conn net.Conn, _ *Session, opId int64, code int, mess
 
 	payload, err := msgpack.Marshal(&errMsg)
 	if err != nil {
-		s.logger.Error(LogSCACIMarshalErrorFailed, "error", err)
+		s.logger.ErrorContext(s.sessionContext(session), LogSCACIMarshalErrorFailed, "error", err)
 		return err
 	}
 
 	if err := s.sendFrame(conn, payload); err != nil {
-		s.logger.Error(LogSCACISendErrorFailed, "error", err)
+		s.logger.ErrorContext(s.sessionContext(session), LogSCACISendErrorFailed, "error", err)
 		return err
 	}
 
@@ -717,7 +723,7 @@ func (s *Server) sendError(conn net.Conn, _ *Session, opId int64, code int, mess
 	if errorToken != nil {
 		logFields = append(logFields, "errorToken", *errorToken)
 	}
-	s.logger.Debug(LogSCACIErrorMessageSent, logFields...)
+	s.logger.DebugContext(s.sessionContext(session), LogSCACIErrorMessageSent, logFields...)
 
 	return nil
 }
@@ -739,7 +745,7 @@ func (s *Server) sendError(conn net.Conn, _ *Session, opId int64, code int, mess
 // Returns:
 //   - error: Send error (logged, not returned to avoid error inception)
 func (s *Server) sendErrorWithCatalog(conn net.Conn, session *Session, opId int64, defaultCode int, errorToken string, contextDetail ...string) error {
-	ctx := context.Background()
+	ctx := s.sessionContext(session)
 	detail := ""
 	if len(contextDetail) > 0 {
 		detail = contextDetail[0]
@@ -805,7 +811,7 @@ func (s *Server) sendErrorWithCatalog(conn net.Conn, session *Session, opId int6
 //
 // Returns:
 //   - error: Send error
-func (s *Server) sendErrorAck(conn net.Conn, _ *Session, opId int64) error {
+func (s *Server) sendErrorAck(conn net.Conn, session *Session, opId int64) error {
 	ack := ErrorAck{
 		BaseMessage: BaseMessage{
 			Command: CmdErrorAck,
@@ -814,11 +820,11 @@ func (s *Server) sendErrorAck(conn net.Conn, _ *Session, opId int64) error {
 	}
 
 	if err := s.sendResponse(conn, &ack); err != nil {
-		s.logger.Error(LogSCACISentErrorAck, "opId", opId, "error", err)
+		s.logger.ErrorContext(s.sessionContext(session), LogSCACISentErrorAck, "opId", opId, "error", err)
 		return err
 	}
 
-	s.logger.Debug(LogSCACISentErrorAck, "opId", opId)
+	s.logger.DebugContext(s.sessionContext(session), LogSCACISentErrorAck, "opId", opId)
 	return nil
 }
 
@@ -842,7 +848,7 @@ func (s *Server) sendResponse(conn net.Conn, msg interface{}) error {
 
 	// Log response for debugging
 	if msgJSON, err := json.Marshal(msg); err == nil {
-		s.logger.Debug(LogSCACIResponseSent, "message", string(msgJSON))
+		s.logger.DebugContext(s.safeCtx(), LogSCACIResponseSent, "message", string(msgJSON))
 	}
 
 	return nil
@@ -969,7 +975,7 @@ func (s *Server) routeMessage(conn net.Conn, session **Session, cert *x509.Certi
 
 		// Case 1: Unknown prefix (not in spec allowlist)
 		if _, allowed := allowedSublayerPrefixes[prefix]; !allowed {
-			s.logger.Warn(LogSCACIUnsupportedSublayerPrefix, logFields...)
+			s.logger.WarnContext(s.sessionContext(*session), LogSCACIUnsupportedSublayerPrefix, logFields...)
 			return s.sendErrorWithCatalog(conn, sess, opId, POSIX_ENOTSUP, errUnsupportedSublayerPrefix, command)
 		}
 
@@ -978,13 +984,13 @@ func (s *Server) routeMessage(conn net.Conn, session **Session, cert *x509.Certi
 		handler, hasHandler := s.sublayerHandlers[command]
 		if !hasHandler {
 			// No handler registered for this command
-			s.logger.Warn(LogSCACIUnsupportedSublayerPrefix, logFields...)
+			s.logger.WarnContext(s.sessionContext(*session), LogSCACIUnsupportedSublayerPrefix, logFields...)
 			return s.sendErrorWithCatalog(conn, sess, opId, POSIX_ENOTSUP, errUnsupportedSublayerPrefix, command)
 		}
 
 		// Case 3: Handler exists - dispatch directly and return
 		// (bypasses switch to avoid double-error from default case)
-		s.logger.Debug("SCACI sublayer handler invoked", logFields...)
+		s.logger.DebugContext(s.sessionContext(*session), LogSCACISublayerHandlerInvoked, logFields...)
 		return handler(conn, sess, opId, payload)
 	}
 
@@ -1026,13 +1032,13 @@ func (s *Server) routeMessage(conn net.Conn, session **Session, cert *x509.Certi
 		return s.handleULDataResponse(conn, *session, opId)
 	case CmdULDataComplete:
 		// AC should never send ulDataCmp - SC sends it per SCACI §3.8.3
-		s.logger.Error(LogSCACIUnexpectedULDataCmp,
+		s.logger.ErrorContext(s.sessionContext(*session), LogSCACIUnexpectedULDataCmp,
 			"opId", opId,
 			"acEui", pkgmioty.FormatEUI64((*session).AcEui))
 
 		// Mark operation failed if it exists
 		if (*session).ID > 0 && s.operationRepo != nil {
-			errCtx, errCancel := context.WithTimeout(context.Background(), dbconfig.DefaultQueryTimeout)
+			errCtx, errCancel := context.WithTimeout(s.sessionContext(*session), dbconfig.DefaultQueryTimeout)
 			defer errCancel()
 
 			if err := s.operationRepo.UpdateOperationState(errCtx, (*session).ID, opId,
@@ -1040,7 +1046,7 @@ func (s *Server) routeMessage(conn net.Conn, session **Session, cert *x509.Certi
 					"errorToken":  errProtocolViolationULCmp,
 					"errorDetail": "AC sent ulDataCmp but SC should send it",
 				}); err != nil {
-				s.logger.Error(LogSCACIUpdateOperationStateFailed, "error", err)
+				s.logger.ErrorContext(s.sessionContext(*session), LogSCACIUpdateOperationStateFailed, "error", err)
 			}
 		}
 
@@ -1051,13 +1057,13 @@ func (s *Server) routeMessage(conn net.Conn, session **Session, cert *x509.Certi
 		return s.handleULDataTransmit(conn, *session, opId, payload)
 	case CmdULDataTransmitResponse:
 		// AC cannot send ulDataTxRsp - protocol violation per SCACI §3.9.2
-		s.logger.Error(LogSCACIUnexpectedULDataTxRsp,
+		s.logger.ErrorContext(s.sessionContext(*session), LogSCACIUnexpectedULDataTxRsp,
 			"opId", opId,
 			"acEui", pkgmioty.FormatEUI64((*session).AcEui))
 
 		// Mark operation failed if it exists
 		if (*session).ID > 0 && s.operationRepo != nil {
-			errCtx, errCancel := context.WithTimeout(context.Background(), dbconfig.DefaultQueryTimeout)
+			errCtx, errCancel := context.WithTimeout(s.sessionContext(*session), dbconfig.DefaultQueryTimeout)
 			defer errCancel()
 
 			if err := s.operationRepo.UpdateOperationState(errCtx, (*session).ID, opId,
@@ -1065,7 +1071,7 @@ func (s *Server) routeMessage(conn net.Conn, session **Session, cert *x509.Certi
 					"errorToken":  errProtocolViolationULRsp,
 					"errorDetail": "AC sent ulDataTxRsp but SC should send it",
 				}); err != nil {
-				s.logger.Error(LogSCACIUpdateOperationStateFailed, "error", err)
+				s.logger.ErrorContext(s.sessionContext(*session), LogSCACIUpdateOperationStateFailed, "error", err)
 			}
 		}
 
@@ -1104,7 +1110,7 @@ func (s *Server) routeMessage(conn net.Conn, session **Session, cert *x509.Certi
 		return s.handleErrorAck(conn, *session, opId)
 
 	default:
-		s.logger.Warn(LogSCACIUnknownCommand, "command", command)
+		s.logger.WarnContext(s.sessionContext(*session), LogSCACIUnknownCommand, "command", command)
 		return s.sendErrorWithCatalog(conn, *session, opId, POSIX_ENOTSUP, errUnsupportedCommand)
 	}
 }
@@ -1295,7 +1301,7 @@ func derefBool(b *bool) bool {
 //
 // Returns:
 //   - error: If any sends fail
-func (s *Server) BroadcastULData(_ context.Context, tenantID int64, data *mioty.ULDataMessage) error {
+func (s *Server) BroadcastULData(ctx context.Context, tenantID int64, data *mioty.ULDataMessage) error {
 	if data == nil {
 		return fmt.Errorf("nil UL data message")
 	}
@@ -1375,7 +1381,7 @@ func (s *Server) BroadcastULData(_ context.Context, tenantID int64, data *mioty.
 
 		// Record operation after successful send (for resume/audit)
 		if sessionID > 0 && s.operationRepo != nil {
-			opCtx, opCancel := context.WithTimeout(context.Background(), dbconfig.DefaultQueryTimeout)
+			opCtx, opCancel := context.WithTimeout(context.WithoutCancel(ctx), dbconfig.DefaultQueryTimeout)
 
 			requestData := map[string]interface{}{
 				"epEui":        pkgmioty.FormatEUI64(data.EpEui),
@@ -1405,7 +1411,7 @@ func (s *Server) BroadcastULData(_ context.Context, tenantID int64, data *mioty.
 			opCancel() // Cancel immediately after operation, not deferred
 
 			if err != nil {
-				s.logger.Warn(LogSCACIRecordULDataOpFailed,
+				s.logger.WarnContext(ctx, LogSCACIRecordULDataOpFailed,
 					"opId", opId,
 					"error", err)
 				// Continue - operation tracking is for resume, not critical path
@@ -1425,7 +1431,7 @@ func (s *Server) BroadcastULData(_ context.Context, tenantID int64, data *mioty.
 //
 // Returns:
 //   - error: If any sends fail
-func (s *Server) BroadcastDLDataResult(_ context.Context, tenantID int64, result *mioty.DLDataResult) error {
+func (s *Server) BroadcastDLDataResult(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error {
 	if result == nil {
 		return fmt.Errorf("nil DL data result")
 	}
@@ -1508,7 +1514,7 @@ func (s *Server) BroadcastDLDataResult(_ context.Context, tenantID int64, result
 
 		// Record operation after successful send (for resume/audit)
 		if sessionID > 0 && s.operationRepo != nil {
-			opCtx, opCancel := context.WithTimeout(context.Background(), dbconfig.DefaultQueryTimeout)
+			opCtx, opCancel := context.WithTimeout(context.WithoutCancel(ctx), dbconfig.DefaultQueryTimeout)
 
 			requestData := map[string]interface{}{
 				"epEui":  pkgmioty.FormatEUI64(result.EpEui),
@@ -1537,7 +1543,7 @@ func (s *Server) BroadcastDLDataResult(_ context.Context, tenantID int64, result
 			opCancel() // Cancel immediately after operation, not deferred
 
 			if err != nil {
-				s.logger.Warn(LogSCACIRecordDLResultOpFailed,
+				s.logger.WarnContext(ctx, LogSCACIRecordDLResultOpFailed,
 					"opId", opId,
 					"error", err)
 			}
@@ -1966,19 +1972,19 @@ func (s *Server) replayEPStatus(conn net.Conn, session *Session, op *models.SCAC
 	// epEui stored as hex string via FormatEUI64
 	epEuiStr, ok := data["epEui"].(string)
 	if !ok || epEuiStr == "" {
-		s.logger.Error(LogSCACIReplayEPStatusInvalidData, "opId", op.OpId, "field", "epEui")
+		s.logger.ErrorContext(s.sessionContext(session), LogSCACIReplayEPStatusInvalidData, "opId", op.OpId, "field", "epEui")
 		return fmt.Errorf("missing/invalid epEui in stored RequestData")
 	}
 	epEui, err := ParseEUI64(epEuiStr)
 	if err != nil {
-		s.logger.Error(LogSCACIReplayEPStatusInvalidData, "opId", op.OpId, "field", "epEui", "error", err)
+		s.logger.ErrorContext(s.sessionContext(session), LogSCACIReplayEPStatusInvalidData, "opId", op.OpId, "field", "epEui", "error", err)
 		return fmt.Errorf("parse epEui %q: %w", epEuiStr, err)
 	}
 
 	// epStatus stored as string enum
 	epStatus, ok := data["epStatus"].(string)
 	if !ok || epStatus == "" {
-		s.logger.Error(LogSCACIReplayEPStatusInvalidData, "opId", op.OpId, "field", "epStatus")
+		s.logger.ErrorContext(s.sessionContext(session), LogSCACIReplayEPStatusInvalidData, "opId", op.OpId, "field", "epStatus")
 		return fmt.Errorf("missing/invalid epStatus in stored RequestData")
 	}
 
@@ -2010,7 +2016,7 @@ func (s *Server) replayEPStatus(conn net.Conn, session *Session, op *models.SCAC
 			copy(nonce[:], nonceBytes)
 			msg.Nonce = &nonce
 		} else {
-			s.logger.Warn(LogSCACIReplayEPStatusFieldDecodeErr, "opId", op.OpId, "field", "nonce")
+			s.logger.WarnContext(s.sessionContext(session), LogSCACIReplayEPStatusFieldDecodeErr, "opId", op.OpId, "field", "nonce")
 		}
 	}
 	if signStr, ok := data["sign"].(string); ok && signStr != "" {
@@ -2020,7 +2026,7 @@ func (s *Server) replayEPStatus(conn net.Conn, session *Session, op *models.SCAC
 			copy(sign[:], signBytes)
 			msg.Sign = &sign
 		} else {
-			s.logger.Warn(LogSCACIReplayEPStatusFieldDecodeErr, "opId", op.OpId, "field", "sign")
+			s.logger.WarnContext(s.sessionContext(session), LogSCACIReplayEPStatusFieldDecodeErr, "opId", op.OpId, "field", "sign")
 		}
 	}
 
@@ -2039,7 +2045,7 @@ func (s *Server) replayEPStatus(conn net.Conn, session *Session, op *models.SCAC
 	if subpacketsRaw, ok := data["subpackets"]; ok && subpacketsRaw != nil {
 		subpackets, err := reconstructSubpackets(subpacketsRaw)
 		if err != nil {
-			s.logger.Warn(LogSCACIReplayEPStatusFieldDecodeErr, "opId", op.OpId, "field", "subpackets", "error", err)
+			s.logger.WarnContext(s.sessionContext(session), LogSCACIReplayEPStatusFieldDecodeErr, "opId", op.OpId, "field", "subpackets", "error", err)
 			// Continue without subpackets - non-fatal
 		} else {
 			msg.Subpackets = subpackets

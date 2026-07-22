@@ -215,7 +215,7 @@ func (s *Server) handleStatusResponse(_ *Server, session *Session, msg *Message,
 					"fieldsUpdated", len(updates))
 
 				// Persist status history (BSSCI §3.5.2 BSSCI-3.5-HIST)
-				if s.storage != nil && s.storage.MIOTYBaseStationStatus() != nil {
+				if s.bsStatusStore != nil {
 					tenantID := resolvedTenant(session, s.tenantID)
 
 					statusRecord := &mioty.BaseStationStatusRecord{
@@ -236,7 +236,7 @@ func (s *Server) handleStatusResponse(_ *Server, session *Session, msg *Message,
 						Longitude:      longitude,
 						Altitude:       altitude,
 					}
-					if err := s.storage.MIOTYBaseStationStatus().Create(ctx, statusRecord); err != nil {
+					if err := s.bsStatusStore.Create(ctx, statusRecord); err != nil {
 						s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistStatusHistory, "error", err)
 					}
 				}

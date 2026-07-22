@@ -32,18 +32,49 @@ func NewSessionPersistence(
 	}
 }
 
+// connectSnapshot is the immutable copy of every session field the async
+// persistence goroutine reads. Capturing it before the goroutine starts
+// prevents races with caller mutations of the live session; all fields are
+// value types, and metadata is deep-copied.
+type connectSnapshot struct {
+	Resumed        bool
+	ID             int64
+	TenantID       int64
+	OrganizationID uuid.UUID
+	AcEuiBytes     [8]byte
+	SnAcUUID       scaci.UUID16
+	SnScUUID       scaci.UUID16
+	AcOpIdCounter  int64
+	ScOpIdCounter  int64
+	Metadata       map[string]interface{}
+}
+
 // PersistConnectAsync handles async session creation/update after Connect handshake.
 // Encapsulates the persistence pattern in a service (handlers orchestrate, services execute).
-func (p *sessionPersistence) PersistConnectAsync(session *scaci.Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) {
-	// CRITICAL: Deep-copy metadata BEFORE goroutine to prevent race with caller mutations.
-	// This is the ONLY copy - do not call deepCopyMetadata again inside the goroutine.
-	metadataCopy := deepCopyMetadata(session.Metadata)
+// The caller's ctx contributes tenant/org log fields only: the goroutine detaches from
+// its cancellation so persistence outlives the connection that triggered it.
+func (p *sessionPersistence) PersistConnectAsync(ctx context.Context, session *scaci.Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) {
+	// CRITICAL: snapshot BEFORE the goroutine to prevent races with caller
+	// mutations; metadata is deep-copied exactly once.
+	snap := connectSnapshot{
+		Resumed:        session.Resumed,
+		ID:             session.ID,
+		TenantID:       session.TenantID,
+		OrganizationID: session.OrganizationID,
+		AcEuiBytes:     session.GetAcEuiBytes(),
+		SnAcUUID:       session.SnAcUUID,
+		SnScUUID:       session.SnScUUID,
+		AcOpIdCounter:  session.AcOpIdCounter,
+		ScOpIdCounter:  session.ScOpIdCounter,
+		Metadata:       deepCopyMetadata(session.Metadata),
+	}
+	metadataCopy := snap.Metadata
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), scaci.ConnectPersistTimeout)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), scaci.ConnectPersistTimeout)
 		defer cancel()
 
-		if session.Resumed && session.ID > 0 {
+		if snap.Resumed && snap.ID > 0 {
 			// Update existing session (resumed connection)
 			now := time.Now()
 			status := "active"
@@ -66,14 +97,14 @@ func (p *sessionPersistence) PersistConnectAsync(session *scaci.Session, certFin
 			}
 
 			// Only persist opId counters if they're non-zero (preserve "opId 0 after connect")
-			if session.AcOpIdCounter > 0 {
-				updateReq.LastOpIDAc = &session.AcOpIdCounter
+			if snap.AcOpIdCounter > 0 {
+				updateReq.LastOpIDAc = &snap.AcOpIdCounter
 			}
-			if session.ScOpIdCounter < 0 {
-				updateReq.LastOpIDSc = &session.ScOpIdCounter
+			if snap.ScOpIdCounter < 0 {
+				updateReq.LastOpIDSc = &snap.ScOpIdCounter
 			}
 
-			if err := p.sessionRepo.UpdateSession(ctx, session.TenantID, session.ID, updateReq); err != nil {
+			if err := p.sessionRepo.UpdateSession(ctx, snap.TenantID, snap.ID, updateReq); err != nil {
 				p.logger.ErrorContext(ctx, scaci.LogSCACIUpdateSessionFailed, "error", err)
 			}
 		} else {
@@ -98,8 +129,8 @@ func (p *sessionPersistence) PersistConnectAsync(session *scaci.Session, certFin
 
 			// Set organization ID if not nil
 			var orgID *uuid.UUID
-			if session.OrganizationID != uuid.Nil {
-				orgID = &session.OrganizationID
+			if snap.OrganizationID != uuid.Nil {
+				orgID = &snap.OrganizationID
 			}
 
 			// Set negotiated version - defaults to ProtocolVersionString if empty
@@ -109,11 +140,11 @@ func (p *sessionPersistence) PersistConnectAsync(session *scaci.Session, certFin
 			}
 
 			createReq := &models.SCACISessionCreateRequest{
-				TenantID:               session.TenantID,
+				TenantID:               snap.TenantID,
 				OrganizationID:         orgID,
-				AcEUI:                  session.GetAcEuiBytes(),
-				SnAcUUID:               session.SnAcUUID,
-				SnScUUID:               session.SnScUUID,
+				AcEUI:                  snap.AcEuiBytes,
+				SnAcUUID:               snap.SnAcUUID,
+				SnScUUID:               snap.SnScUUID,
 				CertificateFingerprint: certFP,
 				ClientCertSubject:      certSubj,
 				RemoteAddr:             remAddr,
@@ -125,7 +156,7 @@ func (p *sessionPersistence) PersistConnectAsync(session *scaci.Session, certFin
 			}
 
 			if dbSession, err := p.sessionRepo.CreateSession(ctx, createReq); err != nil {
-				p.logger.Error(scaci.LogSCACIPersistSessionFailed, "error", err)
+				p.logger.ErrorContext(ctx, scaci.LogSCACIPersistSessionFailed, "error", err)
 			} else {
 				// Store DB ID in runtime session
 				// Note: This updates the session object passed by reference

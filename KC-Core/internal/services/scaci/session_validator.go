@@ -41,7 +41,7 @@ func NewSessionValidator() scaci.SessionValidator {
 // Returns:
 //   - Empty string if validation passes
 //   - Error token string if validation fails (from errors_catalog.go)
-func (v *sessionValidator) ValidateConnectFields(req *scaci.Connect, _ int64) string {
+func (v *sessionValidator) ValidateConnectFields(req *scaci.Connect) string {
 	// Validation 1: Version must not be empty (§3.3.1-01)
 	if req.Version == "" {
 		return scaci.ErrMissingVersion

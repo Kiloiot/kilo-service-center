@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/json"
+	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
@@ -152,6 +155,33 @@ type StatusService interface {
 	// Returns tenantID for proper roaming tenant isolation (BSSCI §5.12).
 	// Session parameter required for SessionOpKey composite key lookup.
 	ExtractQueueMetadata(session *Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string)
+
+	// UpdatePendingOperationMetadata persists new metadata for an existing
+	// pending row (metadataJSON is the pre-marshaled form of metadata) and,
+	// on success, mirrors it into the cached operation. The DB write comes
+	// first so the cache never runs ahead of the durable state.
+	UpdatePendingOperationMetadata(ctx context.Context, session *Session, opId int64, metadata map[string]interface{}, metadataJSON json.RawMessage) error
+
+	// PersistedOperations returns the raw persisted rows for session resume
+	// hydration; strict decoding stays with the caller.
+	PersistedOperations(ctx context.Context, sessionID int64) ([]PersistedOperation, error)
+
+	// DeletePendingOperations removes every persisted row of the session and,
+	// only after the DB deletion succeeds, evicts the session's cached
+	// operations. A failed deletion leaves the cache untouched.
+	DeletePendingOperations(ctx context.Context, session *Session) (int64, error)
+}
+
+// PersistedOperation is a raw persisted pending-operation row returned for
+// resume hydration. It is BSSCI-owned so the storage row model does not leak
+// through the service boundary; payloads stay encoded.
+type PersistedOperation struct {
+	OperationID   int64
+	OperationType string
+	EndpointEUI   []byte
+	OperationData []byte
+	Metadata      []byte
+	CreatedAt     time.Time
 }
 
 // BaseStationConnectionRegistry owns the live-connection operations the
@@ -166,6 +196,14 @@ type BaseStationConnectionRegistry interface {
 	// RegisterConnection publishes the session's live connection and marks the
 	// base station online.
 	RegisterConnection(ctx context.Context, session *Session, baseStation *basestation.BaseStation) error
+
+	// DisconnectBaseStationIfCurrent marks the base station offline only while
+	// the given connection is still its current one (a reconnect that already
+	// replaced this connection keeps the station online).
+	DisconnectBaseStationIfCurrent(ctx context.Context, eui [8]byte, connectionID string) error
+
+	// UpdateLastSeen refreshes the base station's last-seen timestamp.
+	UpdateLastSeen(ctx context.Context, eui [8]byte) error
 }
 
 // CertificateIdentity is the tenant/organization identity resolved from a
@@ -876,4 +914,115 @@ type BlueprintResolver interface {
 	// Keys in the map correspond to $calibration.key references in blueprint func expressions.
 	GetEndpointCalibration(ctx context.Context, tenantID int64,
 		endpoint *models.EndPoint) map[string]interface{}
+}
+
+// ProtocolMessageStore records BSSCI protocol message rows (detach and
+// propagate messages). Satisfied structurally by the MIOTY message repository.
+type ProtocolMessageStore interface {
+	CreateDetachMessage(ctx context.Context, msg *mioty.DetachMessage, structuredMsg map[string]interface{}) error
+	CreateAttachPropagateMessage(ctx context.Context, msg *mioty.AttachPropagateMessage) error
+	CreateDetachPropagateMessage(ctx context.Context, msg *mioty.DetachPropagateMessage) error
+}
+
+// DLRXStatusStore owns dlRxStatQry correlation rows and dlRxStat reports
+// (BSSCI rev1 §5.15-§5.16 / classic §3.15-§3.16). Satisfied structurally by
+// the DL RX status repository.
+type DLRXStatusStore interface {
+	CreateDLRXStatus(ctx context.Context, status *mioty.DLRXStatus) error
+	MarkDLRXStatusReceived(ctx context.Context, tenantID int64, epEui, bsEui []byte, bsOpID int64) (bool, error)
+	CreateDLRXStatusQuery(ctx context.Context, tenantID int64, orgUUID *uuid.UUID, epEui, bsEui []byte, opId int64) error
+	ExpireDLRXStatusQuery(ctx context.Context, cutoff time.Time) (int64, error)
+}
+
+// BaseStationStatusStore records base station status history rows (BSSCI
+// rev1 §5.5 / classic §3.5). Satisfied structurally by the status repository.
+type BaseStationStatusStore interface {
+	Create(ctx context.Context, status *mioty.BaseStationStatusRecord) error
+}
+
+// DownlinkQueueStore covers the queue-row operations the protocol handlers
+// perform outside the dispatcher's reservation flow. Satisfied structurally
+// by the MIOTY downlink repository so error identity (sql.ErrNoRows,
+// storage.ErrNotFound) is preserved - never wrap it in a delegating adapter.
+type DownlinkQueueStore interface {
+	UpdateDownlinkBaseStation(ctx context.Context, queId uint64, tenantID string, bsEUI uint64) error
+	MarkReservedAsQueued(ctx context.Context, queID uint64, tenantID int64, bsEUI uint64, txTime int64, packetCnt *uint32, orgID *uuid.UUID) error
+	GetDownlinkByQueueID(ctx context.Context, queId uint64, tenantID string) (*storage.DownlinkMessage, error)
+}
+
+// EndpointDirectory is the endpoint repository surface the protocol server
+// consumes: reads plus the attach/detach field updates. Satisfied
+// structurally by the endpoint repository.
+type EndpointDirectory interface {
+	Get(ctx context.Context, eui models.EUI) (*models.EndPoint, error)
+	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.EndPoint, error)
+	GetByID(ctx context.Context, id int64, tenantID int64) (*models.EndPoint, error)
+	UpdateFields(ctx context.Context, tenantID int64, endpointID int64, updates map[string]interface{}) error
+	UpdateRadioMetricsSelective(ctx context.Context, tenantID int64, eui models.EUI, update interfaces.RadioMetricsUpdate) error
+}
+
+// BaseStationStore is the registered-station repository surface the protocol
+// server consumes. Satisfied structurally by the base station repository.
+type BaseStationStore interface {
+	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.BaseStation, error)
+	Update(ctx context.Context, tenantID, id int64, updates map[string]interface{}) error
+}
+
+// OrganizationDirectory resolves organization identity for tenants and
+// certificates. Satisfied structurally by org.Resolver implementations.
+type OrganizationDirectory interface {
+	ResolveCert(ctx context.Context, cert *x509.Certificate) (uuid.UUID, int64, error)
+	GetDefaultOrgForTenant(ctx context.Context, tenantID int64) (uuid.UUID, error)
+}
+
+// NetworkKeyProtector encrypts and decrypts endpoint network session keys.
+// Satisfied structurally by *crypto.KeyEncryptor.
+type NetworkKeyProtector interface {
+	EncryptKey(plaintext []byte) (string, error)
+	EncryptKeyRaw(plaintext []byte) ([]byte, error)
+	DecryptKeyRaw(ciphertext []byte) ([]byte, error)
+}
+
+// EventStore records system events emitted by the protocol server.
+// Satisfied structurally by the system event repository.
+type EventStore interface {
+	CreateEvent(ctx context.Context, event *models.SystemEvent) error
+}
+
+// AttachSessionRecord carries the attach-transaction inputs for the endpoint
+// attachment persister (BSSCI rev1 §5.7 / classic §3.7).
+type AttachSessionRecord struct {
+	// TenantID is the endpoint owner tenant used for the endpoint update and
+	// the session row.
+	TenantID int64
+	// BSLookupTenantID scopes the primary base station lookup (differs from
+	// TenantID when the uplink arrived through a roaming station).
+	BSLookupTenantID int64
+	EndpointID       int64
+	EndpointUpdates  map[string]interface{}
+	EncryptedKey     []byte
+	// AttachCnt is handler-validated to fit 24 bits before persistence.
+	AttachCnt      uint32
+	ShAddr         uint16
+	BaseStationEUI []byte
+}
+
+// AttachPropagateSessionRecord carries the attach-propagate transaction inputs
+// (BSSCI rev1 §5.8 / classic §3.8); the owner tenant scopes every operation.
+type AttachPropagateSessionRecord struct {
+	TenantID        int64
+	EndpointID      int64
+	EndpointUpdates map[string]interface{}
+	EncryptedKey    []byte
+	ShAddr          uint16
+	BaseStationEUI  []byte
+}
+
+// EndpointAttachmentPersistence owns the transactional attach and
+// attach-propagate endpoint-session persistence: one transaction covering the
+// endpoint field update and the endpoint-session upsert, with the primary
+// base station looked up outside the transaction.
+type EndpointAttachmentPersistence interface {
+	PersistAttachSession(ctx context.Context, rec AttachSessionRecord) error
+	PersistAttachPropagateSession(ctx context.Context, rec AttachPropagateSessionRecord) error
 }

@@ -1273,7 +1273,7 @@ func TestAttachNonceValidation(t *testing.T) {
 			server.config = &Config{
 				MessageEncoding: EncodingJSON,
 			}
-			server.storage = storage
+			server.SetStorageForTest(storage)
 
 			// Seed endpoint so valid cases proceed past lookup and signature check
 			endpoint := buildTestEndpointForValidation()
@@ -1366,7 +1366,7 @@ func TestAttachSignValidation(t *testing.T) {
 			server.config = &Config{
 				MessageEncoding: EncodingJSON,
 			}
-			server.storage = storage
+			server.SetStorageForTest(storage)
 
 			// Seed endpoint for lookup
 			endpoint := buildTestEndpointForValidation()
@@ -1463,7 +1463,7 @@ func TestAttachCounterRange(t *testing.T) {
 			server.config = &Config{
 				MessageEncoding: EncodingJSON,
 			}
-			server.storage = storage
+			server.SetStorageForTest(storage)
 
 			// Seed endpoint for lookup
 			endpoint := buildTestEndpointForValidation()

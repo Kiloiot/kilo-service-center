@@ -386,7 +386,6 @@ func createTestServerWithSession() *Server {
 		broadcaster, queueSerializer, auditLogger, tenantResolver,
 	)
 
-	s.deduplicator = NewMessageDeduplicator(1000)
 	return s
 }
 

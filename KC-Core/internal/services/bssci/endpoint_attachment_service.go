@@ -17,6 +17,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/google/uuid"
 )
 
 // AttachPropagateSender defines the interface for sending attach propagation.
@@ -392,3 +393,185 @@ var (
 	// ErrInvalidNetworkKeyLength indicates network key is not 16 bytes
 	ErrInvalidNetworkKeyLength = errors.New("invalid network key length")
 )
+
+// endpointAttachmentPersistence is the transactional owner of attach and
+// attach-propagate endpoint-session persistence (BSSCI rev1 §5.7-§5.8 /
+// classic §3.7-§3.8).
+type endpointAttachmentPersistence struct {
+	storage         interfaces.Storage
+	basestationRepo interfaces.BaseStationRepository
+	logger          logger.Logger
+}
+
+// NewEndpointAttachmentPersistence creates the persister over the storage
+// facade; the base station repository serves the out-of-transaction primary
+// station lookup.
+func NewEndpointAttachmentPersistence(storage interfaces.Storage, basestationRepo interfaces.BaseStationRepository, log logger.Logger) bssci.EndpointAttachmentPersistence {
+	return &endpointAttachmentPersistence{
+		storage:         storage,
+		basestationRepo: basestationRepo,
+		logger:          log,
+	}
+}
+
+// PersistAttachSession runs the attach transaction: endpoint field update,
+// endpoint-session upsert (with attach counter and short address), commit.
+func (p *endpointAttachmentPersistence) PersistAttachSession(ctx context.Context, rec bssci.AttachSessionRecord) error {
+	tx, txErr := p.storage.BeginTx(ctx)
+	if txErr != nil {
+		p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToBeginTransaction, "error", txErr)
+		return txErr
+	}
+
+	var commitErr error
+	defer func() {
+		if commitErr != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if err := tx.EndPoints().UpdateFields(ctx, rec.TenantID, rec.EndpointID, rec.EndpointUpdates); err != nil {
+		commitErr = err
+		p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateEndpointAttachMetadata, "error", err)
+		return err
+	}
+
+	endpointIDStr := fmt.Sprintf("%d", rec.EndpointID)
+	activeSession, getErr := tx.EndPointSessions().GetActive(ctx, endpointIDStr)
+	if getErr != nil {
+		commitErr = getErr
+		p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToLoadEndpointSession, "error", getErr)
+		return getErr
+	}
+
+	now := time.Now().UTC()
+
+	// Lookup base station ID for session enrichment (tenant-scoped)
+	var primaryBsID *int64
+	if p.basestationRepo != nil {
+		bs, bsErr := p.basestationRepo.GetByEUI(ctx, rec.BSLookupTenantID, rec.BaseStationEUI)
+		if bsErr == nil && bs != nil {
+			primaryBsID = &bs.ID
+		}
+	}
+
+	// ShAddr is uint16, model ShAddr is *int32 (INTEGER 0-65535)
+	shAddrInt32 := int32(rec.ShAddr)
+
+	if activeSession != nil {
+		activeSession.SessionKey = rec.EncryptedKey
+		//nolint:gosec // G115: AttachCnt is handler-validated to fit 24 bits
+		activeSession.AttachCnt = int32(rec.AttachCnt)
+		activeSession.LastActivityAt = now
+		activeSession.ShAddr = &shAddrInt32
+		activeSession.PrimaryBaseStationID = primaryBsID
+		if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
+			commitErr = err
+			p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateEndpointSession, "error", err)
+			return err
+		}
+	} else {
+		newSession := &models.EndPointSession{
+			TenantID:   rec.TenantID,
+			EndPointID: rec.EndpointID,
+			SessionID:  uuid.New().String(),
+			SessionKey: rec.EncryptedKey,
+			//nolint:gosec // G115: AttachCnt is handler-validated to fit 24 bits
+			AttachCnt:            int32(rec.AttachCnt),
+			Status:               "active",
+			StartedAt:            now,
+			LastActivityAt:       now,
+			ShAddr:               &shAddrInt32,
+			PrimaryBaseStationID: primaryBsID,
+		}
+		if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
+			commitErr = err
+			p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToCreateEndpointSession, "error", err)
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		commitErr = err
+		p.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToCommitAttachTransaction, "error", err)
+		return err
+	}
+	commitErr = nil
+	return nil
+}
+
+// PersistAttachPropagateSession runs the attach-propagate transaction under
+// the endpoint owner tenant; error strings propagate to the caller unchanged.
+func (p *endpointAttachmentPersistence) PersistAttachPropagateSession(ctx context.Context, rec bssci.AttachPropagateSessionRecord) error {
+	tx, txErr := p.storage.BeginTx(ctx)
+	if txErr != nil {
+		return fmt.Errorf("failed to begin attach propagate transaction: %w", txErr)
+	}
+	var commitErr error
+	defer func() {
+		if commitErr != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if err := tx.EndPoints().UpdateFields(ctx, rec.TenantID, rec.EndpointID, rec.EndpointUpdates); err != nil {
+		commitErr = err
+		return fmt.Errorf("failed to update endpoint: %w", err)
+	}
+
+	endpointIDStr := fmt.Sprintf("%d", rec.EndpointID)
+	activeSession, getErr := tx.EndPointSessions().GetActive(ctx, endpointIDStr)
+	if getErr != nil {
+		commitErr = getErr
+		return fmt.Errorf("failed to load endpoint session: %w", getErr)
+	}
+
+	now := time.Now().UTC()
+
+	// Lookup base station ID for session enrichment (tenant-scoped to owner)
+	var primaryBsID *int64
+	if p.basestationRepo != nil {
+		bs, bsErr := p.basestationRepo.GetByEUI(ctx, rec.TenantID, rec.BaseStationEUI)
+		if bsErr == nil && bs != nil {
+			primaryBsID = &bs.ID
+		}
+	}
+
+	// ShAddr is uint16, model ShAddr is *int32 (INTEGER 0-65535)
+	shAddrInt32 := int32(rec.ShAddr)
+
+	if activeSession != nil {
+		activeSession.SessionKey = rec.EncryptedKey
+		activeSession.LastActivityAt = now
+		activeSession.ShAddr = &shAddrInt32
+		activeSession.PrimaryBaseStationID = primaryBsID
+		if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
+			commitErr = err
+			return fmt.Errorf("failed to update endpoint session: %w", err)
+		}
+	} else {
+		newSession := &models.EndPointSession{
+			TenantID:             rec.TenantID,
+			EndPointID:           rec.EndpointID,
+			SessionID:            uuid.New().String(),
+			SessionKey:           rec.EncryptedKey,
+			Status:               string(models.SessionStatusActive),
+			UplinkMode:           "standard", // Default uplink mode per BSSCI §5.2
+			StartedAt:            now,
+			LastActivityAt:       now,
+			ShAddr:               &shAddrInt32,
+			PrimaryBaseStationID: primaryBsID,
+		}
+		if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
+			commitErr = err
+			return fmt.Errorf("failed to create endpoint session: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		commitErr = err
+		return fmt.Errorf("failed to commit attach propagate transaction: %w", err)
+	}
+	commitErr = nil
+	return nil
+}

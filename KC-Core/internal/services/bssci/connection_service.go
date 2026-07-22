@@ -64,3 +64,20 @@ func (c *connectionRegistry) RegisterConnection(ctx context.Context, session *bs
 
 	return nil
 }
+
+// DisconnectBaseStationIfCurrent marks the base station offline only while the
+// given connection is still its current one.
+func (c *connectionRegistry) DisconnectBaseStationIfCurrent(ctx context.Context, eui [8]byte, connectionID string) error {
+	if c.manager == nil {
+		return nil
+	}
+	return c.manager.DisconnectBaseStationIfCurrent(ctx, eui, connectionID)
+}
+
+// UpdateLastSeen refreshes the base station's last-seen timestamp.
+func (c *connectionRegistry) UpdateLastSeen(ctx context.Context, eui [8]byte) error {
+	if c.manager == nil {
+		return nil
+	}
+	return c.manager.UpdateLastSeen(ctx, eui)
+}

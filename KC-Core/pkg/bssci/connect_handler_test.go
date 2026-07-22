@@ -54,6 +54,12 @@ func (m *mockConnectionService) RegisterConnection(ctx context.Context, _ *bssci
 	return nil
 }
 
+func (m *mockConnectionService) DisconnectBaseStationIfCurrent(_ context.Context, _ [8]byte, _ string) error {
+	return nil
+}
+
+func (m *mockConnectionService) UpdateLastSeen(_ context.Context, _ [8]byte) error { return nil }
+
 // mockConnForConnect implements net.Conn to capture error messages sent during connect
 type mockConnForConnect struct {
 	errorSent        bool

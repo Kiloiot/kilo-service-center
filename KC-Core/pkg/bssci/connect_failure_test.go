@@ -23,6 +23,12 @@ func (failingRegistrationConnSvc) RegisterConnection(_ context.Context, _ *Sessi
 	return errors.New("registration failed")
 }
 
+func (failingRegistrationConnSvc) DisconnectBaseStationIfCurrent(_ context.Context, _ [8]byte, _ string) error {
+	return nil
+}
+
+func (failingRegistrationConnSvc) UpdateLastSeen(_ context.Context, _ [8]byte) error { return nil }
+
 // terminateSpySessionSvc records TerminateSession calls to prove the
 // activation compensation runs.
 type terminateSpySessionSvc struct {

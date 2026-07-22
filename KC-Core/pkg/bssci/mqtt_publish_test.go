@@ -26,6 +26,35 @@ type mockMQTTEventPublisher struct {
 	detaches  []mockDetachCall
 	dlResults []mockDLResultCall
 	returnErr error
+	published chan struct{}
+}
+
+// signalPublish notifies a waiting assertNoPublish; safe when no channel is set.
+func (m *mockMQTTEventPublisher) signalPublish() {
+	if m.published != nil {
+		select {
+		case m.published <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// assertNoPublish fails the test when any publish lands within the window.
+// The publishes under test run in goroutines, so an immediate counter check
+// can pass before the goroutine executes; waiting on the signal channel makes
+// the negative assertion deterministic.
+func (m *mockMQTTEventPublisher) assertNoPublish(t *testing.T) {
+	t.Helper()
+	select {
+	case <-m.published:
+		t.Fatal("unexpected MQTT publish for unresolved organization")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// newSilentMockMQTTEventPublisher builds a mock armed for assertNoPublish.
+func newSilentMockMQTTEventPublisher() *mockMQTTEventPublisher {
+	return &mockMQTTEventPublisher{published: make(chan struct{}, 16)}
 }
 
 type mockUplinkCall struct {
@@ -66,6 +95,7 @@ func (m *mockMQTTEventPublisher) PublishUplink(_ context.Context, orgUUID string
 		OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI,
 		Rssi: rssi, Snr: snr, RxTime: rxTime, PacketCnt: packetCnt, UserData: userData,
 	})
+	m.signalPublish()
 	return m.returnErr
 }
 
@@ -73,6 +103,7 @@ func (m *mockMQTTEventPublisher) PublishAttach(_ context.Context, orgUUID string
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.attaches = append(m.attaches, mockAttachCall{OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI})
+	m.signalPublish()
 	return m.returnErr
 }
 
@@ -80,6 +111,7 @@ func (m *mockMQTTEventPublisher) PublishDetach(_ context.Context, orgUUID string
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.detaches = append(m.detaches, mockDetachCall{OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI})
+	m.signalPublish()
 	return m.returnErr
 }
 
@@ -87,6 +119,7 @@ func (m *mockMQTTEventPublisher) PublishDownlinkResult(_ context.Context, orgUUI
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.dlResults = append(m.dlResults, mockDLResultCall{OrgUUID: orgUUID, EpEUI: epEUI, QueID: queID, Result: result})
+	m.signalPublish()
 	return m.returnErr
 }
 
@@ -357,7 +390,7 @@ func TestHandleAttachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	testLogger := logger.NewNop()
 	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
 
-	mock := &mockMQTTEventPublisher{}
+	mock := newSilentMockMQTTEventPublisher()
 	server.SetMQTTPublisher(mock)
 	// orgResolver returns uuid.Nil for unknown tenants
 	server.orgResolver = &mqttTestOrgResolver{
@@ -389,7 +422,8 @@ func TestHandleAttachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	msg := &Message{Command: mioty.CmdAttachComplete, OpId: 1002}
 	_ = server.CallHandleAttachComplete(session, msg, nil)
 
-	// Publish should be skipped (org unresolved → uuid.Nil → empty string)
+	// Publish must be skipped (org unresolved → uuid.Nil)
+	mock.assertNoPublish(t)
 	assert.Equal(t, 0, mock.attachCount())
 }
 
@@ -448,7 +482,7 @@ func TestHandleDetachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	testLogger := logger.NewNop()
 	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
 
-	mock := &mockMQTTEventPublisher{}
+	mock := newSilentMockMQTTEventPublisher()
 	server.SetMQTTPublisher(mock)
 
 	session := &Session{
@@ -476,6 +510,7 @@ func TestHandleDetachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	msg := &Message{Command: mioty.CmdDetachComplete, OpId: 2002}
 	_ = server.CallHandleDetachComplete(session, msg, nil)
 
+	mock.assertNoPublish(t)
 	assert.Equal(t, 0, mock.detachCount())
 }
 
@@ -512,7 +547,6 @@ func TestHandleULData_PublishesMQTTUplink(t *testing.T) {
 	// Wire deduplicator (required by handleULData)
 	dedup := NewMessageDeduplicator(5 * time.Minute)
 	defer dedup.Stop()
-	server.deduplicator = dedup
 	server.uplinkIngestSvc = &mqttPublishingIngestService{server: server}
 
 	// Wire org resolver to map server tenant → known org UUID
@@ -581,15 +615,13 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 	dedup := NewMessageDeduplicator(5 * time.Minute)
 	defer dedup.Stop()
 	server.uplinkIngestSvc = &mqttPublishingIngestService{server: server}
-	server.deduplicator = dedup
 
 	// orgResolver returns uuid.Nil for server tenant (no org mapping)
 	server.orgResolver = &mqttTestOrgResolver{
 		tenantToOrg: map[int64]uuid.UUID{},
 	}
 
-	// Wire non-sync mock (no WaitGroup since publish should be skipped)
-	mock := &mockMQTTEventPublisher{}
+	mock := newSilentMockMQTTEventPublisher()
 	server.SetMQTTPublisher(mock)
 
 	session := &Session{
@@ -615,7 +647,8 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 	msg := &Message{Command: mioty.CmdULData, OpId: 5002}
 	_ = server.CallHandleULData(session, msg, data)
 
-	// Publish should be skipped (org unresolved → uuid.Nil → empty string)
+	// Publish must be skipped (org unresolved → uuid.Nil)
+	mock.assertNoPublish(t)
 	assert.Equal(t, 0, mock.uplinkCount())
 }
 

@@ -731,7 +731,7 @@ func TestHandleConnect_VersionMismatch_SendsPOSIXEnotsup(t *testing.T) {
 
 	// Setup mock session validator to pass (Connect field validation OK)
 	mockValidator := new(MockSessionValidator)
-	mockValidator.On("ValidateConnectFields", mock.Anything, mock.Anything).
+	mockValidator.On("ValidateConnectFields", mock.Anything).
 		Return("") // Empty = no error
 
 	// Create server with required dependencies

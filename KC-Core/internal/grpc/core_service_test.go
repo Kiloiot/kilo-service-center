@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -2254,6 +2255,18 @@ func (s *stubStatusSvc) RemovePendingOperation(_ context.Context, _ *bssci.Sessi
 }
 func (s *stubStatusSvc) ExtractQueueMetadata(_ *bssci.Session, _ int64) (uint64, int64, string) {
 	return 0, 0, ""
+}
+
+func (s *stubStatusSvc) UpdatePendingOperationMetadata(_ context.Context, _ *bssci.Session, _ int64, _ map[string]interface{}, _ json.RawMessage) error {
+	return nil
+}
+
+func (s *stubStatusSvc) PersistedOperations(_ context.Context, _ int64) ([]bssci.PersistedOperation, error) {
+	return nil, nil
+}
+
+func (s *stubStatusSvc) DeletePendingOperations(_ context.Context, _ *bssci.Session) (int64, error) {
+	return 0, nil
 }
 
 type stubDownlinkScheduler struct{}

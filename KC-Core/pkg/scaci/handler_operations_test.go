@@ -963,7 +963,7 @@ func TestHandleDeregister_CachesEpEui(t *testing.T) {
 func TestHandleDeregisterComplete_UsesCache(t *testing.T) {
 	// Setup mock services
 	mockEndpoint := new(MockEndpointService)
-	mockEndpoint.On("PropagateDetachToAll", uint64(0x1234567890ABCDEF)).Return(nil)
+	mockEndpoint.On("PropagateDetachToAll", mock.Anything, uint64(0x1234567890ABCDEF)).Return(nil)
 
 	mockDL := new(MockDLService)
 	// GetDownlinkQueue returns empty list (no downlinks to revoke)
@@ -1033,7 +1033,7 @@ func TestRevokeEndpointDownlinks_NilDLSvc_Graceful(t *testing.T) {
 func TestHandleDeregisterComplete_DBFallback(t *testing.T) {
 	// Setup mock services
 	mockEndpoint := new(MockEndpointService)
-	mockEndpoint.On("PropagateDetachToAll", uint64(0x1234567890ABCDEF)).Return(nil)
+	mockEndpoint.On("PropagateDetachToAll", mock.Anything, uint64(0x1234567890ABCDEF)).Return(nil)
 
 	mockDL := new(MockDLService)
 	mockDL.On("GetDownlinkQueue", mock.Anything, mock.Anything, mock.Anything).Return([]*storage.DownlinkMessage{}, nil)
@@ -1785,7 +1785,7 @@ func TestHandleDeregisterComplete_CleanupMetadataCapture(t *testing.T) {
 	// Setup mock services with specific return values
 	mockEndpoint := new(MockEndpointService)
 	// PropagateDetachToAll returns 2 errors to verify detachErrorCount
-	mockEndpoint.On("PropagateDetachToAll", uint64(0x70B3D59CD000089B)).Return([]error{
+	mockEndpoint.On("PropagateDetachToAll", mock.Anything, uint64(0x70B3D59CD000089B)).Return([]error{
 		assert.AnError,
 		assert.AnError,
 	})
@@ -1897,7 +1897,7 @@ func TestHandleDeregisterComplete_CleanSuccess(t *testing.T) {
 	// Setup mock services - all succeed with no errors
 	mockEndpoint := new(MockEndpointService)
 	// PropagateDetachToAll returns empty error slice (all succeeded)
-	mockEndpoint.On("PropagateDetachToAll", uint64(0x70B3D59CD000089B)).Return([]error{})
+	mockEndpoint.On("PropagateDetachToAll", mock.Anything, uint64(0x70B3D59CD000089B)).Return([]error{})
 
 	mockDL := new(MockDLService)
 	// GetDownlinkQueue returns 2 downlinks

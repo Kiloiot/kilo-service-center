@@ -514,12 +514,12 @@ func (s *sessionService) UpdateSessionCounters(ctx context.Context, session *bss
 		return fmt.Errorf("cannot update counters: session not persisted (DbSessionID=0)")
 	}
 
-	updateReq := &models.BaseStationSessionUpdateRequest{
-		SnBsOpId: &session.LastBsOpId,
-		SnScOpId: &session.LastScOpId,
-	}
-
-	err := s.bsSessionRepo.UpdateSession(ctx, s.resolvedTenantID(session), session.DbSessionID, updateReq)
+	// Uses the fixed atomic UpdateOperationIDs statement (sets updated_at and
+	// errors when the session row is missing) so every counter-persistence
+	// path shares one durable semantics: a zero-row update surfaces as an
+	// error instead of silent success on an inconsistent session.
+	err := s.bsSessionRepo.UpdateOperationIDs(ctx, s.resolvedTenantID(session), session.DbSessionID,
+		session.LastBsOpId, session.LastScOpId)
 	if err != nil {
 		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
 			"error", err,

@@ -40,22 +40,20 @@ import (
 //   - Community fallback to default org (when cert parsing fails)
 //   - Version negotiation, session resumption, session creation
 func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Certificate, opId int64, payload []byte) error {
-	// Pre-session logging: Session does not exist until Connect handshake completes.
-	// Certificate CN logged as explicit field; tenant resolution happens in HandshakeService.
-	// context.Background() is architecturally correct here - no session context available.
-	//
-	// Pre-session contexts cannot use sessionContext() because the session
-	// doesn't exist yet. The 5 context.Background() calls in handleConnect are intentional.
+	// Pre-session logging: Session does not exist until Connect handshake
+	// completes, so these sites use s.safeCtx() (a plain value-free context).
+	// Certificate CN is logged as an explicit field; tenant resolution happens
+	// in HandshakeService.
 	certCN := "unknown"
 	if cert != nil && cert.Subject.CommonName != "" {
 		certCN = cert.Subject.CommonName
 	}
-	s.logger.DebugContext(context.Background(), LogSCACIProcessingConnect, "certCN", certCN)
+	s.logger.DebugContext(s.safeCtx(), LogSCACIProcessingConnect, "certCN", certCN)
 
 	// Step 1: Decode Connect message from payload (transport layer)
 	var req Connect
 	if err := msgpack.Unmarshal(payload, &req); err != nil {
-		s.logger.ErrorContext(context.Background(), LogSCACIDecodeConnectFailed, "error", err)
+		s.logger.ErrorContext(s.safeCtx(), LogSCACIDecodeConnectFailed, "error", err)
 		return s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errInvalidConnectFormat)
 	}
 
@@ -63,27 +61,27 @@ func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Cert
 
 	// SCACI §3.3-02: Connect MUST use opId == OpIDConnect (0)
 	if opId != OpIDConnect {
-		s.logger.ErrorContext(context.Background(), LogSCACIConnectOpIDMustBeZero, "opId", opId)
+		s.logger.ErrorContext(s.safeCtx(), LogSCACIConnectOpIDMustBeZero, "opId", opId)
 		_ = s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errConnectOpIdMustBeZero)
 		_ = conn.Close()
 		return fmt.Errorf("invalid connect opId")
 	}
 
 	// SCACI §3.3.1-01: Validate mandatory fields via sessionValidator
-	if errToken := s.sessionValidator.ValidateConnectFields(&req, opId); errToken != "" {
+	if errToken := s.sessionValidator.ValidateConnectFields(&req); errToken != "" {
 		_ = s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
 		_ = conn.Close()
 		return fmt.Errorf("connect validation failed: %s", errToken)
 	}
 
 	// Debug: Log resume field state
-	s.logger.DebugContext(context.Background(), LogSCACIConnectResumeFields,
+	s.logger.DebugContext(s.safeCtx(), LogSCACIConnectResumeFields,
 		"hasSnAcOpId", req.SnAcOpId != nil,
 		"hasSnScOpId", req.SnScOpId != nil)
 
 	// Step 3: Delegate to HandshakeService for business logic
 	// Service handles: tenant resolution, version negotiation, session resumption, session creation, metadata
-	ctx := context.Background()
+	ctx := s.safeCtx()
 	newSession, resp, errToken := s.handshakeSvc.ValidateConnect(ctx, &req, cert)
 	if errToken != "" {
 		// Service returned error token - sendErrorWithCatalog handles POSIXCode resolution
@@ -308,7 +306,7 @@ func (s *Server) handleConnectComplete(conn net.Conn, session *Session, opId int
 	// Use session.NegotiatedVersion set during handleConnect (SCACI §§2.1-2.3)
 	// Skip if session was sync-persisted in handleConnect (SyncPersisted flag set for fresh sessions)
 	if !session.SyncPersisted {
-		s.sessionPersistence.PersistConnectAsync(session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, session.NegotiatedVersion)
+		s.sessionPersistence.PersistConnectAsync(s.sessionContext(session), session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, session.NegotiatedVersion)
 	}
 
 	// SCACI §1: Replay pending operations on successful session resume

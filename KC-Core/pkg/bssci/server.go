@@ -27,7 +27,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -110,10 +109,6 @@ type Server struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
 
-	// Concrete dependencies KEPT (needed by services)
-	connectionMgr *basestation.ConnectionManager // Real collaborator for ConnectionService
-	storage       interfaces.Storage             // Uses repository interfaces
-
 	// Injected services
 	sessionSvc         SessionService
 	versionNegotiator  VersionNegotiator
@@ -126,7 +121,7 @@ type Server struct {
 	tenantResolver     TenantResolver  // Queue-to-tenant mapping (replaces queueTenants map)
 
 	// Organization resolution
-	orgResolver org.Resolver // Organization UUID → tenant ID resolution
+	orgResolver OrganizationDirectory // Organization UUID → tenant ID resolution
 	// Certificate identity enforcement (strict mode): resolver maps the TLS
 	// client certificate to a tenant/org identity at accept; the directory
 	// reads registered station identity for connect-time enforcement
@@ -134,12 +129,16 @@ type Server struct {
 	bsDirectory          RegisteredBaseStationDirectory
 	defaultTenantID      int64 // Community mode fallback tenant ID
 
-	// Keep essential infrastructure
-	deduplicator    *MessageDeduplicator
-	eventStore      interfaces.SystemEventStore
-	basestationRepo interfaces.BaseStationRepository
-	endpointRepo    interfaces.EndpointRepository
-	keyEncryptor    *crypto.KeyEncryptor
+	// Storage-boundary contracts (narrow, consumer-owned; satisfied
+	// structurally by the KC-DB repositories)
+	eventStore         EventStore
+	basestationRepo    BaseStationStore
+	endpointRepo       EndpointDirectory
+	keyEncryptor       NetworkKeyProtector
+	protocolMessages   ProtocolMessageStore
+	dlrxStore          DLRXStatusStore
+	bsStatusStore      BaseStationStatusStore
+	downlinkQueueStore DownlinkQueueStore
 
 	// Automatic propagation (BSSCI §5.8.3)
 	propagationSvc propagation.Service
@@ -152,6 +151,13 @@ type Server struct {
 
 	// Shared uplink ingest pipeline (dedup, tenant resolution, persistence, SCACI, MQTT)
 	uplinkIngestSvc UplinkIngestService
+
+	// Transactional attach / attach-propagate endpoint-session persistence
+	attachPersistence EndpointAttachmentPersistence
+
+	// runtimeConfigured records that ConfigureRuntime supplied the circular
+	// dependencies; Start refuses to run without them.
+	runtimeConfigured bool
 
 	// Relay outbox writer for CE mode: enqueues unknown-endpoint uplinks for federation relay
 	relayOutbox RelayOutboxWriter
@@ -718,70 +724,120 @@ func (s *Server) validateOutboundMessage(session *Session, msgMap map[string]int
 	return nil
 }
 
-// NewServer creates a new BSSCI server with injected service dependencies
-func NewServer(
-	cfg *Config,
-	log logger.Logger,
-	connectionMgr *basestation.ConnectionManager,
-	stor interfaces.Storage,
-	eventStore interfaces.SystemEventStore,
-	basestationRepo interfaces.BaseStationRepository,
-	endpointRepo interfaces.EndpointRepository,
-	tenantID int64,
-	sessionSvc SessionService,
-	versionNegotiator VersionNegotiator,
-	downlinkSvc DownlinkService,
-	statusSvc StatusService,
-	connectionRegistry BaseStationConnectionRegistry,
-	broadcaster SCACIBroadcaster,
-	queueSerializer QueueSerializer,
-	auditLogger AuditLogger,
-	tenantResolver TenantResolver,
-	orgResolver org.Resolver,
-	defaultTenantID int64,
-) (*Server, error) {
+// Dependencies carries every non-circular Server dependency for NewServer.
+// StatusSvc is mandatory; feature-controlled collaborators (MQTT, blueprint
+// decoding, detach validation, federation outbox, SCACI bridges) stay nil
+// when their feature is off. The circular dependencies (propagation, downlink
+// dispatcher) are supplied via ConfigureRuntime before Start.
+type Dependencies struct {
+	// Core protocol services
+	SessionSvc         SessionService
+	VersionNegotiator  VersionNegotiator
+	DownlinkSvc        DownlinkService
+	StatusSvc          StatusService
+	ConnectionRegistry BaseStationConnectionRegistry
+	Broadcaster        SCACIBroadcaster
+	QueueSerializer    QueueSerializer
+	AuditLogger        AuditLogger
+	TenantResolver     TenantResolver
+
+	// Storage-boundary contracts
+	EventStore        EventStore
+	BaseStations      BaseStationStore
+	Endpoints         EndpointDirectory
+	AttachPersistence EndpointAttachmentPersistence
+	OrgDirectory      OrganizationDirectory
+	KeyProtector      NetworkKeyProtector
+
+	// Certificate identity enforcement
+	CertIdentityResolver CertificateIdentityResolver
+	BaseStationDirectory RegisteredBaseStationDirectory
+
+	// Ingest pipeline and routing
+	UplinkIngest        UplinkIngestService
+	RoamingSvc          RoamingService
+	DispositionResolver IngressDispositionResolver
+	RelayOutbox         RelayOutboxWriter
+
+	// Feature-controlled collaborators
+	DetachValidator          DetachSignatureValidator
+	MQTTPublisher            MQTTEventPublisher
+	BlueprintDecoder         BlueprintDecoder
+	BlueprintResolver        BlueprintResolver
+	SCACIEPStatusBroadcaster SCACIEPStatusBroadcaster
+
+	// ProtocolMessages/DLRXStatus/BaseStationStatus/DownlinkQueue are the
+	// narrow storage views; each is satisfied directly by the matching
+	// KC-DB repository.
+	ProtocolMessages  ProtocolMessageStore
+	DLRXStatus        DLRXStatusStore
+	BaseStationStatus BaseStationStatusStore
+	DownlinkQueue     DownlinkQueueStore
+
+	TenantID        int64
+	DefaultTenantID int64
+}
+
+// RuntimeDependencies carries the collaborators that are constructed against
+// the live *Server (circular) and therefore cannot be constructor arguments.
+type RuntimeDependencies struct {
+	Propagation        propagation.Service
+	DownlinkDispatcher DownlinkDispatcher
+}
+
+// NewServer creates a BSSCI server from its dependency set; call
+// ConfigureRuntime before Start to supply the circular collaborators.
+func NewServer(cfg *Config, log logger.Logger, deps Dependencies) (*Server, error) {
 	// StatusService is mandatory (single-writer architecture)
-	if statusSvc == nil {
+	if deps.StatusSvc == nil {
 		return nil, fmt.Errorf("statusSvc is required for pending operation tracking")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Initialize key encryptor for sensitive data
-	keyEncryptor, err := crypto.NewKeyEncryptor()
-	if err != nil {
-		log.WarnContext(ctx, LogBSSCIFailedToInitializeKeyEncryptor, "error", err)
-		// Continue without encryption rather than failing
-	}
-
 	s := &Server{
-		config:          cfg,
-		logger:          log,
-		sessions:        make(map[string]*Session),
-		ctx:             ctx,
-		cancel:          cancel,
-		handlers:        make(map[string]HandlerFunc),
-		connectionMgr:   connectionMgr,
-		deduplicator:    NewMessageDeduplicator(duplicateWindow(cfg)),
-		storage:         stor,
-		tenantID:        tenantID,
-		eventStore:      eventStore,
-		basestationRepo: basestationRepo,
-		endpointRepo:    endpointRepo,
-		keyEncryptor:    keyEncryptor,
-		// Injected services
-		sessionSvc:         sessionSvc,
-		versionNegotiator:  versionNegotiator,
-		downlinkSvc:        downlinkSvc,
-		statusSvc:          statusSvc,
-		connectionRegistry: connectionRegistry,
-		queueSerializer:    queueSerializer,
-		auditLogger:        auditLogger,
-		tenantResolver:     tenantResolver,
-		broadcaster:        broadcaster,
-		// Organization resolution
-		orgResolver:     orgResolver,
-		defaultTenantID: defaultTenantID,
+		config:   cfg,
+		logger:   log,
+		sessions: make(map[string]*Session),
+		ctx:      ctx,
+		cancel:   cancel,
+		handlers: make(map[string]HandlerFunc),
+		tenantID: deps.TenantID,
+
+		eventStore:         deps.EventStore,
+		basestationRepo:    deps.BaseStations,
+		endpointRepo:       deps.Endpoints,
+		keyEncryptor:       deps.KeyProtector,
+		protocolMessages:   deps.ProtocolMessages,
+		dlrxStore:          deps.DLRXStatus,
+		bsStatusStore:      deps.BaseStationStatus,
+		downlinkQueueStore: deps.DownlinkQueue,
+		attachPersistence:  deps.AttachPersistence,
+
+		sessionSvc:         deps.SessionSvc,
+		versionNegotiator:  deps.VersionNegotiator,
+		downlinkSvc:        deps.DownlinkSvc,
+		statusSvc:          deps.StatusSvc,
+		connectionRegistry: deps.ConnectionRegistry,
+		queueSerializer:    deps.QueueSerializer,
+		auditLogger:        deps.AuditLogger,
+		tenantResolver:     deps.TenantResolver,
+		broadcaster:        deps.Broadcaster,
+
+		orgResolver:     deps.OrgDirectory,
+		defaultTenantID: deps.DefaultTenantID,
+
+		certIdentityResolver:     deps.CertIdentityResolver,
+		bsDirectory:              deps.BaseStationDirectory,
+		uplinkIngestSvc:          deps.UplinkIngest,
+		roamingSvc:               deps.RoamingSvc,
+		dispositionResolver:      deps.DispositionResolver,
+		relayOutbox:              deps.RelayOutbox,
+		detachValidator:          deps.DetachValidator,
+		mqttPublisher:            deps.MQTTPublisher,
+		blueprintDecoder:         deps.BlueprintDecoder,
+		blueprintResolver:        deps.BlueprintResolver,
+		scaciEPStatusBroadcaster: deps.SCACIEPStatusBroadcaster,
 	}
 
 	// Register command handlers
@@ -790,63 +846,23 @@ func NewServer(
 	return s, nil
 }
 
-// SetPropagationService injects the propagation service after server construction
-// Post-construction initialization to avoid circular dependency in main.go
-// The propagation service depends on Server as AttachPropagateSender, so it must be
-// constructed after the server exists and then injected back.
-//
-// BSSCI §5.8-5.8.3: Automatic endpoint propagation to multiple base stations
-func (s *Server) SetPropagationService(svc propagation.Service) {
-	s.propagationSvc = svc
-}
-
-// SetRoamingService injects the roaming service after server construction
-// Post-construction initialization for modularity and testability.
-// The roaming service handles multi-tenant endpoint ownership resolution.
-func (s *Server) SetRoamingService(svc RoamingService) {
-	s.roamingSvc = svc
-}
-
-// SetDispositionResolver injects the ingress disposition resolver.
-// The resolver classifies each incoming uplink as Local, Relay, or Drop before ingest.
-func (s *Server) SetDispositionResolver(r IngressDispositionResolver) {
-	s.dispositionResolver = r
-}
-
-// SetUplinkIngestService injects the shared uplink ingest pipeline.
-// When set, handleULData delegates dedup, tenant resolution, persistence, SCACI, and MQTT to this service.
-func (s *Server) SetUplinkIngestService(svc UplinkIngestService) {
-	s.uplinkIngestSvc = svc
-}
-
-// SetRelayOutboxWriter injects the CE federation relay outbox writer.
-// When set, handleULData enqueues DispositionRelay uplinks instead of dropping them.
-func (s *Server) SetRelayOutboxWriter(w RelayOutboxWriter) {
-	s.relayOutbox = w
-}
-
-// GetDeduplicator exposes the server's message deduplicator for injection into the ingest service.
-// The same deduplicator instance must be shared so dedup state is consistent.
-func (s *Server) GetDeduplicator() *MessageDeduplicator {
-	return s.deduplicator
-}
-
-// SetDetachValidator wires the detach signature validator for unknown endpoint validation.
-// Called after service construction to enable signature validation via internal validator.
-func (s *Server) SetDetachValidator(validator DetachSignatureValidator) {
-	s.detachValidator = validator
-}
-
-// SetCertificateIdentityResolver wires certificate-identity resolution for
-// TLS accept (CE composite resolver; ECE inherits it through the builders).
-func (s *Server) SetCertificateIdentityResolver(resolver CertificateIdentityResolver) {
-	s.certIdentityResolver = resolver
-}
-
-// SetBaseStationDirectory wires the registered-station directory used for
-// connect-time certificate enforcement.
-func (s *Server) SetBaseStationDirectory(directory RegisteredBaseStationDirectory) {
-	s.bsDirectory = directory
+// ConfigureRuntime supplies the circular dependencies once, before Start:
+// the propagation service and the downlink dispatcher are constructed
+// against the live *Server and injected back here.
+func (s *Server) ConfigureRuntime(deps RuntimeDependencies) error {
+	if deps.Propagation == nil {
+		return fmt.Errorf("propagation service is required")
+	}
+	if deps.DownlinkDispatcher == nil {
+		return fmt.Errorf("downlink dispatcher is required")
+	}
+	if s.config != nil && s.config.DetachSignatureValidationEnabled && s.detachValidator == nil {
+		return fmt.Errorf("detach signature validation is enabled but no validator is wired")
+	}
+	s.propagationSvc = deps.Propagation
+	s.downlinkDispatcher = deps.DownlinkDispatcher
+	s.runtimeConfigured = true
+	return nil
 }
 
 // defaultOrgForSessionTenant resolves the default organization for the
@@ -922,46 +938,6 @@ func (s *Server) verifyCertificateFingerprint(ctx context.Context, session *Sess
 		return fmt.Errorf("station %016X presented certificate does not match registered fingerprint", session.BaseStationEUI)
 	}
 	return nil
-}
-
-// SetDownlinkDispatcher wires the auto-dispatch service (BSSCI §5.10.2)
-// Called after service construction to enable dlOpen=true automatic dispatch.
-func (s *Server) SetDownlinkDispatcher(dispatcher DownlinkDispatcher) {
-	s.downlinkDispatcher = dispatcher
-}
-
-// SetBroadcaster wires the SCACI broadcaster for uplink/downlink forwarding.
-// Called after SCACI server construction to complete the BSSCI → SCACI bridge.
-// Preserves startup order: BSSCI → SCACI → wire broadcaster.
-//
-// Legacy scaci parameter removed - broadcaster is now the only interface.
-func (s *Server) SetBroadcaster(broadcaster SCACIBroadcaster) {
-	s.broadcaster = broadcaster
-}
-
-// SetSCACIEPStatusBroadcaster wires the SCACI EPStatus broadcaster for attach/detach forwarding.
-// Called after SCACI server construction to complete the BSSCI → SCACI EPStatus bridge.
-// Per SCACI §3.13: SC sends EPStatus to all ACs when endpoints attach/detach.
-func (s *Server) SetSCACIEPStatusBroadcaster(broadcaster SCACIEPStatusBroadcaster) {
-	s.scaciEPStatusBroadcaster = broadcaster
-}
-
-// SetBlueprintDecoder wires the blueprint decoder service for payload decoding.
-// Per MIOTY Application Layer Specification: decode payloads using blueprint JSON definitions.
-func (s *Server) SetBlueprintDecoder(decoder BlueprintDecoder) {
-	s.blueprintDecoder = decoder
-}
-
-// SetBlueprintResolver wires the blueprint resolver service for blueprint lookup.
-// Per MIOTY Application Layer Specification: resolve blueprints by TypeEUI or device model.
-func (s *Server) SetBlueprintResolver(resolver BlueprintResolver) {
-	s.blueprintResolver = resolver
-}
-
-// SetMQTTPublisher wires the MQTT event publisher for device lifecycle events.
-// Called after publisher creation to enable outbound MQTT publishing from BSSCI handlers.
-func (s *Server) SetMQTTPublisher(pub MQTTEventPublisher) {
-	s.mqttPublisher = pub
 }
 
 // formatTenantID formats the server's tenant ID as a string for database operations
@@ -1040,6 +1016,15 @@ func certsExist(certFile, keyFile, caFile string) bool {
 // (e.g., fresh deployment before certs are generated via UI), the listener
 // is deferred and a background goroutine polls until the certificates appear.
 func (s *Server) Start() error {
+	// The composition root must supply the circular dependencies before the
+	// server accepts traffic; an incompletely wired server refuses to start.
+	if !s.runtimeConfigured {
+		return fmt.Errorf("server runtime not configured: call ConfigureRuntime before Start")
+	}
+	if s.uplinkIngestSvc == nil {
+		return fmt.Errorf("uplink ingest service is required")
+	}
+
 	// The dlRxStatQry expiry sweep runs independently of the TLS listener path.
 	s.startDLRXQueryExpiryWorker()
 
@@ -1141,9 +1126,6 @@ func (s *Server) Stop() error {
 		if err := s.listener.Close(); err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCloseListener, "error", err)
 		}
-	}
-	if s.deduplicator != nil {
-		s.deduplicator.Stop()
 	}
 	s.wg.Wait()
 	return nil
@@ -1326,10 +1308,10 @@ func (s *Server) handleConnection(conn net.Conn) {
 		// Offline status transition is guarded by connection identity: a
 		// reconnect that already replaced this connection keeps the base
 		// station online
-		if session.BaseStationEUI != 0 && s.connectionMgr != nil {
+		if session.BaseStationEUI != 0 && s.connectionRegistry != nil {
 			euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
 
-			if err := s.connectionMgr.DisconnectBaseStationIfCurrent(ctx, euiBytes, session.ID); err != nil {
+			if err := s.connectionRegistry.DisconnectBaseStationIfCurrent(ctx, euiBytes, session.ID); err != nil {
 				s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateOfflineStatus,
 					"eui", session.BaseStationEUI,
 					"error", err)
@@ -1366,20 +1348,16 @@ func (s *Server) handleConnection(conn net.Conn) {
 		// they are reissued with their original opIds on resume (BSSCI §4/§5.3).
 		// Only a terminal session (rejected, provisional, or terminated above)
 		// has its rows removed.
-		if session.DbSessionID != 0 && s.storage != nil && !wasActive {
-			// Guard against nil repository before calling methods
-			pendingOpsRepo := s.storage.PendingOperations()
-			if pendingOpsRepo != nil {
-				count, err := pendingOpsRepo.DeleteBySession(ctx, session.DbSessionID)
-				if err != nil {
-					s.logger.ErrorContext(ctx, LogBSSCIFailedToDeletePendingOperations,
-						"error", err,
-						"sessionID", session.DbSessionID)
-				} else if count > 0 {
-					s.logger.InfoContext(ctx, LogBSSCIDeletedPendingOperations,
-						"sessionID", session.DbSessionID,
-						"count", count)
-				}
+		if session.DbSessionID != 0 && s.statusSvc != nil && !wasActive {
+			count, err := s.statusSvc.DeletePendingOperations(ctx, session)
+			if err != nil {
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToDeletePendingOperations,
+					"error", err,
+					"sessionID", session.DbSessionID)
+			} else if count > 0 {
+				s.logger.InfoContext(ctx, LogBSSCIDeletedPendingOperations,
+					"sessionID", session.DbSessionID,
+					"count", count)
 			}
 		}
 	}()
@@ -1542,13 +1520,13 @@ func (s *Server) handleConnection(conn net.Conn) {
 		session.LastSeen = time.Now()
 
 		// Update last seen in database for connected basestations
-		if session.BaseStationEUI != 0 && s.connectionMgr != nil {
+		if session.BaseStationEUI != 0 && s.connectionRegistry != nil {
 			euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
 
 			// Update last seen time in database
 			go func() {
 				ctx := s.sessionContext(session)
-				if err := s.connectionMgr.UpdateLastSeen(ctx, euiBytes); err != nil {
+				if err := s.connectionRegistry.UpdateLastSeen(ctx, euiBytes); err != nil {
 					s.logger.DebugContext(ctx, LogBSSCIFailedToUpdateLastSeen,
 						"eui", session.BaseStationEUI,
 						"error", err)
@@ -1778,6 +1756,10 @@ func (s *Server) sendMessage(session *Session, msg interface{}) error {
 // operation IDs) for recovery instead of retrying on the same connection.
 var ErrAmbiguousWrite = errors.New("ambiguous frame write")
 
+// errAttachPersistenceUnavailable reports a missing endpoint attachment
+// persister at a point that requires transactional persistence.
+var errAttachPersistenceUnavailable = errors.New("endpoint attachment persistence not configured")
+
 // closeTransportAfterWriteFailure closes the session transport after an
 // ambiguous frame write. Persisted pending operations are deliberately
 // preserved: the disconnect path marks the session resumable and resume
@@ -1808,6 +1790,13 @@ func (s *Server) connectionEstablishmentTimeout() time.Duration {
 		return s.config.ConnectionEstablishmentTimeout
 	}
 	return defaultConnectionEstablishmentTimeout
+}
+
+// EffectiveDuplicateWindow returns the configured deduplication window,
+// falling back to the package default; the composition root uses it to
+// construct the shared message deduplicator.
+func (c *Config) EffectiveDuplicateWindow() time.Duration {
+	return duplicateWindow(c)
 }
 
 // duplicateWindow returns the configured uplink deduplication window, falling
@@ -1869,7 +1858,7 @@ func (s *Server) dlrxCleanupInterval() time.Duration {
 // they do not linger pending forever. The worker stops when the server context
 // is cancelled.
 func (s *Server) startDLRXQueryExpiryWorker() {
-	if s.storage == nil || s.storage.DLRXStatus() == nil {
+	if s.dlrxStore == nil {
 		return
 	}
 	s.wg.Add(1)
@@ -1893,7 +1882,7 @@ func (s *Server) startDLRXQueryExpiryWorker() {
 // cutoff arithmetic is testable without the ticker.
 func (s *Server) sweepExpiredDLRXQueries(now time.Time) {
 	cutoff := now.Add(-s.dlrxQueryTimeout())
-	expired, err := s.storage.DLRXStatus().ExpireDLRXStatusQuery(s.safeCtx(), cutoff)
+	expired, err := s.dlrxStore.ExpireDLRXStatusQuery(s.safeCtx(), cutoff)
 	if err != nil {
 		s.logger.WarnContext(s.safeCtx(), LogBSSCIDLRXQueryExpirySweepFailed, "error", err)
 		return
@@ -2253,11 +2242,9 @@ func (s *Server) terminateInconsistentResume(ctx context.Context, previous *Sess
 	if err := s.sessionSvc.TerminateSession(ctx, previous); err != nil {
 		return fmt.Errorf("terminate inconsistent resume session: %w", err)
 	}
-	if previous.DbSessionID != 0 && s.storage != nil {
-		if pendingOpsRepo := s.storage.PendingOperations(); pendingOpsRepo != nil {
-			if _, err := pendingOpsRepo.DeleteBySession(ctx, previous.DbSessionID); err != nil {
-				return fmt.Errorf("remove pending operations of inconsistent resume session: %w", err)
-			}
+	if previous.DbSessionID != 0 && s.statusSvc != nil {
+		if _, err := s.statusSvc.DeletePendingOperations(ctx, previous); err != nil {
+			return fmt.Errorf("remove pending operations of inconsistent resume session: %w", err)
 		}
 	}
 	return nil
@@ -3049,104 +3036,34 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 			return nil
 		}
 
-		tx, txErr := s.storage.BeginTx(ctx)
-		if txErr != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToBeginTransaction, "error", txErr)
+		// The attachment persister owns the transactional endpoint + session
+		// upsert; any persistence failure keeps the exact response behavior:
+		// remove the pending operation and answer with the database error.
+		rec := AttachSessionRecord{
+			TenantID:         tenantID,
+			BSLookupTenantID: resolvedTenant(session, s.tenantID),
+			EndpointID:       endpoint.ID,
+			EndpointUpdates:  attachUpdates,
+			EncryptedKey:     encryptedSessionKey,
+			//nolint:gosec // G115: attachCnt validated to be within 0..0xFFFFFF above
+			AttachCnt:      uint32(attachCnt),
+			ShAddr:         responseShAddr,
+			BaseStationEUI: session.BaseStationEUIBytes(),
+		}
+		if s.attachPersistence == nil {
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 		}
-
-		var commitErr error
-		defer func() {
-			if commitErr != nil {
-				_ = tx.Rollback()
-			}
-		}()
-
-		if err := tx.EndPoints().UpdateFields(ctx, tenantID, endpoint.ID, attachUpdates); err != nil {
-			commitErr = err
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointAttachMetadata, "error", err)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
+		if err := s.attachPersistence.PersistAttachSession(ctx, rec); err != nil {
+			if rmErr := s.removePendingOperation(session, msg.OpId); rmErr != nil {
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", rmErr)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 		}
 
-		endpointIDStr := fmt.Sprintf("%d", endpoint.ID)
-		activeSession, getErr := tx.EndPointSessions().GetActive(ctx, endpointIDStr)
-		if getErr != nil {
-			commitErr = getErr
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToLoadEndpointSession, "error", getErr)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-		}
-
-		now := time.Now().UTC()
-
-		// Lookup base station ID for session enrichment (tenant-scoped)
-		var primaryBsID *int64
-		if s.basestationRepo != nil {
-			bs, bsErr := s.basestationRepo.GetByEUI(ctx, resolvedTenant(session, s.tenantID), session.BaseStationEUIBytes())
-			if bsErr == nil && bs != nil {
-				primaryBsID = &bs.ID
-			}
-		}
-
-		// responseShAddr is uint16, model ShAddr is *int32 (INTEGER 0-65535)
-		shAddrInt32 := int32(responseShAddr)
-
-		if activeSession != nil {
-			activeSession.SessionKey = encryptedSessionKey
-			//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for int32
-			activeSession.AttachCnt = int32(attachCnt)
-			activeSession.LastActivityAt = now
-			activeSession.ShAddr = &shAddrInt32
-			activeSession.PrimaryBaseStationID = primaryBsID
-			if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
-				commitErr = err
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointSession, "error", err)
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-			}
-		} else {
-			newSession := &models.EndPointSession{
-				TenantID:   tenantID,
-				EndPointID: endpoint.ID,
-				SessionID:  uuid.New().String(),
-				SessionKey: encryptedSessionKey,
-				//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for int32
-				AttachCnt:            int32(attachCnt),
-				Status:               "active",
-				StartedAt:            now,
-				LastActivityAt:       now,
-				ShAddr:               &shAddrInt32,
-				PrimaryBaseStationID: primaryBsID,
-			}
-			if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
-				commitErr = err
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCreateEndpointSession, "error", err)
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			commitErr = err
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCommitAttachTransaction, "error", err)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-		}
-		commitErr = nil
+		// Update radio metrics using selective update (preserves optional fields)
 
 		// Update radio metrics using selective update (preserves optional fields)
 		var eui models.EUI
@@ -3538,8 +3455,8 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 	// Normalize payload for audit completeness (DET-03: convert numeric arrays to concrete types)
 	normalizedPayload := normalizeDetachPayload(data)
 
-	if s.storage != nil && s.storage.MIOTYMessages() != nil {
-		if err := s.storage.MIOTYMessages().CreateDetachMessage(ownerCtx, detachMsg, normalizedPayload); err != nil {
+	if s.protocolMessages != nil {
+		if err := s.protocolMessages.CreateDetachMessage(ownerCtx, detachMsg, normalizedPayload); err != nil {
 			s.logger.WarnContext(ownerCtx, LogBSSCIFailedToPersistDetachMessage,
 				"error", err,
 				"epEui", epEUI,
@@ -3672,7 +3589,7 @@ func (s *Server) handleAttachComplete(_ *Server, session *Session, msg *Message,
 				epTID = int64(v)
 			}
 			if epTID > 0 && s.orgResolver != nil {
-				if orgUUID, orgErr := s.orgResolver.GetDefaultOrgForTenant(s.safeCtx(), epTID); orgErr == nil {
+				if orgUUID, orgErr := s.orgResolver.GetDefaultOrgForTenant(s.safeCtx(), epTID); orgErr == nil && orgUUID != uuid.Nil {
 					epOwnerOrg = orgUUID.String()
 				}
 			}
@@ -5461,76 +5378,21 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 				"long_blk_dist":   longBlkDist,
 			}
 
-			tx, txErr := s.storage.BeginTx(ownerCtx) // Use owner context
-			if txErr != nil {
-				return fmt.Errorf("failed to begin attach propagate transaction: %w", txErr)
+			// The attachment persister owns the owner-tenant transaction;
+			// error strings propagate to the caller unchanged.
+			if s.attachPersistence == nil {
+				return fmt.Errorf("failed to begin attach propagate transaction: %w", errAttachPersistenceUnavailable)
 			}
-			var commitErr error
-			defer func() {
-				if commitErr != nil {
-					_ = tx.Rollback()
-				}
-			}()
-
-			if err := tx.EndPoints().UpdateFields(ownerCtx, endpointTenantID, endpoint.ID, updates); err != nil {
-				commitErr = err
-				return fmt.Errorf("failed to update endpoint: %w", err)
+			if err := s.attachPersistence.PersistAttachPropagateSession(ownerCtx, AttachPropagateSessionRecord{
+				TenantID:        endpointTenantID,
+				EndpointID:      endpoint.ID,
+				EndpointUpdates: updates,
+				EncryptedKey:    encryptedKey,
+				ShAddr:          shortAddr,
+				BaseStationEUI:  session.BaseStationEUIBytes(),
+			}); err != nil {
+				return err
 			}
-
-			endpointIDStr := fmt.Sprintf("%d", endpoint.ID)
-			activeSession, getErr := tx.EndPointSessions().GetActive(ownerCtx, endpointIDStr)
-			if getErr != nil {
-				commitErr = getErr
-				return fmt.Errorf("failed to load endpoint session: %w", getErr)
-			}
-
-			now := time.Now().UTC()
-
-			// Lookup base station ID for session enrichment (tenant-scoped to owner)
-			var primaryBsID *int64
-			if s.basestationRepo != nil {
-				bs, bsErr := s.basestationRepo.GetByEUI(ownerCtx, endpointTenantID, session.BaseStationEUIBytes())
-				if bsErr == nil && bs != nil {
-					primaryBsID = &bs.ID
-				}
-			}
-
-			// shortAddr is uint16, model ShAddr is *int32 (INTEGER 0-65535)
-			shAddrInt32 := int32(shortAddr)
-
-			if activeSession != nil {
-				activeSession.SessionKey = encryptedKey
-				activeSession.LastActivityAt = now
-				activeSession.ShAddr = &shAddrInt32
-				activeSession.PrimaryBaseStationID = primaryBsID
-				if err := tx.EndPointSessions().Update(ownerCtx, activeSession); err != nil {
-					commitErr = err
-					return fmt.Errorf("failed to update endpoint session: %w", err)
-				}
-			} else {
-				newSession := &models.EndPointSession{
-					TenantID:             endpointTenantID, // Use owner tenant
-					EndPointID:           endpoint.ID,
-					SessionID:            uuid.New().String(),
-					SessionKey:           encryptedKey,
-					Status:               string(models.SessionStatusActive),
-					UplinkMode:           "standard", // Default uplink mode per BSSCI §5.2
-					StartedAt:            now,
-					LastActivityAt:       now,
-					ShAddr:               &shAddrInt32,
-					PrimaryBaseStationID: primaryBsID,
-				}
-				if err := tx.EndPointSessions().Create(ownerCtx, newSession); err != nil {
-					commitErr = err
-					return fmt.Errorf("failed to create endpoint session: %w", err)
-				}
-			}
-
-			if err := tx.Commit(); err != nil {
-				commitErr = err
-				return fmt.Errorf("failed to commit attach propagate transaction: %w", err)
-			}
-			commitErr = nil
 
 			s.logger.DebugContext(s.safeCtx(), LogBSSCIUpdatedEndpointWithAttachPropagateInfo,
 				"epEui", endpointEUI,
@@ -5562,7 +5424,7 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 	}
 
 	// BSSCI §5.8.3: Persist attach propagate message to mioty_messages for audit trail
-	if s.storage != nil && s.storage.MIOTYMessages() != nil {
+	if s.protocolMessages != nil {
 		bsEuiBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(bsEuiBytes, session.BaseStationEUI)
 
@@ -5607,8 +5469,8 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 			InterfaceType:  mioty.InterfaceBSSCI,
 		}
 
-		if s.storage != nil && s.storage.MIOTYMessages() != nil {
-			if err := s.storage.MIOTYMessages().CreateAttachPropagateMessage(ownerCtx, propagateMsg); err != nil {
+		if s.protocolMessages != nil {
+			if err := s.protocolMessages.CreateAttachPropagateMessage(ownerCtx, propagateMsg); err != nil {
 				s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistAttachPropagateMessage,
 					"error", err,
 					"epEui", endpointEUI,
@@ -6061,7 +5923,7 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 			// Gated by hasEUI to ensure usable audit rows with valid ep_eui
 			// NOTE: This is separate from the attPrp row persisted at send time
 			// NwkSnKey intentionally omitted: already in attPrp row, avoid key duplication
-			if s.storage != nil && s.storage.MIOTYMessages() != nil {
+			if s.protocolMessages != nil {
 				// Re-extract shAddr at this scope level for message persistence
 				var msgShAddr uint16
 				if shAddrFloat, ok := pendingOp.Metadata["shortAddr"].(float64); ok {
@@ -6122,7 +5984,7 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 					InterfaceType: mioty.InterfaceBSSCI,
 				}
 
-				if err := s.storage.MIOTYMessages().CreateAttachPropagateMessage(ownerCtx, completionMsg); err != nil {
+				if err := s.protocolMessages.CreateAttachPropagateMessage(ownerCtx, completionMsg); err != nil {
 					s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToPersistAttachPropagateComplete,
 						"error", err,
 						"opId", msg.OpId,
@@ -6260,8 +6122,8 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 	}
 
 	// Persist to messages (non-blocking - log errors only)
-	if s.storage != nil && s.storage.MIOTYMessages() != nil {
-		if err := s.storage.MIOTYMessages().CreateDetachPropagateMessage(ownerCtx, propagateMsg); err != nil {
+	if s.protocolMessages != nil {
+		if err := s.protocolMessages.CreateDetachPropagateMessage(ownerCtx, propagateMsg); err != nil {
 			s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToPersistDetachPropagateMessage,
 				"ep_eui", endpointEUI,
 				"bs_eui", session.BaseStationEUI,
@@ -6540,7 +6402,7 @@ func (s *Server) handleDetachPropagateComplete(_ *Server, session *Session, msg 
 
 				// BSSCI §5.9.3: Persist detPrpCmp to messages table
 				// Gated by hasEUI to ensure usable audit rows with valid ep_eui
-				if s.storage != nil && s.storage.MIOTYMessages() != nil {
+				if s.protocolMessages != nil {
 					var msgBsEUIBytes [8]byte
 					binary.BigEndian.PutUint64(msgBsEUIBytes[:], session.BaseStationEUI)
 
@@ -6559,7 +6421,7 @@ func (s *Server) handleDetachPropagateComplete(_ *Server, session *Session, msg 
 						completionMsg.OrgUUID = &orgStr
 					}
 
-					if err := s.storage.MIOTYMessages().CreateDetachPropagateMessage(ownerCtx, completionMsg); err != nil {
+					if err := s.protocolMessages.CreateDetachPropagateMessage(ownerCtx, completionMsg); err != nil {
 						s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToPersistDetachPropagateComplete,
 							"error", err,
 							"opId", msg.OpId,
@@ -6716,23 +6578,10 @@ func (s *Server) updatePendingOperationMetadata(session *Session, opId int64, me
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToMarshalMeta), err)
 	}
 
-	// Update metadata in database using repository
-	err = s.storage.PendingOperations().UpdateMetadata(s.safeCtx(), sessionID, opId, json.RawMessage(metadataJSON))
-
-	if err != nil {
-		s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToUpdatePendingOperationMetadata,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
+	// StatusService owns pending-operation persistence and its cache: the DB
+	// write happens first, the cache mirror only on success.
+	if err := s.statusSvc.UpdatePendingOperationMetadata(s.safeCtx(), session, opId, metadata, json.RawMessage(metadataJSON)); err != nil {
 		return err
-	}
-
-	// Also update in memory
-	// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation access
-	if s.statusSvc != nil {
-		if pendingOp, err := s.statusSvc.GetPendingOperation(session, opId); err == nil {
-			pendingOp.Metadata = metadata
-		}
 	}
 
 	s.logger.DebugContext(s.safeCtx(), LogBSSCIUpdatedPendingOperationMetadata,
@@ -6773,13 +6622,13 @@ func isResumableScOperation(opID int64, opType string) bool {
 // loadPendingOperations loads pending operations from database for session resume (Issue #3: accepts *Session for SessionSlug field)
 func (s *Server) loadPendingOperations(session *Session) ([]*PendingOperation, error) {
 	sessionID := session.DbSessionID
-	if sessionID == 0 || s.storage == nil {
+	if sessionID == 0 || s.statusSvc == nil {
 		s.logger.DebugContext(s.safeCtx(), LogBSSCIDatabaseNotAvailableForPendingOpsLoad)
 		return nil, nil
 	}
 
-	// Retrieve pending operations via repository
-	repoOps, err := s.storage.PendingOperations().GetBySession(s.safeCtx(), sessionID)
+	// Retrieve the raw persisted rows through the pending-operation owner
+	repoOps, err := s.statusSvc.PersistedOperations(s.safeCtx(), sessionID)
 	if err != nil {
 		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToQueryPendingOperationsFromDatabase,
 			"error", err,
@@ -7390,19 +7239,13 @@ func extractSessionUUID(data interface{}) ([]byte, *CatalogError) {
 
 // updateSessionCounters updates the session operation counters in the database
 func (s *Server) updateSessionCounters(session *Session) {
-	if session.DbSessionID == 0 || s.storage == nil {
+	if session.DbSessionID == 0 || s.sessionSvc == nil {
 		return
 	}
 
-	// Update the session operation counters via the tenant-scoped repository
-	err := s.storage.BaseStationSessions().UpdateOperationIDs(
-		s.safeCtx(),
-		resolvedTenant(session, s.tenantID),
-		session.DbSessionID,
-		session.LastBsOpId,
-		session.LastScOpId)
-
-	if err != nil {
+	// SessionService owns counter persistence via the atomic UpdateOperationIDs
+	// statement; this fire-and-forget path keeps its debug-only error handling.
+	if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
 		s.logger.DebugContext(s.safeCtx(), LogBSSCIFailedToUpdateSessionCounters,
 			"error", err,
 			"bsOpId", session.LastBsOpId,

@@ -59,7 +59,7 @@ func (s *Server) handleDLDataQueueResponse(_ *Server, session *Session, msg *Mes
 	endpointEUI, queueID, tenantIDStr := s.statusSvc.ExtractQueueMetadata(session, msg.OpId)
 
 	// Update downlink base station ownership in database
-	if s.storage != nil && queueID > 0 {
+	if s.downlinkQueueStore != nil && queueID > 0 {
 		ctx := s.sessionContext(session)
 		// Use tenant ID from queue metadata per BSSCI §5.12 (roaming)
 		// Fallback to server default only if metadata extraction failed
@@ -67,7 +67,7 @@ func (s *Server) handleDLDataQueueResponse(_ *Server, session *Session, msg *Mes
 			tenantIDStr = s.formatTenantID()
 		}
 		//nolint:gosec // G115: queueID > 0 guard ensures safe int64->uint64 conversion
-		if err := s.storage.MIOTYDownlinks().UpdateDownlinkBaseStation(ctx, uint64(queueID), tenantIDStr, session.BaseStationEUI); err != nil {
+		if err := s.downlinkQueueStore.UpdateDownlinkBaseStation(ctx, uint64(queueID), tenantIDStr, session.BaseStationEUI); err != nil {
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToUpdateDownlinkBaseStationOwnership,
 				//nolint:gosec // G115: queueID > 0 guard ensures safe int64->uint64 conversion
 				"queId", uint64(queueID),
@@ -81,7 +81,7 @@ func (s *Server) handleDLDataQueueResponse(_ *Server, session *Session, msg *Mes
 		// this repairs the row. An already-queued row is a no-op.
 		if tenantID, parseErr := strconv.ParseInt(tenantIDStr, 10, 64); parseErr == nil {
 			//nolint:gosec // G115: queueID > 0 guard ensures safe int64->uint64 conversion
-			if err := s.storage.MIOTYDownlinks().MarkReservedAsQueued(ctx, uint64(queueID), tenantID,
+			if err := s.downlinkQueueStore.MarkReservedAsQueued(ctx, uint64(queueID), tenantID,
 				session.BaseStationEUI, time.Now().UnixNano(), nil, nil); err != nil {
 				s.logger.WarnContext(ctx, LogBSSCIFailedToConfirmDownlinkQueued,
 					//nolint:gosec // G115: queueID > 0 guard ensures safe int64->uint64 conversion
@@ -1126,35 +1126,31 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	binary.BigEndian.PutUint64(bsEuiBytes, session.BaseStationEUI)
 
 	// Check if this dlRxStat corresponds to a pending query (BSSCI §5.15 correlation)
-	if s.storage != nil {
-		dlRxStatusRepo := s.storage.DLRXStatus()
-		if dlRxStatusRepo != nil {
-			// Correlate by tenant+endpoint only (oldest pending) per BSSCI §5.15
-			// BS opId stored for audit but NOT used in WHERE clause (different namespace)
-			found, err := dlRxStatusRepo.MarkDLRXStatusReceived(
-				ownerCtx,
-				tenantID,
-				epEuiBytes, // Match by tenant + endpoint only
-				bsEuiBytes, // Audit: which BS actually reported
-				msg.OpId,   // Audit: BS opId (different namespace)
-			)
-			if err != nil {
-				s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToCorrelateDLRXQuery,
-					"epEui", dlRxStatus.EpEui,
-					"opId", msg.OpId,
-					"error", err)
-				// Non-fatal: Continue processing even if correlation check fails
-			}
-
-			if !found {
-				s.logger.WarnContext(ownerCtx, LogBSSCIUnsolicitedDLRXStatus,
-					"epEui", dlRxStatus.EpEui,
-					"tenant", tenantID,
-					"bsEui", session.BaseStationEUI)
-				// Log-only mode: continue processing unsolicited reports
-			}
+	if s.dlrxStore != nil {
+		// Correlate by tenant+endpoint only (oldest pending) per BSSCI §5.15
+		// BS opId stored for audit but NOT used in WHERE clause (different namespace)
+		found, err := s.dlrxStore.MarkDLRXStatusReceived(
+			ownerCtx,
+			tenantID,
+			epEuiBytes, // Match by tenant + endpoint only
+			bsEuiBytes, // Audit: which BS actually reported
+			msg.OpId,   // Audit: BS opId (different namespace)
+		)
+		if err != nil {
+			s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToCorrelateDLRXQuery,
+				"epEui", dlRxStatus.EpEui,
+				"opId", msg.OpId,
+				"error", err)
+			// Non-fatal: Continue processing even if correlation check fails
 		}
-		// Repository unavailable is non-fatal - continue processing
+
+		if !found {
+			s.logger.WarnContext(ownerCtx, LogBSSCIUnsolicitedDLRXStatus,
+				"epEui", dlRxStatus.EpEui,
+				"tenant", tenantID,
+				"bsEui", session.BaseStationEUI)
+			// Log-only mode: continue processing unsolicited reports
+		}
 	}
 
 	// Resolve endpoint owner's organization UUID (BSSCI §5.15)
@@ -1323,7 +1319,7 @@ func (s *Server) SendDLRXStatusQuery(sessionID string, epEui uint64) error {
 // the eventual dlRxStat report could not be attributed. Owner-organization
 // resolution failure alone stays non-fatal (nil org, backward compatible).
 func (s *Server) persistDLRXQueryCorrelation(session *Session, opId int64, epEui uint64, euiBytes []byte) error {
-	if s.storage == nil || s.storage.DLRXStatus() == nil {
+	if s.dlrxStore == nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLRxStatQueryTracking,
 			"sessionID", session.DbSessionID,
 			"opId", opId,
@@ -1346,7 +1342,7 @@ func (s *Server) persistDLRXQueryCorrelation(session *Session, opId int64, epEui
 	bsEuiBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(bsEuiBytes, session.BaseStationEUI)
 
-	if err := s.storage.DLRXStatus().CreateDLRXStatusQuery(s.sessionContext(session), tenantID, epOwnerOrgUUID, euiBytes, bsEuiBytes, opId); err != nil {
+	if err := s.dlrxStore.CreateDLRXStatusQuery(s.sessionContext(session), tenantID, epOwnerOrgUUID, euiBytes, bsEuiBytes, opId); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLRxStatQueryTracking,
 			"sessionID", session.DbSessionID,
 			"opId", opId,
@@ -1395,11 +1391,11 @@ func (s *Server) resolveOwnerOrgUUID(ctx context.Context, tenantID int64, epEuiB
 	}
 
 	// Fetch endpoint to verify it exists and belongs to this tenant
-	if s.storage == nil || s.storage.EndPoints() == nil {
+	if s.endpointRepo == nil {
 		return nil, fmt.Errorf("endpoint repository not available")
 	}
 
-	endpoint, err := s.storage.EndPoints().GetByEUI(ctx, tenantID, epEuiBytes)
+	endpoint, err := s.endpointRepo.GetByEUI(ctx, tenantID, epEuiBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch endpoint: %w", err)
 	}
@@ -1441,24 +1437,18 @@ func (s *Server) persistDLRXStatus(ctx context.Context, tenantID int64, ownerOrg
 		DlRxRssi:       dlRxRssi,
 	}
 
-	// Use repository through storage interface with session context
-	if s.storage != nil {
-		dlRxStatusRepo := s.storage.DLRXStatus()
-		if dlRxStatusRepo != nil {
-			if err := dlRxStatusRepo.CreateDLRXStatus(ctx, status); err != nil {
-				return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistDLRXStatus), err)
-			}
-
-			s.logger.DebugContext(ctx, LogBSSCIPersistedDLRxStatus,
-				"epEui", epEui,
-				"rxTime", rxTime,
-				"dlRxSnr", dlRxSnr,
-				"dlRxRssi", dlRxRssi,
-				"tenantID", tenantID)
-		} else {
-			// Repository accessor returned nil - cannot persist
-			return fmt.Errorf("%s: DL RX status repository not available", ResolveErrorMessage(errFailedToPersistDLRXStatus))
+	// Persist through the DL RX status store with session context
+	if s.dlrxStore != nil {
+		if err := s.dlrxStore.CreateDLRXStatus(ctx, status); err != nil {
+			return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistDLRXStatus), err)
 		}
+
+		s.logger.DebugContext(ctx, LogBSSCIPersistedDLRxStatus,
+			"epEui", epEui,
+			"rxTime", rxTime,
+			"dlRxSnr", dlRxSnr,
+			"dlRxRssi", dlRxRssi,
+			"tenantID", tenantID)
 	} else {
 		s.logger.WarnContext(ctx, LogBSSCIMessageStoreNotAvailableForDLRxStatus,
 			"epEui", epEui,
@@ -1556,9 +1546,9 @@ func (s *Server) RevokeDownlink(tenantID int64, queId uint64) (bsEui uint64, err
 	var foundSession *Session
 
 	// Query database for queue entry
-	if s.storage != nil {
+	if s.downlinkQueueStore != nil {
 		// Use GetDownlinkByQueueID to find the queue entry
-		downlink, err := s.storage.MIOTYDownlinks().GetDownlinkByQueueID(ctx, queId, tenantIDStr)
+		downlink, err := s.downlinkQueueStore.GetDownlinkByQueueID(ctx, queId, tenantIDStr)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) || errors.Is(err, storage.ErrNotFound) {
 				// Map to scheduler contract sentinel

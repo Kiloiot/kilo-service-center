@@ -377,7 +377,7 @@ func TestULDataTenantResolution(t *testing.T) {
 			// Note: stubMIOTYMessageRepo.CreateULDataMessage is a no-op in detach_integration_test.go
 			// Full validation would require extending the stub to capture UL data messages
 			// For now, verify that handleULData succeeds and sends proper response
-			_ = env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+			_ = env.server.protocolMessages.(*stubMIOTYMessageRepo)
 
 			t.Logf("PASS: UL data from endpoint tenant %d via session tenant %d handled correctly (expect tenant %d)",
 				tt.endpointTenant, tt.sessionTenant, tt.expectTenant)

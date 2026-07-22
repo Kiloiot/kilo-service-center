@@ -256,7 +256,7 @@ func newProfileTestFixture(t *testing.T, initialProfile string) *profileTestFixt
 		DisableAttachPersistence: true,
 	}
 	server.endpointRepo = repo
-	server.storage = stubStore
+	server.SetStorageForTest(stubStore)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
@@ -519,7 +519,7 @@ func TestDetachProfileGuardNonRegression(t *testing.T) {
 		DisableAttachPersistence: true,
 	}
 	server.endpointRepo = repo
-	server.storage = stubStore
+	server.SetStorageForTest(stubStore)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),

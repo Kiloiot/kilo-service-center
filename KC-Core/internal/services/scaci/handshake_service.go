@@ -156,7 +156,7 @@ func (hs *handshakeService) ValidateConnect(
 
 	// Guard 3: Certificate security validation (defense-in-depth)
 	// Verify certificate expiry, key usage, and subject BEFORE tenant resolution
-	if errToken := hs.certVerifier.VerifyCertificate(cert); errToken != "" {
+	if errToken := hs.certVerifier.VerifyCertificate(ctx, cert); errToken != "" {
 		// Certificate validation failed - return error token
 		return nil, nil, errToken
 	}
@@ -175,7 +175,7 @@ func (hs *handshakeService) ValidateConnect(
 		}
 
 		// Community mode: fall back to default tenant ID
-		hs.logger.WarnContext(ctx, "Certificate org resolution failed, using community fallback",
+		hs.logger.WarnContext(ctx, scaci.LogSCACICertOrgResolutionFallback,
 			"error", err,
 			"certCN", cert.Subject.CommonName,
 			"defaultTenantID", hs.defaultTenantID)
@@ -196,7 +196,7 @@ func (hs *handshakeService) ValidateConnect(
 		"certCN", cert.Subject.CommonName)
 
 	// Step 2: Version negotiation (§2.1-2.3)
-	negotiatedVersion, errToken := hs.NegotiateVersion(req.Version)
+	negotiatedVersion, errToken := hs.NegotiateVersion(ctx, req.Version)
 	if errToken != "" {
 		return nil, nil, errToken
 	}
@@ -287,11 +287,11 @@ func (hs *handshakeService) ValidateConnect(
 	// TODO: Validate software version (non-fatal per SCACI §3.3.2 - swVersion is optional)
 	switch hs.scSwVersion {
 	case "":
-		hs.logger.WarnContext(ctx, "Software version not configured - ConnectResponse will omit swVersion field",
+		hs.logger.WarnContext(ctx, scaci.LogSCACISoftwareVersionNotConfigured,
 			"tenantID", tenantID,
 			"acEui", pkgmioty.FormatEUI64(req.AcEui))
 	case "dev", "dev-local":
-		hs.logger.WarnContext(ctx, "Using development software version in ConnectResponse",
+		hs.logger.WarnContext(ctx, scaci.LogSCACIUsingDevelopmentSoftwareVersion,
 			"swVersion", hs.scSwVersion,
 			"tenantID", tenantID,
 			"acEui", pkgmioty.FormatEUI64(req.AcEui))
@@ -334,11 +334,11 @@ func (hs *handshakeService) ValidateConnect(
 // Returns:
 //   - string: Negotiated version (e.g., "1.0.0")
 //   - string: Error token (errInvalidVersionFormat, errMajorVersionUnsupported) or ""
-func (hs *handshakeService) NegotiateVersion(clientVersion string) (string, string) {
+func (hs *handshakeService) NegotiateVersion(ctx context.Context, clientVersion string) (string, string) {
 	// Parse client version using existing helper
 	reqMajor, reqMinor, _, err := scaci.ParseSemanticVersion(clientVersion)
 	if err != nil {
-		hs.logger.Error(scaci.LogSCACIInvalidVersionFormat,
+		hs.logger.ErrorContext(ctx, scaci.LogSCACIInvalidVersionFormat,
 			"version", clientVersion,
 			"error", err)
 		return "", scaci.ErrInvalidVersionFormat
@@ -346,7 +346,7 @@ func (hs *handshakeService) NegotiateVersion(clientVersion string) (string, stri
 
 	// SCACI §2.1: Major version must match
 	if reqMajor != scaci.SupportedMajorVersion {
-		hs.logger.Error(scaci.LogSCACIMajorVersionMismatch,
+		hs.logger.ErrorContext(ctx, scaci.LogSCACIMajorVersionMismatch,
 			"requested", clientVersion,
 			"supported_major", scaci.SupportedMajorVersion)
 		return "", scaci.ErrMajorVersionUnsupported
@@ -354,7 +354,7 @@ func (hs *handshakeService) NegotiateVersion(clientVersion string) (string, stri
 
 	// SCACI §2.2: Minor version compatibility
 	if reqMinor > scaci.SupportedMinorVersion {
-		hs.logger.Error(scaci.LogSCACIMinorVersionTooHigh,
+		hs.logger.ErrorContext(ctx, scaci.LogSCACIMinorVersionTooHigh,
 			"requested", clientVersion,
 			"supported_minor", scaci.SupportedMinorVersion)
 		return "", scaci.ErrMinorVersionUnsupported
@@ -363,7 +363,7 @@ func (hs *handshakeService) NegotiateVersion(clientVersion string) (string, stri
 	// SCACI §2.3: Ignore patch - use ProtocolVersionString from constants
 	negotiatedVersion := scaci.ProtocolVersionString
 
-	hs.logger.Info(scaci.LogSCACIVersionNegotiationOk,
+	hs.logger.InfoContext(ctx, scaci.LogSCACIVersionNegotiationOk,
 		"requested", clientVersion,
 		"negotiated", negotiatedVersion)
 

@@ -168,7 +168,7 @@ func TestSendDLDataResultCompleteCommandMismatch(t *testing.T) {
 // TestNewServer_NilCfg verifies constructor rejects nil config.
 func TestNewServer_NilCfg(t *testing.T) {
 	// cfg is first validation - all other params can be nil
-	_, err := NewServer(nil, testLogger(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(nil, testLogger(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil cfg")
 	assert.Contains(t, err.Error(), "cfg is required")
 }
@@ -177,7 +177,7 @@ func TestNewServer_NilCfg(t *testing.T) {
 func TestNewServer_NilLogger(t *testing.T) {
 	cfg := &Config{ListenAddr: ":5001"}
 	// logger is second validation - provide valid cfg, nil for rest
-	_, err := NewServer(cfg, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(cfg, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil logger")
 	assert.Contains(t, err.Error(), "logger is required")
 }
@@ -186,7 +186,7 @@ func TestNewServer_NilLogger(t *testing.T) {
 func TestNewServer_NilSessionRepo(t *testing.T) {
 	cfg := &Config{ListenAddr: ":5001"}
 	// sessionRepo is third validation
-	_, err := NewServer(cfg, testLogger(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(cfg, testLogger(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil sessionRepo")
 	assert.Contains(t, err.Error(), "sessionRepo is required")
 }
@@ -196,7 +196,7 @@ func TestNewServer_NilOperationRepo(t *testing.T) {
 	cfg := &Config{ListenAddr: ":5001"}
 	mockSessionRepo := &mockSessionRepoStub{}
 	// operationRepo is fourth validation
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(cfg, testLogger(), mockSessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil operationRepo")
 	assert.Contains(t, err.Error(), "operationRepo is required")
 }
@@ -206,7 +206,7 @@ func TestNewServer_NilHandshakeSvc(t *testing.T) {
 	cfg := &Config{ListenAddr: ":5001"}
 	mockSessionRepo := &mockSessionRepoStub{}
 	mockOpRepo := &mockOperationRepoStub{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil handshakeSvc")
 	assert.Contains(t, err.Error(), "handshakeSvc is required")
 }
@@ -217,7 +217,7 @@ func TestNewServer_NilEndpointSvc(t *testing.T) {
 	mockSessionRepo := &mockSessionRepoStub{}
 	mockOpRepo := &mockOperationRepoStub{}
 	mockHandshake := &MockHandshakeService{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil endpointSvc")
 	assert.Contains(t, err.Error(), "endpointSvc is required")
 }
@@ -229,7 +229,7 @@ func TestNewServer_NilULSvc(t *testing.T) {
 	mockOpRepo := &mockOperationRepoStub{}
 	mockHandshake := &MockHandshakeService{}
 	mockEndpoint := &MockEndpointService{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil ulSvc")
 	assert.Contains(t, err.Error(), "ulSvc is required")
 }
@@ -242,7 +242,7 @@ func TestNewServer_NilDLSvc(t *testing.T) {
 	mockHandshake := &MockHandshakeService{}
 	mockEndpoint := &MockEndpointService{}
 	mockUL := &MockULService{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, mockUL, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, mockUL, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil dlSvc")
 	assert.Contains(t, err.Error(), "dlSvc is required")
 }
@@ -256,7 +256,7 @@ func TestNewServer_NilStatusSvc(t *testing.T) {
 	mockEndpoint := &MockEndpointService{}
 	mockUL := &MockULService{}
 	mockDL := &MockDLService{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, mockUL, mockDL, nil, nil, nil, nil, nil, nil, nil)
+	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, mockUL, mockDL, nil, nil, nil, nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil statusSvc")
 	assert.Contains(t, err.Error(), "statusSvc is required")
 }

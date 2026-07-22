@@ -48,11 +48,11 @@ func TestHandshakeServiceIntegration(t *testing.T) {
 	negotiatedVersion := "1.0.0"
 
 	// Configure mock expectations
-	mockHandshake.On("NegotiateVersion", clientVersion).
+	mockHandshake.On("NegotiateVersion", mock.Anything, clientVersion).
 		Return(negotiatedVersion, "") // Empty error token = success
 
 	// Execute service method
-	gotVersion, errToken := mockHandshake.NegotiateVersion(clientVersion)
+	gotVersion, errToken := mockHandshake.NegotiateVersion(testutil.TestContext(), clientVersion)
 
 	// Verify behavior
 	assert.Equal(t, negotiatedVersion, gotVersion)
@@ -67,10 +67,10 @@ func TestHandshakeServiceVersionError(t *testing.T) {
 	clientVersion := "2.0.0" // Unsupported major version
 	expectedError := errMajorVersionUnsupported
 
-	mockHandshake.On("NegotiateVersion", clientVersion).
+	mockHandshake.On("NegotiateVersion", mock.Anything, clientVersion).
 		Return("", expectedError)
 
-	gotVersion, errToken := mockHandshake.NegotiateVersion(clientVersion)
+	gotVersion, errToken := mockHandshake.NegotiateVersion(testutil.TestContext(), clientVersion)
 
 	assert.Empty(t, gotVersion)
 	assert.Equal(t, expectedError, errToken)
@@ -239,13 +239,12 @@ func TestSessionValidatorSuccess(t *testing.T) {
 			0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 		},
 	}
-	opId := int64(0) // Connect must use opId 0 per §3.3-02
 
 	// Mock successful validation
-	mockValidator.On("ValidateConnectFields", req, opId).
+	mockValidator.On("ValidateConnectFields", req).
 		Return("") // Empty token = success
 
-	errToken := mockValidator.ValidateConnectFields(req, opId)
+	errToken := mockValidator.ValidateConnectFields(req)
 
 	assert.Empty(t, errToken, "Expected successful validation")
 	mockValidator.AssertExpectations(t)
@@ -263,13 +262,12 @@ func TestSessionValidatorMissingVersion(t *testing.T) {
 			0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 		},
 	}
-	opId := int64(0)
 
 	// Mock validation failure
-	mockValidator.On("ValidateConnectFields", req, opId).
+	mockValidator.On("ValidateConnectFields", req).
 		Return(errMissingVersion)
 
-	errToken := mockValidator.ValidateConnectFields(req, opId)
+	errToken := mockValidator.ValidateConnectFields(req)
 
 	assert.Equal(t, errMissingVersion, errToken)
 	mockValidator.AssertExpectations(t)
@@ -287,13 +285,12 @@ func TestSessionValidatorInvalidOpId(t *testing.T) {
 			0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 		},
 	}
-	opId := int64(5) // Invalid - Connect must use 0
 
 	// Mock validation failure for non-zero opId
-	mockValidator.On("ValidateConnectFields", req, opId).
+	mockValidator.On("ValidateConnectFields", req).
 		Return(errConnectOpIdMustBeZero)
 
-	errToken := mockValidator.ValidateConnectFields(req, opId)
+	errToken := mockValidator.ValidateConnectFields(req)
 
 	assert.Equal(t, errConnectOpIdMustBeZero, errToken)
 	mockValidator.AssertExpectations(t)
@@ -306,10 +303,10 @@ func TestCertificateVerifierSuccess(t *testing.T) {
 	testCert := stubCert("ac-tenant-1")
 
 	// Mock successful verification
-	mockVerifier.On("VerifyCertificate", testCert).
+	mockVerifier.On("VerifyCertificate", mock.Anything, testCert).
 		Return("") // Empty token = success
 
-	errToken := mockVerifier.VerifyCertificate(testCert)
+	errToken := mockVerifier.VerifyCertificate(testutil.TestContext(), testCert)
 
 	assert.Empty(t, errToken, "Expected successful certificate verification")
 	mockVerifier.AssertExpectations(t)
@@ -322,10 +319,10 @@ func TestCertificateVerifierExpired(t *testing.T) {
 	testCert := stubCert("ac-tenant-1")
 
 	// Mock expired certificate error
-	mockVerifier.On("VerifyCertificate", testCert).
+	mockVerifier.On("VerifyCertificate", mock.Anything, testCert).
 		Return(ErrCertExpired)
 
-	errToken := mockVerifier.VerifyCertificate(testCert)
+	errToken := mockVerifier.VerifyCertificate(testutil.TestContext(), testCert)
 
 	assert.Equal(t, ErrCertExpired, errToken)
 	mockVerifier.AssertExpectations(t)
@@ -338,10 +335,10 @@ func TestCertificateVerifierMissingClientAuth(t *testing.T) {
 	testCert := stubCert("ac-tenant-1")
 
 	// Mock missing ClientAuth extended key usage
-	mockVerifier.On("VerifyCertificate", testCert).
+	mockVerifier.On("VerifyCertificate", mock.Anything, testCert).
 		Return(ErrCertMissingClientAuth)
 
-	errToken := mockVerifier.VerifyCertificate(testCert)
+	errToken := mockVerifier.VerifyCertificate(testutil.TestContext(), testCert)
 
 	assert.Equal(t, ErrCertMissingClientAuth, errToken)
 	mockVerifier.AssertExpectations(t)

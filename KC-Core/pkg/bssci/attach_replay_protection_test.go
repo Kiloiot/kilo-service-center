@@ -91,7 +91,7 @@ func TestAttachReplayProtection_RejectReplay(t *testing.T) {
 		DisableAttachPersistence: true,
 	}
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
-	server.storage = storage
+	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
@@ -212,7 +212,7 @@ func TestAttachReplayProtection_RejectLowerCounter(t *testing.T) {
 	)
 	server.config = &Config{MessageEncoding: EncodingJSON, DisableAttachPersistence: true}
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
-	server.storage = storage
+	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
@@ -310,7 +310,7 @@ func TestAttachReplayProtection_RolloverEdgeCase(t *testing.T) {
 	)
 	server.config = &Config{MessageEncoding: EncodingJSON, DisableAttachPersistence: true}
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
-	server.storage = storage
+	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
@@ -403,7 +403,7 @@ func TestAttachReplayProtection_FirstAttachNilCounter(t *testing.T) {
 	)
 	server.config = &Config{MessageEncoding: EncodingJSON, DisableAttachPersistence: true}
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
-	server.storage = storage
+	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),

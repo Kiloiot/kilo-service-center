@@ -201,6 +201,63 @@ func (s *statusService) RemovePendingOperation(ctx context.Context, session *bss
 //   - tenantID: Tenant ID string extracted from metadata (empty string if not found)
 //
 // Thread Safety: Method handles mutex locking internally
+// UpdatePendingOperationMetadata persists new metadata for an existing pending
+// row and mirrors it into the cache only after the DB write succeeds.
+func (s *statusService) UpdatePendingOperationMetadata(ctx context.Context, session *bssci.Session, opId int64, metadata map[string]interface{}, metadataJSON json.RawMessage) error {
+	if err := s.repo.UpdateMetadata(ctx, session.DbSessionID, opId, metadataJSON); err != nil {
+		s.logger.WarnContext(ctx, bssci.LogBSSCIFailedToUpdatePendingOperationMetadata,
+			"error", err,
+			"sessionID", session.DbSessionID,
+			"opId", opId)
+		return err
+	}
+
+	key := bssci.SessionOpKey{SessionID: session.ID, OperationID: opId}
+	s.mu.Lock()
+	if pendingOp, ok := (*s.pendingOps)[key]; ok {
+		pendingOp.Metadata = metadata
+	}
+	s.mu.Unlock()
+	return nil
+}
+
+// PersistedOperations returns the raw persisted rows for resume hydration.
+func (s *statusService) PersistedOperations(ctx context.Context, sessionID int64) ([]bssci.PersistedOperation, error) {
+	rows, err := s.repo.GetBySession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	ops := make([]bssci.PersistedOperation, 0, len(rows))
+	for _, row := range rows {
+		ops = append(ops, bssci.PersistedOperation{
+			OperationID:   row.OperationID,
+			OperationType: row.OperationType,
+			EndpointEUI:   row.EndpointEUI,
+			OperationData: row.OperationData,
+			Metadata:      row.Metadata,
+			CreatedAt:     row.CreatedAt,
+		})
+	}
+	return ops, nil
+}
+
+// DeletePendingOperations removes the session's persisted rows and, only on
+// success, evicts its cached operations (keyed by the runtime session ID).
+func (s *statusService) DeletePendingOperations(ctx context.Context, session *bssci.Session) (int64, error) {
+	count, err := s.repo.DeleteBySession(ctx, session.DbSessionID)
+	if err != nil {
+		return 0, err
+	}
+	s.mu.Lock()
+	for key := range *s.pendingOps {
+		if key.SessionID == session.ID {
+			delete(*s.pendingOps, key)
+		}
+	}
+	s.mu.Unlock()
+	return count, nil
+}
+
 func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string) {
 	key := bssci.SessionOpKey{
 		SessionID:   session.ID,

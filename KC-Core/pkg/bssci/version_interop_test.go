@@ -37,6 +37,12 @@ func (interopConnectionService) RegisterConnection(_ context.Context, _ *Session
 	return nil
 }
 
+func (interopConnectionService) DisconnectBaseStationIfCurrent(_ context.Context, _ [8]byte, _ string) error {
+	return nil
+}
+
+func (interopConnectionService) UpdateLastSeen(_ context.Context, _ [8]byte) error { return nil }
+
 // interopHarness drives a real Server through net.Pipe with framed wire
 // traffic in the configured encoding.
 type interopHarness struct {

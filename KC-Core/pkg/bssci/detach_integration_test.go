@@ -208,7 +208,7 @@ func newDetachTestEnv(t *testing.T, cfg *Config, endpoint *models.EndPoint) *det
 	)
 	server.config = cfg
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
-	server.storage = storage
+	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
@@ -828,7 +828,7 @@ func TestDetachCrossTenantContextIsolation(t *testing.T) {
 	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
 
 	// FIX-1: Verify message stored with endpoint owner tenant using Background context
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachs, 1, "detach message must be persisted")
 	storedMsg := msgRepo.detachs[0]
@@ -870,7 +870,7 @@ func TestDetachUnknownEndpointMetadataPersistence(t *testing.T) {
 		"unknown endpoint detach must return detRsp, commands seen: %#v", commandsSnapshot)
 
 	// FIX-3: Verify message persisted with session tenant
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachs, 1, "detach message must be persisted for unknown endpoint")
 	storedMsg := msgRepo.detachs[0]
@@ -962,7 +962,7 @@ func TestDetachOrgResolverFailureFallback(t *testing.T) {
 	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
 
 	// Verify message persisted with tenant but nil org UUID
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachs, 1)
 	storedMsg := msgRepo.detachs[0]
@@ -1041,7 +1041,7 @@ func TestSendDetachPropagatePersistence(t *testing.T) {
 	require.NoError(t, err, "SendDetachPropagate should succeed")
 
 	// Verify detach propagate message was persisted
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachPropagates, 1, "detach propagate message must be persisted")
 	storedMsg := msgRepo.detachPropagates[0]
@@ -1103,7 +1103,7 @@ func TestSendDetachPropagateUnknownEndpoint(t *testing.T) {
 	require.NoError(t, err, "SendDetachPropagate should succeed for unknown endpoint")
 
 	// Verify detach propagate message was persisted
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachPropagates, 1, "detach propagate message must be persisted for unknown endpoint")
 	storedMsg := msgRepo.detachPropagates[0]
