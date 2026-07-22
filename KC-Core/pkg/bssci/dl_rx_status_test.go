@@ -162,7 +162,7 @@ func TestDLRXStatusPersistence(t *testing.T) {
 func TestHandlerRegistration(t *testing.T) {
 	// Create real services for test
 	logger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, _, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(logger, nil)
 	versionNegotiator, err := bssciservices.NewVersionNegotiator([]string{mioty.MIOTYProtocolVersion}, logger)
 	require.NoError(t, err, "NewVersionNegotiator should build from the canonical version")
 	server, err := bssci.NewServer(&bssci.Config{}, logger, bssci.Dependencies{
@@ -171,7 +171,6 @@ func TestHandlerRegistration(t *testing.T) {
 		DownlinkSvc:        downlinkSvc,
 		StatusSvc:          statusSvc,
 		ConnectionRegistry: connectionSvc,
-		Broadcaster:        broadcaster,
 		QueueSerializer:    queueSerializer,
 		AuditLogger:        auditLogger,
 		TenantResolver:     tenantResolver,

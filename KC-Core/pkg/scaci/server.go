@@ -240,6 +240,18 @@ func NewServer(
 	if sessionPersistence == nil {
 		return nil, fmt.Errorf("scaci.NewServer: sessionPersistence is required")
 	}
+	if orgResolver == nil {
+		return nil, fmt.Errorf("scaci.NewServer: orgResolver is required (org context parity)")
+	}
+	if sessionSnapshotProvider == nil {
+		return nil, fmt.Errorf("scaci.NewServer: sessionSnapshotProvider is required (§3.3)")
+	}
+	if propagationSvc == nil {
+		return nil, fmt.Errorf("scaci.NewServer: propagationSvc is required (§3.6-3.7)")
+	}
+	if errorRecorder == nil {
+		return nil, fmt.Errorf("scaci.NewServer: errorRecorder is required (§3.14)")
+	}
 
 	return &Server{
 		config:                  cfg,

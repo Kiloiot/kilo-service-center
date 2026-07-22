@@ -215,7 +215,6 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		DownlinkSvc:        bssciSvcBundle.DownlinkSvc,
 		StatusSvc:          bssciSvcBundle.StatusSvc,
 		ConnectionRegistry: bssciSvcBundle.ConnectionSvc,
-		Broadcaster:        bssciSvcBundle.Broadcaster,
 		QueueSerializer:    bssciSvcBundle.QueueSerializer,
 		AuditLogger:        bssciSvcBundle.AuditLogger,
 		TenantResolver:     bssciSvcBundle.TenantResolver,
