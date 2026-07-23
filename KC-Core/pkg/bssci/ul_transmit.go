@@ -72,33 +72,9 @@ var (
 func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []byte,
 	shAddr uint16, packetCnt uint32, userData []byte, profile string, format uint8) (int64, error) {
 
-	s.mu.RLock()
-	session, exists := s.sessions[sessionID]
-	s.mu.RUnlock()
-
-	if !exists {
-		return 0, fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
-	}
-
-	// Check if connect handshake is complete (BSSCI-3.3-03)
-	if !session.HandshakeComplete {
-		s.logger.WarnContext(s.sessionContext(session), LogBSSCIConnectHandshakeNotComplete,
-			"sessionID", sessionID,
-			"bsEui", session.BaseStationEUI)
-		return 0, fmt.Errorf("%s for session %s", ResolveErrorMessage(errHandshakeNotComplete), sessionID)
-	}
-
-	// Check if base station supports bidirectional communication
-	if !session.Bidirectional {
-		s.logger.WarnContext(s.sessionContext(session), LogBSSCIBaseStationDoesNotSupportBidi,
-			"sessionID", sessionID,
-			"bsEui", session.BaseStationEUI)
-		return 0, fmt.Errorf("%s %016X", ResolveErrorMessage(errBaseStationNotBidirectional), session.BaseStationEUI)
-	}
-
-	// Validate key length
-	if len(nwkSnKey) != 16 {
-		return 0, fmt.Errorf("%s, got %d", ResolveErrorMessage(errNwkSnKeyInvalidLength), len(nwkSnKey))
+	session, err := s.validateULTransmitSession(sessionID, nwkSnKey)
+	if err != nil {
+		return 0, err
 	}
 
 	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
@@ -109,88 +85,20 @@ func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []b
 		return 0, err
 	}
 
-	// Encrypt key for storage ONLY (not for transmission)
-	var encryptedKeyForStorage string
-	isEncrypted := false // Track whether the key was successfully encrypted
-	if s.keyEncryptor != nil {
-		encrypted, err := s.keyEncryptor.EncryptKey(nwkSnKey)
-		if err != nil {
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToEncryptNetworkSessionKey,
-				"error", err,
-				"sessionID", sessionID)
-			// Production: fail operation if encryption fails (no plaintext fallback)
-			return 0, fmt.Errorf("failed to encrypt network session key: %w", err)
-		}
-		encryptedKeyForStorage = encrypted
-		isEncrypted = true
-	} else {
-		// No encryptor available - only allowed in dev mode with KILOCENTER_ALLOW_PLAINTEXT_KEYS=true
-		// (NewServer returns nil if encryptor init fails in production)
-		encryptedKeyForStorage = base64.StdEncoding.EncodeToString(nwkSnKey)
-		isEncrypted = false
+	encryptedKeyForStorage, isEncrypted, err := s.encryptULKeyForStorage(session, sessionID, nwkSnKey)
+	if err != nil {
+		return 0, err
 	}
 
-	// Convert CLEAR key to Numeric[16] array for wire protocol per MIOTY spec
-	nwkSnKeyArray := make([]interface{}, 16)
-	for i := 0; i < 16; i++ {
-		nwkSnKeyArray[i] = uint8(nwkSnKey[i])
-	}
-
-	// Convert userData to Numeric[n] array for wire protocol (BSSCI-3.11.1)
-	userDataArray := make([]interface{}, len(userData))
-	for i := 0; i < len(userData); i++ {
-		userDataArray[i] = uint8(userData[i])
-	}
-
-	// Build ulDataTx message per MIOTY BSSCI spec Section 3.11.1
-	msg := map[string]interface{}{
-		"command":   mioty.CmdULDataTransmit,
-		"opId":      opId,
-		"epEui":     epEui,         // Numeric[8] per spec
-		"nwkSnKey":  nwkSnKeyArray, // CLEAR key as Numeric[16] array
-		"shAddr":    shAddr,        // uint16 per spec
-		"packetCnt": packetCnt,     // uint32 per spec
-		"userData":  userDataArray, // Numeric[n] array per spec
-	}
-
-	// Add optional fields
-	if format > 0 {
-		msg["format"] = format
-	}
-	if profile != "" {
-		msg["profile"] = profile
-	}
+	msg := buildULDataTxMessage(opId, epEui, nwkSnKey, userData, shAddr, packetCnt, profile, format)
 
 	// Create EUI bytes for storage
 	euiBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(euiBytes, epEui)
 
-	// Store in pendingOps with encrypted key and userData in metadata
-	userDataB64 := base64.StdEncoding.EncodeToString(userData)
-	metadata := map[string]interface{}{
-		"packetCnt":    packetCnt,
-		"shAddr":       shAddr,
-		"format":       format,
-		"profile":      profile,
-		"encryptedKey": encryptedKeyForStorage, // Already base64 encoded
-		"isEncrypted":  isEncrypted,            // Track encryption status
-		"userData":     userDataB64,
-		"data":         userDataB64, // Also store as "data" for PendingOperation.Data population
-	}
-
-	// Create sanitized message for persistence (no raw keys)
-	sanitizedMsg := map[string]interface{}{
-		"command":   mioty.CmdULDataTransmit,
-		"opId":      opId,
-		"epEui":     epEui,
-		"shAddr":    shAddr,
-		"packetCnt": packetCnt,
-		"format":    format,
-		// NO nwkSnKey here - it's in encrypted metadata
-	}
-	if profile != "" {
-		sanitizedMsg["profile"] = profile
-	}
+	metadata := buildULDataTxMetadata(userData, shAddr, packetCnt, profile, format,
+		encryptedKeyForStorage, isEncrypted)
+	sanitizedMsg := buildSanitizedULDataTxMessage(opId, epEui, shAddr, packetCnt, profile, format)
 
 	// The recovery record must be durable before the frame is written; a
 	// persistence failure aborts the send, leaving only a consumed-ID gap.
@@ -213,21 +121,151 @@ func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []b
 
 	// Send message with CLEAR key to base station
 	if err := s.sendMessage(session, msg); err != nil {
-		if errors.Is(err, ErrAmbiguousWrite) {
-			// The frame may be partially on the wire: keep the pending row for
-			// resume reissue with the original ID and close the transport.
-			s.closeTransportAfterWriteFailure(session, opId, err)
-		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
-			// Nothing reached the wire; the recovery row is removed.
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationAfterSendFailure,
-				"sessionID", session.DbSessionID,
-				"opId", opId,
-				"error", cleanupErr)
-		}
+		s.handleULDataTxSendFailure(session, opId, err)
 		return 0, err
 	}
 
 	return opId, nil
+}
+
+// validateULTransmitSession resolves the session and checks the §3.11
+// preconditions: handshake completion (BSSCI-3.3-03), bidirectional support,
+// and network session key length.
+func (s *Server) validateULTransmitSession(sessionID string, nwkSnKey []byte) (*Session, error) {
+	s.mu.RLock()
+	session, exists := s.sessions[sessionID]
+	s.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
+	}
+
+	if !session.HandshakeComplete {
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIConnectHandshakeNotComplete,
+			"sessionID", sessionID,
+			"bsEui", session.BaseStationEUI)
+		return nil, fmt.Errorf("%s for session %s", ResolveErrorMessage(errHandshakeNotComplete), sessionID)
+	}
+
+	if !session.Bidirectional {
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIBaseStationDoesNotSupportBidi,
+			"sessionID", sessionID,
+			"bsEui", session.BaseStationEUI)
+		return nil, fmt.Errorf("%s %016X", ResolveErrorMessage(errBaseStationNotBidirectional), session.BaseStationEUI)
+	}
+
+	if len(nwkSnKey) != 16 {
+		return nil, fmt.Errorf("%s, got %d", ResolveErrorMessage(errNwkSnKeyInvalidLength), len(nwkSnKey))
+	}
+
+	return session, nil
+}
+
+// encryptULKeyForStorage encrypts the network session key for persistence
+// ONLY (never for transmission). Without an encryptor the key is stored
+// base64-encoded, which is only allowed in dev mode with
+// KILOCENTER_ALLOW_PLAINTEXT_KEYS=true (NewServer returns nil if encryptor
+// init fails in production).
+func (s *Server) encryptULKeyForStorage(session *Session, sessionID string, nwkSnKey []byte) (string, bool, error) {
+	if s.keyEncryptor == nil {
+		return base64.StdEncoding.EncodeToString(nwkSnKey), false, nil
+	}
+
+	encrypted, err := s.keyEncryptor.EncryptKey(nwkSnKey)
+	if err != nil {
+		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToEncryptNetworkSessionKey,
+			"error", err,
+			"sessionID", sessionID)
+		// Production: fail operation if encryption fails (no plaintext fallback)
+		return "", false, fmt.Errorf("failed to encrypt network session key: %w", err)
+	}
+	return encrypted, true, nil
+}
+
+// bytesToNumericArray converts raw bytes to the Numeric[n] array shape the
+// BSSCI wire protocol expects.
+func bytesToNumericArray(data []byte) []interface{} {
+	arr := make([]interface{}, len(data))
+	for i := range data {
+		arr[i] = uint8(data[i])
+	}
+	return arr
+}
+
+// buildULDataTxMessage assembles the ulDataTx wire message per MIOTY BSSCI
+// spec Section 3.11.1, carrying the CLEAR key as a Numeric[16] array.
+func buildULDataTxMessage(opId int64, epEui uint64, nwkSnKey, userData []byte,
+	shAddr uint16, packetCnt uint32, profile string, format uint8) map[string]interface{} {
+	msg := map[string]interface{}{
+		"command":   mioty.CmdULDataTransmit,
+		"opId":      opId,
+		"epEui":     epEui,                         // Numeric[8] per spec
+		"nwkSnKey":  bytesToNumericArray(nwkSnKey), // CLEAR key as Numeric[16] array
+		"shAddr":    shAddr,                        // uint16 per spec
+		"packetCnt": packetCnt,                     // uint32 per spec
+		"userData":  bytesToNumericArray(userData), // Numeric[n] array per spec
+	}
+	if format > 0 {
+		msg["format"] = format
+	}
+	if profile != "" {
+		msg["profile"] = profile
+	}
+	return msg
+}
+
+// buildULDataTxMetadata builds the pending-operation metadata carrying the
+// encrypted key and userData.
+func buildULDataTxMetadata(userData []byte, shAddr uint16, packetCnt uint32,
+	profile string, format uint8, encryptedKey string, isEncrypted bool) map[string]interface{} {
+	userDataB64 := base64.StdEncoding.EncodeToString(userData)
+	return map[string]interface{}{
+		"packetCnt":    packetCnt,
+		"shAddr":       shAddr,
+		"format":       format,
+		"profile":      profile,
+		"encryptedKey": encryptedKey, // Already base64 encoded
+		"isEncrypted":  isEncrypted,  // Track encryption status
+		"userData":     userDataB64,
+		"data":         userDataB64, // Also store as "data" for PendingOperation.Data population
+	}
+}
+
+// buildSanitizedULDataTxMessage builds the persistence copy of the ulDataTx
+// message without the raw key, which lives only in encrypted metadata.
+func buildSanitizedULDataTxMessage(opId int64, epEui uint64, shAddr uint16,
+	packetCnt uint32, profile string, format uint8) map[string]interface{} {
+	sanitizedMsg := map[string]interface{}{
+		"command":   mioty.CmdULDataTransmit,
+		"opId":      opId,
+		"epEui":     epEui,
+		"shAddr":    shAddr,
+		"packetCnt": packetCnt,
+		"format":    format,
+	}
+	if profile != "" {
+		sanitizedMsg["profile"] = profile
+	}
+	return sanitizedMsg
+}
+
+// handleULDataTxSendFailure reconciles the pending operation after a failed
+// frame write: an ambiguous write keeps the pending row for resume reissue and
+// closes the transport, while a clean failure removes the recovery row.
+func (s *Server) handleULDataTxSendFailure(session *Session, opId int64, err error) {
+	if errors.Is(err, ErrAmbiguousWrite) {
+		// The frame may be partially on the wire: keep the pending row for
+		// resume reissue with the original ID and close the transport.
+		s.closeTransportAfterWriteFailure(session, opId, err)
+		return
+	}
+	if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		// Nothing reached the wire; the recovery row is removed.
+		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationAfterSendFailure,
+			"sessionID", session.DbSessionID,
+			"opId", opId,
+			"error", cleanupErr)
+	}
 }
 
 // handleULDataTxResponse handles the base station's response to ulDataTx

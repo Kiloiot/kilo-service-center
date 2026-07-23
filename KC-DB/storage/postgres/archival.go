@@ -387,9 +387,41 @@ func (s *ArchivalService) PurgeArchivedMessages(ctx context.Context, archivedBef
 func (s *ArchivalService) GetArchivalStats(ctx context.Context) (*ArchivalStats, error) {
 	stats := &ArchivalStats{}
 
-	// Get main table stats
+	if err := s.queryMainTableStats(ctx, stats); err != nil {
+		return nil, err
+	}
+
+	canonicalBytes, oldestArchive, newestArchive, err := s.queryCanonicalArchiveStats(ctx, stats)
+	if err != nil {
+		return nil, err
+	}
+
+	legacyBytes, oldestLegacy, newestLegacy, err := s.queryLegacyArchiveStats(ctx, stats)
+	if err != nil {
+		return nil, err
+	}
+
+	// Combined totals across both archive tables
+	stats.ArchiveTableCount = stats.CanonicalArchiveCount + stats.LegacyArchiveCount
+	stats.CanonicalArchiveSize = prettyBytes(canonicalBytes)
+	stats.LegacyArchiveSize = prettyBytes(legacyBytes)
+	stats.ArchiveTableSize = prettyBytes(canonicalBytes + legacyBytes)
+	stats.OldestArchiveMessage = earliestValid(oldestArchive, oldestLegacy)
+	stats.NewestArchiveMessage = latestValid(newestArchive, newestLegacy)
+
+	partitions, err := s.queryPartitionInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stats.Partitions = partitions
+
+	return stats, nil
+}
+
+// queryMainTableStats fills the main messages-table counters and timestamps.
+func (s *ArchivalService) queryMainTableStats(ctx context.Context, stats *ArchivalStats) error {
 	mainQuery := `
-		SELECT 
+		SELECT
 			COUNT(*) as total_messages,
 			COUNT(*) FILTER (WHERE archived = true) as archived_messages,
 			MIN(received_at) as oldest_message,
@@ -406,7 +438,7 @@ func (s *ArchivalService) GetArchivalStats(ctx context.Context) (*ArchivalStats,
 		&stats.MainTableSize,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("get main table stats: %w", err)
+		return fmt.Errorf("get main table stats: %w", err)
 	}
 
 	if oldestMain.Valid {
@@ -415,9 +447,13 @@ func (s *ArchivalService) GetArchivalStats(ctx context.Context) (*ArchivalStats,
 	if newestMain.Valid {
 		stats.NewestMainMessage = &newestMain.Time
 	}
+	return nil
+}
 
-	// Canonical archive stats (raw byte sizes so combined totals can be
-	// summed numerically; pg_size_pretty strings cannot be added)
+// queryCanonicalArchiveStats reads the canonical archive table. Raw byte sizes
+// are returned so combined totals can be summed numerically; pg_size_pretty
+// strings cannot be added.
+func (s *ArchivalService) queryCanonicalArchiveStats(ctx context.Context, stats *ArchivalStats) (tableBytes int64, oldest, newest sql.NullTime, err error) {
 	archiveQuery := `
 		SELECT
 			COUNT(*) as total_messages,
@@ -426,71 +462,56 @@ func (s *ArchivalService) GetArchivalStats(ctx context.Context) (*ArchivalStats,
 			pg_total_relation_size('messages_archive') as table_bytes
 		FROM messages_archive`
 
-	var oldestArchive, newestArchive sql.NullTime
-	var canonicalBytes int64
 	err = s.db.QueryRowContext(ctx, archiveQuery).Scan(
 		&stats.CanonicalArchiveCount,
-		&oldestArchive,
-		&newestArchive,
-		&canonicalBytes,
+		&oldest,
+		&newest,
+		&tableBytes,
 	)
 	if err != nil && err != sql.ErrNoRows {
-		return nil, fmt.Errorf("get archive table stats: %w", err)
+		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("get archive table stats: %w", err)
 	}
+	return tableBytes, oldest, newest, nil
+}
 
-	// Legacy archive stats: the pre-000139 table preserves rows the canonical
-	// rebuild could not losslessly project. It is optional (to_regclass) and
-	// combined statistics cover both tables.
-	var legacyBytes int64
+// queryLegacyArchiveStats reads the pre-000139 archive table, which preserves
+// rows the canonical rebuild could not losslessly project. It is optional
+// (to_regclass) and combined statistics cover both tables.
+func (s *ArchivalService) queryLegacyArchiveStats(ctx context.Context, stats *ArchivalStats) (tableBytes int64, oldest, newest sql.NullTime, err error) {
 	var legacyExists *string
 	if err := s.db.QueryRowContext(ctx, `SELECT to_regclass('messages_archive_pre000139')::text`).Scan(&legacyExists); err != nil {
-		return nil, fmt.Errorf("check legacy archive presence: %w", err)
+		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("check legacy archive presence: %w", err)
 	}
-	var oldestLegacy, newestLegacy sql.NullTime
-	if legacyExists != nil {
-		legacyQuery := `
-			SELECT
-				COUNT(*) as total_messages,
-				MIN(received_at) as oldest_message,
-				MAX(received_at) as newest_message,
-				pg_total_relation_size('messages_archive_pre000139') as table_bytes
-			FROM messages_archive_pre000139`
-		if err := s.db.QueryRowContext(ctx, legacyQuery).Scan(
-			&stats.LegacyArchiveCount,
-			&oldestLegacy,
-			&newestLegacy,
-			&legacyBytes,
-		); err != nil && err != sql.ErrNoRows {
-			return nil, fmt.Errorf("get legacy archive stats: %w", err)
-		}
+	if legacyExists == nil {
+		return 0, sql.NullTime{}, sql.NullTime{}, nil
 	}
 
-	// Combined totals across both archive tables
-	stats.ArchiveTableCount = stats.CanonicalArchiveCount + stats.LegacyArchiveCount
-	stats.CanonicalArchiveSize = prettyBytes(canonicalBytes)
-	stats.LegacyArchiveSize = prettyBytes(legacyBytes)
-	stats.ArchiveTableSize = prettyBytes(canonicalBytes + legacyBytes)
-
-	// Oldest/newest across both tables
-	for _, cand := range []sql.NullTime{oldestArchive, oldestLegacy} {
-		if cand.Valid && (stats.OldestArchiveMessage == nil || cand.Time.Before(*stats.OldestArchiveMessage)) {
-			t := cand.Time
-			stats.OldestArchiveMessage = &t
-		}
+	legacyQuery := `
+		SELECT
+			COUNT(*) as total_messages,
+			MIN(received_at) as oldest_message,
+			MAX(received_at) as newest_message,
+			pg_total_relation_size('messages_archive_pre000139') as table_bytes
+		FROM messages_archive_pre000139`
+	err = s.db.QueryRowContext(ctx, legacyQuery).Scan(
+		&stats.LegacyArchiveCount,
+		&oldest,
+		&newest,
+		&tableBytes,
+	)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("get legacy archive stats: %w", err)
 	}
-	for _, cand := range []sql.NullTime{newestArchive, newestLegacy} {
-		if cand.Valid && (stats.NewestArchiveMessage == nil || cand.Time.After(*stats.NewestArchiveMessage)) {
-			t := cand.Time
-			stats.NewestArchiveMessage = &t
-		}
-	}
+	return tableBytes, oldest, newest, nil
+}
 
-	// Get partition info
+// queryPartitionInfo lists the monthly message partitions with pretty sizes.
+func (s *ArchivalService) queryPartitionInfo(ctx context.Context) ([]PartitionInfo, error) {
 	partitionQuery := `
-		SELECT 
+		SELECT
 			tablename,
 			pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
-		FROM pg_tables 
+		FROM pg_tables
 		WHERE tablename LIKE 'messages_%'
 		  AND tablename != 'messages_archive'
 		  AND tablename != 'messages_archive_pre000139'
@@ -506,16 +527,39 @@ func (s *ArchivalService) GetArchivalStats(ctx context.Context) (*ArchivalStats,
 		}
 	}()
 
-	stats.Partitions = make([]PartitionInfo, 0)
+	partitions := make([]PartitionInfo, 0)
 	for rows.Next() {
 		var info PartitionInfo
 		if err := rows.Scan(&info.Name, &info.Size); err != nil {
 			return nil, fmt.Errorf("scan partition info: %w", err)
 		}
-		stats.Partitions = append(stats.Partitions, info)
+		partitions = append(partitions, info)
 	}
+	return partitions, nil
+}
 
-	return stats, nil
+// earliestValid returns the earliest valid candidate timestamp, or nil.
+func earliestValid(candidates ...sql.NullTime) *time.Time {
+	var earliest *time.Time
+	for _, cand := range candidates {
+		if cand.Valid && (earliest == nil || cand.Time.Before(*earliest)) {
+			t := cand.Time
+			earliest = &t
+		}
+	}
+	return earliest
+}
+
+// latestValid returns the latest valid candidate timestamp, or nil.
+func latestValid(candidates ...sql.NullTime) *time.Time {
+	var latest *time.Time
+	for _, cand := range candidates {
+		if cand.Valid && (latest == nil || cand.Time.After(*latest)) {
+			t := cand.Time
+			latest = &t
+		}
+	}
+	return latest
 }
 
 // ArchivalStats contains statistics about archived messages. The combined

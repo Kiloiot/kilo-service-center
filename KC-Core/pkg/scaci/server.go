@@ -203,54 +203,34 @@ func NewServer(
 	propagationSvc EndpointPropagator,
 	errorRecorder ErrorRecorder,
 ) (*Server, error) {
-	// Validate required dependencies (fail-fast pattern per BSSCI server.go:641-644)
-	if cfg == nil {
-		return nil, fmt.Errorf("scaci.NewServer: cfg is required")
+	// Validate required dependencies (fail-fast pattern per BSSCI server.go:641-644).
+	// Presence is evaluated at the call site so typed-nil interface values are
+	// caught the same way plain nils are.
+	deps := []struct {
+		present bool
+		message string
+	}{
+		{cfg != nil, "cfg is required"},
+		{log != nil, "logger is required"},
+		{sessionRepo != nil, "sessionRepo is required (§3.3)"},
+		{operationRepo != nil, "operationRepo is required (§3.2)"},
+		{handshakeSvc != nil, "handshakeSvc is required (§3.3)"},
+		{endpointSvc != nil, "endpointSvc is required (§3.6-3.7)"},
+		{ulSvc != nil, "ulSvc is required (§3.9)"},
+		{dlSvc != nil, "dlSvc is required (§3.8)"},
+		{statusSvc != nil, "statusSvc is required (§3.5)"},
+		{sessionValidator != nil, "sessionValidator is required (§3.3.1)"},
+		{operationRecorder != nil, "operationRecorder is required"},
+		{sessionPersistence != nil, "sessionPersistence is required"},
+		{orgResolver != nil, "orgResolver is required (org context parity)"},
+		{sessionSnapshotProvider != nil, "sessionSnapshotProvider is required (§3.3)"},
+		{propagationSvc != nil, "propagationSvc is required (§3.6-3.7)"},
+		{errorRecorder != nil, "errorRecorder is required (§3.14)"},
 	}
-	if log == nil {
-		return nil, fmt.Errorf("scaci.NewServer: logger is required")
-	}
-	if sessionRepo == nil {
-		return nil, fmt.Errorf("scaci.NewServer: sessionRepo is required (§3.3)")
-	}
-	if operationRepo == nil {
-		return nil, fmt.Errorf("scaci.NewServer: operationRepo is required (§3.2)")
-	}
-	if handshakeSvc == nil {
-		return nil, fmt.Errorf("scaci.NewServer: handshakeSvc is required (§3.3)")
-	}
-	if endpointSvc == nil {
-		return nil, fmt.Errorf("scaci.NewServer: endpointSvc is required (§3.6-3.7)")
-	}
-	if ulSvc == nil {
-		return nil, fmt.Errorf("scaci.NewServer: ulSvc is required (§3.9)")
-	}
-	if dlSvc == nil {
-		return nil, fmt.Errorf("scaci.NewServer: dlSvc is required (§3.8)")
-	}
-	if statusSvc == nil {
-		return nil, fmt.Errorf("scaci.NewServer: statusSvc is required (§3.5)")
-	}
-	if sessionValidator == nil {
-		return nil, fmt.Errorf("scaci.NewServer: sessionValidator is required (§3.3.1)")
-	}
-	if operationRecorder == nil {
-		return nil, fmt.Errorf("scaci.NewServer: operationRecorder is required")
-	}
-	if sessionPersistence == nil {
-		return nil, fmt.Errorf("scaci.NewServer: sessionPersistence is required")
-	}
-	if orgResolver == nil {
-		return nil, fmt.Errorf("scaci.NewServer: orgResolver is required (org context parity)")
-	}
-	if sessionSnapshotProvider == nil {
-		return nil, fmt.Errorf("scaci.NewServer: sessionSnapshotProvider is required (§3.3)")
-	}
-	if propagationSvc == nil {
-		return nil, fmt.Errorf("scaci.NewServer: propagationSvc is required (§3.6-3.7)")
-	}
-	if errorRecorder == nil {
-		return nil, fmt.Errorf("scaci.NewServer: errorRecorder is required (§3.14)")
+	for _, dep := range deps {
+		if !dep.present {
+			return nil, fmt.Errorf("scaci.NewServer: %s", dep.message)
+		}
 	}
 
 	return &Server{

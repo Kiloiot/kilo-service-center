@@ -176,102 +176,25 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 		return fmt.Errorf("update request cannot be nil")
 	}
 
-	updates := []string{}
-	args := []interface{}{}
-	argPos := 1
-
-	if req.SnBsOpId != nil {
-		updates = append(updates, fmt.Sprintf("sn_bs_op_id = $%d", argPos))
-		args = append(args, *req.SnBsOpId)
-		argPos++
+	builder, err := buildSessionUpdateClauses(req)
+	if err != nil {
+		return err
 	}
-
-	if req.SnScOpId != nil {
-		updates = append(updates, fmt.Sprintf("sn_sc_op_id = $%d", argPos))
-		args = append(args, *req.SnScOpId)
-		argPos++
-	}
-
-	if req.Status != nil {
-		updates = append(updates, fmt.Sprintf("status = $%d", argPos))
-		args = append(args, *req.Status)
-		argPos++
-	}
-
-	if req.LastPingAt != nil {
-		updates = append(updates, fmt.Sprintf("last_ping_at = $%d", argPos))
-		args = append(args, *req.LastPingAt)
-		argPos++
-	}
-
-	if req.EndedAt != nil && req.ClearEndedAt {
-		return fmt.Errorf("update request cannot set and clear ended_at at once")
-	}
-
-	if req.EndedAt != nil {
-		updates = append(updates, fmt.Sprintf("ended_at = $%d", argPos))
-		args = append(args, *req.EndedAt)
-		argPos++
-	}
-
-	if req.ClearEndedAt {
-		updates = append(updates, "ended_at = NULL")
-	}
-
-	if req.CanResume != nil {
-		updates = append(updates, fmt.Sprintf("can_resume = $%d", argPos))
-		args = append(args, *req.CanResume)
-		argPos++
-	}
-
-	if req.ConnectionId != nil {
-		updates = append(updates, fmt.Sprintf("connection_id = $%d", argPos))
-		args = append(args, *req.ConnectionId)
-		argPos++
-	}
-
-	if req.RemoteAddr != nil {
-		updates = append(updates, fmt.Sprintf("remote_addr = $%d", argPos))
-		args = append(args, *req.RemoteAddr)
-		argPos++
-	}
-
-	if req.OrganizationID != nil {
-		updates = append(updates, fmt.Sprintf("organization_id = $%d", argPos))
-		args = append(args, *req.OrganizationID)
-		argPos++
-	}
-
-	if req.Encoding != nil {
-		updates = append(updates, fmt.Sprintf("encoding = $%d", argPos))
-		args = append(args, *req.Encoding)
-		argPos++
-	}
-
-	if req.ProtocolVersion != nil {
-		updates = append(updates, fmt.Sprintf("protocol_version = $%d", argPos))
-		args = append(args, *req.ProtocolVersion)
-		argPos++
-	}
-
-	if len(updates) == 0 {
+	if len(builder.clauses) == 0 {
 		return fmt.Errorf("no fields to update")
 	}
 
-	updates = append(updates, fmt.Sprintf("updated_at = $%d", argPos))
-	args = append(args, time.Now())
-	argPos++
-
-	args = append(args, sessionID, tenantID)
+	builder.set("updated_at", time.Now())
+	builder.args = append(builder.args, sessionID, tenantID)
 
 	query := fmt.Sprintf(`
 		UPDATE basestation_sessions
 		SET %s
 		WHERE id = $%d AND tenant_id = $%d`,
-		strings.Join(updates, ", "),
-		argPos, argPos+1)
+		strings.Join(builder.clauses, ", "),
+		len(builder.args)-1, len(builder.args))
 
-	result, err := r.db.ExecContext(ctx, query, args...)
+	result, err := r.db.ExecContext(ctx, query, builder.args...)
 	if err != nil {
 		return fmt.Errorf("failed to update Base Station session: %w", err)
 	}
@@ -286,6 +209,56 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 	}
 
 	return nil
+}
+
+// updateSetBuilder accumulates SET clauses with positional placeholders for a
+// dynamic partial UPDATE.
+type updateSetBuilder struct {
+	clauses []string
+	args    []interface{}
+}
+
+// set appends a column assignment bound to the next positional argument.
+func (b *updateSetBuilder) set(column string, value interface{}) {
+	b.args = append(b.args, value)
+	b.clauses = append(b.clauses, fmt.Sprintf("%s = $%d", column, len(b.args)))
+}
+
+// setNull appends a literal NULL assignment for a column.
+func (b *updateSetBuilder) setNull(column string) {
+	b.clauses = append(b.clauses, fmt.Sprintf("%s = NULL", column))
+}
+
+// setIfPresent appends a column assignment when the optional value is set.
+func setIfPresent[T any](b *updateSetBuilder, column string, value *T) {
+	if value != nil {
+		b.set(column, *value)
+	}
+}
+
+// buildSessionUpdateClauses maps the optional request fields onto SET clauses,
+// rejecting a request that both sets and clears ended_at.
+func buildSessionUpdateClauses(req *models.BaseStationSessionUpdateRequest) (*updateSetBuilder, error) {
+	if req.EndedAt != nil && req.ClearEndedAt {
+		return nil, fmt.Errorf("update request cannot set and clear ended_at at once")
+	}
+
+	b := &updateSetBuilder{}
+	setIfPresent(b, "sn_bs_op_id", req.SnBsOpId)
+	setIfPresent(b, "sn_sc_op_id", req.SnScOpId)
+	setIfPresent(b, "status", req.Status)
+	setIfPresent(b, "last_ping_at", req.LastPingAt)
+	setIfPresent(b, "ended_at", req.EndedAt)
+	if req.ClearEndedAt {
+		b.setNull("ended_at")
+	}
+	setIfPresent(b, "can_resume", req.CanResume)
+	setIfPresent(b, "connection_id", req.ConnectionId)
+	setIfPresent(b, "remote_addr", req.RemoteAddr)
+	setIfPresent(b, "organization_id", req.OrganizationID)
+	setIfPresent(b, "encoding", req.Encoding)
+	setIfPresent(b, "protocol_version", req.ProtocolVersion)
+	return b, nil
 }
 
 // UpdateOperationIDs updates both Base Station and Service Center operation IDs atomically

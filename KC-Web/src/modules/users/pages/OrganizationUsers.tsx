@@ -200,68 +200,12 @@ const OrgUsersRemoveDialog: React.FC<OrgUsersRemoveDialogProps> = ({
   </Dialog>
 );
 
-const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
-  orgId: propOrgId,
-  embedded,
-  addDialogOpen: externalAddDialogOpen,
-  onAddDialogOpenChange,
-}) => {
-  const { id: routeOrgId } = useParams<{ id: string }>();
-  const { organizationId: contextOrgId, setOrganization } =
-    useOrganizationContext();
-  const { isHydrated } = useSession();
-  const { isServerAdmin, isOrgAdmin } = useCapabilities();
-
-  // Resolve orgId: prop > route param > context
-  const orgId = propOrgId || routeOrgId || contextOrgId || "";
-
-  // Local UI state
+/** Search + sort state over the loaded member list. */
+function useOrgUsersFiltering(users: OrganizationUserUI[]) {
   const [search, setSearch] = useState("");
   const [orderBy, setOrderBy] = useState<OrderBy>("email");
   const [orderDirection, setOrderDirection] = useState<OrderDirection>("asc");
 
-  // Dialog state - separate dialogs for add (new user) vs edit (existing member)
-  const [localAddDialogOpen, setLocalAddDialogOpen] = useState(false);
-  const isAddDialogOpen = externalAddDialogOpen ?? localAddDialogOpen;
-  const setAddDialogOpen = onAddDialogOpenChange ?? setLocalAddDialogOpen;
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<OrganizationUserUI | null>(
-    null,
-  );
-
-  // Remove confirmation state
-  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
-  const [removeError, setRemoveError] = useState<string | null>(null);
-
-  // React Query hooks
-  const canQuery =
-    isHydrated && (isServerAdmin || isOrgAdmin) && Boolean(orgId);
-  const { data: org } = useOrganizationQuery(orgId, {
-    enabled: canQuery && isServerAdmin,
-  });
-  const {
-    data: usersData,
-    isLoading,
-    isError,
-    error,
-  } = useOrgUsers(orgId, undefined, {
-    enabled: canQuery,
-  });
-
-  // Remove mutation
-  const removeOrgUser = useRemoveOrgUser();
-
-  // Set organization context when org data loads
-  useEffect(() => {
-    if (org) {
-      setOrganization(org.id, org.name);
-    }
-  }, [org, setOrganization]);
-
-  // Memoize users array
-  const users = useMemo(() => usersData?.users ?? [], [usersData?.users]);
-
-  // Filter users by search
   const filteredUsers = useMemo(() => {
     const searchLower = search.toLowerCase();
     return users.filter((user) =>
@@ -269,7 +213,6 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
     );
   }, [users, search]);
 
-  // Sort users
   const sortedUsers = useMemo(
     () => sortUsers(filteredUsers, orderBy, orderDirection),
     [filteredUsers, orderBy, orderDirection],
@@ -283,6 +226,37 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
       setOrderDirection("asc");
     }
   };
+
+  return {
+    search,
+    setSearch,
+    orderBy,
+    orderDirection,
+    sortedUsers,
+    handleSort,
+  };
+}
+
+/** Add/edit/remove dialog state and handlers, including the remove mutation. */
+function useOrgUsersDialogs(
+  orgId: string,
+  externalAddDialogOpen?: boolean,
+  onAddDialogOpenChange?: (open: boolean) => void,
+) {
+  // Dialog state - separate dialogs for add (new user) vs edit (existing member)
+  const [localAddDialogOpen, setLocalAddDialogOpen] = useState(false);
+  const isAddDialogOpen = externalAddDialogOpen ?? localAddDialogOpen;
+  const setAddDialogOpen = onAddDialogOpenChange ?? setLocalAddDialogOpen;
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<OrganizationUserUI | null>(
+    null,
+  );
+
+  // Remove confirmation state
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const removeOrgUser = useRemoveOrgUser();
 
   const handleAddClick = () => {
     setAddDialogOpen(true);
@@ -301,7 +275,6 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
     setRemoveConfirmOpen(true);
   };
 
-  // Confirm removal
   const confirmRemove = () => {
     if (!selectedUser) return;
     removeOrgUser.mutate(
@@ -319,7 +292,6 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
     );
   };
 
-  // Close remove confirmation dialog
   const handleRemoveDialogClose = () => {
     setRemoveConfirmOpen(false);
     setSelectedUser(null);
@@ -330,11 +302,120 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
     setAddDialogOpen(false);
   };
 
-  // Close edit dialog
   const handleEditDialogClose = () => {
     setEditDialogOpen(false);
     setSelectedUser(null);
   };
+
+  return {
+    isAddDialogOpen,
+    editDialogOpen,
+    selectedUser,
+    removeConfirmOpen,
+    removeError,
+    isRemovePending: removeOrgUser.isPending,
+    handleAddClick,
+    handleEdit,
+    handleRemove,
+    confirmRemove,
+    handleRemoveDialogClose,
+    handleAddDialogClose,
+    handleEditDialogClose,
+  };
+}
+
+interface OrgUsersToolbarProps {
+  memberCount: number;
+  search: string;
+  onSearchChange: (value: string) => void;
+}
+
+/** Member-count stat card and search field shown above the table. */
+const OrgUsersToolbar: React.FC<OrgUsersToolbarProps> = ({
+  memberCount,
+  search,
+  onSearchChange,
+}) => (
+  <>
+    <Grid container spacing={3} mb={3}>
+      <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+        <Card>
+          <CardContent>
+            <Box display="flex" alignItems="center">
+              <PeopleIcon sx={{ fontSize: 40, color: "primary.main", mr: 2 }} />
+              <Box>
+                <Typography color="text.secondary" variant="body2">
+                  {ORG_USERS_PAGE.TOTAL_MEMBERS}
+                </Typography>
+                <Typography variant="h4">{memberCount}</Typography>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+      </Grid>
+    </Grid>
+
+    <Box display="flex" gap={2} mb={3}>
+      <SearchField
+        placeholder={ORG_USERS_PAGE.SEARCH_PLACEHOLDER}
+        value={search}
+        onChange={(e) => onSearchChange(e.target.value)}
+      />
+    </Box>
+  </>
+);
+
+const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
+  orgId: propOrgId,
+  embedded,
+  addDialogOpen: externalAddDialogOpen,
+  onAddDialogOpenChange,
+}) => {
+  const { id: routeOrgId } = useParams<{ id: string }>();
+  const { organizationId: contextOrgId, setOrganization } =
+    useOrganizationContext();
+  const { isHydrated } = useSession();
+  const { isServerAdmin, isOrgAdmin } = useCapabilities();
+
+  // Resolve orgId: prop > route param > context
+  const orgId = propOrgId || routeOrgId || contextOrgId || "";
+
+  // React Query hooks
+  const canQuery =
+    isHydrated && (isServerAdmin || isOrgAdmin) && Boolean(orgId);
+  const { data: org } = useOrganizationQuery(orgId, {
+    enabled: canQuery && isServerAdmin,
+  });
+  const {
+    data: usersData,
+    isLoading,
+    isError,
+    error,
+  } = useOrgUsers(orgId, undefined, {
+    enabled: canQuery,
+  });
+
+  // Set organization context when org data loads
+  useEffect(() => {
+    if (org) {
+      setOrganization(org.id, org.name);
+    }
+  }, [org, setOrganization]);
+
+  const users = useMemo(() => usersData?.users ?? [], [usersData?.users]);
+  const {
+    search,
+    setSearch,
+    orderBy,
+    orderDirection,
+    sortedUsers,
+    handleSort,
+  } = useOrgUsersFiltering(users);
+  const dialogs = useOrgUsersDialogs(
+    orgId,
+    externalAddDialogOpen,
+    onAddDialogOpenChange,
+  );
 
   if (!isHydrated) {
     return null;
@@ -354,38 +435,14 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
         embedded={Boolean(embedded)}
         orgName={org?.name}
         orgId={orgId}
-        onAddClick={handleAddClick}
+        onAddClick={dialogs.handleAddClick}
       />
 
-      {/* Statistics Cards */}
-      <Grid container spacing={3} mb={3}>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <PeopleIcon
-                  sx={{ fontSize: 40, color: "primary.main", mr: 2 }}
-                />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {ORG_USERS_PAGE.TOTAL_MEMBERS}
-                  </Typography>
-                  <Typography variant="h4">{users.length}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Search */}
-      <Box display="flex" gap={2} mb={3}>
-        <SearchField
-          placeholder={ORG_USERS_PAGE.SEARCH_PLACEHOLDER}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </Box>
+      <OrgUsersToolbar
+        memberCount={users.length}
+        search={search}
+        onSearchChange={setSearch}
+      />
 
       {/* Loading State */}
       {isLoading && (
@@ -413,8 +470,8 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
           orderBy={orderBy}
           orderDirection={orderDirection}
           onSort={handleSort}
-          onEdit={handleEdit}
-          onRemove={handleRemove}
+          onEdit={dialogs.handleEdit}
+          onRemove={dialogs.handleRemove}
           emptyMessage={
             search ? ORG_USERS_PAGE.NO_MATCH : ORG_USERS_PAGE.NO_USERS
           }
@@ -424,14 +481,14 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
       {/* Add User Dialog - server admin creates new system user; org admin invites by email */}
       {isServerAdmin ? (
         <AddUserDialog
-          open={isAddDialogOpen}
-          onClose={handleAddDialogClose}
+          open={dialogs.isAddDialogOpen}
+          onClose={dialogs.handleAddDialogClose}
           orgId={orgId}
         />
       ) : (
         <OrganizationUserDialog
-          open={isAddDialogOpen}
-          onClose={handleAddDialogClose}
+          open={dialogs.isAddDialogOpen}
+          onClose={dialogs.handleAddDialogClose}
           orgId={orgId}
           mode="add"
         />
@@ -439,20 +496,20 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
 
       {/* Edit Organization User Dialog - edits role/permissions of existing member */}
       <OrganizationUserDialog
-        open={editDialogOpen}
-        onClose={handleEditDialogClose}
+        open={dialogs.editDialogOpen}
+        onClose={dialogs.handleEditDialogClose}
         orgId={orgId}
         mode="edit"
-        initialUser={selectedUser ?? undefined}
+        initialUser={dialogs.selectedUser ?? undefined}
       />
 
       <OrgUsersRemoveDialog
-        open={removeConfirmOpen}
-        selectedUser={selectedUser}
-        removeError={removeError}
-        isPending={removeOrgUser.isPending}
-        onClose={handleRemoveDialogClose}
-        onConfirm={confirmRemove}
+        open={dialogs.removeConfirmOpen}
+        selectedUser={dialogs.selectedUser}
+        removeError={dialogs.removeError}
+        isPending={dialogs.isRemovePending}
+        onClose={dialogs.handleRemoveDialogClose}
+        onConfirm={dialogs.confirmRemove}
       />
     </Box>
   );
