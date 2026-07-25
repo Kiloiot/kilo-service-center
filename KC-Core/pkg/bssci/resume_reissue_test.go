@@ -3,7 +3,9 @@ package bssci
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net"
 	"testing"
@@ -40,21 +42,32 @@ func (c *countingConn) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// writtenCommands decodes the buffered outbound frames and returns their
-// command names in order.
-func (c *countingConn) writtenCommands(t *testing.T) []string {
+// writtenFrames decodes the buffered outbound frames with the given encoding,
+// in order.
+func (c *countingConn) writtenFrames(t *testing.T, encoding string) []map[string]interface{} {
 	t.Helper()
-	var commands []string
+	var frames []map[string]interface{}
 	raw := c.buf.Bytes()
 	for len(raw) >= HeaderSize {
 		require.True(t, bytes.Equal(raw[:8], mioty.MIOTYFrameIdentifier[:]), "frame identifier")
 		payloadLen := int(binary.LittleEndian.Uint32(raw[8:HeaderSize]))
 		require.LessOrEqual(t, HeaderSize+payloadLen, len(raw), "complete frame")
-		decoded, err := decodeMessage(raw[HeaderSize:HeaderSize+payloadLen], EncodingJSON)
+		decoded, err := decodeMessage(raw[HeaderSize:HeaderSize+payloadLen], encoding)
 		require.NoError(t, err)
-		cmd, _ := decoded["command"].(string)
-		commands = append(commands, cmd)
+		frames = append(frames, decoded)
 		raw = raw[HeaderSize+payloadLen:]
+	}
+	return frames
+}
+
+// writtenCommands decodes the buffered outbound frames and returns their
+// command names in order.
+func (c *countingConn) writtenCommands(t *testing.T) []string {
+	t.Helper()
+	var commands []string
+	for _, frame := range c.writtenFrames(t, EncodingJSON) {
+		cmd, _ := frame["command"].(string)
+		commands = append(commands, cmd)
 	}
 	return commands
 }
@@ -354,4 +367,98 @@ func TestActivationDisplacesLiveSessionForSameEUI(t *testing.T) {
 		"a by-EUI lookup must never resolve to the displaced session")
 	assert.Positive(t, displacedConn.closes, "the displaced transport must be closed")
 	assert.Zero(t, currentConn.closes, "the activating transport must stay open")
+}
+
+// dlDataQueResumeRow persists a dlDataQue recovery row the way SendDLDataQueue
+// does: the frame carries a stale userData copy while metadata holds the
+// base64-encoded payloads reconstitution rebuilds it from.
+func dlDataQueResumeRow(t *testing.T, opID int64, payloads []string) PersistedOperation {
+	t.Helper()
+	operationData, err := json.Marshal(map[string]interface{}{
+		"command":   mioty.CmdDLDataQueue,
+		"opId":      opID,
+		"epEui":     TestEpEui01,
+		"queId":     int64(4711),
+		"prio":      float32(0),
+		"cntDepend": false,
+		"userData":  []interface{}{},
+	})
+	require.NoError(t, err)
+	metadata, err := json.Marshal(map[string]interface{}{
+		"bsEui":     TestBsEui01,
+		"epEui":     TestEpEui01,
+		"queId":     int64(4711),
+		"prio":      float32(0),
+		"payloads":  payloads,
+		"cntDepend": false,
+		"tenantID":  "1",
+	})
+	require.NoError(t, err)
+	return PersistedOperation{
+		OperationID:   opID,
+		OperationType: mioty.CmdDLDataQueue,
+		OperationData: operationData,
+		Metadata:      metadata,
+	}
+}
+
+// TestResumeReissuedDLDataQueUserDataShape: the dlDataQue frame a resume puts
+// back on the wire carries userData as Numeric[m][n] with exactly one entry -
+// zero bytes long for an acknowledgement-only downlink - in both encodings.
+func TestResumeReissuedDLDataQueUserDataShape(t *testing.T) {
+	cases := []struct {
+		name     string
+		payloads []string
+		expected []byte
+	}{
+		{
+			name:     "acknowledgement only",
+			payloads: []string{},
+			expected: []byte{},
+		},
+		{
+			name:     "single payload",
+			payloads: []string{base64.StdEncoding.EncodeToString([]byte{0x01, 0x02, 0xFF})},
+			expected: []byte{0x01, 0x02, 0xFF},
+		},
+	}
+
+	for _, encoding := range []string{EncodingJSON, EncodingMessagePack} {
+		for _, tc := range cases {
+			t.Run(tc.name+"_"+encoding, func(t *testing.T) {
+				server := newResumeReissueServer(t)
+				statusSvc := server.statusSvc.(*memoryStatusService)
+				statusSvc.mu.Lock()
+				statusSvc.persistedRows = []PersistedOperation{dlDataQueResumeRow(t, -3, tc.payloads)}
+				statusSvc.mu.Unlock()
+
+				conn := &countingConn{}
+				session := newResumeSession(conn, nil)
+				session.Encoding = encoding
+				session.DbSessionID = 7
+				t.Cleanup(func() { stopSessionStatus(session) })
+
+				pendingOps, err := server.loadPendingOperations(session)
+				require.NoError(t, err)
+				require.Len(t, pendingOps, 1)
+				require.NoError(t, server.reconstituteResumeOperations(testutil.TestContext(), pendingOps))
+				session.resumePendingOps = pendingOps
+
+				msg := &Message{OpId: 0, Command: mioty.CmdConnectComplete}
+				require.NoError(t, server.handleConnectComplete(server, session, msg, nil))
+
+				frames := conn.writtenFrames(t, encoding)
+				require.Len(t, frames, 1, "the resume must reissue exactly the dlDataQue operation")
+				require.Equal(t, mioty.CmdDLDataQueue, frames[0]["command"])
+
+				outer, ok := frames[0]["userData"].([]interface{})
+				require.True(t, ok, "userData must be the outer Numeric[m][n] array")
+				require.Len(t, outer, 1, "cntDepend=false carries exactly one user data entry")
+				inner, ok := outer[0].([]interface{})
+				require.True(t, ok, "the single entry must be a Numeric[n] array")
+				assert.Len(t, inner, len(tc.expected))
+				assert.Equal(t, tc.expected, server.normalizeUserDataField(outer[0]))
+			})
+		}
+	}
 }

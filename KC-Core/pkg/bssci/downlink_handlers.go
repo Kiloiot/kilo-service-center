@@ -35,6 +35,28 @@ func validatePayloadSizes(payloads [][]byte) error {
 	return nil
 }
 
+// buildDLDataQueUserData keeps userData Numeric[m][n]: with cntDepend false the outer array
+// holds exactly one (possibly zero-length) entry, or the base station rejects the frame with code=22.
+func buildDLDataQueUserData(payloads [][]byte, cntDepend bool) []interface{} {
+	entries := payloads
+	if !cntDepend {
+		entries = [][]byte{nil}
+		if len(payloads) > 0 {
+			entries = payloads[:1]
+		}
+	}
+
+	userData := make([]interface{}, len(entries))
+	for i, payload := range entries {
+		numericPayload := make([]interface{}, len(payload))
+		for j, b := range payload {
+			numericPayload[j] = uint8(b)
+		}
+		userData[i] = numericPayload
+	}
+	return userData
+}
+
 // ============================================================================
 // DL Data Queue Response Handlers (MIOTY BSSCI v1.0.0 Section 5.12)
 // ============================================================================
@@ -343,46 +365,13 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistSessionCounters), err)
 	}
 
-	// Build userData based on counter-dependency mode
-	var userDataField interface{}
-	if cntDepend {
-		// Counter-dependent: userData is Numeric[m][n] where m = len(payloads)
-		userDataArray := make([]interface{}, len(payloads))
-		for i, payload := range payloads {
-			// Convert each payload to Numeric[n]
-			numericPayload := make([]interface{}, len(payload))
-			for j, b := range payload {
-				numericPayload[j] = uint8(b)
-			}
-			userDataArray[i] = numericPayload
-		}
-		userDataField = userDataArray
-	} else {
-		// Non-counter-dependent: userData is Numeric[m][n] with m=1 per BSSCI §3.12.1
-		// ("single user data entry if cntDepend is false"). For an ACK-only downlink
-		// ("If user data is empty, a pure acknowledgement downlink is queued") the
-		// single entry is zero bytes long — outer length must still be 1 or the
-		// Fraunhofer BS rejects the message with code=22 "DL data queue message
-		// malformed".
-		var singlePayload []interface{}
-		if len(payloads) > 0 {
-			singlePayload = make([]interface{}, len(payloads[0]))
-			for i, b := range payloads[0] {
-				singlePayload[i] = uint8(b)
-			}
-		} else {
-			singlePayload = []interface{}{}
-		}
-		userDataField = []interface{}{singlePayload}
-	}
-
 	// Create dlDataQue message per BSSCI §5.12.1
 	msg := map[string]interface{}{
 		"command":   mioty.CmdDLDataQueue,
 		"opId":      opId,
 		"epEui":     epEui,
 		"queId":     queId,
-		"userData":  userDataField,
+		"userData":  buildDLDataQueUserData(payloads, cntDepend),
 		"prio":      prio,
 		"cntDepend": cntDepend, // BSSCI §5.12.1: Required field (always present, true or false)
 	}
@@ -838,6 +827,10 @@ func (s *Server) reconstitueDLDataQueMessage(sanitizedMsg map[string]interface{}
 		if pendingOp != nil && len(pendingOp.Data) > 0 {
 			payloads = [][]byte{pendingOp.Data}
 		} else {
+			opId, _ := parseOpID(sanitizedMsg["opId"])
+
+			s.logger.WarnContext(s.safeCtx(), LogBSSCIUserDataMissingFromBothSources,
+				"opId", opId)
 			payloads = [][]byte{{}} // Empty payload
 		}
 	}
@@ -850,20 +843,12 @@ func (s *Server) reconstitueDLDataQueMessage(sanitizedMsg map[string]interface{}
 	// Extract counter-dependency flag
 	cntDepend, _ := metadata["cntDepend"].(bool)
 
-	// Build userData based on counter-dependency mode
-	var userDataField interface{}
+	if !cntDepend && len(payloads) > 1 {
+		return nil, fmt.Errorf("%s, got %d", ResolveErrorMessage(errNonCounterDependentMultiPayload), len(payloads))
+	}
+	msg["userData"] = buildDLDataQueUserData(payloads, cntDepend)
+
 	if cntDepend {
-		// Counter-dependent: userData is Numeric[m][n] where m = len(payloads)
-		userDataArray := make([]interface{}, len(payloads))
-		for i, payload := range payloads {
-			// Convert each payload to Numeric[n]
-			numericPayload := make([]interface{}, len(payload))
-			for j, b := range payload {
-				numericPayload[j] = uint8(b)
-			}
-			userDataArray[i] = numericPayload
-		}
-		userDataField = userDataArray
 		msg["cntDepend"] = true
 
 		// Restore packetCnt array - handle both []int64 and []interface{}
@@ -890,25 +875,7 @@ func (s *Server) reconstitueDLDataQueMessage(sanitizedMsg map[string]interface{}
 			}
 			msg["packetCnt"] = packetCntArray
 		}
-	} else {
-		// Non-counter-dependent: userData is single Numeric[n] or empty for ACK-only
-		// BSSCI §5.12: "If user data is empty, a pure acknowledgement downlink is queued"
-		if len(payloads) == 0 || (len(payloads) == 1 && len(payloads[0]) == 0) {
-			// ACK-only downlink: empty userData
-			userDataField = []interface{}{} // Empty Numeric[n]
-		} else if len(payloads) == 1 {
-			// Normal single payload
-			singlePayload := make([]interface{}, len(payloads[0]))
-			for i, b := range payloads[0] {
-				singlePayload[i] = uint8(b)
-			}
-			userDataField = singlePayload // Direct Numeric[n] per BSSCI §3.12.1
-		} else {
-			// Multiple payloads in non-counter-dependent mode is invalid
-			return nil, fmt.Errorf("%s, got %d", ResolveErrorMessage(errNonCounterDependentMultiPayload), len(payloads))
-		}
 	}
-	msg["userData"] = userDataField
 
 	// Restore optional MIOTY fields (canonical numeric coercion covers
 	// float64, native integers, and the strict json.Number resume decode)
