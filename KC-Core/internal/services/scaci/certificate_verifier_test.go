@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 )
@@ -44,7 +46,7 @@ func TestVerifyCertificate_Valid(t *testing.T) {
 		pkix.Name{CommonName: "test-client", Organization: []string{"TestOrg"}}, // Valid subject
 	)
 
-	errToken := verifier.VerifyCertificate(cert)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), cert)
 	if errToken != "" {
 		t.Errorf("expected valid certificate to pass, got error token: %s", errToken)
 	}
@@ -54,7 +56,7 @@ func TestVerifyCertificate_Nil(t *testing.T) {
 	logger := logger.NewNop()
 	verifier := NewCertificateVerifier(logger)
 
-	errToken := verifier.VerifyCertificate(nil)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), nil)
 	if errToken != scaci.ErrNilCertificate {
 		t.Errorf("expected ErrNilCertificate, got: %s", errToken)
 	}
@@ -73,7 +75,7 @@ func TestVerifyCertificate_NotYetValid(t *testing.T) {
 		pkix.Name{CommonName: "test-client"},
 	)
 
-	errToken := verifier.VerifyCertificate(cert)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), cert)
 	if errToken != scaci.ErrCertNotYetValid {
 		t.Errorf("expected ErrCertNotYetValid, got: %s", errToken)
 	}
@@ -92,7 +94,7 @@ func TestVerifyCertificate_Expired(t *testing.T) {
 		pkix.Name{CommonName: "test-client"},
 	)
 
-	errToken := verifier.VerifyCertificate(cert)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), cert)
 	if errToken != scaci.ErrCertExpired {
 		t.Errorf("expected ErrCertExpired, got: %s", errToken)
 	}
@@ -111,7 +113,7 @@ func TestVerifyCertificate_MissingClientAuth(t *testing.T) {
 		pkix.Name{CommonName: "test-client"},
 	)
 
-	errToken := verifier.VerifyCertificate(cert)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), cert)
 	if errToken != scaci.ErrCertMissingClientAuth {
 		t.Errorf("expected ErrCertMissingClientAuth, got: %s", errToken)
 	}
@@ -130,7 +132,7 @@ func TestVerifyCertificate_NoExtKeyUsage(t *testing.T) {
 		pkix.Name{CommonName: "test-client"},
 	)
 
-	errToken := verifier.VerifyCertificate(cert)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), cert)
 	if errToken != scaci.ErrCertMissingClientAuth {
 		t.Errorf("expected ErrCertMissingClientAuth, got: %s", errToken)
 	}
@@ -149,7 +151,7 @@ func TestVerifyCertificate_InvalidSubject_Empty(t *testing.T) {
 		pkix.Name{}, // Empty subject
 	)
 
-	errToken := verifier.VerifyCertificate(cert)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), cert)
 	if errToken != scaci.ErrCertInvalidSubject {
 		t.Errorf("expected ErrCertInvalidSubject, got: %s", errToken)
 	}
@@ -168,7 +170,7 @@ func TestVerifyCertificate_ValidSubject_OnlyOrganization(t *testing.T) {
 		pkix.Name{Organization: []string{"TestOrg"}}, // Only org, no CN
 	)
 
-	errToken := verifier.VerifyCertificate(cert)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), cert)
 	if errToken != "" {
 		t.Errorf("expected valid certificate (org without CN), got error token: %s", errToken)
 	}
@@ -191,7 +193,7 @@ func TestVerifyCertificate_MultipleExtKeyUsages(t *testing.T) {
 		pkix.Name{CommonName: "test-client"},
 	)
 
-	errToken := verifier.VerifyCertificate(cert)
+	errToken := verifier.VerifyCertificate(testutil.TestContext(), cert)
 	if errToken != "" {
 		t.Errorf("expected valid certificate (multiple usages), got error token: %s", errToken)
 	}

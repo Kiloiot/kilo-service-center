@@ -51,8 +51,11 @@ func TestSCOperationIDMustBeNegative(t *testing.T) {
 
 			// Create test session
 			session := &Session{
-				BaseStationEUI: 123456789, // Non-zero to pass connect check
-				LastScOpId:     0,
+				ProtocolSessionState: ProtocolSessionState{
+					// Non-zero to pass connect check
+					BaseStationEUI: 123456789,
+					LastScOpId:     0,
+				},
 			}
 
 			// Call validateOperationID with isBaseStationInitiated = false (SC operation)
@@ -122,8 +125,10 @@ func TestSCOperationIDStrictDecrement(t *testing.T) {
 
 			// Create test session with initial LastScOpId
 			session := &Session{
-				BaseStationEUI: 123456789,
-				LastScOpId:     tt.lastScOpId,
+				ProtocolSessionState: ProtocolSessionState{
+					BaseStationEUI: 123456789,
+					LastScOpId:     tt.lastScOpId,
+				},
 			}
 
 			// Call validateOperationID
@@ -191,8 +196,10 @@ func TestBSOperationIDMustBePositive(t *testing.T) {
 
 			// Create session with BaseStationEUI set (after connect)
 			session := &Session{
-				BaseStationEUI: 123456789,
-				LastBsOpId:     0,
+				ProtocolSessionState: ProtocolSessionState{
+					BaseStationEUI: 123456789,
+					LastBsOpId:     0,
+				},
 			}
 
 			// Call validateOperationID with isBaseStationInitiated = true
@@ -267,8 +274,10 @@ func TestBSOperationIDStrictIncrement(t *testing.T) {
 			server := NewTestServerWithMemoryStatusService(log, nil, nil, 1)
 
 			session := &Session{
-				BaseStationEUI: 123456789,
-				LastBsOpId:     tt.lastBsOpId,
+				ProtocolSessionState: ProtocolSessionState{
+					BaseStationEUI: 123456789,
+					LastBsOpId:     tt.lastBsOpId,
+				},
 			}
 
 			// Call validateOperationID with isBaseStationInitiated = true

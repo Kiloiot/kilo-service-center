@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	bssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
@@ -21,9 +23,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // --- Mock Implementations for Detach Propagate Complete Integration Tests ---
@@ -327,6 +326,10 @@ type detPrpCapturingPendingOps struct {
 func (r *detPrpCapturingPendingOps) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
 	return nil
 }
+
+func (r *detPrpCapturingPendingOps) CreateBatch(_ context.Context, _ []*interfaces.PendingOperationRequest) error {
+	return nil
+}
 func (r *detPrpCapturingPendingOps) UpdateMetadata(_ context.Context, sessionID, operationID int64, metadata json.RawMessage) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -485,13 +488,16 @@ func TestDetachPropagateCompletionIntegration_MessagePersistence(t *testing.T) {
 	// Create mock connection
 	mockConn := &detPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-detprp-integration",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1, // Required for pending operation processing
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-detprp-integration",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1,
+		},
+		Conn: mockConn,
+		// Required for pending operation processing
 	}
 	server.RegisterSession(session)
 
@@ -607,12 +613,14 @@ func TestDetachPropagateCompletionIntegration_NoPendingOp(t *testing.T) {
 	// Create mock connection
 	mockConn := &detPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-detprp-no-pendingop",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-detprp-no-pendingop",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -673,13 +681,15 @@ func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
 
 	mockConn := &detPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-detprp-rejected",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-detprp-rejected",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -722,9 +732,9 @@ func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
 		"wire message must be cataloged via ErrDetachPropagateFailed")
 
 	// Pending-op metadata persistence.
-	update := pendingOps.LastUpdate()
-	require.NotNil(t, update, "UpdateMetadata must be called once on the rejected path")
-	require.Equal(t, 1, pendingOps.UpdateCalls(), "exactly one UpdateMetadata call")
+	updates := bssci.StatusMetadataUpdates(statusSvc)
+	require.Len(t, updates, 1, "exactly one metadata persistence call on the rejected path")
+	update := updates[0]
 	var metadata map[string]interface{}
 	require.NoError(t, json.Unmarshal(update.Metadata, &metadata))
 	assert.Equal(t, true, metadata["failed"], "metadata.failed must be true")
@@ -835,9 +845,9 @@ func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
 	storageImpl := &detPrpCapturingStorage{miotyMessages: msgRepo, endpointRepo: endpointRepo, pendingOps: pendingOps}
 	eventStore := &detPrpCapturingEventStore{}
 
-	// Zap observer logger so the test can assert the failure log token.
-	core, recorded := observer.New(zapcore.DebugLevel)
-	testLogger := logger.FromZap(zap.New(core))
+	// Recording logger so the test can assert the failure log token.
+	recorded := bsscitest.NewRecordingLogger()
+	testLogger := recorded
 
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
 	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
@@ -846,13 +856,15 @@ func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
 
 	mockConn := &detPrpFailingWriteConn{}
 	session := &bssci.Session{
-		ID:                "test-detprp-send-failure",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-detprp-send-failure",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -884,8 +896,8 @@ func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
 
 	// Log assertion: the handler must emit LogBSSCIFailedToSendDetachPropagateComplete at error level.
 	var found bool
-	for _, entry := range recorded.All() {
-		if entry.Level == zapcore.ErrorLevel && entry.Message == bssci.LogBSSCIFailedToSendDetachPropagateComplete {
+	for _, entry := range recorded.AllAtLeast("DEBUG") {
+		if entry.Level == "ERROR" && entry.Message == bssci.LogBSSCIFailedToSendDetachPropagateComplete {
 			found = true
 			break
 		}

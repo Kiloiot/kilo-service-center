@@ -16,6 +16,45 @@ const (
 	EncodingJSON = "json"
 )
 
+// Timing defaults applied when the corresponding protocol configuration is
+// absent (tests and minimal setups); production values come from
+// protocol.ack_timeout, protocol.duplicate_window, and
+// protocol.bsci_certificate_poll_interval.
+const (
+	// defaultOperationAckTimeout bounds handshake waits (conCmp/errorAck after conRsp or a connect-stage error)
+	defaultOperationAckTimeout = 30 * time.Second
+
+	// defaultConnectionEstablishmentTimeout bounds a fresh connection before its con arrives
+	defaultConnectionEstablishmentTimeout = 30 * time.Second
+
+	// defaultDuplicateWindow is the uplink deduplication window per MIOTY spec
+	defaultDuplicateWindow = 5 * time.Minute
+
+	// defaultCertificatePollInterval is the certificate change poll interval
+	defaultCertificatePollInterval = 10 * time.Second
+
+	// defaultStatusRequestInterval is how often the SC polls a base station for status
+	defaultStatusRequestInterval = 30 * time.Second
+	// defaultStatusRequestInitialDelay delays the first status poll after connect
+	defaultStatusRequestInitialDelay = 5 * time.Second
+	// defaultDLRXQueryTimeout expires an unanswered dlRxStatQry
+	defaultDLRXQueryTimeout = 300 * time.Second
+	// defaultDLRXCleanupInterval is the dlRxStatQry expiry sweep cadence
+	defaultDLRXCleanupInterval = 60 * time.Second
+)
+
+// Exact float integer bounds for wire numeric coercion.
+// IEEE 754 floating-point values represent integers exactly only up to their
+// mantissa width; values beyond these bounds silently lose precision and must
+// be rejected when converting to integer protocol fields (e.g. EUI-64).
+const (
+	// maxExactFloat64Integer is the largest integer exactly representable in a float64 (2^53)
+	maxExactFloat64Integer = uint64(1) << 53
+
+	// maxExactFloat32Integer is the largest integer exactly representable in a float32 (2^24)
+	maxExactFloat32Integer = uint64(1) << 24
+)
+
 // Propagate Status Constants
 // BSSCI Sections 5.6-5.7, 5.9 - Endpoint telemetry propagation status values
 // These are re-exported from the endpoint package to avoid import cycles
@@ -265,11 +304,11 @@ const (
 const (
 	DLQueueStatusPending     = "pending"     // Queued awaiting scheduler processing
 	DLQueueStatusScheduled   = "scheduled"   // Scheduler selected for transmission
-	DLQueueStatusReserved    = "reserved"    // Reserved for auto-dispatch (transient, within transaction)
+	DLQueueStatusReserved    = "reserved"    // Durably reserved for dispatch; confirmed queued after the wire send
 	DLQueueStatusQueued      = "queued"      // Sent to BS via dlDataQue, awaiting transmission
-	DLQueueStatusTransmitted = "transmitted" // BS transmitted downlink (dlDataQueCmp success)
+	DLQueueStatusTransmitted = "transmitted" // BS reported successful transmission via dlDataRes (BSSCI 5.14)
 	DLQueueStatusDelivered   = "delivered"   // Endpoint acknowledged receipt (if ack requested)
-	DLQueueStatusFailed      = "failed"      // Transmission failed (dlDataQueCmp error)
+	DLQueueStatusFailed      = "failed"      // BS reported transmission failure via dlDataRes (BSSCI 5.14)
 	DLQueueStatusExpired     = "expired"     // Validity period elapsed before transmission
 	DLQueueStatusRevoked     = "revoked"     // Revoked via dlDataRev before transmission
 	DLQueueStatusAcked       = "acked"       // Endpoint acknowledgment received (dlDataRes)

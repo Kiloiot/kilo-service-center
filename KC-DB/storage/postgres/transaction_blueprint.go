@@ -279,7 +279,7 @@ func (r *transactionalBlueprintRepository) ListByDeviceModel(ctx context.Context
 	}
 
 	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex)
+		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, offset)
 	}
 
@@ -323,7 +323,7 @@ func (r *transactionalBlueprintRepository) List(ctx context.Context, params *mod
 	}
 
 	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex)
+		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, params.Offset)
 	}
 
@@ -371,7 +371,7 @@ func (r *transactionalBlueprintRepository) ListWithModel(ctx context.Context, pa
 	}
 
 	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex)
+		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, params.Offset)
 	}
 

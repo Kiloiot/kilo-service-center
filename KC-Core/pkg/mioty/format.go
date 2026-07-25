@@ -6,6 +6,7 @@ package mioty
 import (
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,20 @@ import (
 // Used for logging and operation metadata across both protocol packages.
 func FormatEUI64(eui uint64) string {
 	return fmt.Sprintf("%016X", eui)
+}
+
+// EUIDashSeparator joins EUI64 byte pairs in the dashed display format.
+const EUIDashSeparator = "-"
+
+// FormatEUI64Dashed returns the uppercase dashed representation of an EUI64
+// (XX-XX-XX-XX-XX-XX-XX-XX), used for certificate common names.
+func FormatEUI64Dashed(eui uint64) string {
+	plain := FormatEUI64(eui)
+	pairs := make([]string, 0, len(plain)/2)
+	for i := 0; i < len(plain); i += 2 {
+		pairs = append(pairs, plain[i:i+2])
+	}
+	return strings.Join(pairs, EUIDashSeparator)
 }
 
 // Timestamp formatting constants.

@@ -271,7 +271,7 @@ func (s *SystemEventStore) GetEvents(ctx context.Context, filter interfaces.Syst
 		argNum++
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argNum)
+		query += fmt.Sprintf(" OFFSET $%d", argNum) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, filter.Offset)
 	}
 
@@ -398,7 +398,7 @@ func (s *SystemEventStore) GetActiveAlerts(ctx context.Context, filter interface
 		argNum++
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argNum)
+		query += fmt.Sprintf(" OFFSET $%d", argNum) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, filter.Offset)
 	}
 
@@ -578,7 +578,7 @@ func (s *SystemEventStore) ListSCACIEvents(ctx context.Context, tenantID int64, 
 		argIndex++
 	}
 
-	query += fmt.Sprintf(" ORDER BY occurred_at DESC LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
+	query += fmt.Sprintf(" ORDER BY occurred_at DESC LIMIT $%d OFFSET $%d", argIndex, argIndex+1) //nolint:gosec // G202: appends parameter placeholders, values are bound
 	args = append(args, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

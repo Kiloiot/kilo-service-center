@@ -17145,7 +17145,8 @@ proto.kilocenter.api.v1.BaseStationStatusRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.BaseStationStatusRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, 0)
+    bsEui: jspb.Message.getFieldWithDefault(msg, 1, 0),
+    bsEuiHex: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -17186,6 +17187,10 @@ proto.kilocenter.api.v1.BaseStationStatusRequest.deserializeBinaryFromReader = f
       var value = /** @type {number} */ (reader.readUint64());
       msg.setBsEui(value);
       break;
+    case 2:
+      var value = /** @type {string} */ (reader.readString());
+      msg.setBsEuiHex(value);
+      break;
     default:
       reader.skipField();
       break;
@@ -17222,6 +17227,13 @@ proto.kilocenter.api.v1.BaseStationStatusRequest.serializeBinaryToWriter = funct
       f
     );
   }
+  f = message.getBsEuiHex();
+  if (f.length > 0) {
+    writer.writeString(
+      2,
+      f
+    );
+  }
 };
 
 
@@ -17240,6 +17252,24 @@ proto.kilocenter.api.v1.BaseStationStatusRequest.prototype.getBsEui = function()
  */
 proto.kilocenter.api.v1.BaseStationStatusRequest.prototype.setBsEui = function(value) {
   return jspb.Message.setProto3IntField(this, 1, value);
+};
+
+
+/**
+ * optional string bs_eui_hex = 2;
+ * @return {string}
+ */
+proto.kilocenter.api.v1.BaseStationStatusRequest.prototype.getBsEuiHex = function() {
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 2, ""));
+};
+
+
+/**
+ * @param {string} value
+ * @return {!proto.kilocenter.api.v1.BaseStationStatusRequest} returns this
+ */
+proto.kilocenter.api.v1.BaseStationStatusRequest.prototype.setBsEuiHex = function(value) {
+  return jspb.Message.setProto3StringField(this, 2, value);
 };
 
 
@@ -17465,7 +17495,8 @@ proto.kilocenter.api.v1.InitiatePingRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.InitiatePingRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, 0)
+    bsEui: jspb.Message.getFieldWithDefault(msg, 1, 0),
+    bsEuiHex: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -17506,6 +17537,10 @@ proto.kilocenter.api.v1.InitiatePingRequest.deserializeBinaryFromReader = functi
       var value = /** @type {number} */ (reader.readUint64());
       msg.setBsEui(value);
       break;
+    case 2:
+      var value = /** @type {string} */ (reader.readString());
+      msg.setBsEuiHex(value);
+      break;
     default:
       reader.skipField();
       break;
@@ -17542,6 +17577,13 @@ proto.kilocenter.api.v1.InitiatePingRequest.serializeBinaryToWriter = function(m
       f
     );
   }
+  f = message.getBsEuiHex();
+  if (f.length > 0) {
+    writer.writeString(
+      2,
+      f
+    );
+  }
 };
 
 
@@ -17560,6 +17602,24 @@ proto.kilocenter.api.v1.InitiatePingRequest.prototype.getBsEui = function() {
  */
 proto.kilocenter.api.v1.InitiatePingRequest.prototype.setBsEui = function(value) {
   return jspb.Message.setProto3IntField(this, 1, value);
+};
+
+
+/**
+ * optional string bs_eui_hex = 2;
+ * @return {string}
+ */
+proto.kilocenter.api.v1.InitiatePingRequest.prototype.getBsEuiHex = function() {
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 2, ""));
+};
+
+
+/**
+ * @param {string} value
+ * @return {!proto.kilocenter.api.v1.InitiatePingRequest} returns this
+ */
+proto.kilocenter.api.v1.InitiatePingRequest.prototype.setBsEuiHex = function(value) {
+  return jspb.Message.setProto3StringField(this, 2, value);
 };
 
 

@@ -18,6 +18,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -117,7 +119,7 @@ func TestOperationRecorderMockRecord(t *testing.T) {
 		"snAcUuid": "00112233445566778899AABBCCDDEEFF",
 		"resumed":  false,
 	}
-	err := mockRecorder.Record(context.Background(), session, 0, CmdConnect, models.OperationDirectionInbound, data)
+	err := mockRecorder.Record(testutil.TestContext(), session, 0, CmdConnect, models.OperationDirectionInbound, data)
 
 	assert.NoError(t, err)
 	mockRecorder.AssertExpectations(t)
@@ -285,7 +287,7 @@ func TestPingRecordingConfigFlag(t *testing.T) {
 					"opId":      int64(5),
 					"initiator": "ac",
 				}
-				err := mockRecorder.Record(context.Background(), session, 5, CmdPing, models.OperationDirectionInbound, data)
+				err := mockRecorder.Record(testutil.TestContext(), session, 5, CmdPing, models.OperationDirectionInbound, data)
 				assert.NoError(t, err)
 			}
 
@@ -341,7 +343,7 @@ func TestConnectOperationDirections(t *testing.T) {
 			).Return(nil)
 
 			data := map[string]interface{}{"test": true}
-			err := mockRecorder.Record(context.Background(), session, 0, tc.command, tc.direction, data)
+			err := mockRecorder.Record(testutil.TestContext(), session, 0, tc.command, tc.direction, data)
 
 			assert.NoError(t, err)
 			mockRecorder.AssertExpectations(t)
@@ -376,7 +378,7 @@ func TestPingOperationDirections(t *testing.T) {
 			).Return(nil)
 
 			data := map[string]interface{}{"opId": int64(5), "initiator": "ac"}
-			err := mockRecorder.Record(context.Background(), session, 5, tc.command, tc.direction, data)
+			err := mockRecorder.Record(testutil.TestContext(), session, 5, tc.command, tc.direction, data)
 
 			assert.NoError(t, err)
 			mockRecorder.AssertExpectations(t)
@@ -410,7 +412,7 @@ func TestSCInitiatedPingOperationDirections(t *testing.T) {
 			).Return(nil)
 
 			data := map[string]interface{}{"opId": int64(-10), "initiator": "sc"}
-			err := mockRecorder.Record(context.Background(), session, -10, tc.command, tc.direction, data)
+			err := mockRecorder.Record(testutil.TestContext(), session, -10, tc.command, tc.direction, data)
 
 			assert.NoError(t, err)
 			mockRecorder.AssertExpectations(t)
@@ -438,7 +440,7 @@ func TestRecordingErrorNonBlocking(t *testing.T) {
 	).Return(assert.AnError) // Return an error
 
 	data := map[string]interface{}{"test": true}
-	err := mockRecorder.Record(context.Background(), session, 0, CmdConnect, models.OperationDirectionInbound, data)
+	err := mockRecorder.Record(testutil.TestContext(), session, 0, CmdConnect, models.OperationDirectionInbound, data)
 
 	// Error is returned, but in handler code this is just logged (non-blocking)
 	assert.Error(t, err)
@@ -507,17 +509,17 @@ func TestConnectStateTransitions(t *testing.T) {
 	// Simulate the handler flow
 	// 1. Record Connect request
 	requestData := map[string]interface{}{"version": "1.0.0", "acEui": "0123456789ABCDEF"}
-	err := mockRecorder.Record(context.Background(), session, 0, CmdConnect, models.OperationDirectionInbound, requestData)
+	err := mockRecorder.Record(testutil.TestContext(), session, 0, CmdConnect, models.OperationDirectionInbound, requestData)
 	assert.NoError(t, err)
 
 	// 2. Update state to acknowledged (response phase)
 	responseData := map[string]interface{}{"version": "1.0.0", "scEui": "FEDCBA9876543210"}
-	err = mockOpRepo.UpdateOperationState(context.Background(), session.ID, 0, models.OperationStateAcknowledged, responseData)
+	err = mockOpRepo.UpdateOperationState(testutil.TestContext(), session.ID, 0, models.OperationStateAcknowledged, responseData)
 	assert.NoError(t, err)
 
 	// 3. Update state to completed (complete phase)
 	completeData := map[string]interface{}{"tlsVersion": "TLS 1.3", "cipherSuite": "TLS_AES_256_GCM_SHA384"}
-	err = mockOpRepo.UpdateOperationState(context.Background(), session.ID, 0, models.OperationStateCompleted, completeData)
+	err = mockOpRepo.UpdateOperationState(testutil.TestContext(), session.ID, 0, models.OperationStateCompleted, completeData)
 	assert.NoError(t, err)
 
 	// Verify expectations: exactly one Record, two UpdateOperationState
@@ -545,7 +547,7 @@ func TestConnectResponseUsesUpdateNotRecord(t *testing.T) {
 	).Return(nil)
 
 	responseData := map[string]interface{}{"version": "1.0.0"}
-	err := mockOpRepo.UpdateOperationState(context.Background(), 1, 0, models.OperationStateAcknowledged, responseData)
+	err := mockOpRepo.UpdateOperationState(testutil.TestContext(), 1, 0, models.OperationStateAcknowledged, responseData)
 	assert.NoError(t, err)
 
 	// Record should NOT have been called
@@ -570,7 +572,7 @@ func TestConnectCompleteUsesUpdateNotRecord(t *testing.T) {
 	).Return(nil)
 
 	completeData := map[string]interface{}{"tlsVersion": "TLS 1.3"}
-	err := mockOpRepo.UpdateOperationState(context.Background(), 1, 0, models.OperationStateCompleted, completeData)
+	err := mockOpRepo.UpdateOperationState(testutil.TestContext(), 1, 0, models.OperationStateCompleted, completeData)
 	assert.NoError(t, err)
 
 	// Record should NOT have been called
@@ -615,15 +617,15 @@ func TestPingStateTransitions_ACInitiated(t *testing.T) {
 
 	// Simulate the handler flow
 	requestData := map[string]interface{}{"opId": opId, "initiator": "ac"}
-	err := mockRecorder.Record(context.Background(), session, opId, CmdPing, models.OperationDirectionInbound, requestData)
+	err := mockRecorder.Record(testutil.TestContext(), session, opId, CmdPing, models.OperationDirectionInbound, requestData)
 	assert.NoError(t, err)
 
 	responseData := map[string]interface{}{"opId": opId, "initiator": "ac"}
-	err = mockOpRepo.UpdateOperationState(context.Background(), session.ID, opId, models.OperationStateAcknowledged, responseData)
+	err = mockOpRepo.UpdateOperationState(testutil.TestContext(), session.ID, opId, models.OperationStateAcknowledged, responseData)
 	assert.NoError(t, err)
 
 	completeData := map[string]interface{}{"opId": opId, "initiator": "ac"}
-	err = mockOpRepo.UpdateOperationState(context.Background(), session.ID, opId, models.OperationStateCompleted, completeData)
+	err = mockOpRepo.UpdateOperationState(testutil.TestContext(), session.ID, opId, models.OperationStateCompleted, completeData)
 	assert.NoError(t, err)
 
 	mockRecorder.AssertExpectations(t)
@@ -668,15 +670,15 @@ func TestPingStateTransitions_SCInitiated(t *testing.T) {
 
 	// Simulate the handler flow
 	requestData := map[string]interface{}{"opId": opId, "initiator": "sc"}
-	err := mockRecorder.Record(context.Background(), session, opId, CmdPing, models.OperationDirectionOutbound, requestData)
+	err := mockRecorder.Record(testutil.TestContext(), session, opId, CmdPing, models.OperationDirectionOutbound, requestData)
 	assert.NoError(t, err)
 
 	responseData := map[string]interface{}{"opId": opId, "initiator": "sc"}
-	err = mockOpRepo.UpdateOperationState(context.Background(), session.ID, opId, models.OperationStateAcknowledged, responseData)
+	err = mockOpRepo.UpdateOperationState(testutil.TestContext(), session.ID, opId, models.OperationStateAcknowledged, responseData)
 	assert.NoError(t, err)
 
 	completeData := map[string]interface{}{"opId": opId, "initiator": "sc"}
-	err = mockOpRepo.UpdateOperationState(context.Background(), session.ID, opId, models.OperationStateCompleted, completeData)
+	err = mockOpRepo.UpdateOperationState(testutil.TestContext(), session.ID, opId, models.OperationStateCompleted, completeData)
 	assert.NoError(t, err)
 
 	mockRecorder.AssertExpectations(t)
@@ -698,7 +700,7 @@ func TestStateTransitionErrorNonBlocking(t *testing.T) {
 	).Return(assert.AnError)
 
 	responseData := map[string]interface{}{"test": true}
-	err := mockOpRepo.UpdateOperationState(context.Background(), 1, 0, models.OperationStateAcknowledged, responseData)
+	err := mockOpRepo.UpdateOperationState(testutil.TestContext(), 1, 0, models.OperationStateAcknowledged, responseData)
 
 	// Error is returned, but in handler code this is just logged (non-blocking)
 	assert.Error(t, err)

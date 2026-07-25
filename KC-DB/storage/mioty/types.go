@@ -90,6 +90,17 @@ type BaseMessage struct {
 	OpId        int64  `json:"opId" msgpack:"opId"`       // Operation ID (signed: positive for BS, negative for SC)
 }
 
+// EnvelopeCommand returns the wire command mnemonic, exposing the message
+// envelope without serialization round-trips.
+func (m BaseMessage) EnvelopeCommand() string {
+	return m.CommandType
+}
+
+// EnvelopeOpID returns the operation ID of the message envelope.
+func (m BaseMessage) EnvelopeOpID() int64 {
+	return m.OpId
+}
+
 // Type definitions per MIOTY BSSCI v1.0.0 specification
 type (
 	// EUI64 represents an 8-byte Extended Unique Identifier
@@ -859,13 +870,13 @@ const (
 
 	// Ping operations.
 	CmdPing         = "ping"    // Direction: Bidirectional - initiates ping
-	CmdPingResponse = "pingRsp" // Direction: BStoSC - response for ping
-	CmdPingComplete = "pingCmp" // Direction: BStoSC - completion for ping
+	CmdPingResponse = "pingRsp" // Direction: Bidirectional - response for ping (either side may initiate)
+	CmdPingComplete = "pingCmp" // Direction: Bidirectional - completion for ping (either side may initiate)
 
 	// Status operations.
-	CmdStatus         = "status"    // Direction: Bidirectional - initiates status request
+	CmdStatus         = "status"    // Direction: SCtoBS - Service Center initiates status request (BSSCI 5.5)
 	CmdStatusResponse = "statusRsp" // Direction: BStoSC - response for status
-	CmdStatusComplete = "statusCmp" // Direction: BStoSC - completion for status
+	CmdStatusComplete = "statusCmp" // Direction: SCtoBS - SC-sent completion for status
 
 	// Attach operations.
 	CmdAttach         = "att"    // Direction: BStoSC - initiates attach
@@ -880,12 +891,12 @@ const (
 	// Attach propagate operations.
 	CmdAttachPropagate         = "attPrp"    // Direction: SCtoBS - initiates attach propagation
 	CmdAttachPropagateResponse = "attPrpRsp" // Direction: BStoSC - response for attach propagate
-	CmdAttachPropagateComplete = "attPrpCmp" // Direction: BStoSC - completion for attach propagate
+	CmdAttachPropagateComplete = "attPrpCmp" // Direction: SCtoBS - SC-sent completion for attach propagate
 
 	// Detach propagate operations.
 	CmdDetachPropagate         = "detPrp"    // Direction: SCtoBS - initiates detach propagation
 	CmdDetachPropagateResponse = "detPrpRsp" // Direction: BStoSC - response for detach propagate
-	CmdDetachPropagateComplete = "detPrpCmp" // Direction: BStoSC - completion for detach propagate
+	CmdDetachPropagateComplete = "detPrpCmp" // Direction: SCtoBS - SC-sent completion for detach propagate
 
 	// UL data operations.
 	CmdULData         = "ulData"    // Direction: BStoSC - initiates uplink data
@@ -895,17 +906,17 @@ const (
 	// UL data transmit operations.
 	CmdULDataTransmit         = "ulDataTx"    // Direction: SCtoBS - initiates uplink data transmit
 	CmdULDataTransmitResponse = "ulDataTxRsp" // Direction: BStoSC - response for uplink data transmit
-	CmdULDataTransmitComplete = "ulDataTxCmp" // Direction: BStoSC - completion for uplink data transmit
+	CmdULDataTransmitComplete = "ulDataTxCmp" // Direction: SCtoBS - SC-sent completion for uplink data transmit
 
 	// DL data queue operations.
 	CmdDLDataQueue         = "dlDataQue"    // Direction: SCtoBS - initiates downlink data queue
 	CmdDLDataQueueResponse = "dlDataQueRsp" // Direction: BStoSC - response for downlink queue
-	CmdDLDataQueueComplete = "dlDataQueCmp" // Direction: BStoSC - completion for downlink queue
+	CmdDLDataQueueComplete = "dlDataQueCmp" // Direction: SCtoBS - SC-sent completion for downlink queue
 
 	// DL data revoke operations.
 	CmdDLDataRevoke         = "dlDataRev"    // Direction: SCtoBS - initiates downlink data revocation
 	CmdDLDataRevokeResponse = "dlDataRevRsp" // Direction: BStoSC - response for downlink revoke
-	CmdDLDataRevokeComplete = "dlDataRevCmp" // Direction: BStoSC - completion for downlink revoke
+	CmdDLDataRevokeComplete = "dlDataRevCmp" // Direction: SCtoBS - SC-sent completion for downlink revoke
 
 	// DL data result operations (BSSCI §3.14). Note: SCACI §3.12 uses different response/complete names.
 	CmdDLDataResult         = "dlDataRes"    // Direction: BStoSC - initiates downlink data result (shared: BSSCI §3.14 + SCACI §3.12.1)
@@ -925,7 +936,7 @@ const (
 	// DL RX status query operations.
 	CmdDLRxStatusQuery         = "dlRxStatQry"    // Direction: SCtoBS - initiates downlink RX status query
 	CmdDLRxStatusQueryResponse = "dlRxStatQryRsp" // Direction: BStoSC - response for DL RX status query
-	CmdDLRxStatusQueryComplete = "dlRxStatQryCmp" // Direction: BStoSC - completion for DL RX status query
+	CmdDLRxStatusQueryComplete = "dlRxStatQryCmp" // Direction: SCtoBS - SC-sent completion for DL RX status query
 
 	// Error operations.
 	CmdError    = "error"    // Direction: Bidirectional - error message

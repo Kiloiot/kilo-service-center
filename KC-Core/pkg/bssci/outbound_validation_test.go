@@ -128,12 +128,13 @@ func TestValidateAllCatalogCommands(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	for _, command := range commands {
@@ -155,12 +156,13 @@ func TestValidationMissingCommand(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	// Message without command field
@@ -188,12 +190,13 @@ func TestValidationMissingOpId(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	// Message without opId field - should fail validation (MIOTY requires opId on all frames)
@@ -272,12 +275,13 @@ func TestValidationExtraField(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	// Valid payload with extra field
@@ -306,12 +310,13 @@ func TestValidationUnknownCommand(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	// Message with unknown command
@@ -340,12 +345,7 @@ func TestValidationMarshalFailure(t *testing.T) {
 		logger: logger,
 	}
 
-	server.broadcastFn = server.SendAttachPropagateToAll
-	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
-	}
+	_ = server
 
 	// Create a struct with unmarshalable field (channel type)
 	type UnmarshalableMsg struct {
@@ -360,7 +360,7 @@ func TestValidationMarshalFailure(t *testing.T) {
 		Chan:    make(chan int),
 	}
 
-	err := server.validateOutboundMessage(session, invalidMsg)
+	_, err := outboundValidationProjection(invalidMsg)
 	if err == nil {
 		t.Error("Expected error for unmarshalable message")
 	}
@@ -380,11 +380,12 @@ func TestValidationStructMessages(t *testing.T) {
 		logger: logger,
 	}
 
-	server.broadcastFn = server.SendAttachPropagateToAll
 	session := &Session{
-		ID:          "test-session",
-		DbSessionID: 1,
-		Encoding:    "json",
+		ProtocolSessionState: ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 1,
+			Encoding:    "json",
+		},
 	}
 
 	t.Run("ConnectResponse_struct", func(t *testing.T) {
@@ -407,7 +408,11 @@ func TestValidationStructMessages(t *testing.T) {
 			SnScUuid: uuid,
 		}
 
-		err := server.validateOutboundMessage(session, connectRsp)
+		projection, projErr := outboundValidationProjection(connectRsp)
+		if projErr != nil {
+			t.Fatalf("Projection failed for ConnectResponse struct: %v", projErr)
+		}
+		err := server.validateOutboundMessage(session, projection)
 		if err != nil {
 			t.Errorf("Validation failed for ConnectResponse struct: %v", err)
 		}
@@ -427,7 +432,11 @@ func TestValidationStructMessages(t *testing.T) {
 			TxTime:   &txTime,
 		}
 
-		err := server.validateOutboundMessage(session, vmDlData)
+		projection, projErr := outboundValidationProjection(vmDlData)
+		if projErr != nil {
+			t.Fatalf("Projection failed for VMDLData struct: %v", projErr)
+		}
+		err := server.validateOutboundMessage(session, projection)
 		if err != nil {
 			t.Errorf("Validation failed for VMDLData struct: %v", err)
 		}

@@ -9,6 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // setupSCACISessionTestDB connects via testcontainers
@@ -37,7 +39,7 @@ func TestSCACISessionRepository_CreateSession_WithTLS(t *testing.T) {
 	createSCACITestTenant(t, db, 100, "TestTenant100")
 
 	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	tlsVer := "TLS 1.3"
@@ -78,7 +80,7 @@ func TestSCACISessionRepository_UpdateSession_TLSFields(t *testing.T) {
 	createSCACITestTenant(t, db, 101, "TestTenant101")
 
 	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	initialTLS := "TLS 1.2"
@@ -128,7 +130,7 @@ func TestSCACISessionRepository_UpdateSession_PartialTLS(t *testing.T) {
 	createSCACITestTenant(t, db, 102, "TestTenant102")
 
 	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	initialTLS := "TLS 1.2"
@@ -185,7 +187,7 @@ func TestSCACISessionRepository_CheckSessionResumable_TenantFilter(t *testing.T)
 	createSCACITestTenant(t, db, 202, "TenantB_Attacker")
 
 	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Create session owned by tenant 201 (victim)
@@ -235,7 +237,7 @@ func TestSCACISessionRepository_GetSessionByAcUUID_TenantScoped(t *testing.T) {
 	createSCACITestTenant(t, db, 204, "TenantD_Other")
 
 	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Create session owned by tenant 203
@@ -281,7 +283,7 @@ func TestSCACISessionRepository_GetSessionByID_TenantScoped(t *testing.T) {
 	createSCACITestTenant(t, db, 206, "TenantF_Other")
 
 	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Create session owned by tenant 205

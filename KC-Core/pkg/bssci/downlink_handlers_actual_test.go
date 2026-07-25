@@ -365,7 +365,9 @@ func TestHandleDLDataResultActual(t *testing.T) {
 
 			// Create session
 			session := &bssci.Session{
-				BaseStationEUI:   bssci.TestBsEui01,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					BaseStationEUI: bssci.TestBsEui01,
+				},
 				UserProvidedName: "Test BS",
 				Conn:             conn,
 			}
@@ -505,7 +507,9 @@ func TestThreeWayHandshake(t *testing.T) {
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, mockResolver)
 
 	session := &bssci.Session{
-		BaseStationEUI:   bssci.TestBsEui01,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			BaseStationEUI: bssci.TestBsEui01,
+		},
 		UserProvidedName: "Test BS",
 		Conn:             conn,
 	}

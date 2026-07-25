@@ -13,6 +13,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// registerAccountIdentityMethod is the rate-limited account registration RPC.
+const registerAccountIdentityMethod = "/kilocenter.api.v1.IdentityService/RegisterAccount"
+
 // RegistrationRateLimiter provides per-IP rate limiting for sensitive gRPC methods.
 type RegistrationRateLimiter struct {
 	limiters  sync.Map // map[string]*rate.Limiter
@@ -29,7 +32,7 @@ func NewRegistrationRateLimiter(cfg config.GatewayRateLimitConfig) *Registration
 		rate:  rate.Limit(float64(cfg.RequestsPerMin) / 60.0),
 		burst: cfg.Burst,
 		methods: map[string]bool{
-			"/kilocenter.api.v1.IdentityService/RegisterAccount":   true,
+			registerAccountIdentityMethod:                          true,
 			"/kilocenter.api.v1.KiloCenterService/RegisterAccount": true,
 		},
 		stopCh: make(chan struct{}),

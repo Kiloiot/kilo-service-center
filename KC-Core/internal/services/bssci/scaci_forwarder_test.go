@@ -10,6 +10,8 @@ import (
 	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // EPStatus constants
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockSCACIEPStatusBroadcaster implements scaciEPStatusBroadcaster for testing
@@ -65,7 +67,7 @@ func TestSCACIEPStatusAdapter_SetSCACIServer_Stores(t *testing.T) {
 		EpStatus: pkgmioty.EPStatusAttached,
 	}
 
-	err := adapter.BroadcastEPStatus(context.Background(), 42, data)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 42, data)
 	if err != nil {
 		t.Fatalf("BroadcastEPStatus failed: %v", err)
 	}
@@ -90,7 +92,7 @@ func TestSCACIEPStatusAdapter_SetSCACIServer_NilDoesNotPanic(t *testing.T) {
 		EpStatus: pkgmioty.EPStatusAttached,
 	}
 
-	err := adapter.BroadcastEPStatus(context.Background(), 42, data)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 42, data)
 	if err != nil {
 		t.Fatalf("BroadcastEPStatus should return nil when server is nil, got: %v", err)
 	}
@@ -106,7 +108,7 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_NoServer_ReturnsNil(t *testing.T
 	}
 
 	// Should return nil (not an error, just no-op)
-	err := adapter.BroadcastEPStatus(context.Background(), 100, data)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 100, data)
 	if err != nil {
 		t.Fatalf("expected nil error when no server, got: %v", err)
 	}
@@ -118,7 +120,7 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_NilData_ReturnsNil(t *testing.T)
 	adapter.SetSCACIServer(mock)
 
 	// Nil data should return nil without calling the server
-	err := adapter.BroadcastEPStatus(context.Background(), 42, nil)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 42, nil)
 	if err != nil {
 		t.Fatalf("expected nil error for nil data, got: %v", err)
 	}
@@ -159,7 +161,7 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_ConvertsTypes(t *testing.T) {
 		Subpackets: subpackets,
 	}
 
-	err := adapter.BroadcastEPStatus(context.Background(), 123, data)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 123, data)
 	if err != nil {
 		t.Fatalf("BroadcastEPStatus failed: %v", err)
 	}
@@ -213,7 +215,7 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_PropagatesError(t *testing.T) {
 		EpStatus: pkgmioty.EPStatusAttached,
 	}
 
-	err := adapter.BroadcastEPStatus(context.Background(), 42, data)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 42, data)
 	if err == nil {
 		t.Fatal("expected error to be propagated")
 	}
@@ -234,7 +236,7 @@ func TestSCACIEPStatusAdapter_SetSCACIServer_InvalidType_Ignored(t *testing.T) {
 		EpStatus: pkgmioty.EPStatusAttached,
 	}
 
-	err := adapter.BroadcastEPStatus(context.Background(), 42, data)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 42, data)
 	if err != nil {
 		t.Fatalf("expected nil error when invalid server type, got: %v", err)
 	}
@@ -250,7 +252,7 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_AttachedStatus(t *testing.T) {
 		EpStatus: pkgmioty.EPStatusAttached,
 	}
 
-	err := adapter.BroadcastEPStatus(context.Background(), 42, data)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 42, data)
 	if err != nil {
 		t.Fatalf("BroadcastEPStatus failed: %v", err)
 	}
@@ -270,7 +272,7 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_DetachedStatus(t *testing.T) {
 		EpStatus: pkgmioty.EPStatusDetached,
 	}
 
-	err := adapter.BroadcastEPStatus(context.Background(), 42, data)
+	err := adapter.BroadcastEPStatus(testutil.TestContext(), 42, data)
 	if err != nil {
 		t.Fatalf("BroadcastEPStatus failed: %v", err)
 	}

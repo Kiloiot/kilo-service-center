@@ -151,9 +151,10 @@ export default tseslint.config(
             '@components/layout/**',
             // Config files
             '@config/**',
-            // Local relative imports within modules (pages, components subdirs)
+            // Local relative imports within modules (pages, components, utils subdirs)
             '**/pages/**',
             '**/components/**',
+            '**/utils/**',
             // gRPC-web generated stubs and google-protobuf
             '@services/grpc/**',
             'google-protobuf/**',

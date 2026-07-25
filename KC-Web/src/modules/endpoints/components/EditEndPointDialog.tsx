@@ -25,8 +25,9 @@ import {
 } from "@utils/formatters";
 import { MIOTY_KEY_BYTE_LENGTH } from "@constants/app";
 import { ENDPOINT_FORM } from "@constants/messages";
-import { SecurityKeyFields } from "./EndpointFormFields";
+
 import DeviceModelSelector from "./DeviceModelSelector";
+import { SecurityKeyFields } from "./EndpointFormFields";
 import EndpointSettingsSection from "./EndpointSettingsSection";
 
 interface EditEndPointDialogProps {
@@ -108,9 +109,7 @@ function applyEndpointAddressChanges(
   }
   if (form.carrierOffset !== original.carrierOffset) {
     changes.carrierOffset =
-      form.carrierOffset !== ""
-        ? parseInt(form.carrierOffset, 10)
-        : undefined;
+      form.carrierOffset !== "" ? parseInt(form.carrierOffset, 10) : undefined;
   }
 }
 

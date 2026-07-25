@@ -53,7 +53,7 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *grpcservices.
 		Name:           req.Name,
 		Type:           req.Type,
 		Config:         req.Config,
-		EventFilter:    req.EventFilter,
+		EventFilter:    models.NullJSON{Valid: req.EventFilter != nil, Data: req.EventFilter},
 		DeliveryFormat: deliveryFormat,
 		Status:         models.IntegrationStatusActive,
 	}
@@ -111,7 +111,7 @@ func (s *Service) Update(ctx context.Context, tenantID int64, id int64, req *grp
 		integration.Config = req.Config
 	}
 	if req.EventFilter != nil {
-		integration.EventFilter = req.EventFilter
+		integration.EventFilter = models.NullJSON{Valid: true, Data: req.EventFilter}
 	}
 	if req.Status != nil {
 		if !isValidStatus(*req.Status) {

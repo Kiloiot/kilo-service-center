@@ -6,11 +6,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
@@ -20,6 +21,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestDetachThreeWayHandshake validates that the detach → detRsp → detCmp flow
@@ -180,7 +183,7 @@ func TestDetachAuditEventRecorded(t *testing.T) {
 type detachTestEnv struct {
 	server  *Server
 	session *Session
-	conn    *testutil.TestConn
+	conn    *bsscitest.TestConn
 	repo    *fakeEndpointRepo
 	events  *recordingEventStore
 }
@@ -205,7 +208,7 @@ func newDetachTestEnv(t *testing.T, cfg *Config, endpoint *models.EndPoint) *det
 	)
 	server.config = cfg
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
-	server.storage = storage
+	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
@@ -219,20 +222,23 @@ func newDetachTestEnv(t *testing.T, cfg *Config, endpoint *models.EndPoint) *det
 		t.Fatalf("endpoint repository not configured")
 	}
 
-	conn := &testutil.TestConn{Encoding: "json"}
+	conn := &bsscitest.TestConn{Encoding: "json"}
 	// Default tenant to 1 if endpoint is nil (unknown endpoint test case)
 	sessionTenant := int64(1)
 	if endpoint != nil {
 		sessionTenant = endpoint.TenantID
 	}
 	session := &Session{
-		ID:               "session-detach",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: sessionTenant,
-		DbSessionID:      1, // Non-zero to enable database persistence for crash recovery tests
-		Encoding:         EncodingJSON,
-		Conn:             conn,
-		SessionUUID:      uuidBytes(),
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "session-detach",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: sessionTenant,
+			// Non-zero to enable database persistence for crash recovery tests
+			DbSessionID: 1,
+			SessionUUID: uuidBytes(),
+			Encoding:    EncodingJSON,
+		},
+		Conn: conn,
 	}
 
 	return &detachTestEnv{
@@ -248,7 +254,7 @@ func buildDetachPayload(epEui uint64) map[string]interface{} {
 	return map[string]interface{}{
 		"command":   mioty.CmdDetach,
 		"epEui":     float64(epEui),
-		"rxTime":    float64(time.Now().UnixNano()),
+		"rxTime":    time.Now().UnixNano(),
 		"packetCnt": float64(10),
 		"snr":       float64(12.5),
 		"rssi":      float64(-85.2),
@@ -533,6 +539,9 @@ type stubPendingOperationRepo struct{}
 func (stubPendingOperationRepo) Create(context.Context, *interfaces.PendingOperationRequest) error {
 	return nil
 }
+func (stubPendingOperationRepo) CreateBatch(context.Context, []*interfaces.PendingOperationRequest) error {
+	return nil
+}
 func (stubPendingOperationRepo) UpdateMetadata(context.Context, int64, int64, json.RawMessage) error {
 	return nil
 }
@@ -739,7 +748,8 @@ func TestDetachCrossTenantLookup(t *testing.T) {
 }
 
 // TestDetachPayloadNormalization verifies DET-03: handler correctly processes
-// payload with mixed float64 types and signature arrays (from JSON unmarshaling).
+// payload with json.Number values and signature arrays (the shapes produced by
+// strict JSON decoding with UseNumber).
 func TestDetachPayloadNormalization(t *testing.T) {
 	t.Parallel()
 
@@ -754,19 +764,21 @@ func TestDetachPayloadNormalization(t *testing.T) {
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
-	// DET-03: Payload with mixed float64 types (from JSON unmarshaling)
+	// DET-03: Payload with json.Number values (from strict JSON decoding);
+	// rxTime exceeds 2^53 and must survive exactly
 	payload := map[string]interface{}{
 		"command":    mioty.CmdDetach,
-		"epEui":      float64(epEui),                    // Will be normalized to uint64
-		"bsEui":      float64(0xABCDEF123456),           // Will be normalized to uint64
-		"rxTime":     float64(1699876543000000000),      // Will be normalized to int64
-		"packetCnt":  float64(42),                       // Will be normalized to uint32
-		"snr":        float64(15.7),                     // Stays float64
-		"rssi":       float64(-92.3),                    // Stays float64
-		"eqSnr":      float64(14.2),                     // Stays float64
-		"profile":    "eu1",                             // Stays string
-		"rxDuration": float64(500),                      // Will be normalized to int64
-		"sign":       []interface{}{1.0, 2.0, 3.0, 4.0}, // Will be normalized to []byte
+		"epEui":      json.Number(strconv.FormatUint(epEui, 10)), // Will be normalized to uint64
+		"bsEui":      json.Number("188900967593046"),             // Will be normalized to uint64
+		"rxTime":     json.Number("1699876543000000000"),         // Will be normalized to int64
+		"packetCnt":  json.Number("42"),                          // Will be normalized to uint32
+		"snr":        json.Number("15.7"),                        // Becomes float64
+		"rssi":       json.Number("-92.3"),                       // Becomes float64
+		"eqSnr":      json.Number("14.2"),                        // Becomes float64
+		"profile":    "eu1",                                      // Stays string
+		"rxDuration": json.Number("500"),                         // Will be normalized to int64
+		"sign": []interface{}{json.Number("1"), json.Number("2"),
+			json.Number("3"), json.Number("4")}, // Will be normalized to []byte
 	}
 
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
@@ -816,7 +828,7 @@ func TestDetachCrossTenantContextIsolation(t *testing.T) {
 	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
 
 	// FIX-1: Verify message stored with endpoint owner tenant using Background context
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachs, 1, "detach message must be persisted")
 	storedMsg := msgRepo.detachs[0]
@@ -858,7 +870,7 @@ func TestDetachUnknownEndpointMetadataPersistence(t *testing.T) {
 		"unknown endpoint detach must return detRsp, commands seen: %#v", commandsSnapshot)
 
 	// FIX-3: Verify message persisted with session tenant
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachs, 1, "detach message must be persisted for unknown endpoint")
 	storedMsg := msgRepo.detachs[0]
@@ -886,7 +898,7 @@ func TestFakeEndpointRepoBasics(t *testing.T) {
 	endpoint := buildTestEndpoint(knownEui, tenant100)
 	repo := newFakeEndpointRepo(endpoint)
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	euiBytes := make([]byte, 8)
 
 	// Test 1: Same-tenant lookup should succeed
@@ -950,7 +962,7 @@ func TestDetachOrgResolverFailureFallback(t *testing.T) {
 	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
 
 	// Verify message persisted with tenant but nil org UUID
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachs, 1)
 	storedMsg := msgRepo.detachs[0]
@@ -1029,7 +1041,7 @@ func TestSendDetachPropagatePersistence(t *testing.T) {
 	require.NoError(t, err, "SendDetachPropagate should succeed")
 
 	// Verify detach propagate message was persisted
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachPropagates, 1, "detach propagate message must be persisted")
 	storedMsg := msgRepo.detachPropagates[0]
@@ -1091,7 +1103,7 @@ func TestSendDetachPropagateUnknownEndpoint(t *testing.T) {
 	require.NoError(t, err, "SendDetachPropagate should succeed for unknown endpoint")
 
 	// Verify detach propagate message was persisted
-	msgRepo := env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
 	msgRepo.mu.Lock()
 	require.Len(t, msgRepo.detachPropagates, 1, "detach propagate message must be persisted for unknown endpoint")
 	storedMsg := msgRepo.detachPropagates[0]

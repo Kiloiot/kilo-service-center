@@ -66,11 +66,13 @@ func (r *OrganizationRepository) GetOrgByTenantID(ctx context.Context, tenantID 
 	return &org, nil
 }
 
-// UpsertOrg creates or updates organization (Kilo Cloud sync path)
-// Attempts update first; if organization doesn't exist, creates it
+// UpsertOrg creates or updates organization (Kilo Cloud sync path).
+// The organization ID is the global sync identity, so the existence check is
+// by org_id alone; the tenant binding of an existing organization is immutable
+// and always preserved, so a payload carrying a different tenant can neither
+// move the organization nor read anything through this path.
 func (r *OrganizationRepository) UpsertOrg(ctx context.Context, org *models.Organization) error {
-	// Check if organization exists
-	existing, err := r.GetByID(ctx, org.OrgID, org.TenantID)
+	existing, err := r.getByOrgID(ctx, org.OrgID)
 	if err != nil {
 		// Only create if org truly doesn't exist
 		if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "not found") {
@@ -90,6 +92,24 @@ func (r *OrganizationRepository) UpsertOrg(ctx context.Context, org *models.Orga
 	org.TenantID = existing.TenantID
 
 	return r.Update(ctx, org.OrgID, org.TenantID, updates)
+}
+
+// getByOrgID looks an organization up by its global identity for the sync
+// upsert path only; tenant-scoped reads go through GetByID.
+func (r *OrganizationRepository) getByOrgID(ctx context.Context, orgID uuid.UUID) (*models.Organization, error) {
+	var org models.Organization
+	query := `
+		SELECT org_id, tenant_id, name, state, created_at, updated_at
+		FROM organizations
+		WHERE org_id = $1`
+
+	if err := r.db.GetContext(ctx, &org, query, orgID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+		return nil, fmt.Errorf("get organization by org_id: %w", err)
+	}
+	return &org, nil
 }
 
 // Create creates a new organization

@@ -26,7 +26,7 @@ type scaciEPStatusBroadcaster interface {
 }
 
 type scaciForwarder struct {
-	scaciServer scaciBroadcaster // Real interface from server.go:89
+	scaciServer scaciBroadcaster
 	mu          sync.RWMutex
 	logger      logger.Logger
 }
@@ -52,7 +52,7 @@ func (f *scaciForwarder) SetSCACIServer(scaci scaciBroadcaster) {
 }
 
 // BroadcastULData forwards uplink data to SCACI clients
-// Delegates to real scaciBroadcaster.BroadcastULData (server.go:39)
+// Delegates to real scaciBroadcaster.BroadcastULData
 func (f *scaciForwarder) BroadcastULData(ctx context.Context, tenantID int64, data *mioty.ULDataMessage) error {
 	f.mu.RLock()
 	scaci := f.scaciServer
@@ -63,7 +63,7 @@ func (f *scaciForwarder) BroadcastULData(ctx context.Context, tenantID int64, da
 		return nil
 	}
 
-	// Delegate to real SCACI broadcaster (preserves exact behavior from server.go:1884)
+	// Delegate to real SCACI broadcaster (preserves exact behavior)
 	if err := scaci.BroadcastULData(ctx, tenantID, data); err != nil {
 		f.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToForwardULDataToSCACI,
 			"epEui", data.EpEui,
@@ -76,7 +76,7 @@ func (f *scaciForwarder) BroadcastULData(ctx context.Context, tenantID int64, da
 }
 
 // BroadcastDLDataResult forwards downlink results to SCACI clients
-// Delegates to real scaciBroadcaster.BroadcastDLDataResult (server.go:40)
+// Delegates to real scaciBroadcaster.BroadcastDLDataResult
 func (f *scaciForwarder) BroadcastDLDataResult(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error {
 	f.mu.RLock()
 	scaci := f.scaciServer

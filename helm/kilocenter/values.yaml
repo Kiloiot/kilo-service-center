@@ -74,6 +74,15 @@ kcCore:
       maxRetransmissions: 3
       ackTimeout: 5000
       duplicateWindow: 300
+      connectionEstablishmentTimeout: 30000
+      statusRequestInterval: 30
+      statusRequestInitialDelay: 5
+      dlrxQueryTimeout: 300
+      dlrxCleanupInterval: 60
+      bsciCertificatePollInterval: "10s"
+      # Service Center EUI. Empty keeps the sc_eui key out of the rendered
+      # config so environment variables and the built-in default apply.
+      scEui: ""
 
 # ---------------------------------------------------------------------------
 # KC-Gateway — external gRPC-web ingress, proxies to KC-Core

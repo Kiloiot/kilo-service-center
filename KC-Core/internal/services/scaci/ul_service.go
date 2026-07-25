@@ -177,7 +177,7 @@ func (uls *ulService) ScheduleULTransmit(
 	}
 
 	// Success
-	uls.logger.Debug(scaci.LogSCACIULDataTxScheduled,
+	uls.logger.DebugContext(ctx, scaci.LogSCACIULDataTxScheduled,
 		"bssciOpID", bssciOpID,
 		"bsEui", actualBsEui,
 		"epEui", req.EpEui)

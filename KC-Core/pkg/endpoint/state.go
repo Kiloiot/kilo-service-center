@@ -6,9 +6,14 @@ package endpoint
 import (
 	"context"
 	"time"
-
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
+
+// FieldUpdater is the single repository capability DetachEndpoint needs;
+// both the full endpoint repository and narrower protocol-server views
+// satisfy it.
+type FieldUpdater interface {
+	UpdateFields(ctx context.Context, tenantID int64, endpointID int64, updates map[string]interface{}) error
+}
 
 // DetachEndpoint builds the canonical endpoint detach update map and applies it.
 //
@@ -33,7 +38,7 @@ import (
 //   - SCACI deregister handler (KC-Core/pkg/scaci/handler_operations.go) with nil telemetry
 func DetachEndpoint(
 	ctx context.Context,
-	repo interfaces.EndpointRepository,
+	repo FieldUpdater,
 	tenantID int64,
 	endpointID int64,
 	telemetry map[string]interface{},

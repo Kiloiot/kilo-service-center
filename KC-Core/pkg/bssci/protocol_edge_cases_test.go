@@ -1,11 +1,13 @@
 package bssci_test
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"testing"
 	"time"
+
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -13,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestProtocolEdgeCases verifies BSSCI §2.4 and §2.5 edge case handling
@@ -88,11 +90,13 @@ func TestBSSCI_2_4_01_forward_compat_extra_fields(t *testing.T) {
 			server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 			session := &bssci.Session{
-				ID:                "test-session",
-				BaseStationEUI:    bssci.TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          encoding,
-				HandshakeComplete: true,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    bssci.TestBsEui01,
+					Encoding:          encoding,
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			// statusRsp with extra unknown field "futureFeature"
@@ -125,9 +129,83 @@ func TestBSSCI_2_4_01_forward_compat_extra_fields(t *testing.T) {
 	}
 }
 
-// TestBSSCI_2_4_02_optional_fields_default verifies optional fields get defaults
-// per BSSCI §2.4-02 (optional fields must have sensible defaults)
-func TestBSSCI_2_4_02_optional_fields_default(t *testing.T) {
+// TestBSSCI_5_3_2_minor_version_negotiated_down verifies conRsp version
+// arbitration (rev1 §4.2, §5.3.2): a base station requesting a newer minor
+// version is answered with the service center's selected version and the
+// session continues.
+func TestBSSCI_5_3_2_minor_version_negotiated_down(t *testing.T) {
+	for _, encoding := range []string{"json", "msgpack"} {
+		t.Run(encoding, func(t *testing.T) {
+			testLogger := logger.NewNop()
+			mockConn := &edgeMockConn{encoding: encoding}
+			mockConn.Reset()
+
+			sessionSvc, downlinkSvc, statusSvc, _, broadcaster,
+				queueSerializer, auditLogger, tenantResolver, mockStorage :=
+				bssci.CreateTestServices(testLogger, nil)
+
+			server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
+				sessionSvc, downlinkSvc, statusSvc, &mockConnectionService{tenantID: 1}, broadcaster,
+				queueSerializer, auditLogger, tenantResolver)
+
+			config := &bssci.Config{
+				ServiceCenterEUI: bssci.TestScEui01,
+				Vendor:           "test-vendor",
+				Model:            "test-model",
+				Name:             "test-sc",
+				SoftwareVersion:  "1.0.0",
+			}
+			server.SetConfig(config)
+			server.SetConnectionManager(nil)
+
+			session := &bssci.Session{
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:       "test-session-negotiate-down",
+					Encoding: encoding,
+				},
+				Conn: mockConn,
+			}
+
+			requestedMajor, requestedMinor, _, cerr := bssci.ParseVersion(mioty.MIOTYProtocolVersion)
+			require.Nil(t, cerr)
+			requested := fmt.Sprintf("%d.%d.%d", requestedMajor, requestedMinor+1, 0)
+
+			data := map[string]interface{}{
+				"version": requested,
+				"bsEui":   bssci.TestBsEui01,
+				"bidi":    true,
+			}
+
+			msg := &bssci.Message{
+				Command: "con",
+				OpId:    0,
+				Data:    data,
+			}
+
+			require.NoError(t, server.CallHandleConnect(session, msg, data),
+				"Newer-minor connect must negotiate down, not fail")
+
+			assert.Equal(t, requested, session.ClientVersion,
+				"Raw base station version must be kept for audit")
+			assert.Equal(t, mioty.MIOTYProtocolVersion, session.NegotiatedVersion,
+				"Negotiated version must be the service center's selected version")
+
+			var conRsp map[string]interface{}
+			for _, sentMsg := range mockConn.sentMessages {
+				if cmd, ok := sentMsg["command"].(string); ok && cmd == mioty.CmdConnectResponse {
+					conRsp = sentMsg
+				}
+			}
+			require.NotNil(t, conRsp, "conRsp must be sent for a negotiated connect")
+			assert.Equal(t, mioty.MIOTYProtocolVersion, conRsp["version"],
+				"conRsp must carry the selected version per §5.3.2")
+		})
+	}
+}
+
+// TestBSSCI_5_3_1_missing_version_rejected verifies the mandatory connect
+// version field is enforced (rev1 §5.3.1)
+func TestBSSCI_5_3_1_missing_version_rejected(t *testing.T) {
 	for _, encoding := range []string{"json", "msgpack"} {
 		t.Run(encoding, func(t *testing.T) {
 			testLogger := logger.NewNop()
@@ -153,12 +231,15 @@ func TestBSSCI_2_4_02_optional_fields_default(t *testing.T) {
 			server.SetConfig(config)
 
 			session := &bssci.Session{
-				ID:       "test-session",
-				Conn:     mockConn,
-				Encoding: encoding,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:       "test-session",
+					Encoding: encoding,
+				},
+				Conn: mockConn,
 			}
 
-			// Connect without optional version field
+			// Connect without the mandatory version field (rev1 §5.3.1;
+			// message metadata declares version Required)
 			data := map[string]interface{}{
 				"bsEui": bssci.TestBsEui01,
 				"bidi":  true,
@@ -170,21 +251,24 @@ func TestBSSCI_2_4_02_optional_fields_default(t *testing.T) {
 				Data:    data,
 			}
 
-			_ = server.CallHandleConnect(session, msg, data)
+			err := server.CallHandleConnect(session, msg, data)
+			require.NoError(t, err,
+				"Rejected connect awaits errorAck instead of closing (§5.17)")
+			assert.Equal(t, bssci.ConnectStateAwaitingConnectErrorAck, session.ConnectState,
+				"Rejected connect must await the base station's errorAck")
 
-			// VERIFY DEFAULT WAS APPLIED (not just absence of error)
-			assert.Equal(t, mioty.MIOTYProtocolVersion, session.NegotiatedVersion,
-				"Server must populate default version per §2.4-02")
+			// No version may be negotiated for a rejected connect
+			assert.Empty(t, session.NegotiatedVersion,
+				"Rejected connect must not populate a negotiated version")
 
-			// Should not send error about missing version
+			// An error frame must be sent to the base station
+			sawError := false
 			for _, sentMsg := range mockConn.sentMessages {
 				if cmd, ok := sentMsg["command"].(string); ok && cmd == "error" {
-					if errMsg, hasMsg := sentMsg["message"].(string); hasMsg {
-						assert.NotContains(t, errMsg, "version",
-							"Optional version should default per §2.4-02")
-					}
+					sawError = true
 				}
 			}
+			assert.True(t, sawError, "Missing mandatory version must produce an error frame")
 		})
 	}
 }
@@ -237,11 +321,13 @@ func TestBSSCI_2_5_02_reject_malformed_values(t *testing.T) {
 					queueSerializer, auditLogger, tenantResolver)
 
 				session := &bssci.Session{
-					ID:                "test-session",
-					BaseStationEUI:    bssci.TestBsEui01,
-					Conn:              mockConn,
-					Encoding:          encoding,
-					HandshakeComplete: true,
+					ProtocolSessionState: bssci.ProtocolSessionState{
+						ID:                "test-session",
+						BaseStationEUI:    bssci.TestBsEui01,
+						Encoding:          encoding,
+						HandshakeComplete: true,
+					},
+					Conn: mockConn,
 				}
 
 				msg := &bssci.Message{
@@ -288,11 +374,13 @@ func TestBSSCI_2_5_03_numeric_field_types(t *testing.T) {
 			server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 			session := &bssci.Session{
-				ID:                "test-session",
-				BaseStationEUI:    bssci.TestBsEui01,
-				Conn:              mockConn,
-				Encoding:          encoding,
-				HandshakeComplete: true,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:                "test-session",
+					BaseStationEUI:    bssci.TestBsEui01,
+					Encoding:          encoding,
+					HandshakeComplete: true,
+				},
+				Conn: mockConn,
 			}
 
 			// All fields are properly typed
@@ -354,11 +442,13 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 		mockConn.Reset()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: true,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: true,
+			},
+			Conn: mockConn,
 		}
 
 		// statusRsp missing mandatory "code" field
@@ -394,11 +484,13 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 		mockConn.Reset()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: true,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: true,
+			},
+			Conn: mockConn,
 		}
 
 		// statusRsp with string "code" instead of int64
@@ -431,11 +523,13 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 		mockConn.Reset()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: true,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: true,
+			},
+			Conn: mockConn,
 		}
 
 		// ulData with responseExp=true but dlOpen=false - conditional rule violation
@@ -478,11 +572,13 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 		mockConn.Reset()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: true,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: true,
+			},
+			Conn: mockConn,
 		}
 
 		// For now, use same responseExp scenario but verify it doesn't match generic token
@@ -519,17 +615,18 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 	})
 }
 
-// TestConConditionalRules verifies MIOTY radio spec §3.6.5.3 session resume mutual presence validation
-// Tests the ConditionalRules added to con command in message_metadata.go:669-688
-func TestConConditionalRules(t *testing.T) {
+// TestConResumeCountersIndependentlyOptional verifies BSSCI rev1 §5.3.1:
+// snBsOpId and snScOpId are each independently optional in the con message.
+// Any combination (neither, either alone, both) must be accepted.
+func TestConResumeCountersIndependentlyOptional(t *testing.T) {
 	testLogger := logger.NewNop()
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
+	sessionSvc, downlinkSvc, statusSvc, _, broadcaster,
 		queueSerializer, auditLogger, tenantResolver, mockStorage :=
 		bssci.CreateTestServices(testLogger, nil)
 
 	server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
+		sessionSvc, downlinkSvc, statusSvc, &mockConnectionService{tenantID: 1}, broadcaster,
 		queueSerializer, auditLogger, tenantResolver)
 	server.SetConfig(&bssci.Config{
 		ServiceCenterEUI: bssci.TestScEui01,
@@ -538,6 +635,7 @@ func TestConConditionalRules(t *testing.T) {
 		Name:             "TestSC",
 		SoftwareVersion:  "1.0.0",
 	})
+	server.SetConnectionManager(nil)
 
 	t.Run("NewConnect_NoResumeFields_Success", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
@@ -545,11 +643,14 @@ func TestConConditionalRules(t *testing.T) {
 		server.RegisterHandlers()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: false, // Fresh connection
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: false,
+			},
+			Conn: mockConn,
+			// Fresh connection
 		}
 
 		// New connection without resume fields - should succeed
@@ -583,14 +684,16 @@ func TestConConditionalRules(t *testing.T) {
 		server.RegisterHandlers()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: false,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: false,
+			},
+			Conn: mockConn,
 		}
 
-		// Resume with BOTH snBsOpId and snScOpId - mutual presence satisfied
+		// Both counters together assert both constraints
 		data := map[string]interface{}{
 			"version":  "1.0.0",
 			"bsEui":    bssci.TestBsEui01,
@@ -617,27 +720,28 @@ func TestConConditionalRules(t *testing.T) {
 		assert.Equal(t, "conRsp", mockConn.sentMessages[0]["command"])
 	})
 
-	t.Run("Resume_OnlySnBsOpId_FailsConditionalRule", func(t *testing.T) {
+	t.Run("Resume_OnlySnBsOpId_Accepted", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
 		mockConn.Reset()
 		server.RegisterHandlers()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: false,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: false,
+			},
+			Conn: mockConn,
 		}
 
-		// Resume with ONLY snBsOpId - violates mutual presence rule
+		// snBsOpId alone asserts only the BS-counter constraint (§5.3.1)
 		data := map[string]interface{}{
 			"version":  "1.0.0",
 			"bsEui":    bssci.TestBsEui01,
 			"bidi":     true,
 			"snBsUuid": []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-			"snBsOpId": int64(100), // BS counter present
-			// snScOpId MISSING - triggers conditional rule failure
+			"snBsOpId": int64(100),
 		}
 
 		msg := &bssci.Message{
@@ -647,39 +751,35 @@ func TestConConditionalRules(t *testing.T) {
 		}
 
 		err := server.CallHandleMessage(session, msg, data)
-		assert.NoError(t, err, "handleMessage should not return error (sends error frame instead)")
+		assert.NoError(t, err, "handleMessage should accept snBsOpId without snScOpId")
 
-		// Should send error frame (not conRsp)
-		require.Len(t, mockConn.sentMessages, 1)
-		assert.Equal(t, "error", mockConn.sentMessages[0]["command"])
-
-		errorMessage, ok := mockConn.sentMessages[0]["message"].(string)
-		require.True(t, ok)
-		assert.Equal(t, "Conditional field requirement failed", errorMessage,
-			"Error response should use catalog message without leaking rule text")
+		require.GreaterOrEqual(t, len(mockConn.sentMessages), 1)
+		assert.Equal(t, "conRsp", mockConn.sentMessages[0]["command"],
+			"a lone snBsOpId is a valid resume constraint")
 	})
 
-	t.Run("Resume_OnlySnScOpId_FailsConditionalRule", func(t *testing.T) {
+	t.Run("Resume_OnlySnScOpId_Accepted", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
 		mockConn.Reset()
 		server.RegisterHandlers()
 
 		session := &bssci.Session{
-			ID:                "test-session",
-			BaseStationEUI:    bssci.TestBsEui01,
-			Conn:              mockConn,
-			Encoding:          "json",
-			HandshakeComplete: false,
+			ProtocolSessionState: bssci.ProtocolSessionState{
+				ID:                "test-session",
+				BaseStationEUI:    bssci.TestBsEui01,
+				Encoding:          "json",
+				HandshakeComplete: false,
+			},
+			Conn: mockConn,
 		}
 
-		// Resume with ONLY snScOpId - violates mutual presence rule
+		// snScOpId alone asserts only the SC-counter constraint (§5.3.1)
 		data := map[string]interface{}{
 			"version":  "1.0.0",
 			"bsEui":    bssci.TestBsEui01,
 			"bidi":     true,
 			"snBsUuid": []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-			"snScOpId": int64(-50), // SC counter present
-			// snBsOpId MISSING - triggers conditional rule failure
+			"snScOpId": int64(-50),
 		}
 
 		msg := &bssci.Message{
@@ -689,16 +789,11 @@ func TestConConditionalRules(t *testing.T) {
 		}
 
 		err := server.CallHandleMessage(session, msg, data)
-		assert.NoError(t, err, "handleMessage should not return error (sends error frame instead)")
+		assert.NoError(t, err, "handleMessage should accept snScOpId without snBsOpId")
 
-		// Should send error frame (not conRsp)
-		require.Len(t, mockConn.sentMessages, 1)
-		assert.Equal(t, "error", mockConn.sentMessages[0]["command"])
-
-		errorMessage, ok := mockConn.sentMessages[0]["message"].(string)
-		require.True(t, ok)
-		assert.Equal(t, "Conditional field requirement failed", errorMessage,
-			"Error response should use catalog message without leaking rule text")
+		require.GreaterOrEqual(t, len(mockConn.sentMessages), 1)
+		assert.Equal(t, "conRsp", mockConn.sentMessages[0]["command"],
+			"a lone snScOpId is a valid resume constraint")
 	})
 }
 
@@ -719,7 +814,7 @@ func TestConConditionalRules(t *testing.T) {
 // just field conversion logic without attach handler provisioning dependencies.
 func TestTypeBytesIntegration(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	tests := []struct {
 		name         string
@@ -818,8 +913,8 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 		for _, encoding := range []string{"json", "msgpack"} {
 			t.Run(tt.desc+"_"+encoding, func(t *testing.T) {
 				// Use observing logger to verify WARN logs for unknown fields
-				observedCore, observedLogs := observer.New(zap.WarnLevel)
-				testLogger := logger.FromZap(zap.New(observedCore))
+				observedLogs := bsscitest.NewRecordingLogger() // captures WARN+
+				testLogger := observedLogs
 				mockConn := &edgeMockConn{encoding: encoding}
 				mockConn.Reset()
 
@@ -833,11 +928,13 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 				server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 				session := &bssci.Session{
-					ID:                "test-session",
-					BaseStationEUI:    bssci.TestBsEui01,
-					Conn:              mockConn,
-					Encoding:          encoding,
-					HandshakeComplete: true,
+					ProtocolSessionState: bssci.ProtocolSessionState{
+						ID:                "test-session",
+						BaseStationEUI:    bssci.TestBsEui01,
+						Encoding:          encoding,
+						HandshakeComplete: true,
+					},
+					Conn: mockConn,
 				}
 
 				msg := &bssci.Message{
@@ -859,8 +956,8 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 				}
 
 				// Verify unknown field warnings were logged
-				allLogs := observedLogs.All()
-				warnLogs := observedLogs.FilterMessage("Unknown field in message - dropping for forward compatibility").All()
+				allLogs := observedLogs.AllAtLeast("WARN")
+				warnLogs := observedLogs.FilterMessage("Unknown field in message - dropping for forward compatibility")
 				require.GreaterOrEqual(t, len(warnLogs), 1,
 					"%s should log WARN for unknown fields (found %d WARN logs total, %d 'unknown field' logs)",
 					tt.desc, len(allLogs), len(warnLogs))
@@ -868,7 +965,7 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 				// Verify log contains command name in context
 				foundCommandLog := false
 				for _, log := range warnLogs {
-					fields := log.ContextMap()
+					fields := log.FieldMap()
 					if cmd, ok := fields["command"].(string); ok && cmd == tt.command {
 						foundCommandLog = true
 						break

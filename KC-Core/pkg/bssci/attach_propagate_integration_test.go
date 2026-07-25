@@ -334,6 +334,15 @@ type attPrpCapturingPendingOps struct {
 func (r *attPrpCapturingPendingOps) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
 	return nil
 }
+
+func (r *attPrpCapturingPendingOps) CreateBatch(ctx context.Context, reqs []*interfaces.PendingOperationRequest) error {
+	for _, req := range reqs {
+		if err := r.Create(ctx, req); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (r *attPrpCapturingPendingOps) UpdateMetadata(_ context.Context, sessionID, operationID int64, metadata json.RawMessage) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -497,13 +506,15 @@ func TestAttachPropagateCompletionIntegration_WithPendingOp(t *testing.T) {
 	// Create mock connection
 	mockConn := &attPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-attprp-integration",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1, // Required for pending operation processing
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-attprp-integration",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1, // Required for pending operation processing
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -617,12 +628,14 @@ func TestAttachPropagateCompletionIntegration_NoPendingOp(t *testing.T) {
 	// Create mock connection
 	mockConn := &attPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-attprp-no-pendingop",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-attprp-no-pendingop",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -798,13 +811,15 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 
 	mockConn := &attPrpTestConn{}
 	session := &bssci.Session{
-		ID:                "test-attprp-rejected",
-		BaseStationEUI:    testBsEui,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		ResolvedTenantID:  testTenantID,
-		DbSessionID:       1,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-attprp-rejected",
+			BaseStationEUI:    testBsEui,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			ResolvedTenantID:  testTenantID,
+			DbSessionID:       1,
+		},
+		Conn: mockConn,
 	}
 	server.RegisterSession(session)
 
@@ -847,9 +862,9 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 		"wire message must be cataloged via ErrAttachPropagateFailed")
 
 	// Pending-op metadata persistence.
-	update := pendingOps.LastUpdate()
-	require.NotNil(t, update, "UpdateMetadata must be called once on the rejected path")
-	require.Equal(t, 1, pendingOps.UpdateCalls(), "exactly one UpdateMetadata call")
+	updates := bssci.StatusMetadataUpdates(statusSvc)
+	require.Len(t, updates, 1, "exactly one metadata persistence call on the rejected path")
+	update := updates[0]
 	var metadata map[string]interface{}
 	require.NoError(t, json.Unmarshal(update.Metadata, &metadata))
 	assert.Equal(t, true, metadata["failed"], "metadata.failed must be true")

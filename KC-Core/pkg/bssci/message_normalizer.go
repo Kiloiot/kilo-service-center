@@ -13,9 +13,11 @@ package bssci
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
@@ -38,7 +40,18 @@ var (
 
 	// ErrResponseExpRequiresDlOpen indicates responseExp=true requires dlOpen=true per BSSCI §5.10.1
 	ErrResponseExpRequiresDlOpen = errors.New(errResponseExpRequiresDlOpen)
+
+	// errNumericPrecision marks conversions rejected because a wire float value's
+	// magnitude exceeds the exact-integer range of its IEEE 754 representation,
+	// so the original integer cannot be recovered without loss
+	errNumericPrecision = errors.New("numeric value beyond exact float integer range")
 )
+
+// precisionError wraps errNumericPrecision with the offending value for
+// errors.Is() detection at the normalization boundary.
+func precisionError(value interface{}) error {
+	return fmt.Errorf("%w: %v (%T)", errNumericPrecision, value, value)
+}
 
 // ============================================================================
 // Normalization Function
@@ -114,6 +127,7 @@ func normalizePayload(ctx context.Context, log logger.Logger, command string, da
 		if err != nil {
 			// Invalid field type - fail normalization
 			// Sentinel error enables caller to use errors.Is() for token mapping
+			logNumericPrecisionLoss(ctx, log, command, fieldSpec, err)
 			return nil, fmt.Errorf("%w for field %s: %v (spec: %s)", ErrInvalidFieldType, fieldSpec.Name, err, fieldSpec.SpecRef)
 		}
 
@@ -136,6 +150,7 @@ func normalizePayload(ctx context.Context, log logger.Logger, command string, da
 			coerced, err := coerceFieldType(value, fieldSpec)
 			if err != nil {
 				// Sentinel error enables caller to use errors.Is() for token mapping
+				logNumericPrecisionLoss(ctx, log, command, fieldSpec, err)
 				return nil, fmt.Errorf("%w for optional field %s: %v (spec: %s)", ErrInvalidFieldType, fieldSpec.Name, err, fieldSpec.SpecRef)
 			}
 
@@ -307,8 +322,104 @@ func coerceFieldType(value interface{}, fieldSpec FieldSpec) (interface{}, error
 	}
 }
 
-// coerceInt64 converts various numeric types to int64
-// Mirrors server.go:getNumericField behavior
+// logNumericPrecisionLoss reports precision-rejected conversions at the
+// normalization boundary, where command and field context are available.
+// EUI fields use the dedicated EUI precision log; other numeric fields use
+// the generic normalization log.
+func logNumericPrecisionLoss(ctx context.Context, log logger.Logger, command string, fieldSpec FieldSpec, err error) {
+	if !errors.Is(err, errNumericPrecision) {
+		return
+	}
+	msg := LogBSSCINumericPrecisionLoss
+	if fieldSpec.EUI {
+		msg = LogBSSCIEUIPrecisionLoss
+	}
+	log.WarnContext(ctx, msg,
+		"command", command,
+		"field", fieldSpec.Name,
+		"error", err.Error(),
+	)
+}
+
+// checkExactIntegerFloat rejects NaN, infinities, fractional values, and
+// magnitudes beyond the exact-integer range of the source float width
+// (2^53 for float64, 2^24 for float32).
+func checkExactIntegerFloat(v float64, bound uint64) error {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return fmt.Errorf("non-finite value %v cannot be coerced to integer", v)
+	}
+	if v != math.Trunc(v) {
+		return fmt.Errorf("fractional value %v cannot be coerced to integer", v)
+	}
+	if math.Abs(v) > float64(bound) {
+		return precisionError(v)
+	}
+	return nil
+}
+
+// parseJSONNumber parses a json.Number into an exact rational value.
+// big.Rat.SetString also accepts fractions ("1/2") and non-decimal forms that
+// are not legal JSON numbers, so the token is validated as a JSON number first
+// (wire input has already passed the decoder; manually constructed json.Number
+// values have not).
+func parseJSONNumber(n json.Number) (*big.Rat, error) {
+	s := string(n)
+	if s == "" || !json.Valid([]byte(s)) {
+		return nil, fmt.Errorf("invalid JSON number %q", s)
+	}
+	if c := s[0]; c != '-' && (c < '0' || c > '9') {
+		return nil, fmt.Errorf("invalid JSON number %q", s)
+	}
+	r, ok := new(big.Rat).SetString(s)
+	if !ok {
+		return nil, fmt.Errorf("invalid JSON number %q", s)
+	}
+	return r, nil
+}
+
+// jsonNumberToUint64 converts a json.Number to uint64 exactly. Integral JSON
+// forms such as "1", "1.0", and "1e3" are accepted; fractional, negative, and
+// out-of-range values are rejected. Values up to math.MaxUint64 survive
+// without any float conversion.
+func jsonNumberToUint64(n json.Number) (uint64, error) {
+	r, err := parseJSONNumber(n)
+	if err != nil {
+		return 0, err
+	}
+	if !r.IsInt() {
+		return 0, fmt.Errorf("fractional value %s cannot be coerced to uint64", n)
+	}
+	i := r.Num()
+	if i.Sign() < 0 {
+		return 0, fmt.Errorf("negative value cannot be coerced to uint64: %s", n)
+	}
+	if !i.IsUint64() {
+		return 0, fmt.Errorf("value %s overflows uint64", n)
+	}
+	return i.Uint64(), nil
+}
+
+// jsonNumberToInt64 converts a json.Number to int64 exactly, accepting
+// integral JSON forms and rejecting fractional or out-of-range values.
+func jsonNumberToInt64(n json.Number) (int64, error) {
+	r, err := parseJSONNumber(n)
+	if err != nil {
+		return 0, err
+	}
+	if !r.IsInt() {
+		return 0, fmt.Errorf("fractional value %s cannot be coerced to int64", n)
+	}
+	i := r.Num()
+	if !i.IsInt64() {
+		return 0, fmt.Errorf("value %s overflows int64", n)
+	}
+	return i.Int64(), nil
+}
+
+// coerceInt64 converts wire numeric values to int64 with exact semantics:
+// unsigned overflow, non-integral floats, and float magnitudes beyond the
+// exact-integer range are rejected. Negative values are permitted (Service
+// Center operation IDs are negative per BSSCI §3.2).
 func coerceInt64(value interface{}) (int64, error) {
 	switch v := value.(type) {
 	case int64:
@@ -322,7 +433,14 @@ func coerceInt64(value interface{}) (int64, error) {
 	case int8:
 		return int64(v), nil
 	case uint64:
-		//nolint:gosec // G115: Protocol EUIs/opIds are < 2^48, safe to cast to int64
+		if v > math.MaxInt64 {
+			return 0, fmt.Errorf("value %d overflows int64", v)
+		}
+		return int64(v), nil
+	case uint:
+		if uint64(v) > math.MaxInt64 {
+			return 0, fmt.Errorf("value %d overflows int64", v)
+		}
 		return int64(v), nil
 	case uint32:
 		return int64(v), nil
@@ -331,183 +449,187 @@ func coerceInt64(value interface{}) (int64, error) {
 	case uint8:
 		return int64(v), nil
 	case float64:
-		// JSON numbers come as float64
+		if err := checkExactIntegerFloat(v, maxExactFloat64Integer); err != nil {
+			return 0, err
+		}
 		return int64(v), nil
 	case float32:
-		return int64(v), nil
+		f := float64(v)
+		if err := checkExactIntegerFloat(f, maxExactFloat32Integer); err != nil {
+			return 0, err
+		}
+		return int64(f), nil
+	case json.Number:
+		return jsonNumberToInt64(v)
 	default:
 		return 0, fmt.Errorf("cannot convert %T to int64", value)
 	}
 }
 
-// coerceUint64 converts various numeric types to uint64
-func coerceUint64(value interface{}) (uint64, error) {
+// coerceToUnsigned converts wire numeric values to an unsigned integer capped
+// at targetMax with exact semantics. Unsigned integer widths are preserved
+// exactly (the full EUI-64 range, including values above INT64_MAX, survives a
+// MaxUint64 target); negative values, out-of-range magnitudes, non-integral
+// floats, and float magnitudes beyond the exact-integer range are rejected.
+// typeName names the target width in error messages.
+func coerceToUnsigned(value interface{}, targetMax uint64, typeName string) (uint64, error) {
 	switch v := value.(type) {
 	case uint64:
-		return v, nil
+		return unsignedToTarget(v, targetMax, typeName)
+	case uint:
+		return unsignedToTarget(uint64(v), targetMax, typeName)
 	case uint32:
-		// uint32 always fits in uint64
-		return uint64(v), nil
+		return unsignedToTarget(uint64(v), targetMax, typeName)
 	case uint16:
-		// uint16 always fits in uint64
-		return uint64(v), nil
+		return unsignedToTarget(uint64(v), targetMax, typeName)
 	case uint8:
-		// uint8 always fits in uint64
-		return uint64(v), nil
+		return unsignedToTarget(uint64(v), targetMax, typeName)
 	case int64:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
-		}
-		return uint64(v), nil
+		return signedToTarget(v, math.MaxInt64, targetMax, typeName)
 	case int:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
-		}
-		return uint64(v), nil
+		return signedToTarget(int64(v), math.MaxInt64, targetMax, typeName)
 	case int32:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
-		}
-		return uint64(v), nil
+		return signedToTarget(int64(v), math.MaxInt32, targetMax, typeName)
 	case int16:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
-		}
-		return uint64(v), nil
+		return signedToTarget(int64(v), math.MaxInt16, targetMax, typeName)
 	case int8:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %d", v)
-		}
-		return uint64(v), nil
+		return signedToTarget(int64(v), math.MaxInt8, targetMax, typeName)
 	case float64:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint64: %f", v)
+		return floatToTarget(v, maxExactFloat64Integer, targetMax, typeName)
+	case float32:
+		return floatToTarget(float64(v), maxExactFloat32Integer, targetMax, typeName)
+	case json.Number:
+		return jsonNumberToTarget(v, targetMax, typeName)
+	default:
+		return 0, fmt.Errorf("cannot convert %T to %s", value, typeName)
+	}
+}
+
+// unsignedToTarget range-checks an unsigned wire value against the target width.
+func unsignedToTarget(v, targetMax uint64, typeName string) (uint64, error) {
+	if v > targetMax {
+		return 0, fmt.Errorf("value %d out of range for %s", v, typeName)
+	}
+	return v, nil
+}
+
+// signedToTarget converts a signed wire value to the target width. When the
+// source type can exceed the target range, negatives and overflows share one
+// range error; when every non-negative source value fits, only negatives can
+// fail and get a dedicated error.
+func signedToTarget(v int64, sourceMax, targetMax uint64, typeName string) (uint64, error) {
+	if sourceMax > targetMax {
+		if v < 0 || uint64(v) > targetMax {
+			return 0, fmt.Errorf("value %d out of range for %s", v, typeName)
 		}
 		return uint64(v), nil
-	default:
-		return 0, fmt.Errorf("cannot convert %T to uint64", value)
 	}
+	if v < 0 {
+		return 0, fmt.Errorf("negative value cannot be coerced to %s: %d", typeName, v)
+	}
+	return uint64(v), nil
+}
+
+// floatToTarget converts a float wire value to the target width, requiring an
+// exactly representable integer within exactLimit. Sub-uint64 targets fold the
+// sign check into the range error; a MaxUint64 target can only fail on sign.
+func floatToTarget(f float64, exactLimit, targetMax uint64, typeName string) (uint64, error) {
+	if err := checkExactIntegerFloat(f, exactLimit); err != nil {
+		return 0, err
+	}
+	if targetMax < math.MaxUint64 {
+		if f < 0 || f > float64(targetMax) {
+			return 0, fmt.Errorf("value %f out of range for %s", f, typeName)
+		}
+		return uint64(f), nil
+	}
+	if f < 0 {
+		return 0, fmt.Errorf("negative value cannot be coerced to %s: %v", typeName, f)
+	}
+	return uint64(f), nil
+}
+
+// jsonNumberToTarget parses a json.Number and range-checks it against the
+// target width.
+func jsonNumberToTarget(v json.Number, targetMax uint64, typeName string) (uint64, error) {
+	u, err := jsonNumberToUint64(v)
+	if err != nil {
+		return 0, err
+	}
+	if u > targetMax {
+		return 0, fmt.Errorf("value %d out of range for %s", u, typeName)
+	}
+	return u, nil
+}
+
+// coerceUint64 converts wire numeric values to uint64 with exact semantics.
+func coerceUint64(value interface{}) (uint64, error) {
+	return coerceToUnsigned(value, math.MaxUint64, "uint64")
 }
 
 // coerceUint32 converts various numeric types to uint32
 func coerceUint32(value interface{}) (uint32, error) {
-	switch v := value.(type) {
-	case uint32:
-		return v, nil
-	case uint16:
-		// uint16 always fits in uint32 (0-65535)
-		return uint32(v), nil
-	case uint64:
-		if v > uint64(math.MaxUint32) {
-			return 0, fmt.Errorf("value %d out of range for uint32", v)
-		}
-		return uint32(v), nil
-	case uint8:
-		// uint8 always fits in uint32 (0-255)
-		return uint32(v), nil
-	case int64:
-		if v < 0 || v > 4294967295 {
-			return 0, fmt.Errorf("value %d out of range for uint32", v)
-		}
-		return uint32(v), nil
-	case int:
-		if v < 0 || v > 4294967295 {
-			return 0, fmt.Errorf("value %d out of range for uint32", v)
-		}
-		return uint32(v), nil
-	case int32:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint32: %d", v)
-		}
-		return uint32(v), nil
-	case int16:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint32: %d", v)
-		}
-		return uint32(v), nil
-	case int8:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint32: %d", v)
-		}
-		return uint32(v), nil
-	case float64:
-		if v < 0 || v > 4294967295 {
-			return 0, fmt.Errorf("value %f out of range for uint32", v)
-		}
-		return uint32(v), nil
-	default:
-		return 0, fmt.Errorf("cannot convert %T to uint32", value)
+	u, err := coerceToUnsigned(value, math.MaxUint32, "uint32")
+	if err != nil {
+		return 0, err
 	}
+	return uint32(u), nil // #nosec G115 -- coerceToUnsigned enforces targetMax
 }
 
 // coerceUint16 converts various numeric types to uint16
 func coerceUint16(value interface{}) (uint16, error) {
-	switch v := value.(type) {
-	case uint16:
-		return v, nil
-	case uint64:
-		if v > uint64(math.MaxUint16) {
-			return 0, fmt.Errorf("value %d out of range for uint16", v)
-		}
-		return uint16(v), nil
-	case uint32:
-		if v > uint32(math.MaxUint16) {
-			return 0, fmt.Errorf("value %d out of range for uint16", v)
-		}
-		return uint16(v), nil
-	case uint8:
-		return uint16(v), nil
-	case int64:
-		if v < 0 || v > 65535 {
-			return 0, fmt.Errorf("value %d out of range for uint16", v)
-		}
-		return uint16(v), nil
-	case int:
-		if v < 0 || v > 65535 {
-			return 0, fmt.Errorf("value %d out of range for uint16", v)
-		}
-		return uint16(v), nil
-	case int32:
-		if v < 0 || v > 65535 {
-			return 0, fmt.Errorf("value %d out of range for uint16", v)
-		}
-		return uint16(v), nil
-	case int16:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint16: %d", v)
-		}
-		return uint16(v), nil
-	case int8:
-		if v < 0 {
-			return 0, fmt.Errorf("negative value cannot be coerced to uint16: %d", v)
-		}
-		return uint16(v), nil
-	case float64:
-		if v < 0 || v > 65535 {
-			return 0, fmt.Errorf("value %f out of range for uint16", v)
-		}
-		return uint16(v), nil
-	default:
-		return 0, fmt.Errorf("cannot convert %T to uint16", value)
+	u, err := coerceToUnsigned(value, math.MaxUint16, "uint16")
+	if err != nil {
+		return 0, err
 	}
+	return uint16(u), nil // #nosec G115 -- coerceToUnsigned enforces targetMax
 }
 
-// coerceFloat64 converts various numeric types to float64
-// Mirrors server.go:getFloatFieldValidated behavior
+// coerceFloat64 converts various numeric types to float64.
+// Non-finite values are rejected: NaN and infinities are not representable in
+// either BSSCI wire encoding's JSON form and are invalid field values.
 func coerceFloat64(value interface{}) (float64, error) {
 	switch v := value.(type) {
 	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, fmt.Errorf("non-finite value %v is not a valid field value", v)
+		}
 		return v, nil
 	case float32:
-		return float64(v), nil
+		f := float64(v)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return 0, fmt.Errorf("non-finite value %v is not a valid field value", f)
+		}
+		return f, nil
 	case int64:
 		return float64(v), nil
 	case int:
 		return float64(v), nil
+	case int32:
+		return float64(v), nil
+	case int16:
+		return float64(v), nil
+	case int8:
+		return float64(v), nil
 	case uint64:
+		return float64(v), nil
+	case uint:
 		return float64(v), nil
 	case uint32:
 		return float64(v), nil
+	case uint16:
+		return float64(v), nil
+	case uint8:
+		return float64(v), nil
+	case json.Number:
+		f, err := v.Float64()
+		if err != nil {
+			return 0, fmt.Errorf("invalid JSON number %q: %w", string(v), err)
+		}
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return 0, fmt.Errorf("non-finite value %v is not a valid field value", f)
+		}
+		return f, nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to float64", value)
 	}
@@ -583,6 +705,15 @@ func numericToByte(value interface{}) (byte, error) {
 			return 0, fmt.Errorf("value %f out of byte range (0-255)", v)
 		}
 		return byte(v), nil
+	case json.Number:
+		u, err := jsonNumberToUint64(v)
+		if err != nil {
+			return 0, err
+		}
+		if u > 255 {
+			return 0, fmt.Errorf("value %d out of byte range (0-255)", u)
+		}
+		return byte(u), nil
 	default:
 		return 0, fmt.Errorf("cannot convert %T to byte", value)
 	}

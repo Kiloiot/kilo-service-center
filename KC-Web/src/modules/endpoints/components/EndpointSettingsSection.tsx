@@ -27,7 +27,9 @@ interface EndpointSettingsSectionProps {
     lastPacketCnt: string;
     attachCnt: string;
   };
-  handleChange: (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  handleChange: (
+    field: string,
+  ) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   errors: Record<string, string>;
   /** Whether counter fields are required (Add dialog = true, Edit = false). */
   counterRequired?: boolean;

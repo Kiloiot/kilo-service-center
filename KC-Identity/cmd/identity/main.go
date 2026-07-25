@@ -63,7 +63,7 @@ func main() {
 		Enabled:    cfg.Monitoring.TracingEnabled,
 		Endpoint:   cfg.Monitoring.TracingEndpoint,
 		SampleRate: cfg.Monitoring.TracingSampleRate,
-	}, "kc-identity")
+	}, identityServiceName)
 	if err != nil {
 		log.Error("Failed to init tracing", "error", err)
 	} else {
@@ -74,7 +74,7 @@ func main() {
 		Enabled: cfg.Monitoring.MetricsEnabled,
 		Port:    cfg.Monitoring.MetricsPort,
 		Path:    cfg.Monitoring.MetricsPath,
-	}, "kc-identity")
+	}, identityServiceName)
 	if err != nil {
 		log.Error("Failed to init metrics", "error", err)
 	} else {
@@ -117,7 +117,7 @@ func main() {
 		Title:       fmt.Sprintf(models.EventTitleServiceStartedFmt, "KC-Identity", hostname),
 		Description: fmt.Sprintf(models.EventDescriptionServiceStartedFmt, "KC-Identity", versionInfo.Version, listenInfo),
 		SourceType:  models.SourceTypeSystem,
-		SourceName:  "kc-identity",
+		SourceName:  identityServiceName,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	})
@@ -142,7 +142,7 @@ func main() {
 		Title:       fmt.Sprintf(models.EventTitleServiceStoppedFmt, "KC-Identity", hostname),
 		Description: fmt.Sprintf(models.EventDescriptionServiceStoppedFmt, "KC-Identity", versionInfo.Version),
 		SourceType:  models.SourceTypeSystem,
-		SourceName:  "kc-identity",
+		SourceName:  identityServiceName,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	})

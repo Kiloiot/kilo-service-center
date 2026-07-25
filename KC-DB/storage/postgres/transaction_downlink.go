@@ -66,46 +66,12 @@ func (r *transactionalMIOTYDownlinkRepository) ReserveNextPendingDownlink(
 		selectArgs = []interface{}{tenantID, epEUI, bssci.DLQueueStatusPending}
 	}
 
-	var dl storage.DownlinkMessage
-	var epEuiBytes []byte
-	var packetCntArray pq.Int64Array
-	var userDataJSON []byte
-	var orgID *uuid.UUID
-
-	err := r.tx.QueryRowContext(ctx, selectQuery, selectArgs...).Scan(
-		&dl.ID, &dl.QueID, &epEuiBytes, &tenantID, &orgID, &dl.Payload, &dl.Priority,
-		&dl.Status, &dl.CntDepend, &packetCntArray, &dl.Format,
-		&dl.ResponseExp, &dl.ResponsePrio, &dl.DlWindReq, &dl.ExpOnly, &dl.DlRxStatQry,
-		&userDataJSON, &dl.CreatedAt,
-	)
+	dl, err := scanDownlinkQueueRow(r.tx.QueryRowContext(ctx, selectQuery, selectArgs...))
 	if err == sql.ErrNoRows {
 		return nil, nil // No pending downlinks - not an error
 	}
 	if err != nil {
 		return nil, fmt.Errorf("select pending downlink: %w", err)
-	}
-
-	// Convert bytea to string for storage struct
-	dl.EPEUI = hex.EncodeToString(epEuiBytes)
-	dl.TenantID = fmt.Sprintf("%d", tenantID)
-	dl.OrganizationID = orgID
-
-	// Convert packet counter array
-	if packetCntArray != nil {
-		dl.PacketCntArray = []int64(packetCntArray)
-	}
-
-	// Nil-safe user_data JSON unmarshaling
-	if len(userDataJSON) > 0 {
-		var dlQueue mioty.DLDataQueue
-		if err := json.Unmarshal(userDataJSON, &dlQueue); err == nil {
-			dl.UserData = dlQueue.UserData
-			// Populate single Payload field for backward compatibility
-			if len(dl.UserData) > 0 && len(dl.Payload) == 0 {
-				dl.Payload = dl.UserData[0]
-			}
-		}
-		// Skip unmarshaling errors to handle NULL or empty JSON gracefully
 	}
 
 	// Step 2: Mark as reserved (still within transaction lock)
@@ -137,15 +103,156 @@ func (r *transactionalMIOTYDownlinkRepository) ReserveNextPendingDownlink(
 
 	dl.Status = bssci.DLQueueStatusReserved
 	dl.BsEui = bsEUI
+	return dl, nil
+}
+
+// ReservePendingDownlinkByQueueID atomically reserves one exact pending queue
+// row (see interface contract). Shares the single-statement implementation
+// with the non-transactional repository.
+func (r *transactionalMIOTYDownlinkRepository) ReservePendingDownlinkByQueueID(
+	ctx context.Context,
+	tenantID int64,
+	organizationID *uuid.UUID,
+	queueID uint64,
+	epEUI []byte,
+	bsEUI uint64,
+) (*storage.DownlinkMessage, error) {
+	return reservePendingDownlinkByQueueID(ctx, r.tx, tenantID, organizationID, queueID, epEUI, bsEUI)
+}
+
+// MarkReservedAsQueued transitions reserved → queued with transmission metadata.
+// Idempotent per the interface contract; shares the implementation with the
+// non-transactional repository.
+func (r *transactionalMIOTYDownlinkRepository) MarkReservedAsQueued(
+	ctx context.Context,
+	queID uint64,
+	tenantID int64,
+	bsEUI uint64,
+	txTime int64,
+	packetCnt *uint32,
+	orgID *uuid.UUID,
+) error {
+	return markReservedAsQueued(ctx, r.tx, queID, tenantID, bsEUI, txTime, packetCnt, orgID)
+}
+
+// sqlExecQuerier is the subset of *sql.Tx / *sql.DB used by the shared
+// downlink dispatch statements so the transactional and regular repositories
+// share one implementation.
+type sqlExecQuerier interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
+}
+
+// downlinkQueueColumns is the shared column list scanned by
+// scanDownlinkQueueRow for dispatch reads and RETURNING clauses.
+const downlinkQueueColumns = `id, que_id, ep_eui, tenant_id, organization_id, payload, priority, status,
+	       cnt_depend, packet_cnt, format, response_exp, response_prio,
+	       dl_wind_req, exp_only, dl_rx_stat_qry, user_data, created_at`
+
+// scanDownlinkQueueRow scans one downlink_queue row (downlinkQueueColumns
+// order) into a storage.DownlinkMessage. Returns sql.ErrNoRows unwrapped so
+// callers can map "no matching row" to their contract.
+func scanDownlinkQueueRow(row *sql.Row) (*storage.DownlinkMessage, error) {
+	var dl storage.DownlinkMessage
+	var epEuiBytes []byte
+	var rowTenantID int64
+	var packetCntArray pq.Int64Array
+	var userDataJSON []byte
+	var orgID *uuid.UUID
+
+	err := row.Scan(
+		&dl.ID, &dl.QueID, &epEuiBytes, &rowTenantID, &orgID, &dl.Payload, &dl.Priority,
+		&dl.Status, &dl.CntDepend, &packetCntArray, &dl.Format,
+		&dl.ResponseExp, &dl.ResponsePrio, &dl.DlWindReq, &dl.ExpOnly, &dl.DlRxStatQry,
+		&userDataJSON, &dl.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert bytea to string for storage struct
+	dl.EPEUI = hex.EncodeToString(epEuiBytes)
+	dl.TenantID = fmt.Sprintf("%d", rowTenantID)
+	dl.OrganizationID = orgID
+
+	// Convert packet counter array
+	if packetCntArray != nil {
+		dl.PacketCntArray = []int64(packetCntArray)
+	}
+
+	// Nil-safe user_data JSON unmarshaling
+	if len(userDataJSON) > 0 {
+		var dlQueue mioty.DLDataQueue
+		if err := json.Unmarshal(userDataJSON, &dlQueue); err == nil {
+			dl.UserData = dlQueue.UserData
+			// Populate single Payload field for backward compatibility
+			if len(dl.UserData) > 0 && len(dl.Payload) == 0 {
+				dl.Payload = dl.UserData[0]
+			}
+		}
+		// Skip unmarshaling errors to handle NULL or empty JSON gracefully
+	}
+
 	return &dl, nil
 }
 
-// MarkReservedAsQueued transitions reserved → queued with transmission metadata
-// Aligns with UpdateDownlinkResult pattern from postgres.go
-// packetCnt is nullable - pass nil if unknown (dlDataQueCmp will update later)
-// orgID filters by organization; nil = no org filter (backward compatible)
-func (r *transactionalMIOTYDownlinkRepository) MarkReservedAsQueued(
+// reservePendingDownlinkByQueueID performs the exact-match pending → reserved
+// transition as one atomic UPDATE ... RETURNING statement. The row must match
+// que_id, tenant_id, and ep_eui and be in 'pending' state; an org-scoped
+// request additionally requires organization_id to match exactly (never
+// OR organization_id IS NULL).
+func reservePendingDownlinkByQueueID(
 	ctx context.Context,
+	q sqlExecQuerier,
+	tenantID int64,
+	organizationID *uuid.UUID,
+	queueID uint64,
+	epEUI []byte,
+	bsEUI uint64,
+) (*storage.DownlinkMessage, error) {
+	bsEUIBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bsEUIBytes, bsEUI)
+
+	orgFilter := ""
+	args := []interface{}{
+		bssci.DLQueueStatusReserved,
+		bsEUIBytes,
+		queueID,
+		tenantID,
+		epEUI,
+		bssci.DLQueueStatusPending,
+	}
+	if organizationID != nil {
+		orgFilter = " AND organization_id = $7"
+		args = append(args, *organizationID)
+	}
+
+	// nolint:gosec // G201: orgFilter is a static string with a parameterized value, not user input
+	query := fmt.Sprintf(`
+		UPDATE downlink_queue
+		SET status = $1, bs_eui = $2, updated_at = NOW()
+		WHERE que_id = $3 AND tenant_id = $4 AND ep_eui = $5 AND status = $6%s
+		RETURNING %s
+	`, orgFilter, downlinkQueueColumns)
+
+	dl, err := scanDownlinkQueueRow(q.QueryRowContext(ctx, query, args...))
+	if err == sql.ErrNoRows {
+		return nil, nil // No matching pending row - not an error
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reserve downlink by queue id: %w", err)
+	}
+	dl.BsEui = bsEUI
+	return dl, nil
+}
+
+// markReservedAsQueued transitions reserved → queued with transmission
+// metadata. Idempotent: a row already 'queued' succeeds unchanged; any other
+// state (pending, failed, completed, revoked) is an error because the caller's
+// reservation no longer holds.
+func markReservedAsQueued(
+	ctx context.Context,
+	q sqlExecQuerier,
 	queID uint64,
 	tenantID int64,
 	bsEUI uint64,
@@ -180,7 +287,7 @@ func (r *transactionalMIOTYDownlinkRepository) MarkReservedAsQueued(
 		args = append(args, *orgID)
 	}
 
-	// NOTE: transmission_result stays NULL here (not 'sent') because result unknown until dlDataQueCmp
+	// NOTE: transmission_result stays NULL here (not 'sent') because the result arrives via dlDataRes (BSSCI 5.14)
 	// Status 'queued' indicates "sent to BS, awaiting actual transmission"
 	// nolint:gosec // G201: orgFilter is a static string (empty or " AND (...)" with parameterized value), not user input
 	query := fmt.Sprintf(`
@@ -194,16 +301,32 @@ func (r *transactionalMIOTYDownlinkRepository) MarkReservedAsQueued(
 		WHERE que_id = $5 AND tenant_id = $6 AND status = $7%s
 	`, orgFilter)
 
-	result, err := r.tx.ExecContext(ctx, query, args...)
+	result, err := q.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("mark downlink queued: %w", err)
 	}
 
 	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		return ErrDownlinkAlreadyReserved // Status changed unexpectedly (race)
+	if rows > 0 {
+		return nil
 	}
-	return nil
+
+	// Zero rows: idempotent success when the row is already queued (a repair
+	// path or crash-recovery retry already confirmed the send); anything else
+	// means the reservation no longer holds.
+	var status string
+	if err := q.QueryRowContext(ctx, `
+		SELECT status FROM downlink_queue WHERE que_id = $1 AND tenant_id = $2
+	`, queID, tenantID).Scan(&status); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrDownlinkAlreadyReserved
+		}
+		return fmt.Errorf("mark downlink queued status check: %w", err)
+	}
+	if status == bssci.DLQueueStatusQueued {
+		return nil
+	}
+	return ErrDownlinkAlreadyReserved
 }
 
 // Delegate ALL existing interface methods to non-transactional DB

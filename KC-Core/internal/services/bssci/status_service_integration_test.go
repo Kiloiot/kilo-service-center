@@ -11,17 +11,27 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockPendingOperationRepositoryWithCallTracking extends mockPendingOperationRepository with call count tracking
 type mockPendingOperationRepositoryWithCallTracking struct {
-	createCallCount int
-	mu              sync.Mutex
+	createCallCount          int
+	deleteBySessionCallCount int
+	mu                       sync.Mutex
 }
 
 func (m *mockPendingOperationRepositoryWithCallTracking) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
 	m.mu.Lock()
 	m.createCallCount++
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *mockPendingOperationRepositoryWithCallTracking) CreateBatch(_ context.Context, reqs []*interfaces.PendingOperationRequest) error {
+	m.mu.Lock()
+	m.createCallCount += len(reqs)
 	m.mu.Unlock()
 	return nil
 }
@@ -39,6 +49,9 @@ func (m *mockPendingOperationRepositoryWithCallTracking) DeleteByOperation(_ con
 }
 
 func (m *mockPendingOperationRepositoryWithCallTracking) DeleteBySession(_ context.Context, _ int64) (int64, error) {
+	m.mu.Lock()
+	m.deleteBySessionCallCount++
+	m.mu.Unlock()
 	return 0, nil
 }
 
@@ -64,19 +77,25 @@ func TestStatusServiceMultiSessionIsolation(t *testing.T) {
 
 	// Create three sessions from different base stations
 	session1 := &bssci.Session{
-		ID:          "session-bs1",
-		DbSessionID: 1001,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "session-bs1",
+			DbSessionID: 1001,
+		},
 	}
 	session2 := &bssci.Session{
-		ID:          "session-bs2",
-		DbSessionID: 1002,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "session-bs2",
+			DbSessionID: 1002,
+		},
 	}
 	session3 := &bssci.Session{
-		ID:          "session-bs3",
-		DbSessionID: 1003,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "session-bs3",
+			DbSessionID: 1003,
+		},
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Same opId used across all sessions (simulates concurrent downlink operations)
 	opId := int64(-100)
@@ -199,11 +218,13 @@ func TestStatusServiceCachePopulationForNewOperations(t *testing.T) {
 	statusSvc := NewStatusService(&pendingOps, &mu, mockRepo, log)
 
 	session := &bssci.Session{
-		ID:          "test-session",
-		DbSessionID: 2001,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "test-session",
+			DbSessionID: 2001,
+		},
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Record a NEW operation (simulates initDLDataQue calling persistPendingOperation)
 	opId := int64(-200)
@@ -259,11 +280,13 @@ func TestStatusServiceSingleWriterPattern(t *testing.T) {
 	statusSvc := NewStatusService(&pendingOps, &mu, mockRepo, log)
 
 	session := &bssci.Session{
-		ID:          "single-writer-test",
-		DbSessionID: 3001,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:          "single-writer-test",
+			DbSessionID: 3001,
+		},
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	opId := int64(-300)
 
 	op := &bssci.PendingOperation{
@@ -299,4 +322,42 @@ func TestStatusServiceSingleWriterPattern(t *testing.T) {
 	assert.Equal(t, 2, mockRepo.createCallCount, "Should have 2 DB writes (initial + update)")
 
 	t.Logf("PASS: Single writer pattern enforced")
+}
+
+// TestStatusServiceEvictCachedOperationsCacheOnly verifies the teardown sweep
+// on the production statusService: only the dead session's cached entries are
+// removed, other sessions' entries survive, and the repository (the durable
+// rows a later resume hydrates from) is never touched.
+func TestStatusServiceEvictCachedOperationsCacheOnly(t *testing.T) {
+	pendingOps := make(map[bssci.SessionOpKey]*bssci.PendingOperation)
+	var mu sync.RWMutex
+
+	log := logger.NewNop()
+	mockRepo := &mockPendingOperationRepositoryWithCallTracking{}
+	statusSvc := NewStatusService(&pendingOps, &mu, mockRepo, log)
+
+	dead := &bssci.Session{ProtocolSessionState: bssci.ProtocolSessionState{ID: "dead-session", DbSessionID: 2001}}
+	alive := &bssci.Session{ProtocolSessionState: bssci.ProtocolSessionState{ID: "alive-session", DbSessionID: 2002}}
+
+	ctx := testutil.TestContext()
+	for opID := int64(-1); opID >= -3; opID-- {
+		require.NoError(t, statusSvc.RecordPendingOperation(ctx, dead, opID,
+			&bssci.PendingOperation{SessionSlug: dead.ID, OperationID: opID, OperationType: "attPrp"}, dead.DbSessionID))
+	}
+	require.NoError(t, statusSvc.RecordPendingOperation(ctx, alive, -1,
+		&bssci.PendingOperation{SessionSlug: alive.ID, OperationID: -1, OperationType: "attPrp"}, alive.DbSessionID))
+
+	statusSvc.EvictCachedOperations(dead)
+
+	mu.RLock()
+	remaining := len(pendingOps)
+	_, aliveKept := pendingOps[bssci.SessionOpKey{SessionID: alive.ID, OperationID: -1}]
+	mu.RUnlock()
+	assert.Equal(t, 1, remaining, "only the surviving session's entry may remain")
+	assert.True(t, aliveKept, "other sessions' cached operations must survive the sweep")
+
+	mockRepo.mu.Lock()
+	deletes := mockRepo.deleteBySessionCallCount
+	mockRepo.mu.Unlock()
+	assert.Zero(t, deletes, "eviction is cache-only; persisted rows stay for resume")
 }

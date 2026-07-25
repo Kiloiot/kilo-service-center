@@ -116,14 +116,14 @@ func (dls *dlService) QueueDownlink(
 		return 0, 0, scaci.ErrSchedulerUnavailable
 	}
 
-	dls.logger.Debug(scaci.LogSCACIDLQueueServiceInvoked,
+	dls.logger.DebugContext(ctx, scaci.LogSCACIDLQueueServiceInvoked,
 		"queId", req.QueId,
 		"epEui", req.EpEui,
 		"tenantId", tenantID)
 
 	// Delegate to BSSCI scheduler
 	// IMPORTANT: queuedQueId may differ from req.QueId if BSSCI normalizes it
-	queuedQueId, bsEui, err := dls.dlScheduler.QueueDownlink(req, tenantID)
+	queuedQueId, bsEui, err := dls.dlScheduler.QueueDownlink(ctx, req, tenantID)
 
 	if err != nil {
 		dls.logger.ErrorContext(ctx, scaci.LogSCACIEnqueueDownlinkFailed,
@@ -152,7 +152,7 @@ func (dls *dlService) QueueDownlink(
 	}
 
 	// Success - use queuedQueId from scheduler (may differ from request)
-	dls.logger.Debug(scaci.LogSCACIDLDataQueueProcessed,
+	dls.logger.DebugContext(ctx, scaci.LogSCACIDLDataQueueProcessed,
 		"queId", queuedQueId,
 		"bsEui", bsEui,
 		"epEui", req.EpEui)
@@ -221,7 +221,7 @@ func (dls *dlService) RevokeDownlink(
 	}
 
 	// Success
-	dls.logger.Debug(scaci.LogSCACIDLRevokeSuccessful,
+	dls.logger.DebugContext(ctx, scaci.LogSCACIDLRevokeSuccessful,
 		"queId", queId,
 		"bsEui", bsEui,
 		"tenantId", tenantID)

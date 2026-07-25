@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 type mockServerStream struct {
@@ -25,7 +27,7 @@ func (m *mockServerStream) Context() context.Context {
 }
 
 func newPeerContext(ip string) context.Context {
-	return peer.NewContext(context.Background(), &peer.Peer{
+	return peer.NewContext(testutil.TestContext(), &peer.Peer{
 		Addr: &net.TCPAddr{IP: net.ParseIP(ip), Port: 12345},
 	})
 }

@@ -11,6 +11,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 type mockIdentityServer struct {
@@ -54,7 +56,7 @@ func TestRoleResolver_SendsPeerSecretHeader(t *testing.T) {
 	client := pb.NewIdentityInternalServiceClient(conn)
 	resolver := NewRoleResolver(client, "test-secret")
 
-	role, active, err := resolver.GetUserRole(context.Background(), "org-1", "user-1")
+	role, active, err := resolver.GetUserRole(testutil.TestContext(), "org-1", "user-1")
 	if err != nil {
 		t.Fatalf("GetUserRole returned error: %v", err)
 	}

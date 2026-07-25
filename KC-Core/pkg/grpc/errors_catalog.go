@@ -2,6 +2,8 @@
 package grpc
 
 import (
+	"errors"
+
 	"google.golang.org/grpc/codes"
 )
 
@@ -125,6 +127,7 @@ const (
 	ErrTokenCertGeneratorNotFound      = "KC-GRPC-ERR-03A"
 	ErrTokenCACertReadFailed           = "KC-GRPC-ERR-03B"
 	ErrTokenCACertCopyFailed           = "KC-GRPC-ERR-03C"
+	ErrTokenCertPersistenceFailed      = "KC-GRPC-ERR-0AA"
 	ErrTokenCAKeyReadFailed            = "KC-GRPC-ERR-03D"
 	ErrTokenCAKeyCopyFailed            = "KC-GRPC-ERR-03E"
 	ErrTokenInvalidValidityPeriod      = "KC-GRPC-ERR-03F"
@@ -167,6 +170,15 @@ const (
 	ErrTokenPreviewInvalidFormatID = "KC-GRPC-ERR-06C" // Format ID not recognized by decoder
 	ErrTokenPreviewInvalidPayload  = "KC-GRPC-ERR-06D" // Payload bytes failed validation/parsing
 	ErrTokenInvalidModelCode       = "KC-GRPC-ERR-06E" // Model code format validation failed
+
+	// Blueprint ownership/decode errors (KC-GRPC-ERR-0A3 to KC-GRPC-ERR-0A9)
+	ErrTokenSystemOwnershipManufacturerMismatch = "KC-GRPC-ERR-0A3" // is_system flag conflicts with parent manufacturer ownership
+	ErrTokenSystemOwnershipDeviceModelMismatch  = "KC-GRPC-ERR-0A4" // is_system flag conflicts with parent device model ownership
+	ErrTokenSpecJSONEmpty                       = "KC-GRPC-ERR-0A5" // Decode request carried an empty spec_json
+	ErrTokenDecodeSourceRequired                = "KC-GRPC-ERR-0A6" // Decode request needs blueprint_id or spec_json
+	ErrTokenSystemBlueprintDefaultNotAllowed    = "KC-GRPC-ERR-0A7" // System blueprints cannot be set as tenant defaults
+	ErrTokenAssignTargetRequired                = "KC-GRPC-ERR-0A8" // Assign request needs device_model_id or ep_euis
+	ErrTokenBlueprintSnapshotBuildFailed        = "KC-GRPC-ERR-0A9" // Blueprint snapshot serialization failed
 
 	// Integration operation errors (KC-GRPC-ERR-400 to KC-GRPC-ERR-410)
 	// Integration CRUD tokens
@@ -361,11 +373,13 @@ const (
 	ErrTokenGetBaseStationAvailabilityFailed     = "KC-GRPC-ERR-09F"
 	ErrTokenGetBaseStationMessagesReceivedFailed = "KC-GRPC-ERR-0A0"
 	ErrTokenInvalidMetricsRequest                = "KC-GRPC-ERR-0A1"
-	ErrTokenTenantAccessDenied                   = "KC-GRPC-ERR-09A"
-	ErrTokenBaseStationEUIExists                 = "KC-GRPC-ERR-09B"
-	ErrTokenUpdateBaseStationEUIFailed           = "KC-GRPC-ERR-09C"
-	ErrTokenNewBaseStationEUIRequired            = "KC-GRPC-ERR-09D"
-	ErrTokenLatLonPairRequired                   = "KC-GRPC-ERR-09E"
+	// Conflicting bs_eui and bs_eui_hex values in the same request.
+	ErrTokenBaseStationEUIMismatch     = "KC-GRPC-ERR-0A2"
+	ErrTokenTenantAccessDenied         = "KC-GRPC-ERR-09A"
+	ErrTokenBaseStationEUIExists       = "KC-GRPC-ERR-09B"
+	ErrTokenUpdateBaseStationEUIFailed = "KC-GRPC-ERR-09C"
+	ErrTokenNewBaseStationEUIRequired  = "KC-GRPC-ERR-09D"
+	ErrTokenLatLonPairRequired         = "KC-GRPC-ERR-09E"
 
 	// Endpoint errors (KC-GRPC-ERR-101 to KC-GRPC-ERR-110)
 	ErrTokenEndpointNotFound        = "KC-GRPC-ERR-101"
@@ -865,6 +879,11 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "failed to copy CA certificate",
 		Code:    codes.Internal,
 	},
+	ErrTokenCertPersistenceFailed: {
+		Token:   ErrTokenCertPersistenceFailed,
+		Message: "failed to persist issued certificate; no certificate was returned",
+		Code:    codes.Internal,
+	},
 	ErrTokenCAKeyReadFailed: {
 		Token:   ErrTokenCAKeyReadFailed,
 		Message: "failed to read CA private key",
@@ -1050,6 +1069,41 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenInvalidModelCode,
 		Message: "invalid model code: must contain only lowercase alphanumeric characters and hyphens",
 		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSystemOwnershipManufacturerMismatch: {
+		Token:   ErrTokenSystemOwnershipManufacturerMismatch,
+		Message: "is_system must match the parent manufacturer's ownership",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSystemOwnershipDeviceModelMismatch: {
+		Token:   ErrTokenSystemOwnershipDeviceModelMismatch,
+		Message: "is_system must match the parent device model's ownership",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSpecJSONEmpty: {
+		Token:   ErrTokenSpecJSONEmpty,
+		Message: "spec_json is empty",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenDecodeSourceRequired: {
+		Token:   ErrTokenDecodeSourceRequired,
+		Message: "decode source required: set blueprint_id or spec_json",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSystemBlueprintDefaultNotAllowed: {
+		Token:   ErrTokenSystemBlueprintDefaultNotAllowed,
+		Message: "set_as_default is not allowed for System blueprints",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenAssignTargetRequired: {
+		Token:   ErrTokenAssignTargetRequired,
+		Message: "target required: set device_model_id or ep_euis",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenBlueprintSnapshotBuildFailed: {
+		Token:   ErrTokenBlueprintSnapshotBuildFailed,
+		Message: "failed to build blueprint snapshot",
+		Code:    codes.Internal,
 	},
 
 	// Integration operation errors
@@ -1818,6 +1872,11 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "invalid base station metrics request",
 		Code:    codes.InvalidArgument,
 	},
+	ErrTokenBaseStationEUIMismatch: {
+		Token:   ErrTokenBaseStationEUIMismatch,
+		Message: "bs_eui and bs_eui_hex refer to different base stations",
+		Code:    codes.InvalidArgument,
+	},
 	ErrTokenTenantAccessDenied: {
 		Token:   ErrTokenTenantAccessDenied,
 		Message: "cannot access resource for different tenant",
@@ -2187,4 +2246,37 @@ func ResolveErrorMessage(token string) string {
 // GetGRPCCode returns the gRPC status code for an error token
 func GetGRPCCode(token string) codes.Code {
 	return GetErrorDefinition(token).Code
+}
+
+// TokenError is a typed catalog error that carries its token across service
+// boundaries, so callers match on the token via errors.As instead of
+// substring inspection of the error text.
+type TokenError struct {
+	Token string
+	Err   error
+}
+
+// Error renders the token with its resolved catalog message and any cause.
+func (e *TokenError) Error() string {
+	if e.Err != nil {
+		return e.Token + ": " + e.Err.Error()
+	}
+	return e.Token + ": " + ResolveErrorMessage(e.Token)
+}
+
+// Unwrap exposes the underlying cause for errors.Is/As chains.
+func (e *TokenError) Unwrap() error { return e.Err }
+
+// NewTokenError wraps a cause with a catalog token. cause may be nil.
+func NewTokenError(token string, cause error) *TokenError {
+	return &TokenError{Token: token, Err: cause}
+}
+
+// TokenOf extracts the catalog token from an error chain.
+func TokenOf(err error) (string, bool) {
+	var te *TokenError
+	if errors.As(err, &te) {
+		return te.Token, true
+	}
+	return "", false
 }

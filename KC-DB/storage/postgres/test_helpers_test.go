@@ -134,8 +134,6 @@ type EndpointInsertParams struct {
 	// Extended fields for specialized tests
 	ShAddr    uint32 // Short address
 	Bidi      bool   // Bidirectional flag
-	NwkSnKey  []byte // Network session key (if nil, defaults to empty)
-	AppSnKey  []byte // Application session key (if nil, defaults to empty)
 	Sign      []byte // Signature key (detach tests)
 	Preshared []byte // Preshared key (detach tests)
 }
@@ -157,12 +155,6 @@ func applyEndpointDefaults(p *EndpointInsertParams) {
 	}
 	if p.AppKey == nil {
 		p.AppKey = make([]byte, 16)
-	}
-	if p.NwkSnKey == nil {
-		p.NwkSnKey = []byte{}
-	}
-	if p.AppSnKey == nil {
-		p.AppSnKey = []byte{}
 	}
 }
 
@@ -245,11 +237,11 @@ func insertEndpointWithConn(ctx context.Context, t *testing.T, conn *sql.DB, p E
 		_, err := conn.ExecContext(ctx, `
 			INSERT INTO endpoints (
 				id, ep_eui, name, description, tenant_id, owner_tenant_id,
-				sh_addr, bidi, nwk_sn_key, app_sn_key,
+				sh_addr, bidi,
 				nwk_key, app_key, crypto_mode, created_at, updated_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`, p.ID, euiToBytes(p.EpEUI), p.Name, p.Description, p.TenantID, p.OwnerTenantID,
-			p.ShAddr, p.Bidi, p.NwkSnKey, p.AppSnKey,
+			p.ShAddr, p.Bidi,
 			p.NwkKey, p.AppKey, p.CryptoMode, now, now)
 		require.NoError(t, err, "Failed to insert test endpoint with explicit ID")
 		return p.ID
@@ -260,12 +252,12 @@ func insertEndpointWithConn(ctx context.Context, t *testing.T, conn *sql.DB, p E
 	err := conn.QueryRowContext(ctx, `
 		INSERT INTO endpoints (
 			ep_eui, name, description, tenant_id, owner_tenant_id,
-			sh_addr, bidi, nwk_sn_key, app_sn_key,
+			sh_addr, bidi,
 			nwk_key, app_key, crypto_mode, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id
 	`, euiToBytes(p.EpEUI), p.Name, p.Description, p.TenantID, p.OwnerTenantID,
-		p.ShAddr, p.Bidi, p.NwkSnKey, p.AppSnKey,
+		p.ShAddr, p.Bidi,
 		p.NwkKey, p.AppKey, p.CryptoMode, now, now).Scan(&id)
 	require.NoError(t, err, "Failed to insert test endpoint")
 

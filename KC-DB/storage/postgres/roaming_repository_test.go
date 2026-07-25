@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -13,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // setupRoamingTestDB creates a test database with minimal schema for roaming tests
@@ -165,7 +166,7 @@ func TestAddRoamingEndpointToSession_NullArray(t *testing.T) {
 	// Create tenant required by FK constraints
 	createTestTenant(t, db, 1, "TestTenant1")
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	repo := NewRoamingRepository(db)
 
 	// Create session with NULL roaming_endpoints
@@ -201,7 +202,7 @@ func TestAddRoamingEndpointToSession_NullCounter(t *testing.T) {
 	// Create tenant required by FK constraints
 	createTestTenant(t, db, 1, "TestTenant1")
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	repo := NewRoamingRepository(db)
 
 	// Create basestation first (required FK)
@@ -255,7 +256,7 @@ func TestRemoveRoamingEndpointFromSession_ElementExists(t *testing.T) {
 	// Create tenant required by FK constraints
 	createTestTenant(t, db, 1, "TestTenant1")
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	repo := NewRoamingRepository(db)
 
 	// Create session with 2 roaming endpoints
@@ -299,7 +300,7 @@ func TestRemoveRoamingEndpointFromSession_ElementNotExists(t *testing.T) {
 	// Create tenant required by FK constraints
 	createTestTenant(t, db, 1, "TestTenant1")
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	repo := NewRoamingRepository(db)
 
 	// Create session with 2 roaming endpoints
@@ -343,7 +344,7 @@ func TestRemoveRoamingEndpointFromSession_EmptyArray(t *testing.T) {
 	// Create tenant required by FK constraints
 	createTestTenant(t, db, 1, "TestTenant1")
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	repo := NewRoamingRepository(db)
 
 	// Create session with empty roaming array

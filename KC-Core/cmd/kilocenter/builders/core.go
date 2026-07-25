@@ -28,6 +28,9 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
+// coreServiceSourceName identifies KC-Core as the source of system events.
+const coreServiceSourceName = "kc-core"
+
 // CoreResult holds the fully wired CoreService and shared system event adapter.
 type CoreResult struct {
 	Service            *grpc.CoreService
@@ -109,7 +112,7 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	listenInfo := fmt.Sprintf("gRPC=%d, BSSCI=%d, SCACI=%d",
 		cfg.GRPC.Port, cfg.Protocol.BSCIPort, cfg.Protocol.SCACIPort)
 	startDetails, _ := json.Marshal(map[string]interface{}{
-		"service":   "kc-core",
+		"service":   coreServiceSourceName,
 		"version":   infra.VersionInfo.Version,
 		"gitCommit": infra.VersionInfo.GitCommit,
 		"host":      hostname,
@@ -127,7 +130,7 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 		Title:       fmt.Sprintf(models.EventTitleServiceStartedFmt, "KC-Core", hostname),
 		Description: fmt.Sprintf(models.EventDescriptionServiceStartedFmt, "KC-Core", infra.VersionInfo.Version, listenInfo),
 		SourceType:  models.SourceTypeSystem,
-		SourceName:  "kc-core",
+		SourceName:  coreServiceSourceName,
 		Details:     json.RawMessage(startDetails),
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -144,10 +147,12 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	coreService = coreService.WithScaciMonitoringService(scaciMonitoringSvc)
 	log.Info("ScaciMonitoringService wired")
 
-	// CertificateService
-	certificateSvc := certificatesservice.New(cfg, infra.LoggerIface).
-		WithBaseStationRepo(infra.Storage.BaseStations()).
-		WithKeyEncryptor(infra.KeyEncryptor)
+	// CertificateService: repository and encryptor are mandatory constructor
+	// inputs (ownership verification and persistence are part of issuance)
+	certificateSvc, certErr := certificatesservice.New(cfg, infra.LoggerIface, infra.Storage.BaseStations(), infra.KeyEncryptor, nil)
+	if certErr != nil {
+		log.Fatal(LogFailedCreateCoreService, logger.Err(certErr))
+	}
 	coreService = coreService.WithCertificateService(certificateSvc)
 	log.Info("CertificateService wired")
 

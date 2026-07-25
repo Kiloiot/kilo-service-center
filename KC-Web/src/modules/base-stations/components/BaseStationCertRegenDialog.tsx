@@ -37,11 +37,7 @@ const BaseStationCertRegenDialog: React.FC<BaseStationCertRegenDialogProps> = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>{ACTION_CANCEL}</Button>
-        <Button
-          onClick={onConfirm}
-          color="warning"
-          disabled={isRegenerating}
-        >
+        <Button onClick={onConfirm} color="warning" disabled={isRegenerating}>
           {BASE_STATION_DETAILS.ACTION_REGENERATE}
         </Button>
       </DialogActions>

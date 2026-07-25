@@ -573,7 +573,9 @@ message SendULTransmitResponse {
 
 // Base Station Status Request (BSSCI 3.5)
 message BaseStationStatusRequest {
-  uint64 bs_eui = 1;          // Base Station EUI
+  // Deprecated: uint64 loses precision above 2^53 in browser JavaScript clients; use bs_eui_hex.
+  uint64 bs_eui = 1 [deprecated = true];
+  string bs_eui_hex = 2;      // Base Station EUI as hex string (browser-safe full-range representation; accepts dashed or non-dashed)
 }
 
 message BaseStationStatusResponse {
@@ -584,7 +586,9 @@ message BaseStationStatusResponse {
 
 // Ping Request (BSSCI §5.4)
 message InitiatePingRequest {
-  uint64 bs_eui = 1;  // Base Station EUI
+  // Deprecated: uint64 loses precision above 2^53 in browser JavaScript clients; use bs_eui_hex.
+  uint64 bs_eui = 1 [deprecated = true];
+  string bs_eui_hex = 2;  // Base Station EUI as hex string (browser-safe full-range representation; accepts dashed or non-dashed)
 }
 
 message InitiatePingResponse {

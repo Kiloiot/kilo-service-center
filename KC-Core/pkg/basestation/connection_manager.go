@@ -80,7 +80,16 @@ type ConnectionManager struct {
 	mqttHandler   *MQTTHandler
 	store         Store
 	eventRecorder EventRecorder
+	logger        logger.Logger
 }
+
+// Connection status field keys shared by status updates and events.
+const (
+	fieldKeyIsOnline       = "is_online"
+	fieldKeyConnectionType = "connection_type"
+	fieldKeySessionID      = "session_id"
+	fieldKeyLastSeenAt     = "last_seen_at"
+)
 
 // Store interface for database operations
 type Store interface {
@@ -88,6 +97,10 @@ type Store interface {
 	GetBaseStation(ctx context.Context, eui [8]byte) (*BaseStation, error)
 	GetBaseStationGlobal(ctx context.Context, eui [8]byte) (*BaseStation, error)
 	UpdateConnectionStatus(ctx context.Context, eui [8]byte, status *ConnectionStatus) error
+	// DisconnectIfCurrent marks the base station offline only while the
+	// stored session identity still matches the disconnecting connection.
+	// Returns false without error when a newer connection owns the row.
+	DisconnectIfCurrent(ctx context.Context, eui [8]byte, connectionID string, lastSeen time.Time) (bool, error)
 	ListBaseStations(ctx context.Context) ([]*BaseStation, error)
 }
 
@@ -121,6 +134,7 @@ func NewConnectionManager(store Store, eventRecorder EventRecorder, log logger.L
 		eventRecorder: eventRecorder,
 		bssciHandler:  NewBSSCIHandler(),
 		mqttHandler:   NewMQTTHandler(log),
+		logger:        log,
 	}
 }
 
@@ -148,7 +162,7 @@ func (cm *ConnectionManager) RegisterBaseStation(ctx context.Context, reg *Regis
 	}
 	if err := cm.eventRecorder.RecordEvent(ctx, reg.EUI, models.EventTypeBSRegistered, eventData); err != nil {
 		// Log error but don't fail registration
-		fmt.Printf("Failed to record registration event: %v\n", err)
+		cm.logger.WarnContext(ctx, "Failed to record registration event", "error", err)
 	}
 
 	// Initialize connection based on type
@@ -234,14 +248,14 @@ func (cm *ConnectionManager) UpdateConnectionStatus(ctx context.Context, eui [8]
 	bs, err := cm.store.GetBaseStation(ctx, eui)
 	if err != nil {
 		// Log error but continue with event recording
-		fmt.Printf("Failed to get base station details: %v\n", err)
+		cm.logger.WarnContext(ctx, "Failed to get base station details", "error", err)
 	}
 
 	// Record status change event
 	eventData := map[string]interface{}{
-		"is_online":       status.IsOnline,
-		"connection_type": status.ConnectionType,
-		"session_id":      status.SessionID,
+		fieldKeyIsOnline:       status.IsOnline,
+		fieldKeyConnectionType: status.ConnectionType,
+		fieldKeySessionID:      status.SessionID,
 	}
 
 	// Add base station name if available
@@ -255,6 +269,25 @@ func (cm *ConnectionManager) UpdateConnectionStatus(ctx context.Context, eui [8]
 	}
 
 	return cm.eventRecorder.RecordEvent(ctx, eui, eventType, eventData)
+}
+
+// DisconnectBaseStationIfCurrent marks the base station offline only while
+// the stored connection still belongs to the disconnecting session. When a
+// reconnect has already replaced the connection, the newer session keeps the
+// base station online and no update happens (not an error).
+func (cm *ConnectionManager) DisconnectBaseStationIfCurrent(ctx context.Context, eui [8]byte, connectionID string) error {
+	acted, err := cm.store.DisconnectIfCurrent(ctx, eui, connectionID, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to disconnect base station: %w", err)
+	}
+	if !acted {
+		return nil
+	}
+	eventData := map[string]interface{}{
+		fieldKeyIsOnline:  false,
+		fieldKeySessionID: connectionID,
+	}
+	return cm.eventRecorder.RecordEvent(ctx, eui, models.EventTypeBaseStationOffline, eventData)
 }
 
 // validateRegistration validates the registration parameters

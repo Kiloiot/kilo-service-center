@@ -2,39 +2,84 @@ package bssci
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
+	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 )
 
-// SessionService handles connect/resume with REAL persistence (server.go:611-1004)
+// VersionNegotiator selects the BSSCI protocol version for a connection per
+// rev1 §4.1-§4.3 and the §5.3.2 conRsp arbitration rule: the base station
+// requests its newest supported version; the service center answers with the
+// version it will speak (always an exact member of its supported set), and the
+// base station agrees by completing the operation or rejects it with an error.
+type VersionNegotiator interface {
+	Negotiate(ctx context.Context, requested string) (selected string, err error)
+}
+
+// ResumeDisposition classifies the outcome of a session resume attempt so the
+// connect flow never silently degrades an infrastructure failure or an
+// inconsistent counter state into a fresh session.
+type ResumeDisposition int
+
+const (
+	// ResumeNoMatch means no resumable session exists; start a fresh session.
+	ResumeNoMatch ResumeDisposition = iota
+	// ResumeCompatible means a resumable session was found and its constraints
+	// hold; Previous carries the authoritative persisted session state.
+	ResumeCompatible
+	// ResumeInconsistent means a resumable session exists but the reported
+	// counters or negotiated version are incompatible. The caller must
+	// atomically terminate it (can_resume=false, pending ops removed) before
+	// starting a fresh session.
+	ResumeInconsistent
+	// ResumeInfrastructureFailure means the resume lookup itself failed (e.g. a
+	// database outage). The caller must reject the connect, never proceed
+	// with a fresh session that would strand the old resumable state.
+	ResumeInfrastructureFailure
+)
+
+// ResumeOutcome is the typed result of HandleResume.
+type ResumeOutcome struct {
+	Disposition ResumeDisposition
+	// Previous is the resumable session (ResumeCompatible) or the stale
+	// session to terminate (ResumeInconsistent); nil otherwise.
+	Previous *Session
+	// Err carries the underlying cause for ResumeInfrastructureFailure and
+	// the mismatch detail for ResumeInconsistent.
+	Err error
+}
+
+// SessionService handles connect/resume with REAL persistence
 // Preserves: sessionsByUUID map, DbSessionId, HandshakeComplete, DB persistence
 type SessionService interface {
-	// ValidateVersion checks string version (server.go:622-637)
-	ValidateVersion(version string) error
+	// HandleResume evaluates a session resume request (BSSCI §5.3.1) against
+	// the DB-authoritative resumable-session lookup (tenant + base station EUI
+	// + snBsUuid + disconnected + can_resume). The optional snBsOpId/snScOpId
+	// constraints are pointers - absent means the constraint is not asserted.
+	// It never publishes the hydrated session into any live registry; the
+	// caller activates it. Returns a typed ResumeOutcome.
+	HandleResume(ctx context.Context, session *Session, bsUUID []byte, bsOpId, scOpId *int64, bsEUI uint64) ResumeOutcome
 
-	// HandleResume checks sessionsByUUID, validates counters (server.go:667-746)
-	// Preserves exact resume logic including scUUIDToMatch handling
-	// Returns existing session if resume valid, nil otherwise
-	// Session parameter provides tenant context via session.ResolvedTenantID for DB queries
-	HandleResume(session *Session, bsUUID []byte, scUUIDToMatch []byte, bsOpId, scOpId int64, bsEUI uint64) (*Session, error)
-
-	// PersistSession writes to basestation_sessions table (server.go:852-950)
+	// PersistSession writes to basestation_sessions table
 	// Uses real *sql.DB, updates DbSessionId, handles resume UPDATE vs new INSERT
 	// BSSCI §5.3: Accepts connectInfo to persist arbitrary key-value pairs from connect message
 	PersistSession(ctx context.Context, session *Session, baseStation *basestation.BaseStation, isResume bool, connectInfo json.RawMessage) error
 
-	// StoreSessionByUUID adds to sessionsByUUID map (server.go:760-764)
+	// StoreSessionByUUID adds to sessionsByUUID map
 	StoreSessionByUUID(session *Session)
 
-	// MarkHandshakeComplete sets HandshakeComplete=true (server.go:1004)
+	// MarkHandshakeComplete sets HandshakeComplete=true
 	MarkHandshakeComplete(session *Session)
 
-	// RemoveSession cleans sessionsByUUID map on disconnect (server.go:438)
+	// RemoveSession cleans sessionsByUUID map on disconnect
 	RemoveSession(session *Session)
 
 	// TerminateSession marks a session as terminated in the database
@@ -42,8 +87,13 @@ type SessionService interface {
 	TerminateSession(ctx context.Context, session *Session) error
 
 	// UpdateEncoding persists negotiated message encoding to database (BSSCI Section 1)
-	// Called when encoding is detected on first message
-	UpdateEncoding(ctx context.Context, sessionID int64, encoding string) error
+	// Called when encoding is detected on first message; tenant-scoped
+	UpdateEncoding(ctx context.Context, tenantID, sessionID int64, encoding string) error
+
+	// MarkDisconnected marks an active session disconnected and resumable
+	// after unexpected connection loss, guarded by the session's connection
+	// ID so a newer connection is never marked offline by stale cleanup
+	MarkDisconnected(ctx context.Context, session *Session) error
 
 	// UpdateSessionCounters persists operation ID counters to database (BSSCI §5.2)
 	// Called immediately after successful SC-initiated operations.
@@ -83,6 +133,17 @@ type StatusService interface {
 	// RecordPendingOperation stores in map + DB using SessionOpKey composite key
 	RecordPendingOperation(ctx context.Context, session *Session, opId int64, op *PendingOperation, dbSessionID int64) error
 
+	// RecordPendingOperations durably records several operations in one
+	// repository transaction (all-or-nothing) and mirrors them into the cache
+	// only after the transaction commits. Used for multi-frame sequences such
+	// as the dlRxStatQry/dlDataQue pair whose recovery records must never be
+	// partially persisted.
+	RecordPendingOperations(ctx context.Context, session *Session, ops []*PendingOperation, dbSessionID int64) error
+
+	// RestorePendingOperation hydrates the in-memory cache from an already
+	// authoritative DB row without writing it back (session resume path).
+	RestorePendingOperation(session *Session, opId int64, op *PendingOperation)
+
 	// GetPendingOperation retrieves from map using SessionOpKey composite key
 	GetPendingOperation(session *Session, opId int64) (*PendingOperation, error)
 
@@ -95,33 +156,115 @@ type StatusService interface {
 	// Session parameter required for SessionOpKey composite key lookup.
 	ExtractQueueMetadata(session *Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string)
 
-	// CleanupPendingOp removes pending operation from in-memory map only using SessionOpKey.
-	// Enables handlers to clean up map without direct mutex access.
-	// DB cleanup should use RemovePendingOperation for complete cleanup.
-	CleanupPendingOp(session *Session, opId int64)
+	// UpdatePendingOperationMetadata persists new metadata for an existing
+	// pending row (metadataJSON is the pre-marshaled form of metadata) and,
+	// on success, mirrors it into the cached operation. The DB write comes
+	// first so the cache never runs ahead of the durable state.
+	UpdatePendingOperationMetadata(ctx context.Context, session *Session, opId int64, metadata map[string]interface{}, metadataJSON json.RawMessage) error
+
+	// PersistedOperations returns the raw persisted rows for session resume
+	// hydration; strict decoding stays with the caller.
+	PersistedOperations(ctx context.Context, sessionID int64) ([]PersistedOperation, error)
+
+	// DeletePendingOperations removes every persisted row of the session and,
+	// only after the DB deletion succeeds, evicts the session's cached
+	// operations. A failed deletion leaves the cache untouched.
+	DeletePendingOperations(ctx context.Context, session *Session) (int64, error)
+
+	// EvictCachedOperations removes the session's cached operations without
+	// touching the persisted rows. Called on every connection teardown: the
+	// runtime session ID dies with the connection, so its cache entries are
+	// unreachable afterwards, while the DB rows remain the durable source for
+	// a later resume.
+	EvictCachedOperations(session *Session)
 }
 
-// ConnectionService wraps REAL basestation.ConnectionManager operations
-// Preserves: GetBaseStation, UpdateConnectionStatus, EventRecorder
-type ConnectionService interface {
-	// GetBaseStation via connectionMgr (tenant-scoped via context)
-	GetBaseStation(ctx context.Context, eui [8]byte, mgr *basestation.ConnectionManager) (*basestation.BaseStation, error)
+// PersistedOperation is a raw persisted pending-operation row returned for
+// resume hydration. It is BSSCI-owned so the storage row model does not leak
+// through the service boundary; payloads stay encoded.
+type PersistedOperation struct {
+	OperationID   int64
+	OperationType string
+	EndpointEUI   []byte
+	OperationData []byte
+	Metadata      []byte
+	CreatedAt     time.Time
+}
 
+// BaseStationConnectionRegistry owns the live-connection operations the
+// connect flow consumes: registration lookup across tenants (the tenant is
+// not yet authenticated during the handshake) and live-connection
+// registration. The concrete connection manager is captured by the adapter at
+// construction, never passed per call.
+type BaseStationConnectionRegistry interface {
 	// GetBaseStationGlobal retrieves a base station by EUI across all tenants.
-	// Used during BSSCI connect handshake when tenant is not yet resolved.
-	GetBaseStationGlobal(ctx context.Context, eui [8]byte, mgr *basestation.ConnectionManager) (*basestation.BaseStation, error)
+	GetBaseStationGlobal(ctx context.Context, eui [8]byte) (*basestation.BaseStation, error)
 
-	// RegisterConnection updates basestation status
-	RegisterConnection(ctx context.Context, session *Session, baseStation *basestation.BaseStation, mgr *basestation.ConnectionManager) error
+	// RegisterConnection publishes the session's live connection and marks the
+	// base station online.
+	RegisterConnection(ctx context.Context, session *Session, baseStation *basestation.BaseStation) error
+
+	// DisconnectBaseStationIfCurrent marks the base station offline only while
+	// the given connection is still its current one (a reconnect that already
+	// replaced this connection keeps the station online).
+	DisconnectBaseStationIfCurrent(ctx context.Context, eui [8]byte, connectionID string) error
+
+	// UpdateLastSeen refreshes the base station's last-seen timestamp.
+	UpdateLastSeen(ctx context.Context, eui [8]byte) error
 }
 
-// SCACIBroadcaster forwards via real scaciBroadcaster interface (server.go:39-40)
+// CertificateIdentity is the tenant/organization identity resolved from a
+// base station's TLS client certificate. SubjectEUI is set only when the
+// certificate CN encodes a base station EUI-64 (the CE issuance scheme);
+// legacy org-<UUID> CNs carry no station identity.
+type CertificateIdentity struct {
+	OrganizationID uuid.UUID
+	TenantID       int64
+	SubjectEUI     *uint64
+}
+
+// CertificateIdentityResolver resolves the identity asserted by a TLS client
+// certificate at connection accept. The CE composite implementation resolves
+// dashed-EUI CNs against the registered base stations and delegates other CN
+// forms (org-<UUID>) to the deployment's organization resolver.
+type CertificateIdentityResolver interface {
+	ResolveCertificateIdentity(ctx context.Context, cert *x509.Certificate) (CertificateIdentity, error)
+}
+
+// RegisteredBaseStation is the persistent registration identity of a base
+// station as the BSSCI connect path consumes it. It deliberately carries no
+// organization ID - organization context is resolved separately - and no
+// live-connection state, which belongs to the connection registry.
+type RegisteredBaseStation struct {
+	ID                 int64
+	TenantID           int64
+	EUI                uint64
+	Name               string
+	TLSCertificate     string
+	TLSCertFingerprint string
+}
+
+// RegisteredBaseStationDirectory reads registered station identity for
+// certificate enforcement during connect and backfills the certificate
+// fingerprint for rows issued before fingerprints were stored.
+type RegisteredBaseStationDirectory interface {
+	// GetGlobal returns the registration for an EUI across all tenants
+	// (tenant is not yet authenticated at TLS accept).
+	GetGlobal(ctx context.Context, eui uint64) (RegisteredBaseStation, error)
+
+	// BackfillFingerprintIfBlank persists the fingerprint only while the
+	// stored value is still blank; reports whether a row was updated (false
+	// signals a concurrent writer - reload and compare).
+	BackfillFingerprintIfBlank(ctx context.Context, tenantID, id int64, fingerprint string) (bool, error)
+}
+
+// SCACIBroadcaster forwards via real scaciBroadcaster interface
 // Matches the exact signatures from scaciBroadcaster to enable proper delegation
 type SCACIBroadcaster interface {
-	// BroadcastULData forwards uplink data to SCACI clients (server.go:39)
+	// BroadcastULData forwards uplink data to SCACI clients
 	BroadcastULData(ctx context.Context, tenantID int64, data *mioty.ULDataMessage) error
 
-	// BroadcastDLDataResult forwards downlink results to SCACI clients (server.go:40)
+	// BroadcastDLDataResult forwards downlink results to SCACI clients
 	BroadcastDLDataResult(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error
 }
 
@@ -175,9 +318,13 @@ type EPStatusData struct {
 
 // DownlinkCommander sends downlink commands to base stations
 type DownlinkCommander interface {
+	// SendDLDataQueue queues downlink data; dlRxStatQry pairs a BSSCI
+	// dlRxStatQry operation (rev1 §5.16 / classic §3.16) ahead of the queue
+	// frame per the SCACI §3.10.1 hint.
 	SendDLDataQueue(sessionID string, epEui uint64, payloads [][]byte, queId int64,
 		prio float32, cntDepend bool, packetCnt []int64, format uint8,
-		responseExp bool, responsePrio bool, dlWindReq bool, expOnly bool, tenantID int64) error
+		responseExp bool, responsePrio bool, dlWindReq bool, expOnly bool, tenantID int64,
+		dlRxStatQry bool) error
 	SendDLDataRevoke(sessionID string, epEui uint64, queId uint64) error
 	SendDLRXStatusQuery(sessionID string, epEui uint64) error
 }
@@ -672,6 +819,21 @@ type DownlinkDispatcher interface {
 		responseExp bool,
 		dlAck bool,
 	) (dispatched bool, err error)
+
+	// DispatchQueue reserves one exact pending queue row (by queue ID, tenant,
+	// and endpoint EUI) and dispatches it over the given session. Used for
+	// SCACI-initiated immediate delivery (SCACI §3.10.1) so both delivery
+	// paths share the dispatcher's pending→reserved→queued lifecycle.
+	// Returns dispatched=false with nil error when no matching pending row
+	// exists (already dispatched, revoked, or foreign).
+	DispatchQueue(
+		ownerCtx context.Context,
+		ownerTenantID int64,
+		ownerOrgUUID uuid.UUID,
+		session *Session,
+		queueID uint64,
+		epEUI uint64,
+	) (dispatched bool, err error)
 }
 
 // BlueprintDecoder decodes MIOTY payloads using blueprint definitions (MIOTY App Layer Spec)
@@ -759,4 +921,115 @@ type BlueprintResolver interface {
 	// Keys in the map correspond to $calibration.key references in blueprint func expressions.
 	GetEndpointCalibration(ctx context.Context, tenantID int64,
 		endpoint *models.EndPoint) map[string]interface{}
+}
+
+// ProtocolMessageStore records BSSCI protocol message rows (detach and
+// propagate messages). Satisfied structurally by the MIOTY message repository.
+type ProtocolMessageStore interface {
+	CreateDetachMessage(ctx context.Context, msg *mioty.DetachMessage, structuredMsg map[string]interface{}) error
+	CreateAttachPropagateMessage(ctx context.Context, msg *mioty.AttachPropagateMessage) error
+	CreateDetachPropagateMessage(ctx context.Context, msg *mioty.DetachPropagateMessage) error
+}
+
+// DLRXStatusStore owns dlRxStatQry correlation rows and dlRxStat reports
+// (BSSCI rev1 §5.15-§5.16 / classic §3.15-§3.16). Satisfied structurally by
+// the DL RX status repository.
+type DLRXStatusStore interface {
+	CreateDLRXStatus(ctx context.Context, status *mioty.DLRXStatus) error
+	MarkDLRXStatusReceived(ctx context.Context, tenantID int64, epEui, bsEui []byte, bsOpID int64) (bool, error)
+	CreateDLRXStatusQuery(ctx context.Context, tenantID int64, orgUUID *uuid.UUID, epEui, bsEui []byte, opId int64) error
+	ExpireDLRXStatusQuery(ctx context.Context, cutoff time.Time) (int64, error)
+}
+
+// BaseStationStatusStore records base station status history rows (BSSCI
+// rev1 §5.5 / classic §3.5). Satisfied structurally by the status repository.
+type BaseStationStatusStore interface {
+	Create(ctx context.Context, status *mioty.BaseStationStatusRecord) error
+}
+
+// DownlinkQueueStore covers the queue-row operations the protocol handlers
+// perform outside the dispatcher's reservation flow. Satisfied structurally
+// by the MIOTY downlink repository so error identity (sql.ErrNoRows,
+// storage.ErrNotFound) is preserved - never wrap it in a delegating adapter.
+type DownlinkQueueStore interface {
+	UpdateDownlinkBaseStation(ctx context.Context, queId uint64, tenantID string, bsEUI uint64) error
+	MarkReservedAsQueued(ctx context.Context, queID uint64, tenantID int64, bsEUI uint64, txTime int64, packetCnt *uint32, orgID *uuid.UUID) error
+	GetDownlinkByQueueID(ctx context.Context, queId uint64, tenantID string) (*storage.DownlinkMessage, error)
+}
+
+// EndpointDirectory is the endpoint repository surface the protocol server
+// consumes: reads plus the attach/detach field updates. Satisfied
+// structurally by the endpoint repository.
+type EndpointDirectory interface {
+	Get(ctx context.Context, eui models.EUI) (*models.EndPoint, error)
+	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.EndPoint, error)
+	GetByID(ctx context.Context, id int64, tenantID int64) (*models.EndPoint, error)
+	UpdateFields(ctx context.Context, tenantID int64, endpointID int64, updates map[string]interface{}) error
+	UpdateRadioMetricsSelective(ctx context.Context, tenantID int64, eui models.EUI, update interfaces.RadioMetricsUpdate) error
+}
+
+// BaseStationStore is the registered-station repository surface the protocol
+// server consumes. Satisfied structurally by the base station repository.
+type BaseStationStore interface {
+	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.BaseStation, error)
+	Update(ctx context.Context, tenantID, id int64, updates map[string]interface{}) error
+}
+
+// OrganizationDirectory resolves organization identity for tenants and
+// certificates. Satisfied structurally by org.Resolver implementations.
+type OrganizationDirectory interface {
+	ResolveCert(ctx context.Context, cert *x509.Certificate) (uuid.UUID, int64, error)
+	GetDefaultOrgForTenant(ctx context.Context, tenantID int64) (uuid.UUID, error)
+}
+
+// NetworkKeyProtector encrypts and decrypts endpoint network session keys.
+// Satisfied structurally by *crypto.KeyEncryptor.
+type NetworkKeyProtector interface {
+	EncryptKey(plaintext []byte) (string, error)
+	EncryptKeyRaw(plaintext []byte) ([]byte, error)
+	DecryptKeyRaw(ciphertext []byte) ([]byte, error)
+}
+
+// EventStore records system events emitted by the protocol server.
+// Satisfied structurally by the system event repository.
+type EventStore interface {
+	CreateEvent(ctx context.Context, event *models.SystemEvent) error
+}
+
+// AttachSessionRecord carries the attach-transaction inputs for the endpoint
+// attachment persister (BSSCI rev1 §5.7 / classic §3.7).
+type AttachSessionRecord struct {
+	// TenantID is the endpoint owner tenant used for the endpoint update and
+	// the session row.
+	TenantID int64
+	// BSLookupTenantID scopes the primary base station lookup (differs from
+	// TenantID when the uplink arrived through a roaming station).
+	BSLookupTenantID int64
+	EndpointID       int64
+	EndpointUpdates  map[string]interface{}
+	EncryptedKey     []byte
+	// AttachCnt is handler-validated to fit 24 bits before persistence.
+	AttachCnt      uint32
+	ShAddr         uint16
+	BaseStationEUI []byte
+}
+
+// AttachPropagateSessionRecord carries the attach-propagate transaction inputs
+// (BSSCI rev1 §5.8 / classic §3.8); the owner tenant scopes every operation.
+type AttachPropagateSessionRecord struct {
+	TenantID        int64
+	EndpointID      int64
+	EndpointUpdates map[string]interface{}
+	EncryptedKey    []byte
+	ShAddr          uint16
+	BaseStationEUI  []byte
+}
+
+// EndpointAttachmentPersistence owns the transactional attach and
+// attach-propagate endpoint-session persistence: one transaction covering the
+// endpoint field update and the endpoint-session upsert, with the primary
+// base station looked up outside the transaction.
+type EndpointAttachmentPersistence interface {
+	PersistAttachSession(ctx context.Context, rec AttachSessionRecord) error
+	PersistAttachPropagateSession(ctx context.Context, rec AttachPropagateSessionRecord) error
 }

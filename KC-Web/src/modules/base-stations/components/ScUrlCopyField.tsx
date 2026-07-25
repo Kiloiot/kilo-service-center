@@ -6,8 +6,8 @@
 
 import React from "react";
 
-import { IconButton, InputAdornment, TextField, Tooltip } from "@mui/material";
 import type { Theme } from "@mui/material";
+import { IconButton, InputAdornment, TextField, Tooltip } from "@mui/material";
 
 import { BASE_STATION_DETAILS } from "@constants/messages";
 import { CheckCircleIcon, ContentCopyIcon } from "@theme/icons";

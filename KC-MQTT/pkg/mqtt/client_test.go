@@ -6,6 +6,8 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // MockLogger implements the Logger interface for testing
@@ -120,7 +122,7 @@ func TestPublishNotConnected(t *testing.T) {
 	}
 
 	// Attempt publish without connecting (use QoS 0, not retained)
-	err = client.Publish(context.Background(), "test/topic", 0, false, []byte("test payload"))
+	err = client.Publish(testutil.TestContext(), "test/topic", 0, false, []byte("test payload"))
 	if err == nil {
 		t.Error("Expected error when publishing without connection")
 	}
@@ -137,7 +139,7 @@ func TestSubscribeNotConnected(t *testing.T) {
 	}
 
 	// Attempt subscribe without connecting (use QoS 0, nil handler is OK for test)
-	err = client.Subscribe(context.Background(), "test/topic", 0, nil)
+	err = client.Subscribe(testutil.TestContext(), "test/topic", 0, nil)
 	if err == nil {
 		t.Error("Expected error when subscribing without connection")
 	}
@@ -156,7 +158,7 @@ func TestPublishNotConnected_WithHandler(t *testing.T) {
 
 	// Attempt publish without connecting (real payload, not nil)
 	payload := []byte("test message payload")
-	err = client.Publish(context.Background(), "mioty/uplink/test", 0, false, payload)
+	err = client.Publish(testutil.TestContext(), "mioty/uplink/test", 0, false, payload)
 
 	// Must fail with "not connected" error (proves connection guard is triggered)
 	if err == nil {
@@ -184,7 +186,7 @@ func TestSubscribeNotConnected_WithHandler(t *testing.T) {
 		handlerCalled = true
 	}
 
-	err = client.Subscribe(context.Background(), "mioty/uplink/#", 0, handler)
+	err = client.Subscribe(testutil.TestContext(), "mioty/uplink/#", 0, handler)
 
 	// Must fail with "not connected" error (proves connection guard is triggered, not handler validation)
 	if err == nil {

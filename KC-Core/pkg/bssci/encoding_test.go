@@ -313,14 +313,18 @@ func TestEncodingDetectionAndDecode(t *testing.T) {
 func TestEncodingPersistence(t *testing.T) {
 	t.Run("SessionEncodingInitiallyEmpty", func(t *testing.T) {
 		session := &Session{
-			ID: "test-session",
+			ProtocolSessionState: ProtocolSessionState{
+				ID: "test-session",
+			},
 		}
 		assert.Equal(t, "", session.Encoding, "New session should have empty encoding")
 	})
 
 	t.Run("SessionEncodingCanBeSet", func(t *testing.T) {
 		session := &Session{
-			ID: "test-session",
+			ProtocolSessionState: ProtocolSessionState{
+				ID: "test-session",
+			},
 		}
 		session.Encoding = "json"
 		assert.Equal(t, "json", session.Encoding, "Session encoding should be settable")

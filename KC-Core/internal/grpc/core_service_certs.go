@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
@@ -32,8 +33,15 @@ func (s *CoreService) GenerateCertificate(ctx context.Context, req *pb.GenerateC
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBasestationEUIRequired))
 	}
 
-	// Get tenant ID for certificate persistence (optional - persistence skipped if unavailable)
-	tenantID, _ := GetTenantFromContext(ctx)
+	// Tenant context is mandatory: certificate issuance is scoped to the tenant
+	// that owns the base station, and issuing without a tenant would allow
+	// minting a certificate for any EUI.
+	tenantID, tenantErr := GetTenantFromContext(ctx)
+	if tenantErr != nil || tenantID <= 0 {
+		s.log.WarnContext(ctx, grpcerrors.LogCertIssuanceRequiresTenant, "bs_eui", req.BsEui, "error", tenantErr)
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenMissingTenantCtx),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenMissingTenantCtx))
+	}
 
 	certReq := &grpcservices.CertificateRequest{
 		BsEUI:           req.BsEui,
@@ -44,14 +52,20 @@ func (s *CoreService) GenerateCertificate(ctx context.Context, req *pb.GenerateC
 
 	resp, err := s.certSvc.GenerateCertificate(ctx, certReq)
 	if err != nil {
-		s.log.ErrorContext(ctx, "generate certificate failed", "bs_eui", req.BsEui, "error", err)
+		s.log.ErrorContext(ctx, grpcerrors.LogGenerateCertificateFailed, "bs_eui", req.BsEui, "error", err)
 
-		// Detect missing server CA and return an actionable error
-		errStr := err.Error()
-		if strings.Contains(errStr, grpcerrors.ErrTokenCACertReadFailed) ||
-			strings.Contains(errStr, grpcerrors.ErrTokenCAKeyReadFailed) {
-			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCACertReadFailed),
-				grpcerrors.MsgServerCertRequiredBeforeBS)
+		// Typed catalog errors survive the service boundary: match on the
+		// token, never on error text
+		if token, ok := grpcerrors.TokenOf(err); ok {
+			switch token {
+			case grpcerrors.ErrTokenCACertReadFailed, grpcerrors.ErrTokenCAKeyReadFailed:
+				// Missing server CA gets the actionable setup message
+				return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCACertReadFailed),
+					grpcerrors.MsgServerCertRequiredBeforeBS)
+			default:
+				return nil, status.Error(grpcerrors.GetGRPCCode(token),
+					grpcerrors.ResolveErrorMessage(token))
+			}
 		}
 
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCertGenerationFailed),
@@ -61,8 +75,8 @@ func (s *CoreService) GenerateCertificate(ctx context.Context, req *pb.GenerateC
 	// Emit audit event for certificate generation.
 	if s.eventWriter != nil {
 		detailsMap := map[string]interface{}{
-			"bsEui":        req.BsEui,
-			"validityDays": req.ValidityDays,
+			bssci.EventKeyBsEui: req.BsEui,
+			"validityDays":      req.ValidityDays,
 		}
 		if req.BaseStationName != "" {
 			detailsMap["baseStationName"] = req.BaseStationName
@@ -122,7 +136,7 @@ func (s *CoreService) DownloadCertificate(ctx context.Context, req *pb.DownloadC
 	if err != nil {
 		s.log.ErrorContext(ctx, grpcerrors.LogDownloadCertFailed, "cert_type", req.CertType, "cert_id", req.Id, "error", err)
 		// Preserve service-level error tokens (don't mask invalid cert_type)
-		if strings.Contains(err.Error(), grpcerrors.ErrTokenCertTypeRequired) {
+		if token, ok := grpcerrors.TokenOf(err); ok && token == grpcerrors.ErrTokenCertTypeRequired {
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCertTypeRequired),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCertTypeRequired))
 		}
@@ -222,7 +236,7 @@ func (s *CoreService) GetServerCertificateStatus(ctx context.Context, _ *pb.GetS
 
 	certStatus, err := s.certSvc.GetServerCertificateStatus(ctx)
 	if err != nil {
-		s.log.ErrorContext(ctx, "get server certificate status failed", "error", err)
+		s.log.ErrorContext(ctx, grpcerrors.LogGetServerCertStatusFailed, "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCertStatusFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCertStatusFailed))
 	}
@@ -292,7 +306,7 @@ func (s *CoreService) DownloadBaseStationCertificate(ctx context.Context, req *p
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
 		}
-		if strings.Contains(err.Error(), grpcerrors.ErrTokenCertTypeRequired) {
+		if token, ok := grpcerrors.TokenOf(err); ok && token == grpcerrors.ErrTokenCertTypeRequired {
 			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCertTypeRequired),
 				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCertTypeRequired))
 		}

@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -126,7 +128,7 @@ func TestULService_PreferenceFound_UsesPreferedBS(t *testing.T) {
 
 	// Create service and call
 	svc := NewULService(mockScheduler, mockStatus, log)
-	opID, actualBsEui, errToken := svc.ScheduleULTransmit(context.Background(), req, tenantID)
+	opID, actualBsEui, errToken := svc.ScheduleULTransmit(testutil.TestContext(), req, tenantID)
 
 	// Assert results
 	assert.Equal(t, expectedOpID, opID)
@@ -176,7 +178,7 @@ func TestULService_NoPreference_FallsBackToScheduler(t *testing.T) {
 
 	// Create service and call
 	svc := NewULService(mockScheduler, mockStatus, log)
-	opID, actualBsEui, errToken := svc.ScheduleULTransmit(context.Background(), req, tenantID)
+	opID, actualBsEui, errToken := svc.ScheduleULTransmit(testutil.TestContext(), req, tenantID)
 
 	// Assert results
 	assert.Equal(t, expectedOpID, opID)
@@ -226,7 +228,7 @@ func TestULService_PreferenceLookupError_FallsBack(t *testing.T) {
 
 	// Create service and call
 	svc := NewULService(mockScheduler, mockStatus, log)
-	opID, actualBsEui, errToken := svc.ScheduleULTransmit(context.Background(), req, tenantID)
+	opID, actualBsEui, errToken := svc.ScheduleULTransmit(testutil.TestContext(), req, tenantID)
 
 	// Assert: operation should succeed despite lookup error
 	assert.Equal(t, expectedOpID, opID)
@@ -269,7 +271,7 @@ func TestULService_ExplicitBsEui_SkipsPreferenceLookup(t *testing.T) {
 
 	// Create service and call
 	svc := NewULService(mockScheduler, mockStatus, log)
-	opID, actualBsEui, errToken := svc.ScheduleULTransmit(context.Background(), req, tenantID)
+	opID, actualBsEui, errToken := svc.ScheduleULTransmit(testutil.TestContext(), req, tenantID)
 
 	// Assert results
 	assert.Equal(t, expectedOpID, opID)
@@ -311,7 +313,7 @@ func TestULService_NilStatusSvc_FallsBackDirectly(t *testing.T) {
 	svc := NewULService(mockScheduler, nil, log)
 
 	// Should not panic
-	opID, actualBsEui, errToken := svc.ScheduleULTransmit(context.Background(), req, tenantID)
+	opID, actualBsEui, errToken := svc.ScheduleULTransmit(testutil.TestContext(), req, tenantID)
 
 	// Assert results
 	assert.Equal(t, expectedOpID, opID)
@@ -337,7 +339,7 @@ func TestULService_NilScheduler_ReturnsNotSupported(t *testing.T) {
 
 	// Create service with nil scheduler
 	svc := NewULService(nil, mockStatus, log)
-	opID, actualBsEui, errToken := svc.ScheduleULTransmit(context.Background(), req, 1)
+	opID, actualBsEui, errToken := svc.ScheduleULTransmit(testutil.TestContext(), req, 1)
 
 	// Assert: should return error token
 	assert.Equal(t, int64(0), opID)
@@ -396,7 +398,7 @@ func TestULService_SchedulerError_MapsToToken(t *testing.T) {
 				Return(int64(0), uint64(0), tc.schedulerErr)
 
 			svc := NewULService(mockScheduler, nil, log)
-			_, _, errToken := svc.ScheduleULTransmit(context.Background(), req, 1)
+			_, _, errToken := svc.ScheduleULTransmit(testutil.TestContext(), req, 1)
 
 			require.Equal(t, tc.expectedToken, errToken)
 		})

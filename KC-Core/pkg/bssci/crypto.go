@@ -25,9 +25,9 @@ func ValidateAttachSignature(epEUI uint64, attachCnt uint32, signature []byte, p
 	iv[9] = 0x00
 
 	maskedCnt := attachCnt & 0xFFFFFF
-	iv[10] = byte(maskedCnt >> 16)
-	iv[11] = byte(maskedCnt >> 8)
-	iv[12] = byte(maskedCnt)
+	iv[10] = byte(maskedCnt >> 16) //nolint:gosec // G115: intentional byte extraction of 24-bit counter
+	iv[11] = byte(maskedCnt >> 8)  //nolint:gosec // G115: intentional byte extraction of 24-bit counter
+	iv[12] = byte(maskedCnt)       //nolint:gosec // G115: intentional byte extraction of 24-bit counter
 
 	iv[13] = 0xFF
 	iv[14] = 0xFF

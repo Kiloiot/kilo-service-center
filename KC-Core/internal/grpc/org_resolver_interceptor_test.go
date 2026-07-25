@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockOrgResolver implements org.Resolver for testing
@@ -73,7 +75,7 @@ func TestOrgResolverInterceptor_MissingMetadata(t *testing.T) {
 	})
 
 	// Create context without metadata
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -106,7 +108,7 @@ func TestOrgResolverInterceptor_MissingOrgID(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyUserID: uuid.New().String(),
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -140,7 +142,7 @@ func TestOrgResolverInterceptor_InvalidOrgID(t *testing.T) {
 		grpcerrors.MetadataKeyOrganizationID: "not-a-uuid",
 		grpcerrors.MetadataKeyUserID:         uuid.New().String(),
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -173,7 +175,7 @@ func TestOrgResolverInterceptor_MissingUserID(t *testing.T) {
 	md := metadata.New(map[string]string{
 		grpcerrors.MetadataKeyOrganizationID: uuid.New().String(),
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -207,7 +209,7 @@ func TestOrgResolverInterceptor_InvalidUserID(t *testing.T) {
 		grpcerrors.MetadataKeyOrganizationID: uuid.New().String(),
 		grpcerrors.MetadataKeyUserID:         "not-a-uuid",
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -245,7 +247,7 @@ func TestOrgResolverInterceptor_ResolutionFailure(t *testing.T) {
 		grpcerrors.MetadataKeyOrganizationID: orgID.String(),
 		grpcerrors.MetadataKeyUserID:         userID.String(),
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called")
@@ -281,7 +283,7 @@ func TestOrgResolverInterceptor_Success(t *testing.T) {
 		grpcerrors.MetadataKeyOrganizationID: orgID.String(),
 		grpcerrors.MetadataKeyUserID:         userID.String(),
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	var handlerCtx context.Context
 	handler := func(ctx context.Context, _ interface{}) (interface{}, error) {
@@ -341,7 +343,7 @@ func TestOrgResolverInterceptor_SkipMethods(t *testing.T) {
 	})
 
 	// Create context without metadata (would normally fail)
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	handlerCalled := false
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
@@ -381,7 +383,7 @@ func TestOrgResolverInterceptor_AuthIdentity_TenantMatch(t *testing.T) {
 	})
 
 	// Build context with pre-established auth identity
-	ctx := pkgcontext.WithTenantID(context.Background(), tenantID)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), tenantID)
 	ctx = pkgcontext.WithOrganizationID(ctx, orgID)
 	ctx = pkgcontext.WithUserID(ctx, userID.String())
 
@@ -423,7 +425,7 @@ func TestOrgResolverInterceptor_AuthIdentity_TenantMismatch(t *testing.T) {
 	})
 
 	// Auth established tenant 42
-	ctx := pkgcontext.WithTenantID(context.Background(), authTenantID)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), authTenantID)
 	ctx = pkgcontext.WithOrganizationID(ctx, orgID)
 	ctx = pkgcontext.WithUserID(ctx, userID.String())
 
@@ -468,7 +470,7 @@ func TestOrgResolverInterceptor_AuthIdentity_OrgMismatch(t *testing.T) {
 	})
 
 	// Auth established with authOrgID
-	ctx := pkgcontext.WithTenantID(context.Background(), tenantID)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), tenantID)
 	ctx = pkgcontext.WithOrganizationID(ctx, authOrgID)
 	ctx = pkgcontext.WithUserID(ctx, userID.String())
 
@@ -514,7 +516,7 @@ func TestOrgResolverInterceptor_AuthIdentity_UserMismatch(t *testing.T) {
 	})
 
 	// Auth established with authUserID
-	ctx := pkgcontext.WithTenantID(context.Background(), tenantID)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), tenantID)
 	ctx = pkgcontext.WithOrganizationID(ctx, orgID)
 	ctx = pkgcontext.WithUserID(ctx, authUserID.String())
 
@@ -558,7 +560,7 @@ func TestOrgResolverInterceptor_ServiceAccountPrincipal_NoUserHeader(t *testing.
 	})
 
 	// Auth established tenant+org but NO user (service-account principal)
-	ctx := pkgcontext.WithTenantID(context.Background(), tenantID)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), tenantID)
 	ctx = pkgcontext.WithOrganizationID(ctx, orgID)
 
 	// Header only has org, no user
@@ -597,7 +599,7 @@ func TestOrgResolverInterceptor_ServiceAccountPrincipal_UserHeaderRejected(t *te
 	})
 
 	// Auth established tenant+org but NO user (service-account principal)
-	ctx := pkgcontext.WithTenantID(context.Background(), tenantID)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), tenantID)
 	ctx = pkgcontext.WithOrganizationID(ctx, orgID)
 
 	// Header has org AND user (spoofing attempt)
@@ -645,7 +647,7 @@ func TestOrgResolverInterceptor_NoAuthIdentity_SetsFromHeaders(t *testing.T) {
 		grpcerrors.MetadataKeyOrganizationID: orgID.String(),
 		grpcerrors.MetadataKeyUserID:         userID.String(),
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	var handlerCtx context.Context
 	handler := func(ctx context.Context, _ interface{}) (interface{}, error) {

@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - dev
+      - "**"
     tags-ignore:
       - "v*"
   pull_request:
@@ -73,10 +72,10 @@ jobs:
           go-version-file: go.work
       - name: Run Go tests (unit only, no DB/infra)
         run: |
-          echo "::group::Testing KC-Core (skip bssci integration)"
-          (cd KC-Core && go test -short -timeout 3m $(go list ./... | grep -v /pkg/bssci$))
+          echo "::group::Testing KC-Core (full suite)"
+          (cd KC-Core && go test -timeout 10m ./...)
           echo "::endgroup::"
-          echo "::group::Testing KC-DB (skip postgres integration)"
+          echo "::group::Testing KC-DB (postgres suite runs in test-postgres)"
           (cd KC-DB && go test -short -timeout 3m $(go list ./... | grep -v /postgres))
           echo "::endgroup::"
           for mod in KC-Gateway KC-Identity KC-MQTT pkg; do
@@ -85,8 +84,53 @@ jobs:
             echo "::endgroup::"
           done
 
+  # The KC-DB postgres suite runs against real testcontainers-managed
+  # PostgreSQL instances, plus a migrated service database for the
+  # env-DB-backed schema tests (SetupEnvDBOrSkip fail-fasts when CI=true).
+  # It takes ~15 minutes and gates image publication.
+  test-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.5
+        env:
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_USER: kilocenter
+          POSTGRES_DB: kilocenter
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5433
+      DB_NAME: kilocenter
+      DB_USER: kilocenter
+      DB_PASSWORD: changeme
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+      - name: Install golang-migrate
+        run: |
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+      - name: Run database migrations
+        run: |
+          migrate -path KC-DB/migrations \
+            -database "postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=disable" \
+            up
+      - name: Run KC-DB postgres integration tests
+        run: |
+          (cd KC-DB && go test -timeout 25m ./storage/postgres/...)
+
   build-kc-core:
-    needs: [generate-version, lint, test]
+    needs: [generate-version, lint, test, test-postgres]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -107,7 +151,8 @@ jobs:
           tags: ${{ needs.generate-version.outputs.registry }}/kc-core:${{ needs.generate-version.outputs.version }}
 
   build-kc-gateway:
-    needs: [generate-version, lint, test]
+    needs: [generate-version, lint, test, test-postgres]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,7 +173,8 @@ jobs:
           tags: ${{ needs.generate-version.outputs.registry }}/kc-gateway:${{ needs.generate-version.outputs.version }}
 
   build-kc-identity:
-    needs: [generate-version, lint, test]
+    needs: [generate-version, lint, test, test-postgres]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -149,7 +195,8 @@ jobs:
           tags: ${{ needs.generate-version.outputs.registry }}/kc-identity:${{ needs.generate-version.outputs.version }}
 
   build-kc-web:
-    needs: [generate-version, lint, test]
+    needs: [generate-version, lint, test, test-postgres]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write

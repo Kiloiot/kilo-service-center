@@ -1,19 +1,19 @@
 {
-  "version": "v1.0.0+53325eff-dirty",
-  "buildTime": "2026-05-11T17:10:34Z",
-  "gitCommit": "53325effa589017ab62c486a8d952c3366d08cd6",
-  "gitBranch": "main",
+  "version": "v1.2.0+c9efdb9",
+  "buildTime": "2026-07-22T21:02:45Z",
+  "gitCommit": "c9efdb9618771af93a507c1a20332b027763e1eb",
+  "gitBranch": "CHIRP-3538-bssci-version-negotiation-eui64",
   "buildUser": "timkrav",
-  "goVersion": "go1.25.5",
+  "goVersion": "go1.26.4",
   "artifacts": {
     "kcCore": "KC-Core/bin/kilocenter"
   },
-  "schemaVersion": 133,
+  "schemaVersion": 142,
   "edition": "Community Edition",
   "editionCode": "ce",
   "licenseId": "AGPL-3.0-or-later",
   "licenseUrl": "https://www.gnu.org/licenses/agpl-3.0.html",
-  "sourceUrl": "https://github.com/chirpwireless/KiloServiceCenter",
+  "sourceUrl": "https://github.com/Kiloiot/kilo-service-center",
   "docsUrl": "https://docs.kiloiot.io/",
   "homepageUrl": "https://kiloiot.io/mioty-service-center/",
   "trademarkNotice": "KiloCenter is a trademark of Tim Kravchunovsky."

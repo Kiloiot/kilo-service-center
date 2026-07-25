@@ -78,6 +78,7 @@ type FieldSpec struct {
 	SpecRef      string                 // BSSCI spec reference (e.g., "§5.8.1 line 234")
 	ByteLength   int                    // For byte arrays: expected length (0 = variable)
 	Validator    func(interface{}) bool // Custom validation (optional)
+	EUI          bool                   // Field carries an EUI-64 (full unsigned 64-bit range)
 }
 
 // ConditionalRule defines context-dependent field requirements
@@ -197,6 +198,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.6.1 - End Point EUI64 (8 bytes)",
@@ -319,6 +321,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.7.1 - End Point EUI64 (8 bytes)",
@@ -400,6 +403,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.14.1 - End Point EUI64 (8 bytes)",
@@ -442,6 +446,7 @@ var messageRegistry = map[string]*MessageSpec{
 			},
 			{
 				Name:         "bsEui",
+				EUI:          true,
 				Type:         TypeUint64,
 				Required:     false,
 				DefaultValue: nil, // Pointer type: nil when absent
@@ -482,6 +487,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.11.1 - End Point EUI64 (8 bytes)",
@@ -610,6 +616,7 @@ var messageRegistry = map[string]*MessageSpec{
 			},
 			{
 				Name:     "bsEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§3.1.1 - Base Station EUI64 (8 bytes)",
@@ -686,26 +693,9 @@ var messageRegistry = map[string]*MessageSpec{
 				SpecRef:      "§3.1.1 - Maximum known SC opId to resume",
 			},
 		},
-		ConditionalRules: []ConditionalRule{
-			{
-				// Rule 1: If snBsOpId is present, snScOpId must also be present
-				Condition: func(data map[string]interface{}) bool {
-					return data["snBsOpId"] != nil
-				},
-				Required:  []string{"snScOpId"},
-				Forbidden: []string{},
-				ErrorMsg:  "snScOpId required when snBsOpId present (session resume mutual presence per MIOTY radio spec §3.6.5.3)",
-			},
-			{
-				// Rule 2: If snScOpId is present, snBsOpId must also be present
-				Condition: func(data map[string]interface{}) bool {
-					return data["snScOpId"] != nil
-				},
-				Required:  []string{"snBsOpId"},
-				Forbidden: []string{},
-				ErrorMsg:  "snBsOpId required when snScOpId present (session resume mutual presence per MIOTY radio spec §3.6.5.3)",
-			},
-		},
+		// snBsOpId and snScOpId are independently optional (BSSCI rev1
+		// §5.3.1): each asserts its own resume constraint; absence means the
+		// constraint is not asserted. No mutual-presence coupling.
 	},
 
 	mioty.CmdConnectResponse: {
@@ -802,6 +792,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.9.1 - End Point EUI64 (8 bytes)",
@@ -882,6 +873,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.10.1 - End Point EUI64 (8 bytes)",
@@ -939,6 +931,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.11.1 - End Point EUI64 (8 bytes)",
@@ -1014,6 +1007,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.12.1 - End Point EUI64 (8 bytes)",
@@ -1113,6 +1107,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.13.1 - End Point EUI64 (8 bytes)",
@@ -1162,6 +1157,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.15.1 - End Point EUI64 (8 bytes)",
@@ -1209,6 +1205,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.16.1 - End Point EUI64 (8 bytes)",
@@ -1306,6 +1303,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.17.1 - End Point EUI64 (8 bytes)",
@@ -1343,6 +1341,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.18.1 - End Point EUI64 (8 bytes)",
@@ -1380,6 +1379,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.19.1 - End Point EUI64 (8 bytes)",
@@ -1411,6 +1411,7 @@ var messageRegistry = map[string]*MessageSpec{
 		MandatoryFields: []FieldSpec{
 			{
 				Name:     "epEui",
+				EUI:      true,
 				Type:     TypeUint64,
 				Required: true,
 				SpecRef:  "§5.20.1 - End Point EUI64 (8 bytes)",

@@ -10,6 +10,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // setupSCACIOperationTestDB creates a test database with testcontainers
@@ -33,7 +35,7 @@ func createSCACIOperationTestSession(t *testing.T, db *sqlx.DB, tenantID int64) 
 	t.Helper()
 
 	sessionRepo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	createReq := &models.SCACISessionCreateRequest{
@@ -88,7 +90,7 @@ func TestRecordOperation_DeregisterEpEui_Roundtrip(t *testing.T) {
 	defer cleanupSCACIOperationTestSession(t, db, testSessionID)
 
 	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"))
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Test case: numeric uint64 epEui for propagation lookup
@@ -149,7 +151,7 @@ func TestRecordOperation_CleanupMetadata_Roundtrip(t *testing.T) {
 	defer cleanupSCACIOperationTestSession(t, db, testSessionID)
 
 	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"))
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Record initial operation
@@ -218,7 +220,7 @@ func TestUpdateOperationState_CompletedWithWarnings(t *testing.T) {
 	defer cleanupSCACIOperationTestSession(t, db, testSessionID)
 
 	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"))
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Record initial operation in pending state

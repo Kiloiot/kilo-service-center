@@ -20,6 +20,9 @@ import (
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
+// auditKeyOrgID is the audit event detail key for organization identifiers.
+const auditKeyOrgID = "orgId"
+
 // validateOrgAccess validates the request org ID and confirms it belongs to the caller's tenant.
 // Returns the parsed org UUID and tenant ID, or a gRPC status error.
 func (s *IdentityService) validateOrgAccess(ctx context.Context, reqOrgID string) (uuid.UUID, int64, error) {
@@ -144,7 +147,7 @@ func (s *IdentityService) CreateOrganization(ctx context.Context, req *pb.Create
 		Title:       models.EventTitleOrgCreated,
 		Description: fmt.Sprintf(models.EventDescriptionOrgCreated, org.Name),
 		SourceName:  org.Name,
-		Details:     map[string]any{"orgId": org.OrgID.String(), "name": org.Name},
+		Details:     map[string]any{auditKeyOrgID: org.OrgID.String(), "name": org.Name},
 	})
 
 	return &pb.CreateOrganizationResponse{
@@ -208,7 +211,7 @@ func (s *IdentityService) UpdateOrganization(ctx context.Context, req *pb.Update
 		Title:       models.EventTitleOrgUpdated,
 		Description: fmt.Sprintf(models.EventDescriptionOrgUpdated, org.Name),
 		SourceName:  org.Name,
-		Details:     map[string]any{"orgId": org.OrgID.String(), "name": org.Name},
+		Details:     map[string]any{auditKeyOrgID: org.OrgID.String(), "name": org.Name},
 	})
 
 	return &pb.UpdateOrganizationResponse{
@@ -247,7 +250,7 @@ func (s *IdentityService) DeleteOrganization(ctx context.Context, req *pb.Delete
 		EventType:   models.EventTypeOrgDeleted,
 		Title:       models.EventTitleOrgDeleted,
 		Description: fmt.Sprintf(models.EventDescriptionOrgDeleted, req.Id),
-		Details:     map[string]any{"orgId": req.Id},
+		Details:     map[string]any{auditKeyOrgID: req.Id},
 	})
 
 	return &pb.DeleteOrganizationResponse{Success: true}, nil
@@ -286,7 +289,7 @@ func apiKeyDeletedAuditEvent(tenantID int64, orgID, keyID uuid.UUID, keyName str
 		Title:       models.EventTitleAPIKeyDeleted,
 		Description: fmt.Sprintf(models.EventDescriptionAPIKeyDeletedFmt, keyName),
 		SourceName:  keyName,
-		Details:     map[string]any{"keyId": keyID.String(), "orgId": orgID.String()},
+		Details:     map[string]any{"keyId": keyID.String(), auditKeyOrgID: orgID.String()},
 	}
 }
 
@@ -752,7 +755,7 @@ func (s *IdentityService) CreateApiKey(ctx context.Context, req *pb.CreateApiKey
 	}
 	org, err := s.orgSvc.GetByIDUnscoped(ctx, orgID)
 	if err != nil {
-		s.log.ErrorContext(ctx, "resolve tenant for API key failed", "orgId", orgID.String(), "error", err)
+		s.log.ErrorContext(ctx, "resolve tenant for API key failed", auditKeyOrgID, orgID.String(), "error", err)
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenCreateApiKeyFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCreateApiKeyFailed))
 	}
@@ -827,10 +830,10 @@ func (s *IdentityService) resolveAPIKeyUserID(ctx context.Context, keyType strin
 // apiKeyCreatedAuditEvent builds the audit event for a created API key.
 func apiKeyCreatedAuditEvent(req *pb.CreateApiKeyRequest, resp *grpcservices.APIKeyCreateResponse, orgID uuid.UUID, tenantID int64, userID *uuid.UUID) grpcerrors.AuditEvent {
 	details := map[string]any{
-		"keyId":     resp.APIKey.ID.String(),
-		"keyPrefix": resp.APIKey.KeyPrefix,
-		"keyType":   req.KeyType,
-		"orgId":     orgID.String(),
+		"keyId":       resp.APIKey.ID.String(),
+		"keyPrefix":   resp.APIKey.KeyPrefix,
+		"keyType":     req.KeyType,
+		auditKeyOrgID: orgID.String(),
 	}
 	var auditUserID string
 	if userID != nil {

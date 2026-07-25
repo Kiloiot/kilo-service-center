@@ -1,5 +1,40 @@
 -- Revert 000135: EUI columns BYTEA(8) -> BIGINT.
--- Rows with the high bit set can't fit signed BIGINT and will fail this revert (expected).
+-- Rows with the high bit set cannot be represented in signed BIGINT: the
+-- bit(64)::bigint cast would silently reinterpret them as negative values
+-- (corruption) and the ep_eui/bs_eui CHECK would then fail opaquely. The
+-- precondition below fails the downgrade with a named diagnostic BEFORE any
+-- column is altered.
+
+DO $$
+DECLARE
+    high_bit_rows BIGINT := 0;
+    archive_rows BIGINT := 0;
+BEGIN
+    SELECT COUNT(*) INTO high_bit_rows
+    FROM messages
+    WHERE get_byte(ep_eui, 0) >= 128 OR get_byte(bs_eui, 0) >= 128;
+
+    SELECT COUNT(*) + high_bit_rows INTO high_bit_rows
+    FROM endpoints
+    WHERE last_attached_bs_eui IS NOT NULL
+      AND get_byte(last_attached_bs_eui, 0) >= 128;
+
+    IF to_regclass('messages_archive') IS NOT NULL THEN
+        BEGIN
+            EXECUTE 'SELECT COUNT(*) FROM messages_archive
+                     WHERE get_byte(ep_eui, 0) >= 128 OR get_byte(bs_eui, 0) >= 128'
+                INTO archive_rows;
+        EXCEPTION WHEN undefined_column THEN
+            -- Legacy archive layouts without BYTEA EUI columns have nothing to guard.
+            archive_rows := 0;
+        END;
+        high_bit_rows := high_bit_rows + archive_rows;
+    END IF;
+
+    IF high_bit_rows > 0 THEN
+        RAISE EXCEPTION 'KC-MIG-000135-DOWN: % row(s) carry high-bit EUI64 values that cannot fit signed BIGINT; downgrade would corrupt them. Remove or export these rows first.', high_bit_rows;
+    END IF;
+END $$;
 
 ALTER TABLE messages DROP CONSTRAINT IF EXISTS valid_euis;
 

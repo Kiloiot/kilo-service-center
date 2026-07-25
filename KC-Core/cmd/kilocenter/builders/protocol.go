@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -15,9 +13,11 @@ import (
 	scaciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/scaci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/crypto"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 )
@@ -49,15 +49,10 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 
 	log.Info("Initializing mandatory BSSCI server...")
 
-	// Service Center EUI - can be overridden by environment variable
-	serviceCenterEUI := uint64(0x4B43000000000001) // Default: "KC" prefix + unique ID
-	if scEUIStr := os.Getenv("SERVICE_CENTER_EUI"); scEUIStr != "" {
-		if parsed, err := strconv.ParseUint(scEUIStr, 0, 64); err == nil {
-			serviceCenterEUI = parsed
-			log.Info("Using Service Center EUI from environment", "eui", fmt.Sprintf("0x%016X", serviceCenterEUI))
-		} else {
-			log.Info("Invalid SERVICE_CENTER_EUI format, using default", "eui", fmt.Sprintf("0x%016X", serviceCenterEUI))
-		}
+	// Service Center EUI is resolved and validated during config load (pkg/config Load)
+	serviceCenterEUI := cfg.Protocol.SCEUIValue
+	if cfg.Protocol.SCEUILegacyEnvUsed {
+		log.WarnContext(ctx, pkgconfig.LogDeprecatedServiceCenterEUIEnv, "sc_eui", cfg.Protocol.SCEUI)
 	}
 
 	// Resolve software version from release manifest with config fallback
@@ -79,13 +74,21 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		TLSCACert:                        cfg.Protocol.BSCITLS.CAFile,
 		TLSMinVersion:                    cfg.Protocol.BSCITLS.MinVersion,
 		ServiceCenterEUI:                 serviceCenterEUI,
-		Vendor:                           "Kilo",
-		Model:                            "KiloCenter",
+		Vendor:                           cfg.Protocol.SCVendor,
+		Model:                            cfg.Protocol.SCModel,
 		Name:                             cfg.General.ServerName,
 		SoftwareVersion:                  softwareVersion,
 		OrgEnforcementEnabled:            cfg.General.OrgEnforcementEnabled,
 		MessageEncoding:                  cfg.Protocol.MessageEncoding,
 		DetachSignatureValidationEnabled: cfg.Protocol.DetachSignatureValidationEnabled,
+		OperationAckTimeout:              time.Duration(cfg.Protocol.AckTimeout) * time.Millisecond,
+		ConnectionEstablishmentTimeout:   time.Duration(cfg.Protocol.ConnectionEstablishmentTimeout) * time.Millisecond,
+		DuplicateWindow:                  time.Duration(cfg.Protocol.DuplicateWindow) * time.Second,
+		CertificatePollInterval:          cfg.Protocol.BSCICertificatePollInterval,
+		StatusRequestInterval:            time.Duration(cfg.Protocol.StatusRequestInterval) * time.Second,
+		StatusRequestInitialDelay:        time.Duration(cfg.Protocol.StatusRequestInitialDelay) * time.Second,
+		DLRXQueryTimeout:                 time.Duration(cfg.Protocol.DLRXQueryTimeout) * time.Second,
+		DLRXCleanupInterval:              time.Duration(cfg.Protocol.DLRXCleanupInterval) * time.Second,
 	}
 
 	// Create BSSCI service bundles
@@ -95,16 +98,21 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	pendingOps := make(map[bssci.SessionOpKey]*bssci.PendingOperation)
 	var pendingOpsMu sync.RWMutex
 
-	bssciSvcBundle := bssciservices.NewBSSCIServices(
+	bssciSvcBundle, err := bssciservices.NewBSSCIServices(
 		infra.Storage,
 		infra.SystemEventStore,
 		infra.QueueStore,
+		infra.ConnectionMgr,
 		infra.LoggerIface,
 		infra.TenantID,
 		infra.OrgResolverSvc,
 		&pendingOps,
 		&pendingOpsMu,
+		[]string{mioty.MIOTYProtocolVersion},
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build BSSCI services: %w", err)
+	}
 
 	bssciInfra := &bssciservices.BSSCIInfrastructure{
 		ConnectionMgr:    infra.ConnectionMgr,
@@ -118,47 +126,19 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		FallbackTenantID: infra.TenantID,
 	}
 
-	// Two-step initialization: server first, then propagation service (BSSCI §5.8-5.8.3)
-	bssciServer, err := bssci.NewServer(
-		bssciConfig,
-		infra.LoggerIface,
-		bssciInfra.ConnectionMgr,
-		bssciInfra.Storage,
-		bssciInfra.SystemEventStore,
-		bssciInfra.BasestationRepo,
-		bssciInfra.EndpointRepo,
-		infra.TenantID,
-		bssciSvcBundle.SessionSvc,
-		bssciSvcBundle.DownlinkSvc,
-		bssciSvcBundle.StatusSvc,
-		bssciSvcBundle.ConnectionSvc,
-		bssciSvcBundle.Broadcaster,
-		bssciSvcBundle.QueueSerializer,
-		bssciSvcBundle.AuditLogger,
-		bssciSvcBundle.TenantResolver,
-		bssciInfra.OrgResolver,
-		bssciInfra.FallbackTenantID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create BSSCI server: %w (StatusService is mandatory for pending operation tracking)", err)
+	// Root-owned shared infrastructure: the message deduplicator (shared by
+	// the ingest pipeline) and the network key encryptor with its
+	// warn-and-continue fallback. The explicit nil-interface guard avoids
+	// wrapping a nil concrete pointer.
+	deduplicator := bssci.NewMessageDeduplicator(bssciConfig.EffectiveDuplicateWindow())
+	cleanups = append(cleanups, deduplicator.Stop)
+
+	var keyProtector bssci.NetworkKeyProtector
+	if ke, keErr := crypto.NewKeyEncryptor(); keErr != nil {
+		log.Warn("Failed to initialize key encryptor", "error", keErr)
+	} else if ke != nil {
+		keyProtector = ke
 	}
-
-	// Create propagation service (depends on Server as AttachPropagateSender)
-	propagationSvc := bssciservices.NewPropagationService(
-		bssciInfra.EndpointRepo,
-		bssciServer,
-		infra.LoggerIface,
-	)
-	bssciServer.SetPropagationService(propagationSvc)
-
-	// Create and inject downlink dispatcher for auto-dispatch on dlOpen
-	downlinkDispatcher := bssciservices.NewDownlinkDispatcher(
-		infra.LoggerIface,
-		infra.Storage,
-		bssciServer.SendDLDataQueue,
-	)
-	bssciServer.SetDownlinkDispatcher(downlinkDispatcher)
-	log.Info("Downlink auto-dispatch enabled (BSSCI §5.10.2)")
 
 	// Initialize roaming service based on configuration
 	var roamingSvc bssci.RoamingService
@@ -173,62 +153,133 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		log.Info("Roaming DISABLED - using noop service")
 		roamingSvc = bssciservices.NewNoopRoamingService()
 	}
-	bssciServer.SetRoamingService(roamingSvc)
 
-	// Wire ingress disposition resolver.
-	// In CE mode with federation enabled, unknown endpoints are relayed; otherwise they are dropped.
-	// Relay is initially disabled; it is enabled at runtime once onboarding completes.
+	// Ingress disposition resolver: in CE mode with federation enabled,
+	// unknown endpoints are relayed; otherwise dropped. Relay starts disabled
+	// and is enabled at runtime once onboarding completes.
 	dispositionResolver := federationservices.NewDispositionResolver(bssciInfra.EndpointRepo, false)
-	bssciServer.SetDispositionResolver(dispositionResolver)
 	log.Info("Ingress disposition resolver wired", "edition", cfg.General.Edition)
 
-	// Wire shared uplink ingest service (dedup → tenant resolution → persist → SCACI → MQTT)
+	// Blueprint resolver and decoder for automatic payload decoding on uplinks
+	resolverSvc := blueprintresolver.NewResolverService(infra.LoggerIface, infra.Storage.Blueprints(), infra.Storage.DeviceModels(), infra.Storage.EndPoints())
+	decoderSvc := blueprintresolver.NewDecoderService(infra.LoggerIface)
+
+	// MQTT event publisher for outbound device events (optional)
+	var mqttAdapter bssci.MQTTEventPublisher
+	if infra.MQTTClient != nil {
+		mqttPub := mqtt.NewPublisher(infra.MQTTClient, cfg.MQTT.TopicPrefix)
+		mqttAdapter = bssciservices.NewMQTTAdapter(mqttPub)
+		log.Info("MQTT event publisher wired to BSSCI server")
+	}
+
+	// Shared uplink ingest service (dedup → tenant resolution → persist → SCACI → MQTT)
 	uplinkIngestSvc := bssciservices.NewUplinkIngestService(
-		bssciServer.GetDeduplicator(),
+		deduplicator,
 		bssciInfra.Storage,
 		bssciInfra.OrgResolver,
 		roamingSvc,
 		bssciInfra.EndpointRepo,
-		nil, // blueprintResolver injected after construction
-		nil, // blueprintDecoder injected after construction
+		resolverSvc,
+		decoderSvc,
 		bssciSvcBundle.Broadcaster,
-		nil, // mqttPublisher injected after construction
+		mqttAdapter,
 		infra.LoggerIface,
 		infra.TenantID,
 		0, // syntheticFederationBsEUI: zero until ECE federation-ingress is configured
 	)
-	bssciServer.SetUplinkIngestService(uplinkIngestSvc)
 
-	// Wire detach signature validator if enabled
+	// Detach signature validator (feature-controlled)
+	var detachValidator bssci.DetachSignatureValidator
 	if cfg.Protocol.DetachSignatureValidationEnabled {
 		log.Info("Detach signature validation ENABLED - initializing direct repository adapter")
-		detachValidator := bssciservices.NewDetachValidatorDirectAdapter(
+		detachValidator = bssciservices.NewDetachValidatorDirectAdapter(
 			infra.Storage.EndPoints(),
 			log,
 		)
-		bssciServer.SetDetachValidator(detachValidator)
 		log.Info("Detach validator wired to BSSCI server (direct repository mode)")
 	} else {
 		log.Info("Detach signature validation DISABLED - unknown endpoint detach will be rejected")
 	}
 
-	// Wire blueprint resolver and decoder for automatic payload decoding on uplinks
-	resolverSvc := blueprintresolver.NewResolverService(infra.LoggerIface, infra.Storage.Blueprints(), infra.Storage.DeviceModels(), infra.Storage.EndPoints())
-	bssciServer.SetBlueprintResolver(resolverSvc)
-	decoderSvc := blueprintresolver.NewDecoderService(infra.LoggerIface)
-	bssciServer.SetBlueprintDecoder(decoderSvc)
-	uplinkIngestSvc.SetBlueprintResolver(resolverSvc)
-	uplinkIngestSvc.SetBlueprintDecoder(decoderSvc)
-	log.Info("Blueprint resolver and decoder wired to BSSCI server and ingest service")
-
-	// Wire MQTT event publisher to BSSCI server for outbound device events
-	if infra.MQTTClient != nil {
-		mqttPub := mqtt.NewPublisher(infra.MQTTClient, cfg.MQTT.TopicPrefix)
-		mqttAdapter := bssciservices.NewMQTTAdapter(mqttPub)
-		bssciServer.SetMQTTPublisher(mqttAdapter)
-		uplinkIngestSvc.SetMQTTPublisher(mqttAdapter)
-		log.Info("MQTT event publisher wired to BSSCI server")
+	// CE federation relay outbox writer (feature-controlled; the relay client
+	// itself is wired after Start alongside onboarding)
+	var relayOutboxWriter bssci.RelayOutboxWriter
+	if cfg.General.Edition == pkgconfig.EditionCommunity && cfg.Protocol.Federation.Enabled {
+		relayOutboxWriter = federationservices.NewOutboxWriter(
+			postgres.NewFederationOutboxRepository(infra.SqlxDB), infra.LoggerIface)
 	}
+
+	bssciServer, err := bssci.NewServer(bssciConfig, infra.LoggerIface, bssci.Dependencies{
+		SessionSvc:         bssciSvcBundle.SessionSvc,
+		VersionNegotiator:  bssciSvcBundle.VersionNegotiator,
+		DownlinkSvc:        bssciSvcBundle.DownlinkSvc,
+		StatusSvc:          bssciSvcBundle.StatusSvc,
+		ConnectionRegistry: bssciSvcBundle.ConnectionSvc,
+		QueueSerializer:    bssciSvcBundle.QueueSerializer,
+		AuditLogger:        bssciSvcBundle.AuditLogger,
+		TenantResolver:     bssciSvcBundle.TenantResolver,
+
+		EventStore:   bssciInfra.SystemEventStore,
+		BaseStations: bssciInfra.BasestationRepo,
+		Endpoints:    bssciInfra.EndpointRepo,
+		AttachPersistence: bssciservices.NewEndpointAttachmentPersistence(
+			bssciInfra.Storage, bssciInfra.BasestationRepo, log),
+		OrgDirectory: bssciInfra.OrgResolver,
+		KeyProtector: keyProtector,
+
+		// Certificate identity: the CE composite resolver handles EUI CNs
+		// against the registered stations and delegates org-<UUID> CNs to the
+		// deployment's org resolver; the directory backs connect-time
+		// fingerprint enforcement
+		CertIdentityResolver: bssciservices.NewCertificateIdentityResolver(
+			bssciInfra.BasestationRepo,
+			bssciInfra.OrgResolver,
+			infra.LoggerIface,
+		),
+		BaseStationDirectory: bssciservices.NewRegisteredBaseStationDirectory(bssciInfra.BasestationRepo),
+
+		UplinkIngest:        uplinkIngestSvc,
+		RoamingSvc:          roamingSvc,
+		DispositionResolver: dispositionResolver,
+		RelayOutbox:         relayOutboxWriter,
+
+		DetachValidator:          detachValidator,
+		MQTTPublisher:            mqttAdapter,
+		BlueprintDecoder:         decoderSvc,
+		BlueprintResolver:        resolverSvc,
+		SCACIEPStatusBroadcaster: bssciSvcBundle.EPStatusBroadcaster,
+
+		ProtocolMessages:  infra.Storage.MIOTYMessages(),
+		DLRXStatus:        infra.Storage.DLRXStatus(),
+		BaseStationStatus: infra.Storage.MIOTYBaseStationStatus(),
+		DownlinkQueue:     infra.Storage.MIOTYDownlinks(),
+
+		TenantID:        infra.TenantID,
+		DefaultTenantID: bssciInfra.FallbackTenantID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create BSSCI server: %w (StatusService is mandatory for pending operation tracking)", err)
+	}
+
+	// Circular dependencies constructed against the live server, injected once
+	// before Start
+	propagationSvc := bssciservices.NewPropagationService(
+		bssciInfra.EndpointRepo,
+		bssciServer,
+		infra.LoggerIface,
+	)
+	downlinkDispatcher := bssciservices.NewDownlinkDispatcher(
+		infra.LoggerIface,
+		infra.Storage,
+		bssciServer.SendDLDataQueue,
+	)
+	if err := bssciServer.ConfigureRuntime(bssci.RuntimeDependencies{
+		Propagation:        propagationSvc,
+		DownlinkDispatcher: downlinkDispatcher,
+	}); err != nil {
+		return nil, fmt.Errorf("failed to configure BSSCI server runtime: %w", err)
+	}
+	log.Info("Downlink auto-dispatch enabled (BSSCI §5.10.2)")
 
 	if err := bssciServer.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start mandatory BSSCI server: %w (cannot comply with MIOTY specification without TLS BSSCI endpoint)", err)
@@ -279,8 +330,6 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		sqlxDB := infra.SqlxDB
 		outboxRepo := postgres.NewFederationOutboxRepository(sqlxDB)
 		installRepo := postgres.NewCEInstallationRepository(sqlxDB)
-		outboxWriter := federationservices.NewOutboxWriter(outboxRepo, infra.LoggerIface)
-		bssciServer.SetRelayOutboxWriter(outboxWriter)
 
 		relayClient := federationservices.NewRelayClient(
 			cfg.Protocol.Federation,
@@ -414,13 +463,11 @@ func buildSCACIServer(
 		bssciInfra.OrgResolver, // orgResolver (BSSCI/SCACI org context parity)
 		bssciServer,            // sessionSnapshotProvider
 		propagationSvc,         // propagationSvc (BSSCI §5.8-5.8.3)
+		scaciSvcBundle.ErrorRecorder,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SCACI server: %w", err)
 	}
-
-	// Wire ErrorRecorder for §3.14 error persistence and event emission
-	scaciServer.SetErrorRecorder(scaciSvcBundle.ErrorRecorder)
 	log.Info("SCACI ErrorRecorder wired for §3.14 compliance")
 
 	if err := scaciServer.Start(); err != nil {
@@ -448,9 +495,8 @@ func buildSCACIServer(
 	}
 	adapter.SetSCACIServer(scaciServer)
 	log.Info("BSSCI→SCACI EPStatus adapter wired")
-
-	// Wire to bssciServer for direct forwarding from attach/detach handlers
-	bssciServer.SetSCACIEPStatusBroadcaster(bssciSvcBundle.EPStatusBroadcaster)
+	// The BSSCI server already holds the bundle's EPStatus broadcaster (a
+	// constructor dependency); completing the adapter above activates it.
 
 	return scaciServer, nil
 }

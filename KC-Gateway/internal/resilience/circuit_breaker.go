@@ -66,6 +66,22 @@ func (b *UpstreamBreaker) Execute(fn func() error) error {
 	return err
 }
 
+// RecordResult feeds a completed call's outcome into the breaker's counters
+// without holding an execution slot for the call's duration. Used for
+// long-lived streaming RPCs, whose terminal error is classified after the
+// stream ends. Recording happens only while the breaker is closed: a stream
+// that was admitted earlier but finishes during half-open must not consume a
+// probe slot or flip the breaker - recovery is decided exclusively by the
+// slot-accounted unary probes, and an open breaker rejects anyway.
+func (b *UpstreamBreaker) RecordResult(err error) {
+	if b.cb.State() != gobreaker.StateClosed {
+		return
+	}
+	_, _ = b.cb.Execute(func() (any, error) {
+		return nil, err
+	})
+}
+
 // State returns the current breaker state.
 func (b *UpstreamBreaker) State() BreakerState {
 	switch b.cb.State() {

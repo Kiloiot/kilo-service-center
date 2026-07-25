@@ -18,7 +18,7 @@ type Integration struct {
 	Description    *string         `db:"description" json:"description,omitempty"`
 	Type           string          `db:"type" json:"type"`                          // http, mqtt, database
 	Config         json.RawMessage `db:"config" json:"config"`                      // Type-specific configuration
-	EventFilter    json.RawMessage `db:"event_filter" json:"eventFilter,omitempty"` // Optional event filtering rules
+	EventFilter    NullJSON        `db:"event_filter" json:"eventFilter,omitempty"` // Optional event filtering rules
 	DeliveryFormat string          `db:"delivery_format" json:"deliveryFormat"`     // json (default)
 	Status         string          `db:"status" json:"status"`                      // active, paused, disabled
 	CreatedAt      time.Time       `db:"created_at" json:"createdAt"`

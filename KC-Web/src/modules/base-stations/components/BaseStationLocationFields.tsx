@@ -115,9 +115,7 @@ const BaseStationLocationFields: React.FC<BaseStationLocationFieldsProps> = ({
           setMapPickerOpen(false);
         }}
         initialLat={values.latitude ? parseFloat(values.latitude) : undefined}
-        initialLng={
-          values.longitude ? parseFloat(values.longitude) : undefined
-        }
+        initialLng={values.longitude ? parseFloat(values.longitude) : undefined}
       />
     </>
   );

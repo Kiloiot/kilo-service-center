@@ -124,7 +124,7 @@ func (r *ManufacturerRepository) List(ctx context.Context, params *models.Manufa
 	}
 
 	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex)
+		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
 		args = append(args, params.Offset)
 	}
 

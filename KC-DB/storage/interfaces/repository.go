@@ -263,6 +263,13 @@ type PendingOperationRepository interface {
 	// Create inserts or updates a pending operation (UPSERT pattern)
 	Create(ctx context.Context, req *PendingOperationRequest) error
 
+	// CreateBatch inserts or updates several pending operations in one local
+	// transaction. Either every operation is durably recorded or none is, so a
+	// multi-frame sequence (e.g. dlRxStatQry paired with dlDataQue) never has a
+	// partially persisted recovery record. Requests are inserted in slice order
+	// so the id column preserves the intended reissue order.
+	CreateBatch(ctx context.Context, reqs []*PendingOperationRequest) error
+
 	// UpdateMetadata updates only the metadata field
 	UpdateMetadata(ctx context.Context, sessionID int64, operationID int64, metadata json.RawMessage) error
 
@@ -298,9 +305,11 @@ type PendingOperation struct {
 	OperationType string          `db:"operation_type"`
 	EndpointEUI   []byte          `db:"endpoint_eui"`
 	OperationData json.RawMessage `db:"operation_data"`
-	Metadata      json.RawMessage `db:"metadata"`
-	CreatedAt     time.Time       `db:"created_at"`
-	UpdatedAt     time.Time       `db:"updated_at"`
+	// Metadata is []byte rather than json.RawMessage: the column is nullable,
+	// and database/sql can scan NULL into *[]byte but not *json.RawMessage.
+	Metadata  []byte    `db:"metadata"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }
 
 // Storage defines the main storage interface combining all repositories

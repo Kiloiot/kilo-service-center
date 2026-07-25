@@ -98,9 +98,9 @@ func TestGetOperationEventsByID_AttachFilter(t *testing.T) {
 	_, err := db.Exec(`
 		INSERT INTO system_events (event_category, event_type, title, occurred_at, data)
 		VALUES
-			($1, 'attach_propagate', 'Attach started', NOW() - interval '1 hour', $2),
+			($1, 'attach_propagate_initiated', 'Attach started', NOW() - interval '1 hour', $2),
 			($1, 'endpoint_attached', 'Endpoint attached', NOW() - interval '30 minutes', $2),
-			($1, 'detach_propagate', 'Detach started', NOW() - interval '15 minutes', $2)
+			($1, 'detach_propagate_initiated', 'Detach started', NOW() - interval '15 minutes', $2)
 	`, testEventCategoryBSSCI, `{"operation_id": "`+testOpID+`"}`)
 	require.NoError(t, err)
 
@@ -147,8 +147,8 @@ func TestGetOperationEventsByID_DetachFilter(t *testing.T) {
 	_, err := db.Exec(`
 		INSERT INTO system_events (event_category, event_type, title, occurred_at, data)
 		VALUES
-			($1, 'attach_propagate', 'Attach started', NOW() - interval '1 hour', $2),
-			($1, 'detach_propagate', 'Detach started', NOW() - interval '30 minutes', $2),
+			($1, 'attach_propagate_initiated', 'Attach started', NOW() - interval '1 hour', $2),
+			($1, 'detach_propagate_initiated', 'Detach started', NOW() - interval '30 minutes', $2),
 			($1, 'endpoint_detached', 'Endpoint detached', NOW() - interval '15 minutes', $2)
 	`, testEventCategoryBSSCI, `{"operation_id": "`+testOpID+`"}`)
 	require.NoError(t, err)
@@ -197,8 +197,8 @@ func TestGetOperationEventsByID_AllOperations(t *testing.T) {
 	_, err := db.Exec(`
 		INSERT INTO system_events (event_category, event_type, title, occurred_at, data)
 		VALUES
-			($1, 'attach_propagate', 'Attach started', NOW() - interval '1 hour', $2),
-			($1, 'detach_propagate', 'Detach started', NOW() - interval '30 minutes', $2),
+			($1, 'attach_propagate_initiated', 'Attach started', NOW() - interval '1 hour', $2),
+			($1, 'detach_propagate_initiated', 'Detach started', NOW() - interval '30 minutes', $2),
 			($1, 'endpoint_attached', 'Endpoint attached', NOW() - interval '20 minutes', $2),
 			($1, 'endpoint_detached', 'Endpoint detached', NOW() - interval '10 minutes', $2)
 	`, testEventCategoryBSSCI, `{"operation_id": "`+testOpID+`"}`)

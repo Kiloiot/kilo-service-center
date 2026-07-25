@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -22,6 +21,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // createTestServer creates a Server with minimal dependencies for handleULDataTransmit tests.
@@ -962,7 +963,7 @@ func TestHandleDeregister_CachesEpEui(t *testing.T) {
 func TestHandleDeregisterComplete_UsesCache(t *testing.T) {
 	// Setup mock services
 	mockEndpoint := new(MockEndpointService)
-	mockEndpoint.On("PropagateDetachToAll", uint64(0x1234567890ABCDEF)).Return(nil)
+	mockEndpoint.On("PropagateDetachToAll", mock.Anything, uint64(0x1234567890ABCDEF)).Return(nil)
 
 	mockDL := new(MockDLService)
 	// GetDownlinkQueue returns empty list (no downlinks to revoke)
@@ -1014,7 +1015,7 @@ func TestRevokeEndpointDownlinks_NilDLSvc_Graceful(t *testing.T) {
 		dlSvc:  nil, // nil to test defensive guard
 	}
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	var eui [8]byte
 	binary.BigEndian.PutUint64(eui[:], 0x1234567890ABCDEF)
 
@@ -1032,7 +1033,7 @@ func TestRevokeEndpointDownlinks_NilDLSvc_Graceful(t *testing.T) {
 func TestHandleDeregisterComplete_DBFallback(t *testing.T) {
 	// Setup mock services
 	mockEndpoint := new(MockEndpointService)
-	mockEndpoint.On("PropagateDetachToAll", uint64(0x1234567890ABCDEF)).Return(nil)
+	mockEndpoint.On("PropagateDetachToAll", mock.Anything, uint64(0x1234567890ABCDEF)).Return(nil)
 
 	mockDL := new(MockDLService)
 	mockDL.On("GetDownlinkQueue", mock.Anything, mock.Anything, mock.Anything).Return([]*storage.DownlinkMessage{}, nil)
@@ -1784,7 +1785,7 @@ func TestHandleDeregisterComplete_CleanupMetadataCapture(t *testing.T) {
 	// Setup mock services with specific return values
 	mockEndpoint := new(MockEndpointService)
 	// PropagateDetachToAll returns 2 errors to verify detachErrorCount
-	mockEndpoint.On("PropagateDetachToAll", uint64(0x70B3D59CD000089B)).Return([]error{
+	mockEndpoint.On("PropagateDetachToAll", mock.Anything, uint64(0x70B3D59CD000089B)).Return([]error{
 		assert.AnError,
 		assert.AnError,
 	})
@@ -1896,7 +1897,7 @@ func TestHandleDeregisterComplete_CleanSuccess(t *testing.T) {
 	// Setup mock services - all succeed with no errors
 	mockEndpoint := new(MockEndpointService)
 	// PropagateDetachToAll returns empty error slice (all succeeded)
-	mockEndpoint.On("PropagateDetachToAll", uint64(0x70B3D59CD000089B)).Return([]error{})
+	mockEndpoint.On("PropagateDetachToAll", mock.Anything, uint64(0x70B3D59CD000089B)).Return([]error{})
 
 	mockDL := new(MockDLService)
 	// GetDownlinkQueue returns 2 downlinks
@@ -2018,9 +2019,10 @@ func TestHandleDLDataQueue_NonCntDependMultiPayload_ReturnsEINVAL(t *testing.T) 
 	mockRecorder.AssertNotCalled(t, "Record")
 }
 
-// TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSuccess verifies queued status updates
-// target que_id (SCACI queue ID) instead of internal DB row id.
-func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSuccess(t *testing.T) {
+// TestProcessDLDataQueueCore_NoDirectStatusWriteOnSuccess verifies the SCACI
+// handler performs no direct queue status write on success: the downlink
+// dispatcher is the single owner of pending → reserved → queued.
+func TestProcessDLDataQueueCore_NoDirectStatusWriteOnSuccess(t *testing.T) {
 	const (
 		tenantID int64  = 1
 		opID     int64  = 101
@@ -2044,8 +2046,6 @@ func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSuccess(t *testing.T) {
 	mockDL.On("QueueDownlink", mock.Anything, mock.MatchedBy(func(req *mioty.DLDataQueue) bool {
 		return req != nil && req.QueId == queID
 	}), tenantID).Return(queID, bsEUI, "")
-	mockDL.On("UpdateDownlinkStatus", mock.Anything, "7000001", bssci.DLQueueStatusQueued, mock.Anything).
-		Return(nil).Once()
 
 	server := &Server{
 		logger:      testLogger(),
@@ -2064,19 +2064,22 @@ func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSuccess(t *testing.T) {
 		UserData:  [][]byte{{0x01, 0x02, 0x03}},
 	}
 
-	result, errToken, posixCode := server.processDLDataQueueCore(context.Background(), session, opID, req)
+	result, errToken, posixCode := server.processDLDataQueueCore(testutil.TestContext(), session, opID, req)
 	require.NotNil(t, result)
 	assert.Equal(t, uint64(queID), result.QueID)
 	assert.Equal(t, "", errToken)
 	assert.Equal(t, 0, posixCode)
 
+	mockDL.AssertNotCalled(t, "UpdateDownlinkStatus", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	mockDL.AssertExpectations(t)
 	mockEndpoint.AssertExpectations(t)
 }
 
-// TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSchedulerFailure verifies failed status updates
-// target que_id (SCACI queue ID) when scheduler coordination fails.
-func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSchedulerFailure(t *testing.T) {
+// TestProcessDLDataQueueCore_NoDirectStatusWriteOnSchedulerFailure verifies the
+// SCACI handler performs no direct queue status write when scheduler
+// coordination fails: the row stays pending so the dlOpen auto-dispatch path
+// can still deliver it.
+func TestProcessDLDataQueueCore_NoDirectStatusWriteOnSchedulerFailure(t *testing.T) {
 	const (
 		tenantID int64  = 1
 		opID     int64  = 102
@@ -2099,8 +2102,6 @@ func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSchedulerFailure(t *tes
 	mockDL.On("QueueDownlink", mock.Anything, mock.MatchedBy(func(req *mioty.DLDataQueue) bool {
 		return req != nil && req.QueId == queID
 	}), tenantID).Return(uint64(0), uint64(0), errSchedulerUnavailable)
-	mockDL.On("UpdateDownlinkStatus", mock.Anything, "7000002", bssci.DLQueueStatusFailed, mock.Anything).
-		Return(nil).Once()
 
 	server := &Server{
 		logger:      testLogger(),
@@ -2119,11 +2120,12 @@ func TestProcessDLDataQueueCore_StatusUpdateUsesQueueIDOnSchedulerFailure(t *tes
 		UserData:  [][]byte{{0xAA}},
 	}
 
-	result, errToken, posixCode := server.processDLDataQueueCore(context.Background(), session, opID, req)
+	result, errToken, posixCode := server.processDLDataQueueCore(testutil.TestContext(), session, opID, req)
 	assert.Nil(t, result)
 	assert.Equal(t, errSchedulerUnavailable, errToken)
 	assert.Equal(t, POSIX_ENOTSUP, posixCode)
 
+	mockDL.AssertNotCalled(t, "UpdateDownlinkStatus", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	mockDL.AssertExpectations(t)
 	mockEndpoint.AssertExpectations(t)
 }

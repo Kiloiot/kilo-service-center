@@ -8,7 +8,6 @@
 package bssci
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -17,6 +16,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"        // Numeric4, Subpackets types
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // =============================================================================
@@ -42,7 +43,7 @@ func TestMockSCACIEPStatusBroadcaster_RecordsCalls(t *testing.T) {
 		EpEui:    0x1234567890ABCDEF,
 		EpStatus: pkgmioty.EPStatusAttached,
 	}
-	err := mock.BroadcastEPStatus(context.Background(), 42, data1)
+	err := mock.BroadcastEPStatus(testutil.TestContext(), 42, data1)
 	require.NoError(t, err)
 
 	// Verify first call recorded
@@ -58,7 +59,7 @@ func TestMockSCACIEPStatusBroadcaster_RecordsCalls(t *testing.T) {
 		EpEui:    0xAABBCCDDEEFF0011,
 		EpStatus: pkgmioty.EPStatusDetached,
 	}
-	err = mock.BroadcastEPStatus(context.Background(), 99, data2)
+	err = mock.BroadcastEPStatus(testutil.TestContext(), 99, data2)
 	require.NoError(t, err)
 
 	// Verify second call
@@ -92,7 +93,7 @@ func TestMockSCACIEPStatusBroadcaster_ReturnsConfiguredError(t *testing.T) {
 		EpEui:    0x1234567890ABCDEF,
 		EpStatus: pkgmioty.EPStatusAttached,
 	}
-	err := mock.BroadcastEPStatus(context.Background(), 1, data)
+	err := mock.BroadcastEPStatus(testutil.TestContext(), 1, data)
 
 	// Error should be returned
 	require.Error(t, err)
@@ -107,8 +108,8 @@ func TestMockSCACIEPStatusBroadcaster_Reset(t *testing.T) {
 
 	// Add some calls
 	data := &EPStatusData{EpEui: 0x1234, EpStatus: pkgmioty.EPStatusAttached}
-	_ = mock.BroadcastEPStatus(context.Background(), 1, data)
-	_ = mock.BroadcastEPStatus(context.Background(), 2, data)
+	_ = mock.BroadcastEPStatus(testutil.TestContext(), 1, data)
+	_ = mock.BroadcastEPStatus(testutil.TestContext(), 2, data)
 
 	assert.Equal(t, 2, mock.CallCount())
 
@@ -265,11 +266,13 @@ func TestHandleAttachComplete_BroadcastsEPStatus(t *testing.T) {
 
 	// Setup session
 	session := &Session{
-		ID:               "test-attach-epstatus",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-epstatus",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending attach operation via StatusService with metadata
@@ -291,7 +294,7 @@ func TestHandleAttachComplete_BroadcastsEPStatus(t *testing.T) {
 			"endpointID": int64(1001),
 		},
 	}
-	err := statusSvc.RecordPendingOperation(context.Background(), session, opID, pendingOp, tenantID)
+	err := statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, tenantID)
 	require.NoError(t, err, "failed to seed pending operation")
 
 	// Prepare WaitGroup before calling handler (goroutine will decrement)
@@ -344,11 +347,13 @@ func TestHandleDetachComplete_BroadcastsEPStatus(t *testing.T) {
 
 	// Setup session
 	session := &Session{
-		ID:               "test-detach-epstatus",
-		BaseStationEUI:   0x1234567890ABCDEF,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      2,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-epstatus",
+			BaseStationEUI:   0x1234567890ABCDEF,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      2,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending detach operation via StatusService with metadata
@@ -373,7 +378,7 @@ func TestHandleDetachComplete_BroadcastsEPStatus(t *testing.T) {
 			"endpointID": float64(2001),          // Optional but useful
 		},
 	}
-	err := statusSvc.RecordPendingOperation(context.Background(), session, opID, pendingOp, tenantID)
+	err := statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, tenantID)
 	require.NoError(t, err, "failed to seed pending operation")
 
 	// Prepare WaitGroup before calling handler (goroutine will decrement)
@@ -420,11 +425,13 @@ func TestHandleAttachComplete_NilBroadcaster_NoPanic(t *testing.T) {
 	// NOTE: No SetSCACIEPStatusBroadcaster call - broadcaster is nil
 
 	session := &Session{
-		ID:               "test-attach-nil-broadcaster",
-		BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      3,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-nil-broadcaster",
+			BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      3,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending attach operation (use int64 for epEui to match handleAttachComplete)
@@ -437,7 +444,7 @@ func TestHandleAttachComplete_NilBroadcaster_NoPanic(t *testing.T) {
 			"endpointID": int64(3001),
 		},
 	}
-	err := statusSvc.RecordPendingOperation(context.Background(), session, opID, pendingOp, tenantID)
+	err := statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, tenantID)
 	require.NoError(t, err)
 
 	// Action: Call handleAttachComplete - should not panic
@@ -471,11 +478,13 @@ func TestHandleAttachComplete_BroadcastsEPStatus_FullTelemetry(t *testing.T) {
 
 	// Setup session
 	session := &Session{
-		ID:               "test-attach-full-telemetry",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      5,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-full-telemetry",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      5,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending attach operation with ALL OTA fields per SCACI §3.13.1
@@ -504,7 +513,7 @@ func TestHandleAttachComplete_BroadcastsEPStatus_FullTelemetry(t *testing.T) {
 			"endpointID": int64(5001),
 		},
 	}
-	err := statusSvc.RecordPendingOperation(context.Background(), session, opID, pendingOp, tenantID)
+	err := statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, tenantID)
 	require.NoError(t, err, "failed to seed pending operation")
 
 	// Prepare WaitGroup before calling handler
@@ -575,11 +584,13 @@ func TestHandleDetachComplete_BroadcastsEPStatus_SignEqSnrFallback(t *testing.T)
 
 	// Setup session
 	session := &Session{
-		ID:               "test-detach-sign-eqsnr",
-		BaseStationEUI:   0x1234567890ABCDEF,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      6,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-sign-eqsnr",
+			BaseStationEUI:   0x1234567890ABCDEF,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      6,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending detach operation with sign and eqSnr
@@ -604,7 +615,7 @@ func TestHandleDetachComplete_BroadcastsEPStatus_SignEqSnrFallback(t *testing.T)
 			"endpointID": float64(6001),
 		},
 	}
-	err := statusSvc.RecordPendingOperation(context.Background(), session, opID, pendingOp, tenantID)
+	err := statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, tenantID)
 	require.NoError(t, err, "failed to seed pending operation")
 
 	// Prepare WaitGroup before calling handler
@@ -662,11 +673,13 @@ func TestHandleDetachComplete_NilBroadcaster_NoPanic(t *testing.T) {
 	// NOTE: No SetSCACIEPStatusBroadcaster call - broadcaster is nil
 
 	session := &Session{
-		ID:               "test-detach-nil-broadcaster",
-		BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      4,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-nil-broadcaster",
+			BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      4,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	// Seed pending detach operation (use uint64 for epEui to match handleDetachComplete)
@@ -679,7 +692,7 @@ func TestHandleDetachComplete_NilBroadcaster_NoPanic(t *testing.T) {
 			"endpointID": int64(4001),
 		},
 	}
-	err := statusSvc.RecordPendingOperation(context.Background(), session, opID, pendingOp, tenantID)
+	err := statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, tenantID)
 	require.NoError(t, err)
 
 	// Action: Call handleDetachComplete - should not panic

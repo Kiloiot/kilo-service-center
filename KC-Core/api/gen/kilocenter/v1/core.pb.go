@@ -3353,8 +3353,12 @@ func (x *SendULTransmitResponse) GetMessage() string {
 
 // Base Station Status Request (BSSCI 3.5)
 type BaseStationStatusRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BsEui         uint64                 `protobuf:"varint,1,opt,name=bs_eui,json=bsEui,proto3" json:"bs_eui,omitempty"` // Base Station EUI
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Deprecated: uint64 loses precision above 2^53 in browser JavaScript clients; use bs_eui_hex.
+	//
+	// Deprecated: Marked as deprecated in core.proto.
+	BsEui         uint64 `protobuf:"varint,1,opt,name=bs_eui,json=bsEui,proto3" json:"bs_eui,omitempty"`
+	BsEuiHex      string `protobuf:"bytes,2,opt,name=bs_eui_hex,json=bsEuiHex,proto3" json:"bs_eui_hex,omitempty"` // Base Station EUI as hex string (browser-safe full-range representation; accepts dashed or non-dashed)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3389,11 +3393,19 @@ func (*BaseStationStatusRequest) Descriptor() ([]byte, []int) {
 	return file_core_proto_rawDescGZIP(), []int{40}
 }
 
+// Deprecated: Marked as deprecated in core.proto.
 func (x *BaseStationStatusRequest) GetBsEui() uint64 {
 	if x != nil {
 		return x.BsEui
 	}
 	return 0
+}
+
+func (x *BaseStationStatusRequest) GetBsEuiHex() string {
+	if x != nil {
+		return x.BsEuiHex
+	}
+	return ""
 }
 
 type BaseStationStatusResponse struct {
@@ -3458,8 +3470,12 @@ func (x *BaseStationStatusResponse) GetOpId() int64 {
 
 // Ping Request (BSSCI §5.4)
 type InitiatePingRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	BsEui         uint64                 `protobuf:"varint,1,opt,name=bs_eui,json=bsEui,proto3" json:"bs_eui,omitempty"` // Base Station EUI
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Deprecated: uint64 loses precision above 2^53 in browser JavaScript clients; use bs_eui_hex.
+	//
+	// Deprecated: Marked as deprecated in core.proto.
+	BsEui         uint64 `protobuf:"varint,1,opt,name=bs_eui,json=bsEui,proto3" json:"bs_eui,omitempty"`
+	BsEuiHex      string `protobuf:"bytes,2,opt,name=bs_eui_hex,json=bsEuiHex,proto3" json:"bs_eui_hex,omitempty"` // Base Station EUI as hex string (browser-safe full-range representation; accepts dashed or non-dashed)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3494,11 +3510,19 @@ func (*InitiatePingRequest) Descriptor() ([]byte, []int) {
 	return file_core_proto_rawDescGZIP(), []int{42}
 }
 
+// Deprecated: Marked as deprecated in core.proto.
 func (x *InitiatePingRequest) GetBsEui() uint64 {
 	if x != nil {
 		return x.BsEui
 	}
 	return 0
+}
+
+func (x *InitiatePingRequest) GetBsEuiHex() string {
+	if x != nil {
+		return x.BsEuiHex
+	}
+	return ""
 }
 
 type InitiatePingResponse struct {
@@ -14446,15 +14470,19 @@ const file_core_proto_rawDesc = "" +
 	"\x16SendULTransmitResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"1\n" +
-	"\x18BaseStationStatusRequest\x12\x15\n" +
-	"\x06bs_eui\x18\x01 \x01(\x04R\x05bsEui\"h\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"S\n" +
+	"\x18BaseStationStatusRequest\x12\x19\n" +
+	"\x06bs_eui\x18\x01 \x01(\x04B\x02\x18\x01R\x05bsEui\x12\x1c\n" +
+	"\n" +
+	"bs_eui_hex\x18\x02 \x01(\tR\bbsEuiHex\"h\n" +
 	"\x19BaseStationStatusResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x17\n" +
-	"\x05op_id\x18\x03 \x01(\x03B\x020\x01R\x04opId\",\n" +
-	"\x13InitiatePingRequest\x12\x15\n" +
-	"\x06bs_eui\x18\x01 \x01(\x04R\x05bsEui\"c\n" +
+	"\x05op_id\x18\x03 \x01(\x03B\x020\x01R\x04opId\"N\n" +
+	"\x13InitiatePingRequest\x12\x19\n" +
+	"\x06bs_eui\x18\x01 \x01(\x04B\x02\x18\x01R\x05bsEui\x12\x1c\n" +
+	"\n" +
+	"bs_eui_hex\x18\x02 \x01(\tR\bbsEuiHex\"c\n" +
 	"\x14InitiatePingResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x17\n" +

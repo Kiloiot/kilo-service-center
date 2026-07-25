@@ -86,7 +86,7 @@ const (
 			       last_ping_at
 			FROM basestation_sessions
 			WHERE basestation_id = bs.id
-			  AND status IN ('active', 'resumed', 'terminated', 'disconnected')
+			  AND status IN ('active', 'disconnected', 'terminated')
 			ORDER BY started_at DESC
 			LIMIT 1
 		) sess ON true

@@ -368,14 +368,44 @@ const (
 	// DefaultProtocolSCModel is the Service Center model identifier.
 	DefaultProtocolSCModel = "KiloCenter"
 
+	// DefaultProtocolSCEUI is the canonical Service Center EUI ("KC" ASCII prefix + unique ID)
+	// as a plain 16-hex string.
+	DefaultProtocolSCEUI = "4B43000000000001"
+
+	// ConfigKeyProtocolSCEUI is the config file key for the Service Center EUI.
+	ConfigKeyProtocolSCEUI = "protocol.sc_eui"
+
+	// EnvProtocolSCEUI is the environment variable that overrides protocol.sc_eui.
+	EnvProtocolSCEUI = "KILOCENTER_PROTOCOL_SC_EUI"
+
+	// EnvLegacyServiceCenterEUI is the deprecated Service Center EUI environment variable.
+	// It accepts base-0 syntax (decimal or 0x-prefixed) and is consulted only when neither
+	// EnvProtocolSCEUI nor an explicit protocol.sc_eui file value is present.
+	EnvLegacyServiceCenterEUI = "SERVICE_CENTER_EUI"
+
 	// DefaultProtocolMaxRetransmissions is the max retry count for operations.
 	DefaultProtocolMaxRetransmissions = 3
 
 	// DefaultProtocolAckTimeout is the acknowledgement timeout in milliseconds.
 	DefaultProtocolAckTimeout = 5000
 
+	// DefaultProtocolConnectionEstablishmentTimeout bounds a fresh connection before its con arrives, in milliseconds.
+	DefaultProtocolConnectionEstablishmentTimeout = 30000
+
+	// DefaultProtocolStatusRequestInterval is how often the SC polls a base station for status, in seconds.
+	DefaultProtocolStatusRequestInterval = 30
+	// DefaultProtocolStatusRequestInitialDelay delays the first status poll after connect, in seconds.
+	DefaultProtocolStatusRequestInitialDelay = 5
+	// DefaultProtocolDLRXQueryTimeout expires an unanswered dlRxStatQry after this many seconds.
+	DefaultProtocolDLRXQueryTimeout = 300
+	// DefaultProtocolDLRXCleanupInterval is the dlRxStatQry expiry sweep cadence, in seconds.
+	DefaultProtocolDLRXCleanupInterval = 60
+
 	// DefaultProtocolDuplicateWindow is the duplicate detection window in seconds.
 	DefaultProtocolDuplicateWindow = 300
+
+	// DefaultProtocolCertificatePollInterval is the base station certificate change poll interval.
+	DefaultProtocolCertificatePollInterval = 10 * time.Second
 
 	// DefaultProtocolPropBatchSize is the propagation batch size.
 	DefaultProtocolPropBatchSize = 500

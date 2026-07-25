@@ -2,10 +2,7 @@ import React, { useEffect, useState } from "react";
 
 import type { GenerateCertificateResponse } from "@api-types/api";
 import type { BaseStationUI } from "@api-types/api";
-import {
-  useUpdateBaseStation,
-  useUpdateBaseStationEui,
-} from "@hooks";
+import { useUpdateBaseStation, useUpdateBaseStationEui } from "@hooks";
 import {
   Alert,
   Box,
@@ -23,10 +20,7 @@ import {
 
 import { apiService } from "@services/api";
 import type { GrpcApiError } from "@services/grpc/client";
-import {
-  formatEUIWithDashes,
-  isValidEUI,
-} from "@utils/formatters";
+import { formatEUIWithDashes, isValidEUI } from "@utils/formatters";
 import { getMonoBody1 } from "@utils/typography";
 import {
   BS_DETAIL_LAYOUT,
@@ -316,8 +310,14 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
 
     if (!validateLocation()) return;
 
-    const locationData = buildLocationUpdateData(editFormData, baseStationDetails);
-    const locationChanged = hasLocationChanged(editFormData, baseStationDetails);
+    const locationData = buildLocationUpdateData(
+      editFormData,
+      baseStationDetails,
+    );
+    const locationChanged = hasLocationChanged(
+      editFormData,
+      baseStationDetails,
+    );
 
     if (euiChanged) {
       updateEuiMutation.mutate(

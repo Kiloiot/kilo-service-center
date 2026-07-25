@@ -60,10 +60,7 @@ function mapLocationFields(bs: BaseStationAPI): LocationFields {
 }
 
 /** Resolves the detail-only MIOTY health metrics (BSSCI v1.0.0 §3.5.2). */
-function mapHealthStatus(
-  bs: BaseStationAPI,
-  isDetail: boolean,
-): HealthFields {
+function mapHealthStatus(bs: BaseStationAPI, isDetail: boolean): HealthFields {
   if (!isDetail) {
     return {
       systemTime: undefined,

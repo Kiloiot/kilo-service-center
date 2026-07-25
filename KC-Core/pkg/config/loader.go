@@ -4,8 +4,12 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/spf13/viper"
 )
 
@@ -68,11 +72,62 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
+	if err := resolveServiceCenterEUI(v, &cfg); err != nil {
+		return nil, err
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
 	return &cfg, nil
+}
+
+// resolveServiceCenterEUI resolves the Service Center EUI at load time with precedence:
+// KILOCENTER_PROTOCOL_SC_EUI env var > explicit protocol.sc_eui file value >
+// legacy SERVICE_CENTER_EUI env var (base-0 decimal/0x syntax) > centralized default.
+// A malformed value at the highest consulted level fails the load; lower-priority sources
+// are never used as a silent fallback for a malformed higher-priority value.
+func resolveServiceCenterEUI(v *viper.Viper, cfg *Config) error {
+	setCanonical := func(value uint64, legacy bool) {
+		cfg.Protocol.SCEUI = mioty.FormatEUI64(value)
+		cfg.Protocol.SCEUIValue = value
+		cfg.Protocol.SCEUILegacyEnvUsed = legacy
+	}
+
+	if raw, ok := os.LookupEnv(EnvProtocolSCEUI); ok && raw != "" {
+		value, err := validation.ParseEUI(raw)
+		if err != nil {
+			return fmt.Errorf(ErrSCEUIInvalidFmt, EnvProtocolSCEUI, err)
+		}
+		setCanonical(value, false)
+		return nil
+	}
+
+	if v.InConfig(ConfigKeyProtocolSCEUI) && cfg.Protocol.SCEUI != "" {
+		value, err := validation.ParseEUI(cfg.Protocol.SCEUI)
+		if err != nil {
+			return fmt.Errorf(ErrSCEUIInvalidFmt, ConfigKeyProtocolSCEUI, err)
+		}
+		setCanonical(value, false)
+		return nil
+	}
+
+	if raw, ok := os.LookupEnv(EnvLegacyServiceCenterEUI); ok && raw != "" {
+		value, err := strconv.ParseUint(raw, 0, 64)
+		if err != nil {
+			return fmt.Errorf(ErrSCEUIInvalidFmt, EnvLegacyServiceCenterEUI, err)
+		}
+		setCanonical(value, true)
+		return nil
+	}
+
+	value, err := validation.ParseEUI(DefaultProtocolSCEUI)
+	if err != nil {
+		return fmt.Errorf(ErrSCEUIInvalidFmt, ConfigKeyProtocolSCEUI, err)
+	}
+	setCanonical(value, false)
+	return nil
 }
 
 // setDefaults sets ALL default configuration values.
@@ -111,7 +166,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("protocol.sc_model", DefaultProtocolSCModel)
 	v.SetDefault("protocol.max_retransmissions", DefaultProtocolMaxRetransmissions)
 	v.SetDefault("protocol.ack_timeout", DefaultProtocolAckTimeout)
+	v.SetDefault("protocol.connection_establishment_timeout", DefaultProtocolConnectionEstablishmentTimeout)
+	v.SetDefault("protocol.status_request_interval", DefaultProtocolStatusRequestInterval)
+	v.SetDefault("protocol.status_request_initial_delay", DefaultProtocolStatusRequestInitialDelay)
+	v.SetDefault("protocol.dlrx_query_timeout", DefaultProtocolDLRXQueryTimeout)
+	v.SetDefault("protocol.dlrx_cleanup_interval", DefaultProtocolDLRXCleanupInterval)
 	v.SetDefault("protocol.duplicate_window", DefaultProtocolDuplicateWindow)
+	v.SetDefault("protocol.bsci_certificate_poll_interval", DefaultProtocolCertificatePollInterval)
 
 	// Federation relay defaults
 	v.SetDefault("protocol.federation.enabled", DefaultFederationEnabled)

@@ -1708,6 +1708,9 @@ export class CreateApiKeyRequest extends jspb.Message {
   getExpiresAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
   setExpiresAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
 
+  getOrganizationId(): string;
+  setOrganizationId(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): CreateApiKeyRequest.AsObject;
   static toObject(includeInstance: boolean, msg: CreateApiKeyRequest): CreateApiKeyRequest.AsObject;
@@ -1723,6 +1726,7 @@ export namespace CreateApiKeyRequest {
     name: string,
     keyType: string,
     expiresAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    organizationId: string,
   }
 }
 

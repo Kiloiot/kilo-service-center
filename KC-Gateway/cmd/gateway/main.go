@@ -45,6 +45,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// gatewayServiceName identifies KC-Gateway as the source of health and system events.
+const gatewayServiceName = "kc-gateway"
+
 // unaryMethods enumerates all unary RPCs from service descriptors.
 // Used to apply per-RPC timeout only to unary calls (not streams).
 var unaryMethods = func() map[string]bool {
@@ -81,25 +84,53 @@ func breakerStreamInterceptor(
 			breaker = identityBreaker
 		}
 
-		err := breaker.Execute(func() error {
-			// Apply per-RPC timeout only for unary methods identified
-			// by service descriptor. Streaming RPCs (including all proxied
-			// calls via UnknownServiceHandler) are not timed out.
-			if rpcTimeout > 0 && unaryMethods[info.FullMethod] {
-				ctx, cancel := context.WithTimeout(ss.Context(), rpcTimeout)
-				defer cancel()
-				ss = &contextServerStream{ServerStream: ss, ctx: ctx}
-			}
-			return handler(srv, ss)
-		})
+		// Unary methods run inside the breaker with the per-RPC timeout:
+		// they are short-lived, so occupying an execution slot is correct
+		// and client cancellations already surface as codes.Canceled.
+		if unaryMethods[info.FullMethod] {
+			err := breaker.Execute(func() error {
+				if rpcTimeout > 0 {
+					ctx, cancel := context.WithTimeout(ss.Context(), rpcTimeout)
+					defer cancel()
+					ss = &contextServerStream{ServerStream: ss, ctx: ctx}
+				}
+				return handler(srv, ss)
+			})
 
-		// Map gobreaker rejection errors to gRPC Unavailable for client failover
-		if errors.Is(err, gobreaker.ErrOpenState) {
-			return status.Error(codes.Unavailable, "upstream circuit breaker is open")
+			// Map gobreaker rejection errors to gRPC Unavailable for client failover
+			if errors.Is(err, gobreaker.ErrOpenState) {
+				return status.Error(codes.Unavailable, "upstream circuit breaker is open")
+			}
+			if errors.Is(err, gobreaker.ErrTooManyRequests) {
+				return status.Error(codes.Unavailable, "upstream circuit breaker is recovering")
+			}
+			return err
 		}
-		if errors.Is(err, gobreaker.ErrTooManyRequests) {
+
+		// Streaming RPCs (including all proxied calls via
+		// UnknownServiceHandler) run outside the breaker's execution slots: a
+		// long-lived stream must not hold a half-open probe slot for its
+		// whole lifetime. Streams are therefore admitted only while the
+		// breaker is closed - a half-open breaker probes recovery through the
+		// slot-accounted unary path, and unbounded streams admitted beside
+		// those probes would bypass MaxRequests entirely. The stream's
+		// terminal error still feeds the counters - except when the client
+		// tore the stream down (context canceled), which the transparent
+		// proxy surfaces as codes.Internal "failed proxying s2c" and must not
+		// count as an upstream failure.
+		switch breaker.State() {
+		case resilience.BreakerOpen:
+			return status.Error(codes.Unavailable, "upstream circuit breaker is open")
+		case resilience.BreakerHalfOpen:
 			return status.Error(codes.Unavailable, "upstream circuit breaker is recovering")
 		}
+
+		err := handler(srv, ss)
+		if err != nil && ss.Context().Err() != nil {
+			// Client-initiated teardown: benign, not an upstream failure.
+			return err
+		}
+		breaker.RecordResult(err)
 		return err
 	}
 }
@@ -134,7 +165,7 @@ func main() {
 		Enabled:    cfg.Monitoring.TracingEnabled,
 		Endpoint:   cfg.Monitoring.TracingEndpoint,
 		SampleRate: cfg.Monitoring.TracingSampleRate,
-	}, "kc-gateway")
+	}, gatewayServiceName)
 	if err != nil {
 		l.Error("Failed to init tracing", "error", err)
 	} else {
@@ -145,7 +176,7 @@ func main() {
 		Enabled: cfg.Monitoring.MetricsEnabled,
 		Port:    cfg.Monitoring.MetricsPort,
 		Path:    cfg.Monitoring.MetricsPath,
-	}, "kc-gateway")
+	}, gatewayServiceName)
 	if err != nil {
 		l.Error("Failed to init metrics", "error", err)
 	} else {
@@ -479,7 +510,7 @@ func main() {
 	hostname, _ := os.Hostname()
 	{
 		details, _ := json.Marshal(map[string]interface{}{
-			"service": "kc-gateway",
+			"service": gatewayServiceName,
 			"host":    hostname,
 			"ports":   map[string]int{"grpc-web": cfg.GRPC.Port, "health": cfg.Gateway.HealthPort},
 		})
@@ -491,7 +522,7 @@ func main() {
 			Title:       fmt.Sprintf(models.EventTitleServiceStartedFmt, "KC-Gateway", hostname),
 			Description: fmt.Sprintf(models.EventDescriptionServiceStartedFmt, "KC-Gateway", "1.0.0", fmt.Sprintf("gRPC-web :%d, Health :%d", cfg.GRPC.Port, cfg.Gateway.HealthPort)),
 			SourceType:  models.SourceTypeSystem,
-			SourceName:  "kc-gateway",
+			SourceName:  gatewayServiceName,
 			Details:     details,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
@@ -513,7 +544,7 @@ func main() {
 			Title:       fmt.Sprintf(models.EventTitleServiceStoppedFmt, "KC-Gateway", hostname),
 			Description: fmt.Sprintf(models.EventDescriptionServiceStoppedFmt, "KC-Gateway", "1.0.0"),
 			SourceType:  models.SourceTypeSystem,
-			SourceName:  "kc-gateway",
+			SourceName:  gatewayServiceName,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		})

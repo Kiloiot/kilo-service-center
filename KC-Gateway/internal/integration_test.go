@@ -28,6 +28,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // Shared test fixtures
@@ -253,7 +255,7 @@ func TestGatewayTwoHop_AuthenticatedRequest(t *testing.T) {
 		"x-user-id", testUserUUID.String(),
 		"x-kc-internal-tenant-id", "999", // spoofed — must be stripped
 	)
-	ctx := metadata.NewOutgoingContext(context.Background(), md)
+	ctx := metadata.NewOutgoingContext(testutil.TestContext(), md)
 
 	_, err = client.ListEndPoints(ctx, &kilocenterv1.ListEndPointsRequest{})
 	require.NoError(t, err, "ListEndPoints should succeed through gateway")
@@ -295,7 +297,7 @@ func TestGatewayTwoHop_UnauthenticatedRequest(t *testing.T) {
 	client := kilocenterv1.NewCoreServiceClient(conn)
 
 	// Send request with NO authorization header
-	_, err = client.ListEndPoints(context.Background(), &kilocenterv1.ListEndPointsRequest{})
+	_, err = client.ListEndPoints(testutil.TestContext(), &kilocenterv1.ListEndPointsRequest{})
 	require.Error(t, err, "unauthenticated request should fail")
 
 	st, ok := status.FromError(err)
@@ -326,7 +328,7 @@ func TestGatewayTwoHop_TraceContextPropagation(t *testing.T) {
 		"x-user-id", testUserUUID.String(),
 		"traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
 	)
-	ctx := metadata.NewOutgoingContext(context.Background(), md)
+	ctx := metadata.NewOutgoingContext(testutil.TestContext(), md)
 
 	_, err = client.ListEndPoints(ctx, &kilocenterv1.ListEndPointsRequest{})
 	require.NoError(t, err, "ListEndPoints should succeed with traceparent")
@@ -463,7 +465,7 @@ func TestCommunityMode_AuthenticatedTenantPreserved(t *testing.T) {
 		"x-organization-id", testOrgUUID.String(),
 		"x-user-id", testUserUUID.String(),
 	)
-	ctx := metadata.NewOutgoingContext(context.Background(), md)
+	ctx := metadata.NewOutgoingContext(testutil.TestContext(), md)
 
 	_, err = client.ListEndPoints(ctx, &kilocenterv1.ListEndPointsRequest{})
 	require.NoError(t, err, "ListEndPoints should succeed")
@@ -498,7 +500,7 @@ func TestCommunityMode_FallbackOnlyWhenTenantMissing(t *testing.T) {
 	// GetReleaseInfo is a public method — skips auth entirely.
 	// Without auth, no tenant is set in context, so director should inject default.
 	client := kilocenterv1.NewCoreServiceClient(conn)
-	_, err = client.GetReleaseInfo(context.Background(), &emptypb.Empty{})
+	_, err = client.GetReleaseInfo(testutil.TestContext(), &emptypb.Empty{})
 	require.NoError(t, err, "GetReleaseInfo (public) should succeed without auth")
 
 	assert.Equal(t, int64(1), setup.captured.callCount.Load(), "upstream called once")
@@ -533,7 +535,7 @@ func TestStrictMode_MissingOrgHeaderRejected(t *testing.T) {
 		"authorization", "Bearer "+rawAPIKey,
 		"x-user-id", testUserUUID.String(),
 	)
-	ctx := metadata.NewOutgoingContext(context.Background(), md)
+	ctx := metadata.NewOutgoingContext(testutil.TestContext(), md)
 
 	_, err = client.ListEndPoints(ctx, &kilocenterv1.ListEndPointsRequest{})
 	require.Error(t, err, "missing org header should fail in strict mode")
@@ -562,7 +564,7 @@ func TestPublicMethodWorksRegardless(t *testing.T) {
 		defer func() { _ = conn.Close() }()
 
 		client := kilocenterv1.NewCoreServiceClient(conn)
-		_, err = client.GetReleaseInfo(context.Background(), &emptypb.Empty{})
+		_, err = client.GetReleaseInfo(testutil.TestContext(), &emptypb.Empty{})
 		require.NoError(t, err, "GetReleaseInfo (public) should succeed without auth in strict mode")
 
 		assert.Equal(t, int64(1), setup.captured.callCount.Load(), "upstream should be reached")
@@ -580,7 +582,7 @@ func TestPublicMethodWorksRegardless(t *testing.T) {
 		defer func() { _ = conn.Close() }()
 
 		client := kilocenterv1.NewCoreServiceClient(conn)
-		_, err = client.GetReleaseInfo(context.Background(), &emptypb.Empty{})
+		_, err = client.GetReleaseInfo(testutil.TestContext(), &emptypb.Empty{})
 		require.NoError(t, err, "GetReleaseInfo (public) should succeed without auth in community mode")
 
 		assert.Equal(t, int64(1), setup.captured.callCount.Load(), "upstream should be reached")

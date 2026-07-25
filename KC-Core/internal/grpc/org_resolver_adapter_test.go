@@ -190,7 +190,7 @@ func (l *capturingLogger) FatalContext(ctx context.Context, msg string, fields .
 }
 
 func (l *capturingLogger) capture(level string, msg string, fields ...interface{}) {
-	l.captureWithContext(context.Background(), level, msg, fields...)
+	l.captureWithContext(testutil.TestContext(), level, msg, fields...)
 }
 
 func (l *capturingLogger) WithField(_ string, _ interface{}) logger.Logger {

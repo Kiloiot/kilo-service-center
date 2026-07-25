@@ -414,7 +414,7 @@ func TestTenantIsolation_GetMessage_TenantPropagation(t *testing.T) {
 
 func TestTenantIsolation_MissingTenant_FailsClosed(t *testing.T) {
 	ts := newIsolationTestService()
-	ctx := context.Background() // No tenant
+	ctx := testutil.TestContext() // No tenant
 
 	tests := []struct {
 		name string
