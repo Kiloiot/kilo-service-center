@@ -339,19 +339,22 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 		}
 		userDataField = userDataArray
 	} else {
-		// Non-counter-dependent: userData is Numeric[m][n] with m=1 per BSSCI §5.12.1
-		// ("single user data entry if cntDepend is false" — still wrapped in outer array
-		// to keep the declared Numeric[m][n] shape). Empty payloads form an ACK-only
-		// downlink with no entries.
-		if len(payloads) == 0 {
-			userDataField = []interface{}{}
-		} else {
-			singlePayload := make([]interface{}, len(payloads[0]))
+		// Non-counter-dependent: userData is Numeric[m][n] with m=1 per BSSCI §3.12.1
+		// ("single user data entry if cntDepend is false"). For an ACK-only downlink
+		// ("If user data is empty, a pure acknowledgement downlink is queued") the
+		// single entry is zero bytes long — outer length must still be 1 or the
+		// Fraunhofer BS rejects the message with code=22 "DL data queue message
+		// malformed".
+		var singlePayload []interface{}
+		if len(payloads) > 0 {
+			singlePayload = make([]interface{}, len(payloads[0]))
 			for i, b := range payloads[0] {
 				singlePayload[i] = uint8(b)
 			}
-			userDataField = []interface{}{singlePayload}
+		} else {
+			singlePayload = []interface{}{}
 		}
+		userDataField = []interface{}{singlePayload}
 	}
 
 	// Create dlDataQue message per BSSCI §5.12.1

@@ -14983,7 +14983,7 @@ proto.kilocenter.api.v1.DownlinkMessage.toObject = function(includeInstance, msg
     responsePrio: jspb.Message.getBooleanFieldWithDefault(msg, 18, false),
     dlWindReq: jspb.Message.getBooleanFieldWithDefault(msg, 19, false),
     expOnly: jspb.Message.getBooleanFieldWithDefault(msg, 20, false),
-    queId: jspb.Message.getFieldWithDefault(msg, 22, 0),
+    queId: jspb.Message.getFieldWithDefault(msg, 22, "0"),
     attempts: jspb.Message.getFieldWithDefault(msg, 23, 0),
     maxAttempts: jspb.Message.getFieldWithDefault(msg, 24, 0),
     transmissionPacketCnt: jspb.Message.getFieldWithDefault(msg, 25, 0),
@@ -15107,7 +15107,7 @@ proto.kilocenter.api.v1.DownlinkMessage.deserializeBinaryFromReader = function(m
       msg.setExpOnly(value);
       break;
     case 22:
-      var value = /** @type {number} */ (reader.readInt64());
+      var value = /** @type {string} */ (reader.readInt64String());
       msg.setQueId(value);
       break;
     case 23:
@@ -15296,8 +15296,8 @@ proto.kilocenter.api.v1.DownlinkMessage.serializeBinaryToWriter = function(messa
     );
   }
   f = message.getQueId();
-  if (f !== 0) {
-    writer.writeInt64(
+  if (parseInt(f, 10) !== 0) {
+    writer.writeInt64String(
       22,
       f
     );
@@ -15784,19 +15784,19 @@ proto.kilocenter.api.v1.DownlinkMessage.prototype.setExpOnly = function(value) {
 
 /**
  * optional int64 que_id = 22;
- * @return {number}
+ * @return {string}
  */
 proto.kilocenter.api.v1.DownlinkMessage.prototype.getQueId = function() {
-  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 22, 0));
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 22, "0"));
 };
 
 
 /**
- * @param {number} value
+ * @param {string} value
  * @return {!proto.kilocenter.api.v1.DownlinkMessage} returns this
  */
 proto.kilocenter.api.v1.DownlinkMessage.prototype.setQueId = function(value) {
-  return jspb.Message.setProto3IntField(this, 22, value);
+  return jspb.Message.setProto3StringIntField(this, 22, value);
 };
 
 
@@ -17277,7 +17277,7 @@ proto.kilocenter.api.v1.BaseStationStatusResponse.toObject = function(includeIns
   var f, obj = {
     success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
     message: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    opId: jspb.Message.getFieldWithDefault(msg, 3, 0)
+    opId: jspb.Message.getFieldWithDefault(msg, 3, "0")
   };
 
   if (includeInstance) {
@@ -17323,7 +17323,7 @@ proto.kilocenter.api.v1.BaseStationStatusResponse.deserializeBinaryFromReader = 
       msg.setMessage(value);
       break;
     case 3:
-      var value = /** @type {number} */ (reader.readInt64());
+      var value = /** @type {string} */ (reader.readInt64String());
       msg.setOpId(value);
       break;
     default:
@@ -17370,8 +17370,8 @@ proto.kilocenter.api.v1.BaseStationStatusResponse.serializeBinaryToWriter = func
     );
   }
   f = message.getOpId();
-  if (f !== 0) {
-    writer.writeInt64(
+  if (parseInt(f, 10) !== 0) {
+    writer.writeInt64String(
       3,
       f
     );
@@ -17417,19 +17417,19 @@ proto.kilocenter.api.v1.BaseStationStatusResponse.prototype.setMessage = functio
 
 /**
  * optional int64 op_id = 3;
- * @return {number}
+ * @return {string}
  */
 proto.kilocenter.api.v1.BaseStationStatusResponse.prototype.getOpId = function() {
-  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 3, 0));
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 3, "0"));
 };
 
 
 /**
- * @param {number} value
+ * @param {string} value
  * @return {!proto.kilocenter.api.v1.BaseStationStatusResponse} returns this
  */
 proto.kilocenter.api.v1.BaseStationStatusResponse.prototype.setOpId = function(value) {
-  return jspb.Message.setProto3IntField(this, 3, value);
+  return jspb.Message.setProto3StringIntField(this, 3, value);
 };
 
 
@@ -17597,7 +17597,7 @@ proto.kilocenter.api.v1.InitiatePingResponse.toObject = function(includeInstance
   var f, obj = {
     success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
     message: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    opId: jspb.Message.getFieldWithDefault(msg, 3, 0)
+    opId: jspb.Message.getFieldWithDefault(msg, 3, "0")
   };
 
   if (includeInstance) {
@@ -17643,7 +17643,7 @@ proto.kilocenter.api.v1.InitiatePingResponse.deserializeBinaryFromReader = funct
       msg.setMessage(value);
       break;
     case 3:
-      var value = /** @type {number} */ (reader.readInt64());
+      var value = /** @type {string} */ (reader.readInt64String());
       msg.setOpId(value);
       break;
     default:
@@ -17690,8 +17690,8 @@ proto.kilocenter.api.v1.InitiatePingResponse.serializeBinaryToWriter = function(
     );
   }
   f = message.getOpId();
-  if (f !== 0) {
-    writer.writeInt64(
+  if (parseInt(f, 10) !== 0) {
+    writer.writeInt64String(
       3,
       f
     );
@@ -17737,19 +17737,19 @@ proto.kilocenter.api.v1.InitiatePingResponse.prototype.setMessage = function(val
 
 /**
  * optional int64 op_id = 3;
- * @return {number}
+ * @return {string}
  */
 proto.kilocenter.api.v1.InitiatePingResponse.prototype.getOpId = function() {
-  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 3, 0));
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 3, "0"));
 };
 
 
 /**
- * @param {number} value
+ * @param {string} value
  * @return {!proto.kilocenter.api.v1.InitiatePingResponse} returns this
  */
 proto.kilocenter.api.v1.InitiatePingResponse.prototype.setOpId = function(value) {
-  return jspb.Message.setProto3IntField(this, 3, value);
+  return jspb.Message.setProto3StringIntField(this, 3, value);
 };
 
 
@@ -21104,7 +21104,7 @@ proto.kilocenter.api.v1.DLRXStatusQuery.toObject = function(includeInstance, msg
   var f, obj = {
     epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
     bsEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    opId: jspb.Message.getFieldWithDefault(msg, 3, 0),
+    opId: jspb.Message.getFieldWithDefault(msg, 3, "0"),
     status: jspb.Message.getFieldWithDefault(msg, 4, ""),
     requestedAt: (f = msg.getRequestedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
     receivedAt: (f = msg.getReceivedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
@@ -21154,7 +21154,7 @@ proto.kilocenter.api.v1.DLRXStatusQuery.deserializeBinaryFromReader = function(m
       msg.setBsEui(value);
       break;
     case 3:
-      var value = /** @type {number} */ (reader.readInt64());
+      var value = /** @type {string} */ (reader.readInt64String());
       msg.setOpId(value);
       break;
     case 4:
@@ -21219,8 +21219,8 @@ proto.kilocenter.api.v1.DLRXStatusQuery.serializeBinaryToWriter = function(messa
     );
   }
   f = message.getOpId();
-  if (f !== 0) {
-    writer.writeInt64(
+  if (parseInt(f, 10) !== 0) {
+    writer.writeInt64String(
       3,
       f
     );
@@ -21296,19 +21296,19 @@ proto.kilocenter.api.v1.DLRXStatusQuery.prototype.setBsEui = function(value) {
 
 /**
  * optional int64 op_id = 3;
- * @return {number}
+ * @return {string}
  */
 proto.kilocenter.api.v1.DLRXStatusQuery.prototype.getOpId = function() {
-  return /** @type {number} */ (jspb.Message.getFieldWithDefault(this, 3, 0));
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 3, "0"));
 };
 
 
 /**
- * @param {number} value
+ * @param {string} value
  * @return {!proto.kilocenter.api.v1.DLRXStatusQuery} returns this
  */
 proto.kilocenter.api.v1.DLRXStatusQuery.prototype.setOpId = function(value) {
-  return jspb.Message.setProto3IntField(this, 3, value);
+  return jspb.Message.setProto3StringIntField(this, 3, value);
 };
 
 

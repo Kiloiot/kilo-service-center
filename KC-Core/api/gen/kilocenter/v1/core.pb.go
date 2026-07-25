@@ -54,8 +54,8 @@ type EndPoint struct {
 	TypeEui           []byte `protobuf:"bytes,22,opt,name=type_eui,json=typeEui,proto3" json:"type_eui,omitempty"`                               // 8-byte Type EUI for blueprint decoding
 	CarrierOffset     int32  `protobuf:"varint,23,opt,name=carrier_offset,json=carrierOffset,proto3" json:"carrier_offset,omitempty"`            // Carrier offset in Hz
 	DeviceModelId     string `protobuf:"bytes,24,opt,name=device_model_id,json=deviceModelId,proto3" json:"device_model_id,omitempty"`           // UUID reference to device_models.id for blueprint decoding
-	BlueprintId       string `protobuf:"bytes,25,opt,name=blueprint_id,json=blueprintId,proto3" json:"blueprint_id,omitempty"`                   // Input selector: blueprint chosen for this endpoint; KC materializes its spec into blueprint_snapshot. Not a stored FK. On read echoes snapshot.source_blueprint_id.
-	BlueprintSnapshot []byte `protobuf:"bytes,26,opt,name=blueprint_snapshot,json=blueprintSnapshot,proto3" json:"blueprint_snapshot,omitempty"` // Read-only: materialized snapshot JSON (spec + provenance); empty = follows catalog default.
+	BlueprintId       string `protobuf:"bytes,25,opt,name=blueprint_id,json=blueprintId,proto3" json:"blueprint_id,omitempty"`                   // Input selector (not a stored FK); materialized into blueprint_snapshot, echoed on read.
+	BlueprintSnapshot []byte `protobuf:"bytes,26,opt,name=blueprint_snapshot,json=blueprintSnapshot,proto3" json:"blueprint_snapshot,omitempty"` // Read-only materialized snapshot; empty = follows catalog default.
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -2815,7 +2815,7 @@ type DownlinkMessage struct {
 	ResponsePrio          bool     `protobuf:"varint,18,opt,name=response_prio,json=responsePrio,proto3" json:"response_prio,omitempty"`
 	DlWindReq             bool     `protobuf:"varint,19,opt,name=dl_wind_req,json=dlWindReq,proto3" json:"dl_wind_req,omitempty"`
 	ExpOnly               bool     `protobuf:"varint,20,opt,name=exp_only,json=expOnly,proto3" json:"exp_only,omitempty"`
-	QueId                 int64    `protobuf:"varint,22,opt,name=que_id,json=queId,proto3" json:"que_id,omitempty"`                                                   // Queue ID per BSSCI §3.14.1 for operator traceability
+	QueId                 int64    `protobuf:"varint,22,opt,name=que_id,json=queId,proto3" json:"que_id,omitempty"`                                                   // Queue ID per BSSCI §3.14.1. JS_STRING avoids JavaScript Number precision loss on 64-bit IDs (Number safe range ends at 2^53 ~ 9e15; queIds are ~1.78e18 and round to the nearest hundred without this annotation, breaking revoke).
 	Attempts              int32    `protobuf:"varint,23,opt,name=attempts,proto3" json:"attempts,omitempty"`                                                          // Internal queue management
 	MaxAttempts           int32    `protobuf:"varint,24,opt,name=max_attempts,json=maxAttempts,proto3" json:"max_attempts,omitempty"`                                 // Internal queue management
 	TransmissionPacketCnt int64    `protobuf:"varint,25,opt,name=transmission_packet_cnt,json=transmissionPacketCnt,proto3" json:"transmission_packet_cnt,omitempty"` // End Point packet counter when transmitted per BSSCI §3.14.1
@@ -3400,7 +3400,7 @@ type BaseStationStatusResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`       // Whether the request was sent successfully
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`        // Status or error message
-	OpId          int64                  `protobuf:"varint,3,opt,name=op_id,json=opId,proto3" json:"op_id,omitempty"` // Operation ID of the status request
+	OpId          int64                  `protobuf:"varint,3,opt,name=op_id,json=opId,proto3" json:"op_id,omitempty"` // Operation ID. JS_STRING for int64 precision (same rationale as DownlinkMessage.que_id).
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3505,7 +3505,7 @@ type InitiatePingResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`       // Whether ping was sent successfully
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`        // Status or error message
-	OpId          int64                  `protobuf:"varint,3,opt,name=op_id,json=opId,proto3" json:"op_id,omitempty"` // Operation ID of the ping request
+	OpId          int64                  `protobuf:"varint,3,opt,name=op_id,json=opId,proto3" json:"op_id,omitempty"` // Operation ID. JS_STRING for int64 precision.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4488,7 +4488,7 @@ type DLRXStatusQuery struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EpEui         string                 `protobuf:"bytes,1,opt,name=ep_eui,json=epEui,proto3" json:"ep_eui,omitempty"` // Hex string (16 chars)
 	BsEui         string                 `protobuf:"bytes,2,opt,name=bs_eui,json=bsEui,proto3" json:"bs_eui,omitempty"` // Hex string (16 chars)
-	OpId          int64                  `protobuf:"varint,3,opt,name=op_id,json=opId,proto3" json:"op_id,omitempty"`   // SC operation ID (negative)
+	OpId          int64                  `protobuf:"varint,3,opt,name=op_id,json=opId,proto3" json:"op_id,omitempty"`   // SC operation ID (negative). JS_STRING for int64 precision.
 	Status        string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`            // "pending"|"received"|"timeout"
 	RequestedAt   *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=requested_at,json=requestedAt,proto3" json:"requested_at,omitempty"`
 	ReceivedAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"` // Optional (null if not received)
@@ -9016,7 +9016,7 @@ type CreateManufacturerRequest struct {
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	Website       string                 `protobuf:"bytes,4,opt,name=website,proto3" json:"website,omitempty"`
 	ContactEmail  string                 `protobuf:"bytes,5,opt,name=contact_email,json=contactEmail,proto3" json:"contact_email,omitempty"`
-	IsSystem      bool                   `protobuf:"varint,6,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row; rejected for non-admins
+	IsSystem      bool                   `protobuf:"varint,6,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9564,7 +9564,7 @@ type Manufacturer struct {
 	CreatedAt    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt    *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	// Fields from KC-DB/storage/models/manufacturer.go
-	TenantId      string `protobuf:"bytes,9,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`         // string per proto convention (line 198); empty when is_system
+	TenantId      string `protobuf:"bytes,9,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`         // string per proto convention; empty when is_system
 	IsVerified    bool   `protobuf:"varint,10,opt,name=is_verified,json=isVerified,proto3" json:"is_verified,omitempty"` // From manufacturer.go:19
 	ModelCount    int32  `protobuf:"varint,11,opt,name=model_count,json=modelCount,proto3" json:"model_count,omitempty"` // From manufacturer.go:24
 	IsSystem      bool   `protobuf:"varint,12,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`       // true = System catalog row, false = tenant Custom
@@ -9693,7 +9693,7 @@ type CreateDeviceModelRequest struct {
 	Code           string                 `protobuf:"bytes,3,opt,name=code,proto3" json:"code,omitempty"`
 	TypeEui        string                 `protobuf:"bytes,4,opt,name=type_eui,json=typeEui,proto3" json:"type_eui,omitempty"` // Hex (16 chars)
 	Description    string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
-	IsSystem       bool                   `protobuf:"varint,6,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row; rejected for non-admins
+	IsSystem       bool                   `protobuf:"varint,6,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -10363,7 +10363,7 @@ type CreateBlueprintRequest struct {
 	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	DecoderScript []byte                 `protobuf:"bytes,5,opt,name=decoder_script,json=decoderScript,proto3" json:"decoder_script,omitempty"` // JavaScript decoder
 	IsDefault     bool                   `protobuf:"varint,6,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
-	IsSystem      bool                   `protobuf:"varint,7,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row; rejected for non-admins
+	IsSystem      bool                   `protobuf:"varint,7,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"` // admin-only System row
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11432,7 +11432,7 @@ type CreateDeviceModelWithBlueprintRequest struct {
 	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                           // Model name
 	Version        string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`                                     // Blueprint version (e.g. "1.0.0")
 	DecoderScript  []byte                 `protobuf:"bytes,4,opt,name=decoder_script,json=decoderScript,proto3" json:"decoder_script,omitempty"`    // Blueprint specification JSON
-	IsSystem       bool                   `protobuf:"varint,5,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`                  // admin-only System rows; rejected for non-admins
+	IsSystem       bool                   `protobuf:"varint,5,opt,name=is_system,json=isSystem,proto3" json:"is_system,omitempty"`                  // admin-only System rows
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -14386,7 +14386,7 @@ const file_core_proto_rawDesc = "" +
 	"\bmessages\x18\x01 \x03(\v2\".kilocenter.api.v1.DownlinkMessageR\bmessages\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1f\n" +
 	"\vtotal_count\x18\x03 \x01(\x05R\n" +
-	"totalCount\"\xdb\x06\n" +
+	"totalCount\"\xdf\x06\n" +
 	"\x0fDownlinkMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05epEui\x18\x02 \x01(\tR\x05epEui\x12\x1b\n" +
@@ -14410,8 +14410,8 @@ const file_core_proto_rawDesc = "" +
 	"\fresponse_exp\x18\x11 \x01(\bR\vresponseExp\x12#\n" +
 	"\rresponse_prio\x18\x12 \x01(\bR\fresponsePrio\x12\x1e\n" +
 	"\vdl_wind_req\x18\x13 \x01(\bR\tdlWindReq\x12\x19\n" +
-	"\bexp_only\x18\x14 \x01(\bR\aexpOnly\x12\x15\n" +
-	"\x06que_id\x18\x16 \x01(\x03R\x05queId\x12\x1a\n" +
+	"\bexp_only\x18\x14 \x01(\bR\aexpOnly\x12\x19\n" +
+	"\x06que_id\x18\x16 \x01(\x03B\x020\x01R\x05queId\x12\x1a\n" +
 	"\battempts\x18\x17 \x01(\x05R\battempts\x12!\n" +
 	"\fmax_attempts\x18\x18 \x01(\x05R\vmaxAttempts\x126\n" +
 	"\x17transmission_packet_cnt\x18\x19 \x01(\x03R\x15transmissionPacketCnt\x12\x1a\n" +
@@ -14448,17 +14448,17 @@ const file_core_proto_rawDesc = "" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\"1\n" +
 	"\x18BaseStationStatusRequest\x12\x15\n" +
-	"\x06bs_eui\x18\x01 \x01(\x04R\x05bsEui\"d\n" +
+	"\x06bs_eui\x18\x01 \x01(\x04R\x05bsEui\"h\n" +
 	"\x19BaseStationStatusResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\x12\x13\n" +
-	"\x05op_id\x18\x03 \x01(\x03R\x04opId\",\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x17\n" +
+	"\x05op_id\x18\x03 \x01(\x03B\x020\x01R\x04opId\",\n" +
 	"\x13InitiatePingRequest\x12\x15\n" +
-	"\x06bs_eui\x18\x01 \x01(\x04R\x05bsEui\"_\n" +
+	"\x06bs_eui\x18\x01 \x01(\x04R\x05bsEui\"c\n" +
 	"\x14InitiatePingResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\x12\x13\n" +
-	"\x05op_id\x18\x03 \x01(\x03R\x04opId\"\xbf\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x17\n" +
+	"\x05op_id\x18\x03 \x01(\x03B\x020\x01R\x04opId\"\xbf\x01\n" +
 	"\rServiceStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x18\n" +
@@ -14562,11 +14562,11 @@ const file_core_proto_rawDesc = "" +
 	"\x06ep_eui\x18\x01 \x01(\tR\x05epEui\"\\\n" +
 	"\x17QueryDLRXStatusResponse\x12'\n" +
 	"\x0fquery_initiated\x18\x01 \x01(\bR\x0equeryInitiated\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x83\x02\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x87\x02\n" +
 	"\x0fDLRXStatusQuery\x12\x15\n" +
 	"\x06ep_eui\x18\x01 \x01(\tR\x05epEui\x12\x15\n" +
-	"\x06bs_eui\x18\x02 \x01(\tR\x05bsEui\x12\x13\n" +
-	"\x05op_id\x18\x03 \x01(\x03R\x04opId\x12\x16\n" +
+	"\x06bs_eui\x18\x02 \x01(\tR\x05bsEui\x12\x17\n" +
+	"\x05op_id\x18\x03 \x01(\x03B\x020\x01R\x04opId\x12\x16\n" +
 	"\x06status\x18\x04 \x01(\tR\x06status\x12=\n" +
 	"\frequested_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAt\x12;\n" +
 	"\vreceived_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +

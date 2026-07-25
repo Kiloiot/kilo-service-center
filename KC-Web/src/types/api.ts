@@ -627,7 +627,7 @@ export interface SCACISessionSummary {
  * Matches gRPC ScaciOperation message in kilocenter.proto
  */
 export interface SCACIOperationDTO {
-  opId: number;
+  opId: string; // int64 carried as string (proto jstype=JS_STRING) to avoid JS Number precision loss on large opIds.
   command: string; // ulData, dlDataQue, etc.
   direction: string; // inbound or outbound
   state: string; // pending, acknowledged, completed, failed
@@ -650,7 +650,7 @@ export interface SCACIErrorDTO {
   title: string;
   description: string;
   sessionId?: number;
-  opId?: number;
+  opId?: string; // int64 carried as string (proto jstype=JS_STRING).
   command?: string;
   errorCode?: string;
   errorMsg: string;
@@ -662,7 +662,7 @@ export interface SCACIErrorDTO {
  * Matches gRPC ScaciDownlinkQueue message in kilocenter.proto
  */
 export interface SCACIDownlinkQueueDTO {
-  queId: number;
+  queId: string; // int64 carried as string (proto jstype=JS_STRING) so 64-bit IDs round-trip losslessly (JS Number rounds anything above 2^53; queIds are ~1.78e18).
   epEui: string; // Hex-encoded endpoint EUI
   payload: string; // Base64-encoded payload
   cntDepend: boolean;
