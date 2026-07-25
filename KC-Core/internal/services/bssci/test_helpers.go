@@ -122,10 +122,11 @@ func (m *mockBaseStationRepo) ListAllLocations(_ context.Context) ([]*models.Bas
 
 // mockBaseStationSessionRepo implements interfaces.BaseStationSessionRepository with in-memory session tracking
 type mockBaseStationSessionRepo struct {
-	nextID   int64
-	sessions map[int64]*models.BaseStationSession
-	findErr  error // when set, FindResumableSession returns it (infra-failure tests)
-	mu       sync.Mutex
+	nextID                int64
+	sessions              map[int64]*models.BaseStationSession
+	findErr               error // when set, FindResumableSession returns it (infra-failure tests)
+	terminateResumableErr error // when set, TerminateResumableSessions returns it
+	mu                    sync.Mutex
 }
 
 func newMockBaseStationSessionRepo() *mockBaseStationSessionRepo {
@@ -306,6 +307,7 @@ func (m *mockBaseStationSessionRepo) TerminateSession(_ context.Context, _ int64
 
 	if session, ok := m.sessions[sessionID]; ok {
 		session.Status = models.SessionStatusTerminated
+		session.CanResume = false
 		now := time.Now()
 		session.EndedAt = &now
 		session.UpdatedAt = now
@@ -345,7 +347,7 @@ func (m *mockBaseStationSessionRepo) CleanupExpiredSessions(_ context.Context, _
 	return 0, nil
 }
 
-// MarkDisconnected marks a session disconnected and resumable when the
+// MarkDisconnected marks an active session disconnected and resumable when the
 // stored connection ID still matches (mirrors the conditional production
 // update; zero matches is not an error)
 func (m *mockBaseStationSessionRepo) MarkDisconnected(_ context.Context, tenantID, sessionID int64, connectionID string, endedAt time.Time) error {
@@ -359,12 +361,32 @@ func (m *mockBaseStationSessionRepo) MarkDisconnected(_ context.Context, tenantI
 	if session.ConnectionId == nil || *session.ConnectionId != connectionID {
 		return nil
 	}
+	if session.Status != models.SessionStatusActive {
+		return nil
+	}
 	session.Status = models.SessionStatusDisconnected
 	session.CanResume = true
 	ended := endedAt
 	session.EndedAt = &ended
 	session.UpdatedAt = time.Now()
 	return nil
+}
+
+// ActivateSessionIfResumable mirrors the conditional production activation: the
+// row is claimed only while it is still disconnected and resumable
+func (m *mockBaseStationSessionRepo) ActivateSessionIfResumable(ctx context.Context, tenantID, sessionID int64, req *models.BaseStationSessionUpdateRequest) (bool, error) {
+	m.mu.Lock()
+	session, ok := m.sessions[sessionID]
+	claimable := ok && session.TenantID == tenantID && session.CanResumeSession()
+	m.mu.Unlock()
+
+	if !claimable {
+		return false, nil
+	}
+	if err := m.UpdateSession(ctx, tenantID, sessionID, req); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // FindResumableSession mirrors the production lookup: tenant + base station
@@ -391,6 +413,37 @@ func (m *mockBaseStationSessionRepo) FindResumableSession(_ context.Context, ten
 		return &copied, nil
 	}
 	return nil, nil
+}
+
+// TerminateResumableSessions mirrors the production sweep: the base station's
+// disconnected, resumable rows are retired and their ids returned
+func (m *mockBaseStationSessionRepo) TerminateResumableSessions(_ context.Context, tenantID, baseStationID int64) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.terminateResumableErr != nil {
+		return nil, m.terminateResumableErr
+	}
+
+	now := time.Now()
+	var retiredIDs []int64
+	for _, session := range m.sessions {
+		if session.TenantID != tenantID || session.BaseStationID != baseStationID {
+			continue
+		}
+		if !session.CanResumeSession() {
+			continue
+		}
+		session.Status = models.SessionStatusTerminated
+		session.CanResume = false
+		if session.EndedAt == nil {
+			ended := now
+			session.EndedAt = &ended
+		}
+		session.UpdatedAt = now
+		retiredIDs = append(retiredIDs, session.ID)
+	}
+	return retiredIDs, nil
 }
 
 // mockPendingOperationRepository implements interfaces.PendingOperationRepository for testing
@@ -881,13 +934,14 @@ func CreateTestServices(log logger.Logger, eventStore interfaces.SystemEventStor
 
 	// SessionService with complete mock repositories
 	// All repository interfaces fully implemented - no nil pointer panics
-	// Order: bsSessionRepo, bsRepo, systemEventStore, tenantID, log
+	// Order: bsSessionRepo, bsRepo, pendingOpsRepo, systemEventStore, tenantID, log
 	sessionSvc := NewSessionService(
-		newMockBaseStationSessionRepo(), // BaseStationSessionRepository
-		&mockBaseStationRepo{},          // BaseStationRepository
-		&mockSystemEventStore{},         // SystemEventStore
-		1,                               // tenantID
-		log,                             // logger
+		newMockBaseStationSessionRepo(),   // BaseStationSessionRepository
+		&mockBaseStationRepo{},            // BaseStationRepository
+		&mockPendingOperationRepository{}, // PendingOperationRepository
+		&mockSystemEventStore{},           // SystemEventStore
+		1,                                 // tenantID
+		log,                               // logger
 	)
 
 	// StatusService - maintains in-memory pendingOps map
@@ -931,4 +985,92 @@ func CreateTestServices(log logger.Logger, eventStore interfaces.SystemEventStor
 
 func (m *mockBaseStationRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
 	return true, nil
+}
+
+// mockPendingOpsStore implements interfaces.PendingOperationRepository with
+// in-memory rows so tests can assert which session's operations were removed
+type mockPendingOpsStore struct {
+	rows      map[int64][]int64 // basestation session ID -> operation IDs
+	deleteErr error             // when set, DeleteBySession returns it
+	mu        sync.Mutex
+}
+
+func newMockPendingOpsStore() *mockPendingOpsStore {
+	return &mockPendingOpsStore{rows: make(map[int64][]int64)}
+}
+
+func (m *mockPendingOpsStore) seed(sessionID int64, operationIDs ...int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.rows[sessionID] = append(m.rows[sessionID], operationIDs...)
+}
+
+func (m *mockPendingOpsStore) operationIDs(sessionID int64) []int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return append([]int64(nil), m.rows[sessionID]...)
+}
+
+func (m *mockPendingOpsStore) Create(_ context.Context, req *interfaces.PendingOperationRequest) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.rows[req.SessionID] = append(m.rows[req.SessionID], req.OperationID)
+	return nil
+}
+
+func (m *mockPendingOpsStore) CreateBatch(ctx context.Context, reqs []*interfaces.PendingOperationRequest) error {
+	for _, req := range reqs {
+		if err := m.Create(ctx, req); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *mockPendingOpsStore) UpdateMetadata(_ context.Context, _ int64, _ int64, _ json.RawMessage) error {
+	return nil
+}
+
+func (m *mockPendingOpsStore) DeleteBySessionAndOperation(_ context.Context, sessionID int64, operationID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	remaining := make([]int64, 0, len(m.rows[sessionID]))
+	for _, opID := range m.rows[sessionID] {
+		if opID != operationID {
+			remaining = append(remaining, opID)
+		}
+	}
+	m.rows[sessionID] = remaining
+	return nil
+}
+
+func (m *mockPendingOpsStore) DeleteByOperation(_ context.Context, _ int64) error {
+	return nil
+}
+
+func (m *mockPendingOpsStore) DeleteBySession(_ context.Context, sessionID int64) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.deleteErr != nil {
+		return 0, m.deleteErr
+	}
+	deleted := int64(len(m.rows[sessionID]))
+	delete(m.rows, sessionID)
+	return deleted, nil
+}
+
+func (m *mockPendingOpsStore) GetBySession(_ context.Context, sessionID int64) ([]*interfaces.PendingOperation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ops := make([]*interfaces.PendingOperation, 0, len(m.rows[sessionID]))
+	for _, opID := range m.rows[sessionID] {
+		ops = append(ops, &interfaces.PendingOperation{SessionID: sessionID, OperationID: opID})
+	}
+	return ops, nil
 }

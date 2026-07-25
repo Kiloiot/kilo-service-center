@@ -63,6 +63,7 @@ func NewBSSCIServices(
 	sessionSvc := NewSessionService(
 		storage.BaseStationSessions(),
 		storage.BaseStations(),
+		storage.PendingOperations(),
 		systemEventStore,
 		tenantID,
 		log,

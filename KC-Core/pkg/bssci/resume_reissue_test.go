@@ -295,3 +295,63 @@ func TestTeardownEvictsCacheKeepsRows(t *testing.T) {
 	assert.Zero(t, deleteCalls,
 		"an active session's persisted rows must be preserved for resume (no durable delete)")
 }
+
+// newActivationSession builds a fresh (non-resume) session in the
+// awaiting-connect-complete state for the shared test base station, with a
+// distinct snScUuid per connection.
+func newActivationSession(id string, conn net.Conn) *Session {
+	scUUID := make([]byte, 16)
+	copy(scUUID, id)
+	return &Session{
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               id,
+			BaseStationEUI:   TestBsEui01,
+			SessionUUID:      scUUID,
+			Encoding:         EncodingJSON,
+			ResolvedTenantID: 1,
+			ConnectState:     ConnectStateAwaitingConnectComplete,
+		},
+		Conn:               conn,
+		pendingBaseStation: &basestation.BaseStation{ID: 1, TenantID: 1, Name: "Displacement BS"},
+	}
+}
+
+// TestActivationDisplacesLiveSessionForSameEUI: a second activation for a base
+// station that still holds a live session leaves only the newer session
+// reachable by EUI, with the displaced transport closed.
+func TestActivationDisplacesLiveSessionForSameEUI(t *testing.T) {
+	server := newResumeReissueServer(t)
+	// keeps both activations' status goroutines dormant for the whole run
+	server.config.StatusRequestInitialDelay = time.Hour
+
+	displacedConn := &countingConn{}
+	displaced := newActivationSession("displaced-session", displacedConn)
+	t.Cleanup(func() { stopSessionStatus(displaced) })
+	require.NoError(t, server.handleConnectComplete(server, displaced,
+		&Message{OpId: 0, Command: mioty.CmdConnectComplete}, nil))
+
+	firstLookup, ok := server.GetSessionByEUI(TestBsEui01).(*Session)
+	require.True(t, ok, "the first activation must be reachable by EUI")
+	require.Equal(t, displaced.ID, firstLookup.ID)
+
+	currentConn := &countingConn{}
+	current := newActivationSession("current-session", currentConn)
+	t.Cleanup(func() { stopSessionStatus(current) })
+	require.NoError(t, server.handleConnectComplete(server, current,
+		&Message{OpId: 0, Command: mioty.CmdConnectComplete}, nil))
+
+	server.mu.RLock()
+	_, stillLive := server.sessions[displaced.ID]
+	liveCount := len(server.sessions)
+	server.mu.RUnlock()
+	assert.False(t, stillLive, "the displaced session must leave the live map")
+	// asserted before the lookup so a single live session makes its result unambiguous
+	require.Equal(t, 1, liveCount, "one base station must hold exactly one live session")
+
+	secondLookup, ok := server.GetSessionByEUI(TestBsEui01).(*Session)
+	require.True(t, ok, "the newest activation must be reachable by EUI")
+	assert.Equal(t, current.ID, secondLookup.ID,
+		"a by-EUI lookup must never resolve to the displaced session")
+	assert.Positive(t, displacedConn.closes, "the displaced transport must be closed")
+	assert.Zero(t, currentConn.closes, "the activating transport must stay open")
+}

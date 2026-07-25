@@ -211,6 +211,47 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 	return nil
 }
 
+// ActivateSessionIfResumable applies the resume activation only while the row
+// is still disconnected and resumable. Two connections that both found the same
+// row through FindResumableSession reach this update, and only the first one
+// matches: the loser gets false and must abandon the resume.
+func (r *BaseStationSessionRepository) ActivateSessionIfResumable(ctx context.Context, tenantID, sessionID int64, req *models.BaseStationSessionUpdateRequest) (bool, error) {
+	if req == nil {
+		return false, fmt.Errorf("update request cannot be nil")
+	}
+
+	builder, err := buildSessionUpdateClauses(req)
+	if err != nil {
+		return false, err
+	}
+	if len(builder.clauses) == 0 {
+		return false, fmt.Errorf("no fields to update")
+	}
+
+	builder.set("updated_at", time.Now())
+	builder.args = append(builder.args, sessionID, tenantID, models.SessionStatusDisconnected)
+
+	query := fmt.Sprintf(`
+		UPDATE basestation_sessions
+		SET %s
+		WHERE id = $%d AND tenant_id = $%d
+		  AND status = $%d AND can_resume = true`,
+		strings.Join(builder.clauses, ", "),
+		len(builder.args)-2, len(builder.args)-1, len(builder.args))
+
+	result, err := r.db.ExecContext(ctx, query, builder.args...)
+	if err != nil {
+		return false, fmt.Errorf("failed to activate resumable Base Station session: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	return rowsAffected > 0, nil
+}
+
 // updateSetBuilder accumulates SET clauses with positional placeholders for a
 // dynamic partial UPDATE.
 type updateSetBuilder struct {
@@ -764,10 +805,10 @@ func (r *BaseStationSessionRepository) scanSessionFromRows(rows *sql.Rows) (*mod
 	return session, nil
 }
 
-// MarkDisconnected marks a session disconnected and resumable, guarded by
-// the stored connection ID: when a reconnect already replaced this
-// connection, the update matches zero rows and the newer session is left
-// untouched (not an error).
+// MarkDisconnected marks an active session disconnected and resumable, guarded
+// by the stored connection ID and by the active status: a reconnect that
+// already replaced this connection, or a session already retired, matches zero
+// rows and stays untouched (not an error).
 func (r *BaseStationSessionRepository) MarkDisconnected(ctx context.Context, tenantID, sessionID int64, connectionID string, endedAt time.Time) error {
 	query := `
 		UPDATE basestation_sessions
@@ -775,9 +816,9 @@ func (r *BaseStationSessionRepository) MarkDisconnected(ctx context.Context, ten
 		    can_resume = true,
 		    ended_at = $2,
 		    updated_at = $2
-		WHERE id = $3 AND tenant_id = $4 AND connection_id = $5`
+		WHERE id = $3 AND tenant_id = $4 AND connection_id = $5 AND status = $6`
 
-	if _, err := r.db.ExecContext(ctx, query, models.SessionStatusDisconnected, endedAt, sessionID, tenantID, connectionID); err != nil {
+	if _, err := r.db.ExecContext(ctx, query, models.SessionStatusDisconnected, endedAt, sessionID, tenantID, connectionID, models.SessionStatusActive); err != nil {
 		return fmt.Errorf("failed to mark session disconnected: %w", err)
 	}
 	return nil
@@ -819,4 +860,48 @@ func (r *BaseStationSessionRepository) FindResumableSession(ctx context.Context,
 	copy(session.SnBsUuid[:], snBsUUIDBytes)
 	copy(session.SnScUuid[:], snScUUIDBytes)
 	return session, nil
+}
+
+// TerminateResumableSessions retires the leftover resumable sessions of a base
+// station so a fresh session starts from discarded state (BSSCI §3), returning
+// the retired session ids for pending-operation cleanup. Zero matches is not an
+// error.
+func (r *BaseStationSessionRepository) TerminateResumableSessions(ctx context.Context, tenantID, baseStationID int64) ([]int64, error) {
+	query := `
+		UPDATE basestation_sessions
+		SET status = $1,
+		    can_resume = false,
+		    ended_at = COALESCE(ended_at, $2),
+		    updated_at = $2
+		WHERE basestation_id = $3
+		  AND tenant_id = $4
+		  AND status = $5
+		  AND can_resume = true
+		RETURNING id`
+
+	now := time.Now()
+	rows, err := r.db.QueryContext(ctx, query, models.SessionStatusTerminated, now, baseStationID, tenantID, models.SessionStatusDisconnected)
+	if err != nil {
+		return nil, fmt.Errorf("failed to terminate resumable sessions: %w", err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows in resumable session retirement: %v", err)
+		}
+	}()
+
+	var sessionIDs []int64
+	for rows.Next() {
+		var sessionID int64
+		if err := rows.Scan(&sessionID); err != nil {
+			return nil, fmt.Errorf("failed to scan retired session id: %w", err)
+		}
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating retired session ids: %w", err)
+	}
+
+	return sessionIDs, nil
 }

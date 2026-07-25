@@ -75,6 +75,8 @@ const (
 	LogBSSCITerminatedStaleSession = "Terminated stale session"
 	// LogBSSCIFailedToTerminateStaleSession indicates failure to terminate stale session
 	LogBSSCIFailedToTerminateStaleSession = "Failed to terminate stale session"
+	// LogBSSCIFailedToTerminateResumableSessions indicates failure to retire the base station's leftover resumable sessions
+	LogBSSCIFailedToTerminateResumableSessions = "Failed to terminate leftover resumable sessions"
 	// LogBSSCIFailedToTerminateSession indicates failure to terminate session on disconnect
 	LogBSSCIFailedToTerminateSession = "Failed to terminate session"
 	// LogBSSCISessionTerminated indicates session was successfully terminated
@@ -85,6 +87,10 @@ const (
 	LogBSSCIDeletedPendingOperations = "Deleted pending operations"
 	// LogBSSCIStaleSessionDetectedDuringResume indicates a stale session was found during resume attempt
 	LogBSSCIStaleSessionDetectedDuringResume = "Stale session detected during resume"
+	// LogBSSCIDisplacedLiveSessionForBaseStation indicates a newly activated session displaced a live session of the same base station
+	LogBSSCIDisplacedLiveSessionForBaseStation = "Displaced live session for base station"
+	// LogBSSCIFailedToCloseDisplacedSessionConnection indicates failure to close the displaced session's connection
+	LogBSSCIFailedToCloseDisplacedSessionConnection = "Failed to close displaced session connection"
 	// LogBSSCIInvalidEncodingInDatabase indicates invalid encoding value stored in database
 	LogBSSCIInvalidEncodingInDatabase = "Invalid encoding in database"
 	// LogBSSCINoPendingOperationsToResume indicates no pending operations during resume
@@ -1178,6 +1184,8 @@ const (
 	LogBSSCIResumeRejectedScOpIDBeyondIssued = "Resume rejected: claimed SC operation ID beyond issued state"
 	// LogBSSCIResumeAcceptedStaleBsCounter is logged when a resume is accepted with a stale BS counter.
 	LogBSSCIResumeAcceptedStaleBsCounter = "Resume accepted with stale BS counter (SC is authoritative)"
+	// LogBSSCIResumeAlreadyClaimed is logged when the resumable session was activated or retired by another connection before this one could claim it.
+	LogBSSCIResumeAlreadyClaimed = "Resume rejected: session already claimed by another connection"
 	// LogBSSCIFailedToMarshalPendingOperation is logged when a pending operation cannot be marshaled for persistence.
 	LogBSSCIFailedToMarshalPendingOperation = "Failed to marshal pending operation"
 	// LogBSSCIFailedToMarshalPendingOperationMetadata is logged when pending operation metadata cannot be marshaled for persistence.

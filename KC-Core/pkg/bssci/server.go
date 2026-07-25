@@ -2452,9 +2452,7 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 
 	// Step 3: both durable steps succeeded - publish to the live-session map
 	// and the resumable index
-	s.mu.Lock()
-	s.sessions[session.ID] = session
-	s.mu.Unlock()
+	s.publishLiveSession(ctx, session)
 	s.sessionSvc.StoreSessionByUUID(session)
 
 	// Update the base station's bidi capability and GPS location in the
@@ -5724,6 +5722,37 @@ func (s *Server) GetSessionByEUI(bsEui uint64) interface{} {
 		}
 	}
 	return nil
+}
+
+// publishLiveSession makes session the only live session for its base station. Eviction and
+// publication share one critical section on s.mu so a by-EUI lookup can never resolve to the
+// connection being replaced.
+func (s *Server) publishLiveSession(ctx context.Context, session *Session) {
+	s.mu.Lock()
+	var displaced []*Session
+	for id, live := range s.sessions {
+		if id != session.ID && live.BaseStationEUI == session.BaseStationEUI {
+			displaced = append(displaced, live)
+			delete(s.sessions, id)
+		}
+	}
+	s.sessions[session.ID] = session
+	s.mu.Unlock()
+
+	for _, stale := range displaced {
+		s.logger.WarnContext(ctx, LogBSSCIDisplacedLiveSessionForBaseStation,
+			"eui", session.BaseStationEUI,
+			"displacedSessionID", stale.ID,
+			"sessionID", session.ID)
+		s.sessionSvc.RemoveSession(stale)
+		if stale.Conn != nil {
+			if err := stale.Conn.Close(); err != nil {
+				s.logger.WarnContext(ctx, LogBSSCIFailedToCloseDisplacedSessionConnection,
+					"error", err,
+					"displacedSessionID", stale.ID)
+			}
+		}
+	}
 }
 
 // CloseSessionByEUI finds and closes any active session for the given EUI.

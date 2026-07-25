@@ -22,6 +22,7 @@ type sessionService struct {
 	sessionsByUUID   map[string]*bssci.Session               // REAL map
 	bsSessionRepo    interfaces.BaseStationSessionRepository // Repository interface for session persistence
 	bsRepo           interfaces.BaseStationRepository        // Base station repository
+	pendingOpsRepo   interfaces.PendingOperationRepository   // Pending operations of a retired session
 	systemEventStore interfaces.SystemEventStore             // System event store (injected separately, not from storage)
 	tenantID         int64
 	mu               sync.RWMutex
@@ -32,6 +33,7 @@ type sessionService struct {
 func NewSessionService(
 	bsSessionRepo interfaces.BaseStationSessionRepository,
 	bsRepo interfaces.BaseStationRepository,
+	pendingOpsRepo interfaces.PendingOperationRepository,
 	systemEventStore interfaces.SystemEventStore,
 	tenantID int64,
 	log logger.Logger,
@@ -40,6 +42,7 @@ func NewSessionService(
 		sessionsByUUID:   make(map[string]*bssci.Session),
 		bsSessionRepo:    bsSessionRepo,
 		bsRepo:           bsRepo,
+		pendingOpsRepo:   pendingOpsRepo,
 		systemEventStore: systemEventStore,
 		tenantID:         tenantID,
 		logger:           log,
@@ -245,24 +248,9 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 	}
 
 	if !isResume {
-		// New session - terminate any stale session first per BSSCI §3 "new session starts, discarding state"
-		dbSession, err := s.bsSessionRepo.GetActiveSessionByBaseStation(ctx, s.resolvedTenantID(session), baseStation.ID)
-		if err == nil && dbSession != nil {
-			// A failure to retire the stale session must abort activation:
-			// creating a new session on top would leave two active sessions.
-			if err := s.bsSessionRepo.TerminateSession(ctx, s.resolvedTenantID(session), dbSession.ID); err != nil {
-				s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateStaleSession,
-					"error", err,
-					"staleSessionID", dbSession.ID,
-					"baseStationEui", session.BaseStationEUI)
-				return fmt.Errorf("terminate stale session before activation: %w", err)
-			}
-			s.logger.InfoContext(ctx, bssci.LogBSSCITerminatedStaleSession,
-				"staleSessionID", dbSession.ID,
-				"baseStationEui", session.BaseStationEUI)
+		if err := s.discardPriorSessionState(ctx, session, baseStation); err != nil {
+			return err
 		}
-
-		// No existing session (or terminated) - create new one via repository
 
 		// Convert UUIDs from []byte to [16]byte
 		var snBsUUID, snScUUID [16]byte
@@ -316,7 +304,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 		}
 
 		// Persist via repository
-		dbSession, err = s.bsSessionRepo.CreateSession(ctx, req)
+		dbSession, err := s.bsSessionRepo.CreateSession(ctx, req)
 		if err != nil {
 			return fmt.Errorf("failed to create session in database: %w", err)
 		}
@@ -430,12 +418,20 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 			updateReq.OrganizationID = &orgID
 		}
 
-		err = s.bsSessionRepo.UpdateSession(ctx, s.resolvedTenantID(session), dbSession.ID, updateReq)
+		claimed, err := s.bsSessionRepo.ActivateSessionIfResumable(ctx, s.resolvedTenantID(session), dbSession.ID, updateReq)
 		if err != nil {
 			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
 				"error", err,
 				"baseStationEui", session.BaseStationEUI)
 			return err
+		}
+		if !claimed {
+			s.logger.WarnContext(ctx, bssci.LogBSSCIResumeAlreadyClaimed,
+				"dbSessionID", dbSession.ID,
+				"baseStationEui", session.BaseStationEUI)
+			// Drop the row linkage so this connection's teardown cannot retire the claimant's session
+			session.DbSessionID = 0
+			return fmt.Errorf("resume activation for session %d: %w", dbSession.ID, bssci.ErrResumeAlreadyClaimed)
 		}
 
 		session.DbSessionID = dbSession.ID
@@ -444,6 +440,69 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 			"baseStationEui", session.BaseStationEUI)
 	}
 
+	return nil
+}
+
+// discardPriorSessionState retires the base station's prior sessions and their pending
+// operations before a fresh session is created (BSSCI §3 "new session starts, discarding
+// state"). An incomplete retirement aborts the activation: a surviving resumable row
+// would be offered to a later resume, which reissues its pending operations.
+func (s *sessionService) discardPriorSessionState(ctx context.Context, session *bssci.Session, baseStation *basestation.BaseStation) error {
+	tenantID := s.resolvedTenantID(session)
+
+	dbSession, err := s.bsSessionRepo.GetActiveSessionByBaseStation(ctx, tenantID, baseStation.ID)
+	if err == nil && dbSession != nil {
+		if terminateErr := s.bsSessionRepo.TerminateSession(ctx, tenantID, dbSession.ID); terminateErr != nil {
+			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateStaleSession,
+				"error", terminateErr,
+				"staleSessionID", dbSession.ID,
+				"baseStationEui", session.BaseStationEUI)
+			return fmt.Errorf("terminate stale session before activation: %w", terminateErr)
+		}
+		s.logger.InfoContext(ctx, bssci.LogBSSCITerminatedStaleSession,
+			"staleSessionID", dbSession.ID,
+			"baseStationEui", session.BaseStationEUI)
+
+		if delErr := s.discardPendingOperations(ctx, session, dbSession.ID); delErr != nil {
+			return delErr
+		}
+	}
+
+	retiredIDs, err := s.bsSessionRepo.TerminateResumableSessions(ctx, tenantID, baseStation.ID)
+	if err != nil {
+		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateResumableSessions,
+			"error", err,
+			"baseStationEui", session.BaseStationEUI)
+		return fmt.Errorf("terminate leftover resumable sessions before activation: %w", err)
+	}
+	for _, retiredID := range retiredIDs {
+		s.logger.InfoContext(ctx, bssci.LogBSSCITerminatedStaleSession,
+			"staleSessionID", retiredID,
+			"baseStationEui", session.BaseStationEUI)
+		// A retired row is never offered for resume, so its leftover operations are
+		// already unreachable: failing to delete them must not deny the new session.
+		_ = s.discardPendingOperations(ctx, session, retiredID)
+	}
+
+	return nil
+}
+
+// discardPendingOperations removes a retired session's pending operations: a
+// surviving row is reissued if that session is ever resumed.
+func (s *sessionService) discardPendingOperations(ctx context.Context, session *bssci.Session, staleSessionID int64) error {
+	deleted, err := s.pendingOpsRepo.DeleteBySession(ctx, staleSessionID)
+	if err != nil {
+		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToDeletePendingOperations,
+			"error", err,
+			"staleSessionID", staleSessionID,
+			"baseStationEui", session.BaseStationEUI)
+		return fmt.Errorf("remove pending operations of stale session: %w", err)
+	}
+	if deleted > 0 {
+		s.logger.InfoContext(ctx, bssci.LogBSSCIDeletedPendingOperations,
+			"staleSessionID", staleSessionID,
+			"count", deleted)
+	}
 	return nil
 }
 
