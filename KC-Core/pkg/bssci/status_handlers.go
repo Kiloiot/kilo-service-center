@@ -3,18 +3,12 @@ package bssci
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
-)
-
-const (
-	// StatusRequestInterval defines how often to request status from base stations
-	StatusRequestInterval = 30 * time.Second
-	// StatusRequestInitialDelay defines the initial delay before first status request
-	StatusRequestInitialDelay = 5 * time.Second
 )
 
 // handleStatusResponse handles statusRsp from base station per MIOTY BSSCI v1.0.0 Section 3.5.2
@@ -221,7 +215,7 @@ func (s *Server) handleStatusResponse(_ *Server, session *Session, msg *Message,
 					"fieldsUpdated", len(updates))
 
 				// Persist status history (BSSCI §3.5.2 BSSCI-3.5-HIST)
-				if s.storage != nil && s.storage.MIOTYBaseStationStatus() != nil {
+				if s.bsStatusStore != nil {
 					tenantID := resolvedTenant(session, s.tenantID)
 
 					statusRecord := &mioty.BaseStationStatusRecord{
@@ -242,7 +236,7 @@ func (s *Server) handleStatusResponse(_ *Server, session *Session, msg *Message,
 						Longitude:      longitude,
 						Altitude:       altitude,
 					}
-					if err := s.storage.MIOTYBaseStationStatus().Create(ctx, statusRecord); err != nil {
+					if err := s.bsStatusStore.Create(ctx, statusRecord); err != nil {
 						s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistStatusHistory, "error", err)
 					}
 				}
@@ -250,27 +244,24 @@ func (s *Server) handleStatusResponse(_ *Server, session *Session, msg *Message,
 		}
 	}
 
-	// Send statusCmp to complete three-way handshake
+	// The service center completes its own SC-initiated status operation
+	// (BSSCI §3.5): after the base station's statusRsp, the SC sends statusCmp
+	// and finalizes the pending operation. Because the SC sends the completion
+	// itself, a spec-compliant base station never returns statusCmp, so the
+	// pending row must be removed here or it leaks.
 	complete := map[string]interface{}{
 		"command": mioty.CmdStatusComplete,
 		"opId":    msg.OpId,
 	}
-	return s.sendMessage(session, complete)
-}
-
-// handleStatusComplete handles statusCmp from base station
-func (s *Server) handleStatusComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
-	// Remove completed operation from pending operations for MIOTY session session resume
-	if err := s.removePendingOperation(session, msg.OpId); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingStatusOperation,
-			"error", err,
-			"opId", msg.OpId,
-			"sessionId", session.DbSessionID)
+	if err := s.sendMessage(session, complete); err != nil {
+		return err
 	}
-
-	s.logger.DebugContext(s.sessionContext(session), LogBSSCIStatusOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
+	// Finalize only after the completion write succeeded; a failed remove
+	// preserves the pending operation for recovery.
+	if err := s.removePendingOperation(session, msg.OpId); err != nil {
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err, "opId", msg.OpId)
+	}
 	return nil
 }
 
@@ -292,10 +283,10 @@ func (s *Server) startStatusMechanism(session *Session) {
 	session.mu.Unlock()
 
 	go func() {
-		ticker := time.NewTicker(StatusRequestInterval)
+		ticker := time.NewTicker(s.statusRequestInterval())
 		defer ticker.Stop()
 
-		time.Sleep(StatusRequestInitialDelay)
+		time.Sleep(s.statusRequestInitialDelay())
 		if _, err := s.SendStatusRequest(session); err != nil {
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIInitialStatusRequestFailed,
 				"bsEui", session.BaseStationEUI,
@@ -328,11 +319,16 @@ func (s *Server) SendStatusRequest(session interface{}) (int64, error) {
 		return 0, fmt.Errorf("%s", ResolveErrorMessage(errInvalidSessionType))
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	sess.mu.Lock()
-	sess.LastScOpId--
-	opId := sess.LastScOpId
-	sess.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back on failure.
+	opId, err := s.beginScOperation(sess)
+	if err != nil {
+		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToSendStatusRequest,
+			"bsEui", sess.BaseStationEUI,
+			"error", err)
+		return 0, err
+	}
 
 	statusRequest := map[string]interface{}{
 		"command": mioty.CmdStatus,
@@ -343,38 +339,31 @@ func (s *Server) SendStatusRequest(session interface{}) (int64, error) {
 		"bsEui", sess.BaseStationEUI,
 		"opId", opId)
 
-	// Persist pending operation for MIOTY session session resume
+	// The recovery record must be durable before the operation goes on the
+	// wire: an SC operation whose pending row was never persisted cannot be
+	// reissued on resume. A persistence failure aborts the send, leaving only
+	// a consumed-ID gap.
 	if err := s.persistPendingOperation(sess, opId, mioty.CmdStatus, statusRequest, nil, nil); err != nil {
 		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToPersistPendingStatusOperation, "error", err)
-		// Continue anyway - persistence failure shouldn't block operation
+		return 0, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistPendingStatusOperation), err)
 	}
 
-	// Send message with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(sess, statusRequest); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		sess.mu.Lock()
-		sess.LastScOpId++
-		sess.mu.Unlock()
-
 		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToSendStatusRequest,
 			"bsEui", sess.BaseStationEUI,
 			"error", err)
-		// Clean up pending operation since sending failed
-		if cleanupErr := s.removePendingOperation(sess, opId); cleanupErr != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(sess, opId, err)
+		} else if cleanupErr := s.removePendingOperation(sess, opId); cleanupErr != nil {
+			// Nothing reached the wire; the pending row is removed so resume
+			// does not reissue an operation that was never sent.
 			s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToCleanupPendingOpAfterSendFailure,
 				"error", cleanupErr,
 				"opId", opId)
 		}
 		return 0, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendStatusRequest), err)
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(sess), sess); err != nil {
-		s.logger.ErrorContext(s.sessionContext(sess), LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sess.ID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	return opId, nil

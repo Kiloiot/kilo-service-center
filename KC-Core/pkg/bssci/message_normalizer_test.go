@@ -1,7 +1,6 @@
 package bssci
 
 import (
-	"context"
 	"math"
 	"reflect"
 	"testing"
@@ -10,13 +9,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestDetachEqSnrDefaulting verifies BSSCI §5.7.1 eqSnr defaulting behavior
 // When eqSnr is absent, it should default to snr value (special case for detach)
 func TestDetachEqSnrDefaulting(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	tests := []struct {
 		name          string
@@ -90,7 +91,7 @@ func TestDetachEqSnrDefaulting(t *testing.T) {
 // rxDuration=0 must be preserved as explicit value, not treated as absent
 func TestDetachRxDurationZeroPreservation(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	tests := []struct {
 		name             string
@@ -169,7 +170,7 @@ func TestDetachRxDurationZeroPreservation(t *testing.T) {
 // TestDetachProfileEmptyStringPreservation verifies profile="" is valid and preserved
 func TestDetachProfileEmptyStringPreservation(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	tests := []struct {
 		name        string
@@ -242,7 +243,7 @@ func TestDetachProfileEmptyStringPreservation(t *testing.T) {
 // TestDetachSignatureByteArrayValidation verifies signature field byte array handling
 func TestDetachSignatureByteArrayValidation(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	tests := []struct {
 		name        string
@@ -309,7 +310,7 @@ func TestDetachSignatureByteArrayValidation(t *testing.T) {
 // Unknown fields should be logged (WARN) and dropped without failing normalization
 func TestDetachUnknownFieldDropping(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	inputData := map[string]interface{}{
 		"command":   "det",
@@ -346,7 +347,7 @@ func TestDetachUnknownFieldDropping(t *testing.T) {
 // TestDetachMandatoryFieldValidation verifies mandatory field enforcement
 func TestDetachMandatoryFieldValidation(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	tests := []struct {
 		name        string
@@ -613,7 +614,7 @@ func TestMsgpackDecoderProducesUint64ForUnsigned(t *testing.T) {
 // uint64 from the msgpack decoder, and normalization must coerce it to uint32 without error.
 func TestNormalizeULData_PacketCntAsUint64(t *testing.T) {
 	testLogger := logger.NewNop()
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	data := map[string]interface{}{
 		"command":     "ulData",

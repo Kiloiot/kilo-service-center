@@ -15,15 +15,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // =============================================================================
@@ -442,8 +440,8 @@ func TestBroadcastDLDataResult_ErrorLogging_UsesSessionContext(t *testing.T) {
 	// Verify that error logging uses s.sessionContext per updated implementation
 
 	// Setup observed logger
-	observedCore, observedLogs := observer.New(zapcore.ErrorLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures ERROR+
+	testLogger := observedLogs
 
 	// Simulate the error logging pattern from server.go:1349-1351
 	session := &Session{
@@ -461,7 +459,7 @@ func TestBroadcastDLDataResult_ErrorLogging_UsesSessionContext(t *testing.T) {
 		"error", sendErr)
 
 	// Verify log entry
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("ERROR")
 	assert.Len(t, logs, 1, "should have 1 error log")
 
 	if len(logs) > 0 {
@@ -469,10 +467,7 @@ func TestBroadcastDLDataResult_ErrorLogging_UsesSessionContext(t *testing.T) {
 		assert.Equal(t, LogSCACISendDLResultToACFailed, entry.Message)
 
 		// Verify context fields are present
-		fieldMap := make(map[string]interface{})
-		for _, field := range entry.Context {
-			fieldMap[field.Key] = field.Interface
-		}
+		fieldMap := entry.FieldMap()
 		assert.Contains(t, fieldMap, "acEui", "should include acEui in context")
 		assert.Contains(t, fieldMap, "error", "should include error in context")
 	}

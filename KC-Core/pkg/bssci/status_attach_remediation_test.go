@@ -42,13 +42,15 @@ func TestSubpacketsNormalization(t *testing.T) {
 
 	mockConn := &remedTestConn{}
 	session := &bssci.Session{
-		ID:                "test-subpackets-session",
-		BaseStationEUI:    bssci.TestBsEui04,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		BsOpId:            0,
-		ScOpId:            0,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-subpackets-session",
+			BaseStationEUI:    bssci.TestBsEui04,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			BsOpId:            0,
+			ScOpId:            0,
+		},
+		Conn: mockConn,
 	}
 
 	// Create attach message with subpackets as Object (map) per BSSCI §5.6.1
@@ -138,13 +140,15 @@ func TestEqSnrOptionalHandling(t *testing.T) {
 
 			mockConn := &remedTestConn{}
 			session := &bssci.Session{
-				ID:                "test-eqsnr-session",
-				BaseStationEUI:    bssci.TestBsEui04,
-				Conn:              mockConn,
-				Encoding:          "msgpack",
-				HandshakeComplete: true,
-				BsOpId:            0,
-				ScOpId:            0,
+				ProtocolSessionState: bssci.ProtocolSessionState{
+					ID:                "test-eqsnr-session",
+					BaseStationEUI:    bssci.TestBsEui04,
+					Encoding:          "msgpack",
+					HandshakeComplete: true,
+					BsOpId:            0,
+					ScOpId:            0,
+				},
+				Conn: mockConn,
 			}
 
 			msg := &bssci.Message{
@@ -196,13 +200,15 @@ func TestAttachMessagePersistence(t *testing.T) {
 
 	mockConn := &remedTestConn{}
 	session := &bssci.Session{
-		ID:                "test-attach-persist-session",
-		BaseStationEUI:    bssci.TestBsEui04,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		BsOpId:            0,
-		ScOpId:            0,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-attach-persist-session",
+			BaseStationEUI:    bssci.TestBsEui04,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			BsOpId:            0,
+			ScOpId:            0,
+		},
+		Conn: mockConn,
 	}
 
 	// Create attach message with all required fields
@@ -244,14 +250,16 @@ func TestStatusHistoryPersistence(t *testing.T) {
 
 	mockConn := &remedTestConn{}
 	session := &bssci.Session{
-		ID:                "test-status-persist-session",
-		BaseStationEUI:    bssci.TestBsEui04,
-		DbSessionID:       123,
-		Conn:              mockConn,
-		Encoding:          "msgpack",
-		HandshakeComplete: true,
-		BsOpId:            0,
-		ScOpId:            0,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "test-status-persist-session",
+			BaseStationEUI:    bssci.TestBsEui04,
+			DbSessionID:       123,
+			Encoding:          "msgpack",
+			HandshakeComplete: true,
+			BsOpId:            0,
+			ScOpId:            0,
+		},
+		Conn: mockConn,
 	}
 
 	// Create status request

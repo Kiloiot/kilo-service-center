@@ -1,11 +1,12 @@
 package postgres
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // TestGetByTypeEUI_Determinism validates the tie-break when duplicate type_eui rows exist: default wins, tenant beats System.
@@ -17,7 +18,7 @@ func TestGetByTypeEUI_Determinism(t *testing.T) {
 	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
 	createTestTenant(t, db, 600, "TestTenant600")
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	typeEUI := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0x00, 0x00, 0x94}
 
 	var mfrID, modelID string

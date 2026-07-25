@@ -32,7 +32,7 @@ func NewDecoderService(log logger.Logger) *DecoderService {
 // Decode decodes raw payload using blueprint spec for given format ID.
 // Implements the BlueprintDecoder interface.
 func (s *DecoderService) Decode(
-	_ context.Context,
+	ctx context.Context,
 	bp *models.Blueprint,
 	userData []byte,
 	formatID uint8,
@@ -41,7 +41,7 @@ func (s *DecoderService) Decode(
 	// Parse the blueprint specification
 	spec, err := s.parseBlueprint(bp.SpecJSON)
 	if err != nil {
-		s.log.Warn("Failed to parse blueprint specification",
+		s.log.WarnContext(ctx, "Failed to parse blueprint specification",
 			"blueprint_id", bp.ID,
 			"error", err)
 		return blueprint.NewDecodeError(blueprint.ErrInvalidBlueprintJSON, err.Error()), nil
@@ -49,7 +49,7 @@ func (s *DecoderService) Decode(
 
 	// Validate the specification
 	if err := spec.Validate(); err != nil {
-		s.log.Warn("Blueprint validation failed",
+		s.log.WarnContext(ctx, "Blueprint validation failed",
 			"blueprint_id", bp.ID,
 			"error", err)
 		if ve, ok := err.(*blueprint.ValidationError); ok {
@@ -61,7 +61,7 @@ func (s *DecoderService) Decode(
 	// Find the format definition for the given format ID
 	format := spec.GetUplinkFormat(formatID)
 	if format == nil {
-		s.log.Debug("Format ID not found in blueprint",
+		s.log.DebugContext(ctx, "Format ID not found in blueprint",
 			"blueprint_id", bp.ID,
 			"format_id", formatID)
 		return blueprint.NewDecodeError(
@@ -74,7 +74,7 @@ func (s *DecoderService) Decode(
 	requiredBits := s.calculateRequiredBits(format)
 	requiredBytes := (requiredBits + 7) / 8
 	if len(userData) < requiredBytes {
-		s.log.Debug("Payload too short for format",
+		s.log.DebugContext(ctx, "Payload too short for format",
 			"blueprint_id", bp.ID,
 			"format_id", formatID,
 			"required_bytes", requiredBytes,
@@ -91,7 +91,7 @@ func (s *DecoderService) Decode(
 	// Decode the payload
 	decodedData, err := s.decodePayload(userData, format, mergedCalibration)
 	if err != nil {
-		s.log.Debug("Payload decode failed",
+		s.log.DebugContext(ctx, "Payload decode failed",
 			"blueprint_id", bp.ID,
 			"format_id", formatID,
 			"error", err)
@@ -101,7 +101,7 @@ func (s *DecoderService) Decode(
 		return blueprint.NewDecodeError(blueprint.ErrInternalDecodePanic, err.Error()), nil
 	}
 
-	s.log.Debug("Payload decoded successfully",
+	s.log.DebugContext(ctx, "Payload decoded successfully",
 		"blueprint_id", bp.ID,
 		"format_id", formatID,
 		"field_count", len(decodedData))

@@ -115,7 +115,7 @@ type mockCertificateVerifier struct {
 	verifyCertificateFunc func(cert *x509.Certificate) string
 }
 
-func (m *mockCertificateVerifier) VerifyCertificate(cert *x509.Certificate) string {
+func (m *mockCertificateVerifier) VerifyCertificate(_ context.Context, cert *x509.Certificate) string {
 	if m.verifyCertificateFunc != nil {
 		return m.verifyCertificateFunc(cert)
 	}
@@ -496,7 +496,7 @@ func TestNegotiateVersion_ValidVersion(t *testing.T) {
 		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
 	).(*handshakeService)
 
-	negotiated, errToken := svc.NegotiateVersion("1.0.0")
+	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "1.0.0")
 
 	if errToken != "" {
 		t.Errorf("expected no error, got: %s", errToken)
@@ -517,7 +517,7 @@ func TestNegotiateVersion_MajorVersionMismatch(t *testing.T) {
 		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
 	).(*handshakeService)
 
-	negotiated, errToken := svc.NegotiateVersion("2.0.0")
+	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "2.0.0")
 
 	if errToken != scaci.ErrMajorVersionUnsupported {
 		t.Errorf("expected ErrMajorVersionUnsupported, got: %s", errToken)
@@ -538,7 +538,7 @@ func TestNegotiateVersion_MinorVersionTooHigh(t *testing.T) {
 		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
 	).(*handshakeService)
 
-	negotiated, errToken := svc.NegotiateVersion("1.5.0")
+	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "1.5.0")
 
 	if errToken != scaci.ErrMinorVersionUnsupported {
 		t.Errorf("expected ErrMinorVersionUnsupported, got: %s", errToken)
@@ -559,7 +559,7 @@ func TestNegotiateVersion_InvalidFormat(t *testing.T) {
 		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
 	).(*handshakeService)
 
-	negotiated, errToken := svc.NegotiateVersion("invalid-version")
+	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "invalid-version")
 
 	if errToken != scaci.ErrInvalidVersionFormat {
 		t.Errorf("expected ErrInvalidVersionFormat, got: %s", errToken)
@@ -584,7 +584,7 @@ func TestNegotiateVersion_UsesPkgConstants(t *testing.T) {
 	).(*handshakeService)
 
 	// Request with version matching SupportedMajorVersion.SupportedMinorVersion
-	negotiated, errToken := svc.NegotiateVersion("1.0.0")
+	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "1.0.0")
 
 	if errToken != "" {
 		t.Fatalf("expected successful negotiation, got error: %s", errToken)

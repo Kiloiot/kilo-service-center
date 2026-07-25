@@ -3,22 +3,31 @@ package bssciservices
 import (
 	"context"
 	"encoding/binary"
+	"errors"
+	"strconv"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/google/uuid"
 )
 
-// downlinkDispatcher implements bssci.DownlinkDispatcher (BSSCI §5.10.2).
+// downlinkDispatcher implements bssci.DownlinkDispatcher (BSSCI rev1 §5.12 /
+// classic §3.12).
 //
-// Handles automatic downlink dispatch when endpoint signals dlOpen=true.
-// Uses transactional reserve→send→mark-queued pattern with FOR UPDATE SKIP LOCKED
-// to prevent concurrent dispatchers from reserving the same downlink.
+// The dispatcher is the single owner of the downlink queue status lifecycle
+// pending → reserved → queued for both delivery paths: DispatchIfAvailable
+// (auto-dispatch on dlOpen=true) and DispatchQueue (SCACI-initiated immediate
+// dispatch). The reservation commits in a short transaction BEFORE any network
+// I/O; an uncertain (ambiguous) send leaves the row reserved and is confirmed
+// by the idempotent reserved→queued update, repeated from the dlDataQueRsp
+// handler for crash recovery. A definite pre-write failure releases the row
+// back to pending (documented at-least-once retry semantics).
 type downlinkDispatcher struct {
 	logger  logger.Logger
-	storage interfaces.Storage // interfaces.Storage for BeginTx()
+	storage interfaces.Storage // BeginTx() for reservation + regular repository for confirmation
 	sendFn  SendDLQueueFunc    // Injected function matching Server.SendDLDataQueue signature
 }
 
@@ -26,7 +35,8 @@ type downlinkDispatcher struct {
 // Enables dependency injection for testability without depending on full Server
 type SendDLQueueFunc func(sessionID string, epEUI uint64, payloads [][]byte, queID int64,
 	priority float32, cntDepend bool, packetCnt []int64, format uint8,
-	responseExp, responsePrio, dlWindReq, expOnly bool, tenantID int64) error
+	responseExp, responsePrio, dlWindReq, expOnly bool, tenantID int64,
+	dlRxStatQry bool) error
 
 // Ensure interface compliance
 var _ bssci.DownlinkDispatcher = (*downlinkDispatcher)(nil)
@@ -35,7 +45,7 @@ var _ bssci.DownlinkDispatcher = (*downlinkDispatcher)(nil)
 //
 // Parameters:
 //   - log: Logger for dispatch events
-//   - storage: interfaces.Storage providing BeginTx() for transactions
+//   - storage: interfaces.Storage providing BeginTx() and the downlink repository
 //   - sendFn: Function to send downlink (typically bssciServer.SendDLDataQueue)
 func NewDownlinkDispatcher(
 	log logger.Logger,
@@ -49,20 +59,16 @@ func NewDownlinkDispatcher(
 	}
 }
 
-// DispatchIfAvailable performs transactional reserve→send→mark-queued for pending downlinks.
+// DispatchIfAvailable reserves the highest-priority pending downlink for the
+// endpoint and dispatches it through the shared dispatch path.
 //
 // Lifecycle:
-//  1. Begin transaction
-//  2. ReserveNextPendingDownlink (SELECT FOR UPDATE SKIP LOCKED + UPDATE status='reserved')
-//  3. Build payloads from DownlinkMessage
-//  4. Send via SendDLDataQueue (three-way handshake)
-//  5. MarkReservedAsQueued (UPDATE status='queued', transmission_time, tx_bs_eui)
-//  6. Commit transaction
-//
-// If step 4 fails, transaction rollback returns status to 'pending' automatically.
-// If step 5 fails, transaction rollback returns status to 'reserved' then 'pending'.
+//  1. Short transaction: ReserveNextPendingDownlink (FOR UPDATE SKIP LOCKED +
+//     UPDATE status='reserved'), then commit BEFORE any network I/O
+//  2. Send via SendDLDataQueue (dlRxStatQry pairing included)
+//  3. Idempotent reserved→queued confirmation on the regular repository
 func (d *downlinkDispatcher) DispatchIfAvailable(
-	ownerCtx context.Context,
+	ctx context.Context,
 	ownerTenantID int64,
 	ownerOrgUUID uuid.UUID,
 	session *bssci.Session,
@@ -72,7 +78,7 @@ func (d *downlinkDispatcher) DispatchIfAvailable(
 ) (bool, error) {
 	// Guard: No tenant means we can't query the queue safely
 	if ownerTenantID == 0 {
-		d.logger.WarnContext(ownerCtx, bssci.LogDispatcherNoTenant, "epEui", epEUI)
+		d.logger.WarnContext(ctx, bssci.LogDispatcherNoTenant, "epEui", epEUI)
 		return false, nil
 	}
 
@@ -80,37 +86,108 @@ func (d *downlinkDispatcher) DispatchIfAvailable(
 	epEUIBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(epEUIBytes, epEUI)
 
-	// Begin transaction via interfaces.Storage
-	tx, err := d.storage.BeginTx(ownerCtx)
+	// Short reservation transaction: reserve and commit before any wire write
+	tx, err := d.storage.BeginTx(ctx)
 	if err != nil {
-		d.logger.ErrorContext(ownerCtx, bssci.LogDispatcherTxBeginFailed, "error", err)
+		d.logger.ErrorContext(ctx, bssci.LogDispatcherTxBeginFailed, "error", err)
 		return false, nil // Graceful degradation - don't fail uplink
 	}
+	rollback := true
 	defer func() {
-		// Rollback is no-op if already committed
-		_ = tx.Rollback()
+		if rollback {
+			_ = tx.Rollback()
+		}
 	}()
 
-	// 1. Atomic select + reserve with SKIP LOCKED
+	// Atomic select + reserve with SKIP LOCKED
 	// Pass nil for orgID since BSSCI dispatcher uses tenant-level isolation
-	dl, err := tx.MIOTYDownlinks().ReserveNextPendingDownlink(ownerCtx, ownerTenantID, epEUIBytes, session.BaseStationEUI, nil)
+	dl, err := tx.MIOTYDownlinks().ReserveNextPendingDownlink(ctx, ownerTenantID, epEUIBytes, session.BaseStationEUI, nil)
 	if err != nil {
-		d.logger.ErrorContext(ownerCtx, bssci.LogDispatcherQueryFailed, "error", err, "epEui", epEUI)
+		d.logger.ErrorContext(ctx, bssci.LogDispatcherQueryFailed, "error", err, "epEui", epEUI)
 		return false, nil
 	}
 	if dl == nil {
-		d.logger.DebugContext(ownerCtx, bssci.LogDispatcherNoPending, "epEui", epEUI)
+		d.logger.DebugContext(ctx, bssci.LogDispatcherNoPending, "epEui", epEUI)
 		return false, nil // No pending downlinks - normal case
 	}
 
-	// 2. Build payloads array (UserData takes precedence, fallback to single Payload)
+	if err := tx.Commit(); err != nil {
+		d.logger.ErrorContext(ctx, bssci.LogDispatcherTxCommitFailed, "error", err)
+		return false, nil
+	}
+	rollback = false
+
+	return d.dispatchReserved(ctx, ownerTenantID, ownerOrgUUID, session, epEUI, dl)
+}
+
+// DispatchQueue reserves one exact pending queue row (by queue ID, tenant, and
+// endpoint) and dispatches it through the shared dispatch path. Used for
+// SCACI-initiated immediate delivery (SCACI §3.10.1). Returns dispatched=false
+// with a nil error when no matching row is in 'pending' state (already
+// dispatched, revoked, or foreign).
+func (d *downlinkDispatcher) DispatchQueue(
+	ctx context.Context,
+	ownerTenantID int64,
+	ownerOrgUUID uuid.UUID,
+	session *bssci.Session,
+	queueID uint64,
+	epEUI uint64,
+) (bool, error) {
+	if ownerTenantID == 0 {
+		d.logger.WarnContext(ctx, bssci.LogDispatcherNoTenant, "epEui", epEUI)
+		return false, nil
+	}
+
+	epEUIBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(epEUIBytes, epEUI)
+
+	// Single-statement exact reservation (pending → reserved), atomic without
+	// an explicit transaction. Org filter stays nil: BSSCI dispatch uses
+	// tenant-level isolation, matching DispatchIfAvailable.
+	dl, err := d.storage.MIOTYDownlinks().ReservePendingDownlinkByQueueID(ctx, ownerTenantID, nil, queueID, epEUIBytes, session.BaseStationEUI)
+	if err != nil {
+		d.logger.ErrorContext(ctx, bssci.LogDispatcherQueryFailed, "error", err, "epEui", epEUI, "queId", queueID)
+		return false, err
+	}
+	if dl == nil {
+		d.logger.WarnContext(ctx, bssci.LogDispatcherNoPending, "epEui", epEUI, "queId", queueID)
+		return false, nil
+	}
+
+	return d.dispatchReserved(ctx, ownerTenantID, ownerOrgUUID, session, epEUI, dl)
+}
+
+// dispatchReserved sends a reserved queue row and confirms it as queued. The
+// row is already durably 'reserved' and no transaction is open.
+//
+// Failure semantics:
+//   - Ambiguous wire write (bssci.ErrAmbiguousWrite): the row stays reserved -
+//     never back to pending, because a duplicate send with a new operation ID
+//     could corrupt the stream. The send layer closes the connection; resume
+//     reissues the persisted operations with their original IDs and the
+//     dlDataQueRsp handler repairs the reserved→queued status.
+//   - Definite pre-write failure: the row is released back to pending
+//     (documented at-least-once retry).
+//   - Queued-confirmation failure after a successful send: the row stays
+//     reserved and the send is reported dispatched; the idempotent
+//     confirmation is repeated from the dlDataQueRsp handler.
+func (d *downlinkDispatcher) dispatchReserved(
+	ctx context.Context,
+	ownerTenantID int64,
+	ownerOrgUUID uuid.UUID,
+	session *bssci.Session,
+	epEUI uint64,
+	dl *storage.DownlinkMessage,
+) (bool, error) {
+	// Build payloads array (UserData takes precedence, fallback to single Payload)
 	payloads := dl.UserData
 	if len(payloads) == 0 && len(dl.Payload) > 0 {
 		payloads = [][]byte{dl.Payload}
 	}
 
-	// 3. Dispatch via SendDLDataQueue (uses existing three-way handshake)
-	err = d.sendFn(
+	// Dispatch via SendDLDataQueue (three-way handshake; pairs the §5.16 /
+	// §3.16 dlRxStatQry ahead of the queue frame when the row requests it)
+	err := d.sendFn(
 		session.ID,
 		epEUI,
 		payloads,
@@ -124,39 +201,46 @@ func (d *downlinkDispatcher) DispatchIfAvailable(
 		dl.DlWindReq,
 		dl.ExpOnly,
 		ownerTenantID,
+		dl.DlRxStatQry,
 	)
 	if err != nil {
-		d.logger.ErrorContext(ownerCtx, bssci.LogDispatcherSendFailed,
+		if errors.Is(err, bssci.ErrAmbiguousWrite) {
+			d.logger.ErrorContext(ctx, bssci.LogDispatcherSendFailed,
+				"queId", dl.QueID, "epEui", epEUI, "error", err)
+			return false, err
+		}
+		// Definite pre-write failure: release the reservation for retry
+		d.logger.ErrorContext(ctx, bssci.LogDispatcherSendFailed,
 			"queId", dl.QueID, "epEui", epEUI, "error", err)
-		// tx.Rollback() called by defer - reserved->pending automatically
-		return false, nil
+		if relErr := d.storage.MIOTYDownlinks().UpdateDownlinkStatus(ctx,
+			strconv.FormatInt(dl.ID, 10), bssci.DLQueueStatusPending, nil); relErr != nil {
+			d.logger.ErrorContext(ctx, bssci.LogDispatcherReleaseFailed,
+				"queId", dl.QueID, "error", relErr)
+		}
+		return false, err
 	}
 
-	// 4. Mark sent with transmission metadata
-	// packetCnt = nil (unknown until dlDataQueCmp returns actual value)
-	// Pass nil for orgID since BSSCI dispatcher uses tenant-level isolation
+	// Confirm reserved→queued with transmission metadata (idempotent single
+	// statement on the regular repository - no transaction spans the send).
+	// packetCnt = nil (unknown until the dlDataRes transmission result, BSSCI 5.14)
 	txTime := time.Now().UnixNano()
-	if err := tx.MIOTYDownlinks().MarkReservedAsQueued(
-		ownerCtx,
+	if err := d.storage.MIOTYDownlinks().MarkReservedAsQueued(
+		ctx,
 		uint64(dl.QueID), //nolint:gosec // G115: QueID is always positive (DB-assigned sequence)
 		ownerTenantID,
 		session.BaseStationEUI,
 		txTime,
-		nil, // packetCnt - dlDataQueCmp will update
+		nil, // packetCnt - set when the dlDataRes transmission result arrives
 		nil, // orgID - BSSCI uses tenant-level isolation
 	); err != nil {
-		d.logger.ErrorContext(ownerCtx, bssci.LogDispatcherMarkSentFailed,
+		// The send happened: report dispatched, leave the row reserved. The
+		// dlDataQueRsp handler repeats the idempotent confirmation.
+		d.logger.ErrorContext(ctx, bssci.LogDispatcherMarkSentFailed,
 			"queId", dl.QueID, "error", err)
-		return false, nil
+		return true, nil
 	}
 
-	// 5. Commit transaction
-	if err := tx.Commit(); err != nil {
-		d.logger.ErrorContext(ownerCtx, bssci.LogDispatcherTxCommitFailed, "error", err)
-		return false, nil
-	}
-
-	d.logger.InfoContext(ownerCtx, bssci.LogDispatcherSuccess,
+	d.logger.InfoContext(ctx, bssci.LogDispatcherSuccess,
 		"queId", dl.QueID,
 		"epEui", epEUI,
 		"bsEui", session.BaseStationEUI,

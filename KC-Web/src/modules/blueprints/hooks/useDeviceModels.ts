@@ -74,12 +74,8 @@ export function useUpdateDeviceModel() {
 export function useDeleteDeviceModel() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-    }: {
-      id: string;
-      manufacturerId: string;
-    }) => api.deleteDeviceModel(id),
+    mutationFn: ({ id }: { id: string; manufacturerId: string }) =>
+      api.deleteDeviceModel(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.blueprints.deviceModels(variables.manufacturerId),

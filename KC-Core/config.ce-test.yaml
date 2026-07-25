@@ -20,8 +20,13 @@ storage:
 protocol:
   bsci_host: "0.0.0.0"
   bsci_port: 5002
+  # BSSCI requires mutual TLS; the harness shares the dev certificates.
   bsci_tls:
-    enabled: false
+    enabled: true
+    cert_file: "certificates/server.crt"
+    key_file: "certificates/server.key"
+    ca_file: "certificates/ca.crt"
+    min_version: "1.2"
   scaci_enabled: false
 
   federation:

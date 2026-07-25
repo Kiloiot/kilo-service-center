@@ -14,9 +14,10 @@ import (
 // BSSCIServiceBundle packages all BSSCI service dependencies
 type BSSCIServiceBundle struct {
 	SessionSvc          bssci.SessionService
+	VersionNegotiator   bssci.VersionNegotiator
 	DownlinkSvc         bssci.DownlinkService
 	StatusSvc           bssci.StatusService
-	ConnectionSvc       bssci.ConnectionService
+	ConnectionSvc       bssci.BaseStationConnectionRegistry
 	Broadcaster         bssci.SCACIBroadcaster         // Initially unwired - set via SetSCACIServer
 	EPStatusBroadcaster bssci.SCACIEPStatusBroadcaster // EPStatus adapter - set via SetSCACIEPStatusServer
 	QueueSerializer     bssci.QueueSerializer
@@ -44,24 +45,32 @@ func NewBSSCIServices(
 	storage interfaces.Storage,
 	systemEventStore interfaces.SystemEventStore,
 	queueStore *postgres.DownlinkQueueReader,
+	connectionMgr *basestation.ConnectionManager,
 	log logger.Logger,
 	tenantID int64,
 	orgResolver org.Resolver,
 	pendingOps *map[bssci.SessionOpKey]*bssci.PendingOperation,
 	pendingOpsMu *sync.RWMutex,
-) *BSSCIServiceBundle {
+	supportedProtocolVersions []string,
+) (*BSSCIServiceBundle, error) {
 	// Create services in dependency order
+	versionNegotiator, err := NewVersionNegotiator(supportedProtocolVersions, log)
+	if err != nil {
+		return nil, err
+	}
+
 	// SessionService uses repository interfaces
 	sessionSvc := NewSessionService(
 		storage.BaseStationSessions(),
 		storage.BaseStations(),
+		storage.PendingOperations(),
 		systemEventStore,
 		tenantID,
 		log,
 	)
 	// StatusService uses PendingOperationRepository
 	statusSvc := NewStatusService(pendingOps, pendingOpsMu, storage.PendingOperations(), log)
-	connectionSvc := NewConnectionService(log)
+	connectionSvc := NewConnectionRegistry(connectionMgr, log)
 	queueSerializer := NewQueueSerializer()
 	auditLogger := NewAuditLogger(systemEventStore)
 	tenantResolver := NewTenantResolver(queueStore)
@@ -88,6 +97,7 @@ func NewBSSCIServices(
 
 	return &BSSCIServiceBundle{
 		SessionSvc:          sessionSvc,
+		VersionNegotiator:   versionNegotiator,
 		DownlinkSvc:         downlinkSvc,
 		StatusSvc:           statusSvc,
 		ConnectionSvc:       connectionSvc,
@@ -96,5 +106,5 @@ func NewBSSCIServices(
 		QueueSerializer:     queueSerializer,
 		AuditLogger:         auditLogger,
 		TenantResolver:      tenantResolver,
-	}
+	}, nil
 }

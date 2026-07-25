@@ -9,14 +9,41 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/google/uuid"
 )
 
 // NewTestServer creates a Server instance for testing with access to unexported fields.
 // This helper lives in package bssci (not bssci_test) so it can set internal fields.
 // Uses interfaces.Storage for dependency inversion. StatusService is mandatory (panics if nil).
+
+// staticTestVersionNegotiator mirrors the production negotiator semantics for
+// the supported set {mioty.MIOTYProtocolVersion}: same-major requests select
+// the canonical service center version; other majors and lower minors return
+// the production catalog errors.
+type staticTestVersionNegotiator struct{}
+
+func (staticTestVersionNegotiator) Negotiate(_ context.Context, requested string) (string, error) {
+	reqMajor, reqMinor, _, cerr := ParseVersion(requested)
+	if cerr != nil {
+		return "", cerr
+	}
+	scMajor, scMinor, _, _ := ParseVersion(mioty.MIOTYProtocolVersion)
+	if reqMajor != scMajor {
+		return "", NewCatalogError(ErrUnsupportedMajorVersion, POSIX_EPROTO)
+	}
+	if reqMinor < scMinor {
+		return "", NewCatalogError(ErrUnsupportedMinorVersion, POSIX_EPROTO)
+	}
+	return mioty.MIOTYProtocolVersion, nil
+}
+
 func NewTestServer(
 	log logger.Logger,
 	storage interfaces.Storage,
@@ -25,8 +52,8 @@ func NewTestServer(
 	sessionSvc SessionService,
 	downlinkSvc DownlinkService,
 	statusSvc StatusService,
-	connectionSvc ConnectionService,
-	broadcaster SCACIBroadcaster,
+	connectionSvc BaseStationConnectionRegistry,
+	_ SCACIBroadcaster,
 	queueSerializer QueueSerializer,
 	auditLogger AuditLogger,
 	tenantResolver TenantResolver,
@@ -37,27 +64,24 @@ func NewTestServer(
 	}
 
 	s := &Server{
-		logger:          log,
-		storage:         storage,
-		eventStore:      eventStore,
-		tenantID:        tenantID,
-		sessionSvc:      sessionSvc,
-		downlinkSvc:     downlinkSvc,
-		statusSvc:       statusSvc,
-		connectionSvc:   connectionSvc,
-		broadcaster:     broadcaster,
-		queueSerializer: queueSerializer,
-		auditLogger:     auditLogger,
-		tenantResolver:  tenantResolver,
-		handlers:        make(map[string]HandlerFunc), // Initialize handlers map for tests
-		sessions:        make(map[string]*Session),    // Initialize sessions map for tests
+		logger:             log,
+		eventStore:         eventStore,
+		tenantID:           tenantID,
+		sessionSvc:         sessionSvc,
+		downlinkSvc:        downlinkSvc,
+		statusSvc:          statusSvc,
+		connectionRegistry: connectionSvc,
+		queueSerializer:    queueSerializer,
+		auditLogger:        auditLogger,
+		tenantResolver:     tenantResolver,
+		versionNegotiator:  staticTestVersionNegotiator{},
+		handlers:           make(map[string]HandlerFunc), // Initialize handlers map for tests
+		sessions:           make(map[string]*Session),    // Initialize sessions map for tests
 	}
-	// Wire endpointRepo if storage is available (prevents nil panics in resolveEndpointTenantID)
-	if storage != nil {
-		s.endpointRepo = storage.EndPoints()
-	}
+	// Fan the storage facade out into the narrow store views the Server
+	// consumes (mirrors NewServer's wiring).
+	s.SetStorageForTest(storage)
 	// Initialize broadcast hook (tests can override)
-	s.broadcastFn = s.SendAttachPropagateToAll
 	return s
 }
 
@@ -69,11 +93,6 @@ func (s *Server) CallHandleDLRXStatus(session *Session, msg *Message, data map[s
 // CallHandleDLDataResult exposes the unexported handleDLDataResult method for testing.
 func (s *Server) CallHandleDLDataResult(session *Session, msg *Message, data map[string]interface{}) error {
 	return s.handleDLDataResult(s, session, msg, data)
-}
-
-// CallHandleDLRXStatusQueryComplete exposes the unexported handleDLRXStatusQueryComplete method for testing.
-func (s *Server) CallHandleDLRXStatusQueryComplete(session *Session, msg *Message, data map[string]interface{}) error {
-	return s.handleDLRXStatusQueryComplete(s, session, msg, data)
 }
 
 // RegisterHandlers exposes the unexported registerHandlers method for testing.
@@ -131,10 +150,46 @@ func (s *Server) SetEndpointRepository(repo interfaces.EndpointRepository) {
 	s.endpointRepo = repo
 }
 
-// SetConnectionManager sets the connection manager for testing.
-func (s *Server) SetConnectionManager(mgr *basestation.ConnectionManager) {
-	s.connectionMgr = mgr
+// SetConnectionManager is a no-op retained for test compatibility: the
+// Server no longer holds the concrete connection manager (live-connection
+// operations go through BaseStationConnectionRegistry).
+func (s *Server) SetConnectionManager(_ *basestation.ConnectionManager) {}
+
+// Test-only wiring setters mirroring the removed production setters: the
+// production Server is wired exclusively through Dependencies and
+// ConfigureRuntime.
+
+func (s *Server) SetMQTTPublisher(pub MQTTEventPublisher) { s.mqttPublisher = pub }
+
+func (s *Server) SetUplinkIngestService(svc UplinkIngestService) { s.uplinkIngestSvc = svc }
+
+func (s *Server) SetDetachValidator(validator DetachSignatureValidator) {
+	s.detachValidator = validator
 }
+
+func (s *Server) SetSCACIEPStatusBroadcaster(b SCACIEPStatusBroadcaster) {
+	s.scaciEPStatusBroadcaster = b
+}
+
+func (s *Server) SetCertificateIdentityResolver(r CertificateIdentityResolver) {
+	s.certIdentityResolver = r
+}
+
+func (s *Server) SetBaseStationDirectory(d RegisteredBaseStationDirectory) { s.bsDirectory = d }
+
+func (s *Server) SetDownlinkDispatcher(d DownlinkDispatcher) { s.downlinkDispatcher = d }
+
+func (s *Server) SetPropagationService(svc propagation.Service) { s.propagationSvc = svc }
+
+func (s *Server) SetRoamingService(svc RoamingService) { s.roamingSvc = svc }
+
+func (s *Server) SetDispositionResolver(r IngressDispositionResolver) { s.dispositionResolver = r }
+
+func (s *Server) SetRelayOutboxWriter(w RelayOutboxWriter) { s.relayOutbox = w }
+
+func (s *Server) SetBlueprintDecoder(d BlueprintDecoder) { s.blueprintDecoder = d }
+
+func (s *Server) SetBlueprintResolver(r BlueprintResolver) { s.blueprintResolver = r }
 
 // CallHandleStatusResponse exposes the unexported handleStatusResponse method for testing.
 func (s *Server) CallHandleStatusResponse(session *Session, msg *Message, data map[string]interface{}) error {
@@ -152,11 +207,6 @@ func (s *Server) CallHandleStatusResponse(session *Session, msg *Message, data m
 // 	}
 // 	return nil
 // }
-
-// CallHandleStatusComplete exposes the unexported handleStatusComplete method for testing.
-func (s *Server) CallHandleStatusComplete(session *Session, msg *Message, data map[string]interface{}) error {
-	return s.handleStatusComplete(s, session, msg, data)
-}
 
 // CallHandleAttachPropagateResponse exposes the unexported handleAttachPropagateResponse method for testing.
 func (s *Server) CallHandleAttachPropagateResponse(session *Session, msg *Message, data map[string]interface{}) error {
@@ -236,9 +286,10 @@ func (s *Server) CallHandleULData(session *Session, msg *Message, data map[strin
 }
 
 // SetDeduplicator sets the deduplicator for testing.
-func (s *Server) SetDeduplicator(dedup *MessageDeduplicator) {
-	s.deduplicator = dedup
-}
+// SetDeduplicator is a no-op retained for test compatibility: the
+// deduplicator is root-owned and injected into the ingest service, never
+// held by the Server.
+func (s *Server) SetDeduplicator(_ *MessageDeduplicator) {}
 
 // NewTestServerWithBaseStationRepo creates a Server instance for testing with a custom base station repository.
 // This is useful for tests that need to verify tenant isolation by capturing repository call arguments.
@@ -251,8 +302,8 @@ func NewTestServerWithBaseStationRepo(
 	sessionSvc SessionService,
 	downlinkSvc DownlinkService,
 	statusSvc StatusService,
-	connectionSvc ConnectionService,
-	broadcaster SCACIBroadcaster,
+	connectionSvc BaseStationConnectionRegistry,
+	_ SCACIBroadcaster,
 	queueSerializer QueueSerializer,
 	auditLogger AuditLogger,
 	tenantResolver TenantResolver,
@@ -263,22 +314,21 @@ func NewTestServerWithBaseStationRepo(
 	}
 
 	s := &Server{
-		logger:          log,
-		storage:         storage,
-		basestationRepo: basestationRepo,
-		tenantID:        tenantID,
-		sessionSvc:      sessionSvc,
-		downlinkSvc:     downlinkSvc,
-		statusSvc:       statusSvc,
-		connectionSvc:   connectionSvc,
-		broadcaster:     broadcaster,
-		queueSerializer: queueSerializer,
-		auditLogger:     auditLogger,
-		tenantResolver:  tenantResolver,
-		sessions:        make(map[string]*Session),
+		logger:             log,
+		basestationRepo:    basestationRepo,
+		tenantID:           tenantID,
+		sessionSvc:         sessionSvc,
+		downlinkSvc:        downlinkSvc,
+		statusSvc:          statusSvc,
+		connectionRegistry: connectionSvc,
+		queueSerializer:    queueSerializer,
+		auditLogger:        auditLogger,
+		tenantResolver:     tenantResolver,
+		versionNegotiator:  staticTestVersionNegotiator{},
+		sessions:           make(map[string]*Session),
 	}
-	// Initialize broadcast hook (tests can override)
-	s.broadcastFn = s.SendAttachPropagateToAll
+	s.SetStorageForTest(storage)
+	s.basestationRepo = basestationRepo
 	return s
 }
 
@@ -342,27 +392,25 @@ func newMockSessionService() *mockSessionService {
 	}
 }
 
-func (m *mockSessionService) ValidateVersion(version string) error {
-	// Accept any non-empty version for tests
-	if version == "" {
-		return fmt.Errorf("version required")
-	}
-	return nil
-}
-
-func (m *mockSessionService) HandleResume(_ *Session, bsUUID []byte, _ []byte, bsOpId, scOpId int64, _ uint64) (*Session, error) {
+func (m *mockSessionService) HandleResume(_ context.Context, _ *Session, bsUUID []byte, bsOpId, scOpId *int64, _ uint64) ResumeOutcome {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	// Look up session by UUID using uppercase hex (matches production)
 	key := strings.ToUpper(hex.EncodeToString(bsUUID))
 	if existingSession, exists := m.sessionsByUUID[key]; exists {
-		// Validate counters match
-		if existingSession.BsOpId == bsOpId && existingSession.ScOpId == scOpId {
-			return existingSession, nil
+		// Mirror production constraint semantics: absent constraints pass;
+		// required BS operation ID beyond known state or claimed SC
+		// operation ID beyond issued state is an inconsistent resume
+		if bsOpId != nil && *bsOpId > existingSession.LastBsOpId {
+			return ResumeOutcome{Disposition: ResumeInconsistent, Previous: existingSession, Err: ErrResumeCounterMismatch}
 		}
+		if scOpId != nil && *scOpId < existingSession.LastScOpId {
+			return ResumeOutcome{Disposition: ResumeInconsistent, Previous: existingSession, Err: ErrResumeCounterMismatch}
+		}
+		return ResumeOutcome{Disposition: ResumeCompatible, Previous: existingSession}
 	}
-	return nil, nil // No valid resume
+	return ResumeOutcome{Disposition: ResumeNoMatch} // No valid resume
 }
 
 func (m *mockSessionService) PersistSession(_ context.Context, session *Session, _ *basestation.BaseStation, isResume bool, connectInfo json.RawMessage) error {
@@ -425,12 +473,19 @@ func (m *mockSessionService) RemoveSession(session *Session) {
 	}
 }
 
+func (m *mockSessionService) MarkDisconnected(_ context.Context, session *Session) error {
+	if session.DbSessionID == 0 {
+		return fmt.Errorf("cannot mark session disconnected: not persisted (DbSessionID=0)")
+	}
+	return nil
+}
+
 func (m *mockSessionService) TerminateSession(_ context.Context, session *Session) error {
 	m.RemoveSession(session)
 	return nil
 }
 
-func (m *mockSessionService) UpdateEncoding(_ context.Context, sessionID int64, encoding string) error {
+func (m *mockSessionService) UpdateEncoding(_ context.Context, _ int64, sessionID int64, encoding string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -478,14 +533,70 @@ type memoryStatusService struct {
 	pendingOps *map[SessionOpKey]*PendingOperation
 	mu         *sync.RWMutex
 	logger     logger.Logger
+	// recordErr, when set, is returned by Record* calls to exercise the
+	// persist-failure abort path (no wire frame, counter gap only).
+	recordErr error
+	// metadataUpdates records UpdatePendingOperationMetadata calls so tests
+	// can assert the persistence path now owned by the StatusService.
+	metadataUpdates []StatusMetadataUpdate
+	// removedOps records RemovePendingOperation calls (durable deletes) so
+	// tests can assert irrecoverable rows are removed during resume.
+	removedOps []int64
+	// deleteSessionCalls counts DeletePendingOperations calls so teardown
+	// tests can assert persisted rows of an active session are preserved.
+	deleteSessionCalls int
+	// persistedRows backs PersistedOperations for resume tests that inject
+	// raw rows (including malformed ones) into the load path.
+	persistedRows []PersistedOperation
+}
+
+// StatusMetadataUpdate captures one UpdatePendingOperationMetadata call.
+type StatusMetadataUpdate struct {
+	SessionID int64
+	OpId      int64
+	Metadata  json.RawMessage
+}
+
+// StatusMetadataUpdates returns the recorded metadata persistence calls of the
+// in-memory status service (nil when svc is a different implementation).
+func StatusMetadataUpdates(svc StatusService) []StatusMetadataUpdate {
+	if ms, ok := svc.(*memoryStatusService); ok {
+		ms.mu.RLock()
+		defer ms.mu.RUnlock()
+		return append([]StatusMetadataUpdate(nil), ms.metadataUpdates...)
+	}
+	return nil
 }
 
 func (m *memoryStatusService) RecordPendingOperation(_ context.Context, session *Session, opId int64, op *PendingOperation, _ int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.recordErr != nil {
+		return m.recordErr
+	}
 	key := makeSessionOpKey(session, opId)
 	(*m.pendingOps)[key] = op
 	return nil
+}
+
+func (m *memoryStatusService) RecordPendingOperations(_ context.Context, session *Session, ops []*PendingOperation, _ int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.recordErr != nil {
+		return m.recordErr
+	}
+	for _, op := range ops {
+		key := makeSessionOpKey(session, op.OperationID)
+		(*m.pendingOps)[key] = op
+	}
+	return nil
+}
+
+func (m *memoryStatusService) RestorePendingOperation(session *Session, opId int64, op *PendingOperation) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := makeSessionOpKey(session, opId)
+	(*m.pendingOps)[key] = op
 }
 
 func (m *memoryStatusService) GetPendingOperation(session *Session, opId int64) (*PendingOperation, error) {
@@ -502,6 +613,7 @@ func (m *memoryStatusService) GetPendingOperation(session *Session, opId int64) 
 func (m *memoryStatusService) RemovePendingOperation(_ context.Context, session *Session, opId int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.removedOps = append(m.removedOps, opId)
 	key := makeSessionOpKey(session, opId)
 	delete(*m.pendingOps, key)
 	return nil
@@ -521,15 +633,53 @@ func (m *memoryStatusService) ExtractQueueMetadata(session *Session, opId int64)
 	return
 }
 
-func (m *memoryStatusService) ProcessOperationStatusUpdate(_ context.Context, _ *Session, _ int64, _ string) error {
+func (m *memoryStatusService) UpdatePendingOperationMetadata(_ context.Context, session *Session, opId int64, metadata map[string]interface{}, metadataJSON json.RawMessage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.metadataUpdates = append(m.metadataUpdates, StatusMetadataUpdate{
+		SessionID: session.DbSessionID,
+		OpId:      opId,
+		Metadata:  append(json.RawMessage(nil), metadataJSON...),
+	})
+	key := makeSessionOpKey(session, opId)
+	if op, ok := (*m.pendingOps)[key]; ok {
+		op.Metadata = metadata
+	}
 	return nil
 }
 
-func (m *memoryStatusService) CleanupPendingOp(session *Session, opId int64) {
+func (m *memoryStatusService) PersistedOperations(_ context.Context, _ int64) ([]PersistedOperation, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]PersistedOperation(nil), m.persistedRows...), nil
+}
+
+func (m *memoryStatusService) DeletePendingOperations(_ context.Context, session *Session) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	key := makeSessionOpKey(session, opId)
-	delete(*m.pendingOps, key)
+	m.deleteSessionCalls++
+	var count int64
+	for key := range *m.pendingOps {
+		if key.SessionID == session.ID {
+			delete(*m.pendingOps, key)
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (m *memoryStatusService) EvictCachedOperations(session *Session) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key := range *m.pendingOps {
+		if key.SessionID == session.ID {
+			delete(*m.pendingOps, key)
+		}
+	}
+}
+
+func (m *memoryStatusService) ProcessOperationStatusUpdate(_ context.Context, _ *Session, _ int64, _ string) error {
+	return nil
 }
 
 // Canonical test mocks defined in test_mocks_test.go (same package, test-only compilation).
@@ -543,7 +693,7 @@ func CreateTestServices(log logger.Logger, _ interfaces.SystemEventStore) (
 	SessionService,
 	DownlinkService,
 	StatusService,
-	ConnectionService,
+	BaseStationConnectionRegistry,
 	SCACIBroadcaster,
 	QueueSerializer,
 	AuditLogger,
@@ -571,4 +721,183 @@ func CreateTestServices(log logger.Logger, _ interfaces.SystemEventStore) (
 	// Tests needing storage or other dependencies should inject their own implementations
 	// This avoids ad-hoc fakes that break dependency boundaries
 	return sessionSvc, nil, statusSvc, nil, nil, queueSerializer, nil, tenantResolver, nil
+}
+
+// SetStorageForTest fans a storage facade out into the narrow store views the
+// Server consumes, mirroring NewServer's production wiring. Tests that inject
+// a custom storage fake after construction must use this instead of assigning
+// the storage field directly.
+func (s *Server) SetStorageForTest(storage interfaces.Storage) {
+	s.attachPersistence = &storageTxPersister{server: s, storage: storage}
+	if storage == nil {
+		return
+	}
+	// Nil accessor results never clobber a fake a test wired directly, which
+	// matches the old direct-assignment semantics of server.storage.
+	if repo := storage.EndPoints(); repo != nil {
+		s.endpointRepo = repo
+	}
+	if repo := storage.MIOTYMessages(); repo != nil {
+		s.protocolMessages = repo
+	}
+	if repo := storage.DLRXStatus(); repo != nil {
+		s.dlrxStore = repo
+	}
+	if repo := storage.MIOTYBaseStationStatus(); repo != nil {
+		s.bsStatusStore = repo
+	}
+	if repo := storage.MIOTYDownlinks(); repo != nil {
+		s.downlinkQueueStore = repo
+	}
+}
+
+// storageTxPersister mirrors the production attachment persister over the
+// Server's live storage and base station repository fields so tests keep
+// injecting transaction failures through their storage fakes.
+type storageTxPersister struct {
+	server  *Server
+	storage interfaces.Storage
+}
+
+func (p *storageTxPersister) PersistAttachSession(ctx context.Context, rec AttachSessionRecord) error {
+	st := p.storage
+	if st == nil {
+		return errAttachPersistenceUnavailable
+	}
+	tx, txErr := st.BeginTx(ctx)
+	if txErr != nil {
+		p.server.logger.ErrorContext(ctx, LogBSSCIFailedToBeginTransaction, "error", txErr)
+		return txErr
+	}
+	var commitErr error
+	defer func() {
+		if commitErr != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := tx.EndPoints().UpdateFields(ctx, rec.TenantID, rec.EndpointID, rec.EndpointUpdates); err != nil {
+		commitErr = err
+		p.server.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateEndpointAttachMetadata, "error", err)
+		return err
+	}
+	activeSession, getErr := tx.EndPointSessions().GetActive(ctx, fmt.Sprintf("%d", rec.EndpointID))
+	if getErr != nil {
+		commitErr = getErr
+		p.server.logger.ErrorContext(ctx, LogBSSCIFailedToLoadEndpointSession, "error", getErr)
+		return getErr
+	}
+	now := time.Now().UTC()
+	var primaryBsID *int64
+	if p.server.basestationRepo != nil {
+		if bs, bsErr := p.server.basestationRepo.GetByEUI(ctx, rec.BSLookupTenantID, rec.BaseStationEUI); bsErr == nil && bs != nil {
+			primaryBsID = &bs.ID
+		}
+	}
+	shAddrInt32 := int32(rec.ShAddr)
+	if activeSession != nil {
+		activeSession.SessionKey = rec.EncryptedKey
+		//nolint:gosec // G115: AttachCnt is handler-validated to fit 24 bits
+		activeSession.AttachCnt = int32(rec.AttachCnt)
+		activeSession.LastActivityAt = now
+		activeSession.ShAddr = &shAddrInt32
+		activeSession.PrimaryBaseStationID = primaryBsID
+		if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
+			commitErr = err
+			p.server.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateEndpointSession, "error", err)
+			return err
+		}
+	} else {
+		newSession := &models.EndPointSession{
+			TenantID:   rec.TenantID,
+			EndPointID: rec.EndpointID,
+			SessionID:  uuid.New().String(),
+			SessionKey: rec.EncryptedKey,
+			//nolint:gosec // G115: AttachCnt is handler-validated to fit 24 bits
+			AttachCnt:            int32(rec.AttachCnt),
+			Status:               "active",
+			StartedAt:            now,
+			LastActivityAt:       now,
+			ShAddr:               &shAddrInt32,
+			PrimaryBaseStationID: primaryBsID,
+		}
+		if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
+			commitErr = err
+			p.server.logger.ErrorContext(ctx, LogBSSCIFailedToCreateEndpointSession, "error", err)
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		commitErr = err
+		p.server.logger.ErrorContext(ctx, LogBSSCIFailedToCommitAttachTransaction, "error", err)
+		return err
+	}
+	commitErr = nil
+	return nil
+}
+
+func (p *storageTxPersister) PersistAttachPropagateSession(ctx context.Context, rec AttachPropagateSessionRecord) error {
+	st := p.storage
+	if st == nil {
+		return fmt.Errorf("failed to begin attach propagate transaction: %w", errAttachPersistenceUnavailable)
+	}
+	tx, txErr := st.BeginTx(ctx)
+	if txErr != nil {
+		return fmt.Errorf("failed to begin attach propagate transaction: %w", txErr)
+	}
+	var commitErr error
+	defer func() {
+		if commitErr != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := tx.EndPoints().UpdateFields(ctx, rec.TenantID, rec.EndpointID, rec.EndpointUpdates); err != nil {
+		commitErr = err
+		return fmt.Errorf("failed to update endpoint: %w", err)
+	}
+	activeSession, getErr := tx.EndPointSessions().GetActive(ctx, fmt.Sprintf("%d", rec.EndpointID))
+	if getErr != nil {
+		commitErr = getErr
+		return fmt.Errorf("failed to load endpoint session: %w", getErr)
+	}
+	now := time.Now().UTC()
+	var primaryBsID *int64
+	if p.server.basestationRepo != nil {
+		if bs, bsErr := p.server.basestationRepo.GetByEUI(ctx, rec.TenantID, rec.BaseStationEUI); bsErr == nil && bs != nil {
+			primaryBsID = &bs.ID
+		}
+	}
+	shAddrInt32 := int32(rec.ShAddr)
+	if activeSession != nil {
+		activeSession.SessionKey = rec.EncryptedKey
+		activeSession.LastActivityAt = now
+		activeSession.ShAddr = &shAddrInt32
+		activeSession.PrimaryBaseStationID = primaryBsID
+		if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
+			commitErr = err
+			return fmt.Errorf("failed to update endpoint session: %w", err)
+		}
+	} else {
+		newSession := &models.EndPointSession{
+			TenantID:             rec.TenantID,
+			EndPointID:           rec.EndpointID,
+			SessionID:            uuid.New().String(),
+			SessionKey:           rec.EncryptedKey,
+			Status:               string(models.SessionStatusActive),
+			UplinkMode:           "standard",
+			StartedAt:            now,
+			LastActivityAt:       now,
+			ShAddr:               &shAddrInt32,
+			PrimaryBaseStationID: primaryBsID,
+		}
+		if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
+			commitErr = err
+			return fmt.Errorf("failed to create endpoint session: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		commitErr = err
+		return fmt.Errorf("failed to commit attach propagate transaction: %w", err)
+	}
+	commitErr = nil
+	return nil
 }

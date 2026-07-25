@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -12,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // metricsWindow is a fixed UTC window used across the bucketed-read tests.
@@ -83,7 +84,7 @@ func TestGetBaseStationOnlineIntervals(t *testing.T) {
 	sqlxDB, cleanup := SetupPostgresContainer(t)
 	defer cleanup()
 	db := &DB{sqlxDB: sqlxDB}
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	start, end := metricsWindow()
 
 	createTestTenant(t, sqlxDB, 100, "TestTenant100")
@@ -111,7 +112,7 @@ func TestGetBaseStationOnlineIntervals_TenantIsolation(t *testing.T) {
 	sqlxDB, cleanup := SetupPostgresContainer(t)
 	defer cleanup()
 	db := &DB{sqlxDB: sqlxDB}
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	start, end := metricsWindow()
 
 	createTestTenant(t, sqlxDB, 200, "TestTenant200")
@@ -132,7 +133,7 @@ func TestCountBaseStationMessagesByBucket_PrimaryAndSecondary(t *testing.T) {
 	sqlxDB, cleanup := SetupPostgresContainer(t)
 	defer cleanup()
 	db := &DB{sqlxDB: sqlxDB}
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	start, end := metricsWindow()
 	const tenantID, bsEui int64 = 100, 5
 	intervalSeconds := int64(3600)
@@ -160,7 +161,7 @@ func TestCountBaseStationMessagesByBucket_TenantIsolation(t *testing.T) {
 	sqlxDB, cleanup := SetupPostgresContainer(t)
 	defer cleanup()
 	db := &DB{sqlxDB: sqlxDB}
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	start, end := metricsWindow()
 
 	insertTestMessage(t, sqlxDB, 200, 5, 1, start.Add(10*time.Minute), nil)
@@ -177,7 +178,7 @@ func TestCountBaseStationMessagesByBucket_ExcludesNonUlData(t *testing.T) {
 	sqlxDB, cleanup := SetupPostgresContainer(t)
 	defer cleanup()
 	db := &DB{sqlxDB: sqlxDB}
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	start, end := metricsWindow()
 	const tenantID, bsEui int64 = 100, 7
 	intervalSeconds := int64(3600)
@@ -204,7 +205,7 @@ func TestGetBaseStationEndpointCounts_PrimaryAndSecondary(t *testing.T) {
 	sqlxDB, cleanup := SetupPostgresContainer(t)
 	defer cleanup()
 	repo := NewMessageRepository(sqlxDB)
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	start, _ := metricsWindow()
 	const tenantID, bsEui int64 = 100, 5
 
@@ -233,7 +234,7 @@ func TestGetBaseStationLastSeen_FromMessages(t *testing.T) {
 	sqlxDB, cleanup := SetupPostgresContainer(t)
 	defer cleanup()
 	repo := NewMessageRepository(sqlxDB)
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	start, _ := metricsWindow()
 	const tenantID, bsEui int64 = 100, 5
 
@@ -255,7 +256,7 @@ func TestGetBaseStationLastSeen_SessionFallbackAndEmpty(t *testing.T) {
 	sqlxDB, cleanup := SetupPostgresContainer(t)
 	defer cleanup()
 	repo := NewMessageRepository(sqlxDB)
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	start, _ := metricsWindow()
 	const tenantID int64 = 100
 

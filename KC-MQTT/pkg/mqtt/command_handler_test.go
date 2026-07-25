@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockDownlinkEnqueuer records EnqueueFromMQTT calls.
@@ -116,7 +118,7 @@ func (m *mockCommandPublisher) simulateMessage(topic string, payload []byte) {
 	var handler MessageHandler
 	ctx := m.subCtx
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = testutil.TestContext()
 	}
 	for subTopic, h := range m.subscribers {
 		if topicMatchesWildcard(subTopic, topic) {
@@ -172,7 +174,7 @@ func TestCommandHandler_ValidTopicParsesCorrectly(t *testing.T) {
 	handler := NewCommandHandler(pub, enqueuer, lookup, log, "mioty")
 
 	// Start in background, then simulate message
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(testutil.TestContext())
 	defer cancel()
 	go handler.Start(ctx)
 
@@ -208,7 +210,7 @@ func TestCommandHandler_InvalidTopicTooFewSegments(t *testing.T) {
 	}
 
 	// Directly call handleMessage with a bad topic
-	handler.handleMessage(context.Background(), "mioty/bad", []byte("{}"))
+	handler.handleMessage(testutil.TestContext(), "mioty/bad", []byte("{}"))
 
 	assert.Equal(t, 0, enqueuer.callCount())
 }
@@ -225,7 +227,7 @@ func TestCommandHandler_InvalidOrgUUID(t *testing.T) {
 		prefix:   "mioty",
 	}
 
-	handler.handleMessage(context.Background(), "mioty/not-a-uuid/device/70b3d59cd00009e6/command/down", []byte("{}"))
+	handler.handleMessage(testutil.TestContext(), "mioty/not-a-uuid/device/70b3d59cd00009e6/command/down", []byte("{}"))
 
 	assert.Equal(t, 0, enqueuer.callCount())
 }
@@ -244,7 +246,7 @@ func TestCommandHandler_InvalidHexEUI(t *testing.T) {
 	}
 
 	topic := "mioty/" + orgUUID.String() + "/device/not-hex/command/down"
-	handler.handleMessage(context.Background(), topic, buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test")), false))
+	handler.handleMessage(testutil.TestContext(), topic, buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test")), false))
 
 	assert.Equal(t, 0, enqueuer.callCount())
 }
@@ -263,7 +265,7 @@ func TestCommandHandler_EmptyPayloadRejected(t *testing.T) {
 	}
 
 	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
-	handler.handleMessage(context.Background(), topic, []byte{})
+	handler.handleMessage(testutil.TestContext(), topic, []byte{})
 
 	assert.Equal(t, 0, enqueuer.callCount())
 }
@@ -283,7 +285,7 @@ func TestCommandHandler_OversizedRawPayloadRejected(t *testing.T) {
 
 	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
 	oversized := make([]byte, config.MaxMessageSize+1)
-	handler.handleMessage(context.Background(), topic, oversized)
+	handler.handleMessage(testutil.TestContext(), topic, oversized)
 
 	assert.Equal(t, 0, enqueuer.callCount())
 }
@@ -306,7 +308,7 @@ func TestCommandHandler_DecodedEmptyPayloadRejected(t *testing.T) {
 	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
 	// Base64 of empty string
 	cmdPayload := buildCommandPayload("", false)
-	handler.handleMessage(context.Background(), topic, cmdPayload)
+	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
 
 	assert.Equal(t, 0, enqueuer.callCount())
 }
@@ -331,7 +333,7 @@ func TestCommandHandler_DecodedOversizedPayloadRejected(t *testing.T) {
 	bigData := make([]byte, config.MaxPayloadSize+1)
 	encoded := base64.StdEncoding.EncodeToString(bigData)
 	cmdPayload := buildCommandPayload(encoded, false)
-	handler.handleMessage(context.Background(), topic, cmdPayload)
+	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
 
 	assert.Equal(t, 0, enqueuer.callCount())
 }
@@ -355,13 +357,13 @@ func TestCommandHandler_ConfirmedFlagPropagated(t *testing.T) {
 
 	// Test confirmed=false
 	cmdPayload := buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test")), false)
-	handler.handleMessage(context.Background(), topic, cmdPayload)
+	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
 	require.Equal(t, 1, enqueuer.callCount())
 	assert.False(t, enqueuer.lastCall().Confirmed)
 
 	// Test confirmed=true
 	cmdPayload = buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test2")), true)
-	handler.handleMessage(context.Background(), topic, cmdPayload)
+	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
 	require.Equal(t, 2, enqueuer.callCount())
 	assert.True(t, enqueuer.lastCall().Confirmed)
 }
@@ -381,7 +383,7 @@ func TestCommandHandler_NilOrgUUIDRejected(t *testing.T) {
 	// uuid.Nil should be rejected
 	topic := "mioty/" + uuid.Nil.String() + "/device/70b3d59cd00009e6/command/down"
 	cmdPayload := buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test")), false)
-	handler.handleMessage(context.Background(), topic, cmdPayload)
+	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
 
 	assert.Equal(t, 0, enqueuer.callCount())
 }
@@ -417,7 +419,7 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 		t.Parallel()
 		log := &recordingLogger{}
 		h := NewCommandHandler(nil, &mockDownlinkEnqueuer{}, &mockTenantLookup{}, log, "mioty")
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(testutil.TestContext())
 		cancel()
 		assert.NotPanics(t, func() { h.Start(ctx) })
 		assert.Equal(t, ErrCommandHandlerMissingDeps, log.lastError())
@@ -427,7 +429,7 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 		t.Parallel()
 		log := &recordingLogger{}
 		h := NewCommandHandler(newMockCommandPublisher(), nil, &mockTenantLookup{}, log, "mioty")
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(testutil.TestContext())
 		cancel()
 		assert.NotPanics(t, func() { h.Start(ctx) })
 		assert.Equal(t, ErrCommandHandlerMissingDeps, log.lastError())
@@ -437,7 +439,7 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 		t.Parallel()
 		log := &recordingLogger{}
 		h := NewCommandHandler(newMockCommandPublisher(), &mockDownlinkEnqueuer{}, nil, log, "mioty")
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(testutil.TestContext())
 		cancel()
 		assert.NotPanics(t, func() { h.Start(ctx) })
 		assert.Equal(t, ErrCommandHandlerMissingDeps, log.lastError())
@@ -446,7 +448,7 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 	t.Run("nil logger silent return", func(t *testing.T) {
 		t.Parallel()
 		h := NewCommandHandler(newMockCommandPublisher(), &mockDownlinkEnqueuer{}, &mockTenantLookup{}, nil, "mioty")
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(testutil.TestContext())
 		cancel()
 		assert.NotPanics(t, func() { h.Start(ctx) })
 	})
@@ -466,7 +468,7 @@ func TestCommandHandler_ContextPropagation(t *testing.T) {
 
 	// Inject a marker value into the Start context
 	type ctxKey struct{}
-	startCtx, cancel := context.WithCancel(context.WithValue(context.Background(), ctxKey{}, "test-marker"))
+	startCtx, cancel := context.WithCancel(context.WithValue(testutil.TestContext(), ctxKey{}, "test-marker"))
 	defer cancel()
 
 	go handler.Start(startCtx)

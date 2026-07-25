@@ -1,13 +1,7 @@
 import React from "react";
 
 import type { BaseStationUI } from "@api-types/api";
-import {
-  Alert,
-  Box,
-  Chip,
-  CircularProgress,
-  Typography,
-} from "@mui/material";
+import { Alert, Box, Chip, CircularProgress, Typography } from "@mui/material";
 
 import {
   formatDate,

@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -218,6 +217,7 @@ func TestCreate_BasicFields(t *testing.T) {
 		EUI:        eui,
 		Name:       "TestCreate-EP1",
 		TenantID:   500,
+		EPClass:    "A",
 		NwkSnKey:   nwkKey,
 		AppKey:     appKey,
 		CryptoMode: 0,
@@ -1148,6 +1148,7 @@ func TestEndpointRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) {
 		TenantID:      100,
 		OwnerTenantID: 100,
 		Name:          "TestCrossTenant-T100-EP1",
+		EPClass:       "A",
 		NwkSnKey:      nwkKey,
 		AppKey:        appKey,
 		CryptoMode:    0,
@@ -1164,6 +1165,7 @@ func TestEndpointRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) {
 		TenantID:      200, // Different tenant
 		OwnerTenantID: 200,
 		Name:          "TestCrossTenant-T200-EP2",
+		EPClass:       "A",
 		NwkSnKey:      nwkKey,
 		AppKey:        appKey,
 		CryptoMode:    0,
@@ -1179,7 +1181,11 @@ func TestEndpointRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) {
 		assert.Equal(t, "23505", string(pqErr.Code), "Should be PostgreSQL unique violation")
-		assert.Equal(t, "unique_ep_eui", pqErr.Constraint, "Should reference global EUI constraint from migration 000080")
+		// Any of these prove global uniqueness enforcement: endpoints_eui_key is the
+		// migration-001 column constraint (name survives the 000029 eui->ep_eui rename),
+		// unique_ep_eui comes from migration 000080, endpoints_ep_eui_key from a fresh schema
+		assert.Contains(t, []string{"unique_ep_eui", "endpoints_ep_eui_key", "endpoints_eui_key"}, pqErr.Constraint,
+			"Should reference a global EUI uniqueness constraint")
 	}
 
 	// Alternative check: Error should mention "already exists" or "duplicate"
@@ -1575,7 +1581,7 @@ func TestStreamAllForPropagation_UsesCorrectColumnName(t *testing.T) {
 		WillReturnRows(rows)
 
 	// Execute StreamAllForPropagation
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	endpoints, err := repo.StreamAllForPropagation(ctx, 0, 100)
 	require.NoError(t, err, "StreamAllForPropagation should succeed")
 	require.Len(t, endpoints, 1, "Should return 1 endpoint")
@@ -1644,7 +1650,7 @@ func TestStreamAllForPropagation_QueryTextValidation(t *testing.T) {
 	mock.ExpectQuery("").WillReturnRows(rows)
 
 	// Execute - the custom matcher will verify column names
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 	_, err = repo.StreamAllForPropagation(ctx, 0, 100)
 	require.NoError(t, err, "StreamAllForPropagation should succeed with correct column name")
 
@@ -1656,6 +1662,20 @@ func TestStreamAllForPropagation_QueryTextValidation(t *testing.T) {
 // =============================================================================
 
 // TestCreate_WithDeviceModelID verifies DeviceModelID is persisted during endpoint creation
+// createTestDeviceModel inserts a manufacturer and device model for the tenant
+// and returns the device model ID, satisfying endpoints_device_model_id_fkey.
+func createTestDeviceModel(t *testing.T, db *sqlx.DB, tenantID int64, code string) uuid.UUID {
+	t.Helper()
+	var mfrID, modelID uuid.UUID
+	require.NoError(t, db.QueryRow(
+		`INSERT INTO manufacturers (tenant_id, name) VALUES ($1, $2) RETURNING id`,
+		tenantID, "TestMfr-"+code).Scan(&mfrID))
+	require.NoError(t, db.QueryRow(
+		`INSERT INTO device_models (manufacturer_id, tenant_id, name, code) VALUES ($1, $2, $3, $4) RETURNING id`,
+		mfrID, tenantID, "TestModel-"+code, code).Scan(&modelID))
+	return modelID
+}
+
 func TestCreate_WithDeviceModelID(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
@@ -1679,13 +1699,14 @@ func TestCreate_WithDeviceModelID(t *testing.T) {
 
 	nwkKey := make([]byte, 16)
 	appKey := make([]byte, 16)
-	deviceModelID := uuid.New()
+	deviceModelID := createTestDeviceModel(t, db, 700, "test-model-700")
 
 	endpoint := &models.EndPoint{
 		EUI:           eui,
 		Name:          "TestDeviceModelID-EP1",
 		TenantID:      700,
 		OwnerTenantID: 700,
+		EPClass:       "A",
 		NwkSnKey:      nwkKey,
 		AppKey:        appKey,
 		CryptoMode:    0,
@@ -1730,13 +1751,14 @@ func TestGetByID_ReturnsDeviceModelID(t *testing.T) {
 
 	nwkKey := make([]byte, 16)
 	appKey := make([]byte, 16)
-	deviceModelID := uuid.New()
+	deviceModelID := createTestDeviceModel(t, db, 701, "test-model-701")
 
 	endpoint := &models.EndPoint{
 		EUI:           eui,
 		Name:          "TestGetByID-DevModel-EP1",
 		TenantID:      701,
 		OwnerTenantID: 701,
+		EPClass:       "A",
 		NwkSnKey:      nwkKey,
 		AppKey:        appKey,
 		CryptoMode:    0,
@@ -1779,13 +1801,14 @@ func TestListByTenantPaginated_ReturnsDeviceModelID(t *testing.T) {
 
 	nwkKey := make([]byte, 16)
 	appKey := make([]byte, 16)
-	deviceModelID := uuid.New()
+	deviceModelID := createTestDeviceModel(t, db, 702, "test-model-702")
 
 	endpoint := &models.EndPoint{
 		EUI:           eui,
 		Name:          "TestList-DevModel-EP1",
 		TenantID:      702,
 		OwnerTenantID: 702,
+		EPClass:       "A",
 		NwkSnKey:      nwkKey,
 		AppKey:        appKey,
 		CryptoMode:    0,
@@ -1828,13 +1851,14 @@ func TestGetByEUI_ReturnsDeviceModelID(t *testing.T) {
 
 	nwkKey := make([]byte, 16)
 	appKey := make([]byte, 16)
-	deviceModelID := uuid.New()
+	deviceModelID := createTestDeviceModel(t, db, 703, "test-model-703")
 
 	endpoint := &models.EndPoint{
 		EUI:           eui,
 		Name:          "TestGetByEUI-DevModel-EP1",
 		TenantID:      703,
 		OwnerTenantID: 703,
+		EPClass:       "A",
 		NwkSnKey:      nwkKey,
 		AppKey:        appKey,
 		CryptoMode:    0,
@@ -1905,6 +1929,7 @@ func TestUpdate_NilKeys_NoCheckViolation(t *testing.T) {
 		EUI:      eui,
 		Name:     "TestNilKeys-EP1",
 		TenantID: 800,
+		EPClass:  "A",
 		NwkSnKey: nwkKey,
 		AppKey:   appKey,
 		Tags:     make(map[string]string),
@@ -1958,6 +1983,7 @@ func TestUpdateWithEUI_NilKeys_NoCheckViolation(t *testing.T) {
 		EUI:      oldEui,
 		Name:     "TestNilKeysEUI-EP1",
 		TenantID: 801,
+		EPClass:  "A",
 		NwkSnKey: nwkKey,
 		AppKey:   appKey,
 		Tags:     make(map[string]string),
@@ -2015,6 +2041,7 @@ func TestListByTenantPaginated_ReturnsMIOTYConfigFields(t *testing.T) {
 		Name:          "TestList-MIOTYFields-EP1",
 		TenantID:      810,
 		OwnerTenantID: 810,
+		EPClass:       "A",
 		NwkSnKey:      make([]byte, 16),
 		AppKey:        make([]byte, 16),
 		CryptoMode:    0,
@@ -2082,6 +2109,7 @@ func TestListByTenantPaginated_HandlesNullTypeEUI(t *testing.T) {
 		Name:          "TestList-NullTypeEUI-EP1",
 		TenantID:      811,
 		OwnerTenantID: 811,
+		EPClass:       "A",
 		NwkSnKey:      make([]byte, 16),
 		CryptoMode:    0,
 		Tags:          make(map[string]string),
@@ -2125,6 +2153,7 @@ func TestUpdate_PersistsTypeEUI(t *testing.T) {
 		Name:          "TestUpdate-TypeEUI-EP1",
 		TenantID:      812,
 		OwnerTenantID: 812,
+		EPClass:       "A",
 		NwkSnKey:      make([]byte, 16),
 		CryptoMode:    0,
 		Tags:          make(map[string]string),
@@ -2133,12 +2162,15 @@ func TestUpdate_PersistsTypeEUI(t *testing.T) {
 	err := repo.Create(ctx, endpoint)
 	require.NoError(t, err)
 
-	// Set type_eui via Update
+	// Reload so the struct carries DB defaults (ep_status, repetition), then set type_eui
+	reloaded, err := repo.GetByEUI(ctx, 812, eui[:])
+	require.NoError(t, err)
+
 	var typeEUI models.EUI
 	copy(typeEUI[:], []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88})
-	endpoint.TypeEUI = &typeEUI
+	reloaded.TypeEUI = &typeEUI
 
-	err = repo.Update(ctx, endpoint)
+	err = repo.Update(ctx, reloaded)
 	require.NoError(t, err)
 
 	// Verify via GetByEUI
@@ -2175,6 +2207,7 @@ func TestUpdate_ClearsTypeEUI(t *testing.T) {
 		Name:          "TestUpdate-ClearTypeEUI-EP1",
 		TenantID:      813,
 		OwnerTenantID: 813,
+		EPClass:       "A",
 		NwkSnKey:      make([]byte, 16),
 		CryptoMode:    0,
 		Tags:          make(map[string]string),
@@ -2184,9 +2217,12 @@ func TestUpdate_ClearsTypeEUI(t *testing.T) {
 	err := repo.Create(ctx, endpoint)
 	require.NoError(t, err)
 
-	// Clear type_eui
-	endpoint.TypeEUI = nil
-	err = repo.Update(ctx, endpoint)
+	// Reload so the struct carries DB defaults (ep_status, repetition), then clear type_eui
+	reloaded, err := repo.GetByEUI(ctx, 813, eui[:])
+	require.NoError(t, err)
+
+	reloaded.TypeEUI = nil
+	err = repo.Update(ctx, reloaded)
 	require.NoError(t, err)
 
 	// Verify cleared
@@ -2219,6 +2255,7 @@ func TestUpdateWithEUI_PersistsTypeEUI(t *testing.T) {
 		Name:          "TestUpdateWithEUI-TypeEUI-EP1",
 		TenantID:      814,
 		OwnerTenantID: 814,
+		EPClass:       "A",
 		NwkSnKey:      make([]byte, 16),
 		CryptoMode:    0,
 		Tags:          make(map[string]string),
@@ -2274,6 +2311,7 @@ func TestUpdateWithEUI_ClearsTypeEUI(t *testing.T) {
 		Name:          "TestUpdateWithEUI-ClearTypeEUI-EP1",
 		TenantID:      815,
 		OwnerTenantID: 815,
+		EPClass:       "A",
 		NwkSnKey:      make([]byte, 16),
 		CryptoMode:    0,
 		Tags:          make(map[string]string),

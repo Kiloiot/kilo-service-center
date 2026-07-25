@@ -4,9 +4,15 @@ package proxy
 
 import (
 	"context"
+	"net"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	grpcproxy "github.com/mwitkow/grpc-proxy/proxy"
+	"google.golang.org/grpc/metadata"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
@@ -19,12 +25,119 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-// gatewayAddr returns the gateway address from env or default.
-func gatewayAddr() string {
-	if addr := os.Getenv("GATEWAY_ADDR"); addr != "" {
-		return addr
+// startMatrixGateway starts a self-contained in-process gateway: the
+// production SelectUpstream routing and metadata sanitization in front of
+// fake core/identity upstreams (which answer NotFound for every routed call,
+// so anything that reaches them is provably not Unimplemented), with the real
+// auth interceptor enabled and no credentials supplied. The matrix therefore
+// verifies routing, internal-service blocking, and auth gating without any
+// external stack.
+// matrixCoreStub serves the public CoreService surface the matrix asserts on.
+type matrixCoreStub struct {
+	pb.UnimplementedCoreServiceServer
+}
+
+func (matrixCoreStub) GetReleaseInfo(_ context.Context, _ *emptypb.Empty) (*pb.ReleaseInfo, error) {
+	return &pb.ReleaseInfo{Version: "matrix-fake"}, nil
+}
+
+// matrixCompatCoreStub serves the KiloCenterService compat methods routed to core.
+type matrixCompatCoreStub struct {
+	pb.UnimplementedKiloCenterServiceServer
+}
+
+func (matrixCompatCoreStub) GetReleaseInfo(_ context.Context, _ *emptypb.Empty) (*pb.ReleaseInfo, error) {
+	return &pb.ReleaseInfo{Version: "matrix-fake"}, nil
+}
+
+// matrixIdentityStub serves the public IdentityService surface; the other
+// public methods answer a domain error (never Unimplemented).
+type matrixIdentityStub struct {
+	pb.UnimplementedIdentityServiceServer
+}
+
+func (matrixIdentityStub) GetAuthSettings(_ context.Context, _ *pb.GetAuthSettingsRequest) (*pb.GetAuthSettingsResponse, error) {
+	return &pb.GetAuthSettingsResponse{Settings: &pb.AuthSettings{}}, nil
+}
+
+func (matrixIdentityStub) Login(_ context.Context, _ *pb.LoginRequest) (*pb.LoginResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func (matrixIdentityStub) RefreshTokens(_ context.Context, _ *pb.RefreshTokensRequest) (*pb.RefreshTokensResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func (matrixIdentityStub) ExchangeOIDC(_ context.Context, _ *pb.ExchangeOIDCRequest) (*pb.LoginResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func (matrixIdentityStub) ExchangeOAuth2(_ context.Context, _ *pb.ExchangeOAuth2Request) (*pb.LoginResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func (matrixIdentityStub) RegisterAccount(_ context.Context, _ *pb.RegisterAccountRequest) (*pb.LoginResponse, error) {
+	return nil, status.Error(codes.InvalidArgument, "matrix fake identity")
+}
+
+func startMatrixGateway(t *testing.T) string {
+	t.Helper()
+	logger.Initialize("error", "text")
+	l := logger.Get()
+
+	fakeUpstream := func(register func(*grpc.Server)) net.Listener {
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		srv := grpc.NewServer(grpc.UnknownServiceHandler(func(_ interface{}, _ grpc.ServerStream) error {
+			return status.Error(codes.NotFound, "matrix fake upstream")
+		}))
+		register(srv)
+		go func() { _ = srv.Serve(lis) }()
+		t.Cleanup(srv.GracefulStop)
+		return lis
 	}
-	return "localhost:9090"
+
+	coreLis := fakeUpstream(func(srv *grpc.Server) {
+		pb.RegisterCoreServiceServer(srv, &matrixCoreStub{})
+		pb.RegisterKiloCenterServiceServer(srv, &matrixCompatCoreStub{})
+	})
+	identityLis := fakeUpstream(func(srv *grpc.Server) {
+		pb.RegisterIdentityServiceServer(srv, &matrixIdentityStub{})
+	})
+
+	dial := func(addr string) *grpc.ClientConn {
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = conn.Close() })
+		return conn
+	}
+	coreConn := dial(coreLis.Addr().String())
+	identityConn := dial(identityLis.Addr().String())
+
+	authInterceptor, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	require.NoError(t, err)
+	_ = l
+
+	director := func(ctx context.Context, fullMethod string) (context.Context, grpc.ClientConnInterface, error) {
+		upstream, selErr := SelectUpstream(fullMethod, coreConn, identityConn)
+		if selErr != nil {
+			return nil, nil, selErr
+		}
+		outMD := SanitizeAndInject(ctx)
+		return metadata.NewOutgoingContext(ctx, outMD), upstream, nil
+	}
+
+	gatewayServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(authInterceptor.UnaryInterceptor()),
+		grpc.ChainStreamInterceptor(authInterceptor.StreamInterceptor()),
+		grpc.UnknownServiceHandler(grpcproxy.TransparentHandler(director)),
+	)
+	gatewayLis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	go func() { _ = gatewayServer.Serve(gatewayLis) }()
+	t.Cleanup(gatewayServer.GracefulStop)
+
+	return gatewayLis.Addr().String()
 }
 
 // publicMethods that should return OK or domain error (NOT Unimplemented) via gateway.
@@ -102,7 +215,117 @@ var identityServiceUnaryMethods = []string{
 }
 
 func TestVerificationMatrix(t *testing.T) {
-	conn, err := grpc.NewClient(gatewayAddr(),
+	runVerificationMatrix(t, startMatrixGateway(t))
+}
+
+// TestVerificationMatrixExternal runs the same matrix against a running
+// gateway (full-stack smoke); it skips unless GATEWAY_ADDR is set.
+func TestVerificationMatrixExternal(t *testing.T) {
+	addr := os.Getenv("GATEWAY_ADDR")
+	if addr == "" {
+		t.Skip("GATEWAY_ADDR not set; external gateway matrix skipped (in-process matrix covers routing)")
+	}
+	runVerificationMatrix(t, addr)
+}
+
+// matrixClient bundles the shared connection and context the matrix assertion
+// helpers invoke methods with.
+type matrixClient struct {
+	conn *grpc.ClientConn
+	ctx  context.Context
+}
+
+// mustStatus asserts err carries a gRPC status and returns it.
+func mustStatus(t *testing.T, err error) *status.Status {
+	t.Helper()
+	st, ok := status.FromError(err)
+	require.True(t, ok, "expected gRPC status error")
+	return st
+}
+
+// assertBlocked verifies each fully qualified method is effectively blocked.
+// The auth interceptor may reject unauthenticated callers before the service
+// routing layer, so Unimplemented and Unauthenticated both count as blocked.
+func (c matrixClient) assertBlocked(t *testing.T, label string, methods []string) {
+	blocked := map[codes.Code]bool{codes.Unimplemented: true, codes.Unauthenticated: true}
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			var resp emptypb.Empty
+			err := c.conn.Invoke(c.ctx, method, &emptypb.Empty{}, &resp)
+			st := mustStatus(t, err)
+			assert.True(t, blocked[st.Code()],
+				"%s method %s should be blocked (Unimplemented or Unauthenticated), got %s: %s",
+				label, method, st.Code(), st.Message())
+		})
+	}
+}
+
+// assertNotUnimplemented verifies each fully qualified public method reaches a
+// real handler: success or any domain error passes, Unimplemented fails.
+func (c matrixClient) assertNotUnimplemented(t *testing.T, methods []string) {
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			var resp emptypb.Empty
+			err := c.conn.Invoke(c.ctx, method, &emptypb.Empty{}, &resp)
+			if err == nil {
+				return // OK — public method succeeded
+			}
+			st := mustStatus(t, err)
+			assert.NotEqual(t, codes.Unimplemented, st.Code(),
+				"public method %s should not return Unimplemented", method)
+		})
+	}
+}
+
+// assertUnauthenticatedUnary verifies each non-public unary method under the
+// service prefix rejects anonymous callers with Unauthenticated.
+func (c matrixClient) assertUnauthenticatedUnary(t *testing.T, servicePrefix string, methods []string) {
+	for _, method := range methods {
+		fullMethod := servicePrefix + method
+		if grpcconst.PublicMethods[fullMethod] {
+			continue // Skip public methods
+		}
+		t.Run(method, func(t *testing.T) {
+			var resp emptypb.Empty
+			err := c.conn.Invoke(c.ctx, fullMethod, &emptypb.Empty{}, &resp)
+			require.Error(t, err)
+			st := mustStatus(t, err)
+			assert.Equal(t, codes.Unauthenticated, st.Code(),
+				"auth-required method %s should return Unauthenticated, got %s: %s",
+				fullMethod, st.Code(), st.Message())
+		})
+	}
+}
+
+// assertUnauthenticatedStream verifies each streaming method under the service
+// prefix rejects anonymous callers with Unauthenticated, whether the rejection
+// arrives at stream open or on the first receive.
+func (c matrixClient) assertUnauthenticatedStream(t *testing.T, servicePrefix string, methods []string) {
+	for _, method := range methods {
+		fullMethod := servicePrefix + method
+		t.Run(method, func(t *testing.T) {
+			stream, err := c.conn.NewStream(c.ctx,
+				&grpc.StreamDesc{ServerStreams: true},
+				fullMethod)
+			if err != nil {
+				st := mustStatus(t, err)
+				assert.Equal(t, codes.Unauthenticated, st.Code(),
+					"streaming method %s should return Unauthenticated", fullMethod)
+				return
+			}
+			// Stream opened — try to receive; auth rejection comes here
+			err = stream.RecvMsg(&emptypb.Empty{})
+			require.Error(t, err)
+			st := mustStatus(t, err)
+			assert.Equal(t, codes.Unauthenticated, st.Code(),
+				"streaming method %s should reject with Unauthenticated, got %s",
+				fullMethod, st.Code())
+		})
+	}
+}
+
+func runVerificationMatrix(t *testing.T, addr string) {
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
@@ -110,194 +333,50 @@ func TestVerificationMatrix(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	client := matrixClient{conn: conn, ctx: ctx}
 	empty := &emptypb.Empty{}
 
-	// 1. IdentityInternalService should be blocked (Unimplemented or Unauthenticated)
-	// Auth interceptor may reject unauthenticated callers before the service
-	// routing layer, so either code means the method is effectively blocked.
 	t.Run("IdentityInternalService_Blocked", func(t *testing.T) {
-		blocked := map[codes.Code]bool{codes.Unimplemented: true, codes.Unauthenticated: true}
-		for _, method := range identityInternalServiceMethods {
-			t.Run(method, func(t *testing.T) {
-				var resp emptypb.Empty
-				err := conn.Invoke(ctx, method, empty, &resp)
-				st, ok := status.FromError(err)
-				require.True(t, ok, "expected gRPC status error")
-				assert.True(t, blocked[st.Code()],
-					"IdentityInternalService method %s should be blocked (Unimplemented or Unauthenticated), got %s: %s",
-					method, st.Code(), st.Message())
-			})
-		}
+		client.assertBlocked(t, "IdentityInternalService", identityInternalServiceMethods)
 	})
 
-	// 2. Public CoreService RPCs — should NOT be Unimplemented
 	t.Run("Public_CoreService", func(t *testing.T) {
-		for _, method := range publicCoreServiceMethods {
-			t.Run(method, func(t *testing.T) {
-				var resp emptypb.Empty
-				err := conn.Invoke(ctx, method, empty, &resp)
-				if err == nil {
-					return // OK — public method succeeded
-				}
-				st, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.NotEqual(t, codes.Unimplemented, st.Code(),
-					"public method %s should not return Unimplemented", method)
-			})
-		}
+		client.assertNotUnimplemented(t, publicCoreServiceMethods)
 	})
 
-	// 3. Public IdentityService RPCs — should NOT be Unimplemented
 	t.Run("Public_IdentityService", func(t *testing.T) {
-		for _, method := range publicIdentityServiceMethods {
-			t.Run(method, func(t *testing.T) {
-				var resp emptypb.Empty
-				err := conn.Invoke(ctx, method, empty, &resp)
-				if err == nil {
-					return
-				}
-				st, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.NotEqual(t, codes.Unimplemented, st.Code(),
-					"public method %s should not return Unimplemented", method)
-			})
-		}
+		client.assertNotUnimplemented(t, publicIdentityServiceMethods)
 	})
 
-	// 4. Public KiloCenterService compat RPCs — should NOT be Unimplemented
 	t.Run("Public_KiloCenterService", func(t *testing.T) {
-		for _, method := range publicKiloCenterServiceMethods {
-			t.Run(method, func(t *testing.T) {
-				var resp emptypb.Empty
-				err := conn.Invoke(ctx, method, empty, &resp)
-				if err == nil {
-					return
-				}
-				st, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.NotEqual(t, codes.Unimplemented, st.Code(),
-					"public method %s should not return Unimplemented", method)
-			})
-		}
+		client.assertNotUnimplemented(t, publicKiloCenterServiceMethods)
 	})
 
-	// 5. Auth-required CoreService unary RPCs — should return Unauthenticated
 	t.Run("AuthRequired_CoreService_Unary", func(t *testing.T) {
-		for _, method := range coreServiceUnaryMethods {
-			fullMethod := "/kilocenter.api.v1.CoreService/" + method
-			if grpcconst.PublicMethods[fullMethod] {
-				continue // Skip public methods
-			}
-			t.Run(method, func(t *testing.T) {
-				var resp emptypb.Empty
-				err := conn.Invoke(ctx, fullMethod, empty, &resp)
-				require.Error(t, err)
-				st, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.Equal(t, codes.Unauthenticated, st.Code(),
-					"auth-required method %s should return Unauthenticated, got %s: %s",
-					fullMethod, st.Code(), st.Message())
-			})
-		}
+		client.assertUnauthenticatedUnary(t, "/kilocenter.api.v1.CoreService/", coreServiceUnaryMethods)
 	})
 
-	// 6. Auth-required CoreService streaming RPCs — should reject stream open
 	t.Run("AuthRequired_CoreService_Streaming", func(t *testing.T) {
-		for _, method := range coreServiceStreamMethods {
-			fullMethod := "/kilocenter.api.v1.CoreService/" + method
-			t.Run(method, func(t *testing.T) {
-				stream, err := conn.NewStream(ctx,
-					&grpc.StreamDesc{ServerStreams: true},
-					fullMethod)
-				if err != nil {
-					st, ok := status.FromError(err)
-					require.True(t, ok)
-					assert.Equal(t, codes.Unauthenticated, st.Code(),
-						"streaming method %s should return Unauthenticated", fullMethod)
-					return
-				}
-				// Stream opened — try to receive; auth rejection comes here
-				err = stream.RecvMsg(empty)
-				require.Error(t, err)
-				st, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.Equal(t, codes.Unauthenticated, st.Code(),
-					"streaming method %s should reject with Unauthenticated, got %s",
-					fullMethod, st.Code())
-			})
-		}
+		client.assertUnauthenticatedStream(t, "/kilocenter.api.v1.CoreService/", coreServiceStreamMethods)
 	})
 
-	// 7. Auth-required IdentityService RPCs — should return Unauthenticated
 	t.Run("AuthRequired_IdentityService", func(t *testing.T) {
-		for _, method := range identityServiceUnaryMethods {
-			fullMethod := "/kilocenter.api.v1.IdentityService/" + method
-			if grpcconst.PublicMethods[fullMethod] {
-				continue
-			}
-			t.Run(method, func(t *testing.T) {
-				var resp emptypb.Empty
-				err := conn.Invoke(ctx, fullMethod, empty, &resp)
-				require.Error(t, err)
-				st, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.Equal(t, codes.Unauthenticated, st.Code(),
-					"auth-required method %s should return Unauthenticated, got %s: %s",
-					fullMethod, st.Code(), st.Message())
-			})
-		}
+		client.assertUnauthenticatedUnary(t, "/kilocenter.api.v1.IdentityService/", identityServiceUnaryMethods)
 	})
 
-	// 8. Auth-required KiloCenterService unary RPCs — combined core + identity
+	// KiloCenterService compat surface combines the core and identity unary sets.
 	t.Run("AuthRequired_KiloCenterService_Unary", func(t *testing.T) {
 		allUnary := make([]string, 0, len(coreServiceUnaryMethods)+len(identityServiceUnaryMethods))
 		allUnary = append(allUnary, coreServiceUnaryMethods...)
 		allUnary = append(allUnary, identityServiceUnaryMethods...)
-		for _, method := range allUnary {
-			fullMethod := "/kilocenter.api.v1.KiloCenterService/" + method
-			if grpcconst.PublicMethods[fullMethod] {
-				continue
-			}
-			t.Run(method, func(t *testing.T) {
-				var resp emptypb.Empty
-				err := conn.Invoke(ctx, fullMethod, empty, &resp)
-				require.Error(t, err)
-				st, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.Equal(t, codes.Unauthenticated, st.Code(),
-					"auth-required method %s should return Unauthenticated, got %s: %s",
-					fullMethod, st.Code(), st.Message())
-			})
-		}
+		client.assertUnauthenticatedUnary(t, "/kilocenter.api.v1.KiloCenterService/", allUnary)
 	})
 
-	// 9. Auth-required KiloCenterService streaming RPCs
 	t.Run("AuthRequired_KiloCenterService_Streaming", func(t *testing.T) {
-		for _, method := range coreServiceStreamMethods {
-			fullMethod := "/kilocenter.api.v1.KiloCenterService/" + method
-			t.Run(method, func(t *testing.T) {
-				stream, err := conn.NewStream(ctx,
-					&grpc.StreamDesc{ServerStreams: true},
-					fullMethod)
-				if err != nil {
-					st, ok := status.FromError(err)
-					require.True(t, ok)
-					assert.Equal(t, codes.Unauthenticated, st.Code(),
-						"streaming method %s should return Unauthenticated", fullMethod)
-					return
-				}
-				err = stream.RecvMsg(empty)
-				require.Error(t, err)
-				st, ok := status.FromError(err)
-				require.True(t, ok)
-				assert.Equal(t, codes.Unauthenticated, st.Code(),
-					"streaming method %s should reject with Unauthenticated, got %s",
-					fullMethod, st.Code())
-			})
-		}
+		client.assertUnauthenticatedStream(t, "/kilocenter.api.v1.KiloCenterService/", coreServiceStreamMethods)
 	})
 
-	// 10. Success-path payload checks
+	// Success-path payload checks
 	t.Run("SuccessPath_CoreService_GetReleaseInfo", func(t *testing.T) {
 		var resp pb.ReleaseInfo
 		err := conn.Invoke(ctx, "/kilocenter.api.v1.CoreService/GetReleaseInfo", empty, &resp)

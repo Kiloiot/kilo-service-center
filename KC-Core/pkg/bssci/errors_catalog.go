@@ -12,6 +12,7 @@ const (
 	errBaseStationNotRegistered = "bssci.error.base_station_not_registered"
 	errResumeCounterMismatch    = "bssci.error.resume_counter_mismatch"
 	errInvalidResumeCounters    = "bssci.error.invalid_resume_counters"
+	errSessionResumeUnavailable = "bssci.error.session_resume_unavailable"
 
 	// Protocol/framing errors
 	errInvalidMessageFormat  = "bssci.error.invalid_message_format"
@@ -51,20 +52,22 @@ const (
 	errInvalidConnectCompleteOpId  = "bssci.error.invalid_connect_complete_op_id"
 
 	// Connect operation errors (BSSCI §3.3)
-	errMissingBsEui            = "bssci.error.missing_bs_eui"
-	errInvalidBsEui            = "bssci.error.invalid_bs_eui"
-	errInvalidUUIDByteType     = "bssci.error.invalid_uuid_byte_type"
-	errInvalidUUIDLength       = "bssci.error.invalid_uuid_length"
-	errUnsupportedUUIDType     = "bssci.error.unsupported_uuid_type"
-	errUUIDDataNil             = "bssci.error.uuid_data_nil"
-	errNoConnectedBaseStations = "bssci.error.no_connected_base_stations"
-	errFailedToLoadCA          = "bssci.error.failed_to_load_ca"
-	errFailedToParseCA         = "bssci.error.failed_to_parse_ca"
-	errFailedToLoadTLS         = "bssci.error.failed_to_load_tls"
-	errFailedToStartTLS        = "bssci.error.failed_to_start_tls"
-	errCommandBeforeHandshake  = "bssci.error.command_before_handshake"
-	errMissingProtocolVersion  = "bssci.error.missing_protocol_version"
-	errMissingBidiFlag         = "bssci.error.missing_bidi_flag"
+	errMissingBsEui                = "bssci.error.missing_bs_eui"
+	errInvalidBsEui                = "bssci.error.invalid_bs_eui"
+	errInvalidUUIDByteType         = "bssci.error.invalid_uuid_byte_type"
+	errInvalidUUIDLength           = "bssci.error.invalid_uuid_length"
+	errUnsupportedUUIDType         = "bssci.error.unsupported_uuid_type"
+	errUUIDDataNil                 = "bssci.error.uuid_data_nil"
+	errNoConnectedBaseStations     = "bssci.error.no_connected_base_stations"
+	errFailedToLoadCA              = "bssci.error.failed_to_load_ca"
+	errFailedToParseCA             = "bssci.error.failed_to_parse_ca"
+	errFailedToLoadTLS             = "bssci.error.failed_to_load_tls"
+	errFailedToStartTLS            = "bssci.error.failed_to_start_tls"
+	errCommandBeforeHandshake      = "bssci.error.command_before_handshake"
+	errInboundServiceCenterCommand = "bssci.error.inbound_service_center_command"
+	errInvalidHandshakeState       = "bssci.error.invalid_handshake_state"
+	errMissingProtocolVersion      = "bssci.error.missing_protocol_version"
+	errMissingBidiFlag             = "bssci.error.missing_bidi_flag"
 
 	// Attach operation errors (BSSCI §3.6)
 	errMissingEpEui                = "bssci.error.missing_ep_eui"
@@ -199,10 +202,17 @@ const (
 	errDetachPropagateRejected = "bssci.error.detach_propagate_rejected"
 
 	// Status operation errors
-	errFailedToSendStatusRequest = "bssci.error.failed_to_send_status_request"
-	errMissingStatusCode         = "bssci.error.missing_status_code"
-	errMissingStatusMessage      = "bssci.error.missing_status_message"
-	errMissingStatusTime         = "bssci.error.missing_status_time"
+	errFailedToSendStatusRequest             = "bssci.error.failed_to_send_status_request"
+	errFailedToPersistPendingStatusOperation = "bssci.error.failed_to_persist_pending_status_operation"
+
+	// SC-initiated operation durability errors (BSSCI rev1 §5.2 / classic §3.2)
+	errPendingOpSessionNotPersisted    = "bssci.error.pending_op_session_not_persisted"
+	errFailedToPersistPendingOperation = "bssci.error.failed_to_persist_pending_operation"
+	errFailedToPersistSessionCounters  = "bssci.error.failed_to_persist_session_counters"
+	errFailedToPersistDLRxCorrelation  = "bssci.error.failed_to_persist_dlrx_correlation"
+	errMissingStatusCode               = "bssci.error.missing_status_code"
+	errMissingStatusMessage            = "bssci.error.missing_status_message"
+	errMissingStatusTime               = "bssci.error.missing_status_time"
 
 	// Management HTTP API errors (BSSCI §3.6 attach/§3.7 detach propagation)
 	// Exported for use by pkg/management HTTP handlers
@@ -301,7 +311,7 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.session_not_found",
 		Message:     "Session not found",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errHandshakeNotComplete: {
 		Token:       "bssci.error.handshake_not_complete",
@@ -313,13 +323,13 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.session_nil",
 		Message:     "Invalid session: session is nil",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidSessionType: {
 		Token:       "bssci.error.invalid_session_type",
 		Message:     "Invalid session type or nil session",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errCannotSendPing: {
 		Token:       "bssci.error.cannot_send_ping",
@@ -331,7 +341,13 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.base_station_not_registered",
 		Message:     "Base station not registered",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
+	},
+	errSessionResumeUnavailable: {
+		Token:       "bssci.error.session_resume_unavailable",
+		Message:     "Session resume temporarily unavailable; retry",
+		SpecSection: "§5.3",
+		Severity:    SeverityError,
 	},
 	errResumeCounterMismatch: {
 		Token:       "bssci.error.resume_counter_mismatch",
@@ -357,55 +373,55 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.failed_to_encode",
 		Message:     "Failed to encode message",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToMarshal: {
 		Token:       "bssci.error.failed_to_marshal",
 		Message:     "Failed to marshal message",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToMarshalMeta: {
 		Token:       "bssci.error.failed_to_marshal_metadata",
 		Message:     "Failed to marshal metadata",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToWrite: {
 		Token:       "bssci.error.failed_to_write",
 		Message:     "Failed to write",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToWriteHeader: {
 		Token:       "bssci.error.failed_to_write_header",
 		Message:     "Failed to write header",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToWritePayload: {
 		Token:       "bssci.error.failed_to_write_payload",
 		Message:     "Failed to write payload",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToDecode: {
 		Token:       "bssci.error.failed_to_decode",
 		Message:     "Failed to decode",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToDecodePayload: {
 		Token:       "bssci.error.failed_to_decode_payload",
 		Message:     "Failed to decode payload",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errPayloadTooLarge: {
 		Token:       "bssci.error.payload_too_large",
 		Message:     "Payload exceeds maximum size (4GB for uint32 length field)",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Version negotiation errors (BSSCI §2.1-2.3)
@@ -527,61 +543,61 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.missing_bs_eui",
 		Message:     "Missing bsEui",
 		SpecSection: "§3.3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidBsEui: {
 		Token:       "bssci.error.invalid_bs_eui",
 		Message:     "Invalid bsEui: negative value not allowed",
 		SpecSection: "§3.3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidUUIDByteType: {
 		Token:       "bssci.error.invalid_uuid_byte_type",
 		Message:     "Invalid UUID byte type",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidUUIDLength: {
 		Token:       "bssci.error.invalid_uuid_length",
 		Message:     "UUID must be 16 bytes",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errUnsupportedUUIDType: {
 		Token:       "bssci.error.unsupported_uuid_type",
 		Message:     "Unsupported UUID type",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errNoConnectedBaseStations: {
 		Token:       "bssci.error.no_connected_base_stations",
 		Message:     "No connected base stations available",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToLoadCA: {
 		Token:       "bssci.error.failed_to_load_ca",
 		Message:     "Failed to load CA certificate",
 		SpecSection: "§1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToParseCA: {
 		Token:       "bssci.error.failed_to_parse_ca",
 		Message:     "Failed to parse CA certificate",
 		SpecSection: "§1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToLoadTLS: {
 		Token:       "bssci.error.failed_to_load_tls",
 		Message:     "Failed to load TLS certificate",
 		SpecSection: "§1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToStartTLS: {
 		Token:       "bssci.error.failed_to_start_tls",
 		Message:     "Failed to start TLS listener",
 		SpecSection: "§1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errCommandBeforeHandshake: {
 		Token:       "bssci.error.command_before_handshake",
@@ -589,17 +605,29 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "§3.3",
 		Severity:    "protocol_violation",
 	},
+	errInboundServiceCenterCommand: {
+		Token:       "bssci.error.inbound_service_center_command",
+		Message:     "Inbound service-center-initiated command is not permitted",
+		SpecSection: "§5.5",
+		Severity:    SeverityError,
+	},
+	errInvalidHandshakeState: {
+		Token:       "bssci.error.invalid_handshake_state",
+		Message:     "Connect operation message not valid in current handshake state",
+		SpecSection: "§3.3",
+		Severity:    "protocol_violation",
+	},
 	errMissingProtocolVersion: {
 		Token:       "bssci.error.missing_protocol_version",
 		Message:     "Protocol version must be provided by Base Station",
 		SpecSection: "§5.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingBidiFlag: {
 		Token:       "bssci.error.missing_bidi_flag",
 		Message:     "Bidirectional capability flag (bidi) must be explicitly declared",
 		SpecSection: "§5.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Attach operation errors (BSSCI §3.6)
@@ -607,55 +635,55 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.missing_ep_eui",
 		Message:     "Missing epEui",
 		SpecSection: "§3.6.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errAttachOperationFailed: {
 		Token:       "bssci.error.attach_operation_failed",
 		Message:     "Attach operation failed",
 		SpecSection: "§3.6",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errAttachPropagateFailed: {
 		Token:       "bssci.error.attach_propagate_failed",
 		Message:     "Attach propagate failed",
 		SpecSection: "§3.6",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errPropagationBroadcastFailure: {
 		Token:       "bssci.error.propagation_broadcast_failure",
 		Message:     "Propagation broadcast encountered failures",
 		SpecSection: "§5.8.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errEndpointAttachFailed: {
 		Token:       "bssci.error.endpoint_attach_failed",
 		Message:     "Endpoint attach failed",
 		SpecSection: "§3.6",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidEndpointEUIFormat: {
 		Token:       "bssci.error.invalid_endpoint_eui_format",
 		Message:     "Invalid endpoint EUI format",
 		SpecSection: "§3.6.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errBaseStationNotBidirectional: {
 		Token:       "bssci.error.base_station_not_bidirectional",
 		Message:     "Base station not bidirectional",
 		SpecSection: "§3.6",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errNoPendingAttachOperation: {
 		Token:       "bssci.error.no_pending_attach_operation",
 		Message:     "No pending attach operation",
 		SpecSection: "§3.6",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidNwkSnKeyLength: {
 		Token:       "bssci.error.invalid_nwk_sn_key_length",
 		Message:     "Network session key must be exactly 16 bytes",
 		SpecSection: "§3.6",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errBaseStationEUIOutOfRange: {
 		Token:       "bssci.error.base_station_eui_out_of_range",
@@ -669,55 +697,55 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.detach_operation_failed",
 		Message:     "Detach operation failed",
 		SpecSection: "§3.7",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errDetachPropagateFailed: {
 		Token:       "bssci.error.detach_propagate_failed",
 		Message:     "Detach propagate failed",
 		SpecSection: "§3.7",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errAttachPropagateRejected: {
 		Token:       "bssci.error.attach_propagate_rejected",
 		Message:     "Base station rejected attach propagate operation",
 		SpecSection: "§5.17",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errDetachPropagateRejected: {
 		Token:       "bssci.error.detach_propagate_rejected",
 		Message:     "Base station rejected detach propagate operation",
 		SpecSection: "§5.17",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errEndpointDetachFailed: {
 		Token:       "bssci.error.endpoint_detach_failed",
 		Message:     "Endpoint detach failed",
 		SpecSection: "§3.7",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errNoPendingDetachOperation: {
 		Token:       "bssci.error.no_pending_detach_operation",
 		Message:     "No pending detach operation",
 		SpecSection: "§3.7",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errDetachSignatureInvalid: {
 		Token:       "bssci.error.detach_signature_invalid",
 		Message:     "Unknown endpoint detach signature validation failed",
 		SpecSection: "§5.7",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errEndpointNotFound: {
 		Token:       "bssci.error.endpoint_not_found",
 		Message:     "Unknown endpoint not found in database",
 		SpecSection: "§5.7",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errSignatureMismatch: {
 		Token:       "bssci.error.signature_mismatch",
 		Message:     "Cryptographic signature verification failed",
 		SpecSection: "§5.7.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Downlink adapter errors (BSSCI §5.13)
@@ -725,7 +753,7 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.dl_queue_nil_result",
 		Message:     "QueueDownlinkInternal returned nil result",
 		SpecSection: "§5.13",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Downlink payload size (MIOTY radio protocol §4.3.2)
@@ -733,7 +761,7 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.dl_payload_too_large",
 		Message:     "Downlink payload exceeds 200-byte maximum (MIOTY radio protocol §4.3.2)",
 		SpecSection: "§4.3.2",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Downlink data queue errors (BSSCI §3.9)
@@ -741,49 +769,49 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.invalid_queue_id",
 		Message:     "Invalid queue ID",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errQueueIDNotFound: {
 		Token:       "bssci.error.queue_id_not_found",
 		Message:     "Queue ID not found",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingQueID: {
 		Token:       "bssci.error.missing_que_id",
 		Message:     "Missing queId",
 		SpecSection: "§3.9.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errCannotResolveTenantForQueue: {
 		Token:       "bssci.error.cannot_resolve_tenant_for_queue",
 		Message:     "Cannot resolve tenant for queue",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidPayloadCount: {
 		Token:       "bssci.error.invalid_payload_count",
 		Message:     "Invalid payload count",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errCounterDependentPayloadMismatch: {
 		Token:       "bssci.error.counter_dependent_payload_mismatch",
 		Message:     "Counter-dependent mode payload mismatch",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errNonCounterDependentMultiPayload: {
 		Token:       "bssci.error.non_counter_dependent_multi_payload",
 		Message:     "Non-counter-dependent mode requires exactly 1 payload",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingPacketCnt: {
 		Token:       "bssci.error.missing_packet_cnt",
 		Message:     "Missing packetCnt",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingResultField: {
 		Token:       "bssci.error.missing_result_field",
@@ -807,19 +835,19 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.invalid_tenant_id_format",
 		Message:     "Invalid tenant ID format",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errQueueIDOutOfRange: {
 		Token:       "bssci.error.queue_id_out_of_range",
 		Message:     "Queue ID exceeds maximum safe value for int64 conversion",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errNegativeQueueIDInMetadata: {
 		Token:       "bssci.error.negative_queue_id_in_metadata",
 		Message:     "Negative queue ID found in operation metadata",
 		SpecSection: "§3.9",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidPacketCounter: {
 		Token:       "bssci.error.invalid_packet_counter",
@@ -839,19 +867,19 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.failed_to_send_dl_data_rev",
 		Message:     "Failed to send dlDataRev",
 		SpecSection: "§3.10",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingEpEuiInMetadata: {
 		Token:       "bssci.error.missing_ep_eui_in_metadata",
 		Message:     "Missing epEui in metadata",
 		SpecSection: "§3.10",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingQueIDInMetadata: {
 		Token:       "bssci.error.missing_que_id_in_metadata",
 		Message:     "Missing queId in metadata",
 		SpecSection: "§3.10",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// DL RX Status errors (BSSCI §3.11)
@@ -859,19 +887,19 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.failed_to_persist_dl_rx_status",
 		Message:     "Failed to persist DL RX status",
 		SpecSection: "§3.11",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToSendDlRxStatQry: {
 		Token:       "bssci.error.failed_to_send_dl_rx_stat_qry",
 		Message:     "Failed to send dlRxStatQry",
 		SpecSection: "§3.11",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidResultValue: {
 		Token:       "bssci.error.invalid_result_value",
 		Message:     "Invalid result value",
 		SpecSection: "§3.11",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingDlRxEpEui: {
 		Token:       "bssci.error.missing_dl_rx_ep_eui",
@@ -933,31 +961,31 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.database_error",
 		Message:     "Database error",
 		SpecSection: "§4",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errDatabaseNotAvailable: {
 		Token:       "bssci.error.database_not_available",
 		Message:     "Database not available",
 		SpecSection: "§4",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errDatabaseUpdateFailed: {
 		Token:       "bssci.error.database_update_failed",
 		Message:     "Database update failed",
 		SpecSection: "§4",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errDeduplicationError: {
 		Token:       "bssci.error.deduplication_error",
 		Message:     "Deduplication error",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errPacketCounterCollision: {
 		Token:       "bssci.error.packet_counter_collision",
 		Message:     "Packet counter collision detected during deduplication",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Version and protocol compatibility errors
@@ -971,7 +999,7 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.uuid_data_nil",
 		Message:     "UUID data is nil",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errSCOperationIDMustNotIncrease: {
 		Token:       "bssci.error.sc_operation_id_must_not_increase",
@@ -985,31 +1013,31 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.operation_failed",
 		Message:     "Operation failed",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errPropagateFailed: {
 		Token:       "bssci.error.propagate_failed",
 		Message:     "Propagate failed",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errEndpointOperationFailed: {
 		Token:       "bssci.error.endpoint_operation_failed",
 		Message:     "Endpoint operation failed",
 		SpecSection: "§3.6",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToSendError: {
 		Token:       "bssci.error.failed_to_send_error",
 		Message:     "Failed to send error",
 		SpecSection: "§4",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errBaseStationReportedError: {
 		Token:       "bssci.error.base_station_reported_error",
 		Message:     "Base station reported error",
 		SpecSection: "§4",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Variable MAC (VM) operation errors
@@ -1023,37 +1051,37 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.missing_mac_type",
 		Message:     "Missing macType in VM uplink data",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingRxTime: {
 		Token:       "bssci.error.missing_rx_time",
 		Message:     "Missing rxTime in VM uplink data",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToSendVMActivate: {
 		Token:       "bssci.error.failed_to_send_vm_activate",
 		Message:     "Failed to send VM activate",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToSendVMDeactivate: {
 		Token:       "bssci.error.failed_to_send_vm_deactivate",
 		Message:     "Failed to send VM deactivate",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToSendVMStatus: {
 		Token:       "bssci.error.failed_to_send_vm_status",
 		Message:     "Failed to send VM status",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToSendVMDlData: {
 		Token:       "bssci.error.failed_to_send_vm_dl_data",
 		Message:     "Failed to send VM downlink data",
 		SpecSection: "§3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Uplink transmit errors
@@ -1061,61 +1089,61 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.nwk_sn_key_invalid_length",
 		Message:     "nwkSnKey must be exactly 16 bytes",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errBaseStationTenantMismatch: {
 		Token:       "bssci.error.base_station_tenant_mismatch",
 		Message:     "Base station belongs to different tenant - cannot schedule UL transmit",
 		SpecSection: "§5.11 (UL data transmit), multi-tenant isolation",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errSessionNotReady: {
 		Token:       "bssci.error.session_not_ready",
 		Message:     "Base station session not ready - handshake incomplete",
 		SpecSection: "§3.3 (connect), §5.16 (DL RX status query)",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errSessionNotBidirectional: {
 		Token:       "bssci.error.session_not_bidirectional",
 		Message:     "Base station does not support bidirectional operations",
 		SpecSection: "§5.16 (DL RX status query), bidirectional capability check",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToSendULDataTransmitComplete: {
 		Token:       "bssci.error.failed_to_send_ul_data_transmit_complete",
 		Message:     "Failed to send UL data transmit completion",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToEncryptKey: {
 		Token:       "bssci.error.failed_to_encrypt_key",
 		Message:     "Failed to encrypt key",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToDecryptKey: {
 		Token:       "bssci.error.failed_to_decrypt_key",
 		Message:     "Failed to decrypt key",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingEncryptedKey: {
 		Token:       "bssci.error.missing_encrypted_key",
 		Message:     "Encrypted key missing from metadata",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToDecodeUserData: {
 		Token:       "bssci.error.failed_to_decode_user_data",
 		Message:     "Failed to decode userData",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToSendULTransmit: {
 		Token:       "bssci.error.failed_to_send_ul_transmit",
 		Message:     "Failed to send UL transmit to BS",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errMissingAttachCnt: {
 		Token:       "bssci.error.missing_attach_cnt",
@@ -1145,19 +1173,19 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.invalid_attach_cnt_range",
 		Message:     "attachCnt must be 24-bit unsigned (0 to 16777215)",
 		SpecSection: "§5.6.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidNonceElement: {
 		Token:       "bssci.error.invalid_nonce_element",
 		Message:     "nonce array elements must be integers 0-255",
 		SpecSection: "§5.6.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errInvalidSignElement: {
 		Token:       "bssci.error.invalid_sign_element",
 		Message:     "sign array elements must be integers 0-255",
 		SpecSection: "§5.6.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errAttachCounterNotMonotonic: {
 		Token:       "bssci.error.attach_counter_not_monotonic",
@@ -1187,13 +1215,13 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.endpoint_not_provisioned",
 		Message:     "Endpoint not provisioned",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errRoamingNotAllowed: {
 		Token:       "bssci.error.roaming_not_allowed",
 		Message:     "Roaming not allowed between tenants",
 		SpecSection: "§3.8 (roaming)",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errResponseExpRequiresDlOpen: {
 		Token:       "bssci.error.response_exp_requires_dl_open",
@@ -1223,13 +1251,13 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.failed_to_persist_ul_data",
 		Message:     "Failed to persist UL data",
 		SpecSection: "§3.8",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errFailedToResolveEndpointTenant: {
 		Token:       "bssci.error.failed_to_resolve_endpoint_tenant",
 		Message:     "Failed to resolve endpoint tenant for UL data - database error",
 		SpecSection: "§3.8.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	errUnsupportedSublayerPrefix: {
 		Token:       "bssci.error.unsupported_sublayer_prefix",
@@ -1249,7 +1277,37 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.failed_to_send_status_request",
 		Message:     "Failed to send status request",
 		SpecSection: "§3.5",
-		Severity:    "error",
+		Severity:    SeverityError,
+	},
+	errFailedToPersistPendingStatusOperation: {
+		Token:       "bssci.error.failed_to_persist_pending_status_operation",
+		Message:     "Failed to persist pending status operation",
+		SpecSection: "§3.5",
+		Severity:    SeverityError,
+	},
+	errPendingOpSessionNotPersisted: {
+		Token:       "bssci.error.pending_op_session_not_persisted",
+		Message:     "SC operation requires a persisted session before its recovery record can be written",
+		SpecSection: "§3.2",
+		Severity:    SeverityError,
+	},
+	errFailedToPersistPendingOperation: {
+		Token:       "bssci.error.failed_to_persist_pending_operation",
+		Message:     "Failed to persist pending operation recovery record",
+		SpecSection: "§3.2",
+		Severity:    SeverityError,
+	},
+	errFailedToPersistSessionCounters: {
+		Token:       "bssci.error.failed_to_persist_session_counters",
+		Message:     "Failed to persist session operation counters",
+		SpecSection: "§3.2",
+		Severity:    SeverityError,
+	},
+	errFailedToPersistDLRxCorrelation: {
+		Token:       "bssci.error.failed_to_persist_dlrx_correlation",
+		Message:     "Failed to persist DL RX status query correlation record",
+		SpecSection: "§3.16",
+		Severity:    SeverityError,
 	},
 	errMissingStatusCode: {
 		Token:       "bssci.error.missing_status_code",
@@ -1275,25 +1333,25 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.mgmt.method_not_allowed",
 		Message:     "Method not allowed",
 		SpecSection: "§3.6,§3.7", // Attach/detach propagation endpoints
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtSessionIDRequired: {
 		Token:       "bssci.mgmt.session_id_required",
 		Message:     "session_id query parameter required",
 		SpecSection: "§3.3", // Session management
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtInvalidRequestBody: {
 		Token:       "bssci.mgmt.invalid_request_body",
 		Message:     "Invalid request body",
 		SpecSection: "§3.6,§3.7",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtInvalidNwkSnKeyEncoding: {
 		Token:       "bssci.mgmt.invalid_nwk_sn_key_encoding",
 		Message:     "Invalid nwkSnKey encoding",
 		SpecSection: "§3.8.1", // Network session key requirements
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtInvalidNwkSnKeyLength: {
 		Token:       "bssci.mgmt.invalid_nwk_sn_key_length",
@@ -1305,49 +1363,49 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.mgmt.attach_propagate_failed",
 		Message:     "Failed to send attach propagate",
 		SpecSection: "§3.6",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtDetachPropagateFailed: {
 		Token:       "bssci.mgmt.detach_propagate_failed",
 		Message:     "Failed to send detach propagate",
 		SpecSection: "§3.7",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtJSONEncodeFailed: {
 		Token:       "bssci.mgmt.json_encode_failed",
 		Message:     "Failed to encode JSON response",
 		SpecSection: "§3.1", // Message encoding
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtFailedToBindAddress: {
 		Token:       "bssci.mgmt.failed_to_bind_address",
 		Message:     "Failed to bind to management API address",
 		SpecSection: "N/A", // Infrastructure, not protocol
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtServerFailed: {
 		Token:       "bssci.mgmt.server_failed",
 		Message:     "Management HTTP server failed",
 		SpecSection: "N/A",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtInvalidTenantContext: {
 		Token:       "bssci.mgmt.invalid_tenant_context",
 		Message:     "Cannot resolve tenant context for operation",
 		SpecSection: "§3.2", // Operation context
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtNoConnectedSessions: {
 		Token:       "bssci.mgmt.no_connected_sessions",
 		Message:     "No connected base station sessions available",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 	ErrMgmtSessionLookupFailed: {
 		Token:       "bssci.mgmt.session_lookup_failed",
 		Message:     "Failed to look up session state",
 		SpecSection: "§3.3",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Type conversion and validation errors
@@ -1363,7 +1421,7 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.org_context_missing",
 		Message:     "Organization context required in strict mode (gRPC metadata missing X-Organization-ID)",
 		SpecSection: "§3.1",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 
 	// Float validation errors (BSSCI §5.15.1)
@@ -1435,7 +1493,7 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.unknown",
 		Message:     "Unknown error",
 		SpecSection: "§4",
-		Severity:    "error",
+		Severity:    SeverityError,
 	},
 }
 
@@ -1450,7 +1508,7 @@ func GetErrorDefinition(token string) ErrorDefinition {
 		Token:       token,
 		Message:     "Unknown error",
 		SpecSection: "§4",
-		Severity:    "error",
+		Severity:    SeverityError,
 	}
 }
 

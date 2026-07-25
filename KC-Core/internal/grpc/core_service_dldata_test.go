@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
@@ -282,6 +283,13 @@ type fakeStatusSvc struct{}
 func (f *fakeStatusSvc) RecordPendingOperation(_ context.Context, _ *bssci.Session, _ int64, _ *bssci.PendingOperation, _ int64) error {
 	return nil
 }
+
+func (f *fakeStatusSvc) RecordPendingOperations(_ context.Context, _ *bssci.Session, _ []*bssci.PendingOperation, _ int64) error {
+	return nil
+}
+
+func (f *fakeStatusSvc) RestorePendingOperation(_ *bssci.Session, _ int64, _ *bssci.PendingOperation) {
+}
 func (f *fakeStatusSvc) GetPendingOperation(_ *bssci.Session, _ int64) (*bssci.PendingOperation, error) {
 	return nil, nil
 }
@@ -291,14 +299,27 @@ func (f *fakeStatusSvc) RemovePendingOperation(_ context.Context, _ *bssci.Sessi
 func (f *fakeStatusSvc) ExtractQueueMetadata(_ *bssci.Session, _ int64) (uint64, int64, string) {
 	return 0, 0, ""
 }
-func (f *fakeStatusSvc) CleanupPendingOp(_ *bssci.Session, _ int64) {}
+
+func (f *fakeStatusSvc) UpdatePendingOperationMetadata(_ context.Context, _ *bssci.Session, _ int64, _ map[string]interface{}, _ json.RawMessage) error {
+	return nil
+}
+
+func (f *fakeStatusSvc) PersistedOperations(_ context.Context, _ int64) ([]bssci.PersistedOperation, error) {
+	return nil, nil
+}
+
+func (f *fakeStatusSvc) DeletePendingOperations(_ context.Context, _ *bssci.Session) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeStatusSvc) EvictCachedOperations(_ *bssci.Session) {}
 
 // fakeDownlinkCmd implements bssci.DownlinkCommander (minimal for SendDownlink tests)
 type fakeDownlinkCmd struct {
 	lastPacketCnt []int64 // Captures packet counter values sent to base station
 }
 
-func (f *fakeDownlinkCmd) SendDLDataQueue(_ string, _ uint64, _ [][]byte, _ int64, _ float32, _ bool, packetCnt []int64, _ uint8, _ bool, _ bool, _ bool, _ bool, _ int64) error {
+func (f *fakeDownlinkCmd) SendDLDataQueue(_ string, _ uint64, _ [][]byte, _ int64, _ float32, _ bool, packetCnt []int64, _ uint8, _ bool, _ bool, _ bool, _ bool, _ int64, _ bool) error {
 	f.lastPacketCnt = packetCnt
 	return nil
 }
@@ -327,7 +348,7 @@ func (f *fakePingCmd) InitiatePing(_ context.Context, _ uint64, _ int64) (int64,
 // fakeDownlinkScheduler implements scheduler.DownlinkScheduler (minimal for SendDownlink tests)
 type fakeDownlinkScheduler struct{}
 
-func (f *fakeDownlinkScheduler) QueueDownlink(_ *mioty.DLDataQueue, _ int64) (uint64, uint64, error) {
+func (f *fakeDownlinkScheduler) QueueDownlink(_ context.Context, _ *mioty.DLDataQueue, _ int64) (uint64, uint64, error) {
 	return 12345, 0x0102030405060708, nil
 }
 

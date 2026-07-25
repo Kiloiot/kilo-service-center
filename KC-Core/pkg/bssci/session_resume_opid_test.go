@@ -27,7 +27,9 @@ func TestSessionOpIdInitialization(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create new session
 			session := &Session{
-				BaseStationEUI: TestEpEui01,
+				ProtocolSessionState: ProtocolSessionState{
+					BaseStationEUI: TestEpEui01,
+				},
 			}
 
 			// Verify initial counter values
@@ -75,8 +77,10 @@ func TestSessionOpIdDecrement(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
-				BaseStationEUI: TestEpEui01,
-				LastScOpId:     tt.initialOpId,
+				ProtocolSessionState: ProtocolSessionState{
+					BaseStationEUI: TestEpEui01,
+					LastScOpId:     tt.initialOpId,
+				},
 			}
 
 			// Simulate sending operations using atomic pattern
@@ -141,8 +145,10 @@ func TestSessionOpIdIncrement(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			session := &Session{
-				BaseStationEUI: TestEpEui01,
-				LastBsOpId:     tt.initialOpId,
+				ProtocolSessionState: ProtocolSessionState{
+					BaseStationEUI: TestEpEui01,
+					LastBsOpId:     tt.initialOpId,
+				},
 			}
 
 			// Simulate receiving BS operations and validating them
@@ -210,9 +216,11 @@ func TestSessionOpIdResume(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Simulate session resume by creating session with saved counters
 			session := &Session{
-				BaseStationEUI: TestEpEui01,
-				LastScOpId:     tt.savedScOpId,
-				LastBsOpId:     tt.savedBsOpId,
+				ProtocolSessionState: ProtocolSessionState{
+					BaseStationEUI: TestEpEui01,
+					LastScOpId:     tt.savedScOpId,
+					LastBsOpId:     tt.savedBsOpId,
+				},
 			}
 
 			// Verify counters restored from "database"
@@ -246,8 +254,10 @@ func TestSessionOpIdResume(t *testing.T) {
 // are thread-safe with mutex protection.
 func TestSessionOpIdConcurrency(t *testing.T) {
 	session := &Session{
-		BaseStationEUI: TestEpEui01,
-		LastScOpId:     0,
+		ProtocolSessionState: ProtocolSessionState{
+			BaseStationEUI: TestEpEui01,
+			LastScOpId:     0,
+		},
 	}
 
 	numGoroutines := 10

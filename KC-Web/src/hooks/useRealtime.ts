@@ -204,7 +204,9 @@ function normalizeEuiForQueryKey(eui: string): string {
 }
 
 /** Per-event-type targeted query keys (device detail/activity/downlink). */
-function targetedInvalidationKeys(event: RealtimeEvent): (readonly unknown[])[] {
+function targetedInvalidationKeys(
+  event: RealtimeEvent,
+): (readonly unknown[])[] {
   if (
     event.type === "basestation.online" ||
     event.type === "basestation.offline"
@@ -381,15 +383,21 @@ function useCatchUpOnStreamReconnect(): void {
   });
 
   useEffect(() => {
+    // Snapshot the ref once: the flight state object is stable for the effect's
+    // lifetime, and the cleanup must not re-read the ref (react-hooks/exhaustive-deps).
+    const flight = flightRef.current;
+
     const scheduleInvalidate = () => {
-      const flight = flightRef.current;
       if (flight.pendingInvalidate) {
         clearTimeout(flight.pendingInvalidate);
       }
       flight.pendingInvalidate = setTimeout(() => {
         flight.pendingInvalidate = null;
         const now = Date.now();
-        if (now - flight.lastInvalidateAt < TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS) {
+        if (
+          now - flight.lastInvalidateAt <
+          TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS
+        ) {
           return;
         }
         flight.lastInvalidateAt = now;
@@ -399,7 +407,6 @@ function useCatchUpOnStreamReconnect(): void {
 
     const unsubscribe = realtimeService.onConnectionEvent((evt) => {
       if (evt.streamKind !== REALTIME_STREAM_KIND.EVENT) return;
-      const flight = flightRef.current;
 
       if (evt.type === "realtime_connected") {
         const isReconnect = flight.hasConnected && !flight.connected;
@@ -418,7 +425,6 @@ function useCatchUpOnStreamReconnect(): void {
 
     return () => {
       unsubscribe();
-      const flight = flightRef.current;
       if (flight.pendingInvalidate) {
         clearTimeout(flight.pendingInvalidate);
         flight.pendingInvalidate = null;

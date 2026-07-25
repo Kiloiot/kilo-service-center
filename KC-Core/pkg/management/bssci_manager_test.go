@@ -15,13 +15,15 @@ func TestHandleGetConnectedSessionsIncludesVersionFields(t *testing.T) {
 	server := bssci.NewServerForTesting(testLogger)
 
 	session := &bssci.Session{
-		ID:                "session-1",
-		BaseStationEUI:    0x0102030405060708,
-		ClientVersion:     "1.0.0",
-		NegotiatedVersion: "1.0.0",
-		Name:              "test-bs",
-		Vendor:            "test-vendor",
-		Model:             "test-model",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "session-1",
+			BaseStationEUI:    0x0102030405060708,
+			ClientVersion:     "1.0.0",
+			NegotiatedVersion: "1.0.0",
+		},
+		Name:   "test-bs",
+		Vendor: "test-vendor",
+		Model:  "test-model",
 	}
 	server.AddSessionForTesting(session)
 

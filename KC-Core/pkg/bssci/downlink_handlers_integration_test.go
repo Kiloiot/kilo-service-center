@@ -70,7 +70,9 @@ func TestHandleDLDataResultIntegration(t *testing.T) {
 
 	// Create test session
 	session := &bssci.Session{
-		BaseStationEUI:   bssci.TestBsEui01,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			BaseStationEUI: bssci.TestBsEui01,
+		},
 		UserProvidedName: "Test BS",
 		Conn:             &mockConn{},
 	}
@@ -251,7 +253,9 @@ func TestHandleDLRXStatusIntegration(t *testing.T) {
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
 	session := &bssci.Session{
-		BaseStationEUI:   bssci.TestBsEui01,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			BaseStationEUI: bssci.TestBsEui01,
+		},
 		UserProvidedName: "Test BS",
 		Conn:             &mockConn{},
 	}

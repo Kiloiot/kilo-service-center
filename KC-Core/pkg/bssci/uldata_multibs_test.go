@@ -11,6 +11,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -126,7 +128,7 @@ func TestDLRXHydrationBatchQueryCallCount(t *testing.T) {
 	binary.BigEndian.PutUint64(epEui, bssci.TestEpEui01)
 
 	// Call mock
-	_, err := mock.GetLatestDLRXStatusByBaseStations(context.Background(), 1, epEui, bsEuis)
+	_, err := mock.GetLatestDLRXStatusByBaseStations(testutil.TestContext(), 1, epEui, bsEuis)
 	require.NoError(t, err)
 
 	// Assert batch method called exactly once (not N times)

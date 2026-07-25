@@ -266,7 +266,7 @@ func (c *HTTPChecker) Check(ctx context.Context) *Check {
 	}
 
 	client := &http.Client{Timeout: c.timeout}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url, nil) //nolint:gosec // G704: URL comes from operator configuration, not request input
 	if err != nil {
 		check.Status = StatusUnhealthy
 		check.Message = fmt.Sprintf("%s: %v", MsgFailedToCreate, err)
@@ -274,7 +274,7 @@ func (c *HTTPChecker) Check(ctx context.Context) *Check {
 		return check
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704: URL comes from operator configuration, not request input
 	if err != nil {
 		check.Status = StatusUnhealthy
 		check.Message = fmt.Sprintf("%s: %v", MsgFailedToConnect, err)

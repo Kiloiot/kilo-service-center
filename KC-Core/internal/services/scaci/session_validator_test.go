@@ -20,7 +20,7 @@ func TestValidateConnectFields_ValidFreshSession(t *testing.T) {
 		SnScOpId: nil,
 	}
 
-	errToken := validator.ValidateConnectFields(req, 0)
+	errToken := validator.ValidateConnectFields(req)
 	if errToken != "" {
 		t.Errorf("expected valid fresh session, got error: %s", errToken)
 	}
@@ -43,7 +43,7 @@ func TestValidateConnectFields_ValidResumeSession(t *testing.T) {
 		SnScOpId: &scOpId,
 	}
 
-	errToken := validator.ValidateConnectFields(req, 0)
+	errToken := validator.ValidateConnectFields(req)
 	if errToken != "" {
 		t.Errorf("expected valid resume session, got error: %s", errToken)
 	}
@@ -61,7 +61,7 @@ func TestValidateConnectFields_MissingVersion(t *testing.T) {
 		},
 	}
 
-	errToken := validator.ValidateConnectFields(req, 0)
+	errToken := validator.ValidateConnectFields(req)
 	if errToken != "scaci.error.missing_version" {
 		t.Errorf("expected missing_version error, got: %s", errToken)
 	}
@@ -79,7 +79,7 @@ func TestValidateConnectFields_ZeroAcEui(t *testing.T) {
 		},
 	}
 
-	errToken := validator.ValidateConnectFields(req, 0)
+	errToken := validator.ValidateConnectFields(req)
 	if errToken != "scaci.error.missing_ac_eui" {
 		t.Errorf("expected missing_ac_eui error, got: %s", errToken)
 	}
@@ -97,7 +97,7 @@ func TestValidateConnectFields_ZeroSnAcUUID(t *testing.T) {
 		},
 	}
 
-	errToken := validator.ValidateConnectFields(req, 0)
+	errToken := validator.ValidateConnectFields(req)
 	if errToken != "scaci.error.sn_ac_uuid_zero" {
 		t.Errorf("expected sn_ac_uuid_zero error, got: %s", errToken)
 	}
@@ -119,7 +119,7 @@ func TestValidateConnectFields_UnpairedResumeFields_AcOpIdOnly(t *testing.T) {
 		SnScOpId: nil,     // SnScOpId missing - INVALID
 	}
 
-	errToken := validator.ValidateConnectFields(req, 0)
+	errToken := validator.ValidateConnectFields(req)
 	if errToken != "scaci.error.sn_sc_op_id_required" {
 		t.Errorf("expected sn_sc_op_id_required error, got: %s", errToken)
 	}
@@ -141,7 +141,7 @@ func TestValidateConnectFields_UnpairedResumeFields_ScOpIdOnly(t *testing.T) {
 		SnScOpId: &scOpId, // SnScOpId present
 	}
 
-	errToken := validator.ValidateConnectFields(req, 0)
+	errToken := validator.ValidateConnectFields(req)
 	if errToken != "scaci.error.sn_ac_op_id_required" {
 		t.Errorf("expected sn_ac_op_id_required error, got: %s", errToken)
 	}

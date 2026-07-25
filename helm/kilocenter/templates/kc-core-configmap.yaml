@@ -35,6 +35,15 @@ data:
       max_retransmissions: {{ .Values.kcCore.config.protocol.maxRetransmissions }}
       ack_timeout: {{ .Values.kcCore.config.protocol.ackTimeout }}
       duplicate_window: {{ .Values.kcCore.config.protocol.duplicateWindow }}
+      connection_establishment_timeout: {{ .Values.kcCore.config.protocol.connectionEstablishmentTimeout }}
+      status_request_interval: {{ .Values.kcCore.config.protocol.statusRequestInterval }}
+      status_request_initial_delay: {{ .Values.kcCore.config.protocol.statusRequestInitialDelay }}
+      dlrx_query_timeout: {{ .Values.kcCore.config.protocol.dlrxQueryTimeout }}
+      dlrx_cleanup_interval: {{ .Values.kcCore.config.protocol.dlrxCleanupInterval }}
+      bsci_certificate_poll_interval: {{ .Values.kcCore.config.protocol.bsciCertificatePollInterval | quote }}
+      {{- with .Values.kcCore.config.protocol.scEui }}
+      sc_eui: {{ . | quote }}
+      {{- end }}
       message_encoding: "msgpack"
 
     certificates:

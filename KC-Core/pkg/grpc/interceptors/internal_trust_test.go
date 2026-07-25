@@ -10,6 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 func TestInternalTrust_OrgRequired_NonExemptMethod(t *testing.T) {
@@ -19,7 +21,7 @@ func TestInternalTrust_OrgRequired_NonExemptMethod(t *testing.T) {
 		grpcconst.MetadataKeyInternalTenantID: "42",
 		// no x-kc-internal-org-id
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		t.Error("handler should not be called when org header is missing for non-exempt method")
@@ -47,7 +49,7 @@ func TestInternalTrust_OrgOptional_ExemptMethod(t *testing.T) {
 		grpcconst.MetadataKeyInternalTenantID: "42",
 		// no x-kc-internal-org-id
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handlerCalled := false
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
@@ -71,7 +73,7 @@ func TestInternalTrust_OrgPresent_NonExemptMethod(t *testing.T) {
 		grpcconst.MetadataKeyInternalTenantID: "42",
 		grpcconst.MetadataKeyInternalOrgID:    "00000000-0000-0000-0000-000000000001",
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handlerCalled := false
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
@@ -95,7 +97,7 @@ func TestInternalTrust_CommunityMode_OrgOptional_NonExemptMethod(t *testing.T) {
 		grpcconst.MetadataKeyInternalTenantID: "42",
 		// no x-kc-internal-org-id — community mode makes it optional
 	})
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), md)
 
 	handlerCalled := false
 	handler := func(_ context.Context, _ interface{}) (interface{}, error) {

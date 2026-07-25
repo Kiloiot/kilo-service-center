@@ -78,7 +78,7 @@ func (s *Service) ListBaseStationActivity(
 	fetchLimit := pageSize * 2
 	events, eventTotal, err := s.eventSvc.ListByBaseStation(ctx, tenantID, bsEui, eventFilters, fetchLimit, cursor.EventOffset)
 	if err != nil {
-		s.log.Error("failed to fetch events for activity feed", "error", err, "bsEui", bsEui)
+		s.log.ErrorContext(ctx, "failed to fetch events for activity feed", "error", err, "bsEui", bsEui)
 		events = []*grpcservices.Event{}
 		eventTotal = 0
 	}
@@ -86,7 +86,7 @@ func (s *Service) ListBaseStationActivity(
 	// Fetch messages
 	messages, messageTotal, err := s.messageSvc.ListBaseStationMessages(ctx, tenantID, bsEui, messageFilters, fetchLimit, cursor.MessageOffset)
 	if err != nil {
-		s.log.Error("failed to fetch messages for activity feed", "error", err, "bsEui", bsEui)
+		s.log.ErrorContext(ctx, "failed to fetch messages for activity feed", "error", err, "bsEui", bsEui)
 		messages = nil
 		messageTotal = 0
 	}
@@ -198,14 +198,14 @@ func (s *Service) ListEndpointActivity(
 	fetchLimit := pageSize * 2
 	events, eventTotal, err := s.eventSvc.ListByEndPoint(ctx, tenantID, epEui, eventFilters, fetchLimit, cursor.EventOffset)
 	if err != nil {
-		s.log.Error("failed to fetch events for endpoint activity feed", "error", err, "epEui", epEui)
+		s.log.ErrorContext(ctx, "failed to fetch events for endpoint activity feed", "error", err, "epEui", epEui)
 		events = []*grpcservices.Event{}
 		eventTotal = 0
 	}
 
 	messages, messageTotal, err := s.messageSvc.ListMessages(ctx, tenantID, messageFilters, fetchLimit, cursor.MessageOffset)
 	if err != nil {
-		s.log.Error("failed to fetch messages for endpoint activity feed", "error", err, "epEui", epEui)
+		s.log.ErrorContext(ctx, "failed to fetch messages for endpoint activity feed", "error", err, "epEui", epEui)
 		messages = nil
 		messageTotal = 0
 	}

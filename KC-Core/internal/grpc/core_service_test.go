@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -246,6 +247,7 @@ func (m *mockDownlinkCmd) SendDLDataQueue(
 	_ bool,
 	_ bool,
 	_ int64,
+	_ bool,
 ) error {
 	return nil
 }
@@ -559,15 +561,17 @@ func TestQueryDLRXStatus_Success(t *testing.T) {
 		testSessions: make(map[string]*bssci.Session),
 	}
 	mockDir.AddTestSession(&bssci.Session{
-		ID:                "session-ready",
-		BaseStationEUI:    0x1122334455667788,
-		Bidirectional:     true,
-		HandshakeComplete: true,
-		ResolvedTenantID:  42,
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
-		ClientVersion:     "1.0.0",
-		NegotiatedVersion: "1.0.0",
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "session-ready",
+			BaseStationEUI:    0x1122334455667788,
+			HandshakeComplete: true,
+			ResolvedTenantID:  42,
+			ClientVersion:     "1.0.0",
+			NegotiatedVersion: "1.0.0",
+		},
+		Bidirectional: true,
+		Connected:     time.Now(),
+		LastSeen:      time.Now(),
 	})
 
 	mockCmd := &mockDownlinkCmd{
@@ -691,12 +695,15 @@ func TestQueryDLRXStatus_SessionNotReady(t *testing.T) {
 		testSessions: make(map[string]*bssci.Session),
 	}
 	mockDir.AddTestSession(&bssci.Session{
-		ID:                "incomplete-handshake",
-		BaseStationEUI:    0x1122334455667788,
-		Bidirectional:     true,
-		HandshakeComplete: false, // Handshake NOT complete
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "incomplete-handshake",
+			BaseStationEUI:    0x1122334455667788,
+			HandshakeComplete: false,
+		},
+		Bidirectional: true,
+		// Handshake NOT complete
+		Connected: time.Now(),
+		LastSeen:  time.Now(),
 	})
 
 	svc := &CoreService{
@@ -731,12 +738,15 @@ func TestQueryDLRXStatus_SessionNotBidirectional(t *testing.T) {
 		testSessions: make(map[string]*bssci.Session),
 	}
 	mockDir.AddTestSession(&bssci.Session{
-		ID:                "unidirectional",
-		BaseStationEUI:    0x1122334455667788,
-		Bidirectional:     false, // NOT bidirectional
-		HandshakeComplete: true,
-		Connected:         time.Now(),
-		LastSeen:          time.Now(),
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "unidirectional",
+			BaseStationEUI:    0x1122334455667788,
+			HandshakeComplete: true,
+		},
+		// NOT bidirectional
+		Bidirectional: false,
+		Connected:     time.Now(),
+		LastSeen:      time.Now(),
 	})
 
 	svc := &CoreService{
@@ -1046,7 +1056,7 @@ func TestGRPCCreateEndpoint_MissingTenant(t *testing.T) {
 	}
 
 	// Intentionally bare context — tests unauthenticated failure path
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	req := &pb.CreateEndPointRequest{
 		Endpoint: &pb.EndPoint{EpEui: "0x1122334455667788", Name: "Test", NwkSnKey: make([]byte, 16)},
@@ -2230,6 +2240,13 @@ type stubStatusSvc struct{}
 func (s *stubStatusSvc) RecordPendingOperation(_ context.Context, _ *bssci.Session, _ int64, _ *bssci.PendingOperation, _ int64) error {
 	return nil
 }
+
+func (s *stubStatusSvc) RecordPendingOperations(_ context.Context, _ *bssci.Session, _ []*bssci.PendingOperation, _ int64) error {
+	return nil
+}
+
+func (s *stubStatusSvc) RestorePendingOperation(_ *bssci.Session, _ int64, _ *bssci.PendingOperation) {
+}
 func (s *stubStatusSvc) GetPendingOperation(_ *bssci.Session, _ int64) (*bssci.PendingOperation, error) {
 	return nil, nil
 }
@@ -2239,11 +2256,24 @@ func (s *stubStatusSvc) RemovePendingOperation(_ context.Context, _ *bssci.Sessi
 func (s *stubStatusSvc) ExtractQueueMetadata(_ *bssci.Session, _ int64) (uint64, int64, string) {
 	return 0, 0, ""
 }
-func (s *stubStatusSvc) CleanupPendingOp(_ *bssci.Session, _ int64) {}
+
+func (s *stubStatusSvc) UpdatePendingOperationMetadata(_ context.Context, _ *bssci.Session, _ int64, _ map[string]interface{}, _ json.RawMessage) error {
+	return nil
+}
+
+func (s *stubStatusSvc) PersistedOperations(_ context.Context, _ int64) ([]bssci.PersistedOperation, error) {
+	return nil, nil
+}
+
+func (s *stubStatusSvc) DeletePendingOperations(_ context.Context, _ *bssci.Session) (int64, error) {
+	return 0, nil
+}
+
+func (s *stubStatusSvc) EvictCachedOperations(_ *bssci.Session) {}
 
 type stubDownlinkScheduler struct{}
 
-func (s *stubDownlinkScheduler) QueueDownlink(_ *mioty.DLDataQueue, _ int64) (uint64, uint64, error) {
+func (s *stubDownlinkScheduler) QueueDownlink(_ context.Context, _ *mioty.DLDataQueue, _ int64) (uint64, uint64, error) {
 	return 0, 0, nil
 }
 func (s *stubDownlinkScheduler) RevokeDownlink(_ int64, _ uint64) (uint64, error) { return 0, nil }
@@ -2613,7 +2643,7 @@ func TestDownloadBaseStationCertificate_InvalidCertType(t *testing.T) {
 		storedFunc: func(_ context.Context, _ int64, _ []byte, certType string) ([]byte, string, error) {
 			// Service rejects invalid cert types
 			if certType != grpcerrors.CertTypeCA && certType != grpcerrors.CertTypeClient && certType != grpcerrors.CertTypeKey {
-				return nil, "", fmt.Errorf("%s", grpcerrors.ErrTokenCertTypeRequired)
+				return nil, "", grpcerrors.NewTokenError(grpcerrors.ErrTokenCertTypeRequired, nil)
 			}
 			return nil, "", nil
 		},
@@ -3884,7 +3914,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			orgMapper:    &locOrgMapper{},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
@@ -3919,7 +3949,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.NoError(t, err)
@@ -3944,7 +3974,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			orgMapper:    &locOrgMapper{},
 		}
 
-		ctx := context.Background()
+		ctx := testutil.TestContext()
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
 		assert.Nil(t, resp)
@@ -3957,7 +3987,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			orgMapper:    &locOrgMapper{},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
@@ -3988,7 +4018,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
@@ -4005,7 +4035,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			orgMapper: &locOrgMapper{},
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)
@@ -4029,7 +4059,7 @@ func TestListAllBaseStationLocations(t *testing.T) {
 			// orgMapper intentionally nil
 		}
 
-		ctx := pkgcontext.WithUserID(context.Background(), adminUserID)
+		ctx := pkgcontext.WithUserID(testutil.TestContext(), adminUserID)
 
 		resp, err := svc.ListAllBaseStationLocations(ctx, &pb.ListAllBaseStationLocationsRequest{})
 		require.Error(t, err)

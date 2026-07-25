@@ -9,12 +9,15 @@ import (
 // BaseStationSessionStatus represents the status of a Base Station session
 type BaseStationSessionStatus string
 
-// BaseStationSessionStatus constants for session lifecycle states.
+// BaseStationSessionStatus constants for session lifecycle states. Fresh and
+// successfully resumed connections are both "active" (IsResumed on the live
+// session is the audit indicator); "disconnected" marks a resumable session
+// after unexpected connection loss; "terminated" sessions never resume.
 const (
 	// SessionStatusActive indicates an active session.
 	SessionStatusActive BaseStationSessionStatus = "active"
-	// SessionStatusResumed indicates a resumed session.
-	SessionStatusResumed BaseStationSessionStatus = "resumed"
+	// SessionStatusDisconnected indicates a session that lost its connection and may be resumed.
+	SessionStatusDisconnected BaseStationSessionStatus = "disconnected"
 	// SessionStatusTerminated indicates a terminated session.
 	SessionStatusTerminated BaseStationSessionStatus = "terminated"
 )
@@ -95,6 +98,8 @@ type BaseStationSessionUpdateRequest struct {
 	Status          *BaseStationSessionStatus `json:"status,omitempty"`
 	LastPingAt      *time.Time                `json:"last_ping_at,omitempty"`
 	EndedAt         *time.Time                `json:"ended_at,omitempty"`
+	CanResume       *bool                     `json:"can_resume,omitempty"`
+	ClearEndedAt    bool                      `json:"clear_ended_at,omitempty"` // Sets ended_at to NULL; mutually exclusive with EndedAt
 	ConnectionId    *string                   `json:"connection_id,omitempty"`
 	RemoteAddr      *string                   `json:"remote_addr,omitempty"`
 	Encoding        *string                   `json:"encoding,omitempty" validate:"omitempty,oneof=json msgpack"` // Message encoding
@@ -104,12 +109,12 @@ type BaseStationSessionUpdateRequest struct {
 
 // IsActive returns true if the session is currently active
 func (s *BaseStationSession) IsActive() bool {
-	return s.Status == SessionStatusActive || s.Status == SessionStatusResumed
+	return s.Status == SessionStatusActive
 }
 
 // CanResumeSession returns true if this session can be resumed after disconnection
 func (s *BaseStationSession) CanResumeSession() bool {
-	return s.CanResume && (s.Status == SessionStatusActive || s.Status == SessionStatusResumed)
+	return s.CanResume && s.Status == SessionStatusDisconnected
 }
 
 // GetNextScOpId returns the next Service Center operation ID for this session

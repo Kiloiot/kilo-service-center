@@ -24,15 +24,12 @@ import {
   validateTypeEui,
   validateUint32Counter,
 } from "@utils/formatters";
-import {
-  MIOTY_EUI_REGEX,
-  MIOTY_KEY_BYTE_LENGTH,
-} from "@constants/app";
+import { MIOTY_EUI_REGEX, MIOTY_KEY_BYTE_LENGTH } from "@constants/app";
 import { ENDPOINT_FORM } from "@constants/messages";
 import { CheckCircleIcon, InfoIcon } from "@theme/icons";
 
-import { SecurityKeyFields } from "./EndpointFormFields";
 import DeviceModelSelector from "./DeviceModelSelector";
+import { SecurityKeyFields } from "./EndpointFormFields";
 import EndpointSettingsSection from "./EndpointSettingsSection";
 
 interface AddEndPointDialogProps {

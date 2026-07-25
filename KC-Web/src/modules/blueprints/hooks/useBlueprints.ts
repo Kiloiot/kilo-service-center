@@ -90,12 +90,8 @@ export function useUpdateBlueprint() {
 export function useDeleteBlueprint() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      id,
-    }: {
-      id: string;
-      deviceModelId: string;
-    }) => api.deleteBlueprint(id),
+    mutationFn: ({ id }: { id: string; deviceModelId: string }) =>
+      api.deleteBlueprint(id),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.blueprints.list(variables.deviceModelId),

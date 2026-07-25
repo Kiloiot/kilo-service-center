@@ -35,6 +35,28 @@ func validatePayloadSizes(payloads [][]byte) error {
 	return nil
 }
 
+// buildDLDataQueUserData keeps userData Numeric[m][n]: with cntDepend false the outer array
+// holds exactly one (possibly zero-length) entry, or the base station rejects the frame with code=22.
+func buildDLDataQueUserData(payloads [][]byte, cntDepend bool) []interface{} {
+	entries := payloads
+	if !cntDepend {
+		entries = [][]byte{nil}
+		if len(payloads) > 0 {
+			entries = payloads[:1]
+		}
+	}
+
+	userData := make([]interface{}, len(entries))
+	for i, payload := range entries {
+		numericPayload := make([]interface{}, len(payload))
+		for j, b := range payload {
+			numericPayload[j] = uint8(b)
+		}
+		userData[i] = numericPayload
+	}
+	return userData
+}
+
 // ============================================================================
 // DL Data Queue Response Handlers (MIOTY BSSCI v1.0.0 Section 5.12)
 // ============================================================================
@@ -59,7 +81,7 @@ func (s *Server) handleDLDataQueueResponse(_ *Server, session *Session, msg *Mes
 	endpointEUI, queueID, tenantIDStr := s.statusSvc.ExtractQueueMetadata(session, msg.OpId)
 
 	// Update downlink base station ownership in database
-	if s.storage != nil && queueID > 0 {
+	if s.downlinkQueueStore != nil && queueID > 0 {
 		ctx := s.sessionContext(session)
 		// Use tenant ID from queue metadata per BSSCI §5.12 (roaming)
 		// Fallback to server default only if metadata extraction failed
@@ -67,12 +89,28 @@ func (s *Server) handleDLDataQueueResponse(_ *Server, session *Session, msg *Mes
 			tenantIDStr = s.formatTenantID()
 		}
 		//nolint:gosec // G115: queueID > 0 guard ensures safe int64->uint64 conversion
-		if err := s.storage.MIOTYDownlinks().UpdateDownlinkBaseStation(ctx, uint64(queueID), tenantIDStr, session.BaseStationEUI); err != nil {
+		if err := s.downlinkQueueStore.UpdateDownlinkBaseStation(ctx, uint64(queueID), tenantIDStr, session.BaseStationEUI); err != nil {
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToUpdateDownlinkBaseStationOwnership,
 				//nolint:gosec // G115: queueID > 0 guard ensures safe int64->uint64 conversion
 				"queId", uint64(queueID),
 				"bsEui", session.BaseStationEUI,
 				"error", err)
+		}
+
+		// Repeat the idempotent reserved→queued confirmation: the base station
+		// acknowledged the queue, so if the dispatcher's confirmation was lost
+		// (send succeeded but the status write failed or the process crashed),
+		// this repairs the row. An already-queued row is a no-op.
+		if tenantID, parseErr := strconv.ParseInt(tenantIDStr, 10, 64); parseErr == nil {
+			//nolint:gosec // G115: queueID > 0 guard ensures safe int64->uint64 conversion
+			if err := s.downlinkQueueStore.MarkReservedAsQueued(ctx, uint64(queueID), tenantID,
+				session.BaseStationEUI, time.Now().UnixNano(), nil, nil); err != nil {
+				s.logger.WarnContext(ctx, LogBSSCIFailedToConfirmDownlinkQueued,
+					//nolint:gosec // G115: queueID > 0 guard ensures safe int64->uint64 conversion
+					"queId", uint64(queueID),
+					"bsEui", session.BaseStationEUI,
+					"error", err)
+			}
 		}
 	}
 
@@ -89,31 +127,18 @@ func (s *Server) handleDLDataQueueResponse(_ *Server, session *Session, msg *Mes
 		}
 	}
 
-	// Send dlDataQueCmp to complete the three-way handshake via queue serializer
+	// The service center completes its own SC-initiated dlDataQue operation
+	// (BSSCI §3.12): it sends dlDataQueCmp and finalizes the pending operation.
+	// A spec-compliant base station never returns dlDataQueCmp, so the pending
+	// row is removed here or it leaks.
 	complete := s.queueSerializer.BuildDLDataQueueComplete(msg.OpId)
-	return s.sendMessage(session, complete)
-}
-
-// handleDLDataQueueComplete handles dlDataQueCmp from base station
-func (s *Server) handleDLDataQueueComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
-	if session == nil {
-		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
+	if err := s.sendMessage(session, complete); err != nil {
+		return err
 	}
-
-	s.logger.InfoContext(s.sessionContext(session), LogBSSCIDLDataQueueOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
-
-	// Remove pending operation from database
-	// Delegate to StatusService for map + DB cleanup
-	// BSSCI §§5.11-5.12.3 Gap 1: Use removePendingOperation helper (has dual-path logic)
 	if err := s.removePendingOperation(session, msg.OpId); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDB,
-			"sessionID", session.DbSessionID,
-			"opId", msg.OpId,
-			"error", err)
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err, "opId", msg.OpId)
 	}
-
 	return nil
 }
 
@@ -164,7 +189,10 @@ func (s *Server) handleDLDataResult(_ *Server, session *Session, msg *Message, d
 	if s.mqttPublisher != nil && s.tenantResolver != nil && dlResult.QueId > 0 && dlResult.QueId <= uint64(math.MaxInt64) {
 		if tenantStr, resolveErr := s.tenantResolver.ResolveTenant(ctx, int64(dlResult.QueId)); resolveErr == nil {
 			if tid, parseErr := strconv.ParseInt(tenantStr, 10, 64); parseErr == nil && s.orgResolver != nil {
-				if orgUUID, orgErr := s.orgResolver.GetDefaultOrgForTenant(s.safeCtx(), tid); orgErr == nil {
+				// A Nil org UUID means the organization is unresolved; its
+				// string form is non-empty, so guard on the value not the
+				// string, or the publish would fire for an unresolved org.
+				if orgUUID, orgErr := s.orgResolver.GetDefaultOrgForTenant(s.safeCtx(), tid); orgErr == nil && orgUUID != uuid.Nil {
 					mqttOrgStr = orgUUID.String()
 				}
 			}
@@ -282,10 +310,16 @@ func (s *Server) handleDLDataResultComplete(_ *Server, session *Session, msg *Me
 // ============================================================================
 
 // SendDLDataQueue sends a downlink data queue operation to queue downlink data for an endpoint
-// Supports both single payload and counter-dependent payloads per BSSCI §3.12
+// Supports both single payload and counter-dependent payloads per BSSCI §3.12.
+// When dlRxStatQry is true (the SCACI §3.10.1 hint), a BSSCI dlRxStatQry
+// operation (rev1 §5.16 / classic §3.16) is paired with the queue: both
+// operations are durably persisted together before either frame is written,
+// and the query frame precedes the queue frame so the DL RX status query is
+// scheduled for the queued downlink's transmission.
 func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]byte, queId int64,
 	prio float32, cntDepend bool, packetCnt []int64, format uint8,
-	responseExp bool, responsePrio bool, dlWindReq bool, expOnly bool, tenantID int64) error {
+	responseExp bool, responsePrio bool, dlWindReq bool, expOnly bool, tenantID int64,
+	dlRxStatQry bool) error {
 
 	s.mu.RLock()
 	session, exists := s.sessions[sessionID]
@@ -318,40 +352,17 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 		return err
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
-
-	// Build userData based on counter-dependency mode
-	var userDataField interface{}
-	if cntDepend {
-		// Counter-dependent: userData is Numeric[m][n] where m = len(payloads)
-		userDataArray := make([]interface{}, len(payloads))
-		for i, payload := range payloads {
-			// Convert each payload to Numeric[n]
-			numericPayload := make([]interface{}, len(payload))
-			for j, b := range payload {
-				numericPayload[j] = uint8(b)
-			}
-			userDataArray[i] = numericPayload
-		}
-		userDataField = userDataArray
-	} else {
-		// Non-counter-dependent: userData is Numeric[m][n] with m=1 per BSSCI §5.12.1
-		// ("single user data entry if cntDepend is false" — still wrapped in outer array
-		// to keep the declared Numeric[m][n] shape). Empty payloads form an ACK-only
-		// downlink with no entries.
-		if len(payloads) == 0 {
-			userDataField = []interface{}{}
-		} else {
-			singlePayload := make([]interface{}, len(payloads[0]))
-			for i, b := range payloads[0] {
-				singlePayload[i] = uint8(b)
-			}
-			userDataField = []interface{}{singlePayload}
-		}
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the IDs, persist
+	// the counter once for the whole pair, persist the pending records, then
+	// write the frames. IDs are never rolled back. The query ID is allocated
+	// first so its pending row precedes the queue row in reissue order.
+	var qryOpID int64
+	if dlRxStatQry {
+		qryOpID = session.NextScOpID()
+	}
+	opId := session.NextScOpID()
+	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
+		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistSessionCounters), err)
 	}
 
 	// Create dlDataQue message per BSSCI §5.12.1
@@ -360,7 +371,7 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 		"opId":      opId,
 		"epEui":     epEui,
 		"queId":     queId,
-		"userData":  userDataField,
+		"userData":  buildDLDataQueUserData(payloads, cntDepend),
 		"prio":      prio,
 		"cntDepend": cntDepend, // BSSCI §5.12.1: Required field (always present, true or false)
 	}
@@ -419,45 +430,82 @@ func (s *Server) SendDLDataQueue(sessionID string, epEui uint64, payloads [][]by
 		"tenantID":     strconv.FormatInt(tenantID, 10), // Store as string to avoid JSON float64 issues
 	}
 
-	// Persist operation via StatusService (handles both DB + map with SessionOpKey)
-	// BSSCI §5.11-5.12.3: StatusService is single writer, no manual map write needed
-	if err := s.persistPendingOperation(session, opId, mioty.CmdDLDataQueue, msg, euiBytes, metadata); err != nil {
+	// Persist the recovery records before any frame is written. For the
+	// dlRxStatQry pair, the correlation row and both pending operations are
+	// durably recorded together (all-or-nothing) so resume can continue the
+	// pair with its original IDs; a persistence failure emits neither frame.
+	var qryMsg map[string]interface{}
+	if dlRxStatQry {
+		qryMsg = map[string]interface{}{
+			"command": mioty.CmdDLRxStatusQuery,
+			"opId":    qryOpID,
+			"epEui":   epEui,
+		}
+		if err := s.persistDLRXQueryCorrelation(session, qryOpID, epEui, euiBytes); err != nil {
+			return err
+		}
+		pair := []*PendingOperation{
+			s.buildPendingOperation(session, qryOpID, mioty.CmdDLRxStatusQuery, qryMsg, euiBytes, nil),
+			s.buildPendingOperation(session, opId, mioty.CmdDLDataQueue, msg, euiBytes, metadata),
+		}
+		if err := s.persistPendingOperationBatch(session, pair); err != nil {
+			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLDataQueOperation,
+				"sessionID", sessionID,
+				"opId", opId,
+				"qryOpID", qryOpID,
+				"error", err)
+			return err
+		}
+	} else if err := s.persistPendingOperation(session, opId, mioty.CmdDLDataQueue, msg, euiBytes, metadata); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLDataQueOperation,
 			"sessionID", sessionID,
 			"opId", opId,
 			"error", err)
+		return err
 	}
 
-	// Send the message with rollback guard (BSSCI §5.2)
-	if err := s.sendMessage(session, msg); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
+	// The query frame precedes the queue frame (BSSCI rev1 §5.16: the query is
+	// scheduled for the next downlink transmission). A query failure aborts
+	// the pair - the queue frame is never written to a possibly corrupt
+	// connection.
+	if dlRxStatQry {
+		if err := s.sendMessage(session, qryMsg); err != nil {
+			if errors.Is(err, ErrAmbiguousWrite) {
+				// Both recovery rows are preserved; resume reissues the pair
+				// with its original IDs.
+				s.closeTransportAfterWriteFailure(session, qryOpID, err)
+			} else {
+				// Nothing reached the wire - remove both recovery rows.
+				for _, cleanupOpID := range []int64{qryOpID, opId} {
+					if cleanupErr := s.removePendingOperation(session, cleanupOpID); cleanupErr != nil {
+						s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToClearPersistedPendingOperation,
+							"sessionID", session.DbSessionID,
+							"opId", cleanupOpID,
+							"error", cleanupErr)
+					}
+				}
+			}
+			return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendDlRxStatQry), err)
+		}
+	}
 
-		// Clean up pending operation on send failure
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both cache and DB removal
-		if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+	if err := s.sendMessage(session, msg); err != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending rows for
+			// resume reissue with the original IDs and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire for the queue frame; its recovery row is
+			// removed (an already-sent query keeps its row).
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToClearPersistedPendingOperation,
 				"sessionID", session.DbSessionID,
 				"opId", opId,
 				"error", cleanupErr)
 		}
-
 		return err
 	}
 
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
-	}
-
 	// Register queue-to-tenant mapping for fast result processing (BSSCI §5.14)
-	// Extract tenantID from metadata map (stored at line 415)
 	// Production deployments MUST provide a tenantResolver; tests inject test doubles
 	if tenantIDStr, ok := metadata["tenantID"].(string); ok {
 		s.tenantResolver.RegisterQueueTenant(queId, tenantIDStr)
@@ -485,11 +533,13 @@ func (s *Server) SendDLDataRevoke(sessionID string, epEui uint64, queId uint64) 
 		return fmt.Errorf("%s", ResolveErrorMessage(errCannotSendDlDataRev))
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	// Create dlDataRev using canonical MIOTY type per spec Section 5.13.1
 	dlDataRev := &mioty.DLDataRevoke{
@@ -526,13 +576,14 @@ func (s *Server) SendDLDataRevoke(sessionID string, epEui uint64, queId uint64) 
 		"tenantID": tenantIDStr,            // Store per-session tenant for response handler
 	}
 
-	// Persist operation via StatusService (handles both DB + map with SessionOpKey)
-	// BSSCI §5.12: StatusService is single writer, no manual map write needed
+	// The recovery record must be durable before the frame is written; a
+	// persistence failure aborts the send, leaving only a consumed-ID gap.
 	if err := s.persistPendingOperation(session, opId, mioty.CmdDLDataRevoke, msg, euiBytes, metadata); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLDataRevOperation,
 			"sessionID", sessionID,
 			"opId", opId,
 			"error", err)
+		return err
 	}
 
 	// Record event
@@ -566,33 +617,20 @@ func (s *Server) SendDLDataRevoke(sessionID string, epEui uint64, queId uint64) 
 		}
 	}
 
-	// Send the message with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, msg); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up pending operation on send failure
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both cache and DB removal
-		if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationAfterSendFailure,
 				"sessionID", session.DbSessionID,
 				"opId", opId,
 				"error", cleanupErr)
 		}
-		// Note: No manual fallback - trust StatusService single-writer pattern
 
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendDlDataRev), err)
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentDLDataRevToBaseStation,
@@ -662,11 +700,14 @@ func (s *Server) handleDLDataRevokeResponse(_ *Server, session *Session, msg *Me
 		}
 	}
 
-	// Fail fast if queue ID is invalid (BSSCI §5.13 requires valid queId)
+	// Fail fast if queue ID is invalid (BSSCI §5.13 requires valid queId).
+	// The error replaces this SC-initiated operation's normal completion, so
+	// the base station's errorAck finalizes the pending dlDataRev row
+	// (BSSCI rev1 §5.17 / classic §3.17).
 	if queueID == 0 {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIInvalidQueueIDInRevokeResponse,
 			"opId", msg.OpId)
-		if sendErr := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidQueueID)); sendErr != nil {
+		if sendErr := s.sendErrorReplacingOperation(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidQueueID)); sendErr != nil {
 			s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToSendErrorFrame, "error", sendErr)
 			return sendErr
 		}
@@ -683,7 +724,7 @@ func (s *Server) handleDLDataRevokeResponse(_ *Server, session *Session, msg *Me
 		var catalogErr *CatalogError
 		if errors.As(err, &catalogErr) {
 			// Service returned a catalog error with token and POSIX code
-			if sendErr := s.sendError(session, msg.OpId, catalogErr.Posix, ResolveErrorMessage(catalogErr.Token)); sendErr != nil {
+			if sendErr := s.sendErrorReplacingOperation(session, msg.OpId, catalogErr.Posix, ResolveErrorMessage(catalogErr.Token)); sendErr != nil {
 				s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToSendErrorFrame, "error", sendErr)
 				return sendErr
 			}
@@ -691,10 +732,10 @@ func (s *Server) handleDLDataRevokeResponse(_ *Server, session *Session, msg *Me
 		}
 
 		// Fallback for non-catalog errors (shouldn't happen after service refactor)
-		s.logger.ErrorContext(s.sessionContext(session), "Unexpected non-catalog error from ProcessRevokeResponse",
+		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIUnexpectedRevokeResponseError,
 			"error", err,
 			"opId", msg.OpId)
-		if sendErr := s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errDatabaseUpdateFailed)); sendErr != nil {
+		if sendErr := s.sendErrorReplacingOperation(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errDatabaseUpdateFailed)); sendErr != nil {
 			s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToSendErrorFrame, "error", sendErr)
 			return sendErr
 		}
@@ -735,104 +776,17 @@ func (s *Server) handleDLDataRevokeResponse(_ *Server, session *Session, msg *Me
 		}
 	}
 
-	// Send response message returned by service
-	return s.sendMessage(session, responseMsg)
-}
-
-// handleDLDataRevokeComplete handles dlDataRevCmp from base station
-func (s *Server) handleDLDataRevokeComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
-	if session == nil {
-		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
+	// The service center completes its own SC-initiated dlDataRev operation
+	// (BSSCI §3.13): it sends dlDataRevCmp and finalizes the pending operation.
+	// A spec-compliant base station never returns dlDataRevCmp, so the pending
+	// row is removed here or it leaks.
+	if err := s.sendMessage(session, responseMsg); err != nil {
+		return err
 	}
-
-	// Get queId from pending operation metadata before cleanup
-	// StatusService is the only path for pending operation storage
-	var queId uint64
-	pendingOp, err := s.statusSvc.GetPendingOperation(session, int64(msg.OpId))
-	if err != nil {
-		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToGetPendingOperation,
-			"opId", msg.OpId, "error", err)
-	}
-	if pendingOp != nil && pendingOp.Metadata != nil {
-		if qid, ok := pendingOp.Metadata["queId"].(uint64); ok {
-			queId = qid
-		} else if qid, ok := pendingOp.Metadata["queId"].(int64); ok {
-			// Range guard for int64 -> uint64 conversion
-			if qid >= 0 {
-				queId = uint64(qid)
-			} else {
-				s.logger.WarnContext(s.sessionContext(session), LogBSSCINegativeQueueIDInMetadata,
-					"queId", qid,
-					"opId", msg.OpId)
-			}
-		} else if qid, ok := pendingOp.Metadata["queId"].(float64); ok {
-			queId = uint64(qid)
-		}
-	}
-
-	// Resolve owner tenant FIRST - REQUIRED
-	var ownerTenantStr string
-	if queId > 0 {
-		ctx := s.sessionContext(session)
-		tidStr, err := s.tenantResolver.ResolveTenant(ctx, int64(queId))
-		if err != nil {
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCICannotResolveTenantForRevokeComplete,
-				"queue_id", queId,
-				"opId", msg.OpId,
-				"error", err)
-
-			// Still clean up pending operation to avoid stuck state
-			// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation removal
-			if cleanupErr := s.removePendingOperation(session, msg.OpId); cleanupErr != nil {
-				s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperation,
-					"error", cleanupErr, "opId", msg.OpId)
-			}
-
-			return s.sendError(session, msg.OpId, POSIX_EPROTO,
-				ResolveErrorMessage(errCannotResolveTenantForQueue))
-		}
-		ownerTenantStr = tidStr
-
-		// Queue-to-tenant mapping already unregistered by ProcessRevokeResponse in handleDLDataRevokeResponse
-	} else {
-		// No queue ID - can't proceed but not an error
-		s.logger.WarnContext(s.sessionContext(session), LogBSSCINoQueueIDInRevokeComplete,
-			"opId", msg.OpId)
-		// Still clean up pending operation
-		// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation removal
-		if err := s.removePendingOperation(session, msg.OpId); err != nil {
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperation,
-				"error", err, "opId", msg.OpId)
-		}
-		return nil
-	}
-
-	// Clear base station ownership in database (set to NULL)
-	if s.storage != nil && queId > 0 {
-		ctx := s.sessionContext(session)
-		// Use resolved tenant
-		tenantIDStr := ownerTenantStr
-		if err := s.storage.MIOTYDownlinks().UpdateDownlinkBaseStation(ctx, queId, tenantIDStr, 0); err != nil {
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToClearDownlinkBaseStationOwnership,
-				"queId", queId,
-				"error", err)
-		}
-	}
-
-	// Clean up pending operation
-	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both cache and DB removal
 	if err := s.removePendingOperation(session, msg.OpId); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDB,
-			"sessionID", session.DbSessionID,
-			"opId", msg.OpId,
-			"error", err)
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err, "opId", msg.OpId)
 	}
-	// Note: No manual fallback - trust StatusService single-writer pattern
-
-	s.logger.InfoContext(s.sessionContext(session), LogBSSCIDLDataRevokeOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
-
 	return nil
 }
 
@@ -873,6 +827,10 @@ func (s *Server) reconstitueDLDataQueMessage(sanitizedMsg map[string]interface{}
 		if pendingOp != nil && len(pendingOp.Data) > 0 {
 			payloads = [][]byte{pendingOp.Data}
 		} else {
+			opId, _ := parseOpID(sanitizedMsg["opId"])
+
+			s.logger.WarnContext(s.safeCtx(), LogBSSCIUserDataMissingFromBothSources,
+				"opId", opId)
 			payloads = [][]byte{{}} // Empty payload
 		}
 	}
@@ -885,20 +843,12 @@ func (s *Server) reconstitueDLDataQueMessage(sanitizedMsg map[string]interface{}
 	// Extract counter-dependency flag
 	cntDepend, _ := metadata["cntDepend"].(bool)
 
-	// Build userData based on counter-dependency mode
-	var userDataField interface{}
+	if !cntDepend && len(payloads) > 1 {
+		return nil, fmt.Errorf("%s, got %d", ResolveErrorMessage(errNonCounterDependentMultiPayload), len(payloads))
+	}
+	msg["userData"] = buildDLDataQueUserData(payloads, cntDepend)
+
 	if cntDepend {
-		// Counter-dependent: userData is Numeric[m][n] where m = len(payloads)
-		userDataArray := make([]interface{}, len(payloads))
-		for i, payload := range payloads {
-			// Convert each payload to Numeric[n]
-			numericPayload := make([]interface{}, len(payload))
-			for j, b := range payload {
-				numericPayload[j] = uint8(b)
-			}
-			userDataArray[i] = numericPayload
-		}
-		userDataField = userDataArray
 		msg["cntDepend"] = true
 
 		// Restore packetCnt array - handle both []int64 and []interface{}
@@ -925,31 +875,16 @@ func (s *Server) reconstitueDLDataQueMessage(sanitizedMsg map[string]interface{}
 			}
 			msg["packetCnt"] = packetCntArray
 		}
-	} else {
-		// Non-counter-dependent: userData is single Numeric[n] or empty for ACK-only
-		// BSSCI §5.12: "If user data is empty, a pure acknowledgement downlink is queued"
-		if len(payloads) == 0 || (len(payloads) == 1 && len(payloads[0]) == 0) {
-			// ACK-only downlink: empty userData
-			userDataField = []interface{}{} // Empty Numeric[n]
-		} else if len(payloads) == 1 {
-			// Normal single payload
-			singlePayload := make([]interface{}, len(payloads[0]))
-			for i, b := range payloads[0] {
-				singlePayload[i] = uint8(b)
-			}
-			userDataField = singlePayload // Direct Numeric[n] per BSSCI §3.12.1
-		} else {
-			// Multiple payloads in non-counter-dependent mode is invalid
-			return nil, fmt.Errorf("%s, got %d", ResolveErrorMessage(errNonCounterDependentMultiPayload), len(payloads))
-		}
 	}
-	msg["userData"] = userDataField
 
-	// Restore optional MIOTY fields
-	if format, ok := metadata["format"].(float64); ok && format > 0 {
-		msg["format"] = uint8(format)
-	} else if format, ok := metadata["format"].(uint8); ok && format > 0 {
-		msg["format"] = format
+	// Restore optional MIOTY fields (canonical numeric coercion covers
+	// float64, native integers, and the strict json.Number resume decode)
+	if format, err := coerceInt64(metadata["format"]); err == nil && format > 0 {
+		formatU8, errToken := safeUint8(format, "format")
+		if errToken != "" {
+			return nil, fmt.Errorf("%s: format=%d", ResolveErrorMessage(errToken), format)
+		}
+		msg["format"] = formatU8
 	}
 	if responseExp, ok := metadata["responseExp"].(bool); ok && responseExp {
 		msg["responseExp"] = true
@@ -972,35 +907,31 @@ func (s *Server) reconstitueDLDataRevMessage(msg, metadata map[string]interface{
 	// Enforce command field
 	msg["command"] = mioty.CmdDLDataRevoke
 
-	// Restore epEui from metadata (mandatory field per BSSCI §3.13.1)
-	if epEui, ok := metadata["epEui"].(float64); ok {
-		msg["epEui"] = uint64(epEui)
-	} else if epEui, ok := metadata["epEui"].(uint64); ok {
-		msg["epEui"] = epEui
-	} else {
-		// This should not happen if metadata was stored correctly
+	// Restore epEui from metadata (mandatory field per BSSCI §3.13.1).
+	// Canonical numeric coercion preserves the full uint64 EUI range under the
+	// strict json.Number resume decode.
+	if _, present := metadata["epEui"]; !present {
 		return nil, fmt.Errorf("%s", ResolveErrorMessage(errMissingEpEuiInMetadata))
 	}
+	epEui, err := coerceUint64(metadata["epEui"])
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", ResolveErrorMessage(errMissingEpEuiInMetadata), err)
+	}
+	msg["epEui"] = epEui
 
 	// Restore queId as uint64 per canonical MIOTY type
-	if queId, ok := metadata["queId"].(float64); ok {
-		msg["queId"] = uint64(queId)
-	} else if queId, ok := metadata["queId"].(uint64); ok {
-		msg["queId"] = queId
-	} else if queId, ok := metadata["queId"].(int64); ok {
-		// Handle int64 values stored before uint64 normalization with range guard
-		if queId >= 0 {
-			msg["queId"] = uint64(queId)
-		} else {
-			return nil, fmt.Errorf("%s: queId=%d", ResolveErrorMessage(errNegativeQueueIDInMetadata), queId)
-		}
-	} else {
+	if _, present := metadata["queId"]; !present {
 		return nil, fmt.Errorf("%s", ResolveErrorMessage(errMissingQueIDInMetadata))
 	}
+	queId, err := coerceUint64(metadata["queId"])
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", ResolveErrorMessage(errNegativeQueueIDInMetadata), err)
+	}
+	msg["queId"] = queId
 
 	// Fix opId type if needed
-	if opId, ok := msg["opId"].(float64); ok {
-		msg["opId"] = int64(opId)
+	if opId, ok := parseOpID(msg["opId"]); ok {
+		msg["opId"] = opId
 	}
 
 	return msg, nil
@@ -1082,7 +1013,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	}
 	// Validate SNR is finite and within plausible range per BSSCI §5.15.1
 	if errToken := validateFiniteFloat(dlRxSnr, mioty.DLRxSnrMinDB, mioty.DLRxSnrMaxDB); errToken != "" {
-		s.logger.WarnContext(s.sessionContext(session), "DL RX status SNR validation failed",
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIDLRXStatusSNRValidationFailed,
 			"epEui", dlRxStatus.EpEui,
 			"dlRxSnr", dlRxSnr,
 			"error", errToken)
@@ -1103,7 +1034,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	}
 	// Validate RSSI is finite and within plausible range per BSSCI §5.15.1
 	if errToken := validateFiniteFloat(dlRxRssi, mioty.DLRxRssiMinDBm, mioty.DLRxRssiMaxDBm); errToken != "" {
-		s.logger.WarnContext(s.sessionContext(session), "DL RX status RSSI validation failed",
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIDLRXStatusRSSIValidationFailed,
 			"epEui", dlRxStatus.EpEui,
 			"dlRxRssi", dlRxRssi,
 			"error", errToken)
@@ -1128,7 +1059,7 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	// Resolve endpoint owner tenant for roaming scenarios
 	tenantID, err := s.resolveEndpointTenantID(ctx, session, dlRxStatus.EpEui)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "Failed to resolve endpoint tenant for DL RX status",
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToResolveEndpointTenantForDLRXStatus,
 			"error", err,
 			"epEui", dlRxStatus.EpEui)
 		if err := s.sendError(session, msg.OpId, POSIX_EIO, ResolveErrorMessage(errFailedToPersistDLRXStatus)); err != nil {
@@ -1162,41 +1093,37 @@ func (s *Server) handleDLRXStatus(_ *Server, session *Session, msg *Message, dat
 	binary.BigEndian.PutUint64(bsEuiBytes, session.BaseStationEUI)
 
 	// Check if this dlRxStat corresponds to a pending query (BSSCI §5.15 correlation)
-	if s.storage != nil {
-		dlRxStatusRepo := s.storage.DLRXStatus()
-		if dlRxStatusRepo != nil {
-			// Correlate by tenant+endpoint only (oldest pending) per BSSCI §5.15
-			// BS opId stored for audit but NOT used in WHERE clause (different namespace)
-			found, err := dlRxStatusRepo.MarkDLRXStatusReceived(
-				ownerCtx,
-				tenantID,
-				epEuiBytes, // Match by tenant + endpoint only
-				bsEuiBytes, // Audit: which BS actually reported
-				msg.OpId,   // Audit: BS opId (different namespace)
-			)
-			if err != nil {
-				s.logger.ErrorContext(ownerCtx, "Failed to correlate DL RX query",
-					"epEui", dlRxStatus.EpEui,
-					"opId", msg.OpId,
-					"error", err)
-				// Non-fatal: Continue processing even if correlation check fails
-			}
-
-			if !found {
-				s.logger.WarnContext(ownerCtx, "Unsolicited DL RX status (no pending query)",
-					"epEui", dlRxStatus.EpEui,
-					"tenant", tenantID,
-					"bsEui", session.BaseStationEUI)
-				// Log-only mode: continue processing unsolicited reports
-			}
+	if s.dlrxStore != nil {
+		// Correlate by tenant+endpoint only (oldest pending) per BSSCI §5.15
+		// BS opId stored for audit but NOT used in WHERE clause (different namespace)
+		found, err := s.dlrxStore.MarkDLRXStatusReceived(
+			ownerCtx,
+			tenantID,
+			epEuiBytes, // Match by tenant + endpoint only
+			bsEuiBytes, // Audit: which BS actually reported
+			msg.OpId,   // Audit: BS opId (different namespace)
+		)
+		if err != nil {
+			s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToCorrelateDLRXQuery,
+				"epEui", dlRxStatus.EpEui,
+				"opId", msg.OpId,
+				"error", err)
+			// Non-fatal: Continue processing even if correlation check fails
 		}
-		// Repository unavailable is non-fatal - continue processing
+
+		if !found {
+			s.logger.WarnContext(ownerCtx, LogBSSCIUnsolicitedDLRXStatus,
+				"epEui", dlRxStatus.EpEui,
+				"tenant", tenantID,
+				"bsEui", session.BaseStationEUI)
+			// Log-only mode: continue processing unsolicited reports
+		}
 	}
 
 	// Resolve endpoint owner's organization UUID (BSSCI §5.15)
 	epOwnerOrgUUID, err := s.resolveOwnerOrgUUID(ownerCtx, tenantID, epEuiBytes)
 	if err != nil {
-		s.logger.ErrorContext(ownerCtx, "Failed to resolve endpoint owner org for DL RX status persistence",
+		s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToResolveEndpointOwnerOrgForDLRXStatus,
 			"error", err,
 			"tenant", tenantID,
 			"epEui", dlRxStatus.EpEui)
@@ -1297,11 +1224,13 @@ func (s *Server) SendDLRXStatusQuery(sessionID string, epEui uint64) error {
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the correlation and recovery records, then write
+	// the frame. The counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	// Create dlRxStatQry message per MIOTY spec Section 5.16.1
 	msg := map[string]interface{}{
@@ -1314,79 +1243,80 @@ func (s *Server) SendDLRXStatusQuery(sessionID string, epEui uint64) error {
 	euiBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(euiBytes, epEui)
 
-	// Persist operation via StatusService (handles both DB + map with SessionOpKey)
-	// BSSCI §5.16.1: StatusService is single writer, no manual map write needed
+	// The correlation row and the recovery record must both be durable before
+	// the frame is written; either persistence failure aborts the send.
+	if err := s.persistDLRXQueryCorrelation(session, opId, epEui, euiBytes); err != nil {
+		return err
+	}
 	if err := s.persistPendingOperation(session, opId, mioty.CmdDLRxStatusQuery, msg, euiBytes, nil); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLRxStatQryOperation,
 			"sessionID", sessionID,
 			"opId", opId,
 			"error", err)
+		return err
 	}
 
-	// Track query for correlation (BSSCI §5.15 audit trail)
-	if s.storage != nil {
-		dlRxStatusRepo := s.storage.DLRXStatus()
-		if dlRxStatusRepo != nil {
-			tenantID := resolvedTenant(session, s.tenantID)
-
-			// Resolve endpoint owner's organization UUID (BSSCI §5.15)
-			epOwnerOrgUUID, err := s.resolveOwnerOrgUUID(s.sessionContext(session), tenantID, euiBytes)
-			if err != nil {
-				s.logger.WarnContext(s.sessionContext(session), "Failed to resolve endpoint owner org for DL RX query tracking",
-					"error", err,
-					"tenant", tenantID,
-					"epEui", epEui)
-				// Continue with nil org - backward compatible, but logged
-			}
-
-			// Convert base station EUI to bytes (euiBytes already created for endpoint at line 1309)
-			bsEuiBytes := make([]byte, 8)
-			binary.BigEndian.PutUint64(bsEuiBytes, session.BaseStationEUI)
-
-			if err := dlRxStatusRepo.CreateDLRXStatusQuery(s.sessionContext(session), tenantID, epOwnerOrgUUID, euiBytes, bsEuiBytes, opId); err != nil {
-				s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToPersistDLRxStatQueryTracking,
-					"sessionID", session.DbSessionID,
-					"opId", opId,
-					"epEui", epEui,
-					"error", err)
-				// Non-fatal: Continue sending query even if tracking persistence fails
-			}
-		}
-		// Repository unavailable is non-fatal - continue sending query
-	}
-
-	// Send the message with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, msg); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up pending operation from database on send failure
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
-		if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationAfterSendFailure,
 				"sessionID", session.DbSessionID,
 				"opId", opId,
 				"error", cleanupErr)
 		}
-
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendDlRxStatQry), err)
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentDLRxStatQryToBaseStation,
 		"sessionID", sessionID,
 		"epEui", epEui,
 		"opId", opId)
+
+	return nil
+}
+
+// persistDLRXQueryCorrelation durably records the dl_rx_status_queries
+// correlation row for an outgoing dlRxStatQry (BSSCI rev1 §5.16 / classic
+// §3.16) under the endpoint owner's tenant. Correlation persistence failure is
+// a pre-write failure: the caller must not put the query on the wire, because
+// the eventual dlRxStat report could not be attributed. Owner-organization
+// resolution failure alone stays non-fatal (nil org, backward compatible).
+func (s *Server) persistDLRXQueryCorrelation(session *Session, opId int64, epEui uint64, euiBytes []byte) error {
+	if s.dlrxStore == nil {
+		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLRxStatQueryTracking,
+			"sessionID", session.DbSessionID,
+			"opId", opId,
+			"epEui", epEui)
+		return NewCatalogError(errFailedToPersistDLRxCorrelation, POSIX_EPROTO)
+	}
+
+	tenantID := resolvedTenant(session, s.tenantID)
+
+	// Resolve endpoint owner's organization UUID (BSSCI §5.15)
+	epOwnerOrgUUID, err := s.resolveOwnerOrgUUID(s.sessionContext(session), tenantID, euiBytes)
+	if err != nil {
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToResolveOwnerOrgForDLRxQuery,
+			"error", err,
+			"tenant", tenantID,
+			"epEui", epEui)
+		// Continue with nil org - backward compatible, but logged
+	}
+
+	bsEuiBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(bsEuiBytes, session.BaseStationEUI)
+
+	if err := s.dlrxStore.CreateDLRXStatusQuery(s.sessionContext(session), tenantID, epOwnerOrgUUID, euiBytes, bsEuiBytes, opId); err != nil {
+		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistDLRxStatQueryTracking,
+			"sessionID", session.DbSessionID,
+			"opId", opId,
+			"epEui", epEui,
+			"error", err)
+		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistDLRxCorrelation), err)
+	}
 
 	return nil
 }
@@ -1401,36 +1331,21 @@ func (s *Server) handleDLRXStatusQueryResponse(_ *Server, session *Session, msg 
 		"bsEui", session.BaseStationEUI,
 		"opId", msg.OpId)
 
-	// Send dlRxStatQryCmp to complete the three-way handshake
+	// The service center completes its own SC-initiated dlRxStatQry operation
+	// (BSSCI §3.16): it sends dlRxStatQryCmp and finalizes the pending
+	// operation. A spec-compliant base station never returns dlRxStatQryCmp,
+	// so the pending row is removed here or it leaks.
 	complete := map[string]interface{}{
 		"command": mioty.CmdDLRxStatusQueryComplete,
 		"opId":    msg.OpId,
 	}
-
-	return s.sendMessage(session, complete)
-}
-
-// handleDLRXStatusQueryComplete handles dlRxStatQryCmp from base station
-func (s *Server) handleDLRXStatusQueryComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
-	if session == nil {
-		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
+	if err := s.sendMessage(session, complete); err != nil {
+		return err
 	}
-
-	s.logger.InfoContext(s.sessionContext(session), LogBSSCIDLRxStatusQueryOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
-
-	// dlRxStat already marked 'received' by handleDLRXStatus.
-	// This Complete handler finalizes the three-way handshake only.
-
-	// THEN remove from database
-	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
 	if err := s.removePendingOperation(session, msg.OpId); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDB,
-			"error", err,
-			"opId", msg.OpId)
+		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationFromDatabase,
+			"error", err, "opId", msg.OpId)
 	}
-
 	return nil
 }
 
@@ -1443,11 +1358,11 @@ func (s *Server) resolveOwnerOrgUUID(ctx context.Context, tenantID int64, epEuiB
 	}
 
 	// Fetch endpoint to verify it exists and belongs to this tenant
-	if s.storage == nil || s.storage.EndPoints() == nil {
+	if s.endpointRepo == nil {
 		return nil, fmt.Errorf("endpoint repository not available")
 	}
 
-	endpoint, err := s.storage.EndPoints().GetByEUI(ctx, tenantID, epEuiBytes)
+	endpoint, err := s.endpointRepo.GetByEUI(ctx, tenantID, epEuiBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch endpoint: %w", err)
 	}
@@ -1489,24 +1404,18 @@ func (s *Server) persistDLRXStatus(ctx context.Context, tenantID int64, ownerOrg
 		DlRxRssi:       dlRxRssi,
 	}
 
-	// Use repository through storage interface with session context
-	if s.storage != nil {
-		dlRxStatusRepo := s.storage.DLRXStatus()
-		if dlRxStatusRepo != nil {
-			if err := dlRxStatusRepo.CreateDLRXStatus(ctx, status); err != nil {
-				return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistDLRXStatus), err)
-			}
-
-			s.logger.DebugContext(ctx, LogBSSCIPersistedDLRxStatus,
-				"epEui", epEui,
-				"rxTime", rxTime,
-				"dlRxSnr", dlRxSnr,
-				"dlRxRssi", dlRxRssi,
-				"tenantID", tenantID)
-		} else {
-			// Repository accessor returned nil - cannot persist
-			return fmt.Errorf("%s: DL RX status repository not available", ResolveErrorMessage(errFailedToPersistDLRXStatus))
+	// Persist through the DL RX status store with session context
+	if s.dlrxStore != nil {
+		if err := s.dlrxStore.CreateDLRXStatus(ctx, status); err != nil {
+			return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistDLRXStatus), err)
 		}
+
+		s.logger.DebugContext(ctx, LogBSSCIPersistedDLRxStatus,
+			"epEui", epEui,
+			"rxTime", rxTime,
+			"dlRxSnr", dlRxSnr,
+			"dlRxRssi", dlRxRssi,
+			"tenantID", tenantID)
 	} else {
 		s.logger.WarnContext(ctx, LogBSSCIMessageStoreNotAvailableForDLRxStatus,
 			"epEui", epEui,
@@ -1516,20 +1425,21 @@ func (s *Server) persistDLRXStatus(ctx context.Context, tenantID int64, ownerOrg
 	return nil
 }
 
-// QueueDownlink queues a downlink message for delivery via SCACI interface
+// QueueDownlink dispatches a SCACI-queued downlink message (SCACI §3.10).
 //
-// This method satisfies the DownlinkScheduler interface defined in KC-Core/pkg/scaci/server.go
-// and is called by SCACI when an Application Center queues a downlink message (SCACI §3.10).
-//
-// Parameters:
-//   - req: DL data queue request from SCACI containing endpoint, payload, and delivery options
-//   - tenantID: Tenant context for base station selection and queue persistence
+// This method satisfies the DownlinkScheduler interface defined in
+// KC-Core/pkg/scheduler and is called by SCACI after the queue row has been
+// persisted with status 'pending'. Delivery goes through the downlink
+// dispatcher's DispatchQueue so both the immediate (SCACI) and deferred
+// (dlOpen auto-dispatch) paths share one pending→reserved→queued lifecycle
+// and both honor the dlRxStatQry pairing (SCACI §3.10.1, BSSCI rev1 §5.16 /
+// classic §3.16).
 //
 // Returns:
 //   - queuedQueId: Actual queue ID assigned (same as requested if no collision)
 //   - bsEui: EUI of base station that will deliver the message
 //   - error: scheduler.ErrSchedulerNoResources if temporary, scheduler.ErrSchedulerResourceMissing for permanent failures
-func (s *Server) QueueDownlink(req *mioty.DLDataQueue, tenantID int64) (queuedQueId uint64, bsEui uint64, err error) {
+func (s *Server) QueueDownlink(ctx context.Context, req *mioty.DLDataQueue, tenantID int64) (queuedQueId uint64, bsEui uint64, err error) {
 	// Select appropriate bidirectional base station session
 	sessionID, selectedBsEui, err := s.SelectBidirectionalSession(tenantID, nil)
 	if err != nil {
@@ -1548,71 +1458,33 @@ func (s *Server) QueueDownlink(req *mioty.DLDataQueue, tenantID int64) (queuedQu
 		return 0, 0, err
 	}
 
-	// Convert request fields to SendDLDataQueue parameters
-	payloads := req.UserData
 	// Range guard for uint64 -> int64 conversion
 	if req.QueId > math.MaxInt64 {
 		return 0, 0, fmt.Errorf("%s: queId=%d", ResolveErrorMessage(errQueueIDOutOfRange), req.QueId)
 	}
-	queId := int64(req.QueId)
 
-	// Handle optional fields with defaults per SCACI §3.10.1
-	prio := float32(0)
-	if req.Prio != nil {
-		prio = *req.Prio
+	s.mu.RLock()
+	session, exists := s.sessions[sessionID]
+	s.mu.RUnlock()
+	if !exists {
+		return 0, 0, scheduler.ErrSchedulerResourceMissing
 	}
 
-	format := uint8(0)
-	if req.Format != nil {
-		format = *req.Format
+	if s.downlinkDispatcher == nil {
+		return 0, 0, scheduler.ErrSchedulerNoResources
 	}
 
-	responseExp := false
-	if req.ResponseExp != nil {
-		responseExp = *req.ResponseExp
-	}
-
-	responsePrio := false
-	if req.ResponsePrio != nil {
-		responsePrio = *req.ResponsePrio
-	}
-
-	dlWindReq := false
-	if req.DlWindReq != nil {
-		dlWindReq = *req.DlWindReq
-	}
-
-	expOnly := false
-	if req.ExpOnly != nil {
-		expOnly = *req.ExpOnly
-	}
-
-	// Convert PacketCnt from []uint32 to []int64 for BSSCI compatibility
-	var packetCnt []int64
-	if req.CntDepend && len(req.PacketCnt) > 0 {
-		packetCnt = make([]int64, len(req.PacketCnt))
-		for i, cnt := range req.PacketCnt {
-			packetCnt[i] = int64(cnt)
-		}
-	}
-
-	// Call existing SendDLDataQueue to handle the BSSCI protocol details
-	err = s.SendDLDataQueue(sessionID, req.EpEui, payloads, queId,
-		prio, req.CntDepend, packetCnt, format,
-		responseExp, responsePrio, dlWindReq, expOnly, tenantID)
+	// Dispatch the exact persisted queue row; the dispatcher reserves it,
+	// sends (with dlRxStatQry pairing when the row requests it), and confirms
+	// reserved→queued.
+	dispatched, err := s.downlinkDispatcher.DispatchQueue(ctx, tenantID, session.OrganizationID, session, req.QueId, req.EpEui)
 	if err != nil {
 		return 0, 0, err
 	}
-
-	// Auto-trigger DL RX status query if requested (BSSCI §3.16)
-	if req.DlRxStatQry != nil && *req.DlRxStatQry {
-		if qryErr := s.SendDLRXStatusQuery(sessionID, req.EpEui); qryErr != nil {
-			s.logger.Warn(ResolveErrorMessage(errFailedToSendDlRxStatQry),
-				"sessionID", sessionID,
-				"epEui", req.EpEui,
-				"error", qryErr)
-			// Downlink already queued — log and continue
-		}
+	if !dispatched {
+		// No matching pending row: it was never persisted, already dispatched,
+		// or revoked in the meantime.
+		return 0, 0, scheduler.ErrSchedulerQueueNotFound
 	}
 
 	// Return the queue ID and selected base station EUI
@@ -1641,9 +1513,9 @@ func (s *Server) RevokeDownlink(tenantID int64, queId uint64) (bsEui uint64, err
 	var foundSession *Session
 
 	// Query database for queue entry
-	if s.storage != nil {
+	if s.downlinkQueueStore != nil {
 		// Use GetDownlinkByQueueID to find the queue entry
-		downlink, err := s.storage.MIOTYDownlinks().GetDownlinkByQueueID(ctx, queId, tenantIDStr)
+		downlink, err := s.downlinkQueueStore.GetDownlinkByQueueID(ctx, queId, tenantIDStr)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) || errors.Is(err, storage.ErrNotFound) {
 				// Map to scheduler contract sentinel

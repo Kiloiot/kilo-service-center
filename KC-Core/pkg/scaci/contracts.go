@@ -52,6 +52,7 @@ import (
 	"context"
 	"crypto/x509"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -126,7 +127,7 @@ type HandshakeService interface {
 	//   - string: Error token (errMajorVersionUnsupported, errInvalidVersionFormat) or "" on success
 	//
 	// Spec Reference: §2.1-2.3 version negotiation rules
-	NegotiateVersion(clientVersion string) (negotiatedVersion string, errToken string)
+	NegotiateVersion(ctx context.Context, clientVersion string) (negotiatedVersion string, errToken string)
 
 	// ResolveResume validates session resumption per SCACI §3.3 and §§2.1-2.3
 	//
@@ -288,10 +289,10 @@ type EndpointService interface {
 	//   - []error: Slice of errors (one per failed base station), empty if all succeeded
 	//
 	// Example Usage:
-	//   if errs := svc.PropagateDetachToAll(epEui); len(errs) > 0 {
+	//   if errs := svc.PropagateDetachToAll(ctx, epEui); len(errs) > 0 {
 	//       logger.Warn("Some base stations failed detach propagation", zap.Errors("errors", errs))
 	//   }
-	PropagateDetachToAll(epEui uint64) []error
+	PropagateDetachToAll(ctx context.Context, epEui uint64) []error
 }
 
 // ULService schedules uplink transmissions per MIOTY §3.9
@@ -523,16 +524,16 @@ type SessionValidator interface {
 	//
 	// Parameters:
 	//   - req: Decoded Connect message from wire
-	//   - opId: Operation ID from message header
 	//
 	// Returns:
 	//   - string: Error token from errors_catalog.go if validation fails, "" on success
 	//
 	// Example Usage:
-	//   if errToken := s.sessionValidator.ValidateConnectFields(&req, opId); errToken != "" {
+	//   if errToken := s.sessionValidator.ValidateConnectFields(&req); errToken != "" {
 	//       return s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
 	//   }
-	ValidateConnectFields(req *Connect, opId int64) string
+	// Pure and stateless: performs no I/O and no logging, so it takes no context.
+	ValidateConnectFields(req *Connect) string
 }
 
 // CertificateVerifier validates TLS client certificates for SCACI connections
@@ -562,10 +563,10 @@ type CertificateVerifier interface {
 	//   - string: Error token from errors_catalog.go if validation fails, "" on success
 	//
 	// Example Usage:
-	//   if errToken := s.certVerifier.VerifyCertificate(cert); errToken != "" {
+	//   if errToken := s.certVerifier.VerifyCertificate(ctx, cert); errToken != "" {
 	//       return nil, nil, errToken
 	//   }
-	VerifyCertificate(cert *x509.Certificate) string
+	VerifyCertificate(ctx context.Context, cert *x509.Certificate) string
 }
 
 // OperationRecorder persists SCACI operations for resume safety (SCACI §3.4)
@@ -698,39 +699,32 @@ type ErrorRecorder interface {
 //
 // Example Usage (handler_connect.go):
 //
-//	s.sessionPersistence.PersistConnectAsync(session, certFingerprint, certSubject, remoteAddr)
+//	s.sessionPersistence.PersistResumeAsync(ctx, session, tlsVersion, cipherSuite)
 //	// Handler continues without waiting for DB write
 type SessionPersistence interface {
-	// PersistConnectAsync handles async session creation/update after Connect handshake
-	//
-	// This method replicates the current async persistence pattern from handler_connect.go:213-278
-	// but encapsulates it in a service to follow SRP (handlers orchestrate, services execute).
-	//
-	// Session Lifecycle:
-	//   - Resumed sessions: Updates lastHeartbeat, status, opId counters
-	//   - New sessions: Creates record with snAcUuid, snScUuid, certificate metadata, negotiated version
+	// PersistResumeAsync updates the persisted row of a resumed session after
+	// the Connect handshake: lastHeartbeat, status, TLS evidence, opId
+	// counters, metadata. Fresh sessions are persisted synchronously via
+	// PersistConnectSync - this path never creates rows and never mutates the
+	// live session (the goroutine reads an immutable snapshot only).
 	//
 	// Parameters:
-	//   - session: Session object with all metadata (Resumed flag determines create vs update)
-	//   - certFingerprint: SHA256 fingerprint of client certificate
-	//   - certSubject: Certificate subject DN
-	//   - remoteAddr: Client IP address from connection
+	//   - session: Resumed session (Resumed == true, ID > 0)
 	//   - tlsVersion: TLS version negotiated (e.g., "TLS 1.2", "TLS 1.3") per SCACI §1
 	//   - cipherSuite: TLS cipher suite name per SCACI §1
-	//   - negotiatedVersion: Protocol version from successful negotiation per SCACI §§2.1-2.3
 	//
 	// Goroutine Behavior:
-	//   - Spawns goroutine with 5s timeout (matches current ConnectPersistTimeout)
-	//   - Logs errors but doesn't propagate to handler
-	//   - Updates session.ID field with database-assigned ID on create
-	PersistConnectAsync(session *Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string)
+	//   - Spawns goroutine bounded by ConnectPersistTimeout, detached from the
+	//     caller's cancellation
+	//   - Logs errors but doesn't propagate to handler (best-effort persistence)
+	PersistResumeAsync(ctx context.Context, session *Session, tlsVersion, cipherSuite string)
 
 	// PersistConnectSync creates session synchronously, returning DB ID for operation logging.
 	//
 	// Used for fresh connects only - ensures session.ID is assigned BEFORE operation logging
 	// so that Connect audit rows have real session IDs (SCACI §3.3-04 audit trail).
 	//
-	// Resumed sessions continue using PersistConnectAsync (they already have session.ID > 0).
+	// Resumed sessions use PersistResumeAsync (they already have session.ID > 0).
 	//
 	// Parameters:
 	//   - ctx: Request context with timeout (typically ConnectPersistTimeout)
@@ -791,3 +785,47 @@ type SessionPersistence interface {
 //   - Already defined in server.go (lines 67-76)
 //   - Used by EndpointService implementation for BSSCI integration
 //   - No changes needed - existing interface is correct
+
+// SessionCounterStore persists the paired AC/SC operation ID counters
+// (SCACI §3.2). Satisfied structurally by the SCACI session repository.
+type SessionCounterStore interface {
+	UpdateOperationIDs(ctx context.Context, tenantID, sessionID int64, acOpId, scOpId int64) error
+}
+
+// OperationStore owns the SCACI operation lifecycle rows used for the
+// three-way handshake audit trail and resume replay (SCACI §3.2-§3.3).
+// Satisfied structurally by the SCACI operation repository.
+type OperationStore interface {
+	RecordOperation(ctx context.Context, req *models.SCACIOperationRequest) (*models.SCACIOperation, error)
+	UpdateOperationState(ctx context.Context, sessionID int64, opId int64, state models.OperationState, responseData map[string]interface{}) error
+	GetOperationByOpID(ctx context.Context, sessionID int64, opId int64) (*models.SCACIOperation, error)
+	GetPendingOperations(ctx context.Context, sessionID int64) ([]*models.SCACIOperation, error)
+}
+
+// OrganizationDirectory resolves the default organization for a tenant.
+// Satisfied structurally by org.Resolver implementations.
+type OrganizationDirectory interface {
+	GetDefaultOrgForTenant(ctx context.Context, tenantID int64) (uuid.UUID, error)
+}
+
+// SessionSnapshotSource provides lightweight snapshots of the connected base
+// station sessions for propagation fan-out. Satisfied by the BSSCI server.
+type SessionSnapshotSource interface {
+	ConnectedSessionsSnapshot() []propagation.BaseStationSession
+}
+
+// EndpointPropagator triggers attach propagation for an endpoint across the
+// given sessions. Satisfied by the propagation service.
+type EndpointPropagator interface {
+	TriggerEndpointPropagate(ctx context.Context, endpointID int64, activeSessions []propagation.BaseStationSession) error
+}
+
+// ErrorOperationStore covers the failed-operation persistence the error
+// recorder performs (SCACI §3.14). Satisfied structurally by the SCACI
+// operation repository.
+type ErrorOperationStore interface {
+	UpdateOperationStateWithError(ctx context.Context, sessionID int64, opId int64,
+		state models.OperationState, errorCode int, errorToken string, errorMessage string,
+		responseData map[string]interface{}) error
+	CompleteFailedOperation(ctx context.Context, sessionID int64, opId int64, responseData map[string]interface{}) error
+}

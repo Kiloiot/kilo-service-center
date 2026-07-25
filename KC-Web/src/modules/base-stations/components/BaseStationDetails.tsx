@@ -116,10 +116,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
         >
           <Box>
             <Tooltip title={ACTION_EDIT}>
-              <IconButton
-                size="small"
-                onClick={() => setEditDialogOpen(true)}
-              >
+              <IconButton size="small" onClick={() => setEditDialogOpen(true)}>
                 <EditIcon />
               </IconButton>
             </Tooltip>

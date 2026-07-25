@@ -20,6 +20,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -125,7 +127,7 @@ func TestCreateIntegration_ServiceNotConfigured(t *testing.T) {
 	svc := createTestIntegrationService()
 	// integrationSvc is nil by default
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 
 	req := &pb.CreateIntegrationRequest{
 		Name: "Test",
@@ -146,7 +148,7 @@ func TestCreateIntegration_MissingTenant(t *testing.T) {
 	svc.integrationSvc = mockSvc
 
 	// Context without tenant ID
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	req := &pb.CreateIntegrationRequest{
 		Name: "Test",
@@ -166,7 +168,7 @@ func TestCreateIntegration_MissingName(t *testing.T) {
 	svc := createTestIntegrationService()
 	svc.integrationSvc = mockSvc
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 	ctx = pkgcontext.WithOrganizationID(ctx, uuid.New())
 
 	req := &pb.CreateIntegrationRequest{
@@ -187,7 +189,7 @@ func TestCreateIntegration_MissingConfig(t *testing.T) {
 	svc := createTestIntegrationService()
 	svc.integrationSvc = mockSvc
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 	ctx = pkgcontext.WithOrganizationID(ctx, uuid.New())
 
 	req := &pb.CreateIntegrationRequest{
@@ -217,7 +219,7 @@ func TestCreateIntegration_Success(t *testing.T) {
 	svc := createTestIntegrationService()
 	svc.integrationSvc = mockSvc
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 	ctx = pkgcontext.WithOrganizationID(ctx, integration.OrgID)
 
 	configStruct, err := structpb.NewStruct(map[string]interface{}{
@@ -249,7 +251,7 @@ func TestCreateIntegration_Success(t *testing.T) {
 func TestGetIntegration_ServiceNotConfigured(t *testing.T) {
 	svc := createTestIntegrationService()
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 
 	req := &pb.GetIntegrationRequest{Id: 1}
 
@@ -266,7 +268,7 @@ func TestGetIntegration_MissingID(t *testing.T) {
 	svc := createTestIntegrationService()
 	svc.integrationSvc = mockSvc
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 
 	req := &pb.GetIntegrationRequest{Id: 0}
 
@@ -290,7 +292,7 @@ func TestGetIntegration_Success(t *testing.T) {
 	svc := createTestIntegrationService()
 	svc.integrationSvc = mockSvc
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 
 	req := &pb.GetIntegrationRequest{Id: 1}
 
@@ -309,7 +311,7 @@ func TestGetIntegration_Success(t *testing.T) {
 func TestListIntegrations_ServiceNotConfigured(t *testing.T) {
 	svc := createTestIntegrationService()
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 
 	req := &pb.ListIntegrationsRequest{}
 
@@ -334,7 +336,7 @@ func TestListIntegrations_Success(t *testing.T) {
 	svc := createTestIntegrationService()
 	svc.integrationSvc = mockSvc
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 
 	req := &pb.ListIntegrationsRequest{}
 
@@ -354,7 +356,7 @@ func TestListIntegrations_Success(t *testing.T) {
 func TestDeleteIntegration_ServiceNotConfigured(t *testing.T) {
 	svc := createTestIntegrationService()
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 
 	req := &pb.DeleteIntegrationRequest{Id: 1}
 
@@ -377,7 +379,7 @@ func TestDeleteIntegration_Success(t *testing.T) {
 	svc := createTestIntegrationService()
 	svc.integrationSvc = mockSvc
 
-	ctx := pkgcontext.WithTenantID(context.Background(), 100)
+	ctx := pkgcontext.WithTenantID(testutil.TestContext(), 100)
 
 	req := &pb.DeleteIntegrationRequest{Id: 1}
 

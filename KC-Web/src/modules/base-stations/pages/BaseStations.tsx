@@ -260,7 +260,10 @@ const BaseStations: React.FC = () => {
     ? baseStations.find((bs) => bs.id === selectedBaseStation)
     : null;
 
-  const stats = useMemo(() => getBaseStationStats(baseStations), [baseStations]);
+  const stats = useMemo(
+    () => getBaseStationStats(baseStations),
+    [baseStations],
+  );
   const {
     total: totalBaseStations,
     online: onlineBaseStations,

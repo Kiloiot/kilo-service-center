@@ -583,11 +583,7 @@ export default function BaseStationCommissioningDialog({
         monoSxGetter={getMonoBody2}
       >
         {/* Service Center URL with copy */}
-        <Box
-          display="flex"
-          alignItems="center"
-          justifyContent="space-between"
-        >
+        <Box display="flex" alignItems="center" justifyContent="space-between">
           <Typography variant="body2" color="text.secondary">
             {LABEL_SC_URL_DISPLAY}
           </Typography>

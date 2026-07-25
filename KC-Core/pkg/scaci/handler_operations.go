@@ -444,7 +444,7 @@ func (s *Server) handleDeregisterComplete(conn net.Conn, session *Session, opId 
 	}
 
 	// Trigger BSSCI detach propagation to base stations
-	if errs := s.endpointSvc.PropagateDetachToAll(epEui); len(errs) > 0 {
+	if errs := s.endpointSvc.PropagateDetachToAll(ctx, epEui); len(errs) > 0 {
 		detachErrorCount = len(errs)
 		s.logger.WarnContext(s.sessionContext(session), LogSCACIDetachPropagationErrors, "count", detachErrorCount)
 	} else {
@@ -1034,13 +1034,9 @@ func (s *Server) processDLDataQueueCore(
 			schedPosixCode = POSIX_EINVAL
 		}
 
-		// Revert downlink status - scheduler failed
-		// Use orgID (nil-safe pointer) instead of &session.OrganizationID which would filter on uuid.Nil when org not set
-		statusCtx, statusCancel := context.WithTimeout(ctx, dbconfig.DefaultQueryTimeout)
-		defer statusCancel()
-		if err := s.dlSvc.UpdateDownlinkStatus(statusCtx, strconv.FormatInt(stored.QueID, 10), bssci.DLQueueStatusFailed, orgID); err != nil {
-			s.logger.WarnContext(ctx, LogSCACIUpdateDownlinkStatusFailed, "error", err)
-		}
+		// Queue row status is owned by the downlink dispatcher
+		// (pending → reserved → queued); a scheduler failure leaves the row
+		// pending so the dlOpen auto-dispatch path can still deliver it.
 
 		// Mark operation as failed
 		if session.ID > 0 && s.operationRepo != nil {
@@ -1056,14 +1052,8 @@ func (s *Server) processDLDataQueueCore(
 		return nil, schedErrToken, schedPosixCode
 	}
 
-	// Update status to queued after successful BSSCI coordination
-	// Use orgID (nil-safe pointer) instead of &session.OrganizationID which would filter on uuid.Nil when org not set
-	statusCtx, statusCancel := context.WithTimeout(ctx, dbconfig.DefaultQueryTimeout)
-	defer statusCancel()
-	if err := s.dlSvc.UpdateDownlinkStatus(statusCtx, strconv.FormatInt(stored.QueID, 10), bssci.DLQueueStatusQueued, orgID); err != nil {
-		s.logger.WarnContext(ctx, LogSCACIUpdateDownlinkStatusQueued, "error", err)
-		// Non-critical error, continue
-	}
+	// Queue row status is owned by the downlink dispatcher: DispatchQueue has
+	// already transitioned the row pending → reserved → queued.
 
 	s.logger.InfoContext(ctx, LogSCACIDLDataQueueProcessed,
 		"opId", opId,

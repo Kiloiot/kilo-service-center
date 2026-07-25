@@ -67,13 +67,16 @@ func TestSendDLDataRevoke_BuildsMessage_PersistsMetadata(t *testing.T) {
 
 	// Create and register a test session
 	session := &Session{
-		ID:                "test-session-revoke",
-		BaseStationEUI:    TestBsEui04,
-		Conn:              mockConn,
-		Encoding:          EncodingMessagePack,
-		LastScOpId:        -1,
-		HandshakeComplete: true,
-		Bidirectional:     true,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "test-session-revoke",
+			BaseStationEUI:    TestBsEui04,
+			Encoding:          EncodingMessagePack,
+			LastScOpId:        -1,
+			HandshakeComplete: true,
+			DbSessionID:       1,
+		},
+		Conn:          mockConn,
+		Bidirectional: true,
 	}
 	server.RegisterSession(session)
 

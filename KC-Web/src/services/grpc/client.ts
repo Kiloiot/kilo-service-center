@@ -70,9 +70,7 @@ function bytesToString(value: Uint8Array): string {
   return textDecoder.decode(value);
 }
 
-function dateToTimestamp(
-  date: Date,
-): google_protobuf_timestamp_pb.Timestamp {
+function dateToTimestamp(date: Date): google_protobuf_timestamp_pb.Timestamp {
   const timestamp = new google_protobuf_timestamp_pb.Timestamp();
   timestamp.fromDate(date);
   return timestamp;
@@ -101,7 +99,8 @@ function applyPaginationAndTimeRange(
 ): void {
   if (params?.pageSize) request.setPageSize(params.pageSize);
   if (params?.pageToken) request.setPageToken(params.pageToken);
-  if (params?.startTime) request.setStartTime(dateToTimestamp(params.startTime));
+  if (params?.startTime)
+    request.setStartTime(dateToTimestamp(params.startTime));
   if (params?.endTime) request.setEndTime(dateToTimestamp(params.endTime));
 }
 
@@ -634,7 +633,6 @@ function buildUpdateEndpointRequest(
   return request;
 }
 
-
 /**
  * gRPC-web Client Service
  *
@@ -894,10 +892,7 @@ class GrpcClientService {
   /**
    * Login with email and password
    */
-  async login(
-    email: string,
-    password: string,
-  ): Promise<AuthTokensAndUser> {
+  async login(email: string, password: string): Promise<AuthTokensAndUser> {
     const request = new pb.LoginRequest();
     request.setEmail(email);
     request.setPassword(password);
@@ -1667,10 +1662,7 @@ class GrpcClientService {
    * Backend resolves the redirect URI from server-side config, so the
    * client doesn't send one over the wire.
    */
-  async exchangeOIDC(
-    code: string,
-    state: string,
-  ): Promise<AuthTokensAndUser> {
+  async exchangeOIDC(code: string, state: string): Promise<AuthTokensAndUser> {
     const request = new pb.ExchangeOIDCRequest();
     request.setCode(code);
     request.setState(state);
@@ -1678,7 +1670,10 @@ class GrpcClientService {
     const response = await this.promisify<
       pb.ExchangeOIDCRequest,
       pb.LoginResponse
-    >(this.client.exchangeOIDC, { requireOrgUser: false, skipRefreshRetry: true })(request);
+    >(this.client.exchangeOIDC, {
+      requireOrgUser: false,
+      skipRefreshRetry: true,
+    })(request);
 
     return extractAuthTokensAndUser(
       response,
@@ -1702,7 +1697,10 @@ class GrpcClientService {
     const response = await this.promisify<
       pb.ExchangeOAuth2Request,
       pb.LoginResponse
-    >(this.client.exchangeOAuth2, { requireOrgUser: false, skipRefreshRetry: true })(request);
+    >(this.client.exchangeOAuth2, {
+      requireOrgUser: false,
+      skipRefreshRetry: true,
+    })(request);
 
     return extractAuthTokensAndUser(
       response,
@@ -3118,7 +3116,8 @@ class GrpcClientService {
     request.setFormat(format);
     if (params?.direction) request.setDirection(params.direction);
     if (params?.epEui) request.setEpEui(params.epEui);
-    if (params?.startTime) request.setStartTime(dateToTimestamp(params.startTime));
+    if (params?.startTime)
+      request.setStartTime(dateToTimestamp(params.startTime));
     if (params?.endTime) request.setEndTime(dateToTimestamp(params.endTime));
 
     const response = await this.promisify<
@@ -3856,7 +3855,10 @@ class GrpcClientService {
   /**
    * List device models for a manufacturer
    */
-  async listDeviceModels(manufacturerId: string, isSystem = false): Promise<
+  async listDeviceModels(
+    manufacturerId: string,
+    isSystem = false,
+  ): Promise<
     Array<{
       id: string;
       manufacturerId: string;

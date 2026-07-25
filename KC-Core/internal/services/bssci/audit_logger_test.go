@@ -52,8 +52,10 @@ func TestRecordQueueAck(t *testing.T) {
 	logger := NewAuditLogger(store)
 
 	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			BaseStationEUI: 0x123456789ABCDEF0,
+		},
 		UserProvidedName: "test-basestation",
-		BaseStationEUI:   0x123456789ABCDEF0,
 	}
 
 	tenant := "42"
@@ -108,8 +110,10 @@ func TestRecordDLResultSent(t *testing.T) {
 	logger := NewAuditLogger(store)
 
 	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			BaseStationEUI: 0x1111222233334444,
+		},
 		UserProvidedName: "bs-success",
-		BaseStationEUI:   0x1111222233334444,
 	}
 
 	tenant := "100"
@@ -153,8 +157,10 @@ func TestRecordDLResultExpired(t *testing.T) {
 	logger := NewAuditLogger(store)
 
 	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			BaseStationEUI: 0x5555666677778888,
+		},
 		UserProvidedName: "bs-expired",
-		BaseStationEUI:   0x5555666677778888,
 	}
 
 	tenant := "200"
@@ -198,8 +204,10 @@ func TestRecordDLResultInvalid(t *testing.T) {
 	logger := NewAuditLogger(store)
 
 	session := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			BaseStationEUI: 0x9999AAAABBBBCCCC,
+		},
 		UserProvidedName: "bs-invalid",
-		BaseStationEUI:   0x9999AAAABBBBCCCC,
 	}
 
 	tenant := "300"

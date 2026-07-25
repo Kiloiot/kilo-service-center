@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // mockMQTTEventPublisher records calls to MQTTEventPublisher methods.
@@ -24,6 +26,35 @@ type mockMQTTEventPublisher struct {
 	detaches  []mockDetachCall
 	dlResults []mockDLResultCall
 	returnErr error
+	published chan struct{}
+}
+
+// signalPublish notifies a waiting assertNoPublish; safe when no channel is set.
+func (m *mockMQTTEventPublisher) signalPublish() {
+	if m.published != nil {
+		select {
+		case m.published <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// assertNoPublish fails the test when any publish lands within the window.
+// The publishes under test run in goroutines, so an immediate counter check
+// can pass before the goroutine executes; waiting on the signal channel makes
+// the negative assertion deterministic.
+func (m *mockMQTTEventPublisher) assertNoPublish(t *testing.T) {
+	t.Helper()
+	select {
+	case <-m.published:
+		t.Fatal("unexpected MQTT publish for unresolved organization")
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// newSilentMockMQTTEventPublisher builds a mock armed for assertNoPublish.
+func newSilentMockMQTTEventPublisher() *mockMQTTEventPublisher {
+	return &mockMQTTEventPublisher{published: make(chan struct{}, 16)}
 }
 
 type mockUplinkCall struct {
@@ -64,6 +95,7 @@ func (m *mockMQTTEventPublisher) PublishUplink(_ context.Context, orgUUID string
 		OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI,
 		Rssi: rssi, Snr: snr, RxTime: rxTime, PacketCnt: packetCnt, UserData: userData,
 	})
+	m.signalPublish()
 	return m.returnErr
 }
 
@@ -71,6 +103,7 @@ func (m *mockMQTTEventPublisher) PublishAttach(_ context.Context, orgUUID string
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.attaches = append(m.attaches, mockAttachCall{OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI})
+	m.signalPublish()
 	return m.returnErr
 }
 
@@ -78,6 +111,7 @@ func (m *mockMQTTEventPublisher) PublishDetach(_ context.Context, orgUUID string
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.detaches = append(m.detaches, mockDetachCall{OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI})
+	m.signalPublish()
 	return m.returnErr
 }
 
@@ -85,6 +119,7 @@ func (m *mockMQTTEventPublisher) PublishDownlinkResult(_ context.Context, orgUUI
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.dlResults = append(m.dlResults, mockDLResultCall{OrgUUID: orgUUID, EpEUI: epEUI, QueID: queID, Result: result})
+	m.signalPublish()
 	return m.returnErr
 }
 
@@ -238,11 +273,13 @@ func TestHandleAttachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
 
 	// mqttPublisher is nil (default)
 	session := &Session{
-		ID:               "test-nil-mqtt-attach",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-nil-mqtt-attach",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	pendingOp := &PendingOperation{
@@ -253,7 +290,7 @@ func TestHandleAttachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
 			"epEui": int64(0x70B3D59CD00009E6),
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 1001, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1001, pendingOp, 42)
 	require.NoError(t, err)
 
 	msg := &Message{Command: mioty.CmdAttachComplete, OpId: 1001}
@@ -268,11 +305,13 @@ func TestHandleDetachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
 	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
 
 	session := &Session{
-		ID:               "test-nil-mqtt-detach",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-nil-mqtt-detach",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	pendingOp := &PendingOperation{
@@ -283,7 +322,7 @@ func TestHandleDetachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
 			"epEui": int64(0x70B3D59CD00009E6),
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 2001, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2001, pendingOp, 42)
 	require.NoError(t, err)
 
 	msg := &Message{Command: mioty.CmdDetachComplete, OpId: 2001}
@@ -307,11 +346,13 @@ func TestHandleAttachComplete_PublishesMQTTWithOwnerOrg(t *testing.T) {
 	}
 
 	session := &Session{
-		ID:               "test-attach-mqtt",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-mqtt",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	epEUI := int64(0x70B3D59CD00009E6)
@@ -324,7 +365,7 @@ func TestHandleAttachComplete_PublishesMQTTWithOwnerOrg(t *testing.T) {
 			"endpointTenantID": int64(99),
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 1001, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1001, pendingOp, 42)
 	require.NoError(t, err)
 
 	syncMock.ExpectCall(1)
@@ -349,7 +390,7 @@ func TestHandleAttachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	testLogger := logger.NewNop()
 	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
 
-	mock := &mockMQTTEventPublisher{}
+	mock := newSilentMockMQTTEventPublisher()
 	server.SetMQTTPublisher(mock)
 	// orgResolver returns uuid.Nil for unknown tenants
 	server.orgResolver = &mqttTestOrgResolver{
@@ -357,11 +398,13 @@ func TestHandleAttachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	}
 
 	session := &Session{
-		ID:               "test-attach-no-org",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-attach-no-org",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	pendingOp := &PendingOperation{
@@ -373,13 +416,14 @@ func TestHandleAttachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 			"endpointTenantID": int64(999), // no mapping for this tenant
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 1002, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1002, pendingOp, 42)
 	require.NoError(t, err)
 
 	msg := &Message{Command: mioty.CmdAttachComplete, OpId: 1002}
 	_ = server.CallHandleAttachComplete(session, msg, nil)
 
-	// Publish should be skipped (org unresolved → uuid.Nil → empty string)
+	// Publish must be skipped (org unresolved → uuid.Nil)
+	mock.assertNoPublish(t)
 	assert.Equal(t, 0, mock.attachCount())
 }
 
@@ -395,11 +439,13 @@ func TestHandleDetachComplete_PublishesMQTTWithTypedMetaOrg(t *testing.T) {
 	server.SetMQTTPublisher(syncMock)
 
 	session := &Session{
-		ID:               "test-detach-mqtt",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-mqtt",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	epEUI := uint64(0x70B3D59CD00009E6)
@@ -412,7 +458,7 @@ func TestHandleDetachComplete_PublishesMQTTWithTypedMetaOrg(t *testing.T) {
 			"orgUuid": ownerOrg.String(),
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 2001, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2001, pendingOp, 42)
 	require.NoError(t, err)
 
 	syncMock.ExpectCall(1)
@@ -436,15 +482,17 @@ func TestHandleDetachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 	testLogger := logger.NewNop()
 	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
 
-	mock := &mockMQTTEventPublisher{}
+	mock := newSilentMockMQTTEventPublisher()
 	server.SetMQTTPublisher(mock)
 
 	session := &Session{
-		ID:               "test-detach-no-org",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: 42,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-detach-no-org",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: 42,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
 	}
 
 	pendingOp := &PendingOperation{
@@ -456,12 +504,13 @@ func TestHandleDetachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
 			// No orgUuid in metadata
 		},
 	}
-	err := server.statusSvc.RecordPendingOperation(context.Background(), session, 2002, pendingOp, 42)
+	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2002, pendingOp, 42)
 	require.NoError(t, err)
 
 	msg := &Message{Command: mioty.CmdDetachComplete, OpId: 2002}
 	_ = server.CallHandleDetachComplete(session, msg, nil)
 
+	mock.assertNoPublish(t)
 	assert.Equal(t, 0, mock.detachCount())
 }
 
@@ -498,7 +547,6 @@ func TestHandleULData_PublishesMQTTUplink(t *testing.T) {
 	// Wire deduplicator (required by handleULData)
 	dedup := NewMessageDeduplicator(5 * time.Minute)
 	defer dedup.Stop()
-	server.deduplicator = dedup
 	server.uplinkIngestSvc = &mqttPublishingIngestService{server: server}
 
 	// Wire org resolver to map server tenant → known org UUID
@@ -514,12 +562,14 @@ func TestHandleULData_PublishesMQTTUplink(t *testing.T) {
 
 	// Create session with TestConn to absorb sendMessage writes
 	session := &Session{
-		ID:               "test-uldata-mqtt",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
-		Conn:             &testutil.TestConn{Encoding: "json"},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-uldata-mqtt",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
+		Conn: &bsscitest.TestConn{Encoding: "json"},
 	}
 
 	// Build UL data map with required fields
@@ -565,24 +615,24 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 	dedup := NewMessageDeduplicator(5 * time.Minute)
 	defer dedup.Stop()
 	server.uplinkIngestSvc = &mqttPublishingIngestService{server: server}
-	server.deduplicator = dedup
 
 	// orgResolver returns uuid.Nil for server tenant (no org mapping)
 	server.orgResolver = &mqttTestOrgResolver{
 		tenantToOrg: map[int64]uuid.UUID{},
 	}
 
-	// Wire non-sync mock (no WaitGroup since publish should be skipped)
-	mock := &mockMQTTEventPublisher{}
+	mock := newSilentMockMQTTEventPublisher()
 	server.SetMQTTPublisher(mock)
 
 	session := &Session{
-		ID:               "test-uldata-no-org",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
-		Conn:             &testutil.TestConn{Encoding: "json"},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-uldata-no-org",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
+		Conn: &bsscitest.TestConn{Encoding: "json"},
 	}
 
 	data := map[string]interface{}{
@@ -597,7 +647,8 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 	msg := &Message{Command: mioty.CmdULData, OpId: 5002}
 	_ = server.CallHandleULData(session, msg, data)
 
-	// Publish should be skipped (org unresolved → uuid.Nil → empty string)
+	// Publish must be skipped (org unresolved → uuid.Nil)
+	mock.assertNoPublish(t)
 	assert.Equal(t, 0, mock.uplinkCount())
 }
 
@@ -629,12 +680,14 @@ func TestHandleDLDataResult_PublishesMQTTDLResult(t *testing.T) {
 
 	// Session with TestConn for sendMessage
 	session := &Session{
-		ID:               "test-dlresult-mqtt",
-		BaseStationEUI:   0xABCDEF1234567890,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
-		Conn:             &testutil.TestConn{Encoding: "json"},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-dlresult-mqtt",
+			BaseStationEUI:   0xABCDEF1234567890,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
+		Conn: &bsscitest.TestConn{Encoding: "json"},
 	}
 
 	// Build DL result data map (handleDLDataResult uses type assertions directly)
@@ -681,12 +734,14 @@ func TestHandleDLDataResult_OrgUnresolved_SkipsPublish(t *testing.T) {
 	server.SetMQTTPublisher(mock)
 
 	session := &Session{
-		ID:               "test-dlresult-no-org",
-		BaseStationEUI:   0xABCD,
-		ResolvedTenantID: tenantID,
-		DbSessionID:      1,
-		Encoding:         EncodingJSON,
-		Conn:             &testutil.TestConn{Encoding: "json"},
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               "test-dlresult-no-org",
+			BaseStationEUI:   0xABCD,
+			ResolvedTenantID: tenantID,
+			DbSessionID:      1,
+			Encoding:         EncodingJSON,
+		},
+		Conn: &bsscitest.TestConn{Encoding: "json"},
 	}
 
 	data := map[string]interface{}{

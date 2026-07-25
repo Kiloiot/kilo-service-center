@@ -7,6 +7,9 @@ import "errors"
 // ErrResumeCounterMismatch is returned when resume operation counters do not match persisted session state (BSSCI §5.2)
 var ErrResumeCounterMismatch = errors.New("resume rejected: operation counters do not match persisted session state")
 
+// ErrResumeAlreadyClaimed is returned when the resumable session was activated or retired by another connection before this one could claim it
+var ErrResumeAlreadyClaimed = errors.New("resume rejected: session already claimed by another connection")
+
 // ErrDetachValidationEndpointNotFound is returned by detach validator when endpoint not found in database.
 // Enables typed error detection via errors.Is in server.go detach handler.
 var ErrDetachValidationEndpointNotFound = errors.New("detach validation endpoint not found")

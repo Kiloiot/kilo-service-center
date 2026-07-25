@@ -440,9 +440,19 @@ func validateKeyStorageSchema(t *testing.T, db *sql.DB) {
 }
 
 func validateSecurityConstraints(t *testing.T, db *sql.DB) {
-	// Check constraints exist (constraint renamed in migration 084)
+	// Migration 013 creates endpoints_eui_length; migration 000084 renames it
+	// to endpoints_ep_eui_length. Accept either name so the validator holds at
+	// any schema version from 013 onward.
 	constraints := getConstraintList(t, db, "endpoints")
-	assert.Contains(t, constraints, "endpoints_ep_eui_length")
+	hasLengthConstraint := false
+	for _, name := range constraints {
+		if name == "endpoints_eui_length" || name == "endpoints_ep_eui_length" {
+			hasLengthConstraint = true
+			break
+		}
+	}
+	assert.True(t, hasLengthConstraint,
+		"endpoints must have an EUI length CHECK constraint (endpoints_eui_length pre-084, endpoints_ep_eui_length post-084), got: %v", constraints)
 
 	// Note: endpoint_keys table has no named constraints
 	// Validation is trigger-based (validate_key_format function from migration 013)

@@ -120,7 +120,7 @@ func TestDetachMetadataValidationStatusRoundTrip(t *testing.T) {
 				"endpointID":       float64(metadataMap["endpointID"].(int64)),
 				"packetCnt":        float64(metadataMap["packetCnt"].(uint32)),
 				"signature":        metadataMap["signature"],
-				"rxTime":           float64(metadataMap["rxTime"].(int64)),
+				"rxTime":           metadataMap["rxTime"].(int64),
 				"snr":              metadataMap["snr"],
 				"rssi":             metadataMap["rssi"],
 				"tenantId":         float64(metadataMap["tenantId"].(int64)),
@@ -161,12 +161,15 @@ func TestMapToDetachMetadataBackwardCompatibility(t *testing.T) {
 	t.Parallel()
 
 	// Create metadata map WITHOUT validationStatus (simulates old persisted operation)
+	// Numeric shapes mirror normalizeStrictDecodedMap output: integers within
+	// the exact float64 range stay float64 (legacy decoder shape), while
+	// nanosecond timestamps beyond 2^53 arrive exact as int64.
 	oldMetadataMap := map[string]interface{}{
 		"epEui":      float64(TestEpEui01), // Issue #3-4 Fix A3: Endpoint EUI, not Service Center EUI
 		"endpointID": float64(1001),
 		"packetCnt":  float64(42),
 		"signature":  []byte{0xAA, 0xBB, 0xCC, 0xDD},
-		"rxTime":     float64(1234567890000000000),
+		"rxTime":     int64(1234567890000000000),
 		"snr":        12.5,
 		"rssi":       -80.0,
 		"tenantId":   float64(100),
@@ -278,7 +281,7 @@ func TestDetachValidationStatusWithOptionalFields(t *testing.T) {
 		"endpointID":       float64(metadataMap["endpointID"].(int64)),
 		"packetCnt":        float64(metadataMap["packetCnt"].(uint32)),
 		"signature":        metadataMap["signature"],
-		"rxTime":           float64(metadataMap["rxTime"].(int64)),
+		"rxTime":           metadataMap["rxTime"].(int64),
 		"snr":              metadataMap["snr"],
 		"rssi":             metadataMap["rssi"],
 		"tenantId":         float64(metadataMap["tenantId"].(int64)),

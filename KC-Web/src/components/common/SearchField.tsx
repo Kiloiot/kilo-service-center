@@ -13,7 +13,9 @@ import { SearchIcon } from "@theme/icons";
 interface SearchFieldProps {
   placeholder: string;
   value: string;
-  onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  onChange: (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => void;
 }
 
 const SearchField: React.FC<SearchFieldProps> = ({

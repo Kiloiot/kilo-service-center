@@ -161,6 +161,8 @@ const (
 	LogSCACIDeregisterHandshakeComplete = "Deregister handshake complete"
 	LogSCACILoadDeregisterOpFailed      = "Failed to load deregister operation"
 	LogSCACIDetachPropagationErrors     = "Detach propagation had errors"
+	// LogSCACIDetachPropagatorUnavailable is logged when detach propagation is skipped because no propagator is wired.
+	LogSCACIDetachPropagatorUnavailable = "DetachPropagator not available, skipping propagation"
 	LogSCACIDetachPropagationSent       = "Detach propagation sent to all base stations"
 	LogSCACIRevokeDownlinksFailed       = "Failed to revoke downlinks"
 	LogSCACIDeregisterCleanupStart      = "Starting deregister cleanup"
@@ -363,4 +365,12 @@ const (
 	LogSCACICommandMismatch              = "SCACI message command mismatch"
 	LogSCACIRecordEventFailed            = "Failed to record SCACI error event"
 	LogSCACISentErrorAck                 = "Sent error acknowledgment"
+	// LogSCACICertOrgResolutionFallback is logged when certificate org resolution fails and community fallback applies.
+	LogSCACICertOrgResolutionFallback = "Certificate org resolution failed, using community fallback"
+	// LogSCACISoftwareVersionNotConfigured is logged when the ConnectResponse omits swVersion because none is configured.
+	LogSCACISoftwareVersionNotConfigured = "Software version not configured - ConnectResponse will omit swVersion field"
+	// LogSCACIUsingDevelopmentSoftwareVersion is logged when a development software version is used in the ConnectResponse.
+	LogSCACIUsingDevelopmentSoftwareVersion = "Using development software version in ConnectResponse"
+	// LogSCACISublayerHandlerInvoked is logged when a registered sublayer handler dispatches a message.
+	LogSCACISublayerHandlerInvoked = "SCACI sublayer handler invoked"
 )

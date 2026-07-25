@@ -1,34 +1,31 @@
 package bssci
 
 import (
-	"context"
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
-// Quick test to verify observer captures WARN logs
+// TestObserverCapture verifies the recording logger captures WARN entries so
+// log-assertion tests can rely on it.
 func TestObserverCapture(t *testing.T) {
-	observedCore, observedLogs := observer.New(zap.WarnLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	testLogger := newRecordingLogger()
 
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
-	// Log a WARN
 	testLogger.WarnContext(ctx, "Test warning message", "field", "value")
 
-	// Check if captured
-	allLogs := observedLogs.All()
-	warnLogs := observedLogs.FilterMessage("Test warning message").All()
+	warnLogs := testLogger.getEntriesByLevel("WARN")
 
-	t.Logf("Total logs: %d, Warn logs: %d", len(allLogs), len(warnLogs))
+	t.Logf("Total logs: %d, Warn logs: %d", len(testLogger.entries), len(warnLogs))
 
-	if len(allLogs) == 0 {
-		t.Fatal("Observer didn't capture any logs!")
+	if len(testLogger.entries) == 0 {
+		t.Fatal("Recorder didn't capture any logs!")
 	}
 	if len(warnLogs) == 0 {
-		t.Fatal("Observer didn't capture the warn message!")
+		t.Fatal("Recorder didn't capture the warn message!")
+	}
+	if warnLogs[0].msg != "Test warning message" {
+		t.Fatalf("unexpected message %q", warnLogs[0].msg)
 	}
 }

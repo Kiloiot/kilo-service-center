@@ -34,6 +34,12 @@ type BaseStationRepository interface {
 	// UpdateConnectionStatus updates the connection status of a Base Station
 	UpdateConnectionStatus(ctx context.Context, tenantID, id int64, isOnline bool, lastError *string) error
 
+	// UpdateTLSFingerprintIfBlank persists the certificate fingerprint only
+	// while the stored tls_cert_fingerprint is still NULL or empty. Returns
+	// whether a row was updated; false signals a concurrent writer already
+	// set it (callers reload and compare).
+	UpdateTLSFingerprintIfBlank(ctx context.Context, tenantID, id int64, fingerprint string) (bool, error)
+
 	// UpdateSessionInfo updates the session information of a Base Station
 	UpdateSessionInfo(ctx context.Context, tenantID int64, eui []byte, sessionUUID string) error
 

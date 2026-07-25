@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // ============================================================================
@@ -193,10 +195,9 @@ func (m *mockSessionRepoForPersistence) CleanupExpiredSessions(_ context.Context
 // Organization ID Persistence Tests (P0)
 // ============================================================================
 
-// TestPersistConnectAsync_FreshSession_WritesOrganizationID validates that
-// fresh sessions have organization_id persisted to the database.
-// Ref: session_persistence.go:98-102 (orgID population), line 112 (CreateRequest field)
-func TestPersistConnectAsync_FreshSession_WritesOrganizationID(t *testing.T) {
+// TestPersistConnectSync_WritesOrganizationID validates that fresh sessions
+// have organization_id persisted to the database via the sync path.
+func TestPersistConnectSync_WritesOrganizationID(t *testing.T) {
 	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
 	svc := NewSessionPersistence(mockRepo, log)
@@ -212,12 +213,15 @@ func TestPersistConnectAsync_FreshSession_WritesOrganizationID(t *testing.T) {
 		Resumed:        false, // Fresh session
 	}
 
-	// Call persistence (async)
-	svc.PersistConnectAsync(session, "cert-fingerprint", "CN=test", "192.168.1.1:5001",
+	// The mock signals on an unbuffered channel; consume it concurrently so
+	// the synchronous call does not deadlock.
+	done := make(chan struct{})
+	go func() { mockRepo.waitForCompletion(); close(done) }()
+	id, err := svc.PersistConnectSync(testutil.TestContext(), session, "cert-fingerprint", "CN=test", "192.168.1.1:5001",
 		"TLS 1.3", "TLS_AES_256_GCM_SHA384", scaci.ProtocolVersionString)
-
-	// Wait for async goroutine to complete (deterministic)
-	mockRepo.waitForCompletion()
+	<-done
+	require.NoError(t, err)
+	assert.Equal(t, int64(123), id, "sync persistence returns the DB-assigned session ID")
 
 	// Assert CreateSession was called
 	require.True(t, mockRepo.wasCreateCalled(), "CreateSession should be called for fresh session")
@@ -230,9 +234,9 @@ func TestPersistConnectAsync_FreshSession_WritesOrganizationID(t *testing.T) {
 	assert.Equal(t, int64(42), createReq.TenantID, "TenantID should be preserved")
 }
 
-// TestPersistConnectAsync_FreshSession_NilOrgID validates that nil org ID
-// is handled correctly (community mode / no org resolution).
-func TestPersistConnectAsync_FreshSession_NilOrgID(t *testing.T) {
+// TestPersistConnectSync_NilOrgID validates that nil org ID is handled
+// correctly (community mode / no org resolution).
+func TestPersistConnectSync_NilOrgID(t *testing.T) {
 	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
 	svc := NewSessionPersistence(mockRepo, log)
@@ -247,8 +251,11 @@ func TestPersistConnectAsync_FreshSession_NilOrgID(t *testing.T) {
 		Resumed:        false,
 	}
 
-	svc.PersistConnectAsync(session, "", "", "", "", "", scaci.ProtocolVersionString)
-	mockRepo.waitForCompletion()
+	done := make(chan struct{})
+	go func() { mockRepo.waitForCompletion(); close(done) }()
+	_, err := svc.PersistConnectSync(testutil.TestContext(), session, "", "", "", "", "", scaci.ProtocolVersionString)
+	<-done
+	require.NoError(t, err)
 
 	require.True(t, mockRepo.wasCreateCalled())
 	createReq := mockRepo.getLastCreateReq()
@@ -256,10 +263,9 @@ func TestPersistConnectAsync_FreshSession_NilOrgID(t *testing.T) {
 	assert.Nil(t, createReq.OrganizationID, "OrganizationID should be nil when session.OrganizationID is uuid.Nil")
 }
 
-// TestPersistConnectAsync_ResumedSession_PreservesOrgID validates that resumed
-// sessions do NOT override organization_id (it's preserved from original session).
-// Ref: session_persistence.go:45-77 (resume path - UpdateSession, not CreateSession)
-func TestPersistConnectAsync_ResumedSession_PreservesOrgID(t *testing.T) {
+// TestPersistResumeAsync_PreservesOrgID validates that resumed sessions do
+// NOT override organization_id (it's preserved from the original session row).
+func TestPersistResumeAsync_PreservesOrgID(t *testing.T) {
 	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
 	svc := NewSessionPersistence(mockRepo, log)
@@ -275,7 +281,7 @@ func TestPersistConnectAsync_ResumedSession_PreservesOrgID(t *testing.T) {
 		Resumed:        true, // Resumed session
 	}
 
-	svc.PersistConnectAsync(session, "", "", "", "TLS 1.3", "TLS_AES_256_GCM_SHA384", scaci.ProtocolVersionString)
+	svc.PersistResumeAsync(testutil.TestContext(), session, "TLS 1.3", "TLS_AES_256_GCM_SHA384")
 	mockRepo.waitForCompletion()
 
 	// Assert UpdateSession was called (not CreateSession)
@@ -295,10 +301,9 @@ func TestPersistConnectAsync_ResumedSession_PreservesOrgID(t *testing.T) {
 // TLS Evidence Tests (P1)
 // ============================================================================
 
-// TestPersistConnectAsync_FreshSession_WritesTLSEvidence validates that
-// TLS version, cipher suite, and certificate fingerprint are persisted.
-// Ref: session_persistence.go:81-96 (TLS evidence population)
-func TestPersistConnectAsync_FreshSession_WritesTLSEvidence(t *testing.T) {
+// TestPersistConnectSync_WritesTLSEvidence validates that TLS version,
+// cipher suite, and certificate fingerprint are persisted.
+func TestPersistConnectSync_WritesTLSEvidence(t *testing.T) {
 	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
 	svc := NewSessionPersistence(mockRepo, log)
@@ -315,9 +320,12 @@ func TestPersistConnectAsync_FreshSession_WritesTLSEvidence(t *testing.T) {
 	tlsVersion := "TLS 1.3"
 	cipherSuite := "TLS_AES_256_GCM_SHA384"
 
-	svc.PersistConnectAsync(session, certFingerprint, "CN=test-ac", "10.0.0.1:5001",
+	done := make(chan struct{})
+	go func() { mockRepo.waitForCompletion(); close(done) }()
+	_, err := svc.PersistConnectSync(testutil.TestContext(), session, certFingerprint, "CN=test-ac", "10.0.0.1:5001",
 		tlsVersion, cipherSuite, scaci.ProtocolVersionString)
-	mockRepo.waitForCompletion()
+	<-done
+	require.NoError(t, err)
 
 	require.True(t, mockRepo.wasCreateCalled())
 	createReq := mockRepo.getLastCreateReq()
@@ -340,10 +348,9 @@ func TestPersistConnectAsync_FreshSession_WritesTLSEvidence(t *testing.T) {
 	assert.Equal(t, "10.0.0.1:5001", *createReq.RemoteAddr)
 }
 
-// TestPersistConnectAsync_ResumedSession_UpdatesTLSEvidence validates that
-// TLS evidence is updated on session resume (new TLS handshake).
-// Ref: session_persistence.go:50-64 (TLS update on resume)
-func TestPersistConnectAsync_ResumedSession_UpdatesTLSEvidence(t *testing.T) {
+// TestPersistResumeAsync_UpdatesTLSEvidence validates that TLS evidence is
+// updated on session resume (new TLS handshake).
+func TestPersistResumeAsync_UpdatesTLSEvidence(t *testing.T) {
 	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
 	svc := NewSessionPersistence(mockRepo, log)
@@ -357,7 +364,7 @@ func TestPersistConnectAsync_ResumedSession_UpdatesTLSEvidence(t *testing.T) {
 	newTLSVersion := "TLS 1.3"
 	newCipherSuite := "TLS_CHACHA20_POLY1305_SHA256"
 
-	svc.PersistConnectAsync(session, "", "", "", newTLSVersion, newCipherSuite, scaci.ProtocolVersionString)
+	svc.PersistResumeAsync(testutil.TestContext(), session, newTLSVersion, newCipherSuite)
 	mockRepo.waitForCompletion()
 
 	require.True(t, mockRepo.wasUpdateCalled())
@@ -372,19 +379,17 @@ func TestPersistConnectAsync_ResumedSession_UpdatesTLSEvidence(t *testing.T) {
 	assert.Equal(t, newCipherSuite, *updateReq.CipherSuite)
 }
 
-// TestPersistConnectAsync_UsesConnectPersistTimeout validates that
-// persistence uses ConnectPersistTimeout constant (5 seconds per constants.go).
-// This test verifies the timeout doesn't block the handler flow.
-// Ref: session_persistence.go:42 (context.WithTimeout)
-func TestPersistConnectAsync_UsesConnectPersistTimeout(t *testing.T) {
+// TestConnectPersistTimeoutConstant validates the ConnectPersistTimeout
+// constant bounding both persistence paths (5 seconds per constants.go).
+func TestConnectPersistTimeoutConstant(t *testing.T) {
 	// Verify the timeout constant exists and has expected value
 	assert.Equal(t, 5*time.Second, scaci.ConnectPersistTimeout,
 		"ConnectPersistTimeout should be 5 seconds per constants.go")
 }
 
-// TestPersistConnectAsync_NonBlocking validates that PersistConnectAsync
+// TestPersistResumeAsync_NonBlocking validates that PersistResumeAsync
 // returns immediately without waiting for persistence to complete.
-func TestPersistConnectAsync_NonBlocking(t *testing.T) {
+func TestPersistResumeAsync_NonBlocking(t *testing.T) {
 	log := logger.NewNop()
 
 	// Create a slow mock that takes 500ms
@@ -392,30 +397,42 @@ func TestPersistConnectAsync_NonBlocking(t *testing.T) {
 	svc := NewSessionPersistence(slowMock, log)
 
 	session := &scaci.Session{
+		ID:       999,
 		TenantID: 1,
-		AcEui:    0xAABBCCDDEEFF1122,
-		SnAcUUID: [16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10},
-		SnScUUID: [16]byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20},
-		Resumed:  false,
+		Resumed:  true,
 	}
 
 	start := time.Now()
-	svc.PersistConnectAsync(session, "", "", "", "", "", scaci.ProtocolVersionString)
+	svc.PersistResumeAsync(testutil.TestContext(), session, "TLS 1.3", "TLS_AES_256_GCM_SHA384")
 	elapsed := time.Since(start)
 
 	// Should return almost immediately (not wait for 500ms mock delay)
 	assert.Less(t, elapsed, 50*time.Millisecond,
-		"PersistConnectAsync should return immediately, not block for persistence")
+		"PersistResumeAsync should return immediately, not block for persistence")
 
 	// Wait for async to complete deterministically
 	slowMock.waitForCompletion()
-	assert.True(t, slowMock.wasCreateCalled(), "CreateSession should eventually be called")
+	assert.True(t, slowMock.wasUpdateCalled(), "UpdateSession should eventually be called")
 }
 
-// TestPersistConnectAsync_NegotiatedVersionDefault validates that
+// TestPersistResumeAsync_RejectsFreshSession validates the resume-only
+// contract: a session without a persisted ID is rejected without touching
+// the repository (fresh sessions go through PersistConnectSync).
+func TestPersistResumeAsync_RejectsFreshSession(t *testing.T) {
+	log := logger.NewNop()
+	mockRepo := newMockSessionRepoForPersistence()
+	svc := NewSessionPersistence(mockRepo, log)
+
+	session := &scaci.Session{TenantID: 1, Resumed: false}
+	svc.PersistResumeAsync(testutil.TestContext(), session, "", "")
+
+	assert.False(t, mockRepo.wasCreateCalled(), "a misused resume path must never create a session row")
+	assert.False(t, mockRepo.wasUpdateCalled(), "a fresh session must not be updated as a resume")
+}
+
+// TestPersistConnectSync_NegotiatedVersionDefault validates that
 // negotiated_version defaults to ProtocolVersionString if empty.
-// Ref: session_persistence.go:104-108
-func TestPersistConnectAsync_NegotiatedVersionDefault(t *testing.T) {
+func TestPersistConnectSync_NegotiatedVersionDefault(t *testing.T) {
 	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
 	svc := NewSessionPersistence(mockRepo, log)
@@ -429,8 +446,11 @@ func TestPersistConnectAsync_NegotiatedVersionDefault(t *testing.T) {
 	}
 
 	// Pass empty negotiatedVersion
-	svc.PersistConnectAsync(session, "", "", "", "", "", "")
-	mockRepo.waitForCompletion()
+	done := make(chan struct{})
+	go func() { mockRepo.waitForCompletion(); close(done) }()
+	_, err := svc.PersistConnectSync(testutil.TestContext(), session, "", "", "", "", "", "")
+	<-done
+	require.NoError(t, err)
 
 	require.True(t, mockRepo.wasCreateCalled())
 	createReq := mockRepo.getLastCreateReq()
@@ -448,7 +468,7 @@ func TestPersistConnectAsync_NegotiatedVersionDefault(t *testing.T) {
 type slowSessionRepo struct {
 	mockSessionRepoForPersistence
 	delay        time.Duration
-	createCalled bool
+	updateCalled bool
 	mu           sync.Mutex
 	completionCh chan struct{} // Completion signal for deterministic waiting
 }
@@ -460,19 +480,19 @@ func newSlowSessionRepo(delay time.Duration) *slowSessionRepo {
 	}
 }
 
-func (s *slowSessionRepo) CreateSession(_ context.Context, req *models.SCACISessionCreateRequest) (*models.SCACISession, error) {
+func (s *slowSessionRepo) UpdateSession(_ context.Context, _, _ int64, _ *models.SCACISessionUpdateRequest) error {
 	time.Sleep(s.delay) // Intentional delay for non-blocking test
 	s.mu.Lock()
-	s.createCalled = true
+	s.updateCalled = true
 	s.mu.Unlock()
 	s.completionCh <- struct{}{} // Signal completion
-	return &models.SCACISession{ID: 1, TenantID: req.TenantID}, nil
+	return nil
 }
 
-func (s *slowSessionRepo) wasCreateCalled() bool {
+func (s *slowSessionRepo) wasUpdateCalled() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.createCalled
+	return s.updateCalled
 }
 
 func (s *slowSessionRepo) waitForCompletion() {
@@ -483,10 +503,9 @@ func (s *slowSessionRepo) waitForCompletion() {
 // Metadata Persistence Tests (SCACI §3.3.1 info field)
 // ============================================================================
 
-// TestPersistConnectAsync_FreshSession_WritesNestedMetadata validates that
-// nested metadata (including info field per §3.3.1) is persisted correctly.
-// Ref: session_persistence.go:123 (Metadata in CreateRequest)
-func TestPersistConnectAsync_FreshSession_WritesNestedMetadata(t *testing.T) {
+// TestPersistConnectSync_WritesNestedMetadata validates that nested metadata
+// (including info field per §3.3.1) is persisted correctly.
+func TestPersistConnectSync_WritesNestedMetadata(t *testing.T) {
 	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
 	svc := NewSessionPersistence(mockRepo, log)
@@ -511,8 +530,11 @@ func TestPersistConnectAsync_FreshSession_WritesNestedMetadata(t *testing.T) {
 		},
 	}
 
-	svc.PersistConnectAsync(session, "", "", "", "", "", scaci.ProtocolVersionString)
-	mockRepo.waitForCompletion()
+	done := make(chan struct{})
+	go func() { mockRepo.waitForCompletion(); close(done) }()
+	_, err := svc.PersistConnectSync(testutil.TestContext(), session, "", "", "", "", "", scaci.ProtocolVersionString)
+	<-done
+	require.NoError(t, err)
 
 	require.True(t, mockRepo.wasCreateCalled(), "CreateSession should be called for fresh session")
 	createReq := mockRepo.getLastCreateReq()
@@ -536,10 +558,9 @@ func TestPersistConnectAsync_FreshSession_WritesNestedMetadata(t *testing.T) {
 	assert.Len(t, caps, 2)
 }
 
-// TestPersistConnectAsync_ResumedSession_WritesNestedMetadata validates that
-// metadata is persisted on resume via UpdateSession.
-// Ref: session_persistence.go:64 (Metadata in UpdateRequest)
-func TestPersistConnectAsync_ResumedSession_WritesNestedMetadata(t *testing.T) {
+// TestPersistResumeAsync_WritesNestedMetadata validates that metadata is
+// persisted on resume via UpdateSession.
+func TestPersistResumeAsync_WritesNestedMetadata(t *testing.T) {
 	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
 	svc := NewSessionPersistence(mockRepo, log)
@@ -563,7 +584,7 @@ func TestPersistConnectAsync_ResumedSession_WritesNestedMetadata(t *testing.T) {
 		},
 	}
 
-	svc.PersistConnectAsync(session, "", "", "", "TLS 1.3", "TLS_AES_256_GCM_SHA384", scaci.ProtocolVersionString)
+	svc.PersistResumeAsync(testutil.TestContext(), session, "TLS 1.3", "TLS_AES_256_GCM_SHA384")
 	mockRepo.waitForCompletion()
 
 	require.True(t, mockRepo.wasUpdateCalled(), "UpdateSession should be called for resumed session")
@@ -706,7 +727,7 @@ func TestPersistHeartbeatAsync_CallsUpdateHeartbeat(t *testing.T) {
 		TenantID: 42,
 	}
 
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	mockRepo.waitForCompletion()
 
 	assert.True(t, mockRepo.wasHeartbeatCalled(), "UpdateHeartbeat should be called")
@@ -728,7 +749,7 @@ func TestPersistHeartbeatAsync_CorrectIDs(t *testing.T) {
 		TenantID: expectedTenantID,
 	}
 
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	mockRepo.waitForCompletion()
 
 	tenantID, sessionID := mockRepo.getLastHeartbeatIDs()
@@ -745,7 +766,7 @@ func TestPersistHeartbeatAsync_SkipsNilSession(t *testing.T) {
 	svc := NewSessionPersistence(mockRepo, log)
 
 	// Should not panic
-	svc.PersistHeartbeatAsync(context.Background(), nil)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), nil)
 
 	// Give goroutine time to execute if it were to (it shouldn't)
 	time.Sleep(50 * time.Millisecond)
@@ -766,7 +787,7 @@ func TestPersistHeartbeatAsync_SkipsZeroID(t *testing.T) {
 		TenantID: 42,
 	}
 
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 
 	// Give goroutine time to execute if it were to (it shouldn't)
 	time.Sleep(50 * time.Millisecond)
@@ -790,7 +811,7 @@ func TestPersistHeartbeatAsync_NonBlocking(t *testing.T) {
 	}
 
 	start := time.Now()
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	elapsed := time.Since(start)
 
 	// Should return almost immediately (not wait for 500ms mock delay)
@@ -826,7 +847,7 @@ func TestPersistHeartbeatAsync_LogsErrorOnFailure(t *testing.T) {
 	}
 
 	// Should not panic even with error
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	mockRepo.waitForCompletion()
 
 	// Error is logged but method completes normally
@@ -851,7 +872,7 @@ func TestPersistHeartbeatAsync_WarnContextFields(t *testing.T) {
 		TenantID: expectedTenantID,
 	}
 
-	svc.PersistHeartbeatAsync(context.Background(), session)
+	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
 	mockRepo.waitForCompletion()
 
 	// Wait for WarnContext call (deterministic)

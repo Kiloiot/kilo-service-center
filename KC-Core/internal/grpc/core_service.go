@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -40,6 +39,12 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/Kiloiot/kilo-service-center/pkg/version"
+)
+
+// Endpoint activity status values derived from last-seen recency.
+const (
+	endpointActivityActive   = "active"
+	endpointActivityInactive = "inactive"
 )
 
 // BSSCISessionCloser provides session termination for EUI changes.
@@ -471,7 +476,10 @@ func (s *CoreService) applyBlueprintSnapshot(ctx context.Context, endpoint *mode
 	}
 	raw, marshalErr := buildBlueprintSnapshot(bp)
 	if marshalErr != nil {
-		return status.Error(codes.Internal, "failed to build blueprint snapshot: "+marshalErr.Error())
+		s.log.ErrorContext(ctx, "failed to build blueprint snapshot",
+			"blueprint_id", bp.ID, "error", marshalErr)
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintSnapshotBuildFailed),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintSnapshotBuildFailed))
 	}
 	dm := bp.DeviceModelID
 	endpoint.DeviceModelID = &dm
@@ -496,6 +504,7 @@ func (s *CoreService) pinnedBlueprintBelongsToModel(ctx context.Context, sourceI
 	return bp.DeviceModelID == modelID
 }
 
+// CreateEndPoint registers a new endpoint under the authenticated tenant.
 func (s *CoreService) CreateEndPoint(ctx context.Context, req *pb.CreateEndPointRequest) (*pb.EndPoint, error) {
 	// Extract tenant from authenticated context
 	tenantID, err := GetTenantFromContext(ctx)
@@ -646,7 +655,7 @@ func (s *CoreService) CreateEndPoint(ctx context.Context, req *pb.CreateEndPoint
 
 	// Emit CRUD event
 	if s.eventWriter != nil {
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"epEui": req.Endpoint.EpEui})
+		detailsJSON, _ := json.Marshal(map[string]interface{}{bssci.EventKeyEpEui: req.Endpoint.EpEui})
 		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 			TenantID:    strconv.FormatInt(tenantID, 10),
 			EventType:   models.EventTypeEndpointCreated,
@@ -1065,7 +1074,7 @@ func (s *CoreService) emitEndpointUpdatedEvent(ctx context.Context, tenantID int
 	if s.eventWriter == nil {
 		return
 	}
-	detailsJSON, _ := json.Marshal(map[string]interface{}{"epEui": epEui})
+	detailsJSON, _ := json.Marshal(map[string]interface{}{bssci.EventKeyEpEui: epEui})
 	_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 		TenantID:    strconv.FormatInt(tenantID, 10),
 		EventType:   models.EventTypeEndpointUpdated,
@@ -1126,7 +1135,7 @@ func (s *CoreService) DeleteEndPoint(ctx context.Context, req *pb.DeleteEndPoint
 
 	// Emit CRUD event
 	if s.eventWriter != nil {
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"epEui": req.EpEui})
+		detailsJSON, _ := json.Marshal(map[string]interface{}{bssci.EventKeyEpEui: req.EpEui})
 		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 			TenantID:    strconv.FormatInt(tenantID, 10),
 			EventType:   models.EventTypeEndpointDeleted,
@@ -1394,7 +1403,7 @@ func (s *CoreService) CreateBaseStation(ctx context.Context, req *pb.CreateBaseS
 
 	// Emit CRUD event
 	if s.eventWriter != nil {
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"bsEui": req.Basestation.BsEui})
+		detailsJSON, _ := json.Marshal(map[string]interface{}{bssci.EventKeyBsEui: req.Basestation.BsEui})
 		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 			TenantID:      strconv.FormatInt(tenantID, 10),
 			EventType:     models.EventTypeBSRegistered,
@@ -1599,7 +1608,7 @@ func (s *CoreService) UpdateBaseStation(ctx context.Context, req *pb.UpdateBaseS
 
 	// Emit CRUD event
 	if s.eventWriter != nil {
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"bsEui": req.Basestation.BsEui})
+		detailsJSON, _ := json.Marshal(map[string]interface{}{bssci.EventKeyBsEui: req.Basestation.BsEui})
 		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 			TenantID:      strconv.FormatInt(tenantID, 10),
 			EventType:     models.EventTypeBSUpdated,
@@ -1744,7 +1753,7 @@ func (s *CoreService) DeleteBaseStation(ctx context.Context, req *pb.DeleteBaseS
 
 	// Emit CRUD event
 	if s.eventWriter != nil {
-		detailsJSON, _ := json.Marshal(map[string]interface{}{"bsEui": req.BsEui})
+		detailsJSON, _ := json.Marshal(map[string]interface{}{bssci.EventKeyBsEui: req.BsEui})
 		_ = s.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 			TenantID:      strconv.FormatInt(tenantID, 10),
 			EventType:     models.EventTypeBSDeregistered,
@@ -2359,10 +2368,10 @@ func (s *CoreService) endpointToProto(endpoint *models.EndPoint) *pb.EndPoint {
 	}
 
 	// Derive activity status from LastSeenAt and configured window
-	status := "inactive"
+	status := endpointActivityInactive
 	if endpoint.LastSeenAt != nil && s.endpointActivityWindow > 0 {
 		if time.Since(*endpoint.LastSeenAt) <= s.endpointActivityWindow {
-			status = "active"
+			status = endpointActivityActive
 		}
 	}
 
@@ -2649,14 +2658,17 @@ func (s *CoreService) RequestBaseStationStatus(ctx context.Context, req *pb.Base
 		return nil, err
 	}
 
+	bsEui, err := resolveBaseStationEUI(req.BsEuiHex, req.BsEui) //nolint:staticcheck // deprecated field read for wire compatibility with legacy clients
+	if err != nil {
+		return nil, err
+	}
+
 	s.log.InfoContext(ctx, "RequestBaseStationStatus request",
-		"bs_eui", req.BsEui,
+		"bs_eui", bsEui,
 		"tenant_id", tenantID)
 
-	bsEuiBytes := make([]byte, 8)
-	for i := 7; i >= 0; i-- {
-		bsEuiBytes[i] = byte(req.BsEui >> uint(8*(7-i))) // #nosec G115 - i is bounded 0-7, no overflow
-	}
+	bsEuiArr := mioty.EUI64(bsEui).ToBytes()
+	bsEuiBytes := bsEuiArr[:]
 
 	// Verify tenant ownership first
 	bs, err := s.basestationSvc.GetByEUI(ctx, bsEuiBytes, tenantID)
@@ -2671,10 +2683,10 @@ func (s *CoreService) RequestBaseStationStatus(ctx context.Context, req *pb.Base
 	}
 
 	// Find connected session
-	sessionIface := s.sessionDir.GetSessionByEUI(req.BsEui)
+	sessionIface := s.sessionDir.GetSessionByEUI(bsEui)
 	if sessionIface == nil {
 		s.log.Warn("Base station not connected",
-			"bs_eui", req.BsEui,
+			"bs_eui", bsEui,
 			"bs_name", bs.Name)
 		return &pb.BaseStationStatusResponse{
 			Success: false,
@@ -2687,7 +2699,7 @@ func (s *CoreService) RequestBaseStationStatus(ctx context.Context, req *pb.Base
 	opId, err := s.statusReq.SendStatusRequest(sessionIface)
 	if err != nil {
 		s.log.ErrorContext(ctx, grpcerrors.LogStatusRequestFailed,
-			"bs_eui", req.BsEui,
+			"bs_eui", bsEui,
 			"error", err)
 		return &pb.BaseStationStatusResponse{
 			Success: false,
@@ -2697,7 +2709,7 @@ func (s *CoreService) RequestBaseStationStatus(ctx context.Context, req *pb.Base
 	}
 
 	s.log.InfoContext(ctx, grpcerrors.MsgStatusRequestSent,
-		"bs_eui", req.BsEui,
+		"bs_eui", bsEui,
 		"op_id", opId,
 		"tenant_id", tenantID)
 
@@ -2716,14 +2728,17 @@ func (s *CoreService) InitiatePing(ctx context.Context, req *pb.InitiatePingRequ
 		return nil, err
 	}
 
+	bsEui, err := resolveBaseStationEUI(req.BsEuiHex, req.BsEui) //nolint:staticcheck // deprecated field read for wire compatibility with legacy clients
+	if err != nil {
+		return nil, err
+	}
+
 	s.log.InfoContext(ctx, "InitiatePing request",
-		"bs_eui", req.BsEui,
+		"bs_eui", bsEui,
 		"tenant_id", tenantID)
 
-	bsEuiBytes := make([]byte, 8)
-	for i := 7; i >= 0; i-- {
-		bsEuiBytes[i] = byte(req.BsEui >> uint(8*(7-i))) // #nosec G115 - i is bounded 0-7, no overflow
-	}
+	bsEuiArr := mioty.EUI64(bsEui).ToBytes()
+	bsEuiBytes := bsEuiArr[:]
 
 	// Verify tenant ownership
 	_, err = s.basestationSvc.GetByEUI(ctx, bsEuiBytes, tenantID)
@@ -2738,10 +2753,10 @@ func (s *CoreService) InitiatePing(ctx context.Context, req *pb.InitiatePingRequ
 	}
 
 	// Call BSSCI server InitiatePing (defense-in-depth tenant validation)
-	opId, err := s.pingCmd.InitiatePing(ctx, req.BsEui, tenantID)
+	opId, err := s.pingCmd.InitiatePing(ctx, bsEui, tenantID)
 	if err != nil {
 		s.log.ErrorContext(ctx, grpcerrors.LogPingInitiateFailed,
-			"bs_eui", req.BsEui,
+			"bs_eui", bsEui,
 			"error", err)
 
 		// Branch on CatalogError token for proper gRPC status codes
@@ -2761,7 +2776,7 @@ func (s *CoreService) InitiatePing(ctx context.Context, req *pb.InitiatePingRequ
 	}
 
 	s.log.InfoContext(ctx, grpcerrors.MsgPingRequestSent,
-		"bs_eui", req.BsEui,
+		"bs_eui", bsEui,
 		"op_id", opId,
 		"tenant_id", tenantID)
 
@@ -2931,10 +2946,8 @@ func (s *CoreService) GetDLRXStatus(ctx context.Context, req *pb.GetDLRXStatusRe
 	}
 
 	// Convert to bytes
-	epEuiBytes := make([]byte, 8)
-	for i := 0; i < 8; i++ {
-		epEuiBytes[7-i] = byte(epEui >> (i * 8))
-	}
+	epEuiArr := mioty.EUI64(epEui).ToBytes()
+	epEuiBytes := epEuiArr[:]
 
 	// Set pagination defaults
 	limit := int(req.Limit)
@@ -3169,10 +3182,8 @@ func (s *CoreService) GetDLRXStatusQueries(ctx context.Context, req *pb.GetDLRXS
 	}
 
 	// Convert to bytes
-	epEuiBytes := make([]byte, 8)
-	for i := 0; i < 8; i++ {
-		epEuiBytes[7-i] = byte(epEui >> (i * 8))
-	}
+	epEuiArr := mioty.EUI64(epEui).ToBytes()
+	epEuiBytes := epEuiArr[:]
 
 	// ===== VALIDATE RAW INPUTS BEFORE DEFAULTING =====
 

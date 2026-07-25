@@ -123,7 +123,6 @@ func (r *recordingLogger) getEntriesByLevel(level string) []logEntry {
 }
 
 // testServerWithStubPropagation: REMOVED - no longer needed.
-// Tests now inject stub functions via Server.broadcastFn hook directly.
 
 // Detach Propagate Regression Tests
 // These tests validate fixes for critical blockers in detach propagate implementation
@@ -137,7 +136,6 @@ func Test_wrapOutboundMessage_TypedStruct(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	tests := []struct {
 		name        string
@@ -226,7 +224,6 @@ func Test_wrapOutboundMessage_AlreadyMessage(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	original := &Message{
 		Command: mioty.CmdError,
@@ -256,7 +253,6 @@ func Test_wrapOutboundMessage_Map(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	inputMap := map[string]interface{}{
 		"command": mioty.CmdAttachComplete,
@@ -325,8 +321,10 @@ func Test_SendAttachPropagateBySessionID_SessionValidation(t *testing.T) {
 	t.Run("ExistingSession", func(t *testing.T) {
 		// Add a session
 		session := &Session{
-			ID:             "valid-session",
-			BaseStationEUI: TestBsEui02,
+			ProtocolSessionState: ProtocolSessionState{
+				ID:             "valid-session",
+				BaseStationEUI: TestBsEui02,
+			},
 		}
 		server.RegisterSession(session)
 
@@ -350,9 +348,11 @@ func Test_PersistSession_ConnectInfoConditional(t *testing.T) {
 
 	t.Run("NilConnectInfo_PreservesExisting", func(t *testing.T) {
 		session := &Session{
-			ID:             "test-session",
-			BaseStationEUI: TestBsEui04,
-			ConnectInfo:    json.RawMessage(`{"vendor":"existing"}`),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:             "test-session",
+				BaseStationEUI: TestBsEui04,
+				ConnectInfo:    json.RawMessage(`{"vendor":"existing"}`),
+			},
 		}
 
 		// Simulate PersistSession logic with nil connectInfo
@@ -372,9 +372,11 @@ func Test_PersistSession_ConnectInfoConditional(t *testing.T) {
 
 	t.Run("NonNilConnectInfo_Overwrites", func(t *testing.T) {
 		session := &Session{
-			ID:             "test-session",
-			BaseStationEUI: TestBsEui04,
-			ConnectInfo:    json.RawMessage(`{"vendor":"old"}`),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:             "test-session",
+				BaseStationEUI: TestBsEui04,
+				ConnectInfo:    json.RawMessage(`{"vendor":"old"}`),
+			},
 		}
 
 		// Simulate PersistSession logic with new connectInfo
@@ -391,9 +393,11 @@ func Test_PersistSession_ConnectInfoConditional(t *testing.T) {
 
 	t.Run("EmptyConnectInfo_Overwrites", func(t *testing.T) {
 		session := &Session{
-			ID:             "test-session",
-			BaseStationEUI: TestBsEui04,
-			ConnectInfo:    json.RawMessage(`{"vendor":"old"}`),
+			ProtocolSessionState: ProtocolSessionState{
+				ID:             "test-session",
+				BaseStationEUI: TestBsEui04,
+				ConnectInfo:    json.RawMessage(`{"vendor":"old"}`),
+			},
 		}
 
 		// Empty JSON is different from nil - should still overwrite
@@ -430,9 +434,11 @@ func Test_SendAttachPropagateBySessionID_SessionSpecific(t *testing.T) {
 			logger: newRecordingLogger(),
 			sessions: map[string]*Session{
 				"valid-session": {
-					ID:             "valid-session",
-					BaseStationEUI: TestBsEui02,
-					Bidirectional:  true,
+					ProtocolSessionState: ProtocolSessionState{
+						ID:             "valid-session",
+						BaseStationEUI: TestBsEui02,
+					},
+					Bidirectional: true,
 				},
 			},
 		}
@@ -472,12 +478,13 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 		config: &Config{},
 		logger: logger,
 	}
-	server.broadcastFn = server.SendAttachPropagateToAll
 
 	session := &Session{
-		ID:             "test-session",
-		BaseStationEUI: TestBsEui04,
-		Encoding:       EncodingJSON,
+		ProtocolSessionState: ProtocolSessionState{
+			ID:             "test-session",
+			BaseStationEUI: TestBsEui04,
+			Encoding:       EncodingJSON,
+		},
 	}
 
 	// Test 1: Invalid message missing command field
@@ -490,7 +497,7 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 		},
 	}
 
-	err := server.validateOutboundMessage(session, invalidMsg)
+	err := server.validateOutboundMessage(session, invalidMsg.Data.(map[string]interface{}))
 	if err == nil {
 		t.Error("Expected validation error for missing command field")
 	}
@@ -504,7 +511,6 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 		config: &Config{},
 		logger: logger2,
 	}
-	server2.broadcastFn = server2.SendAttachPropagateToAll
 
 	validMsg := &Message{
 		Command: mioty.CmdConnectResponse,
@@ -519,7 +525,7 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 		},
 	}
 
-	err = server2.validateOutboundMessage(session, validMsg.Data)
+	err = server2.validateOutboundMessage(session, validMsg.Data.(map[string]interface{}))
 	if err != nil {
 		t.Errorf("Valid message should not fail validation: %v", err)
 	}

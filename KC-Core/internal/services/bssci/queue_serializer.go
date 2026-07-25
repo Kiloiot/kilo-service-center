@@ -5,6 +5,12 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
+// BSSCI wire envelope keys for serialized response frames.
+const (
+	wireKeyCommand = "command"
+	wireKeyOpId    = "opId" //nolint:revive // BSSCI §2.5 requires lowercase 'd'
+)
+
 // queueSerializer implements bssci.QueueSerializer interface
 //
 // This service builds canonical BSSCI downlink response frames per MIOTY spec.
@@ -34,8 +40,8 @@ func NewQueueSerializer() bssci.QueueSerializer {
 // Service Center confirms completion with this message.
 func (q *queueSerializer) BuildDLDataQueueComplete(opId int64) map[string]interface{} {
 	return map[string]interface{}{
-		"command": mioty.CmdDLDataQueueComplete,
-		"opId":    opId,
+		wireKeyCommand: mioty.CmdDLDataQueueComplete,
+		wireKeyOpId:    opId,
 	}
 }
 
@@ -51,8 +57,8 @@ func (q *queueSerializer) BuildDLDataResultResponse(opId int64, result *mioty.DL
 	_ = result // Unused per BSSCI §5.14.2 (queId/success not included in response)
 	// Spec §5.14.2: dlDataResRsp MUST contain only command/opId.
 	return map[string]interface{}{
-		"command": mioty.CmdDLDataResultResponse,
-		"opId":    opId,
+		wireKeyCommand: mioty.CmdDLDataResultResponse,
+		wireKeyOpId:    opId,
 	}
 }
 
@@ -67,8 +73,8 @@ func (q *queueSerializer) BuildDLDataResultResponse(opId int64, result *mioty.DL
 // acknowledged (dlDataResRsp), and this message confirms completion.
 func (q *queueSerializer) BuildDLDataResultComplete(opId int64) map[string]interface{} {
 	return map[string]interface{}{
-		"command": mioty.CmdDLDataResultComplete,
-		"opId":    opId,
+		wireKeyCommand: mioty.CmdDLDataResultComplete,
+		wireKeyOpId:    opId,
 	}
 }
 
@@ -83,7 +89,7 @@ func (q *queueSerializer) BuildDLDataResultComplete(opId int64) map[string]inter
 // Service Center confirms completion with this message.
 func (q *queueSerializer) BuildDLDataRevokeComplete(opID int64) map[string]interface{} {
 	return map[string]interface{}{
-		"command": mioty.CmdDLDataRevokeComplete,
-		"opId":    opID,
+		wireKeyCommand: mioty.CmdDLDataRevokeComplete,
+		wireKeyOpId:    opID,
 	}
 }

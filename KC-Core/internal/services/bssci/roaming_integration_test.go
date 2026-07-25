@@ -16,6 +16,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // Integration test for complete roaming flow
@@ -27,7 +29,7 @@ func TestRoamingIntegration_AttachDetachFlow(t *testing.T) {
 	// 4. Detach cleans up roaming state
 
 	// Setup test environment
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	// Create test data
 	epEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
@@ -133,7 +135,7 @@ func TestRoamingIntegration_AttachDetachFlow(t *testing.T) {
 
 // Test roaming validation with invalid partnerships
 func TestRoamingIntegration_InvalidPartnership(t *testing.T) {
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	epEui := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22}
 	ownerTenantID := int64(5)
@@ -181,7 +183,7 @@ func TestRoamingIntegration_InvalidPartnership(t *testing.T) {
 
 // Test cache expiration and refresh
 func TestRoamingIntegration_CacheExpiration(t *testing.T) {
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	epEui := []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}
 	ownerTenantID := int64(3)
@@ -238,7 +240,7 @@ func TestRoamingIntegration_CacheExpiration(t *testing.T) {
 
 // Test metrics collection
 func TestRoamingIntegration_Metrics(t *testing.T) {
-	ctx := context.Background()
+	ctx := testutil.TestContext()
 
 	mockStorage := &MockStorageWithRoaming{
 		endpoints: map[string]*models.EndPoint{

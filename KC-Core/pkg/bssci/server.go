@@ -27,7 +27,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -110,30 +109,35 @@ type Server struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
 
-	// Concrete dependencies KEPT (needed by services)
-	connectionMgr *basestation.ConnectionManager // Real collaborator for ConnectionService
-	storage       interfaces.Storage             // Uses repository interfaces
-
 	// Injected services
-	sessionSvc      SessionService
-	downlinkSvc     DownlinkService
-	statusSvc       StatusService
-	connectionSvc   ConnectionService
-	broadcaster     SCACIBroadcaster
-	queueSerializer QueueSerializer // Downlink response frame builder
-	auditLogger     AuditLogger     // Downlink audit event recorder
-	tenantResolver  TenantResolver  // Queue-to-tenant mapping (replaces queueTenants map)
+	sessionSvc         SessionService
+	versionNegotiator  VersionNegotiator
+	downlinkSvc        DownlinkService
+	statusSvc          StatusService
+	connectionRegistry BaseStationConnectionRegistry
+	queueSerializer    QueueSerializer // Downlink response frame builder
+	auditLogger        AuditLogger     // Downlink audit event recorder
+	tenantResolver     TenantResolver  // Queue-to-tenant mapping (replaces queueTenants map)
 
 	// Organization resolution
-	orgResolver     org.Resolver // Organization UUID → tenant ID resolution
-	defaultTenantID int64        // Community mode fallback tenant ID
+	orgResolver OrganizationDirectory // Organization UUID → tenant ID resolution
+	// Certificate identity enforcement (strict mode): resolver maps the TLS
+	// client certificate to a tenant/org identity at accept; the directory
+	// reads registered station identity for connect-time enforcement
+	certIdentityResolver CertificateIdentityResolver
+	bsDirectory          RegisteredBaseStationDirectory
+	defaultTenantID      int64 // Community mode fallback tenant ID
 
-	// Keep essential infrastructure
-	deduplicator    *MessageDeduplicator
-	eventStore      interfaces.SystemEventStore
-	basestationRepo interfaces.BaseStationRepository
-	endpointRepo    interfaces.EndpointRepository
-	keyEncryptor    *crypto.KeyEncryptor
+	// Storage-boundary contracts (narrow, consumer-owned; satisfied
+	// structurally by the KC-DB repositories)
+	eventStore         EventStore
+	basestationRepo    BaseStationStore
+	endpointRepo       EndpointDirectory
+	keyEncryptor       NetworkKeyProtector
+	protocolMessages   ProtocolMessageStore
+	dlrxStore          DLRXStatusStore
+	bsStatusStore      BaseStationStatusStore
+	downlinkQueueStore DownlinkQueueStore
 
 	// Automatic propagation (BSSCI §5.8.3)
 	propagationSvc propagation.Service
@@ -146,6 +150,21 @@ type Server struct {
 
 	// Shared uplink ingest pipeline (dedup, tenant resolution, persistence, SCACI, MQTT)
 	uplinkIngestSvc UplinkIngestService
+
+	// Transactional attach / attach-propagate endpoint-session persistence
+	attachPersistence EndpointAttachmentPersistence
+
+	// runtimeConfigured records that ConfigureRuntime supplied the circular
+	// dependencies; Start refuses to run without them.
+	runtimeConfigured bool
+
+	// started records that Start committed; late runtime reconfiguration and
+	// double starts are rejected.
+	started bool
+
+	// stopped records that Stop ran; a stopped server cannot be restarted
+	// and repeated Stop calls are no-ops.
+	stopped bool
 
 	// Relay outbox writer for CE mode: enqueues unknown-endpoint uplinks for federation relay
 	relayOutbox RelayOutboxWriter
@@ -166,14 +185,6 @@ type Server struct {
 	// Resolves blueprints and decodes payloads for uplink messages
 	blueprintDecoder  BlueprintDecoder
 	blueprintResolver BlueprintResolver
-
-	// broadcastFn allows tests to inject stub implementations for SendAttachPropagateToAll.
-	// Production code initializes this to s.SendAttachPropagateToAll in constructors.
-	broadcastFn func(endpointEUI uint64, nwkSnKey []byte, shortAddr uint16, bidirectional bool, lastPacketCnt uint32, dualChannel bool, repetition uint8, wideCarrOff bool, longBlkDist bool) []error
-
-	// testNormalizationSpy allows tests to observe normalization decisions in handleMessage.
-	// Production code leaves this nil. Tests set it to capture (command, shouldNormalize) pairs.
-	testNormalizationSpy func(cmd string, normalized bool)
 }
 
 // Compile-time interface assertions
@@ -199,34 +210,64 @@ type Config struct {
 	OrgEnforcementEnabled            bool   // Require valid X-Organization-ID in gRPC metadata
 	MessageEncoding                  string // BSSCI Section 1: default message encoding (json/msgpack)
 	DetachSignatureValidationEnabled bool   // BSSCI §5.7.1: Enable detach signature validation
+	// OperationAckTimeout bounds how long the service center waits for the
+	// next handshake message (conCmp or errorAck) after sending conRsp or a
+	// connect-stage error (states AwaitingConnectComplete/AwaitingConnectErrorAck).
+	OperationAckTimeout time.Duration
+	// ConnectionEstablishmentTimeout bounds a freshly accepted connection
+	// before the base station sends its con (state AwaitingConnect), so an
+	// idle socket cannot hold resources indefinitely.
+	ConnectionEstablishmentTimeout time.Duration
+	// DuplicateWindow is the uplink deduplication window
+	DuplicateWindow time.Duration
+	// CertificatePollInterval is the certificate change poll interval
+	CertificatePollInterval time.Duration
+	// StatusRequestInterval is how often the SC polls a base station for status
+	StatusRequestInterval time.Duration
+	// StatusRequestInitialDelay delays the first status poll after connect
+	StatusRequestInitialDelay time.Duration
+	// DLRXQueryTimeout expires an unanswered dlRxStatQry after this duration
+	DLRXQueryTimeout time.Duration
+	// DLRXCleanupInterval is the dlRxStatQry expiry sweep cadence
+	DLRXCleanupInterval time.Duration
 	// DisableAttachPersistence is TEST-ONLY: skips DB persistence in attach handler.
 	// MUST remain false in production. Used by tests to exercise replay protection without transaction stubs.
 	DisableAttachPersistence bool
 }
 
-// Session represents a connected Base Station session
+// ConnectState tracks the connect operation handshake per BSSCI §3.3/§5.17:
+// con initiates the operation, conCmp completes it, and an error replaces the
+// normal sequence with error followed by errorAck.
+type ConnectState int
+
+// Connect handshake states. A session is provisional until ConnectStateComplete;
+// provisional sessions never enter the live-session maps or the resumable index.
+const (
+	// ConnectStateAwaitingConnect: no con received yet
+	ConnectStateAwaitingConnect ConnectState = iota
+	// ConnectStateAwaitingConnectComplete: conRsp sent, waiting for conCmp
+	ConnectStateAwaitingConnectComplete
+	// ConnectStateAwaitingConnectErrorAck: error sent, waiting for errorAck
+	ConnectStateAwaitingConnectErrorAck
+	// ConnectStateComplete: handshake finished, session active
+	ConnectStateComplete
+	// ConnectStateTerminal: handshake failed or connection closing
+	ConnectStateTerminal
+)
+
+// ProtocolSessionState is the transport-free domain state of a Base Station
+// session: identity, negotiated protocol parameters, resume/handshake state,
+// and operation counters. Application services (connect, lifecycle, resume)
+// operate on this state and never on the transport-bearing Session.
 //
 //revive:disable:var-naming BsOpId/ScOpId/LastBsOpId/LastScOpId use lowercase 'd' per MIOTY BSSCI §3.2
-type Session struct {
+type ProtocolSessionState struct {
 	ID                string
 	BaseStationEUI    uint64
-	Conn              net.Conn
-	Connected         time.Time
-	LastSeen          time.Time
 	ClientVersion     string // BS-provided version (raw client claim for audit)
 	NegotiatedVersion string // SC canonical version (BSSCI §4-4.5)
-	Vendor            string
-	Model             string
-	Name              string
-	SoftwareVersion   string
-	Bidirectional     bool
-	GeoLocation       []float64
 	SessionUUID       []byte
-	// MIOTY session fields
-	DbSessionID      int64              // Database session ID (BIGINT) for persistence
-	UserProvidedName string             // User-provided base station name
-	ActiveVMTypes    map[uint64][]uint8 // Track active Variable MAC types per endpoint
-	stopStatus       chan struct{}      // Channel to stop status mechanism
+	DbSessionID       int64 // Database session ID (BIGINT) for persistence
 	// Session resume fields (BSSCI-3.3)
 	BsUUID      []byte          // Base Station UUID for session resume
 	BsOpId      int64           // Last known Base Station operation ID
@@ -241,20 +282,111 @@ type Session struct {
 	// Message encoding (BSSCI Section 1)
 	Encoding string // Message encoding: "json" or "msgpack" (negotiated on first message)
 	// Organization resolution
-	OrganizationID   uuid.UUID         // Kilo Cloud org UUID (from TLS cert or community fallback)
-	ResolvedTenantID int64             // Tenant ID resolved from cert/org (vs server default s.tenantID)
-	ClientCert       *x509.Certificate // TLS client certificate for org resolution
-	mu               sync.Mutex
+	OrganizationID   uuid.UUID // Kilo Cloud org UUID (from TLS cert or community fallback)
+	ResolvedTenantID int64     // Tenant ID resolved from cert/org (vs server default s.tenantID)
+	// Connect handshake state machine (BSSCI §3.3/§5.17)
+	ConnectState ConnectState
+	// mu is the domain concurrency guard for counter/state mutation.
+	mu sync.Mutex
+}
+
+// NextScOpID allocates the next Service Center operation ID for this session
+// (negative, strictly decrementing per BSSCI rev1 §5.2 / classic §3.2). The
+// consumed ID is never rolled back on a later failure: a rollback would race
+// concurrent allocations and reissue an ID already held by an in-flight
+// operation, so a failed operation simply leaves a harmless gap.
+func (p *ProtocolSessionState) NextScOpID() int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.LastScOpId--
+	return p.LastScOpId
+}
+
+// errorAckDisposition classifies what the errorAck answering a sent error
+// frame is allowed to do (BSSCI rev1 §5.17 / classic §3.17).
+type errorAckDisposition int
+
+const (
+	// errorAckAckOnly: the errorAck merely closes the error exchange; it must
+	// not touch any pending operation.
+	errorAckAckOnly errorAckDisposition = iota
+	// errorAckFinalizePendingOperation: the sent error replaced the normal
+	// response/completion of a known pending SC operation, so the errorAck
+	// completes that operation and its pending row is finalized.
+	errorAckFinalizePendingOperation
+)
+
+// Session represents a connected Base Station session: the transport-free
+// ProtocolSessionState plus the live transport resources (socket, certificate,
+// background channels) that never cross an application-service boundary.
+type Session struct {
+	ProtocolSessionState
+	Conn            net.Conn
+	Connected       time.Time
+	LastSeen        time.Time
+	Vendor          string
+	Model           string
+	Name            string
+	SoftwareVersion string
+	Bidirectional   bool
+	GeoLocation     []float64
+	// MIOTY session fields
+	UserProvidedName string             // User-provided base station name
+	ActiveVMTypes    map[uint64][]uint8 // Track active Variable MAC types per endpoint
+	stopStatus       chan struct{}      // Channel to stop status mechanism
+	ClientCert       *x509.Certificate  // TLS client certificate for org resolution
+	// pendingBaseStation caches the registration looked up during the connect
+	// request so connect-complete does not repeat the lookup
+	pendingBaseStation *basestation.BaseStation
+	// pendingErrorAcks tracks the nonzero operation IDs for which this service
+	// center has sent an error frame and awaits the base station's errorAck
+	// (BSSCI rev1 §5.17 / classic §3.17). The exchange is connection-scoped
+	// and never survives resume; connect handshake errors (opId 0) are tracked
+	// by ConnectState instead. Guarded by the ProtocolSessionState mutex.
+	pendingErrorAcks map[int64]errorAckDisposition
+	// certSubjectEUI is the base station EUI encoded in the TLS client
+	// certificate CN (CE issuance scheme), enforced against the connect
+	// bsEui in strict mode; nil for org-<UUID> certificates.
+	certSubjectEUI *uint64
+	// resumePendingOps is the strictly decoded pending-operation snapshot
+	// loaded during a compatible resume, held on the provisional connection
+	// until conCmp activation restores the cache and reissues the eligible
+	// operations (BSSCI rev1 §5.3.1 / classic §3.3.1).
+	resumePendingOps []*PendingOperation
+}
+
+// registerPendingErrorAck records that an error frame was sent for opId and a
+// matching errorAck is now expected. opId 0 (connect) is never registered.
+func (s *Session) registerPendingErrorAck(opId int64, disposition errorAckDisposition) {
+	if opId == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pendingErrorAcks == nil {
+		s.pendingErrorAcks = make(map[int64]errorAckDisposition)
+	}
+	s.pendingErrorAcks[opId] = disposition
+}
+
+// consumePendingErrorAck removes and returns the awaited-errorAck entry for
+// opId. ok is false when no error frame was sent for that operation on this
+// connection, in which case the errorAck is unsolicited.
+func (s *Session) consumePendingErrorAck(opId int64) (errorAckDisposition, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	disposition, ok := s.pendingErrorAcks[opId]
+	if ok {
+		delete(s.pendingErrorAcks, opId)
+	}
+	return disposition, ok
 }
 
 // BaseStationEUIBytes converts the BaseStationEUI uint64 to a byte slice.
 // This is needed for roaming service calls that expect []byte parameters.
 func (s *Session) BaseStationEUIBytes() []byte {
-	euiBytes := make([]byte, 8)
-	for i := 0; i < 8; i++ {
-		euiBytes[i] = byte(s.BaseStationEUI >> (8 * (7 - i)))
-	}
-	return euiBytes
+	euiBytes := mioty.EUI64(s.BaseStationEUI).ToBytes()
+	return euiBytes[:]
 }
 
 // Message represents a BSSCI protocol message
@@ -286,60 +418,43 @@ func tryExtractFromMap(v map[string]interface{}) (string, int64, bool) {
 		return "", 0, false // Neither field present
 	}
 
-	// Extract opId - handle int64 or float64
+	// Extract opId via the canonical operation ID parsing (BSSCI §5.2)
 	opIdVal, hasOpId := v["opId"]
 	if !hasOpId {
 		return "", 0, false
 	}
 
-	var opId int64
-	switch typed := opIdVal.(type) {
-	case int64:
-		opId = typed
-	case float64:
-		opId = int64(typed)
-	default:
+	opId, ok := parseOpID(opIdVal)
+	if !ok {
 		return "", 0, false // Wrong type, needs JSON fallback
 	}
 
 	return command, opId, true
 }
 
-// wrapOutboundMessage converts interface{} to *Message for consistent RawPayload capture
-// Handles *Message, map[string]interface{}, and typed structs (ConnectResponse, etc.) via JSON round-trip
+// outboundEnvelope exposes the wire envelope (command, opId) of typed BSSCI
+// messages embedding mioty.BaseMessage without serialization round-trips.
+type outboundEnvelope interface {
+	EnvelopeCommand() string
+	EnvelopeOpID() int64
+}
+
+// wrapOutboundMessage converts interface{} to *Message for consistent RawPayload capture.
+// Map payloads keep their original values; typed structs (ConnectResponse, etc.)
+// are retained as the original typed payload so uint64 fields such as scEui are
+// encoded exactly (no JSON float64 projection).
 func (s *Server) wrapOutboundMessage(msg interface{}) (*Message, error) {
 	switch v := msg.(type) {
 	case *Message:
 		return v, nil
 	case map[string]interface{}:
-		// Try direct extraction first
 		command, opId, ok := tryExtractFromMap(v)
 		if !ok {
-			// Fall back to JSON round-trip normalization
-			jsonBytes, err := json.Marshal(v)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal map: %w", err)
-			}
-			var normalized map[string]interface{}
-			if err := json.Unmarshal(jsonBytes, &normalized); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal map: %w", err)
-			}
-
-			// Retry extraction after normalization
-			command, opId, ok = tryExtractFromMap(normalized)
-			if !ok {
-				return nil, fmt.Errorf("map missing command/opId after normalization")
-			}
-
-			// Populate normalized map with extracted values
-			normalized["command"] = command
-			normalized["opId"] = opId
-			v = normalized // Callers see sanitized values
-		} else {
-			// Direct extraction succeeded - ensure keys are normalized in original map
-			v["command"] = command
-			v["opId"] = opId
+			return nil, fmt.Errorf("map missing command/opId envelope")
 		}
+		// Ensure canonical envelope keys on the original map
+		v["command"] = command
+		v["opId"] = opId
 
 		return &Message{
 			Command: command,
@@ -347,42 +462,40 @@ func (s *Server) wrapOutboundMessage(msg interface{}) (*Message, error) {
 			Data:    v,
 		}, nil
 	default:
-		// Handle typed structs (ConnectResponse, PingResponse, etc.) via JSON marshaling
-		jsonBytes, err := json.Marshal(msg)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal message: %w", err)
-		}
-		var msgMap map[string]interface{}
-		if err := json.Unmarshal(jsonBytes, &msgMap); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal message: %w", err)
-		}
-
-		// Extract command from commandType or command field (MIOTY spec variance)
-		command, ok := msgMap["commandType"].(string)
+		env, ok := msg.(outboundEnvelope)
 		if !ok {
-			command, ok = msgMap["command"].(string)
-			if !ok {
-				return nil, fmt.Errorf("message missing command/commandType field (type: %T)", msg)
-			}
+			return nil, fmt.Errorf("message type %T does not expose a BSSCI envelope", msg)
 		}
-
-		// Extract opId (JSON unmarshals numbers as float64)
-		opId, ok := msgMap["opId"].(float64)
-		if !ok {
-			return nil, fmt.Errorf("message missing opId field (type: %T)", msg)
+		command := env.EnvelopeCommand()
+		if command == "" {
+			return nil, fmt.Errorf("message missing command/commandType field (type: %T)", msg)
 		}
-
-		// CRITICAL: Populate msgMap with normalized values for validation
-		// Without this, validateOutboundMessage fails with missing command/opId
-		msgMap["command"] = command
-		msgMap["opId"] = int64(opId)
 
 		return &Message{
 			Command: command,
-			OpId:    int64(opId),
-			Data:    msgMap,
+			OpId:    env.EnvelopeOpID(),
+			Data:    msg,
 		}, nil
 	}
+}
+
+// outboundValidationProjection builds the map used for outbound field-catalog
+// validation. Typed payloads are projected through MessagePack (uint64-exact);
+// map payloads are validated directly. The projection is only inspected -
+// encoding always uses the original payload.
+func outboundValidationProjection(payload interface{}) (map[string]interface{}, error) {
+	if m, ok := payload.(map[string]interface{}); ok {
+		return m, nil
+	}
+	raw, err := msgpack.Marshal(payload)
+	if err != nil {
+		return nil, &CatalogError{Token: errOutboundMarshalFailed, Posix: POSIX_EPROTO}
+	}
+	var projection map[string]interface{}
+	if err := msgpack.Unmarshal(raw, &projection); err != nil {
+		return nil, &CatalogError{Token: errOutboundMarshalFailed, Posix: POSIX_EPROTO}
+	}
+	return projection, nil
 }
 
 // HandlerFunc handles a specific command
@@ -547,24 +660,10 @@ func (s *Server) resolveEndpointTenantID(ctx context.Context, session *Session, 
 }
 
 // validateOutboundMessage validates an outbound message complies with BSSCI field catalog.
+// The map is a validation projection of the payload (see outboundValidationProjection);
+// it is inspected only and never replaces the encoded payload.
 // Returns nil on success, CatalogError on validation failure.
-func (s *Server) validateOutboundMessage(session *Session, message interface{}) error {
-	// Marshal to map for field inspection
-	var msgMap map[string]interface{}
-	switch v := message.(type) {
-	case map[string]interface{}:
-		msgMap = v
-	default:
-		// Convert via JSON round-trip
-		jsonBytes, err := json.Marshal(message)
-		if err != nil {
-			return &CatalogError{Token: errOutboundMarshalFailed, Posix: POSIX_EPROTO}
-		}
-		if err := json.Unmarshal(jsonBytes, &msgMap); err != nil {
-			return &CatalogError{Token: errOutboundMarshalFailed, Posix: POSIX_EPROTO}
-		}
-	}
-
+func (s *Server) validateOutboundMessage(session *Session, msgMap map[string]interface{}) error {
 	// Check command field exists
 	cmdVal, hasCommand := msgMap["command"]
 	if !hasCommand {
@@ -632,72 +731,119 @@ func (s *Server) validateOutboundMessage(session *Session, message interface{}) 
 	return nil
 }
 
-// NewServer creates a new BSSCI server with injected service dependencies
-func NewServer(
-	cfg *Config,
-	log logger.Logger,
-	connectionMgr *basestation.ConnectionManager,
-	stor interfaces.Storage,
-	eventStore interfaces.SystemEventStore,
-	basestationRepo interfaces.BaseStationRepository,
-	endpointRepo interfaces.EndpointRepository,
-	tenantID int64,
-	sessionSvc SessionService,
-	downlinkSvc DownlinkService,
-	statusSvc StatusService,
-	connectionSvc ConnectionService,
-	broadcaster SCACIBroadcaster,
-	queueSerializer QueueSerializer,
-	auditLogger AuditLogger,
-	tenantResolver TenantResolver,
-	orgResolver org.Resolver,
-	defaultTenantID int64,
-) (*Server, error) {
+// Dependencies carries every non-circular Server dependency for NewServer.
+// StatusSvc is mandatory; feature-controlled collaborators (MQTT, blueprint
+// decoding, detach validation, federation outbox, SCACI bridges) stay nil
+// when their feature is off. The circular dependencies (propagation, downlink
+// dispatcher) are supplied via ConfigureRuntime before Start.
+type Dependencies struct {
+	// Core protocol services
+	SessionSvc         SessionService
+	VersionNegotiator  VersionNegotiator
+	DownlinkSvc        DownlinkService
+	StatusSvc          StatusService
+	ConnectionRegistry BaseStationConnectionRegistry
+	QueueSerializer    QueueSerializer
+	AuditLogger        AuditLogger
+	TenantResolver     TenantResolver
+
+	// Storage-boundary contracts
+	EventStore        EventStore
+	BaseStations      BaseStationStore
+	Endpoints         EndpointDirectory
+	AttachPersistence EndpointAttachmentPersistence
+	OrgDirectory      OrganizationDirectory
+	KeyProtector      NetworkKeyProtector
+
+	// Certificate identity enforcement
+	CertIdentityResolver CertificateIdentityResolver
+	BaseStationDirectory RegisteredBaseStationDirectory
+
+	// Ingest pipeline and routing
+	UplinkIngest        UplinkIngestService
+	RoamingSvc          RoamingService
+	DispositionResolver IngressDispositionResolver
+	RelayOutbox         RelayOutboxWriter
+
+	// Feature-controlled collaborators
+	DetachValidator          DetachSignatureValidator
+	MQTTPublisher            MQTTEventPublisher
+	BlueprintDecoder         BlueprintDecoder
+	BlueprintResolver        BlueprintResolver
+	SCACIEPStatusBroadcaster SCACIEPStatusBroadcaster
+
+	// ProtocolMessages/DLRXStatus/BaseStationStatus/DownlinkQueue are the
+	// narrow storage views; each is satisfied directly by the matching
+	// KC-DB repository.
+	ProtocolMessages  ProtocolMessageStore
+	DLRXStatus        DLRXStatusStore
+	BaseStationStatus BaseStationStatusStore
+	DownlinkQueue     DownlinkQueueStore
+
+	TenantID        int64
+	DefaultTenantID int64
+}
+
+// RuntimeDependencies carries the collaborators that are constructed against
+// the live *Server (circular) and therefore cannot be constructor arguments.
+type RuntimeDependencies struct {
+	Propagation        propagation.Service
+	DownlinkDispatcher DownlinkDispatcher
+}
+
+// NewServer creates a BSSCI server from its dependency set; call
+// ConfigureRuntime before Start to supply the circular collaborators.
+func NewServer(cfg *Config, log logger.Logger, deps Dependencies) (*Server, error) {
 	// StatusService is mandatory (single-writer architecture)
-	if statusSvc == nil {
+	if deps.StatusSvc == nil {
 		return nil, fmt.Errorf("statusSvc is required for pending operation tracking")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Initialize key encryptor for sensitive data
-	keyEncryptor, err := crypto.NewKeyEncryptor()
-	if err != nil {
-		log.Warn(LogBSSCIFailedToInitializeKeyEncryptor, "error", err)
-		// Continue without encryption rather than failing
-	}
-
 	s := &Server{
-		config:          cfg,
-		logger:          log,
-		sessions:        make(map[string]*Session),
-		ctx:             ctx,
-		cancel:          cancel,
-		handlers:        make(map[string]HandlerFunc),
-		connectionMgr:   connectionMgr,
-		deduplicator:    NewMessageDeduplicator(5 * time.Minute), // 5 minute dedup window per MIOTY spec
-		storage:         stor,
-		tenantID:        tenantID,
-		eventStore:      eventStore,
-		basestationRepo: basestationRepo,
-		endpointRepo:    endpointRepo,
-		keyEncryptor:    keyEncryptor,
-		// Injected services
-		sessionSvc:      sessionSvc,
-		downlinkSvc:     downlinkSvc,
-		statusSvc:       statusSvc,
-		connectionSvc:   connectionSvc,
-		queueSerializer: queueSerializer,
-		auditLogger:     auditLogger,
-		tenantResolver:  tenantResolver,
-		broadcaster:     broadcaster,
-		// Organization resolution
-		orgResolver:     orgResolver,
-		defaultTenantID: defaultTenantID,
-	}
+		config:   cfg,
+		logger:   log,
+		sessions: make(map[string]*Session),
+		ctx:      ctx,
+		cancel:   cancel,
+		handlers: make(map[string]HandlerFunc),
+		tenantID: deps.TenantID,
 
-	// Initialize broadcast hook for production (tests can override)
-	s.broadcastFn = s.SendAttachPropagateToAll
+		eventStore:         deps.EventStore,
+		basestationRepo:    deps.BaseStations,
+		endpointRepo:       deps.Endpoints,
+		keyEncryptor:       deps.KeyProtector,
+		protocolMessages:   deps.ProtocolMessages,
+		dlrxStore:          deps.DLRXStatus,
+		bsStatusStore:      deps.BaseStationStatus,
+		downlinkQueueStore: deps.DownlinkQueue,
+		attachPersistence:  deps.AttachPersistence,
+
+		sessionSvc:         deps.SessionSvc,
+		versionNegotiator:  deps.VersionNegotiator,
+		downlinkSvc:        deps.DownlinkSvc,
+		statusSvc:          deps.StatusSvc,
+		connectionRegistry: deps.ConnectionRegistry,
+		queueSerializer:    deps.QueueSerializer,
+		auditLogger:        deps.AuditLogger,
+		tenantResolver:     deps.TenantResolver,
+
+		orgResolver:     deps.OrgDirectory,
+		defaultTenantID: deps.DefaultTenantID,
+
+		certIdentityResolver:     deps.CertIdentityResolver,
+		bsDirectory:              deps.BaseStationDirectory,
+		uplinkIngestSvc:          deps.UplinkIngest,
+		roamingSvc:               deps.RoamingSvc,
+		dispositionResolver:      deps.DispositionResolver,
+		relayOutbox:              deps.RelayOutbox,
+		detachValidator:          deps.DetachValidator,
+		mqttPublisher:            deps.MQTTPublisher,
+		blueprintDecoder:         deps.BlueprintDecoder,
+		blueprintResolver:        deps.BlueprintResolver,
+		scaciEPStatusBroadcaster: deps.SCACIEPStatusBroadcaster,
+	}
 
 	// Register command handlers
 	s.registerHandlers()
@@ -705,91 +851,150 @@ func NewServer(
 	return s, nil
 }
 
-// SetPropagationService injects the propagation service after server construction
-// Post-construction initialization to avoid circular dependency in main.go
-// The propagation service depends on Server as AttachPropagateSender, so it must be
-// constructed after the server exists and then injected back.
-//
-// BSSCI §5.8-5.8.3: Automatic endpoint propagation to multiple base stations
-func (s *Server) SetPropagationService(svc propagation.Service) {
-	s.propagationSvc = svc
+// ConfigureRuntime supplies the circular dependencies once, before Start:
+// the propagation service and the downlink dispatcher are constructed
+// against the live *Server and injected back here.
+func (s *Server) ConfigureRuntime(deps RuntimeDependencies) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.started {
+		return fmt.Errorf("runtime cannot be reconfigured after Start")
+	}
+	if s.runtimeConfigured {
+		return fmt.Errorf("runtime already configured")
+	}
+	if deps.Propagation == nil {
+		return fmt.Errorf("propagation service is required")
+	}
+	if deps.DownlinkDispatcher == nil {
+		return fmt.Errorf("downlink dispatcher is required")
+	}
+	if s.config != nil && s.config.DetachSignatureValidationEnabled && s.detachValidator == nil {
+		return fmt.Errorf("detach signature validation is enabled but no validator is wired")
+	}
+	s.propagationSvc = deps.Propagation
+	s.downlinkDispatcher = deps.DownlinkDispatcher
+	s.runtimeConfigured = true
+	return nil
 }
 
-// SetRoamingService injects the roaming service after server construction
-// Post-construction initialization for modularity and testability.
-// The roaming service handles multi-tenant endpoint ownership resolution.
-func (s *Server) SetRoamingService(svc RoamingService) {
-	s.roamingSvc = svc
+// validateRuntimeWiring rejects Start on an incompletely wired server: every
+// dependency the composition root wires unconditionally must be present, so a
+// wiring regression fails at startup instead of as a nil dereference under
+// traffic. Feature-controlled collaborators (MQTT, key protection, detach
+// validation, federation outbox) stay optional.
+func (s *Server) validateRuntimeWiring() error {
+	required := []struct {
+		name    string
+		missing bool
+	}{
+		{"session service", s.sessionSvc == nil},
+		{"version negotiator", s.versionNegotiator == nil},
+		{"downlink service", s.downlinkSvc == nil},
+		{"status service", s.statusSvc == nil},
+		{"connection registry", s.connectionRegistry == nil},
+		{"queue serializer", s.queueSerializer == nil},
+		{"audit logger", s.auditLogger == nil},
+		{"tenant resolver", s.tenantResolver == nil},
+		{"event store", s.eventStore == nil},
+		{"base station store", s.basestationRepo == nil},
+		{"endpoint directory", s.endpointRepo == nil},
+		{"attach persistence", s.attachPersistence == nil},
+		{"organization directory", s.orgResolver == nil},
+		{"certificate identity resolver", s.certIdentityResolver == nil},
+		{"base station directory", s.bsDirectory == nil},
+		{"uplink ingest service", s.uplinkIngestSvc == nil},
+		{"roaming service", s.roamingSvc == nil},
+		{"disposition resolver", s.dispositionResolver == nil},
+		{"blueprint decoder", s.blueprintDecoder == nil},
+		{"blueprint resolver", s.blueprintResolver == nil},
+		{"SCACI endpoint status broadcaster", s.scaciEPStatusBroadcaster == nil},
+		{"protocol message store", s.protocolMessages == nil},
+		{"DL RX status store", s.dlrxStore == nil},
+		{"base station status store", s.bsStatusStore == nil},
+		{"downlink queue store", s.downlinkQueueStore == nil},
+	}
+	for _, dep := range required {
+		if dep.missing {
+			return fmt.Errorf("%s is required", dep.name)
+		}
+	}
+	return nil
 }
 
-// SetDispositionResolver injects the ingress disposition resolver.
-// The resolver classifies each incoming uplink as Local, Relay, or Drop before ingest.
-func (s *Server) SetDispositionResolver(r IngressDispositionResolver) {
-	s.dispositionResolver = r
+// defaultOrgForSessionTenant resolves the default organization for the
+// session's current tenant (community fallback path); uuid.Nil when
+// unresolvable.
+func (s *Server) defaultOrgForSessionTenant(ctx context.Context, session *Session) uuid.UUID {
+	if s.orgResolver == nil {
+		return uuid.Nil
+	}
+	orgID, err := s.orgResolver.GetDefaultOrgForTenant(ctx, session.ResolvedTenantID)
+	if err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToResolveDefaultOrgForBSSCISession,
+			"error", err,
+			"tenantID", session.ResolvedTenantID)
+		return uuid.Nil
+	}
+	return orgID
 }
 
-// SetUplinkIngestService injects the shared uplink ingest pipeline.
-// When set, handleULData delegates dedup, tenant resolution, persistence, SCACI, and MQTT to this service.
-func (s *Server) SetUplinkIngestService(svc UplinkIngestService) {
-	s.uplinkIngestSvc = svc
-}
+// verifyCertificateFingerprint enforces the stored-certificate binding in
+// strict mode: the presented client certificate's SHA-256 fingerprint must
+// equal the registered station's stored fingerprint. Rows issued before
+// fingerprints were stored are backfilled from the stored PEM after the
+// presented certificate matched it (upgrade path); blank fingerprint with no
+// stored certificate is rejected.
+func (s *Server) verifyCertificateFingerprint(ctx context.Context, session *Session) error {
+	registered, err := s.bsDirectory.GetGlobal(ctx, session.BaseStationEUI)
+	if err != nil {
+		return fmt.Errorf("registered station lookup: %w", err)
+	}
 
-// SetRelayOutboxWriter injects the CE federation relay outbox writer.
-// When set, handleULData enqueues DispositionRelay uplinks instead of dropping them.
-func (s *Server) SetRelayOutboxWriter(w RelayOutboxWriter) {
-	s.relayOutbox = w
-}
+	presented := crypto.CertFingerprintSHA256(session.ClientCert.Raw)
 
-// GetDeduplicator exposes the server's message deduplicator for injection into the ingest service.
-// The same deduplicator instance must be shared so dedup state is consistent.
-func (s *Server) GetDeduplicator() *MessageDeduplicator {
-	return s.deduplicator
-}
+	stored := registered.TLSCertFingerprint
+	if stored == "" {
+		if registered.TLSCertificate == "" {
+			return fmt.Errorf("station %016X has no stored certificate identity", session.BaseStationEUI)
+		}
+		derived, deriveErr := crypto.CertFingerprintFromPEM([]byte(registered.TLSCertificate))
+		if deriveErr != nil {
+			return fmt.Errorf("station %016X stored certificate unparsable: %w", session.BaseStationEUI, deriveErr)
+		}
+		if derived != presented {
+			s.logger.WarnContext(ctx, LogBSSCICertFingerprintMismatch,
+				"bsEui", session.BaseStationEUI)
+			return fmt.Errorf("station %016X presented certificate does not match stored certificate", session.BaseStationEUI)
+		}
+		updated, backfillErr := s.bsDirectory.BackfillFingerprintIfBlank(ctx, registered.TenantID, registered.ID, derived)
+		if backfillErr != nil {
+			return fmt.Errorf("station %016X fingerprint backfill: %w", session.BaseStationEUI, backfillErr)
+		}
+		if !updated {
+			// A concurrent writer set the fingerprint first: reload and compare
+			reloaded, reloadErr := s.bsDirectory.GetGlobal(ctx, session.BaseStationEUI)
+			if reloadErr != nil {
+				return fmt.Errorf("registered station reload: %w", reloadErr)
+			}
+			if reloaded.TLSCertFingerprint != presented {
+				s.logger.WarnContext(ctx, LogBSSCICertFingerprintMismatch,
+					"bsEui", session.BaseStationEUI)
+				return fmt.Errorf("station %016X presented certificate does not match registered fingerprint", session.BaseStationEUI)
+			}
+			return nil
+		}
+		s.logger.InfoContext(ctx, LogBSSCICertFingerprintBackfilled,
+			"bsEui", session.BaseStationEUI)
+		return nil
+	}
 
-// SetDetachValidator wires the detach signature validator for unknown endpoint validation.
-// Called after service construction to enable signature validation via internal validator.
-func (s *Server) SetDetachValidator(validator DetachSignatureValidator) {
-	s.detachValidator = validator
-}
-
-// SetDownlinkDispatcher wires the auto-dispatch service (BSSCI §5.10.2)
-// Called after service construction to enable dlOpen=true automatic dispatch.
-func (s *Server) SetDownlinkDispatcher(dispatcher DownlinkDispatcher) {
-	s.downlinkDispatcher = dispatcher
-}
-
-// SetBroadcaster wires the SCACI broadcaster for uplink/downlink forwarding.
-// Called after SCACI server construction to complete the BSSCI → SCACI bridge.
-// Preserves startup order: BSSCI → SCACI → wire broadcaster.
-//
-// Legacy scaci parameter removed - broadcaster is now the only interface.
-func (s *Server) SetBroadcaster(broadcaster SCACIBroadcaster) {
-	s.broadcaster = broadcaster
-}
-
-// SetSCACIEPStatusBroadcaster wires the SCACI EPStatus broadcaster for attach/detach forwarding.
-// Called after SCACI server construction to complete the BSSCI → SCACI EPStatus bridge.
-// Per SCACI §3.13: SC sends EPStatus to all ACs when endpoints attach/detach.
-func (s *Server) SetSCACIEPStatusBroadcaster(broadcaster SCACIEPStatusBroadcaster) {
-	s.scaciEPStatusBroadcaster = broadcaster
-}
-
-// SetBlueprintDecoder wires the blueprint decoder service for payload decoding.
-// Per MIOTY Application Layer Specification: decode payloads using blueprint JSON definitions.
-func (s *Server) SetBlueprintDecoder(decoder BlueprintDecoder) {
-	s.blueprintDecoder = decoder
-}
-
-// SetBlueprintResolver wires the blueprint resolver service for blueprint lookup.
-// Per MIOTY Application Layer Specification: resolve blueprints by TypeEUI or device model.
-func (s *Server) SetBlueprintResolver(resolver BlueprintResolver) {
-	s.blueprintResolver = resolver
-}
-
-// SetMQTTPublisher wires the MQTT event publisher for device lifecycle events.
-// Called after publisher creation to enable outbound MQTT publishing from BSSCI handlers.
-func (s *Server) SetMQTTPublisher(pub MQTTEventPublisher) {
-	s.mqttPublisher = pub
+	if stored != presented {
+		s.logger.WarnContext(ctx, LogBSSCICertFingerprintMismatch,
+			"bsEui", session.BaseStationEUI)
+		return fmt.Errorf("station %016X presented certificate does not match registered fingerprint", session.BaseStationEUI)
+	}
+	return nil
 }
 
 // formatTenantID formats the server's tenant ID as a string for database operations
@@ -812,7 +1017,6 @@ func (s *Server) registerHandlers() {
 	s.handlers[mioty.CmdPingComplete] = s.handlePingComplete
 	// Status response handlers (SC-initiated, so no status handler for BS-initiated)
 	s.handlers[mioty.CmdStatusResponse] = s.handleStatusResponse
-	s.handlers[mioty.CmdStatusComplete] = s.handleStatusComplete
 	s.handlers[mioty.CmdAttach] = s.handleAttach
 	s.handlers[mioty.CmdAttachComplete] = s.handleAttachComplete
 	s.handlers[mioty.CmdDetach] = s.handleDetach
@@ -821,14 +1025,11 @@ func (s *Server) registerHandlers() {
 	s.handlers[mioty.CmdULDataComplete] = s.handleULDataComplete
 	// UL Data Transmit response handlers (SC-initiated, so no ulDataTx handler)
 	s.handlers[mioty.CmdULDataTransmitResponse] = s.handleULDataTxResponse
-	s.handlers[mioty.CmdULDataTransmitComplete] = s.handleULDataTxComplete
 	s.handlers[mioty.CmdError] = s.handleError
 	s.handlers[mioty.CmdErrorAck] = s.handleErrorAck
 	// Attach/Detach Propagate handlers
 	s.handlers[mioty.CmdAttachPropagateResponse] = s.handleAttachPropagateResponse
-	s.handlers[mioty.CmdAttachPropagateComplete] = s.handleAttachPropagateComplete
 	s.handlers[mioty.CmdDetachPropagateResponse] = s.handleDetachPropagateResponse
-	s.handlers[mioty.CmdDetachPropagateComplete] = s.handleDetachPropagateComplete
 	// DL Data Result handlers (BSSCI §3.14)
 	s.handlers[mioty.CmdDLDataResult] = s.handleDLDataResult
 	s.handlers[mioty.CmdDLDataResultResponse] = s.handleDLDataResultResponse
@@ -839,13 +1040,10 @@ func (s *Server) registerHandlers() {
 	s.handlers[mioty.CmdDLRxStatusComplete] = s.handleDLRXStatusComplete
 	// DL RX Status Query response handlers (BSSCI §3.16 - SC-initiated, so no dlRxStatQry handler)
 	s.handlers[mioty.CmdDLRxStatusQueryResponse] = s.handleDLRXStatusQueryResponse
-	s.handlers[mioty.CmdDLRxStatusQueryComplete] = s.handleDLRXStatusQueryComplete
 	// DL Data Revoke response handlers (BSSCI §3.13 - SC-initiated)
 	s.handlers[mioty.CmdDLDataRevokeResponse] = s.handleDLDataRevokeResponse
-	s.handlers[mioty.CmdDLDataRevokeComplete] = s.handleDLDataRevokeComplete
 	// DL Data Queue response handlers (BSSCI §3.12 - SC-initiated)
 	s.handlers[mioty.CmdDLDataQueueResponse] = s.handleDLDataQueueResponse
-	s.handlers[mioty.CmdDLDataQueueComplete] = s.handleDLDataQueueComplete
 	// VM handlers (BSSCI §4.1-4.3)
 	s.handlers[mioty.CmdVMActivate] = s.handleVMActivate
 	s.handlers[mioty.CmdVMActivateResponse] = s.handleVMActivateResponse
@@ -874,9 +1072,39 @@ func certsExist(certFile, keyFile, caFile string) bool {
 // Start starts the BSSCI server. If TLS certificates are not yet available
 // (e.g., fresh deployment before certs are generated via UI), the listener
 // is deferred and a background goroutine polls until the certificates appear.
+// A validation failure leaves the server in its pre-Start state so the
+// composition root can complete the wiring and try again; a successful Start
+// is committed exactly once and cannot follow Stop.
 func (s *Server) Start() error {
+	// The composition root must supply the circular dependencies before the
+	// server accepts traffic; an incompletely wired server refuses to start.
+	s.mu.Lock()
+	switch {
+	case s.stopped:
+		s.mu.Unlock()
+		return fmt.Errorf("server already stopped: a stopped server cannot be restarted")
+	case s.started:
+		s.mu.Unlock()
+		return fmt.Errorf("server already started")
+	case !s.runtimeConfigured:
+		s.mu.Unlock()
+		return fmt.Errorf("server runtime not configured: call ConfigureRuntime before Start")
+	}
+	if err := s.validateRuntimeWiring(); err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("server wiring incomplete: %w", err)
+	}
+	s.started = true
+	s.mu.Unlock()
+
 	if certsExist(s.config.TLSCert, s.config.TLSKey, s.config.TLSCACert) {
-		return s.startTLSListener()
+		if err := s.startTLSListener(); err != nil {
+			return err
+		}
+		// Background work starts only once the listener is committed, so an
+		// immediate TLS failure leaves nothing running.
+		s.startDLRXQueryExpiryWorker()
+		return nil
 	}
 
 	s.logger.WarnContext(s.safeCtx(), LogBSSCICertsNotFound,
@@ -894,8 +1122,7 @@ func (s *Server) Start() error {
 func (s *Server) waitForCertsAndStart() {
 	defer s.wg.Done()
 
-	const pollInterval = 10 * time.Second
-	ticker := time.NewTicker(pollInterval)
+	ticker := time.NewTicker(certificatePollInterval(s.config))
 	defer ticker.Stop()
 
 	for {
@@ -912,6 +1139,7 @@ func (s *Server) waitForCertsAndStart() {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIDeferredListenerFailed, "error", err)
 				continue
 			}
+			s.startDLRXQueryExpiryWorker()
 			return
 		}
 	}
@@ -969,14 +1197,19 @@ func (s *Server) startTLSListener() error {
 
 // Stop stops the BSSCI server
 func (s *Server) Stop() error {
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return nil
+	}
+	s.stopped = true
+	s.mu.Unlock()
+
 	s.cancel()
 	if s.listener != nil {
 		if err := s.listener.Close(); err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCloseListener, "error", err)
 		}
-	}
-	if s.deduplicator != nil {
-		s.deduplicator.Stop()
 	}
 	s.wg.Wait()
 	return nil
@@ -1015,12 +1248,14 @@ func (s *Server) handleConnection(conn net.Conn) {
 	s.logger.InfoContext(s.safeCtx(), LogBSSCINewConnection, "remote", conn.RemoteAddr().String())
 
 	session := &Session{
-		ID:               uuid.New().String(),
-		Conn:             conn,
-		Connected:        time.Now(),
-		LastSeen:         time.Now(),
-		ResolvedTenantID: s.defaultTenantID, // Initialize to server default
-		// Encoding left empty - detected on first frame per BSSCI Section 1
+		ProtocolSessionState: ProtocolSessionState{
+			ID:               uuid.New().String(),
+			ResolvedTenantID: s.defaultTenantID, // Initialize to server default
+			// Encoding left empty - detected on first frame per BSSCI Section 1
+		},
+		Conn:      conn,
+		Connected: time.Now(),
+		LastSeen:  time.Now(),
 	}
 
 	// Extract TLS client certificate and resolve organization
@@ -1042,26 +1277,51 @@ func (s *Server) handleConnection(conn net.Conn) {
 			var tenantID int64
 			var err error
 
-			if s.orgResolver != nil {
+			switch {
+			case s.certIdentityResolver != nil:
+				identity, resolveErr := s.certIdentityResolver.ResolveCertificateIdentity(ctx, cert)
+				if resolveErr != nil {
+					// Strict mode: an unresolvable certificate closes the
+					// connection before any con is read - no default-tenant
+					// fallback (the fallback would let an unknown certificate
+					// operate under the server's default tenant)
+					if s.config != nil && s.config.OrgEnforcementEnabled {
+						s.logger.ErrorContext(ctx, LogBSSCICertIdentityRejectedStrictMode,
+							"error", resolveErr,
+							"certCN", cert.Subject.CommonName)
+						return
+					}
+					// Community fallback: default tenant + its default org
+					s.logger.WarnContext(ctx, LogBSSCICertOrgResolutionFailedUsingCommunityFallback,
+						"error", resolveErr,
+						"certCN", cert.Subject.CommonName,
+						"tenantID", session.ResolvedTenantID)
+					orgID = s.defaultOrgForSessionTenant(ctx, session)
+				} else {
+					session.ResolvedTenantID = identity.TenantID
+					session.certSubjectEUI = identity.SubjectEUI
+					orgID = identity.OrganizationID
+					s.logger.InfoContext(ctx, LogBSSCICertOrgResolutionSucceeded,
+						"orgID", orgID.String(),
+						"tenantID", identity.TenantID,
+						"certCN", cert.Subject.CommonName)
+				}
+			case s.orgResolver != nil:
 				orgID, tenantID, err = s.orgResolver.ResolveCert(ctx, cert)
 				if err != nil {
-					// Certificate-based resolution failed - use community fallback
+					// Certificate-based resolution failed
+					if s.config != nil && s.config.OrgEnforcementEnabled {
+						s.logger.ErrorContext(ctx, LogBSSCICertIdentityRejectedStrictMode,
+							"error", err,
+							"certCN", cert.Subject.CommonName)
+						return
+					}
+					// Community fallback: default tenant + its default org
 					s.logger.WarnContext(ctx, LogBSSCICertOrgResolutionFailedUsingCommunityFallback,
 						"error", err,
 						"certCN", cert.Subject.CommonName,
 						"tenantID", session.ResolvedTenantID)
-
-					// Get default org for the server's default tenant
-					orgID, err = s.orgResolver.GetDefaultOrgForTenant(ctx, session.ResolvedTenantID)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToResolveDefaultOrgForBSSCISession,
-							"error", err,
-							"tenantID", session.ResolvedTenantID)
-						// Continue with nil UUID - will be NULL in database
-						orgID = uuid.Nil
-						// ResolvedTenantID already set to s.defaultTenantID in session init
-					}
-					// else: fallback succeeded, ResolvedTenantID still s.defaultTenantID
+					orgID = s.defaultOrgForSessionTenant(ctx, session)
 				} else {
 					// SUCCESS: cert resolution worked, use resolved tenant
 					session.ResolvedTenantID = tenantID
@@ -1070,8 +1330,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 						"tenantID", tenantID,
 						"certCN", cert.Subject.CommonName)
 				}
-			} else {
-				// No org resolver - community edition
+			default:
+				// No resolver - community edition
 				orgID = uuid.Nil
 			}
 
@@ -1105,6 +1365,9 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	// Ensure we update status to offline when connection ends
 	defer func() {
+		wasActive := session.ConnectState == ConnectStateComplete
+		session.ConnectState = ConnectStateTerminal
+
 		// Stop status mechanism safely
 		session.mu.Lock()
 		if session.stopStatus != nil {
@@ -1113,23 +1376,26 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 		session.mu.Unlock()
 
-		if session.BaseStationEUI != 0 && s.connectionMgr != nil {
-			// Convert uint64 EUI to [8]byte format
-			var euiBytes [8]byte
-			for i := 7; i >= 0; i-- {
-				euiBytes[i] = byte(session.BaseStationEUI >> (8 * (7 - i)))
-			}
+		ctx := s.sessionContext(session)
 
-			// Update connection status to offline
-			status := &basestation.ConnectionStatus{
-				IsOnline:       false,
-				LastSeen:       time.Now(),
-				ConnectionType: basestation.ConnectionTypeBSSCI,
-				SessionID:      session.ID,
-			}
+		// Session-map cleanup runs unconditionally so rejected or provisional
+		// connections never linger in the live maps
+		s.mu.Lock()
+		delete(s.sessions, session.ID)
+		s.mu.Unlock()
 
-			ctx := s.sessionContext(session)
-			if err := s.connectionMgr.UpdateConnectionStatus(ctx, euiBytes, status); err != nil {
+		// Also remove from SessionService's sessionsByUUID map to prevent stale resume
+		if s.sessionSvc != nil {
+			s.sessionSvc.RemoveSession(session)
+		}
+
+		// Offline status transition is guarded by connection identity: a
+		// reconnect that already replaced this connection keeps the base
+		// station online
+		if session.BaseStationEUI != 0 && s.connectionRegistry != nil {
+			euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
+
+			if err := s.connectionRegistry.DisconnectBaseStationIfCurrent(ctx, euiBytes, session.ID); err != nil {
 				s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateOfflineStatus,
 					"eui", session.BaseStationEUI,
 					"error", err)
@@ -1138,46 +1404,50 @@ func (s *Server) handleConnection(conn net.Conn) {
 					"eui", session.BaseStationEUI,
 					"name", session.Name)
 			}
+		}
 
-			// Remove from sessions map
-			s.mu.Lock()
-			delete(s.sessions, session.ID)
-			s.mu.Unlock()
-
-			// Also remove from SessionService's sessionsByUUID map to prevent stale resume
-			s.sessionSvc.RemoveSession(session)
-
-			// Terminate database session per BSSCI §3 "new session starts, discarding state"
-			if session.DbSessionID != 0 && s.sessionSvc != nil {
-				if err := s.sessionSvc.TerminateSession(ctx, session); err != nil {
+		// A completed session lost unexpectedly stays resumable; anything
+		// else that was persisted is terminated (BSSCI §3.3 lifecycle)
+		if session.DbSessionID != 0 && s.sessionSvc != nil {
+			if wasActive {
+				if err := s.sessionSvc.MarkDisconnected(ctx, session); err != nil {
 					s.logger.ErrorContext(ctx, LogBSSCIFailedToTerminateSession,
 						"error", err,
 						"sessionID", session.DbSessionID,
 						"eui", session.BaseStationEUI)
-				} else {
-					s.logger.InfoContext(ctx, LogBSSCISessionTerminated,
-						"sessionID", session.DbSessionID,
-						"eui", session.BaseStationEUI)
 				}
+			} else if err := s.sessionSvc.TerminateSession(ctx, session); err != nil {
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToTerminateSession,
+					"error", err,
+					"sessionID", session.DbSessionID,
+					"eui", session.BaseStationEUI)
+			} else {
+				s.logger.InfoContext(ctx, LogBSSCISessionTerminated,
+					"sessionID", session.DbSessionID,
+					"eui", session.BaseStationEUI)
 			}
+		}
 
-			// Clean up pending operations for this session (bulk delete)
-			if session.DbSessionID != 0 && s.storage != nil {
-				// Guard against nil repository before calling methods
-				pendingOpsRepo := s.storage.PendingOperations()
-				if pendingOpsRepo != nil {
-					count, err := pendingOpsRepo.DeleteBySession(ctx, session.DbSessionID)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToDeletePendingOperations,
-							"error", err,
-							"sessionID", session.DbSessionID)
-					} else if count > 0 {
-						s.logger.InfoContext(ctx, LogBSSCIDeletedPendingOperations,
-							"sessionID", session.DbSessionID,
-							"count", count)
-					}
+		// Pending operations survive an unexpected loss of an active session:
+		// they are reissued with their original opIds on resume (BSSCI §4/§5.3).
+		// Only a terminal session (rejected, provisional, or terminated above)
+		// has its rows removed. The cache is swept in every case - the runtime
+		// session ID dies with this connection, so its entries are unreachable
+		// and a resume re-hydrates from the persisted rows.
+		if s.statusSvc != nil {
+			if session.DbSessionID != 0 && !wasActive {
+				count, err := s.statusSvc.DeletePendingOperations(ctx, session)
+				if err != nil {
+					s.logger.ErrorContext(ctx, LogBSSCIFailedToDeletePendingOperations,
+						"error", err,
+						"sessionID", session.DbSessionID)
+				} else if count > 0 {
+					s.logger.InfoContext(ctx, LogBSSCIDeletedPendingOperations,
+						"sessionID", session.DbSessionID,
+						"count", count)
 				}
 			}
+			s.statusSvc.EvictCachedOperations(session)
 		}
 	}()
 
@@ -1189,8 +1459,21 @@ func (s *Server) handleConnection(conn net.Conn) {
 		default:
 		}
 
-		// Set read deadline
-		if err := conn.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		// Read deadline follows the handshake state: a fresh connection is
+		// bounded by the establishment timeout until con arrives; after conRsp
+		// or a connect-stage error the ack timeout bounds the wait for conCmp
+		// or errorAck; an active session reads without a deadline - liveness is
+		// the ping operation's job (BSSCI §5.4)
+		var deadline time.Time
+		switch session.ConnectState {
+		case ConnectStateAwaitingConnect:
+			deadline = time.Now().Add(s.connectionEstablishmentTimeout())
+		case ConnectStateAwaitingConnectComplete, ConnectStateAwaitingConnectErrorAck:
+			deadline = time.Now().Add(s.operationAckTimeout())
+		default:
+			// Complete/Terminal: no read deadline
+		}
+		if err := conn.SetReadDeadline(deadline); err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSetReadDeadline, "error", err)
 			return
 		}
@@ -1231,7 +1514,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 			// Persist encoding to database if session has been persisted
 			if session.DbSessionID > 0 {
-				if err := s.sessionSvc.UpdateEncoding(s.safeCtx(), session.DbSessionID, encoding); err != nil {
+				if err := s.sessionSvc.UpdateEncoding(s.safeCtx(), resolvedTenant(session, s.tenantID), session.DbSessionID, encoding); err != nil {
 					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistEncoding,
 						"encoding", encoding,
 						"sessionID", session.DbSessionID,
@@ -1289,8 +1572,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 			RawPayload: payload, // Capture original wire bytes for forensic analysis
 		}
 
-		// BSSCI-3.2: Validate operation ID (except for connect which is special)
-		if command != mioty.CmdConnect {
+		// BSSCI-3.2: Validate operation ID. Connect is special (always opId
+		// 0), and error/errorAck are exempt: they carry the opId of the
+		// operation whose sequence they replace (rev1 §5.17 / classic §3.17),
+		// in either direction, so they never start a new sequence position.
+		if command != mioty.CmdConnect && command != mioty.CmdError && command != mioty.CmdErrorAck {
 			// Determine if this is a base station initiated operation
 			// Base station operations: positive IDs (and opId=0 for connect handshake per BSSCI §5.3)
 			// Service center operations: negative IDs
@@ -1301,6 +1587,17 @@ func (s *Server) handleConnection(conn net.Conn) {
 					"command", command,
 					"opId", opId,
 					"error_token", errToken)
+				// During the connect handshake the rejection enters the
+				// unified error/errorAck sequence (rev1 §5.17 / classic
+				// §3.17): the acknowledgement completes the failed exchange
+				// and closes. An active session with a broken operation-ID
+				// sequence closes immediately so resume restores counter sync.
+				if !session.HandshakeComplete {
+					if err := s.rejectConnect(session, opId, POSIX_EPROTO, errToken); err != nil {
+						return
+					}
+					continue
+				}
 				if err := s.sendError(session, opId, POSIX_EPROTO, ResolveErrorMessage(errToken)); err != nil {
 					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 				}
@@ -1312,16 +1609,13 @@ func (s *Server) handleConnection(conn net.Conn) {
 		session.LastSeen = time.Now()
 
 		// Update last seen in database for connected basestations
-		if session.BaseStationEUI != 0 && s.connectionMgr != nil {
-			var euiBytes [8]byte
-			for i := 7; i >= 0; i-- {
-				euiBytes[i] = byte(session.BaseStationEUI >> (8 * (7 - i)))
-			}
+		if session.BaseStationEUI != 0 && s.connectionRegistry != nil {
+			euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
 
 			// Update last seen time in database
 			go func() {
 				ctx := s.sessionContext(session)
-				if err := s.connectionMgr.UpdateLastSeen(ctx, euiBytes); err != nil {
+				if err := s.connectionRegistry.UpdateLastSeen(ctx, euiBytes); err != nil {
 					s.logger.DebugContext(ctx, LogBSSCIFailedToUpdateLastSeen,
 						"eui", session.BaseStationEUI,
 						"error", err)
@@ -1344,6 +1638,15 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 }
 
+// shouldNormalizeCommand reports whether an incoming command's payload must be
+// normalized: only BS->SC and bidirectional inbound commands are, so the SC
+// never validates its own outbound responses, and unknown commands are skipped
+// as a safe default for forward compatibility (BSSCI §2.4).
+func shouldNormalizeCommand(command string) bool {
+	direction, exists := CommandDirectionMap[command]
+	return exists && (direction == DirectionBStoSC || direction == DirectionBidirectional)
+}
+
 // handleMessage routes messages to appropriate handlers
 func (s *Server) handleMessage(session *Session, msg *Message, data map[string]interface{}) error {
 	// BSSCI §2.4: Normalize incoming payload to validate fields and detect unknown fields
@@ -1351,17 +1654,8 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 	// Issue #3-4 Fix: Only normalize BS→SC commands (inbound) to avoid validating our own SC→BS responses
 	ctx := s.sessionContext(session)
 
-	// Check if this command should be normalized (only BS→SC and bidirectional inbound commands)
-	direction, exists := CommandDirectionMap[msg.Command]
-	shouldNormalize := exists && (direction == DirectionBStoSC || direction == DirectionBidirectional)
-
-	// Notify test spy if present (for TestNormalizationOnlyForBStoSCCommands)
-	if s.testNormalizationSpy != nil {
-		s.testNormalizationSpy(msg.Command, shouldNormalize)
-	}
-
 	// Only normalize inbound BS→SC and bidirectional commands (skip SC→BS responses and unknown commands for safety)
-	if shouldNormalize {
+	if shouldNormalizeCommand(msg.Command) {
 		normalizedData, err := normalizePayload(ctx, s.logger, msg.Command, data)
 		if err != nil {
 			// Normalization failed (mandatory field missing, invalid type, etc.)
@@ -1386,6 +1680,13 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 				errToken = errConditionalRuleFailed
 			}
 
+			// During the connect handshake a normalization failure enters the
+			// unified error sequence: the error replaces conRsp/conCmp and
+			// awaits errorAck (§5.17), and a failed error write terminates the
+			// connection. After activation it is a per-operation error.
+			if !session.HandshakeComplete {
+				return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errToken)
+			}
 			if sendErr := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errToken)); sendErr != nil {
 				s.logger.ErrorContext(ctx, LogBSSCIFailedToSendErrorResponse, "error", sendErr)
 			}
@@ -1398,9 +1699,12 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 	// BSSCI-3.3-03: No operations allowed until connect handshake is complete
 	// Only con, conRsp, conCmp, error, and errorAck are permitted during handshake
 	if !session.HandshakeComplete {
+		// conRsp is SC-initiated (SCtoBS): the base station must never send it.
+		// Only con, conCmp, error, and errorAck are legal inbound during the
+		// handshake; anything else - including an inbound conRsp - is a
+		// protocol-ordering violation.
 		allowedCommands := map[string]bool{
 			mioty.CmdConnect:         true,
-			mioty.CmdConnectResponse: true,
 			mioty.CmdConnectComplete: true,
 			mioty.CmdError:           true,
 			mioty.CmdErrorAck:        true,
@@ -1409,14 +1713,12 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 		if !allowedCommands[msg.Command] {
 			s.logger.WarnContext(s.safeCtx(), LogBSSCIRejectingCommandBeforeHandshake,
 				"command", msg.Command,
-				"handshake_complete", session.HandshakeComplete,
+				"connectState", int(session.ConnectState),
 				"opId", msg.OpId,
 				"bsEui", session.BaseStationEUI)
-			if err := s.sendError(session, msg.OpId, POSIX_EPROTO,
-				ResolveErrorMessage(errCommandBeforeHandshake)); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-			}
-			return nil // Don't close connection, just reject the command
+			// Route through the unified reject so the error is followed by an
+			// errorAck exchange (§5.17) and a failed write terminates cleanly
+			return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errCommandBeforeHandshake)
 		}
 	}
 
@@ -1427,6 +1729,25 @@ func (s *Server) handleMessage(session *Session, msg *Message, data map[string]i
 		if !strings.HasPrefix(msg.Command, "rc.") && !strings.HasPrefix(msg.Command, "vm.") {
 			// Send error for unsupported sublayer
 			if err := s.sendError(session, msg.OpId, POSIX_ENOTSUP, ResolveErrorMessage(errUnsupportedSublayerPrefix)); err != nil {
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
+			}
+			return nil // Don't close connection
+		}
+	}
+
+	// Direction enforcement (BSSCI §5.5/§5.11-5.16): a command the service
+	// center itself sends (DirectionSCtoBS) must never be processed inbound.
+	// A base station sending e.g. statusCmp or dlDataQueCmp is a protocol
+	// violation. The vm.* sublayer is exempt here - its enforcement lands with
+	// the ECE-reserved VM work. Connect-stage SCtoBS handling (conRsp) is
+	// already covered by the pre-handshake gate above.
+	if !strings.HasPrefix(msg.Command, "vm.") {
+		if cmdDirection, known := CommandDirectionMap[msg.Command]; known && cmdDirection == DirectionSCtoBS {
+			s.logger.WarnContext(s.safeCtx(), LogBSSCIRejectingInboundServiceCenterCommand,
+				"command", msg.Command,
+				"opId", msg.OpId,
+				"bsEui", session.BaseStationEUI)
+			if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInboundServiceCenterCommand)); err != nil {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
 			}
 			return nil // Don't close connection
@@ -1453,26 +1774,27 @@ func (s *Server) sendMessage(session *Session, msg interface{}) error {
 		return fmt.Errorf("failed to wrap outbound message: %w", err)
 	}
 
-	// BSSCI §2.5.1: Validate outbound message fields before encoding
-	if err := s.validateOutboundMessage(session, outMsg.Data); err != nil {
-		// Check if this is a catalog error that should be sent to the base station
+	// BSSCI §2.5.1: Validate outbound message fields before encoding.
+	// Validation inspects a projection only; failures are returned to the
+	// caller - an invalid outbound frame must never trigger sending a protocol
+	// error in its place.
+	projection, err := outboundValidationProjection(outMsg.Data)
+	if err != nil {
+		return fmt.Errorf("outbound validation failed: %w", err)
+	}
+	if err := s.validateOutboundMessage(session, projection); err != nil {
 		var catalogErr *CatalogError
 		if errors.As(err, &catalogErr) {
-			// Send catalog error to base station per BSSCI protocol
-			ctx := s.sessionContext(session)
-			s.logger.ErrorContext(ctx, LogBSSCIOutboundValidationFailed,
+			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIOutboundValidationFailed,
 				"error_token", catalogErr.Token,
+				"command", outMsg.Command,
 				"bs_eui", session.BaseStationEUI)
-			if sendErr := s.sendCatalogError(session, outMsg.OpId, catalogErr); sendErr != nil {
-				return fmt.Errorf("failed to send catalog error: %w", sendErr)
-			}
-			return nil // Error sent via protocol, don't propagate
 		}
-		// Non-catalog errors are internal failures
 		return fmt.Errorf("outbound validation failed: %w", err)
 	}
 
-	// Encode message using negotiated encoding (BSSCI Section 1)
+	// Encode the original payload (typed or map) using the negotiated encoding
+	// (BSSCI Section 1); uint64 fields survive exactly
 	payload, err := encodeMessage(outMsg.Data, session.Encoding)
 	if err != nil {
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToEncode), err)
@@ -1491,70 +1813,246 @@ func (s *Server) sendMessage(session *Session, msg interface{}) error {
 	//nolint:gosec // G115: int->uint32 safe, guarded by range check at line 664
 	binary.LittleEndian.PutUint32(header[8:], uint32(len(payload)))
 
-	// Send header and payload
+	// Send header and payload. Any failure past this point is an ambiguous
+	// write: part of the frame may already be on the wire, so the connection's
+	// framing can no longer be trusted and callers must close it and rely on
+	// session resume for recovery (BSSCI rev1 §5.3.1 / classic §3.3.1).
 	session.mu.Lock()
 	defer session.mu.Unlock()
 
-	if _, err := session.Conn.Write(header); err != nil {
-		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToWriteHeader), err)
+	n, err := session.Conn.Write(header)
+	if err != nil {
+		return fmt.Errorf("%s: %w: %w", ResolveErrorMessage(errFailedToWriteHeader), ErrAmbiguousWrite, err)
+	}
+	if n < len(header) {
+		return fmt.Errorf("%s: %w: short write %d/%d", ResolveErrorMessage(errFailedToWriteHeader), ErrAmbiguousWrite, n, len(header))
 	}
 
-	if _, err := session.Conn.Write(payload); err != nil {
-		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToWritePayload), err)
+	n, err = session.Conn.Write(payload)
+	if err != nil {
+		return fmt.Errorf("%s: %w: %w", ResolveErrorMessage(errFailedToWritePayload), ErrAmbiguousWrite, err)
+	}
+	if n < len(payload) {
+		return fmt.Errorf("%s: %w: short write %d/%d", ResolveErrorMessage(errFailedToWritePayload), ErrAmbiguousWrite, n, len(payload))
 	}
 
 	return nil
 }
 
+// ErrAmbiguousWrite reports a frame write that failed after bytes may have
+// reached the wire. The transport framing can no longer be trusted; callers
+// close the connection and rely on session resume (with the original
+// operation IDs) for recovery instead of retrying on the same connection.
+var ErrAmbiguousWrite = errors.New("ambiguous frame write")
+
+// errAttachPersistenceUnavailable reports a missing endpoint attachment
+// persister at a point that requires transactional persistence.
+var errAttachPersistenceUnavailable = errors.New("endpoint attachment persistence not configured")
+
+// closeTransportAfterWriteFailure closes the session transport after an
+// ambiguous frame write. Persisted pending operations are deliberately
+// preserved: the disconnect path marks the session resumable and resume
+// reissues the operations with their original IDs.
+func (s *Server) closeTransportAfterWriteFailure(session *Session, opId int64, cause error) {
+	s.logger.ErrorContext(s.sessionContext(session), LogBSSCIClosingConnectionAfterWriteFailure,
+		"bsEui", session.BaseStationEUI,
+		"opId", opId,
+		"error", cause)
+	if session.Conn != nil {
+		_ = session.Conn.Close()
+	}
+}
+
+// operationAckTimeout returns the configured handshake wait bound, falling
+// back to the package default when unset.
+func (s *Server) operationAckTimeout() time.Duration {
+	if s.config != nil && s.config.OperationAckTimeout > 0 {
+		return s.config.OperationAckTimeout
+	}
+	return defaultOperationAckTimeout
+}
+
+// connectionEstablishmentTimeout returns the configured bound for a freshly
+// accepted connection to send its con, falling back to the package default.
+func (s *Server) connectionEstablishmentTimeout() time.Duration {
+	if s.config != nil && s.config.ConnectionEstablishmentTimeout > 0 {
+		return s.config.ConnectionEstablishmentTimeout
+	}
+	return defaultConnectionEstablishmentTimeout
+}
+
+// EffectiveDuplicateWindow returns the configured deduplication window,
+// falling back to the package default; the composition root uses it to
+// construct the shared message deduplicator.
+func (c *Config) EffectiveDuplicateWindow() time.Duration {
+	return duplicateWindow(c)
+}
+
+// duplicateWindow returns the configured uplink deduplication window, falling
+// back to the package default when unset.
+func duplicateWindow(cfg *Config) time.Duration {
+	if cfg != nil && cfg.DuplicateWindow > 0 {
+		return cfg.DuplicateWindow
+	}
+	return defaultDuplicateWindow
+}
+
+// certificatePollInterval returns the configured certificate change poll
+// interval, falling back to the package default when unset.
+func certificatePollInterval(cfg *Config) time.Duration {
+	if cfg != nil && cfg.CertificatePollInterval > 0 {
+		return cfg.CertificatePollInterval
+	}
+	return defaultCertificatePollInterval
+}
+
+// statusRequestInterval returns the configured status poll interval, falling
+// back to the package default when unset.
+func (s *Server) statusRequestInterval() time.Duration {
+	if s.config != nil && s.config.StatusRequestInterval > 0 {
+		return s.config.StatusRequestInterval
+	}
+	return defaultStatusRequestInterval
+}
+
+// statusRequestInitialDelay returns the configured delay before the first
+// status poll, falling back to the package default when unset.
+func (s *Server) statusRequestInitialDelay() time.Duration {
+	if s.config != nil && s.config.StatusRequestInitialDelay > 0 {
+		return s.config.StatusRequestInitialDelay
+	}
+	return defaultStatusRequestInitialDelay
+}
+
+// dlrxQueryTimeout returns the configured dlRxStatQry expiry, falling back to
+// the package default when unset.
+func (s *Server) dlrxQueryTimeout() time.Duration {
+	if s.config != nil && s.config.DLRXQueryTimeout > 0 {
+		return s.config.DLRXQueryTimeout
+	}
+	return defaultDLRXQueryTimeout
+}
+
+// dlrxCleanupInterval returns the configured dlRxStatQry expiry sweep cadence,
+// falling back to the package default when unset.
+func (s *Server) dlrxCleanupInterval() time.Duration {
+	if s.config != nil && s.config.DLRXCleanupInterval > 0 {
+		return s.config.DLRXCleanupInterval
+	}
+	return defaultDLRXCleanupInterval
+}
+
+// startDLRXQueryExpiryWorker runs a background sweep that expires dlRxStatQry
+// queries whose unsolicited dlRxStat report never arrived (BSSCI §5.16), so
+// they do not linger pending forever. The worker stops when the server context
+// is cancelled.
+func (s *Server) startDLRXQueryExpiryWorker() {
+	if s.dlrxStore == nil {
+		return
+	}
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ticker := time.NewTicker(s.dlrxCleanupInterval())
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-ticker.C:
+				s.sweepExpiredDLRXQueries(time.Now())
+			}
+		}
+	}()
+}
+
+// sweepExpiredDLRXQueries expires every dlRxStatQry older than the configured
+// timeout relative to now. It is the worker's per-tick body, separated so the
+// cutoff arithmetic is testable without the ticker.
+func (s *Server) sweepExpiredDLRXQueries(now time.Time) {
+	cutoff := now.Add(-s.dlrxQueryTimeout())
+	expired, err := s.dlrxStore.ExpireDLRXStatusQuery(s.safeCtx(), cutoff)
+	if err != nil {
+		s.logger.WarnContext(s.safeCtx(), LogBSSCIDLRXQueryExpirySweepFailed, "error", err)
+		return
+	}
+	if expired > 0 {
+		s.logger.InfoContext(s.safeCtx(), LogBSSCIDLRXQueriesExpired, "count", expired)
+	}
+}
+
+// rejectConnect fails the connect operation per BSSCI §5.17: an error frame
+// replaces the normal response, the session enters AwaitingConnectErrorAck,
+// and the connection stays open until the base station acknowledges with
+// errorAck or the handshake read deadline expires. The connection is never
+// closed immediately after sending the error.
+func (s *Server) rejectConnect(session *Session, opId int64, posix int, errToken string) error {
+	if err := s.sendError(session, opId, posix, ResolveErrorMessage(errToken)); err != nil {
+		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
+		// Error frame could not be written - the connection is unusable
+		session.ConnectState = ConnectStateTerminal
+		return fmt.Errorf("%s: %w", ResolveErrorMessage(errToken), err)
+	}
+	session.ConnectState = ConnectStateAwaitingConnectErrorAck
+	return nil
+}
+
 // handleConnect handles the connect operation per BSSCI specification
 func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
+	// Connect messages are only valid while no connect operation is in flight
+	if session.ConnectState != ConnectStateAwaitingConnect {
+		s.logger.WarnContext(s.safeCtx(), LogBSSCIRejectingCommandBeforeHandshake,
+			"command", msg.Command,
+			"connectState", int(session.ConnectState),
+			"opId", msg.OpId)
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errInvalidHandshakeState)
+	}
+
 	// BSSCI-3.2-03: Connect operation MUST use opId=0
 	if msg.OpId != 0 {
 		s.logger.WarnContext(s.safeCtx(), LogBSSCIInvalidConnectOperationID,
 			"op_id", msg.OpId)
-		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidConnectOpId)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-		}
-		return fmt.Errorf("%s: %d", ResolveErrorMessage(errInvalidConnectOpId), msg.OpId)
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errInvalidConnectOpId)
 	}
 
-	// Extract version field (optional per BSSCI §2.4-02, defaults to canonical version)
-	version := getStringField(data, "version", mioty.MIOTYProtocolVersion)
-	bsEUI, ok := getNumericField(data, "bsEui")
-	if !ok {
-		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingBsEui)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-		}
-		return fmt.Errorf("%s", ResolveErrorMessage(errMissingBsEui))
+	// version is mandatory in the connect message (BSSCI rev1 §5.3.1;
+	// message metadata declares it Required)
+	version, hasVersion := data["version"].(string)
+	if !hasVersion {
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errMandatoryFieldMissing)
+	}
+	bsEUIRaw, hasBsEUI := data["bsEui"]
+	if !hasBsEUI {
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errMissingBsEui)
 	}
 
-	// BSSCI-2.1-01, BSSCI-2.2-02: Version negotiation (delegate to SessionService)
-	if err := s.sessionSvc.ValidateVersion(version); err != nil {
-		if catErr, ok := err.(*CatalogError); ok {
+	// BSSCI-2.1-01, BSSCI-2.2-02: Version arbitration (rev1 §4.2, §5.3.2) -
+	// the negotiator selects the version the service center will speak; the
+	// conRsp carries it and the base station agrees via conCmp or rejects
+	selectedVersion, negErr := s.versionNegotiator.Negotiate(s.safeCtx(), version)
+	if negErr != nil {
+		var catErr *CatalogError
+		if errors.As(negErr, &catErr) {
 			s.logger.WarnContext(s.safeCtx(), LogBSSCIVersionIncompatible,
 				"client_version", version,
 				"error", catErr.Token)
-			return s.sendCatalogError(session, msg.OpId, catErr)
+			return s.rejectConnect(session, msg.OpId, catErr.Posix, catErr.Token)
 		}
 		// Fallback for unexpected errors
-		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errVersionIncompatible)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-		}
-		return fmt.Errorf("%s", ResolveErrorMessage(errVersionIncompatible))
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errVersionIncompatible)
 	}
 
-	// Range guard for int64 -> uint64 conversion
-	if bsEUI < 0 {
-		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidBsEui)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-		}
-		return fmt.Errorf("%s: bsEUI=%d", ResolveErrorMessage(errInvalidBsEui), bsEUI)
+	// bsEui is a full-range unsigned EUI-64 (BSSCI §5.3.1); values above
+	// INT64_MAX are valid
+	bsEUI, euiErr := coerceUint64(bsEUIRaw)
+	if euiErr != nil {
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errInvalidBsEui)
 	}
 
 	// Simple session field assignments
-	session.BaseStationEUI = uint64(bsEUI)
-	session.ClientVersion = version                        // Raw BS-provided version for audit
-	session.NegotiatedVersion = mioty.MIOTYProtocolVersion // SC canonical version (BSSCI §4-4.5)
+	session.BaseStationEUI = bsEUI
+	session.ClientVersion = version             // Raw BS-provided version for audit
+	session.NegotiatedVersion = selectedVersion // Negotiated version carried in conRsp (BSSCI §5.3.2)
 	session.Vendor = getStringField(data, "vendor", "")
 	session.Model = getStringField(data, "model", "")
 	session.Name = getStringField(data, "name", "")
@@ -1573,93 +2071,195 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 	// BSSCI §5.3: bidi flag must be explicitly declared
 	bidiValue, hasBidi := data["bidi"]
 	if !hasBidi {
-		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingBidiFlag)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-		}
-		return fmt.Errorf("%s", ResolveErrorMessage(errMissingBidiFlag))
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errMissingBidiFlag)
 	}
 
 	bidi, ok := bidiValue.(bool)
 	if !ok {
-		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingBidiFlag)); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-		}
-		return fmt.Errorf("%s: not a boolean", ResolveErrorMessage(errMissingBidiFlag))
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errMissingBidiFlag)
 	}
 	session.Bidirectional = bidi
 
-	// Geolocation parsing: all three values must parse and lat/lon must be in range
+	// Registration and tenant authorization precede the connect response
+	// (§5.3.2): an unregistered or unauthorized base station is rejected via
+	// the error/errorAck sequence before any conRsp is offered
+	ctx := s.sessionContext(session)
+	euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
+	baseStation, bsErr := s.connectionRegistry.GetBaseStationGlobal(ctx, euiBytes)
+	if bsErr != nil || baseStation == nil {
+		s.logger.ErrorContext(ctx, LogBSSCIBaseStationNotFoundInDatabase,
+			"eui", session.BaseStationEUI,
+			"euiHex", fmt.Sprintf("%X", euiBytes),
+			"error", bsErr)
+		return s.rejectConnect(session, msg.OpId, POSIX_EPERM, errBaseStationNotRegistered)
+	}
+
+	if s.config.OrgEnforcementEnabled {
+		// Certificate-resolved tenant and registered tenant must agree; the
+		// rejection never reveals that the EUI exists under another tenant
+		if session.ResolvedTenantID != baseStation.TenantID {
+			s.logger.WarnContext(ctx, LogBSSCIBaseStationNotFoundInDatabase,
+				"eui", session.BaseStationEUI,
+				"certTenant", session.ResolvedTenantID)
+			return s.rejectConnect(session, msg.OpId, POSIX_EPERM, errBaseStationNotRegistered)
+		}
+
+		// EUI-CN certificates bind the certificate to one station: the
+		// asserted EUI must equal the connect bsEui (defense-in-depth beyond
+		// the spec's mutual-TLS requirement; org-<UUID> certificates carry no
+		// station identity and skip this check)
+		if session.certSubjectEUI != nil && *session.certSubjectEUI != session.BaseStationEUI {
+			s.logger.WarnContext(ctx, LogBSSCICertSubjectEUIMismatch,
+				"certEui", *session.certSubjectEUI,
+				"bsEui", session.BaseStationEUI)
+			return s.rejectConnect(session, msg.OpId, POSIX_EPERM, errBaseStationNotRegistered)
+		}
+
+		// The presented certificate must match the registered station's
+		// stored fingerprint (both CN forms); rejection stays
+		// indistinguishable from an unregistered station
+		if session.ClientCert != nil && s.bsDirectory != nil {
+			if fpErr := s.verifyCertificateFingerprint(ctx, session); fpErr != nil {
+				s.logger.WarnContext(ctx, LogBSSCICertFingerprintMismatch,
+					"eui", session.BaseStationEUI,
+					"error", fpErr)
+				return s.rejectConnect(session, msg.OpId, POSIX_EPERM, errBaseStationNotRegistered)
+			}
+		}
+	} else if baseStation.TenantID > 0 {
+		// Community fallback: adopt the registered base station tenant and
+		// its default organization
+		session.ResolvedTenantID = baseStation.TenantID
+		if s.orgResolver != nil {
+			if orgID, orgErr := s.orgResolver.GetDefaultOrgForTenant(ctx, baseStation.TenantID); orgErr == nil {
+				session.OrganizationID = orgID
+			}
+		}
+		ctx = s.sessionContext(session)
+	}
+	session.pendingBaseStation = baseStation
+
+	// Geolocation parsing: exactly three finite numeric values with lat/lon in range
 	if geoLoc, ok := data["geoLocation"].([]interface{}); ok && len(geoLoc) == 3 {
-		lat, latOk := geoLoc[0].(float64)
-		lon, lonOk := geoLoc[1].(float64)
-		alt, altOk := geoLoc[2].(float64)
-		if latOk && lonOk && altOk &&
-			lat >= models.LatitudeMin && lat <= models.LatitudeMax &&
-			lon >= models.LongitudeMin && lon <= models.LongitudeMax {
-			session.GeoLocation = []float64{lat, lon, alt}
+		if coords, valid := extractFloatSlice(geoLoc); valid {
+			lat, lon, alt := coords[0], coords[1], coords[2]
+			if lat >= models.LatitudeMin && lat <= models.LatitudeMax &&
+				lon >= models.LongitudeMin && lon <= models.LongitudeMax {
+				session.GeoLocation = []float64{lat, lon, alt}
+			}
 		}
 	}
 
 	// BSSCI-3.3: Session resume handling
 	var snResume bool
 	var previousSession *Session
-	var err error
 
-	// Extract snBsUuid and scUUIDToMatch (simple map access)
+	// Resume identity is snBsUuid scoped by tenant and base station EUI
+	// (rev1 §5.3.1: the con message carries snBsUuid, snBsOpId, snScOpId -
+	// there is no snScUuid field in the connect request)
 	if snBsUUIDData, hasBsUUID := data["snBsUuid"]; hasBsUUID {
 		bsUUID, catErr := extractSessionUUID(snBsUUIDData)
 		if catErr != nil {
 			s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToExtractSnBsUUID, "error", catErr.Token)
-			return s.sendCatalogError(session, msg.OpId, catErr)
+			return s.rejectConnect(session, msg.OpId, catErr.Posix, catErr.Token)
 		}
 		// Valid bsUUID extracted - continue with resume logic
 		session.BsUUID = bsUUID
 
-		// Extract scUUIDToMatch from extra field if present
-		var scUUIDToMatch []byte
-		if extra, hasExtra := data["extra"].(map[string]interface{}); hasExtra {
-			if snScUUIDData, hasScUUID := extra["snScUuid"]; hasScUUID {
-				if scUUID, catErr := extractSessionUUID(snScUUIDData); catErr == nil {
-					scUUIDToMatch = scUUID
-				}
-			}
-		}
-
-		// Extract operation counters
-		var bsOpId, scOpId int64
+		// Extract optional operation counter constraints (absent means the
+		// constraint is not asserted per BSSCI §5.3.1)
+		var bsOpId, scOpId *int64
 		if bsOp, ok := getNumericField(data, "snBsOpId"); ok {
-			bsOpId = bsOp
+			bsOpId = &bsOp
 		}
 		if scOp, ok := getNumericField(data, "snScOpId"); ok {
-			scOpId = scOp
+			scOpId = &scOp
 		}
 
-		// Delegate resume validation to SessionService
-		previousSession, err = s.sessionSvc.HandleResume(session, bsUUID, scUUIDToMatch, bsOpId, scOpId, session.BaseStationEUI)
-		if err != nil {
-			// Log error but continue with new session
-			s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCheckSessionResume,
-				"error", err,
+		// Delegate resume validation to SessionService, which returns a typed
+		// outcome so infrastructure failures and inconsistent state never
+		// silently degrade into a fresh session
+		outcome := s.sessionSvc.HandleResume(ctx, session, bsUUID, bsOpId, scOpId, session.BaseStationEUI)
+		switch outcome.Disposition {
+		case ResumeInfrastructureFailure:
+			// A lookup failure must reject the connect before conRsp; the old
+			// resumable state stays intact for a later successful resume
+			s.logger.ErrorContext(ctx, LogBSSCIFailedToCheckSessionResume,
+				"error", outcome.Err,
 				"eui", session.BaseStationEUI)
+			return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
+		case ResumeInconsistent:
+			// Incompatible counters or version: atomically terminate the old
+			// session (can_resume=false, pending ops removed) then start fresh
+			s.logger.WarnContext(ctx, LogBSSCIFailedToCheckSessionResume,
+				"error", outcome.Err,
+				"eui", session.BaseStationEUI)
+			if outcome.Previous != nil {
+				if err := s.terminateInconsistentResume(ctx, outcome.Previous); err != nil {
+					s.logger.ErrorContext(ctx, LogBSSCIFailedToTerminateSession,
+						"error", err,
+						"eui", session.BaseStationEUI)
+					return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
+				}
+			}
+			previousSession = nil
+		case ResumeCompatible:
+			previousSession = outcome.Previous
+		default:
+			previousSession = nil
 		}
 
 		if previousSession != nil {
-			// Valid resume - copy state from previous session
+			// Valid resume - restore the authoritative persisted counters,
+			// not the constraint values reported in the connect message
 			snResume = true
 			session.IsResumed = true
 			session.SessionUUID = previousSession.SessionUUID
-			session.BsOpId = bsOpId
-			session.ScOpId = scOpId
-			session.LastBsOpId = bsOpId
-			session.LastScOpId = scOpId
+			session.BsOpId = previousSession.LastBsOpId
+			session.ScOpId = previousSession.LastScOpId
+			session.LastBsOpId = previousSession.LastBsOpId
+			session.LastScOpId = previousSession.LastScOpId
 			session.DbSessionID = previousSession.DbSessionID
 			session.OrganizationID = previousSession.OrganizationID     // Restore org from previous session
 			session.ResolvedTenantID = previousSession.ResolvedTenantID // Restore tenant from previous session
 
+			// Load and strictly decode the persisted pending operations BEFORE
+			// conRsp: an infrastructure or decode failure rejects the resume
+			// instead of silently losing protocol state. The validated snapshot
+			// stays on the provisional connection until conCmp activates it.
+			pendingOps, loadErr := s.loadPendingOperations(session)
+			if loadErr != nil {
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToLoadPendingOperationsForSessionResume,
+					"error", loadErr,
+					"sessionID", session.DbSessionID)
+				return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
+			}
+
+			// Semantic reconstruction also happens BEFORE conRsp: a resumable
+			// operation that cannot be rebuilt rejects the resume in the same
+			// way, preserving every row and its queue state instead of
+			// silently dropping recoverable work after activation.
+			if recErr := s.reconstituteResumeOperations(ctx, pendingOps); recErr != nil {
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstitutePendingOperation,
+					"error", recErr,
+					"sessionID", session.DbSessionID)
+				return s.rejectConnect(session, msg.OpId, POSIX_EAGAIN, errSessionResumeUnavailable)
+			}
+			session.resumePendingOps = pendingOps
+
+			// Counter floor: the SC counter must be at or below every persisted
+			// negative operation ID, so reissued IDs are never re-allocated
+			for _, op := range pendingOps {
+				if op.OperationID < 0 && op.OperationID < session.LastScOpId {
+					session.LastScOpId = op.OperationID
+				}
+			}
+			session.ScOpId = session.LastScOpId
+
 			s.logger.InfoContext(s.safeCtx(), LogBSSCIResumingPreviousSession,
 				"eui", session.BaseStationEUI,
 				"bsOpId", session.BsOpId,
-				"scOpId", session.ScOpId,
+				"scOpId", session.LastScOpId,
 				"dbSessionId", session.DbSessionID,
 				"orgID", session.OrganizationID.String(),
 				"tenantID", session.ResolvedTenantID)
@@ -1677,13 +2277,8 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 			"eui", session.BaseStationEUI)
 	}
 
-	// Store session in sessions map (protocol handling)
-	s.mu.Lock()
-	s.sessions[session.ID] = session
-	s.mu.Unlock()
-
-	// Delegate UUID-based session storage to SessionService
-	s.sessionSvc.StoreSessionByUUID(session)
+	// The session stays provisional until conCmp: live-session map and
+	// resumable-index registration happen in handleConnectComplete
 
 	s.logger.InfoContext(s.safeCtx(), LogBSSCIBaseStationConnected,
 		"eui", session.BaseStationEUI,
@@ -1730,18 +2325,83 @@ func (s *Server) handleConnect(_ *Server, session *Session, msg *Message, data m
 		response.SnScOpId = &session.ScOpId
 	}
 
-	return s.sendMessage(session, response)
+	if err := s.sendMessage(session, response); err != nil {
+		session.ConnectState = ConnectStateTerminal
+		return err
+	}
+	session.ConnectState = ConnectStateAwaitingConnectComplete
+	return nil
 }
 
-// handleConnectComplete handles the connect complete operation
+// terminateInconsistentResume atomically retires a resumable session whose
+// reported counters or negotiated version are incompatible with the current
+// connect: it terminates the session (status=terminated, can_resume=false)
+// and removes its pending operations so the base station starts genuinely
+// fresh. The previous session is a DB-hydrated snapshot, never a live one.
+func (s *Server) terminateInconsistentResume(ctx context.Context, previous *Session) error {
+	if err := s.sessionSvc.TerminateSession(ctx, previous); err != nil {
+		return fmt.Errorf("terminate inconsistent resume session: %w", err)
+	}
+	if previous.DbSessionID != 0 && s.statusSvc != nil {
+		if _, err := s.statusSvc.DeletePendingOperations(ctx, previous); err != nil {
+			return fmt.Errorf("remove pending operations of inconsistent resume session: %w", err)
+		}
+	}
+	return nil
+}
+
+// reconstituteResumeOperations semantically rebuilds every payload-bearing
+// pending operation in place before the resume is offered. Any failure
+// rejects the whole resume so no row or downlink queue state is ever
+// mutated for work the service center can no longer represent on the wire.
+func (s *Server) reconstituteResumeOperations(ctx context.Context, pendingOps []*PendingOperation) error {
+	for _, op := range pendingOps {
+		if op.Metadata == nil {
+			continue
+		}
+		var (
+			reconstituted map[string]interface{}
+			err           error
+		)
+		switch op.OperationType {
+		case mioty.CmdULDataTransmit:
+			reconstituted, err = s.reconstitueULDataTxMessage(op.Message, op.Metadata, op)
+		case mioty.CmdDLDataQueue:
+			reconstituted, err = s.reconstitueDLDataQueMessage(op.Message, op.Metadata, op)
+		case mioty.CmdDLDataRevoke:
+			reconstituted, err = s.reconstitueDLDataRevMessage(op.Message, op.Metadata)
+		default:
+			continue
+		}
+		if err != nil {
+			s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstitutePendingOperation,
+				"error", err,
+				"opId", op.OperationID,
+				"type", op.OperationType)
+			return fmt.Errorf("reconstitute pending operation %d (%s): %w", op.OperationID, op.OperationType, err)
+		}
+		op.Message = reconstituted
+	}
+	return nil
+}
+
+// handleConnectComplete handles the connect complete operation. The connect
+// operation is already complete at the protocol level when conCmp arrives, so
+// failures past this point never send a BSSCI error - partial persistence is
+// compensated and the connection closed for the base station to reconnect.
 func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
+	// conCmp is only valid after conRsp was sent
+	if session.ConnectState != ConnectStateAwaitingConnectComplete {
+		s.logger.WarnContext(s.safeCtx(), LogBSSCIRejectingCommandBeforeHandshake,
+			"command", msg.Command,
+			"connectState", int(session.ConnectState),
+			"opId", msg.OpId)
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errInvalidHandshakeState)
+	}
+
 	// Validate that connect complete has opId == 0 (BSSCI-3.3)
 	if msg.OpId != 0 {
-		errDef := GetErrorDefinition(errInvalidConnectCompleteOpId)
-		if err := s.sendError(session, msg.OpId, POSIX_EPROTO, errDef.Message); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorResponse, "error", err)
-		}
-		return fmt.Errorf("%s: %d", errDef.Message, msg.OpId)
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errInvalidConnectCompleteOpId)
 	}
 
 	s.logger.InfoContext(s.safeCtx(), LogBSSCIBaseStationConnectionCompletedSuccessfully,
@@ -1749,63 +2409,54 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 		"name", session.Name,
 		"sessionID", session.ID)
 
-	// Convert uint64 EUI to [8]byte format for lookups
-	var euiBytes [8]byte
-	for i := 7; i >= 0; i-- {
-		euiBytes[i] = byte(session.BaseStationEUI >> (8 * (7 - i)))
-	}
 	ctx := s.sessionContext(session)
 
-	// Global EUI lookup — tenant not yet known at connect time
-	baseStation, err := s.connectionSvc.GetBaseStationGlobal(ctx, euiBytes, s.connectionMgr)
-	if err != nil || baseStation == nil {
-		s.logger.ErrorContext(ctx, LogBSSCIBaseStationNotFoundInDatabase,
-			"eui", session.BaseStationEUI,
-			"euiHex", fmt.Sprintf("%X", euiBytes),
-			"error", err)
-
-		// Send error response using catalog
-		if sendErr := s.sendError(session, msg.OpId, POSIX_EPERM, ResolveErrorMessage(errBaseStationNotRegistered)); sendErr != nil {
-			s.logger.ErrorContext(ctx, LogBSSCIFailedToSendErrorResponse, "error", sendErr)
-		}
+	// Registration and tenant authorization already ran before conRsp
+	baseStation := session.pendingBaseStation
+	if baseStation == nil {
+		session.ConnectState = ConnectStateTerminal
 		return fmt.Errorf("%s: EUI %016X", ResolveErrorMessage(errBaseStationNotRegistered), session.BaseStationEUI)
 	}
 
-	// Repair session tenant to match base station's registered tenant
-	if baseStation.TenantID > 0 {
-		session.ResolvedTenantID = baseStation.TenantID
-		if s.orgResolver != nil {
-			orgID, orgErr := s.orgResolver.GetDefaultOrgForTenant(ctx, baseStation.TenantID)
-			if orgErr == nil {
-				session.OrganizationID = orgID
-			}
-		}
-		// Rebuild context with correct tenant for all subsequent operations
-		ctx = s.sessionContext(session)
-	}
+	// Activation is one application operation: persist the session and register
+	// the live connection/status BEFORE publishing to the in-memory registries.
+	// The operation is protocol-complete, so any failure closes the connection
+	// without a BSSCI error - partial state is compensated and the base station
+	// reconnects.
 
-	s.logger.InfoContext(ctx, LogBSSCIBaseStationFoundInDatabase,
-		"eui", session.BaseStationEUI,
-		"name", session.Name,
-		"tenant_id", baseStation.TenantID)
-
-	// Delegate database session persistence to SessionService
+	// Step 1: persist the session row (terminates a stale active session first,
+	// aborting on failure rather than leaving two active sessions)
 	if err := s.sessionSvc.PersistSession(ctx, session, baseStation, session.IsResumed, session.ConnectInfo); err != nil {
 		s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistSession,
 			"error", err,
 			"eui", session.BaseStationEUI)
-		// Continue - session can still function without DB persistence
+		session.ConnectState = ConnectStateTerminal
+		return fmt.Errorf("session persistence failed after conCmp: %w", err)
 	}
 
-	// Store session in local sessions map with DbSessionID populated
-	if session.DbSessionID > 0 {
-		s.mu.Lock()
-		s.sessions[session.ID] = session
-		s.mu.Unlock()
-		// SessionsByUUID storage is handled by SessionService in handleConnect
+	// Step 2: register the live connection and base-station online status. A
+	// failure here compensates the just-persisted session and closes without
+	// publishing anything to the live registries.
+	if err := s.connectionRegistry.RegisterConnection(ctx, session, baseStation); err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateConnectionStatus,
+			"eui", session.BaseStationEUI,
+			"error", err)
+		if termErr := s.sessionSvc.TerminateSession(ctx, session); termErr != nil {
+			s.logger.ErrorContext(ctx, LogBSSCIFailedToTerminateSession,
+				"error", termErr,
+				"eui", session.BaseStationEUI)
+		}
+		session.ConnectState = ConnectStateTerminal
+		return fmt.Errorf("connection registration failed after conCmp: %w", err)
 	}
 
-	// Update the base station's bidi capability and GPS location in the database
+	// Step 3: both durable steps succeeded - publish to the live-session map
+	// and the resumable index
+	s.publishLiveSession(ctx, session)
+	s.sessionSvc.StoreSessionByUUID(session)
+
+	// Update the base station's bidi capability and GPS location in the
+	// database (non-critical enrichment; failure is logged, not fatal)
 	if s.basestationRepo != nil {
 		updates := map[string]interface{}{
 			"bidi": session.Bidirectional,
@@ -1830,98 +2481,73 @@ func (s *Server) handleConnectComplete(_ *Server, session *Session, msg *Message
 		}
 	}
 
-	// Delegate connection registration to ConnectionService
-	if err := s.connectionSvc.RegisterConnection(ctx, session, baseStation, s.connectionMgr); err != nil {
-		s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateConnectionStatus,
-			"eui", session.BaseStationEUI,
-			"error", err)
-	}
-
 	// BSSCI-3.3-03: Delegate handshake completion to SessionService
 	s.sessionSvc.MarkHandshakeComplete(session)
+	session.ConnectState = ConnectStateComplete
 
-	// Start status mechanism for this session
+	// Active sessions read without a deadline; liveness is the ping
+	// operation's job (BSSCI §5.4)
+	if session.Conn != nil {
+		if err := session.Conn.SetReadDeadline(time.Time{}); err != nil {
+			s.logger.WarnContext(ctx, LogBSSCIFailedToSetReadDeadline, "error", err)
+		}
+	}
+
+	// MIOTY session resume: restore the validated pending-operation snapshot
+	// loaded before conRsp (never re-read or re-written here - the DB rows are
+	// already authoritative), reissue the eligible operations in deterministic
+	// order with their original IDs, and only then start status polling so the
+	// first status request cannot interleave with the reissue sequence.
+	if pendingOps := session.resumePendingOps; len(pendingOps) > 0 {
+		session.resumePendingOps = nil
+		s.logger.InfoContext(ctx, LogBSSCIResumingSessionWithPendingOps,
+			"bsEui", session.BaseStationEUI,
+			"sessionID", session.DbSessionID,
+			"pendingCount", len(pendingOps))
+
+		for _, op := range pendingOps {
+			s.logger.DebugContext(ctx, LogBSSCIProcessingPendingOperationForResume,
+				"opId", op.OperationID,
+				"type", op.OperationType)
+
+			// Cache-only hydration: the loaded DB rows are authoritative and
+			// must not be UPSERTed back. BS-initiated (positive) operations
+			// are hydrated for response correlation but never transmitted.
+			// Semantic reconstruction already happened before conRsp.
+			if s.statusSvc != nil {
+				s.statusSvc.RestorePendingOperation(session, op.OperationID, op)
+			}
+
+			if !isResumableScOperation(op.OperationID, op.OperationType) {
+				continue
+			}
+
+			// Normalize message types to fix JSON float64 conversion before reissuing
+			normalizedMsg := s.normalizeMessageTypes(op.Message, op.OperationType)
+			if err := s.sendMessage(session, normalizedMsg); err != nil {
+				// A send failure means the connection is broken: abort
+				// activation so status polling never starts on a dead
+				// transport. The rows stay persisted for the next resume.
+				s.logger.ErrorContext(ctx, LogBSSCIFailedToReissuePendingOperation,
+					"error", err,
+					"opId", op.OperationID,
+					"type", op.OperationType)
+				if errors.Is(err, ErrAmbiguousWrite) {
+					s.closeTransportAfterWriteFailure(session, op.OperationID, err)
+				}
+				return fmt.Errorf("reissue pending operation %d after resume: %w", op.OperationID, err)
+			}
+		}
+	} else if session.DbSessionID > 0 {
+		s.logger.DebugContext(ctx, LogBSSCINoPendingOperationsToResume,
+			"bsEui", session.BaseStationEUI,
+			"sessionID", session.DbSessionID)
+	}
+
+	// Start status mechanism only after the reissue sequence completed
 	s.startStatusMechanism(session)
 	s.logger.InfoContext(ctx, LogBSSCIStartedStatusMechanismForBaseStation,
 		"bsEui", session.BaseStationEUI)
-
-	// MIOTY session resume: Load and reissue pending operations
-	if session.DbSessionID > 0 {
-		pendingOps, err := s.loadPendingOperations(session)
-		if err != nil {
-			s.logger.ErrorContext(ctx, LogBSSCIFailedToLoadPendingOperationsForSessionResume,
-				"error", err,
-				"sessionID", session.DbSessionID)
-		} else if len(pendingOps) > 0 {
-			s.logger.InfoContext(ctx, LogBSSCIResumingSessionWithPendingOps,
-				"bsEui", session.BaseStationEUI,
-				"sessionID", session.DbSessionID,
-				"pendingCount", len(pendingOps))
-
-			// Reissue all pending operations per MIOTY BSSCI v1.0.0 session resume requirements
-			for _, op := range pendingOps {
-				s.logger.DebugContext(ctx, LogBSSCIProcessingPendingOperationForResume,
-					"opId", op.OperationID,
-					"type", op.OperationType)
-
-				// Reconstitute operations BEFORE storing or sending
-				if op.OperationType == mioty.CmdULDataTransmit && op.Metadata != nil {
-					reconstituted, err := s.reconstitueULDataTxMessage(op.Message, op.Metadata, op)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteULDataTxSkipping,
-							"error", err,
-							"opId", op.OperationID)
-						continue
-					}
-					op.Message = reconstituted
-				} else if op.OperationType == mioty.CmdDLDataQueue && op.Metadata != nil {
-					// Reconstitute dlDataQue with counter-dependent payloads
-					reconstituted, err := s.reconstitueDLDataQueMessage(op.Message, op.Metadata, op)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataQueSkipping,
-							"error", err,
-							"opId", op.OperationID)
-						continue
-					}
-					op.Message = reconstituted
-				} else if op.OperationType == mioty.CmdDLDataRevoke && op.Metadata != nil {
-					// Reconstitute mioty.CmdDLDataRevoke with proper integer types
-					reconstituted, err := s.reconstitueDLDataRevMessage(op.Message, op.Metadata)
-					if err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToReconstituteDLDataRevSkipping,
-							"error", err,
-							"opId", op.OperationID)
-						continue
-					}
-					op.Message = reconstituted
-				}
-
-				// Delegate pending operation storage to StatusService
-				// BSSCI §§5.11-5.12.3 Gap 1: Guard against nil statusSvc (test compatibility)
-				if s.statusSvc != nil {
-					if err := s.statusSvc.RecordPendingOperation(ctx, session, op.OperationID, op, session.DbSessionID); err != nil {
-						s.logger.ErrorContext(ctx, LogBSSCIFailedToRecordPendingOperation,
-							"error", err,
-							"opId", op.OperationID)
-						// Continue - operation can still be reissued
-					}
-				}
-
-				// Normalize message types to fix JSON float64 conversion before reissuing
-				normalizedMsg := s.normalizeMessageTypes(op.Message, op.OperationType)
-				if err := s.sendMessage(session, normalizedMsg); err != nil {
-					s.logger.ErrorContext(ctx, LogBSSCIFailedToReissuePendingOperation,
-						"error", err,
-						"opId", op.OperationID,
-						"type", op.OperationType)
-				}
-			}
-		} else {
-			s.logger.DebugContext(ctx, LogBSSCINoPendingOperationsToResume,
-				"bsEui", session.BaseStationEUI,
-				"sessionID", session.DbSessionID)
-		}
-	}
 
 	// BSSCI §5.8.3: Trigger automatic attach propagate reconciliation for newly connected BS
 	// Replay all bidirectional endpoints to the newly connected base station
@@ -2013,11 +2639,13 @@ func (s *Server) SendPing(sessionID string) error {
 		return fmt.Errorf("%s for session %s", ResolveErrorMessage(errCannotSendPing), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID and
+	// persist the counter before the frame is written; never roll back. Ping
+	// is idempotent liveness traffic, so no pending record is persisted.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	msg := map[string]interface{}{
 		"command": mioty.CmdPing,
@@ -2029,22 +2657,11 @@ func (s *Server) SendPing(sessionID string) error {
 		"bsEui", session.BaseStationEUI,
 		"opId", opId)
 
-	// Send with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, msg); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
+		if errors.Is(err, ErrAmbiguousWrite) {
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		}
 		return err
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	return nil
@@ -2076,11 +2693,13 @@ func (s *Server) InitiatePing(ctx context.Context, baseStationEUI uint64, tenant
 			baseStationEUI, sessionTenantID, tenantID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID and
+	// persist the counter before the frame is written; never roll back. Ping
+	// is idempotent liveness traffic, so no pending record is persisted.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return 0, err
+	}
 
 	msg := map[string]interface{}{
 		"command": mioty.CmdPing,
@@ -2092,22 +2711,11 @@ func (s *Server) InitiatePing(ctx context.Context, baseStationEUI uint64, tenant
 		"bsEui", session.BaseStationEUI,
 		"opId", opId)
 
-	// Send with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, msg); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
+		if errors.Is(err, ErrAmbiguousWrite) {
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		}
 		return 0, err
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(ctx, session); err != nil {
-		s.logger.ErrorContext(ctx, LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", session.ID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	return opId, nil
@@ -2119,8 +2727,8 @@ func (s *Server) InitiatePing(ctx context.Context, baseStationEUI uint64, tenant
 func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
 	ctx := s.sessionContext(session)
 
-	// Extract and validate mandatory epEui field
-	epEUI, hasEpEUI := getNumericField(data, "epEui")
+	// Extract and validate mandatory epEui field (full-range unsigned EUI-64)
+	epEUI, hasEpEUI := getUint64Field(data, "epEui")
 	if !hasEpEUI {
 		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingEpEui))
 	}
@@ -2245,7 +2853,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 	// Store pending operation for completion tracking
 	// Make a copy of the data to avoid mutations
 	pendingData := map[string]interface{}{
-		"epEui":       pkgmioty.FormatEUI64(uint64(epEUI)),
+		"epEui":       pkgmioty.FormatEUI64(epEUI),
 		"attachCnt":   attachCnt,
 		"rxTime":      rxTime,
 		"nonce":       nonce,
@@ -2288,11 +2896,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 
 	// Convert endpoint EUI to bytes for database lookup
 	epEUIBytes := make([]byte, 8)
-	// EUIs are always positive in MIOTY protocol
-	if epEUI < 0 {
-		return s.sendError(session, msg.OpId, POSIX_EINVAL, ResolveErrorMessage(errInvalidFieldValue))
-	}
-	binary.BigEndian.PutUint64(epEUIBytes[:], uint64(epEUI))
+	binary.BigEndian.PutUint64(epEUIBytes[:], epEUI)
 
 	// Look up endpoint in database to get network keys
 	var nwkSnKey []byte
@@ -2415,7 +3019,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 		}
 
 		//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for uint32
-		if err := ValidateAttachSignature(uint64(epEUI), uint32(attachCnt), sign, nwkSnKey); err != nil {
+		if err := ValidateAttachSignature(epEUI, uint32(attachCnt), sign, nwkSnKey); err != nil {
 			s.logger.WarnContext(s.safeCtx(), LogBSSCIAttachSignatureValidationFailed,
 				"epEui", epEUI,
 				"error", err)
@@ -2425,7 +3029,7 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidSignature))
 		}
 
-		sessionKey, err := DeriveSessionKey(uint64(epEUI), nonce, sign, nwkSnKey)
+		sessionKey, err := DeriveSessionKey(epEUI, nonce, sign, nwkSnKey)
 		if err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToDeriveSessionKey,
 				"epEui", epEUI,
@@ -2541,104 +3145,34 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 			return nil
 		}
 
-		tx, txErr := s.storage.BeginTx(ctx)
-		if txErr != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToBeginTransaction, "error", txErr)
+		// The attachment persister owns the transactional endpoint + session
+		// upsert; any persistence failure keeps the exact response behavior:
+		// remove the pending operation and answer with the database error.
+		rec := AttachSessionRecord{
+			TenantID:         tenantID,
+			BSLookupTenantID: resolvedTenant(session, s.tenantID),
+			EndpointID:       endpoint.ID,
+			EndpointUpdates:  attachUpdates,
+			EncryptedKey:     encryptedSessionKey,
+			//nolint:gosec // G115: attachCnt validated to be within 0..0xFFFFFF above
+			AttachCnt:      uint32(attachCnt),
+			ShAddr:         responseShAddr,
+			BaseStationEUI: session.BaseStationEUIBytes(),
+		}
+		if s.attachPersistence == nil {
 			if err := s.removePendingOperation(session, msg.OpId); err != nil {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 		}
-
-		var commitErr error
-		defer func() {
-			if commitErr != nil {
-				_ = tx.Rollback()
-			}
-		}()
-
-		if err := tx.EndPoints().UpdateFields(ctx, tenantID, endpoint.ID, attachUpdates); err != nil {
-			commitErr = err
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointAttachMetadata, "error", err)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
+		if err := s.attachPersistence.PersistAttachSession(ctx, rec); err != nil {
+			if rmErr := s.removePendingOperation(session, msg.OpId); rmErr != nil {
+				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", rmErr)
 			}
 			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
 		}
 
-		endpointIDStr := fmt.Sprintf("%d", endpoint.ID)
-		activeSession, getErr := tx.EndPointSessions().GetActive(ctx, endpointIDStr)
-		if getErr != nil {
-			commitErr = getErr
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToLoadEndpointSession, "error", getErr)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-		}
-
-		now := time.Now().UTC()
-
-		// Lookup base station ID for session enrichment (tenant-scoped)
-		var primaryBsID *int64
-		if s.basestationRepo != nil {
-			bs, bsErr := s.basestationRepo.GetByEUI(ctx, resolvedTenant(session, s.tenantID), session.BaseStationEUIBytes())
-			if bsErr == nil && bs != nil {
-				primaryBsID = &bs.ID
-			}
-		}
-
-		// responseShAddr is uint16, model ShAddr is *int32 (INTEGER 0-65535)
-		shAddrInt32 := int32(responseShAddr)
-
-		if activeSession != nil {
-			activeSession.SessionKey = encryptedSessionKey
-			//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for int32
-			activeSession.AttachCnt = int32(attachCnt)
-			activeSession.LastActivityAt = now
-			activeSession.ShAddr = &shAddrInt32
-			activeSession.PrimaryBaseStationID = primaryBsID
-			if err := tx.EndPointSessions().Update(ctx, activeSession); err != nil {
-				commitErr = err
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointSession, "error", err)
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-			}
-		} else {
-			newSession := &models.EndPointSession{
-				TenantID:   tenantID,
-				EndPointID: endpoint.ID,
-				SessionID:  uuid.New().String(),
-				SessionKey: encryptedSessionKey,
-				//nolint:gosec // G115: attachCnt validated to be <= 0xFFFFFF on line 1431, safe for int32
-				AttachCnt:            int32(attachCnt),
-				Status:               "active",
-				StartedAt:            now,
-				LastActivityAt:       now,
-				ShAddr:               &shAddrInt32,
-				PrimaryBaseStationID: primaryBsID,
-			}
-			if err := tx.EndPointSessions().Create(ctx, newSession); err != nil {
-				commitErr = err
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCreateEndpointSession, "error", err)
-				if err := s.removePendingOperation(session, msg.OpId); err != nil {
-					s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-				}
-				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			commitErr = err
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCommitAttachTransaction, "error", err)
-			if err := s.removePendingOperation(session, msg.OpId); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperation, "error", err)
-			}
-			return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errDatabaseError))
-		}
-		commitErr = nil
+		// Update radio metrics using selective update (preserves optional fields)
 
 		// Update radio metrics using selective update (preserves optional fields)
 		var eui models.EUI
@@ -2695,8 +3229,8 @@ func (s *Server) handleAttach(_ *Server, session *Session, msg *Message, data ma
 
 // handleDetach handles detach operations per BSSCI 3.7
 func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
-	// Extract and validate mandatory epEui field
-	epEUI, hasEpEUI := getNumericField(data, "epEui")
+	// Extract and validate mandatory epEui field (full-range unsigned EUI-64)
+	epEUI, hasEpEUI := getUint64Field(data, "epEui")
 	if !hasEpEUI {
 		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errMissingEpEui))
 	}
@@ -2763,17 +3297,13 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 		"signLen", len(sign))
 
 	// Build typed detachMetadata struct for crash-safe persistence (BSSCI §5.7.1)
-	epEuiUint, errToken := safeUint64(epEUI, "epEui")
-	if errToken != "" {
-		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errToken))
-	}
 	packetCntUint, errToken := safeUint32(packetCnt, "packetCnt")
 	if errToken != "" {
 		return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errToken))
 	}
 
 	typedMetadata := &detachMetadata{
-		EpEui:     epEuiUint,
+		EpEui:     epEUI,
 		PacketCnt: packetCntUint,
 		Signature: sign,
 		RxTime:    rxTime,
@@ -2794,7 +3324,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 	// Fetch endpoint early to resolve owner tenant/org for roaming support (DET-02)
 	ctx := s.sessionContext(session)
 	euiBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(euiBytes, epEuiUint)
+	binary.BigEndian.PutUint64(euiBytes, epEUI)
 
 	// Try same-tenant lookup first, then cross-tenant fallback for roaming
 	endpoint, err := s.endpointRepo.GetByEUI(ctx, resolvedTenant(session, s.tenantID), euiBytes)
@@ -2833,23 +3363,23 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 		// Unknown endpoint - validate via internal validator and use returned tenant metadata (BSSCI §5.7)
 		s.logger.WarnContext(ctx, LogBSSCIDetachFromUnknownEndpoint,
 			"error", err,
-			"epEui", epEuiUint)
+			"epEui", epEUI)
 
 		// Validate unknown endpoint signature via internal detach validator service
 		if s.detachValidator != nil {
-			result, validationErr := s.detachValidator.ValidateDetachSignature(ctx, epEuiUint, sign)
+			result, validationErr := s.detachValidator.ValidateDetachSignature(ctx, epEUI, sign)
 			if validationErr != nil {
 				// Check for typed sentinel: endpoint not found
 				if errors.Is(validationErr, ErrDetachValidationEndpointNotFound) {
 					s.logger.WarnContext(ctx, LogBSSCIUnknownEndpointNotFoundDuringDetachValidation,
-						"epEui", epEuiUint)
+						"epEui", epEUI)
 					return s.sendError(session, msg.OpId, POSIX_ENOENT, ResolveErrorMessage(errEndpointNotFound))
 				}
 
 				// Check for signature validation failure with metadata
 				if errors.Is(validationErr, ErrDetachSignatureInvalid) && result != nil {
 					s.logger.WarnContext(ctx, LogBSSCIUnknownEndpointDetachSignatureInvalid,
-						"epEui", epEuiUint,
+						"epEui", epEUI,
 						"tenant_id", result.TenantID,
 						"owner_tenant_id", result.OwnerTenantID,
 						"validation_status", result.ValidationStatus)
@@ -2858,7 +3388,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 
 				// All other errors treated as signature validation failure
 				s.logger.WarnContext(ctx, LogBSSCIUnknownEndpointDetachSignatureValidationFailed,
-					"epEui", epEuiUint,
+					"epEui", epEUI,
 					"error", validationErr)
 				return s.sendError(session, msg.OpId, POSIX_EACCES, ResolveErrorMessage(errDetachSignatureInvalid))
 			}
@@ -2891,7 +3421,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 			}
 
 			s.logger.InfoContext(ctx, LogBSSCIUnknownEndpointDetachSignatureValidatedSuccessfully,
-				"epEui", epEuiUint,
+				"epEui", epEUI,
 				"tenantId", ownerTenantID,
 				"ownerTenantId", result.OwnerTenantID,
 				"validationStatus", validationStatus)
@@ -2900,7 +3430,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 			ownerTenantID = resolvedTenant(session, s.tenantID)
 			ownerCtx = pkgcontext.WithTenantID(context.Background(), ownerTenantID)
 			s.logger.WarnContext(ctx, LogBSSCIDetachValidatorNotConfiguredUsingSessionTenantForUnknownEndpoint,
-				"epEui", epEuiUint,
+				"epEui", epEUI,
 				"session_tenant", ownerTenantID)
 		}
 	}
@@ -2975,8 +3505,11 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 		typedMetadata.EndpointID = endpoint.ID
 	}
 
-	// Persist pending operation via StatusService (handles both DB + map with SessionOpKey)
-	// BSSCI §5.7: StatusService is single writer for crash safety (guard against zero DbSessionID)
+	// Persist pending operation via StatusService (handles both DB + map with SessionOpKey).
+	// This row is a crash-resume aid for a BS-initiated operation (positive
+	// opId): the abort-before-send rule protects SC-initiated recovery only,
+	// and aborting here would drop a live detach on a transient DB failure, so
+	// persistence stays best-effort (BSSCI §5.7).
 	if session.DbSessionID != 0 {
 		if err := s.persistPendingOperation(session, int64(msg.OpId), mioty.CmdDetach, data, euiBytes, metadataMap); err != nil {
 			s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToPersistPendingOperationMigrationNeeded,
@@ -3031,11 +3564,11 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 	// Normalize payload for audit completeness (DET-03: convert numeric arrays to concrete types)
 	normalizedPayload := normalizeDetachPayload(data)
 
-	if s.storage != nil && s.storage.MIOTYMessages() != nil {
-		if err := s.storage.MIOTYMessages().CreateDetachMessage(ownerCtx, detachMsg, normalizedPayload); err != nil {
+	if s.protocolMessages != nil {
+		if err := s.protocolMessages.CreateDetachMessage(ownerCtx, detachMsg, normalizedPayload); err != nil {
 			s.logger.WarnContext(ownerCtx, LogBSSCIFailedToPersistDetachMessage,
 				"error", err,
-				"epEui", epEuiUint,
+				"epEui", epEUI,
 				"bsEui", session.BaseStationEUI,
 				"opId", msg.OpId)
 		}
@@ -3047,7 +3580,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 		if s.config.DetachSignatureValidationEnabled {
 			if err := ValidateDetachSignature(sign, endpoint.Sign); err != nil {
 				s.logger.WarnContext(ownerCtx, LogBSSCIDetachSignatureValidationFailed,
-					"epEui", pkgmioty.FormatEUI64(epEuiUint),
+					"epEui", pkgmioty.FormatEUI64(epEUI),
 					"error", err)
 				return s.sendError(session, msg.OpId, POSIX_EPROTO, ResolveErrorMessage(errInvalidSignature))
 			}
@@ -3068,7 +3601,7 @@ func (s *Server) handleDetach(_ *Server, session *Session, msg *Message, data ma
 		if err := s.endpointRepo.UpdateFields(ownerCtx, ownerTenantID, endpoint.ID, updates); err != nil {
 			s.logger.WarnContext(ownerCtx, LogBSSCIFailedToUpdateEndpointDetachTelemetry,
 				"error", err,
-				"epEui", epEuiUint)
+				"epEui", epEUI)
 		}
 	}
 
@@ -3165,7 +3698,7 @@ func (s *Server) handleAttachComplete(_ *Server, session *Session, msg *Message,
 				epTID = int64(v)
 			}
 			if epTID > 0 && s.orgResolver != nil {
-				if orgUUID, orgErr := s.orgResolver.GetDefaultOrgForTenant(s.safeCtx(), epTID); orgErr == nil {
+				if orgUUID, orgErr := s.orgResolver.GetDefaultOrgForTenant(s.safeCtx(), epTID); orgErr == nil && orgUUID != uuid.Nil {
 					epOwnerOrg = orgUUID.String()
 				}
 			}
@@ -3236,7 +3769,7 @@ func (s *Server) handleAttachComplete(_ *Server, session *Session, msg *Message,
 				// Tier 2: EUI lookup with session tenant (legacy ops)
 				if endpoint == nil && epEUI != 0 {
 					euiBytes := make([]byte, 8)
-					binary.BigEndian.PutUint64(euiBytes, uint64(epEUI))
+					binary.BigEndian.PutUint64(euiBytes, epEUI)
 					sessionTenant := resolvedTenant(session, s.tenantID)
 					endpoint, _ = s.endpointRepo.GetByEUI(s.safeCtx(), sessionTenant, euiBytes)
 				}
@@ -3244,7 +3777,7 @@ func (s *Server) handleAttachComplete(_ *Server, session *Session, msg *Message,
 				// Tier 3: Cross-tenant EUI lookup (roaming fallback)
 				if endpoint == nil && epEUI != 0 {
 					euiBytes := make([]byte, 8)
-					binary.BigEndian.PutUint64(euiBytes, uint64(epEUI))
+					binary.BigEndian.PutUint64(euiBytes, epEUI)
 					var eui models.EUI
 					copy(eui[:], euiBytes)
 					endpoint, _ = s.endpointRepo.Get(s.safeCtx(), eui)
@@ -3385,8 +3918,8 @@ func (s *Server) handleDetachComplete(_ *Server, session *Session, msg *Message,
 	}
 	if epEUI == 0 {
 		// Final fallback to current message
-		if epEuiRaw, ok := getNumericField(data, "epEui"); ok {
-			epEUI = uint64(epEuiRaw) //nolint:gosec // G115: EUIs from message validated as positive
+		if epEuiRaw, ok := getUint64Field(data, "epEui"); ok {
+			epEUI = epEuiRaw
 		}
 	}
 
@@ -3491,7 +4024,7 @@ func (s *Server) handleDetachComplete(_ *Server, session *Session, msg *Message,
 	// Record event for successful detach
 	if s.eventStore != nil && epEUI != 0 {
 		details := map[string]interface{}{
-			"epEui":     pkgmioty.FormatEUI64(uint64(epEUI)), // Use hex string to avoid JSON precision loss
+			"epEui":     pkgmioty.FormatEUI64(epEUI), // Use hex string to avoid JSON precision loss
 			"bsEui":     pkgmioty.FormatEUI64(session.BaseStationEUI),
 			"operation": "detach_complete",
 		}
@@ -3503,7 +4036,7 @@ func (s *Server) handleDetachComplete(_ *Server, session *Session, msg *Message,
 			EventType:   models.EventTypeEndpointDetached,
 			Category:    mioty.CategoryEndpoint,
 			Severity:    SeverityInfo,
-			Title:       fmt.Sprintf(models.EventTitleEndpointDetachedViaBS, pkgmioty.FormatEUI64(uint64(epEUI)), pkgmioty.FormatEUI64(session.BaseStationEUI)),
+			Title:       fmt.Sprintf(models.EventTitleEndpointDetachedViaBS, pkgmioty.FormatEUI64(epEUI), pkgmioty.FormatEUI64(session.BaseStationEUI)),
 			Description: "Endpoint successfully detached from network",
 			Details:     detailsJSON,
 			Status:      EventStatusNew,
@@ -3619,18 +4152,15 @@ func (s *Server) handleDetachComplete(_ *Server, session *Session, msg *Message,
 func (s *Server) handleULData(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
 	ctx := s.sessionContext(session)
 
-	epEUI, ok := getNumericField(data, "epEui")
+	// epEui is a full-range unsigned EUI-64 (BSSCI §5.10.1)
+	epEUI, ok := getUint64Field(data, "epEui")
 	if !ok {
 		return fmt.Errorf("%s", ResolveErrorMessage(errMissingEpEui))
 	}
 
 	// Route by endpoint ownership before committing to ingest
 	if s.dispositionResolver != nil {
-		epEuiForDisp, errToken := safeUint64(epEUI, "epEui")
-		if errToken != "" {
-			return s.sendError(session, msg.OpId, POSIX_EINVAL, ResolveErrorMessage(errToken))
-		}
-		disposition, dispErr := s.dispositionResolver.Resolve(ctx, epEuiForDisp)
+		disposition, dispErr := s.dispositionResolver.Resolve(ctx, epEUI)
 		if dispErr != nil {
 			s.logger.ErrorContext(ctx, LogBSSCIDispositionResolutionFailedRejectingUplink,
 				"ep_eui", epEUI, "error", dispErr)
@@ -3651,8 +4181,7 @@ func (s *Server) handleULData(_ *Server, session *Session, msg *Message, data ma
 				// Send ulDataRsp only if the insert succeeds; on failure send a BSSCI error
 				// so the base station retries rather than silently losing the packet.
 				rawFrame, _ := json.Marshal(data) // best-effort; frame already validated above
-				epU, _ := safeUint64(epEUI, "epEui")
-				_, enqErr := s.relayOutbox.Enqueue(ctx, epU, session.BaseStationEUI, rawFrame, time.Now().UnixNano())
+				_, enqErr := s.relayOutbox.Enqueue(ctx, epEUI, session.BaseStationEUI, rawFrame, time.Now().UnixNano())
 				if enqErr != nil {
 					s.logger.ErrorContext(ctx, LogBSSCIFailedToEnqueueRelayUplink,
 						"ep_eui", epEUI, "error", enqErr)
@@ -3765,10 +4294,7 @@ func (s *Server) handleULData(_ *Server, session *Session, msg *Message, data ma
 		return fmt.Errorf("uplinkIngestSvc is required for handleULData")
 	}
 	{
-		epEuiVal, errToken := safeUint64(epEUI, "epEui")
-		if errToken != "" {
-			return s.sendError(session, msg.OpId, POSIX_EINVAL, ResolveErrorMessage(errToken))
-		}
+		epEuiVal := epEUI
 		packetCntVal, errToken := safeUint32(packetCnt, "packetCnt")
 		if errToken != "" {
 			return s.sendError(session, msg.OpId, POSIX_EINVAL, ResolveErrorMessage(errToken))
@@ -3855,101 +4381,53 @@ func (s *Server) handleError(_ *Server, session *Session, msg *Message, data map
 		"message", message,
 		"baseStation", session.BaseStationEUI)
 
-	// Check if this error is related to a pending operation
-	// Base stations sometimes send error messages instead of proper response messages
-	// We must complete the three-way handshake to prevent timeout loops
-	// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation access
-	var pendingOp *PendingOperation
-	var err error
-	if s.statusSvc != nil {
-		pendingOp, err = s.statusSvc.GetPendingOperation(session, int64(msg.OpId))
-	}
-	hasPendingOp := err == nil
-
-	// For Service Center initiated operations (negative opId), always try to complete
-	// the handshake even if we don't have the operation in our tracking
-	isServiceCenterOp := msg.OpId < 0
-
-	if (hasPendingOp && pendingOp != nil) || isServiceCenterOp {
-		// Determine operation type
-		var operationType string
-		if pendingOp != nil {
-			operationType = pendingOp.OperationType
-		} else {
-			// For Service Center operations without tracking, guess based on recent state
-			// Service Center uses negative opIds for attach/detach propagate operations
-			// This is our best guess - most SC operations are propagate operations
-			if msg.OpId < 0 {
-				// Default to detach propagate as it's most common for error scenarios
-				operationType = mioty.CmdDetachPropagate
-			} else {
-				operationType = "unknown"
-			}
-		}
-
-		s.logger.InfoContext(s.safeCtx(), LogBSSCICompletingThreeWayHandshakeForError,
-			"opId", msg.OpId,
-			"operationType", operationType)
-
-		// Send appropriate completion message based on operation type
-		var completionCommand string
-		switch operationType {
-		case mioty.CmdAttachPropagate:
-			completionCommand = mioty.CmdAttachPropagateComplete
-		case mioty.CmdDetachPropagate:
-			completionCommand = mioty.CmdDetachPropagateComplete
-		default:
-			// For other operations, acknowledge with errorAck per BSSCI-4-02
-			errorAckMsg := map[string]interface{}{
-				"command": mioty.CmdErrorAck,
-				"opId":    msg.OpId,
-			}
-			if err := s.sendMessage(session, errorAckMsg); err != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorAck, "error", err)
-			}
-			return nil
-		}
-
-		// Send completion message
-		completionMsg := map[string]interface{}{
-			"command": completionCommand,
+	// Handshake error routing (BSSCI §5.17): an error with opId 0 while
+	// waiting for conCmp means the base station rejected the offered version
+	// or connect response. The service center acknowledges with errorAck,
+	// which completes the failed connect operation, and closes.
+	if msg.OpId == 0 && session.ConnectState == ConnectStateAwaitingConnectComplete {
+		errorAckMsg := map[string]interface{}{
+			"command": mioty.CmdErrorAck,
 			"opId":    msg.OpId,
 		}
-
-		if err := s.sendMessage(session, completionMsg); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendCompletionMessageForErrorOperation,
-				"error", err,
-				"command", completionCommand)
-			return err
+		if sendErr := s.sendMessage(session, errorAckMsg); sendErr != nil {
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorAck, "error", sendErr)
 		}
+		session.ConnectState = ConnectStateTerminal
+		return fmt.Errorf("base station rejected connect response: code=%d %s", code, message)
+	}
 
-		// For error cases, we do NOT call the completion handler
-		// The completion handler should only be called for successful operations
-		// When the base station sends an error (e.g., "unknown endpoint"),
-		// we complete the handshake but don't update our database state
+	// BSSCI §5.17: an inbound error is answered ONLY with errorAck - never with
+	// an operation-specific *Cmp, and the operation type is never guessed. The
+	// error and errorAck replace the normal response/completion sequence.
+	errorAckMsg := map[string]interface{}{
+		"command": mioty.CmdErrorAck,
+		"opId":    msg.OpId,
+	}
+	if sendErr := s.sendMessage(session, errorAckMsg); sendErr != nil {
+		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorAck, "error", sendErr)
+		return sendErr
+	}
+
+	// Typed compensation only for an operation this service center is actually
+	// tracking (an errored operation is finalized without updating domain
+	// state). An unmatched error is acknowledged and audited but touches no
+	// unrelated pending state.
+	var pendingOp *PendingOperation
+	if s.statusSvc != nil {
+		if op, lookupErr := s.statusSvc.GetPendingOperation(session, int64(msg.OpId)); lookupErr == nil {
+			pendingOp = op
+		}
+	}
+	if pendingOp != nil {
 		s.logger.InfoContext(s.safeCtx(), LogBSSCIErrorOperationHandshakeCompletedDatabaseNotUpdated,
 			"opId", msg.OpId,
-			"operationType", operationType)
-
-		// Clean up the pending operation from database and memory
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both cache and DB removal
+			"operationType", pendingOp.OperationType)
 		if err := s.removePendingOperation(session, msg.OpId); err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperationFromDatabase,
 				"error", err,
 				"opId", msg.OpId)
 		}
-		// Note: No manual fallback - trust StatusService single-writer pattern
-
-		return nil
-	}
-
-	// For non-pending operations, just acknowledge per BSSCI-4-02
-	errorAckMsg := map[string]interface{}{
-		"command": mioty.CmdErrorAck,
-		"opId":    msg.OpId,
-	}
-	if err := s.sendMessage(session, errorAckMsg); err != nil {
-		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToSendErrorAck, "error", err)
 	}
 
 	return nil
@@ -3962,9 +4440,34 @@ func (s *Server) handleErrorAck(_ *Server, session *Session, msg *Message, _ map
 		"opId", msg.OpId,
 		"baseStationEUI", session.BaseStationEUI)
 
-	// For SC-initiated operations (negative opId), clean up pending operation
-	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both cache and DB removal
-	if msg.OpId < 0 {
+	// Handshake errorAck routing (BSSCI §5.17): the acknowledgement completes
+	// the failed connect operation; the connection closes
+	if msg.OpId == 0 && session.ConnectState == ConnectStateAwaitingConnectErrorAck {
+		session.ConnectState = ConnectStateTerminal
+		return fmt.Errorf("connect operation failed and was acknowledged by the base station")
+	}
+
+	// An errorAck for the connect operation outside the awaiting state is a
+	// protocol-ordering violation
+	if msg.OpId == 0 && session.ConnectState != ConnectStateComplete {
+		return s.rejectConnect(session, msg.OpId, POSIX_EPROTO, errInvalidHandshakeState)
+	}
+
+	// An errorAck is only meaningful when this service center actually sent an
+	// error frame for that operation on this connection (BSSCI rev1 §5.17 /
+	// classic §3.17). Consuming the recorded expectation prevents a spurious
+	// or forged errorAck from finalizing an unrelated in-flight operation.
+	disposition, awaited := session.consumePendingErrorAck(msg.OpId)
+	if !awaited {
+		s.logger.WarnContext(s.safeCtx(), LogBSSCIUnsolicitedErrorAck,
+			"opId", msg.OpId,
+			"baseStationEUI", session.BaseStationEUI)
+		return nil
+	}
+
+	// Only an error that replaced a pending SC operation's normal sequence may
+	// finalize that operation; ack-only errors touch no pending state.
+	if disposition == errorAckFinalizePendingOperation && msg.OpId < 0 {
 		if err := s.removePendingOperation(session, msg.OpId); err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToRemovePendingOperationAfterErrorAck,
 				"error", err,
@@ -3973,8 +4476,13 @@ func (s *Server) handleErrorAck(_ *Server, session *Session, msg *Message, _ map
 		}
 	}
 
-	// For BS-initiated operations (positive opId), just log - no cleanup needed
-	// The base station is acknowledging our error message
+	// An errorAck that completes an error sent during the connect handshake
+	// finishes the failed exchange: the state machine goes Terminal and the
+	// connection closes (BSSCI rev1 §5.17 / classic §3.17)
+	if session.ConnectState == ConnectStateAwaitingConnectErrorAck {
+		session.ConnectState = ConnectStateTerminal
+		return fmt.Errorf("connect-stage error acknowledged by the base station; closing")
+	}
 
 	return nil
 }
@@ -4060,12 +4568,7 @@ func decodeMessage(rawFrame []byte, encoding string) (map[string]interface{}, er
 
 	switch encoding {
 	case EncodingJSON:
-		// Trim BOM and leading whitespace per RFC 8259
-		trimmed := trimJSONWhitespace(rawFrame)
-		if err := json.Unmarshal(trimmed, &data); err != nil {
-			return nil, err
-		}
-		return data, nil
+		return decodeJSONFrame(rawFrame)
 	case EncodingMessagePack:
 		if err := msgpack.Unmarshal(rawFrame, &data); err != nil {
 			return nil, err
@@ -4080,6 +4583,66 @@ func decodeMessage(rawFrame []byte, encoding string) (map[string]interface{}, er
 	}
 }
 
+// decodeJSONFrame decodes a JSON-encoded BSSCI frame strictly: numbers are
+// preserved as json.Number (the full uint64 EUI range survives decoding), the
+// frame must contain exactly one JSON object, and trailing content is rejected.
+func decodeJSONFrame(rawFrame []byte) (map[string]interface{}, error) {
+	// Trim BOM and leading whitespace per RFC 8259
+	trimmed := trimJSONWhitespace(rawFrame)
+
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	dec.UseNumber()
+
+	var data map[string]interface{}
+	if err := dec.Decode(&data); err != nil {
+		return nil, err
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%s: trailing content after JSON frame", ResolveErrorMessage(errInvalidMessageFormat))
+	}
+	return data, nil
+}
+
+// normalizeStrictDecodedMap converts a strict-decoded (UseNumber) map into the
+// value shapes the legacy decoder produced: integral numbers within the exact
+// float64 range become float64 (so existing consumers keep working), while
+// integers beyond that range stay exact as int64/uint64 - this is what
+// preserves full-range EUI-64 and counter values across resume.
+func normalizeStrictDecodedMap(m map[string]interface{}) map[string]interface{} {
+	for k, v := range m {
+		m[k] = normalizeStrictDecodedValue(v)
+	}
+	return m
+}
+
+func normalizeStrictDecodedValue(v interface{}) interface{} {
+	switch t := v.(type) {
+	case json.Number:
+		if i, err := jsonNumberToInt64(t); err == nil {
+			if i >= -int64(maxExactFloat64Integer) && i <= int64(maxExactFloat64Integer) {
+				return float64(i)
+			}
+			return i
+		}
+		if u, err := jsonNumberToUint64(t); err == nil {
+			return u
+		}
+		if f, err := t.Float64(); err == nil {
+			return f
+		}
+		return t
+	case map[string]interface{}:
+		return normalizeStrictDecodedMap(t)
+	case []interface{}:
+		for i, e := range t {
+			t[i] = normalizeStrictDecodedValue(e)
+		}
+		return t
+	default:
+		return v
+	}
+}
+
 func getStringField(data map[string]interface{}, key string, defaultValue string) string {
 	if v, ok := data[key].(string); ok {
 		return v
@@ -4087,90 +4650,47 @@ func getStringField(data map[string]interface{}, key string, defaultValue string
 	return defaultValue
 }
 
+// getNumericField extracts a signed 64-bit protocol field. Unsigned overflow,
+// non-integral floats, and float magnitudes beyond the exact integer range are
+// rejected via the canonical numeric coercion (coerceInt64).
 func getNumericField(data map[string]interface{}, key string) (int64, bool) {
 	value, exists := data[key]
 	if !exists {
 		return 0, false
 	}
-
-	switch v := value.(type) {
-	case int64:
-		return v, true
-	case int:
-		return int64(v), true
-	case int8:
-		return int64(v), true
-	case int16:
-		return int64(v), true
-	case int32:
-		return int64(v), true
-	case float64:
-		return int64(v), true
-	case float32:
-		return int64(float64(v)), true
-	case uint:
-		return int64(v), true //nolint:gosec // G115: BSSCI protocol values fit int64 range
-	case uint8:
-		return int64(v), true
-	case uint16:
-		return int64(v), true
-	case uint32:
-		return int64(v), true
-	case uint64:
-		return int64(v), true //nolint:gosec // G115: BSSCI protocol values fit int64 range
-	default:
+	v, err := coerceInt64(value)
+	if err != nil {
 		return 0, false
 	}
+	return v, true
+}
+
+// getUint64Field extracts an unsigned 64-bit protocol field (e.g. an EUI-64),
+// preserving the full uint64 range including values above INT64_MAX. Negative
+// values, non-integral floats, and float magnitudes beyond the exact integer
+// range are rejected via the canonical numeric coercion (coerceUint64).
+func getUint64Field(data map[string]interface{}, key string) (uint64, bool) {
+	value, exists := data[key]
+	if !exists {
+		return 0, false
+	}
+	v, err := coerceUint64(value)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // parseOpID validates and extracts operation ID from interface{} value.
-// Per BSSCI §5.2, operation IDs must be precise 64-bit integers.
-// Rejects non-integral floats and uint64 values that overflow int64 range.
+// Per BSSCI §5.2, operation IDs must be precise 64-bit integers; the canonical
+// numeric coercion rejects non-integral floats and uint64 overflow.
 // Returns (value, true) on success or (0, false) on validation failure.
 func parseOpID(value interface{}) (int64, bool) {
-	switch v := value.(type) {
-	case int64:
-		return v, true
-	case int:
-		return int64(v), true
-	case int8:
-		return int64(v), true
-	case int16:
-		return int64(v), true
-	case int32:
-		return int64(v), true
-	case float64:
-		// Only accept if no fractional part and within int64 range
-		if v != math.Trunc(v) || v < math.MinInt64 || v > math.MaxInt64 {
-			return 0, false
-		}
-		return int64(v), true
-	case float32:
-		f64 := float64(v)
-		// Only accept if no fractional part and within int64 range
-		if f64 != math.Trunc(f64) || f64 < math.MinInt64 || f64 > math.MaxInt64 {
-			return 0, false
-		}
-		return int64(f64), true
-	case uint:
-		if v > math.MaxInt64 {
-			return 0, false
-		}
-		return int64(v), true
-	case uint8:
-		return int64(v), true
-	case uint16:
-		return int64(v), true
-	case uint32:
-		return int64(v), true
-	case uint64:
-		if v > math.MaxInt64 {
-			return 0, false
-		}
-		return int64(v), true
-	default:
+	v, err := coerceInt64(value)
+	if err != nil {
 		return 0, false
 	}
+	return v, true
 }
 
 func getBoolField(data map[string]interface{}, key string, defaultValue bool) bool {
@@ -4187,43 +4707,19 @@ func getNumericFieldInt(data map[string]interface{}, key string, defaultValue in
 	return defaultValue
 }
 
-// getFloatFieldValidated extracts a float field and validates it's actually numeric
+// getFloatFieldValidated extracts a float field and validates it's actually
+// numeric via the canonical numeric coercion (coerceFloat64).
 // Returns the value and true if field exists and is numeric, or 0 and false otherwise
 func getFloatFieldValidated(data map[string]interface{}, key string) (float64, bool) {
 	value, exists := data[key]
 	if !exists {
 		return 0, false
 	}
-
-	switch v := value.(type) {
-	case float64:
-		return v, true
-	case float32:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case int:
-		return float64(v), true
-	case int8:
-		return float64(v), true
-	case int16:
-		return float64(v), true
-	case int32:
-		return float64(v), true
-	case uint:
-		return float64(v), true
-	case uint8:
-		return float64(v), true
-	case uint16:
-		return float64(v), true
-	case uint32:
-		return float64(v), true
-	case uint64:
-		return float64(v), true
-	default:
-		// Invalid type for numeric field
+	v, err := coerceFloat64(value)
+	if err != nil {
 		return 0, false
 	}
+	return v, true
 }
 
 // validateByteArray validates a MessagePack byte array (e.g., 4-byte nonce/sign).
@@ -4250,30 +4746,15 @@ func validateByteArray(data interface{}, fieldName string, expectedLen int) ([]b
 		}
 		result := make([]byte, expectedLen)
 		for i, elem := range v {
-			// Extract numeric value
-			var numVal float64
-			switch e := elem.(type) {
-			case float64:
-				numVal = e
-			case int64:
-				numVal = float64(e)
-			case int:
-				numVal = float64(e)
-			default:
-				// Non-numeric element
+			// Canonical numeric coercion enforces integer 0-255 range
+			b, err := numericToByte(elem)
+			if err != nil {
 				if fieldName == fieldNameNonce {
 					return nil, errInvalidNonceElement
 				}
 				return nil, errInvalidSignElement
 			}
-			// Validate range: must be integer 0-255
-			if numVal < 0 || numVal > 255 || numVal != float64(int(numVal)) {
-				if fieldName == fieldNameNonce {
-					return nil, errInvalidNonceElement
-				}
-				return nil, errInvalidSignElement
-			}
-			result[i] = byte(numVal)
+			result[i] = b
 		}
 		return result, ""
 	default:
@@ -4330,25 +4811,27 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 	}
 
 	// Extract endpointID (optional for backward compatibility with old pending operations)
+	// Canonical numeric coercion accepts both legacy float64-decoded values and
+	// the strict json.Number decode used on resume (exact uint64/int64 range).
 	var endpointID int64
-	if idFloat, ok := m["endpointID"].(float64); ok {
-		endpointID = int64(idFloat)
+	if id, err := coerceInt64(m["endpointID"]); err == nil {
+		endpointID = id
 	}
 
-	packetCntFloat, ok := m["packetCnt"].(float64)
-	if !ok {
+	packetCntInt, err := coerceInt64(m["packetCnt"])
+	if err != nil {
 		return nil
 	}
-	rxTimeFloat, ok := m["rxTime"].(float64)
-	if !ok {
+	rxTime, err := coerceInt64(m["rxTime"])
+	if err != nil {
 		return nil
 	}
-	snr, ok := m["snr"].(float64)
-	if !ok {
+	snr, err := coerceFloat64(m["snr"])
+	if err != nil {
 		return nil
 	}
-	rssi, ok := m["rssi"].(float64)
-	if !ok {
+	rssi, err := coerceFloat64(m["rssi"])
+	if err != nil {
 		return nil
 	}
 
@@ -4372,7 +4855,7 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 	}
 
 	// Build typed metadata with safe conversions (using conversions.go helpers)
-	packetCnt, errToken := safeUint32(int64(packetCntFloat), "packetCnt")
+	packetCnt, errToken := safeUint32(packetCntInt, "packetCnt")
 	if errToken != "" {
 		return nil // Failed conversion
 	}
@@ -4382,14 +4865,14 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 		EndpointID: endpointID,
 		PacketCnt:  packetCnt,
 		Signature:  signature,
-		RxTime:     int64(rxTimeFloat),
+		RxTime:     rxTime,
 		SNR:        snr,
 		RSSI:       rssi,
 	}
 
 	// Extract tenantId (optional for backward compatibility with old pending operations)
-	if tenantIdFloat, ok := m["tenantId"].(float64); ok {
-		result.TenantID = int64(tenantIdFloat)
+	if tenantID, err := coerceInt64(m["tenantId"]); err == nil {
+		result.TenantID = tenantID
 	}
 
 	// Extract orgUuid (optional for backward compatibility)
@@ -4400,14 +4883,13 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 	}
 
 	// Optional fields
-	if eqSnrFloat, ok := m["eqSnr"].(float64); ok {
-		result.EqSnr = &eqSnrFloat
+	if eqSnr, err := coerceFloat64(m["eqSnr"]); err == nil && m["eqSnr"] != nil {
+		result.EqSnr = &eqSnr
 	}
 	if profileStr, ok := m["profile"].(string); ok {
 		result.Profile = &profileStr
 	}
-	if rxDurFloat, ok := m["rxDuration"].(float64); ok {
-		rxDur := int64(rxDurFloat)
+	if rxDur, err := coerceInt64(m["rxDuration"]); err == nil && m["rxDuration"] != nil {
 		result.RxDuration = &rxDur
 	}
 
@@ -4423,32 +4905,18 @@ func mapToDetachMetadata(m map[string]interface{}) *detachMetadata {
 }
 
 func parseMetadataEUI(value interface{}) (uint64, bool) {
-	switch v := value.(type) {
-	case string:
-		parsed, err := validation.ParseEUI(v)
+	if s, ok := value.(string); ok {
+		parsed, err := validation.ParseEUI(s)
 		if err != nil {
 			return 0, false
 		}
 		return parsed, true
-	case uint64:
-		return v, true
-	case int64:
-		if v < 0 {
-			return 0, false
-		}
-		return uint64(v), true
-	case float64:
-		if v < 0 {
-			return 0, false
-		}
-		const maxSafeFloat64Int = 1 << 53
-		if v > float64(maxSafeFloat64Int) {
-			return 0, false
-		}
-		return uint64(v), true
-	default:
+	}
+	v, err := coerceUint64(value)
+	if err != nil {
 		return 0, false
 	}
+	return v, true
 }
 
 // normalizeDetachPayload converts raw detach message payload to concrete types for JSONB storage.
@@ -4557,86 +5025,34 @@ func NormalizeSubpackets(raw map[string]interface{}) (*mioty.Subpackets, error) 
 	return sp, nil
 }
 
-// extractFloatSlice validates and extracts float64 slice from MessagePack array.
+// extractFloatSlice validates and extracts float64 slice from a wire array
+// via the canonical numeric coercion (coerceFloat64).
 // Rejects non-numeric values. Returns (slice, true) on success or (nil, false) on failure.
 func extractFloatSlice(values []interface{}) ([]float64, bool) {
 	result := make([]float64, len(values))
 	for i, v := range values {
-		switch val := v.(type) {
-		case float64:
-			result[i] = val
-		case float32:
-			result[i] = float64(val)
-		case int64:
-			result[i] = float64(val)
-		case int:
-			result[i] = float64(val)
-		case int8:
-			result[i] = float64(val)
-		case int16:
-			result[i] = float64(val)
-		case int32:
-			result[i] = float64(val)
-		case uint:
-			result[i] = float64(val)
-		case uint8:
-			result[i] = float64(val)
-		case uint16:
-			result[i] = float64(val)
-		case uint32:
-			result[i] = float64(val)
-		case uint64:
-			result[i] = float64(val)
-		default:
+		f, err := coerceFloat64(v)
+		if err != nil {
 			// Non-numeric value - reject entire array
 			return nil, false
 		}
+		result[i] = f
 	}
 	return result, true
 }
 
-// extractInt64Slice validates and extracts int64 slice from MessagePack array.
+// extractInt64Slice validates and extracts int64 slice from a wire array via
+// the canonical numeric coercion (coerceInt64).
 // Rejects non-integers and non-numeric values. Returns (slice, true) on success or (nil, false) on failure.
 func extractInt64Slice(values []interface{}) ([]int64, bool) {
 	result := make([]int64, len(values))
 	for i, v := range values {
-		switch val := v.(type) {
-		case float64:
-			// Only accept if no fractional part
-			if val != float64(int64(val)) || val < math.MinInt64 || val > math.MaxInt64 {
-				return nil, false
-			}
-			result[i] = int64(val)
-		case int64:
-			result[i] = val
-		case int:
-			result[i] = int64(val)
-		case int8:
-			result[i] = int64(val)
-		case int16:
-			result[i] = int64(val)
-		case int32:
-			result[i] = int64(val)
-		case uint:
-			if val > math.MaxInt64 {
-				return nil, false
-			}
-			result[i] = int64(val)
-		case uint8:
-			result[i] = int64(val)
-		case uint16:
-			result[i] = int64(val)
-		case uint32:
-			result[i] = int64(val)
-		case uint64:
-			if val > math.MaxInt64 {
-				return nil, false
-			}
-			result[i] = int64(val)
-		default:
+		n, err := coerceInt64(v)
+		if err != nil {
 			// Non-numeric or non-integer value - reject entire array
 			return nil, false
 		}
+		result[i] = n
 	}
 	return result, true
 }
@@ -4805,38 +5221,16 @@ func (s *Server) normalizeUserDataField(userDataRaw interface{}) []byte {
 		// Convert Numeric[n] to []byte
 		userData := make([]byte, len(v))
 		for i, elem := range v {
-			switch num := elem.(type) {
-			case uint8:
-				userData[i] = num
-			case int8:
-				userData[i] = byte(num)
-			case uint16:
-				userData[i] = byte(num)
-			case int16:
-				userData[i] = byte(num)
-			case uint32:
-				userData[i] = byte(num)
-			case int32:
-				userData[i] = byte(num)
-			case uint64:
-				userData[i] = byte(num)
-			case int64:
-				userData[i] = byte(num)
-			case int:
-				userData[i] = byte(num)
-			case uint:
-				userData[i] = byte(num)
-			case float32:
-				userData[i] = byte(num)
-			case float64:
-				userData[i] = byte(num)
-			default:
-				// Log warning for unsupported element type
+			// Canonical numeric coercion enforces integer 0-255 range
+			b, err := numericToByte(elem)
+			if err != nil {
 				s.logger.WarnContext(s.safeCtx(), LogBSSCIUnsupportedUserDataElementType,
 					"index", i,
 					"type", fmt.Sprintf("%T", elem))
 				userData[i] = 0
+				continue
 			}
+			userData[i] = b
 		}
 		return userData
 	case string:
@@ -4984,10 +5378,13 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 	}
 
 	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	// Convert repetition uint8 to boolean (non-zero means repetition enabled)
 	repetitionBool := repetition > 0
@@ -5045,9 +5442,11 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 		metadata["organizationId"] = ownerOrgUUID.String()
 	}
 
+	// The recovery record must be durable before the frame is written; a
+	// persistence failure aborts the send, leaving only a consumed-ID gap.
 	if err := s.persistPendingOperation(session, opId, mioty.CmdAttachPropagate, message, euiBytes, metadata); err != nil {
 		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistPendingOperation, "error", err)
-		// Continue anyway - persistence failure shouldn't block operation
+		return err
 	}
 
 	// Update endpoint in database with attach propagate information
@@ -5088,76 +5487,21 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 				"long_blk_dist":   longBlkDist,
 			}
 
-			tx, txErr := s.storage.BeginTx(ownerCtx) // Use owner context
-			if txErr != nil {
-				return fmt.Errorf("failed to begin attach propagate transaction: %w", txErr)
+			// The attachment persister owns the owner-tenant transaction;
+			// error strings propagate to the caller unchanged.
+			if s.attachPersistence == nil {
+				return fmt.Errorf("failed to begin attach propagate transaction: %w", errAttachPersistenceUnavailable)
 			}
-			var commitErr error
-			defer func() {
-				if commitErr != nil {
-					_ = tx.Rollback()
-				}
-			}()
-
-			if err := tx.EndPoints().UpdateFields(ownerCtx, endpointTenantID, endpoint.ID, updates); err != nil {
-				commitErr = err
-				return fmt.Errorf("failed to update endpoint: %w", err)
+			if err := s.attachPersistence.PersistAttachPropagateSession(ownerCtx, AttachPropagateSessionRecord{
+				TenantID:        endpointTenantID,
+				EndpointID:      endpoint.ID,
+				EndpointUpdates: updates,
+				EncryptedKey:    encryptedKey,
+				ShAddr:          shortAddr,
+				BaseStationEUI:  session.BaseStationEUIBytes(),
+			}); err != nil {
+				return err
 			}
-
-			endpointIDStr := fmt.Sprintf("%d", endpoint.ID)
-			activeSession, getErr := tx.EndPointSessions().GetActive(ownerCtx, endpointIDStr)
-			if getErr != nil {
-				commitErr = getErr
-				return fmt.Errorf("failed to load endpoint session: %w", getErr)
-			}
-
-			now := time.Now().UTC()
-
-			// Lookup base station ID for session enrichment (tenant-scoped to owner)
-			var primaryBsID *int64
-			if s.basestationRepo != nil {
-				bs, bsErr := s.basestationRepo.GetByEUI(ownerCtx, endpointTenantID, session.BaseStationEUIBytes())
-				if bsErr == nil && bs != nil {
-					primaryBsID = &bs.ID
-				}
-			}
-
-			// shortAddr is uint16, model ShAddr is *int32 (INTEGER 0-65535)
-			shAddrInt32 := int32(shortAddr)
-
-			if activeSession != nil {
-				activeSession.SessionKey = encryptedKey
-				activeSession.LastActivityAt = now
-				activeSession.ShAddr = &shAddrInt32
-				activeSession.PrimaryBaseStationID = primaryBsID
-				if err := tx.EndPointSessions().Update(ownerCtx, activeSession); err != nil {
-					commitErr = err
-					return fmt.Errorf("failed to update endpoint session: %w", err)
-				}
-			} else {
-				newSession := &models.EndPointSession{
-					TenantID:             endpointTenantID, // Use owner tenant
-					EndPointID:           endpoint.ID,
-					SessionID:            uuid.New().String(),
-					SessionKey:           encryptedKey,
-					Status:               string(models.SessionStatusActive),
-					UplinkMode:           "standard", // Default uplink mode per BSSCI §5.2
-					StartedAt:            now,
-					LastActivityAt:       now,
-					ShAddr:               &shAddrInt32,
-					PrimaryBaseStationID: primaryBsID,
-				}
-				if err := tx.EndPointSessions().Create(ownerCtx, newSession); err != nil {
-					commitErr = err
-					return fmt.Errorf("failed to create endpoint session: %w", err)
-				}
-			}
-
-			if err := tx.Commit(); err != nil {
-				commitErr = err
-				return fmt.Errorf("failed to commit attach propagate transaction: %w", err)
-			}
-			commitErr = nil
 
 			s.logger.DebugContext(s.safeCtx(), LogBSSCIUpdatedEndpointWithAttachPropagateInfo,
 				"epEui", endpointEUI,
@@ -5172,28 +5516,24 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 	// which creates a single "attPrp" event. Removed duplicate "attach_propagate_initiated" events
 	// that were creating 2 extra records per operation.
 
-	// Send with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, message); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up persisted operation (guard for community builds)
-		if session.DbSessionID > 0 {
-			if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToClearPersistedPendingOperation,
-					"sessionID", session.DbSessionID,
-					"opId", opId,
-					"error", cleanupErr)
-			}
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToClearPersistedPendingOperation,
+				"sessionID", session.DbSessionID,
+				"opId", opId,
+				"error", cleanupErr)
 		}
 
 		return err
 	}
 
 	// BSSCI §5.8.3: Persist attach propagate message to mioty_messages for audit trail
-	if s.storage != nil && s.storage.MIOTYMessages() != nil {
+	if s.protocolMessages != nil {
 		bsEuiBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(bsEuiBytes, session.BaseStationEUI)
 
@@ -5238,8 +5578,8 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 			InterfaceType:  mioty.InterfaceBSSCI,
 		}
 
-		if s.storage != nil && s.storage.MIOTYMessages() != nil {
-			if err := s.storage.MIOTYMessages().CreateAttachPropagateMessage(ownerCtx, propagateMsg); err != nil {
+		if s.protocolMessages != nil {
+			if err := s.protocolMessages.CreateAttachPropagateMessage(ownerCtx, propagateMsg); err != nil {
 				s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistAttachPropagateMessage,
 					"error", err,
 					"epEui", endpointEUI,
@@ -5247,17 +5587,6 @@ func (s *Server) SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSn
 					"opId", opId)
 				// Continue - persistence failure shouldn't block operation
 			}
-		}
-	}
-
-	// Success - persist counter to DB for session resume
-	if s.sessionSvc != nil {
-		if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
-				"error", err,
-				"sessionID", session.ID,
-				"opId", opId)
-			// Don't fail the operation - message was sent successfully
 		}
 	}
 
@@ -5393,6 +5722,37 @@ func (s *Server) GetSessionByEUI(bsEui uint64) interface{} {
 		}
 	}
 	return nil
+}
+
+// publishLiveSession makes session the only live session for its base station. Eviction and
+// publication share one critical section on s.mu so a by-EUI lookup can never resolve to the
+// connection being replaced.
+func (s *Server) publishLiveSession(ctx context.Context, session *Session) {
+	s.mu.Lock()
+	var displaced []*Session
+	for id, live := range s.sessions {
+		if id != session.ID && live.BaseStationEUI == session.BaseStationEUI {
+			displaced = append(displaced, live)
+			delete(s.sessions, id)
+		}
+	}
+	s.sessions[session.ID] = session
+	s.mu.Unlock()
+
+	for _, stale := range displaced {
+		s.logger.WarnContext(ctx, LogBSSCIDisplacedLiveSessionForBaseStation,
+			"eui", session.BaseStationEUI,
+			"displacedSessionID", stale.ID,
+			"sessionID", session.ID)
+		s.sessionSvc.RemoveSession(stale)
+		if stale.Conn != nil {
+			if err := stale.Conn.Close(); err != nil {
+				s.logger.WarnContext(ctx, LogBSSCIFailedToCloseDisplacedSessionConnection,
+					"error", err,
+					"displacedSessionID", stale.ID)
+			}
+		}
+	}
 }
 
 // CloseSessionByEUI finds and closes any active session for the given EUI.
@@ -5703,7 +6063,7 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 			// Gated by hasEUI to ensure usable audit rows with valid ep_eui
 			// NOTE: This is separate from the attPrp row persisted at send time
 			// NwkSnKey intentionally omitted: already in attPrp row, avoid key duplication
-			if s.storage != nil && s.storage.MIOTYMessages() != nil {
+			if s.protocolMessages != nil {
 				// Re-extract shAddr at this scope level for message persistence
 				var msgShAddr uint16
 				if shAddrFloat, ok := pendingOp.Metadata["shortAddr"].(float64); ok {
@@ -5764,7 +6124,7 @@ func (s *Server) handleAttachPropagateComplete(_ *Server, session *Session, msg 
 					InterfaceType: mioty.InterfaceBSSCI,
 				}
 
-				if err := s.storage.MIOTYMessages().CreateAttachPropagateMessage(ownerCtx, completionMsg); err != nil {
+				if err := s.protocolMessages.CreateAttachPropagateMessage(ownerCtx, completionMsg); err != nil {
 					s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToPersistAttachPropagateComplete,
 						"error", err,
 						"opId", msg.OpId,
@@ -5796,11 +6156,13 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 		return fmt.Errorf("%s for session %s", ResolveErrorMessage(errHandshakeNotComplete), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	s.logger.InfoContext(s.safeCtx(), LogBSSCISendingDetachPropagate,
 		"sessionID", sessionID,
@@ -5828,9 +6190,11 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 		metadata["organizationId"] = ownerOrgUUID.String()
 	}
 
+	// The recovery record must be durable before the frame is written; a
+	// persistence failure aborts the send, leaving only a consumed-ID gap.
 	if err := s.persistPendingOperation(session, opId, mioty.CmdDetachPropagate, message, euiBytes, metadata); err != nil {
 		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToPersistPendingOperation, "error", err)
-		// Continue anyway - persistence failure shouldn't block operation
+		return err
 	}
 
 	// Update endpoint in database to mark detach propagate initiated
@@ -5898,8 +6262,8 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 	}
 
 	// Persist to messages (non-blocking - log errors only)
-	if s.storage != nil && s.storage.MIOTYMessages() != nil {
-		if err := s.storage.MIOTYMessages().CreateDetachPropagateMessage(ownerCtx, propagateMsg); err != nil {
+	if s.protocolMessages != nil {
+		if err := s.protocolMessages.CreateDetachPropagateMessage(ownerCtx, propagateMsg); err != nil {
 			s.logger.ErrorContext(ownerCtx, LogBSSCIFailedToPersistDetachPropagateMessage,
 				"ep_eui", endpointEUI,
 				"bs_eui", session.BaseStationEUI,
@@ -5909,35 +6273,20 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 		}
 	}
 
-	// Send with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, message); err != nil {
-		// CRITICAL: Rollback on send failure to maintain operation ID consistency
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up persisted operation (guard for community builds)
-		if session.DbSessionID > 0 {
-			if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToClearPersistedPendingOperation,
-					"sessionID", session.DbSessionID,
-					"opId", opId,
-					"error", cleanupErr)
-			}
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
+			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToClearPersistedPendingOperation,
+				"sessionID", session.DbSessionID,
+				"opId", opId,
+				"error", cleanupErr)
 		}
 
 		return err
-	}
-
-	// Success - persist counter to DB for session resume
-	if s.sessionSvc != nil {
-		if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateDatabaseSession,
-				"error", err,
-				"sessionID", session.ID,
-				"opId", opId)
-			// Don't fail the operation - message was sent successfully
-		}
 	}
 
 	return nil
@@ -6193,7 +6542,7 @@ func (s *Server) handleDetachPropagateComplete(_ *Server, session *Session, msg 
 
 				// BSSCI §5.9.3: Persist detPrpCmp to messages table
 				// Gated by hasEUI to ensure usable audit rows with valid ep_eui
-				if s.storage != nil && s.storage.MIOTYMessages() != nil {
+				if s.protocolMessages != nil {
 					var msgBsEUIBytes [8]byte
 					binary.BigEndian.PutUint64(msgBsEUIBytes[:], session.BaseStationEUI)
 
@@ -6212,7 +6561,7 @@ func (s *Server) handleDetachPropagateComplete(_ *Server, session *Session, msg 
 						completionMsg.OrgUUID = &orgStr
 					}
 
-					if err := s.storage.MIOTYMessages().CreateDetachPropagateMessage(ownerCtx, completionMsg); err != nil {
+					if err := s.protocolMessages.CreateDetachPropagateMessage(ownerCtx, completionMsg); err != nil {
 						s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToPersistDetachPropagateComplete,
 							"error", err,
 							"opId", msg.OpId,
@@ -6234,17 +6583,61 @@ func (s *Server) handleDetachPropagateComplete(_ *Server, session *Session, msg 
 
 // Database persistence methods for MIOTY session resume
 
+// beginScOperation allocates the next SC operation ID and durably persists the
+// session counters before any frame is written (BSSCI rev1 §5.2 / classic
+// §3.2). The durable order for every SC-issued operation is: allocate the ID,
+// persist the counter, persist the pending record (recoverable operations
+// only), then write the frame. A failure after allocation leaves a harmless
+// consumed-ID gap; the counter is never rolled back because a rollback races
+// concurrent allocations.
+func (s *Server) beginScOperation(session *Session) (int64, error) {
+	opId := session.NextScOpID()
+	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
+		return 0, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistSessionCounters), err)
+	}
+	return opId, nil
+}
+
 // persistPendingOperation stores a pending operation via StatusService (BSSCI §5.11-5.12.3 single writer)
 // StatusService handles both DB persistence and in-memory map update using SessionOpKey composite key
 func (s *Server) persistPendingOperation(session *Session, opId int64, opType string, message map[string]interface{}, euiBytes []byte, metadata map[string]interface{}) error {
 	ctx := s.safeCtx()
 
+	// An SC operation without a persisted session has no recovery identity;
+	// letting it on the wire would make it unrecoverable after a crash. This
+	// is an inconsistent-session error, never a silent no-persistence mode.
 	if session.DbSessionID == 0 {
-		s.logger.WarnContext(ctx, LogBSSCIDatabaseNotAvailableForPendingOpPersistence)
-		return nil
+		s.logger.ErrorContext(ctx, LogBSSCIDatabaseNotAvailableForPendingOpPersistence,
+			"opId", opId,
+			"opType", opType)
+		return NewCatalogError(errPendingOpSessionNotPersisted, POSIX_EPROTO)
 	}
 
-	// Extract MACType and Data from metadata if present (for VM operations)
+	pendingOp := s.buildPendingOperation(session, opId, opType, message, euiBytes, metadata)
+
+	// StatusService is the single path for pending operation persistence. A
+	// failure is surfaced to the caller: an SC operation whose recovery record
+	// was never durably written must not go on the wire.
+	if err := s.statusSvc.RecordPendingOperation(ctx, session, opId, pendingOp, session.DbSessionID); err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistPendingOperationMigrationNeeded,
+			"error", err,
+			"sessionID", session.DbSessionID,
+			"opId", opId)
+		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistPendingOperation), err)
+	}
+
+	s.logger.DebugContext(ctx, LogBSSCIPersistedPendingOperation,
+		"sessionID", session.DbSessionID,
+		"opId", opId,
+		"opType", opType)
+
+	return nil
+}
+
+// buildPendingOperation assembles the recovery record for an SC-initiated
+// operation, extracting the VM MACType and payload data from metadata when
+// present.
+func (s *Server) buildPendingOperation(session *Session, opId int64, opType string, message map[string]interface{}, euiBytes []byte, metadata map[string]interface{}) *PendingOperation {
 	var macType int
 	var data []byte
 	if metadata != nil {
@@ -6273,8 +6666,7 @@ func (s *Server) persistPendingOperation(session *Session, opId int64, opType st
 		}
 	}
 
-	// Build complete PendingOperation struct
-	pendingOp := &PendingOperation{
+	return &PendingOperation{
 		SessionSlug:   session.ID,
 		OperationID:   opId,
 		OperationType: opType,
@@ -6285,21 +6677,29 @@ func (s *Server) persistPendingOperation(session *Session, opId int64, opType st
 		Metadata:      metadata,
 		CreatedAt:     time.Now(),
 	}
+}
 
-	// StatusService is the single path for pending operation persistence
-	if err := s.statusSvc.RecordPendingOperation(ctx, session, opId, pendingOp, session.DbSessionID); err != nil {
-		// Log but don't fail - pending operations are best effort
-		s.logger.WarnContext(ctx, LogBSSCIFailedToPersistPendingOperationMigrationNeeded,
-			"error", err,
-			"sessionID", session.DbSessionID,
-			"opId", opId)
-		return nil
+// persistPendingOperationBatch durably records several recovery records in one
+// repository transaction (all-or-nothing) so a multi-frame sequence such as
+// the dlRxStatQry/dlDataQue pair never has a partially persisted recovery
+// state. The same inconsistent-session rule as persistPendingOperation
+// applies.
+func (s *Server) persistPendingOperationBatch(session *Session, ops []*PendingOperation) error {
+	ctx := s.safeCtx()
+
+	if session.DbSessionID == 0 {
+		s.logger.ErrorContext(ctx, LogBSSCIDatabaseNotAvailableForPendingOpPersistence,
+			"opCount", len(ops))
+		return NewCatalogError(errPendingOpSessionNotPersisted, POSIX_EPROTO)
 	}
 
-	s.logger.DebugContext(ctx, LogBSSCIPersistedPendingOperation,
-		"sessionID", session.DbSessionID,
-		"opId", opId,
-		"opType", opType)
+	if err := s.statusSvc.RecordPendingOperations(ctx, session, ops, session.DbSessionID); err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToPersistPendingOperationMigrationNeeded,
+			"error", err,
+			"sessionID", session.DbSessionID,
+			"opCount", len(ops))
+		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToPersistPendingOperation), err)
+	}
 
 	return nil
 }
@@ -6318,23 +6718,10 @@ func (s *Server) updatePendingOperationMetadata(session *Session, opId int64, me
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToMarshalMeta), err)
 	}
 
-	// Update metadata in database using repository
-	err = s.storage.PendingOperations().UpdateMetadata(s.safeCtx(), sessionID, opId, json.RawMessage(metadataJSON))
-
-	if err != nil {
-		s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToUpdatePendingOperationMetadata,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
+	// StatusService owns pending-operation persistence and its cache: the DB
+	// write happens first, the cache mirror only on success.
+	if err := s.statusSvc.UpdatePendingOperationMetadata(s.safeCtx(), session, opId, metadata, json.RawMessage(metadataJSON)); err != nil {
 		return err
-	}
-
-	// Also update in memory
-	// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation access
-	if s.statusSvc != nil {
-		if pendingOp, err := s.statusSvc.GetPendingOperation(session, opId); err == nil {
-			pendingOp.Metadata = metadata
-		}
 	}
 
 	s.logger.DebugContext(s.safeCtx(), LogBSSCIUpdatedPendingOperationMetadata,
@@ -6353,16 +6740,35 @@ func (s *Server) removePendingOperation(session *Session, opId int64) error {
 	return s.statusSvc.RemovePendingOperation(ctx, session, opId)
 }
 
+// isResumableScOperation reports whether a persisted pending operation may be
+// reissued on session resume: only SC-initiated (negative ID) non-VM commands
+// qualify (BSSCI rev1 §5.3.1 / classic §3.3.1). BS-initiated operations are
+// hydrated for response correlation but never transmitted by the SC, and VM
+// operations require re-established endpoint VM state before reissue.
+func isResumableScOperation(opID int64, opType string) bool {
+	if opID >= 0 {
+		return false
+	}
+	switch opType {
+	case mioty.CmdStatus, mioty.CmdAttachPropagate, mioty.CmdDetachPropagate,
+		mioty.CmdULDataTransmit, mioty.CmdDLDataQueue, mioty.CmdDLDataRevoke,
+		mioty.CmdDLRxStatusQuery:
+		return true
+	default:
+		return false
+	}
+}
+
 // loadPendingOperations loads pending operations from database for session resume (Issue #3: accepts *Session for SessionSlug field)
 func (s *Server) loadPendingOperations(session *Session) ([]*PendingOperation, error) {
 	sessionID := session.DbSessionID
-	if sessionID == 0 {
+	if sessionID == 0 || s.statusSvc == nil {
 		s.logger.DebugContext(s.safeCtx(), LogBSSCIDatabaseNotAvailableForPendingOpsLoad)
 		return nil, nil
 	}
 
-	// Retrieve pending operations via repository
-	repoOps, err := s.storage.PendingOperations().GetBySession(s.safeCtx(), sessionID)
+	// Retrieve the raw persisted rows through the pending-operation owner
+	repoOps, err := s.statusSvc.PersistedOperations(s.safeCtx(), sessionID)
 	if err != nil {
 		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToQueryPendingOperationsFromDatabase,
 			"error", err,
@@ -6379,24 +6785,31 @@ func (s *Server) loadPendingOperations(session *Session) ([]*PendingOperation, e
 		metadataJSON := repoOp.Metadata
 		createdAt := repoOp.CreatedAt
 
-		// Deserialize operation data
-		var operationData map[string]interface{}
-		if err := json.Unmarshal(operationDataJSON, &operationData); err != nil {
+		// Deserialize operation data with the strict frame decoder (UseNumber,
+		// single object, trailing content rejected) so uint64 EUI values
+		// survive resume exactly. A malformed persisted operation is an
+		// infrastructure inconsistency: the caller rejects the resume rather
+		// than silently losing protocol state.
+		operationData, err := decodeJSONFrame(operationDataJSON)
+		if err != nil {
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUnmarshalOperationData,
 				"error", err,
 				"opId", opId)
-			continue
+			return nil, fmt.Errorf("%s: opId %d: %w", ResolveErrorMessage(errFailedToDecode), opId, err)
 		}
+		operationData = normalizeStrictDecodedMap(operationData)
 
-		// Deserialize metadata
+		// Deserialize metadata under the same strict rules
 		var metadata map[string]interface{}
 		if len(metadataJSON) > 0 {
-			if err := json.Unmarshal(metadataJSON, &metadata); err != nil {
+			metadata, err = decodeJSONFrame(metadataJSON)
+			if err != nil {
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUnmarshalMetadata,
 					"error", err,
 					"opId", opId)
-				metadata = make(map[string]interface{})
+				return nil, fmt.Errorf("%s: opId %d metadata: %w", ResolveErrorMessage(errFailedToDecode), opId, err)
 			}
+			metadata = normalizeStrictDecodedMap(metadata)
 		} else {
 			metadata = make(map[string]interface{})
 		}
@@ -6819,7 +7232,29 @@ func (s *Server) sendError(session *Session, opId int64, code int, message strin
 		"code", code,
 		"message", message)
 
-	return s.sendMessage(session, errorMsg)
+	if err := s.sendMessage(session, errorMsg); err != nil {
+		return err
+	}
+
+	// The base station will answer with errorAck (BSSCI rev1 §5.17 / classic
+	// §3.17). Record the expectation so handleErrorAck only acts on
+	// acknowledgements this service center actually solicited. Plain
+	// rejections are ack-only; sendErrorReplacingOperation registers the
+	// finalizing disposition for errors that replace a pending SC operation.
+	session.registerPendingErrorAck(opId, errorAckAckOnly)
+	return nil
+}
+
+// sendErrorReplacingOperation sends an error frame that replaces the normal
+// response/completion sequence of a known pending SC operation (BSSCI rev1
+// §5.17 / classic §3.17). The base station's errorAck then completes that
+// operation, so the errorAck is registered with the finalizing disposition.
+func (s *Server) sendErrorReplacingOperation(session *Session, opId int64, code int, message string) error {
+	if err := s.sendError(session, opId, code, message); err != nil {
+		return err
+	}
+	session.registerPendingErrorAck(opId, errorAckFinalizePendingOperation)
+	return nil
 }
 
 // sendCatalogError resolves catalog error token and sends error message
@@ -6835,34 +7270,6 @@ func (s *Server) sendCatalogError(session *Session, opId int64, err *CatalogErro
 		s.logger.ErrorContext(ctx, LogBSSCIFailedToSendCatalogError, "error", sendErr)
 	}
 	return fmt.Errorf("%s", err.Token)
-}
-
-// ParseVersion parses a version string "major.minor.patch" (BSSCI-2.1-01)
-// Returns specific CatalogError for each failure type to preserve diagnostic precision
-// Exported for use by service layer implementations
-func ParseVersion(version string) (major, minor, patch int, cerr *CatalogError) {
-	parts := strings.Split(version, ".")
-	if len(parts) != 3 {
-		return 0, 0, 0, NewCatalogError(errInvalidVersionFormat, POSIX_EPROTO)
-	}
-
-	var err error
-	major, err = strconv.Atoi(parts[0])
-	if err != nil {
-		return 0, 0, 0, NewCatalogError(errInvalidMajorVersion, POSIX_EPROTO)
-	}
-
-	minor, err = strconv.Atoi(parts[1])
-	if err != nil {
-		return 0, 0, 0, NewCatalogError(errInvalidMinorVersion, POSIX_EPROTO)
-	}
-
-	patch, err = strconv.Atoi(parts[2])
-	if err != nil {
-		return 0, 0, 0, NewCatalogError(errInvalidPatchVersion, POSIX_EPROTO)
-	}
-
-	return major, minor, patch, nil
 }
 
 // validateOperationID validates operation IDs per BSSCI-3.2 requirements
@@ -6947,21 +7354,17 @@ func extractSessionUUID(data interface{}) ([]byte, *CatalogError) {
 		}
 		uuid := make([]byte, 16)
 		for i, val := range v {
-			switch b := val.(type) {
-			case float64:
-				uuid[i] = byte(b)
-			case int:
-				uuid[i] = byte(b)
-			case int64:
-				uuid[i] = byte(b)
-			case uint8:
-				uuid[i] = b
-			case int8:
-				// Handle negative int8 values properly
-				uuid[i] = byte(b)
-			default:
+			if b, ok := val.(int8); ok {
+				// MessagePack encodes bytes above 0x7F as negative int8;
+				// the two's-complement bit pattern is the intended byte
+				uuid[i] = byte(b) //nolint:gosec // G115: intentional two's-complement byte extraction
+				continue
+			}
+			b, err := numericToByte(val)
+			if err != nil {
 				return nil, &CatalogError{Token: errInvalidUUIDByteType, Posix: POSIX_EPROTO}
 			}
+			uuid[i] = b
 		}
 		return uuid, nil
 	case []byte:
@@ -6976,21 +7379,13 @@ func extractSessionUUID(data interface{}) ([]byte, *CatalogError) {
 
 // updateSessionCounters updates the session operation counters in the database
 func (s *Server) updateSessionCounters(session *Session) {
-	if session.DbSessionID == 0 {
+	if session.DbSessionID == 0 || s.sessionSvc == nil {
 		return
 	}
 
-	// Update the session operation counters via repository
-	// Convert SessionUUID from []byte to [16]byte
-	var sessionUUID [16]byte
-	copy(sessionUUID[:], session.SessionUUID)
-	err := s.storage.BaseStationSessions().UpdateCountersAndTimestamp(
-		s.safeCtx(),
-		sessionUUID,
-		session.LastBsOpId,
-		session.LastScOpId)
-
-	if err != nil {
+	// SessionService owns counter persistence via the atomic UpdateOperationIDs
+	// statement; this fire-and-forget path keeps its debug-only error handling.
+	if err := s.sessionSvc.UpdateSessionCounters(s.safeCtx(), session); err != nil {
 		s.logger.DebugContext(s.safeCtx(), LogBSSCIFailedToUpdateSessionCounters,
 			"error", err,
 			"bsOpId", session.LastBsOpId,

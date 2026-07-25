@@ -133,7 +133,7 @@ func (es *endpointService) Register(
 	endpoint, err := es.endpointRepo.GetByEUI(dbCtx, tenantID, eui[:])
 
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		es.logger.Error(scaci.LogSCACIDatabaseErrorRegister,
+		es.logger.ErrorContext(ctx, scaci.LogSCACIDatabaseErrorRegister,
 			"epEui", pkgmioty.FormatEUI64(req.EpEui),
 			"tenantId", tenantID,
 			"error", err)
@@ -170,21 +170,21 @@ func (es *endpointService) Register(
 			Tags:     make(map[string]string),
 		}
 		if err := es.endpointRepo.Create(dbCtx, newEndpoint); err != nil {
-			es.logger.Error(scaci.LogSCACICreateEndpointFailed,
+			es.logger.ErrorContext(ctx, scaci.LogSCACICreateEndpointFailed,
 				"epEui", pkgmioty.FormatEUI64(req.EpEui),
 				"tenantId", tenantID,
 				"error", err)
 			return scaci.ErrFailedCreateEndpoint
 		}
 		endpoint = newEndpoint
-		es.logger.Info(scaci.LogSCACIEndpointCreated,
+		es.logger.InfoContext(ctx, scaci.LogSCACIEndpointCreated,
 			"epEui", pkgmioty.FormatEUI64(req.EpEui),
 			"tenantId", tenantID)
 	}
 
 	// Step 7: Apply MIOTY field updates (both create and update paths)
 	if err := es.endpointRepo.UpdateFields(dbCtx, tenantID, endpoint.ID, updates); err != nil {
-		es.logger.Error(scaci.LogSCACIUpdateEndpointFailed,
+		es.logger.ErrorContext(ctx, scaci.LogSCACIUpdateEndpointFailed,
 			"epEui", pkgmioty.FormatEUI64(req.EpEui),
 			"tenantId", tenantID,
 			"endpointId", endpoint.ID,
@@ -192,7 +192,7 @@ func (es *endpointService) Register(
 		return scaci.ErrFailedUpdateEndpoint
 	}
 
-	es.logger.Info(scaci.LogSCACIEndpointRegistered,
+	es.logger.InfoContext(ctx, scaci.LogSCACIEndpointRegistered,
 		"epEui", pkgmioty.FormatEUI64(req.EpEui),
 		"tenantId", tenantID,
 		"bidi", req.Bidi,
@@ -244,12 +244,12 @@ func (es *endpointService) Deregister(
 	endpointRecord, err := es.endpointRepo.GetByEUI(dbCtx, tenantID, eui[:])
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			es.logger.Warn(scaci.LogSCACIEndpointNotFoundDeregister,
+			es.logger.WarnContext(ctx, scaci.LogSCACIEndpointNotFoundDeregister,
 				"epEui", pkgmioty.FormatEUI64(epEui),
 				"tenantId", tenantID)
 			return scaci.ErrEndpointNotFound
 		}
-		es.logger.Error(scaci.LogSCACIDatabaseErrorDeregister,
+		es.logger.ErrorContext(ctx, scaci.LogSCACIDatabaseErrorDeregister,
 			"epEui", pkgmioty.FormatEUI64(epEui),
 			"tenantId", tenantID,
 			"error", err)
@@ -258,14 +258,14 @@ func (es *endpointService) Deregister(
 
 	// Step 5: Call shared detach helper (marks endpoint inactive, no telemetry)
 	if err := endpoint.DetachEndpoint(dbCtx, es.endpointRepo, tenantID, endpointRecord.ID, nil); err != nil {
-		es.logger.Error(scaci.LogSCACIDetachEndpointFailed,
+		es.logger.ErrorContext(ctx, scaci.LogSCACIDetachEndpointFailed,
 			"epEui", pkgmioty.FormatEUI64(epEui),
 			"tenantId", tenantID,
 			"error", err)
 		return scaci.ErrFailedUpdateEndpoint
 	}
 
-	es.logger.Info(scaci.LogSCACIEndpointDeregistered,
+	es.logger.InfoContext(ctx, scaci.LogSCACIEndpointDeregistered,
 		"epEui", pkgmioty.FormatEUI64(epEui),
 		"tenantId", tenantID)
 
@@ -298,7 +298,7 @@ func (es *endpointService) GetByEUI(
 ) (*models.EndPoint, string) {
 	// Step 1: Validate EUI length
 	if len(eui) != 8 {
-		es.logger.Error("Invalid EUI length for GetByEUI",
+		es.logger.ErrorContext(ctx, "Invalid EUI length for GetByEUI",
 			"length", len(eui),
 			"tenantId", tenantID)
 		return nil, scaci.ErrMissingEpEui
@@ -312,11 +312,11 @@ func (es *endpointService) GetByEUI(
 	endpoint, err := es.endpointRepo.GetByEUI(dbCtx, tenantID, eui)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			es.logger.Debug("Endpoint not found in GetByEUI",
+			es.logger.DebugContext(ctx, "Endpoint not found in GetByEUI",
 				"tenantId", tenantID)
 			return nil, scaci.ErrEndpointNotFound
 		}
-		es.logger.Error(scaci.LogSCACIDatabaseErrorRegister,
+		es.logger.ErrorContext(ctx, scaci.LogSCACIDatabaseErrorRegister,
 			"tenantId", tenantID,
 			"error", err)
 		return nil, scaci.ErrDatabaseError
@@ -343,7 +343,7 @@ func (es *endpointService) GetGlobal(
 ) (*models.EndPoint, string) {
 	// Step 1: Validate EUI length (matching GetByEUI pattern)
 	if len(eui) != 8 {
-		es.logger.Error("Invalid EUI length for GetGlobal",
+		es.logger.ErrorContext(ctx, "Invalid EUI length for GetGlobal",
 			"length", len(eui))
 		return nil, scaci.ErrMissingEpEui
 	}
@@ -360,10 +360,10 @@ func (es *endpointService) GetGlobal(
 	endpoint, err := es.endpointRepo.Get(dbCtx, euiModel)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			es.logger.Debug("Endpoint not found in GetGlobal (cross-tenant)")
+			es.logger.DebugContext(ctx, "Endpoint not found in GetGlobal (cross-tenant)")
 			return nil, scaci.ErrEndpointNotFound
 		}
-		es.logger.Error(scaci.LogSCACIDatabaseErrorRegister,
+		es.logger.ErrorContext(ctx, scaci.LogSCACIDatabaseErrorRegister,
 			"error", err)
 		return nil, scaci.ErrDatabaseError
 	}
@@ -382,9 +382,9 @@ func (es *endpointService) GetGlobal(
 //
 // Returns:
 //   - []error: Slice of errors (one per failed BS), empty if all succeeded or propagator nil
-func (es *endpointService) PropagateDetachToAll(epEui uint64) []error {
+func (es *endpointService) PropagateDetachToAll(ctx context.Context, epEui uint64) []error {
 	if es.detachPropagator == nil {
-		es.logger.Debug("DetachPropagator not available, skipping propagation",
+		es.logger.DebugContext(ctx, scaci.LogSCACIDetachPropagatorUnavailable,
 			"epEui", pkgmioty.FormatEUI64(epEui))
 		return nil
 	}

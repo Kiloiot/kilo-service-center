@@ -11,6 +11,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // setupSystemEventsTestDB creates a test database with testcontainers
@@ -68,7 +70,7 @@ func TestGetEvents_TenantIsolation(t *testing.T) {
 	insertTestEvent(t, db, tenantB, "endpoint.attached", "endpoint", "EP Attached B1", now, nil)
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Query for tenant A only
@@ -114,7 +116,7 @@ func TestGetEvents_SinceFilter(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "event.recent", "system", "Recent Event", now.Add(-10*time.Second), nil)
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Query events since 20 seconds ago
@@ -149,7 +151,7 @@ func TestGetEvents_LimitFilter(t *testing.T) {
 	}
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Query with limit of 3
@@ -181,7 +183,7 @@ func TestGetEvents_CombinedFilters(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "event.recent", "system", "Recent System", now.Add(-5*time.Second), nil)
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Query: tenant + since + category
@@ -210,7 +212,7 @@ func TestGetEvents_EmptyResult(t *testing.T) {
 	createSystemEventsTestTenant(t, db, tenantID, "EmptyResultTest")
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Query for non-existent tenant
@@ -232,7 +234,7 @@ func TestGetEvents_InvalidTenantID(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Query with invalid tenant ID (non-numeric)
@@ -268,7 +270,7 @@ func TestGetEvents_JSONBDataUnmarshal(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "endpoint.attached", "endpoint", "EP Attached", now, testData)
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
@@ -308,7 +310,7 @@ func TestGetEvents_OrderByDefault(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "event.newest", "system", "Newest", now.Add(-1*time.Second), nil)
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
@@ -337,7 +339,7 @@ func TestGetEvents_CreateEventRoundtrip(t *testing.T) {
 	createSystemEventsTestTenant(t, db, tenantID, "RoundtripTest")
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Create event using the store's CreateEvent method
@@ -391,7 +393,7 @@ func TestGetEvents_MultipleCategories_IncludesProtocol(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "test.message", models.EventCategoryMessage, "Message Event", now.Add(-3*time.Second), nil)
 
 	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
 	defer cancel()
 
 	// Filter by protocol categories only

@@ -63,6 +63,9 @@ var (
 // included in log entries without explicit field passing.
 //
 // Returns a map with available context fields. Missing fields are omitted (not set to empty/zero values).
+// errorFieldKey is the structured log field name for error values.
+const errorFieldKey = "error"
+
 func extractContextFields(ctx context.Context) map[string]interface{} {
 	fields := make(map[string]interface{})
 
@@ -351,7 +354,7 @@ func parseLevel(level string) Level {
 		return InfoLevel
 	case "warn", "warning":
 		return WarnLevel
-	case "error":
+	case errorFieldKey:
 		return ErrorLevel
 	case "fatal":
 		return FatalLevel
@@ -413,7 +416,7 @@ func toMap(fields ...interface{}) map[string]interface{} {
 			i += 2
 			continue
 		}
-		val := fields[i+1]
+		val := fields[i+1] //nolint:gosec // G602: bounds guarded above (i+1 >= len(fields) breaks)
 		if e, ok := val.(error); ok {
 			m[key] = e.Error()
 		} else {
@@ -442,9 +445,9 @@ func Bool(key string, value bool) Field {
 // Err creates an error field
 func Err(err error) Field {
 	if err == nil {
-		return Field{Key: "error", Value: nil}
+		return Field{Key: errorFieldKey, Value: nil}
 	}
-	return Field{Key: "error", Value: err.Error()}
+	return Field{Key: errorFieldKey, Value: err.Error()}
 }
 
 // Any creates a field with any value

@@ -24,6 +24,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Audit detail keys shared by interceptor deny events.
+const (
+	auditKeyMethod = "method"
+	auditKeyReason = "reason"
+)
+
 // AuthInterceptor provides JWT and API key bearer authentication for gRPC.
 type AuthInterceptor struct {
 	enabled          bool
@@ -408,8 +414,8 @@ func (ai *AuthInterceptor) emitSecurityEvent(ctx context.Context, method, eventT
 		tenantID = tid
 	}
 	details, _ := json.Marshal(map[string]interface{}{
-		"method": method,
-		"reason": reason,
+		auditKeyMethod: method,
+		auditKeyReason: reason,
 	})
 	_ = ai.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 		TenantID:    strconv.FormatInt(tenantID, 10),

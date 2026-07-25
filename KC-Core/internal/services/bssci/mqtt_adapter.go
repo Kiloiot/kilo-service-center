@@ -9,6 +9,13 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 )
 
+// MQTT payload field keys shared by the published event bodies.
+const (
+	mqttKeyEpEui = "epEui"
+	mqttKeyBsEui = "bsEui"
+	mqttKeyQueId = "queId"
+)
+
 // mqttAdapter bridges bssci.MQTTEventPublisher → mqtt.DeviceEventPublisher.PublishDeviceEvent.
 // Converts uint64 EUIs to hex strings, builds JSON payloads, and delegates to KC-MQTT.
 type mqttAdapter struct {
@@ -24,12 +31,12 @@ func (a *mqttAdapter) PublishUplink(ctx context.Context, orgUUID string, epEUI u
 	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, decodedPayload []byte) error {
 	epEUIHex := fmt.Sprintf("%016x", epEUI)
 	msg := map[string]interface{}{
-		"bsEui":  fmt.Sprintf("%016x", bsEUI),
-		"rssi":   rssi,
-		"snr":    snr,
-		"rxTime": rxTime,
-		"cnt":    packetCnt,
-		"data":   userData,
+		mqttKeyBsEui: fmt.Sprintf("%016x", bsEUI),
+		"rssi":       rssi,
+		"snr":        snr,
+		"rxTime":     rxTime,
+		"cnt":        packetCnt,
+		"data":       userData,
 	}
 	if len(decodedPayload) > 0 {
 		msg["decodedPayload"] = json.RawMessage(decodedPayload)
@@ -44,9 +51,9 @@ func (a *mqttAdapter) PublishUplink(ctx context.Context, orgUUID string, epEUI u
 func (a *mqttAdapter) PublishAttach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
 	epEUIHex := fmt.Sprintf("%016x", epEUI)
 	payload, err := json.Marshal(map[string]interface{}{
-		"epEui": epEUIHex,
-		"bsEui": fmt.Sprintf("%016x", bsEUI),
-		"event": "attach",
+		mqttKeyEpEui: epEUIHex,
+		mqttKeyBsEui: fmt.Sprintf("%016x", bsEUI),
+		"event":      "attach",
 	})
 	if err != nil {
 		return fmt.Errorf("mqtt adapter: failed to marshal attach payload: %w", err)
@@ -57,9 +64,9 @@ func (a *mqttAdapter) PublishAttach(ctx context.Context, orgUUID string, epEUI u
 func (a *mqttAdapter) PublishDetach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
 	epEUIHex := fmt.Sprintf("%016x", epEUI)
 	payload, err := json.Marshal(map[string]interface{}{
-		"epEui": epEUIHex,
-		"bsEui": fmt.Sprintf("%016x", bsEUI),
-		"event": "detach",
+		mqttKeyEpEui: epEUIHex,
+		mqttKeyBsEui: fmt.Sprintf("%016x", bsEUI),
+		"event":      "detach",
 	})
 	if err != nil {
 		return fmt.Errorf("mqtt adapter: failed to marshal detach payload: %w", err)
@@ -70,9 +77,9 @@ func (a *mqttAdapter) PublishDetach(ctx context.Context, orgUUID string, epEUI u
 func (a *mqttAdapter) PublishDownlinkResult(ctx context.Context, orgUUID string, epEUI uint64, queID uint64, result string) error {
 	epEUIHex := fmt.Sprintf("%016x", epEUI)
 	payload, err := json.Marshal(map[string]interface{}{
-		"epEui":  epEUIHex,
-		"queId":  queID,
-		"result": result,
+		mqttKeyEpEui: epEUIHex,
+		mqttKeyQueId: queID,
+		"result":     result,
 	})
 	if err != nil {
 		return fmt.Errorf("mqtt adapter: failed to marshal downlink result payload: %w", err)

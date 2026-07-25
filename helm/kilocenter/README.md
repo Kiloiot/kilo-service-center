@@ -83,6 +83,13 @@ helm install kilocenter ./helm/kilocenter -f my-values.yaml
 | `kcCore.config.grpc.port` | Internal gRPC port | `50051` |
 | `kcCore.config.health.port` | Health endpoint port | `8086` |
 | `kcCore.config.messageRetentionDays` | Message retention in days | `90` |
+| `kcCore.config.protocol.connectionEstablishmentTimeout` | BSSCI connection establishment timeout in ms | `30000` |
+| `kcCore.config.protocol.statusRequestInterval` | BSSCI status poll interval in seconds | `30` |
+| `kcCore.config.protocol.statusRequestInitialDelay` | Delay before the first status poll in seconds | `5` |
+| `kcCore.config.protocol.dlrxQueryTimeout` | DL RX status query timeout in seconds | `300` |
+| `kcCore.config.protocol.dlrxCleanupInterval` | DL RX status query cleanup interval in seconds | `60` |
+| `kcCore.config.protocol.bsciCertificatePollInterval` | Base station certificate poll interval | `"10s"` |
+| `kcCore.config.protocol.scEui` | Service Center EUI; empty defers to env vars or the built-in default | `""` |
 
 ### KC-Gateway
 

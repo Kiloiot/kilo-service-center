@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"regexp"
 	"testing"
 	"time"
@@ -11,6 +10,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 func TestCreateSessionPersistsProtocolVersion(t *testing.T) {
@@ -73,7 +74,7 @@ func TestCreateSessionPersistsProtocolVersion(t *testing.T) {
 		ProtocolVersion: &protocolVersion,
 	}
 
-	if _, err := repo.CreateSession(context.Background(), req); err != nil {
+	if _, err := repo.CreateSession(testutil.TestContext(), req); err != nil {
 		t.Fatalf("CreateSession returned error: %v", err)
 	}
 

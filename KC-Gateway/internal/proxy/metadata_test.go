@@ -1,13 +1,14 @@
 package proxy
 
 import (
-	"context"
 	"testing"
 
 	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 func TestMetadataSanitization(t *testing.T) {
@@ -19,7 +20,7 @@ func TestMetadataSanitization(t *testing.T) {
 		grpcconst.MetadataKeyAuthorization, "Bearer spoofed-token",
 		"x-custom-header", "preserved",
 	)
-	ctx := metadata.NewIncomingContext(context.Background(), inMD)
+	ctx := metadata.NewIncomingContext(testutil.TestContext(), inMD)
 
 	// Simulate interceptor populating context with real identity
 	orgUUID := uuid.MustParse("11111111-2222-3333-4444-555555555555")

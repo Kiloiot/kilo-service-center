@@ -24,6 +24,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// fallbackModelSlug is used when slug generation strips every character.
+const fallbackModelSlug = "model"
+
 // Sentinel errors for blueprint operations.
 var (
 	ErrManufacturerNotFound = errors.New("manufacturer not found")
@@ -150,7 +153,7 @@ func generateSlug(name string) string {
 		slug = slug[:blueprintconstants.ModelCodeMaxLength]
 	}
 	if slug == "" {
-		slug = "model"
+		slug = fallbackModelSlug
 	}
 	return slug
 }
@@ -815,9 +818,9 @@ func sanitizePathSegment(s string) (string, error) {
 		return "", ErrInvalidRegistryPathSegment
 	}
 	slug := generateSlug(s)
-	// generateSlug returns "model" as fallback when all characters are stripped.
+	// generateSlug returns fallbackModelSlug as fallback when all characters are stripped.
 	// Reject if the slug is the fallback and the input had no alphanumeric content.
-	if slug == "model" {
+	if slug == fallbackModelSlug {
 		cleaned := slugRegex.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), "")
 		cleaned = strings.Trim(cleaned, "-")
 		if cleaned == "" {

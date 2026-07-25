@@ -180,7 +180,9 @@ export const CounterFields: React.FC<CounterFieldsProps> = ({
         value={lastPacketCnt}
         onChange={onLastPacketCntChange}
         error={!!errors.lastPacketCnt}
-        helperText={errors.lastPacketCnt || ENDPOINT_FORM.HELPER_LAST_PACKET_CNT}
+        helperText={
+          errors.lastPacketCnt || ENDPOINT_FORM.HELPER_LAST_PACKET_CNT
+        }
         type="number"
         required={required}
         inputProps={{ min: 0, max: MIOTY_UINT32_MAX }}

@@ -1,16 +1,17 @@
 package postgres
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 func TestGetEvents_EmptyTenantID_ReturnsError(t *testing.T) {
 	store := NewSystemEventStore(nil)
-	_, err := store.GetEvents(context.Background(), interfaces.SystemEventFilter{})
+	_, err := store.GetEvents(testutil.TestContext(), interfaces.SystemEventFilter{})
 	if err == nil {
 		t.Fatal("expected error for empty tenant ID, got nil")
 	}
@@ -21,7 +22,7 @@ func TestGetEvents_EmptyTenantID_ReturnsError(t *testing.T) {
 
 func TestCountEvents_EmptyTenantID_ReturnsError(t *testing.T) {
 	store := NewSystemEventStore(nil)
-	_, err := store.CountEvents(context.Background(), interfaces.SystemEventFilter{})
+	_, err := store.CountEvents(testutil.TestContext(), interfaces.SystemEventFilter{})
 	if err == nil {
 		t.Fatal("expected error for empty tenant ID, got nil")
 	}
@@ -32,7 +33,7 @@ func TestCountEvents_EmptyTenantID_ReturnsError(t *testing.T) {
 
 func TestCountActiveAlerts_EmptyTenantID_ReturnsError(t *testing.T) {
 	store := NewSystemEventStore(nil)
-	_, err := store.CountActiveAlerts(context.Background(), interfaces.AlertFilter{})
+	_, err := store.CountActiveAlerts(testutil.TestContext(), interfaces.AlertFilter{})
 	if err == nil {
 		t.Fatal("expected error for empty tenant ID, got nil")
 	}
@@ -43,7 +44,7 @@ func TestCountActiveAlerts_EmptyTenantID_ReturnsError(t *testing.T) {
 
 func TestGetActiveAlerts_EmptyTenantID_ReturnsError(t *testing.T) {
 	store := NewSystemEventStore(nil)
-	_, err := store.GetActiveAlerts(context.Background(), interfaces.AlertFilter{})
+	_, err := store.GetActiveAlerts(testutil.TestContext(), interfaces.AlertFilter{})
 	if err == nil {
 		t.Fatal("expected error for empty tenant ID, got nil")
 	}
@@ -54,7 +55,7 @@ func TestGetActiveAlerts_EmptyTenantID_ReturnsError(t *testing.T) {
 
 func TestGetEventStats_EmptyTenantID_ReturnsError(t *testing.T) {
 	store := NewSystemEventStore(nil)
-	_, err := store.GetEventStats(context.Background(), "", time.Now())
+	_, err := store.GetEventStats(testutil.TestContext(), "", time.Now())
 	if err == nil {
 		t.Fatal("expected error for empty tenant ID, got nil")
 	}

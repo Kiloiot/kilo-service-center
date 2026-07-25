@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -295,7 +296,7 @@ func (r *MessageRepository) CreateAttachMessage(ctx context.Context, msg *mioty.
 	subpacketsStr := string(subpacketsBytes)
 
 	// Insert into messages table (canonical table per migration 047)
-	// Column mapping: ep_eui/bs_eui as BIGINT, command_type, op_id, subpackets JSONB
+	// Column mapping: ep_eui/bs_eui as 8-byte BYTEA, command_type, op_id, subpackets JSONB
 	// Note: AttachMessage struct doesn't have OrgUUID - use nil
 	query := `
 		INSERT INTO messages (
@@ -379,7 +380,7 @@ func (r *MessageRepository) CreateDetachMessage(ctx context.Context, msg *mioty.
 	subpacketsStr := string(subpacketsBytes)
 
 	// Insert into messages table (canonical table per migration 047)
-	// Column mapping: ep_eui/bs_eui as BIGINT, command_type, op_id, subpackets JSONB
+	// Column mapping: ep_eui/bs_eui as 8-byte BYTEA, command_type, op_id, subpackets JSONB
 	query := `
 		INSERT INTO messages (
 			id, tenant_id, org_uuid, command_type, op_id, ep_eui, bs_eui,
@@ -448,7 +449,7 @@ func (r *MessageRepository) CreateAttachPropagateMessage(ctx context.Context, ms
 	subpacketsStr := string(subpacketsBytes)
 
 	// Insert into messages table (canonical table per migration 047)
-	// Uses messages schema: UUID id, BIGINT ep_eui/bs_eui, subpackets JSONB for propagate fields
+	// Uses messages schema: UUID id, 8-byte BYTEA ep_eui/bs_eui, subpackets JSONB for propagate fields
 	query := `
 		INSERT INTO messages (
 			id, tenant_id, org_uuid, command_type, op_id, ep_eui, bs_eui,
@@ -518,7 +519,7 @@ func (r *MessageRepository) CreateDetachPropagateMessage(ctx context.Context, ms
 	subpacketsStr := string(subpacketsBytes)
 
 	// Insert into messages table (canonical table per migration 047)
-	// Column mapping: ep_eui/bs_eui as BIGINT, command_type, op_id, subpackets JSONB
+	// Column mapping: ep_eui/bs_eui as 8-byte BYTEA, command_type, op_id, subpackets JSONB
 	query := `
 		INSERT INTO messages (
 			id, tenant_id, org_uuid, command_type, op_id, ep_eui, bs_eui,
@@ -678,7 +679,7 @@ func (r *MessageRepository) GetDetachMessage(ctx context.Context, id string, ten
 	var epEuiB, bsEuiB []byte
 
 	// Query from canonical messages table (migration 047)
-	// Column mapping: op_id (not operation_id), bs_eui (not basestation_eui), ep_eui as BIGINT
+	// Column mapping: op_id (not operation_id), bs_eui (not basestation_eui), ep_eui as 8-byte BYTEA
 	query := `
 		SELECT
 			id, tenant_id, org_uuid, command_type, op_id, ep_eui, bs_eui,
@@ -716,8 +717,14 @@ func (r *MessageRepository) GetDetachMessage(ctx context.Context, id string, ten
 		if err := json.Unmarshal(subpacketsJSON, &subpacketsMap); err != nil {
 			return nil, fmt.Errorf("deserialize subpackets: %w", err)
 		}
-		// Extract signature from subpackets (stored as []interface{} from JSON)
-		if sig, ok := subpacketsMap["signature"].([]interface{}); ok {
+		// Extract signature from subpackets: json.Marshal encodes []byte as a
+		// base64 string; legacy rows may carry a numeric array
+		switch sig := subpacketsMap["signature"].(type) {
+		case string:
+			if decoded, decErr := base64.StdEncoding.DecodeString(sig); decErr == nil {
+				msg.Signature = decoded
+			}
+		case []interface{}:
 			msg.Signature = make([]byte, len(sig))
 			for i, v := range sig {
 				if f, ok := v.(float64); ok {

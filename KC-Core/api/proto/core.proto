@@ -524,7 +524,7 @@ message DownlinkMessage {
   bool dl_wind_req = 19;
   bool exp_only = 20;
   reserved 21;  // Removed: confirmed (non-MIOTY)
-  int64 que_id = 22;                   // Queue ID per BSSCI §3.14.1 for operator traceability
+  int64 que_id = 22 [jstype = JS_STRING]; // Queue ID per BSSCI §3.14.1. JS_STRING avoids JavaScript Number precision loss on 64-bit IDs (Number safe range ends at 2^53 ~ 9e15; queIds are ~1.78e18 and round to the nearest hundred without this annotation, breaking revoke).
   int32 attempts = 23;                 // Internal queue management
   int32 max_attempts = 24;             // Internal queue management
   int64 transmission_packet_cnt = 25;  // End Point packet counter when transmitted per BSSCI §3.14.1
@@ -573,24 +573,28 @@ message SendULTransmitResponse {
 
 // Base Station Status Request (BSSCI 3.5)
 message BaseStationStatusRequest {
-  uint64 bs_eui = 1;          // Base Station EUI
+  // Deprecated: uint64 loses precision above 2^53 in browser JavaScript clients; use bs_eui_hex.
+  uint64 bs_eui = 1 [deprecated = true];
+  string bs_eui_hex = 2;      // Base Station EUI as hex string (browser-safe full-range representation; accepts dashed or non-dashed)
 }
 
 message BaseStationStatusResponse {
   bool success = 1;           // Whether the request was sent successfully
   string message = 2;         // Status or error message
-  int64 op_id = 3;           // Operation ID of the status request
+  int64 op_id = 3 [jstype = JS_STRING]; // Operation ID. JS_STRING for int64 precision (same rationale as DownlinkMessage.que_id).
 }
 
 // Ping Request (BSSCI §5.4)
 message InitiatePingRequest {
-  uint64 bs_eui = 1;  // Base Station EUI
+  // Deprecated: uint64 loses precision above 2^53 in browser JavaScript clients; use bs_eui_hex.
+  uint64 bs_eui = 1 [deprecated = true];
+  string bs_eui_hex = 2;  // Base Station EUI as hex string (browser-safe full-range representation; accepts dashed or non-dashed)
 }
 
 message InitiatePingResponse {
   bool success = 1;      // Whether ping was sent successfully
   string message = 2;    // Status or error message
-  int64 op_id = 3;      // Operation ID of the ping request
+  int64 op_id = 3 [jstype = JS_STRING]; // Operation ID. JS_STRING for int64 precision.
 }
 
 // ============================================================================
@@ -711,7 +715,7 @@ message QueryDLRXStatusResponse {
 message DLRXStatusQuery {
   string ep_eui = 1;           // Hex string (16 chars)
   string bs_eui = 2;           // Hex string (16 chars)
-  int64 op_id = 3;             // SC operation ID (negative)
+  int64 op_id = 3 [jstype = JS_STRING]; // SC operation ID (negative). JS_STRING for int64 precision.
   string status = 4;           // "pending"|"received"|"timeout"
   google.protobuf.Timestamp requested_at = 5;
   google.protobuf.Timestamp received_at = 6;  // Optional (null if not received)

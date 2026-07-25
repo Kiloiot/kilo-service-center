@@ -227,10 +227,10 @@ func TestEndpointsUnsignedConstraintBounds(t *testing.T) {
 		name  string
 		query string
 	}{
-		{"sh_addr max uint16", `INSERT INTO endpoints (tenant_id, ep_eui, name, sh_addr) VALUES (999999, E'\\x0102030405060701', 'test1', 65535)`},
-		{"attach_cnt max uint32", `INSERT INTO endpoints (tenant_id, ep_eui, name, attach_cnt) VALUES (999999, E'\\x0102030405060702', 'test2', 4294967295)`},
-		{"packet_cnt max uint32", `INSERT INTO endpoints (tenant_id, ep_eui, name, packet_cnt) VALUES (999999, E'\\x0102030405060703', 'test3', 4294967295)`},
-		{"last_packet_cnt max uint32", `INSERT INTO endpoints (tenant_id, ep_eui, name, last_packet_cnt) VALUES (999999, E'\\x0102030405060704', 'test4', 4294967295)`},
+		{"sh_addr max uint16", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, sh_addr) VALUES (999999, 999999, E'\\x0102030405060701', 'test1', 65535)`},
+		{"attach_cnt max uint32", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, attach_cnt) VALUES (999999, 999999, E'\\x0102030405060702', 'test2', 4294967295)`},
+		{"packet_cnt max uint32", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, packet_cnt) VALUES (999999, 999999, E'\\x0102030405060703', 'test3', 4294967295)`},
+		{"last_packet_cnt max uint32", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, last_packet_cnt) VALUES (999999, 999999, E'\\x0102030405060704', 'test4', 4294967295)`},
 	}
 
 	for _, tc := range validCases {
@@ -247,10 +247,10 @@ func TestEndpointsUnsignedConstraintBounds(t *testing.T) {
 		name  string
 		query string
 	}{
-		{"sh_addr negative", `INSERT INTO endpoints (tenant_id, ep_eui, name, sh_addr) VALUES (999999, E'\\x0102030405060705', 'test5', -1)`},
-		{"attach_cnt negative", `INSERT INTO endpoints (tenant_id, ep_eui, name, attach_cnt) VALUES (999999, E'\\x0102030405060706', 'test6', -1)`},
-		{"packet_cnt negative", `INSERT INTO endpoints (tenant_id, ep_eui, name, packet_cnt) VALUES (999999, E'\\x0102030405060707', 'test7', -1)`},
-		{"last_packet_cnt negative", `INSERT INTO endpoints (tenant_id, ep_eui, name, last_packet_cnt) VALUES (999999, E'\\x0102030405060708', 'test8', -1)`},
+		{"sh_addr negative", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, sh_addr) VALUES (999999, 999999, E'\\x0102030405060705', 'test5', -1)`},
+		{"attach_cnt negative", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, attach_cnt) VALUES (999999, 999999, E'\\x0102030405060706', 'test6', -1)`},
+		{"packet_cnt negative", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, packet_cnt) VALUES (999999, 999999, E'\\x0102030405060707', 'test7', -1)`},
+		{"last_packet_cnt negative", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, last_packet_cnt) VALUES (999999, 999999, E'\\x0102030405060708', 'test8', -1)`},
 	}
 
 	for _, tc := range negativeCases {
@@ -273,10 +273,10 @@ func TestEndpointsUnsignedConstraintBounds(t *testing.T) {
 		name  string
 		query string
 	}{
-		{"sh_addr exceeds max (65536)", `INSERT INTO endpoints (tenant_id, ep_eui, name, sh_addr) VALUES (999999, E'\\x0102030405060709', 'test9', 65536)`},
-		{"attach_cnt exceeds max (4294967296)", `INSERT INTO endpoints (tenant_id, ep_eui, name, attach_cnt) VALUES (999999, E'\\x010203040506070a', 'test10', 4294967296)`},
-		{"packet_cnt exceeds max (4294967296)", `INSERT INTO endpoints (tenant_id, ep_eui, name, packet_cnt) VALUES (999999, E'\\x010203040506070b', 'test11', 4294967296)`},
-		{"last_packet_cnt exceeds max (4294967296)", `INSERT INTO endpoints (tenant_id, ep_eui, name, last_packet_cnt) VALUES (999999, E'\\x010203040506070c', 'test12', 4294967296)`},
+		{"sh_addr exceeds max (65536)", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, sh_addr) VALUES (999999, 999999, E'\\x0102030405060709', 'test9', 65536)`},
+		{"attach_cnt exceeds max (4294967296)", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, attach_cnt) VALUES (999999, 999999, E'\\x010203040506070a', 'test10', 4294967296)`},
+		{"packet_cnt exceeds max (4294967296)", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, packet_cnt) VALUES (999999, 999999, E'\\x010203040506070b', 'test11', 4294967296)`},
+		{"last_packet_cnt exceeds max (4294967296)", `INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, last_packet_cnt) VALUES (999999, 999999, E'\\x010203040506070c', 'test12', 4294967296)`},
 	}
 
 	for _, tc := range upperBoundCases {

@@ -4,12 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // mockDetachValidator implements DetachSignatureValidator for testing
@@ -51,8 +50,8 @@ func TestServer_DetachComplete_InvalidSignature_LogsTenantMetadata(t *testing.T)
 	}, nil) // nil endpoint = unknown endpoint
 
 	// Replace logger with observed logger to capture log output
-	observedCore, observedLogs := observer.New(zap.WarnLevel)
-	env.server.logger = logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures WARN+
+	env.server.logger = observedLogs
 
 	// Install mock validator
 	env.server.detachValidator = mockValidator
@@ -83,14 +82,14 @@ func TestServer_DetachComplete_InvalidSignature_LogsTenantMetadata(t *testing.T)
 	assert.Equal(t, expectedMsg, errorMessage, "Error message should match catalog token")
 
 	// Assert: Log contains tenant metadata
-	allLogs := observedLogs.All()
+	allLogs := observedLogs.AllAtLeast("WARN")
 	foundLog := false
 	for _, logEntry := range allLogs {
 		if logEntry.Message == "Unknown endpoint detach signature invalid" {
 			foundLog = true
 
 			// Verify log context fields
-			fields := logEntry.ContextMap()
+			fields := logEntry.FieldMap()
 			assert.Equal(t, epEui, fields["epEui"], "Log should contain epEui")
 			assert.Equal(t, int64(tenantID), fields["tenant_id"], "Log should contain tenant_id")
 			assert.Equal(t, int64(ownerID), fields["owner_tenant_id"], "Log should contain owner_tenant_id")

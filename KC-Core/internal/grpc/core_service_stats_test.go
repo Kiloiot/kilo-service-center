@@ -14,6 +14,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // MockStorage implements storage.Storage for testing
@@ -317,7 +319,7 @@ func TestGetBaseStationStats_StorageMethods(t *testing.T) {
 		&lastWeek, &now).Return(mockStats, nil).Once()
 
 	// Execute
-	stats, err := mockStorage.GetBaseStationMessageStats(pkgcontext.WithTenantID(context.Background(), tenantID), tenantID, bsEuiBytes, &lastWeek, &now)
+	stats, err := mockStorage.GetBaseStationMessageStats(pkgcontext.WithTenantID(testutil.TestContext(), tenantID), tenantID, bsEuiBytes, &lastWeek, &now)
 
 	// Assert
 	assert.NoError(t, err)
@@ -334,7 +336,7 @@ func TestGetBaseStationStats_StorageMethods(t *testing.T) {
 	mockStorage.On("GetBaseStationEndpointCounts", mock.Anything, tenantID, bsEuiBytes,
 		&lastWeek, &now).Return(endpointCounts, nil).Once()
 
-	counts, err := mockStorage.GetBaseStationEndpointCounts(pkgcontext.WithTenantID(context.Background(), tenantID), tenantID, bsEuiBytes, &lastWeek, &now)
+	counts, err := mockStorage.GetBaseStationEndpointCounts(pkgcontext.WithTenantID(testutil.TestContext(), tenantID), tenantID, bsEuiBytes, &lastWeek, &now)
 	assert.NoError(t, err)
 	assert.Len(t, counts, 2)
 	assert.Equal(t, int64(100), counts["AABBCCDDEE112233"])
@@ -344,7 +346,7 @@ func TestGetBaseStationStats_StorageMethods(t *testing.T) {
 	mockStorage.On("GetBaseStationLastSeen", mock.Anything, tenantID, bsEuiBytes).
 		Return(&lastSeen, nil).Once()
 
-	seenTime, err := mockStorage.GetBaseStationLastSeen(pkgcontext.WithTenantID(context.Background(), tenantID), tenantID, bsEuiBytes)
+	seenTime, err := mockStorage.GetBaseStationLastSeen(pkgcontext.WithTenantID(testutil.TestContext(), tenantID), tenantID, bsEuiBytes)
 	assert.NoError(t, err)
 	assert.NotNil(t, seenTime)
 	assert.Equal(t, lastSeen, *seenTime)

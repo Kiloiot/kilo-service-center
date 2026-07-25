@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -13,10 +14,28 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+// assemblyDLRXRepo is a no-op DLRXStatusRepository: only the correlation write
+// used by SendDLRXStatusQuery is implemented.
+type assemblyDLRXRepo struct {
+	interfaces.DLRXStatusRepository
+}
+
+func (assemblyDLRXRepo) CreateDLRXStatusQuery(_ context.Context, _ int64, _ *uuid.UUID, _, _ []byte, _ int64) error {
+	return nil
+}
+
+// assemblyStorage provides the minimal storage surface for SC-originated send
+// tests: a working DL RX correlation repository and nil-safe accessors.
+type assemblyStorage struct{ capturingStorage }
+
+func (s *assemblyStorage) MIOTYMessages() interfaces.MIOTYMessageRepository { return nil }
+func (s *assemblyStorage) DLRXStatus() interfaces.DLRXStatusRepository      { return assemblyDLRXRepo{} }
 
 // TestSCOriginatedMessageAssembly verifies BSSCI §2.5-01:
 // Every mandatory field must be populated when assembling Service Center-originated
@@ -102,20 +121,23 @@ func TestSCOriginatedOperations(t *testing.T) {
 
 				// Create test server and session
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-					queueSerializer, auditLogger, tenantResolver, mockStorage :=
+					queueSerializer, auditLogger, tenantResolver, _ :=
 					bssci.CreateTestServices(testLogger, nil)
 
-				server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
+				server := bssci.NewTestServer(testLogger, &assemblyStorage{}, nil, 1,
 					sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 					queueSerializer, auditLogger, tenantResolver)
 
 				session := &bssci.Session{
-					ID:                "test-session",
-					BaseStationEUI:    bssci.TestBsEui04,
-					Conn:              mockConn,
-					Encoding:          encoding,
-					LastScOpId:        -1,
-					HandshakeComplete: true,
+					ProtocolSessionState: bssci.ProtocolSessionState{
+						ID:                "test-session",
+						BaseStationEUI:    bssci.TestBsEui04,
+						Encoding:          encoding,
+						LastScOpId:        -1,
+						HandshakeComplete: true,
+						DbSessionID:       1,
+					},
+					Conn: mockConn,
 				}
 
 				// Register session with server for operations that look up by sessionID
@@ -245,19 +267,22 @@ func TestBSOriginatedResponseHandlers(t *testing.T) {
 
 				// Create test server
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-					queueSerializer, auditLogger, tenantResolver, mockStorage :=
+					queueSerializer, auditLogger, tenantResolver, _ :=
 					bssci.CreateTestServices(testLogger, nil)
 
-				server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
+				server := bssci.NewTestServer(testLogger, &assemblyStorage{}, nil, 1,
 					sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 					queueSerializer, auditLogger, tenantResolver)
 
 				session := &bssci.Session{
-					ID:                "test-session",
-					BaseStationEUI:    bssci.TestBsEui04,
-					Conn:              mockConn,
-					Encoding:          encoding,
-					HandshakeComplete: true,
+					ProtocolSessionState: bssci.ProtocolSessionState{
+						ID:                "test-session",
+						BaseStationEUI:    bssci.TestBsEui04,
+						Encoding:          encoding,
+						HandshakeComplete: true,
+						DbSessionID:       1,
+					},
+					Conn: mockConn,
 				}
 
 				// Setup message data
@@ -331,21 +356,24 @@ func newAssemblySession(t *testing.T, encoding, sessionID string) (*bssci.Server
 	mockConn.Reset()
 
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-		queueSerializer, auditLogger, tenantResolver, mockStorage :=
+		queueSerializer, auditLogger, tenantResolver, _ :=
 		bssci.CreateTestServices(logger.NewNop(), nil)
 
-	server := bssci.NewTestServer(logger.NewNop(), mockStorage, &mockEventStore{}, 1,
+	server := bssci.NewTestServer(logger.NewNop(), &assemblyStorage{}, &mockEventStore{}, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 		queueSerializer, auditLogger, tenantResolver)
 
 	session := &bssci.Session{
-		ID:                sessionID,
-		BaseStationEUI:    bssci.TestBsEui04,
-		Conn:              mockConn,
-		Encoding:          encoding,
-		LastScOpId:        -1,
-		HandshakeComplete: true,
-		Bidirectional:     true,
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                sessionID,
+			BaseStationEUI:    bssci.TestBsEui04,
+			Encoding:          encoding,
+			LastScOpId:        -1,
+			HandshakeComplete: true,
+			DbSessionID:       1,
+		},
+		Conn:          mockConn,
+		Bidirectional: true,
 	}
 
 	server.RegisterSession(session)
@@ -379,6 +407,11 @@ func TestComplexSCOperations(t *testing.T) {
 		{"SendDetachPropagate", testSendDetachPropagate},
 		{"SendDLDataQueue", testSendDLDataQueue},
 		{"SendDLDataQueue_CounterDependent", testSendDLDataQueueCounterDependent},
+		{"SendDLDataQueue_ACKOnly", testSendDLDataQueueACKOnly},
+		{"SendDLDataQueue_OptionalFlagsTrue", testSendDLDataQueueOptionalFlagsTrue},
+		{"SendDLDataQueue_OptionalFlagsFalse", testSendDLDataQueueOptionalFlagsFalse},
+		{"SendDLDataQueue_FormatBoundary", testSendDLDataQueueFormatBoundary},
+		{"SendDLDataQueue_PrioAlwaysPresent", testSendDLDataQueuePrioAlwaysPresent},
 		{"SendDLDataRevoke", testSendDLDataRevoke},
 		{"SendDLRXStatusQuery", testSendDLRXStatusQuery},
 		{"SendULDataTransmit", testSendULDataTransmit},
@@ -464,7 +497,7 @@ func testSendDLDataQueue(t *testing.T, encoding string) {
 	packetCnt := []int64{}
 
 	err := server.SendDLDataQueue(session.ID, epEui, payloads, queId,
-		0, false, packetCnt, 0, false, false, false, false, 1)
+		0, false, packetCnt, 0, false, false, false, false, 1, false)
 	require.NoError(t, err, "SendDLDataQueue should succeed")
 
 	require.Len(t, mockConn.sentMessages, 1, "Should send exactly one message")
@@ -550,7 +583,7 @@ func testSendDLDataQueueCounterDependent(t *testing.T, encoding string) {
 	packetCnt := []int64{100, 200, 300} // Counter-dependent packet counts
 
 	err := server.SendDLDataQueue(session.ID, epEui, payloads, queId,
-		0, true, packetCnt, 0, false, false, false, false, 1)
+		0, true, packetCnt, 0, false, false, false, false, 1, false)
 	require.NoError(t, err, "SendDLDataQueue with cntDepend should succeed")
 
 	require.Len(t, mockConn.sentMessages, 1, "Should send exactly one message")
@@ -583,6 +616,154 @@ func testSendDLDataQueueCounterDependent(t *testing.T, encoding string) {
 	}
 
 	t.Logf("SendDLDataQueue counter-dependent (%s) emitted fields: %v", encoding, getFieldNames(msg))
+}
+
+// testSendDLDataQueueACKOnly pins the BSSCI §3.12.1 ACK-only wire shape
+// ("If user data is empty, a pure acknowledgement downlink is queued").
+// Even with no payload, the outer slice MUST have one zero-length inner
+// entry — sending an empty outer ([]) makes the AVA base station reject
+// the message with BSSCI error 22 "DL data queue message malformed".
+func testSendDLDataQueueACKOnly(t *testing.T, encoding string) {
+	server, mockConn, session := newAssemblySession(t, encoding, "test-session")
+
+	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
+		[][]byte{}, 1001, 0, false, nil, 0,
+		false, false, false, false, 1, false)
+	require.NoError(t, err, "ACK-only SendDLDataQueue should succeed")
+	require.Len(t, mockConn.sentMessages, 1)
+	msg := mockConn.sentMessages[0]
+
+	outer, ok := msg["userData"].([]interface{})
+	require.Truef(t, ok, "userData must be an outer slice (got %T)", msg["userData"])
+	require.Lenf(t, outer, 1,
+		"ACK-only userData outer length must be 1 (got %d) — empty outer triggers BS error 22",
+		len(outer))
+	switch inner := outer[0].(type) {
+	case []byte:
+		require.Empty(t, inner, "ACK-only inner payload must be zero bytes")
+	case []interface{}:
+		require.Empty(t, inner, "ACK-only inner payload must be zero entries")
+	default:
+		t.Fatalf("ACK-only inner entry has unexpected type %T", outer[0])
+	}
+	assert.Equal(t, false, msg["cntDepend"], "ACK-only path must use cntDepend=false")
+	assert.NotContains(t, msg, "packetCnt", "ACK-only path must omit packetCnt")
+}
+
+// testSendDLDataQueueOptionalFlagsTrue locks the wire-presence guarantee for
+// every optional bool field defined in BSSCI §3.12.1 when set true, so
+// BS-side behaviour claims have factual grounding about what was sent.
+func testSendDLDataQueueOptionalFlagsTrue(t *testing.T, encoding string) {
+	server, mockConn, session := newAssemblySession(t, encoding, "test-session")
+
+	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
+		[][]byte{{0x02}}, 1002, 0.5, false, nil, 0,
+		true, true, true, true, 1, false)
+	require.NoError(t, err)
+	require.Len(t, mockConn.sentMessages, 1)
+	msg := mockConn.sentMessages[0]
+
+	for _, field := range []string{"responseExp", "responsePrio", "dlWindReq", "expOnly"} {
+		val, present := msg[field]
+		require.Truef(t, present, "field %q must be present on the wire when set true", field)
+		assert.Equalf(t, true, val, "field %q must encode to true", field)
+	}
+}
+
+// testSendDLDataQueueOptionalFlagsFalse asserts the same optional bool fields
+// are OMITTED when false, keeping the wire compact and pinning the shape the
+// BS sees against refactors that would always emit the flags.
+func testSendDLDataQueueOptionalFlagsFalse(t *testing.T, encoding string) {
+	server, mockConn, session := newAssemblySession(t, encoding, "test-session")
+
+	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
+		[][]byte{{0x02}}, 1003, 0.5, false, nil, 0,
+		false, false, false, false, 1, false)
+	require.NoError(t, err)
+	require.Len(t, mockConn.sentMessages, 1)
+	msg := mockConn.sentMessages[0]
+
+	for _, field := range []string{"responseExp", "responsePrio", "dlWindReq", "expOnly"} {
+		_, present := msg[field]
+		assert.Falsef(t, present, "field %q must be absent on the wire when false", field)
+	}
+}
+
+// testSendDLDataQueueFormatBoundary checks both extremes of the BSSCI §3.12.1
+// format identifier: 0 (default → omitted) and 255 (max u8 → present with
+// full value).
+func testSendDLDataQueueFormatBoundary(t *testing.T, encoding string) {
+	cases := []struct {
+		name     string
+		format   uint8
+		wantPres bool
+	}{
+		{"format=0 omitted", 0, false},
+		{"format=255 present", 255, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server, mockConn, session := newAssemblySession(t, encoding, "test-session")
+
+			err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
+				[][]byte{{0x02}}, 1004, 0.5, false, nil, tc.format,
+				false, false, false, false, 1, false)
+			require.NoError(t, err)
+			require.Len(t, mockConn.sentMessages, 1)
+			msg := mockConn.sentMessages[0]
+
+			val, present := msg["format"]
+			assert.Equal(t, tc.wantPres, present, "format presence mismatch")
+			if tc.wantPres {
+				// Format can land as uint8/int64/float64 depending on encoder
+				var got int64
+				switch v := val.(type) {
+				case uint8:
+					got = int64(v)
+				case int64:
+					got = v
+				case float64:
+					got = int64(v)
+				case int:
+					got = int64(v)
+				default:
+					t.Fatalf("format has unexpected type %T", val)
+				}
+				assert.Equal(t, int64(255), got, "format value mismatch")
+			}
+		})
+	}
+}
+
+// testSendDLDataQueuePrioAlwaysPresent verifies prio is always emitted
+// regardless of value, so the BS-side ordering decision has the value it
+// expects for both 0.0 (low) and 1.0 (high).
+func testSendDLDataQueuePrioAlwaysPresent(t *testing.T, encoding string) {
+	for _, prio := range []float32{0.0, 1.0} {
+		t.Run(fmt.Sprintf("prio=%.1f", prio), func(t *testing.T) {
+			server, mockConn, session := newAssemblySession(t, encoding, "test-session")
+
+			err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
+				[][]byte{{0x02}}, 1005, prio, false, nil, 0,
+				false, false, false, false, 1, false)
+			require.NoError(t, err)
+			require.Len(t, mockConn.sentMessages, 1)
+			msg := mockConn.sentMessages[0]
+
+			val, present := msg["prio"]
+			require.True(t, present, "prio must always be present on the wire")
+			var got float64
+			switch v := val.(type) {
+			case float32:
+				got = float64(v)
+			case float64:
+				got = v
+			default:
+				t.Fatalf("prio has unexpected type %T", val)
+			}
+			assert.InDelta(t, float64(prio), got, 0.0001, "prio value mismatch")
+		})
+	}
 }
 
 func testSendDLDataRevoke(t *testing.T, encoding string) {

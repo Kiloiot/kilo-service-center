@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -122,7 +123,7 @@ func (r *BaseStationSessionRepository) GetActiveSessionByBaseStation(ctx context
 			encoding, protocol_version, connect_info,
 			created_at, updated_at
 		FROM basestation_sessions
-		WHERE basestation_id = $1 AND tenant_id = $2 AND status IN ('active', 'resumed')
+		WHERE basestation_id = $1 AND tenant_id = $2 AND status = 'active'
 		ORDER BY started_at DESC
 		LIMIT 1`
 
@@ -175,88 +176,25 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 		return fmt.Errorf("update request cannot be nil")
 	}
 
-	updates := []string{}
-	args := []interface{}{}
-	argPos := 1
-
-	if req.SnBsOpId != nil {
-		updates = append(updates, fmt.Sprintf("sn_bs_op_id = $%d", argPos))
-		args = append(args, *req.SnBsOpId)
-		argPos++
+	builder, err := buildSessionUpdateClauses(req)
+	if err != nil {
+		return err
 	}
-
-	if req.SnScOpId != nil {
-		updates = append(updates, fmt.Sprintf("sn_sc_op_id = $%d", argPos))
-		args = append(args, *req.SnScOpId)
-		argPos++
-	}
-
-	if req.Status != nil {
-		updates = append(updates, fmt.Sprintf("status = $%d", argPos))
-		args = append(args, *req.Status)
-		argPos++
-	}
-
-	if req.LastPingAt != nil {
-		updates = append(updates, fmt.Sprintf("last_ping_at = $%d", argPos))
-		args = append(args, *req.LastPingAt)
-		argPos++
-	}
-
-	if req.EndedAt != nil {
-		updates = append(updates, fmt.Sprintf("ended_at = $%d", argPos))
-		args = append(args, *req.EndedAt)
-		argPos++
-	}
-
-	if req.ConnectionId != nil {
-		updates = append(updates, fmt.Sprintf("connection_id = $%d", argPos))
-		args = append(args, *req.ConnectionId)
-		argPos++
-	}
-
-	if req.RemoteAddr != nil {
-		updates = append(updates, fmt.Sprintf("remote_addr = $%d", argPos))
-		args = append(args, *req.RemoteAddr)
-		argPos++
-	}
-
-	if req.OrganizationID != nil {
-		updates = append(updates, fmt.Sprintf("organization_id = $%d", argPos))
-		args = append(args, *req.OrganizationID)
-		argPos++
-	}
-
-	if req.Encoding != nil {
-		updates = append(updates, fmt.Sprintf("encoding = $%d", argPos))
-		args = append(args, *req.Encoding)
-		argPos++
-	}
-
-	if req.ProtocolVersion != nil {
-		updates = append(updates, fmt.Sprintf("protocol_version = $%d", argPos))
-		args = append(args, *req.ProtocolVersion)
-		argPos++
-	}
-
-	if len(updates) == 0 {
+	if len(builder.clauses) == 0 {
 		return fmt.Errorf("no fields to update")
 	}
 
-	updates = append(updates, fmt.Sprintf("updated_at = $%d", argPos))
-	args = append(args, time.Now())
-	argPos++
-
-	args = append(args, sessionID, tenantID)
+	builder.set("updated_at", time.Now())
+	builder.args = append(builder.args, sessionID, tenantID)
 
 	query := fmt.Sprintf(`
 		UPDATE basestation_sessions
 		SET %s
 		WHERE id = $%d AND tenant_id = $%d`,
-		strings.Join(updates, ", "),
-		argPos, argPos+1)
+		strings.Join(builder.clauses, ", "),
+		len(builder.args)-1, len(builder.args))
 
-	result, err := r.db.ExecContext(ctx, query, args...)
+	result, err := r.db.ExecContext(ctx, query, builder.args...)
 	if err != nil {
 		return fmt.Errorf("failed to update Base Station session: %w", err)
 	}
@@ -271,6 +209,97 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 	}
 
 	return nil
+}
+
+// ActivateSessionIfResumable applies the resume activation only while the row
+// is still disconnected and resumable. Two connections that both found the same
+// row through FindResumableSession reach this update, and only the first one
+// matches: the loser gets false and must abandon the resume.
+func (r *BaseStationSessionRepository) ActivateSessionIfResumable(ctx context.Context, tenantID, sessionID int64, req *models.BaseStationSessionUpdateRequest) (bool, error) {
+	if req == nil {
+		return false, fmt.Errorf("update request cannot be nil")
+	}
+
+	builder, err := buildSessionUpdateClauses(req)
+	if err != nil {
+		return false, err
+	}
+	if len(builder.clauses) == 0 {
+		return false, fmt.Errorf("no fields to update")
+	}
+
+	builder.set("updated_at", time.Now())
+	builder.args = append(builder.args, sessionID, tenantID, models.SessionStatusDisconnected)
+
+	query := fmt.Sprintf(`
+		UPDATE basestation_sessions
+		SET %s
+		WHERE id = $%d AND tenant_id = $%d
+		  AND status = $%d AND can_resume = true`,
+		strings.Join(builder.clauses, ", "),
+		len(builder.args)-2, len(builder.args)-1, len(builder.args))
+
+	result, err := r.db.ExecContext(ctx, query, builder.args...)
+	if err != nil {
+		return false, fmt.Errorf("failed to activate resumable Base Station session: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	return rowsAffected > 0, nil
+}
+
+// updateSetBuilder accumulates SET clauses with positional placeholders for a
+// dynamic partial UPDATE.
+type updateSetBuilder struct {
+	clauses []string
+	args    []interface{}
+}
+
+// set appends a column assignment bound to the next positional argument.
+func (b *updateSetBuilder) set(column string, value interface{}) {
+	b.args = append(b.args, value)
+	b.clauses = append(b.clauses, fmt.Sprintf("%s = $%d", column, len(b.args)))
+}
+
+// setNull appends a literal NULL assignment for a column.
+func (b *updateSetBuilder) setNull(column string) {
+	b.clauses = append(b.clauses, fmt.Sprintf("%s = NULL", column))
+}
+
+// setIfPresent appends a column assignment when the optional value is set.
+func setIfPresent[T any](b *updateSetBuilder, column string, value *T) {
+	if value != nil {
+		b.set(column, *value)
+	}
+}
+
+// buildSessionUpdateClauses maps the optional request fields onto SET clauses,
+// rejecting a request that both sets and clears ended_at.
+func buildSessionUpdateClauses(req *models.BaseStationSessionUpdateRequest) (*updateSetBuilder, error) {
+	if req.EndedAt != nil && req.ClearEndedAt {
+		return nil, fmt.Errorf("update request cannot set and clear ended_at at once")
+	}
+
+	b := &updateSetBuilder{}
+	setIfPresent(b, "sn_bs_op_id", req.SnBsOpId)
+	setIfPresent(b, "sn_sc_op_id", req.SnScOpId)
+	setIfPresent(b, "status", req.Status)
+	setIfPresent(b, "last_ping_at", req.LastPingAt)
+	setIfPresent(b, "ended_at", req.EndedAt)
+	if req.ClearEndedAt {
+		b.setNull("ended_at")
+	}
+	setIfPresent(b, "can_resume", req.CanResume)
+	setIfPresent(b, "connection_id", req.ConnectionId)
+	setIfPresent(b, "remote_addr", req.RemoteAddr)
+	setIfPresent(b, "organization_id", req.OrganizationID)
+	setIfPresent(b, "encoding", req.Encoding)
+	setIfPresent(b, "protocol_version", req.ProtocolVersion)
+	return b, nil
 }
 
 // UpdateOperationIDs updates both Base Station and Service Center operation IDs atomically
@@ -327,7 +356,7 @@ func (r *BaseStationSessionRepository) UpdatePing(ctx context.Context, tenantID,
 
 // UpdateEncoding updates the message encoding for a session
 // This is called when encoding is negotiated on first message per BSSCI Section 1
-func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, sessionID int64, encoding string) error {
+func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, tenantID, sessionID int64, encoding string) error {
 	// Validate encoding value
 	if encoding != bssci.EncodingJSON && encoding != bssci.EncodingMessagePack {
 		return fmt.Errorf("invalid encoding: must be '%s' or '%s', got '%s'", bssci.EncodingJSON, bssci.EncodingMessagePack, encoding)
@@ -337,9 +366,9 @@ func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, sessi
 		UPDATE basestation_sessions
 		SET encoding = $1,
 		    updated_at = NOW()
-		WHERE id = $2`
+		WHERE id = $2 AND tenant_id = $3`
 
-	result, err := r.db.ExecContext(ctx, query, encoding, sessionID)
+	result, err := r.db.ExecContext(ctx, query, encoding, sessionID, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to update encoding: %w", err)
 	}
@@ -350,7 +379,7 @@ func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, sessi
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("session not found: id=%d", sessionID)
+		return fmt.Errorf("session not found: id=%d tenant=%d", sessionID, tenantID)
 	}
 
 	return nil
@@ -361,6 +390,7 @@ func (r *BaseStationSessionRepository) TerminateSession(ctx context.Context, ten
 	query := `
 		UPDATE basestation_sessions
 		SET status = $1,
+		    can_resume = false,
 		    ended_at = $2,
 		    updated_at = $2
 		WHERE id = $3 AND tenant_id = $4`
@@ -392,7 +422,7 @@ func (r *BaseStationSessionRepository) TerminateAllSessions(ctx context.Context,
 		    updated_at = $2
 		WHERE basestation_id = $3
 		  AND tenant_id = $4
-		  AND status IN ('active', 'resumed')`
+		  AND status = 'active'`
 
 	now := time.Now()
 	_, err := r.db.ExecContext(ctx, query, models.SessionStatusTerminated, now, baseStationID, tenantID)
@@ -448,7 +478,7 @@ func (r *BaseStationSessionRepository) ListSessions(ctx context.Context, filter 
 	}
 
 	if filter.ActiveOnly {
-		whereClauses = append(whereClauses, "status IN ('active', 'resumed')")
+		whereClauses = append(whereClauses, "status = 'active'")
 	}
 
 	if filter.Since != nil {
@@ -516,9 +546,9 @@ func (r *BaseStationSessionRepository) GetSessionStatistics(ctx context.Context,
 	query := `
 		SELECT
 			COUNT(*) as total_sessions,
-			COUNT(*) FILTER (WHERE status IN ('active', 'resumed')) as active_sessions,
+			COUNT(*) FILTER (WHERE status = 'active') as active_sessions,
 			COUNT(*) FILTER (WHERE status = 'terminated') as terminated_sessions,
-			COUNT(*) FILTER (WHERE can_resume = true AND status IN ('active', 'resumed')) as resumable_sessions,
+			COUNT(*) FILTER (WHERE can_resume = true AND status = 'disconnected') as resumable_sessions,
 			COALESCE(
 				AVG(EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at)) / 3600),
 				0
@@ -775,15 +805,103 @@ func (r *BaseStationSessionRepository) scanSessionFromRows(rows *sql.Rows) (*mod
 	return session, nil
 }
 
-// UpdateCountersAndTimestamp updates operation counters by session UUID
-// Replaces direct GetDB().Exec() calls in bssci.Server.updateSessionCounters (line 4288)
-func (r *BaseStationSessionRepository) UpdateCountersAndTimestamp(ctx context.Context, sessionUUID [16]byte, bsOpId, scOpId int64) error {
-	_, err := r.db.ExecContext(ctx, `
+// MarkDisconnected marks an active session disconnected and resumable, guarded
+// by the stored connection ID and by the active status: a reconnect that
+// already replaced this connection, or a session already retired, matches zero
+// rows and stays untouched (not an error).
+func (r *BaseStationSessionRepository) MarkDisconnected(ctx context.Context, tenantID, sessionID int64, connectionID string, endedAt time.Time) error {
+	query := `
 		UPDATE basestation_sessions
-		SET sn_bs_op_id = $1,
-		    sn_sc_op_id = $2
-		WHERE sn_sc_uuid = $3
-	`, bsOpId, scOpId, sessionUUID[:]) // Convert [16]byte to []byte for pq driver
+		SET status = $1,
+		    can_resume = true,
+		    ended_at = $2,
+		    updated_at = $2
+		WHERE id = $3 AND tenant_id = $4 AND connection_id = $5 AND status = $6`
 
-	return err
+	if _, err := r.db.ExecContext(ctx, query, models.SessionStatusDisconnected, endedAt, sessionID, tenantID, connectionID, models.SessionStatusActive); err != nil {
+		return fmt.Errorf("failed to mark session disconnected: %w", err)
+	}
+	return nil
+}
+
+// FindResumableSession finds the resumable session for a base station,
+// scoped by tenant, base station EUI, and snBsUuid, requiring
+// status=disconnected and can_resume=true (BSSCI §5.3.1)
+func (r *BaseStationSessionRepository) FindResumableSession(ctx context.Context, tenantID int64, bsEUI []byte, snBsUUID [16]byte) (*models.BaseStationSession, error) {
+	query := `
+		SELECT s.id, s.basestation_id, s.tenant_id, s.sn_bs_uuid, s.sn_sc_uuid,
+		       s.sn_bs_op_id, s.sn_sc_op_id, s.status, s.connection_id, s.remote_addr,
+		       s.started_at, s.last_ping_at, s.ended_at, s.can_resume, s.encoding,
+		       s.protocol_version, s.connect_info, s.organization_id, s.created_at, s.updated_at
+		FROM basestation_sessions s
+		JOIN basestations b ON b.id = s.basestation_id
+		WHERE s.tenant_id = $1
+		  AND b.bs_eui = $2
+		  AND s.sn_bs_uuid = $3
+		  AND s.status = $4
+		  AND s.can_resume = true
+		ORDER BY s.started_at DESC
+		LIMIT 1`
+
+	session := &models.BaseStationSession{}
+	var snBsUUIDBytes, snScUUIDBytes []byte
+	err := r.db.QueryRowContext(ctx, query, tenantID, bsEUI, snBsUUID[:], models.SessionStatusDisconnected).Scan(
+		&session.ID, &session.BaseStationID, &session.TenantID, &snBsUUIDBytes, &snScUUIDBytes,
+		&session.SnBsOpId, &session.SnScOpId, &session.Status, &session.ConnectionId, &session.RemoteAddr,
+		&session.StartedAt, &session.LastPingAt, &session.EndedAt, &session.CanResume, &session.Encoding,
+		&session.ProtocolVersion, &session.ConnectInfo, &session.OrganizationID, &session.CreatedAt, &session.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to find resumable session: %w", err)
+	}
+	copy(session.SnBsUuid[:], snBsUUIDBytes)
+	copy(session.SnScUuid[:], snScUUIDBytes)
+	return session, nil
+}
+
+// TerminateResumableSessions retires the leftover resumable sessions of a base
+// station so a fresh session starts from discarded state (BSSCI §3), returning
+// the retired session ids for pending-operation cleanup. Zero matches is not an
+// error.
+func (r *BaseStationSessionRepository) TerminateResumableSessions(ctx context.Context, tenantID, baseStationID int64) ([]int64, error) {
+	query := `
+		UPDATE basestation_sessions
+		SET status = $1,
+		    can_resume = false,
+		    ended_at = COALESCE(ended_at, $2),
+		    updated_at = $2
+		WHERE basestation_id = $3
+		  AND tenant_id = $4
+		  AND status = $5
+		  AND can_resume = true
+		RETURNING id`
+
+	now := time.Now()
+	rows, err := r.db.QueryContext(ctx, query, models.SessionStatusTerminated, now, baseStationID, tenantID, models.SessionStatusDisconnected)
+	if err != nil {
+		return nil, fmt.Errorf("failed to terminate resumable sessions: %w", err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("failed to close rows in resumable session retirement: %v", err)
+		}
+	}()
+
+	var sessionIDs []int64
+	for rows.Next() {
+		var sessionID int64
+		if err := rows.Scan(&sessionID); err != nil {
+			return nil, fmt.Errorf("failed to scan retired session id: %w", err)
+		}
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating retired session ids: %w", err)
+	}
+
+	return sessionIDs, nil
 }

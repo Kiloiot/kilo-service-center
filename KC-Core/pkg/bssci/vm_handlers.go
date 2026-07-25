@@ -3,6 +3,7 @@ package bssci
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -413,11 +414,13 @@ func (s *Server) SendVMActivate(sessionID string, epEui uint64, macType uint8) e
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	// Create VM activate message per BSSCI spec
 	vmActivate := map[string]interface{}{
@@ -440,33 +443,22 @@ func (s *Server) SendVMActivate(sessionID string, epEui uint64, macType uint8) e
 			"sessionID", sessionID,
 			"opId", opId,
 			"error", err)
+		return err
 	}
 
-	// Send message with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, vmActivate); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up pending operation from database on send failure
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
-		if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOpAfterSendFailure,
 				"sessionID", session.DbSessionID,
 				"opId", opId,
 				"error", cleanupErr)
 		}
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendVMActivate), err)
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
-		s.logger.Error(LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentVMActivateCommand,
@@ -488,11 +480,13 @@ func (s *Server) SendVMDeactivate(sessionID string, epEui uint64, macType uint8)
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	// Create VM deactivate message per BSSCI spec
 	vmDeactivate := map[string]interface{}{
@@ -515,33 +509,22 @@ func (s *Server) SendVMDeactivate(sessionID string, epEui uint64, macType uint8)
 			"sessionID", sessionID,
 			"opId", opId,
 			"error", err)
+		return err
 	}
 
-	// Send message with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, vmDeactivate); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up pending operation from database on send failure
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
-		if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOpAfterSendFailure,
 				"sessionID", session.DbSessionID,
 				"opId", opId,
 				"error", cleanupErr)
 		}
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendVMDeactivate), err)
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
-		s.logger.Error(LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentVMDeactivateCommand,
@@ -563,11 +546,13 @@ func (s *Server) SendVMStatus(sessionID string, epEui uint64) error {
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	// Create VM status message per BSSCI spec
 	vmStatus := map[string]interface{}{
@@ -588,33 +573,22 @@ func (s *Server) SendVMStatus(sessionID string, epEui uint64) error {
 			"sessionID", sessionID,
 			"opId", opId,
 			"error", err)
+		return err
 	}
 
-	// Send message with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, vmStatus); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up pending operation from database on send failure
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
-		if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOpAfterSendFailure,
 				"sessionID", session.DbSessionID,
 				"opId", opId,
 				"error", cleanupErr)
 		}
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendVMStatus), err)
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
-		s.logger.Error(LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentVMStatusRequest,
@@ -635,11 +609,13 @@ func (s *Server) SendVMDownlinkData(sessionID string, epEui uint64, macType uint
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
 	}
 
-	// Generate per-session SC operation ID with atomic decrement (BSSCI §5.2)
-	session.mu.Lock()
-	session.LastScOpId--
-	opId := session.LastScOpId
-	session.mu.Unlock()
+	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
+	// the counter, persist the pending record, then write the frame. The
+	// counter is never rolled back.
+	opId, err := s.beginScOperation(session)
+	if err != nil {
+		return err
+	}
 
 	// Create VM downlink data message per BSSCI spec
 	// TxTime is optional - only set when needed
@@ -686,33 +662,22 @@ func (s *Server) SendVMDownlinkData(sessionID string, epEui uint64, macType uint
 			"sessionID", sessionID,
 			"opId", opId,
 			"error", err)
+		return err
 	}
 
-	// Send message with rollback guard (BSSCI §5.2)
 	if err := s.sendMessage(session, vmDlData); err != nil {
-		// CRITICAL: Rollback operation ID on send failure
-		session.mu.Lock()
-		session.LastScOpId++
-		session.mu.Unlock()
-
-		// Clean up pending operation from database on send failure
-		// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
-		if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		if errors.Is(err, ErrAmbiguousWrite) {
+			// The frame may be partially on the wire: keep the pending row for
+			// resume reissue with the original ID and close the transport.
+			s.closeTransportAfterWriteFailure(session, opId, err)
+		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOpAfterSendFailure,
 				"sessionID", session.DbSessionID,
 				"opId", opId,
 				"error", cleanupErr)
 		}
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendVMDlData), err)
-	}
-
-	// Success - persist counter to DB for session resume
-	if err := s.sessionSvc.UpdateSessionCounters(s.sessionContext(session), session); err != nil {
-		s.logger.Error(LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", sessionID,
-			"opId", opId)
-		// Don't fail the operation - message was sent successfully
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentVMDownlinkData,

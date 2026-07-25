@@ -92,7 +92,7 @@ func TestGetDetachMessage_Success(t *testing.T) {
 	assert.Equal(t, orgUUIDStr, *retrieved.OrgUUID, "org_uuid must match persisted value")
 
 	// Cleanup
-	CleanupTestData(t, db, "mioty_messages", "id", messageID)
+	CleanupTestData(t, db, "messages", "id", messageID)
 }
 
 // TestGetDetachMessage_NotFound verifies error handling for non-existent message ID.
@@ -188,7 +188,7 @@ func TestGetDetachMessage_TenantIsolation(t *testing.T) {
 	assert.Nil(t, retrieved2, "Message must not be returned for wrong tenant")
 
 	// Cleanup
-	CleanupTestData(t, db, "mioty_messages", "id", messageID)
+	CleanupTestData(t, db, "messages", "id", messageID)
 }
 
 // TestGetDetachMessage_WithOptionalFields verifies optional fields are
@@ -290,7 +290,7 @@ func TestGetDetachMessage_WithOptionalFields(t *testing.T) {
 	assert.Len(t, retrieved.Subpackets.RSSI, 2, "subpackets RSSI must have 2 entries")
 
 	// Cleanup
-	CleanupTestData(t, db, "mioty_messages", "id", messageID)
+	CleanupTestData(t, db, "messages", "id", messageID)
 }
 
 // Helper function to convert uint64 EUI to byte array

@@ -12,14 +12,14 @@ import (
 // errorRecorderImpl implements the ErrorRecorder interface per SCACI §3.14.
 // It persists error information to the operation log and emits system events.
 type errorRecorderImpl struct {
-	operationRepo interfaces.SCACIOperationRepository
+	operationRepo ErrorOperationStore
 	eventStore    interfaces.SystemEventStore
 	log           logger.Logger
 }
 
 // NewErrorRecorder creates a new ErrorRecorder implementation.
 func NewErrorRecorder(
-	operationRepo interfaces.SCACIOperationRepository,
+	operationRepo ErrorOperationStore,
 	eventStore interfaces.SystemEventStore,
 	log logger.Logger,
 ) ErrorRecorder {

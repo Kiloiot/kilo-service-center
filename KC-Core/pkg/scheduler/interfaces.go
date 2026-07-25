@@ -2,6 +2,8 @@
 package scheduler
 
 import (
+	"context"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
@@ -48,11 +50,12 @@ type ULTransmitScheduler interface {
 //   - Used by SCACI handlers (KC-Core/pkg/scaci/handler_operations.go)
 //   - No circular dependencies between SCACI and BSSCI
 type DownlinkScheduler interface {
-	// QueueDownlink queues a downlink message for delivery to an endpoint.
+	// QueueDownlink dispatches a persisted pending downlink message to an endpoint.
 	//
 	// Parameters:
+	//   - ctx: Request context for cancellation and tenant metadata
 	//   - req: DL data queue request containing endpoint, payload, and delivery options
-	//   - tenantID: Tenant context for base station selection and queue persistence
+	//   - tenantID: Tenant context for base station selection and queue dispatch
 	//
 	// Returns:
 	//   - queuedQueId: Actual queue ID assigned (may differ from requested if collision)
@@ -62,8 +65,9 @@ type DownlinkScheduler interface {
 	// Error Semantics:
 	//   - ErrSchedulerNoResources: No bidirectional BS available (retry later)
 	//   - ErrSchedulerResourceMissing: Requested BS/EP not available (permanent for these params)
+	//   - ErrSchedulerQueueNotFound: No matching pending queue row to dispatch
 	//   - Other errors: Infrastructure failures (database, network, etc.)
-	QueueDownlink(req *mioty.DLDataQueue, tenantID int64) (queuedQueId uint64, bsEui uint64, err error)
+	QueueDownlink(ctx context.Context, req *mioty.DLDataQueue, tenantID int64) (queuedQueId uint64, bsEui uint64, err error)
 
 	// RevokeDownlink cancels a queued downlink message before delivery (SCACI §3.11).
 	//

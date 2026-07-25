@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -24,9 +26,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // ============================================================================
@@ -328,8 +327,8 @@ func TestReplayPendingOperations_CrossTenantRejected(t *testing.T) {
 	}
 
 	// Capture log output with observer
-	observedCore, observedLogs := observer.New(zapcore.DebugLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures DEBUG+
+	testLogger := observedLogs
 
 	session := &Session{
 		ID:       100,
@@ -350,17 +349,14 @@ func TestReplayPendingOperations_CrossTenantRejected(t *testing.T) {
 	s.replayPendingOperations(serverConn, session)
 
 	// Assert: cross-tenant rejection logged
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("DEBUG")
 	found := false
 	for _, entry := range logs {
 		if entry.Message == LogSCACICrossTenantReplayRejected {
 			found = true
 			// Verify context fields are present
-			for _, field := range entry.Context {
-				if field.Key == "opTenantID" {
-					assert.Equal(t, int64(99), field.Integer)
-				}
-			}
+			entryFields := entry.FieldMap()
+			assert.Equal(t, int64(99), entryFields["opTenantID"])
 			break
 		}
 	}
@@ -616,8 +612,8 @@ func TestReplayPendingOperations_PositivePath_MatchingTenant(t *testing.T) {
 	}
 
 	// Capture log output with observer
-	observedCore, observedLogs := observer.New(zapcore.DebugLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures DEBUG+
+	testLogger := observedLogs
 
 	s := &Server{
 		operationRepo: mockRepo,
@@ -638,7 +634,7 @@ func TestReplayPendingOperations_PositivePath_MatchingTenant(t *testing.T) {
 	_ = serverConn.Close()
 
 	// Assert: replay was logged (positive path, not rejection)
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("DEBUG")
 	foundReplayLog := false
 	foundRejectionLog := false
 	for _, entry := range logs {
@@ -678,8 +674,8 @@ func TestReplayULData_CorruptedUserData_LogsCorrectToken(t *testing.T) {
 	}
 
 	// Capture log output with observer at Error level
-	observedCore, observedLogs := observer.New(zapcore.ErrorLevel)
-	testLogger := logger.FromZap(zap.New(observedCore))
+	observedLogs := bsscitest.NewRecordingLogger() // captures ERROR+
+	testLogger := observedLogs
 
 	s := &Server{
 		logger: testLogger,
@@ -698,20 +694,15 @@ func TestReplayULData_CorruptedUserData_LogsCorrectToken(t *testing.T) {
 	assert.Contains(t, err.Error(), "decode userData for replay")
 
 	// Assert: LogSCACIReplayUserDataCorrupted was logged
-	logs := observedLogs.All()
+	logs := observedLogs.AllAtLeast("ERROR")
 	found := false
 	for _, entry := range logs {
 		if entry.Message == LogSCACIReplayUserDataCorrupted {
 			found = true
 			// Verify context fields
-			for _, field := range entry.Context {
-				if field.Key == "opId" {
-					assert.Equal(t, int64(-42), field.Integer)
-				}
-				if field.Key == "storedValue" {
-					assert.Equal(t, "ZZZZ_NOT_HEX", field.String)
-				}
-			}
+			entryFields := entry.FieldMap()
+			assert.Equal(t, int64(-42), entryFields["opId"])
+			assert.Equal(t, "ZZZZ_NOT_HEX", entryFields["storedValue"])
 			break
 		}
 	}
@@ -740,7 +731,7 @@ func TestHandleConnect_VersionMismatch_SendsPOSIXEnotsup(t *testing.T) {
 
 	// Setup mock session validator to pass (Connect field validation OK)
 	mockValidator := new(MockSessionValidator)
-	mockValidator.On("ValidateConnectFields", mock.Anything, mock.Anything).
+	mockValidator.On("ValidateConnectFields", mock.Anything).
 		Return("") // Empty = no error
 
 	// Create server with required dependencies

@@ -188,8 +188,8 @@ func (it *InternalTrustInterceptor) emitSecurityEvent(ctx context.Context, metho
 		tenantID = tid
 	}
 	details, _ := json.Marshal(map[string]interface{}{
-		"method": method,
-		"reason": reason,
+		auditKeyMethod: method,
+		auditKeyReason: reason,
 	})
 	_ = it.eventWriter.CreateEvent(ctx, &models.SystemEvent{
 		TenantID:    strconv.FormatInt(tenantID, 10),

@@ -11,17 +11,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
 // stubSessionService is a no-op session service for smoke tests
 type stubSessionService struct{}
 
-func (s *stubSessionService) ValidateVersion(_ string) error {
-	return nil // No-op for smoke tests
-}
-
-func (s *stubSessionService) HandleResume(_ *Session, _ []byte, _ []byte, _, _ int64, _ uint64) (*Session, error) {
-	return nil, nil // No-op for smoke tests
+func (s *stubSessionService) HandleResume(_ context.Context, _ *Session, _ []byte, _, _ *int64, _ uint64) ResumeOutcome {
+	return ResumeOutcome{Disposition: ResumeNoMatch} // No-op for smoke tests
 }
 
 func (s *stubSessionService) PersistSession(_ context.Context, _ *Session, _ *basestation.BaseStation, _ bool, _ json.RawMessage) error {
@@ -40,11 +38,15 @@ func (s *stubSessionService) RemoveSession(_ *Session) {
 	// No-op for smoke tests
 }
 
+func (s *stubSessionService) MarkDisconnected(_ context.Context, _ *Session) error {
+	return nil
+}
+
 func (s *stubSessionService) TerminateSession(_ context.Context, _ *Session) error {
 	return nil // No-op for smoke tests
 }
 
-func (s *stubSessionService) UpdateEncoding(_ context.Context, _ int64, _ string) error {
+func (s *stubSessionService) UpdateEncoding(_ context.Context, _, _ int64, _ string) error {
 	return nil // No-op for smoke tests
 }
 
@@ -96,7 +98,7 @@ func TestAttachPropagateTenantField(t *testing.T) {
 	env.server.mu.Unlock()
 
 	// Execute attach propagate (Issue #1 fix ensures endpointTenantID is used)
-	err := env.server.SendAttachPropagateToSession(context.Background(), env.session, endpoint)
+	err := env.server.SendAttachPropagateToSession(testutil.TestContext(), env.session, endpoint)
 	require.NoError(t, err, "SendAttachPropagateToSession should succeed with cross-tenant scenario")
 
 	t.Logf("PASS: Issue #1 smoke test: Attach propagate succeeded with endpoint tenant %d and session tenant %d",
@@ -158,7 +160,7 @@ func TestDetachCompleteTelemetryFields(t *testing.T) {
 				},
 				CreatedAt: time.Now(),
 			}
-			ctx := context.Background()
+			ctx := testutil.TestContext()
 			err := env.server.statusSvc.RecordPendingOperation(ctx, env.session, opID, pendingOp, env.session.DbSessionID)
 			require.NoError(t, err, "Failed to record pending operation")
 
@@ -253,7 +255,7 @@ func TestDetachCompleteOwnerContext(t *testing.T) {
 				Metadata:      metadata,
 				CreatedAt:     time.Now(),
 			}
-			ctx := context.Background()
+			ctx := testutil.TestContext()
 			err := env.server.statusSvc.RecordPendingOperation(ctx, env.session, opID, pendingOp, env.session.DbSessionID)
 			require.NoError(t, err, "Failed to record pending operation")
 
@@ -375,7 +377,7 @@ func TestULDataTenantResolution(t *testing.T) {
 			// Note: stubMIOTYMessageRepo.CreateULDataMessage is a no-op in detach_integration_test.go
 			// Full validation would require extending the stub to capture UL data messages
 			// For now, verify that handleULData succeeds and sends proper response
-			_ = env.server.storage.MIOTYMessages().(*stubMIOTYMessageRepo)
+			_ = env.server.protocolMessages.(*stubMIOTYMessageRepo)
 
 			t.Logf("PASS: UL data from endpoint tenant %d via session tenant %d handled correctly (expect tenant %d)",
 				tt.endpointTenant, tt.sessionTenant, tt.expectTenant)

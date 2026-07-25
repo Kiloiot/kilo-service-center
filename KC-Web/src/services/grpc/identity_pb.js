@@ -13306,7 +13306,8 @@ proto.kilocenter.api.v1.CreateApiKeyRequest.toObject = function(includeInstance,
   var f, obj = {
     name: jspb.Message.getFieldWithDefault(msg, 1, ""),
     keyType: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+    expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+    organizationId: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -13355,6 +13356,10 @@ proto.kilocenter.api.v1.CreateApiKeyRequest.deserializeBinaryFromReader = functi
       var value = new google_protobuf_timestamp_pb.Timestamp;
       reader.readMessage(value,google_protobuf_timestamp_pb.Timestamp.deserializeBinaryFromReader);
       msg.setExpiresAt(value);
+      break;
+    case 4:
+      var value = /** @type {string} */ (reader.readString());
+      msg.setOrganizationId(value);
       break;
     default:
       reader.skipField();
@@ -13405,6 +13410,13 @@ proto.kilocenter.api.v1.CreateApiKeyRequest.serializeBinaryToWriter = function(m
       3,
       f,
       google_protobuf_timestamp_pb.Timestamp.serializeBinaryToWriter
+    );
+  }
+  f = message.getOrganizationId();
+  if (f.length > 0) {
+    writer.writeString(
+      4,
+      f
     );
   }
 };
@@ -13480,6 +13492,24 @@ proto.kilocenter.api.v1.CreateApiKeyRequest.prototype.clearExpiresAt = function(
  */
 proto.kilocenter.api.v1.CreateApiKeyRequest.prototype.hasExpiresAt = function() {
   return jspb.Message.getField(this, 3) != null;
+};
+
+
+/**
+ * optional string organization_id = 4;
+ * @return {string}
+ */
+proto.kilocenter.api.v1.CreateApiKeyRequest.prototype.getOrganizationId = function() {
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 4, ""));
+};
+
+
+/**
+ * @param {string} value
+ * @return {!proto.kilocenter.api.v1.CreateApiKeyRequest} returns this
+ */
+proto.kilocenter.api.v1.CreateApiKeyRequest.prototype.setOrganizationId = function(value) {
+  return jspb.Message.setProto3StringField(this, 4, value);
 };
 
 
