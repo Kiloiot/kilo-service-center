@@ -4,7 +4,11 @@
 
 If you discover a security vulnerability in KiloCenter, please report it responsibly. **Do not open a public GitHub issue.**
 
-Email **security@kiloiot.io** with:
+Email **info@kiloiot.de** and put `KiloCenter Community Edition` in the subject line so the report
+reaches the responsible team. Reports are received by **Chirp USA, LLC d/b/a Kilo**, which publishes
+this software.
+
+Please include:
 
 - Description of the vulnerability
 - Steps to reproduce
@@ -12,25 +16,19 @@ Email **security@kiloiot.io** with:
 - Potential impact assessment
 - Any suggested remediation (optional)
 
-## Response Timeline
-
-- **Acknowledgment:** Within 48 hours of receiving your report
-- **Triage:** Within 7 business days
-- **Fix:** Dependent on severity — critical issues are prioritized for the next patch release
-
-## Supported Versions
-
-Security updates are provided for the latest release on the `main` branch. Older versions do not receive backported security fixes.
-
-| Version | Supported |
-|---------|-----------|
-| Latest  | Yes       |
-| Older   | No        |
-
-## Credit
-
-Security reporters will be credited in the release notes for the fix, unless they request anonymity.
+Do not include credentials, private keys, customer data, or other sensitive production data in your
+first message. If sensitive evidence is needed, we will arrange a restricted channel for it.
 
 ## Scope
 
-This policy covers the KiloCenter Community Edition codebase at [github.com/Kiloiot/kilo-service-center](https://github.com/Kiloiot/kilo-service-center). For security concerns related to the enterprise edition or Kilo Cloud, contact security@kiloiot.io directly.
+This policy covers the KiloCenter Community Edition codebase at
+[github.com/Kiloiot/kilo-service-center](https://github.com/Kiloiot/kilo-service-center).
+
+For an enterprise edition or Kilo Cloud, use the same address and name the affected product and
+environment in the subject line.
+
+## What this policy does not promise
+
+This file does not set an acknowledgement time, a triage time, a remediation time, a supported-version
+period, or a disclosure credit. Those commitments are published only once they have been approved, and
+they are absent here because they are not yet in place.
