@@ -4,9 +4,8 @@
 
 If you discover a security vulnerability in KiloCenter, please report it responsibly. **Do not open a public GitHub issue.**
 
-Email **info@kiloiot.de** and put `KiloCenter Community Edition` in the subject line so the report
-reaches the responsible team. Reports are received by **Chirp USA, LLC d/b/a Kilo**, which publishes
-this software.
+Email **info@kiloiot.de** and put `KiloCenter Community Edition` in the subject line. The report
+concerns **CHIRP USA LLC**, which publishes this software and operates the Kilo/Fullchirp platform.
 
 Please include:
 
