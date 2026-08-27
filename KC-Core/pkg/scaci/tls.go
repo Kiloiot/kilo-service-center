@@ -68,8 +68,6 @@ func LoadTLSConfig(tlsCfg config.TLSConfig) (*tls.Config, error) {
 		ClientCAs:    caCertPool,
 		MinVersion:   minVersion,
 		CipherSuites: cipherSuites,
-		// Prefer server cipher suites for better security
-		PreferServerCipherSuites: true,
 	}, nil
 }
 
