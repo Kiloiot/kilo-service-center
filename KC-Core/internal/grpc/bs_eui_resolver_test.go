@@ -221,7 +221,7 @@ func TestInitiatePing_RejectsMismatchedEUIs(t *testing.T) {
 
 	ctx := testutil.TestContextWithTenant(1)
 	_, err := svc.InitiatePing(ctx, &pb.InitiatePingRequest{
-		BsEui:    0x70B3D59CD00009E6,
+		BsEui:    0x70B3D59CD00009E6, //nolint:staticcheck // deprecated field set deliberately to prove the mismatch guard rejects it
 		BsEuiHex: "CAFECAFECAFECAFE",
 	})
 	require.Error(t, err)

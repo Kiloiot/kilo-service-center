@@ -724,11 +724,9 @@ func (s *Server) handleVMStatusComplete(_ *Server, session *Session, msg *Messag
 	// Emit catalog error to base station per BSSCI protocol
 	// Use POSIX_ENOSYS (38) to match existing catalog token for unsupported commands
 	catalogErr := NewCatalogError(errUnsupportedCommand, POSIX_ENOSYS)
-	if err := s.sendCatalogError(session, msg.OpId, catalogErr); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), "Failed to send catalog error",
-			"opId", msg.OpId,
-			"error", err)
-	}
+	// sendCatalogError always returns the catalog token as an error and logs any
+	// transport failure itself, so there is nothing left to report here.
+	_ = s.sendCatalogError(session, msg.OpId, catalogErr)
 
 	// Return error for internal tracking
 	// Known limitation: pending operations are not cleaned up for unsupported VM commands.
@@ -748,11 +746,9 @@ func (s *Server) handleVMDLData(_ *Server, session *Session, msg *Message, _ map
 	// Emit catalog error to base station per BSSCI protocol
 	// Use POSIX_ENOSYS (38) to match existing catalog token for unsupported commands
 	catalogErr := NewCatalogError(errUnsupportedCommand, POSIX_ENOSYS)
-	if err := s.sendCatalogError(session, msg.OpId, catalogErr); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), "Failed to send catalog error",
-			"opId", msg.OpId,
-			"error", err)
-	}
+	// sendCatalogError always returns the catalog token as an error and logs any
+	// transport failure itself, so there is nothing left to report here.
+	_ = s.sendCatalogError(session, msg.OpId, catalogErr)
 
 	// Return error for internal tracking
 	// Known limitation: pending operations are not cleaned up for unsupported VM commands.
@@ -772,11 +768,9 @@ func (s *Server) handleVMDLDataResponse(_ *Server, session *Session, msg *Messag
 	// Emit catalog error to base station per BSSCI protocol
 	// Use POSIX_ENOSYS (38) to match existing catalog token for unsupported commands
 	catalogErr := NewCatalogError(errUnsupportedCommand, POSIX_ENOSYS)
-	if err := s.sendCatalogError(session, msg.OpId, catalogErr); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), "Failed to send catalog error",
-			"opId", msg.OpId,
-			"error", err)
-	}
+	// sendCatalogError always returns the catalog token as an error and logs any
+	// transport failure itself, so there is nothing left to report here.
+	_ = s.sendCatalogError(session, msg.OpId, catalogErr)
 
 	// Return error for internal tracking
 	// Known limitation: pending operations are not cleaned up for unsupported VM commands.
@@ -796,11 +790,9 @@ func (s *Server) handleVMDLDataComplete(_ *Server, session *Session, msg *Messag
 	// Emit catalog error to base station per BSSCI protocol
 	// Use POSIX_ENOSYS (38) to match existing catalog token for unsupported commands
 	catalogErr := NewCatalogError(errUnsupportedCommand, POSIX_ENOSYS)
-	if err := s.sendCatalogError(session, msg.OpId, catalogErr); err != nil {
-		s.logger.ErrorContext(s.sessionContext(session), "Failed to send catalog error",
-			"opId", msg.OpId,
-			"error", err)
-	}
+	// sendCatalogError always returns the catalog token as an error and logs any
+	// transport failure itself, so there is nothing left to report here.
+	_ = s.sendCatalogError(session, msg.OpId, catalogErr)
 
 	// Return error for internal tracking
 	// Known limitation: pending operations are not cleaned up for unsupported VM commands.
