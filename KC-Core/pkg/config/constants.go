@@ -878,8 +878,9 @@ const (
 	// DefaultRegistryProviderBranchPrefix prefixes new branch names.
 	DefaultRegistryProviderBranchPrefix = "blueprint/"
 
-	// DefaultRegistryProviderBlueprintPath is the directory for blueprint files.
-	DefaultRegistryProviderBlueprintPath = "blueprints/"
+	// DefaultRegistryProviderBlueprintPath is the path prefix for blueprint files.
+	// Empty because manufacturer directories sit at the registry root.
+	DefaultRegistryProviderBlueprintPath = ""
 
 	// DefaultRegistryProviderFileExtension is the blueprint file extension.
 	DefaultRegistryProviderFileExtension = ".json"

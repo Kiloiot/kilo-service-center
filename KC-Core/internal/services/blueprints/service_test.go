@@ -30,7 +30,7 @@ const (
 	registryRepo         = "repo"
 	registryBaseBranch   = "main"
 	registryBranchPrefix = "blueprint/"
-	registryBlueprintDir = "blueprints/"
+	registryBlueprintDir = ""
 	registryFileExt      = ".json"
 )
 
@@ -681,8 +681,8 @@ func TestSubmitToRegistry_Success(t *testing.T) {
 		t.Errorf("expected repo path %q, got %q", "org/repo", result.RepoPath)
 	}
 
-	// Verify file path uses structured directory: blueprints/weptech/robin-m/v1.0.1.json
-	expectedPathSuffix := "/repos/org/repo/contents/blueprints/weptech/robin-m/v1.0.1.json"
+	// Verify file path uses structured directory: weptech/robin-m/v1.0.1.json
+	expectedPathSuffix := "/repos/org/repo/contents/weptech/robin-m/v1.0.1.json"
 	if !strings.HasSuffix(server.capturedPath, expectedPathSuffix) {
 		t.Errorf("expected file path ending with %q, got %q", expectedPathSuffix, server.capturedPath)
 	}

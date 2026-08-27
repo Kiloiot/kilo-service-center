@@ -43,6 +43,7 @@ func Load(configPath string) (*Config, error) {
 	_ = v.BindEnv("registry_provider.github_app_id", "KILOCENTER_REGISTRY_PROVIDER_GITHUB_APP_ID")
 	_ = v.BindEnv("registry_provider.github_app_installation_id", "KILOCENTER_REGISTRY_PROVIDER_GITHUB_APP_INSTALLATION_ID")
 	_ = v.BindEnv("registry_provider.github_app_private_key", "KILOCENTER_REGISTRY_PROVIDER_GITHUB_APP_PRIVATE_KEY")
+	_ = v.BindEnv("registry_provider.blueprint_path", "KILOCENTER_REGISTRY_PROVIDER_BLUEPRINT_PATH")
 
 	// Read config file
 	if err := v.ReadInConfig(); err != nil {
