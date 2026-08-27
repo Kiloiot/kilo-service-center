@@ -350,3 +350,54 @@ func TestValidate_RateLimitDisabledSkipsValidation(t *testing.T) {
 		t.Fatalf("expected no error when rate limiting disabled, got: %v", err)
 	}
 }
+
+func TestLoad_RegistryProviderBlueprintPathDefaultsEmpty(t *testing.T) {
+	// Manufacturer directories sit at the registry root, so no path prefix is added.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	yaml := `
+registry_provider:
+  enabled: true
+`
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	t.Setenv("KILOCENTER_REGISTRY_PROVIDER_BLUEPRINT_PATH", "")
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.RegistryProvider.BlueprintPath != "" {
+		t.Errorf("RegistryProvider.BlueprintPath = %q, want empty", cfg.RegistryProvider.BlueprintPath)
+	}
+}
+
+func TestLoad_RegistryProviderBlueprintPathFromEnv(t *testing.T) {
+	// A registry that nests blueprints under a prefix is supported without a rebuild.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	yaml := `
+registry_provider:
+  enabled: true
+  blueprint_path: ""
+`
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	const wantPath = "blueprints/"
+
+	t.Setenv("KILOCENTER_REGISTRY_PROVIDER_BLUEPRINT_PATH", wantPath)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if cfg.RegistryProvider.BlueprintPath != wantPath {
+		t.Errorf("RegistryProvider.BlueprintPath = %q, want %q", cfg.RegistryProvider.BlueprintPath, wantPath)
+	}
+}

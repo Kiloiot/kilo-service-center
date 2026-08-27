@@ -915,7 +915,7 @@ func (s *Service) SubmitToRegistry(ctx context.Context, id uuid.UUID, req *grpcs
 		return nil, err
 	}
 
-	// Generate structured file path: blueprints/{manufacturer}/{model}/{version}.json
+	// Generate structured file path: {manufacturer}/{model}/{version}.json
 	filePath := fmt.Sprintf("%s%s/%s/%s%s", s.registryCfg.BlueprintPath, mfrSlug, modelSlug, versionSlug, s.registryCfg.FileExtension)
 
 	// Generate branch name with short ID suffix for uniqueness

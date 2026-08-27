@@ -40,7 +40,6 @@ type registryClient struct {
 	repo          string
 	baseBranch    string
 	branchPrefix  string
-	blueprintPath string
 	fileExtension string
 	logger        logger.Logger
 }
@@ -74,7 +73,6 @@ func newRegistryClient(cfg *config.RegistryProviderConfig, log logger.Logger) (*
 		repo:          cfg.Repo,
 		baseBranch:    cfg.BaseBranch,
 		branchPrefix:  cfg.BranchPrefix,
-		blueprintPath: cfg.BlueprintPath,
 		fileExtension: cfg.FileExtension,
 		logger:        log,
 	}, nil
