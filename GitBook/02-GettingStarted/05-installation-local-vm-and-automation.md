@@ -1,5 +1,14 @@
 # Installation: Local VM and Automation
 
+## Before starting an installation
+
+Use these instructions only in an isolated evaluation environment with test data. The current
+examples contain published credentials and signing-key values, and some ports are reachable beyond
+the host unless your network blocks them. Changing only the administrator password does not correct
+all of these defaults. Do not expose the example installation to the Internet or use it for customer
+data. Read the [installation safety notice](../05-Security/02-installation-safety.md) before running commands.
+
+
 ## Goal
 
 Create repeatable local environments for testing and team onboarding.
@@ -9,7 +18,7 @@ Create repeatable local environments for testing and team onboarding.
 Provision a Linux VM, clone the repository, and follow the steps from [Installation: Docker Compose](03-installation-docker-compose.md). Docker Compose is the recommended approach for VM-based setups since it handles all services — including KC-Web — automatically.
 
 ```bash
-cd KiloServiceCenter
+cd kilo-service-center
 cp .env.example .env
 docker compose up --build -d
 ```

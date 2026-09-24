@@ -2,7 +2,7 @@
 
 ## Goal
 
-Establish a secure baseline for KiloCenter deployments.
+Review the [installation safety notice](02-installation-safety.md) before starting a deployment. This page explains the existing mechanisms; it does not certify the default examples as production-safe.
 
 ## Default Credentials
 
@@ -15,7 +15,7 @@ Local development includes convenience credentials that must be changed for any 
 
 ## TLS for Base Station and Application Center Communication
 
-BSSCI requires TLS 1.2 or higher. SCACI requires TLS 1.3 or higher. Every connection to KC-Core uses TLS encryption.
+BSSCI requires TLS 1.2 or higher. SCACI requires TLS 1.3 or higher. These statements apply to the BSSCI and SCACI listeners. They do not establish encryption for internal gRPC, database, cache or web traffic.
 
 ### CA Trust Model
 
@@ -40,8 +40,7 @@ If you regenerate the CA, all existing server and client certificates become inv
 Server certificates are generated automatically on first `docker compose up`.
 To use a custom hostname, set `KILOCENTER_TLS_SERVER_NAME` in `.env` before the first start.
 
-To regenerate (e.g., after hostname change): `docker compose down -v` and start again.
-**Warning:** `down -v` removes all Docker volumes including the database.
+For a later hostname change, follow [certificate-only renewal](03-certificate-renewal.md). Do not delete data volumes or regenerate the CA for a routine server renewal.
 
 #### Linux-Host Deployments
 
@@ -63,7 +62,7 @@ KC-Core/certgen -dir KC-Core/certificates -days 365 -server your-hostname.exampl
 **Docker Compose:**
 
 ```bash
-docker compose run --rm certgen \
+docker compose run --rm --no-deps --entrypoint certgen certgen \
     -dir /app/certificates -client-only -client 70-B3-D5-9C-D0-00-09-E6
 ```
 
@@ -88,7 +87,7 @@ KC-Core/certgen -dir KC-Core/certificates -client-only -client 70-B3-D5-9C-D0-00
 
 ### Certificate Rotation
 
-**Docker Compose:** To regenerate with a new hostname, run `docker compose down -v` and start again. **Warning:** `down -v` removes all volumes including the database.
+**Docker Compose:** Follow [certificate-only renewal](03-certificate-renewal.md), including the backup, verification and failure steps.
 
 **Linux Host:** Renew the server certificate:
 
@@ -155,12 +154,13 @@ Limit which ports are accessible from outside your local network:
 - [ ] Enable audit-level logging in production environments
 - [ ] Review `config.yaml` for any remaining development defaults
 
-## Enterprise Edition
+## Authentication and edition boundaries
 
-The Enterprise Edition adds multi-tenant security features:
+The current Community Edition Docker configuration enables local sign-in in KC-Identity and token
+validation in KC-Gateway. Do not disable authentication to make an integration work. Use the gateway
+for external API access and keep internal service ports private.
 
-- User authentication with JWT validation
-- Organization-scoped data isolation
-- Role-based access control
-
-These features are not available in the Community Edition.
+The Enterprise Edition has additional organisation and commercial features. Their availability does
+not mean that Community Edition has no authentication, or prove that every Community Edition route
+has been independently checked. The existing bootstrap, signing-key and deployment-default issues
+remain subject to the installation safety notice.

@@ -14,3 +14,6 @@ This section covers baseline security practices for KiloCenter deployments, incl
 - TLS certificate management for base station connections
 - Network exposure and port hardening
 - Understanding Enterprise Edition security features
+
+- [Before you install](02-installation-safety.md)
+- [Renew a server certificate without deleting data](03-certificate-renewal.md)

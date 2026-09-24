@@ -1,5 +1,14 @@
 # KiloCenter - Open Source MIOTY Network Server
 
+## Before starting an installation
+
+Use these instructions only in an isolated evaluation environment with test data. The current
+examples contain published credentials and signing-key values, and some ports are reachable beyond
+the host unless your network blocks them. Changing only the administrator password does not correct
+all of these defaults. Do not expose the example installation to the Internet or use it for customer
+data. Read the [installation safety notice](GitBook/05-Security/02-installation-safety.md) before running commands.
+
+
 [![Build](https://img.shields.io/github/actions/workflow/status/Kiloiot/kilo-service-center/pipeline-build.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=build)](https://github.com/Kiloiot/kilo-service-center/actions/workflows/pipeline-build.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/Kiloiot/kilo-service-center?filename=KC-Core%2Fgo.mod&style=flat-square&logo=go&logoColor=white&label=go)](KC-Core/go.mod)
@@ -155,7 +164,7 @@ Prerequisites:
 
 ```bash
 git clone https://github.com/Kiloiot/kilo-service-center.git
-cd KiloServiceCenter
+cd kilo-service-center
 ```
 
 2. Copy the environment template:
@@ -249,7 +258,7 @@ In local source development, KC-Web can point its Vite proxy at a different gate
 
 ## Source and Host Deployment
 
-Docker Compose is the recommended install path for evaluation and most deployments.
+Docker Compose is the documented local evaluation path. The installation safety notice applies to every deployment path.
 
 If you need a non-container workflow, use the dedicated guides instead of ad-hoc manual startup:
 

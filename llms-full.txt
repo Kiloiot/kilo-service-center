@@ -1,5 +1,11 @@
 # KiloCenter — Full LLM Reference
 
+Current installation limits: the examples are for isolated evaluation with test data. Published
+credentials, signing-key defaults and network exposure need correction before customer use. A
+password change alone is insufficient. Read GitBook/05-Security/02-installation-safety.md. Certificate
+renewal must preserve data volumes and the existing CA; use GitBook/05-Security/03-certificate-renewal.md.
+
+
 > KiloCenter is an open-source MIOTY LPWAN network server for managing base stations, endpoints, and IoT message traffic.
 
 Source: https://github.com/Kiloiot/kilo-service-center
@@ -198,7 +204,7 @@ Standard lists: default 20, max 100. High-volume lists (endpoints, base stations
 
 ### Authentication
 
-Community Edition: disabled by default, all RPCs accessible without headers.
+Community Edition: the current Docker configuration enables KC-Identity local login and KC-Gateway token validation. Keep internal RPC ports private; use the gateway for external API access. This is a configuration fact, not proof that every route has passed a security assessment.
 
 Enterprise Edition: JWT tokens or API keys via `authorization: Bearer <token>` header. Multi-tenant headers: `x-organization-id`, `x-user-id`.
 

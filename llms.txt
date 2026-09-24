@@ -1,5 +1,11 @@
 # KiloCenter
 
+Current installation limits: the examples are for isolated evaluation with test data. Published
+credentials, signing-key defaults and network exposure need correction before customer use. A
+password change alone is insufficient. Read GitBook/05-Security/02-installation-safety.md. Certificate
+renewal must preserve data volumes and the existing CA; use GitBook/05-Security/03-certificate-renewal.md.
+
+
 > KiloCenter is an open-source MIOTY LPWAN network server for managing base stations, endpoints, and IoT message traffic.
 
 Source: https://github.com/Kiloiot/kilo-service-center
@@ -78,7 +84,7 @@ Disabled by default. Topic format: `{prefix}/{org_uuid}/device/{ep_eui_hex}/{cha
 - [Architecture and Components](GitBook/02-GettingStarted/01-architecture-and-components.md)
 - [Docker Compose Installation](GitBook/02-GettingStarted/03-installation-docker-compose.md)
 - [Kubernetes Installation](GitBook/02-GettingStarted/07-installation-kubernetes.md)
-- [gRPC API Overview](GitBook/04-Integrations/01-grpc-api-overview.md)
+- [gRPC API Overview](GitBook/04-Integrations/01-grpc-first-steps.md)
 - [MQTT Integration](GitBook/04-Integrations/03-mqtt-first-steps.md)
 - [Security](GitBook/05-Security/01-security-and-tenant-isolation-basics.md)
 - [Helm Chart README](helm/kilocenter/README.md)

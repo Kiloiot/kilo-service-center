@@ -1,5 +1,14 @@
 # Installation: Kubernetes (Helm)
 
+## Before starting an installation
+
+Use these instructions only in an isolated evaluation environment with test data. The current
+examples contain published credentials and signing-key values, and some ports are reachable beyond
+the host unless your network blocks them. Changing only the administrator password does not correct
+all of these defaults. Do not expose the example installation to the Internet or use it for customer
+data. Read the [installation safety notice](../05-Security/02-installation-safety.md) before running commands.
+
+
 ## Goal
 
 Deploy KiloCenter to a Kubernetes cluster using the Helm chart included in this repository.
@@ -179,18 +188,18 @@ For the full list of configurable parameters, see the [Helm chart README](../../
 helm upgrade kilocenter ./helm/kilocenter -f my-values.yaml
 ```
 
-Set a specific image tag to pin a version:
+An explicit tag selects a named release but can move; it is not an immutable digest or proof of a safe release. The published July release used `v1.3.0`, including the `v` prefix:
 
 ```yaml
 global:
-  imageTag: "1.0.0"
+  imageTag: "v1.3.0"
 ```
 
 ## Troubleshooting
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| Pods in `ImagePullBackOff` | Missing image pull secret | Add `global.imagePullSecrets` with your registry credentials |
+| Pods in `ImagePullBackOff` | Wrong repository/tag, registry access or connectivity | Check the exact image name against the release first, then registry access; do not assume credentials alone will fix a wrong path |
 | KC-Core readiness probe 503 | Dependency not ready | Check KC-Identity and PostgreSQL are running |
 | `invalid_token` after login | HMAC secret mismatch | Ensure `secrets.authHmacSecret` is set (same for gateway and identity) |
 | BSSCI connection refused | No external service | Create a LoadBalancer service for ports 5000/5001 |

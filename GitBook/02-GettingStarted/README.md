@@ -1,5 +1,14 @@
 # Getting Started
 
+## Before starting an installation
+
+Use these instructions only in an isolated evaluation environment with test data. The current
+examples contain published credentials and signing-key values, and some ports are reachable beyond
+the host unless your network blocks them. Changing only the administrator password does not correct
+all of these defaults. Do not expose the example installation to the Internet or use it for customer
+data. Read the [installation safety notice](../05-Security/02-installation-safety.md) before running commands.
+
+
 ## Scope
 
 This section covers architecture, prerequisites, installation, and baseline configuration for KiloCenter deployments.
@@ -20,7 +29,7 @@ For most users evaluating KiloCenter locally:
 | Docker Compose | [Installation: Docker Compose](03-installation-docker-compose.md) | Auto-generated on first start |
 | Linux Host (source) | [Installation: Linux Host](04-installation-linux-host.md) | Manual (`KC-Core/certgen`) |
 | Local VM | [Installation: Local VM](05-installation-local-vm-and-automation.md) | Auto-generated (Docker) |
-| Kubernetes (Helm) | [Installation: Kubernetes](07-installation-kubernetes.md) | cert-manager or manual |
+| Kubernetes (Helm) | [Installation: Kubernetes](07-installation-kubernetes.md) | Included certgen hook; verify the existing CA and volume |
 
 ## Pages
 

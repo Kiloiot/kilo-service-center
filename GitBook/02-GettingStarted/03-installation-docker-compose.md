@@ -1,5 +1,14 @@
 # Installation: Docker Compose
 
+## Before starting an installation
+
+Use these instructions only in an isolated evaluation environment with test data. The current
+examples contain published credentials and signing-key values, and some ports are reachable beyond
+the host unless your network blocks them. Changing only the administrator password does not correct
+all of these defaults. Do not expose the example installation to the Internet or use it for customer
+data. Read the [installation safety notice](../05-Security/02-installation-safety.md) before running commands.
+
+
 ## Goal
 
 Start a working local stack using Docker Compose. The full stack — including KC-Web — runs entirely in containers. No host Go toolchain or Bun runtime is required.
@@ -43,9 +52,9 @@ service creates a self-signed CA and server certificate (valid 365 days, hostnam
 echo 'KILOCENTER_TLS_SERVER_NAME=bssci.example.com' >> .env
 ```
 
-> **Important:** `KILOCENTER_TLS_SERVER_NAME` must be set before the first
-> `docker compose up`. To change it later, run `docker compose down -v` and start again.
-> **Warning:** `down -v` removes all Docker volumes including the database.
+Set the hostname before first start. For a later change, use
+[certificate-only renewal](../05-Security/03-certificate-renewal.md). Do not remove Docker volumes
+to renew a certificate: that would also delete the database and existing trust keys.
 
 See [Security](../05-Security/01-security-and-tenant-isolation-basics.md) for client
 certificate generation.
@@ -103,12 +112,10 @@ A default admin user is created on first startup via database migration:
 
 This account has full admin privileges including tenant, base station, and endpoint management.
 
-> **Warning:** Change the password or remove this account before any production or public-facing deployment. The credentials are published in this repository. To remove the default admin:
-> ```bash
-> docker exec kilocenter-postgres psql -U kilocenter -d kilocenter \
->   -c "DELETE FROM identity.organization_members WHERE user_id = '00000000-0000-0000-0000-000000000001'::uuid;
->       DELETE FROM identity.users WHERE id = '00000000-0000-0000-0000-000000000001'::uuid;"
-> ```
+The account is for isolated evaluation. A production setup needs installation-owned credentials,
+protected signing keys and verified network restrictions, not just an administrator-password change.
+Use the normal user-management interface to manage accounts. Do not edit identity tables by hand
+as a troubleshooting shortcut; doing so can leave related sessions or permissions inconsistent.
 
 > **Note:** MQTT integration is disabled by default. The Mosquitto broker runs in Docker but KC-Core does not connect to it until you enable MQTT in `config/config.docker.yaml`. See [MQTT First Steps](../04-Integrations/03-mqtt-first-steps.md) when you are ready to set up MQTT.
 
@@ -157,12 +164,11 @@ KC-Identity signs JWT tokens and KC-Gateway validates them. Both services must u
 
 If these values differ, login will succeed but every subsequent API call will fail with `invalid_token`. When changing the secret for production, update **both files** to the same value (minimum 32 characters).
 
-> **Tip:** If you see `auth.invalid_token` errors after changing secrets or restarting services, flush old tokens:
-> ```bash
-> docker exec kilocenter-redis redis-cli FLUSHALL
-> docker exec kilocenter-postgres psql -U kilocenter -d kilocenter -c "DELETE FROM identity.refresh_tokens;"
-> ```
-> Then clear your browser storage and log in again.
+For `invalid_token`, first check that the identity and gateway use the intended matching key and
+that your browser is connected to the correct installation. Sign out and sign in again. If the
+problem remains, retain the error code and time and use [Support](../../SUPPORT.md). Do not clear
+all Redis data or delete every user's refresh tokens to diagnose one login failure. A confirmed
+key compromise needs a planned key rotation and session-revocation procedure.
 
 ## Troubleshooting
 

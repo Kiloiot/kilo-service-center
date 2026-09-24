@@ -1,5 +1,14 @@
 # KiloCenter Helm Chart
 
+## Before starting an installation
+
+Use these instructions only in an isolated evaluation environment with test data. The current
+examples contain published credentials and signing-key values, and some ports are reachable beyond
+the host unless your network blocks them. Changing only the administrator password does not correct
+all of these defaults. Do not expose the example installation to the Internet or use it for customer
+data. Read the [installation safety notice](../../GitBook/05-Security/02-installation-safety.md) before running commands.
+
+
 Deploy [KiloCenter](https://github.com/Kiloiot/kilo-service-center) -- an open-source MIOTY network server -- to Kubernetes.
 
 ## Prerequisites
@@ -148,11 +157,11 @@ On first install, a Helm pre-install hook Job runs the `certgen` binary to gener
 
 For production deployments, replace the generated certificates with ones signed by a trusted CA by mounting your own secret or PVC at `/app/certificates` in the kc-core pod.
 
-## Example: Minimal Production Override
+## Example values — incomplete deployment illustration
 
 ```yaml
 global:
-  imageTag: "1.0.0"
+  imageTag: "v1.3.0"
 
 postgresql:
   host: postgres.database.svc.cluster.local

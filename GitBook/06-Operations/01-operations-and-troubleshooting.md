@@ -6,7 +6,7 @@ Run repeatable checks for startup issues, connectivity problems, and message-flo
 
 ## Health Checks
 
-From `kilocenter-modules/`:
+From the `kilo-service-center` repository root:
 
 ```bash
 # KC-Core health
@@ -58,7 +58,7 @@ docker compose ps
 
 ## Log Files (Source Dev Mode)
 
-All service logs are written to `kilocenter-modules/logs/runtime/`:
+All service logs are written to `logs/runtime/`:
 
 ```bash
 # KC-Core logs (BSSCI activity, message processing)
@@ -108,7 +108,7 @@ docker compose stop postgres redis mosquitto
 | `dial tcp ...5432: connection refused` | PostgreSQL port mismatch | Use `5433` for Docker, `5432` for host install |
 | KC-Web shows gRPC errors | KC-Gateway not running or wrong port | Verify KC-Gateway on port 9090; check nginx config in container mode |
 | `permission denied /var/run/docker.sock` | Docker group membership | Run `sudo usermod -aG docker $USER` and re-login |
-| `failed to load TLS certificate` | Missing or invalid certificate files | Run `certgen` -- see [Installation](../02-GettingStarted/03-installation-docker-compose.md) |
+| `failed to load TLS certificate` | Missing or invalid certificate files | Check the existing CA and files first; use [certificate-only renewal](../05-Security/03-certificate-renewal.md), not volume deletion |
 | Base station not connecting | BSSCI port 5000 not listening | Check KC-Core started and TLS certs are configured |
 | SCACI not accepting connections | Missing `scaci_tls` config block | Check `config/config.docker.yaml` has `scaci_host` and `scaci_tls` section |
 | KC-Web returns 502 for gRPC calls | nginx cannot reach `kc-gateway:9090` | Verify `kc-gateway` is healthy: `docker compose ps` |

@@ -1,5 +1,14 @@
 # Installation: Linux Host
 
+## Before starting an installation
+
+Use these instructions only in an isolated evaluation environment with test data. The current
+examples contain published credentials and signing-key values, and some ports are reachable beyond
+the host unless your network blocks them. Changing only the administrator password does not correct
+all of these defaults. Do not expose the example installation to the Internet or use it for customer
+data. Read the [installation safety notice](../05-Security/02-installation-safety.md) before running commands.
+
+
 ## Goal
 
 Run KiloCenter without Docker by installing all dependencies directly on the host.
@@ -17,7 +26,7 @@ Install and start these services on the host:
 Build the certificate generator and generate certificates before configuring or starting KC-Core:
 
 ```bash
-cd KiloServiceCenter
+cd kilo-service-center
 go build -o KC-Core/certgen KC-Core/cmd/certgen/main.go
 KC-Core/certgen -dir KC-Core/certificates -days 365 -server your-hostname.example.com
 ```
