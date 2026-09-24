@@ -44,7 +44,7 @@ secrets:
 # ---------------------------------------------------------------------------
 kcCore:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-core
+    repository: ghcr.io/kiloiot/kc-core
     tag: ""                      # defaults to global.imageTag
   resources:
     limits:
@@ -89,7 +89,7 @@ kcCore:
 # ---------------------------------------------------------------------------
 kcGateway:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-gateway
+    repository: ghcr.io/kiloiot/kc-gateway
     tag: ""
   resources:
     limits:
@@ -124,7 +124,7 @@ kcGateway:
 # ---------------------------------------------------------------------------
 kcIdentity:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-identity
+    repository: ghcr.io/kiloiot/kc-identity
     tag: ""
   resources:
     limits:
@@ -145,7 +145,7 @@ kcIdentity:
 # ---------------------------------------------------------------------------
 kcWeb:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-web
+    repository: ghcr.io/kiloiot/kc-web
     tag: ""
   resources:
     limits:
@@ -177,7 +177,7 @@ mosquitto:
 # ---------------------------------------------------------------------------
 certgen:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-core
+    repository: ghcr.io/kiloiot/kc-core
     tag: ""                      # same image as kc-core; contains certgen binary
   serverName: "localhost"
 
