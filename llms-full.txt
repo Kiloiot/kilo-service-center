@@ -10,7 +10,7 @@ renewal must preserve data volumes and the existing CA; use GitBook/05-Security/
 
 Source: https://github.com/Kiloiot/kilo-service-center
 License: AGPL-3.0-or-later
-Documentation: https://kiloiot.gitbook.io/kilocenter
+Documentation: https://docs.kiloiot.io/kilo-mioty-service-center
 
 ## Live Demo
 
