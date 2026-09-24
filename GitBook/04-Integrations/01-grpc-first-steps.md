@@ -30,7 +30,7 @@ grpcurl -plaintext -d '{}' \
 
 ## Authentication and Organization Context
 
-The Community Edition runs with authentication disabled by default in development mode. The gRPC commands above work without auth headers in this configuration.
+The current Community Edition Docker configuration enables local sign-in in KC-Identity and token validation in KC-Gateway. Authenticate protected API calls through the gateway. The examples omit installation-specific credentials; they do not mean that authentication should be disabled. Keep internal service ports private.
 
 If you enable authentication (Enterprise Edition or by setting `KILOCENTER_AUTH_ENABLED=true`), include metadata headers in gRPC calls:
 
