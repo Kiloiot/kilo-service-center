@@ -347,6 +347,8 @@ type fakeEndpointRepo struct {
 	// lookupErr, when set, is returned by GetByEUI and Get to simulate a
 	// repository failure that must fail the detach closed.
 	lookupErr error
+	// detachStateErr, when set, is returned by EndpointDetachStateUpdate.
+	detachStateErr error
 }
 
 func newFakeEndpointRepo(endpoints ...*models.EndPoint) *fakeEndpointRepo {
@@ -420,7 +422,7 @@ func (f *fakeEndpointRepo) EndpointDetachStateUpdate(_ context.Context, tenantID
 	defer f.mu.Unlock()
 	f.detachStateCalls = append(f.detachStateCalls, p)
 	f.detachStateTenants = append(f.detachStateTenants, tenantID)
-	return nil
+	return f.detachStateErr
 }
 
 func (f *fakeEndpointRepo) TransitionEndpointStatus(_ context.Context, tenantID, endpointID int64, status string) (bool, error) {
@@ -1277,6 +1279,37 @@ func TestSendDetachPropagatePersistence(t *testing.T) {
 
 // TestSendDetachPropagateUnknownEndpoint verifies detach propagate persistence
 // for unknown endpoints uses session tenant as fallback.
+// An endpoint deleted while its detach propagate is being sent leaves no row
+// to record the propagate on; that is the expected end of a delete, not a
+// failure, and the propagate still goes out.
+func TestSendDetachPropagate_EndpointDeletedMeanwhile_IsNotAnError(t *testing.T) {
+	t.Parallel()
+
+	endpoint := buildTestEndpoint(TestEpEuiTenant01, 100)
+	env := newDetachTestEnv(t, &Config{
+		DetachSignatureValidationEnabled: detachSigValidationOff,
+		MessageEncoding:                  EncodingJSON,
+	}, endpoint)
+	env.server.endpointRepo.(*fakeEndpointRepo).detachStateErr = storage.ErrNotFound
+	log := newRecordingLogger()
+	env.server.logger = log
+	env.session.HandshakeComplete = true
+	env.session.LastScOpId = -1
+	env.session.Bidirectional = true
+	env.server.RegisterSession(env.session)
+
+	require.NoError(t, env.server.SendDetachPropagate(env.session.ID, TestEpEuiTenant01))
+
+	assert.Empty(t, entriesWithMessage(log, LogBSSCIFailedToUpdateEndpointWithDetachInfo))
+	gone := entriesWithMessage(log, LogBSSCIEndpointNotFoundInDatabaseForDetachPropagate)
+	require.Len(t, gone, 1)
+	assert.Equal(t, "DEBUG", gone[0].level)
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
+	msgRepo.mu.Lock()
+	defer msgRepo.mu.Unlock()
+	assert.Len(t, msgRepo.detachPropagates, 1)
+}
+
 func TestSendDetachPropagateUnknownEndpoint(t *testing.T) {
 	t.Parallel()
 

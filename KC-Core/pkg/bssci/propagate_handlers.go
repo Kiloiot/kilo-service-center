@@ -761,13 +761,18 @@ func (s *Server) SendDetachPropagate(sessionID string, endpointEUI uint64) error
 			LastAttachedBsEui: models.OptionalBytes{Set: true, Value: session.BaseStationEUIBytes()},
 		}
 
-		// Update the endpoint with detach propagate info
-		if err := s.endpointRepo.EndpointDetachStateUpdate(ownerCtx, endpointTenantID, endpoint.ID, updates); err != nil {
+		err := s.endpointRepo.EndpointDetachStateUpdate(ownerCtx, endpointTenantID, endpoint.ID, updates)
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			// A delete detaches first, so the row can be gone before the propagate records on it.
+			s.logger.DebugContext(s.safeCtx(), LogBSSCIEndpointNotFoundInDatabaseForDetachPropagate,
+				logger.FieldEpEui, endpointEUI)
+		case err != nil:
 			s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToUpdateEndpointWithDetachInfo,
 				logger.FieldEpEui, endpointEUI,
 				logger.FieldEndpointIDCamel, endpoint.ID,
 				logger.FieldError, err)
-		} else {
+		default:
 			s.logger.DebugContext(s.safeCtx(), LogBSSCIUpdatedEndpointWithDetachInfo,
 				logger.FieldEpEui, endpointEUI)
 		}

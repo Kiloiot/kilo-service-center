@@ -631,6 +631,8 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   refused with `INVALID_ARGUMENT` (`KC-GRPC-ERR-282`). Such a key can never be
   sent to a base station, and the endpoint used to be stored and then fail
   to attach with an internal error.
+- Deleting an endpoint no longer logs an error when the endpoint is removed
+  before its detach is recorded for the base stations.
 - Downloading a base station's private key no longer hangs until the request
   times out: the key's row lock blocked the audit record of its own download.
 - A base station location outside the globe (latitude beyond ±90, longitude
