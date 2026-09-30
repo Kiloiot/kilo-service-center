@@ -230,9 +230,7 @@ func parseGeoReport(value interface{}) (geoFix, geoReport) {
 	if fix.latitude == 0 && fix.longitude == 0 {
 		return geoFix{}, geoNoFix
 	}
-	inRange := fix.latitude >= models.LatitudeMin && fix.latitude <= models.LatitudeMax &&
-		fix.longitude >= models.LongitudeMin && fix.longitude <= models.LongitudeMax
-	if !inRange {
+	if !models.CoordinatesInRange(fix.latitude, fix.longitude) {
 		return geoFix{}, geoAbsent
 	}
 	return fix, geoFixed

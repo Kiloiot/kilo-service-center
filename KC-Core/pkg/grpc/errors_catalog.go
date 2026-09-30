@@ -359,6 +359,7 @@ const (
 	ErrTokenUpdateBaseStationEUIFailed = "KC-GRPC-ERR-09C"
 	ErrTokenNewBaseStationEUIRequired  = "KC-GRPC-ERR-09D"
 	ErrTokenLatLonPairRequired         = "KC-GRPC-ERR-09E"
+	ErrTokenLocationOutOfRange         = "KC-GRPC-ERR-0AB"
 
 	// Endpoint errors (KC-GRPC-ERR-101 to KC-GRPC-ERR-110)
 	ErrTokenEndpointNotFound        = "KC-GRPC-ERR-101"
@@ -1760,6 +1761,11 @@ var errorCatalog = map[string]ErrorDefinition{
 	ErrTokenLatLonPairRequired: {
 		Token:   ErrTokenLatLonPairRequired,
 		Message: "both latitude and longitude are required together, or both must be absent",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenLocationOutOfRange: {
+		Token:   ErrTokenLocationOutOfRange,
+		Message: "latitude must lie between -90 and 90 and longitude between -180 and 180",
 		Code:    codes.InvalidArgument,
 	},
 

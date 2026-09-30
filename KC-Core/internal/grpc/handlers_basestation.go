@@ -422,6 +422,9 @@ func (s *BaseStationHandlers) CreateBaseStation(ctx context.Context, req *pb.Cre
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenLatLonPairRequired),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenLatLonPairRequired))
 	}
+	if lat != nil && !models.CoordinatesInRange(*lat, *lon) {
+		return nil, locationOutOfRangeError()
+	}
 
 	var desc *string
 	if req.Basestation.Description != "" {
@@ -654,6 +657,11 @@ func (s *BaseStationHandlers) UpdateBaseStation(ctx context.Context, req *pb.Upd
 			baseStation.LocationSource = nil
 			baseStation.LocationUpdatedAt = nil
 		}
+	}
+
+	if baseStation.Latitude != nil && baseStation.Longitude != nil &&
+		!models.CoordinatesInRange(*baseStation.Latitude, *baseStation.Longitude) {
+		return nil, locationOutOfRangeError()
 	}
 
 	// Update base station in storage
@@ -1166,4 +1174,9 @@ func (s *BaseStationHandlers) ListAllBaseStationLocations(ctx context.Context, _
 		Locations:  locations,
 		TotalCount: int32(len(locations)), //nolint:gosec // location count is bounded by DB query, no overflow risk
 	}, nil
+}
+
+func locationOutOfRangeError() error {
+	return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenLocationOutOfRange),
+		grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenLocationOutOfRange))
 }

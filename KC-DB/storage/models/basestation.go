@@ -63,6 +63,12 @@ const (
 	LongitudeMax = 180.0
 )
 
+// CoordinatesInRange reports whether a latitude and longitude lie on the globe.
+func CoordinatesInRange(latitude, longitude float64) bool {
+	return latitude >= LatitudeMin && latitude <= LatitudeMax &&
+		longitude >= LongitudeMin && longitude <= LongitudeMax
+}
+
 // BaseStation represents a MIOTY Base Station (Gateway)
 type BaseStation struct {
 	ID          int64   `json:"id" db:"id"`

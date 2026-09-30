@@ -3778,6 +3778,54 @@ func TestCreateBaseStation_LatOnly_RejectsPartialPair(t *testing.T) {
 	assert.Equal(t, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenLatLonPairRequired), st.Message())
 }
 
+// TestBaseStation_CoordinatesOffTheGlobe_AreInvalidArgument: a latitude or
+// longitude outside the globe is the caller's error on create and on update,
+// and the station is never written.
+func TestBaseStation_CoordinatesOffTheGlobe_AreInvalidArgument(t *testing.T) {
+	const tenantID int64 = 1
+	validEUI := "70b3d59cd00009e6"
+	cases := []struct {
+		name     string
+		lat, lon float64
+	}{
+		{"latitude above 90", 95, 11.5755},
+		{"latitude below -90", -90.5, 11.5755},
+		{"longitude above 180", 48.137, 180.5},
+		{"longitude below -180", 48.137, -181},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			written := false
+			bsSvc := &mockBasestationSvc{
+				getByEUIFunc: func(_ context.Context, _ []byte, _ int64) (*models.BaseStation, error) {
+					return &models.BaseStation{ID: 42, EUI: models.EUIFromString(validEUI), TenantID: tenantID, Name: "Existing BS"}, nil
+				},
+				updateFunc: func(_ context.Context, bs *models.BaseStation) (*models.BaseStation, error) {
+					written = true
+					return bs, nil
+				},
+			}
+			svc := testCoreService(coreFields{basestationSvc: bsSvc, log: &mockLogger{}})
+			ctx := testutil.TestContextWithTenant(tenantID)
+			station := &pb.BaseStation{BsEui: validEUI, Name: "Off the globe", Latitude: wrapperspb.Double(tc.lat), Longitude: wrapperspb.Double(tc.lon)}
+
+			_, createErr := svc.CreateBaseStation(ctx, &pb.CreateBaseStationRequest{Basestation: station})
+			_, updateErr := svc.UpdateBaseStation(ctx, &pb.UpdateBaseStationRequest{
+				Basestation: station,
+				UpdateMask:  &fieldmaskpb.FieldMask{Paths: []string{"latitude", "longitude"}},
+			})
+
+			for _, err := range []error{createErr, updateErr} {
+				st, ok := status.FromError(err)
+				require.True(t, ok)
+				assert.Equal(t, codes.InvalidArgument, st.Code())
+				assert.Equal(t, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenLocationOutOfRange), st.Message())
+			}
+			assert.False(t, written, "an off-globe position is never stored")
+		})
+	}
+}
+
 // TestUpdateBaseStation_FieldMask_ClearCoordinates verifies that including lat/lon
 // in the field mask but sending nil wrappers clears the stored coordinates.
 func TestUpdateBaseStation_FieldMask_ClearCoordinates(t *testing.T) {

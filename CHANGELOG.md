@@ -622,6 +622,11 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   single-host install on `localhost` needs nothing.
 
 ### Fixed
+- Downloading a base station's private key no longer hangs until the request
+  times out: the key's row lock blocked the audit record of its own download.
+- A base station location outside the globe (latitude beyond ±90, longitude
+  beyond ±180) is refused with `INVALID_ARGUMENT` and a message naming the
+  valid range, instead of an internal error.
 - A retried SCACI uplink delivery no longer reaches an Application Center a
   second time. When one Application Center session did not get an uplink, the
   delivery worker retried it for all of them, and every attempt sent it again
