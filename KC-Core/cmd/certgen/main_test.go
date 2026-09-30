@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"net"
 	"testing"
 
@@ -54,4 +55,22 @@ func ipsEqual(want, got []net.IP) bool {
 		}
 	}
 	return true
+}
+
+// A certificate names the product and the holder only; it claims no country,
+// province or locality, which the service center cannot know for its operator.
+func TestGeneratedCertificates_ClaimNoLocation(t *testing.T) {
+	caCert, caKey, err := generateCA(testCAYears)
+	require.NoError(t, err)
+	serverCert, _, err := generateServerCert(caCert, caKey, testPublicName, nil, testServerDays)
+	require.NoError(t, err)
+	clientCert, _, err := generateClientCert(caCert, caKey, testPublicName, testServerDays)
+	require.NoError(t, err)
+
+	for _, cert := range []*x509.Certificate{caCert, serverCert, clientCert} {
+		assert.Empty(t, cert.Subject.Country, cert.Subject.CommonName)
+		assert.Empty(t, cert.Subject.Province, cert.Subject.CommonName)
+		assert.Empty(t, cert.Subject.Locality, cert.Subject.CommonName)
+		assert.Equal(t, []string{certSubjectOrganization}, cert.Subject.Organization)
+	}
 }

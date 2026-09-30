@@ -53,9 +53,6 @@ const (
 // Certificate subject identity shared by the CA and issued certificates.
 const (
 	certSubjectOrganization = "KiloCenter"
-	certSubjectProvince     = "California"
-	certSubjectLocality     = "San Francisco"
-	certSubjectCountry      = "US"
 
 	certSubjectOUCA  = "MIOTY Certificate Authority"
 	certSubjectOUBS  = "MIOTY Base Station"
@@ -238,9 +235,6 @@ func generateCA(validYears int) (*x509.Certificate, *rsa.PrivateKey, error) {
 		Subject: pkix.Name{
 			Organization:       []string{certSubjectOrganization},
 			OrganizationalUnit: []string{certSubjectOUCA},
-			Country:            []string{certSubjectCountry},
-			Province:           []string{certSubjectProvince},
-			Locality:           []string{certSubjectLocality},
 			CommonName:         certCommonNameCA,
 		},
 		NotBefore:             time.Now(),

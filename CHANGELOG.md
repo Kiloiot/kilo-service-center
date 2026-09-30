@@ -633,6 +633,9 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   to attach with an internal error.
 - Deleting an endpoint no longer logs an error when the endpoint is removed
   before its detach is recorded for the base stations.
+- Certificates from `certgen` (the CA, the service center and every base
+  station) no longer claim a country, province and locality of San Francisco,
+  US; they name the product and the holder only.
 - A request the service center refuses (invalid input, not found, not
   permitted) and a remote peer that fails the TLS handshake or drops the link
   are logged as warnings with the peer's address, not as errors, so errors

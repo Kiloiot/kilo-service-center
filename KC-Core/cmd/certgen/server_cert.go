@@ -27,9 +27,6 @@ func generateServerCert(caCert *x509.Certificate, caKey *rsa.PrivateKey, serverN
 		Subject: pkix.Name{
 			Organization:       []string{certSubjectOrganization},
 			OrganizationalUnit: []string{certSubjectOUSC},
-			Country:            []string{certSubjectCountry},
-			Province:           []string{certSubjectProvince},
-			Locality:           []string{certSubjectLocality},
 			CommonName:         serverName,
 		},
 		NotBefore:   time.Now(),
