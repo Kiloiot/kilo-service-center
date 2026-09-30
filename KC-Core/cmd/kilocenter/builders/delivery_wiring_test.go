@@ -2,9 +2,9 @@ package builders
 
 import (
 	"context"
+	"slices"
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -25,7 +25,7 @@ func (discardSCACI) BroadcastULData(context.Context, int64, *mioty.ULDataMessage
 func (discardEvents) CreateEvent(context.Context, *models.SystemEvent) error { return nil }
 
 // discardMQTT stands in for the MQTT publisher of a process that publishes.
-type discardMQTT struct{ bssci.MQTTEventPublisher }
+type discardMQTT struct{ deliveryMQTT }
 
 func deliveryTestInfrastructure(mqttEnabled bool) *Infrastructure {
 	return &Infrastructure{
@@ -50,7 +50,7 @@ func deliveryTestInfrastructure(mqttEnabled bool) *Infrastructure {
 // start.
 func TestBuildDeliveryWorker_RefusesAQueuedChannelWithoutASender(t *testing.T) {
 	infra := deliveryTestInfrastructure(testMQTTEnabled)
-	if _, err := buildDeliveryWorker(infra, deliveryChannels(infra), discardSCACI{}, nil, discardEvents{}); err == nil {
+	if _, err := buildDeliveryWorker(infra, drainedChannels(infra), discardSCACI{}, nil, discardEvents{}); err == nil {
 		t.Fatal("a worker for queued MQTT rows was built without an MQTT publisher")
 	}
 }
@@ -58,8 +58,28 @@ func TestBuildDeliveryWorker_RefusesAQueuedChannelWithoutASender(t *testing.T) {
 func TestBuildDeliveryWorker_DrainsEveryQueuedChannel(t *testing.T) {
 	for _, mqttEnabled := range []bool{testMQTTEnabled, !testMQTTEnabled} {
 		infra := deliveryTestInfrastructure(mqttEnabled)
-		if _, err := buildDeliveryWorker(infra, deliveryChannels(infra), discardSCACI{}, discardMQTT{}, discardEvents{}); err != nil {
+		if _, err := buildDeliveryWorker(infra, drainedChannels(infra), discardSCACI{}, discardMQTT{}, discardEvents{}); err != nil {
 			t.Fatalf("MQTT enabled=%v: %v", mqttEnabled, err)
 		}
+	}
+}
+
+// TestEndpointAckChannels_FollowConfigurationNotTheLocalClient covers the
+// federation ingress, which stores acknowledgements without an MQTT client:
+// they are queued for MQTT whenever the deployment enables it, never for an
+// Application Center, and the worker drains them with the uplinks.
+func TestEndpointAckChannels_FollowConfigurationNotTheLocalClient(t *testing.T) {
+	enabled := deliveryTestInfrastructure(testMQTTEnabled)
+	disabled := deliveryTestInfrastructure(!testMQTTEnabled)
+
+	if got := endpointAckChannels(enabled); len(got) != 1 || got[0] != models.DeliveryChannelMQTTDownlinkAck {
+		t.Fatalf("MQTT enabled without a local client: got %v", got)
+	}
+	if got := endpointAckChannels(disabled); len(got) != 0 {
+		t.Fatalf("MQTT disabled: got %v", got)
+	}
+	want := []models.DeliveryChannel{models.DeliveryChannelSCACI, models.DeliveryChannelMQTT, models.DeliveryChannelMQTTDownlinkAck}
+	if got := drainedChannels(enabled); !slices.Equal(got, want) {
+		t.Fatalf("drained channels: got %v, want %v", got, want)
 	}
 }

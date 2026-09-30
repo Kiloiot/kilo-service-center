@@ -630,6 +630,7 @@ const (
 	errWrapEnqueueDownlinkMissingOrg     = "enqueue downlink requires an organization"
 	errWrapExpireOverdueDownlinks        = "expire overdue downlinks"
 	errWrapMarkEndpointAcknowledged      = "mark downlink acknowledged by the endpoint"
+	errWrapGetAcknowledgedDownlink       = "read downlink acknowledged by the endpoint"
 	errWrapMarkDownlinkQueuedStatusCheck = "mark downlink queued status check"
 	errWrapReserveDownlink               = "reserve downlink"
 	errWrapReserveDownlinkByQueueID      = "reserve downlink by queue id"

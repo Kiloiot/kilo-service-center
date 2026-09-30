@@ -20,20 +20,17 @@ type ApplicationCenterResults interface {
 	BroadcastDLDataResult(ctx context.Context, queuer scaci.ApplicationCenter, acQueID uint64, result *mioty.DLDataResult) error
 }
 
-// DownlinkResultPublisher publishes a downlink's results on the MQTT topic of
-// the organization that queued it, with ref, the correlation ref of the MQTT
-// command that queued it (empty for none): the result it ended with, and the
-// endpoint's acknowledgement of it in the window of packetCnt.
+// DownlinkResultPublisher publishes the result a downlink ended with on the
+// MQTT topic of the organization that queued it, with ref, the correlation
+// ref of the MQTT command that queued it (empty for none).
 type DownlinkResultPublisher interface {
 	PublishDownlinkResult(ctx context.Context, orgUUID, ref string, result *mioty.DLDataResult) error
-	PublishDownlinkAcknowledged(ctx context.Context, orgUUID, ref string, epEUI, queID uint64, packetCnt uint32) error
 }
 
 // DownlinkResultEvents records a downlink result in the owner tenant's events.
 type DownlinkResultEvents interface {
 	RecordDLResult(ctx context.Context, tenant string, session *bssci.Session, result *mioty.DLDataResult) error
 	RecordQueueExpiry(ctx context.Context, downlink *storage.DownlinkMessage) error
-	RecordDownlinkAcknowledged(ctx context.Context, downlink *storage.DownlinkMessage, packetCnt uint32) error
 }
 
 // BackgroundRunner runs work detached from the request that started it.
@@ -41,11 +38,13 @@ type BackgroundRunner interface {
 	Go(ctx context.Context, fn func(context.Context))
 }
 
-// DownlinkResultReporter is the one place a downlink's results reach its
-// originators: the Application Center that queued it, the MQTT
+// DownlinkResultReporter is the one place the result a downlink ended with
+// reaches its originators: the Application Center that queued it, the MQTT
 // downlink_result topic of its organization, and the owner tenant's events.
 // Delivery to the Application Center and MQTT runs in the background, so a
-// base station exchange never waits for either.
+// base station exchange never waits for either. The endpoint's later
+// acknowledgement of a transmitted downlink is not a result it ended with:
+// EndpointAckRecorder records it and the delivery outbox publishes it.
 type DownlinkResultReporter struct {
 	applicationCenters ApplicationCenterResults
 	mqtt               DownlinkResultPublisher
@@ -114,29 +113,6 @@ func (r *DownlinkResultReporter) ReportExpiredInQueue(ctx context.Context, downl
 	return nil
 }
 
-// ReportEndpointAck reports that the endpoint acknowledged the transmitted
-// downlink in the uplink after packetCnt (BSSCI §3.10.1 dlAck) to the MQTT
-// topic of the organization that queued it and to the owner tenant's events.
-// No Application Center is told: SCACI §3.12.1 has no such result, and the
-// Application Center reads dlAck from the ulData it receives (SCACI §3.8.1).
-func (r *DownlinkResultReporter) ReportEndpointAck(ctx context.Context, downlink *storage.DownlinkMessage, packetCnt uint32) error {
-	epEUI, err := validation.ParseEUI(downlink.EPEUI)
-	if err != nil {
-		return fmt.Errorf("%w: %w", errUnidentifiedDownlink, err)
-	}
-	queID, ok := downlink.WireQueueID()
-	if !ok {
-		return fmt.Errorf(errFmtInvalidQueueID, downlink.QueID)
-	}
-	r.publishToOrganization(ctx, downlink, func(ctx context.Context, orgUUID string) error {
-		return r.mqtt.PublishDownlinkAcknowledged(ctx, orgUUID, downlink.Ref, epEUI, queID, packetCnt)
-	})
-	if err := r.events.RecordDownlinkAcknowledged(ctx, downlink, packetCnt); err != nil {
-		r.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToRecordDLDataResultEvent, logger.FieldError, err)
-	}
-	return nil
-}
-
 // deliver hands the result to the Application Center and to MQTT in the
 // background, detached from the caller's cancellation.
 func (r *DownlinkResultReporter) deliver(ctx context.Context, downlink *storage.DownlinkMessage, result mioty.DLDataResult) {
@@ -147,17 +123,13 @@ func (r *DownlinkResultReporter) deliver(ctx context.Context, downlink *storage.
 		return
 	}
 	r.deliverToQueuer(ctx, context.WithoutCancel(ctx), tenantID, downlink, result)
-	r.publishToOrganization(ctx, downlink, func(ctx context.Context, orgUUID string) error {
-		return r.mqtt.PublishDownlinkResult(ctx, orgUUID, downlink.Ref, &result)
-	})
+	r.publishToOrganization(ctx, downlink, result)
 }
 
-// publishToOrganization runs publish in the background, detached from the
-// caller's cancellation, for the organization that queued the downlink; a
-// downlink whose organization is unknown is published to none.
-func (r *DownlinkResultReporter) publishToOrganization(ctx context.Context, downlink *storage.DownlinkMessage,
-	publish func(ctx context.Context, orgUUID string) error,
-) {
+// publishToOrganization publishes the result in the background, detached
+// from the caller's cancellation, for the organization that queued the
+// downlink; a downlink whose organization is unknown is published to none.
+func (r *DownlinkResultReporter) publishToOrganization(ctx context.Context, downlink *storage.DownlinkMessage, result mioty.DLDataResult) {
 	if downlink.OrganizationID == nil {
 		r.logger.WarnContext(ctx, bssci.LogBSSCIMQTTPublishSkippedOrgUnresolved,
 			logger.FieldQueID, downlink.QueID, logger.FieldEvent, bssci.MQTTEventKeyDownlinkResult)
@@ -167,7 +139,7 @@ func (r *DownlinkResultReporter) publishToOrganization(ctx context.Context, down
 	r.work.Go(context.WithoutCancel(ctx), func(ctx context.Context) {
 		ctx, cancel := context.WithTimeout(ctx, downlinkResultDeliveryTimeout)
 		defer cancel()
-		if err := publish(ctx, orgUUID); err != nil {
+		if err := r.mqtt.PublishDownlinkResult(ctx, orgUUID, downlink.Ref, &result); err != nil {
 			r.logger.WarnContext(ctx, bssci.LogBSSCIFailedToPublishDLResultToMQTT,
 				logger.FieldQueID, downlink.QueID, logger.FieldError, err)
 		}
@@ -180,11 +152,6 @@ type DownlinkResultsWithoutMQTT struct{}
 
 // PublishDownlinkResult publishes nothing.
 func (DownlinkResultsWithoutMQTT) PublishDownlinkResult(context.Context, string, string, *mioty.DLDataResult) error {
-	return nil
-}
-
-// PublishDownlinkAcknowledged publishes nothing.
-func (DownlinkResultsWithoutMQTT) PublishDownlinkAcknowledged(context.Context, string, string, uint64, uint64, uint32) error {
 	return nil
 }
 

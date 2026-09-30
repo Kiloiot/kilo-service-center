@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -137,6 +138,36 @@ func (m *fakeMQTT) PublishUplink(_ context.Context, orgUUID string, msg *mioty.U
 	return m.err
 }
 
+// ackCall is one acknowledgement handed to the MQTT publisher.
+type ackCall struct {
+	orgUUID, ref string
+	epEUI, queID uint64
+	packetCnt    uint32
+}
+
+type fakeDownlinkAcks struct {
+	err   error
+	calls []ackCall
+}
+
+func (a *fakeDownlinkAcks) PublishDownlinkAcknowledged(_ context.Context, orgUUID, ref string, epEUI, queID uint64, packetCnt uint32) error {
+	a.calls = append(a.calls, ackCall{orgUUID: orgUUID, ref: ref, epEUI: epEUI, queID: queID, packetCnt: packetCnt})
+	return a.err
+}
+
+// fakeDownlinks holds the acknowledged downlinks by id.
+type fakeDownlinks struct {
+	rows map[int64]*storage.DownlinkMessage
+}
+
+func (d *fakeDownlinks) GetAcknowledgedDownlink(_ context.Context, tenantID, downlinkID int64) (*storage.DownlinkMessage, error) {
+	row, ok := d.rows[downlinkID]
+	if !ok || row.TenantID != strconv.FormatInt(tenantID, 10) {
+		return nil, fmt.Errorf("%d: %w", downlinkID, storage.ErrNotFound)
+	}
+	return row, nil
+}
+
 type fakeEvents struct {
 	events []*models.SystemEvent
 }
@@ -179,33 +210,38 @@ func newTestRetryPolicy(t *testing.T) RetryPolicy {
 }
 
 type workerFixture struct {
-	outbox   *fakeOutbox
-	messages *fakeMessages
-	scaci    *fakeSCACI
-	mqtt     *fakeMQTT
-	events   *fakeEvents
-	deps     Dependencies
-	cfg      Config
-	worker   *Worker
+	outbox    *fakeOutbox
+	messages  *fakeMessages
+	downlinks *fakeDownlinks
+	scaci     *fakeSCACI
+	mqtt      *fakeMQTT
+	acks      *fakeDownlinkAcks
+	events    *fakeEvents
+	deps      Dependencies
+	cfg       Config
+	worker    *Worker
 }
 
 func newWorkerFixture(t *testing.T, rows ...models.MessageDeliveryRecord) *workerFixture {
 	t.Helper()
 	f := &workerFixture{
-		outbox:   &fakeOutbox{rows: rows},
-		messages: &fakeMessages{msgs: map[string]*mioty.ULDataMessage{}},
-		scaci:    &fakeSCACI{},
-		mqtt:     &fakeMQTT{},
-		events:   &fakeEvents{},
+		outbox:    &fakeOutbox{rows: rows},
+		messages:  &fakeMessages{msgs: map[string]*mioty.ULDataMessage{}},
+		downlinks: &fakeDownlinks{rows: map[int64]*storage.DownlinkMessage{}},
+		scaci:     &fakeSCACI{},
+		mqtt:      &fakeMQTT{},
+		acks:      &fakeDownlinkAcks{},
+		events:    &fakeEvents{},
 	}
 	f.deps = Dependencies{
-		Outbox:   f.outbox,
-		Outcomes: f.outbox,
-		Messages: f.messages,
-		Channels: Channels{SCACI: f.scaci, MQTT: f.mqtt},
-		Events:   f.events,
-		Clock:    testutil.NewFakeClock(workerTestNow),
-		Logger:   logger.NewNop(),
+		Outbox:    f.outbox,
+		Outcomes:  f.outbox,
+		Messages:  f.messages,
+		Downlinks: f.downlinks,
+		Channels:  Channels{SCACI: f.scaci, MQTT: f.mqtt, DownlinkAcks: f.acks},
+		Events:    f.events,
+		Clock:     testutil.NewFakeClock(workerTestNow),
+		Logger:    logger.NewNop(),
 	}
 	f.cfg = Config{PollInterval: workerTestPoll, BatchSize: workerTestBatchSize, Retry: newTestRetryPolicy(t)}
 	f.rebuild(t)
@@ -276,6 +312,72 @@ func TestWorker_SCACIDeliveryLeavesTheStoredMessageUnchanged(t *testing.T) {
 	assert.Equal(t, []uuid.UUID{id}, f.outbox.delivered)
 }
 
+// The acknowledged downlink of the fixture: its row id, queue id, ref, window
+// and the organization that queued it.
+const (
+	workerTestDownlinkID = int64(77)
+	workerTestQueID      = int64(918001)
+	workerTestRef        = "order-17"
+	workerTestWindow     = int64(41)
+)
+
+var workerTestQueuingOrg = uuid.MustParse("5c1b4a0e-0000-4000-8000-000000000918")
+
+// newAckRow is the acknowledgement row of the fixture's downlink.
+func newAckRow(id uuid.UUID) models.MessageDeliveryRecord {
+	row := newRow(id, models.DeliveryChannelMQTTDownlinkAck, 1)
+	downlinkID := workerTestDownlinkID
+	row.AcknowledgedDownlinkID = &downlinkID
+	return row
+}
+
+// newAcknowledgedDownlink is the fixture's downlink as the queue stores it.
+func newAcknowledgedDownlink() *storage.DownlinkMessage {
+	org := workerTestQueuingOrg
+	return &storage.DownlinkMessage{
+		ID: workerTestDownlinkID, QueID: workerTestQueID, EPEUI: "70B3D5677011150A", TenantID: "42",
+		OrganizationID: &org, Ref: workerTestRef, TransmissionPacketCnt: workerTestWindow,
+	}
+}
+
+// An acknowledgement row publishes the acknowledged downlink to the
+// organization that queued it, with its ref and window, and never loads the
+// uplink that carried it: that uplink may belong to another organization.
+func TestWorker_PublishesTheAcknowledgementToTheQueuingOrganization(t *testing.T) {
+	t.Parallel()
+	id := uuid.New()
+	f := newWorkerFixture(t, newAckRow(id))
+	f.downlinks.rows[workerTestDownlinkID] = newAcknowledgedDownlink()
+	f.messages.err = errors.New("the uplink is not read")
+
+	f.worker.DrainOnce(testutil.TestContext())
+
+	assert.Equal(t, []ackCall{{
+		orgUUID: workerTestQueuingOrg.String(), ref: workerTestRef, epEUI: 0x70B3D5677011150A,
+		queID: uint64(workerTestQueID), packetCnt: uint32(workerTestWindow),
+	}}, f.acks.calls)
+	assert.Equal(t, []uuid.UUID{id}, f.outbox.delivered)
+	assert.Empty(t, f.mqtt.calls, "no uplink is published for an acknowledgement")
+	assert.Empty(t, f.scaci.tenants, "no Application Center is told of an acknowledgement")
+}
+
+// A broker outage leaves the acknowledgement pending for its next attempt.
+func TestWorker_AcknowledgementOutageIsRescheduled(t *testing.T) {
+	t.Parallel()
+	id := uuid.New()
+	f := newWorkerFixture(t, newAckRow(id))
+	f.downlinks.rows[workerTestDownlinkID] = newAcknowledgedDownlink()
+	f.acks.err = errWorkerTestChannelDown
+
+	f.worker.DrainOnce(testutil.TestContext())
+
+	assert.Len(t, f.acks.calls, 1)
+	assert.Empty(t, f.outbox.delivered)
+	assert.Empty(t, f.outbox.parked)
+	require.Len(t, f.outbox.rescheduled, 1)
+	assert.Contains(t, f.outbox.rescheduled[0].reason, errWorkerTestChannelDown.Error())
+}
+
 func TestWorker_TransientFailureIsRescheduled(t *testing.T) {
 	t.Parallel()
 	id := uuid.New()
@@ -341,12 +443,36 @@ func TestWorker_PermanentFailuresParkAtOnce(t *testing.T) {
 			f.messages.msgs[id.String()] = newStoredMessage(id, "")
 			f.deps.Channels = Channels{}
 		}, errChannelNotConfigured},
+		{"acknowledgement without a publisher", models.DeliveryChannelMQTTDownlinkAck, func(f *workerFixture, _ uuid.UUID) {
+			f.downlinks.rows[workerTestDownlinkID] = newAcknowledgedDownlink()
+			f.deps.Channels.DownlinkAcks = nil
+		}, errChannelNotConfigured},
+		{"acknowledged downlink missing", models.DeliveryChannelMQTTDownlinkAck, func(*workerFixture, uuid.UUID) {}, storage.ErrNotFound},
+		{"acknowledged downlink of another tenant", models.DeliveryChannelMQTTDownlinkAck, func(f *workerFixture, _ uuid.UUID) {
+			foreign := newAcknowledgedDownlink()
+			foreign.TenantID = "43"
+			f.downlinks.rows[workerTestDownlinkID] = foreign
+		}, storage.ErrNotFound},
+		{"acknowledged downlink without organization", models.DeliveryChannelMQTTDownlinkAck, func(f *workerFixture, _ uuid.UUID) {
+			orphan := newAcknowledgedDownlink()
+			orphan.OrganizationID = nil
+			f.downlinks.rows[workerTestDownlinkID] = orphan
+		}, errChannelNotConfigured},
+		{"acknowledged downlink without a wire queue id", models.DeliveryChannelMQTTDownlinkAck, func(f *workerFixture, _ uuid.UUID) {
+			unqueued := newAcknowledgedDownlink()
+			unqueued.QueID = 0
+			f.downlinks.rows[workerTestDownlinkID] = unqueued
+		}, errUnpublishableAck},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			id := uuid.New()
-			f := newWorkerFixture(t, newRow(id, tc.channel, 1))
+			row := newRow(id, tc.channel, 1)
+			if tc.channel == models.DeliveryChannelMQTTDownlinkAck {
+				row = newAckRow(id)
+			}
+			f := newWorkerFixture(t, row)
 			tc.prepare(f, id)
 			f.rebuild(t)
 
@@ -458,6 +584,11 @@ func TestNewWorker_RejectsMissingCollaboratorsAndConfig(t *testing.T) {
 	_, err = NewWorker(withoutEvents, f.cfg)
 	assert.ErrorIs(t, err, errMissingDependency)
 
+	withoutDownlinks := f.deps
+	withoutDownlinks.Downlinks = nil
+	_, err = NewWorker(withoutDownlinks, f.cfg)
+	assert.ErrorIs(t, err, errMissingDependency)
+
 	_, err = NewWorker(f.deps, Config{PollInterval: workerTestPoll, BatchSize: workerTestBatchSize})
 	assert.ErrorIs(t, err, errInvalidConfig, "a worker without a retry policy cannot lease rows")
 }
@@ -485,7 +616,8 @@ func TestRetryPolicy_DoublesUpToTheCap(t *testing.T) {
 func TestRetryPolicy_ClassifiesFailures(t *testing.T) {
 	t.Parallel()
 	policy := newTestRetryPolicy(t)
-	for _, permanent := range []error{errUnknownChannel, errChannelNotConfigured, fmt.Errorf("%w: %w", errLoadMessage, storage.ErrNotFound)} {
+	for _, permanent := range []error{errUnknownChannel, errChannelNotConfigured, errUnpublishableAck,
+		fmt.Errorf("%w: %w", errLoadMessage, storage.ErrNotFound), fmt.Errorf("%w: %w", errLoadDownlink, storage.ErrNotFound)} {
 		assert.True(t, policy.Permanent(permanent), "%v is permanent", permanent)
 	}
 	for _, transient := range []error{errWorkerTestChannelDown, fmt.Errorf("%w: %w", errLoadMessage, errWorkerTestChannelDown)} {

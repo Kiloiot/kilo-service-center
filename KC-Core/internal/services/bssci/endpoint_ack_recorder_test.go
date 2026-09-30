@@ -22,79 +22,80 @@ import (
 const (
 	ackRecorderEndpointEUI uint64 = 0x70B3D59CD0000341
 	ackRecorderQueueID     int64  = 840001
+	// ackRecorderMessageID is the stored uplink that carries the acknowledgement.
+	ackRecorderMessageID = "7c4f9a52-3d2e-4b8a-9f61-0d5c2a1b8e40"
 )
 
 var (
 	errAckStoreDown     = errors.New("downlink queue down")
-	errAckReporterDown  = errors.New("reporter down")
+	errAckEventsDown    = errors.New("event store down")
 	ackRecorderDownlink = &storage.DownlinkMessage{QueID: ackRecorderQueueID, EPEUI: mioty.FormatEUI64(ackRecorderEndpointEUI), TenantID: "3"}
+	ackRecorderChannels = []models.DeliveryChannel{models.DeliveryChannelMQTTDownlinkAck}
 )
-
-// endpointAck is one acknowledgement recorded on the queue.
-type endpointAck struct {
-	tenantID int64
-	epEUI    uint64
-	window   int64
-}
 
 // recordingAckStore records every acknowledgement and answers with one outcome.
 type recordingAckStore struct {
-	acks   []endpointAck
+	acks   []models.EndpointAckRequest
 	marked bool
 	err    error
 }
 
-func (s *recordingAckStore) MarkEndpointAcknowledged(_ context.Context, tenantID int64, epEUI uint64, window int64) (*storage.DownlinkMessage, bool, error) {
-	s.acks = append(s.acks, endpointAck{tenantID: tenantID, epEUI: epEUI, window: window})
+func (s *recordingAckStore) MarkEndpointAcknowledged(_ context.Context, ack models.EndpointAckRequest) (*storage.DownlinkMessage, bool, error) {
+	s.acks = append(s.acks, ack)
 	if !s.marked {
 		return nil, false, s.err
 	}
 	return ackRecorderDownlink, true, s.err
 }
 
-// reportedAck is one acknowledgement the recorder reported.
-type reportedAck struct {
+// recordedAckEvent is one acknowledgement recorded in the owner tenant's events.
+type recordedAckEvent struct {
 	downlink  *storage.DownlinkMessage
 	packetCnt uint32
 }
 
-// recordingAckReporter records the acknowledgements reported.
-type recordingAckReporter struct {
-	reported []reportedAck
+// recordingAckEvents records the acknowledgement events.
+type recordingAckEvents struct {
+	mu       sync.Mutex
+	recorded []recordedAckEvent
 	err      error
 }
 
-func (r *recordingAckReporter) ReportEndpointAck(_ context.Context, downlink *storage.DownlinkMessage, packetCnt uint32) error {
-	r.reported = append(r.reported, reportedAck{downlink, packetCnt})
-	return r.err
+func (e *recordingAckEvents) RecordDownlinkAcknowledged(_ context.Context, downlink *storage.DownlinkMessage, packetCnt uint32) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.recorded = append(e.recorded, recordedAckEvent{downlink, packetCnt})
+	return e.err
 }
 
-func newAckRecorder(t *testing.T, store EndpointAckStore, reporter DownlinkAckReporter) *EndpointAckRecorder {
+func newAckRecorder(t *testing.T, store EndpointAckStore, events DownlinkAckEvents) *EndpointAckRecorder {
 	t.Helper()
-	recorder, err := NewEndpointAckRecorder(store, reporter, logger.NewNop())
+	recorder, err := NewEndpointAckRecorder(store, events, ackRecorderChannels, logger.NewNop())
 	require.NoError(t, err)
 	return recorder
 }
 
 // TestRecordEndpointAck_AcknowledgesThePreviousWindow pins BSSCI §3.10.1:
 // dlAck on the uplink with packet counter N acknowledges the downlink the
-// owner tenant transmitted in the window of N - 1, and its originators learn
+// owner tenant transmitted in the window of N - 1; the mark queues its
+// publication for the uplink that carried it, and the owner's events record
 // it once.
 func TestRecordEndpointAck_AcknowledgesThePreviousWindow(t *testing.T) {
 	store := &recordingAckStore{marked: true}
-	reporter := &recordingAckReporter{}
+	events := &recordingAckEvents{}
 
-	require.NoError(t, newAckRecorder(t, store, reporter).RecordEndpointAck(testutil.TestContext(), 3, ackRecorderEndpointEUI, 42))
+	require.NoError(t, newAckRecorder(t, store, events).RecordEndpointAck(testutil.TestContext(), 3, ackRecorderEndpointEUI, 42, ackRecorderMessageID))
 
-	assert.Equal(t, []endpointAck{{tenantID: 3, epEUI: ackRecorderEndpointEUI, window: 41}}, store.acks)
-	assert.Equal(t, []reportedAck{{downlink: ackRecorderDownlink, packetCnt: 41}}, reporter.reported)
+	assert.Equal(t, []models.EndpointAckRequest{{TenantID: 3, EpEUI: ackRecorderEndpointEUI, WindowPacketCnt: 41,
+		MessageID: ackRecorderMessageID, Channels: ackRecorderChannels}}, store.acks)
+	assert.Equal(t, []recordedAckEvent{{downlink: ackRecorderDownlink, packetCnt: 41}}, events.recorded)
 }
 
-// TestRecordEndpointAck_ReportsNothingTheStoreDidNotMark: the queue's mark is
+// TestRecordEndpointAck_RecordsNothingTheStoreDidNotMark: the queue's mark is
 // the source of truth, so the first uplink after an over-the-air attach, a
-// dlAck no transmission matches and a repeated or replayed dlAck report
-// nothing.
-func TestRecordEndpointAck_ReportsNothingTheStoreDidNotMark(t *testing.T) {
+// dlAck no transmission matches and a repeated or replayed dlAck record no
+// event, and a failed mark is reported.
+func TestRecordEndpointAck_RecordsNothingTheStoreDidNotMark(t *testing.T) {
 	for name, tc := range map[string]struct {
 		packetCnt uint32
 		store     *recordingAckStore
@@ -105,9 +106,9 @@ func TestRecordEndpointAck_ReportsNothingTheStoreDidNotMark(t *testing.T) {
 		"store failure":                       {packetCnt: 7, store: &recordingAckStore{err: errAckStoreDown}, wantAcks: 1},
 	} {
 		t.Run(name, func(t *testing.T) {
-			reporter := &recordingAckReporter{}
+			events := &recordingAckEvents{}
 
-			err := newAckRecorder(t, tc.store, reporter).RecordEndpointAck(testutil.TestContext(), 3, ackRecorderEndpointEUI, tc.packetCnt)
+			err := newAckRecorder(t, tc.store, events).RecordEndpointAck(testutil.TestContext(), 3, ackRecorderEndpointEUI, tc.packetCnt, ackRecorderMessageID)
 
 			if tc.store.err != nil {
 				require.ErrorIs(t, err, errMarkEndpointAck)
@@ -116,64 +117,75 @@ func TestRecordEndpointAck_ReportsNothingTheStoreDidNotMark(t *testing.T) {
 				require.NoError(t, err)
 			}
 			assert.Len(t, tc.store.acks, tc.wantAcks)
-			assert.Empty(t, reporter.reported)
+			assert.Empty(t, events.recorded)
 		})
 	}
 }
 
-func TestRecordEndpointAck_WrapsAReporterFailure(t *testing.T) {
-	reporter := &recordingAckReporter{err: errAckReporterDown}
+// TestRecordEndpointAck_AnEventFailureKeepsTheAcknowledgement: the mark and
+// its queued publication commit before the event is recorded, so a failed
+// event neither fails the uplink nor withdraws the acknowledgement.
+func TestRecordEndpointAck_AnEventFailureKeepsTheAcknowledgement(t *testing.T) {
+	store := &recordingAckStore{marked: true}
+	events := &recordingAckEvents{err: errAckEventsDown}
 
-	err := newAckRecorder(t, &recordingAckStore{marked: true}, reporter).RecordEndpointAck(testutil.TestContext(), 3, ackRecorderEndpointEUI, 7)
+	require.NoError(t, newAckRecorder(t, store, events).RecordEndpointAck(testutil.TestContext(), 3, ackRecorderEndpointEUI, 7, ackRecorderMessageID))
 
-	require.ErrorIs(t, err, errReportDownlinkAck)
-	require.ErrorIs(t, err, errAckReporterDown)
+	assert.Len(t, store.acks, 1)
+	assert.Len(t, events.recorded, 1)
 }
 
 func TestNewEndpointAckRecorder_RejectsMissingCollaborators(t *testing.T) {
-	_, err := NewEndpointAckRecorder(nil, &recordingAckReporter{}, logger.NewNop())
+	_, err := NewEndpointAckRecorder(nil, &recordingAckEvents{}, ackRecorderChannels, logger.NewNop())
 	require.ErrorIs(t, err, ErrNilEndpointAckStore)
-	_, err = NewEndpointAckRecorder(&recordingAckStore{}, nil, logger.NewNop())
-	require.ErrorIs(t, err, ErrNilEndpointAckReporter)
-	_, err = NewEndpointAckRecorder(&recordingAckStore{}, &recordingAckReporter{}, nil)
+	_, err = NewEndpointAckRecorder(&recordingAckStore{}, nil, ackRecorderChannels, logger.NewNop())
+	require.ErrorIs(t, err, ErrNilEndpointAckEvents)
+	_, err = NewEndpointAckRecorder(&recordingAckStore{}, &recordingAckEvents{}, ackRecorderChannels, nil)
 	require.ErrorIs(t, err, ErrNilEndpointAckLogger)
 }
 
 // tenantAckStore holds one transmitted downlink per tenant and marks it once,
-// as the queue's update does.
+// as the queue's update does, keeping the requests that marked one.
 type tenantAckStore struct {
 	mu     sync.Mutex
 	unread map[int64]*storage.DownlinkMessage
+	marks  []models.EndpointAckRequest
 }
 
-func (s *tenantAckStore) MarkEndpointAcknowledged(_ context.Context, tenantID int64, _ uint64, _ int64) (*storage.DownlinkMessage, bool, error) {
+func (s *tenantAckStore) MarkEndpointAcknowledged(_ context.Context, ack models.EndpointAckRequest) (*storage.DownlinkMessage, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	downlink, ok := s.unread[tenantID]
-	delete(s.unread, tenantID)
+	downlink, ok := s.unread[ack.TenantID]
+	delete(s.unread, ack.TenantID)
+	if ok {
+		s.marks = append(s.marks, ack)
+	}
 	return downlink, ok, nil
 }
 
-// TestEndpointAck_RoamingUplinkReachesTheOwnersOrganizationOnce: an uplink
+// TestEndpointAck_RoamingUplinkAcknowledgesTheOwnersDownlinkOnce: an uplink
 // heard by another tenant's base station acknowledges the owner's downlink,
-// on the topic of the organization that queued it and never the station
-// owner's, and a repeated reception of it reports nothing more.
-func TestEndpointAck_RoamingUplinkReachesTheOwnersOrganizationOnce(t *testing.T) {
+// never the station owner's, and queues its publication once; a repeated
+// reception of it marks and records nothing more. The queued row names the
+// downlink, whose organization the delivery worker publishes to.
+func TestEndpointAck_RoamingUplinkAcknowledgesTheOwnersDownlinkOnce(t *testing.T) {
 	ownerOrg, stationOrg := uuid.New(), uuid.New()
+	ownersDownlink := &storage.DownlinkMessage{QueID: ackRecorderQueueID, EPEUI: mioty.FormatEUI64(uplinkIngestTestEpEUI),
+		TenantID: strconv.FormatInt(uplinkIngestTestOwnerTenantID, 10), OrganizationID: &ownerOrg}
 	store := &tenantAckStore{unread: map[int64]*storage.DownlinkMessage{
-		uplinkIngestTestOwnerTenantID: {QueID: ackRecorderQueueID, EPEUI: mioty.FormatEUI64(uplinkIngestTestEpEUI),
-			TenantID: strconv.FormatInt(uplinkIngestTestOwnerTenantID, 10), OrganizationID: &ownerOrg, Ref: reporterCommandRef},
+		uplinkIngestTestOwnerTenantID: ownersDownlink,
 		uplinkIngestTestTenantID: {QueID: ackRecorderQueueID + 1, EPEUI: mioty.FormatEUI64(uplinkIngestTestEpEUI),
 			TenantID: strconv.FormatInt(uplinkIngestTestTenantID, 10), OrganizationID: &stationOrg},
 	}}
-	results := newReporterFixture(t)
+	events := &recordingAckEvents{}
 	endpoints := &uplinkIngestEndpointRepo{endpoints: map[uint64]*models.EndPoint{
 		uplinkIngestTestEpEUI: {ID: 1, TenantID: uplinkIngestTestOwnerTenantID, OwnerTenantID: uplinkIngestTestOwnerTenantID},
 	}}
 	owners, err := NewEndpointOwnerResolver(endpoints)
 	require.NoError(t, err)
-	ingest, err := NewUplinkIngestService(&fakeUplinkStore{}, testUplinkWindows, allChannels(), nil, nil, nil,
-		endpoints, owners, nil, nil, newAckRecorder(t, store, results.reporter), logger.NewNop(), uplinkIngestTestTenantID, 0)
+	uplinks := &fakeUplinkStore{}
+	ingest, err := NewUplinkIngestService(uplinks, testUplinkWindows, allChannels(), nil, nil, nil,
+		endpoints, owners, nil, nil, newAckRecorder(t, store, events), logger.NewNop(), uplinkIngestTestTenantID, 0)
 	require.NoError(t, err)
 	payload := buildUplinkPayload()
 	payload.DlAck = true
@@ -183,9 +195,11 @@ func TestEndpointAck_RoamingUplinkReachesTheOwnersOrganizationOnce(t *testing.T)
 			bssci.UplinkIngestOptions{Source: bssci.UplinkSourceBSSCI, ServingTenantID: uplinkIngestTestTenantID})
 		require.NoError(t, err)
 	}
-	results.stop(t)
 
-	assert.Equal(t, []publishedAck{{org: ownerOrg.String(), ref: reporterCommandRef, epEUI: uplinkIngestTestEpEUI,
-		queID: uint64(ackRecorderQueueID), packetCnt: payload.PacketCnt - 1}}, results.mqtt.acks)
+	require.Len(t, uplinks.requests, 2)
+	assert.Equal(t, []models.EndpointAckRequest{{TenantID: uplinkIngestTestOwnerTenantID, EpEUI: uplinkIngestTestEpEUI,
+		WindowPacketCnt: int64(payload.PacketCnt - 1), MessageID: uplinks.requests[0].Message.ID, Channels: ackRecorderChannels}},
+		store.marks)
+	assert.Equal(t, []recordedAckEvent{{downlink: ownersDownlink, packetCnt: payload.PacketCnt - 1}}, events.recorded)
 	assert.Contains(t, store.unread, uplinkIngestTestTenantID, "the station owner's downlink is never touched")
 }

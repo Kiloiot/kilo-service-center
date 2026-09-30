@@ -60,32 +60,16 @@ type publishedResult struct {
 	result mioty.DLDataResult
 }
 
-type publishedAck struct {
-	org       string
-	ref       string
-	epEUI     uint64
-	queID     uint64
-	packetCnt uint32
-}
-
-// recordingResultPublisher records every result and acknowledgement published on MQTT.
+// recordingResultPublisher records every result published on MQTT.
 type recordingResultPublisher struct {
 	mu        sync.Mutex
 	published []publishedResult
-	acks      []publishedAck
 }
 
 func (p *recordingResultPublisher) PublishDownlinkResult(_ context.Context, orgUUID, ref string, result *mioty.DLDataResult) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.published = append(p.published, publishedResult{org: orgUUID, ref: ref, result: *result})
-	return nil
-}
-
-func (p *recordingResultPublisher) PublishDownlinkAcknowledged(_ context.Context, orgUUID, ref string, epEUI, queID uint64, packetCnt uint32) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.acks = append(p.acks, publishedAck{org: orgUUID, ref: ref, epEUI: epEUI, queID: queID, packetCnt: packetCnt})
 	return nil
 }
 
@@ -246,63 +230,6 @@ func TestReportStationResult_WithoutRefReportsNone(t *testing.T) {
 
 	require.Len(t, f.mqtt.published, 1)
 	assert.Empty(t, f.mqtt.published[0].ref)
-}
-
-// TestReportEndpointAck_ReachesTheQueuingOrganization: an endpoint's
-// acknowledgement of a downlink reaches the MQTT topic of the organization
-// that queued it, with the command's ref and the acknowledged window, and the
-// owner tenant's events; no Application Center is told, even the one that
-// queued it, because SCACI §3.12.1 defines no such result.
-func TestReportEndpointAck_ReachesTheQueuingOrganization(t *testing.T) {
-	f := newReporterFixture(t)
-	acQueID := reporterACQueueID
-
-	require.NoError(t, f.reporter.ReportEndpointAck(testutil.TestContext(), reportedRow(reporterOrg, &acQueID), 41))
-	f.stop(t)
-
-	assert.Equal(t, []publishedAck{{org: reporterOrg.String(), ref: reporterCommandRef, epEUI: reporterEndpointEUI,
-		queID: uint64(reporterQueueID), packetCnt: 41}}, f.mqtt.acks)
-	assert.Empty(t, f.mqtt.published, "an acknowledgement is not a final result")
-	assert.Empty(t, f.acs.delivered)
-	require.NotNil(t, f.events.lastEvent)
-	assert.Equal(t, models.EventTypeDLDataAcknowledged, f.events.lastEvent.EventType)
-	assert.Equal(t, "3", f.events.lastEvent.TenantID)
-}
-
-// TestReportEndpointAck_ReachesNoOrganizationItCannotName: a downlink whose
-// organization is unknown is published to none, never to a guessed one; the
-// owner tenant's events still record it.
-func TestReportEndpointAck_ReachesNoOrganizationItCannotName(t *testing.T) {
-	f := newReporterFixture(t)
-	row := reportedRow(reporterOrg, nil)
-	row.OrganizationID = nil
-
-	require.NoError(t, f.reporter.ReportEndpointAck(testutil.TestContext(), row, 41))
-	f.stop(t)
-
-	assert.Empty(t, f.mqtt.acks)
-	require.NotNil(t, f.events.lastEvent)
-	assert.Equal(t, models.EventTypeDLDataAcknowledged, f.events.lastEvent.EventType)
-}
-
-// TestReportEndpointAck_RefusesAnUnidentifiedRow: a row whose endpoint or
-// queue id cannot be read is reported to nobody.
-func TestReportEndpointAck_RefusesAnUnidentifiedRow(t *testing.T) {
-	unparsable := reportedRow(reporterOrg, nil)
-	unparsable.EPEUI = "not-an-eui"
-	unnumbered := reportedRow(reporterOrg, nil)
-	unnumbered.QueID = 0
-	for name, row := range map[string]*storage.DownlinkMessage{"endpoint": unparsable, "queue id": unnumbered} {
-		t.Run(name, func(t *testing.T) {
-			f := newReporterFixture(t)
-
-			require.Error(t, f.reporter.ReportEndpointAck(testutil.TestContext(), row, 41))
-			f.stop(t)
-
-			assert.Empty(t, f.mqtt.acks)
-			assert.Nil(t, f.events.lastEvent)
-		})
-	}
 }
 
 // blockingApplicationCenters holds every delivered result until released.

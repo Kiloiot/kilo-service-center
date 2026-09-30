@@ -12,6 +12,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/workers/delivery"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
@@ -61,6 +62,13 @@ func (s storedUplinks) GetULDataMessage(context.Context, string, int64) (*mioty.
 	return s.uplink, nil
 }
 
+// noDownlinks holds no acknowledged downlink: these outboxes carry only uplinks.
+type noDownlinks struct{}
+
+func (noDownlinks) GetAcknowledgedDownlink(context.Context, int64, int64) (*storage.DownlinkMessage, error) {
+	return nil, storage.ErrNotFound
+}
+
 type noEvents struct{}
 
 func (noEvents) CreateEvent(context.Context, *models.SystemEvent) error { return nil }
@@ -74,13 +82,14 @@ func deliverThroughOutbox(t *testing.T, server *Server) (*outboxFake, uuid.UUID)
 	retry, err := delivery.NewRetryPolicy(outboxTestBackoff, outboxTestMax)
 	require.NoError(t, err)
 	worker, err := delivery.NewWorker(delivery.Dependencies{
-		Outbox:   outbox,
-		Outcomes: outbox,
-		Messages: storedUplinks{uplink: broadcastULDataFixture()},
-		Channels: delivery.Channels{SCACI: server},
-		Events:   noEvents{},
-		Clock:    clock.SystemClock{},
-		Logger:   logger.NewNop(),
+		Outbox:    outbox,
+		Outcomes:  outbox,
+		Messages:  storedUplinks{uplink: broadcastULDataFixture()},
+		Downlinks: noDownlinks{},
+		Channels:  delivery.Channels{SCACI: server},
+		Events:    noEvents{},
+		Clock:     clock.SystemClock{},
+		Logger:    logger.NewNop(),
 	}, delivery.Config{PollInterval: outboxTestPoll, BatchSize: outboxTestBatch, Retry: retry})
 	require.NoError(t, err)
 	worker.DrainOnce(testutil.TestContext())

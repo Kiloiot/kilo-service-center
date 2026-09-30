@@ -1,19 +1,24 @@
 // Package delivery drains the message delivery outbox: every new uplink is
-// queued once per channel by the uplink store, and this worker claims due
-// rows, hands the stored message to the channel, and records the result so
-// a slow or unreachable consumer never loses a message.
+// queued once per channel by the uplink store, and every endpoint
+// acknowledgement of a downlink once by the statement that marks it; this
+// worker claims due rows, hands the stored message or acknowledgement to the
+// channel, and records the result so a slow or unreachable consumer never
+// loses either.
 package delivery
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
@@ -36,6 +41,11 @@ type MessageReader interface {
 	GetULDataMessage(ctx context.Context, id string, tenantID int64) (*mioty.ULDataMessage, error)
 }
 
+// AcknowledgedDownlinks loads the downlink an acknowledgement row names, tenant-scoped.
+type AcknowledgedDownlinks interface {
+	GetAcknowledgedDownlink(ctx context.Context, tenantID, downlinkID int64) (*storage.DownlinkMessage, error)
+}
+
 // SCACIBroadcaster fans an uplink out to the Application Centers of a tenant.
 type SCACIBroadcaster interface {
 	BroadcastULData(ctx context.Context, tenantID int64, data *mioty.ULDataMessage) error
@@ -46,6 +56,13 @@ type MQTTPublisher interface {
 	PublishUplink(ctx context.Context, orgUUID string, msg *mioty.ULDataMessage) error
 }
 
+// DownlinkAckPublisher publishes that the endpoint acknowledged a downlink in
+// the uplink after packetCnt, on the downlink_result topic of the
+// organization that queued it, with the ref of the command that queued it.
+type DownlinkAckPublisher interface {
+	PublishDownlinkAcknowledged(ctx context.Context, orgUUID, ref string, epEUI, queID uint64, packetCnt uint32) error
+}
+
 // EventRecorder records the system event written when a row is parked.
 type EventRecorder interface {
 	CreateEvent(ctx context.Context, event *models.SystemEvent) error
@@ -53,19 +70,21 @@ type EventRecorder interface {
 
 // Channels are the delivery targets; a nil channel is not configured here and its rows park.
 type Channels struct {
-	SCACI SCACIBroadcaster
-	MQTT  MQTTPublisher
+	SCACI        SCACIBroadcaster
+	MQTT         MQTTPublisher
+	DownlinkAcks DownlinkAckPublisher
 }
 
 // Dependencies are the worker's collaborators; all but the channels are required.
 type Dependencies struct {
-	Outbox   Outbox
-	Outcomes Outcomes
-	Messages MessageReader
-	Channels Channels
-	Events   EventRecorder
-	Clock    clock.Clock
-	Logger   logger.Logger
+	Outbox    Outbox
+	Outcomes  Outcomes
+	Messages  MessageReader
+	Downlinks AcknowledgedDownlinks
+	Channels  Channels
+	Events    EventRecorder
+	Clock     clock.Clock
+	Logger    logger.Logger
 }
 
 // Config bounds the worker's polling and retry behaviour.
@@ -83,7 +102,7 @@ type Worker struct {
 
 // NewWorker wires the drain loop and rejects a missing collaborator or an unusable configuration.
 func NewWorker(deps Dependencies, cfg Config) (*Worker, error) {
-	if deps.Outbox == nil || deps.Outcomes == nil || deps.Messages == nil ||
+	if deps.Outbox == nil || deps.Outcomes == nil || deps.Messages == nil || deps.Downlinks == nil ||
 		deps.Events == nil || deps.Clock == nil || deps.Logger == nil {
 		return nil, errMissingDependency
 	}
@@ -147,26 +166,64 @@ func (w *Worker) deliver(ctx context.Context, row models.MessageDeliveryRecord) 
 	}
 }
 
-// attempt hands the stored message to the row's channel.
+// attempt hands what the row carries to its channel.
 func (w *Worker) attempt(ctx context.Context, row models.MessageDeliveryRecord) error {
+	switch row.Channel {
+	case models.DeliveryChannelSCACI, models.DeliveryChannelMQTT:
+		return w.deliverUplink(ctx, row)
+	case models.DeliveryChannelMQTTDownlinkAck:
+		return w.publishDownlinkAck(ctx, row)
+	default:
+		return fmt.Errorf("%w: %s", errUnknownChannel, row.Channel)
+	}
+}
+
+// deliverUplink hands the stored uplink to the row's channel.
+func (w *Worker) deliverUplink(ctx context.Context, row models.MessageDeliveryRecord) error {
 	msg, err := w.deps.Messages.GetULDataMessage(ctx, row.MessageID.String(), row.OwnerTenantID)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errLoadMessage, err)
 	}
-	switch row.Channel {
-	case models.DeliveryChannelSCACI:
+	if row.Channel == models.DeliveryChannelSCACI {
 		if w.deps.Channels.SCACI == nil {
 			return errChannelNotConfigured
 		}
 		return w.deps.Channels.SCACI.BroadcastULData(ctx, row.OwnerTenantID, msg)
-	case models.DeliveryChannelMQTT:
-		if w.deps.Channels.MQTT == nil || msg.OrgUUID == nil {
-			return errChannelNotConfigured
-		}
-		return w.deps.Channels.MQTT.PublishUplink(ctx, *msg.OrgUUID, msg)
-	default:
-		return fmt.Errorf("%w: %s", errUnknownChannel, row.Channel)
 	}
+	if w.deps.Channels.MQTT == nil || msg.OrgUUID == nil {
+		return errChannelNotConfigured
+	}
+	return w.deps.Channels.MQTT.PublishUplink(ctx, *msg.OrgUUID, msg)
+}
+
+// publishDownlinkAck publishes the endpoint acknowledgement the row carries
+// (BSSCI §3.10.1 dlAck) to the organization that queued the downlink, which
+// under roaming need not own the uplink that carried it.
+func (w *Worker) publishDownlinkAck(ctx context.Context, row models.MessageDeliveryRecord) error {
+	if w.deps.Channels.DownlinkAcks == nil {
+		return errChannelNotConfigured
+	}
+	if row.AcknowledgedDownlinkID == nil {
+		return errUnpublishableAck
+	}
+	downlink, err := w.deps.Downlinks.GetAcknowledgedDownlink(ctx, row.OwnerTenantID, *row.AcknowledgedDownlinkID)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errLoadDownlink, err)
+	}
+	if downlink.OrganizationID == nil {
+		return errChannelNotConfigured
+	}
+	epEUI, err := validation.ParseEUI(downlink.EPEUI)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errUnpublishableAck, err)
+	}
+	queID, ok := downlink.WireQueueID()
+	window := downlink.TransmissionPacketCnt
+	if !ok || window < 0 || window > math.MaxUint32 {
+		return fmt.Errorf(errFmtUnpublishableAck, errUnpublishableAck, downlink.QueID, window)
+	}
+	return w.deps.Channels.DownlinkAcks.PublishDownlinkAcknowledged(ctx, downlink.OrganizationID.String(), downlink.Ref,
+		epEUI, queID, uint32(window))
 }
 
 // markDelivered closes the row after a successful attempt.

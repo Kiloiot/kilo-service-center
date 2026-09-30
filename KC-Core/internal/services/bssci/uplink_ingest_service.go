@@ -35,9 +35,10 @@ type DLRXStatusReader interface {
 }
 
 // DownlinkAckRecorder records the downlink an uplink's dlAck acknowledges
-// (BSSCI §3.10.1), whichever path delivered the uplink.
+// (BSSCI §3.10.1), whichever path delivered the uplink, against the stored
+// message that carried it.
 type DownlinkAckRecorder interface {
-	RecordEndpointAck(ctx context.Context, ownerTenantID int64, epEUI uint64, packetCnt uint32) error
+	RecordEndpointAck(ctx context.Context, ownerTenantID int64, epEUI uint64, packetCnt uint32, messageID string) error
 }
 
 // UplinkWindows are the time windows of an uplink: how long its packet
@@ -349,7 +350,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 			logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldPacketCntSnake, payload.PacketCnt,
 			logger.FieldSize, len(payload.UserData), logger.FieldRssi, payload.RSSI, logger.FieldSnr, payload.SNR)
 	}
-	svc.recordEndpointAck(ownerCtx, payload, ownerTenantID)
+	svc.recordEndpointAck(ownerCtx, payload, ownerTenantID, outcome.MessageID)
 	return &bssci.IngestResult{
 		IsDuplicate:   isDuplicate,
 		OwnerTenantID: ownerTenantID,
@@ -358,13 +359,14 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 	}, nil
 }
 
-// recordEndpointAck hands an uplink's dlAck to the downlink queue under the
-// endpoint's owner; a failure never fails the uplink.
-func (svc *UplinkIngestServiceImpl) recordEndpointAck(ctx context.Context, payload *bssci.UplinkPayload, ownerTenantID int64) {
+// recordEndpointAck hands an uplink's dlAck, carried by the stored message
+// messageID, to the downlink queue under the endpoint's owner; a failure
+// never fails the uplink.
+func (svc *UplinkIngestServiceImpl) recordEndpointAck(ctx context.Context, payload *bssci.UplinkPayload, ownerTenantID int64, messageID string) {
 	if !payload.DlAck {
 		return
 	}
-	if err := svc.downlinkAcks.RecordEndpointAck(ctx, ownerTenantID, payload.EpEUI, payload.PacketCnt); err != nil {
+	if err := svc.downlinkAcks.RecordEndpointAck(ctx, ownerTenantID, payload.EpEUI, payload.PacketCnt, messageID); err != nil {
 		svc.logger.WarnContext(ctx, bssci.LogBSSCIFailedToRecordEndpointAck,
 			logger.FieldEpEui, payload.EpEUI,
 			logger.FieldPacketCnt, payload.PacketCnt,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -125,7 +126,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	var pendingOpsMu sync.RWMutex
 
 	// MQTT event publisher for outbound device events (optional)
-	var mqttAdapter bssci.MQTTEventPublisher
+	var mqttAdapter deliveryMQTT
 	var mqttResults bssciservices.DownlinkResultPublisher = bssciservices.DownlinkResultsWithoutMQTT{}
 	var mqttAttachmentEvents bssciservices.AttachmentEventPublisher
 	if infra.MQTTClient != nil {
@@ -218,7 +219,8 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	// transactional persist that classifies duplicates and enqueues delivery.
 	// The delivery worker drains exactly the channels the ingest queues.
 	channels := deliveryChannels(infra)
-	endpointAcks, err := bssciservices.NewEndpointAckRecorder(infra.Repos.Downlinks, bssciSvcBundle.ResultReporter, infra.LoggerIface)
+	endpointAcks, err := bssciservices.NewEndpointAckRecorder(infra.Repos.Downlinks, bssciSvcBundle.AuditLogger,
+		endpointAckChannels(infra), infra.LoggerIface)
 	if err != nil {
 		return nil, err
 	}
@@ -427,13 +429,15 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	})
 
 	// Delivery worker: drains the outbox rows the ingest service enqueues,
-	// fanning each stored uplink out to SCACI sessions and MQTT.
-	deliveryWorker, err := buildDeliveryWorker(infra, channels, bssciSvcBundle.Broadcaster, mqttAdapter, bssciInfra.SystemEventStore)
+	// fanning each stored uplink out to SCACI sessions and MQTT and publishing
+	// each endpoint acknowledgement on MQTT, whichever process stored them.
+	drained := drainedChannels(infra)
+	deliveryWorker, err := buildDeliveryWorker(infra, drained, bssciSvcBundle.Broadcaster, mqttAdapter, bssciInfra.SystemEventStore)
 	if err != nil {
 		return nil, err
 	}
 	cleanups = append(cleanups, deliveryWorker.Start(ctx))
-	log.Info(LogDeliveryWorkerStarted, logger.FieldChannels, channels)
+	log.Info(LogDeliveryWorkerStarted, logger.FieldChannels, drained)
 
 	// Downlink expiry worker: expires the downlinks that outlived
 	// protocol.downlink_expiry.lifetime in the queue and reports them.
@@ -784,14 +788,10 @@ func BuildFederationIngestDeps(_ context.Context, infra *Infrastructure) (*bssci
 	if err != nil {
 		return nil, err
 	}
-	// The ingress process runs no SCACI server; an acknowledgement reaches no
-	// Application Center anyway (SCACI §3.12.1 has no such result).
-	ackReporter, err := bssciservices.NewDownlinkResultReporter(bssciservices.NewSCACIForwarder(infra.LoggerIface),
-		downlinkResultPublisher(infra), downlinkEvents, bssciservices.NewBackgroundWork(), infra.LoggerIface)
-	if err != nil {
-		return nil, err
-	}
-	endpointAcks, err := bssciservices.NewEndpointAckRecorder(infra.Repos.Downlinks, ackReporter, infra.LoggerIface)
+	// The ingress runs no MQTT client: the acknowledgement is queued with its
+	// mark and the core's delivery worker publishes it.
+	endpointAcks, err := bssciservices.NewEndpointAckRecorder(infra.Repos.Downlinks, downlinkEvents,
+		endpointAckChannels(infra), infra.LoggerIface)
 	if err != nil {
 		return nil, err
 	}
@@ -817,15 +817,6 @@ func BuildFederationIngestDeps(_ context.Context, infra *Infrastructure) (*bssci
 	)
 }
 
-// downlinkResultPublisher publishes downlink results on the MQTT topics when
-// the process has an MQTT client, and nowhere otherwise.
-func downlinkResultPublisher(infra *Infrastructure) bssciservices.DownlinkResultPublisher {
-	if infra.MQTTClient == nil {
-		return bssciservices.DownlinkResultsWithoutMQTT{}
-	}
-	return bssciservices.NewMQTTAdapter(mqtt.NewPublisher(infra.MQTTClient, infra.Config.MQTT.TopicPrefix))
-}
-
 // uplinkWindows converts the validated protocol settings into the windows the
 // uplink store applies: same-counter receptions (seconds) and the wait for
 // the other base stations' receptions before delivery.
@@ -848,6 +839,31 @@ func deliveryChannels(infra *Infrastructure) []models.DeliveryChannel {
 	return channels
 }
 
+// endpointAckChannels lists the outbox channels every endpoint acknowledgement
+// of a downlink is queued on: MQTT when the deployment enables it, none
+// otherwise, since no Application Center is told of one (SCACI §3.12.1 has
+// no such result; the Application Center reads dlAck from ulData, §3.8.1).
+// Like deliveryChannels it reads the configuration, not this process's client.
+func endpointAckChannels(infra *Infrastructure) []models.DeliveryChannel {
+	if !infra.Config.MQTT.Enabled {
+		return nil
+	}
+	return []models.DeliveryChannel{models.DeliveryChannelMQTTDownlinkAck}
+}
+
+// drainedChannels lists every channel the delivery worker drains: those of
+// the stored uplinks and those of the endpoint acknowledgements.
+func drainedChannels(infra *Infrastructure) []models.DeliveryChannel {
+	return slices.Concat(deliveryChannels(infra), endpointAckChannels(infra))
+}
+
+// deliveryMQTT publishes on MQTT what the delivery worker drains: uplinks and
+// endpoint acknowledgements.
+type deliveryMQTT interface {
+	delivery.MQTTPublisher
+	delivery.DownlinkAckPublisher
+}
+
 // roamingDetectorConfig carries the protocol.roaming settings into the roaming detector.
 func roamingDetectorConfig(cfg pkgconfig.RoamingConfig) roaming.DetectorConfig {
 	return roaming.DetectorConfig{
@@ -861,7 +877,7 @@ func roamingDetectorConfig(cfg pkgconfig.RoamingConfig) roaming.DetectorConfig {
 // buildDeliveryWorker wires the outbox drain loop with a sender for every
 // channel the ingest queues rows for.
 func buildDeliveryWorker(infra *Infrastructure, channels []models.DeliveryChannel, scaci delivery.SCACIBroadcaster,
-	mqttAdapter bssci.MQTTEventPublisher, events delivery.EventRecorder,
+	mqttAdapter deliveryMQTT, events delivery.EventRecorder,
 ) (*delivery.Worker, error) {
 	cfg := infra.Config.Protocol.Delivery
 	retry, err := delivery.NewRetryPolicy(cfg.RetryBackoff, cfg.MaxBackoff)
@@ -873,13 +889,14 @@ func buildDeliveryWorker(infra *Infrastructure, channels []models.DeliveryChanne
 		return nil, fmt.Errorf("%s: %w", errMsgFailedToBuildDeliveryWorker, err)
 	}
 	worker, err := delivery.NewWorker(delivery.Dependencies{
-		Outbox:   infra.Repos.DeliveryOutbox,
-		Outcomes: infra.Repos.DeliveryOutbox,
-		Messages: infra.Repos.Messages,
-		Channels: senders,
-		Events:   events,
-		Clock:    infra.Clock,
-		Logger:   infra.LoggerIface,
+		Outbox:    infra.Repos.DeliveryOutbox,
+		Outcomes:  infra.Repos.DeliveryOutbox,
+		Messages:  infra.Repos.Messages,
+		Downlinks: infra.Repos.Downlinks,
+		Channels:  senders,
+		Events:    events,
+		Clock:     infra.Clock,
+		Logger:    infra.LoggerIface,
 	}, delivery.Config{PollInterval: cfg.PollInterval, BatchSize: cfg.BatchSize, Retry: retry})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", errMsgFailedToBuildDeliveryWorker, err)
@@ -890,7 +907,7 @@ func buildDeliveryWorker(infra *Infrastructure, channels []models.DeliveryChanne
 // deliverySenders binds a sender to every queued channel, so no queued row
 // waits for a channel this process cannot drain.
 func deliverySenders(channels []models.DeliveryChannel, scaci delivery.SCACIBroadcaster,
-	mqttAdapter bssci.MQTTEventPublisher,
+	mqttAdapter deliveryMQTT,
 ) (delivery.Channels, error) {
 	var senders delivery.Channels
 	for _, channel := range channels {
@@ -899,6 +916,8 @@ func deliverySenders(channels []models.DeliveryChannel, scaci delivery.SCACIBroa
 			senders.SCACI = scaci
 		case channel == models.DeliveryChannelMQTT && mqttAdapter != nil:
 			senders.MQTT = mqttAdapter
+		case channel == models.DeliveryChannelMQTTDownlinkAck && mqttAdapter != nil:
+			senders.DownlinkAcks = mqttAdapter
 		default:
 			return delivery.Channels{}, fmt.Errorf(errFmtDeliveryChannelWithoutSender, channel)
 		}

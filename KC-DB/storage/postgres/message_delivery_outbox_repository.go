@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -44,7 +45,7 @@ const (
 			FOR UPDATE SKIP LOCKED
 		) AS due
 		WHERE o.message_id = due.message_id AND o.channel = due.channel
-		RETURNING o.message_id, o.channel, o.owner_tenant_id, o.status, o.attempts,
+		RETURNING o.message_id, o.channel, o.owner_tenant_id, o.acknowledged_downlink_id, o.status, o.attempts,
 		          o.next_attempt_at, o.last_error, o.created_at, o.delivered_at`
 	sqlMarkDelivered = `
 		UPDATE message_delivery_outbox
@@ -69,6 +70,15 @@ func insertDeliveryRows(ctx context.Context, exec uplinkExecutor, messageID stri
 		}
 	}
 	return nil
+}
+
+// deliveryChannelArray binds channels as a text[] parameter, empty for none.
+func deliveryChannelArray(channels []models.DeliveryChannel) interface{} {
+	values := make([]string, len(channels))
+	for i, channel := range channels {
+		values[i] = string(channel)
+	}
+	return pq.Array(values)
 }
 
 // ClaimDue locks due pending rows, counts the attempt and hides each row from other workers for the lease.

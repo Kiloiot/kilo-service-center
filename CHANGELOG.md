@@ -657,6 +657,14 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
 - An uplink whose receptions by several base stations arrive at the same time
   records the endpoint's acknowledgement of its downlink once; two receptions
   could both record it, and the event appeared twice.
+- MQTT `event/downlink_result` with `"result": "acknowledged"` reaches your
+  broker for an uplink relayed from a federated Community Edition, and after
+  an MQTT broker outage. The acknowledgement was published only by the
+  process that stored the uplink, so a relayed one was recorded as an event
+  and never published, and one recorded while the broker was unreachable was
+  lost. It is now queued in the delivery outbox together with its record and
+  published by the service center like an uplink, retried until the broker
+  accepts it. Migration 000188 adds the outbox channel `mqtt_downlink_ack`.
 - `CreateOrganization` stores the organization's `tags` and `description`;
   both were dropped, so an organization created in KC-Web or through the API
   read back without them. `GetOrganization` and `ListOrganizations` return

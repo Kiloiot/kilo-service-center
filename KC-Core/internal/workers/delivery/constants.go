@@ -27,12 +27,15 @@ const backoffGrowth = 2
 const (
 	errFmtRetryPolicyBounds = "%w: base %v, max %v"
 	errFmtInvalidConfig     = "%w: poll interval %v, batch size %d, lease %v"
+	errFmtUnpublishableAck  = "%w: queue id %d, window %d"
 )
 
 // Sentinel errors for delivery attempts; each attempt wraps the channel's
 // own failure so the outbox row keeps the cause.
 var (
 	errLoadMessage          = errors.New("delivery worker: load message")
+	errLoadDownlink         = errors.New("delivery worker: load acknowledged downlink")
+	errUnpublishableAck     = errors.New("delivery worker: acknowledgement names no publishable downlink")
 	errChannelNotConfigured = errors.New("delivery worker: channel not configured")
 	errUnknownChannel       = errors.New("delivery worker: unknown channel")
 	errMissingDependency    = errors.New("delivery worker: missing dependency")

@@ -447,7 +447,9 @@ func setupULTestServer(t *testing.T, store *ulFakeUplinkStore, epRepo *ulTestEnd
 // ulIgnoredAcks accepts every endpoint acknowledgement; these scenarios carry none.
 type ulIgnoredAcks struct{}
 
-func (ulIgnoredAcks) RecordEndpointAck(context.Context, int64, uint64, uint32) error { return nil }
+func (ulIgnoredAcks) RecordEndpointAck(context.Context, int64, uint64, uint32, string) error {
+	return nil
+}
 
 func registeredEndpoint(tenantID int64) *ulTestEndpointRepo {
 	return &ulTestEndpointRepo{

@@ -4,11 +4,13 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // fixtureCommandRef is the ref of the MQTT command that queued the fixture downlinks.
@@ -41,7 +43,9 @@ func TestDownlinkCommandRef_TravelsWithEveryResult(t *testing.T) {
 	require.NoError(t, err)
 	refused, err := downlinks.FailQueuedDownlink(ctx, refusedRow, 321, releaseStation, "refused")
 	require.NoError(t, err)
-	acknowledged, marked, err := downlinks.MarkEndpointAcknowledged(ctx, 321, fixtureEndpointEUI, int64(packetCnt))
+	acknowledged, marked, err := downlinks.MarkEndpointAcknowledged(ctx, models.EndpointAckRequest{
+		TenantID: 321, EpEUI: fixtureEndpointEUI, WindowPacketCnt: int64(packetCnt), MessageID: uuid.NewString(),
+	})
 	require.NoError(t, err)
 	require.True(t, marked)
 	_, err = db.Exec(`UPDATE downlink_queue SET earliest_at = NOW() - INTERVAL '1 hour', latest_at = NOW() - INTERVAL '1 minute' WHERE que_id IN ($1, $2)`, expiredRow, withoutRefRow)

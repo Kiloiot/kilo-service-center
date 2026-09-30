@@ -16,6 +16,10 @@ const (
 	DeliveryChannelSCACI DeliveryChannel = "scaci"
 	// DeliveryChannelMQTT publishes the uplink as a device event.
 	DeliveryChannelMQTT DeliveryChannel = "mqtt"
+	// DeliveryChannelMQTTDownlinkAck publishes the endpoint's acknowledgement
+	// of a downlink, which the uplink carried (BSSCI §3.10.1 dlAck), as a
+	// downlink result.
+	DeliveryChannelMQTTDownlinkAck DeliveryChannel = "mqtt_downlink_ack"
 )
 
 // Delivery outbox row states.
@@ -63,15 +67,33 @@ type UplinkPersistOutcome struct {
 	DuplicateCount int
 }
 
+// EndpointAckRequest names the downlink an uplink's dlAck acknowledges
+// (BSSCI §3.10.1) and the outbox rows its acknowledgement is queued for.
+type EndpointAckRequest struct {
+	// TenantID owns the endpoint and the downlink.
+	TenantID int64
+	EpEUI    uint64
+	// WindowPacketCnt is the endpoint counter of the window the downlink was
+	// transmitted in, the one before the acknowledging uplink's.
+	WindowPacketCnt int64
+	// MessageID is the stored uplink that carried the acknowledgement.
+	MessageID string
+	// Channels are the outbox rows the acknowledgement is queued for.
+	Channels []DeliveryChannel
+}
+
 // MessageDeliveryRecord is one row of the delivery outbox.
 type MessageDeliveryRecord struct {
 	MessageID     uuid.UUID       `db:"message_id"`
 	Channel       DeliveryChannel `db:"channel"`
 	OwnerTenantID int64           `db:"owner_tenant_id"`
-	Status        string          `db:"status"`
-	Attempts      int             `db:"attempts"`
-	NextAttemptAt time.Time       `db:"next_attempt_at"`
-	LastError     *string         `db:"last_error"`
-	CreatedAt     time.Time       `db:"created_at"`
-	DeliveredAt   *time.Time      `db:"delivered_at"`
+	// AcknowledgedDownlinkID is the downlink a DeliveryChannelMQTTDownlinkAck
+	// row reports acknowledged; nil on every other channel.
+	AcknowledgedDownlinkID *int64     `db:"acknowledged_downlink_id"`
+	Status                 string     `db:"status"`
+	Attempts               int        `db:"attempts"`
+	NextAttemptAt          time.Time  `db:"next_attempt_at"`
+	LastError              *string    `db:"last_error"`
+	CreatedAt              time.Time  `db:"created_at"`
+	DeliveredAt            *time.Time `db:"delivered_at"`
 }

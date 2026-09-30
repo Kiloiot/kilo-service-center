@@ -268,6 +268,8 @@ Possible `result` values:
 
 `sent`, `expired` and `invalid` are final: each downlink reports exactly one of them. `acknowledged` follows a `sent` result when the endpoint's next uplink sets the downlink acknowledgement flag (`dlAck`, which also appears on `event/up`) for the window the downlink was sent in. It is published once per transmitted downlink: a repeated reception of that uplink, an uplink whose acknowledgement matches no transmitted downlink, and an uplink without the flag publish nothing. When the endpoint's packet counter restarted and reused a window, the downlink transmitted last in that window is the one acknowledged. A downlink the endpoint never acknowledges publishes no `acknowledged`, so absence after `sent` means the endpoint has not confirmed it.
 
+KiloCenter stores the acknowledgement together with its record and publishes it from its delivery outbox, the way it publishes uplinks: an acknowledgement recorded while your broker is unreachable, or carried by an uplink relayed from a federated Community Edition, is published once the broker accepts it. Like an uplink, it can arrive a second time when KiloCenter restarts between publishing it and recording that it did, so treat a repeated `acknowledged` for the same `queId` as the same confirmation.
+
 ```json
 {
   "epEui": "70b3d59cd00009e6",

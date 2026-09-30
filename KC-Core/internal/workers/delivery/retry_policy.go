@@ -22,8 +22,9 @@ func NewRetryPolicy(base, maxDelay time.Duration) (RetryPolicy, error) {
 	return RetryPolicy{base: base, maxDelay: maxDelay}, nil
 }
 
-// permanentFailures name a channel this process cannot deliver to or a message that is gone.
-var permanentFailures = []error{errUnknownChannel, errChannelNotConfigured, storage.ErrNotFound}
+// permanentFailures name a channel this process cannot deliver to, a message
+// or downlink that is gone, or an acknowledgement no retry can publish.
+var permanentFailures = []error{errUnknownChannel, errChannelNotConfigured, errUnpublishableAck, storage.ErrNotFound}
 
 // Permanent reports whether err is a failure no retry can fix.
 func (p RetryPolicy) Permanent(err error) bool {

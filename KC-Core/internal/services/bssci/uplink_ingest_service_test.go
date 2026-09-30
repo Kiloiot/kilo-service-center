@@ -151,6 +151,7 @@ type recordedEndpointAck struct {
 	ownerTenantID int64
 	epEUI         uint64
 	packetCnt     uint32
+	messageID     string
 }
 
 // recordingDownlinkAcks records every endpoint acknowledgement handed on.
@@ -159,10 +160,10 @@ type recordingDownlinkAcks struct {
 	acks []recordedEndpointAck
 }
 
-func (r *recordingDownlinkAcks) RecordEndpointAck(_ context.Context, ownerTenantID int64, epEUI uint64, packetCnt uint32) error {
+func (r *recordingDownlinkAcks) RecordEndpointAck(_ context.Context, ownerTenantID int64, epEUI uint64, packetCnt uint32, messageID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.acks = append(r.acks, recordedEndpointAck{ownerTenantID: ownerTenantID, epEUI: epEUI, packetCnt: packetCnt})
+	r.acks = append(r.acks, recordedEndpointAck{ownerTenantID: ownerTenantID, epEUI: epEUI, packetCnt: packetCnt, messageID: messageID})
 	return nil
 }
 
@@ -398,7 +399,8 @@ func TestUplinkIngest_FederationUsesSyntheticBaseStation(t *testing.T) {
 
 // TestUplinkIngest_RecordsTheEndpointAckOfEveryPath pins BSSCI §3.10.1: an
 // uplink with dlAck acknowledges its owner's downlink of the previous window
-// whichever path delivered it, a federation relay included.
+// whichever path delivered it, a federation relay included, against the
+// message stored for it.
 func TestUplinkIngest_RecordsTheEndpointAckOfEveryPath(t *testing.T) {
 	t.Parallel()
 	for _, source := range []bssci.UplinkSource{bssci.UplinkSourceBSSCI, bssci.UplinkSourceFederation} {
@@ -410,9 +412,29 @@ func TestUplinkIngest_RecordsTheEndpointAckOfEveryPath(t *testing.T) {
 			bssci.UplinkIngestOptions{Source: source})
 		require.NoError(t, err)
 
-		assert.Equal(t, []recordedEndpointAck{{ownerTenantID: uplinkIngestTestTenantID, epEUI: payload.EpEUI, packetCnt: payload.PacketCnt}},
+		require.Len(t, f.store.requests, 1)
+		assert.Equal(t, []recordedEndpointAck{{ownerTenantID: uplinkIngestTestTenantID, epEUI: payload.EpEUI,
+			packetCnt: payload.PacketCnt, messageID: f.store.requests[0].Message.ID}},
 			f.acks.acks, "an ingest with source %d records the endpoint acknowledgement", source)
 	}
+}
+
+// TestUplinkIngest_ADuplicateReceptionRecordsTheAckAgainstTheFirstMessage:
+// the reception merged into an earlier message acknowledges against that
+// message, the one its delivery rows belong to.
+func TestUplinkIngest_ADuplicateReceptionRecordsTheAckAgainstTheFirstMessage(t *testing.T) {
+	t.Parallel()
+	f := newIngestFixture(t, map[int64]uuid.UUID{}, allChannels(), 0)
+	first := uuid.NewString()
+	f.store.outcome = models.UplinkPersistOutcome{Classification: models.UplinkDuplicate, MessageID: first}
+	payload := buildUplinkPayload()
+	payload.DlAck = true
+
+	_, err := ingestBSSCI(t, f, payload)
+	require.NoError(t, err)
+
+	require.Len(t, f.acks.acks, 1)
+	assert.Equal(t, first, f.acks.acks[0].messageID)
 }
 
 func TestUplinkIngest_WithoutDlAckRecordsNoAcknowledgement(t *testing.T) {

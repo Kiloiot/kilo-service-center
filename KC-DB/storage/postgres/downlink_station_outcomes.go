@@ -7,16 +7,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 )
 
 // DownlinkStationOutcomes records what a base station holding a downlink
 // answered: its holder, its result, its refusal, and the endpoint's
-// acknowledgement of a transmitted one.
+// acknowledgement of a transmitted one, which it also reads back for delivery.
 type DownlinkStationOutcomes struct {
 	db    sqlx.ExtContext
 	clock clock.Clock
@@ -151,12 +153,18 @@ func (r *DownlinkStationOutcomes) FailQueuedDownlink(ctx context.Context, queID 
 }
 
 // MarkEndpointAcknowledged records that the endpoint acknowledged the
-// downlink the tenant transmitted in the window of windowPacketCnt (BSSCI
-// §3.10.1 dlAck), and returns the row it marked for the downlink's
-// originators; false when no unacknowledged one matched.
-func (r *DownlinkStationOutcomes) MarkEndpointAcknowledged(ctx context.Context, tenantID int64, epEUI uint64, windowPacketCnt int64) (*storage.DownlinkMessage, bool, error) {
+// downlink the tenant transmitted in the window of ack.WindowPacketCnt (BSSCI
+// §3.10.1 dlAck) and, in the same statement, queues the acknowledgement on
+// ack.Channels. It returns the row it marked for the downlink's originators;
+// false when no unacknowledged one matched, and then nothing is queued.
+func (r *DownlinkStationOutcomes) MarkEndpointAcknowledged(ctx context.Context, ack models.EndpointAckRequest) (*storage.DownlinkMessage, bool, error) {
+	messageID, err := uuid.Parse(ack.MessageID)
+	if err != nil {
+		return nil, false, fmt.Errorf("%s: %w: %w", errWrapMarkEndpointAcknowledged, storage.ErrInvalidInput, err)
+	}
 	row := r.db.QueryRowxContext(ctx, sqlMarkEndpointAcknowledged,
-		tenantID, mioty.EUI64Bytes(epEUI), windowPacketCnt, mioty.DLQueueStatusTransmitted, r.clock.Now())
+		ack.TenantID, mioty.EUI64Bytes(ack.EpEUI), ack.WindowPacketCnt, mioty.DLQueueStatusTransmitted, r.clock.Now(),
+		messageID, deliveryChannelArray(ack.Channels))
 	downlink, err := scanDownlinkOutcome(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
@@ -168,17 +176,47 @@ func (r *DownlinkStationOutcomes) MarkEndpointAcknowledged(ctx context.Context, 
 }
 
 // sqlMarkEndpointAcknowledged acknowledges the newest transmitted downlink of
-// the window; a repeated acknowledgement finds it already marked. The outer
-// endpoint_acked_at test makes the second of two concurrent receptions of one
-// uplink, which picked the same row, mark nothing once the first committed.
+// the window and queues its acknowledgement, so a mark is never left without
+// its delivery; a repeated acknowledgement finds it already marked and queues
+// nothing. The outer endpoint_acked_at test makes the second of two
+// concurrent receptions of one uplink, which picked the same row, mark
+// nothing once the first committed.
 const sqlMarkEndpointAcknowledged = `
-	UPDATE downlink_queue
-	SET endpoint_acked_at = $5, updated_at = $5
-	WHERE id = (
-		SELECT id FROM downlink_queue
-		WHERE tenant_id = $1 AND ep_eui = $2 AND transmission_packet_cnt = $3
-		  AND status = $4 AND endpoint_acked_at IS NULL
-		ORDER BY transmitted_at DESC NULLS LAST, id DESC
-		LIMIT 1
-	) AND endpoint_acked_at IS NULL
-	RETURNING ` + downlinkOutcomeColumns
+	WITH acknowledged AS (
+		UPDATE downlink_queue
+		SET endpoint_acked_at = $5, updated_at = $5
+		WHERE id = (
+			SELECT id FROM downlink_queue
+			WHERE tenant_id = $1 AND ep_eui = $2 AND transmission_packet_cnt = $3
+			  AND status = $4 AND endpoint_acked_at IS NULL
+			ORDER BY transmitted_at DESC NULLS LAST, id DESC
+			LIMIT 1
+		) AND endpoint_acked_at IS NULL
+		RETURNING ` + downlinkOutcomeColumns + `
+	), queued AS (
+		INSERT INTO message_delivery_outbox (message_id, channel, owner_tenant_id, acknowledged_downlink_id, next_attempt_at, created_at)
+		SELECT $6, channel, $1, acknowledged.id, $5, $5
+		FROM acknowledged CROSS JOIN unnest($7::message_delivery_channel[]) AS channel
+	)
+	SELECT ` + downlinkOutcomeColumns + ` FROM acknowledged`
+
+// GetAcknowledgedDownlink reads the tenant's downlink its endpoint
+// acknowledged, with the window it was transmitted in, for the organization
+// its acknowledgement is published to; storage.ErrNotFound when the tenant
+// has no such acknowledged downlink.
+func (r *DownlinkStationOutcomes) GetAcknowledgedDownlink(ctx context.Context, tenantID, downlinkID int64) (*storage.DownlinkMessage, error) {
+	var window int64
+	row := r.db.QueryRowxContext(ctx, `
+		SELECT `+downlinkOutcomeColumns+`, transmission_packet_cnt
+		FROM downlink_queue
+		WHERE id = $1 AND tenant_id = $2 AND endpoint_acked_at IS NOT NULL`, downlinkID, tenantID)
+	downlink, err := scanDownlinkOutcome(row, &window)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%s: %w", errWrapGetAcknowledgedDownlink, storage.ErrNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", errWrapGetAcknowledgedDownlink, err)
+	}
+	downlink.TransmissionPacketCnt = window
+	return downlink, nil
+}
