@@ -245,7 +245,7 @@ func unaryInterceptor(log logger.Logger) grpc.UnaryServerInterceptor {
 
 		resp, err := handler(ctx, req)
 		if err != nil {
-			log.ErrorContext(ctx, LogGRPCUnaryCallFailed, logger.FieldMethod, info.FullMethod, logger.FieldError, err)
+			logCallFailure(ctx, log, LogGRPCUnaryCallFailed, info.FullMethod, err)
 		}
 
 		return resp, err
@@ -311,7 +311,7 @@ func streamInterceptor(log logger.Logger) grpc.StreamServerInterceptor {
 
 		err := handler(srv, ss)
 		if err != nil {
-			log.ErrorContext(ss.Context(), LogGRPCStreamCallFailed, logger.FieldMethod, info.FullMethod, logger.FieldError, err)
+			logCallFailure(ss.Context(), log, LogGRPCStreamCallFailed, info.FullMethod, err)
 		}
 
 		return err

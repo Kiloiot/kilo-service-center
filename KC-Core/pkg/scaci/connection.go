@@ -85,7 +85,8 @@ func (s *Server) handshakeTLS(tlsConn *tls.Conn, establishBy time.Time) (*x509.C
 	err := tlsConn.HandshakeContext(handshakeCtx)
 	cancelHandshake()
 	if err != nil {
-		s.logger.ErrorContext(s.safeCtx(), LogSCACITLSHandshakeFailed, logger.FieldError, err)
+		s.logger.WarnContext(s.safeCtx(), LogSCACITLSHandshakeFailed,
+			logger.FieldRemote, tlsConn.RemoteAddr().String(), logger.FieldError, err)
 		return nil, false
 	}
 

@@ -570,7 +570,8 @@ func (s *Server) serveConnection(conn net.Conn) {
 // have closed.
 func (s *Server) closeConnection(conn net.Conn) {
 	if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-		s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToCloseConnection, logger.FieldError, err)
+		s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToCloseConnection,
+			logger.FieldRemote, conn.RemoteAddr().String(), logger.FieldError, err)
 	}
 }
 
@@ -603,7 +604,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 		err := tlsConn.HandshakeContext(handshakeCtx)
 		cancelHandshake()
 		if err != nil {
-			s.logger.ErrorContext(s.safeCtx(), LogBSSCITLSHandshakeFailed, logger.FieldError, err)
+			s.logger.WarnContext(s.safeCtx(), LogBSSCITLSHandshakeFailed,
+				logger.FieldRemote, conn.RemoteAddr().String(), logger.FieldError, err)
 			return
 		}
 
@@ -806,7 +808,8 @@ func (s *Server) handleConnection(conn net.Conn) {
 			case errors.Is(err, nettransport.ErrPayloadTooLarge):
 				s.logger.ErrorContext(s.safeCtx(), LogBSSCIPayloadTooLarge, logger.FieldError, err)
 			default:
-				s.logger.ErrorContext(s.safeCtx(), LogBSSCIFailedToReadFrame, logger.FieldError, err)
+				s.logger.WarnContext(s.safeCtx(), LogBSSCIFailedToReadFrame,
+					logger.FieldRemote, conn.RemoteAddr().String(), logger.FieldError, err)
 			}
 			return
 		}

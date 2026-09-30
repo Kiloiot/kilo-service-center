@@ -633,6 +633,10 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   to attach with an internal error.
 - Deleting an endpoint no longer logs an error when the endpoint is removed
   before its detach is recorded for the base stations.
+- A request the service center refuses (invalid input, not found, not
+  permitted) and a remote peer that fails the TLS handshake or drops the link
+  are logged as warnings with the peer's address, not as errors, so errors
+  point at faults of the service center itself.
 - Downloading a base station's private key no longer hangs until the request
   times out: the key's row lock blocked the audit record of its own download.
 - A base station location outside the globe (latitude beyond ±90, longitude
