@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import { BrowserRouter as Router, useLocation } from "react-router-dom";
 
 import { useRealtimeUpdates } from "@hooks";
@@ -18,17 +18,14 @@ import GlobalLoader from "@components/common/GlobalLoader";
 import AlertBanner from "@components/layout/AlertBanner";
 import AppNavigation from "@components/layout/AppNavigation";
 import OrgBadge from "@components/layout/OrgBadge";
-import { apiService } from "@services/api";
 import type { FeatureFlags } from "@contexts/FeatureFlagContext";
 import { FeatureFlagProvider } from "@contexts/FeatureFlagContext";
+import { FeedbackProvider } from "@contexts/feedback";
 import { FiltersProvider } from "@contexts/filters";
-import {
-  OrganizationProvider,
-  useOrganization,
-} from "@contexts/OrganizationContext";
-import { SessionProvider, useSession } from "@contexts/SessionContext";
+import { OrganizationProvider } from "@contexts/OrganizationContext";
+import { SessionProvider } from "@contexts/SessionContext";
 import { SystemProvider, useSystem } from "@contexts/SystemContext";
-import { APP_TITLE, DRAWER_WIDTH, ROUTES } from "@constants/app";
+import { APP_TITLE, DRAWER_WIDTH, EDITION_CODE, ROUTES } from "@constants/app";
 import { ARIA } from "@constants/messages";
 import { isDevelopment } from "@config/env";
 import { queryClient } from "@config/query-client";
@@ -51,8 +48,6 @@ const AppContent: React.FC = () => {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const theme = useTheme();
   const location = useLocation();
-  const { organizationId, userId } = useOrganization();
-  const { user, isHydrated } = useSession();
 
   // Check if current route is a public route (login, auth callback)
   const isPublicRoute = PUBLIC_ROUTES.some((path) =>
@@ -61,17 +56,6 @@ const AppContent: React.FC = () => {
 
   // Wire realtime connection + cache invalidation globally
   useRealtimeUpdates();
-
-  // Sync organization context with API service
-  // Guard against clearing headers when user is authenticated but org is still resolving
-  useEffect(() => {
-    // Don't clear headers if user is present but org hasn't resolved yet (fallback in progress)
-    if (!organizationId && isHydrated && user) {
-      // User is authenticated but org is still resolving - skip clearing headers
-      return;
-    }
-    apiService.setOrganization(organizationId, userId || undefined);
-  }, [organizationId, userId, isHydrated, user]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -162,7 +146,7 @@ const AppContent: React.FC = () => {
 const EditionAwareApp: React.FC = () => {
   const { versionInfo, loading: systemLoading } = useSystem();
 
-  const isEnterprise = versionInfo?.editionCode === "ece";
+  const isEnterprise = versionInfo?.editionCode === EDITION_CODE.ENTERPRISE;
 
   const flagOverrides: Partial<FeatureFlags> | undefined = useMemo(
     () =>
@@ -184,17 +168,19 @@ const EditionAwareApp: React.FC = () => {
 const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <SystemProvider>
-        {/* SessionProvider MUST wrap OrganizationProvider so useSession() works in OrganizationContext */}
-        <SessionProvider>
-          <OrganizationProvider>
-            {/* FiltersProvider needs OrganizationContext for org-scoped storage */}
-            <FiltersProvider>
-              <EditionAwareApp />
-            </FiltersProvider>
-          </OrganizationProvider>
-        </SessionProvider>
-      </SystemProvider>
+      <FeedbackProvider>
+        <SystemProvider>
+          {/* SessionProvider MUST wrap OrganizationProvider so useSession() works in OrganizationContext */}
+          <SessionProvider>
+            <OrganizationProvider>
+              {/* FiltersProvider needs OrganizationContext for org-scoped storage */}
+              <FiltersProvider>
+                <EditionAwareApp />
+              </FiltersProvider>
+            </OrganizationProvider>
+          </SessionProvider>
+        </SystemProvider>
+      </FeedbackProvider>
       {isDevelopment && ReactQueryDevtools && (
         <React.Suspense fallback={null}>
           <ReactQueryDevtools initialIsOpen={false} />

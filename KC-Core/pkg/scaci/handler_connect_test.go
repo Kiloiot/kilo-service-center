@@ -140,7 +140,7 @@ func TestResumeSessionValidation(t *testing.T) {
 	mockHandshake := new(MockHandshakeService)
 
 	ctx := testutil.TestContext()
-	tenantID := int64(1)
+	ac := ApplicationCenter{TenantID: 1}
 	acUUID := make([]byte, 16)
 	scUUID := make([]byte, 16)
 	acOpId := int64(100)
@@ -148,10 +148,10 @@ func TestResumeSessionValidation(t *testing.T) {
 	requestVersion := "1.0.0"
 
 	// Mock successful resume validation
-	mockHandshake.On("ResolveResume", ctx, tenantID, acUUID, scUUID, acOpId, scOpId, requestVersion).
+	mockHandshake.On("ResolveResume", ctx, ac, acUUID, scUUID, acOpId, scOpId, requestVersion).
 		Return(true, "")
 
-	canResume, errToken := mockHandshake.ResolveResume(ctx, tenantID, acUUID, scUUID, acOpId, scOpId, requestVersion)
+	canResume, errToken := mockHandshake.ResolveResume(ctx, ac, acUUID, scUUID, acOpId, scOpId, requestVersion)
 
 	assert.True(t, canResume)
 	assert.Empty(t, errToken)
@@ -163,7 +163,7 @@ func TestResumeSessionOpIdMismatch(t *testing.T) {
 	mockHandshake := new(MockHandshakeService)
 
 	ctx := testutil.TestContext()
-	tenantID := int64(1)
+	ac := ApplicationCenter{TenantID: 1}
 	acUUID := make([]byte, 16)
 	scUUID := make([]byte, 16)
 	acOpId := int64(50) // Wrong operation ID
@@ -171,10 +171,10 @@ func TestResumeSessionOpIdMismatch(t *testing.T) {
 	requestVersion := "1.0.0"
 
 	// Mock operation ID mismatch error
-	mockHandshake.On("ResolveResume", ctx, tenantID, acUUID, scUUID, acOpId, scOpId, requestVersion).
+	mockHandshake.On("ResolveResume", ctx, ac, acUUID, scUUID, acOpId, scOpId, requestVersion).
 		Return(false, errOpIdOutOfOrder)
 
-	canResume, errToken := mockHandshake.ResolveResume(ctx, tenantID, acUUID, scUUID, acOpId, scOpId, requestVersion)
+	canResume, errToken := mockHandshake.ResolveResume(ctx, ac, acUUID, scUUID, acOpId, scOpId, requestVersion)
 
 	assert.False(t, canResume)
 	assert.Equal(t, errOpIdOutOfOrder, errToken)

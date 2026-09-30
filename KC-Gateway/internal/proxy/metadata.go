@@ -17,16 +17,15 @@ var spoofableHeaders = []string{
 	grpcconst.MetadataKeyInternalTenantID,
 	grpcconst.MetadataKeyInternalOrgID,
 	grpcconst.MetadataKeyInternalUserID,
+	grpcconst.MetadataKeyInternalServiceAccountID,
 	grpcconst.MetadataKeyInternalPeerSecret,
 	grpcconst.MetadataKeyAuthorization,
 	grpcconst.MetadataKeyOrganizationID,
 	grpcconst.MetadataKeyUserID,
 }
 
-// SanitizeAndInject strips spoofable headers from inbound metadata and injects
-// trusted identity values from interceptor-populated context.
-// Returns the outgoing metadata for the upstream KC-Core call.
-func SanitizeAndInject(ctx context.Context) metadata.MD {
+// SanitizeAndInject strips spoofable headers, injects trusted identity and presents the peer secret when set.
+func SanitizeAndInject(ctx context.Context, peerSecret string) metadata.MD {
 	// Start with incoming metadata (or empty)
 	inMD, _ := metadata.FromIncomingContext(ctx)
 	outMD := inMD.Copy()
@@ -50,6 +49,14 @@ func SanitizeAndInject(ctx context.Context) metadata.MD {
 	userID, err := pkgcontext.GetUserID(ctx)
 	if err == nil && userID != "" {
 		outMD.Set(grpcconst.MetadataKeyInternalUserID, userID)
+	}
+
+	if keyID, err := pkgcontext.GetServiceAccountID(ctx); err == nil {
+		outMD.Set(grpcconst.MetadataKeyInternalServiceAccountID, keyID.String())
+	}
+
+	if peerSecret != "" {
+		outMD.Set(grpcconst.MetadataKeyInternalPeerSecret, peerSecret)
 	}
 
 	return outMD

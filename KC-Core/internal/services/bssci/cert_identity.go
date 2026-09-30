@@ -5,12 +5,14 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"fmt"
+	"time"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
 
 // certificateIdentityResolver is the CE composite implementation of
@@ -20,14 +22,14 @@ import (
 // organization resolver, so the ECE remote resolver keeps its existing
 // contract untouched.
 type certificateIdentityResolver struct {
-	bsRepo      interfaces.BaseStationRepository
+	bsRepo      BaseStationStore
 	orgResolver org.Resolver
 	logger      logger.Logger
 }
 
 // NewCertificateIdentityResolver builds the CE composite resolver.
 func NewCertificateIdentityResolver(
-	bsRepo interfaces.BaseStationRepository,
+	bsRepo BaseStationStore,
 	orgResolver org.Resolver,
 	log logger.Logger,
 ) bssci.CertificateIdentityResolver {
@@ -47,12 +49,12 @@ func (r *certificateIdentityResolver) ResolveCertificateIdentity(ctx context.Con
 
 	if eui, euiErr := validation.ParseEUI(cn); euiErr == nil {
 		if r.bsRepo == nil {
-			return bssci.CertificateIdentity{}, fmt.Errorf("certificate EUI CN %q: base station repository unavailable", cn)
+			return bssci.CertificateIdentity{}, fmt.Errorf(errFmtCertEUIRepoUnavailable, cn)
 		}
 		euiBytes := binary.BigEndian.AppendUint64(nil, eui)
 		bs, err := r.bsRepo.GetByEUIGlobal(ctx, euiBytes)
 		if err != nil || bs == nil {
-			return bssci.CertificateIdentity{}, fmt.Errorf("certificate EUI CN %q: no registered base station: %w", cn, err)
+			return bssci.CertificateIdentity{}, fmt.Errorf(errFmtCertEUINoRegisteredBS, cn, err)
 		}
 
 		identity := bssci.CertificateIdentity{TenantID: bs.TenantID, SubjectEUI: &eui}
@@ -60,8 +62,8 @@ func (r *certificateIdentityResolver) ResolveCertificateIdentity(ctx context.Con
 			orgID, orgErr := r.orgResolver.GetDefaultOrgForTenant(ctx, bs.TenantID)
 			if orgErr != nil {
 				r.logger.WarnContext(ctx, bssci.LogBSSCICertIdentityDefaultOrgLookupFailed,
-					"tenantID", bs.TenantID,
-					"error", orgErr)
+					logger.FieldTenantID, bs.TenantID,
+					logger.FieldError, orgErr)
 			} else {
 				identity.OrganizationID = orgID
 			}
@@ -70,7 +72,7 @@ func (r *certificateIdentityResolver) ResolveCertificateIdentity(ctx context.Con
 	}
 
 	if r.orgResolver == nil {
-		return bssci.CertificateIdentity{}, fmt.Errorf("certificate CN %q: no organization resolver configured", cn)
+		return bssci.CertificateIdentity{}, fmt.Errorf(errFmtCertCNNoOrgResolver, cn)
 	}
 	orgID, tenantID, err := r.orgResolver.ResolveCert(ctx, cert)
 	if err != nil {
@@ -82,11 +84,11 @@ func (r *certificateIdentityResolver) ResolveCertificateIdentity(ctx context.Con
 // registeredBaseStationDirectory adapts the base-station repository to the
 // narrow bssci.RegisteredBaseStationDirectory read/backfill contract.
 type registeredBaseStationDirectory struct {
-	bsRepo interfaces.BaseStationRepository
+	bsRepo RegisteredStationStore
 }
 
 // NewRegisteredBaseStationDirectory builds the repository-backed directory.
-func NewRegisteredBaseStationDirectory(bsRepo interfaces.BaseStationRepository) bssci.RegisteredBaseStationDirectory {
+func NewRegisteredBaseStationDirectory(bsRepo RegisteredStationStore) bssci.RegisteredBaseStationDirectory {
 	return &registeredBaseStationDirectory{bsRepo: bsRepo}
 }
 
@@ -98,7 +100,7 @@ func (d *registeredBaseStationDirectory) GetGlobal(ctx context.Context, eui uint
 		return bssci.RegisteredBaseStation{}, err
 	}
 	if bs == nil {
-		return bssci.RegisteredBaseStation{}, fmt.Errorf("base station %016X not registered", eui)
+		return bssci.RegisteredBaseStation{}, fmt.Errorf(errFmtBaseStationNotRegistered, mioty.FormatEUI64(eui))
 	}
 
 	registered := bssci.RegisteredBaseStation{
@@ -113,6 +115,7 @@ func (d *registeredBaseStationDirectory) GetGlobal(ctx context.Context, eui uint
 	if bs.TLSCertFingerprint != nil {
 		registered.TLSCertFingerprint = *bs.TLSCertFingerprint
 	}
+	registered.TLSCertExpiresAt = bs.TLSCertExpiresAt
 	return registered, nil
 }
 
@@ -120,6 +123,12 @@ func (d *registeredBaseStationDirectory) GetGlobal(ctx context.Context, eui uint
 // value is still blank (conditional SQL; see repository contract).
 func (d *registeredBaseStationDirectory) BackfillFingerprintIfBlank(ctx context.Context, tenantID, id int64, fingerprint string) (bool, error) {
 	return d.bsRepo.UpdateTLSFingerprintIfBlank(ctx, tenantID, id, fingerprint)
+}
+
+// BackfillCertExpiryIfBlank persists the certificate expiry only while none
+// is stored (conditional SQL; see repository contract).
+func (d *registeredBaseStationDirectory) BackfillCertExpiryIfBlank(ctx context.Context, tenantID, id int64, expiresAt time.Time) (bool, error) {
+	return d.bsRepo.UpdateTLSCertExpiryIfBlank(ctx, tenantID, id, expiresAt)
 }
 
 // interface guards

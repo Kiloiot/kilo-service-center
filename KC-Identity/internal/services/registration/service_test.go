@@ -7,12 +7,11 @@ import (
 	"testing"
 	"time"
 
-	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/google/uuid"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/auth"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
@@ -22,16 +21,31 @@ import (
 
 // Mock implementations using function pointer pattern.
 
+// Token lifetimes and fake failure errors shared by the tests in this file.
+const (
+	testAccessTokenTTL  = 15 * time.Minute
+	testRefreshTokenTTL = 24 * time.Hour
+)
+
+var (
+	errNotImplemented     = errors.New("not implemented")
+	errShouldNotBeReached = errors.New("should not be reached")
+	errConnectionRefused  = errors.New("connection refused")
+	errDBConnectionFailed = errors.New("database connection failed")
+	errMembershipTimeout  = errors.New("membership query timeout")
+	errRedisUnavailable   = errors.New("redis unavailable")
+)
+
 type mockRegistrationRepo struct {
-	registerAccountFn func(ctx context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error)
+	registerAccountFn func(ctx context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error)
 }
 
-func (m *mockRegistrationRepo) RegisterAccount(ctx context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
+func (m *mockRegistrationRepo) RegisterAccount(ctx context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
 	return m.registerAccountFn(ctx, params)
 }
 
-func (m *mockRegistrationRepo) RegisterCEAccount(_ context.Context, _ *interfaces.CERegistrationParams) (*interfaces.RegistrationResult, error) {
-	return nil, errors.New("not implemented")
+func (m *mockRegistrationRepo) RegisterCEAccount(_ context.Context, _ *models.CERegistrationParams) (*models.RegistrationResult, error) {
+	return nil, errNotImplemented
 }
 
 type mockUserStore struct {
@@ -56,7 +70,6 @@ type mockRefreshTokenStore struct {
 	createFn       func(ctx context.Context, token *models.RefreshToken) error
 	getByHashFn    func(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
 	markReplacedFn func(ctx context.Context, tokenID, replacedByID uuid.UUID) error
-	revokeByHashFn func(ctx context.Context, tokenHash string) error
 	revokeByUserFn func(ctx context.Context, userID uuid.UUID) error
 }
 
@@ -72,10 +85,6 @@ func (m *mockRefreshTokenStore) MarkReplaced(ctx context.Context, tokenID, repla
 	return m.markReplacedFn(ctx, tokenID, replacedByID)
 }
 
-func (m *mockRefreshTokenStore) RevokeByHash(ctx context.Context, tokenHash string) error {
-	return m.revokeByHashFn(ctx, tokenHash)
-}
-
 func (m *mockRefreshTokenStore) RevokeByUserID(ctx context.Context, userID uuid.UUID) error {
 	return m.revokeByUserFn(ctx, userID)
 }
@@ -89,14 +98,14 @@ func (m *mockMembershipStore) ListUserMemberships(ctx context.Context, userID uu
 }
 
 // newTestTokenIssuer creates a real TokenIssuer with test-appropriate configuration.
-func newTestTokenIssuer() *auth.TokenIssuer {
-	return auth.NewTokenIssuer(
+func newTestTokenIssuer() *auth.JWTTokenIssuer {
+	return auth.NewJWTTokenIssuer(
 		[]byte("test-secret-key-for-unit-tests"),
 		"org_id",
 		"kilocenter-test",
 		"kilocenter-test-api",
-		15*time.Minute,
-		24*time.Hour,
+		testAccessTokenTTL,
+		testRefreshTokenTTL,
 	)
 }
 
@@ -119,7 +128,7 @@ func TestRegisterAccount_Success(t *testing.T) {
 	orgID := uuid.New()
 
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
+		registerAccountFn: func(_ context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
 			assert.Equal(t, "test@example.com", params.User.Email)
 			assert.Equal(t, "Acme Corp", params.CompanyName)
 			assert.NotNil(t, params.User.PasswordHash, "password hash should be set")
@@ -127,7 +136,7 @@ func TestRegisterAccount_Success(t *testing.T) {
 			assert.True(t, params.User.IsActive, "new user must be active")
 
 			// Return the user as-is with an org
-			return &interfaces.RegistrationResult{
+			return &models.RegistrationResult{
 				User:         params.User,
 				Organization: &models.Organization{OrgID: orgID, TenantID: 1, Name: "Acme Corp"},
 				TenantID:     1,
@@ -137,7 +146,7 @@ func TestRegisterAccount_Success(t *testing.T) {
 
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
@@ -210,8 +219,8 @@ func TestRegisterAccount_Success_RefreshDisabled(t *testing.T) {
 	orgID := uuid.New()
 
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
-			return &interfaces.RegistrationResult{
+		registerAccountFn: func(_ context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
+			return &models.RegistrationResult{
 				User:         params.User,
 				Organization: &models.Organization{OrgID: orgID, TenantID: 1, Name: "Acme Corp"},
 				TenantID:     1,
@@ -221,7 +230,7 @@ func TestRegisterAccount_Success_RefreshDisabled(t *testing.T) {
 
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
@@ -271,8 +280,7 @@ func TestRegisterAccount_RegistrationDisabled(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), validRequest())
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errRegistrationDisabled)
-	assert.Contains(t, err.Error(), grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenRegistrationDisabled))
+	assert.ErrorIs(t, err, ErrRegistrationDisabled)
 }
 
 func TestRegisterAccount_EmptyEmail(t *testing.T) {
@@ -294,7 +302,7 @@ func TestRegisterAccount_EmptyEmail(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errEmailRequired)
+	assert.ErrorIs(t, err, ErrEmailRequired)
 }
 
 func TestRegisterAccount_EmptyFirstName(t *testing.T) {
@@ -316,7 +324,7 @@ func TestRegisterAccount_EmptyFirstName(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errFirstNameRequired)
+	assert.ErrorIs(t, err, ErrFirstNameRequired)
 }
 
 func TestRegisterAccount_EmptyLastName(t *testing.T) {
@@ -338,7 +346,7 @@ func TestRegisterAccount_EmptyLastName(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errLastNameRequired)
+	assert.ErrorIs(t, err, ErrLastNameRequired)
 }
 
 func TestRegisterAccount_EmptyCompanyName(t *testing.T) {
@@ -360,7 +368,7 @@ func TestRegisterAccount_EmptyCompanyName(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errCompanyNameRequired)
+	assert.ErrorIs(t, err, ErrCompanyNameRequired)
 }
 
 func TestRegisterAccount_WeakPassword(t *testing.T) {
@@ -382,7 +390,7 @@ func TestRegisterAccount_WeakPassword(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errWeakPassword)
+	assert.ErrorIs(t, err, ErrWeakPassword)
 }
 
 func TestRegisterAccount_DuplicateEmail(t *testing.T) {
@@ -396,7 +404,7 @@ func TestRegisterAccount_DuplicateEmail(t *testing.T) {
 			if email == "existing@example.com" {
 				return existingUser, nil
 			}
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
@@ -416,22 +424,22 @@ func TestRegisterAccount_DuplicateEmail(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errEmailExists)
+	assert.ErrorIs(t, err, ErrEmailExists)
 	assert.NotContains(t, err.Error(), "existing@example.com", "error must not leak email address (PII)")
 }
 
 func TestRegisterAccount_EmailCheckStoreError(t *testing.T) {
 	regRepoCalled := false
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, _ *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
+		registerAccountFn: func(_ context.Context, _ *models.RegistrationParams) (*models.RegistrationResult, error) {
 			regRepoCalled = true
-			return nil, errors.New("should not be reached")
+			return nil, errShouldNotBeReached
 		},
 	}
 
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, errors.New("connection refused")
+			return nil, errConnectionRefused
 		},
 	}
 
@@ -444,20 +452,20 @@ func TestRegisterAccount_EmailCheckStoreError(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), validRequest())
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errRegistrationFailed)
+	assert.ErrorIs(t, err, ErrRegistrationFailed)
 	assert.False(t, regRepoCalled, "registration repo must not be called when email check fails")
 }
 
 func TestRegisterAccount_RepoFailure(t *testing.T) {
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, _ *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
-			return nil, errors.New("database connection failed")
+		registerAccountFn: func(_ context.Context, _ *models.RegistrationParams) (*models.RegistrationResult, error) {
+			return nil, errDBConnectionFailed
 		},
 	}
 
@@ -470,15 +478,15 @@ func TestRegisterAccount_RepoFailure(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), validRequest())
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errRegistrationFailed)
+	assert.ErrorIs(t, err, ErrRegistrationFailed)
 }
 
 func TestRegisterAccount_MembershipLoadFailure_StillSucceeds(t *testing.T) {
 	orgID := uuid.New()
 
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
-			return &interfaces.RegistrationResult{
+		registerAccountFn: func(_ context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
+			return &models.RegistrationResult{
 				User:         params.User,
 				Organization: &models.Organization{OrgID: orgID, TenantID: 1, Name: "Test Corp"},
 				TenantID:     1,
@@ -488,7 +496,7 @@ func TestRegisterAccount_MembershipLoadFailure_StillSucceeds(t *testing.T) {
 
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
@@ -500,7 +508,7 @@ func TestRegisterAccount_MembershipLoadFailure_StillSucceeds(t *testing.T) {
 
 	membershipStore := &mockMembershipStore{
 		listUserMembershipsFn: func(_ context.Context, _ uuid.UUID) ([]*models.OrganizationMembershipWithOrg, error) {
-			return nil, errors.New("membership query timeout")
+			return nil, errMembershipTimeout
 		},
 	}
 
@@ -521,8 +529,8 @@ func TestRegisterAccount_RefreshTokenStoreFailure_StillSucceeds(t *testing.T) {
 	orgID := uuid.New()
 
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
-			return &interfaces.RegistrationResult{
+		registerAccountFn: func(_ context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
+			return &models.RegistrationResult{
 				User:         params.User,
 				Organization: &models.Organization{OrgID: orgID, TenantID: 1, Name: "Test Corp"},
 				TenantID:     1,
@@ -532,13 +540,13 @@ func TestRegisterAccount_RefreshTokenStoreFailure_StillSucceeds(t *testing.T) {
 
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
 	refreshStore := &mockRefreshTokenStore{
 		createFn: func(_ context.Context, _ *models.RefreshToken) error {
-			return errors.New("redis unavailable")
+			return errRedisUnavailable
 		},
 	}
 
@@ -582,32 +590,32 @@ func TestRegisterAccount_ValidationOrder(t *testing.T) {
 	}
 	_, err := svc.RegisterAccount(testutil.TestContext(), req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errFirstNameRequired, "should fail on first_name before last_name/company_name")
+	assert.ErrorIs(t, err, ErrFirstNameRequired, "should fail on first_name before last_name/company_name")
 
 	// FirstName set, LastName empty: should fail on last_name
 	req.FirstName = "John"
 	_, err = svc.RegisterAccount(testutil.TestContext(), req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errLastNameRequired, "should fail on last_name before company_name")
+	assert.ErrorIs(t, err, ErrLastNameRequired, "should fail on last_name before company_name")
 
 	// LastName set, CompanyName empty: should fail on company_name
 	req.LastName = "Doe"
 	_, err = svc.RegisterAccount(testutil.TestContext(), req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errCompanyNameRequired, "should fail on company_name")
+	assert.ErrorIs(t, err, ErrCompanyNameRequired, "should fail on company_name")
 }
 
 func TestRegisterAccount_PasswordBoundary(t *testing.T) {
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
 	orgID := uuid.New()
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
-			return &interfaces.RegistrationResult{
+		registerAccountFn: func(_ context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
+			return &models.RegistrationResult{
 				User:         params.User,
 				Organization: &models.Organization{OrgID: orgID, TenantID: 1, Name: "Acme Corp"},
 				TenantID:     1,
@@ -636,7 +644,7 @@ func TestRegisterAccount_PasswordBoundary(t *testing.T) {
 	req.Password = "abcde1x"
 	_, err := svc.RegisterAccount(testutil.TestContext(), req)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errWeakPassword)
+	assert.ErrorIs(t, err, ErrWeakPassword)
 
 	// Exactly 8 characters with letter+digit: should pass
 	req.Password = "abcdef1x"
@@ -647,13 +655,13 @@ func TestRegisterAccount_PasswordBoundary(t *testing.T) {
 
 func TestRegisterAccount_UserModelFields(t *testing.T) {
 	// Verifies the user model is correctly populated before being passed to the repository.
-	var capturedParams *interfaces.RegistrationParams
+	var capturedParams *models.RegistrationParams
 
 	orgID := uuid.New()
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
+		registerAccountFn: func(_ context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
 			capturedParams = params
-			return &interfaces.RegistrationResult{
+			return &models.RegistrationResult{
 				User:         params.User,
 				Organization: &models.Organization{OrgID: orgID, TenantID: 1, Name: "Acme Corp"},
 				TenantID:     1,
@@ -663,7 +671,7 @@ func TestRegisterAccount_UserModelFields(t *testing.T) {
 
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
@@ -712,14 +720,14 @@ func TestRegisterAccount_EmailNormalization(t *testing.T) {
 	userStore := &mockUserStore{
 		getByEmailFn: func(_ context.Context, email string) (*models.User, error) {
 			capturedEmail = email
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
 	orgID := uuid.New()
 	regRepo := &mockRegistrationRepo{
-		registerAccountFn: func(_ context.Context, params *interfaces.RegistrationParams) (*interfaces.RegistrationResult, error) {
-			return &interfaces.RegistrationResult{
+		registerAccountFn: func(_ context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
+			return &models.RegistrationResult{
 				User:         params.User,
 				Organization: &models.Organization{OrgID: orgID, TenantID: 1, Name: "Acme Corp"},
 				TenantID:     1,
@@ -763,7 +771,7 @@ func TestRegisterAccount_InvalidEmailFormat(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errEmailInvalidFormat)
+	assert.ErrorIs(t, err, ErrEmailInvalidFormat)
 }
 
 func TestRegisterAccount_EmailTooLong(t *testing.T) {
@@ -779,7 +787,7 @@ func TestRegisterAccount_EmailTooLong(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errFieldTooLong)
+	assert.ErrorIs(t, err, ErrFieldTooLong)
 }
 
 func TestRegisterAccount_FieldTooLong(t *testing.T) {
@@ -797,7 +805,7 @@ func TestRegisterAccount_FieldTooLong(t *testing.T) {
 		result, err := svc.RegisterAccount(testutil.TestContext(), req)
 		assert.Nil(t, result)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, errFieldTooLong)
+		assert.ErrorIs(t, err, ErrFieldTooLong)
 	})
 
 	t.Run("lastName exceeds max length", func(t *testing.T) {
@@ -806,7 +814,7 @@ func TestRegisterAccount_FieldTooLong(t *testing.T) {
 		result, err := svc.RegisterAccount(testutil.TestContext(), req)
 		assert.Nil(t, result)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, errFieldTooLong)
+		assert.ErrorIs(t, err, ErrFieldTooLong)
 	})
 
 	t.Run("companyName exceeds max length", func(t *testing.T) {
@@ -815,7 +823,7 @@ func TestRegisterAccount_FieldTooLong(t *testing.T) {
 		result, err := svc.RegisterAccount(testutil.TestContext(), req)
 		assert.Nil(t, result)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, errFieldTooLong)
+		assert.ErrorIs(t, err, ErrFieldTooLong)
 	})
 }
 
@@ -830,7 +838,7 @@ func TestRegisterAccount_DuplicateEmail_NoPII(t *testing.T) {
 			if email == "sensitive@example.com" {
 				return existingUser, nil
 			}
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 
@@ -846,6 +854,6 @@ func TestRegisterAccount_DuplicateEmail_NoPII(t *testing.T) {
 	result, err := svc.RegisterAccount(testutil.TestContext(), req)
 	assert.Nil(t, result)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, errEmailExists)
+	assert.ErrorIs(t, err, ErrEmailExists)
 	assert.NotContains(t, err.Error(), "sensitive@example.com", "error message must not leak the email address (PII)")
 }

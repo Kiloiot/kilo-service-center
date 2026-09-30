@@ -45,7 +45,7 @@ func TestServer_DetachComplete_InvalidSignature_LogsTenantMetadata(t *testing.T)
 
 	// Use existing test environment helper with NO endpoint (unknown endpoint scenario)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: true,
+		DetachSignatureValidationEnabled: detachSigValidationOn,
 		MessageEncoding:                  EncodingJSON,
 	}, nil) // nil endpoint = unknown endpoint
 
@@ -61,7 +61,7 @@ func TestServer_DetachComplete_InvalidSignature_LogsTenantMetadata(t *testing.T)
 	detachMsg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: detachPayload}
 
 	// Call handleDetach - validation fails, sends error directly (no detRsp, no three-way handshake)
-	err := env.server.handleDetach(env.server, env.session, detachMsg, detachPayload)
+	err := env.server.handleDetach(env.session, detachMsg, detachPayload)
 
 	// Assert: handleDetach sends error but doesn't return error (BSSCI pattern: sendError returns nil)
 	require.NoError(t, err, "handleDetach should send error but not return error")
@@ -118,7 +118,7 @@ func TestServer_DetachComplete_EndpointNotFound_SendsEnoent(t *testing.T) {
 
 	// Use existing test environment helper with NO endpoint (unknown endpoint scenario)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: true,
+		DetachSignatureValidationEnabled: detachSigValidationOn,
 		MessageEncoding:                  EncodingJSON,
 	}, nil) // nil endpoint = unknown endpoint
 
@@ -130,7 +130,7 @@ func TestServer_DetachComplete_EndpointNotFound_SendsEnoent(t *testing.T) {
 	detachMsg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: detachPayload}
 
 	// Call handleDetach - validation fails with 404, sends error directly (no detRsp, no three-way handshake)
-	err := env.server.handleDetach(env.server, env.session, detachMsg, detachPayload)
+	err := env.server.handleDetach(env.session, detachMsg, detachPayload)
 
 	// Assert: handleDetach sends error but doesn't return error (BSSCI pattern: sendError returns nil)
 	require.NoError(t, err, "handleDetach should send error but not return error")

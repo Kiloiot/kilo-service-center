@@ -7,7 +7,9 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	"github.com/google/uuid"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 // UserStore provides user persistence operations.
@@ -22,12 +24,16 @@ type OrganizationMembershipStore interface {
 	ListUserMemberships(ctx context.Context, userID uuid.UUID) ([]*models.OrganizationMembershipWithOrg, error)
 }
 
+// OrgDirectory resolves an organization by its tenant id.
+type OrgDirectory interface {
+	GetOrgByTenantID(ctx context.Context, tenantID int64) (*models.Organization, error)
+}
+
 // RefreshTokenStore provides refresh token persistence.
 type RefreshTokenStore interface {
 	Create(ctx context.Context, token *models.RefreshToken) error
 	GetByHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
 	MarkReplaced(ctx context.Context, tokenID, replacedByID uuid.UUID) error
-	RevokeByHash(ctx context.Context, tokenHash string) error
 	RevokeByUserID(ctx context.Context, userID uuid.UUID) error
 }
 
@@ -101,8 +107,10 @@ type OIDCClaims struct {
 
 // OAuth2Client provides OAuth2 PKCE protocol operations.
 type OAuth2Client interface {
-	// GetAuthorizationURL builds the OAuth2 authorization URL with state and PKCE.
-	GetAuthorizationURL(state string) (authURL string, codeVerifier string)
+	// GetAuthorizationURL builds the OAuth2 authorization URL with state and
+	// PKCE. It fails when the PKCE verifier cannot be generated from secure
+	// randomness; no URL is produced from a predictable verifier.
+	GetAuthorizationURL(state string) (authURL string, codeVerifier string, err error)
 
 	// ExchangeCode exchanges authorization code for tokens using PKCE verifier.
 	ExchangeCode(ctx context.Context, code, codeVerifier string) (*OAuth2TokenResponse, error)
@@ -131,3 +139,28 @@ type OAuth2UserInfo struct {
 // OrganizationResolver resolves external org claims to local organization IDs.
 // Delegated to KC-Core/pkg/org for cross-service use.
 type OrganizationResolver = org.OrganizationResolver
+
+// TokenIssuer is the token capability the local-login service consumes:
+// issuing both token kinds, parsing refresh tokens on renewal, and reporting
+// their lifetimes.
+type TokenIssuer interface {
+	IssueAccessToken(userID uuid.UUID, orgID *uuid.UUID) (string, error)
+	IssueRefreshToken(userID uuid.UUID) (string, error)
+	ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Token, error)
+	GetAccessTTL() int64
+	GetRefreshTTL() int64
+	GetRefreshExpiresAt() time.Time
+}
+
+// AccessTokenIssuer is the token capability the external (OIDC/OAuth2) auth
+// service consumes: access tokens only, refresh lifecycle handled upstream.
+type AccessTokenIssuer interface {
+	IssueAccessToken(userID uuid.UUID, orgID *uuid.UUID) (string, error)
+	GetAccessTTL() int64
+}
+
+// MembershipSynthesizer produces a fallback organization membership for users
+// without one, as Community Edition does with its default organization.
+type MembershipSynthesizer interface {
+	SynthesizeMembership(ctx context.Context, user *models.User) (*grpcservices.OrganizationMembership, error)
+}

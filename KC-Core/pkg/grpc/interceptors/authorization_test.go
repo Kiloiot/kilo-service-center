@@ -2,32 +2,35 @@ package interceptors
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync/atomic"
 	"testing"
-	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/authz"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
-	"github.com/google/uuid"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
-// mockRoleResolver records calls and returns preconfigured results.
-type mockRoleResolver struct {
-	role      string
-	active    bool
-	err       error
-	callCount atomic.Int32
+type stubRoleSource struct {
+	roles authz.Roles
+	err   error
+	calls atomic.Int32
 }
 
-func (m *mockRoleResolver) GetUserRole(_ context.Context, _, _ string) (string, bool, error) {
-	m.callCount.Add(1)
-	return m.role, m.active, m.err
+func (s *stubRoleSource) Roles(context.Context) (authz.Roles, error) {
+	s.calls.Add(1)
+	return s.roles, s.err
+}
+
+type stubPolicy map[string]authz.Requirement
+
+func (p stubPolicy) Requirement(method string) (authz.Requirement, bool) {
+	requirement, ok := p[method]
+	return requirement, ok
 }
 
 // noopLogger satisfies the logger.Logger interface without producing output.
@@ -46,196 +49,122 @@ func (noopLogger) FatalContext(_ context.Context, _ string, _ ...interface{}) {}
 func (l noopLogger) WithField(_ string, _ interface{}) logger.Logger          { return l }
 func (l noopLogger) WithFields(_ map[string]interface{}) logger.Logger        { return l }
 
-const testMethod = "/kilocenter.api.v1.CoreService/TestMethod"
+const (
+	testEndpointMethod = "/kilocenter.api.v1.CoreService/ListEndPoints"
+	testUnknownMethod  = "/kilocenter.api.v1.CoreService/UnknownMethod"
+	testPublicMethod   = "/kilocenter.api.v1.CoreService/GetReleaseInfo"
+)
 
-// newTestContext returns a context populated with a random org UUID and user ID.
-func newTestContext() context.Context {
-	ctx := testutil.TestContext()
-	ctx = pkgcontext.WithOrganizationID(ctx, uuid.New())
-	ctx = pkgcontext.WithUserID(ctx, uuid.New().String())
-	return ctx
-}
+var errTestIdentityDown = errors.New("identity unavailable")
 
-// passHandler is a trivial gRPC handler that returns a sentinel value.
-func passHandler(_ context.Context, _ interface{}) (interface{}, error) {
-	return "ok", nil
-}
-
-func invokeInterceptor(t *testing.T, interceptor *AuthorizationInterceptor, ctx context.Context) (interface{}, error) { //nolint:revive // test helper keeps ctx as second param for readability
+func invokeUnary(t *testing.T, ai *AuthorizationInterceptor, method string) (authz.Roles, error) {
 	t.Helper()
-	unary := interceptor.UnaryInterceptor()
-	info := &grpc.UnaryServerInfo{FullMethod: testMethod}
-	return unary(ctx, nil, info, passHandler)
+	var seen authz.Roles
+	handler := func(ctx context.Context, _ interface{}) (interface{}, error) {
+		seen = authz.FromContext(ctx)
+		return nil, nil
+	}
+	_, err := ai.UnaryInterceptor()(testutil.TestContext(), nil, &grpc.UnaryServerInfo{FullMethod: method}, handler)
+	return seen, err
 }
 
-func TestAdminRoleAllowed(t *testing.T) {
-	resolver := &mockRoleResolver{role: "admin", active: true}
-	policies := map[string][]string{testMethod: {"admin", "owner"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
+func requireCode(t *testing.T, err error, want codes.Code) {
+	t.Helper()
+	if status.Code(err) != want {
+		t.Fatalf("code = %v (%v), want %v", status.Code(err), err, want)
+	}
+}
 
-	resp, err := invokeInterceptor(t, interceptor, newTestContext())
+func TestAuthorization_GrantedCallCarriesRoles(t *testing.T) {
+	roles := authz.Roles{EndpointManager: true}
+	ai := NewAuthorizationInterceptor(&stubRoleSource{roles: roles}, stubPolicy{testEndpointMethod: authz.EndpointManager}, noopLogger{})
+
+	seen, err := invokeUnary(t, ai, testEndpointMethod)
 	if err != nil {
-		t.Fatalf("expected no error for admin role, got: %v", err)
+		t.Fatalf("granted call refused: %v", err)
 	}
-	if resp != "ok" {
-		t.Fatalf("expected handler response, got: %v", resp)
+	if seen != roles {
+		t.Fatalf("handler saw roles %+v, want %+v", seen, roles)
 	}
 }
 
-func TestOwnerRoleAllowed(t *testing.T) {
-	resolver := &mockRoleResolver{role: "owner", active: true}
-	policies := map[string][]string{testMethod: {"admin", "owner"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
+func TestAuthorization_InsufficientRoleDeniedAndRecorded(t *testing.T) {
+	events := &recordingEventWriter{}
+	ai := NewAuthorizationInterceptor(&stubRoleSource{roles: authz.Roles{BaseStationManager: true}},
+		stubPolicy{testEndpointMethod: authz.EndpointManager}, noopLogger{}).WithEventWriter(events)
 
-	resp, err := invokeInterceptor(t, interceptor, newTestContext())
+	_, err := invokeUnary(t, ai, testEndpointMethod)
+	requireCode(t, err, codes.PermissionDenied)
+	if status.Convert(err).Message() != grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInsufficientRole) {
+		t.Fatalf("message = %q, want the catalog message", status.Convert(err).Message())
+	}
+	if got := len(events.events); got != 1 {
+		t.Fatalf("recorded %d permission-denied events, want 1", got)
+	}
+}
+
+func TestAuthorization_UnknownMethodRefusedWithoutResolvingRoles(t *testing.T) {
+	source := &stubRoleSource{roles: authz.AllRoles}
+	ai := NewAuthorizationInterceptor(source, stubPolicy{}, noopLogger{})
+
+	_, err := invokeUnary(t, ai, testUnknownMethod)
+	requireCode(t, err, codes.PermissionDenied)
+	if source.calls.Load() != 0 {
+		t.Fatal("roles were resolved for a method the policy does not know")
+	}
+}
+
+func TestAuthorization_PublicMethodSkipsRoleResolution(t *testing.T) {
+	source := &stubRoleSource{}
+	ai := NewAuthorizationInterceptor(source, stubPolicy{}, noopLogger{})
+
+	if _, err := invokeUnary(t, ai, testPublicMethod); err != nil {
+		t.Fatalf("public method refused: %v", err)
+	}
+	if source.calls.Load() != 0 {
+		t.Fatal("roles were resolved for a public method")
+	}
+}
+
+func TestAuthorization_ResolutionFailureFailsClosed(t *testing.T) {
+	ai := NewAuthorizationInterceptor(&stubRoleSource{err: errTestIdentityDown},
+		stubPolicy{testEndpointMethod: authz.AnyRole}, noopLogger{})
+
+	_, err := invokeUnary(t, ai, testEndpointMethod)
+	requireCode(t, err, codes.Internal)
+}
+
+func TestAuthorization_ResolutionTokenErrorKeepsItsCode(t *testing.T) {
+	missingUser := grpcerrors.NewTokenError(grpcerrors.ErrTokenMissingUserCtx, nil)
+	ai := NewAuthorizationInterceptor(&stubRoleSource{err: missingUser},
+		stubPolicy{testEndpointMethod: authz.AnyRole}, noopLogger{})
+
+	_, err := invokeUnary(t, ai, testEndpointMethod)
+	requireCode(t, err, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenMissingUserCtx))
+}
+
+type stubServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s stubServerStream) Context() context.Context { return s.ctx }
+
+func TestAuthorization_StreamCarriesRoles(t *testing.T) {
+	roles := authz.Roles{BaseStationManager: true}
+	ai := NewAuthorizationInterceptor(&stubRoleSource{roles: roles}, stubPolicy{testEndpointMethod: authz.AnyManager}, noopLogger{})
+
+	var seen authz.Roles
+	err := ai.StreamInterceptor()(nil, stubServerStream{ctx: testutil.TestContext()},
+		&grpc.StreamServerInfo{FullMethod: testEndpointMethod},
+		func(_ interface{}, ss grpc.ServerStream) error {
+			seen = authz.FromContext(ss.Context())
+			return nil
+		})
 	if err != nil {
-		t.Fatalf("expected no error for owner role, got: %v", err)
+		t.Fatalf("granted stream refused: %v", err)
 	}
-	if resp != "ok" {
-		t.Fatalf("expected handler response, got: %v", resp)
-	}
-}
-
-func TestMemberRoleDenied(t *testing.T) {
-	resolver := &mockRoleResolver{role: "member", active: true}
-	policies := map[string][]string{testMethod: {"admin", "owner"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
-
-	_, err := invokeInterceptor(t, interceptor, newTestContext())
-	if err == nil {
-		t.Fatal("expected PermissionDenied error for member role, got nil")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got: %v", err)
-	}
-	if st.Code() != codes.PermissionDenied {
-		t.Fatalf("expected PermissionDenied, got: %v", st.Code())
-	}
-}
-
-func TestInactiveAdminDenied(t *testing.T) {
-	resolver := &mockRoleResolver{role: "admin", active: false}
-	policies := map[string][]string{testMethod: {"admin", "owner"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
-
-	_, err := invokeInterceptor(t, interceptor, newTestContext())
-	if err == nil {
-		t.Fatal("expected PermissionDenied error for inactive admin, got nil")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got: %v", err)
-	}
-	if st.Code() != codes.PermissionDenied {
-		t.Fatalf("expected PermissionDenied, got: %v", st.Code())
-	}
-}
-
-func TestMissingUserInContext(t *testing.T) {
-	resolver := &mockRoleResolver{role: "admin", active: true}
-	policies := map[string][]string{testMethod: {"admin"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
-
-	// Context with org but no user
-	ctx := testutil.TestContext()
-	ctx = pkgcontext.WithOrganizationID(ctx, uuid.New())
-
-	_, err := invokeInterceptor(t, interceptor, ctx)
-	if err == nil {
-		t.Fatal("expected error when user is missing from context, got nil")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got: %v", err)
-	}
-	if st.Code() != codes.PermissionDenied {
-		t.Fatalf("expected PermissionDenied, got: %v", st.Code())
-	}
-}
-
-func TestMissingOrgInContext(t *testing.T) {
-	resolver := &mockRoleResolver{role: "admin", active: true}
-	policies := map[string][]string{testMethod: {"admin"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
-
-	// Context with user but no org
-	ctx := testutil.TestContext()
-	ctx = pkgcontext.WithUserID(ctx, uuid.New().String())
-
-	_, err := invokeInterceptor(t, interceptor, ctx)
-	if err == nil {
-		t.Fatal("expected error when org is missing from context, got nil")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got: %v", err)
-	}
-	if st.Code() != codes.PermissionDenied {
-		t.Fatalf("expected PermissionDenied, got: %v", st.Code())
-	}
-}
-
-func TestUnknownRPCPassthrough(t *testing.T) {
-	resolver := &mockRoleResolver{role: "member", active: true}
-	policies := map[string][]string{testMethod: {"admin"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
-
-	// Call a method not in the policy map
-	unary := interceptor.UnaryInterceptor()
-	info := &grpc.UnaryServerInfo{FullMethod: "/kilocenter.api.v1.CoreService/UnknownMethod"}
-	resp, err := unary(testutil.TestContext(), nil, info, passHandler)
-	if err != nil {
-		t.Fatalf("expected passthrough for unknown RPC, got: %v", err)
-	}
-	if resp != "ok" {
-		t.Fatalf("expected handler response, got: %v", resp)
-	}
-	if resolver.callCount.Load() != 0 {
-		t.Fatal("resolver should not be called for methods outside the policy map")
-	}
-}
-
-func TestCacheHitSkipsResolver(t *testing.T) {
-	resolver := &mockRoleResolver{role: "admin", active: true}
-	policies := map[string][]string{testMethod: {"admin"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
-
-	ctx := newTestContext()
-
-	// First call populates the cache
-	_, err := invokeInterceptor(t, interceptor, ctx)
-	if err != nil {
-		t.Fatalf("first call failed: %v", err)
-	}
-	if resolver.callCount.Load() != 1 {
-		t.Fatalf("expected resolver to be called once, got %d", resolver.callCount.Load())
-	}
-
-	// Second call with the same context should use the cache
-	_, err = invokeInterceptor(t, interceptor, ctx)
-	if err != nil {
-		t.Fatalf("second call failed: %v", err)
-	}
-	if resolver.callCount.Load() != 1 {
-		t.Fatalf("expected resolver call count to remain 1 (cache hit), got %d", resolver.callCount.Load())
-	}
-}
-
-func TestResolverErrorDenied(t *testing.T) {
-	resolver := &mockRoleResolver{err: fmt.Errorf("database unavailable")}
-	policies := map[string][]string{testMethod: {"admin"}}
-	interceptor := NewAuthorizationInterceptor(resolver, policies, noopLogger{}, 30*time.Second)
-
-	_, err := invokeInterceptor(t, interceptor, newTestContext())
-	if err == nil {
-		t.Fatal("expected error when resolver fails, got nil")
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got: %v", err)
-	}
-	if st.Code() != codes.PermissionDenied {
-		t.Fatalf("expected PermissionDenied, got: %v", st.Code())
+	if seen != roles {
+		t.Fatalf("stream handler saw roles %+v, want %+v", seen, roles)
 	}
 }

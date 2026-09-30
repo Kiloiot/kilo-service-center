@@ -5,84 +5,73 @@ package endpoint
 
 import (
 	"context"
-	"time"
+	"errors"
+	"fmt"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-// FieldUpdater is the single repository capability DetachEndpoint needs;
-// both the full endpoint repository and narrower protocol-server views
-// satisfy it.
-type FieldUpdater interface {
-	UpdateFields(ctx context.Context, tenantID int64, endpointID int64, updates map[string]interface{}) error
+// errDetachState reports a failed write of an endpoint's detach state.
+var errDetachState = errors.New("endpoint detach state")
+
+// DetachStateUpdater is the repository capability DetachEndpoint needs; both
+// the full endpoint repository and narrower protocol-server views satisfy it.
+type DetachStateUpdater interface {
+	EndpointDetachStateUpdate(ctx context.Context, tenantID int64, endpointID int64, p models.EndpointDetachStateParams) error
+	TransitionEndpointStatus(ctx context.Context, tenantID int64, endpointID int64, status string) (bool, error)
 }
 
-// DetachEndpoint builds the canonical endpoint detach update map and applies it.
+// DetachTelemetry carries the optional detach-message fields recorded alongside
+// the detach state transition. A nil *DetachTelemetry records no telemetry.
+type DetachTelemetry struct {
+	// Sign is the 4-byte endpoint detach signature; ignored unless it is
+	// exactly 4 bytes.
+	Sign []byte
+	// PacketCnt is the endpoint packet counter from the detach message; nil
+	// means it was not provided.
+	PacketCnt *uint32
+}
+
+// DetachEndpoint marks an endpoint detached without modifying identity fields
+// (nwk_key, app_key, etc.). It clears the base-station attachment and the
+// propagation state, optionally recording detach-message telemetry, and
+// reports whether this call is the one that moved the endpoint to detached;
+// the status transition records the decision time.
 //
-// This helper mirrors the logic from KC-Core/pkg/bssci/server.go:1673 and :3573
-// without modifying identity fields (nwk_key, app_key, etc.). It updates only
-// the attachment state and telemetry fields that indicate the endpoint is no
-// longer attached to a base station.
-//
-// Parameters:
-//   - ctx: Context for database operations (should have timeout)
-//   - repo: Endpoint repository for database updates
-//   - tenantID: Tenant identifier for isolation
-//   - endpointID: Database ID of the endpoint to detach
-//   - telemetry: Optional map with "sign", "packetCnt", "rxDuration", "eqSnr", "profile" for BSSCI use
-//
-// Returns:
-//   - error: Database error if update fails
-//
-// The helper is called by:
-//   - BSSCI detach handler (KC-Core/pkg/bssci/server.go:1673) with telemetry from detach message
-//   - BSSCI detach propagate complete (KC-Core/pkg/bssci/server.go:3573) with nil telemetry
-//   - SCACI deregister handler (KC-Core/pkg/scaci/handler_operations.go) with nil telemetry
+// The attachment decider calls it for every detachment, with the det's
+// telemetry for one heard over the air.
 func DetachEndpoint(
 	ctx context.Context,
-	repo FieldUpdater,
+	repo DetachStateUpdater,
 	tenantID int64,
 	endpointID int64,
-	telemetry map[string]interface{},
-) error {
-	// Build canonical detach update map (exact fields from BSSCI)
-	// Default to current time, but override with radio rxTime if provided
-	detachTime := time.Now().UnixNano()
+	telemetry *DetachTelemetry,
+) (bool, error) {
+	propagateStatus := PropagateStatusDetached
+	propagated := false
 
-	updates := map[string]interface{}{
-		"last_attached_bs_eui": nil, // Clear BS attachment
-		"last_detach_time":     detachTime,
-		"propagate_status":     PropagateStatusDetached, // Use shared constant
-		"propagated":           false,
-		"propagated_at":        nil,
-		"ep_status":            EndpointStatusDetached,
+	params := models.EndpointDetachStateParams{
+		LastAttachedBsEui: models.OptionalBytes{Set: true}, // clear attachment
+		PropagateStatus:   &propagateStatus,
+		Propagated:        &propagated,
+		PropagatedAt:      models.OptionalNullTime{Set: true}, // clear timestamp
 	}
 
-	// Add optional telemetry fields (BSSCI-specific, ignored when nil)
 	if telemetry != nil {
-		// Use radio reception time instead of server processing time
-		if rxTime, ok := telemetry["rxTime"].(int64); ok {
-			updates["last_detach_time"] = rxTime
+		if len(telemetry.Sign) == 4 {
+			params.LastDetachSign = telemetry.Sign
 		}
-
-		// Store detach signature if provided (4-byte array from BSSCI)
-		if sign, ok := telemetry["sign"].([]byte); ok && len(sign) == 4 {
-			updates["last_detach_sign"] = sign
+		if telemetry.PacketCnt != nil {
+			params.LastDetachPacketCnt = telemetry.PacketCnt
 		}
-
-		// Store packet counter from detach message (handles both uint32 and int64)
-		if packetCnt, ok := telemetry["packetCnt"].(uint32); ok {
-			updates["last_detach_packet_cnt"] = packetCnt
-		} else if packetCnt, ok := telemetry["packetCnt"].(int64); ok {
-			// Safe conversion with bounds check (gosec G115)
-			// Silently skip invalid packet count rather than failing entire detach
-			if packetCnt >= 0 && packetCnt <= 4294967295 {
-				updates["last_detach_packet_cnt"] = uint32(packetCnt)
-			}
-		}
-
-		// Note: rxDuration, eqSnr, profile handled by separate UpdateRadioMetrics call in BSSCI
-		// This helper only manages the detach state fields
 	}
 
-	// Apply updates via repository with tenant isolation
-	return repo.UpdateFields(ctx, tenantID, endpointID, updates)
+	if err := repo.EndpointDetachStateUpdate(ctx, tenantID, endpointID, params); err != nil {
+		return false, fmt.Errorf("%w: %w", errDetachState, err)
+	}
+	detached, err := repo.TransitionEndpointStatus(ctx, tenantID, endpointID, EndpointStatusDetached)
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", errDetachState, err)
+	}
+	return detached, nil
 }

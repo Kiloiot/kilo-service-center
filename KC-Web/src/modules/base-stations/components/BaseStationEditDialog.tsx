@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 
-import type { GenerateCertificateResponse } from "@api-types/api";
 import type { BaseStationUI } from "@api-types/api";
 import { useUpdateBaseStation, useUpdateBaseStationEui } from "@hooks";
 import {
@@ -12,154 +11,44 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  IconButton,
-  InputAdornment,
   TextField,
-  Tooltip,
 } from "@mui/material";
 
-import { apiService } from "@services/api";
-import type { GrpcApiError } from "@services/grpc/client";
-import { formatEUIWithDashes, isValidEUI } from "@utils/formatters";
+import { useClipboard } from "@hooks/useClipboard";
+import {
+  formatEui,
+  formatEuiInput,
+  normalizeEui,
+  validateEui,
+} from "@utils/eui";
 import { getMonoBody1 } from "@utils/typography";
 import {
+  BS_COPY_FIELDS,
   BS_DETAIL_LAYOUT,
-  CERT_VALIDITY_DAYS,
-  GEO_BOUNDS,
-  TIMING_COPY_FEEDBACK,
+  STATION_LOCATION_STATE,
 } from "@constants/app";
 import {
   BASE_STATION_DETAILS,
-  ERR_BS_EUI_EXISTS,
-  ERR_BS_NOT_FOUND,
-  ERR_UPDATE_BS,
-  ERR_UPDATE_BS_EUI,
-  ERR_UPDATE_BS_NAME_PARTIAL,
-  PLACEHOLDER_BS_EUI,
   VAL_BS_EUI_FORMAT,
   VAL_BS_EUI_REQUIRED,
-  VAL_LAT_LON_PAIR,
-  VAL_LATITUDE_RANGE,
-  VAL_LONGITUDE_RANGE,
 } from "@constants/messages";
-import { CheckCircleIcon, ContentCopyIcon } from "@theme/icons";
 
+import { useCertificateRegeneration } from "../hooks";
+import {
+  type BaseStationEditFormData,
+  buildLocationUpdateData,
+  euiUpdateFailure,
+  hasLocationChanged,
+  initialEditForm,
+  updateFailure,
+  validateLocationForm,
+} from "../utils/base-station-edit-form";
+import { stationLocationState } from "../utils/location-state";
 import BaseStationCertRegenDialog from "./BaseStationCertRegenDialog";
 import BaseStationCertSection from "./BaseStationCertSection";
+import BaseStationEuiField from "./BaseStationEuiField";
 import BaseStationLocationFields from "./BaseStationLocationFields";
 import ScUrlCopyField from "./ScUrlCopyField";
-
-interface BaseStationEditFormData {
-  name: string;
-  eui: string;
-  latitude: string;
-  longitude: string;
-  altitude: string;
-}
-
-interface BaseStationDetailsSnapshot {
-  locationSource?: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  altitude?: number | null;
-}
-
-/**
- * Validates the manual-location fields. GPS-sourced rows are read-only so
- * an empty errors map is returned. Returns sparse errors map keyed by
- * "latitude" / "longitude".
- */
-function validateLocationForm(
-  form: BaseStationEditFormData,
-  isGps: boolean,
-): Record<string, string> {
-  if (isGps) return {};
-  const errs: Record<string, string> = {};
-  const hasLat = form.latitude.trim() !== "";
-  const hasLng = form.longitude.trim() !== "";
-  if (hasLat !== hasLng) {
-    errs.latitude = VAL_LAT_LON_PAIR;
-    errs.longitude = VAL_LAT_LON_PAIR;
-  }
-  if (hasLat) {
-    const lat = parseFloat(form.latitude);
-    if (
-      isNaN(lat) ||
-      lat < GEO_BOUNDS.LATITUDE_MIN ||
-      lat > GEO_BOUNDS.LATITUDE_MAX
-    ) {
-      errs.latitude = VAL_LATITUDE_RANGE;
-    }
-  }
-  if (hasLng) {
-    const lng = parseFloat(form.longitude);
-    if (
-      isNaN(lng) ||
-      lng < GEO_BOUNDS.LONGITUDE_MIN ||
-      lng > GEO_BOUNDS.LONGITUDE_MAX
-    ) {
-      errs.longitude = VAL_LONGITUDE_RANGE;
-    }
-  }
-  return errs;
-}
-
-/**
- * Builds the location update payload. number = set, null = clear,
- * undefined-key = omit. GPS rows always return {} (do not modify).
- */
-function buildLocationUpdateData(
-  form: BaseStationEditFormData,
-  details: BaseStationDetailsSnapshot | null | undefined,
-): {
-  latitude?: number | null;
-  longitude?: number | null;
-  altitude?: number | null;
-} {
-  if (details?.locationSource === "gps") return {};
-  const hasLat = form.latitude.trim() !== "";
-  const hasLng = form.longitude.trim() !== "";
-  const hadLat = details?.latitude != null;
-  if (!hasLat && !hasLng && hadLat) {
-    return { latitude: null, longitude: null, altitude: null };
-  }
-  if (hasLat && hasLng) {
-    const data: {
-      latitude: number;
-      longitude: number;
-      altitude?: number | null;
-    } = {
-      latitude: parseFloat(form.latitude),
-      longitude: parseFloat(form.longitude),
-    };
-    if (form.altitude.trim()) {
-      data.altitude = parseFloat(form.altitude);
-    } else if (details?.altitude != null) {
-      data.altitude = null;
-    }
-    return data;
-  }
-  return {};
-}
-
-/**
- * Returns true when the form's lat/lng/altitude differ from the fetched
- * details. GPS rows always return false (no manual edits propagate).
- */
-function hasLocationChanged(
-  form: BaseStationEditFormData,
-  details: BaseStationDetailsSnapshot | null | undefined,
-): boolean {
-  if (details?.locationSource === "gps") return false;
-  const detailLat = details?.latitude != null ? String(details.latitude) : "";
-  const detailLng = details?.longitude != null ? String(details.longitude) : "";
-  const detailAlt = details?.altitude != null ? String(details.altitude) : "";
-  return (
-    form.latitude.trim() !== detailLat ||
-    form.longitude.trim() !== detailLng ||
-    form.altitude.trim() !== detailAlt
-  );
-}
 
 interface BaseStationEditDialogProps {
   open: boolean;
@@ -170,8 +59,8 @@ interface BaseStationEditDialogProps {
     serviceCenterUrl: string;
   };
   baseStationDetails: BaseStationUI | null | undefined;
-  onSuccess: (newEui?: string) => void;
-  onError: (message: string) => void;
+  onSuccess: () => void;
+  onEuiChange: (newEui: string, changesSaved: boolean) => void;
 }
 
 /** Edit dialog for base station properties, location, SC URL, and certificates. */
@@ -181,7 +70,7 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
   baseStation,
   baseStationDetails,
   onSuccess,
-  onError,
+  onEuiChange,
 }) => {
   const [editFormData, setEditFormData] = useState<BaseStationEditFormData>({
     name: "",
@@ -195,106 +84,59 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
     {},
   );
   const [editError, setEditError] = useState<string | null>(null);
-  const [euiCopied, setEuiCopied] = useState(false);
-  const [scUrlCopied, setScUrlCopied] = useState(false);
+  const clipboard = useClipboard();
 
-  // Certificate regeneration state
-  const [showRegenConfirm, setShowRegenConfirm] = useState(false);
-  const [regenCertData, setRegenCertData] =
-    useState<GenerateCertificateResponse | null>(null);
-  const [isRegenerating, setIsRegenerating] = useState(false);
+  const regeneration = useCertificateRegeneration(
+    baseStation.eui,
+    open,
+    setEditError,
+  );
 
   const updateBaseStationMutation = useUpdateBaseStation();
   const updateEuiMutation = useUpdateBaseStationEui();
 
   // Prefer regen-provided URL, then detail-fetched, then list-sourced
   const effectiveServiceCenterUrl =
-    regenCertData?.serviceCenterUrl ||
+    regeneration.issued?.serviceCenterUrl ||
     baseStationDetails?.serviceCenterUrl ||
     baseStation.serviceCenterUrl;
 
   // Initialize form data when dialog opens
   useEffect(() => {
     if (open) {
-      setEditFormData({
-        name: baseStation.name || "",
-        eui: formatEUIWithDashes(baseStation.eui),
-        latitude:
-          baseStationDetails?.latitude != null
-            ? String(baseStationDetails.latitude)
-            : "",
-        longitude:
-          baseStationDetails?.longitude != null
-            ? String(baseStationDetails.longitude)
-            : "",
-        altitude:
-          baseStationDetails?.altitude != null
-            ? String(baseStationDetails.altitude)
-            : "",
-      });
+      setEditFormData(
+        initialEditForm(baseStation.name, baseStation.eui, baseStationDetails),
+      );
       setEuiError(null);
       setLocationErrors({});
       setEditError(null);
-      setRegenCertData(null);
-      setShowRegenConfirm(false);
-      setIsRegenerating(false);
     }
   }, [open, baseStation.eui, baseStation.name, baseStationDetails]);
 
-  const handleClose = () => {
-    setRegenCertData(null);
-    setShowRegenConfirm(false);
-    setIsRegenerating(false);
-    onClose();
-  };
-
   const handleEuiChange = (value: string) => {
-    const formatted = formatEUIWithDashes(value);
-    setEditFormData((prev) => ({ ...prev, eui: formatted }));
+    setEditFormData((prev) => ({ ...prev, eui: formatEuiInput(value) }));
     if (euiError) setEuiError(null);
   };
 
-  const handleCopyEui = async () => {
-    const formattedEui = formatEUIWithDashes(baseStation.eui);
-    await navigator.clipboard.writeText(formattedEui);
-    setEuiCopied(true);
-    setTimeout(() => setEuiCopied(false), TIMING_COPY_FEEDBACK);
-  };
-
-  const handleCopyScUrl = async () => {
-    if (!effectiveServiceCenterUrl) return;
-    await navigator.clipboard.writeText(effectiveServiceCenterUrl);
-    setScUrlCopied(true);
-    setTimeout(() => setScUrlCopied(false), TIMING_COPY_FEEDBACK);
-  };
+  const handleCopyEui = () =>
+    clipboard.copy(formatEui(baseStation.eui), BS_COPY_FIELDS.EUI);
+  const handleCopyScUrl = () =>
+    clipboard.copy(effectiveServiceCenterUrl, BS_COPY_FIELDS.SC_URL);
 
   const validateLocation = (): boolean => {
     const errs = validateLocationForm(
       editFormData,
-      baseStationDetails?.locationSource === "gps",
+      stationLocationState(baseStationDetails) ===
+        STATION_LOCATION_STATE.GPS_FIX,
     );
     setLocationErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  const handleUpdateError = (error: unknown) => {
-    if (error instanceof Error && error.name === "GrpcApiError") {
-      const grpcError = error as GrpcApiError;
-      if (grpcError.isNotFound()) {
-        setEditError(ERR_BS_NOT_FOUND);
-      } else {
-        setEditError(ERR_UPDATE_BS);
-      }
-    } else {
-      setEditError(ERR_UPDATE_BS);
-    }
-  };
-
   const handleEditSave = async () => {
     setEditError(null);
-    const cleanedNewEui = editFormData.eui.replace(/-/g, "").toLowerCase();
-    const cleanedOldEui = baseStation.eui.replace(/-/g, "").toLowerCase();
-    const euiChanged = cleanedNewEui !== cleanedOldEui;
+    const cleanedNewEui = normalizeEui(editFormData.eui);
+    const euiChanged = cleanedNewEui !== normalizeEui(baseStation.eui);
     const nameChanged = editFormData.name !== (baseStation.name || "");
 
     if (euiChanged) {
@@ -302,7 +144,7 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
         setEuiError(VAL_BS_EUI_REQUIRED);
         return;
       }
-      if (!isValidEUI(editFormData.eui)) {
+      if (validateEui(editFormData.eui) !== null) {
         setEuiError(VAL_BS_EUI_FORMAT);
         return;
       }
@@ -318,131 +160,50 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
       editFormData,
       baseStationDetails,
     );
+    const changes =
+      nameChanged || locationChanged
+        ? { name: editFormData.name || undefined, ...locationData }
+        : undefined;
 
     if (euiChanged) {
-      updateEuiMutation.mutate(
-        { eui: baseStation.eui, newEui: cleanedNewEui },
-        {
-          onSuccess: () => {
-            if (nameChanged || locationChanged) {
-              updateBaseStationMutation.mutate(
-                {
-                  eui: cleanedNewEui,
-                  data: {
-                    name: editFormData.name || undefined,
-                    ...locationData,
-                  },
-                },
-                {
-                  onSuccess: () => onSuccess(cleanedNewEui),
-                  onError: () => {
-                    setEditError(ERR_UPDATE_BS_NAME_PARTIAL);
-                  },
-                },
-              );
-            } else {
-              onSuccess(cleanedNewEui);
-            }
-          },
-          onError: (error) => {
-            if (error instanceof Error && error.name === "GrpcApiError") {
-              const grpcError = error as GrpcApiError;
-              if (grpcError.isAlreadyExists()) {
-                setEuiError(ERR_BS_EUI_EXISTS);
-              } else if (grpcError.isInvalidArgument()) {
-                setEuiError(VAL_BS_EUI_FORMAT);
-              } else if (grpcError.isNotFound()) {
-                setEditError(ERR_BS_NOT_FOUND);
-              } else {
-                setEditError(ERR_UPDATE_BS_EUI);
-              }
-            } else {
-              setEditError(ERR_UPDATE_BS_EUI);
-            }
-          },
-        },
-      );
-    } else if (nameChanged || locationChanged) {
-      updateBaseStationMutation.mutate(
-        {
+      // Awaited rather than mutate callbacks: the list reloads under the old
+      // EUI's route and unmounts this dialog before the move completes.
+      try {
+        const { changesSaved } = await updateEuiMutation.mutateAsync({
           eui: baseStation.eui,
-          data: {
-            name: editFormData.name || undefined,
-            ...locationData,
-          },
-        },
+          newEui: cleanedNewEui,
+          changes,
+        });
+        onEuiChange(cleanedNewEui, changesSaved);
+      } catch (error) {
+        const failure = euiUpdateFailure(error);
+        (failure.onEui ? setEuiError : setEditError)(failure.message);
+      }
+    } else if (changes) {
+      updateBaseStationMutation.mutate(
+        { eui: baseStation.eui, data: changes },
         {
           onSuccess: () => onSuccess(),
-          onError: handleUpdateError,
+          onError: (error) => setEditError(updateFailure(error)),
         },
       );
     } else {
-      handleClose();
-    }
-  };
-
-  const handleRegenerateCerts = async () => {
-    setIsRegenerating(true);
-    try {
-      const response = await apiService.generateCertificate({
-        bsEui: formatEUIWithDashes(baseStation.eui),
-        validityDays: CERT_VALIDITY_DAYS.THREE_YEARS,
-      });
-      setRegenCertData(response);
-      setShowRegenConfirm(false);
-      onError(""); // Clear any previous error
-      onSuccess(); // Notify parent of cert regen success implicitly
-    } catch {
-      onError(BASE_STATION_DETAILS.REGENERATE_CERTS_ERROR);
-    } finally {
-      setIsRegenerating(false);
+      onClose();
     }
   };
 
   return (
     <>
-      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle>{BASE_STATION_DETAILS.DIALOG_EDIT_TITLE}</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
-            {/* Editable EUI field with copy button */}
-            <TextField
-              label={BASE_STATION_DETAILS.LABEL_EDIT_EUI}
+            <BaseStationEuiField
               value={editFormData.eui}
-              onChange={(e) => handleEuiChange(e.target.value)}
-              error={!!euiError}
-              helperText={euiError}
-              fullWidth
-              placeholder={PLACEHOLDER_BS_EUI}
-              slotProps={{
-                input: {
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Tooltip
-                        title={
-                          euiCopied
-                            ? BASE_STATION_DETAILS.LABEL_EUI_COPIED
-                            : BASE_STATION_DETAILS.ACTION_COPY_EUI
-                        }
-                      >
-                        <IconButton
-                          size="small"
-                          onClick={handleCopyEui}
-                          edge="end"
-                        >
-                          {euiCopied ? (
-                            <CheckCircleIcon fontSize="small" color="success" />
-                          ) : (
-                            <ContentCopyIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                  sx: (theme) => getMonoBody1(theme),
-                },
-              }}
-              sx={{ mb: 3 }}
+              error={euiError}
+              copied={clipboard.copiedField === BS_COPY_FIELDS.EUI}
+              onChange={handleEuiChange}
+              onCopy={handleCopyEui}
             />
 
             {/* Basic fields section */}
@@ -472,14 +233,17 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
               onClearError={(field) =>
                 setLocationErrors((prev) => ({ ...prev, [field]: "" }))
               }
-              isGps={baseStationDetails?.locationSource === "gps"}
+              isGps={
+                stationLocationState(baseStationDetails) ===
+                STATION_LOCATION_STATE.GPS_FIX
+              }
             />
 
             {/* Service Center URL (read-only with copy) */}
             {effectiveServiceCenterUrl && (
               <ScUrlCopyField
                 value={effectiveServiceCenterUrl}
-                copied={scUrlCopied}
+                copied={clipboard.copiedField === BS_COPY_FIELDS.SC_URL}
                 onCopy={handleCopyScUrl}
                 inputSxGetter={getMonoBody1}
               />
@@ -487,13 +251,13 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
 
             {/* Certificates section */}
             <BaseStationCertSection
-              regenCertData={regenCertData}
+              regenCertData={regeneration.issued}
               effectiveServiceCenterUrl={effectiveServiceCenterUrl}
-              scUrlCopied={scUrlCopied}
+              scUrlCopied={clipboard.copiedField === BS_COPY_FIELDS.SC_URL}
               onCopyScUrl={handleCopyScUrl}
-              isRegenerating={isRegenerating}
-              onRegenerate={() => setShowRegenConfirm(true)}
-              onError={onError}
+              isRegenerating={regeneration.isRegenerating}
+              onRegenerate={regeneration.askToConfirm}
+              onError={setEditError}
             />
           </Box>
         </DialogContent>
@@ -510,7 +274,7 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
           </Alert>
         )}
         <DialogActions>
-          <Button onClick={handleClose}>
+          <Button onClick={onClose}>
             {BASE_STATION_DETAILS.ACTION_CANCEL}
           </Button>
           <Button
@@ -528,13 +292,10 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
       </Dialog>
 
       <BaseStationCertRegenDialog
-        open={showRegenConfirm}
-        onClose={() => {
-          setShowRegenConfirm(false);
-          setIsRegenerating(false);
-        }}
-        onConfirm={handleRegenerateCerts}
-        isRegenerating={isRegenerating}
+        open={regeneration.confirming}
+        onClose={regeneration.cancel}
+        onConfirm={regeneration.regenerate}
+        isRegenerating={regeneration.isRegenerating}
       />
     </>
   );

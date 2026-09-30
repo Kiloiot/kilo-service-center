@@ -17,6 +17,20 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// Error prose for observability bootstrap failures.
+const (
+	errTextTraceExporterCreate = "failed to create OTLP trace exporter"
+	errTextResourceCreate      = "failed to create OTel resource"
+)
+
+// defaultMetricsPath is the metrics endpoint path used when the configuration
+// provides none.
+const defaultMetricsPath = "/metrics"
+
+// metricsReadHeaderTimeout bounds how long the metrics server waits for
+// request headers.
+const metricsReadHeaderTimeout = 5 * time.Second
+
 // TracingConfig mirrors the monitoring config fields relevant to tracing.
 type TracingConfig struct {
 	Enabled    bool
@@ -31,9 +45,12 @@ type MetricsConfig struct {
 	Path    string
 }
 
+const msgFmtMetricsServerError = "metrics server error on port %d: %v\n"
+
 // InitTracing sets up the OTel trace provider with OTLP gRPC export.
 // Returns a shutdown function and any initialization error.
 // If tracing is disabled, returns a no-op shutdown function.
+// msgFmtMetricsServerError reports a non-fatal metrics listener failure.
 func InitTracing(ctx context.Context, cfg TracingConfig, serviceName string) (func(context.Context) error, error) {
 	noop := func(context.Context) error { return nil }
 	if !cfg.Enabled {
@@ -48,7 +65,7 @@ func InitTracing(ctx context.Context, cfg TracingConfig, serviceName string) (fu
 
 	exporter, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
-		return noop, fmt.Errorf("failed to create OTLP trace exporter: %w", err)
+		return noop, fmt.Errorf("%s: %w", errTextTraceExporterCreate, err)
 	}
 
 	res, err := resource.New(ctx,
@@ -57,11 +74,11 @@ func InitTracing(ctx context.Context, cfg TracingConfig, serviceName string) (fu
 		),
 	)
 	if err != nil {
-		return noop, fmt.Errorf("failed to create OTel resource: %w", err)
+		return noop, fmt.Errorf("%s: %w", errTextResourceCreate, err)
 	}
 
 	sampler := sdktrace.AlwaysSample()
-	if cfg.SampleRate > 0 && cfg.SampleRate < 1.0 {
+	if cfg.SampleRate > 0 && cfg.SampleRate < 1 {
 		sampler = sdktrace.TraceIDRatioBased(cfg.SampleRate)
 	}
 
@@ -91,7 +108,7 @@ func InitMetrics(_ context.Context, cfg MetricsConfig, _ string) (func(context.C
 
 	path := cfg.Path
 	if path == "" {
-		path = "/metrics"
+		path = defaultMetricsPath
 	}
 
 	mux := http.NewServeMux()
@@ -100,13 +117,13 @@ func InitMetrics(_ context.Context, cfg MetricsConfig, _ string) (func(context.C
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
 		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: metricsReadHeaderTimeout,
 	}
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			// Metrics server failure is non-fatal
-			fmt.Printf("metrics server error on port %d: %v\n", cfg.Port, err)
+			fmt.Printf(msgFmtMetricsServerError, cfg.Port, err)
 		}
 	}()
 

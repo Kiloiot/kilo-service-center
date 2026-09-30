@@ -6,15 +6,17 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/google/uuid"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 type statusService struct {
 	pendingOps *map[bssci.SessionOpKey]*bssci.PendingOperation // INJECTED: shared map created in cmd/kilocenter/main.go
 	mu         *sync.RWMutex                                   // INJECTED: shared mutex from main wiring
-	repo       interfaces.PendingOperationRepository           // Repository for DB persistence
+	repo       PendingOperationStore                           // Repository for DB persistence
 	logger     logger.Logger
 }
 
@@ -25,7 +27,7 @@ type statusService struct {
 //   - mu: Pointer to shared mutex for thread-safe map access
 //   - repo: PendingOperationRepository for database persistence
 //   - logger: Logger instance for event tracking
-func NewStatusService(pendingOps *map[bssci.SessionOpKey]*bssci.PendingOperation, mu *sync.RWMutex, repo interfaces.PendingOperationRepository, log logger.Logger) bssci.StatusService {
+func NewStatusService(pendingOps *map[bssci.SessionOpKey]*bssci.PendingOperation, mu *sync.RWMutex, repo PendingOperationStore, log logger.Logger) bssci.StatusService {
 	return &statusService{
 		pendingOps: pendingOps,
 		mu:         mu,
@@ -49,8 +51,8 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 	operationData, err := json.Marshal(op.Message)
 	if err != nil {
 		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToMarshalPendingOperation,
-			"error", err,
-			"opId", opId)
+			logger.FieldError, err,
+			logger.FieldOpID, opId)
 		return err
 	}
 
@@ -59,14 +61,14 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 		metadataBytes, err := json.Marshal(op.Metadata)
 		if err != nil {
 			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToMarshalPendingOperationMetadata,
-				"error", err,
-				"opId", opId)
+				logger.FieldError, err,
+				logger.FieldOpID, opId)
 			return err
 		}
 		metadataJSON = json.RawMessage(metadataBytes)
 	}
 
-	if err := s.repo.Create(ctx, &interfaces.PendingOperationRequest{
+	if err := s.repo.Create(ctx, &models.PendingOperationRequest{
 		SessionID:     dbSessionID, // Use DB session ID (not in-memory session.ID)
 		OperationID:   opId,
 		OperationType: op.OperationType,
@@ -88,13 +90,13 @@ func (s *statusService) RecordPendingOperation(ctx context.Context, session *bss
 // commits, so a multi-frame sequence never has partially persisted recovery
 // state.
 func (s *statusService) RecordPendingOperations(ctx context.Context, session *bssci.Session, ops []*bssci.PendingOperation, dbSessionID int64) error {
-	reqs := make([]*interfaces.PendingOperationRequest, 0, len(ops))
+	reqs := make([]*models.PendingOperationRequest, 0, len(ops))
 	for _, op := range ops {
 		operationData, err := json.Marshal(op.Message)
 		if err != nil {
 			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToMarshalPendingOperation,
-				"error", err,
-				"opId", op.OperationID)
+				logger.FieldError, err,
+				logger.FieldOpID, op.OperationID)
 			return err
 		}
 
@@ -103,14 +105,14 @@ func (s *statusService) RecordPendingOperations(ctx context.Context, session *bs
 			metadataBytes, err := json.Marshal(op.Metadata)
 			if err != nil {
 				s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToMarshalPendingOperationMetadata,
-					"error", err,
-					"opId", op.OperationID)
+					logger.FieldError, err,
+					logger.FieldOpID, op.OperationID)
 				return err
 			}
 			metadataJSON = json.RawMessage(metadataBytes)
 		}
 
-		reqs = append(reqs, &interfaces.PendingOperationRequest{
+		reqs = append(reqs, &models.PendingOperationRequest{
 			SessionID:     dbSessionID,
 			OperationID:   op.OperationID,
 			OperationType: op.OperationType,
@@ -206,9 +208,9 @@ func (s *statusService) RemovePendingOperation(ctx context.Context, session *bss
 func (s *statusService) UpdatePendingOperationMetadata(ctx context.Context, session *bssci.Session, opId int64, metadata map[string]interface{}, metadataJSON json.RawMessage) error {
 	if err := s.repo.UpdateMetadata(ctx, session.DbSessionID, opId, metadataJSON); err != nil {
 		s.logger.WarnContext(ctx, bssci.LogBSSCIFailedToUpdatePendingOperationMetadata,
-			"error", err,
-			"sessionID", session.DbSessionID,
-			"opId", opId)
+			logger.FieldError, err,
+			logger.FieldSessionID, session.DbSessionID,
+			logger.FieldOpID, opId)
 		return err
 	}
 
@@ -265,7 +267,7 @@ func (s *statusService) EvictCachedOperations(session *bssci.Session) {
 	s.mu.Unlock()
 }
 
-func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string) {
+func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string, organizationID *uuid.UUID) {
 	key := bssci.SessionOpKey{
 		SessionID:   session.ID,
 		OperationID: opId,
@@ -276,7 +278,7 @@ func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64)
 
 	pendingOp, exists := (*s.pendingOps)[key]
 	if !exists {
-		return 0, 0, ""
+		return 0, 0, "", nil
 	}
 
 	// Extract endpoint EUI from pending operation
@@ -287,9 +289,9 @@ func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64)
 	// Extract queue ID and tenant ID from metadata
 	if pendingOp.Metadata != nil {
 		// Extract queue ID (handle both int64 and float64 types from MessagePack)
-		if qid, ok := pendingOp.Metadata["queId"].(int64); ok {
+		if qid, ok := pendingOp.Metadata[models.EventDetailKeyQueID].(int64); ok {
 			queueID = qid
-		} else if qid, ok := pendingOp.Metadata["queId"].(float64); ok {
+		} else if qid, ok := pendingOp.Metadata[models.EventDetailKeyQueID].(float64); ok {
 			queueID = int64(qid)
 		}
 
@@ -297,7 +299,14 @@ func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64)
 		if tid, ok := pendingOp.Metadata["tenantID"].(string); ok {
 			tenantID = tid
 		}
+
+		// Extract the owner organization for org-scoped crash recovery.
+		if oid, ok := pendingOp.Metadata["organizationID"].(string); ok {
+			if parsed, parseErr := uuid.Parse(oid); parseErr == nil {
+				organizationID = &parsed
+			}
+		}
 	}
 
-	return endpointEUI, queueID, tenantID
+	return endpointEUI, queueID, tenantID, organizationID
 }

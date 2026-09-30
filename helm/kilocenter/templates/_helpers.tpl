@@ -63,3 +63,34 @@ Resolve image tag: component-specific tag falls back to global.imageTag.
 {{- define "kilocenter.imageTag" -}}
 {{- . | default "latest" }}
 {{- end }}
+
+{{/*
+Secret carrying the credentials of the pre-upgrade rekey hook. Helm updates
+the release Secret only after pre-upgrade hooks have run, so the hook
+containers read this hook-scoped copy instead.
+*/}}
+{{- define "kilocenter.rekeyHookSecretName" -}}
+{{- printf "%s-rekey-hook" (include "kilocenter.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Database connection environment shared by the one-off migrate and rekey
+hook containers (the KC-DB commands read DB_* variables).
+*/}}
+{{- define "kilocenter.databaseEnv" -}}
+- name: DB_HOST
+  value: {{ .Values.postgresql.host | quote }}
+- name: DB_PORT
+  value: {{ .Values.postgresql.port | quote }}
+- name: DB_NAME
+  value: {{ .Values.postgresql.database | quote }}
+- name: DB_USER
+  value: {{ .Values.postgresql.username | quote }}
+- name: DB_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "kilocenter.rekeyHookSecretName" . }}
+      key: postgresql-password
+- name: DB_SSLMODE
+  value: {{ .Values.postgresql.sslMode | quote }}
+{{- end }}

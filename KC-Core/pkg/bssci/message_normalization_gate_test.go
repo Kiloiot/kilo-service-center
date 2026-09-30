@@ -44,16 +44,16 @@ func TestNormalizationOnlyForBStoSCCommands(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.command, func(t *testing.T) {
-			assert.Equal(t, tt.shouldNormalize, shouldNormalizeCommand(tt.command),
+			assert.Equal(t, tt.shouldNormalize, newTestCommandRegistry(t).shouldNormalize(tt.command),
 				"Command %s (%s) normalize decision incorrect: %s", tt.command, tt.direction, tt.description)
 		})
 	}
 }
 
 // TestNormalizationSkipsUnknownCommands verifies commands absent from
-// CommandDirectionMap default to NOT normalizing (safe fallback).
+// commandDirectionMap default to NOT normalizing (safe fallback).
 // This prevents accidentally normalizing future protocol extensions or vendor-specific commands.
 func TestNormalizationSkipsUnknownCommands(t *testing.T) {
-	assert.False(t, shouldNormalizeCommand("unknownFutureCommand"),
+	assert.False(t, newTestCommandRegistry(t).shouldNormalize("unknownFutureCommand"),
 		"Unknown commands should default to skipping normalization (safe fallback)")
 }

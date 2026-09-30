@@ -12,11 +12,11 @@ type DownlinkQueueReader interface {
 	// ListTenantQueue retrieves pending downlink messages for a tenant
 	// epFilter optionally filters by endpoint EUI
 	// Returns messages ordered by priority DESC, created_at ASC
-	ListTenantQueue(ctx context.Context, tenantID int64, epFilter *[8]byte, limit, offset int) ([]*storage.DownlinkMessage, error)
+	ListTenantQueue(ctx context.Context, tenantID int64, filter storage.DownlinkQueueFilter, limit, offset int) ([]*storage.DownlinkMessage, error)
 
 	// CountTenantQueue returns the count of pending downlink messages for a tenant
 	// epFilter optionally filters by endpoint EUI (must match ListTenantQueue filter)
-	CountTenantQueue(ctx context.Context, tenantID int64, epFilter *[8]byte) (int64, error)
+	CountTenantQueue(ctx context.Context, tenantID int64, filter storage.DownlinkQueueFilter) (int64, error)
 }
 
 // DownlinkQueueStore provides tenant ownership lookup for downlink queues

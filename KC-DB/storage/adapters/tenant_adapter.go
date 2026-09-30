@@ -6,7 +6,6 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
-	"github.com/jmoiron/sqlx"
 )
 
 // TenantStoreAdapter adapts postgres.TenantRepository to provide
@@ -16,9 +15,9 @@ type TenantStoreAdapter struct {
 }
 
 // NewTenantStoreAdapter creates a new adapter with the given database connection
-func NewTenantStoreAdapter(db *sqlx.DB) *TenantStoreAdapter {
+func NewTenantStoreAdapter(repo *postgres.TenantRepository) *TenantStoreAdapter {
 	return &TenantStoreAdapter{
-		repo: postgres.NewTenantRepository(db),
+		repo: repo,
 	}
 }
 
@@ -27,7 +26,7 @@ func NewTenantStoreAdapter(db *sqlx.DB) *TenantStoreAdapter {
 func (a *TenantStoreAdapter) ListTenants(ctx context.Context, statusFilter string) ([]models.Tenant, error) {
 	tenants, err := a.repo.ListTenants(ctx, statusFilter)
 	if err != nil {
-		return nil, fmt.Errorf("tenant adapter: list: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapTenantAdapterList, err)
 	}
 	return tenants, nil
 }
@@ -36,7 +35,7 @@ func (a *TenantStoreAdapter) ListTenants(ctx context.Context, statusFilter strin
 func (a *TenantStoreAdapter) CreateTenant(ctx context.Context, name string, description *string) (*models.Tenant, error) {
 	tenant, err := a.repo.CreateTenant(ctx, name, description)
 	if err != nil {
-		return nil, fmt.Errorf("tenant adapter: create: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapTenantAdapterCreate, err)
 	}
 	return tenant, nil
 }
@@ -45,7 +44,7 @@ func (a *TenantStoreAdapter) CreateTenant(ctx context.Context, name string, desc
 func (a *TenantStoreAdapter) GetTenantByID(ctx context.Context, id int64) (*models.Tenant, error) {
 	tenant, err := a.repo.GetTenantByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("tenant adapter: get: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapTenantAdapterGet, err)
 	}
 	return tenant, nil
 }
@@ -63,28 +62,20 @@ func (a *TenantStoreAdapter) UpdateTenant(ctx context.Context, id int64, name *s
 	}
 
 	if len(updateMap) == 0 {
-		return nil, fmt.Errorf("tenant adapter: update: no fields to update")
+		return nil, errTextTenantAdapterUpdateNoFieldsUpdate
 	}
 
 	tenant, err := a.repo.UpdateTenant(ctx, id, updateMap)
 	if err != nil {
-		return nil, fmt.Errorf("tenant adapter: update: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapTenantAdapterUpdate, err)
 	}
 	return tenant, nil
-}
-
-// SetTenantStatus updates tenant status (active/inactive)
-func (a *TenantStoreAdapter) SetTenantStatus(ctx context.Context, id int64, active bool) error {
-	if err := a.repo.SetStatus(ctx, id, active); err != nil {
-		return fmt.Errorf("tenant adapter: set_status: %w", err)
-	}
-	return nil
 }
 
 // DeleteTenant removes a tenant - used for org creation rollback
 func (a *TenantStoreAdapter) DeleteTenant(ctx context.Context, id int64) error {
 	if err := a.repo.DeleteTenant(ctx, id); err != nil {
-		return fmt.Errorf("tenant adapter: delete: %w", err)
+		return fmt.Errorf("%s: %w", errWrapTenantAdapterDelete, err)
 	}
 	return nil
 }

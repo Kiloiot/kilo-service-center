@@ -89,6 +89,7 @@ type BaseStationSessionCreateRequest struct {
 	ProtocolVersion *string    `json:"protocol_version,omitempty" validate:"omitempty,semver"` // Negotiated MIOTY protocol version (BSSCI §4-4.5)
 	ConnectInfo     NullJSON   `json:"connect_info,omitempty"`                                 // BSSCI §5.3 arbitrary key-value pairs from connect message
 	OrganizationID  *uuid.UUID `json:"organization_id,omitempty"`                              // Kilo Cloud org UUID
+	ScEui           EUI        `json:"sc_eui"`                                                 // Service center that owns the session
 }
 
 // BaseStationSessionUpdateRequest represents session update operations
@@ -105,6 +106,7 @@ type BaseStationSessionUpdateRequest struct {
 	Encoding        *string                   `json:"encoding,omitempty" validate:"omitempty,oneof=json msgpack"` // Message encoding
 	ProtocolVersion *string                   `json:"protocol_version,omitempty" validate:"omitempty,semver"`     // Negotiated MIOTY protocol version (BSSCI §4-4.5)
 	OrganizationID  *uuid.UUID                `json:"organization_id,omitempty"`                                  // Kilo Cloud org UUID
+	ScEui           *EUI                      `json:"sc_eui,omitempty"`                                           // Service center that now owns the session
 }
 
 // IsActive returns true if the session is currently active

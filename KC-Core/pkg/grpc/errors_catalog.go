@@ -5,6 +5,9 @@ import (
 	"errors"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/passwordpolicy"
 )
 
 // Error catalog tokens for gRPC service errors
@@ -16,13 +19,9 @@ const (
 	ErrTokenInvalidCredentials  = "KC-GRPC-ERR-001"
 	ErrTokenUserNotFound        = "KC-GRPC-ERR-002"
 	ErrTokenInvalidRefreshToken = "KC-GRPC-ERR-003"
-	ErrTokenSessionExpired      = "KC-GRPC-ERR-004"
-	ErrTokenPasswordMismatch    = "KC-GRPC-ERR-005"
-	ErrTokenUserNotActive       = "KC-GRPC-ERR-006"
-	ErrTokenEmailAlreadyExists  = "KC-GRPC-ERR-007"
-	ErrTokenWeakPassword        = "KC-GRPC-ERR-008"
-	ErrTokenTokenGenerationFail = "KC-GRPC-ERR-009"
-	ErrTokenUnauthorized        = "KC-GRPC-ERR-010"
+	// ErrTokenCurrentPasswordIncorrect refuses a password change whose current password is wrong.
+	ErrTokenCurrentPasswordIncorrect = "KC-GRPC-ERR-004"
+	ErrTokenWeakPassword             = "KC-GRPC-ERR-008"
 
 	// Auth handler operation errors (KC-GRPC-ERR-011 to KC-GRPC-ERR-020)
 	ErrTokenRefreshTokenRequired    = "KC-GRPC-ERR-011"
@@ -50,8 +49,6 @@ const (
 	ErrTokenMissingTenantClaim = "KC-GRPC-ERR-158"
 	ErrTokenMissingTenantCtx   = "KC-GRPC-ERR-159"
 	ErrTokenMissingUserCtx     = "KC-GRPC-ERR-160"
-	// Fail-closed tenant isolation when auth disabled
-	ErrTokenTenantHeaderRequired = "KC-GRPC-ERR-161"
 
 	// Org resolver interceptor errors (KC-GRPC-ERR-166 to KC-GRPC-ERR-175)
 	// Org resolver interceptor tokens
@@ -65,18 +62,30 @@ const (
 
 	// Organization errors (KC-GRPC-ERR-300 to KC-GRPC-ERR-311)
 	ErrTokenOrgNotFound           = "KC-GRPC-ERR-300"
-	ErrTokenOrgAlreadyExists      = "KC-GRPC-ERR-301"
-	ErrTokenMembershipExists      = "KC-GRPC-ERR-302"
 	ErrTokenMembershipNotFound    = "KC-GRPC-ERR-303"
 	ErrTokenMembershipRequired    = "KC-GRPC-ERR-304"
 	ErrTokenInvalidOrgRole        = "KC-GRPC-ERR-305"
 	ErrTokenCannotRemoveSelf      = "KC-GRPC-ERR-306"
-	ErrTokenOrgHasMembers         = "KC-GRPC-ERR-307"
 	ErrTokenCannotRemoveLastOwner = "KC-GRPC-ERR-308"
 	ErrTokenAdminRequired         = "KC-GRPC-ERR-309"
-	ErrTokenOrgContextMismatch    = "KC-GRPC-ERR-310"
 	// Shared validation: update_mask required for partial-update RPCs
-	ErrTokenUpdateMaskRequired = "KC-GRPC-ERR-311"
+	ErrTokenUpdateMaskRequired         = "KC-GRPC-ERR-311"
+	ErrTokenUnknownFieldMaskPath       = "KC-GRPC-ERR-312"
+	ErrTokenDuplicateFieldMaskPath     = "KC-GRPC-ERR-313"
+	ErrTokenInvalidEpClass             = "KC-GRPC-ERR-314"
+	ErrTokenInvalidEndpointStatus      = "KC-GRPC-ERR-315"
+	ErrTokenScaciInvalidSessionStatus  = "KC-GRPC-ERR-316"
+	ErrTokenInvalidEventOutcome        = "KC-GRPC-ERR-317"
+	ErrTokenInvalidDownlinkQueueStatus = "KC-GRPC-ERR-318"
+	ErrTokenDownlinkNotFound           = "KC-GRPC-ERR-319"
+	ErrTokenDownlinkNotPending         = "KC-GRPC-ERR-320"
+	ErrTokenInvalidErrorBucket         = "KC-GRPC-ERR-321"
+	ErrTokenDownlinkUpdateFailed       = "KC-GRPC-ERR-322"
+	ErrTokenDiagnosticsTooLarge        = "KC-GRPC-ERR-323"
+	ErrTokenDiagnosticsFailed          = "KC-GRPC-ERR-324"
+	ErrTokenInsufficientRole           = "KC-GRPC-ERR-325"
+	ErrTokenInvalidEndpointKeyReveal   = "KC-GRPC-ERR-326"
+	ErrTokenInvalidDownlinkResult      = "KC-GRPC-ERR-327"
 
 	// API Key errors (KC-GRPC-ERR-021 to KC-GRPC-ERR-030)
 	//revive:disable-next-line:var-naming
@@ -86,7 +95,6 @@ const (
 	//revive:disable-next-line:var-naming
 	ErrTokenApiKeyInactive = "KC-GRPC-ERR-023"
 	//revive:disable-next-line:var-naming
-	ErrTokenApiKeyNameExists = "KC-GRPC-ERR-024"
 	//revive:disable-next-line:var-naming
 	ErrTokenInvalidApiKeyType = "KC-GRPC-ERR-025"
 
@@ -99,7 +107,6 @@ const (
 
 	// Membership operation errors (KC-GRPC-ERR-02B to KC-GRPC-ERR-02F)
 	ErrTokenAddMemberFailed           = "KC-GRPC-ERR-02B"
-	ErrTokenGetMemberFailed           = "KC-GRPC-ERR-02C"
 	ErrTokenUpdateMemberFailed        = "KC-GRPC-ERR-02D"
 	ErrTokenRemoveMemberFailed        = "KC-GRPC-ERR-02E"
 	ErrTokenListMembersFailed         = "KC-GRPC-ERR-02F"
@@ -117,8 +124,7 @@ const (
 	// Certificate errors (KC-GRPC-ERR-031 to KC-GRPC-ERR-040)
 	ErrTokenCertGenerationFailed       = "KC-GRPC-ERR-031"
 	ErrTokenCertNotFound               = "KC-GRPC-ERR-032"
-	ErrTokenCertExpired                = "KC-GRPC-ERR-033"
-	ErrTokenCertInvalid                = "KC-GRPC-ERR-034"
+	ErrTokenCertNotStored              = "KC-GRPC-ERR-033"
 	ErrTokenCertRenewalFailed          = "KC-GRPC-ERR-035"
 	ErrTokenCertTypeRequired           = "KC-GRPC-ERR-036"
 	ErrTokenCertStatusFailed           = "KC-GRPC-ERR-037"
@@ -141,7 +147,6 @@ const (
 	ErrTokenBlueprintNotFound        = "KC-GRPC-ERR-045"
 	ErrTokenBlueprintNameExists      = "KC-GRPC-ERR-046"
 	ErrTokenBlueprintInvalid         = "KC-GRPC-ERR-047"
-	ErrTokenRegistrySubmitFailed     = "KC-GRPC-ERR-048"
 	ErrTokenManufacturerHasModels    = "KC-GRPC-ERR-049"
 	ErrTokenDeviceModelHasBlueprints = "KC-GRPC-ERR-050"
 
@@ -168,7 +173,6 @@ const (
 	ErrTokenPreviewPayloadRequired = "KC-GRPC-ERR-06A" // Preview request missing payload
 	ErrTokenPreviewDecodeFailed    = "KC-GRPC-ERR-06B" // Blueprint decoder returned error
 	ErrTokenPreviewInvalidFormatID = "KC-GRPC-ERR-06C" // Format ID not recognized by decoder
-	ErrTokenPreviewInvalidPayload  = "KC-GRPC-ERR-06D" // Payload bytes failed validation/parsing
 	ErrTokenInvalidModelCode       = "KC-GRPC-ERR-06E" // Model code format validation failed
 
 	// Blueprint ownership/decode errors (KC-GRPC-ERR-0A3 to KC-GRPC-ERR-0A9)
@@ -196,6 +200,8 @@ const (
 	ErrTokenGetEndpointStatsFailed      = "KC-GRPC-ERR-408"
 	ErrTokenGetEndpointOperationsFailed = "KC-GRPC-ERR-409"
 	ErrTokenConfigRequired              = "KC-GRPC-ERR-410"
+	ErrTokenInvalidIntegrationType      = "KC-GRPC-ERR-411"
+	ErrTokenInvalidIntegrationStatus    = "KC-GRPC-ERR-412"
 
 	// Registry Provider Errors (KC-GRPC-ERR-420 to KC-GRPC-ERR-42F)
 	// Blueprint registry submission tokens
@@ -216,8 +222,6 @@ const (
 
 	// SCACI Monitoring errors (KC-GRPC-ERR-061 to KC-GRPC-ERR-070)
 	ErrTokenScaciSessionNotFound    = "KC-GRPC-ERR-061"
-	ErrTokenScaciQueueNotFound      = "KC-GRPC-ERR-062"
-	ErrTokenScaciServiceOffline     = "KC-GRPC-ERR-063"
 	ErrTokenScaciListSessionsFailed = "KC-GRPC-ERR-064"
 	ErrTokenScaciStatisticsFailed   = "KC-GRPC-ERR-065"
 	ErrTokenScaciListErrorsFailed   = "KC-GRPC-ERR-066"
@@ -260,34 +264,26 @@ const (
 	ErrTokenScaciCntDependMismatch        = "KC-GRPC-ERR-271"
 	ErrTokenScaciCntDependPacketCntOmit   = "KC-GRPC-ERR-272"
 	ErrTokenScaciNonCntDependMultiPayload = "KC-GRPC-ERR-273"
-	ErrTokenScaciQueueIDOutOfRange        = "KC-GRPC-ERR-274"
 	ErrTokenScaciFailedPersistDownlink    = "KC-GRPC-ERR-275"
-	ErrTokenScaciQueueIDExists            = "KC-GRPC-ERR-276"
-	ErrTokenScaciSchedulerUnavailable     = "KC-GRPC-ERR-277"
-	ErrTokenScaciBaseStationUnavailable   = "KC-GRPC-ERR-278"
 	ErrTokenScaciEndpointNotFound         = "KC-GRPC-ERR-279"
-	ErrTokenScaciDownlinkNotFound         = "KC-GRPC-ERR-27A"
+	ErrTokenScaciEndpointNotBidirectional = "KC-GRPC-ERR-280"
 	ErrTokenScaciOperationFailed          = "KC-GRPC-ERR-27B"
 
 	// Message/Analytics errors (KC-GRPC-ERR-071 to KC-GRPC-ERR-080)
 	ErrTokenMessageNotFound       = "KC-GRPC-ERR-071"
 	ErrTokenInvalidTimeRange      = "KC-GRPC-ERR-072"
-	ErrTokenExportFailed          = "KC-GRPC-ERR-073"
-	ErrTokenStreamDisconnected    = "KC-GRPC-ERR-074"
 	ErrTokenAnalyticsOverviewFail = "KC-GRPC-ERR-075"
 	ErrTokenAnalyticsActivityFail = "KC-GRPC-ERR-076"
 	ErrTokenAnalyticsSignalFail   = "KC-GRPC-ERR-077"
 	ErrTokenListEventsFailed      = "KC-GRPC-ERR-078"
-	ErrTokenListBSEventsFailed    = "KC-GRPC-ERR-079"
-	ErrTokenListEPEventsFailed    = "KC-GRPC-ERR-07A"
+	ErrTokenInvalidAlertStatus    = "KC-GRPC-ERR-079"
 	ErrTokenListAlertsFailed      = "KC-GRPC-ERR-07B"
 	ErrTokenAlertSummaryFailed    = "KC-GRPC-ERR-07C"
+	ErrTokenInvalidAlertSeverity  = "KC-GRPC-ERR-080"
 
 	// Event streaming errors (KC-GRPC-ERR-08D to KC-GRPC-ERR-08F)
 	// Realtime streaming tokens
-	ErrTokenStreamEventsStartFailed   = "KC-GRPC-ERR-08D"
-	ErrTokenStreamBSEventsStartFailed = "KC-GRPC-ERR-08E"
-	ErrTokenStreamEPEventsStartFailed = "KC-GRPC-ERR-08F"
+	ErrTokenStreamEventsStartFailed = "KC-GRPC-ERR-08D"
 
 	// Message listing operation errors (KC-GRPC-ERR-07D to KC-GRPC-ERR-07F, KC-GRPC-ERR-084 to KC-GRPC-ERR-090)
 	ErrTokenListMessagesFailed          = "KC-GRPC-ERR-07D"
@@ -301,34 +297,22 @@ const (
 	ErrTokenListActivityFailed          = "KC-GRPC-ERR-500" // Unified activity feed
 
 	// Export operation errors (KC-GRPC-ERR-200 to KC-GRPC-ERR-210)
-	// Message store adapter export tokens
-	ErrTokenExportFetchFailed       = "KC-GRPC-ERR-200"
 	ErrTokenExportUnsupportedFormat = "KC-GRPC-ERR-201"
-	ErrTokenExportEncodeFailed      = "KC-GRPC-ERR-202"
-	ErrTokenExportCSVWriteFailed    = "KC-GRPC-ERR-203"
 
 	// Downlink operation errors (KC-GRPC-ERR-211 to KC-GRPC-ERR-230)
-	ErrTokenDownlinkPayloadRequired     = "KC-GRPC-ERR-211"
-	ErrTokenDownlinkPayloadTooLarge     = "KC-GRPC-ERR-212"
-	ErrTokenDownlinkFormatInvalid       = "KC-GRPC-ERR-213"
-	ErrTokenDownlinkQueueFailed         = "KC-GRPC-ERR-214"
-	ErrTokenDownlinkRevokeFailed        = "KC-GRPC-ERR-215"
-	ErrTokenDownlinkGetResultsFailed    = "KC-GRPC-ERR-216"
-	ErrTokenDownlinkQueueListFailed     = "KC-GRPC-ERR-217"
-	ErrTokenEndpointNotBidirectional    = "KC-GRPC-ERR-218"
-	ErrTokenBaseStationNotBidirectional = "KC-GRPC-ERR-219"
-	ErrTokenDownlinkRevokeNotFound      = "KC-GRPC-ERR-21A"
-	ErrTokenDownlinkStatusNotFound      = "KC-GRPC-ERR-21B"
-	ErrTokenDownlinkAttachFailed        = "KC-GRPC-ERR-21C"
-	ErrTokenDownlinkDetachFailed        = "KC-GRPC-ERR-21D"
-	ErrTokenQueueIDRequired             = "KC-GRPC-ERR-21E"
-	ErrTokenInvalidQueueIDFormat        = "KC-GRPC-ERR-21F"
-	ErrTokenNoBaseStationsConnected     = "KC-GRPC-ERR-220"
-	ErrTokenQueueIDNonNegative          = "KC-GRPC-ERR-221"
-	ErrTokenDownlinkGetFailed           = "KC-GRPC-ERR-222"
-	ErrTokenNoBaseStationOwnsQueue      = "KC-GRPC-ERR-223"
-	ErrTokenDownlinkRevokeNoResult      = "KC-GRPC-ERR-224"
-	ErrTokenResultCountOverflow         = "KC-GRPC-ERR-225"
+	ErrTokenDownlinkPayloadRequired  = "KC-GRPC-ERR-211"
+	ErrTokenDownlinkPayloadTooLarge  = "KC-GRPC-ERR-212"
+	ErrTokenDownlinkFormatInvalid    = "KC-GRPC-ERR-213"
+	ErrTokenDownlinkPriorityInvalid  = "KC-GRPC-ERR-27C"
+	ErrTokenDownlinkRevokeFailed     = "KC-GRPC-ERR-215"
+	ErrTokenDownlinkGetResultsFailed = "KC-GRPC-ERR-216"
+	ErrTokenDownlinkQueueListFailed  = "KC-GRPC-ERR-217"
+	ErrTokenDownlinkRevokeNotFound   = "KC-GRPC-ERR-21A"
+	ErrTokenQueueIDRequired          = "KC-GRPC-ERR-21E"
+	ErrTokenInvalidQueueIDFormat     = "KC-GRPC-ERR-21F"
+	ErrTokenNoBaseStationsConnected  = "KC-GRPC-ERR-220"
+	ErrTokenQueueIDNonNegative       = "KC-GRPC-ERR-221"
+	ErrTokenResultCountOverflow      = "KC-GRPC-ERR-225"
 
 	// UL Transmit errors (KC-GRPC-ERR-230 to KC-GRPC-ERR-240)
 	ErrTokenBaseStationOwnershipFailed = "KC-GRPC-ERR-230"
@@ -355,13 +339,8 @@ const (
 	ErrTokenBSSessionNotFound   = "KC-GRPC-ERR-260"
 	ErrTokenHandshakeIncomplete = "KC-GRPC-ERR-261"
 
-	// Events/Alerts errors (KC-GRPC-ERR-081 to KC-GRPC-ERR-090)
-	ErrTokenEventNotFound = "KC-GRPC-ERR-081"
-	ErrTokenAlertNotFound = "KC-GRPC-ERR-082"
-
 	// Base Station errors (KC-GRPC-ERR-091 to KC-GRPC-ERR-100)
 	ErrTokenBaseStationNotFound       = "KC-GRPC-ERR-091"
-	ErrTokenBaseStationOffline        = "KC-GRPC-ERR-092"
 	ErrTokenBaseStationRequired       = "KC-GRPC-ERR-093"
 	ErrTokenCreateBaseStationFailed   = "KC-GRPC-ERR-094"
 	ErrTokenGetBaseStationFailed      = "KC-GRPC-ERR-095"
@@ -402,12 +381,10 @@ const (
 	ErrTokenPasswordRequired       = "KC-GRPC-ERR-112"
 	ErrTokenNameRequired           = "KC-GRPC-ERR-113"
 	ErrTokenIDRequired             = "KC-GRPC-ERR-114"
-	ErrTokenEUIRequired            = "KC-GRPC-ERR-115"
 	ErrTokenEndpointEUIRequired    = "KC-GRPC-ERR-116"
 	ErrTokenBasestationEUIRequired = "KC-GRPC-ERR-117"
 	ErrTokenOrgIDRequired          = "KC-GRPC-ERR-118"
 	ErrTokenUserIDRequired         = "KC-GRPC-ERR-119"
-	ErrTokenKeyTypeRequired        = "KC-GRPC-ERR-120"
 	ErrTokenManufacturerIDRequired = "KC-GRPC-ERR-121"
 	ErrTokenDeviceModelIDRequired  = "KC-GRPC-ERR-122"
 	ErrTokenBlueprintIDRequired    = "KC-GRPC-ERR-123"
@@ -416,7 +393,6 @@ const (
 	ErrTokenQueryRequired          = "KC-GRPC-ERR-126"
 	ErrTokenFormatRequired         = "KC-GRPC-ERR-127"
 	ErrTokenMessageIDRequired      = "KC-GRPC-ERR-128"
-	ErrTokenSessionIDRequired      = "KC-GRPC-ERR-129"
 	ErrTokenStateRequired          = "KC-GRPC-ERR-130" // External auth exchange state parameter
 
 	// Invalid format errors (KC-GRPC-ERR-131 to KC-GRPC-ERR-150)
@@ -428,32 +404,21 @@ const (
 	ErrTokenInvalidManufacturerIDFormat = "KC-GRPC-ERR-136"
 	ErrTokenInvalidDeviceModelIDFormat  = "KC-GRPC-ERR-137"
 	ErrTokenInvalidBlueprintIDFormat    = "KC-GRPC-ERR-138"
-	ErrTokenInvalidSessionIDFormat      = "KC-GRPC-ERR-139"
-	ErrTokenInvalidMessageIDFormat      = "KC-GRPC-ERR-140"
 	ErrTokenInvalidEUIFormat            = "KC-GRPC-ERR-141"
 	ErrTokenInvalidIDFormat             = "KC-GRPC-ERR-142"
-	ErrTokenInvalidRoleFormat           = "KC-GRPC-ERR-143"
-	ErrTokenInvalidExportFormat         = "KC-GRPC-ERR-144"
 
-	// Gateway errors (KC-GRPC-ERR-600 to KC-GRPC-ERR-610)
-	ErrTokenGatewayUpstreamUnavailable        = "KC-GRPC-ERR-600"
-	ErrTokenGatewayProxyFailed                = "KC-GRPC-ERR-601"
 	ErrTokenGatewayInternalTrustInvalidHeader = "KC-GRPC-ERR-602"
+	ErrTokenGatewayInternalPeerRejected       = "KC-GRPC-ERR-603"
 
 	// Generic errors (KC-GRPC-ERR-900+)
 	ErrTokenInternalError           = "KC-GRPC-ERR-900"
 	ErrTokenInvalidArgument         = "KC-GRPC-ERR-901"
-	ErrTokenNotImplemented          = "KC-GRPC-ERR-902"
-	ErrTokenServiceUnavailable      = "KC-GRPC-ERR-903"
-	ErrTokenDatabaseError           = "KC-GRPC-ERR-904"
 	ErrTokenTenantRequired          = "KC-GRPC-ERR-905"
 	ErrTokenServiceNotConfigured    = "KC-GRPC-ERR-906"
-	ErrTokenOrgRequired             = "KC-GRPC-ERR-907"
-	ErrTokenUserRequired            = "KC-GRPC-ERR-908"
-	ErrTokenContextMissing          = "KC-GRPC-ERR-909"
 	ErrTokenCEStatusUnavailable     = "KC-GRPC-ERR-90A"
 	ErrTokenCEOnboardingUnavailable = "KC-GRPC-ERR-90B"
 	ErrTokenCERegistryUnavailable   = "KC-GRPC-ERR-90C"
+	ErrTokenCEOnboardingCompleted   = "KC-GRPC-ERR-90D"
 )
 
 // ErrorDefinition maps error tokens to messages and gRPC codes
@@ -492,40 +457,15 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "invalid or expired refresh token",
 		Code:    codes.Unauthenticated,
 	},
-	ErrTokenSessionExpired: {
-		Token:   ErrTokenSessionExpired,
-		Message: "session has expired",
-		Code:    codes.Unauthenticated,
-	},
-	ErrTokenPasswordMismatch: {
-		Token:   ErrTokenPasswordMismatch,
-		Message: "current password is incorrect",
-		Code:    codes.InvalidArgument,
-	},
-	ErrTokenUserNotActive: {
-		Token:   ErrTokenUserNotActive,
-		Message: "user account is not active",
-		Code:    codes.PermissionDenied,
-	},
-	ErrTokenEmailAlreadyExists: {
-		Token:   ErrTokenEmailAlreadyExists,
-		Message: "email address already registered",
-		Code:    codes.AlreadyExists,
-	},
 	ErrTokenWeakPassword: {
 		Token:   ErrTokenWeakPassword,
-		Message: "password does not meet security requirements",
+		Message: passwordpolicy.Rules.Describe(),
 		Code:    codes.InvalidArgument,
 	},
-	ErrTokenTokenGenerationFail: {
-		Token:   ErrTokenTokenGenerationFail,
-		Message: "failed to generate authentication token",
-		Code:    codes.Internal,
-	},
-	ErrTokenUnauthorized: {
-		Token:   ErrTokenUnauthorized,
-		Message: "unauthorized access",
-		Code:    codes.Unauthenticated,
+	ErrTokenCurrentPasswordIncorrect: {
+		Token:   ErrTokenCurrentPasswordIncorrect,
+		Message: "current password is incorrect",
+		Code:    codes.InvalidArgument,
 	},
 
 	// Auth handler operation errors
@@ -642,27 +582,12 @@ var errorCatalog = map[string]ErrorDefinition{
 		Code:    codes.Unauthenticated,
 	},
 	// Fail-closed tenant isolation when auth disabled
-	ErrTokenTenantHeaderRequired: {
-		Token:   ErrTokenTenantHeaderRequired,
-		Message: "x-tenant-id header required",
-		Code:    codes.Unauthenticated,
-	},
 
 	// Organization errors
 	ErrTokenOrgNotFound: {
 		Token:   ErrTokenOrgNotFound,
 		Message: "organization not found",
 		Code:    codes.NotFound,
-	},
-	ErrTokenOrgAlreadyExists: {
-		Token:   ErrTokenOrgAlreadyExists,
-		Message: "organization already exists",
-		Code:    codes.AlreadyExists,
-	},
-	ErrTokenMembershipExists: {
-		Token:   ErrTokenMembershipExists,
-		Message: "user is already a member of this organization",
-		Code:    codes.AlreadyExists,
 	},
 	ErrTokenMembershipNotFound: {
 		Token:   ErrTokenMembershipNotFound,
@@ -684,11 +609,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "cannot remove yourself from the organization",
 		Code:    codes.FailedPrecondition,
 	},
-	ErrTokenOrgHasMembers: {
-		Token:   ErrTokenOrgHasMembers,
-		Message: "cannot delete organization with existing members",
-		Code:    codes.FailedPrecondition,
-	},
 	ErrTokenCannotRemoveLastOwner: {
 		Token:   ErrTokenCannotRemoveLastOwner,
 		Message: "cannot remove the last active owner of the organization",
@@ -699,15 +619,90 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "admin privileges required",
 		Code:    codes.PermissionDenied,
 	},
-	ErrTokenOrgContextMismatch: {
-		Token:   ErrTokenOrgContextMismatch,
-		Message: "request organization does not match authenticated context",
+	ErrTokenInsufficientRole: {
+		Token:   ErrTokenInsufficientRole,
+		Message: "your roles do not permit this operation; ask an administrator for access",
 		Code:    codes.PermissionDenied,
+	},
+	ErrTokenInvalidEndpointKeyReveal: {
+		Token:   ErrTokenInvalidEndpointKeyReveal,
+		Message: "reveal_keys names an unknown endpoint key",
+		Code:    codes.InvalidArgument,
 	},
 	ErrTokenUpdateMaskRequired: {
 		Token:   ErrTokenUpdateMaskRequired,
 		Message: "update_mask is required",
 		Code:    codes.InvalidArgument,
+	},
+	ErrTokenUnknownFieldMaskPath: {
+		Token:   ErrTokenUnknownFieldMaskPath,
+		Message: "update_mask contains an unsupported field path",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenDuplicateFieldMaskPath: {
+		Token:   ErrTokenDuplicateFieldMaskPath,
+		Message: "update_mask contains a duplicate field path",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenInvalidEpClass: {
+		Token:   ErrTokenInvalidEpClass,
+		Message: "ep_class must be 'A' or 'Z'",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenInvalidEndpointStatus: {
+		Token:   ErrTokenInvalidEndpointStatus,
+		Message: "status must be attached or detached",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenScaciInvalidSessionStatus: {
+		Token:   ErrTokenScaciInvalidSessionStatus,
+		Message: "status must be active, resumed, disconnected, or terminated",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenInvalidEventOutcome: {
+		Token:   ErrTokenInvalidEventOutcome,
+		Message: "outcome must be success or failure, and any severity must belong to it",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenInvalidDownlinkQueueStatus: {
+		Token:   ErrTokenInvalidDownlinkQueueStatus,
+		Message: "status must be a downlink queue state",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenInvalidDownlinkResult: {
+		Token:   ErrTokenInvalidDownlinkResult,
+		Message: "status_filter must be a downlink result or a final downlink queue state",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenDownlinkNotFound: {
+		Token:   ErrTokenDownlinkNotFound,
+		Message: "downlink not found",
+		Code:    codes.NotFound,
+	},
+	ErrTokenDownlinkNotPending: {
+		Token:   ErrTokenDownlinkNotPending,
+		Message: "downlink is no longer pending and cannot be edited",
+		Code:    codes.FailedPrecondition,
+	},
+	ErrTokenInvalidErrorBucket: {
+		Token:   ErrTokenInvalidErrorBucket,
+		Message: "bucket must be control_plane, base_station, endpoint, or downlink",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenDownlinkUpdateFailed: {
+		Token:   ErrTokenDownlinkUpdateFailed,
+		Message: "failed to update downlink",
+		Code:    codes.Internal,
+	},
+	ErrTokenDiagnosticsTooLarge: {
+		Token:   ErrTokenDiagnosticsTooLarge,
+		Message: "diagnostics bundle exceeds the size limit",
+		Code:    codes.ResourceExhausted,
+	},
+	ErrTokenDiagnosticsFailed: {
+		Token:   ErrTokenDiagnosticsFailed,
+		Message: "failed to build diagnostics bundle",
+		Code:    codes.Internal,
 	},
 
 	// API Key errors
@@ -725,11 +720,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenApiKeyInactive,
 		Message: "API key is not active",
 		Code:    codes.PermissionDenied,
-	},
-	ErrTokenApiKeyNameExists: {
-		Token:   ErrTokenApiKeyNameExists,
-		Message: "API key with this name already exists",
-		Code:    codes.AlreadyExists,
 	},
 	ErrTokenInvalidApiKeyType: {
 		Token:   ErrTokenInvalidApiKeyType,
@@ -768,11 +758,6 @@ var errorCatalog = map[string]ErrorDefinition{
 	ErrTokenAddMemberFailed: {
 		Token:   ErrTokenAddMemberFailed,
 		Message: "failed to add user to organization",
-		Code:    codes.Internal,
-	},
-	ErrTokenGetMemberFailed: {
-		Token:   ErrTokenGetMemberFailed,
-		Message: "failed to get membership",
 		Code:    codes.Internal,
 	},
 	ErrTokenUpdateMemberFailed: {
@@ -829,15 +814,10 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "certificate not found",
 		Code:    codes.NotFound,
 	},
-	ErrTokenCertExpired: {
-		Token:   ErrTokenCertExpired,
-		Message: "certificate has expired",
+	ErrTokenCertNotStored: {
+		Token:   ErrTokenCertNotStored,
+		Message: "this service center holds no copy of the base station's certificate",
 		Code:    codes.FailedPrecondition,
-	},
-	ErrTokenCertInvalid: {
-		Token:   ErrTokenCertInvalid,
-		Message: "certificate is invalid",
-		Code:    codes.InvalidArgument,
 	},
 	ErrTokenCertRenewalFailed: {
 		Token:   ErrTokenCertRenewalFailed,
@@ -940,11 +920,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenBlueprintInvalid,
 		Message: "blueprint configuration is invalid",
 		Code:    codes.InvalidArgument,
-	},
-	ErrTokenRegistrySubmitFailed: {
-		Token:   ErrTokenRegistrySubmitFailed,
-		Message: "failed to submit blueprint to registry",
-		Code:    codes.Internal,
 	},
 	ErrTokenManufacturerHasModels: {
 		Token:   ErrTokenManufacturerHasModels,
@@ -1060,11 +1035,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "format ID not recognized by decoder",
 		Code:    codes.InvalidArgument,
 	},
-	ErrTokenPreviewInvalidPayload: {
-		Token:   ErrTokenPreviewInvalidPayload,
-		Message: "payload bytes failed validation",
-		Code:    codes.InvalidArgument,
-	},
 	ErrTokenInvalidModelCode: {
 		Token:   ErrTokenInvalidModelCode,
 		Message: "invalid model code: must contain only lowercase alphanumeric characters and hyphens",
@@ -1136,6 +1106,16 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenIntegrationNotFound,
 		Message: "integration not found",
 		Code:    codes.NotFound,
+	},
+	ErrTokenInvalidIntegrationType: {
+		Token:   ErrTokenInvalidIntegrationType,
+		Message: "integration type must be http, mqtt or database",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenInvalidIntegrationStatus: {
+		Token:   ErrTokenInvalidIntegrationStatus,
+		Message: "integration status must be active, paused or disabled",
+		Code:    codes.InvalidArgument,
 	},
 	ErrTokenMissingOrgContext: {
 		Token:   ErrTokenMissingOrgContext,
@@ -1242,16 +1222,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenScaciSessionNotFound,
 		Message: "SCACI session not found",
 		Code:    codes.NotFound,
-	},
-	ErrTokenScaciQueueNotFound: {
-		Token:   ErrTokenScaciQueueNotFound,
-		Message: "SCACI queue entry not found",
-		Code:    codes.NotFound,
-	},
-	ErrTokenScaciServiceOffline: {
-		Token:   ErrTokenScaciServiceOffline,
-		Message: "SCACI service is offline",
-		Code:    codes.Unavailable,
 	},
 	ErrTokenScaciListSessionsFailed: {
 		Token:   ErrTokenScaciListSessionsFailed,
@@ -1416,40 +1386,20 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "multiple payloads only allowed for counter-dependent downlinks",
 		Code:    codes.InvalidArgument,
 	},
-	ErrTokenScaciQueueIDOutOfRange: {
-		Token:   ErrTokenScaciQueueIDOutOfRange,
-		Message: "queue ID out of valid range",
-		Code:    codes.InvalidArgument,
-	},
 	ErrTokenScaciFailedPersistDownlink: {
 		Token:   ErrTokenScaciFailedPersistDownlink,
 		Message: "failed to persist downlink to queue",
-		Code:    codes.InvalidArgument,
-	},
-	ErrTokenScaciQueueIDExists: {
-		Token:   ErrTokenScaciQueueIDExists,
-		Message: "queue ID already exists",
-		Code:    codes.AlreadyExists,
-	},
-	ErrTokenScaciSchedulerUnavailable: {
-		Token:   ErrTokenScaciSchedulerUnavailable,
-		Message: "scheduler service unavailable",
-		Code:    codes.Unavailable,
-	},
-	ErrTokenScaciBaseStationUnavailable: {
-		Token:   ErrTokenScaciBaseStationUnavailable,
-		Message: "base station unavailable for downlink",
-		Code:    codes.Unavailable,
+		Code:    codes.Internal,
 	},
 	ErrTokenScaciEndpointNotFound: {
 		Token:   ErrTokenScaciEndpointNotFound,
 		Message: "endpoint not found for SCACI operation",
 		Code:    codes.NotFound,
 	},
-	ErrTokenScaciDownlinkNotFound: {
-		Token:   ErrTokenScaciDownlinkNotFound,
-		Message: "downlink entry not found",
-		Code:    codes.NotFound,
+	ErrTokenScaciEndpointNotBidirectional: {
+		Token:   ErrTokenScaciEndpointNotBidirectional,
+		Message: "endpoint is not bidirectional and cannot receive downlinks",
+		Code:    codes.FailedPrecondition,
 	},
 	ErrTokenScaciOperationFailed: {
 		Token:   ErrTokenScaciOperationFailed,
@@ -1467,16 +1417,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenInvalidTimeRange,
 		Message: "invalid time range specified",
 		Code:    codes.InvalidArgument,
-	},
-	ErrTokenExportFailed: {
-		Token:   ErrTokenExportFailed,
-		Message: "failed to export data",
-		Code:    codes.Internal,
-	},
-	ErrTokenStreamDisconnected: {
-		Token:   ErrTokenStreamDisconnected,
-		Message: "stream connection lost",
-		Code:    codes.Unavailable,
 	},
 	ErrTokenAnalyticsOverviewFail: {
 		Token:   ErrTokenAnalyticsOverviewFail,
@@ -1498,15 +1438,10 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "failed to list events",
 		Code:    codes.Internal,
 	},
-	ErrTokenListBSEventsFailed: {
-		Token:   ErrTokenListBSEventsFailed,
-		Message: "failed to list base station events",
-		Code:    codes.Internal,
-	},
-	ErrTokenListEPEventsFailed: {
-		Token:   ErrTokenListEPEventsFailed,
-		Message: "failed to list endpoint events",
-		Code:    codes.Internal,
+	ErrTokenInvalidAlertStatus: {
+		Token:   ErrTokenInvalidAlertStatus,
+		Message: "alert status must be new, acknowledged or resolved",
+		Code:    codes.InvalidArgument,
 	},
 	ErrTokenListAlertsFailed: {
 		Token:   ErrTokenListAlertsFailed,
@@ -1518,6 +1453,11 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "failed to get alert summary",
 		Code:    codes.Internal,
 	},
+	ErrTokenInvalidAlertSeverity: {
+		Token:   ErrTokenInvalidAlertSeverity,
+		Message: "alert severity must be warning, error or critical",
+		Code:    codes.InvalidArgument,
+	},
 
 	// Event streaming errors
 	ErrTokenStreamEventsStartFailed: {
@@ -1525,37 +1465,12 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "failed to start event stream",
 		Code:    codes.Internal,
 	},
-	ErrTokenStreamBSEventsStartFailed: {
-		Token:   ErrTokenStreamBSEventsStartFailed,
-		Message: "failed to start base station event stream",
-		Code:    codes.Internal,
-	},
-	ErrTokenStreamEPEventsStartFailed: {
-		Token:   ErrTokenStreamEPEventsStartFailed,
-		Message: "failed to start endpoint event stream",
-		Code:    codes.Internal,
-	},
 
 	// Export operation errors
-	ErrTokenExportFetchFailed: {
-		Token:   ErrTokenExportFetchFailed,
-		Message: "failed to fetch messages for export",
-		Code:    codes.Internal,
-	},
 	ErrTokenExportUnsupportedFormat: {
 		Token:   ErrTokenExportUnsupportedFormat,
 		Message: "unsupported export format",
 		Code:    codes.InvalidArgument,
-	},
-	ErrTokenExportEncodeFailed: {
-		Token:   ErrTokenExportEncodeFailed,
-		Message: "failed to encode export data",
-		Code:    codes.Internal,
-	},
-	ErrTokenExportCSVWriteFailed: {
-		Token:   ErrTokenExportCSVWriteFailed,
-		Message: "failed to write CSV data",
-		Code:    codes.Internal,
 	},
 
 	// Downlink operation errors
@@ -1574,10 +1489,10 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "invalid downlink format",
 		Code:    codes.InvalidArgument,
 	},
-	ErrTokenDownlinkQueueFailed: {
-		Token:   ErrTokenDownlinkQueueFailed,
-		Message: "failed to queue downlink",
-		Code:    codes.Internal,
+	ErrTokenDownlinkPriorityInvalid: {
+		Token:   ErrTokenDownlinkPriorityInvalid,
+		Message: "downlink priority must be a finite number",
+		Code:    codes.InvalidArgument,
 	},
 	ErrTokenDownlinkRevokeFailed: {
 		Token:   ErrTokenDownlinkRevokeFailed,
@@ -1594,35 +1509,10 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "failed to list downlink queue",
 		Code:    codes.Internal,
 	},
-	ErrTokenEndpointNotBidirectional: {
-		Token:   ErrTokenEndpointNotBidirectional,
-		Message: "endpoint does not support bidirectional communication",
-		Code:    codes.FailedPrecondition,
-	},
-	ErrTokenBaseStationNotBidirectional: {
-		Token:   ErrTokenBaseStationNotBidirectional,
-		Message: "base station does not support bidirectional communication",
-		Code:    codes.FailedPrecondition,
-	},
 	ErrTokenDownlinkRevokeNotFound: {
 		Token:   ErrTokenDownlinkRevokeNotFound,
 		Message: "downlink to revoke not found",
 		Code:    codes.NotFound,
-	},
-	ErrTokenDownlinkStatusNotFound: {
-		Token:   ErrTokenDownlinkStatusNotFound,
-		Message: "downlink status not found",
-		Code:    codes.NotFound,
-	},
-	ErrTokenDownlinkAttachFailed: {
-		Token:   ErrTokenDownlinkAttachFailed,
-		Message: "failed to attach endpoint",
-		Code:    codes.Internal,
-	},
-	ErrTokenDownlinkDetachFailed: {
-		Token:   ErrTokenDownlinkDetachFailed,
-		Message: "failed to detach endpoint",
-		Code:    codes.Internal,
 	},
 	ErrTokenQueueIDRequired: {
 		Token:   ErrTokenQueueIDRequired,
@@ -1643,21 +1533,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenQueueIDNonNegative,
 		Message: "queue_id cannot be negative",
 		Code:    codes.InvalidArgument,
-	},
-	ErrTokenDownlinkGetFailed: {
-		Token:   ErrTokenDownlinkGetFailed,
-		Message: "failed to retrieve downlink message",
-		Code:    codes.Internal,
-	},
-	ErrTokenNoBaseStationOwnsQueue: {
-		Token:   ErrTokenNoBaseStationOwnsQueue,
-		Message: "no base station owns this queue item",
-		Code:    codes.FailedPrecondition,
-	},
-	ErrTokenDownlinkRevokeNoResult: {
-		Token:   ErrTokenDownlinkRevokeNoResult,
-		Message: "downlink revoke operation returned no result",
-		Code:    codes.FailedPrecondition,
 	},
 	ErrTokenResultCountOverflow: {
 		Token:   ErrTokenResultCountOverflow,
@@ -1800,27 +1675,12 @@ var errorCatalog = map[string]ErrorDefinition{
 		Code:    codes.Internal,
 	},
 	// Events/Alerts errors
-	ErrTokenEventNotFound: {
-		Token:   ErrTokenEventNotFound,
-		Message: "event not found",
-		Code:    codes.NotFound,
-	},
-	ErrTokenAlertNotFound: {
-		Token:   ErrTokenAlertNotFound,
-		Message: "alert not found",
-		Code:    codes.NotFound,
-	},
 
 	// Base Station errors
 	ErrTokenBaseStationNotFound: {
 		Token:   ErrTokenBaseStationNotFound,
 		Message: "base station not found",
 		Code:    codes.NotFound,
-	},
-	ErrTokenBaseStationOffline: {
-		Token:   ErrTokenBaseStationOffline,
-		Message: "base station is offline",
-		Code:    codes.Unavailable,
 	},
 	ErrTokenBaseStationRequired: {
 		Token:   ErrTokenBaseStationRequired,
@@ -2063,16 +1923,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "invalid EUI format",
 		Code:    codes.InvalidArgument,
 	},
-	ErrTokenInvalidRoleFormat: {
-		Token:   ErrTokenInvalidRoleFormat,
-		Message: "invalid role format",
-		Code:    codes.InvalidArgument,
-	},
-	ErrTokenInvalidExportFormat: {
-		Token:   ErrTokenInvalidExportFormat,
-		Message: "invalid export format",
-		Code:    codes.InvalidArgument,
-	},
 
 	// Generic errors
 	ErrTokenInternalError: {
@@ -2085,21 +1935,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "invalid argument",
 		Code:    codes.InvalidArgument,
 	},
-	ErrTokenNotImplemented: {
-		Token:   ErrTokenNotImplemented,
-		Message: "feature not implemented",
-		Code:    codes.Unimplemented,
-	},
-	ErrTokenServiceUnavailable: {
-		Token:   ErrTokenServiceUnavailable,
-		Message: "service temporarily unavailable",
-		Code:    codes.Unavailable,
-	},
-	ErrTokenDatabaseError: {
-		Token:   ErrTokenDatabaseError,
-		Message: "database error",
-		Code:    codes.Internal,
-	},
 	ErrTokenTenantRequired: {
 		Token:   ErrTokenTenantRequired,
 		Message: "tenant context is required",
@@ -2109,21 +1944,6 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenServiceNotConfigured,
 		Message: "service not configured",
 		Code:    codes.Unimplemented,
-	},
-	ErrTokenOrgRequired: {
-		Token:   ErrTokenOrgRequired,
-		Message: "organization context is required",
-		Code:    codes.FailedPrecondition,
-	},
-	ErrTokenUserRequired: {
-		Token:   ErrTokenUserRequired,
-		Message: "user context is required",
-		Code:    codes.FailedPrecondition,
-	},
-	ErrTokenContextMissing: {
-		Token:   ErrTokenContextMissing,
-		Message: "required context value is missing",
-		Code:    codes.FailedPrecondition,
 	},
 
 	// Org resolver interceptor errors
@@ -2190,19 +2010,14 @@ var errorCatalog = map[string]ErrorDefinition{
 	},
 
 	// Gateway errors
-	ErrTokenGatewayUpstreamUnavailable: {
-		Token:   ErrTokenGatewayUpstreamUnavailable,
-		Message: "gateway upstream service unavailable",
-		Code:    codes.Unavailable,
-	},
-	ErrTokenGatewayProxyFailed: {
-		Token:   ErrTokenGatewayProxyFailed,
-		Message: "gateway proxy forwarding failed",
-		Code:    codes.Internal,
-	},
 	ErrTokenGatewayInternalTrustInvalidHeader: {
 		Token:   ErrTokenGatewayInternalTrustInvalidHeader,
 		Message: "invalid or missing internal trust header",
+		Code:    codes.Unauthenticated,
+	},
+	ErrTokenGatewayInternalPeerRejected: {
+		Token:   ErrTokenGatewayInternalPeerRejected,
+		Message: "internal peer authentication failed",
 		Code:    codes.Unauthenticated,
 	},
 
@@ -2222,7 +2037,16 @@ var errorCatalog = map[string]ErrorDefinition{
 		Message: "CE registry not available in this edition",
 		Code:    codes.Unimplemented,
 	},
+	ErrTokenCEOnboardingCompleted: {
+		Token:   ErrTokenCEOnboardingCompleted,
+		Message: "CE onboarding is already completed",
+		Code:    codes.AlreadyExists,
+	},
 }
+
+// unknownErrorMessage backs the fallback definition for tokens missing from
+// the catalog.
+const unknownErrorMessage = "unknown error"
 
 // GetErrorDefinition retrieves the error definition for a given token
 // Returns a default definition if token not found
@@ -2233,7 +2057,7 @@ func GetErrorDefinition(token string) ErrorDefinition {
 	// Return default for unknown tokens
 	return ErrorDefinition{
 		Token:   token,
-		Message: "unknown error",
+		Message: unknownErrorMessage,
 		Code:    codes.Internal,
 	}
 }
@@ -2272,11 +2096,25 @@ func NewTokenError(token string, cause error) *TokenError {
 	return &TokenError{Token: token, Err: cause}
 }
 
-// TokenOf extracts the catalog token from an error chain.
-func TokenOf(err error) (string, bool) {
+// ToStatusError converts any error into a gRPC status error that carries only
+// catalog vocabulary. A TokenError resolves to its catalog code and message -
+// checked first, because TokenError.Unwrap exposes the cause and a
+// status-bearing cause must never override the deliberately chosen token or
+// leak its text to the client. An error that itself carries a genuine gRPC
+// status (and no token) passes through unchanged; anything else becomes the
+// generic internal error. The cause text never reaches the client.
+func ToStatusError(err error) error {
+	if err == nil {
+		return nil
+	}
 	var te *TokenError
 	if errors.As(err, &te) {
-		return te.Token, true
+		return status.Error(GetGRPCCode(te.Token), ResolveErrorMessage(te.Token))
 	}
-	return "", false
+	type grpcStatus interface{ GRPCStatus() *status.Status }
+	var gs grpcStatus
+	if errors.As(err, &gs) {
+		return gs.GRPCStatus().Err()
+	}
+	return status.Error(GetGRPCCode(ErrTokenInternalError), ResolveErrorMessage(ErrTokenInternalError))
 }

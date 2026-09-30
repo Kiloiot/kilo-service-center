@@ -4,9 +4,13 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
@@ -101,7 +105,7 @@ func TestCreateSession_WithJSONEncoding(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestJSON%")
 	defer cleanupSessionTestData(t, db, "TestJSON%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create session with explicit JSON encoding
@@ -121,7 +125,7 @@ func TestCreateSession_WithJSONEncoding(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.100"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingJSON,
+		Encoding:       mioty.EncodingJSON,
 	}
 
 	session, err := repo.CreateSession(ctx, req)
@@ -129,12 +133,12 @@ func TestCreateSession_WithJSONEncoding(t *testing.T) {
 	require.NotNil(t, session)
 
 	// Verify encoding was persisted
-	assert.Equal(t, bssci.EncodingJSON, session.Encoding, "Session should have JSON encoding")
+	assert.Equal(t, mioty.EncodingJSON, session.Encoding, "Session should have JSON encoding")
 
 	// Verify by re-reading from database
 	retrieved, err := repo.GetSessionByID(ctx, 100, session.ID)
 	require.NoError(t, err)
-	assert.Equal(t, bssci.EncodingJSON, retrieved.Encoding, "Retrieved session should preserve JSON encoding")
+	assert.Equal(t, mioty.EncodingJSON, retrieved.Encoding, "Retrieved session should preserve JSON encoding")
 }
 
 // TestCreateSession_WithMessagePackEncoding verifies MessagePack encoding is persisted
@@ -156,7 +160,7 @@ func TestCreateSession_WithMessagePackEncoding(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestMsgPack%")
 	defer cleanupSessionTestData(t, db, "TestMsgPack%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create session with explicit MessagePack encoding
@@ -176,7 +180,7 @@ func TestCreateSession_WithMessagePackEncoding(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.101"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingMessagePack,
+		Encoding:       mioty.EncodingMessagePack,
 	}
 
 	session, err := repo.CreateSession(ctx, req)
@@ -184,12 +188,12 @@ func TestCreateSession_WithMessagePackEncoding(t *testing.T) {
 	require.NotNil(t, session)
 
 	// Verify encoding was persisted
-	assert.Equal(t, bssci.EncodingMessagePack, session.Encoding, "Session should have MessagePack encoding")
+	assert.Equal(t, mioty.EncodingMessagePack, session.Encoding, "Session should have MessagePack encoding")
 
 	// Verify by re-reading from database
 	retrieved, err := repo.GetSessionByID(ctx, 101, session.ID)
 	require.NoError(t, err)
-	assert.Equal(t, bssci.EncodingMessagePack, retrieved.Encoding, "Retrieved session should preserve MessagePack encoding")
+	assert.Equal(t, mioty.EncodingMessagePack, retrieved.Encoding, "Retrieved session should preserve MessagePack encoding")
 }
 
 // TestCreateSession_WithEmptyEncoding verifies default MessagePack encoding
@@ -211,7 +215,7 @@ func TestCreateSession_WithEmptyEncoding(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestDefault%")
 	defer cleanupSessionTestData(t, db, "TestDefault%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create session with empty encoding (should default to msgpack)
@@ -239,12 +243,12 @@ func TestCreateSession_WithEmptyEncoding(t *testing.T) {
 	require.NotNil(t, session)
 
 	// Verify defaults to MessagePack per BSSCI Section 1
-	assert.Equal(t, bssci.EncodingMessagePack, session.Encoding, "Empty encoding should default to MessagePack")
+	assert.Equal(t, mioty.EncodingMessagePack, session.Encoding, "Empty encoding should default to MessagePack")
 
 	// Verify by re-reading from database
 	retrieved, err := repo.GetSessionByID(ctx, 102, session.ID)
 	require.NoError(t, err)
-	assert.Equal(t, bssci.EncodingMessagePack, retrieved.Encoding, "Retrieved session should have default MessagePack encoding")
+	assert.Equal(t, mioty.EncodingMessagePack, retrieved.Encoding, "Retrieved session should have default MessagePack encoding")
 }
 
 // TestUpdateEncoding_PersistsChange verifies encoding updates are persisted
@@ -266,7 +270,7 @@ func TestUpdateEncoding_PersistsChange(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestUpdate%")
 	defer cleanupSessionTestData(t, db, "TestUpdate%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create session with MessagePack encoding
@@ -286,21 +290,21 @@ func TestUpdateEncoding_PersistsChange(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.103"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingMessagePack,
+		Encoding:       mioty.EncodingMessagePack,
 	}
 
 	session, err := repo.CreateSession(ctx, req)
 	require.NoError(t, err)
-	assert.Equal(t, bssci.EncodingMessagePack, session.Encoding)
+	assert.Equal(t, mioty.EncodingMessagePack, session.Encoding)
 
 	// Update encoding to JSON
-	err = repo.UpdateEncoding(ctx, session.TenantID, session.ID, bssci.EncodingJSON)
+	err = repo.UpdateEncoding(ctx, session.TenantID, session.ID, mioty.EncodingJSON)
 	require.NoError(t, err)
 
 	// Verify update was persisted
 	retrieved, err := repo.GetSessionByID(ctx, 103, session.ID)
 	require.NoError(t, err)
-	assert.Equal(t, bssci.EncodingJSON, retrieved.Encoding, "Encoding update should be persisted")
+	assert.Equal(t, mioty.EncodingJSON, retrieved.Encoding, "Encoding update should be persisted")
 }
 
 // TestUpdateSession_WithEncodingField verifies UpdateSession handles encoding changes
@@ -322,7 +326,7 @@ func TestUpdateSession_WithEncodingField(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestUpdateSess%")
 	defer cleanupSessionTestData(t, db, "TestUpdateSess%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create session with JSON encoding
@@ -342,15 +346,15 @@ func TestUpdateSession_WithEncodingField(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.104"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingJSON,
+		Encoding:       mioty.EncodingJSON,
 	}
 
 	session, err := repo.CreateSession(ctx, req)
 	require.NoError(t, err)
-	assert.Equal(t, bssci.EncodingJSON, session.Encoding)
+	assert.Equal(t, mioty.EncodingJSON, session.Encoding)
 
 	// Update session with encoding change
-	newEncoding := bssci.EncodingMessagePack
+	newEncoding := mioty.EncodingMessagePack
 	updateReq := &models.BaseStationSessionUpdateRequest{
 		Encoding: &newEncoding,
 	}
@@ -361,7 +365,7 @@ func TestUpdateSession_WithEncodingField(t *testing.T) {
 	// Verify encoding was updated
 	retrieved, err := repo.GetSessionByID(ctx, 104, session.ID)
 	require.NoError(t, err)
-	assert.Equal(t, bssci.EncodingMessagePack, retrieved.Encoding, "UpdateSession should persist encoding change")
+	assert.Equal(t, mioty.EncodingMessagePack, retrieved.Encoding, "UpdateSession should persist encoding change")
 }
 
 // TestListSessions_IncludesEncoding verifies ListSessions returns encoding field
@@ -386,7 +390,7 @@ func TestListSessions_IncludesEncoding(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestList%")
 	defer cleanupSessionTestData(t, db, "TestList%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create two sessions with different encodings
@@ -406,7 +410,7 @@ func TestListSessions_IncludesEncoding(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.105"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingJSON,
+		Encoding:       mioty.EncodingJSON,
 	}
 
 	snBsUUID2 := uuid.New()
@@ -424,7 +428,7 @@ func TestListSessions_IncludesEncoding(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.106"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingMessagePack,
+		Encoding:       mioty.EncodingMessagePack,
 	}
 
 	session1, err := repo.CreateSession(ctx, req1)
@@ -438,7 +442,7 @@ func TestListSessions_IncludesEncoding(t *testing.T) {
 		TenantID:   105,
 		Status:     []models.BaseStationSessionStatus{models.SessionStatusActive},
 		ActiveOnly: true,
-		Limit:      100,
+		Limit:      testSessionListLimit,
 	}
 
 	sessions, total, err := repo.ListSessions(ctx, filter)
@@ -450,11 +454,11 @@ func TestListSessions_IncludesEncoding(t *testing.T) {
 	var foundJSON, foundMsgPack bool
 	for _, s := range sessions {
 		if s.ID == session1.ID {
-			assert.Equal(t, bssci.EncodingJSON, s.Encoding, "JSON session should preserve encoding in list")
+			assert.Equal(t, mioty.EncodingJSON, s.Encoding, "JSON session should preserve encoding in list")
 			foundJSON = true
 		}
 		if s.ID == session2.ID {
-			assert.Equal(t, bssci.EncodingMessagePack, s.Encoding, "MessagePack session should preserve encoding in list")
+			assert.Equal(t, mioty.EncodingMessagePack, s.Encoding, "MessagePack session should preserve encoding in list")
 			foundMsgPack = true
 		}
 	}
@@ -482,7 +486,7 @@ func TestGetActiveSessionByBaseStation_IncludesEncoding(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestActive%")
 	defer cleanupSessionTestData(t, db, "TestActive%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create active session with JSON encoding
@@ -502,7 +506,7 @@ func TestGetActiveSessionByBaseStation_IncludesEncoding(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.107"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingJSON,
+		Encoding:       mioty.EncodingJSON,
 	}
 
 	created, err := repo.CreateSession(ctx, req)
@@ -515,5 +519,5 @@ func TestGetActiveSessionByBaseStation_IncludesEncoding(t *testing.T) {
 
 	// Verify encoding is included
 	assert.Equal(t, created.ID, session.ID)
-	assert.Equal(t, bssci.EncodingJSON, session.Encoding, "Active session lookup should include encoding")
+	assert.Equal(t, mioty.EncodingJSON, session.Encoding, "Active session lookup should include encoding")
 }

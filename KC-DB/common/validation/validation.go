@@ -3,8 +3,8 @@
 package validation
 
 import (
+	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -18,10 +18,17 @@ var (
 	euiRegex = regexp.MustCompile(`^[0-9a-fA-F]{16}$`)
 )
 
-// ValidateEUI validates an EUI64 string
-func ValidateEUI(eui string) error {
+const (
+	msgEUIRequired      = "EUI is required"
+	msgFmtEUIHexLength  = "EUI must be 16 hex characters, got %s"
+	msgFmtEUIByteLength = "EUI must be %d bytes"
+)
+
+// validateEUI validates an EUI64 string
+// EUI validation messages wrapped onto the sentinel errors.
+func validateEUI(eui string) error {
 	if eui == "" {
-		return errors.Wrap(errors.ErrMissingField, "EUI is required")
+		return errors.Wrap(errors.ErrMissingField, msgEUIRequired)
 	}
 
 	// Remove any hyphens or colons
@@ -29,7 +36,7 @@ func ValidateEUI(eui string) error {
 
 	// Check if it's 16 hex characters
 	if !euiRegex.MatchString(cleaned) {
-		return errors.Wrapf(errors.ErrInvalidEUI, "EUI must be 16 hex characters, got %s", eui)
+		return errors.Wrapf(errors.ErrInvalidEUI, msgFmtEUIHexLength, eui)
 	}
 
 	return nil
@@ -37,7 +44,7 @@ func ValidateEUI(eui string) error {
 
 // ParseEUI parses an EUI string to uint64
 func ParseEUI(eui string) (uint64, error) {
-	if err := ValidateEUI(eui); err != nil {
+	if err := validateEUI(eui); err != nil {
 		return 0, err
 	}
 
@@ -51,19 +58,25 @@ func ParseEUI(eui string) (uint64, error) {
 	}
 
 	if len(bytes) != config.EUISize {
-		return 0, errors.Wrapf(errors.ErrInvalidEUI, "EUI must be %d bytes", config.EUISize)
+		return 0, errors.Wrapf(errors.ErrInvalidEUI, msgFmtEUIByteLength, config.EUISize)
 	}
 
 	// Convert bytes to uint64 (big endian)
 	var result uint64
-	for i := 0; i < 8; i++ {
-		result = (result << 8) | uint64(bytes[i])
+	for _, b := range bytes {
+		result = (result << 8) | uint64(b)
 	}
 
 	return result, nil
 }
 
-// FormatEUI formats a uint64 EUI to hex string
-func FormatEUI(eui uint64) string {
-	return fmt.Sprintf("%016x", eui)
+// ParseEUIBytes parses an EUI string into its 8 big-endian bytes.
+func ParseEUIBytes(eui string) ([]byte, error) {
+	value, err := ParseEUI(eui)
+	if err != nil {
+		return nil, err
+	}
+	bytes := make([]byte, config.EUISize)
+	binary.BigEndian.PutUint64(bytes, value)
+	return bytes, nil
 }

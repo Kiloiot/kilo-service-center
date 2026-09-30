@@ -4,6 +4,7 @@ import { Box, CircularProgress, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 
 import { LOADER } from "@constants/messages";
+import { componentSpacing } from "@theme/index";
 
 /**
  * Global Loading Component
@@ -24,7 +25,10 @@ const GlobalLoader: React.FC = () => {
         backgroundColor: theme.palette.background.default,
       }}
     >
-      <CircularProgress size={60} thickness={4} />
+      <CircularProgress
+        size={componentSpacing.spinner.page}
+        thickness={componentSpacing.spinner.pageThickness}
+      />
       <Typography
         variant="h6"
         sx={{

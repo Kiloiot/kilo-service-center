@@ -12,20 +12,31 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	"github.com/google/uuid"
 )
 
+// APIKeyStore persists API keys for tenants and organizations.
+type APIKeyStore interface {
+	Create(ctx context.Context, key *models.APIKey) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.APIKey, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, tenantID int64, orgID uuid.UUID, userID *uuid.UUID, limit, offset int) ([]*models.APIKey, error)
+	Count(ctx context.Context, tenantID int64, orgID uuid.UUID, userID *uuid.UUID) (int64, error)
+	GetByIDAndOrg(ctx context.Context, id, orgID uuid.UUID) (*models.APIKey, error)
+	DeleteByIDAndOrg(ctx context.Context, id, orgID uuid.UUID) error
+}
+
 // APIKeyAdminService implements grpcservices.APIKeyService.
 type APIKeyAdminService struct {
-	store  interfaces.APIKeyRepository
+	store  APIKeyStore
 	logger logger.Logger
 }
 
 // NewAPIKeyAdminService creates a new API key admin service.
-func NewAPIKeyAdminService(store interfaces.APIKeyRepository, log logger.Logger) *APIKeyAdminService {
+func NewAPIKeyAdminService(store APIKeyStore, log logger.Logger) *APIKeyAdminService {
 	return &APIKeyAdminService{
 		store:  store,
 		logger: log,
@@ -37,8 +48,8 @@ func (s *APIKeyAdminService) Create(ctx context.Context, req *grpcservices.APIKe
 	// Generate random key
 	keyBytes := make([]byte, 32)
 	if _, err := rand.Read(keyBytes); err != nil {
-		s.logger.ErrorContext(ctx, "failed to generate key bytes", "error", err)
-		return nil, fmt.Errorf("generate key: %w", err)
+		s.logger.ErrorContext(ctx, LogAPIKeyGenerateFailed, logger.FieldError, err)
+		return nil, fmt.Errorf("%s: %w", errOpGenerateKey, err)
 	}
 	key := base64.URLEncoding.EncodeToString(keyBytes)
 
@@ -64,11 +75,11 @@ func (s *APIKeyAdminService) Create(ctx context.Context, req *grpcservices.APIKe
 	}
 
 	if err := s.store.Create(ctx, apiKey); err != nil {
-		s.logger.ErrorContext(ctx, "failed to create api key", "name", req.Name, "error", err)
-		return nil, fmt.Errorf("create api key: %w", err)
+		s.logger.ErrorContext(ctx, LogAPIKeyCreateFailed, logger.FieldName, req.Name, logger.FieldError, err)
+		return nil, fmt.Errorf("%s: %w", errOpCreateAPIKey, err)
 	}
 
-	s.logger.InfoContext(ctx, "api key created", "keyId", apiKey.ID, "name", req.Name, "type", req.KeyType)
+	s.logger.InfoContext(ctx, LogAPIKeyCreated, logger.FieldKeyID, apiKey.ID, logger.FieldName, req.Name, logger.FieldType, req.KeyType)
 
 	return &grpcservices.APIKeyCreateResponse{
 		Key:    key, // Only returned once on creation
@@ -80,11 +91,11 @@ func (s *APIKeyAdminService) Create(ctx context.Context, req *grpcservices.APIKe
 func (s *APIKeyAdminService) GetByID(ctx context.Context, id uuid.UUID) (*models.APIKey, error) {
 	key, err := s.store.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return nil, ErrAPIKeyNotFound
 		}
-		s.logger.ErrorContext(ctx, "failed to get api key", "keyId", id, "error", err)
-		return nil, fmt.Errorf("get api key: %w", err)
+		s.logger.ErrorContext(ctx, LogAPIKeyGetFailed, logger.FieldKeyID, id, logger.FieldError, err)
+		return nil, fmt.Errorf("%s: %w", errOpGetAPIKey, err)
 	}
 	return key, nil
 }
@@ -93,18 +104,18 @@ func (s *APIKeyAdminService) GetByID(ctx context.Context, id uuid.UUID) (*models
 func (s *APIKeyAdminService) Delete(ctx context.Context, id uuid.UUID) error {
 	_, err := s.store.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return ErrAPIKeyNotFound
 		}
-		return fmt.Errorf("get api key: %w", err)
+		return fmt.Errorf("%s: %w", errOpGetAPIKey, err)
 	}
 
 	if err := s.store.Delete(ctx, id); err != nil {
-		s.logger.ErrorContext(ctx, "failed to delete api key", "keyId", id, "error", err)
-		return fmt.Errorf("delete api key: %w", err)
+		s.logger.ErrorContext(ctx, LogAPIKeyDeleteFailed, logger.FieldKeyID, id, logger.FieldError, err)
+		return fmt.Errorf("%s: %w", errOpDeleteAPIKey, err)
 	}
 
-	s.logger.InfoContext(ctx, "api key deleted", "keyId", id)
+	s.logger.InfoContext(ctx, LogAPIKeyDeleted, logger.FieldKeyID, id)
 	return nil
 }
 
@@ -112,14 +123,14 @@ func (s *APIKeyAdminService) Delete(ctx context.Context, id uuid.UUID) error {
 func (s *APIKeyAdminService) List(ctx context.Context, tenantID int64, orgID uuid.UUID, userID *uuid.UUID, limit, offset int) ([]*models.APIKey, int64, error) {
 	keys, err := s.store.List(ctx, tenantID, orgID, userID, limit, offset)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to list api keys", "error", err)
-		return nil, 0, fmt.Errorf("list api keys: %w", err)
+		s.logger.ErrorContext(ctx, LogAPIKeyListFailed, logger.FieldError, err)
+		return nil, 0, fmt.Errorf("%s: %w", errOpListAPIKeys, err)
 	}
 
 	count, err := s.store.Count(ctx, tenantID, orgID, userID)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to count api keys", "error", err)
-		return nil, 0, fmt.Errorf("count api keys: %w", err)
+		s.logger.ErrorContext(ctx, LogAPIKeyCountFailed, logger.FieldError, err)
+		return nil, 0, fmt.Errorf("%s: %w", errOpCountAPIKeys, err)
 	}
 
 	return keys, count, nil
@@ -129,11 +140,11 @@ func (s *APIKeyAdminService) List(ctx context.Context, tenantID int64, orgID uui
 func (s *APIKeyAdminService) GetByIDAndOrg(ctx context.Context, id, orgID uuid.UUID) (*models.APIKey, error) {
 	key, err := s.store.GetByIDAndOrg(ctx, id, orgID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return nil, ErrAPIKeyNotFound
 		}
-		s.logger.ErrorContext(ctx, "failed to get api key by org", "keyId", id, "orgId", orgID, "error", err)
-		return nil, fmt.Errorf("get api key: %w", err)
+		s.logger.ErrorContext(ctx, LogAPIKeyGetByOrgFailed, logger.FieldKeyID, id, logger.FieldOrgIDCamel, orgID, logger.FieldError, err)
+		return nil, fmt.Errorf("%s: %w", errOpGetAPIKey, err)
 	}
 	return key, nil
 }
@@ -143,18 +154,18 @@ func (s *APIKeyAdminService) DeleteByIDAndOrg(ctx context.Context, id, orgID uui
 	// Verify ownership before deletion
 	_, err := s.store.GetByIDAndOrg(ctx, id, orgID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return ErrAPIKeyNotFound
 		}
-		return fmt.Errorf("get api key: %w", err)
+		return fmt.Errorf("%s: %w", errOpGetAPIKey, err)
 	}
 
 	if err := s.store.DeleteByIDAndOrg(ctx, id, orgID); err != nil {
-		s.logger.ErrorContext(ctx, "failed to delete api key", "keyId", id, "orgId", orgID, "error", err)
-		return fmt.Errorf("delete api key: %w", err)
+		s.logger.ErrorContext(ctx, LogAPIKeyDeleteFailed, logger.FieldKeyID, id, logger.FieldOrgIDCamel, orgID, logger.FieldError, err)
+		return fmt.Errorf("%s: %w", errOpDeleteAPIKey, err)
 	}
 
-	s.logger.InfoContext(ctx, "api key deleted", "keyId", id, "orgId", orgID)
+	s.logger.InfoContext(ctx, LogAPIKeyDeleted, logger.FieldKeyID, id, logger.FieldOrgIDCamel, orgID)
 	return nil
 }
 

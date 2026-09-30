@@ -3,17 +3,31 @@ package bssci
 import (
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // Message Encoding Constants
-// BSSCI Section 1 - Dual encoding support (JSON and MessagePack)
+// BSSCI Section 1 - Dual encoding support (JSON and MessagePack).
+// Canonical definitions live in KC-DB/storage/mioty; re-exported here so
+// existing bssci call sites remain unchanged.
 const (
 	// EncodingMessagePack is the default MIOTY message encoding (binary)
-	EncodingMessagePack = "msgpack"
+	EncodingMessagePack = mioty.EncodingMessagePack
 
 	// EncodingJSON is the alternative MIOTY message encoding (text-based)
-	EncodingJSON = "json"
+	EncodingJSON = mioty.EncodingJSON
+)
+
+// Base station location columns a statusRsp geoLocation writes.
+const (
+	locationColumnLatitude  = "latitude"
+	locationColumnLongitude = "longitude"
+	locationColumnAltitude  = "altitude"
+	locationColumnSource    = "location_source"
+	locationColumnUpdatedAt = "location_updated_at"
 )
 
 // Timing defaults applied when the corresponding protocol configuration is
@@ -27,12 +41,6 @@ const (
 	// defaultConnectionEstablishmentTimeout bounds a fresh connection before its con arrives
 	defaultConnectionEstablishmentTimeout = 30 * time.Second
 
-	// defaultDuplicateWindow is the uplink deduplication window per MIOTY spec
-	defaultDuplicateWindow = 5 * time.Minute
-
-	// defaultCertificatePollInterval is the certificate change poll interval
-	defaultCertificatePollInterval = 10 * time.Second
-
 	// defaultStatusRequestInterval is how often the SC polls a base station for status
 	defaultStatusRequestInterval = 30 * time.Second
 	// defaultStatusRequestInitialDelay delays the first status poll after connect
@@ -42,6 +50,10 @@ const (
 	// defaultDLRXCleanupInterval is the dlRxStatQry expiry sweep cadence
 	defaultDLRXCleanupInterval = 60 * time.Second
 )
+
+// sessionTeardownTimeout bounds the persistence a lost connection runs; it is
+// detached from the server context so it also completes during Stop.
+const sessionTeardownTimeout = 5 * time.Second
 
 // Exact float integer bounds for wire numeric coercion.
 // IEEE 754 floating-point values represent integers exactly only up to their
@@ -62,33 +74,22 @@ const (
 	// PropagateStatusDetachReceived indicates endpoint has received detach message
 	PropagateStatusDetachReceived = endpoint.PropagateStatusDetachReceived
 
-	// PropagateStatusAttachReceived indicates endpoint has received attach propagate
-	PropagateStatusAttachReceived = endpoint.PropagateStatusAttachReceived
-
 	// PropagateStatusAttached indicates attach propagate completed successfully
 	PropagateStatusAttached = endpoint.PropagateStatusAttached
 
 	// PropagateStatusDetaching indicates detach propagate is in-flight (awaiting BS response)
 	PropagateStatusDetaching = endpoint.PropagateStatusDetaching
 
-	// PropagateStatusDetached indicates detach propagate completed successfully
-	PropagateStatusDetached = endpoint.PropagateStatusDetached
-
 	// EndpointStatusAttached is the ep_status value for attached endpoints
 	EndpointStatusAttached = endpoint.EndpointStatusAttached
 )
 
-// Event Severity Constants
-// System event severity levels for audit logging and event categorization
+// Event severities; the canonical definitions live with the persisted event
+// model in KC-DB/storage/models.
 const (
-	// SeverityInfo indicates an informational event
-	SeverityInfo = "info"
-
-	// SeverityWarning indicates a warning event
-	SeverityWarning = "warning"
-
-	// SeverityError indicates an error event
-	SeverityError = "error"
+	SeverityInfo    = models.EventSeverityInfo
+	SeverityWarning = models.EventSeverityWarning
+	SeverityError   = models.EventSeverityError
 )
 
 // Event Status Constants
@@ -124,19 +125,20 @@ const (
 	OperationLookbackHours = 24
 )
 
-// Event Data Keys
-// JSON field names for system event details
+// Event detail keys; the canonical definitions live with the persisted event
+// model in KC-DB/storage/models.
 const (
-	EventKeyOperationID    = "operation_id"
-	EventKeyOperationType  = "operation_type"
-	EventKeyEndpointID     = "endpoint_id"
-	EventKeyEpEui          = "epEui"
-	EventKeyTargetBS       = "target_bs"
-	EventKeyTargetBSList   = "target_bs_list"
-	EventKeyTargetBSCount  = "target_bs_count"
-	EventKeyError          = "error"
-	EventKeyBsEui          = "bsEui"          // UI compatibility
-	EventKeyBaseStationEui = "baseStationEui" // UI compatibility
+	EventKeyOperationID    = models.EventDetailKeyOperationID
+	EventKeyOperationType  = models.EventDetailKeyOperationType
+	EventKeyEndpointID     = models.EventDetailKeyEndpointID
+	EventKeyEpEui          = models.EventDetailKeyEpEui
+	EventKeyQueID          = models.EventDetailKeyQueID
+	EventKeyTargetBS       = models.EventDetailKeyTargetBS
+	EventKeyTargetBSList   = models.EventDetailKeyTargetBSList
+	EventKeyTargetBSCount  = models.EventDetailKeyTargetBSCount
+	EventKeyError          = models.EventDetailKeyError
+	EventKeyBsEui          = models.EventDetailKeyBsEui
+	EventKeyBaseStationEui = models.EventDetailKeyBaseStationEui
 )
 
 // Event Field Values
@@ -155,14 +157,6 @@ const (
 // Event Type Constants
 // System event types for BSSCI error handling per §5.17-5.17.2 and propagation per §5.8-5.8.3
 const (
-	// EventTypeBSSCIErrorSent indicates service center sent error message to base station
-	EventTypeBSSCIErrorSent = "bssci_error_sent"
-
-	// EventTypeBSSCIErrorReceived indicates service center received error message from base station
-	EventTypeBSSCIErrorReceived = "bssci_error_received"
-
-	// EventTypeBSSCIErrorAck indicates service center received errorAck from base station
-	EventTypeBSSCIErrorAck = "bssci_error_ack"
 
 	// EventTypeAttachPropagateInitiated indicates service center initiated attach propagate to base station
 	// BSSCI §5.8-5.8.3 Attach Propagate operation
@@ -204,9 +198,6 @@ const (
 	// EventTypeVMStatusReceived indicates VM status response received from base station
 	EventTypeVMStatusReceived = "vm_status_received"
 
-	// EventTypeVMUplinkData indicates VM uplink data received from endpoint
-	EventTypeVMUplinkData = "vm_uplink_data"
-
 	// EventTypeDLRxStatusReceived indicates downlink RX status received from endpoint
 	EventTypeDLRxStatusReceived = "dl_rx_status_received"
 
@@ -220,14 +211,6 @@ const (
 // Event Title Constants
 // Human-readable titles for BSSCI error events (BSSCI §5.17) and propagation events (BSSCI §5.8)
 const (
-	// TitleBSSCIErrorSent is the title for outbound error events
-	TitleBSSCIErrorSent = "BSSCI Error Sent to Base Station"
-
-	// TitleBSSCIErrorReceived is the title for inbound error events
-	TitleBSSCIErrorReceived = "BSSCI Error Received from Base Station"
-
-	// TitleBSSCIErrorAck is the title for errorAck events
-	TitleBSSCIErrorAck = "BSSCI Error Acknowledged"
 
 	// TitleAttachPropagateInitiated is the title for attach propagate initiated events
 	TitleAttachPropagateInitiated = "Attach Propagate Initiated"
@@ -270,9 +253,6 @@ const (
 	// DescriptionAttachPropagateEndpoint is the description for endpoint-side attach propagate events
 	DescriptionAttachPropagateEndpoint = "Attach propagate initiated"
 
-	// DescriptionAttachPropagateBaseStation is the description for base station-side attach propagate events
-	DescriptionAttachPropagateBaseStation = "Service center initiated attach propagate"
-
 	// DescriptionDetachPropagateEndpoint is the description for detach propagate initiated events
 	DescriptionDetachPropagateEndpoint = "Detach propagate initiated"
 
@@ -286,75 +266,226 @@ const (
 	OperationDLDataRevoke = "dlDataRev"
 )
 
-// DL Data Revoke Event Constants (BSSCI §5.13)
-const (
-	EventDLDataRevokeInitiated = "dl_data_revoke_initiated"
-	EventDLDataRevoked         = "dl_data_revoked"
-)
-
-// DL Data Result Status Constants (BSSCI §5.14)
-// These are stored in downlink queue status field after transmission/revocation
-const (
-	DLDataResultRevoked      = "revoked"       // Successfully revoked via dlDataRevCmp
-	DLDataResultRevokeFailed = "revoke_failed" // Revoke operation failed
-)
-
 // Downlink Queue Status Constants (BSSCI §5.11-5.14)
-// Queue lifecycle states for tracking downlink message progression
+// Queue lifecycle states for tracking downlink message progression.
+// Canonical definitions live in KC-DB/storage/mioty; re-exported here.
 const (
-	DLQueueStatusPending     = "pending"     // Queued awaiting scheduler processing
-	DLQueueStatusScheduled   = "scheduled"   // Scheduler selected for transmission
-	DLQueueStatusReserved    = "reserved"    // Durably reserved for dispatch; confirmed queued after the wire send
-	DLQueueStatusQueued      = "queued"      // Sent to BS via dlDataQue, awaiting transmission
-	DLQueueStatusTransmitted = "transmitted" // BS reported successful transmission via dlDataRes (BSSCI 5.14)
-	DLQueueStatusDelivered   = "delivered"   // Endpoint acknowledged receipt (if ack requested)
-	DLQueueStatusFailed      = "failed"      // BS reported transmission failure via dlDataRes (BSSCI 5.14)
-	DLQueueStatusExpired     = "expired"     // Validity period elapsed before transmission
-	DLQueueStatusRevoked     = "revoked"     // Revoked via dlDataRev before transmission
-	DLQueueStatusAcked       = "acked"       // Endpoint acknowledgment received (dlDataRes)
-)
-
-// DL RX Query Status Constants (BSSCI §5.15)
-// Query tracking lifecycle for dlRxStatQry correlation
-const (
-	DLRXQueryStatusPending  = "pending"  // Query sent, awaiting dlRxStat response
-	DLRXQueryStatusReceived = "received" // dlRxStat correlated with query
-	DLRXQueryStatusTimeout  = "timeout"  // Query expired (cleanup after 15 minutes)
-)
-
-// Propagation Reconciliation Default Values
-// These control automatic endpoint propagation to base stations
-const (
-	DefaultReconcileBatchSize       = 50                     // Endpoints per batch
-	DefaultReconcileInterBatchDelay = 100 * time.Millisecond // Delay between batches
-	DefaultReconcileMaxRetries      = 3                      // Max retry attempts before pause
-	DefaultReconcileRetryBackoff    = 30 * time.Second       // Base backoff for exponential retry
-)
-
-// Propagation Status Constants
-// State machine for automatic endpoint propagation reconciliation
-const (
-	PropagationStatusIdle      = "idle"      // Initial state, not started
-	PropagationStatusRunning   = "running"   // Actively processing endpoints
-	PropagationStatusCompleted = "completed" // Successfully finished
-	PropagationStatusError     = "error"     // Failed, may retry
-	PropagationStatusPaused    = "paused"    // Max retries exceeded, needs manual reset
+	DLQueueStatusPending  = mioty.DLQueueStatusPending
+	DLQueueStatusReserved = mioty.DLQueueStatusReserved
+	DLQueueStatusQueued   = mioty.DLQueueStatusQueued
 )
 
 // Validation Status Constants
 // Detach signature validation tracking (BSSCI §5.7)
 // These values indicate whether cryptographic validation was performed for a detach operation.
-// Used in detachMetadata.ValidationStatus to track validation state for unknown endpoints.
+// Used in detachMetadata.ValidationStatus to track the detach signature validation state.
 const (
 	// ValidationStatusValidated indicates signature was cryptographically validated against endpoint.Sign
 	ValidationStatusValidated = "validated"
 
-	// ValidationStatusUnknownEndpoint indicates endpoint not found in database, signature cannot be validated
-	ValidationStatusUnknownEndpoint = "unknown_endpoint"
+	// ValidationStatusUnverified indicates the detach was recorded without a cryptographic
+	// check: signature validation is disabled in server config, or no validator was configured.
+	ValidationStatusUnverified = "unverified"
 
 	// ValidationStatusInvalidSignature indicates signature cryptographically invalid (CMAC/equality check failed)
 	ValidationStatusInvalidSignature = "invalid_signature"
-
-	// ValidationStatusDisabled indicates signature validation is disabled in server config
-	ValidationStatusDisabled = "disabled"
 )
+
+// Log field values explaining rejected sessions and dropped values.
+const (
+	// reasonQueueIDOverflow marks a dlDataRevRsp queue ID that exceeds int64 range.
+	reasonQueueIDOverflow = "uint64 overflow (> math.MaxInt64)"
+	// reasonHandshakeIncomplete marks a session skipped because conCmp has not arrived.
+	reasonHandshakeIncomplete = "handshake not complete"
+	// reasonNotConnected marks a base station absent from the connected-session map.
+	reasonNotConnected = "not in connected sessions"
+	// expectedEnvelopeFields names the mandatory response envelope keys per BSSCI §2.4.
+	expectedEnvelopeFields = "command,opId"
+	// specSectionNormalization is the BSSCI section governing unknown-field handling.
+	specSectionNormalization = "§2.4"
+	// contextAttachPropagateFallback tags org-lookup fallbacks during attachPrpCmp handling.
+	contextAttachPropagateFallback = "attach_propagate_complete_fallback"
+)
+
+// geoLocationComponents is the length of a geoLocation Numeric[3] (rev1 §5.3.1).
+const geoLocationComponents = 3
+
+// Event payload and pending-operation metadata keys shared by handlers.
+const (
+	// eventDataKeyStatus is the event-details key carrying an operation outcome.
+	eventDataKeyStatus = models.EventDetailKeyStatus
+	// metadataKeyFailed marks a pending operation as failed.
+	metadataKeyFailed = "failed"
+	// metadataKeyFailedAt records the failure timestamp (Unix ns) of a pending operation.
+	metadataKeyFailedAt = "failedAt"
+	// metadataKeyTenantID carries a propagate operation's endpoint owner tenant.
+	metadataKeyTenantID = "tenantId"
+	// metadataKeyEndpointID carries the database ID of the endpoint an attach
+	// or detach names.
+	metadataKeyEndpointID = "endpointID"
+	// metadataKeyEndpointTenantID carries an attach's endpoint owner tenant.
+	metadataKeyEndpointTenantID = "endpointTenantID"
+	// metadataKeyOrganizationID carries a propagate operation's endpoint owner organization.
+	metadataKeyOrganizationID = "organizationId"
+	// metadataKeyOperatorRequested marks a status request an operator sent,
+	// whose answer is announced even when it answers a resume reissue.
+	metadataKeyOperatorRequested = "operatorRequested"
+	// metadataKeyShortAddr carries the short address an attach propagate sent.
+	metadataKeyShortAddr = "shortAddr"
+	// metadataKeyBidirectional carries the bidi flag an attach propagate sent.
+	metadataKeyBidirectional = "bidirectional"
+	// metadataKeyLastPacketCnt carries the packet counter an attach propagate sent.
+	metadataKeyLastPacketCnt = "lastPacketCnt"
+	// metadataKeyDualChannel carries the dualChan flag an attach propagate sent.
+	metadataKeyDualChannel = "dualChannel"
+	// metadataKeyRepetition carries the repetition flag an attach propagate sent.
+	metadataKeyRepetition = "repetition"
+	// metadataKeyWideCarrOff carries the wideCarrOff flag an attach propagate sent.
+	metadataKeyWideCarrOff = "wideCarrOff"
+	// metadataKeyLongBlkDist carries the longBlkDist flag an attach propagate sent.
+	metadataKeyLongBlkDist = "longBlkDist"
+)
+
+// fallbackErrorMessage substitutes for a base-station error message when the
+// inbound error payload omits the message field.
+const fallbackErrorMessage = "unknown error"
+
+// Sublayer command prefixes (BSSCI-4-02): remote control and virtual machine.
+const (
+	sublayerPrefixRC = "rc."
+	sublayerPrefixVM = "vm."
+)
+
+// BSSCI wire field names used when dispatching over raw payload maps.
+const (
+	wireFieldSign  = "sign"
+	wireFieldRssi  = "rssi"
+	wireFieldSnr   = "snr"
+	wireFieldEqSnr = "eqSnr"
+	wireFieldPhase = "phase"
+	// wireFieldSubpackets is the optional per-subpacket reception object (BSSCI §3.10.1).
+	wireFieldSubpackets = "subpackets"
+)
+
+// Go type names cited in wire-coercion range errors.
+const (
+	typeNameUint64 = "uint64"
+	typeNameUint32 = "uint32"
+	typeNameUint16 = "uint16"
+)
+
+// Attach-signature CMAC IV layout (MIOTY radio spec §3.7.1.3, Fig. 3-15):
+// [EUI64 (8) | 0xFF | 0x00 | attach counter (4, big-endian) | 0xFF 0xFF].
+const (
+	attachIVPadFF         = 0xFF
+	attachIVPad00         = 0x00
+	attachIVSize          = 16
+	attachIVPadFFOffset   = 8
+	attachIVPad00Offset   = 9
+	attachIVCounterOffset = 10
+	attachIVTrailerOffset = 14
+)
+
+// MessagePack map markers used for encoding detection (fixmap range and the
+// map16/map32 markers), plus the UTF-8 byte order mark JSON payloads may
+// carry per RFC 8259.
+const (
+	msgpackFixmapMin byte = 0x80
+	msgpackFixmapMax byte = 0x8f
+	msgpackMap16     byte = 0xde
+	msgpackMap32     byte = 0xdf
+	utf8BOM               = "\xEF\xBB\xBF"
+)
+
+// Event status values recorded under eventDataKeyStatus.
+const (
+	eventStatusSuccess = "success"
+	eventStatusFailed  = "failed"
+)
+
+// Event titles, descriptions and reasons recorded in system events by the
+// protocol handlers.
+const (
+	eventDescPendingOpRebuildSkipped  = "Persisted pending operation could not be rebuilt for session resume and was skipped"
+	eventDescResumeRefused            = "The base station refused the offered session resume; the session was retired and its next connect starts a new session"
+	eventDescEndpointAttached         = "Endpoint successfully attached to network"
+	eventDescEndpointDetached         = "Endpoint successfully detached from network"
+	eventReasonBSNotBidirectional     = "Base station does not support bidirectional operation"
+	eventDescTargetBSNotBidirectional = "Target base station is not bidirectional"
+	eventReasonNoConnectedBS          = "No connected base stations available"
+	eventDescNoBSForAttachPropagate   = "No connected base stations available to propagate attach"
+	eventDescNoBSForDetachPropagate   = "No connected base stations available to propagate detach"
+	eventDescFmtAttachPropagateDone   = "Attach propagate to base station %s completed (opId %d)"
+	// eventDescFmtEndpointPropagateDone names the endpoint of a completed attach propagate.
+	eventDescFmtEndpointPropagateDone = "Attach propagate of endpoint %s to base station %s completed (opId %d)"
+	eventTitleFmtAttachPropagate      = "Attach Propagate: EP %s to BS %s"
+	eventDescFmtKeysPropagated        = "Endpoint %s keys propagated to base station %s with short address %04X"
+	eventDescDetachPropagateDone      = "Detach propagate completed successfully"
+
+	eventTitleFmtVMActivateSuccess   = "VM Activate Success - MAC Type %d"
+	eventDescFmtVMActivateSuccess    = "Successfully activated VM MAC type %d for endpoint %s on base station %s"
+	eventTitleFmtVMActivateFailed    = "VM Activate Failed - MAC Type %d"
+	eventDescFmtVMActivateFailed     = "Failed to activate VM MAC type %d for endpoint %s on base station %s"
+	eventErrVMActivateRejected       = "Base station rejected VM activate request"
+	eventMsgFmtVMActivated           = "VM MAC type %d activated for endpoint"
+	eventMsgFmtVMDeactivated         = "VM MAC type %d deactivated for endpoint"
+	eventTitleFmtVMDeactivateSuccess = "VM Deactivate Success - MAC Type %d"
+	eventDescFmtVMDeactivateSuccess  = "Successfully deactivated VM MAC type %d for endpoint %s on base station %s"
+	eventTitleFmtVMStatus            = "VM Status - %d Active MAC Types"
+	eventDescFmtVMStatus             = "Endpoint %s has %d active VM MAC types on base station %s"
+
+	eventDescFmtRevokingQueuedDownlink = "Revoking downlink %d for endpoint %s at base station %s"
+	eventDescFmtDLReceptionReported    = "Endpoint %s reported the reception of a downlink through base station %s: SNR=%.1f dB, RSSI=%.1f dBm"
+	// stationLabelFmt renders a named base station as "name (EUI)".
+	stationLabelFmt = "%s (%s)"
+)
+
+// Event title formats for propagate failures.
+const (
+	titleAttachPropagateFailedFormat = "Attach propagate failed for endpoint %s"
+	titleDetachPropagateFailedFormat = "Detach propagate failed for endpoint %s"
+)
+
+// listenerName labels the BSSCI listener in transport log lines.
+const listenerName = "BSSCI"
+
+// Dependency names reported by Dependencies.missing when a required
+// collaborator is absent.
+const (
+	depNameAttachPersistence           = "attach persistence"
+	depNameAuditLogger                 = "audit logger"
+	depNameStationCertificateBinder    = "station certificate binder"
+	depNameBaseStationStatusStore      = "base station status store"
+	depNameBaseStationStore            = "base station store"
+	depNameBlueprintDecoder            = "blueprint decoder"
+	depNameBlueprintResolver           = "blueprint resolver"
+	depNameCertificateIdentityResolver = "certificate identity resolver"
+	depNameClock                       = "clock"
+	depNameConnectionRegistry          = "connection registry"
+	depNameDLRXStatusStore             = "DL RX status store"
+	depNameDispositionResolver         = "disposition resolver"
+	depNameDownlinkQueueStore          = "downlink queue store"
+	depNameDownlinkRevocationStore     = "downlink revocation store"
+	depNamePendingDownlinkLister       = "pending downlink lister"
+	depNameDownlinkService             = "downlink service"
+	depNameAttachmentDecider           = "attachment decider"
+	depNameEndpointDirectory           = "endpoint directory"
+	depNameEndpointOwnerResolver       = "endpoint owner resolver"
+	depNameEventStore                  = "event store"
+	depNameOrganizationDirectory       = "organization directory"
+	depNameProtocolMessageStore        = "protocol message store"
+	depNameQueueSerializer             = "queue serializer"
+	depNameServingStationLocator       = "endpoint serving station locator"
+	depNameSessionService              = "session service"
+	depNameSessionReconciler           = "session reconciler"
+	depNameSessionKeySource            = "network session key source"
+	depNameStatusService               = "status service"
+	depNameStationEventRecorder        = "station event recorder"
+	depNameTenantResolver              = "tenant resolver"
+	depNameUplinkIngestService         = "uplink ingest service"
+	depNameVersionNegotiator           = "version negotiator"
+)
+
+// fieldPingResult is the result a base station may add to pingRsp; BSSCI
+// §5.4.2 defines only command and opId, so the field is optional.
+const fieldPingResult = "result"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -99,55 +100,52 @@ func (r *capturingDetPrpMIOTYMessageRepo) GetDetachMessages() []*mioty.DetachPro
 func (r *capturingDetPrpMIOTYMessageRepo) CreateAttachPropagateMessage(_ context.Context, _ *mioty.AttachPropagateMessage) error {
 	return nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) CreateULDataMessage(_ context.Context, _ *mioty.ULDataMessage) error {
 	return nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) CreateDetachMessage(_ context.Context, _ *mioty.DetachMessage, _ map[string]interface{}) error {
 	return nil
 }
-func (r *capturingDetPrpMIOTYMessageRepo) CreateAttachMessage(_ context.Context, _ *mioty.AttachMessage, _ map[string]interface{}) error {
-	return nil
-}
+
 func (r *capturingDetPrpMIOTYMessageRepo) GetULDataMessage(_ context.Context, _ string, _ int64) (*mioty.ULDataMessage, error) {
 	return nil, nil
 }
-func (r *capturingDetPrpMIOTYMessageRepo) GetDetachMessage(_ context.Context, _ string, _ int64) (*mioty.DetachMessage, error) {
-	return nil, nil
-}
+
 func (r *capturingDetPrpMIOTYMessageRepo) ListULDataMessages(_ context.Context, _ mioty.ULDataMessageFilter) ([]*mioty.ULDataMessage, int64, error) {
 	return nil, 0, nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) UpdateULDataBaseStations(_ context.Context, _ int64, _ uint64, _ uint32, _ int64, _ []byte) error {
 	return nil
 }
-func (r *capturingDetPrpMIOTYMessageRepo) GetMessageStatsByBaseStation(_ context.Context, _ uint64, _ int64) (*mioty.MessageStats, error) {
-	return nil, nil
-}
-func (r *capturingDetPrpMIOTYMessageRepo) GetExtendedMessageStatsByBaseStation(_ context.Context, _ uint64, _ int64) (*mioty.MessageStats, error) {
-	return nil, nil
-}
+
 func (r *capturingDetPrpMIOTYMessageRepo) GetMessageStatsByEndpoint(_ context.Context, _ uint64, _ int64) (*mioty.MessageStats, error) {
 	return nil, nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) GetOverallStats(_ context.Context, _ int64) (*mioty.MessageStats, error) {
 	return nil, nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) GetAnalyticsOverview(_ context.Context, _ int64, _, _ time.Time) (*mioty.AnalyticsOverviewStats, error) {
 	return nil, nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) GetHourlyActivity(_ context.Context, _ int64, _, _ time.Time) ([]mioty.HourlyActivity, error) {
 	return nil, nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) GetDailyActivity(_ context.Context, _ int64, _, _ time.Time) ([]mioty.DailyActivity, error) {
 	return nil, nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) GetTopEndpointsByActivity(_ context.Context, _ int64, _, _ time.Time, _ int) ([]mioty.EndpointActivity, error) {
 	return nil, nil
 }
+
 func (r *capturingDetPrpMIOTYMessageRepo) GetSignalQualityStats(_ context.Context, _ int64, _, _ time.Time) (*mioty.SignalQualityStats, error) {
-	return nil, nil
-}
-func (r *capturingDetPrpMIOTYMessageRepo) GetSignalQualityByBaseStation(_ context.Context, _ int64, _, _ time.Time) ([]mioty.BaseStationSignalQuality, error) {
 	return nil, nil
 }
 
@@ -179,7 +177,7 @@ type detPrpTestEndpointRepo struct {
 	getByEUICalls                    int
 	createCalls                      int
 	updateCalls                      int
-	updateFieldsCalls                int
+	endpointUpdateCalls              int
 	updateLastSeenCalls              int
 	updateRadioMetricsCalls          int
 	updateRadioMetricsSelectiveCalls int
@@ -207,9 +205,32 @@ func (r *detPrpTestEndpointRepo) Get(_ context.Context, eui models.EUI) (*models
 	return nil, storage.ErrNotFound
 }
 
-func (r *detPrpTestEndpointRepo) UpdateFields(_ context.Context, _ int64, _ int64, _ map[string]interface{}) error {
-	r.updateFieldsCalls++
+func (r *detPrpTestEndpointRepo) EndpointRegistrationUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointRegistrationParams) error {
+	r.endpointUpdateCalls++
 	return nil
+}
+
+func (r *detPrpTestEndpointRepo) EndpointAttachmentStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachmentStateParams) error {
+	r.endpointUpdateCalls++
+	return nil
+}
+
+func (r *detPrpTestEndpointRepo) EndpointAttachSessionUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachSessionParams) error {
+	r.endpointUpdateCalls++
+	return nil
+}
+
+func (r *detPrpTestEndpointRepo) EndpointDetachStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointDetachStateParams) error {
+	r.endpointUpdateCalls++
+	return nil
+}
+
+func (r *detPrpTestEndpointRepo) TransitionEndpointStatus(context.Context, int64, int64, string) (bool, error) {
+	return true, nil
+}
+
+func (r *detPrpTestEndpointRepo) RestateEndpointStatus(ctx context.Context, tenantID, endpointID int64, status string) (bool, error) {
+	return r.TransitionEndpointStatus(ctx, tenantID, endpointID, status)
 }
 
 // Stub implementations for remaining EndpointRepository methods
@@ -217,56 +238,67 @@ func (r *detPrpTestEndpointRepo) Create(context.Context, *models.EndPoint) error
 	r.createCalls++
 	return nil
 }
+
 func (r *detPrpTestEndpointRepo) GetByID(context.Context, int64, int64) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (r *detPrpTestEndpointRepo) GetByTenant(context.Context, int64) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (r *detPrpTestEndpointRepo) CountByTenant(context.Context, int64) (int64, error) { return 0, nil }
+
 func (r *detPrpTestEndpointRepo) ListByTenantPaginated(context.Context, int64, int, int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (r *detPrpTestEndpointRepo) Update(context.Context, *models.EndPoint) error {
 	r.updateCalls++
 	return nil
 }
+
 func (r *detPrpTestEndpointRepo) UpdateLastSeen(context.Context, int64, models.EUI, uint32) error {
 	r.updateLastSeenCalls++
 	return nil
 }
-func (r *detPrpTestEndpointRepo) UpdateRadioMetrics(context.Context, int64, models.EUI, float64, float64, float64, int64, int64, string) error {
-	r.updateRadioMetricsCalls++
-	return nil
-}
-func (r *detPrpTestEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, interfaces.RadioMetricsUpdate) error {
+
+func (r *detPrpTestEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, models.RadioMetricsUpdate) error {
 	r.updateRadioMetricsSelectiveCalls++
 	return nil
 }
-func (r *detPrpTestEndpointRepo) UpdateDetachMetrics(context.Context, int64, models.EUI, interfaces.DetachMetricsUpdate) error {
-	r.updateDetachMetricsCalls++
-	return nil
-}
-func (r *detPrpTestEndpointRepo) StreamAllForPropagation(context.Context, int64, int) ([]*models.EndPoint, error) {
-	return nil, nil
-}
-func (r *detPrpTestEndpointRepo) HasEndpointsSince(context.Context, time.Time) (bool, error) {
-	return false, nil
-}
-func (r *detPrpTestEndpointRepo) GetEndpointWithKeysForDetachValidation(context.Context, models.EUI) (*models.EndPoint, error) {
-	return nil, storage.ErrNotFound
-}
+
 func (r *detPrpTestEndpointRepo) GetPreferredBsEui(context.Context, int64, []byte) (*uint64, bool, error) {
 	return nil, false, nil
 }
-func (r *detPrpTestEndpointRepo) DeleteByTenant(context.Context, int64, []byte) error {
-	r.deleteByTenantCalls++
+
+func (r *detPrpTestEndpointRepo) RestartPacketCounter(context.Context, int64, int64) error {
 	return nil
 }
+
+func (r *detPrpTestEndpointRepo) LockAttachCounter(context.Context, int64, int64) (*uint32, error) {
+	return nil, nil
+}
+
+func (*detPrpTestEndpointRepo) GetByAttachmentChangedSince(context.Context, int64, string, *time.Time) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
+func (r *detPrpTestEndpointRepo) CreateWithStatus(ctx context.Context, ep *models.EndPoint, status string) error {
+	ep.EpStatus = status
+	return r.Create(ctx, ep)
+}
+
+func (r *detPrpTestEndpointRepo) DeleteByTenant(context.Context, int64, []byte) (int64, error) {
+	r.deleteByTenantCalls++
+	return 0, nil
+}
+
 func (r *detPrpTestEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	r.updateWithEUICalls++
 	return ep, nil
 }
+
 func (r *detPrpTestEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 	return nil
 }
@@ -281,33 +313,22 @@ type detPrpCapturingStorage struct {
 func (s *detPrpCapturingStorage) MIOTYMessages() interfaces.MIOTYMessageRepository {
 	return s.miotyMessages
 }
+
 func (s *detPrpCapturingStorage) EndPoints() interfaces.EndpointRepository {
 	if s.endpointRepo == nil {
 		return nil
 	}
 	return s.endpointRepo
 }
-func (s *detPrpCapturingStorage) DownlinkQueue() interfaces.DownlinkQueueRepository { return nil }
-func (s *detPrpCapturingStorage) BaseStationReceptions() interfaces.BaseStationReceptionRepository {
-	return nil
-}
+
 func (s *detPrpCapturingStorage) EndPointSessions() interfaces.EndPointSessionRepository { return nil }
-func (s *detPrpCapturingStorage) EndPointKeys() interfaces.EndPointKeyRepository         { return nil }
-func (s *detPrpCapturingStorage) RoamingAgreements() interfaces.RoamingAgreementRepository {
-	return nil
-}
+
 func (s *detPrpCapturingStorage) BaseStations() interfaces.BaseStationRepository { return nil }
+
 func (s *detPrpCapturingStorage) BaseStationSessions() interfaces.BaseStationSessionRepository {
 	return nil
 }
 func (s *detPrpCapturingStorage) DLRXStatus() interfaces.DLRXStatusRepository { return nil }
-func (s *detPrpCapturingStorage) PendingOperations() interfaces.PendingOperationRepository {
-	if s.pendingOps == nil {
-		// Lazily create so tests that don't inspect pending ops still work.
-		s.pendingOps = &detPrpCapturingPendingOps{}
-	}
-	return s.pendingOps
-}
 
 // detPrpUpdateMetadataCall captures a single UpdateMetadata invocation.
 type detPrpUpdateMetadataCall struct {
@@ -323,13 +344,14 @@ type detPrpCapturingPendingOps struct {
 	updates []detPrpUpdateMetadataCall
 }
 
-func (r *detPrpCapturingPendingOps) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
+func (r *detPrpCapturingPendingOps) Create(_ context.Context, _ *models.PendingOperationRequest) error {
 	return nil
 }
 
-func (r *detPrpCapturingPendingOps) CreateBatch(_ context.Context, _ []*interfaces.PendingOperationRequest) error {
+func (r *detPrpCapturingPendingOps) CreateBatch(_ context.Context, _ []*models.PendingOperationRequest) error {
 	return nil
 }
+
 func (r *detPrpCapturingPendingOps) UpdateMetadata(_ context.Context, sessionID, operationID int64, metadata json.RawMessage) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -338,14 +360,16 @@ func (r *detPrpCapturingPendingOps) UpdateMetadata(_ context.Context, sessionID,
 	r.updates = append(r.updates, detPrpUpdateMetadataCall{SessionID: sessionID, OperationID: operationID, Metadata: dup})
 	return nil
 }
+
 func (r *detPrpCapturingPendingOps) DeleteBySessionAndOperation(_ context.Context, _ int64, _ int64) error {
 	return nil
 }
-func (r *detPrpCapturingPendingOps) DeleteByOperation(_ context.Context, _ int64) error { return nil }
+
 func (r *detPrpCapturingPendingOps) DeleteBySession(_ context.Context, _ int64) (int64, error) {
 	return 0, nil
 }
-func (r *detPrpCapturingPendingOps) GetBySession(_ context.Context, _ int64) ([]*interfaces.PendingOperation, error) {
+
+func (r *detPrpCapturingPendingOps) GetBySession(_ context.Context, _ int64) ([]*models.PendingOperation, error) {
 	return nil, nil
 }
 
@@ -369,10 +393,7 @@ func (s *detPrpCapturingStorage) MIOTYDownlinks() interfaces.MIOTYDownlinkReposi
 func (s *detPrpCapturingStorage) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
 	return nil
 }
-func (s *detPrpCapturingStorage) Users() interfaces.UserRepository                 { return nil }
 func (s *detPrpCapturingStorage) APIKeys() interfaces.APIKeyRepository             { return nil }
-func (s *detPrpCapturingStorage) Integrations() interfaces.IntegrationRepository   { return nil }
-func (s *detPrpCapturingStorage) Manufacturers() interfaces.ManufacturerRepository { return nil }
 func (s *detPrpCapturingStorage) DeviceModels() interfaces.DeviceModelRepository   { return nil }
 func (s *detPrpCapturingStorage) Blueprints() interfaces.BlueprintRepository       { return nil }
 func (s *detPrpCapturingStorage) Organizations() interfaces.OrganizationRepository { return nil }
@@ -382,8 +403,8 @@ func (s *detPrpCapturingStorage) SCACISessions() interfaces.SCACISessionReposito
 func (s *detPrpCapturingStorage) SCACIOperations() interfaces.SCACIOperationRepository {
 	return nil
 }
-func (s *detPrpCapturingStorage) DownlinkQueueReader() interfaces.DownlinkQueueReader { return nil }
-func (s *detPrpCapturingStorage) BeginTx(_ context.Context) (interfaces.Transaction, error) {
+
+func (s *detPrpCapturingStorage) BeginTx(_ context.Context) (bssci.AttachTx, error) {
 	return nil, nil
 }
 func (s *detPrpCapturingStorage) Ping(_ context.Context) error { return nil }
@@ -402,7 +423,7 @@ func (s *detPrpCapturingEventStore) CreateEvent(_ context.Context, event *models
 	return nil
 }
 
-func (s *detPrpCapturingEventStore) GetEvents(_ context.Context, _ interfaces.SystemEventFilter) ([]*models.SystemEvent, error) {
+func (s *detPrpCapturingEventStore) GetEvents(_ context.Context, _ models.SystemEventFilter) ([]*models.SystemEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := make([]*models.SystemEvent, len(s.events))
@@ -419,22 +440,27 @@ func (s *detPrpCapturingEventStore) CapturedEvents() []*models.SystemEvent {
 }
 
 // Stub implementations for other SystemEventStore methods
-func (s *detPrpCapturingEventStore) GetEventsFiltered(_ context.Context, _ interfaces.SystemEventFilter) ([]*models.SystemEvent, error) {
+func (s *detPrpCapturingEventStore) GetEventsFiltered(_ context.Context, _ models.SystemEventFilter) ([]*models.SystemEvent, error) {
 	return nil, nil
 }
-func (s *detPrpCapturingEventStore) GetActiveAlerts(_ context.Context, _ interfaces.AlertFilter) ([]*models.SystemEvent, error) {
+
+func (s *detPrpCapturingEventStore) GetActiveAlerts(_ context.Context, _ models.AlertFilter) ([]*models.SystemEvent, error) {
 	return nil, nil
 }
+
 func (s *detPrpCapturingEventStore) GetEventStats(_ context.Context, _ string, _ time.Time) (*models.SystemEventStats, error) {
 	return nil, nil
 }
+
 func (s *detPrpCapturingEventStore) RecordSCACIError(_ context.Context, _ int64, _ int64, _ string, _ int64, _ int, _ string) error {
 	return nil
 }
-func (s *detPrpCapturingEventStore) CountEvents(_ context.Context, _ interfaces.SystemEventFilter) (int64, error) {
+
+func (s *detPrpCapturingEventStore) CountEvents(_ context.Context, _ models.SystemEventFilter) (int64, error) {
 	return 0, nil
 }
-func (s *detPrpCapturingEventStore) CountActiveAlerts(_ context.Context, _ interfaces.AlertFilter) (int64, error) {
+
+func (s *detPrpCapturingEventStore) CountActiveAlerts(_ context.Context, _ models.AlertFilter) (int64, error) {
 	return 0, nil
 }
 
@@ -483,7 +509,6 @@ func TestDetachPropagateCompletionIntegration_MessagePersistence(t *testing.T) {
 
 	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	// Create mock connection
 	mockConn := &detPrpTestConn{}
@@ -566,7 +591,7 @@ func TestDetachPropagateCompletionIntegration_MessagePersistence(t *testing.T) {
 
 	// Find the completion event
 	var foundCompletionEvent bool
-	expectedBsEuiStr := fmt.Sprintf("%016X", testBsEui)
+	expectedBsEuiStr := mioty.FormatEUI64(testBsEui)
 	for _, evt := range capturedEvents {
 		if evt.EventType == models.EventTypeDetachPropagateCompleted {
 			foundCompletionEvent = true
@@ -608,7 +633,6 @@ func TestDetachPropagateCompletionIntegration_NoPendingOp(t *testing.T) {
 
 	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	// Create mock connection
 	mockConn := &detPrpTestConn{}
@@ -677,7 +701,6 @@ func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
 	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	mockConn := &detPrpTestConn{}
 	session := &bssci.Session{
@@ -718,18 +741,19 @@ func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
 	require.NoError(t, server.CallHandleDetachPropagateResponse(session, msg, data),
 		"failure path must keep session alive (handler returns nil after sendError)")
 
-	// Wire response: sendMessage writes header + msgpack payload (two Write calls).
+	// Wire response: sendMessage writes the header and msgpack payload as one frame.
 	frames := mockConn.Frames()
-	require.GreaterOrEqual(t, len(frames), 2, "sendMessage must write header + payload")
-	assert.Len(t, frames[0], 12, "header is 8-byte magic + 4-byte length")
+	require.GreaterOrEqual(t, len(frames), 1, "sendMessage must write the frame")
+	require.Greater(t, len(frames[0]), mioty.FrameHeaderSize, "frame carries the 8-byte magic, 4-byte length and payload")
+	assert.Equal(t, mioty.MIOTYFrameIdentifier[:], frames[0][:8], "frame starts with the BSSCI identifier")
 
 	var wireResp map[string]interface{}
-	require.NoError(t, msgpack.Unmarshal(frames[1], &wireResp), "payload must be msgpack-decodable")
+	require.NoError(t, msgpack.Unmarshal(frames[0][mioty.FrameHeaderSize:], &wireResp), "payload must be msgpack-decodable")
 	assert.Equal(t, mioty.CmdError, wireResp["command"], "rejected propagate must reply with mioty.CmdError")
 	assert.Equal(t, testOpId, testInt64(t, wireResp["opId"]), "response opId must echo the request")
 	assert.Equal(t, int64(bssci.POSIX_EPROTO), testInt64(t, wireResp["code"]), "POSIX code must be EPROTO per BSSCI-4-01")
-	assert.Equal(t, bssci.ResolveErrorMessage(bssci.ErrDetachPropagateFailed), wireResp["message"],
-		"wire message must be cataloged via ErrDetachPropagateFailed")
+	assert.Equal(t, wireMsgDetachPropagateFailed, wireResp["message"],
+		"wire message must be the cataloged detach-propagate failure text")
 
 	// Pending-op metadata persistence.
 	updates := bssci.StatusMetadataUpdates(statusSvc)
@@ -760,8 +784,8 @@ func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
 	require.NotNil(t, endpointEvt, "endpoint-scoped failure event missing")
 	require.NotNil(t, baseStationEvt, "base-station-scoped failure event missing")
 
-	epStr := fmt.Sprintf("%016X", testEpEui)
-	bsStr := fmt.Sprintf("%016X", testBsEui)
+	epStr := mioty.FormatEUI64(testEpEui)
+	bsStr := mioty.FormatEUI64(testBsEui)
 	assert.Equal(t, fmt.Sprintf(bssci.TitleDetachPropagateFailedForEndpointOnBS, epStr, bsStr), endpointEvt.Title,
 		"endpoint event title must match cataloged TitleDetachPropagateFailedForEndpointOnBS format")
 	assert.Equal(t, epStr, endpointEvt.SourceName, "endpoint SourceName must be the EUI")
@@ -770,7 +794,7 @@ func TestHandleDetachPropagateResponse_Rejected(t *testing.T) {
 	// Endpoint must not be mutated on the rejected path.
 	assert.Equal(t, 0, endpointRepo.createCalls, "no Create on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.updateCalls, "no Update on rejected propagate")
-	assert.Equal(t, 0, endpointRepo.updateFieldsCalls, "no UpdateFields on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.endpointUpdateCalls, "no endpoint field update on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.updateLastSeenCalls, "no UpdateLastSeen on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.updateRadioMetricsCalls, "no UpdateRadioMetrics on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.updateRadioMetricsSelectiveCalls, "no UpdateRadioMetricsSelective on rejected propagate")
@@ -821,7 +845,7 @@ type detPrpFailingWriteConn struct {
 }
 
 func (c *detPrpFailingWriteConn) Write(_ []byte) (int, error) {
-	return 0, fmt.Errorf("simulated write failure")
+	return 0, errors.New(errFmtSimulatedWriteFailure)
 }
 
 // TestSendDetachPropagateComplete_SendFailure exercises the path where the
@@ -852,7 +876,6 @@ func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
 	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	mockConn := &detPrpFailingWriteConn{}
 	session := &bssci.Session{
@@ -904,3 +927,10 @@ func TestSendDetachPropagateComplete_SendFailure(t *testing.T) {
 	}
 	assert.True(t, found, "expected error-level log %q to be emitted", bssci.LogBSSCIFailedToSendDetachPropagateComplete)
 }
+
+// Error format strings shared by this package's failure paths; verbs are filled at the point of failure.
+const (
+	// wireMsgDetachPropagateFailed is the exact catalog text the rejected detachPrp carries on the wire.
+	wireMsgDetachPropagateFailed = "Detach propagate failed"
+	errFmtSimulatedWriteFailure  = "simulated write failure"
+)

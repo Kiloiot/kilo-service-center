@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	authadapters "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/adapters/auth"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/auth"
 )
 
 // StateStoreAdapter provides OIDC/OAuth2 state storage with key prefixing and TTL.
 type StateStoreAdapter struct {
-	redis     *auth.RedisClient
+	redis     *authadapters.RedisClient
 	keyPrefix string // "auth:oidc:" or "auth:oauth2:"
 }
 
@@ -21,7 +22,7 @@ var _ auth.StateStore = (*StateStoreAdapter)(nil)
 
 // NewOIDCStateStoreAdapter creates a state store for OIDC auth flows.
 // Uses auth:oidc: key prefix.
-func NewOIDCStateStoreAdapter(redis *auth.RedisClient) *StateStoreAdapter {
+func NewOIDCStateStoreAdapter(redis *authadapters.RedisClient) *StateStoreAdapter {
 	return &StateStoreAdapter{
 		redis:     redis,
 		keyPrefix: config.AuthRedisKeyPrefixOIDC,
@@ -30,7 +31,7 @@ func NewOIDCStateStoreAdapter(redis *auth.RedisClient) *StateStoreAdapter {
 
 // NewOAuth2StateStoreAdapter creates a state store for OAuth2 auth flows.
 // Uses auth:oauth2: key prefix.
-func NewOAuth2StateStoreAdapter(redis *auth.RedisClient) *StateStoreAdapter {
+func NewOAuth2StateStoreAdapter(redis *authadapters.RedisClient) *StateStoreAdapter {
 	return &StateStoreAdapter{
 		redis:     redis,
 		keyPrefix: config.AuthRedisKeyPrefixOAuth2,
@@ -50,7 +51,7 @@ func (a *StateStoreAdapter) GetState(ctx context.Context, key string) ([]byte, e
 	fullKey := a.keyPrefix + key
 	value, err := a.redis.GetDel(ctx, fullKey)
 	if err != nil {
-		if errors.Is(err, auth.ErrKeyNotFound) {
+		if errors.Is(err, authadapters.ErrKeyNotFound) {
 			return nil, auth.ErrStateNotFound
 		}
 		return nil, err

@@ -3,7 +3,12 @@ package bssciservices
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	repodoubles "github.com/Kiloiot/kilo-service-center/KC-Core/internal/testsupport/repodoubles"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -13,6 +18,9 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
+
+// errTestSCACIServer is the fixture broadcast error for the SCACI forwarder tests.
+var errTestSCACIServer = errors.New("SCACI server error")
 
 // mockSCACIEPStatusBroadcaster implements scaciEPStatusBroadcaster for testing
 type mockSCACIEPStatusBroadcaster struct {
@@ -206,7 +214,7 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_ConvertsTypes(t *testing.T) {
 func TestSCACIEPStatusAdapter_BroadcastEPStatus_PropagatesError(t *testing.T) {
 	// Use testLogger to avoid nil pointer dereference when error is logged
 	adapter := NewSCACIEPStatusAdapter(&testLogger{})
-	expectedErr := errors.New("SCACI server error")
+	expectedErr := errTestSCACIServer
 	mock := &mockSCACIEPStatusBroadcaster{err: expectedErr}
 	adapter.SetSCACIServer(mock)
 
@@ -221,24 +229,6 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_PropagatesError(t *testing.T) {
 	}
 	if !errors.Is(err, expectedErr) {
 		t.Errorf("expected error %v, got %v", expectedErr, err)
-	}
-}
-
-func TestSCACIEPStatusAdapter_SetSCACIServer_InvalidType_Ignored(t *testing.T) {
-	adapter := NewSCACIEPStatusAdapter(nil)
-
-	// Set with an invalid type (not scaciEPStatusBroadcaster)
-	adapter.SetSCACIServer("invalid type")
-
-	// BroadcastEPStatus should still return nil (server not set)
-	data := &bssci.EPStatusData{
-		EpEui:    0x1234567890ABCDEF,
-		EpStatus: pkgmioty.EPStatusAttached,
-	}
-
-	err := adapter.BroadcastEPStatus(testutil.TestContext(), 42, data)
-	if err != nil {
-		t.Fatalf("expected nil error when invalid server type, got: %v", err)
 	}
 }
 
@@ -279,5 +269,100 @@ func TestSCACIEPStatusAdapter_BroadcastEPStatus_DetachedStatus(t *testing.T) {
 
 	if mock.lastData.EpStatus != pkgmioty.EPStatusDetached {
 		t.Errorf("expected EPStatusDetached, got %s", mock.lastData.EpStatus)
+	}
+}
+
+// wiringDownlinkWriter and wiringQueueStore are the minimal queue fakes the
+// bundle constructor needs; the forwarding path under test never touches them.
+type wiringDownlinkWriter struct{ DownlinkQueueStores }
+
+type wiringQueueStore struct{}
+
+func (w *wiringQueueStore) GetTenantIDByQueueID(context.Context, uint64) (int64, error) {
+	return 0, nil
+}
+
+// fakeSCACIServer records what the forwarders relay so the composition can be
+// proven end to end: message in on the bundle side, message out on the SCACI
+// side. The wiring these tests protect was silently broken for months because
+// the setter was reached through a type assertion that could never succeed.
+type fakeSCACIServer struct {
+	ulData    []*mioty.ULDataMessage
+	dlResults []*mioty.DLDataResult
+	epStatus  []*scaci.EPStatusData
+}
+
+func (f *fakeSCACIServer) BroadcastULData(_ context.Context, _ int64, data *mioty.ULDataMessage) error {
+	f.ulData = append(f.ulData, data)
+	return nil
+}
+
+func (f *fakeSCACIServer) BroadcastDLDataResult(_ context.Context, _ scaci.ApplicationCenter, _ uint64, result *mioty.DLDataResult) error {
+	f.dlResults = append(f.dlResults, result)
+	return nil
+}
+
+func (f *fakeSCACIServer) BroadcastEPStatus(_ context.Context, _ int64, data *scaci.EPStatusData) error {
+	f.epStatus = append(f.epStatus, data)
+	return nil
+}
+
+// TestBSSCIToSCACIWiring mirrors the composition root: build the service
+// bundle, wire a SCACI server through the typed setters exactly as
+// buildSCACIServer does, and prove UL data, DL results and EPStatus all arrive.
+func TestBSSCIToSCACIWiring(t *testing.T) {
+	ctx := testutil.TestContext()
+	log := logger.NewNop()
+
+	var pendingOps map[bssci.SessionOpKey]*bssci.PendingOperation
+	var pendingOpsMu sync.RWMutex
+	pendingOps = make(map[bssci.SessionOpKey]*bssci.PendingOperation)
+
+	bundle, err := NewBSSCIServices(
+		repodoubles.NewBaseStationSessionRepo(),
+		&repodoubles.BaseStationRepo{},
+		&repodoubles.PendingOperationRepository{},
+		&wiringDownlinkWriter{},
+		&repodoubles.SystemEventStore{},
+		&wiringQueueStore{},
+		nil, // connection manager is not part of the forwarding path
+		log,
+		1,
+		bssci.TestScEui01,
+		&pendingOps,
+		&pendingOpsMu,
+		[]string{"1.0.0"},
+		clock.SystemClock{},
+		DownlinkResultsWithoutMQTT{},
+		NewBackgroundWork(),
+	)
+	if err != nil {
+		t.Fatalf("NewBSSCIServices: %v", err)
+	}
+
+	server := &fakeSCACIServer{}
+
+	// The two lines under test: this is what the composition root does.
+	bundle.Broadcaster.SetSCACIServer(server)
+	bundle.EPStatusBroadcaster.SetSCACIServer(server)
+
+	if err := bundle.Broadcaster.BroadcastULData(ctx, 1, &mioty.ULDataMessage{EpEui: 0x11}); err != nil {
+		t.Fatalf("BroadcastULData: %v", err)
+	}
+	if err := bundle.Broadcaster.BroadcastDLDataResult(ctx, scaci.ApplicationCenter{TenantID: 1, AcEui: 0x70B3D59CD0000A01}, 7, &mioty.DLDataResult{QueId: 7}); err != nil {
+		t.Fatalf("BroadcastDLDataResult: %v", err)
+	}
+	if err := bundle.EPStatusBroadcaster.BroadcastEPStatus(ctx, 1, &bssci.EPStatusData{EpEui: 0x22}); err != nil {
+		t.Fatalf("BroadcastEPStatus: %v", err)
+	}
+
+	if len(server.ulData) != 1 || server.ulData[0].EpEui != 0x11 {
+		t.Errorf("UL data did not reach the SCACI server: %+v", server.ulData)
+	}
+	if len(server.dlResults) != 1 || server.dlResults[0].QueId != 7 {
+		t.Errorf("DL result did not reach the SCACI server: %+v", server.dlResults)
+	}
+	if len(server.epStatus) != 1 || server.epStatus[0].EpEui != 0x22 {
+		t.Errorf("EPStatus did not reach the SCACI server: %+v", server.epStatus)
 	}
 }

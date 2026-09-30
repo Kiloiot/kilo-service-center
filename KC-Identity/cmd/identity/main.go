@@ -7,17 +7,19 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
-	"time"
 
 	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/cmd/identity/builders"
-	"github.com/Kiloiot/kilo-service-center/pkg/observability"
 	"github.com/Kiloiot/kilo-service-center/pkg/version"
 )
+
+// identityDisplayName labels KC-Identity in event titles.
+const identityDisplayName = "KC-Identity"
+
+// listenInfoFmt summarizes the listening port for the started event.
+const listenInfoFmt = "gRPC=%d"
 
 func main() {
 	var (
@@ -41,7 +43,7 @@ func main() {
 	if configFile == "" {
 		configFile = os.Getenv("KILOCENTER_CONFIG_FILE")
 	}
-	cfg, err := pkgconfig.Load(configFile)
+	cfg, err := pkgconfig.LoadIdentity(configFile)
 	if err != nil {
 		fmt.Printf("Failed to load configuration: %v\n", err)
 		os.Exit(1)
@@ -52,37 +54,17 @@ func main() {
 	log := logger.Get()
 
 	versionInfo := getVersionInfo()
-	log.Info("Starting KC-Identity Service",
-		"version", versionInfo.Version,
-		"grpc_port", cfg.GRPC.Port,
-		"health_port", cfg.General.HealthCheckPort,
+	log.Info(LogServiceStarting,
+		logger.FieldVersion, versionInfo.Version,
+		logger.FieldGrpcPortSnake, cfg.GRPC.Port,
+		logger.FieldHealthPortSnake, cfg.General.HealthCheckPort,
 	)
 
-	// Initialize observability (tracing + metrics)
-	tracingShutdown, err := observability.InitTracing(context.Background(), observability.TracingConfig{
-		Enabled:    cfg.Monitoring.TracingEnabled,
-		Endpoint:   cfg.Monitoring.TracingEndpoint,
-		SampleRate: cfg.Monitoring.TracingSampleRate,
-	}, identityServiceName)
-	if err != nil {
-		log.Error("Failed to init tracing", "error", err)
-	} else {
-		defer func() { _ = tracingShutdown(context.Background()) }()
-	}
-
-	metricsShutdown, err := observability.InitMetrics(context.Background(), observability.MetricsConfig{
-		Enabled: cfg.Monitoring.MetricsEnabled,
-		Port:    cfg.Monitoring.MetricsPort,
-		Path:    cfg.Monitoring.MetricsPath,
-	}, identityServiceName)
-	if err != nil {
-		log.Error("Failed to init metrics", "error", err)
-	} else {
-		defer func() { _ = metricsShutdown(context.Background()) }()
-	}
+	shutdownObservability := initObservability(cfg, log)
+	defer shutdownObservability()
 
 	// Create application context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) // context-root: process
 	defer cancel()
 
 	// Setup signal handling
@@ -92,7 +74,7 @@ func main() {
 	// 1. Infrastructure (storage, org resolver)
 	infra, err := builders.BuildInfrastructure(ctx, cfg)
 	if err != nil {
-		log.Fatal("Failed to build infrastructure", "error", err)
+		log.Fatal(LogFailedBuildInfra, logger.FieldError, err)
 	}
 	defer runCleanups(infra.Cleanups)
 
@@ -100,57 +82,28 @@ func main() {
 	go startHealthServer(ctx, cfg.General.HealthCheckPort, infra.DB)
 
 	// 2. Identity service (auth, users, orgs, memberships, API keys)
-	identityResult := builders.BuildIdentityService(infra)
+	identityResult := builders.BuildIdentityService(ctx, infra)
 	defer runCleanups(identityResult.Cleanups)
 
 	// 3. Register services + start gRPC server
 	grpcServer := builders.RegisterAndServe(cfg, infra, identityResult, cancel)
 
-	// Emit service started event
-	hostname, _ := os.Hostname()
-	listenInfo := fmt.Sprintf("gRPC=%d", cfg.GRPC.Port)
-	_ = infra.Storage.SystemEvents().CreateEvent(ctx, &models.SystemEvent{
-		TenantID:    strconv.FormatInt(infra.TenantID, 10),
-		EventType:   models.EventTypeServiceStarted,
-		Category:    models.EventCategorySystem,
-		Severity:    models.EventSeverityInfo,
-		Title:       fmt.Sprintf(models.EventTitleServiceStartedFmt, "KC-Identity", hostname),
-		Description: fmt.Sprintf(models.EventDescriptionServiceStartedFmt, "KC-Identity", versionInfo.Version, listenInfo),
-		SourceType:  models.SourceTypeSystem,
-		SourceName:  identityServiceName,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-	})
-	log.Info("Service started event emitted")
+	events := newLifecycleEvents(infra.Repos.SystemEvents, log, infra.TenantID, versionInfo.Version)
+	events.started(ctx, cfg.GRPC.Port)
 
 	// Wait for shutdown signal
 	select {
 	case sig := <-sigChan:
-		log.Info("Received shutdown signal", "signal", sig)
+		log.Info(LogReceivedShutdownSignal, logger.FieldSignal, sig)
 	case <-ctx.Done():
-		log.Info("Context cancelled")
+		log.Info(LogContextCancelled)
 	}
 
-	// Emit service stopped event before shutdown
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
-	_ = infra.Storage.SystemEvents().CreateEvent(shutdownCtx, &models.SystemEvent{
-		TenantID:    strconv.FormatInt(infra.TenantID, 10),
-		EventType:   models.EventTypeServiceStopped,
-		Category:    models.EventCategorySystem,
-		Severity:    models.EventSeverityInfo,
-		Title:       fmt.Sprintf(models.EventTitleServiceStoppedFmt, "KC-Identity", hostname),
-		Description: fmt.Sprintf(models.EventDescriptionServiceStoppedFmt, "KC-Identity", versionInfo.Version),
-		SourceType:  models.SourceTypeSystem,
-		SourceName:  identityServiceName,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-	})
-	log.Info("Service stopped event emitted")
+	events.stopped()
 
-	log.Info("Shutting down gracefully...")
+	log.Info(LogShuttingDown)
 	grpcServer.GracefulStop()
-	log.Info("Shutdown complete")
+	log.Info(LogShutdownComplete)
 }
 
 // runCleanups executes cleanup functions in reverse order (LIFO).

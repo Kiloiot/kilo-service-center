@@ -3,44 +3,40 @@ package interceptors
 
 import (
 	"context"
-	"encoding/json"
-	"strconv"
-	"sync"
-	"time"
 
-	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	audit "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/authz"
+
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
-	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 )
 
-// RoleResolver resolves a user's role within an organization.
-type RoleResolver interface {
-	GetUserRole(ctx context.Context, orgID, userID string) (role string, active bool, err error)
+// RoleSource resolves the roles of the principal behind a request.
+type RoleSource interface {
+	Roles(ctx context.Context) (authz.Roles, error)
 }
 
-type cachedRole struct {
-	role      string
-	active    bool
-	expiresAt time.Time
+// MethodPolicy names the roles a method requires; ok is false for a method
+// the policy does not know, which is refused.
+type MethodPolicy interface {
+	Requirement(fullMethod string) (requirement authz.Requirement, ok bool)
 }
 
-// AuthorizationInterceptor enforces role-based access on gRPC methods.
+// AuthorizationInterceptor admits a call only when the caller's roles satisfy
+// the method's requirement, and records those roles on the request context.
 type AuthorizationInterceptor struct {
-	roleResolver     RoleResolver
-	policies         map[string][]string // full gRPC method → allowed roles
+	roles            RoleSource
+	policy           MethodPolicy
 	logger           logger.Logger
-	cache            sync.Map // "orgID:userID" → cachedRole
-	cacheTTL         time.Duration
-	eventWriter      grpcerrors.EventWriter
+	eventWriter      audit.EventWriter
 	platformTenantID int64
 }
 
 // WithEventWriter sets the security event writer for permission denial persistence.
-func (ai *AuthorizationInterceptor) WithEventWriter(w grpcerrors.EventWriter) *AuthorizationInterceptor {
+func (ai *AuthorizationInterceptor) WithEventWriter(w audit.EventWriter) *AuthorizationInterceptor {
 	ai.eventWriter = w
 	return ai
 }
@@ -51,132 +47,81 @@ func (ai *AuthorizationInterceptor) WithPlatformTenantID(id int64) *Authorizatio
 	return ai
 }
 
-// NewAuthorizationInterceptor creates a new RBAC interceptor.
-// policies maps full gRPC method paths to lists of allowed roles.
-// cacheTTL controls how long resolved roles are cached; zero or negative uses 30s default.
-func NewAuthorizationInterceptor(resolver RoleResolver, policies map[string][]string, log logger.Logger, cacheTTL time.Duration) *AuthorizationInterceptor {
-	if cacheTTL <= 0 {
-		cacheTTL = time.Duration(pkgconfig.DefaultRBACRoleCacheTTLSeconds) * time.Second
-	}
-	return &AuthorizationInterceptor{
-		roleResolver: resolver,
-		policies:     policies,
-		logger:       log,
-		cacheTTL:     cacheTTL,
-	}
+// NewAuthorizationInterceptor creates the role authorization interceptor.
+func NewAuthorizationInterceptor(roles RoleSource, policy MethodPolicy, log logger.Logger) *AuthorizationInterceptor {
+	return &AuthorizationInterceptor{roles: roles, policy: policy, logger: log}
 }
 
-// UnaryInterceptor returns a unary server interceptor that enforces RBAC policies.
+// UnaryInterceptor returns a unary server interceptor that enforces the policy.
 func (ai *AuthorizationInterceptor) UnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if err := ai.authorize(ctx, info.FullMethod); err != nil {
+		ctx, err := ai.authorize(ctx, info.FullMethod)
+		if err != nil {
 			return nil, err
 		}
 		return handler(ctx, req)
 	}
 }
 
-// StreamInterceptor returns a stream server interceptor that enforces RBAC policies.
+// StreamInterceptor enforces the policy when a stream opens and again before each message it sends.
 func (ai *AuthorizationInterceptor) StreamInterceptor() grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		if err := ai.authorize(ss.Context(), info.FullMethod); err != nil {
+		if grpcerrors.IsPublicMethod(info.FullMethod) {
+			return handler(srv, ss)
+		}
+		roles, err := ai.grantedRoles(ss.Context(), info.FullMethod)
+		if err != nil {
 			return err
 		}
-		return handler(srv, ss)
+		base := contextServerStream{ServerStream: ss, ctx: authz.WithRoles(ss.Context(), roles)}
+		return handler(srv, newRevalidatingServerStream(base, info.FullMethod, roles, ai.grantedRoles, ai.logger))
 	}
 }
 
-func (ai *AuthorizationInterceptor) authorize(ctx context.Context, method string) error {
-	allowedRoles, ok := ai.policies[method]
-	if !ok {
-		return nil // method not in policy → passthrough
+func (ai *AuthorizationInterceptor) authorize(ctx context.Context, method string) (context.Context, error) {
+	if grpcerrors.IsPublicMethod(method) {
+		return ctx, nil
 	}
-
-	orgUUID, orgErr := pkgcontext.GetOrganizationID(ctx)
-	userID, userErr := pkgcontext.GetUserID(ctx)
-
-	if orgErr != nil || userErr != nil {
-		ai.logger.WarnContext(ctx, grpcerrors.LogRBACMissingContext, "method", method)
-		ai.emitPermissionDenied(ctx, method, "missing org or user context")
-		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAdminRequired), grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAdminRequired))
-	}
-
-	orgID := orgUUID.String()
-
-	role, active, err := ai.resolveRole(ctx, orgID, userID)
+	roles, err := ai.grantedRoles(ctx, method)
 	if err != nil {
-		ai.logger.ErrorContext(ctx, grpcerrors.LogRBACResolutionFailed, "method", method, "error", err)
-		ai.emitPermissionDenied(ctx, method, "role resolution failed")
-		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAdminRequired), grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAdminRequired))
+		return nil, err
 	}
-
-	if !active {
-		ai.logger.WarnContext(ctx, grpcerrors.LogRBACInactiveMembership, "method", method, "role", role)
-		ai.emitPermissionDenied(ctx, method, "inactive membership")
-		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAdminRequired), grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAdminRequired))
-	}
-
-	for _, allowed := range allowedRoles {
-		if role == allowed {
-			return nil
-		}
-	}
-
-	ai.logger.WarnContext(ctx, grpcerrors.LogRBACInsufficientRole,
-		"method", method, "role", role, "required", allowedRoles)
-	ai.emitPermissionDenied(ctx, method, "insufficient role")
-	return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAdminRequired), grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAdminRequired))
+	return authz.WithRoles(ctx, roles), nil
 }
 
-func (ai *AuthorizationInterceptor) resolveRole(ctx context.Context, orgID, userID string) (string, bool, error) {
-	cacheKey := orgID + ":" + userID
-
-	if cached, ok := ai.cache.Load(cacheKey); ok {
-		cr := cached.(cachedRole)
-		if time.Now().Before(cr.expiresAt) {
-			return cr.role, cr.active, nil
-		}
-		ai.cache.Delete(cacheKey)
+// grantedRoles resolves the caller's roles and refuses them unless they satisfy the method's requirement.
+func (ai *AuthorizationInterceptor) grantedRoles(ctx context.Context, method string) (authz.Roles, error) {
+	requirement, known := ai.policy.Requirement(method)
+	if !known {
+		ai.logger.WarnContext(ctx, grpcerrors.LogRBACUnknownMethod, logger.FieldMethod, method)
+		ai.emitPermissionDenied(ctx, method, detailUnknownMethod)
+		return authz.Roles{}, insufficientRoleError()
 	}
 
-	role, active, err := ai.roleResolver.GetUserRole(ctx, orgID, userID)
+	roles, err := ai.roles.Roles(ctx)
 	if err != nil {
-		return "", false, err
+		ai.logger.ErrorContext(ctx, grpcerrors.LogRBACResolutionFailed, logger.FieldMethod, method, logger.FieldError, err)
+		ai.emitPermissionDenied(ctx, method, detailRoleResolutionFailed)
+		return authz.Roles{}, grpcerrors.ToStatusError(err)
 	}
 
-	ai.cache.Store(cacheKey, cachedRole{
-		role:      role,
-		active:    active,
-		expiresAt: time.Now().Add(ai.cacheTTL),
-	})
+	if !requirement.GrantedTo(roles) {
+		ai.logger.WarnContext(ctx, grpcerrors.LogRBACInsufficientRole, logger.FieldMethod, method)
+		ai.emitPermissionDenied(ctx, method, detailInsufficientRole)
+		return authz.Roles{}, insufficientRoleError()
+	}
+	return roles, nil
+}
 
-	return role, active, nil
+func insufficientRoleError() error {
+	return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInsufficientRole),
+		grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInsufficientRole))
 }
 
 // emitPermissionDenied persists a permission denied security event when an event writer is configured.
 func (ai *AuthorizationInterceptor) emitPermissionDenied(ctx context.Context, method, reason string) {
-	if ai.eventWriter == nil {
-		return
-	}
-	tenantID := ai.platformTenantID
-	if tid, err := pkgcontext.GetTenantID(ctx); err == nil {
-		tenantID = tid
-	}
-	details, _ := json.Marshal(map[string]interface{}{
-		auditKeyMethod: method,
-		auditKeyReason: reason,
-	})
-	_ = ai.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-		TenantID:    strconv.FormatInt(tenantID, 10),
-		EventType:   models.EventTypeAuthPermissionDenied,
-		Category:    models.EventCategorySecurity,
-		Severity:    models.EventSeverityWarning,
-		Title:       models.EventTitleAuthPermissionDenied,
-		Description: reason,
-		SourceType:  models.SourceTypeAPI,
-		SourceName:  method,
-		Details:     details,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+	recordSecurityEvent(ctx, ai.eventWriter, ai.platformTenantID, ai.logger, securityEvent{
+		method: method, eventType: models.EventTypeAuthPermissionDenied,
+		title: models.EventTitleAuthPermissionDenied, reason: reason, userID: principalUserID(ctx),
 	})
 }

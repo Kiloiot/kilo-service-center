@@ -4,7 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -80,7 +82,7 @@ func TestGetTenantByOrgID_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Test: Resolve org UUID to tenant ID
@@ -102,7 +104,7 @@ func TestGetTenantByOrgID_NotFound(t *testing.T) {
 		}
 	}()
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Test: Non-existent org UUID should return error
@@ -151,7 +153,7 @@ func TestGetOrgByTenantID_MultipleOrgs(t *testing.T) {
 	`, org2ID, tenantID)
 	require.NoError(t, err)
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Test: Should return first org (oldest created_at)
@@ -159,133 +161,6 @@ func TestGetOrgByTenantID_MultipleOrgs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, org1ID, org.OrgID)
 	assert.Equal(t, "First Org", org.Name)
-}
-
-// TestCheckUserMembership_ValidMember verifies active membership check
-func TestCheckUserMembership_ValidMember(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := setupOrgTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
-
-	_, orgID, userID := setupOrgTestData(t, db)
-	defer func() {
-		if _, err := db.Exec("DELETE FROM organizations WHERE org_id = $1", orgID); err != nil {
-			t.Fatalf("cleanup failed: %v", err)
-		}
-	}()
-
-	repo := NewOrganizationRepository(db)
-	ctx := testutil.TestContext()
-
-	// Test: Active member should return true
-	isMember, err := repo.CheckUserMembership(ctx, orgID, userID)
-	require.NoError(t, err)
-	assert.True(t, isMember)
-}
-
-// TestCheckUserMembership_RemovedMember verifies removed status returns false
-func TestCheckUserMembership_RemovedMember(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := setupOrgTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
-
-	_, orgID, userID := setupOrgTestData(t, db)
-	defer func() {
-		if _, err := db.Exec("DELETE FROM organizations WHERE org_id = $1", orgID); err != nil {
-			t.Logf("cleanup failed: %v", err)
-		}
-	}()
-
-	repo := NewOrganizationRepository(db)
-	ctx := testutil.TestContext()
-
-	// Update member status to 'removed'
-	_, err := db.Exec(`
-		UPDATE organization_members
-		SET status = 'removed'
-		WHERE org_id = $1 AND user_id = $2
-	`, orgID, userID)
-	require.NoError(t, err)
-
-	// Test: Removed member should return false
-	isMember, err := repo.CheckUserMembership(ctx, orgID, userID)
-	require.NoError(t, err)
-	assert.False(t, isMember)
-}
-
-// TestUpsertOrg_CreateAndUpdate tests both create and update paths
-func TestUpsertOrg_CreateAndUpdate(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := setupOrgTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
-
-	repo := NewOrganizationRepository(db)
-	ctx := testutil.TestContext()
-
-	tenantID := int64(3)
-	createTestTenant(t, db, tenantID, "Tenant 3")
-
-	newOrgID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
-
-	defer func() {
-		if _, err := db.Exec("DELETE FROM organizations WHERE org_id = $1", newOrgID); err != nil {
-			t.Logf("cleanup failed: %v", err)
-		}
-	}()
-
-	// Test CREATE path: Upsert non-existent org
-	newOrg := &models.Organization{
-		OrgID:    newOrgID,
-		TenantID: tenantID,
-		Name:     "New Kilo Cloud Org",
-		State:    "active",
-	}
-
-	err := repo.UpsertOrg(ctx, newOrg)
-	require.NoError(t, err)
-
-	// Verify org was created
-	created, err := repo.GetByID(ctx, newOrgID, tenantID)
-	require.NoError(t, err)
-	assert.Equal(t, "New Kilo Cloud Org", created.Name)
-	assert.Equal(t, "active", created.State)
-	assert.Equal(t, tenantID, created.TenantID)
-
-	// Test UPDATE path: Upsert existing org with changed name
-	newOrg.Name = "Updated Kilo Cloud Org"
-	newOrg.State = "suspended"
-	newOrg.TenantID = 999 // Try to change immutable field
-
-	err = repo.UpsertOrg(ctx, newOrg)
-	require.NoError(t, err)
-
-	// Verify org was updated but tenant_id preserved
-	updated, err := repo.GetByID(ctx, newOrgID, tenantID)
-	require.NoError(t, err)
-	assert.Equal(t, "Updated Kilo Cloud Org", updated.Name)
-	assert.Equal(t, "suspended", updated.State)
-	assert.Equal(t, tenantID, updated.TenantID, "tenant_id should be immutable and preserved from existing record")
 }
 
 // ============================================================================
@@ -359,7 +234,7 @@ func TestListOrgMembersWithEmail_NoStatusFilter(t *testing.T) {
 	db := setupOrgTestDB(t)
 	orgID, _ := setupOrgMembersTestData(t, db)
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	members, totalCount, err := repo.ListOrgMembersWithEmail(ctx, orgID, "", 10, 0)
@@ -380,7 +255,7 @@ func TestListOrgMembersWithEmail_ActiveFilter(t *testing.T) {
 	db := setupOrgTestDB(t)
 	orgID, _ := setupOrgMembersTestData(t, db)
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	members, totalCount, err := repo.ListOrgMembersWithEmail(ctx, orgID, "active", 10, 0)
@@ -400,7 +275,7 @@ func TestListOrgMembersWithEmail_InactiveFilter(t *testing.T) {
 	db := setupOrgTestDB(t)
 	orgID, _ := setupOrgMembersTestData(t, db)
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	members, totalCount, err := repo.ListOrgMembersWithEmail(ctx, orgID, "inactive", 10, 0)
@@ -418,7 +293,7 @@ func TestListOrgMembersWithEmail_LimitOffset(t *testing.T) {
 	db := setupOrgTestDB(t)
 	orgID, _ := setupOrgMembersTestData(t, db)
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	// First page: limit=2, offset=0
@@ -442,7 +317,7 @@ func TestListOrgMembersWithEmail_TotalCountConsistency(t *testing.T) {
 	db := setupOrgTestDB(t)
 	orgID, _ := setupOrgMembersTestData(t, db)
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	// totalCount should remain stable across different pages
@@ -467,11 +342,45 @@ func TestGetOrgMemberWithEmail_NotFound(t *testing.T) {
 	db := setupOrgTestDB(t)
 	orgID, _ := setupOrgMembersTestData(t, db)
 
-	repo := NewOrganizationRepository(db)
+	repo := NewOrganizationRepository(db, logger.Get())
 	ctx := testutil.TestContext()
 
 	nonExistentUser := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
 	_, err := repo.GetOrgMemberWithEmail(ctx, orgID, nonExistentUser)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, storage.ErrNotFound), "expected storage.ErrNotFound for non-existent member")
+}
+
+// TestOrganizationRepository_NotFoundPathsWrapTheSentinel proves every
+// not-found result is recognizable through errors.Is(err, storage.ErrNotFound),
+// so callers can map it instead of reporting an internal failure.
+func TestOrganizationRepository_NotFoundPathsWrapTheSentinel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupOrgTestDB(t)
+	tenantID, orgID, _ := setupOrgTestData(t, db)
+	repo := NewOrganizationRepository(db, logger.Get())
+	ctx := testutil.TestContext()
+
+	missingOrg := uuid.MustParse("99999999-9999-9999-9999-999999999999")
+	missingUser := uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd")
+	const tenantWithoutOrganizations = int64(101)
+	createTestTenant(t, db, tenantWithoutOrganizations, "Tenant Without Organizations")
+
+	_, err := repo.GetTenantByOrgID(ctx, missingOrg)
+	assert.ErrorIs(t, err, storage.ErrNotFound, "GetTenantByOrgID")
+	_, err = repo.GetOrgByTenantID(ctx, tenantWithoutOrganizations)
+	assert.ErrorIs(t, err, storage.ErrNotFound, "GetOrgByTenantID")
+	_, err = repo.GetByID(ctx, missingOrg, tenantID)
+	assert.ErrorIs(t, err, storage.ErrNotFound, "GetByID")
+	assert.ErrorIs(t, repo.Update(ctx, missingOrg, tenantID, map[string]interface{}{"name": "renamed"}),
+		storage.ErrNotFound, "Update")
+	assert.ErrorIs(t, repo.Delete(ctx, missingOrg, tenantID), storage.ErrNotFound, "Delete")
+	assert.ErrorIs(t, repo.RemoveMember(ctx, orgID, missingUser), storage.ErrNotFound, "RemoveMember")
+	assert.ErrorIs(t, repo.UpdateMemberRole(ctx, orgID, missingUser, models.OrganizationRoleAdmin),
+		storage.ErrNotFound, "UpdateMemberRole")
+	assert.ErrorIs(t, repo.UpdateMemberPermissions(ctx, orgID, missingUser, true, false, false),
+		storage.ErrNotFound, "UpdateMemberPermissions")
 }

@@ -101,9 +101,11 @@ while True:
 
 ### Community Edition
 
-Community Edition runs in single-tenant mode with authentication and organization
-enforcement disabled (`auth.enabled: false`, `org_enforcement_enabled: false`).
-The examples above work without any headers.
+Community Edition runs single-tenant with organization enforcement off, so the
+examples above need only the `authorization` header: sign in with `Login` and send
+`Bearer <access_token>`. Each call also needs a role: `GetSystemStatus` is open to
+every role, `ListEndPoints` to Endpoint Managers and administrators. See
+[User Roles and Permissions](../05-Security/04-users-and-roles.md).
 
 ### Enterprise: JWT User Principal
 
@@ -129,6 +131,10 @@ resp = client.ListEndPoints(
 ### Enterprise: Service-Account API Key
 
 Requires two headers: `authorization` and `x-organization-id`. Do **not** send `x-user-id` — including it returns `ErrTokenIdentityMismatch` to prevent user injection.
+
+A service-account key acts as a Base Station Manager and Endpoint Manager in the organization it
+was created for, so the call below succeeds for that organization. Calls that need the Admin or
+Tenant Manager role, and any call for another organization, return `PERMISSION_DENIED`.
 
 ```python
 api_key = "your-api-key"

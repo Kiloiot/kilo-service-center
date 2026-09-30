@@ -14,16 +14,28 @@ const (
 	ExportMaxLimit = 10000
 )
 
-// ExportCSVHeaders defines the column order for CSV exports.
+// ExportCSVHeaders defines the column order for CSV exports: the SCACI
+// §3.8.1 ulData field names the JSON export uses as keys.
 var ExportCSVHeaders = []string{
 	"id",
-	"ep_eui",
-	"bs_eui",
-	"rx_time",
-	"packet_cnt",
+	"opId",
+	"epEui",
+	"bsEui",
+	"rxTime",
+	"rxDuration",
+	"packetCnt",
 	"snr",
 	"rssi",
-	"user_data",
+	"eqSnr",
+	"profile",
+	"mode",
+	"format",
+	"dlOpen",
+	"responseExp",
+	"dlAck",
+	"duplicate",
+	"userData",
+	"subpackets",
 }
 
 // IsValidExportFormat checks if the given format is supported.
@@ -34,9 +46,4 @@ func IsValidExportFormat(format string) bool {
 	default:
 		return false
 	}
-}
-
-// SupportedExportFormats returns all supported export formats.
-func SupportedExportFormats() []string {
-	return []string{ExportFormatJSON, ExportFormatCSV}
 }

@@ -100,6 +100,33 @@ export class EndPoint extends jspb.Message {
   getBlueprintSnapshot_asB64(): string;
   setBlueprintSnapshot(value: Uint8Array | string): void;
 
+  getReattachPending(): boolean;
+  setReattachPending(value: boolean): void;
+
+  hasLastRssi(): boolean;
+  clearLastRssi(): void;
+  getLastRssi(): google_protobuf_wrappers_pb.DoubleValue | undefined;
+  setLastRssi(value?: google_protobuf_wrappers_pb.DoubleValue): void;
+
+  hasLastSnr(): boolean;
+  clearLastSnr(): void;
+  getLastSnr(): google_protobuf_wrappers_pb.DoubleValue | undefined;
+  setLastSnr(value?: google_protobuf_wrappers_pb.DoubleValue): void;
+
+  hasLastEqSnr(): boolean;
+  clearLastEqSnr(): void;
+  getLastEqSnr(): google_protobuf_wrappers_pb.DoubleValue | undefined;
+  setLastEqSnr(value?: google_protobuf_wrappers_pb.DoubleValue): void;
+
+  getServingBsEui(): string;
+  setServingBsEui(value: string): void;
+
+  getNwkSnKeySet(): boolean;
+  setNwkSnKeySet(value: boolean): void;
+
+  getAppKeySet(): boolean;
+  setAppKeySet(value: boolean): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): EndPoint.AsObject;
   static toObject(includeInstance: boolean, msg: EndPoint): EndPoint.AsObject;
@@ -138,6 +165,13 @@ export namespace EndPoint {
     deviceModelId: string,
     blueprintId: string,
     blueprintSnapshot: Uint8Array | string,
+    reattachPending: boolean,
+    lastRssi?: google_protobuf_wrappers_pb.DoubleValue.AsObject,
+    lastSnr?: google_protobuf_wrappers_pb.DoubleValue.AsObject,
+    lastEqSnr?: google_protobuf_wrappers_pb.DoubleValue.AsObject,
+    servingBsEui: string,
+    nwkSnKeySet: boolean,
+    appKeySet: boolean,
   }
 }
 
@@ -240,6 +274,19 @@ export class BaseStation extends jspb.Message {
   getLocationUpdatedAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
   setLocationUpdatedAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
 
+  hasCertificateExpiresAt(): boolean;
+  clearCertificateExpiresAt(): void;
+  getCertificateExpiresAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setCertificateExpiresAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  getTlsCertFingerprint(): string;
+  setTlsCertFingerprint(value: string): void;
+
+  hasSessionStartedAt(): boolean;
+  clearSessionStartedAt(): void;
+  getSessionStartedAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setSessionStartedAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): BaseStation.AsObject;
   static toObject(includeInstance: boolean, msg: BaseStation): BaseStation.AsObject;
@@ -275,6 +322,9 @@ export namespace BaseStation {
     serviceCenterUrl: string,
     locationSource: string,
     locationUpdatedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    certificateExpiresAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    tlsCertFingerprint: string,
+    sessionStartedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
   }
 }
 
@@ -322,8 +372,8 @@ export class BaseStationReceptionInfo extends jspb.Message {
   getBsEui(): string;
   setBsEui(value: string): void;
 
-  getRxTime(): number;
-  setRxTime(value: number): void;
+  getRxTime(): string;
+  setRxTime(value: string): void;
 
   getSnr(): number;
   setSnr(value: number): void;
@@ -379,7 +429,7 @@ export class BaseStationReceptionInfo extends jspb.Message {
 export namespace BaseStationReceptionInfo {
   export type AsObject = {
     bsEui: string,
-    rxTime: number,
+    rxTime: string,
     snr: number,
     rssi: number,
     eqSnr?: google_protobuf_wrappers_pb.DoubleValue.AsObject,
@@ -472,6 +522,14 @@ export class Message extends jspb.Message {
   getDuplicate(): boolean;
   setDuplicate(value: boolean): void;
 
+  getOpId(): string;
+  setOpId(value: string): void;
+
+  hasFormat(): boolean;
+  clearFormat(): void;
+  getFormat(): number;
+  setFormat(value: number): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): Message.AsObject;
   static toObject(includeInstance: boolean, msg: Message): Message.AsObject;
@@ -507,6 +565,8 @@ export namespace Message {
     blueprintVersionId: string,
     baseStationsList: Array<BaseStationReceptionInfo.AsObject>,
     duplicate: boolean,
+    opId: string,
+    format: number,
   }
 }
 
@@ -539,6 +599,11 @@ export class GetEndPointRequest extends jspb.Message {
   getTenantId(): string;
   setTenantId(value: string): void;
 
+  clearRevealKeysList(): void;
+  getRevealKeysList(): Array<EndpointKeyMap[keyof EndpointKeyMap]>;
+  setRevealKeysList(value: Array<EndpointKeyMap[keyof EndpointKeyMap]>): void;
+  addRevealKeys(value: EndpointKeyMap[keyof EndpointKeyMap], index?: number): EndpointKeyMap[keyof EndpointKeyMap];
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): GetEndPointRequest.AsObject;
   static toObject(includeInstance: boolean, msg: GetEndPointRequest): GetEndPointRequest.AsObject;
@@ -553,6 +618,7 @@ export namespace GetEndPointRequest {
   export type AsObject = {
     epeui: string,
     tenantId: string,
+    revealKeysList: Array<EndpointKeyMap[keyof EndpointKeyMap]>,
   }
 }
 
@@ -1315,6 +1381,76 @@ export namespace SendDownlinkResponse {
   }
 }
 
+export class UpdatePendingDownlinkRequest extends jspb.Message {
+  getEpeui(): string;
+  setEpeui(value: string): void;
+
+  getQueId(): string;
+  setQueId(value: string): void;
+
+  clearPayloadsList(): void;
+  getPayloadsList(): Array<Uint8Array | string>;
+  getPayloadsList_asU8(): Array<Uint8Array>;
+  getPayloadsList_asB64(): Array<string>;
+  setPayloadsList(value: Array<Uint8Array | string>): void;
+  addPayloads(value: Uint8Array | string, index?: number): Uint8Array | string;
+
+  getPriority(): number;
+  setPriority(value: number): void;
+
+  getCntDepend(): boolean;
+  setCntDepend(value: boolean): void;
+
+  clearPacketCntList(): void;
+  getPacketCntList(): Array<number>;
+  setPacketCntList(value: Array<number>): void;
+  addPacketCnt(value: number, index?: number): number;
+
+  getFormat(): number;
+  setFormat(value: number): void;
+
+  getResponseExp(): boolean;
+  setResponseExp(value: boolean): void;
+
+  getResponsePrio(): boolean;
+  setResponsePrio(value: boolean): void;
+
+  getDlWindReq(): boolean;
+  setDlWindReq(value: boolean): void;
+
+  getExpOnly(): boolean;
+  setExpOnly(value: boolean): void;
+
+  getDlRxStatQry(): boolean;
+  setDlRxStatQry(value: boolean): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): UpdatePendingDownlinkRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: UpdatePendingDownlinkRequest): UpdatePendingDownlinkRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: UpdatePendingDownlinkRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): UpdatePendingDownlinkRequest;
+  static deserializeBinaryFromReader(message: UpdatePendingDownlinkRequest, reader: jspb.BinaryReader): UpdatePendingDownlinkRequest;
+}
+
+export namespace UpdatePendingDownlinkRequest {
+  export type AsObject = {
+    epeui: string,
+    queId: string,
+    payloadsList: Array<Uint8Array | string>,
+    priority: number,
+    cntDepend: boolean,
+    packetCntList: Array<number>,
+    format: number,
+    responseExp: boolean,
+    responsePrio: boolean,
+    dlWindReq: boolean,
+    expOnly: boolean,
+    dlRxStatQry: boolean,
+  }
+}
+
 export class RevokeDownlinkRequest extends jspb.Message {
   getEpeui(): string;
   setEpeui(value: string): void;
@@ -1380,6 +1516,22 @@ export class ListDownlinkQueueRequest extends jspb.Message {
   getPageToken(): string;
   setPageToken(value: string): void;
 
+  getStatus(): string;
+  setStatus(value: string): void;
+
+  hasPriority(): boolean;
+  clearPriority(): void;
+  getPriority(): number;
+  setPriority(value: number): void;
+
+  hasQueId(): boolean;
+  clearQueId(): void;
+  getQueId(): string;
+  setQueId(value: string): void;
+
+  getBsEui(): string;
+  setBsEui(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListDownlinkQueueRequest.AsObject;
   static toObject(includeInstance: boolean, msg: ListDownlinkQueueRequest): ListDownlinkQueueRequest.AsObject;
@@ -1396,6 +1548,10 @@ export namespace ListDownlinkQueueRequest {
     epeui: string,
     pageSize: number,
     pageToken: string,
+    status: string,
+    priority: number,
+    queId: string,
+    bsEui: string,
   }
 }
 
@@ -1468,8 +1624,8 @@ export class DownlinkMessage extends jspb.Message {
   getResult(): string;
   setResult(value: string): void;
 
-  getTxTime(): number;
-  setTxTime(value: number): void;
+  getTxTime(): string;
+  setTxTime(value: string): void;
 
   getBsEui(): string;
   setBsEui(value: string): void;
@@ -1519,6 +1675,16 @@ export class DownlinkMessage extends jspb.Message {
   getDlRxStatQry(): boolean;
   setDlRxStatQry(value: boolean): void;
 
+  hasEndpointAckedAt(): boolean;
+  clearEndpointAckedAt(): void;
+  getEndpointAckedAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setEndpointAckedAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  hasAcceptedAt(): boolean;
+  clearAcceptedAt(): void;
+  getAcceptedAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setAcceptedAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): DownlinkMessage.AsObject;
   static toObject(includeInstance: boolean, msg: DownlinkMessage): DownlinkMessage.AsObject;
@@ -1541,7 +1707,7 @@ export namespace DownlinkMessage {
     scheduledAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     transmittedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     result: string,
-    txTime: number,
+    txTime: string,
     bsEui: string,
     cntDepend: boolean,
     packetCntList: Array<number>,
@@ -1556,6 +1722,8 @@ export namespace DownlinkMessage {
     transmissionPacketCnt: number,
     payloadsList: Array<Uint8Array | string>,
     dlRxStatQry: boolean,
+    endpointAckedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    acceptedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
   }
 }
 
@@ -1585,6 +1753,14 @@ export class GetDownlinkResultsRequest extends jspb.Message {
   getTimeTo(): google_protobuf_timestamp_pb.Timestamp | undefined;
   setTimeTo(value?: google_protobuf_timestamp_pb.Timestamp): void;
 
+  getBsEui(): string;
+  setBsEui(value: string): void;
+
+  hasQueId(): boolean;
+  clearQueId(): void;
+  getQueId(): string;
+  setQueId(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): GetDownlinkResultsRequest.AsObject;
   static toObject(includeInstance: boolean, msg: GetDownlinkResultsRequest): GetDownlinkResultsRequest.AsObject;
@@ -1604,6 +1780,8 @@ export namespace GetDownlinkResultsRequest {
     pageToken: string,
     timeFrom?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     timeTo?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    bsEui: string,
+    queId: string,
   }
 }
 
@@ -1939,8 +2117,8 @@ export class ReleaseInfo extends jspb.Message {
 
   getArtifactsMap(): jspb.Map<string, string>;
   clearArtifactsMap(): void;
-  getScEui(): number;
-  setScEui(value: number): void;
+  getScEui(): string;
+  setScEui(value: string): void;
 
   getScVendor(): string;
   setScVendor(value: string): void;
@@ -1998,7 +2176,7 @@ export namespace ReleaseInfo {
     goVersion: string,
     schemaVersion: number,
     artifactsMap: Array<[string, string]>,
-    scEui: number,
+    scEui: string,
     scVendor: string,
     scModel: string,
     scName: string,
@@ -2123,8 +2301,8 @@ export class DLRXStatus extends jspb.Message {
   getBsEui(): string;
   setBsEui(value: string): void;
 
-  getRxTime(): number;
-  setRxTime(value: number): void;
+  getRxTime(): string;
+  setRxTime(value: string): void;
 
   getPacketCnt(): number;
   setPacketCnt(value: number): void;
@@ -2154,7 +2332,7 @@ export namespace DLRXStatus {
   export type AsObject = {
     epEui: string,
     bsEui: string,
-    rxTime: number,
+    rxTime: string,
     packetCnt: number,
     dlRxSnr: number,
     dlRxRssi: number,
@@ -3150,6 +3328,23 @@ export class ListEventsRequest extends jspb.Message {
   setEventTypesList(value: Array<string>): void;
   addEventTypes(value: string, index?: number): string;
 
+  hasOpId(): boolean;
+  clearOpId(): void;
+  getOpId(): string;
+  setOpId(value: string): void;
+
+  getEpEui(): string;
+  setEpEui(value: string): void;
+
+  getBsEui(): string;
+  setBsEui(value: string): void;
+
+  getOutcome(): string;
+  setOutcome(value: string): void;
+
+  getSearch(): string;
+  setSearch(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListEventsRequest.AsObject;
   static toObject(includeInstance: boolean, msg: ListEventsRequest): ListEventsRequest.AsObject;
@@ -3169,6 +3364,137 @@ export namespace ListEventsRequest {
     startTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     endTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     eventTypesList: Array<string>,
+    opId: string,
+    epEui: string,
+    bsEui: string,
+    outcome: string,
+    search: string,
+  }
+}
+
+export class ListErrorGroupsRequest extends jspb.Message {
+  getBucket(): string;
+  setBucket(value: string): void;
+
+  hasStartTime(): boolean;
+  clearStartTime(): void;
+  getStartTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setStartTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  hasEndTime(): boolean;
+  clearEndTime(): void;
+  getEndTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setEndTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  getPageSize(): number;
+  setPageSize(value: number): void;
+
+  getPageToken(): string;
+  setPageToken(value: string): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): ListErrorGroupsRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: ListErrorGroupsRequest): ListErrorGroupsRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: ListErrorGroupsRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): ListErrorGroupsRequest;
+  static deserializeBinaryFromReader(message: ListErrorGroupsRequest, reader: jspb.BinaryReader): ListErrorGroupsRequest;
+}
+
+export namespace ListErrorGroupsRequest {
+  export type AsObject = {
+    bucket: string,
+    startTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    endTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    pageSize: number,
+    pageToken: string,
+  }
+}
+
+export class ListErrorGroupsResponse extends jspb.Message {
+  clearGroupsList(): void;
+  getGroupsList(): Array<ErrorGroup>;
+  setGroupsList(value: Array<ErrorGroup>): void;
+  addGroups(value?: ErrorGroup, index?: number): ErrorGroup;
+
+  getNextPageToken(): string;
+  setNextPageToken(value: string): void;
+
+  getTotalCount(): number;
+  setTotalCount(value: number): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): ListErrorGroupsResponse.AsObject;
+  static toObject(includeInstance: boolean, msg: ListErrorGroupsResponse): ListErrorGroupsResponse.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: ListErrorGroupsResponse, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): ListErrorGroupsResponse;
+  static deserializeBinaryFromReader(message: ListErrorGroupsResponse, reader: jspb.BinaryReader): ListErrorGroupsResponse;
+}
+
+export namespace ListErrorGroupsResponse {
+  export type AsObject = {
+    groupsList: Array<ErrorGroup.AsObject>,
+    nextPageToken: string,
+    totalCount: number,
+  }
+}
+
+export class ErrorGroup extends jspb.Message {
+  getBucket(): string;
+  setBucket(value: string): void;
+
+  getEventType(): string;
+  setEventType(value: string): void;
+
+  getCode(): string;
+  setCode(value: string): void;
+
+  getMessage(): string;
+  setMessage(value: string): void;
+
+  getSourceName(): string;
+  setSourceName(value: string): void;
+
+  hasFirstSeen(): boolean;
+  clearFirstSeen(): void;
+  getFirstSeen(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setFirstSeen(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  hasLastSeen(): boolean;
+  clearLastSeen(): void;
+  getLastSeen(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setLastSeen(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  getCount(): number;
+  setCount(value: number): void;
+
+  getLastOpId(): string;
+  setLastOpId(value: string): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): ErrorGroup.AsObject;
+  static toObject(includeInstance: boolean, msg: ErrorGroup): ErrorGroup.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: ErrorGroup, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): ErrorGroup;
+  static deserializeBinaryFromReader(message: ErrorGroup, reader: jspb.BinaryReader): ErrorGroup;
+}
+
+export namespace ErrorGroup {
+  export type AsObject = {
+    bucket: string,
+    eventType: string,
+    code: string,
+    message: string,
+    sourceName: string,
+    firstSeen?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    lastSeen?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    count: number,
+    lastOpId: string,
   }
 }
 
@@ -3592,6 +3918,12 @@ export class Event extends jspb.Message {
   getData_asB64(): string;
   setData(value: Uint8Array | string): void;
 
+  getUserId(): string;
+  setUserId(value: string): void;
+
+  getUserEmail(): string;
+  setUserEmail(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): Event.AsObject;
   static toObject(includeInstance: boolean, msg: Event): Event.AsObject;
@@ -3613,6 +3945,8 @@ export namespace Event {
     sourceName: string,
     timestamp?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     data: Uint8Array | string,
+    userId: string,
+    userEmail: string,
   }
 }
 
@@ -3681,6 +4015,9 @@ export class AlertSummary extends jspb.Message {
   setRecentList(value: Array<Alert>): void;
   addRecent(value?: Alert, index?: number): Alert;
 
+  getError(): number;
+  setError(value: number): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): AlertSummary.AsObject;
   static toObject(includeInstance: boolean, msg: AlertSummary): AlertSummary.AsObject;
@@ -3697,6 +4034,7 @@ export namespace AlertSummary {
     warning: number,
     info: number,
     recentList: Array<Alert.AsObject>,
+    error: number,
   }
 }
 
@@ -3712,6 +4050,11 @@ export class ListScaciSessionsRequest extends jspb.Message {
 
   getCanResume(): boolean;
   setCanResume(value: boolean): void;
+
+  hasCanResumeFilter(): boolean;
+  clearCanResumeFilter(): void;
+  getCanResumeFilter(): boolean;
+  setCanResumeFilter(value: boolean): void;
 
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListScaciSessionsRequest.AsObject;
@@ -3729,6 +4072,7 @@ export namespace ListScaciSessionsRequest {
     pageToken: string,
     status: string,
     canResume: boolean,
+    canResumeFilter: boolean,
   }
 }
 
@@ -3978,7 +4322,119 @@ export namespace ListScaciQueuesResponse {
   }
 }
 
+export class ListCapabilitiesResponse extends jspb.Message {
+  clearCapabilitiesList(): void;
+  getCapabilitiesList(): Array<Capability>;
+  setCapabilitiesList(value: Array<Capability>): void;
+  addCapabilities(value?: Capability, index?: number): Capability;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): ListCapabilitiesResponse.AsObject;
+  static toObject(includeInstance: boolean, msg: ListCapabilitiesResponse): ListCapabilitiesResponse.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: ListCapabilitiesResponse, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): ListCapabilitiesResponse;
+  static deserializeBinaryFromReader(message: ListCapabilitiesResponse, reader: jspb.BinaryReader): ListCapabilitiesResponse;
+}
+
+export namespace ListCapabilitiesResponse {
+  export type AsObject = {
+    capabilitiesList: Array<Capability.AsObject>,
+  }
+}
+
+export class Capability extends jspb.Message {
+  getName(): string;
+  setName(value: string): void;
+
+  getEnabled(): boolean;
+  setEnabled(value: boolean): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): Capability.AsObject;
+  static toObject(includeInstance: boolean, msg: Capability): Capability.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: Capability, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): Capability;
+  static deserializeBinaryFromReader(message: Capability, reader: jspb.BinaryReader): Capability;
+}
+
+export namespace Capability {
+  export type AsObject = {
+    name: string,
+    enabled: boolean,
+  }
+}
+
+export class GetDiagnosticsBundleRequest extends jspb.Message {
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): GetDiagnosticsBundleRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: GetDiagnosticsBundleRequest): GetDiagnosticsBundleRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: GetDiagnosticsBundleRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): GetDiagnosticsBundleRequest;
+  static deserializeBinaryFromReader(message: GetDiagnosticsBundleRequest, reader: jspb.BinaryReader): GetDiagnosticsBundleRequest;
+}
+
+export namespace GetDiagnosticsBundleRequest {
+  export type AsObject = {
+  }
+}
+
+export class GetDiagnosticsBundleResponse extends jspb.Message {
+  getArchive(): Uint8Array | string;
+  getArchive_asU8(): Uint8Array;
+  getArchive_asB64(): string;
+  setArchive(value: Uint8Array | string): void;
+
+  getFilename(): string;
+  setFilename(value: string): void;
+
+  getContentType(): string;
+  setContentType(value: string): void;
+
+  getSizeBytes(): number;
+  setSizeBytes(value: number): void;
+
+  hasGeneratedAt(): boolean;
+  clearGeneratedAt(): void;
+  getGeneratedAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setGeneratedAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): GetDiagnosticsBundleResponse.AsObject;
+  static toObject(includeInstance: boolean, msg: GetDiagnosticsBundleResponse): GetDiagnosticsBundleResponse.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: GetDiagnosticsBundleResponse, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): GetDiagnosticsBundleResponse;
+  static deserializeBinaryFromReader(message: GetDiagnosticsBundleResponse, reader: jspb.BinaryReader): GetDiagnosticsBundleResponse;
+}
+
+export namespace GetDiagnosticsBundleResponse {
+  export type AsObject = {
+    archive: Uint8Array | string,
+    filename: string,
+    contentType: string,
+    sizeBytes: number,
+    generatedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+  }
+}
+
 export class GetScaciStatusRequest extends jspb.Message {
+  hasStartTime(): boolean;
+  clearStartTime(): void;
+  getStartTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setStartTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  hasEndTime(): boolean;
+  clearEndTime(): void;
+  getEndTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setEndTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): GetScaciStatusRequest.AsObject;
   static toObject(includeInstance: boolean, msg: GetScaciStatusRequest): GetScaciStatusRequest.AsObject;
@@ -3991,6 +4447,8 @@ export class GetScaciStatusRequest extends jspb.Message {
 
 export namespace GetScaciStatusRequest {
   export type AsObject = {
+    startTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    endTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
   }
 }
 
@@ -4045,6 +4503,23 @@ export class ScaciSession extends jspb.Message {
   getOperationsCount(): number;
   setOperationsCount(value: number): void;
 
+  getSnAcUuid(): string;
+  setSnAcUuid(value: string): void;
+
+  getSnScUuid(): string;
+  setSnScUuid(value: string): void;
+
+  getLastOpIdAc(): string;
+  setLastOpIdAc(value: string): void;
+
+  getLastOpIdSc(): string;
+  setLastOpIdSc(value: string): void;
+
+  hasDisconnectedAt(): boolean;
+  clearDisconnectedAt(): void;
+  getDisconnectedAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setDisconnectedAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ScaciSession.AsObject;
   static toObject(includeInstance: boolean, msg: ScaciSession): ScaciSession.AsObject;
@@ -4065,6 +4540,11 @@ export namespace ScaciSession {
     connectedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     lastActivityAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     operationsCount: number,
+    snAcUuid: string,
+    snScUuid: string,
+    lastOpIdAc: string,
+    lastOpIdSc: string,
+    disconnectedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
   }
 }
 
@@ -4135,6 +4615,22 @@ export class ScaciError extends jspb.Message {
   getOccurredAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
   setOccurredAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
 
+  hasFirstSeen(): boolean;
+  clearFirstSeen(): void;
+  getFirstSeen(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setFirstSeen(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  hasLastSeen(): boolean;
+  clearLastSeen(): void;
+  getLastSeen(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setLastSeen(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  getCount(): number;
+  setCount(value: number): void;
+
+  getErrorToken(): string;
+  setErrorToken(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ScaciError.AsObject;
   static toObject(includeInstance: boolean, msg: ScaciError): ScaciError.AsObject;
@@ -4153,6 +4649,10 @@ export namespace ScaciError {
     sessionId: string,
     operationType: string,
     occurredAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    firstSeen?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    lastSeen?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    count: number,
+    errorToken: string,
   }
 }
 
@@ -4184,6 +4684,12 @@ export class ScaciQueueEntry extends jspb.Message {
   getProcessedAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
   setProcessedAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
 
+  getQueId(): string;
+  setQueId(value: string): void;
+
+  getPriority(): number;
+  setPriority(value: number): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ScaciQueueEntry.AsObject;
   static toObject(includeInstance: boolean, msg: ScaciQueueEntry): ScaciQueueEntry.AsObject;
@@ -4203,6 +4709,8 @@ export namespace ScaciQueueEntry {
     payload: Uint8Array | string,
     queuedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     processedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    queId: string,
+    priority: number,
   }
 }
 
@@ -4224,6 +4732,26 @@ export class ScaciStatus extends jspb.Message {
   getProtocolVersion(): string;
   setProtocolVersion(value: string): void;
 
+  getScEui(): string;
+  setScEui(value: string): void;
+
+  hasLastPingAt(): boolean;
+  clearLastPingAt(): void;
+  getLastPingAt(): google_protobuf_timestamp_pb.Timestamp | undefined;
+  setLastPingAt(value?: google_protobuf_timestamp_pb.Timestamp): void;
+
+  getLastPingRttMs(): number;
+  setLastPingRttMs(value: number): void;
+
+  getMissedPings(): number;
+  setMissedPings(value: number): void;
+
+  getReconnectAttempts(): number;
+  setReconnectAttempts(value: number): void;
+
+  getLastConnectResult(): string;
+  setLastConnectResult(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ScaciStatus.AsObject;
   static toObject(includeInstance: boolean, msg: ScaciStatus): ScaciStatus.AsObject;
@@ -4241,6 +4769,12 @@ export namespace ScaciStatus {
     pendingOperations: number,
     uptimeSince?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     protocolVersion: string,
+    scEui: string,
+    lastPingAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    lastPingRttMs: number,
+    missedPings: number,
+    reconnectAttempts: number,
+    lastConnectResult: string,
   }
 }
 
@@ -4502,6 +5036,11 @@ export class GetServerCertificateStatusResponse extends jspb.Message {
   getCaCert(): CertificateStatus | undefined;
   setCaCert(value?: CertificateStatus): void;
 
+  clearRenewalNamesList(): void;
+  getRenewalNamesList(): Array<string>;
+  setRenewalNamesList(value: Array<string>): void;
+  addRenewalNames(value: string, index?: number): string;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): GetServerCertificateStatusResponse.AsObject;
   static toObject(includeInstance: boolean, msg: GetServerCertificateStatusResponse): GetServerCertificateStatusResponse.AsObject;
@@ -4516,6 +5055,7 @@ export namespace GetServerCertificateStatusResponse {
   export type AsObject = {
     serverCert?: CertificateStatus.AsObject,
     caCert?: CertificateStatus.AsObject,
+    renewalNamesList: Array<string>,
   }
 }
 
@@ -5917,6 +6457,22 @@ export class ListMessagesRequest extends jspb.Message {
   getEndTime(): google_protobuf_timestamp_pb.Timestamp | undefined;
   setEndTime(value?: google_protobuf_timestamp_pb.Timestamp): void;
 
+  hasDuplicate(): boolean;
+  clearDuplicate(): void;
+  getDuplicate(): boolean;
+  setDuplicate(value: boolean): void;
+
+  hasDlOpen(): boolean;
+  clearDlOpen(): void;
+  getDlOpen(): boolean;
+  setDlOpen(value: boolean): void;
+
+  getProfile(): string;
+  setProfile(value: string): void;
+
+  getMode(): string;
+  setMode(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListMessagesRequest.AsObject;
   static toObject(includeInstance: boolean, msg: ListMessagesRequest): ListMessagesRequest.AsObject;
@@ -5935,6 +6491,10 @@ export namespace ListMessagesRequest {
     bsEui: string,
     startTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     endTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
+    duplicate: boolean,
+    dlOpen: boolean,
+    profile: string,
+    mode: string,
   }
 }
 
@@ -6076,6 +6636,22 @@ export class ListBaseStationMessagesRequest extends jspb.Message {
   getEpEui(): string;
   setEpEui(value: string): void;
 
+  hasDuplicate(): boolean;
+  clearDuplicate(): void;
+  getDuplicate(): boolean;
+  setDuplicate(value: boolean): void;
+
+  hasDlOpen(): boolean;
+  clearDlOpen(): void;
+  getDlOpen(): boolean;
+  setDlOpen(value: boolean): void;
+
+  getProfile(): string;
+  setProfile(value: string): void;
+
+  getMode(): string;
+  setMode(value: string): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): ListBaseStationMessagesRequest.AsObject;
   static toObject(includeInstance: boolean, msg: ListBaseStationMessagesRequest): ListBaseStationMessagesRequest.AsObject;
@@ -6095,6 +6671,10 @@ export namespace ListBaseStationMessagesRequest {
     endTime?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     direction: string,
     epEui: string,
+    duplicate: boolean,
+    dlOpen: boolean,
+    profile: string,
+    mode: string,
   }
 }
 
@@ -6469,6 +7049,23 @@ export class BaseStationMessage extends jspb.Message {
   getDecodeErrorCode(): string;
   setDecodeErrorCode(value: string): void;
 
+  getDlOpen(): boolean;
+  setDlOpen(value: boolean): void;
+
+  getDlAck(): boolean;
+  setDlAck(value: boolean): void;
+
+  getResExp(): boolean;
+  setResExp(value: boolean): void;
+
+  getOpId(): string;
+  setOpId(value: string): void;
+
+  hasFormat(): boolean;
+  clearFormat(): void;
+  getFormat(): number;
+  setFormat(value: number): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): BaseStationMessage.AsObject;
   static toObject(includeInstance: boolean, msg: BaseStationMessage): BaseStationMessage.AsObject;
@@ -6497,6 +7094,11 @@ export namespace BaseStationMessage {
     decodedPayload: Uint8Array | string,
     decodeStatus: string,
     decodeErrorCode: string,
+    dlOpen: boolean,
+    dlAck: boolean,
+    resExp: boolean,
+    opId: string,
+    format: number,
   }
 }
 
@@ -7069,4 +7671,12 @@ export namespace RevokeCEInstanceResponse {
     success: boolean,
   }
 }
+
+export interface EndpointKeyMap {
+  ENDPOINT_KEY_UNSPECIFIED: 0;
+  ENDPOINT_KEY_NWK_SN_KEY: 1;
+  ENDPOINT_KEY_APP_KEY: 2;
+}
+
+export const EndpointKey: EndpointKeyMap;
 

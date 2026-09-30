@@ -4,35 +4,31 @@
  * or a placeholder when no location is set.
  */
 
-import { MapContainer, Marker, TileLayer } from "react-leaflet";
+import { MapContainer } from "react-leaflet";
 
 import { Box, Card, Chip, Typography } from "@mui/material";
-import L from "leaflet";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-// Fix Leaflet default marker icon paths (broken by bundlers)
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
+import { BaseTileLayer } from "@components/common/map/BaseTileLayer";
+import { PositionMarker } from "@components/common/map/PositionMarker";
 import { formatAltitude } from "@utils/formatters";
-import { MAP_DEFAULTS } from "@constants/app";
+import {
+  FRACTION_DIGITS,
+  MAP_DEFAULTS,
+  STATION_LOCATION_STATE,
+} from "@constants/app";
 import {
   LABEL_ALTITUDE,
   LABEL_LATITUDE,
   LABEL_LOCATION_SOURCE_GPS,
   LABEL_LOCATION_SOURCE_MANUAL,
   LABEL_LONGITUDE,
+  MSG_NO_GPS_FIX,
   MSG_NO_LOCATION_SET,
 } from "@constants/messages";
-import { env } from "@config/env";
 import { GpsFixedIcon, MapIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)
-  ._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
+import { stationLocationState } from "../utils/location-state";
 
 interface BaseStationLocationMapProps {
   latitude?: number | null;
@@ -47,7 +43,7 @@ export default function BaseStationLocationMap({
   altitude,
   locationSource,
 }: BaseStationLocationMapProps) {
-  const hasLocation = latitude != null && longitude != null;
+  const state = stationLocationState({ locationSource, latitude, longitude });
 
   const cardSx = {
     width: "100%",
@@ -58,21 +54,26 @@ export default function BaseStationLocationMap({
     flexDirection: "column" as const,
   };
 
-  if (!hasLocation) {
+  if (latitude == null || longitude == null) {
     return (
       <Card sx={{ ...cardSx, justifyContent: "center", alignItems: "center" }}>
-        <MapIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1 }} />
+        <MapIcon
+          sx={{
+            fontSize: componentSpacing.resultIcon.size,
+            color: "text.disabled",
+            mb: 1,
+          }}
+        />
         <Typography variant="body2" color="text.secondary">
-          {MSG_NO_LOCATION_SET}
+          {state === STATION_LOCATION_STATE.GPS_NO_FIX
+            ? MSG_NO_GPS_FIX
+            : MSG_NO_LOCATION_SET}
         </Typography>
       </Card>
     );
   }
 
-  const isGps = locationSource === "gps";
-  const tileUrl = env.mapTileUrl || MAP_DEFAULTS.TILE_URL;
-  const tileAttribution =
-    env.mapTileAttribution || MAP_DEFAULTS.TILE_ATTRIBUTION;
+  const isGps = state === STATION_LOCATION_STATE.GPS_FIX;
 
   return (
     <Card sx={cardSx}>
@@ -86,8 +87,8 @@ export default function BaseStationLocationMap({
           touchZoom={true}
           zoomControl={true}
         >
-          <TileLayer attribution={tileAttribution} url={tileUrl} />
-          <Marker position={[latitude, longitude]} />
+          <BaseTileLayer />
+          <PositionMarker position={[latitude, longitude]} />
         </MapContainer>
       </Box>
       <Box
@@ -107,13 +108,17 @@ export default function BaseStationLocationMap({
           <Typography variant="caption" color="text.secondary">
             {LABEL_LATITUDE}
           </Typography>
-          <Typography variant="body2">{latitude.toFixed(6)}</Typography>
+          <Typography variant="body2">
+            {latitude.toFixed(FRACTION_DIGITS.COORDINATE)}
+          </Typography>
         </Box>
         <Box>
           <Typography variant="caption" color="text.secondary">
             {LABEL_LONGITUDE}
           </Typography>
-          <Typography variant="body2">{longitude.toFixed(6)}</Typography>
+          <Typography variant="body2">
+            {longitude.toFixed(FRACTION_DIGITS.COORDINATE)}
+          </Typography>
         </Box>
         {altitude != null && (
           <Box>

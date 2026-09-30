@@ -1,7 +1,6 @@
 package bssci_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	bssciutil "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -19,6 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+// assemblyTestTenant owns the test server and its sessions.
+const assemblyTestTenant = int64(1)
 
 // assemblyDLRXRepo is a no-op DLRXStatusRepository: only the correlation write
 // used by SendDLRXStatusQuery is implemented.
@@ -51,17 +56,14 @@ type assemblyMockConn struct {
 }
 
 func (m *assemblyMockConn) Write(b []byte) (n int, err error) {
-	// Skip 12-byte BSSCI header (MIOTYB01 + payload size)
-	if len(b) == 12 && bytes.HasPrefix(b, mioty.MIOTYFrameIdentifier[:]) {
-		return len(b), nil
-	}
+	payload := bssciutil.FramePayload(b)
 
 	// Decode based on session encoding
 	var msg map[string]interface{}
 	if m.encoding == "json" {
-		err = json.Unmarshal(b, &msg)
+		err = json.Unmarshal(payload, &msg)
 	} else {
-		err = msgpack.Unmarshal(b, &msg)
+		err = msgpack.Unmarshal(payload, &msg)
 	}
 
 	if err == nil {
@@ -103,9 +105,10 @@ func TestSCOriginatedOperations(t *testing.T) {
 			expectedCmd: mioty.CmdStatus,
 		},
 		{
-			name: "SendPing",
+			name: "InitiatePing",
 			sendFunc: func(s *bssci.Server, sess *bssci.Session) error {
-				return s.SendPing(sess.ID)
+				_, err := s.InitiatePing(testutil.TestContext(), sess.BaseStationEUI, assemblyTestTenant)
+				return err
 			},
 			expectedCmd: mioty.CmdPing,
 		},
@@ -124,7 +127,7 @@ func TestSCOriginatedOperations(t *testing.T) {
 					queueSerializer, auditLogger, tenantResolver, _ :=
 					bssci.CreateTestServices(testLogger, nil)
 
-				server := bssci.NewTestServer(testLogger, &assemblyStorage{}, nil, 1,
+				server := bssci.NewTestServer(testLogger, &assemblyStorage{}, nil, assemblyTestTenant,
 					sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 					queueSerializer, auditLogger, tenantResolver)
 
@@ -321,11 +324,11 @@ func (m *mockEventStore) CreateEvent(_ context.Context, _ *models.SystemEvent) e
 	return nil
 }
 
-func (m *mockEventStore) GetEvents(_ context.Context, _ interfaces.SystemEventFilter) ([]*models.SystemEvent, error) {
+func (m *mockEventStore) GetEvents(_ context.Context, _ models.SystemEventFilter) ([]*models.SystemEvent, error) {
 	return []*models.SystemEvent{}, nil
 }
 
-func (m *mockEventStore) GetActiveAlerts(_ context.Context, _ interfaces.AlertFilter) ([]*models.SystemEvent, error) {
+func (m *mockEventStore) GetActiveAlerts(_ context.Context, _ models.AlertFilter) ([]*models.SystemEvent, error) {
 	return []*models.SystemEvent{}, nil
 }
 
@@ -336,10 +339,10 @@ func (m *mockEventStore) GetEventStats(_ context.Context, _ string, _ time.Time)
 func (m *mockEventStore) RecordSCACIError(_ context.Context, _ int64, _ int64, _ string, _ int64, _ int, _ string) error {
 	return nil
 }
-func (m *mockEventStore) CountEvents(_ context.Context, _ interfaces.SystemEventFilter) (int64, error) {
+func (m *mockEventStore) CountEvents(_ context.Context, _ models.SystemEventFilter) (int64, error) {
 	return 0, nil
 }
-func (m *mockEventStore) CountActiveAlerts(_ context.Context, _ interfaces.AlertFilter) (int64, error) {
+func (m *mockEventStore) CountActiveAlerts(_ context.Context, _ models.AlertFilter) (int64, error) {
 	return 0, nil
 }
 
@@ -497,7 +500,7 @@ func testSendDLDataQueue(t *testing.T, encoding string) {
 	packetCnt := []int64{}
 
 	err := server.SendDLDataQueue(session.ID, epEui, payloads, queId,
-		0, false, packetCnt, 0, false, false, false, false, 1, false)
+		0, false, packetCnt, 0, false, false, false, false, 1, nil, false)
 	require.NoError(t, err, "SendDLDataQueue should succeed")
 
 	require.Len(t, mockConn.sentMessages, 1, "Should send exactly one message")
@@ -583,7 +586,7 @@ func testSendDLDataQueueCounterDependent(t *testing.T, encoding string) {
 	packetCnt := []int64{100, 200, 300} // Counter-dependent packet counts
 
 	err := server.SendDLDataQueue(session.ID, epEui, payloads, queId,
-		0, true, packetCnt, 0, false, false, false, false, 1, false)
+		0, true, packetCnt, 0, false, false, false, false, 1, nil, false)
 	require.NoError(t, err, "SendDLDataQueue with cntDepend should succeed")
 
 	require.Len(t, mockConn.sentMessages, 1, "Should send exactly one message")
@@ -621,14 +624,14 @@ func testSendDLDataQueueCounterDependent(t *testing.T, encoding string) {
 // testSendDLDataQueueACKOnly pins the BSSCI §3.12.1 ACK-only wire shape
 // ("If user data is empty, a pure acknowledgement downlink is queued").
 // Even with no payload, the outer slice MUST have one zero-length inner
-// entry — sending an empty outer ([]) makes the AVA base station reject
-// the message with BSSCI error 22 "DL data queue message malformed".
+// entry; sending an empty outer ([]) makes base stations reject the message
+// with BSSCI error 22 "DL data queue message malformed".
 func testSendDLDataQueueACKOnly(t *testing.T, encoding string) {
 	server, mockConn, session := newAssemblySession(t, encoding, "test-session")
 
 	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 		[][]byte{}, 1001, 0, false, nil, 0,
-		false, false, false, false, 1, false)
+		false, false, false, false, 1, nil, false)
 	require.NoError(t, err, "ACK-only SendDLDataQueue should succeed")
 	require.Len(t, mockConn.sentMessages, 1)
 	msg := mockConn.sentMessages[0]
@@ -658,7 +661,7 @@ func testSendDLDataQueueOptionalFlagsTrue(t *testing.T, encoding string) {
 
 	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 		[][]byte{{0x02}}, 1002, 0.5, false, nil, 0,
-		true, true, true, true, 1, false)
+		true, true, true, true, 1, nil, false)
 	require.NoError(t, err)
 	require.Len(t, mockConn.sentMessages, 1)
 	msg := mockConn.sentMessages[0]
@@ -678,7 +681,7 @@ func testSendDLDataQueueOptionalFlagsFalse(t *testing.T, encoding string) {
 
 	err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 		[][]byte{{0x02}}, 1003, 0.5, false, nil, 0,
-		false, false, false, false, 1, false)
+		false, false, false, false, 1, nil, false)
 	require.NoError(t, err)
 	require.Len(t, mockConn.sentMessages, 1)
 	msg := mockConn.sentMessages[0]
@@ -707,7 +710,7 @@ func testSendDLDataQueueFormatBoundary(t *testing.T, encoding string) {
 
 			err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 				[][]byte{{0x02}}, 1004, 0.5, false, nil, tc.format,
-				false, false, false, false, 1, false)
+				false, false, false, false, 1, nil, false)
 			require.NoError(t, err)
 			require.Len(t, mockConn.sentMessages, 1)
 			msg := mockConn.sentMessages[0]
@@ -745,7 +748,7 @@ func testSendDLDataQueuePrioAlwaysPresent(t *testing.T, encoding string) {
 
 			err := server.SendDLDataQueue(session.ID, bssci.TestEpEui01,
 				[][]byte{{0x02}}, 1005, prio, false, nil, 0,
-				false, false, false, false, 1, false)
+				false, false, false, false, 1, nil, false)
 			require.NoError(t, err)
 			require.Len(t, mockConn.sentMessages, 1)
 			msg := mockConn.sentMessages[0]
@@ -772,7 +775,7 @@ func testSendDLDataRevoke(t *testing.T, encoding string) {
 	queId := uint64(1000) //nolint:revive // queId matches MIOTY protocol field
 	epEui := bssci.TestEpEui01
 
-	err := server.SendDLDataRevoke(session.ID, epEui, queId)
+	err := server.SendDLDataRevoke(session.ID, epEui, queId, 1)
 	require.NoError(t, err, "SendDLDataRevoke should succeed")
 
 	require.Len(t, mockConn.sentMessages, 1, "Should send exactly one message")
@@ -792,6 +795,7 @@ func testSendDLDataRevoke(t *testing.T, encoding string) {
 
 func testSendDLRXStatusQuery(t *testing.T, encoding string) {
 	server, mockConn, session := newAssemblySession(t, encoding, "test-session")
+	server.SetEndpointOwnerResolver(bssci.EndpointOwnedBy(session.ResolvedTenantID))
 
 	epEui := bssci.TestEpEui01
 

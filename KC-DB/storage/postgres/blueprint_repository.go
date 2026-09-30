@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -20,11 +19,11 @@ const orderByCreatedAtDesc = " ORDER BY created_at DESC"
 
 // BlueprintRepository implements the BlueprintRepository interface for PostgreSQL
 type BlueprintRepository struct {
-	db *sqlx.DB
+	db sqlx.ExtContext
 }
 
 // NewBlueprintRepository creates a new PostgreSQL Blueprint repository
-func NewBlueprintRepository(db *sqlx.DB) interfaces.BlueprintRepository {
+func NewBlueprintRepository(db sqlx.ExtContext) *BlueprintRepository {
 	return &BlueprintRepository{db: db}
 }
 
@@ -58,7 +57,7 @@ func (r *BlueprintRepository) Create(ctx context.Context, params *models.Bluepri
 				params.TenantID, params.DeviceModelID)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("clear existing default: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapClearExistingDefault, err)
 		}
 	}
 
@@ -81,17 +80,18 @@ func (r *BlueprintRepository) Create(ctx context.Context, params *models.Bluepri
 			NOW(), NOW()
 		) RETURNING created_at, updated_at`
 
-	err := r.db.QueryRowContext(ctx, query,
+	err := r.db.QueryRowxContext(
+		ctx, query,
 		bp.ID, bp.DeviceModelID, bp.TenantID, bp.IsSystem, bp.Version, bp.TypeEUI,
 		specJSONParam, bp.IsDefault,
 		bp.RegistryRepo, bp.RegistryCommit, bp.RegistryVerified, bp.RegistryPRURL,
 	).Scan(&bp.CreatedAt, &bp.UpdatedAt)
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		if errors.As(err, &pqErr) && pqErr.Code == pqCodeUniqueViolation {
 			return nil, storage.ErrDuplicateKey
 		}
-		return nil, fmt.Errorf("create blueprint: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapCreateBlueprint, err)
 	}
 
 	return bp, nil
@@ -107,33 +107,12 @@ func (r *BlueprintRepository) GetByID(ctx context.Context, tenantID int64, id uu
 		FROM blueprints
 		WHERE (tenant_id = $1 OR is_system) AND id = $2`
 
-	err := r.db.GetContext(ctx, &bp, query, tenantID, id)
+	err := sqlx.GetContext(ctx, r.db, &bp, query, tenantID, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrNotFound
+			return nil, storage.ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("get blueprint: %w", err)
-	}
-
-	return &bp, nil
-}
-
-// GetByVersion retrieves a blueprint by device model ID and version
-func (r *BlueprintRepository) GetByVersion(ctx context.Context, tenantID int64, deviceModelID uuid.UUID, version string) (*models.Blueprint, error) {
-	var bp models.Blueprint
-	query := `
-		SELECT id, device_model_id, tenant_id, is_system, version, type_eui, spec_json, is_default,
-		       registry_repo, registry_commit_sha, registry_verified, registry_pr_url,
-		       created_at, updated_at
-		FROM blueprints
-		WHERE tenant_id = $1 AND device_model_id = $2 AND version = $3`
-
-	err := r.db.GetContext(ctx, &bp, query, tenantID, deviceModelID, version)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrNotFound
-		}
-		return nil, fmt.Errorf("get blueprint by version: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetBlueprint, err)
 	}
 
 	return &bp, nil
@@ -151,12 +130,12 @@ func (r *BlueprintRepository) GetByTypeEUI(ctx context.Context, tenantID int64, 
 		ORDER BY (tenant_id IS NOT DISTINCT FROM $1) DESC, is_default DESC, created_at DESC
 		LIMIT 1`
 
-	err := r.db.GetContext(ctx, &bp, query, tenantID, typeEUI)
+	err := sqlx.GetContext(ctx, r.db, &bp, query, tenantID, typeEUI)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrNotFound
+			return nil, storage.ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("get blueprint by type EUI: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetBlueprintByTypeEUI, err)
 	}
 
 	return &bp, nil
@@ -172,49 +151,15 @@ func (r *BlueprintRepository) GetDefaultForModel(ctx context.Context, tenantID i
 		FROM blueprints
 		WHERE (tenant_id = $1 OR is_system) AND device_model_id = $2 AND is_default = true`
 
-	err := r.db.GetContext(ctx, &bp, query, tenantID, deviceModelID)
+	err := sqlx.GetContext(ctx, r.db, &bp, query, tenantID, deviceModelID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // No default is not an error
 		}
-		return nil, fmt.Errorf("get default blueprint: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetDefaultBlueprint, err)
 	}
 
 	return &bp, nil
-}
-
-// ListByDeviceModel retrieves blueprints for a device model with pagination
-func (r *BlueprintRepository) ListByDeviceModel(ctx context.Context, tenantID int64, deviceModelID uuid.UUID, limit, offset int) ([]*models.Blueprint, error) {
-	var blueprints []*models.Blueprint
-
-	query := `
-		SELECT id, device_model_id, tenant_id, is_system, version, type_eui, spec_json, is_default,
-		       registry_repo, registry_commit_sha, registry_verified, registry_pr_url,
-		       created_at, updated_at
-		FROM blueprints
-		WHERE tenant_id = $1 AND device_model_id = $2
-		ORDER BY is_default DESC, version DESC`
-
-	args := []interface{}{tenantID, deviceModelID}
-	argIndex := 3
-
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argIndex)
-		args = append(args, limit)
-		argIndex++
-	}
-
-	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
-		args = append(args, offset)
-	}
-
-	err := r.db.SelectContext(ctx, &blueprints, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list blueprints by device model: %w", err)
-	}
-
-	return blueprints, nil
 }
 
 // List retrieves blueprints for a tenant with pagination and optional filters
@@ -250,54 +195,9 @@ func (r *BlueprintRepository) List(ctx context.Context, params *models.Blueprint
 		args = append(args, params.Offset)
 	}
 
-	err := r.db.SelectContext(ctx, &blueprints, query, args...)
+	err := sqlx.SelectContext(ctx, r.db, &blueprints, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list blueprints: %w", err)
-	}
-
-	return blueprints, nil
-}
-
-// ListWithModel retrieves blueprints with joined device model and manufacturer data
-func (r *BlueprintRepository) ListWithModel(ctx context.Context, params *models.BlueprintListParams) ([]*models.BlueprintWithModel, error) {
-	var blueprints []*models.BlueprintWithModel
-
-	query := `
-		SELECT bp.id, bp.device_model_id, bp.tenant_id, bp.version, bp.type_eui, bp.spec_json, bp.is_default,
-		       bp.registry_repo, bp.registry_commit_sha, bp.registry_verified, bp.registry_pr_url,
-		       bp.created_at, bp.updated_at,
-		       dm.name AS device_model_name, dm.code AS device_model_code,
-		       m.id AS manufacturer_id, m.name AS manufacturer_name
-		FROM blueprints bp
-		JOIN device_models dm ON bp.device_model_id = dm.id
-		JOIN manufacturers m ON dm.manufacturer_id = m.id
-		WHERE bp.tenant_id = $1`
-
-	args := []interface{}{params.TenantID}
-	argIndex := 2
-
-	if params.DeviceModelID != nil {
-		query += fmt.Sprintf(" AND bp.device_model_id = $%d", argIndex)
-		args = append(args, *params.DeviceModelID)
-		argIndex++
-	}
-
-	query += " ORDER BY bp.created_at DESC"
-
-	if params.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argIndex)
-		args = append(args, params.Limit)
-		argIndex++
-	}
-
-	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
-		args = append(args, params.Offset)
-	}
-
-	err := r.db.SelectContext(ctx, &blueprints, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list blueprints with model: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapListBlueprints, err)
 	}
 
 	return blueprints, nil
@@ -308,9 +208,9 @@ func (r *BlueprintRepository) Count(ctx context.Context, tenantID int64, isSyste
 	var count int64
 	query := `SELECT COUNT(*) FROM blueprints WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END)`
 
-	err := r.db.GetContext(ctx, &count, query, tenantID, isSystem)
+	err := sqlx.GetContext(ctx, r.db, &count, query, tenantID, isSystem)
 	if err != nil {
-		return 0, fmt.Errorf("count blueprints: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapCountBlueprints, err)
 	}
 
 	return count, nil
@@ -321,9 +221,9 @@ func (r *BlueprintRepository) CountByDeviceModel(ctx context.Context, tenantID i
 	var count int64
 	query := `SELECT COUNT(*) FROM blueprints WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND device_model_id = $3`
 
-	err := r.db.GetContext(ctx, &count, query, tenantID, isSystem, deviceModelID)
+	err := sqlx.GetContext(ctx, r.db, &count, query, tenantID, isSystem, deviceModelID)
 	if err != nil {
-		return 0, fmt.Errorf("count blueprints by device model: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapCountBlueprintsByDeviceModel, err)
 	}
 
 	return count, nil
@@ -358,12 +258,11 @@ func (r *BlueprintRepository) Update(ctx context.Context, tenantID int64, isSyst
 		// If setting as default, clear other defaults for same model within the same ownership first
 		if *params.IsDefault {
 			var deviceModelID uuid.UUID
-			err := r.db.GetContext(ctx,
-				&deviceModelID,
+			err := sqlx.GetContext(ctx, r.db, &deviceModelID,
 				`SELECT device_model_id FROM blueprints WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`,
 				tenantID, isSystem, id)
 			if err != nil {
-				return fmt.Errorf("get device model id: %w", err)
+				return fmt.Errorf("%s: %w", errWrapGetDeviceModelID, err)
 			}
 
 			_, err = r.db.ExecContext(ctx,
@@ -371,7 +270,7 @@ func (r *BlueprintRepository) Update(ctx context.Context, tenantID int64, isSyst
 				 WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND device_model_id = $3 AND is_default = true AND id != $4`,
 				tenantID, isSystem, deviceModelID, id)
 			if err != nil {
-				return fmt.Errorf("clear existing default: %w", err)
+				return fmt.Errorf("%s: %w", errWrapClearExistingDefault, err)
 			}
 		}
 		setClauses = append(setClauses, fmt.Sprintf("is_default = $%d", argIndex))
@@ -393,19 +292,19 @@ func (r *BlueprintRepository) Update(ctx context.Context, tenantID int64, isSyst
 	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		if errors.As(err, &pqErr) && pqErr.Code == pqCodeUniqueViolation {
 			return storage.ErrDuplicateKey
 		}
-		return fmt.Errorf("update blueprint: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateBlueprint, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return storage.ErrNotFound
+		return storage.ErrRecordNotFound
 	}
 
 	return nil
@@ -415,15 +314,14 @@ func (r *BlueprintRepository) Update(ctx context.Context, tenantID int64, isSyst
 func (r *BlueprintRepository) SetDefault(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error {
 	// Get the device_model_id first
 	var deviceModelID uuid.UUID
-	err := r.db.GetContext(ctx,
-		&deviceModelID,
+	err := sqlx.GetContext(ctx, r.db, &deviceModelID,
 		`SELECT device_model_id FROM blueprints WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`,
 		tenantID, isSystem, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return storage.ErrNotFound
+			return storage.ErrRecordNotFound
 		}
-		return fmt.Errorf("get device model id: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetDeviceModelID, err)
 	}
 
 	// Clear any existing default for the model within the same ownership
@@ -432,7 +330,7 @@ func (r *BlueprintRepository) SetDefault(ctx context.Context, tenantID int64, is
 		 WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND device_model_id = $3 AND is_default = true`,
 		tenantID, isSystem, deviceModelID)
 	if err != nil {
-		return fmt.Errorf("clear existing default: %w", err)
+		return fmt.Errorf("%s: %w", errWrapClearExistingDefault, err)
 	}
 
 	// Set the new default
@@ -441,38 +339,16 @@ func (r *BlueprintRepository) SetDefault(ctx context.Context, tenantID int64, is
 		 WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`,
 		tenantID, isSystem, id)
 	if err != nil {
-		return fmt.Errorf("set default: %w", err)
+		return fmt.Errorf("%s: %w", errWrapSetDefault, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return storage.ErrNotFound
-	}
-
-	return nil
-}
-
-// ClearDefault clears the default flag for a blueprint
-func (r *BlueprintRepository) ClearDefault(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error {
-	result, err := r.db.ExecContext(ctx,
-		`UPDATE blueprints SET is_default = false, updated_at = NOW()
-		 WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`,
-		tenantID, isSystem, id)
-	if err != nil {
-		return fmt.Errorf("clear default: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return storage.ErrNotFound
+		return storage.ErrRecordNotFound
 	}
 
 	return nil
@@ -487,16 +363,16 @@ func (r *BlueprintRepository) UpdateRegistryInfo(ctx context.Context, tenantID i
 		 WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND id = $3`,
 		tenantID, isSystem, id, repo, commitSHA, prURL, verified)
 	if err != nil {
-		return fmt.Errorf("update registry info: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateRegistryInfo, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return storage.ErrNotFound
+		return storage.ErrRecordNotFound
 	}
 
 	return nil
@@ -508,16 +384,16 @@ func (r *BlueprintRepository) Delete(ctx context.Context, tenantID int64, isSyst
 
 	result, err := r.db.ExecContext(ctx, query, tenantID, isSystem, id)
 	if err != nil {
-		return fmt.Errorf("delete blueprint: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteBlueprint, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return storage.ErrNotFound
+		return storage.ErrRecordNotFound
 	}
 
 	return nil

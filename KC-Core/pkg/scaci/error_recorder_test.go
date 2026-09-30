@@ -7,13 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
+
+// testUnknownErrorToken is deliberately absent from the catalog to exercise defaults.
+const testUnknownErrorToken = "unknown.error.token.not.in.catalog"
 
 // ============================================================================
 // Mocks for error recorder tests
@@ -45,18 +47,6 @@ func (m *mockOperationRepoForErrors) GetPendingOperations(_ context.Context, _ i
 	return nil, nil
 }
 
-func (m *mockOperationRepoForErrors) GetRecentOperations(_ context.Context, _ int64, _ int) ([]*models.SCACIOperation, error) {
-	return nil, nil
-}
-
-func (m *mockOperationRepoForErrors) CleanupCompletedOperations(_ context.Context, _ int64) (int64, error) {
-	return 0, nil
-}
-
-func (m *mockOperationRepoForErrors) GetTenantOperationSummary(_ context.Context, _ int64, _ int) (*models.SCACIOperationSummary, error) {
-	return nil, nil
-}
-
 func (m *mockOperationRepoForErrors) CompleteFailedOperation(ctx context.Context, sessionID int64, opId int64, responseData map[string]interface{}) error {
 	args := m.Called(ctx, sessionID, opId, responseData)
 	return args.Error(0)
@@ -76,11 +66,11 @@ func (m *mockEventStoreForErrors) CreateEvent(_ context.Context, _ *models.Syste
 	return nil
 }
 
-func (m *mockEventStoreForErrors) GetEvents(_ context.Context, _ interfaces.SystemEventFilter) ([]*models.SystemEvent, error) {
+func (m *mockEventStoreForErrors) GetEvents(_ context.Context, _ models.SystemEventFilter) ([]*models.SystemEvent, error) {
 	return nil, nil
 }
 
-func (m *mockEventStoreForErrors) GetActiveAlerts(_ context.Context, _ interfaces.AlertFilter) ([]*models.SystemEvent, error) {
+func (m *mockEventStoreForErrors) GetActiveAlerts(_ context.Context, _ models.AlertFilter) ([]*models.SystemEvent, error) {
 	return nil, nil
 }
 
@@ -88,10 +78,11 @@ func (m *mockEventStoreForErrors) GetEventStats(_ context.Context, _ string, _ t
 	return nil, nil
 }
 
-func (m *mockEventStoreForErrors) CountEvents(_ context.Context, _ interfaces.SystemEventFilter) (int64, error) {
+func (m *mockEventStoreForErrors) CountEvents(_ context.Context, _ models.SystemEventFilter) (int64, error) {
 	return 0, nil
 }
-func (m *mockEventStoreForErrors) CountActiveAlerts(_ context.Context, _ interfaces.AlertFilter) (int64, error) {
+
+func (m *mockEventStoreForErrors) CountActiveAlerts(_ context.Context, _ models.AlertFilter) (int64, error) {
 	return 0, nil
 }
 
@@ -115,11 +106,12 @@ func TestRecordOutboundError_UsesDefaultCodeWhenCatalogCodeIsZero(t *testing.T) 
 	}
 
 	// Use an unknown token that will return POSIXCode=0 from catalog
-	unknownToken := "unknown.error.token.not.in.catalog"
+	unknownToken := testUnknownErrorToken
 	defaultCode := POSIX_EINVAL // 22
 
 	// Expect the repo to be called with defaultCode (22), not 0
-	mockRepo.On("UpdateOperationStateWithError",
+	mockRepo.On(
+		"UpdateOperationStateWithError",
 		mock.Anything, // ctx
 		int64(100),    // sessionID
 		int64(1),      // opId
@@ -130,7 +122,8 @@ func TestRecordOutboundError_UsesDefaultCodeWhenCatalogCodeIsZero(t *testing.T) 
 		mock.Anything, // responseData
 	).Return(nil)
 
-	mockEvents.On("RecordSCACIError",
+	mockEvents.On(
+		"RecordSCACIError",
 		mock.Anything,
 		int64(42),
 		int64(100),
@@ -178,7 +171,8 @@ func TestRecordOutboundError_UsesCatalogCodeWhenNonZero(t *testing.T) {
 	assert.Equal(t, POSIX_ENOTSUP, expectedCode, "ErrMajorVersionUnsupported should have POSIX_ENOTSUP in catalog")
 
 	// Expect the repo to be called with catalog code, not defaultCode
-	mockRepo.On("UpdateOperationStateWithError",
+	mockRepo.On(
+		"UpdateOperationStateWithError",
 		mock.Anything,
 		int64(100),
 		int64(1),
@@ -189,7 +183,8 @@ func TestRecordOutboundError_UsesCatalogCodeWhenNonZero(t *testing.T) {
 		mock.Anything,
 	).Return(nil)
 
-	mockEvents.On("RecordSCACIError",
+	mockEvents.On(
+		"RecordSCACIError",
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
@@ -234,7 +229,8 @@ func TestCompleteErrorHandshake_CallsCompleteFailedOperation(t *testing.T) {
 	}
 
 	// Expect CompleteFailedOperation to be called with errorAckReceived metadata
-	mockRepo.On("CompleteFailedOperation",
+	mockRepo.On(
+		"CompleteFailedOperation",
 		mock.Anything,
 		int64(100), // sessionID
 		int64(1),   // opId
@@ -283,9 +279,10 @@ func TestCompleteErrorHandshake_PropagatesRepoError(t *testing.T) {
 	recorder := NewErrorRecorder(mockRepo, nil, log)
 
 	session := &Session{ID: 100, TenantID: 42}
-	expectedErr := errors.New("database connection failed")
+	expectedErr := errDatabaseConnectionFailed
 
-	mockRepo.On("CompleteFailedOperation",
+	mockRepo.On(
+		"CompleteFailedOperation",
 		mock.Anything,
 		mock.Anything,
 		mock.Anything,
@@ -315,7 +312,8 @@ func TestRecordInboundError_PersistsACError(t *testing.T) {
 	posixCode := POSIX_EIO
 	message := "AC processing error"
 
-	mockRepo.On("UpdateOperationStateWithError",
+	mockRepo.On(
+		"UpdateOperationStateWithError",
 		mock.Anything,
 		int64(100),
 		int64(1),
@@ -330,7 +328,8 @@ func TestRecordInboundError_PersistsACError(t *testing.T) {
 		}),
 	).Return(nil)
 
-	mockEvents.On("RecordSCACIError",
+	mockEvents.On(
+		"RecordSCACIError",
 		mock.Anything,
 		int64(42),
 		int64(100),
@@ -346,3 +345,8 @@ func TestRecordInboundError_PersistsACError(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 	mockEvents.AssertExpectations(t)
 }
+
+// Sentinel errors returned by this package; callers match them with errors.Is.
+var (
+	errDatabaseConnectionFailed = errors.New("database connection failed")
+)

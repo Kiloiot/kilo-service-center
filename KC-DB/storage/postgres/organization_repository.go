@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/internal/sqlcleanup"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -17,12 +18,18 @@ import (
 
 // OrganizationRepository implements the OrganizationRepository interface for PostgreSQL
 type OrganizationRepository struct {
-	db *sqlx.DB
+	log logger.Logger
+	db  *sqlx.DB
 }
 
+const orgUpdateFixedArgs = 2
+
 // NewOrganizationRepository creates a new PostgreSQL Organization repository
-func NewOrganizationRepository(db *sqlx.DB) interfaces.OrganizationRepository {
-	return &OrganizationRepository{db: db}
+// orgUpdateFixedArgs counts the leading fixed parameters (org id, tenant) of
+// the dynamic update statement.
+func NewOrganizationRepository(db *sqlx.DB, log logger.Logger) *OrganizationRepository {
+	return &OrganizationRepository{
+		log: log, db: db}
 }
 
 // GetTenantByOrgID resolves organization UUID to numeric tenant ID
@@ -33,10 +40,10 @@ func (r *OrganizationRepository) GetTenantByOrgID(ctx context.Context, orgID uui
 
 	err := r.db.GetContext(ctx, &tenantID, query, orgID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return 0, fmt.Errorf("organization %s not found", orgID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf(errFmtOrganizationNotFound, orgID, storage.ErrNotFound)
 		}
-		return 0, fmt.Errorf("resolve organization to tenant: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapResolveOrganizationTenant, err)
 	}
 
 	return tenantID, nil
@@ -48,7 +55,6 @@ func (r *OrganizationRepository) GetOrgByTenantID(ctx context.Context, tenantID 
 	var org models.Organization
 	query := `
 		SELECT org_id, tenant_id, name, state, external_id, description,
-		       can_have_base_stations, max_base_station_count, max_endpoint_count,
 		       tags, created_at, updated_at
 		FROM organizations
 		WHERE tenant_id = $1
@@ -57,58 +63,12 @@ func (r *OrganizationRepository) GetOrgByTenantID(ctx context.Context, tenantID 
 
 	err := r.db.GetContext(ctx, &org, query, tenantID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("no organization found for tenant %d", tenantID)
-		}
-		return nil, fmt.Errorf("get organization by tenant: %w", err)
-	}
-
-	return &org, nil
-}
-
-// UpsertOrg creates or updates organization (Kilo Cloud sync path).
-// The organization ID is the global sync identity, so the existence check is
-// by org_id alone; the tenant binding of an existing organization is immutable
-// and always preserved, so a payload carrying a different tenant can neither
-// move the organization nor read anything through this path.
-func (r *OrganizationRepository) UpsertOrg(ctx context.Context, org *models.Organization) error {
-	existing, err := r.getByOrgID(ctx, org.OrgID)
-	if err != nil {
-		// Only create if org truly doesn't exist
-		if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "not found") {
-			return r.Create(ctx, org)
-		}
-		// Propagate other errors (connection failures, query errors, etc.)
-		return fmt.Errorf("upsert pre-check failed: %w", err)
-	}
-
-	// Organization exists, update it
-	updates := map[string]interface{}{
-		"name":  org.Name,
-		"state": org.State,
-	}
-
-	// Preserve tenant_id from existing record (immutable after creation)
-	org.TenantID = existing.TenantID
-
-	return r.Update(ctx, org.OrgID, org.TenantID, updates)
-}
-
-// getByOrgID looks an organization up by its global identity for the sync
-// upsert path only; tenant-scoped reads go through GetByID.
-func (r *OrganizationRepository) getByOrgID(ctx context.Context, orgID uuid.UUID) (*models.Organization, error) {
-	var org models.Organization
-	query := `
-		SELECT org_id, tenant_id, name, state, created_at, updated_at
-		FROM organizations
-		WHERE org_id = $1`
-
-	if err := r.db.GetContext(ctx, &org, query, orgID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, sql.ErrNoRows
+			return nil, fmt.Errorf(errFmtNoOrganizationFoundForTenant, tenantID, storage.ErrNotFound)
 		}
-		return nil, fmt.Errorf("get organization by org_id: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetOrganizationByTenant, err)
 	}
+
 	return &org, nil
 }
 
@@ -123,18 +83,17 @@ func (r *OrganizationRepository) Create(ctx context.Context, org *models.Organiz
 
 	stmt, err := r.db.PrepareNamedContext(ctx, query)
 	if err != nil {
-		return fmt.Errorf("prepare statement: %w", err)
+		return fmt.Errorf("%s: %w", errWrapPrepareStatement, err)
 	}
 	defer func() {
 		if err := stmt.Close(); err != nil {
-			// TODO: Repository lacks logger field - add for proper error tracking
-			log.Printf("failed to close statement in organization repository: %v", err)
+			r.log.Warn(logMsgCloseStmtOrganizations, logger.FieldError, err)
 		}
 	}()
 
 	err = stmt.QueryRowxContext(ctx, org).Scan(&org.CreatedAt, &org.UpdatedAt)
 	if err != nil {
-		return fmt.Errorf("create organization: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCreateOrganization, err)
 	}
 
 	return nil
@@ -145,17 +104,16 @@ func (r *OrganizationRepository) GetByID(ctx context.Context, orgID uuid.UUID, t
 	var org models.Organization
 	query := `
 		SELECT org_id, tenant_id, name, state, external_id, description,
-		       can_have_base_stations, max_base_station_count, max_endpoint_count,
 		       tags, created_at, updated_at
 		FROM organizations
 		WHERE org_id = $1 AND tenant_id = $2`
 
 	err := r.db.GetContext(ctx, &org, query, orgID, tenantID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("organization %s not found", orgID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf(errFmtOrganizationNotFound, orgID, storage.ErrNotFound)
 		}
-		return nil, fmt.Errorf("get organization: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetOrganization, err)
 	}
 
 	return &org, nil
@@ -166,17 +124,16 @@ func (r *OrganizationRepository) GetByIDUnscoped(ctx context.Context, orgID uuid
 	var org models.Organization
 	query := `
 		SELECT org_id, tenant_id, name, state, external_id, description,
-		       can_have_base_stations, max_base_station_count, max_endpoint_count,
 		       tags, created_at, updated_at
 		FROM organizations
 		WHERE org_id = $1`
 
 	err := r.db.GetContext(ctx, &org, query, orgID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, fmt.Errorf("get organization unscoped: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetOrganizationUnscoped, err)
 	}
 
 	return &org, nil
@@ -190,14 +147,14 @@ func (r *OrganizationRepository) Update(ctx context.Context, orgID uuid.UUID, te
 
 	// Build dynamic update query
 	setClauses := make([]string, 0, len(updates))
-	args := make([]interface{}, 0, len(updates)+2)
+	args := make([]interface{}, 0, len(updates)+orgUpdateFixedArgs)
 	args = append(args, orgID, tenantID)
 
-	i := 3
+	argIndex := len(args) + 1
 	for field, value := range updates {
-		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", field, i))
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", field, argIndex))
 		args = append(args, value)
-		i++
+		argIndex++
 	}
 
 	// Always update updated_at
@@ -210,16 +167,16 @@ func (r *OrganizationRepository) Update(ctx context.Context, orgID uuid.UUID, te
 
 	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("update organization: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateOrganization, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("organization %s not found", orgID)
+		return fmt.Errorf(errFmtOrganizationNotFound, orgID, storage.ErrNotFound)
 	}
 
 	return nil
@@ -227,113 +184,63 @@ func (r *OrganizationRepository) Update(ctx context.Context, orgID uuid.UUID, te
 
 // Delete hard-deletes an organization and its members, scoped to a tenant for defense-in-depth.
 // Also deletes the associated tenant if orphaned.
-func (r *OrganizationRepository) Delete(ctx context.Context, orgID uuid.UUID, tenantID int64) error {
-	// Start transaction for cascading delete
+func (r *OrganizationRepository) Delete(ctx context.Context, orgID uuid.UUID, tenantID int64) (err error) {
+	// Start transaction for cascading delete; rolling back after a successful
+	// commit is a no-op.
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+		return fmt.Errorf("%s: %w", errWrapBeginTransaction, err)
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer sqlcleanup.RollbackUncommitted(tx, errWrapRollbackTransaction, &err)
 
 	// Delete organization members first (FK constraint)
 	_, err = tx.ExecContext(ctx, `DELETE FROM organization_members WHERE org_id = $1`, orgID)
 	if err != nil {
-		return fmt.Errorf("delete organization members: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteOrganizationMembers, err)
 	}
 
 	// api_keys.org_id is NO ACTION, so keys must be deleted before the org (same tx).
 	_, err = tx.ExecContext(ctx, `DELETE FROM api_keys WHERE org_id = $1`, orgID)
 	if err != nil {
-		return fmt.Errorf("delete organization api keys: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteOrganizationAPIKeys, err)
 	}
 
 	// Delete the organization (tenant-scoped)
 	result, err := tx.ExecContext(ctx, `DELETE FROM organizations WHERE org_id = $1 AND tenant_id = $2`, orgID, tenantID)
 	if err != nil {
-		return fmt.Errorf("delete organization: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteOrganization, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("organization %s not found", orgID)
+		return fmt.Errorf(errFmtOrganizationNotFound, orgID, storage.ErrNotFound)
 	}
 
 	// Check if tenant is orphaned (no remaining orgs) and delete if so
 	var remainingOrgs int
 	err = tx.GetContext(ctx, &remainingOrgs, `SELECT COUNT(*) FROM organizations WHERE tenant_id = $1`, tenantID)
 	if err != nil {
-		return fmt.Errorf("count remaining orgs: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCountRemainingOrgs, err)
 	}
 
 	if remainingOrgs == 0 {
 		// Tenant is orphaned, delete it
 		_, err = tx.ExecContext(ctx, `DELETE FROM tenants WHERE id = $1`, tenantID)
 		if err != nil {
-			return fmt.Errorf("delete orphaned tenant: %w", err)
+			return fmt.Errorf("%s: %w", errWrapDeleteOrphanedTenant, err)
 		}
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCommitTransaction, err)
 	}
 
 	return nil
-}
-
-// ListOrgMembers retrieves all members of an organization
-func (r *OrganizationRepository) ListOrgMembers(ctx context.Context, orgID uuid.UUID, status string) ([]*models.OrganizationMember, error) {
-	var members []*models.OrganizationMember
-
-	var query string
-	var args []interface{}
-
-	if status != "" {
-		query = `
-			SELECT org_id, user_id, role, status, created_at, updated_at
-			FROM organization_members
-			WHERE org_id = $1 AND status = $2
-			ORDER BY created_at ASC`
-		args = []interface{}{orgID, status}
-	} else {
-		query = `
-			SELECT org_id, user_id, role, status, created_at, updated_at
-			FROM organization_members
-			WHERE org_id = $1
-			ORDER BY created_at ASC`
-		args = []interface{}{orgID}
-	}
-
-	err := r.db.SelectContext(ctx, &members, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list organization members: %w", err)
-	}
-
-	return members, nil
-}
-
-// CheckUserMembership validates that a user belongs to an organization
-func (r *OrganizationRepository) CheckUserMembership(ctx context.Context, orgID uuid.UUID, userID uuid.UUID) (bool, error) {
-	var count int
-	query := `
-		SELECT COUNT(*)
-		FROM organization_members
-		WHERE org_id = $1 AND user_id = $2 AND status = $3`
-
-	err := r.db.GetContext(ctx, &count, query, orgID, userID, models.OrganizationMemberStatusActive)
-	if err != nil {
-		return false, fmt.Errorf("check user membership: %w", err)
-	}
-
-	return count > 0, nil
 }
 
 // AddMember adds a user to an organization with specified role
@@ -347,18 +254,17 @@ func (r *OrganizationRepository) AddMember(ctx context.Context, member *models.O
 
 	stmt, err := r.db.PrepareNamedContext(ctx, query)
 	if err != nil {
-		return fmt.Errorf("prepare statement: %w", err)
+		return fmt.Errorf("%s: %w", errWrapPrepareStatement, err)
 	}
 	defer func() {
 		if err := stmt.Close(); err != nil {
-			// TODO: Repository lacks logger field - add for proper error tracking
-			log.Printf("failed to close statement in organization repository: %v", err)
+			r.log.Warn(logMsgCloseStmtOrganizations, logger.FieldError, err)
 		}
 	}()
 
 	err = stmt.QueryRowxContext(ctx, member).Scan(&member.CreatedAt, &member.UpdatedAt)
 	if err != nil {
-		return fmt.Errorf("add organization member: %w", err)
+		return fmt.Errorf("%s: %w", errWrapAddOrganizationMember, err)
 	}
 
 	return nil
@@ -373,16 +279,16 @@ func (r *OrganizationRepository) RemoveMember(ctx context.Context, orgID uuid.UU
 
 	result, err := r.db.ExecContext(ctx, query, orgID, userID, models.OrganizationMemberStatusRemoved)
 	if err != nil {
-		return fmt.Errorf("remove member: %w", err)
+		return fmt.Errorf("%s: %w", errWrapRemoveMember, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("member not found in organization")
+		return fmt.Errorf("%s: %w", errWrapMemberOfOrganization, storage.ErrNotFound)
 	}
 
 	return nil
@@ -397,16 +303,16 @@ func (r *OrganizationRepository) UpdateMemberRole(ctx context.Context, orgID uui
 
 	result, err := r.db.ExecContext(ctx, query, orgID, userID, role, models.OrganizationMemberStatusActive)
 	if err != nil {
-		return fmt.Errorf("update member role: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateMemberRole, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("active member not found in organization")
+		return fmt.Errorf("%s: %w", errWrapActiveMemberOfOrganization, storage.ErrNotFound)
 	}
 
 	return nil
@@ -434,7 +340,7 @@ func (r *OrganizationRepository) ListUserMemberships(ctx context.Context, userID
 
 	err := r.db.SelectContext(ctx, &memberships, query, userID, models.OrganizationMemberStatusActive)
 	if err != nil {
-		return nil, fmt.Errorf("list user memberships: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapListUserMemberships, err)
 	}
 
 	return memberships, nil
@@ -462,7 +368,7 @@ func (r *OrganizationRepository) ListUserMembershipsByTenant(ctx context.Context
 
 	err := r.db.SelectContext(ctx, &memberships, query, userID, models.OrganizationMemberStatusActive, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("list user memberships by tenant: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapListUserMembershipsByTenant, err)
 	}
 
 	return memberships, nil
@@ -474,7 +380,6 @@ func (r *OrganizationRepository) GetOrgByExternalID(ctx context.Context, externa
 	var org models.Organization
 	query := `
 		SELECT org_id, tenant_id, name, state, external_id, description,
-		       can_have_base_stations, max_base_station_count, max_endpoint_count,
 		       tags, created_at, updated_at
 		FROM organizations
 		WHERE external_id = $1`
@@ -484,7 +389,7 @@ func (r *OrganizationRepository) GetOrgByExternalID(ctx context.Context, externa
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, fmt.Errorf("get organization by external_id: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetOrganizationByExternalID, err)
 	}
 
 	return &org, nil
@@ -499,7 +404,6 @@ func (r *OrganizationRepository) ListOrganizations(ctx context.Context, tenantID
 	// Build query with optional tenant filter
 	baseQuery := `
 		SELECT org_id, tenant_id, name, state, external_id, description,
-		       can_have_base_stations, max_base_station_count, max_endpoint_count,
 		       tags, created_at, updated_at
 		FROM organizations`
 	countQuery := `SELECT COUNT(*) FROM organizations`
@@ -514,13 +418,13 @@ func (r *OrganizationRepository) ListOrganizations(ctx context.Context, tenantID
 	// Get total count
 	err := r.db.GetContext(ctx, &total, countQuery+whereClause, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("count organizations: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountOrganizations, err)
 	}
 
 	// Get paginated results
 	paginatedQuery := baseQuery + whereClause + ` ORDER BY created_at DESC`
 	if tenantID != nil {
-		paginatedQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", 2, 3)
+		paginatedQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", orgUpdateFixedArgs, orgUpdateFixedArgs+1)
 		args = append(args, limit, offset)
 	} else {
 		paginatedQuery += " LIMIT $1 OFFSET $2"
@@ -529,7 +433,7 @@ func (r *OrganizationRepository) ListOrganizations(ctx context.Context, tenantID
 
 	err = r.db.SelectContext(ctx, &orgs, paginatedQuery, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list organizations: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapListOrganizations, err)
 	}
 
 	return orgs, total, nil
@@ -560,7 +464,7 @@ func (r *OrganizationRepository) ListOrgMembersWithEmail(ctx context.Context, or
 	var total int64
 	countQuery := `SELECT COUNT(*) FROM organization_members om WHERE ` + baseWhere
 	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count org members with email: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountOrgMembersWithEmail, err)
 	}
 
 	// Data query with pagination
@@ -580,7 +484,7 @@ func (r *OrganizationRepository) ListOrgMembersWithEmail(ctx context.Context, or
 
 	var members []*models.OrganizationMemberWithEmail
 	if err := r.db.SelectContext(ctx, &members, query, args...); err != nil {
-		return nil, 0, fmt.Errorf("list org members with email: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapListOrgMembersWithEmail, err)
 	}
 
 	return members, total, nil
@@ -604,31 +508,10 @@ func (r *OrganizationRepository) GetOrgMemberWithEmail(ctx context.Context, orgI
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, fmt.Errorf("get org member with email: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetOrgMemberWithEmail, err)
 	}
 
 	return &member, nil
-}
-
-// CountOrgMembers returns total count of org members matching status filter.
-// Required for list response pagination.
-func (r *OrganizationRepository) CountOrgMembers(ctx context.Context, orgID uuid.UUID, status string) (int64, error) {
-	var count int64
-
-	query := `SELECT COUNT(*) FROM organization_members WHERE org_id = $1`
-	args := []interface{}{orgID}
-
-	if status != "" {
-		query += ` AND status = $2`
-		args = append(args, status)
-	}
-
-	err := r.db.GetContext(ctx, &count, query, args...)
-	if err != nil {
-		return 0, fmt.Errorf("count org members: %w", err)
-	}
-
-	return count, nil
 }
 
 // CountOrgMembersByRole returns the count of active members with the given role.
@@ -637,86 +520,9 @@ func (r *OrganizationRepository) CountOrgMembersByRole(ctx context.Context, orgI
 	query := `SELECT COUNT(*) FROM organization_members WHERE org_id = $1 AND role = $2 AND status = $3`
 	err := r.db.GetContext(ctx, &count, query, orgID, role, models.OrganizationMemberStatusActive)
 	if err != nil {
-		return 0, fmt.Errorf("count org members by role: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapCountOrgMembersByRole, err)
 	}
 	return count, nil
-}
-
-// CheckBaseStationQuota validates BS quota for an organization.
-// Returns error if quota exceeded or organization cannot have base stations.
-func (r *OrganizationRepository) CheckBaseStationQuota(ctx context.Context, orgID uuid.UUID) error {
-	var org struct {
-		CanHaveBaseStations bool `db:"can_have_base_stations"`
-		MaxBaseStationCount *int `db:"max_base_station_count"`
-	}
-
-	// Get org quota settings
-	query := `
-		SELECT can_have_base_stations, max_base_station_count
-		FROM organizations
-		WHERE org_id = $1`
-
-	err := r.db.GetContext(ctx, &org, query, orgID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return storage.ErrNotFound
-		}
-		return fmt.Errorf("get org quota settings: %w", err)
-	}
-
-	// Check if org can have base stations
-	if !org.CanHaveBaseStations {
-		return storage.ErrBaseStationsNotAllowed
-	}
-
-	// Check max base station count (NULL = unlimited)
-	if org.MaxBaseStationCount != nil {
-		var currentCount int
-		countQuery := `SELECT COUNT(*) FROM basestations WHERE tenant_id = (SELECT tenant_id FROM organizations WHERE org_id = $1)`
-		err = r.db.GetContext(ctx, &currentCount, countQuery, orgID)
-		if err != nil {
-			return fmt.Errorf("count basestations: %w", err)
-		}
-
-		if currentCount >= *org.MaxBaseStationCount {
-			return storage.ErrBaseStationQuotaExceeded
-		}
-	}
-
-	return nil
-}
-
-// CheckEndpointQuota validates endpoint quota for an organization.
-// Returns error if quota exceeded.
-func (r *OrganizationRepository) CheckEndpointQuota(ctx context.Context, orgID uuid.UUID) error {
-	var maxEndpointCount *int
-
-	// Get org quota settings
-	query := `SELECT max_endpoint_count FROM organizations WHERE org_id = $1`
-
-	err := r.db.GetContext(ctx, &maxEndpointCount, query, orgID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return storage.ErrNotFound
-		}
-		return fmt.Errorf("get org quota settings: %w", err)
-	}
-
-	// Check max endpoint count (NULL = unlimited)
-	if maxEndpointCount != nil {
-		var currentCount int
-		countQuery := `SELECT COUNT(*) FROM endpoints WHERE tenant_id = (SELECT tenant_id FROM organizations WHERE org_id = $1)`
-		err = r.db.GetContext(ctx, &currentCount, countQuery, orgID)
-		if err != nil {
-			return fmt.Errorf("count endpoints: %w", err)
-		}
-
-		if currentCount >= *maxEndpointCount {
-			return storage.ErrEndpointQuotaExceeded
-		}
-	}
-
-	return nil
 }
 
 // UpdateMemberPermissions updates member permission flags (explicit booleans).
@@ -729,16 +535,16 @@ func (r *OrganizationRepository) UpdateMemberPermissions(ctx context.Context, or
 
 	result, err := r.db.ExecContext(ctx, query, orgID, userID, isOrgAdmin, isBaseStationAdmin, isEndpointAdmin, models.OrganizationMemberStatusActive)
 	if err != nil {
-		return fmt.Errorf("update member permissions: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateMemberPermissions, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("active member not found in organization")
+		return fmt.Errorf("%s: %w", errWrapActiveMemberOfOrganization, storage.ErrNotFound)
 	}
 
 	return nil

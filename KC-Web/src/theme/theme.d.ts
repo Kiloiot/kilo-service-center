@@ -1,3 +1,5 @@
+import type { HighlightPalette } from "./highlight";
+
 import "@mui/material/styles";
 
 declare module "@mui/material/styles" {
@@ -17,5 +19,13 @@ declare module "@mui/material/styles" {
 
   interface TypographyVariantsOptions {
     monoFontFamily?: string;
+  }
+
+  interface Palette {
+    highlight: HighlightPalette;
+  }
+
+  interface PaletteOptions {
+    highlight?: HighlightPalette;
   }
 }

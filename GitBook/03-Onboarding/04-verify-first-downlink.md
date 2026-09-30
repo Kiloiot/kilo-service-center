@@ -15,19 +15,24 @@ Both the endpoint and the base station must have bidirectional capability for do
 ## Send a Downlink via KC-Web
 
 1. Open KC-Web at `http://localhost/` (container) or `http://localhost:5173` (source dev).
-2. Navigate to **Endpoints** and select your bidirectional endpoint.
-3. Use the downlink interface to queue a message:
-   - **Payload**: base64-encoded data (e.g., `AQIDBA==` for bytes `01 02 03 04`)
-   - **Confirmed**: whether to request delivery confirmation
-4. Submit the downlink.
+2. Navigate to **Endpoints**, select your bidirectional endpoint and open the **Downlink** tab.
+3. Compose the downlink:
+   - **Payload (hex)**: the user data as hex (e.g. `01020304`); leave it empty for an acknowledgement-only downlink
+   - **Format** and **Priority** (`prio`), and under **Advanced Options** the `responseExp`, `responsePrio`, `dlWindReq`, `expOnly` and `dlRxStatQry` flags
+4. Select **Send Downlink**. The downlink appears under the endpoint's **Traffic** tab > **Downlink Queue**; while no base station has taken it yet you can edit or revoke it there.
 
 ## Send a Downlink via gRPC (Alternative)
 
+In the JSON form of a gRPC request, `payloads` entries are base64 (`AQIDBA==` is bytes `01 02 03 04`).
+
 ```bash
-grpcurl -plaintext -d '{
-  "endpoint_eui": "<EP_EUI_HEX>",
-  "data": "AQIDBA==",
-  "confirmed": false
+grpcurl -plaintext \
+  -H "authorization: Bearer <JWT_TOKEN>" \
+  -H "x-organization-id: <ORG_ID>" \
+  -d '{
+  "epEui": "<EP_EUI_HEX>",
+  "payloads": ["AQIDBA=="],
+  "priority": 0.5
 }' localhost:9090 kilocenter.api.v1.KiloCenterService/SendDownlink
 ```
 
@@ -35,7 +40,7 @@ grpcurl -plaintext -d '{
 
 ### In KC-Web
 
-Check the endpoint's downlink results view for status updates. A successful downlink shows the delivery status and any confirmation from the endpoint.
+Open **Traffic** (in the navigation, or the endpoint's **Traffic** tab) and select **Downlink Results**. A result shows `result` (`sent`, `expired` or `invalid`), and for a sent downlink the transmitting `bsEui`, `txTime` and `packetCnt`; `dlAck` shows when the endpoint acknowledged it in its next uplink. **Downlink Queue** shows the downlinks still waiting for a transmission window.
 
 ### In Logs
 
@@ -49,7 +54,8 @@ Look for `dlDataQue`, `dlDataQueRsp`, and `dlDataQueCmp` entries -- these repres
 
 | Symptom | Likely Cause |
 |---------|-------------|
-| Downlink stays queued | Endpoint not attached or not bidirectional |
-| "Not bidirectional" error | Endpoint or base station `bidi` flag not set |
+| Downlink stays queued | The base station that last heard the endpoint is offline or not bidirectional; the downlink goes out in the endpoint's next downlink window |
+| Downlink refused as not bidirectional | The endpoint is registered without the `bidi` flag |
+| Downlink reported `expired` | No downlink window opened within `protocol.downlink_expiry.lifetime` (see [Configuration Basics](../02-GettingStarted/06-configuration-basics.md)) |
 | No result returned | Base station did not complete the downlink handshake |
 | Payload rejected | Data not valid base64 or exceeds maximum payload size |

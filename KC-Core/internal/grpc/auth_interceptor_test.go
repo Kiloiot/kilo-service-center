@@ -18,6 +18,21 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
+const (
+	testMsgKeyNotFound = "key not found"
+)
+
+// Auth interceptor test fixtures.
+const (
+	// testNonPublicMethod is a method outside the public allowlist.
+	testNonPublicMethod = "/kilocenter.api.v1.CoreService/ListEndPoints"
+
+	// testAuthEnabled and testAuthDisabled name the interceptor auth toggle
+	// states exercised by these tests.
+	testAuthEnabled  = true
+	testAuthDisabled = false
+)
+
 // ============================================================================
 // Mock Implementations
 // ============================================================================
@@ -54,7 +69,7 @@ func hashToken(token string) string {
 
 // nonPublicInfo returns a UnaryServerInfo for a non-public method.
 func nonPublicInfo() *grpc.UnaryServerInfo {
-	return &grpc.UnaryServerInfo{FullMethod: "/kilocenter.api.v1.CoreService/ListEndPoints"}
+	return &grpc.UnaryServerInfo{FullMethod: testNonPublicMethod}
 }
 
 // captureHandler returns a handler that captures the context and a pointer to read it.
@@ -90,7 +105,7 @@ func TestAuthInterceptor_OpaqueToken_CallsAPIKeyAuth(t *testing.T) {
 		},
 	}
 
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +144,7 @@ func TestAuthInterceptor_JWTShaped_NotAPIKeyFallback(t *testing.T) {
 		},
 	}
 
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +188,7 @@ func TestAuthInterceptor_APIKey_ValidUserKey(t *testing.T) {
 		},
 	}
 
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +228,9 @@ func TestAuthInterceptor_APIKey_ValidUserKey(t *testing.T) {
 	if resolvedUserID != userID.String() {
 		t.Errorf("expected user ID %v, got %v", userID.String(), resolvedUserID)
 	}
+	if _, err := pkgcontext.GetServiceAccountID(*captured); err == nil {
+		t.Error("a user key acts as its user, not as a service account")
+	}
 
 	if !mock.lastUsedCalled {
 		t.Error("expected UpdateLastUsed to be called")
@@ -236,7 +254,7 @@ func TestAuthInterceptor_APIKey_ValidServiceAccountKey(t *testing.T) {
 		},
 	}
 
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,6 +291,9 @@ func TestAuthInterceptor_APIKey_ValidServiceAccountKey(t *testing.T) {
 	if err == nil {
 		t.Error("expected no user ID in context for service-account key")
 	}
+	if got, err := pkgcontext.GetServiceAccountID(*captured); err != nil || got != keyID {
+		t.Errorf("expected service account %v in context, got %v (%v)", keyID, got, err)
+	}
 }
 
 func TestAuthInterceptor_APIKey_Expired(t *testing.T) {
@@ -287,7 +308,7 @@ func TestAuthInterceptor_APIKey_Expired(t *testing.T) {
 		},
 	}
 
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +350,7 @@ func TestAuthInterceptor_APIKey_Inactive(t *testing.T) {
 		},
 	}
 
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,11 +385,11 @@ func TestAuthInterceptor_APIKey_UnknownHash(t *testing.T) {
 
 	mock := &mockInterceptorsAPIKeyAuth{
 		lookupByHashFunc: func(_ context.Context, _ string) (*interceptors.APIKeyRecord, error) {
-			return nil, status.Error(codes.NotFound, "key not found")
+			return nil, status.Error(codes.NotFound, testMsgKeyNotFound)
 		},
 	}
 
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +426,7 @@ func TestAuthInterceptor_APIKey_UnknownHash(t *testing.T) {
 func TestAuthInterceptor_OpaqueToken_NoAPIKeyAuth(t *testing.T) {
 	opaqueToken := "kc_test_no_auth_configured"
 
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +457,7 @@ func TestAuthInterceptor_OpaqueToken_NoAPIKeyAuth(t *testing.T) {
 }
 
 func TestAuthInterceptor_AuthDisabled(t *testing.T) {
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: false})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthDisabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +480,7 @@ func TestAuthInterceptor_AuthDisabled(t *testing.T) {
 }
 
 func TestAuthInterceptor_MissingMetadata(t *testing.T) {
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +505,7 @@ func TestAuthInterceptor_MissingMetadata(t *testing.T) {
 }
 
 func TestAuthInterceptor_MissingBearerPrefix(t *testing.T) {
-	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: true})
+	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{Enabled: testAuthEnabled})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,14 +3,18 @@ package postgres
 import (
 	"context"
 	"testing"
-	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 )
 
 // setupSCACISessionTestDB connects via testcontainers
@@ -38,8 +42,8 @@ func TestSCACISessionRepository_CreateSession_WithTLS(t *testing.T) {
 
 	createSCACITestTenant(t, db, 100, "TestTenant100")
 
-	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACISessionRepository(db, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	tlsVer := "TLS 1.3"
@@ -68,8 +72,8 @@ func TestSCACISessionRepository_CreateSession_WithTLS(t *testing.T) {
 	assert.Equal(t, cipher, *fetched.CipherSuite)
 }
 
-// TestSCACISessionRepository_UpdateSession_TLSFields verifies both TLS fields update on resume
-func TestSCACISessionRepository_UpdateSession_TLSFields(t *testing.T) {
+// TestSCACISessionRepository_ResumeSession_TLSFields verifies both TLS fields update on resume
+func TestSCACISessionRepository_ResumeSession_TLSFields(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
@@ -79,8 +83,8 @@ func TestSCACISessionRepository_UpdateSession_TLSFields(t *testing.T) {
 
 	createSCACITestTenant(t, db, 101, "TestTenant101")
 
-	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACISessionRepository(db, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	initialTLS := "TLS 1.2"
@@ -103,12 +107,12 @@ func TestSCACISessionRepository_UpdateSession_TLSFields(t *testing.T) {
 	newTLS := "TLS 1.3"
 	newCipher := "TLS_AES_256_GCM_SHA384"
 
-	updateReq := &models.SCACISessionUpdateRequest{
+	resume := &models.SCACISessionResume{
 		TLSVersion:  &newTLS,
 		CipherSuite: &newCipher,
 	}
 
-	err = repo.UpdateSession(ctx, 101, session.ID, updateReq)
+	err = repo.ResumeSession(ctx, 101, session.ID, resume)
 	require.NoError(t, err)
 
 	// Verify updated values
@@ -118,8 +122,8 @@ func TestSCACISessionRepository_UpdateSession_TLSFields(t *testing.T) {
 	assert.Equal(t, newCipher, *updated.CipherSuite)
 }
 
-// TestSCACISessionRepository_UpdateSession_PartialTLS verifies partial TLS update preserves other field
-func TestSCACISessionRepository_UpdateSession_PartialTLS(t *testing.T) {
+// TestSCACISessionRepository_ResumeSession_PartialTLS verifies partial TLS update preserves other field
+func TestSCACISessionRepository_ResumeSession_PartialTLS(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
@@ -129,8 +133,8 @@ func TestSCACISessionRepository_UpdateSession_PartialTLS(t *testing.T) {
 
 	createSCACITestTenant(t, db, 102, "TestTenant102")
 
-	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACISessionRepository(db, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	initialTLS := "TLS 1.2"
@@ -151,12 +155,12 @@ func TestSCACISessionRepository_UpdateSession_PartialTLS(t *testing.T) {
 
 	// Update ONLY TLSVersion
 	newTLS := "TLS 1.3"
-	updateReq := &models.SCACISessionUpdateRequest{
+	resume := &models.SCACISessionResume{
 		TLSVersion: &newTLS,
 		// CipherSuite intentionally nil
 	}
 
-	err = repo.UpdateSession(ctx, 102, session.ID, updateReq)
+	err = repo.ResumeSession(ctx, 102, session.ID, resume)
 	require.NoError(t, err)
 
 	// Verify TLSVersion updated, CipherSuite unchanged
@@ -186,8 +190,8 @@ func TestSCACISessionRepository_CheckSessionResumable_TenantFilter(t *testing.T)
 	createSCACITestTenant(t, db, 201, "TenantA_Victim")
 	createSCACITestTenant(t, db, 202, "TenantB_Attacker")
 
-	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACISessionRepository(db, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Create session owned by tenant 201 (victim)
@@ -206,7 +210,7 @@ func TestSCACISessionRepository_CheckSessionResumable_TenantFilter(t *testing.T)
 	require.NotNil(t, session)
 
 	// Test 1: Same tenant (201) can check resumability - should succeed
-	info, err := repo.CheckSessionResumable(ctx, 201, snAcUUID, 0, 0)
+	info, err := repo.CheckSessionResumable(ctx, models.SCACIApplicationCenter{TenantID: 201, AcEUI: createReq.AcEUI}, snAcUUID)
 	require.NoError(t, err)
 	require.NotNil(t, info)
 	assert.True(t, info.CanResume, "Same tenant should be able to resume session")
@@ -214,7 +218,7 @@ func TestSCACISessionRepository_CheckSessionResumable_TenantFilter(t *testing.T)
 
 	// Test 2: Different tenant (202) tries to check resumability - should NOT find session
 	// This is defense-in-depth: even if attacker knows the snAcUUID, they cannot resume
-	infoAttacker, err := repo.CheckSessionResumable(ctx, 202, snAcUUID, 0, 0)
+	infoAttacker, err := repo.CheckSessionResumable(ctx, models.SCACIApplicationCenter{TenantID: 202, AcEUI: createReq.AcEUI}, snAcUUID)
 	require.NoError(t, err) // Query succeeds, but returns "not found"
 	require.NotNil(t, infoAttacker)
 	assert.False(t, infoAttacker.CanResume, "Different tenant should not be able to resume session")
@@ -236,8 +240,8 @@ func TestSCACISessionRepository_GetSessionByAcUUID_TenantScoped(t *testing.T) {
 	createSCACITestTenant(t, db, 203, "TenantC_Owner")
 	createSCACITestTenant(t, db, 204, "TenantD_Other")
 
-	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACISessionRepository(db, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Create session owned by tenant 203
@@ -256,15 +260,15 @@ func TestSCACISessionRepository_GetSessionByAcUUID_TenantScoped(t *testing.T) {
 	require.NotNil(t, session)
 
 	// Test 1: Owner tenant (203) can retrieve session
-	retrieved, err := repo.GetSessionByAcUUID(ctx, 203, snAcUUID)
+	retrieved, err := repo.GetSessionByAcUUID(ctx, models.SCACIApplicationCenter{TenantID: 203, AcEUI: createReq.AcEUI}, snAcUUID)
 	require.NoError(t, err)
 	require.NotNil(t, retrieved, "Owner tenant should retrieve session")
 	assert.Equal(t, session.ID, retrieved.ID)
 	assert.Equal(t, int64(203), retrieved.TenantID)
 
 	// Test 2: Different tenant (204) cannot retrieve the session
-	crossTenant, err := repo.GetSessionByAcUUID(ctx, 204, snAcUUID)
-	require.NoError(t, err) // Query succeeds
+	crossTenant, err := repo.GetSessionByAcUUID(ctx, models.SCACIApplicationCenter{TenantID: 204, AcEUI: createReq.AcEUI}, snAcUUID)
+	require.ErrorIs(t, err, storage.ErrNotFound)
 	assert.Nil(t, crossTenant, "Different tenant should not retrieve session (tenant filtering at SQL level)")
 }
 
@@ -282,8 +286,8 @@ func TestSCACISessionRepository_GetSessionByID_TenantScoped(t *testing.T) {
 	createSCACITestTenant(t, db, 205, "TenantE_Owner")
 	createSCACITestTenant(t, db, 206, "TenantF_Other")
 
-	repo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACISessionRepository(db, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Create session owned by tenant 205
@@ -308,6 +312,6 @@ func TestSCACISessionRepository_GetSessionByID_TenantScoped(t *testing.T) {
 
 	// Test 2: Different tenant (206) cannot retrieve by ID even if they know the session ID
 	crossTenant, err := repo.GetSessionByID(ctx, 206, session.ID)
-	require.NoError(t, err) // Query succeeds
+	require.ErrorIs(t, err, storage.ErrNotFound)
 	assert.Nil(t, crossTenant, "Different tenant should not retrieve session by ID (tenant filtering at SQL level)")
 }

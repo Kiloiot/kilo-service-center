@@ -12,10 +12,15 @@ import React from "react";
 
 import { Chip, Tooltip } from "@mui/material";
 
-import { ENV_LABELS, ENV_TOOLTIPS } from "@constants/app";
+import {
+  ENV_LABELS,
+  ENV_TOOLTIPS,
+  ENVIRONMENT,
+  STAGING_URL_MARKERS,
+} from "@constants/app";
 import { env, isProduction } from "@config/env";
 
-type EnvType = "development" | "staging" | "production";
+type EnvType = (typeof ENVIRONMENT)[keyof typeof ENVIRONMENT];
 
 interface EnvConfig {
   label: string;
@@ -55,16 +60,12 @@ const detectEnvironment = (): EnvType => {
   if (isProduction) {
     // Check if gRPC URL suggests staging
     const grpcUrl = env.grpcUrl.toLowerCase();
-    if (
-      grpcUrl.includes("staging") ||
-      grpcUrl.includes("stage") ||
-      grpcUrl.includes("stg")
-    ) {
-      return "staging";
+    if (STAGING_URL_MARKERS.some((marker) => grpcUrl.includes(marker))) {
+      return ENVIRONMENT.STAGING;
     }
-    return "production";
+    return ENVIRONMENT.PRODUCTION;
   }
-  return "development";
+  return ENVIRONMENT.DEVELOPMENT;
 };
 
 export interface EnvBadgeProps {
@@ -104,7 +105,7 @@ export const EnvBadge: React.FC<EnvBadgeProps> = ({
   const config = ENV_CONFIGS[currentEnv];
 
   // Optionally hide in production
-  if (hideInProduction && currentEnv === "production") {
+  if (hideInProduction && currentEnv === ENVIRONMENT.PRODUCTION) {
     return null;
   }
 

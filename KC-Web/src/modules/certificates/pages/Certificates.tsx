@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 
+import type { CertificateSummary } from "@api-types/api";
 import {
   useGenerateServerCertificates,
   useRenewServerCertificates,
@@ -14,17 +15,18 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   Grid,
-  IconButton,
   Typography,
 } from "@mui/material";
-import { format } from "date-fns";
+import { ConfirmDialog } from "@ui";
 
+import { useFeedback } from "@contexts/feedback";
+import { useCapabilities } from "@hooks/useCapabilities";
+import { certificateExpiryState } from "@utils/certificate-expiry";
+import { formatDate } from "@utils/date-format";
+import { getErrorMessage } from "@utils/error-message";
+import { formatCertificateExpiryState } from "@utils/formatters";
+import { CERTIFICATE_EXPIRY_STATE } from "@constants/app";
 import {
   CERTIFICATE_INFO,
   CERTIFICATE_LABELS,
@@ -32,29 +34,21 @@ import {
   ERR_CERTIFICATE_GENERIC,
   SERVER_CERTIFICATES,
 } from "@constants/messages";
-import {
-  AddIcon,
-  CheckCircleIcon,
-  ErrorIcon,
-  RefreshIcon,
-  WarningIcon,
-} from "@theme/icons";
+import { AddIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
-interface CertStatus {
-  subject: string;
-  issuer: string;
-  notBefore: Date;
-  notAfter: Date;
-  daysUntilExpiry: number;
-  isValid: boolean;
-}
+import { BaseStationCertificatesCard } from "../components/BaseStationCertificatesCard";
+import RenewalNames from "../components/RenewalNames";
+
+const SECTION_GAP = componentSpacing.cardSection.sectionGap;
 
 const Certificates: React.FC = () => {
+  // Server certificates belong to the whole installation: administrators generate and renew them
+  const { isServerAdmin } = useCapabilities();
   const [renewDialogOpen, setRenewDialogOpen] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const feedback = useFeedback();
 
-  const { data, isLoading, isError, error, refetch } =
-    useServerCertificateStatus();
+  const { data, isLoading, isError, error } = useServerCertificateStatus();
   const generateMutation = useGenerateServerCertificates();
   const renewMutation = useRenewServerCertificates();
 
@@ -66,54 +60,31 @@ const Certificates: React.FC = () => {
   const hasCerts = serverCert || caCert;
 
   const handleGenerate = async () => {
-    setActionError(null);
     try {
       await generateMutation.mutateAsync();
+      feedback.success(SERVER_CERTIFICATES.MSG_GENERATED);
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : ERR_CERTIFICATE_GENERIC,
-      );
+      feedback.error(getErrorMessage(err, ERR_CERTIFICATE_GENERIC));
     }
   };
 
   const handleRenew = async () => {
+    await renewMutation.mutateAsync();
     setRenewDialogOpen(false);
-    setActionError(null);
-    try {
-      await renewMutation.mutateAsync();
-    } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : ERR_CERTIFICATE_GENERIC,
-      );
-    }
+    feedback.success(SERVER_CERTIFICATES.MSG_RENEWED);
   };
 
-  const getStatusChip = (cert: CertStatus) => {
-    if (!cert.isValid || cert.daysUntilExpiry < 0) {
-      return {
-        color: "error" as const,
-        text: CERTIFICATES_PAGE.EXPIRED,
-        icon: <ErrorIcon />,
-      };
-    }
-    if (cert.daysUntilExpiry <= 30) {
-      return {
-        color: "warning" as const,
-        text: `${CERTIFICATE_INFO.EXPIRES_IN_PREFIX}${cert.daysUntilExpiry}${CERTIFICATE_INFO.EXPIRES_IN_SUFFIX}`,
-        icon: <WarningIcon />,
-      };
-    }
-    return {
-      color: "success" as const,
-      text: CERTIFICATES_PAGE.VALID,
-      icon: <CheckCircleIcon />,
-    };
-  };
+  const getStatusChip = (cert: CertificateSummary) =>
+    formatCertificateExpiryState(
+      cert.isValid
+        ? certificateExpiryState(cert.daysUntilExpiry)
+        : CERTIFICATE_EXPIRY_STATE.EXPIRED,
+    );
 
-  const renderCertCard = (cert: CertStatus, title: string) => {
+  const renderCertCard = (cert: CertificateSummary, title: string) => {
     const status = getStatusChip(cert);
     return (
-      <Grid size={{ xs: 12, md: 6 }} key={title}>
+      <Grid size={componentSpacing.gridSpan.half} key={title}>
         <Card>
           <CardContent>
             <Box
@@ -127,12 +98,7 @@ const Certificates: React.FC = () => {
               <Typography variant="h6" component="div">
                 {title}
               </Typography>
-              <Chip
-                label={status.text}
-                color={status.color}
-                icon={status.icon}
-                size="small"
-              />
+              <Chip label={status.label} color={status.color} size="small" />
             </Box>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               {CERTIFICATE_INFO.ISSUER}: {cert.issuer}
@@ -141,7 +107,7 @@ const Certificates: React.FC = () => {
               {CERTIFICATE_INFO.SUBJECT}: {cert.subject}
             </Typography>
             <Typography variant="body2" color="text.secondary" gutterBottom>
-              {CERTIFICATE_INFO.EXPIRES}: {format(cert.notAfter, "PPP")}
+              {CERTIFICATE_INFO.EXPIRES}: {formatDate(cert.notAfter)}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               {CERTIFICATE_INFO.DAYS_UNTIL_EXPIRY}: {cert.daysUntilExpiry}
@@ -164,10 +130,7 @@ const Certificates: React.FC = () => {
       >
         <Typography variant="h4">{CERTIFICATES_PAGE.TITLE}</Typography>
         <Box>
-          <IconButton onClick={() => refetch()} sx={{ mr: 1 }}>
-            <RefreshIcon />
-          </IconButton>
-          {hasServerCert ? (
+          {isServerAdmin && hasServerCert && (
             <Button
               variant="contained"
               onClick={() => setRenewDialogOpen(true)}
@@ -175,7 +138,8 @@ const Certificates: React.FC = () => {
             >
               {SERVER_CERTIFICATES.RENEW_BUTTON}
             </Button>
-          ) : (
+          )}
+          {isServerAdmin && !hasServerCert && (
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -188,51 +152,55 @@ const Certificates: React.FC = () => {
         </Box>
       </Box>
 
-      <Alert severity="info" sx={{ mb: 3 }}>
+      <Alert severity="info" sx={{ mb: SECTION_GAP }}>
         <AlertTitle>{CERTIFICATE_INFO.ALERT_TITLE}</AlertTitle>
         {CERTIFICATE_INFO.ALERT_TEXT}
       </Alert>
 
-      {(actionError || isError) && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {actionError ??
-            (error instanceof Error ? error.message : ERR_CERTIFICATE_GENERIC)}
+      {isError && (
+        <Alert severity="error" sx={{ mb: SECTION_GAP }}>
+          {getErrorMessage(error, ERR_CERTIFICATE_GENERIC)}
         </Alert>
       )}
 
-      {isLoading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
-          <CircularProgress />
-        </Box>
-      ) : !hasCerts ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
-          <Typography color="text.secondary">
-            {CERTIFICATES_PAGE.NO_CERTIFICATES}
-          </Typography>
-        </Box>
-      ) : (
-        <Grid container spacing={3}>
-          {serverCert && renderCertCard(serverCert, CERTIFICATE_LABELS.SERVER)}
-          {caCert && renderCertCard(caCert, CERTIFICATE_LABELS.CA)}
+      <Grid container spacing={SECTION_GAP}>
+        {isLoading ? (
+          <Grid size={componentSpacing.gridSpan.full}>
+            <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
+              <CircularProgress />
+            </Box>
+          </Grid>
+        ) : !hasCerts ? (
+          <Grid size={componentSpacing.gridSpan.full}>
+            <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
+              <Typography color="text.secondary">
+                {CERTIFICATES_PAGE.NO_CERTIFICATES}
+              </Typography>
+            </Box>
+          </Grid>
+        ) : (
+          <>
+            {serverCert &&
+              renderCertCard(serverCert, CERTIFICATE_LABELS.SERVER)}
+            {caCert && renderCertCard(caCert, CERTIFICATE_LABELS.CA)}
+          </>
+        )}
+        <Grid size={componentSpacing.gridSpan.full}>
+          <BaseStationCertificatesCard />
         </Grid>
-      )}
+      </Grid>
 
-      <Dialog open={renewDialogOpen} onClose={() => setRenewDialogOpen(false)}>
-        <DialogTitle>{SERVER_CERTIFICATES.RENEW_CONFIRM_TITLE}</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {SERVER_CERTIFICATES.RENEW_CONFIRM_TEXT}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRenewDialogOpen(false)}>
-            {SERVER_CERTIFICATES.CANCEL}
-          </Button>
-          <Button onClick={handleRenew} variant="contained" color="primary">
-            {SERVER_CERTIFICATES.RENEW_BUTTON}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={renewDialogOpen}
+        onClose={() => setRenewDialogOpen(false)}
+        onConfirm={handleRenew}
+        errorFallback={ERR_CERTIFICATE_GENERIC}
+        color="primary"
+        title={SERVER_CERTIFICATES.RENEW_CONFIRM_TITLE}
+        message={<RenewalNames names={data?.renewalNames ?? []} />}
+        confirmLabel={SERVER_CERTIFICATES.RENEW_BUTTON}
+        cancelLabel={SERVER_CERTIFICATES.CANCEL}
+      />
     </Box>
   );
 };

@@ -12,6 +12,19 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
+// testMalformedVersionVPrefix is a malformed version vector: the BSSCI version
+// format is plain "major.minor.patch" and a "v" prefix must be rejected.
+const testMalformedVersionVPrefix = "v1.0.0"
+
+// Wire tokens the version parser and negotiator emit (BSSCI section 2.1); the
+// catalog keeps them private, so the tests pin the exact strings.
+const (
+	wireTokenInvalidVersionFormat = "bssci.error.invalid_version_format"
+	wireTokenInvalidMajorVersion  = "bssci.error.invalid_major_version"
+	wireTokenInvalidMinorVersion  = "bssci.error.invalid_minor_version"
+	wireTokenInvalidPatchVersion  = "bssci.error.invalid_patch_version"
+)
+
 // TestNewVersionNegotiatorSetValidation verifies the constructor rejects
 // empty, malformed, and duplicate supported-version sets.
 func TestNewVersionNegotiatorSetValidation(t *testing.T) {
@@ -70,7 +83,7 @@ func TestNegotiateSelection(t *testing.T) {
 		{name: "lower_major_rejected", supported: []string{"1.0.0"}, requested: "0.9.0", errToken: bssci.ErrUnsupportedMajorVersion},
 		{name: "higher_major_rejected", supported: []string{"1.0.0"}, requested: "2.0.0", errToken: bssci.ErrUnsupportedMajorVersion},
 		{name: "lower_minor_than_all_supported_rejected", supported: []string{"1.1.0"}, requested: "1.0.0", errToken: bssci.ErrUnsupportedMinorVersion},
-		{name: "malformed_request_rejected", supported: []string{"1.0.0"}, requested: "1.0", errToken: bssci.ErrInvalidVersionFormat},
+		{name: "malformed_request_rejected", supported: []string{"1.0.0"}, requested: "1.0", errToken: wireTokenInvalidVersionFormat},
 	}
 
 	for _, tt := range tests {
@@ -135,13 +148,13 @@ func TestParseVersionFormat(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, _, _, cerr := bssci.ParseVersion(input)
 			require.NotNil(t, cerr, "Invalid format should return CatalogError")
-			assert.Equal(t, bssci.ErrInvalidVersionFormat, cerr.Token)
+			assert.Equal(t, wireTokenInvalidVersionFormat, cerr.Token)
 			assert.Equal(t, bssci.POSIX_EPROTO, cerr.Posix)
 		})
 	}
 
 	majorCases := map[string]string{
-		"non_numeric_major": "v1.0.0",
+		"non_numeric_major": testMalformedVersionVPrefix,
 		"signed_major":      "+1.0.0",
 		"negative_major":    "-1.0.0",
 		"whitespace_major":  " 1.0.0",
@@ -152,7 +165,7 @@ func TestParseVersionFormat(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, _, _, cerr := bssci.ParseVersion(input)
 			require.NotNil(t, cerr)
-			assert.Equal(t, bssci.ErrInvalidMajorVersion, cerr.Token)
+			assert.Equal(t, wireTokenInvalidMajorVersion, cerr.Token)
 			assert.Equal(t, bssci.POSIX_EPROTO, cerr.Posix)
 		})
 	}
@@ -160,20 +173,20 @@ func TestParseVersionFormat(t *testing.T) {
 	t.Run("invalid_minor", func(t *testing.T) {
 		_, _, _, cerr := bssci.ParseVersion("1.x.0")
 		require.NotNil(t, cerr)
-		assert.Equal(t, bssci.ErrInvalidMinorVersion, cerr.Token)
+		assert.Equal(t, wireTokenInvalidMinorVersion, cerr.Token)
 		assert.Equal(t, bssci.POSIX_EPROTO, cerr.Posix)
 	})
 
 	t.Run("invalid_patch", func(t *testing.T) {
 		_, _, _, cerr := bssci.ParseVersion("1.0.beta")
 		require.NotNil(t, cerr)
-		assert.Equal(t, bssci.ErrInvalidPatchVersion, cerr.Token)
+		assert.Equal(t, wireTokenInvalidPatchVersion, cerr.Token)
 		assert.Equal(t, bssci.POSIX_EPROTO, cerr.Posix)
 	})
 
 	t.Run("trailing_whitespace_patch", func(t *testing.T) {
 		_, _, _, cerr := bssci.ParseVersion("1.0.0 ")
 		require.NotNil(t, cerr)
-		assert.Equal(t, bssci.ErrInvalidPatchVersion, cerr.Token)
+		assert.Equal(t, wireTokenInvalidPatchVersion, cerr.Token)
 	})
 }

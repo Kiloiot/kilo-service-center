@@ -19,11 +19,17 @@ import {
   FormControlLabel,
   TextField,
 } from "@mui/material";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from "@services/api";
+import { useFeedback } from "@contexts/feedback";
+import { getErrorMessage } from "@utils/error-message";
 import { BLUEPRINT_LABELS } from "@constants/messages";
-import { queryKeys } from "@config/query-keys";
+import { componentSpacing } from "@theme/index";
+
+import {
+  useBlueprints,
+  useBulkAssignBlueprint,
+  useModelSnapshotCount,
+} from "../hooks";
 
 interface BulkMigrateDialogProps {
   open: boolean;
@@ -32,41 +38,33 @@ interface BulkMigrateDialogProps {
   modelIsSystem: boolean;
   initialBlueprintId?: string;
   onClose: () => void;
-  onSuccess?: () => void;
 }
 
-export const BulkMigrateDialog: React.FC<BulkMigrateDialogProps> = ({
+const BulkMigrateDialog: React.FC<BulkMigrateDialogProps> = ({
   open,
   deviceModelId,
   scope,
   modelIsSystem,
   initialBlueprintId,
   onClose,
-  onSuccess,
 }) => {
-  const queryClient = useQueryClient();
-
   const [selectedBlueprintId, setSelectedBlueprintId] = useState("");
   const [setAsDefault, setSetAsDefault] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [affectedDone, setAffectedDone] = useState<number | null>(null);
+  const feedback = useFeedback();
 
-  const { data: blueprints, isLoading: blueprintsLoading } = useQuery({
-    queryKey: queryKeys.blueprints.list(deviceModelId, scope),
-    queryFn: () => api.getBlueprints(deviceModelId, scope),
-    enabled: open && !!deviceModelId,
-  });
+  const { data: blueprints, isLoading: blueprintsLoading } = useBlueprints(
+    deviceModelId,
+    scope,
+    { enabled: open },
+  );
 
-  const { data: affectedCount, isLoading: countLoading } = useQuery({
-    queryKey: queryKeys.blueprints.modelSnapshotCount(deviceModelId),
-    queryFn: () => api.countModelSnapshotEndpoints(deviceModelId),
-    enabled: open && !!deviceModelId,
-  });
+  const { data: affectedCount, isLoading: countLoading } =
+    useModelSnapshotCount(deviceModelId, { enabled: open });
 
   useEffect(() => {
     if (!open) return;
     setError(null);
-    setAffectedDone(null);
     setSetAsDefault(!modelIsSystem);
   }, [open, modelIsSystem]);
 
@@ -78,26 +76,30 @@ export const BulkMigrateDialog: React.FC<BulkMigrateDialogProps> = ({
     setSelectedBlueprintId(initialBlueprintId ?? fallback);
   }, [open, blueprints, initialBlueprintId]);
 
-  const mutation = useMutation({
-    mutationFn: () =>
-      api.bulkAssignBlueprint({
+  const mutation = useBulkAssignBlueprint();
+
+  const migrate = () => {
+    mutation.mutate(
+      {
         blueprintId: selectedBlueprintId,
         deviceModelId,
         setAsDefault: modelIsSystem ? false : setAsDefault,
-      }),
-    onSuccess: (result) => {
-      setAffectedDone(result.affectedCount);
-      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.modelSnapshotCount(deviceModelId),
-      });
-      onSuccess?.();
-    },
-    onError: (err: Error) => {
-      setError(err.message || BLUEPRINT_LABELS.ERR_MIGRATE_FAILED);
-    },
-  });
+      },
+      {
+        onSuccess: (result) => {
+          onClose();
+          feedback.success(
+            BLUEPRINT_LABELS.MSG_MIGRATE_SUCCESS.replace(
+              "{affected}",
+              String(result.affectedCount),
+            ),
+          );
+        },
+        onError: (err: Error) =>
+          setError(getErrorMessage(err, BLUEPRINT_LABELS.ERR_MIGRATE_FAILED)),
+      },
+    );
+  };
 
   const isBusy = blueprintsLoading || countLoading;
   const nothingToDo = !isBusy && !affectedCount && !setAsDefault;
@@ -114,85 +116,66 @@ export const BulkMigrateDialog: React.FC<BulkMigrateDialogProps> = ({
           </Alert>
         )}
 
-        {affectedDone !== null ? (
-          <Alert severity="success">
-            {BLUEPRINT_LABELS.MSG_MIGRATE_SUCCESS}
-            {BLUEPRINT_LABELS.MIGRATE_AFFECTED_PREFIX}
-            {affectedDone}
-            {BLUEPRINT_LABELS.MIGRATE_AFFECTED_SUFFIX}
-          </Alert>
+        {isBusy ? (
+          <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
+            <CircularProgress size={componentSpacing.spinner.section} />
+          </Box>
         ) : (
-          <>
-            {isBusy ? (
-              <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
-                <CircularProgress size={24} />
-              </Box>
+          <DialogContentText sx={{ mb: 2 }}>
+            {affectedCount ? (
+              <>
+                {BLUEPRINT_LABELS.MIGRATE_AFFECTED_PREFIX}
+                {affectedCount}
+                {BLUEPRINT_LABELS.MIGRATE_AFFECTED_SUFFIX}
+              </>
             ) : (
-              <DialogContentText sx={{ mb: 2 }}>
-                {affectedCount ? (
-                  <>
-                    {BLUEPRINT_LABELS.MIGRATE_AFFECTED_PREFIX}
-                    {affectedCount}
-                    {BLUEPRINT_LABELS.MIGRATE_AFFECTED_SUFFIX}
-                  </>
-                ) : (
-                  BLUEPRINT_LABELS.MIGRATE_NO_DEVICES
-                )}
-              </DialogContentText>
+              BLUEPRINT_LABELS.MIGRATE_NO_DEVICES
             )}
+          </DialogContentText>
+        )}
 
-            <TextField
-              select
-              fullWidth
-              margin="dense"
-              label={BLUEPRINT_LABELS.LABEL_VERSION}
-              value={selectedBlueprintId}
-              onChange={(e) => setSelectedBlueprintId(e.target.value)}
-              disabled={blueprintsLoading}
-              slotProps={{ select: { native: true } }}
-            >
-              <option value="" />
-              {blueprints?.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.version}
-                  {b.isDefault ? ` (${BLUEPRINT_LABELS.BADGE_DEFAULT})` : ""}
-                </option>
-              ))}
-            </TextField>
+        <TextField
+          select
+          fullWidth
+          margin="dense"
+          label={BLUEPRINT_LABELS.LABEL_VERSION}
+          value={selectedBlueprintId}
+          onChange={(e) => setSelectedBlueprintId(e.target.value)}
+          disabled={blueprintsLoading}
+          slotProps={{ select: { native: true } }}
+        >
+          <option value="" />
+          {blueprints?.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.version}
+              {b.isDefault ? ` (${BLUEPRINT_LABELS.BADGE_DEFAULT})` : ""}
+            </option>
+          ))}
+        </TextField>
 
-            {!modelIsSystem && (
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={setAsDefault}
-                    onChange={(e) => setSetAsDefault(e.target.checked)}
-                  />
-                }
-                label={BLUEPRINT_LABELS.MIGRATE_SET_AS_DEFAULT}
+        {!modelIsSystem && (
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={setAsDefault}
+                onChange={(e) => setSetAsDefault(e.target.checked)}
               />
-            )}
-          </>
+            }
+            label={BLUEPRINT_LABELS.MIGRATE_SET_AS_DEFAULT}
+          />
         )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={mutation.isPending}>
-          {affectedDone !== null
-            ? BLUEPRINT_LABELS.ACTION_CLOSE
-            : BLUEPRINT_LABELS.ACTION_CANCEL}
+          {BLUEPRINT_LABELS.ACTION_CANCEL}
         </Button>
-        {affectedDone === null && (
-          <Button
-            onClick={() => mutation.mutate()}
-            variant="contained"
-            disabled={!canConfirm}
-          >
-            {mutation.isPending ? (
-              <CircularProgress size={20} />
-            ) : (
-              BLUEPRINT_LABELS.MIGRATE_CONFIRM
-            )}
-          </Button>
-        )}
+        <Button onClick={migrate} variant="contained" disabled={!canConfirm}>
+          {mutation.isPending ? (
+            <CircularProgress size={componentSpacing.spinner.button} />
+          ) : (
+            BLUEPRINT_LABELS.MIGRATE_CONFIRM
+          )}
+        </Button>
       </DialogActions>
     </Dialog>
   );

@@ -31,7 +31,7 @@ func TestIsUniqueViolation(t *testing.T) {
 		},
 		{
 			name: "non-pq error",
-			err:  errors.New("generic error"),
+			err:  errTextGenericError,
 			want: false,
 		},
 		{
@@ -74,7 +74,7 @@ func TestWrapDuplicateError(t *testing.T) {
 		},
 		{
 			name:     "generic error unwrapped",
-			err:      errors.New("some error"),
+			err:      errTextSomeError,
 			resource: "test",
 			wantType: nil,
 			wantMsg:  "",

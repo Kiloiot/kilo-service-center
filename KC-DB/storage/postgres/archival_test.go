@@ -5,12 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 )
 
 // archivalMessageParams describes a minimal messages row for archival tests.
@@ -62,7 +64,7 @@ func TestArchivalServiceMessages(t *testing.T) {
 
 	logger.Initialize("error", "json")
 	log := logger.Get()
-	service := NewArchivalService(sqlxDB.DB, log)
+	service := NewArchivalService(sqlxDB.DB, log, clock.SystemClock{})
 
 	ctx := testutil.TestContext()
 
@@ -103,17 +105,20 @@ func TestArchivalServiceMessages(t *testing.T) {
 
 		var markedCount int
 		require.NoError(t, sqlxDB.QueryRow(
-			"SELECT COUNT(*) FROM messages WHERE archived = true").Scan(&markedCount))
+			"SELECT COUNT(*) FROM messages WHERE archived = true",
+		).Scan(&markedCount))
 		assert.Equal(t, 5, markedCount, "archived rows must be flagged in the main table")
 
 		var unmarkedCount int
 		require.NoError(t, sqlxDB.QueryRow(
-			"SELECT COUNT(*) FROM messages WHERE archived = false").Scan(&unmarkedCount))
+			"SELECT COUNT(*) FROM messages WHERE archived = false",
+		).Scan(&unmarkedCount))
 		assert.Equal(t, 3, unmarkedCount, "recent rows must remain unflagged")
 
 		var stampedCount int
 		require.NoError(t, sqlxDB.QueryRow(
-			"SELECT COUNT(*) FROM messages_archive WHERE archived_at IS NOT NULL").Scan(&stampedCount))
+			"SELECT COUNT(*) FROM messages_archive WHERE archived_at IS NOT NULL",
+		).Scan(&stampedCount))
 		assert.Equal(t, 5, stampedCount, "archive trigger must stamp archived_at on every copied row")
 	})
 
@@ -122,7 +127,7 @@ func TestArchivalServiceMessages(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { _ = rows.Close() }()
 
-		count := 0
+		archivedRows := 0
 		for rows.Next() {
 			var epEUIBytes, bsEUIBytes []byte
 			require.NoError(t, rows.Scan(&epEUIBytes, &bsEUIBytes))
@@ -131,10 +136,10 @@ func TestArchivalServiceMessages(t *testing.T) {
 			assert.Equal(t, highBitEpEUI, binary.BigEndian.Uint64(epEUIBytes),
 				"high-bit EP EUI must survive the archival round-trip unchanged")
 			assert.Equal(t, bsEUI, binary.BigEndian.Uint64(bsEUIBytes))
-			count++
+			archivedRows++
 		}
 		require.NoError(t, rows.Err())
-		assert.Equal(t, 5, count)
+		assert.Equal(t, 5, archivedRows)
 	})
 
 	t.Run("SecondRunIsIdempotent", func(t *testing.T) {

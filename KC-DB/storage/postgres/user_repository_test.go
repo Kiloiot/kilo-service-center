@@ -3,8 +3,10 @@ package postgres
 import (
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +25,7 @@ func TestUserRepository_Create_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	userID := uuid.New()
@@ -60,7 +62,7 @@ func TestUserRepository_GetByID_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	userID := uuid.New()
@@ -102,7 +104,7 @@ func TestUserRepository_GetByID_NotFound(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Get non-existent user
@@ -125,7 +127,7 @@ func TestUserRepository_GetByEmail_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	userID := uuid.New()
@@ -167,7 +169,7 @@ func TestUserRepository_Update_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	userID := uuid.New()
@@ -217,7 +219,7 @@ func TestUserRepository_SetPasswordHash_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	userID := uuid.New()
@@ -263,7 +265,7 @@ func TestUserRepository_Delete_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	userID := uuid.New()
@@ -302,7 +304,7 @@ func TestUserRepository_List_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create multiple test users
@@ -346,7 +348,7 @@ func TestUserRepository_Count_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewUserRepository(db)
+	repo := NewUserRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Get initial count

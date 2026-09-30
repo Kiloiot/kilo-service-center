@@ -55,6 +55,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "kilocenter.fullname" . }}
                   key: postgresql-password
+            - name: KILOCENTER_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: master-key
+
             - name: KILOCENTER_STORAGE_DATABASE
               value: {{ .Values.postgresql.database | quote }}
             - name: KILOCENTER_STORAGE_SSL_MODE
@@ -68,6 +74,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "kilocenter.fullname" . }}
                   key: auth-hmac-secret
+            - name: KILOCENTER_INTERNAL_AUTH_PEER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: internal-peer-secret
             - name: KILOCENTER_GRPC_PORT
               value: {{ .Values.kcIdentity.config.grpc.port | quote }}
             - name: KILOCENTER_HEALTH_PORT

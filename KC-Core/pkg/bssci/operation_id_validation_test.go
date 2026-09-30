@@ -4,300 +4,139 @@ import (
 	"testing"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestSCOperationIDMustBeNegative verifies BSSCI §3.2-02 requirement that
-// Service Center initiated operations MUST use negative operation IDs.
-// This test ensures the critical validation gap fix is working correctly.
+// sequencingTestEUI marks a session whose con was already processed.
+const sequencingTestEUI = 123456789
+
+func newSequencingTestServer() *Server {
+	return NewTestServerWithMemoryStatusService(logger.NewNop(), nil, nil, 1)
+}
+
+// TestSCOperationIDMustBeNegative verifies BSSCI §3.2-02: a response to a
+// service-center operation carries that operation's negative ID.
 func TestSCOperationIDMustBeNegative(t *testing.T) {
 	tests := []struct {
 		name     string
 		opId     int64
-		expected string // Expected error token (empty string means valid)
-		desc     string
+		expected string
 	}{
-		{
-			name:     "PositiveSCOperationIDRejected",
-			opId:     1,
-			expected: errSCOperationIDMustBeNegative,
-			desc:     "Positive operation ID must be rejected for SC-initiated operations",
-		},
-		{
-			name:     "ZeroSCOperationIDRejected",
-			opId:     0,
-			expected: errSCOperationIDMustBeNegative,
-			desc:     "Zero operation ID must be rejected for SC-initiated operations",
-		},
-		{
-			name:     "NegativeSCOperationIDAccepted",
-			opId:     -1,
-			expected: "",
-			desc:     "Negative operation ID must be accepted for SC-initiated operations",
-		},
-		{
-			name:     "LargeNegativeSCOperationIDAccepted",
-			opId:     -9999,
-			expected: "",
-			desc:     "Large negative operation ID must be accepted for SC-initiated operations",
-		},
+		{name: "PositiveResponseIDRejected", opId: 1, expected: errSCOperationIDMustBeNegative},
+		{name: "ZeroResponseIDRejected", opId: 0, expected: errSCOperationIDMustBeNegative},
+		{name: "NegativeResponseIDAccepted", opId: -1, expected: ""},
+		{name: "LargeNegativeResponseIDAccepted", opId: -9999, expected: ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use NewTestServerWithMemoryStatusService (StatusService is mandatory)
-			log := logger.NewNop()
-			server := NewTestServerWithMemoryStatusService(log, nil, nil, 1)
-
-			// Create test session
-			session := &Session{
-				ProtocolSessionState: ProtocolSessionState{
-					// Non-zero to pass connect check
-					BaseStationEUI: 123456789,
-					LastScOpId:     0,
-				},
-			}
-
-			// Call validateOperationID with isBaseStationInitiated = false (SC operation)
-			errToken := server.CallValidateOperationID(session, tt.opId, false)
-
-			// Verify result
-			if tt.expected == "" {
-				assert.Empty(t, errToken, tt.desc)
-			} else {
-				assert.Equal(t, tt.expected, errToken, tt.desc)
-			}
+			session := &Session{ProtocolSessionState: ProtocolSessionState{BaseStationEUI: sequencingTestEUI}}
+			assert.Equal(t, tt.expected, newSequencingTestServer().CallSequenceOperation(session, mioty.CmdStatusResponse, tt.opId))
 		})
 	}
 }
 
-// TestSCOperationIDStrictDecrement verifies BSSCI §3.2-02 requirement for SC operation validation.
-// With atomic send-and-persist pattern, LastScOpId is updated when SENDING operations,
-// not during validation. Validation only checks that responses match or are stale retries.
+// TestSCOperationIDStrictDecrement verifies that a response may name any
+// issued service-center operation but never one not issued yet.
 func TestSCOperationIDStrictDecrement(t *testing.T) {
 	tests := []struct {
-		name         string
-		lastScOpId   int64
-		newOpId      int64
-		expected     string // Expected error token (empty string means valid)
-		desc         string
-		shouldUpdate bool // Whether LastScOpId should be updated (always false for SC ops now)
+		name       string
+		lastScOpId int64
+		newOpId    int64
+		expected   string
 	}{
-		{
-			name:         "SameOperationIDAllowed",
-			lastScOpId:   -10,
-			newOpId:      -10,
-			expected:     "",
-			desc:         "Same operation ID allowed (response to our request)",
-			shouldUpdate: false,
-		},
-		{
-			name:         "OperationIDIncreaseRejected",
-			lastScOpId:   -5,
-			newOpId:      -3,
-			expected:     "",
-			desc:         "Less-negative pending response is accepted for existing SC operation",
-			shouldUpdate: false,
-		},
-		{
-			name:         "FirstOperationResponse",
-			lastScOpId:   -1,
-			newOpId:      -1,
-			expected:     "",
-			desc:         "First SC operation response (matches our sent opId)",
-			shouldUpdate: false,
-		},
-		{
-			name:         "FutureOperationIDRejected",
-			lastScOpId:   -1,
-			newOpId:      -2,
-			expected:     "bssci.error.operation_id_increasing",
-			desc:         "Future operation ID rejected (SC operations must not increase)",
-			shouldUpdate: false,
-		},
+		{name: "NewestOperationAnswered", lastScOpId: -10, newOpId: -10, expected: ""},
+		{name: "OlderPendingOperationAnswered", lastScOpId: -5, newOpId: -3, expected: ""},
+		{name: "FirstOperationAnswered", lastScOpId: -1, newOpId: -1, expected: ""},
+		{name: "UnissuedOperationRejected", lastScOpId: -1, newOpId: -2, expected: errOperationIDIncreasing},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use NewTestServerWithMemoryStatusService (StatusService is mandatory)
-			log := logger.NewNop()
-			server := NewTestServerWithMemoryStatusService(log, nil, nil, 1)
-
-			// Create test session with initial LastScOpId
-			session := &Session{
-				ProtocolSessionState: ProtocolSessionState{
-					BaseStationEUI: 123456789,
-					LastScOpId:     tt.lastScOpId,
-				},
-			}
-
-			// Call validateOperationID
-			errToken := server.CallValidateOperationID(session, tt.newOpId, false)
-
-			// Verify error token
-			if tt.expected == "" {
-				assert.Empty(t, errToken, tt.desc)
-			} else {
-				assert.Equal(t, tt.expected, errToken, tt.desc)
-			}
-
-			// Verify LastScOpId update behavior
-			if tt.shouldUpdate {
-				assert.Equal(t, tt.newOpId, session.LastScOpId,
-					"LastScOpId should be updated for new operations")
-			} else {
-				assert.Equal(t, tt.lastScOpId, session.LastScOpId,
-					"LastScOpId should not be updated for repeated/invalid operations")
-			}
+			session := &Session{ProtocolSessionState: ProtocolSessionState{BaseStationEUI: sequencingTestEUI, LastScOpId: tt.lastScOpId}}
+			assert.Equal(t, tt.expected, newSequencingTestServer().CallSequenceOperation(session, mioty.CmdStatusResponse, tt.newOpId))
+			assert.Equal(t, tt.lastScOpId, session.LastScOpId, "a response never moves the service-center counter")
 		})
 	}
 }
 
-// TestBSOperationIDMustBePositive verifies BSSCI §3.2-01 requirement that
-// Base Station initiated operations MUST use positive operation IDs.
+// TestBSOperationIDMustBePositive verifies BSSCI §3.2-01: the base station
+// starts its operations with positive IDs; 0 belongs to connect.
 func TestBSOperationIDMustBePositive(t *testing.T) {
 	tests := []struct {
 		name     string
 		opId     int64
 		expected string
-		desc     string
 	}{
-		{
-			name:     "PositiveBSOperationIDAccepted",
-			opId:     1,
-			expected: "",
-			desc:     "Positive operation ID must be accepted for BS-initiated operations",
-		},
-		{
-			name:     "ZeroBSOperationIDAllowedAfterConnect",
-			opId:     0,
-			expected: "",
-			desc:     "Zero operation ID allowed for BS operations (lenient implementation)",
-		},
-		{
-			name:     "NegativeBSOperationIDRejected",
-			opId:     -1,
-			expected: errOperationIDNotPositive,
-			desc:     "Negative operation ID must be rejected for BS-initiated operations",
-		},
-		{
-			name:     "LargePositiveBSOperationIDAccepted",
-			opId:     99999,
-			expected: "",
-			desc:     "Large positive operation ID must be accepted for BS-initiated operations",
-		},
+		{name: "PositiveIDAccepted", opId: 1, expected: ""},
+		{name: "ZeroIDRejected", opId: 0, expected: errOperationIDNotPositive},
+		{name: "NegativeIDRejected", opId: -1, expected: errOperationIDNotPositive},
+		{name: "LargePositiveIDAccepted", opId: 99999, expected: ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use NewTestServerWithMemoryStatusService (StatusService is mandatory)
-			log := logger.NewNop()
-			server := NewTestServerWithMemoryStatusService(log, nil, nil, 1)
-
-			// Create session with BaseStationEUI set (after connect)
-			session := &Session{
-				ProtocolSessionState: ProtocolSessionState{
-					BaseStationEUI: 123456789,
-					LastBsOpId:     0,
-				},
-			}
-
-			// Call validateOperationID with isBaseStationInitiated = true
-			errToken := server.CallValidateOperationID(session, tt.opId, true)
-
-			if tt.expected == "" {
-				assert.Empty(t, errToken, tt.desc)
-			} else {
-				assert.Equal(t, tt.expected, errToken, tt.desc)
-			}
+			session := &Session{ProtocolSessionState: ProtocolSessionState{BaseStationEUI: sequencingTestEUI}}
+			assert.Equal(t, tt.expected, newSequencingTestServer().CallSequenceOperation(session, mioty.CmdPing, tt.opId))
 		})
 	}
 }
 
-// TestBSOperationIDStrictIncrement verifies BSSCI §3.2-01 requirement that
-// Base Station operation IDs must strictly increment for NEW operations.
+// TestBSOperationIDStrictIncrement verifies BSSCI §3.2-01: a new operation
+// needs an ID above every earlier one; an open operation may be initiated
+// again with its own ID.
 func TestBSOperationIDStrictIncrement(t *testing.T) {
 	tests := []struct {
 		name         string
 		lastBsOpId   int64
+		openOpIDs    []int64
 		newOpId      int64
 		expected     string
-		desc         string
-		shouldUpdate bool
+		expectedLast int64
 	}{
-		{
-			name:         "NewOperationIncrementsCorrectly",
-			lastBsOpId:   5,
-			newOpId:      6,
-			expected:     "",
-			desc:         "New operation with strictly incrementing ID should be accepted",
-			shouldUpdate: true,
-		},
-		{
-			name:         "OperationIDDecreaseRejected",
-			lastBsOpId:   10,
-			newOpId:      8,
-			expected:     errOperationIDBackwards,
-			desc:         "Operation ID must not go backwards",
-			shouldUpdate: false,
-		},
-		{
-			name:         "SameOperationIDAllowed",
-			lastBsOpId:   20,
-			newOpId:      20,
-			expected:     "",
-			desc:         "Same operation ID allowed (part of same operation handshake)",
-			shouldUpdate: false,
-		},
-		{
-			name:         "FirstOperationAccepted",
-			lastBsOpId:   0,
-			newOpId:      1,
-			expected:     "",
-			desc:         "First BS operation should be accepted",
-			shouldUpdate: true,
-		},
-		{
-			name:         "LargeIncrementAccepted",
-			lastBsOpId:   100,
-			newOpId:      200,
-			expected:     "",
-			desc:         "Large increment (gap in sequence) should be accepted",
-			shouldUpdate: true,
-		},
+		{name: "NewOperationAdvancesCounter", lastBsOpId: 5, newOpId: 6, expected: "", expectedLast: 6},
+		{name: "LowerIDRejected", lastBsOpId: 10, newOpId: 8, expected: errOperationIDBackwards, expectedLast: 10},
+		{name: "CompletedIDReuseRejected", lastBsOpId: 20, newOpId: 20, expected: errOperationIDBackwards, expectedLast: 20},
+		{name: "OpenOperationReinitiated", lastBsOpId: 20, openOpIDs: []int64{20}, newOpId: 20, expected: "", expectedLast: 20},
+		{name: "FirstOperationAccepted", lastBsOpId: 0, newOpId: 1, expected: "", expectedLast: 1},
+		{name: "GapAccepted", lastBsOpId: 100, newOpId: 200, expected: "", expectedLast: 200},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Use NewTestServerWithMemoryStatusService (StatusService is mandatory)
-			log := logger.NewNop()
-			server := NewTestServerWithMemoryStatusService(log, nil, nil, 1)
-
-			session := &Session{
-				ProtocolSessionState: ProtocolSessionState{
-					BaseStationEUI: 123456789,
-					LastBsOpId:     tt.lastBsOpId,
-				},
-			}
-
-			// Call validateOperationID with isBaseStationInitiated = true
-			errToken := server.CallValidateOperationID(session, tt.newOpId, true)
-
-			// Verify error token
-			if tt.expected == "" {
-				assert.Empty(t, errToken, tt.desc)
-			} else {
-				assert.Equal(t, tt.expected, errToken, tt.desc)
-			}
-
-			// Verify LastBsOpId update behavior
-			if tt.shouldUpdate {
-				assert.Equal(t, tt.newOpId, session.LastBsOpId,
-					"LastBsOpId should be updated for new operations")
-			} else {
-				assert.Equal(t, tt.lastBsOpId, session.LastBsOpId,
-					"LastBsOpId should not be updated for repeated/invalid operations")
-			}
+			session := &Session{ProtocolSessionState: ProtocolSessionState{BaseStationEUI: sequencingTestEUI, LastBsOpId: tt.lastBsOpId}}
+			session.restoreOpenBaseStationOperations(tt.openOpIDs...)
+			assert.Equal(t, tt.expected, newSequencingTestServer().CallSequenceOperation(session, mioty.CmdPing, tt.newOpId))
+			assert.Equal(t, tt.expectedLast, session.LastBsOpId)
 		})
+	}
+}
+
+// TestBSOperationCompletionNamesOpenOperation verifies that a base station
+// completes an older operation after starting a newer one, and that a
+// completion names an operation that is open.
+func TestBSOperationCompletionNamesOpenOperation(t *testing.T) {
+	server := newSequencingTestServer()
+	session := &Session{ProtocolSessionState: ProtocolSessionState{BaseStationEUI: sequencingTestEUI}}
+
+	assert.Empty(t, server.CallSequenceOperation(session, mioty.CmdPing, 2))
+	assert.Empty(t, server.CallSequenceOperation(session, mioty.CmdPing, 3))
+	assert.Empty(t, server.CallSequenceOperation(session, mioty.CmdPingComplete, 2), "an older open operation completes")
+	assert.Equal(t, errOperationNotOpen, server.CallSequenceOperation(session, mioty.CmdPingComplete, 2), "a completed operation is closed")
+	assert.Equal(t, errOperationNotOpen, server.CallSequenceOperation(session, mioty.CmdAttachComplete, 7), "a never-started operation is not open")
+	assert.Equal(t, errOperationIDNotPositive, server.CallSequenceOperation(session, mioty.CmdPingComplete, -3))
+
+	assert.Empty(t, server.CallSequenceOperation(session, mioty.CmdErrorAck, 3), "an error exchange is not sequenced")
+	assert.Equal(t, errOperationNotOpen, server.CallSequenceOperation(session, mioty.CmdPingComplete, 3), "the error exchange ended the operation")
+}
+
+// TestUnsequencedCommandsPassThrough verifies that connect messages and
+// service-center-only commands are left to their own checks.
+func TestUnsequencedCommandsPassThrough(t *testing.T) {
+	server := newSequencingTestServer()
+	session := &Session{ProtocolSessionState: ProtocolSessionState{BaseStationEUI: sequencingTestEUI}}
+	for _, command := range []string{mioty.CmdConnect, mioty.CmdConnectComplete, mioty.CmdStatus, mioty.CmdAttachPropagate} {
+		assert.Empty(t, server.CallSequenceOperation(session, command, 5), command)
 	}
 }

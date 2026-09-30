@@ -8,8 +8,9 @@
 //   - BSSCI detach propagation integration
 //
 // Dependencies (injected):
-//   - interfaces.EndPointRepository: Endpoint persistence
+//   - EndpointStore: Endpoint persistence
 //   - DetachPropagator: BSSCI integration for detach propagation
+//   - AttachmentDecider: Records and announces attach and detach decisions
 //   - logger.Logger: Structured logging
 //
 // Error Handling:
@@ -30,13 +31,14 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // FormatEUI64 helper
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger" // FormatEUI64 helper
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -53,30 +55,36 @@ import (
 //   - Deregister triggers DetachPropagator.SendDetachPropagateToAll()
 //   - This ensures all connected base stations clear endpoint state
 type endpointService struct {
-	endpointRepo     interfaces.EndpointRepository // Endpoint persistence
-	detachPropagator scaci.DetachPropagator        // BSSCI detach propagation
+	endpointRepo     EndpointStore          // Endpoint persistence
+	detachPropagator scaci.DetachPropagator // BSSCI detach propagation
+	decider          AttachmentDecider      // Records and announces attach and detach decisions
 	logger           logger.Logger
 }
 
-// NewEndpointService creates a new endpoint service
-//
-// Parameters:
-//   - endpointRepo: Endpoint repository for database operations
-//   - detachPropagator: BSSCI server for detach propagation (can be nil)
-//   - logger: Structured logger
-//
-// Returns:
-//   - EndpointService: Service instance implementing interface
+// NewEndpointService creates the endpoint service over the endpoint store,
+// the BSSCI detach propagation and the attachment decider; each is required.
 func NewEndpointService(
-	endpointRepo interfaces.EndpointRepository,
+	endpointRepo EndpointStore,
 	detachPropagator scaci.DetachPropagator,
+	decider AttachmentDecider,
 	log logger.Logger,
-) scaci.EndpointService {
+) (scaci.EndpointService, error) {
+	switch {
+	case endpointRepo == nil:
+		return nil, errNilEndpointStore
+	case detachPropagator == nil:
+		return nil, errNilDetachPropagator
+	case decider == nil:
+		return nil, errNilAttachmentDecider
+	case log == nil:
+		return nil, errNilEndpointServiceLogger
+	}
 	return &endpointService{
 		endpointRepo:     endpointRepo,
 		detachPropagator: detachPropagator,
+		decider:          decider,
 		logger:           log,
-	}
+	}, nil
 }
 
 // Register implements EndpointService.Register
@@ -84,7 +92,7 @@ func NewEndpointService(
 // Extracted from handler_operations.go:41-178
 //
 // Flow:
-//  1. Validate mandatory fields (epEui, nwkKey length)
+//  1. Validate mandatory fields (epEui)
 //  2. Check if endpoint exists (tenant-scoped lookup)
 //  3. Create new endpoint if not found
 //  4. Update MIOTY fields (bidi, preAttach, shAddr, etc.)
@@ -92,7 +100,7 @@ func NewEndpointService(
 //
 // Persistence:
 //   - Create: endpointRepo.Create() for new endpoints
-//   - Update: endpointRepo.UpdateFields() for MIOTY parameters
+//   - Update: endpointRepo.EndpointRegistrationUpdate() for MIOTY parameters
 //   - All writes are tenant-scoped
 //
 // Parameters:
@@ -107,12 +115,10 @@ func (es *endpointService) Register(
 	req *scaci.Register,
 	tenantID int64,
 ) string {
-	// Step 1: Validate mandatory fields per SCACI §3.6.1
+	// Step 1: Validate mandatory fields per SCACI §3.6.1; the decoder already
+	// refused a nwkKey that is not Numeric[16].
 	if req.EpEui == 0 {
 		return scaci.ErrMissingEpEui
-	}
-	if len(req.NwkKey) != 16 {
-		return scaci.ErrInvalidNwkKeyLength
 	}
 
 	// Step 1b: Validate bounds per SCACI §3.6.1 before DB write
@@ -134,69 +140,69 @@ func (es *endpointService) Register(
 
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		es.logger.ErrorContext(ctx, scaci.LogSCACIDatabaseErrorRegister,
-			"epEui", pkgmioty.FormatEUI64(req.EpEui),
-			"tenantId", tenantID,
-			"error", err)
+			logger.FieldEpEui, mioty.FormatEUI64(req.EpEui),
+			logger.FieldTenantIDCamel, tenantID,
+			logger.FieldError, err)
 		return scaci.ErrDatabaseError
 	}
 
-	// Step 5: Build updates map with exact DB column names
-	// These are MIOTY protocol fields from SCACI §3.6.1
-	// Cast to signed types for DB driver: INTEGER (int32) for shAddr, BIGINT (int64) for counters
-	updates := map[string]interface{}{
-		"nwk_key":         req.NwkKey[:],
-		"pre_attach":      req.PreAttach,
-		"bidi":            req.Bidi,
-		"sh_addr":         int32(req.ShAddr),    // uint16 → int32 (safe, DB is INTEGER with CHECK 0-65535)
-		"attach_cnt":      int64(req.AttachCnt), // uint32 → int64 (safe, DB is BIGINT with CHECK 0-4294967295)
-		"packet_cnt":      int64(req.PacketCnt), // uint32 → int64 (safe, DB is BIGINT with CHECK 0-4294967295)
-		"last_packet_cnt": int64(req.PacketCnt), // uint32 → int64 (safe, DB is BIGINT with CHECK 0-4294967295)
-		"dual_chan":       req.DualChan,
-		"repetition":      req.Repetition,
-		"wide_carr_off":   req.WideCarrOff,
-		"long_blk_dist":   req.LongBlkDist,
+	// Step 5: Build the MIOTY registration field set from SCACI §3.6.1.
+	// The repository encrypts nwk_key at rest before the row is written.
+	registration := models.EndpointRegistrationParams{
+		NwkKey:      req.NwkKey[:],
+		PreAttach:   req.PreAttach,
+		Bidi:        req.Bidi,
+		ShAddr:      req.ShAddr,
+		AttachCnt:   req.AttachCnt,
+		PacketCnt:   req.PacketCnt,
+		DualChan:    req.DualChan,
+		Repetition:  req.Repetition,
+		WideCarrOff: req.WideCarrOff,
+		LongBlkDist: req.LongBlkDist,
 	}
 
 	// Step 6: Create new endpoint if not found
 	if endpoint == nil {
-		// SCACI §3.6 Register provides nwkKey; copy from request
-		// AppKey is initialized to zeros (will be provided by separate operation)
+		// SCACI §3.6 Register provides nwkKey; copy from request. AppKey stays
+		// nil so the column is SQL NULL until a real application key is
+		// provisioned by a separate operation - never an all-zero placeholder.
 		newEndpoint := &models.EndPoint{
 			EUI:      eui,
-			Name:     fmt.Sprintf("EP-%016X", req.EpEui),
+			Name:     fmt.Sprintf("EP-%s", mioty.FormatEUI64(req.EpEui)),
 			TenantID: tenantID,
+			Bidi:     req.Bidi,
 			NwkSnKey: append([]byte(nil), req.NwkKey[:]...), // Copy network key from request
-			AppKey:   make([]byte, 16),                      // Initialize to zeros (valid 16 bytes)
+			AppKey:   nil,
 			Tags:     make(map[string]string),
 		}
 		if err := es.endpointRepo.Create(dbCtx, newEndpoint); err != nil {
 			es.logger.ErrorContext(ctx, scaci.LogSCACICreateEndpointFailed,
-				"epEui", pkgmioty.FormatEUI64(req.EpEui),
-				"tenantId", tenantID,
-				"error", err)
+				logger.FieldEpEui, mioty.FormatEUI64(req.EpEui),
+				logger.FieldTenantIDCamel, tenantID,
+				logger.FieldError, err)
 			return scaci.ErrFailedCreateEndpoint
 		}
 		endpoint = newEndpoint
 		es.logger.InfoContext(ctx, scaci.LogSCACIEndpointCreated,
-			"epEui", pkgmioty.FormatEUI64(req.EpEui),
-			"tenantId", tenantID)
+			logger.FieldEpEui, mioty.FormatEUI64(req.EpEui),
+			logger.FieldTenantIDCamel, tenantID)
 	}
 
 	// Step 7: Apply MIOTY field updates (both create and update paths)
-	if err := es.endpointRepo.UpdateFields(dbCtx, tenantID, endpoint.ID, updates); err != nil {
+	if err := es.endpointRepo.EndpointRegistrationUpdate(dbCtx, tenantID, endpoint.ID, registration); err != nil {
 		es.logger.ErrorContext(ctx, scaci.LogSCACIUpdateEndpointFailed,
-			"epEui", pkgmioty.FormatEUI64(req.EpEui),
-			"tenantId", tenantID,
-			"endpointId", endpoint.ID,
-			"error", err)
+			logger.FieldEpEui, mioty.FormatEUI64(req.EpEui),
+			logger.FieldTenantIDCamel, tenantID,
+			logger.FieldEndpointIDCamel, endpoint.ID,
+			logger.FieldError, err)
 		return scaci.ErrFailedUpdateEndpoint
 	}
 
 	es.logger.InfoContext(ctx, scaci.LogSCACIEndpointRegistered,
-		"epEui", pkgmioty.FormatEUI64(req.EpEui),
-		"tenantId", tenantID,
-		"bidi", req.Bidi,
-		"preAttach", req.PreAttach)
+		logger.FieldEpEui, mioty.FormatEUI64(req.EpEui),
+		logger.FieldTenantIDCamel, tenantID,
+		logger.FieldBidi, req.Bidi,
+		logger.FieldPreAttach, req.PreAttach)
 
 	return ""
 }
@@ -245,29 +251,35 @@ func (es *endpointService) Deregister(
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			es.logger.WarnContext(ctx, scaci.LogSCACIEndpointNotFoundDeregister,
-				"epEui", pkgmioty.FormatEUI64(epEui),
-				"tenantId", tenantID)
+				logger.FieldEpEui, mioty.FormatEUI64(epEui),
+				logger.FieldTenantIDCamel, tenantID)
 			return scaci.ErrEndpointNotFound
 		}
 		es.logger.ErrorContext(ctx, scaci.LogSCACIDatabaseErrorDeregister,
-			"epEui", pkgmioty.FormatEUI64(epEui),
-			"tenantId", tenantID,
-			"error", err)
+			logger.FieldEpEui, mioty.FormatEUI64(epEui),
+			logger.FieldTenantIDCamel, tenantID,
+			logger.FieldError, err)
 		return scaci.ErrDatabaseError
 	}
 
-	// Step 5: Call shared detach helper (marks endpoint inactive, no telemetry)
-	if err := endpoint.DetachEndpoint(dbCtx, es.endpointRepo, tenantID, endpointRecord.ID, nil); err != nil {
+	// Step 5: Detach the endpoint; the decider announces a change once (SCACI §3.13)
+	_, err = es.decider.Decide(dbCtx, bssci.AttachmentDecision{
+		TenantID:   tenantID,
+		EndpointID: endpointRecord.ID,
+		EpEUI:      epEui,
+		Status:     endpoint.EndpointStatusDetached,
+	})
+	if err != nil {
 		es.logger.ErrorContext(ctx, scaci.LogSCACIDetachEndpointFailed,
-			"epEui", pkgmioty.FormatEUI64(epEui),
-			"tenantId", tenantID,
-			"error", err)
+			logger.FieldEpEui, mioty.FormatEUI64(epEui),
+			logger.FieldTenantIDCamel, tenantID,
+			logger.FieldError, err)
 		return scaci.ErrFailedUpdateEndpoint
 	}
 
 	es.logger.InfoContext(ctx, scaci.LogSCACIEndpointDeregistered,
-		"epEui", pkgmioty.FormatEUI64(epEui),
-		"tenantId", tenantID)
+		logger.FieldEpEui, mioty.FormatEUI64(epEui),
+		logger.FieldTenantIDCamel, tenantID)
 
 	return ""
 }
@@ -298,9 +310,9 @@ func (es *endpointService) GetByEUI(
 ) (*models.EndPoint, string) {
 	// Step 1: Validate EUI length
 	if len(eui) != 8 {
-		es.logger.ErrorContext(ctx, "Invalid EUI length for GetByEUI",
-			"length", len(eui),
-			"tenantId", tenantID)
+		es.logger.ErrorContext(ctx, LogInvalidEUILengthGetByEUI,
+			logger.FieldLength, len(eui),
+			logger.FieldTenantIDCamel, tenantID)
 		return nil, scaci.ErrMissingEpEui
 	}
 
@@ -312,81 +324,57 @@ func (es *endpointService) GetByEUI(
 	endpoint, err := es.endpointRepo.GetByEUI(dbCtx, tenantID, eui)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			es.logger.DebugContext(ctx, "Endpoint not found in GetByEUI",
-				"tenantId", tenantID)
+			es.logger.DebugContext(ctx, LogEndpointNotFoundGetByEUI,
+				logger.FieldTenantIDCamel, tenantID)
 			return nil, scaci.ErrEndpointNotFound
 		}
 		es.logger.ErrorContext(ctx, scaci.LogSCACIDatabaseErrorRegister,
-			"tenantId", tenantID,
-			"error", err)
+			logger.FieldTenantIDCamel, tenantID,
+			logger.FieldError, err)
 		return nil, scaci.ErrDatabaseError
 	}
 
 	return endpoint, ""
 }
 
-// GetGlobal implements EndpointService.GetGlobal
-//
-// Cross-tenant endpoint lookup for roaming support, matching BSSCI pattern
-// at server.go:5197-5202. Used when tenant-scoped lookup fails.
-//
-// Parameters:
-//   - ctx: Request context
-//   - eui: Endpoint EUI (8-byte slice)
-//
-// Returns:
-//   - *models.EndPoint: Endpoint record if found, nil if error
-//   - string: Error token (ErrEndpointNotFound, ErrDatabaseError) or "" on success
-func (es *endpointService) GetGlobal(
-	ctx context.Context,
-	eui []byte,
-) (*models.EndPoint, string) {
-	// Step 1: Validate EUI length (matching GetByEUI pattern)
-	if len(eui) != 8 {
-		es.logger.ErrorContext(ctx, "Invalid EUI length for GetGlobal",
-			"length", len(eui))
-		return nil, scaci.ErrMissingEpEui
-	}
-
-	// Step 2: Create DB context with timeout (matching GetByEUI pattern)
+// Attach implements EndpointService.Attach.
+func (es *endpointService) Attach(ctx context.Context, ep *models.EndPoint) string {
 	dbCtx, cancel := context.WithTimeout(ctx, dbconfig.DefaultQueryTimeout)
 	defer cancel()
 
-	// Step 3: Convert to models.EUI for repository call
-	var euiModel models.EUI
-	copy(euiModel[:], eui)
-
-	// Step 4: Call repository's cross-tenant Get method (interfaces/repository.go:18)
-	endpoint, err := es.endpointRepo.Get(dbCtx, euiModel)
+	_, err := es.decider.Decide(dbCtx, bssci.AttachmentDecision{
+		TenantID:   ep.TenantID,
+		EndpointID: ep.ID,
+		EpEUI:      ep.EUI.ToUint64(),
+		Status:     endpoint.EndpointStatusAttached,
+	})
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			es.logger.DebugContext(ctx, "Endpoint not found in GetGlobal (cross-tenant)")
-			return nil, scaci.ErrEndpointNotFound
-		}
-		es.logger.ErrorContext(ctx, scaci.LogSCACIDatabaseErrorRegister,
-			"error", err)
-		return nil, scaci.ErrDatabaseError
+		es.logger.ErrorContext(ctx, scaci.LogSCACIUpdateEndpointFailed,
+			logger.FieldTenantIDCamel, ep.TenantID,
+			logger.FieldEndpointIDCamel, ep.ID,
+			logger.FieldError, err)
+		return scaci.ErrFailedUpdateEndpoint
 	}
-
-	return endpoint, ""
+	return ""
 }
 
-// PropagateDetachToAll implements EndpointService.PropagateDetachToAll
-//
-// Encapsulates detachPropagator so handlers don't need direct access to BSSCI server.
-// Triggers BSSCI detach propagation to all connected base stations.
-// Called by handleDeregisterComplete after AC confirms endpoint deregistration.
-//
-// Parameters:
-//   - epEui: Endpoint EUI to detach from all base stations
-//
-// Returns:
-//   - []error: Slice of errors (one per failed BS), empty if all succeeded or propagator nil
-func (es *endpointService) PropagateDetachToAll(ctx context.Context, epEui uint64) []error {
-	if es.detachPropagator == nil {
-		es.logger.DebugContext(ctx, scaci.LogSCACIDetachPropagatorUnavailable,
-			"epEui", pkgmioty.FormatEUI64(epEui))
-		return nil
+// PropagateDetachToAll implements EndpointService.PropagateDetachToAll: it
+// sends detPrp to every connected base station only for an endpoint the
+// tenant owns, so an application center never detaches another tenant's
+// endpoint.
+func (es *endpointService) PropagateDetachToAll(ctx context.Context, tenantID int64, epEui uint64) []error {
+	var eui models.EUI
+	binary.BigEndian.PutUint64(eui[:], epEui)
+
+	dbCtx, cancel := context.WithTimeout(ctx, dbconfig.DefaultQueryTimeout)
+	defer cancel()
+
+	if _, err := es.endpointRepo.GetByEUI(dbCtx, tenantID, eui[:]); err != nil {
+		es.logger.WarnContext(ctx, LogDetachPropagationRefused,
+			logger.FieldEpEui, mioty.FormatEUI64(epEui),
+			logger.FieldTenantIDCamel, tenantID,
+			logger.FieldError, err)
+		return []error{fmt.Errorf("%w: %w", errDetachPropagationEndpointLookup, err)}
 	}
 
 	return es.detachPropagator.SendDetachPropagateToAll(epEui)

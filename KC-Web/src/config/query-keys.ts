@@ -2,28 +2,28 @@
  * Query Keys Factory
  *
  * Hierarchical query key definitions for React Query cache management.
- * Keys are used for cache invalidation via EVENT_INVALIDATION_MAP in realtime hooks.
+ * Keys are used for cache invalidation by services/realtime/invalidation.ts.
  *
  * @example
  * useQuery({ queryKey: queryKeys.baseStations.list() })
  * queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all })
  */
 
-import type { BlueprintScope } from "@api-types/api";
+import type { AlertFilter } from "@api-types/alerts";
+import type {
+  ActivityFilter,
+  BlueprintScope,
+  DeviceScope,
+  DownlinkQueueFilter,
+  DownlinkResultFilter,
+  ErrorGroupFilter,
+  EventLogFilter,
+  UplinkFilter,
+} from "@api-types/api";
+import type { PageRequest } from "@api-types/pagination";
 
-// Filter types for query key generation
-export interface BaseStationFilters {
-  search?: string;
-  status?: string[];
-  sort?: { field: string; direction: "asc" | "desc" };
-}
-
-export interface EndpointFilters {
-  search?: string;
-  attachState?: string[];
-  bidirectional?: boolean;
-  sort?: { field: string; direction: "asc" | "desc" };
-}
+import { normalizeEui } from "@utils/eui";
+import type { UplinkSource } from "@constants/app";
 
 /**
  * Query keys factory with hierarchical structure
@@ -34,102 +34,117 @@ export interface EndpointFilters {
  * - entity.detail(id): single item by ID
  */
 export const queryKeys = {
+  // Device keys carry the canonical EUI (normalizeEui), so a page and a
+  // realtime event name the same query whatever form each holds the EUI in.
   baseStations: {
     all: ["baseStations"] as const,
-    list: (filters?: BaseStationFilters) =>
-      [...queryKeys.baseStations.all, "list", filters] as const,
+    lists: () => [...queryKeys.baseStations.all, "list"] as const,
+    list: () => [...queryKeys.baseStations.lists()] as const,
+    locations: () => [...queryKeys.baseStations.all, "locations"] as const,
     detail: (eui: string) =>
-      [...queryKeys.baseStations.all, "detail", eui] as const,
-    messages: (
-      eui: string,
-      filter?: {
-        direction?: "uplink" | "downlink";
-        epEui?: string;
-        startTime?: string;
-        endTime?: string;
-      },
-      page?: number,
-      pageSize?: number,
-    ) =>
-      [
-        ...queryKeys.baseStations.all,
-        "messages",
-        eui,
-        filter,
-        page,
-        pageSize,
-      ] as const,
-    // Unified activity feed
+      [...queryKeys.baseStations.all, "detail", normalizeEui(eui)] as const,
+    activityPrefix: (eui: string) =>
+      [...queryKeys.baseStations.all, "activity", normalizeEui(eui)] as const,
     activity: (
       eui: string,
-      filter?: {
-        startTime?: string;
-        endTime?: string;
-      },
+      filter?: ActivityFilter,
       pageToken?: string,
       pageSize?: number,
     ) =>
       [
+        ...queryKeys.baseStations.activityPrefix(eui),
+        filter,
+        pageToken,
+        pageSize,
+      ] as const,
+    availability: (eui: string, windowHours: number) =>
+      [
         ...queryKeys.baseStations.all,
-        "activity",
-        eui,
+        "availability",
+        normalizeEui(eui),
+        windowHours,
+      ] as const,
+  },
+
+  endpoints: {
+    all: ["endpoints"] as const,
+    lists: () => [...queryKeys.endpoints.all, "list"] as const,
+    list: () => [...queryKeys.endpoints.lists()] as const,
+    detail: (eui: string) =>
+      [...queryKeys.endpoints.all, "detail", normalizeEui(eui)] as const,
+    activityPrefix: (eui: string) =>
+      [...queryKeys.endpoints.all, "activity", normalizeEui(eui)] as const,
+    activity: (
+      eui: string,
+      filter?: ActivityFilter,
+      pageToken?: string,
+      pageSize?: number,
+    ) =>
+      [
+        ...queryKeys.endpoints.activityPrefix(eui),
         filter,
         pageToken,
         pageSize,
       ] as const,
   },
 
-  endpoints: {
-    all: ["endpoints"] as const,
-    list: (filters?: EndpointFilters) =>
-      [...queryKeys.endpoints.all, "list", filters] as const,
-    detail: (eui: string) =>
-      [...queryKeys.endpoints.all, "detail", eui] as const,
-    activity: (eui: string, pageToken?: string, pageSize?: number) =>
+  // Traffic: uplink-derived data under uplinks, queue and results under downlinks,
+  // so one realtime event refreshes every scoped copy of a listing.
+  traffic: {
+    all: ["traffic"] as const,
+    uplinks: ["traffic", "uplinks"] as const,
+    uplinkList: (
+      source: UplinkSource,
+      filter: UplinkFilter,
+      page: number,
+      pageSize: number,
+    ) =>
       [
-        ...queryKeys.endpoints.all,
-        "activity",
-        eui,
-        pageToken,
+        ...queryKeys.traffic.uplinks,
+        "list",
+        source,
+        filter,
+        page,
         pageSize,
       ] as const,
-    downlinkQueue: (eui: string, pageSize?: number) =>
-      [...queryKeys.endpoints.all, "downlinkQueue", eui, pageSize] as const,
-    downlinkQueuePrefix: (eui: string) =>
-      [...queryKeys.endpoints.all, "downlinkQueue", eui] as const,
-    downlinkResults: (eui: string, statusFilter?: string, pageSize?: number) =>
+    uplinkSummary: (scope: DeviceScope) =>
+      [...queryKeys.traffic.uplinks, "summary", scope] as const,
+    downlinks: ["traffic", "downlinks"] as const,
+    downlinkQueues: ["traffic", "downlinks", "queue"] as const,
+    downlinkQueue: (
+      filter: DownlinkQueueFilter,
+      page: number,
+      pageSize: number,
+    ) => [...queryKeys.traffic.downlinkQueues, filter, page, pageSize] as const,
+    downlinkResults: (
+      filter: DownlinkResultFilter,
+      page: number,
+      pageSize: number,
+    ) =>
       [
-        ...queryKeys.endpoints.all,
-        "downlinkResults",
-        eui,
-        statusFilter,
+        ...queryKeys.traffic.downlinks,
+        "results",
+        filter,
+        page,
         pageSize,
       ] as const,
-    downlinkResultsPrefix: (eui: string) =>
-      [...queryKeys.endpoints.all, "downlinkResults", eui] as const,
   },
 
   dashboard: {
     all: ["dashboard"] as const,
     stats: () => [...queryKeys.dashboard.all, "stats"] as const,
     analytics: () => [...queryKeys.dashboard.all, "analytics"] as const,
-    alerts: () => [...queryKeys.dashboard.all, "alerts"] as const,
+    alertSummary: () => [...queryKeys.dashboard.all, "alertSummary"] as const,
+    alerts: (page?: PageRequest, filter?: AlertFilter) =>
+      [...queryKeys.dashboard.all, "alerts", page, filter] as const,
   },
 
   events: {
     all: ["events"] as const,
-    list: (
-      categories?: readonly string[],
-      pageToken?: string,
-      eventTypes?: readonly string[],
-    ) =>
-      [
-        ...queryKeys.events.all,
-        "list",
-        categories,
-        pageToken,
-        eventTypes,
-      ] as const,
+    log: (filter: EventLogFilter, page: number, pageSize: number) =>
+      [...queryKeys.events.all, "log", filter, page, pageSize] as const,
+    errorGroups: (filter: ErrorGroupFilter, page: number, pageSize: number) =>
+      [...queryKeys.events.all, "errorGroups", filter, page, pageSize] as const,
   },
 
   certificates: {
@@ -139,22 +154,25 @@ export const queryKeys = {
 
   scaci: {
     all: ["scaci"] as const,
-    sessions: () => [...queryKeys.scaci.all, "sessions"] as const,
-    errors: () => [...queryKeys.scaci.all, "errors"] as const,
-    statistics: () => [...queryKeys.scaci.all, "statistics"] as const,
-    queues: () => [...queryKeys.scaci.all, "queues"] as const,
+    status: () => [...queryKeys.scaci.all, "status"] as const,
+    sessions: (page?: PageRequest) =>
+      [...queryKeys.scaci.all, "sessions", page] as const,
   },
 
   system: {
     all: ["system"] as const,
     version: () => [...queryKeys.system.all, "version"] as const,
     status: () => [...queryKeys.system.all, "status"] as const,
+    capabilities: () => [...queryKeys.system.all, "capabilities"] as const,
   },
 
   // Auth query keys
   auth: {
     all: ["auth"] as const,
     settings: () => [...queryKeys.auth.all, "settings"] as const,
+    rolesAll: () => [...queryKeys.auth.all, "roles"] as const,
+    roles: (organizationId: string | null) =>
+      [...queryKeys.auth.rolesAll(), organizationId] as const,
   },
 
   // Users
@@ -172,14 +190,19 @@ export const queryKeys = {
       [...queryKeys.organizations.all, "list", filters] as const,
     detail: (id: string) =>
       [...queryKeys.organizations.all, "detail", id] as const,
+    usersAll: () => [...queryKeys.organizations.all, "users"] as const,
     users: (orgId: string) =>
-      [...queryKeys.organizations.all, "users", orgId] as const,
+      [...queryKeys.organizations.usersAll(), orgId] as const,
     userDetail: (orgId: string, userId: string) =>
-      [...queryKeys.organizations.all, "users", orgId, userId] as const,
+      [...queryKeys.organizations.users(orgId), userId] as const,
   },
 
-  // User Organizations
-  userOrganizations: (userId: string) => ["userOrganizations", userId] as const,
+  // The organizations each user belongs to
+  userOrganizations: {
+    all: ["userOrganizations"] as const,
+    list: (userId: string) =>
+      [...queryKeys.userOrganizations.all, userId] as const,
+  },
 
   // API Keys
   apiKeys: {
@@ -221,14 +244,13 @@ export const queryKeys = {
       [...queryKeys.blueprints.all, "detail", id] as const,
     deviceModelDetail: (id: string) =>
       [...queryKeys.blueprints.all, "deviceModel", id] as const,
+    manufacturerDetail: (id: string) =>
+      [...queryKeys.blueprints.all, "manufacturer", id] as const,
+    modelSnapshotCounts: () =>
+      [...queryKeys.blueprints.all, "modelSnapshotCount"] as const,
     modelSnapshotCount: (deviceModelId: string) =>
-      [
-        ...queryKeys.blueprints.all,
-        "modelSnapshotCount",
-        deviceModelId,
-      ] as const,
+      [...queryKeys.blueprints.modelSnapshotCounts(), deviceModelId] as const,
   },
 } as const;
 
 // Type for query keys
-export type QueryKeys = typeof queryKeys;

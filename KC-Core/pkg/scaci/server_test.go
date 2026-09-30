@@ -15,6 +15,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -38,7 +40,7 @@ func testLogger() logger.Logger {
 
 // TestSendPingResponseCommandMismatch verifies §3.4.2 command validation.
 func TestSendPingResponseCommandMismatch(t *testing.T) {
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry()}
 	conn := &mockConn{}
 	session := &Session{}
 
@@ -53,7 +55,7 @@ func TestSendPingResponseCommandMismatch(t *testing.T) {
 
 // TestSendRegisterResponseCommandMismatch verifies §3.6.2 command validation.
 func TestSendRegisterResponseCommandMismatch(t *testing.T) {
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry()}
 	conn := &mockConn{}
 	session := &Session{}
 
@@ -68,7 +70,7 @@ func TestSendRegisterResponseCommandMismatch(t *testing.T) {
 
 // TestSendDeregisterResponseCommandMismatch verifies §3.7.2 command validation.
 func TestSendDeregisterResponseCommandMismatch(t *testing.T) {
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry()}
 	conn := &mockConn{}
 	session := &Session{}
 
@@ -83,7 +85,7 @@ func TestSendDeregisterResponseCommandMismatch(t *testing.T) {
 
 // TestSendULDataCompleteCommandMismatch verifies §3.8.3 command validation.
 func TestSendULDataCompleteCommandMismatch(t *testing.T) {
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry()}
 	conn := &mockConn{}
 	session := &Session{}
 
@@ -99,7 +101,7 @@ func TestSendULDataCompleteCommandMismatch(t *testing.T) {
 // TestSendULDataTransmitResponseCommandMismatch verifies §3.9.2 CommandType validation.
 // Note: ULDataTransmitResponse is a mioty type alias using CommandType (not Command).
 func TestSendULDataTransmitResponseCommandMismatch(t *testing.T) {
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry()}
 	conn := &mockConn{}
 	session := &Session{}
 
@@ -115,7 +117,7 @@ func TestSendULDataTransmitResponseCommandMismatch(t *testing.T) {
 // TestSendDLDataQueueResponseCommandMismatch verifies §3.10.2 CommandType validation.
 // Note: DLDataQueueResponse is a mioty type alias using CommandType (not Command).
 func TestSendDLDataQueueResponseCommandMismatch(t *testing.T) {
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry()}
 	conn := &mockConn{}
 	session := &Session{}
 
@@ -130,7 +132,7 @@ func TestSendDLDataQueueResponseCommandMismatch(t *testing.T) {
 
 // TestSendDLDataRevokeResponseCommandMismatch verifies §3.11.2 command validation.
 func TestSendDLDataRevokeResponseCommandMismatch(t *testing.T) {
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry()}
 	conn := &mockConn{}
 	session := &Session{}
 
@@ -145,7 +147,7 @@ func TestSendDLDataRevokeResponseCommandMismatch(t *testing.T) {
 
 // TestSendDLDataResultCompleteCommandMismatch verifies §3.12.3 command validation.
 func TestSendDLDataResultCompleteCommandMismatch(t *testing.T) {
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry()}
 	conn := &mockConn{}
 	session := &Session{}
 
@@ -168,104 +170,52 @@ func TestSendDLDataResultCompleteCommandMismatch(t *testing.T) {
 // tested, and nil for parameters checked AFTER, to isolate the validation.
 // ============================================================================
 
-// TestNewServer_NilCfg verifies constructor rejects nil config.
-func TestNewServer_NilCfg(t *testing.T) {
-	// cfg is first validation - all other params can be nil
-	_, err := NewServer(nil, testLogger(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil cfg")
-	assert.Contains(t, err.Error(), "cfg is required")
+// newServerDeps returns a dependency set with the first n entries of the
+// constructor's presence order populated, so each test names the first gap.
+func newServerDeps(n int) Dependencies {
+	deps := Dependencies{Clock: clock.SystemClock{}}
+	fill := []func(*Dependencies){
+		func(d *Dependencies) { d.Registry = newTestRegistry(nil, nil) },
+		func(d *Dependencies) { d.Operations = &mockOperationRepoStub{} },
+		func(d *Dependencies) { d.Handshake = &MockHandshakeService{} },
+		func(d *Dependencies) { d.Endpoints = &MockEndpointService{} },
+		func(d *Dependencies) { d.UL = &MockULService{} },
+		func(d *Dependencies) { d.DL = &MockDLService{} },
+	}
+	for k := 0; k < n && k < len(fill); k++ {
+		fill[k](&deps)
+	}
+	return deps
 }
 
-// TestNewServer_NilLogger verifies constructor rejects nil logger.
-func TestNewServer_NilLogger(t *testing.T) {
+func TestNewServer_RequiredDependencies(t *testing.T) {
 	cfg := &Config{ListenAddr: ":5001"}
-	// logger is second validation - provide valid cfg, nil for rest
-	_, err := NewServer(cfg, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil logger")
-	assert.Contains(t, err.Error(), "logger is required")
+	cases := []struct {
+		name    string
+		cfg     *Config
+		log     logger.Logger
+		deps    Dependencies
+		message string
+	}{
+		{"nil cfg", nil, testLogger(), newServerDeps(0), "cfg is required"},
+		{"nil logger", cfg, nil, newServerDeps(0), "logger is required"},
+		{"nil sessionRegistry", cfg, testLogger(), newServerDeps(0), "sessionRegistry is required"},
+		{"nil operationRepo", cfg, testLogger(), newServerDeps(1), "operationRepo is required"},
+		{"nil handshakeSvc", cfg, testLogger(), newServerDeps(2), "handshakeSvc is required"},
+		{"nil endpointSvc", cfg, testLogger(), newServerDeps(3), "endpointSvc is required"},
+		{"nil ulSvc", cfg, testLogger(), newServerDeps(4), "ulSvc is required"},
+		{"nil dlSvc", cfg, testLogger(), newServerDeps(5), "dlSvc is required"},
+		{"nil statusSvc", cfg, testLogger(), newServerDeps(6), "statusSvc is required"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewServer(tc.cfg, tc.log, tc.deps)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.message)
+		})
+	}
 }
 
-// TestNewServer_NilSessionRepo verifies constructor rejects nil sessionRepo.
-func TestNewServer_NilSessionRepo(t *testing.T) {
-	cfg := &Config{ListenAddr: ":5001"}
-	// sessionRepo is third validation
-	_, err := NewServer(cfg, testLogger(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil sessionRepo")
-	assert.Contains(t, err.Error(), "sessionRepo is required")
-}
-
-// TestNewServer_NilOperationRepo verifies constructor rejects nil operationRepo.
-func TestNewServer_NilOperationRepo(t *testing.T) {
-	cfg := &Config{ListenAddr: ":5001"}
-	mockSessionRepo := &mockSessionRepoStub{}
-	// operationRepo is fourth validation
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil operationRepo")
-	assert.Contains(t, err.Error(), "operationRepo is required")
-}
-
-// TestNewServer_NilHandshakeSvc verifies constructor rejects nil handshakeSvc.
-func TestNewServer_NilHandshakeSvc(t *testing.T) {
-	cfg := &Config{ListenAddr: ":5001"}
-	mockSessionRepo := &mockSessionRepoStub{}
-	mockOpRepo := &mockOperationRepoStub{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil handshakeSvc")
-	assert.Contains(t, err.Error(), "handshakeSvc is required")
-}
-
-// TestNewServer_NilEndpointSvc verifies constructor rejects nil endpointSvc.
-func TestNewServer_NilEndpointSvc(t *testing.T) {
-	cfg := &Config{ListenAddr: ":5001"}
-	mockSessionRepo := &mockSessionRepoStub{}
-	mockOpRepo := &mockOperationRepoStub{}
-	mockHandshake := &MockHandshakeService{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil endpointSvc")
-	assert.Contains(t, err.Error(), "endpointSvc is required")
-}
-
-// TestNewServer_NilULSvc verifies constructor rejects nil ulSvc.
-func TestNewServer_NilULSvc(t *testing.T) {
-	cfg := &Config{ListenAddr: ":5001"}
-	mockSessionRepo := &mockSessionRepoStub{}
-	mockOpRepo := &mockOperationRepoStub{}
-	mockHandshake := &MockHandshakeService{}
-	mockEndpoint := &MockEndpointService{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil ulSvc")
-	assert.Contains(t, err.Error(), "ulSvc is required")
-}
-
-// TestNewServer_NilDLSvc verifies constructor rejects nil dlSvc (§3.8 revocation).
-func TestNewServer_NilDLSvc(t *testing.T) {
-	cfg := &Config{ListenAddr: ":5001"}
-	mockSessionRepo := &mockSessionRepoStub{}
-	mockOpRepo := &mockOperationRepoStub{}
-	mockHandshake := &MockHandshakeService{}
-	mockEndpoint := &MockEndpointService{}
-	mockUL := &MockULService{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, mockUL, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil dlSvc")
-	assert.Contains(t, err.Error(), "dlSvc is required")
-}
-
-// TestNewServer_NilStatusSvc verifies constructor rejects nil statusSvc.
-func TestNewServer_NilStatusSvc(t *testing.T) {
-	cfg := &Config{ListenAddr: ":5001"}
-	mockSessionRepo := &mockSessionRepoStub{}
-	mockOpRepo := &mockOperationRepoStub{}
-	mockHandshake := &MockHandshakeService{}
-	mockEndpoint := &MockEndpointService{}
-	mockUL := &MockULService{}
-	mockDL := &MockDLService{}
-	_, err := NewServer(cfg, testLogger(), mockSessionRepo, mockOpRepo, mockHandshake, mockEndpoint, mockUL, mockDL, nil, nil, nil, nil, nil, nil, nil, nil)
-	require.Error(t, err, "NewServer should reject nil statusSvc")
-	assert.Contains(t, err.Error(), "statusSvc is required")
-}
-
-// Minimal stubs for the trailing constructor dependencies so each nil check
-// past statusSvc can be isolated.
 type stubOrgDirectory struct{}
 
 func (stubOrgDirectory) GetDefaultOrgForTenant(_ context.Context, _ int64) (uuid.UUID, error) {
@@ -282,20 +232,39 @@ func (stubEndpointPropagator) TriggerEndpointPropagate(_ context.Context, _ int6
 	return nil
 }
 
-// newServerArgsThroughPersistence returns the valid leading arguments up to
-// and including sessionPersistence for the trailing nil-check tests.
-func newServerThroughPersistence(orgResolver OrganizationDirectory, snapshot SessionSnapshotSource, propagator EndpointPropagator, recorder ErrorRecorder) (*Server, error) {
-	cfg := &Config{ListenAddr: ":5001"}
-	return NewServer(cfg, testLogger(),
-		&mockSessionRepoStub{}, &mockOperationRepoStub{},
-		&MockHandshakeService{}, &MockEndpointService{}, &MockULService{}, &MockDLService{},
-		&MockStatusService{}, &MockSessionValidator{}, &MockOperationRecorder{}, &MockSessionPersistence{},
-		orgResolver, snapshot, propagator, recorder)
+// newServerThroughPersistence builds a dependency set complete up to and
+// including sessionPersistence for the trailing nil-check tests.
+func newServerThroughPersistence(orgResolver OrganizationDirectory, snapshot SessionSnapshotSource, propagator EndpointPropagator, recorder ErrorRecorder, events SessionEventStore) (*Server, error) {
+	return newServerWithConfig(&Config{ListenAddr: ":5001", PlatformTenantID: platformTenant}, orgResolver, snapshot, propagator, recorder, events)
+}
+
+// newServerWithConfig builds a server over cfg with a dependency set
+// complete up to and including sessionPersistence.
+func newServerWithConfig(cfg *Config, orgResolver OrganizationDirectory, snapshot SessionSnapshotSource, propagator EndpointPropagator, recorder ErrorRecorder, events SessionEventStore) (*Server, error) {
+	return NewServer(cfg, testLogger(), Dependencies{
+		Registry:     newTestRegistry(nil, nil),
+		Operations:   &mockOperationRepoStub{},
+		Handshake:    &MockHandshakeService{},
+		Endpoints:    &MockEndpointService{},
+		UL:           &MockULService{},
+		DL:           &MockDLService{},
+		Status:       &MockStatusService{},
+		Validator:    &MockSessionValidator{},
+		Recorder:     &MockOperationRecorder{},
+		Persistence:  &MockSessionPersistence{},
+		OrgDirectory: orgResolver,
+		Snapshots:    snapshot,
+		Propagation:  propagator,
+		Errors:       recorder,
+		Clock:        clock.SystemClock{},
+
+		SessionEvents: events,
+	})
 }
 
 // TestNewServer_NilOrgResolver verifies constructor rejects nil orgResolver.
 func TestNewServer_NilOrgResolver(t *testing.T) {
-	_, err := newServerThroughPersistence(nil, nil, nil, nil)
+	_, err := newServerThroughPersistence(nil, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil orgResolver")
 	assert.Contains(t, err.Error(), "orgResolver is required")
 }
@@ -303,21 +272,21 @@ func TestNewServer_NilOrgResolver(t *testing.T) {
 // TestNewServer_NilSessionSnapshotProvider verifies constructor rejects nil
 // sessionSnapshotProvider.
 func TestNewServer_NilSessionSnapshotProvider(t *testing.T) {
-	_, err := newServerThroughPersistence(stubOrgDirectory{}, nil, nil, nil)
+	_, err := newServerThroughPersistence(stubOrgDirectory{}, nil, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil sessionSnapshotProvider")
 	assert.Contains(t, err.Error(), "sessionSnapshotProvider is required")
 }
 
 // TestNewServer_NilPropagationSvc verifies constructor rejects nil propagationSvc.
 func TestNewServer_NilPropagationSvc(t *testing.T) {
-	_, err := newServerThroughPersistence(stubOrgDirectory{}, stubSnapshotSource{}, nil, nil)
+	_, err := newServerThroughPersistence(stubOrgDirectory{}, stubSnapshotSource{}, nil, nil, nil)
 	require.Error(t, err, "NewServer should reject nil propagationSvc")
 	assert.Contains(t, err.Error(), "propagationSvc is required")
 }
 
 // TestNewServer_NilErrorRecorder verifies constructor rejects nil errorRecorder.
 func TestNewServer_NilErrorRecorder(t *testing.T) {
-	_, err := newServerThroughPersistence(stubOrgDirectory{}, stubSnapshotSource{}, stubEndpointPropagator{}, nil)
+	_, err := newServerThroughPersistence(stubOrgDirectory{}, stubSnapshotSource{}, stubEndpointPropagator{}, nil, nil)
 	require.Error(t, err, "NewServer should reject nil errorRecorder")
 	assert.Contains(t, err.Error(), "errorRecorder is required")
 }

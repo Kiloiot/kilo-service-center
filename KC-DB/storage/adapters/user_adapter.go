@@ -7,7 +7,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
 )
 
 // UserStoreAdapter adapts postgres.UserRepository to provide
@@ -17,18 +16,15 @@ type UserStoreAdapter struct {
 }
 
 // NewUserStoreAdapter creates a new adapter with the given database connection
-func NewUserStoreAdapter(db *sqlx.DB) *UserStoreAdapter {
-	repo := postgres.NewUserRepository(db)
-	return &UserStoreAdapter{
-		repo: repo.(*postgres.UserRepository),
-	}
+func NewUserStoreAdapter(repo *postgres.UserRepository) *UserStoreAdapter {
+	return &UserStoreAdapter{repo: repo}
 }
 
 // GetByEmail retrieves a user by email address
 func (a *UserStoreAdapter) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	user, err := a.repo.GetByEmail(ctx, email)
 	if err != nil {
-		return nil, fmt.Errorf("user adapter: get_by_email: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUserAdapterGetByEmail, err)
 	}
 	return user, nil
 }
@@ -37,7 +33,7 @@ func (a *UserStoreAdapter) GetByEmail(ctx context.Context, email string) (*model
 func (a *UserStoreAdapter) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	user, err := a.repo.GetByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("user adapter: get_by_id: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUserAdapterGetByID, err)
 	}
 	return user, nil
 }
@@ -46,7 +42,7 @@ func (a *UserStoreAdapter) GetByID(ctx context.Context, id uuid.UUID) (*models.U
 func (a *UserStoreAdapter) GetByExternalID(ctx context.Context, externalID string) (*models.User, error) {
 	user, err := a.repo.GetByExternalID(ctx, externalID)
 	if err != nil {
-		return nil, fmt.Errorf("user adapter: get_by_external_id: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUserAdapterGetByExternalID, err)
 	}
 	return user, nil
 }
@@ -54,7 +50,7 @@ func (a *UserStoreAdapter) GetByExternalID(ctx context.Context, externalID strin
 // Create creates a new user
 func (a *UserStoreAdapter) Create(ctx context.Context, user *models.User) error {
 	if err := a.repo.Create(ctx, user); err != nil {
-		return fmt.Errorf("user adapter: create: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUserAdapterCreate, err)
 	}
 	return nil
 }
@@ -62,7 +58,7 @@ func (a *UserStoreAdapter) Create(ctx context.Context, user *models.User) error 
 // Update modifies an existing user
 func (a *UserStoreAdapter) Update(ctx context.Context, user *models.User) error {
 	if err := a.repo.Update(ctx, user); err != nil {
-		return fmt.Errorf("user adapter: update: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUserAdapterUpdate, err)
 	}
 	return nil
 }
@@ -70,7 +66,7 @@ func (a *UserStoreAdapter) Update(ctx context.Context, user *models.User) error 
 // SetPasswordHash updates only the password hash field
 func (a *UserStoreAdapter) SetPasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
 	if err := a.repo.SetPasswordHash(ctx, id, hash); err != nil {
-		return fmt.Errorf("user adapter: set_password_hash: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUserAdapterSetPasswordHash, err)
 	}
 	return nil
 }
@@ -79,7 +75,7 @@ func (a *UserStoreAdapter) SetPasswordHash(ctx context.Context, id uuid.UUID, ha
 func (a *UserStoreAdapter) List(ctx context.Context, limit, offset int) ([]*models.User, error) {
 	users, err := a.repo.List(ctx, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("user adapter: list: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUserAdapterList, err)
 	}
 	return users, nil
 }
@@ -88,7 +84,7 @@ func (a *UserStoreAdapter) List(ctx context.Context, limit, offset int) ([]*mode
 func (a *UserStoreAdapter) Count(ctx context.Context) (int64, error) {
 	count, err := a.repo.Count(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("user adapter: count: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapUserAdapterCount, err)
 	}
 	return count, nil
 }
@@ -96,7 +92,7 @@ func (a *UserStoreAdapter) Count(ctx context.Context) (int64, error) {
 // Delete removes a user by ID
 func (a *UserStoreAdapter) Delete(ctx context.Context, id uuid.UUID) error {
 	if err := a.repo.Delete(ctx, id); err != nil {
-		return fmt.Errorf("user adapter: delete: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUserAdapterDelete, err)
 	}
 	return nil
 }

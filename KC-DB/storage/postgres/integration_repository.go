@@ -4,26 +4,29 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/internal/sqlcleanup"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
 )
 
 // IntegrationRepository implements the IntegrationRepository interface for PostgreSQL (CRUD for API parity)
 type IntegrationRepository struct {
-	db *sqlx.DB
+	clock clock.Clock
+	db    *sqlx.DB
 }
 
 // NewIntegrationRepository creates a new PostgreSQL integration repository
-func NewIntegrationRepository(db *sqlx.DB) interfaces.IntegrationRepository {
-	return &IntegrationRepository{db: db}
+func NewIntegrationRepository(db *sqlx.DB, clk clock.Clock) *IntegrationRepository {
+	return &IntegrationRepository{clock: clk, db: db}
 }
 
 // Create inserts a new integration
-func (r *IntegrationRepository) Create(ctx context.Context, integration *models.Integration) error {
-	now := time.Now().UTC()
+func (r *IntegrationRepository) Create(ctx context.Context, integration *models.Integration) (err error) {
+	now := r.clock.Now().UTC()
 	integration.CreatedAt = now
 	integration.UpdatedAt = now
 
@@ -40,13 +43,13 @@ func (r *IntegrationRepository) Create(ctx context.Context, integration *models.
 
 	rows, err := r.db.NamedQueryContext(ctx, query, integration)
 	if err != nil {
-		return fmt.Errorf("create integration: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCreateIntegration, err)
 	}
-	defer rows.Close() //nolint:errcheck // Error from Close() in defer is not actionable
+	defer sqlcleanup.CloseRows(rows, errWrapCreateIntegration, &err)
 
 	if rows.Next() {
 		if err := rows.Scan(&integration.ID); err != nil {
-			return fmt.Errorf("scan integration id: %w", err)
+			return fmt.Errorf("%s: %w", errWrapScanIntegrationID, err)
 		}
 	}
 
@@ -66,9 +69,9 @@ func (r *IntegrationRepository) GetByID(ctx context.Context, id int64, tenantID 
 	err := r.db.GetContext(ctx, &integration, query, id, tenantID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("integration %d: %w", id, interfaces.ErrRecordNotFound)
+			return nil, fmt.Errorf(errFmtIntegration, id, storage.ErrRecordNotFound)
 		}
-		return nil, fmt.Errorf("get integration: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetIntegration, err)
 	}
 
 	return &integration, nil
@@ -83,7 +86,7 @@ func (r *IntegrationRepository) ListByTenant(ctx context.Context, tenantID int64
 	countQuery := `SELECT COUNT(*) FROM integrations WHERE tenant_id = $1`
 	err := r.db.GetContext(ctx, &count, countQuery, tenantID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("count integrations: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountIntegrations, err)
 	}
 
 	// Get paginated results
@@ -98,7 +101,7 @@ func (r *IntegrationRepository) ListByTenant(ctx context.Context, tenantID int64
 
 	err = r.db.SelectContext(ctx, &integrations, query, tenantID, limit, offset)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list integrations: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapListIntegrations, err)
 	}
 
 	return integrations, count, nil
@@ -106,7 +109,7 @@ func (r *IntegrationRepository) ListByTenant(ctx context.Context, tenantID int64
 
 // Update updates an existing integration
 func (r *IntegrationRepository) Update(ctx context.Context, integration *models.Integration) error {
-	integration.UpdatedAt = time.Now().UTC()
+	integration.UpdatedAt = r.clock.Now().UTC()
 
 	query := `
 		UPDATE integrations SET
@@ -121,16 +124,16 @@ func (r *IntegrationRepository) Update(ctx context.Context, integration *models.
 
 	result, err := r.db.NamedExecContext(ctx, query, integration)
 	if err != nil {
-		return fmt.Errorf("update integration: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateIntegration, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("integration %d: %w", integration.ID, interfaces.ErrRecordNotFound)
+		return fmt.Errorf(errFmtIntegration, integration.ID, storage.ErrRecordNotFound)
 	}
 
 	return nil
@@ -142,16 +145,16 @@ func (r *IntegrationRepository) Delete(ctx context.Context, id int64, tenantID i
 
 	result, err := r.db.ExecContext(ctx, query, id, tenantID)
 	if err != nil {
-		return fmt.Errorf("delete integration: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteIntegration, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("integration %d: %w", id, interfaces.ErrRecordNotFound)
+		return fmt.Errorf(errFmtIntegration, id, storage.ErrRecordNotFound)
 	}
 
 	return nil

@@ -1,71 +1,77 @@
 /**
- * Tabbed container for user management:
- * - Tab 0: System Users (existing Users component)
- * - Tab 1: Organization Users (or OrganizationRequired prompt)
+ * User management: System Users and, in the enterprise edition, Organization
+ * Users (or the OrganizationRequired prompt) on tabs selected by the URL.
  *
  * Admin-only page with runtime guard for deep link protection.
  */
 
-import React, { useState } from "react";
+import React, { useId, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 
-import { Box, Button, Tab, Tabs, Typography } from "@mui/material";
+import { Box, Button, Typography } from "@mui/material";
 
 import OrganizationRequired from "@components/common/OrganizationRequired";
+import { TabBar, type TabBarItem } from "@components/common/TabBar";
+import { TabPanel } from "@components/common/TabPanel";
 import { useFeatureFlags } from "@contexts/FeatureFlagContext";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { useCapabilities } from "@hooks/useCapabilities";
-import { ROUTES } from "@constants/app";
+import {
+  FEATURE_FLAG,
+  ROUTES,
+  USERS_VIEW,
+  USERS_VIEW_QUERY_PARAM,
+  type UsersView,
+} from "@constants/app";
 import { USERS_AND_ROLES, USERS_PAGE } from "@constants/messages";
 import { AddIcon } from "@theme/icons";
 
 import OrganizationUsers from "./OrganizationUsers";
 import Users from "./Users";
 
-const TAB_PARAM = "tab";
-const TAB_VALUES = ["system", "organization"] as const;
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`users-tabpanel-${index}`}
-    >
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-    </div>
-  );
+const SYSTEM_TAB: TabBarItem<UsersView> = {
+  value: USERS_VIEW.SYSTEM,
+  label: USERS_AND_ROLES.TABS.SYSTEM_USERS,
 };
 
+const ORGANIZATION_TAB: TabBarItem<UsersView> = {
+  value: USERS_VIEW.ORGANIZATION,
+  label: USERS_AND_ROLES.TABS.ORGANIZATION_USERS,
+};
+
+// Server admins see both views; an organization admin sees only its organization.
+const visibleTabs = (isServerAdmin: boolean) =>
+  isServerAdmin ? [SYSTEM_TAB, ORGANIZATION_TAB] : [ORGANIZATION_TAB];
+
+const activeView = (isServerAdmin: boolean, param: string | null): UsersView =>
+  isServerAdmin && param !== USERS_VIEW.ORGANIZATION
+    ? USERS_VIEW.SYSTEM
+    : USERS_VIEW.ORGANIZATION;
+
+const UsersAndRolesHeader: React.FC<{ onAdd: () => void }> = ({ onAdd }) => (
+  <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+    <Typography variant="h4" component="h1">
+      {USERS_AND_ROLES.TITLE}
+    </Typography>
+    <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd}>
+      {USERS_PAGE.ADD_USER}
+    </Button>
+  </Box>
+);
+
 const UsersAndRoles: React.FC = () => {
+  const tabsId = useId();
   const { isHydrated } = useSession();
-  const { isServerAdmin, isOrgAdmin } = useCapabilities();
+  const { isServerAdmin, isTenantManager } = useCapabilities();
   const { organizationId } = useOrganization();
   const { isEnabled } = useFeatureFlags();
-  const showOrgUsers = isEnabled("enterprise_organizations");
+  const showOrgUsers = isEnabled(FEATURE_FLAG.ENTERPRISE_ORGANIZATIONS);
   const [searchParams, setSearchParams] = useSearchParams();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-  // Derive active tab from URL query param
-  const tabParam = searchParams.get(TAB_PARAM);
-  const defaultTab = 0;
-  const activeTab = isServerAdmin
-    ? tabParam === TAB_VALUES[1]
-      ? 1
-      : tabParam === TAB_VALUES[0]
-        ? 0
-        : defaultTab
-    : 0;
-
   // Runtime guard: requires server admin or org admin
-  if (isHydrated && !isServerAdmin && !isOrgAdmin) {
+  if (isHydrated && !isServerAdmin && !isTenantManager) {
     return <Navigate to={ROUTES.HOME} replace />;
   }
 
@@ -73,96 +79,45 @@ const UsersAndRoles: React.FC = () => {
     return null;
   }
 
+  const systemUsers = (
+    <Users
+      embedded
+      addDialogOpen={addDialogOpen}
+      onAddDialogOpenChange={setAddDialogOpen}
+    />
+  );
+
   // CE: single System Users view, no tabs
   if (!showOrgUsers) {
     return (
       <Box data-testid="users-and-roles-page" sx={{ p: 3, pt: 4 }}>
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          mb={3}
-        >
-          <Typography variant="h4" component="h1">
-            {USERS_AND_ROLES.TITLE}
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setAddDialogOpen(true)}
-          >
-            {USERS_PAGE.ADD_USER}
-          </Button>
-        </Box>
-        <Users
-          embedded
-          addDialogOpen={addDialogOpen}
-          onAddDialogOpenChange={setAddDialogOpen}
-        />
+        <UsersAndRolesHeader onAdd={() => setAddDialogOpen(true)} />
+        {systemUsers}
       </Box>
     );
   }
 
-  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
-    const tabKey = isServerAdmin ? TAB_VALUES[newValue] : TAB_VALUES[1];
-    setSearchParams({ [TAB_PARAM]: tabKey }, { replace: true });
-  };
+  const view = activeView(
+    isServerAdmin,
+    searchParams.get(USERS_VIEW_QUERY_PARAM),
+  );
 
-  // ECE: existing tabbed layout
   return (
     <Box data-testid="users-and-roles-page" sx={{ p: 3, pt: 4 }}>
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={3}
-      >
-        <Typography variant="h4" component="h1">
-          {USERS_AND_ROLES.TITLE}
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setAddDialogOpen(true)}
-        >
-          {USERS_PAGE.ADD_USER}
-        </Button>
-      </Box>
-
-      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          aria-label={USERS_AND_ROLES.ARIA_TABS}
-        >
-          {/* Server admin sees both tabs; org admin sees only Organization Users */}
-          {isServerAdmin && (
-            <Tab
-              label={USERS_AND_ROLES.TABS.SYSTEM_USERS}
-              id="users-tab-0"
-              aria-controls="users-tabpanel-0"
-            />
-          )}
-          <Tab
-            label={USERS_AND_ROLES.TABS.ORGANIZATION_USERS}
-            id="users-tab-1"
-            aria-controls="users-tabpanel-1"
-          />
-        </Tabs>
-      </Box>
-
-      {isServerAdmin && (
-        <TabPanel value={activeTab} index={0}>
-          <Users
-            embedded
-            addDialogOpen={addDialogOpen}
-            onAddDialogOpenChange={setAddDialogOpen}
-          />
-        </TabPanel>
-      )}
-
-      <TabPanel value={activeTab} index={isServerAdmin ? 1 : 0}>
-        {organizationId ? (
+      <UsersAndRolesHeader onAdd={() => setAddDialogOpen(true)} />
+      <TabBar
+        value={view}
+        onChange={(next) =>
+          setSearchParams({ [USERS_VIEW_QUERY_PARAM]: next }, { replace: true })
+        }
+        items={visibleTabs(isServerAdmin)}
+        ariaLabel={USERS_AND_ROLES.ARIA_TABS}
+        idPrefix={tabsId}
+      />
+      <TabPanel idPrefix={tabsId} value={view}>
+        {view === USERS_VIEW.SYSTEM ? (
+          systemUsers
+        ) : organizationId ? (
           <OrganizationUsers
             orgId={organizationId}
             embedded

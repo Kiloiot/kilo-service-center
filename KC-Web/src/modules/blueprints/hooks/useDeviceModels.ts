@@ -5,44 +5,44 @@
  * Uses centralized query keys for cache management.
  */
 
-import type {
-  CreateDeviceModelRequest,
-  UpdateDeviceModelRequest,
-} from "@api-types/api";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { BlueprintScope, UpdateDeviceModelRequest } from "@api-types/api";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
-import { api } from "@services/api";
+import { catalogApi } from "@services/api";
 import { queryKeys } from "@config/query-keys";
+
+import { useCatalogInvalidation } from "./useCatalogInvalidation";
 
 /**
  * Hook to fetch device models for a manufacturer
  */
-export function useDeviceModels(manufacturerId: string | undefined) {
+export function useDeviceModels(
+  manufacturerId: string | undefined,
+  scope?: BlueprintScope,
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
-    queryKey: queryKeys.blueprints.deviceModels(manufacturerId ?? ""),
-    queryFn: () => api.getDeviceModels(manufacturerId!),
-    enabled: !!manufacturerId,
+    queryKey: queryKeys.blueprints.deviceModels(manufacturerId ?? "", scope),
+    queryFn: () => catalogApi.getDeviceModels(manufacturerId!, scope),
+    enabled: !!manufacturerId && (options.enabled ?? true),
   });
 }
 
-/**
- * Hook to create a new device model
- */
-export function useCreateDeviceModel() {
-  const queryClient = useQueryClient();
+export function useDeviceModel(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.blueprints.deviceModelDetail(id ?? ""),
+    queryFn: () => catalogApi.getDeviceModel(id!),
+    enabled: !!id,
+  });
+}
+
+export function useCreateDeviceModelWithBlueprint() {
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
-    mutationFn: ({
-      manufacturerId,
-      data,
-    }: {
-      manufacturerId: string;
-      data: CreateDeviceModelRequest;
-    }) => api.createDeviceModel(manufacturerId, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.deviceModels(variables.manufacturerId),
-      });
-    },
+    mutationFn: (
+      request: Parameters<typeof catalogApi.createDeviceModelWithBlueprint>[0],
+    ) => catalogApi.createDeviceModelWithBlueprint(request),
+    onSuccess: () => invalidateCatalog(),
   });
 }
 
@@ -50,21 +50,16 @@ export function useCreateDeviceModel() {
  * Hook to update a device model
  */
 export function useUpdateDeviceModel() {
-  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
     mutationFn: ({
       id,
       data,
     }: {
       id: string;
-      manufacturerId: string;
       data: UpdateDeviceModelRequest;
-    }) => api.updateDeviceModel(id, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.deviceModels(variables.manufacturerId),
-      });
-    },
+    }) => catalogApi.updateDeviceModel(id, data),
+    onSuccess: () => invalidateCatalog(),
   });
 }
 
@@ -72,14 +67,9 @@ export function useUpdateDeviceModel() {
  * Hook to delete a device model
  */
 export function useDeleteDeviceModel() {
-  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
-    mutationFn: ({ id }: { id: string; manufacturerId: string }) =>
-      api.deleteDeviceModel(id),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.deviceModels(variables.manufacturerId),
-      });
-    },
+    mutationFn: (id: string) => catalogApi.deleteDeviceModel(id),
+    onSuccess: () => invalidateCatalog(),
   });
 }

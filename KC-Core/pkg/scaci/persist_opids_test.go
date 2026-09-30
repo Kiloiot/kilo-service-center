@@ -1,7 +1,7 @@
 // Package scaci provides tests for atomic opId persistence per SCACI §3.2.
 //
 // Coverage:
-//   - persistOpIDsPair helper function
+//   - persistOpIDs helper function
 //   - Atomic persistence of AC and SC operation IDs
 //   - Session ID validation (skip if <= 0)
 //   - Error handling during persistence
@@ -13,16 +13,23 @@ package scaci
 import (
 	"context"
 	"errors"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
+
+// concurrentSettleDelay lets the concurrent persistence goroutines finish before assertions.
+const concurrentSettleDelay = 100 * time.Millisecond
 
 // ============================================================================
 // Mock Session Repository
@@ -31,8 +38,9 @@ import (
 // mockSessionRepository implements interfaces.SCACISessionRepository for testing
 type mockSessionRepository struct {
 	mock.Mock
-	updateCalls []opIDsUpdate // Track calls for verification
-	mu          sync.Mutex
+	updateCalls  []opIDsUpdate // Track calls for verification
+	disconnected []int64       // Session IDs marked disconnected
+	mu           sync.Mutex
 }
 
 // opIDsUpdate captures a call to UpdateOperationIDs
@@ -56,44 +64,48 @@ func (m *mockSessionRepository) UpdateOperationIDs(ctx context.Context, tenantID
 	return args.Error(0)
 }
 
+func (m *mockSessionRepository) MarkSessionDisconnected(_ context.Context, _, sessionID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.disconnected = append(m.disconnected, sessionID)
+	return nil
+}
+
+func (m *mockSessionRepository) disconnectedSessions() []int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]int64(nil), m.disconnected...)
+}
+
 // Implement remaining interface methods with no-op stubs
 func (m *mockSessionRepository) CreateSession(_ context.Context, _ *models.SCACISessionCreateRequest) (*models.SCACISession, error) {
 	return nil, nil
 }
+
 func (m *mockSessionRepository) GetSessionByID(_ context.Context, _, _ int64) (*models.SCACISession, error) {
 	return nil, nil
 }
-func (m *mockSessionRepository) GetActiveSessionByAcEUI(_ context.Context, _ int64, _ [8]byte) (*models.SCACISession, error) {
+
+func (m *mockSessionRepository) GetSessionByAcUUID(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISession, error) {
 	return nil, nil
 }
-func (m *mockSessionRepository) GetSessionByAcUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
-	return nil, nil
-}
+
 func (m *mockSessionRepository) GetSessionByScUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
 	return nil, nil
 }
-func (m *mockSessionRepository) UpdateSession(_ context.Context, _, _ int64, _ *models.SCACISessionUpdateRequest) error {
-	return nil
-}
-func (m *mockSessionRepository) UpdateHeartbeat(_ context.Context, _, _ int64) error { return nil }
-func (m *mockSessionRepository) DisconnectSession(_ context.Context, _, _ int64) error {
-	return nil
-}
+
+func (m *mockSessionRepository) UpdateHeartbeat(_ context.Context, _, _ int64) error  { return nil }
 func (m *mockSessionRepository) TerminateSession(_ context.Context, _, _ int64) error { return nil }
-func (m *mockSessionRepository) TerminateAllSessions(_ context.Context, _ int64, _ [8]byte) error {
-	return nil
-}
 func (m *mockSessionRepository) ListSessions(_ context.Context, _ *models.SCACISessionFilter) ([]*models.SCACISession, int64, error) {
 	return nil, 0, nil
 }
+
 func (m *mockSessionRepository) GetSessionStatistics(_ context.Context, _ int64) (*models.SCACISessionStatistics, error) {
 	return nil, nil
 }
-func (m *mockSessionRepository) CheckSessionResumable(_ context.Context, _ int64, _ [16]byte, _, _ int64) (*models.SCACISessionResumptionInfo, error) {
+
+func (m *mockSessionRepository) CheckSessionResumable(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 	return nil, nil
-}
-func (m *mockSessionRepository) CleanupExpiredSessions(_ context.Context, _ int64) (int64, error) {
-	return 0, nil
 }
 
 // getUpdateCalls returns a copy of the update calls (thread-safe)
@@ -109,11 +121,15 @@ func (m *mockSessionRepository) getUpdateCalls() []opIDsUpdate {
 // Test Server Factory
 // ============================================================================
 
-func newTestServerWithSessionRepo(repo interfaces.SCACISessionRepository) *Server {
+func newTestServerWithSessionRepo(repo sessionRowRepo) *Server {
 	log := logger.NewNop()
 	return &Server{
-		logger:      log,
-		sessionRepo: repo,
+		registry:           newTestRegistryWithRows(nil, newHolderFake(), sessionRowsOver{repo: repo}),
+		codec:              testFrameCodec,
+		commands:           mustTestCommandRegistry(),
+		clock:              clock.SystemClock{},
+		logger:             log,
+		sessionPersistence: sessionRowsOver{repo: repo},
 		config: &Config{
 			LogPingOperations: true, // Enable for coverage
 		},
@@ -121,193 +137,184 @@ func newTestServerWithSessionRepo(repo interfaces.SCACISessionRepository) *Serve
 }
 
 // ============================================================================
-// persistOpIDsPair Tests
+// persistOpIDs Tests
 // ============================================================================
 
-// TestPersistOpIDsPair_ValidSession verifies atomic persistence for valid session
-func TestPersistOpIDsPair_ValidSession(t *testing.T) {
+const (
+	persistTestSessionID = int64(1)
+	persistTestTenantID  = int64(100)
+	persistTestAcOpID    = int64(42)
+	persistTestScOpID    = int64(-10)
+)
+
+func persistTestSession(id int64) *Session {
+	return withOpIDs(&Session{ID: id, TenantID: persistTestTenantID}, OpIDPair{AC: persistTestAcOpID, SC: persistTestScOpID})
+}
+
+// The counter pair is written as one snapshot of the session (SCACI §3.2).
+func TestPersistOpIDs_WritesTheSessionSnapshot(t *testing.T) {
 	mockRepo := new(mockSessionRepository)
 	server := newTestServerWithSessionRepo(mockRepo)
+	mockRepo.On("UpdateOperationIDs", mock.Anything, persistTestTenantID, persistTestSessionID, persistTestAcOpID, persistTestScOpID).Return(nil)
 
-	// Setup mock expectation
-	mockRepo.On("UpdateOperationIDs", mock.Anything, int64(100), int64(1), int64(42), int64(-10)).Return(nil)
+	server.persistOpIDs(persistTestSession(persistTestSessionID))
+	server.persistTasks.wg.Wait()
 
-	// Call persistOpIDsPair
-	server.persistOpIDsPair(1, 100, 42, -10)
-
-	// Wait for async goroutine to complete
-	time.Sleep(50 * time.Millisecond)
-
-	// Verify the call was made
 	mockRepo.AssertExpectations(t)
+	assert.Len(t, mockRepo.getUpdateCalls(), 1)
+}
 
-	// Verify captured call values
-	calls := mockRepo.getUpdateCalls()
-	assert.Len(t, calls, 1, "Should have exactly one UpdateOperationIDs call")
-	if len(calls) == 1 {
-		assert.Equal(t, int64(100), calls[0].TenantID)
-		assert.Equal(t, int64(1), calls[0].SessionID)
-		assert.Equal(t, int64(42), calls[0].AcOpID)
-		assert.Equal(t, int64(-10), calls[0].ScOpID)
+func TestPersistOpIDs_SkipsUnpersistedSessions(t *testing.T) {
+	for _, id := range []int64{0, -1} {
+		mockRepo := new(mockSessionRepository)
+		server := newTestServerWithSessionRepo(mockRepo)
+
+		server.persistOpIDs(persistTestSession(id))
+		server.persistTasks.wg.Wait()
+
+		assert.Empty(t, mockRepo.getUpdateCalls(), "session %d has no row to update", id)
 	}
 }
 
-// TestPersistOpIDsPair_SkipsZeroSessionID verifies no call for sessionID <= 0
-func TestPersistOpIDsPair_SkipsZeroSessionID(t *testing.T) {
+func TestPersistOpIDs_ToleratesStoreFailure(t *testing.T) {
 	mockRepo := new(mockSessionRepository)
 	server := newTestServerWithSessionRepo(mockRepo)
+	mockRepo.On("UpdateOperationIDs", mock.Anything, persistTestTenantID, persistTestSessionID, persistTestAcOpID, persistTestScOpID).
+		Return(errDatabaseConnectionLost)
 
-	// Call with zero sessionID - should skip persistence
-	server.persistOpIDsPair(0, 100, 42, -10)
-
-	// Wait briefly to ensure no async call
-	time.Sleep(50 * time.Millisecond)
-
-	// Verify no calls were made
-	mockRepo.AssertNotCalled(t, "UpdateOperationIDs")
-	calls := mockRepo.getUpdateCalls()
-	assert.Len(t, calls, 0, "Should have no UpdateOperationIDs calls for sessionID=0")
-}
-
-// TestPersistOpIDsPair_SkipsNegativeSessionID verifies no call for negative sessionID
-func TestPersistOpIDsPair_SkipsNegativeSessionID(t *testing.T) {
-	mockRepo := new(mockSessionRepository)
-	server := newTestServerWithSessionRepo(mockRepo)
-
-	// Call with negative sessionID - should skip persistence
-	server.persistOpIDsPair(-1, 100, 42, -10)
-
-	// Wait briefly to ensure no async call
-	time.Sleep(50 * time.Millisecond)
-
-	// Verify no calls were made
-	mockRepo.AssertNotCalled(t, "UpdateOperationIDs")
-	calls := mockRepo.getUpdateCalls()
-	assert.Len(t, calls, 0, "Should have no UpdateOperationIDs calls for negative sessionID")
-}
-
-// TestPersistOpIDsPair_HandlesError verifies error doesn't panic
-func TestPersistOpIDsPair_HandlesError(t *testing.T) {
-	mockRepo := new(mockSessionRepository)
-	server := newTestServerWithSessionRepo(mockRepo)
-
-	// Setup mock to return error
-	mockRepo.On("UpdateOperationIDs", mock.Anything, int64(100), int64(1), int64(42), int64(-10)).
-		Return(errors.New("database connection lost"))
-
-	// Call should not panic despite error
-	server.persistOpIDsPair(1, 100, 42, -10)
-
-	// Wait for async goroutine
-	time.Sleep(50 * time.Millisecond)
-
-	// Verify the call was made (even if it failed)
-	mockRepo.AssertExpectations(t)
-}
-
-// TestPersistOpIDsPair_AtomicBehavior verifies both IDs are passed together
-func TestPersistOpIDsPair_AtomicBehavior(t *testing.T) {
-	mockRepo := new(mockSessionRepository)
-	server := newTestServerWithSessionRepo(mockRepo)
-
-	// Test various AC/SC opId combinations
-	testCases := []struct {
-		name      string
-		sessionID int64
-		tenantID  int64
-		acOpId    int64
-		scOpId    int64
-	}{
-		{"AC=1, SC=-1", 1, 100, 1, -1},
-		{"AC=100, SC=-50", 2, 200, 100, -50},
-		{"AC=1000, SC=-999", 3, 300, 1000, -999},
-		{"Large values", 4, 400, 999999, -888888},
-	}
-
-	for i, tc := range testCases {
-		mockRepo.On("UpdateOperationIDs", mock.Anything, tc.tenantID, tc.sessionID, tc.acOpId, tc.scOpId).
-			Return(nil).Once()
-		server.persistOpIDsPair(tc.sessionID, tc.tenantID, tc.acOpId, tc.scOpId)
-
-		// Wait for async completion
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify both values passed atomically
-		calls := mockRepo.getUpdateCalls()
-		assert.GreaterOrEqual(t, len(calls), i+1, "Should have at least %d calls", i+1)
-		if len(calls) > i {
-			call := calls[i]
-			assert.Equal(t, tc.acOpId, call.AcOpID, "%s: AcOpID mismatch", tc.name)
-			assert.Equal(t, tc.scOpId, call.ScOpID, "%s: ScOpID mismatch", tc.name)
-		}
-	}
+	server.persistOpIDs(persistTestSession(persistTestSessionID))
+	server.persistTasks.wg.Wait()
 
 	mockRepo.AssertExpectations(t)
 }
 
-// TestPersistOpIDsPair_ConcurrentCalls verifies thread safety
-func TestPersistOpIDsPair_ConcurrentCalls(t *testing.T) {
-	mockRepo := new(mockSessionRepository)
-	server := newTestServerWithSessionRepo(mockRepo)
+// syncConn is a connection double that accepts concurrent writers.
+type syncConn struct {
+	mockConn
+	mu sync.Mutex
+}
 
-	// Allow any number of calls with any values
-	mockRepo.On("UpdateOperationIDs", mock.Anything, mock.AnythingOfType("int64"),
-		mock.AnythingOfType("int64"), mock.AnythingOfType("int64"), mock.AnythingOfType("int64")).
-		Return(nil)
+func (c *syncConn) Write(b []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(b), nil
+}
 
-	// Launch multiple concurrent calls
+const concurrentOperations = 200
+
+// The connection handler accepts AC operations while broadcasts start SC
+// operations on other goroutines; both counters have one owner, the session,
+// so no update is lost and none races.
+func TestSessionCounters_ConcurrentAcAndScOperations(t *testing.T) {
+	server := newBroadcastULDataServer(nil)
+	server.config = &Config{}
+	conn := &syncConn{}
+	session := activeBroadcastSession(broadcastULDataTestTenant)
+	session.ops.restore(OpIDPair{AC: initialOpIDCounter, SC: initialOpIDCounter})
+	server.registry.sessions = map[net.Conn]*Session{conn: session}
+
 	var wg sync.WaitGroup
-	numCalls := 10
-
-	for i := 0; i < numCalls; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			server.persistOpIDsPair(int64(idx+1), int64(100+idx), int64(idx), int64(-idx))
-		}(i)
-	}
-
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for opID := int64(1); opID <= concurrentOperations; opID++ {
+			sess := session
+			assert.NoError(t, server.routeMessage(conn, &sess, nil, CmdPing, opID, nil))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < concurrentOperations; i++ {
+			assert.NoError(t, server.BroadcastULData(testutil.TestContext(), broadcastULDataTestTenant, broadcastULDataFixture()))
+		}
+	}()
 	wg.Wait()
 
-	// Wait for async goroutines to complete
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify all calls were made
-	calls := mockRepo.getUpdateCalls()
-	assert.Len(t, calls, numCalls, "Should have exactly %d calls", numCalls)
+	assert.Equal(t, OpIDPair{AC: concurrentOperations, SC: -concurrentOperations}, session.OpIDs())
 }
 
-// ============================================================================
-// Integration Tests (Call Sites)
-// ============================================================================
+// Sentinel errors returned by this package; callers match them with errors.Is.
+var (
+	errDatabaseConnectionLost = errors.New("database connection lost")
+)
 
-// TestPersistOpIDsPair_CallSiteDocumentation documents expected call sites
-func TestPersistOpIDsPair_CallSiteDocumentation(t *testing.T) {
-	// This test documents the expected call sites for persistOpIDsPair per SCACI §3.2
-	//
-	// Call sites:
-	// 1. handleMessage (server.go:776) - After AC message processing
-	// 2. initiatePing (server.go:956) - After SC-initiated ping
-	// 3. sendULData (server.go:1143) - After SC sends ULData
-	// 4. sendDLDataResult (server.go:1271) - After SC sends DLDataResult
-	// 5. SendEpStatus (server.go:1422) - After SC sends EpStatus
-	// 6. handleDLDataQueCmp (handler_operations.go:1221) - After DLDataQue complete
-	//
-	// Each call site ensures atomic persistence of both AC and SC opId counters.
+// TestStop_DrainsInFlightPersistence verifies shutdown waits for a detached
+// session-state write instead of cancelling its context: the write launched
+// just before Stop must complete.
+func TestStop_DrainsInFlightPersistence(t *testing.T) {
+	mockRepo := new(mockSessionRepository)
+	server := newTestServerWithSessionRepo(mockRepo)
+	server.shutdown = make(chan struct{})
+	srvCtx, cancel := testutil.TestContextWithCancel()
+	server.ctx = srvCtx
+	server.cancel = cancel
+	persistCtx, persistCancel := context.WithCancel(context.WithoutCancel(srvCtx))
+	server.persistCtx = persistCtx
+	server.persistCancel = persistCancel
 
-	callSites := []string{
-		"handleMessage",      // AC-initiated operations
-		"initiatePing",       // SC-initiated ping
-		"sendULData",         // SC→AC uplink data
-		"sendDLDataResult",   // SC→AC downlink result
-		"SendEpStatus",       // SC→AC endpoint status
-		"handleDLDataQueCmp", // DLDataQue three-way complete
+	release := make(chan struct{})
+	done := make(chan struct{})
+	mockRepo.On("UpdateOperationIDs", mock.Anything, persistTestTenantID, persistTestSessionID, persistTestAcOpID, persistTestScOpID).
+		Run(func(args mock.Arguments) {
+			<-release
+			// The persistence context must still be live even though Stop has
+			// cancelled the main context by now.
+			assert.NoError(t, args.Get(0).(context.Context).Err(),
+				"the persistence context must survive until the drain finishes")
+			close(done)
+		}).Return(nil)
+
+	server.persistOpIDs(persistTestSession(persistTestSessionID))
+	go func() {
+		time.Sleep(concurrentSettleDelay)
+		close(release)
+	}()
+
+	require.NoError(t, server.Stop())
+
+	select {
+	case <-done:
+	default:
+		t.Fatal("Stop returned before the in-flight persistence completed")
+	}
+	assert.Len(t, mockRepo.getUpdateCalls(), 1)
+}
+
+const (
+	lifecycleTestTenant    = int64(100)
+	lifecycleTestAcEui     = uint64(0x70B3D59CD0000A01)
+	lifecycleTestSessionID = int64(41)
+	lifecycleTestNewID     = int64(42)
+)
+
+// Only the connection that still owns a session records its loss: a
+// connection whose session a newer connection took over leaves it alone.
+func TestReleaseConnection_OnlyTheOwningConnectionMarksTheSessionDisconnected(t *testing.T) {
+	repo := new(mockSessionRepository)
+	server := newTestServerWithSessionRepo(repo)
+	oldConn, newConn := &mockConn{}, &mockConn{}
+	server.registry.sessions = map[net.Conn]*Session{
+		oldConn: {ID: lifecycleTestSessionID, TenantID: lifecycleTestTenant, AcEui: lifecycleTestAcEui, State: StateActive},
 	}
 
-	assert.Len(t, callSites, 6, "Should have 6 documented call sites")
+	adopts(testutil.TestContext(), server.registry, newConn, &Session{ID: lifecycleTestNewID, TenantID: lifecycleTestTenant, AcEui: lifecycleTestAcEui, State: StateConnecting})
+	server.registry.release(testutil.TestContext(), oldConn, SessionPersistTimeout)
+	assert.Empty(t, repo.disconnectedSessions(), "the superseded connection no longer owns a session")
 
-	// Verify each is a valid function name (basic sanity check)
-	for _, site := range callSites {
-		assert.NotEmpty(t, site, "Call site name should not be empty")
+	server.registry.release(testutil.TestContext(), newConn, SessionPersistTimeout)
+	assert.Equal(t, []int64{lifecycleTestNewID}, repo.disconnectedSessions())
+	assert.Empty(t, server.registry.sessions)
+}
+
+func TestAdoptSession_KeepsOtherApplicationCentersAndTenants(t *testing.T) {
+	server := newTestServerWithSessionRepo(new(mockSessionRepository))
+	otherAC, otherTenant, newConn := &mockConn{}, &mockConn{}, &mockConn{}
+	server.registry.sessions = map[net.Conn]*Session{
+		otherAC:     {ID: lifecycleTestSessionID, TenantID: lifecycleTestTenant, AcEui: lifecycleTestAcEui + 1},
+		otherTenant: {ID: lifecycleTestSessionID - 1, TenantID: lifecycleTestTenant + 1, AcEui: lifecycleTestAcEui},
 	}
+
+	adopts(testutil.TestContext(), server.registry, newConn, &Session{ID: lifecycleTestNewID, TenantID: lifecycleTestTenant, AcEui: lifecycleTestAcEui})
+
+	assert.Len(t, server.registry.sessions, 3)
 }

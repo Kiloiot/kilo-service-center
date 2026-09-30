@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -16,6 +19,16 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
+
+const (
+	cmdTestPrefix   = "mioty"
+	cmdTestEpEUI    = uint64(0x70b3d59cd00009e6)
+	cmdTestEpEUIHex = "70b3d59cd00009e6"
+	cmdTestTenantID = int64(100)
+	cmdTestQueID    = uint64(9007199254740991)
+)
+
+var errCmdTestCore = errors.New("core unavailable")
 
 // mockDownlinkEnqueuer records EnqueueFromMQTT calls.
 type mockDownlinkEnqueuer struct {
@@ -26,26 +39,16 @@ type mockDownlinkEnqueuer struct {
 }
 
 type enqueueCall struct {
-	Ctx       context.Context
-	TenantID  int64
-	OrgID     *uuid.UUID
-	EpEUI     uint64
-	Payload   []byte
-	Confirmed bool
+	Ctx      context.Context
+	TenantID int64
+	OrgID    *uuid.UUID
+	Request  *mioty.DLDataQueue
 }
 
-func (m *mockDownlinkEnqueuer) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID,
-	epEUI uint64, payload []byte, confirmed bool) (uint64, error) {
+func (m *mockDownlinkEnqueuer) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.calls = append(m.calls, enqueueCall{
-		Ctx:       ctx,
-		TenantID:  tenantID,
-		OrgID:     orgID,
-		EpEUI:     epEUI,
-		Payload:   payload,
-		Confirmed: confirmed,
-	})
+	m.calls = append(m.calls, enqueueCall{Ctx: ctx, TenantID: tenantID, OrgID: orgID, Request: req})
 	return m.returnID, m.returnErr
 }
 
@@ -77,11 +80,18 @@ func (m *mockTenantLookup) LookupTenant(_ context.Context, orgUUID uuid.UUID) (i
 	return 0, nil
 }
 
-// mockCommandPublisher is a minimal Publisher for command handler tests.
+type publishedMessage struct {
+	Topic   string
+	QoS     byte
+	Payload []byte
+}
+
+// mockCommandPublisher is a Publisher that records publishes and replays subscriptions.
 type mockCommandPublisher struct {
 	mu          sync.Mutex
 	subscribers map[string]MessageHandler
 	subCtx      context.Context // captured from Subscribe call
+	published   []publishedMessage
 }
 
 func newMockCommandPublisher() *mockCommandPublisher {
@@ -97,7 +107,11 @@ func (m *mockCommandPublisher) hasSubscribers() bool {
 func (m *mockCommandPublisher) Connect(_ context.Context) error { return nil }
 func (m *mockCommandPublisher) Disconnect(_ context.Context)    {}
 func (m *mockCommandPublisher) IsConnected() bool               { return true }
-func (m *mockCommandPublisher) Publish(_ context.Context, _ string, _ byte, _ bool, _ interface{}) error {
+func (m *mockCommandPublisher) Publish(_ context.Context, topic string, qos byte, _ bool, payload interface{}) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	body, _ := payload.([]byte)
+	m.published = append(m.published, publishedMessage{Topic: topic, QoS: qos, Payload: body})
 	return nil
 }
 func (m *mockCommandPublisher) Unsubscribe(_ context.Context, _ ...string) error { return nil }
@@ -110,11 +124,16 @@ func (m *mockCommandPublisher) Subscribe(ctx context.Context, topic string, _ by
 	return nil
 }
 
+func (m *mockCommandPublisher) messages() []publishedMessage {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]publishedMessage(nil), m.published...)
+}
+
 // simulateMessage simulates a message arriving on the given topic.
 // Uses the subscribe-time context (matching production client.go behavior).
 func (m *mockCommandPublisher) simulateMessage(topic string, payload []byte) {
 	m.mu.Lock()
-	// Find matching handler (exact match or wildcard match)
 	var handler MessageHandler
 	ctx := m.subCtx
 	if ctx == nil {
@@ -153,239 +172,307 @@ func topicMatchesWildcard(pattern, topic string) bool {
 	return true
 }
 
-func buildCommandPayload(data string, confirmed bool) []byte {
-	cmd := commandPayload{Data: data, Confirmed: confirmed}
-	b, _ := json.Marshal(cmd)
-	return b
+// commandFixture drives handleMessage directly with recording collaborators.
+type commandFixture struct {
+	org      uuid.UUID
+	pub      *mockCommandPublisher
+	enqueuer *mockDownlinkEnqueuer
+	lookup   *mockTenantLookup
+	handler  *CommandHandler
+}
+
+func newCommandFixture() *commandFixture {
+	org := uuid.New()
+	f := &commandFixture{
+		org:      org,
+		pub:      newMockCommandPublisher(),
+		enqueuer: &mockDownlinkEnqueuer{returnID: cmdTestQueID},
+		lookup:   &mockTenantLookup{mapping: map[uuid.UUID]int64{org: cmdTestTenantID}},
+	}
+	f.handler = NewCommandHandler(f.pub, f.enqueuer, f.lookup, &MockLogger{}, cmdTestPrefix)
+	return f
+}
+
+func (f *commandFixture) commandTopic() string {
+	return fmt.Sprintf(TopicDeviceCommandDownFormat, cmdTestPrefix, f.org, cmdTestEpEUIHex)
+}
+
+func (f *commandFixture) send(payload string) {
+	f.handler.handleMessage(testutil.TestContext(), f.commandTopic(), []byte(payload))
+}
+
+// outcome returns the single event the command produced and its decoded body.
+func (f *commandFixture) outcome(t *testing.T, eventType string) map[string]interface{} {
+	t.Helper()
+	messages := f.pub.messages()
+	require.Len(t, messages, 1, "every command produces exactly one outcome event")
+	assert.Equal(t, DeviceEventTopic(cmdTestPrefix, f.org.String(), cmdTestEpEUIHex, eventType), messages[0].Topic,
+		"the outcome goes to the queuing organization's topic")
+	assert.Equal(t, byte(EventsQoS), messages[0].QoS)
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(messages[0].Payload, &body))
+	return body
+}
+
+func (f *commandFixture) rejected(t *testing.T, code string) map[string]interface{} {
+	t.Helper()
+	body := f.outcome(t, DeviceEventDownlinkRejected)
+	assert.Equal(t, code, body["code"])
+	assert.NotEmpty(t, body["message"])
+	assert.Equal(t, cmdTestEpEUIHex, body["epEui"])
+	assert.Zero(t, f.enqueuer.callCount(), "a refused command is never queued")
+	return body
+}
+
+func b64(payload []byte) string {
+	return base64.StdEncoding.EncodeToString(payload)
 }
 
 func TestCommandHandler_ValidTopicParsesCorrectly(t *testing.T) {
 	t.Parallel()
 
-	orgUUID := uuid.New()
-	epEUIHex := "70b3d59cd00009e6"
-	topic := "mioty/" + orgUUID.String() + "/device/" + epEUIHex + "/command/down"
-
-	enqueuer := &mockDownlinkEnqueuer{returnID: 42}
-	lookup := &mockTenantLookup{mapping: map[uuid.UUID]int64{orgUUID: 100}}
-	pub := newMockCommandPublisher()
-	log := &MockLogger{}
-
-	handler := NewCommandHandler(pub, enqueuer, lookup, log, "mioty")
-
-	// Start in background, then simulate message
+	f := newCommandFixture()
 	ctx, cancel := context.WithCancel(testutil.TestContext())
 	defer cancel()
-	go handler.Start(ctx)
+	go f.handler.Start(ctx)
+	require.Eventually(t, func() bool { return f.pub.hasSubscribers() }, testTimeout, testPollInterval)
 
-	// Wait for subscription to be registered before simulating
-	require.Eventually(t, func() bool { return pub.hasSubscribers() }, testTimeout, testPollInterval)
+	f.pub.simulateMessage(f.commandTopic(), []byte(`{"data":"`+b64([]byte("hello world"))+`","confirmed":true}`))
+	require.Eventually(t, func() bool { return f.enqueuer.callCount() > 0 }, testTimeout, testPollInterval)
 
-	rawPayload := base64.StdEncoding.EncodeToString([]byte("hello world"))
-	cmdPayload := buildCommandPayload(rawPayload, true)
-	pub.simulateMessage(topic, cmdPayload)
-
-	// Wait for enqueue call
-	require.Eventually(t, func() bool { return enqueuer.callCount() > 0 }, testTimeout, testPollInterval)
-
-	call := enqueuer.lastCall()
-	assert.Equal(t, int64(100), call.TenantID)
-	assert.NotNil(t, call.OrgID)
-	assert.Equal(t, orgUUID, *call.OrgID)
-	assert.Equal(t, uint64(0x70b3d59cd00009e6), call.EpEUI)
-	assert.Equal(t, []byte("hello world"), call.Payload)
-	assert.True(t, call.Confirmed)
+	call := f.enqueuer.lastCall()
+	assert.Equal(t, cmdTestTenantID, call.TenantID)
+	require.NotNil(t, call.OrgID)
+	assert.Equal(t, f.org, *call.OrgID)
+	assert.Equal(t, cmdTestEpEUI, call.Request.EpEui)
+	assert.Equal(t, mioty.DownlinkUserData{[]byte("hello world")}, call.Request.UserData)
+	require.NotNil(t, call.Request.ResponseExp)
+	assert.True(t, *call.Request.ResponseExp)
 }
 
-func TestCommandHandler_InvalidTopicTooFewSegments(t *testing.T) {
+// TestCommandHandler_LegacyCommandBehavesAsBefore pins the original contract:
+// {"data","confirmed"} queues exactly the downlink it always queued, and the
+// only difference is the new downlink_queued event.
+func TestCommandHandler_LegacyCommandBehavesAsBefore(t *testing.T) {
 	t.Parallel()
+	f := newCommandFixture()
 
-	enqueuer := &mockDownlinkEnqueuer{}
-	log := &MockLogger{}
+	f.send(`{"data":"AQIDBA==","confirmed":false}`)
 
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		logger:   log,
-		prefix:   "mioty",
-	}
-
-	// Directly call handleMessage with a bad topic
-	handler.handleMessage(testutil.TestContext(), "mioty/bad", []byte("{}"))
-
-	assert.Equal(t, 0, enqueuer.callCount())
-}
-
-func TestCommandHandler_InvalidOrgUUID(t *testing.T) {
-	t.Parallel()
-
-	enqueuer := &mockDownlinkEnqueuer{}
-	log := &MockLogger{}
-
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		logger:   log,
-		prefix:   "mioty",
-	}
-
-	handler.handleMessage(testutil.TestContext(), "mioty/not-a-uuid/device/70b3d59cd00009e6/command/down", []byte("{}"))
-
-	assert.Equal(t, 0, enqueuer.callCount())
-}
-
-func TestCommandHandler_InvalidHexEUI(t *testing.T) {
-	t.Parallel()
-
-	orgUUID := uuid.New()
-	enqueuer := &mockDownlinkEnqueuer{}
-	log := &MockLogger{}
-
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		logger:   log,
-		prefix:   "mioty",
-	}
-
-	topic := "mioty/" + orgUUID.String() + "/device/not-hex/command/down"
-	handler.handleMessage(testutil.TestContext(), topic, buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test")), false))
-
-	assert.Equal(t, 0, enqueuer.callCount())
-}
-
-func TestCommandHandler_EmptyPayloadRejected(t *testing.T) {
-	t.Parallel()
-
-	orgUUID := uuid.New()
-	enqueuer := &mockDownlinkEnqueuer{}
-	log := &MockLogger{}
-
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		logger:   log,
-		prefix:   "mioty",
-	}
-
-	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
-	handler.handleMessage(testutil.TestContext(), topic, []byte{})
-
-	assert.Equal(t, 0, enqueuer.callCount())
-}
-
-func TestCommandHandler_OversizedRawPayloadRejected(t *testing.T) {
-	t.Parallel()
-
-	orgUUID := uuid.New()
-	enqueuer := &mockDownlinkEnqueuer{}
-	log := &MockLogger{}
-
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		logger:   log,
-		prefix:   "mioty",
-	}
-
-	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
-	oversized := make([]byte, config.MaxMessageSize+1)
-	handler.handleMessage(testutil.TestContext(), topic, oversized)
-
-	assert.Equal(t, 0, enqueuer.callCount())
-}
-
-func TestCommandHandler_DecodedEmptyPayloadRejected(t *testing.T) {
-	t.Parallel()
-
-	orgUUID := uuid.New()
-	enqueuer := &mockDownlinkEnqueuer{}
-	lookup := &mockTenantLookup{mapping: map[uuid.UUID]int64{orgUUID: 1}}
-	log := &MockLogger{}
-
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		lookup:   lookup,
-		logger:   log,
-		prefix:   "mioty",
-	}
-
-	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
-	// Base64 of empty string
-	cmdPayload := buildCommandPayload("", false)
-	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
-
-	assert.Equal(t, 0, enqueuer.callCount())
-}
-
-func TestCommandHandler_DecodedOversizedPayloadRejected(t *testing.T) {
-	t.Parallel()
-
-	orgUUID := uuid.New()
-	enqueuer := &mockDownlinkEnqueuer{}
-	lookup := &mockTenantLookup{mapping: map[uuid.UUID]int64{orgUUID: 1}}
-	log := &MockLogger{}
-
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		lookup:   lookup,
-		logger:   log,
-		prefix:   "mioty",
-	}
-
-	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
-	// Create payload larger than MaxPayloadSize
-	bigData := make([]byte, config.MaxPayloadSize+1)
-	encoded := base64.StdEncoding.EncodeToString(bigData)
-	cmdPayload := buildCommandPayload(encoded, false)
-	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
-
-	assert.Equal(t, 0, enqueuer.callCount())
+	require.Equal(t, 1, f.enqueuer.callCount())
+	falseValue := false
+	assert.Equal(t, &mioty.DLDataQueue{
+		EpEui:       cmdTestEpEUI,
+		UserData:    mioty.DownlinkUserData{{0x01, 0x02, 0x03, 0x04}},
+		ResponseExp: &falseValue,
+	}, f.enqueuer.lastCall().Request, "no optional flag is set unless the command names it")
+	body := f.outcome(t, DeviceEventDownlinkQueued)
+	assert.Equal(t, cmdTestEpEUIHex, body["epEui"])
+	assert.Equal(t, float64(cmdTestQueID), body["queId"], "the queue id is exact for a JavaScript consumer")
+	assert.NotContains(t, body, "ref", "no ref is echoed when the command carried none")
 }
 
 func TestCommandHandler_ConfirmedFlagPropagated(t *testing.T) {
 	t.Parallel()
-
-	orgUUID := uuid.New()
-	enqueuer := &mockDownlinkEnqueuer{returnID: 1}
-	lookup := &mockTenantLookup{mapping: map[uuid.UUID]int64{orgUUID: 1}}
-	log := &MockLogger{}
-
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		lookup:   lookup,
-		logger:   log,
-		prefix:   "mioty",
+	for _, confirmed := range []bool{false, true} {
+		f := newCommandFixture()
+		f.send(fmt.Sprintf(`{"data":"dGVzdA==","confirmed":%t}`, confirmed))
+		require.Equal(t, 1, f.enqueuer.callCount())
+		require.NotNil(t, f.enqueuer.lastCall().Request.ResponseExp)
+		assert.Equal(t, confirmed, *f.enqueuer.lastCall().Request.ResponseExp)
 	}
-
-	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
-
-	// Test confirmed=false
-	cmdPayload := buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test")), false)
-	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
-	require.Equal(t, 1, enqueuer.callCount())
-	assert.False(t, enqueuer.lastCall().Confirmed)
-
-	// Test confirmed=true
-	cmdPayload = buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test2")), true)
-	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
-	require.Equal(t, 2, enqueuer.callCount())
-	assert.True(t, enqueuer.lastCall().Confirmed)
 }
 
-func TestCommandHandler_NilOrgUUIDRejected(t *testing.T) {
+func TestCommandHandler_OptionalQueueFieldsReachTheCore(t *testing.T) {
 	t.Parallel()
+	f := newCommandFixture()
 
-	enqueuer := &mockDownlinkEnqueuer{}
-	log := &MockLogger{}
+	f.send(`{"data":"AQ==","prio":2.5,"format":7,"responsePrio":true,"dlWindReq":true,"expOnly":true,"dlRxStatQry":true}`)
 
-	handler := &CommandHandler{
-		enqueuer: enqueuer,
-		logger:   log,
-		prefix:   "mioty",
+	require.Equal(t, 1, f.enqueuer.callCount())
+	req := f.enqueuer.lastCall().Request
+	require.NotNil(t, req.Prio)
+	assert.Equal(t, float32(2.5), *req.Prio)
+	require.NotNil(t, req.Format)
+	assert.Equal(t, uint8(7), *req.Format)
+	for name, flag := range map[string]*bool{
+		"responsePrio": req.ResponsePrio, "dlWindReq": req.DlWindReq, "expOnly": req.ExpOnly, "dlRxStatQry": req.DlRxStatQry,
+	} {
+		require.NotNil(t, flag, name)
+		assert.True(t, *flag, name)
 	}
+	f.outcome(t, DeviceEventDownlinkQueued)
+}
 
-	// uuid.Nil should be rejected
-	topic := "mioty/" + uuid.Nil.String() + "/device/70b3d59cd00009e6/command/down"
-	cmdPayload := buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test")), false)
-	handler.handleMessage(testutil.TestContext(), topic, cmdPayload)
+func TestCommandHandler_CounterDependentEntries(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
 
-	assert.Equal(t, 0, enqueuer.callCount())
+	f.send(`{"entries":[{"packetCnt":10,"data":"AQ=="},{"packetCnt":11,"data":"Ag=="}]}`)
+
+	require.Equal(t, 1, f.enqueuer.callCount())
+	req := f.enqueuer.lastCall().Request
+	assert.True(t, req.CntDepend)
+	assert.Equal(t, []uint32{10, 11}, req.PacketCnt)
+	assert.Equal(t, mioty.DownlinkUserData{{0x01}, {0x02}}, req.UserData)
+	f.outcome(t, DeviceEventDownlinkQueued)
+}
+
+func TestCommandHandler_EmptyDataQueuesAPureAcknowledgement(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+
+	f.send(`{"data":"","confirmed":false}`)
+
+	require.Equal(t, 1, f.enqueuer.callCount(), "an empty payload is a pure acknowledgement downlink (BSSCI §3.12)")
+	req := f.enqueuer.lastCall().Request
+	require.Len(t, req.UserData, 1)
+	assert.Empty(t, req.UserData[0])
+	assert.False(t, req.CntDepend)
+	f.outcome(t, DeviceEventDownlinkQueued)
+}
+
+func TestCommandHandler_PayloadAtTheRadioLimitIsQueued(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+
+	f.send(`{"data":"` + b64(make([]byte, mioty.MaxDLUserDataBytes)) + `"}`)
+
+	require.Equal(t, 1, f.enqueuer.callCount())
+	f.outcome(t, DeviceEventDownlinkQueued)
+}
+
+func TestCommandHandler_RefEchoedOnEveryOutcome(t *testing.T) {
+	t.Parallel()
+	queued := newCommandFixture()
+	queued.send(`{"data":"AQ==","ref":"order-17"}`)
+	assert.Equal(t, "order-17", queued.outcome(t, DeviceEventDownlinkQueued)["ref"])
+
+	rejected := newCommandFixture()
+	rejected.send(`{"data":"not base64!","ref":"order-18"}`)
+	assert.Equal(t, "order-18", rejected.rejected(t, RejectCodeInvalidBase64)["ref"])
+
+	wrongType := newCommandFixture()
+	wrongType.send(`{"data":"AQ==","format":300,"ref":"order-19"}`)
+	assert.Equal(t, "order-19", wrongType.rejected(t, RejectCodeInvalidField)["ref"],
+		"the ref survives a field of the wrong type")
+}
+
+func TestCommandHandler_ValidationRefusalsAreReported(t *testing.T) {
+	t.Parallel()
+	tooLarge := b64(make([]byte, mioty.MaxDLUserDataBytes+1))
+	cases := []struct {
+		name    string
+		payload string
+		code    string
+	}{
+		{"empty message", ``, RejectCodeEmptyPayload},
+		{"not JSON", `{"data":`, RejectCodeInvalidJSON},
+		{"JSON that is not an object", `["AQ=="]`, RejectCodeInvalidJSON},
+		{"format beyond 8 bits", `{"data":"AQ==","format":300}`, RejectCodeInvalidField},
+		{"prio that is not a number", `{"data":"AQ==","prio":"high"}`, RejectCodeInvalidField},
+		{"prio beyond single precision", `{"data":"AQ==","prio":1e39}`, RejectCodeInvalidField},
+		{"packet counter beyond 32 bits", `{"entries":[{"packetCnt":4294967296,"data":"AQ=="}]}`, RejectCodeInvalidField},
+		{"no data and no entries", `{"confirmed":true}`, RejectCodeMissingData},
+		{"data and entries", `{"data":"AQ==","entries":[{"packetCnt":1,"data":"AQ=="}]}`, RejectCodeDataWithEntries},
+		{"empty entries", `{"entries":[]}`, RejectCodeEmptyEntries},
+		{"entry without a counter", `{"entries":[{"data":"AQ=="}]}`, RejectCodeMissingPacketCnt},
+		{"repeated counter", `{"entries":[{"packetCnt":3,"data":"AQ=="},{"packetCnt":3,"data":"Ag=="}]}`, RejectCodeDuplicatePacketCnt},
+		{"data that is not base64", `{"data":"%%%"}`, RejectCodeInvalidBase64},
+		{"entry that is not base64", `{"entries":[{"packetCnt":1,"data":"%%%"}]}`, RejectCodeInvalidBase64},
+		{"data beyond the radio limit", `{"data":"` + tooLarge + `"}`, RejectCodePayloadTooLarge},
+		{"entry beyond the radio limit", `{"entries":[{"packetCnt":1,"data":"` + tooLarge + `"}]}`, RejectCodePayloadTooLarge},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newCommandFixture()
+			f.send(tc.payload)
+			f.rejected(t, tc.code)
+		})
+	}
+}
+
+func TestCommandHandler_OversizedMessageIsReported(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+
+	f.handler.handleMessage(testutil.TestContext(), f.commandTopic(), make([]byte, config.MaxMessageSize+1))
+
+	f.rejected(t, RejectCodeMessageTooLarge)
+}
+
+func TestCommandHandler_UnresolvedOrganizationIsReported(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+	f.lookup.returnErr = errCmdTestCore
+
+	f.send(`{"data":"AQ==","ref":"order-20"}`)
+
+	assert.Equal(t, "order-20", f.rejected(t, RejectCodeOrgUnresolved)["ref"])
+}
+
+func TestCommandHandler_CoreRefusalIsReportedWithItsCode(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+	f.enqueuer.returnErr = fmt.Errorf("%w: %w", &DownlinkRefusal{Code: "scaci.error.endpoint_not_found", Message: "Endpoint not found"}, errCmdTestCore)
+
+	f.send(`{"data":"AQ==","ref":"order-21"}`)
+
+	require.Equal(t, 1, f.enqueuer.callCount())
+	messages := f.pub.messages()
+	require.Len(t, messages, 1)
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(messages[0].Payload, &body))
+	assert.Equal(t, DeviceEventTopic(cmdTestPrefix, f.org.String(), cmdTestEpEUIHex, DeviceEventDownlinkRejected), messages[0].Topic)
+	assert.Equal(t, "scaci.error.endpoint_not_found", body["code"])
+	assert.Equal(t, "Endpoint not found", body["message"])
+	assert.Equal(t, "order-21", body["ref"])
+}
+
+func TestCommandHandler_UnnamedCoreFailureIsReported(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+	f.enqueuer.returnErr = errCmdTestCore
+
+	f.send(`{"data":"AQ=="}`)
+
+	messages := f.pub.messages()
+	require.Len(t, messages, 1)
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(messages[0].Payload, &body))
+	assert.Equal(t, RejectCodeEnqueueFailed, body["code"])
+	assert.Equal(t, RejectMsgEnqueueFailed, body["message"])
+}
+
+func TestCommandHandler_UppercaseTopicEUIRepliesOnTheCanonicalTopic(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+
+	topic := fmt.Sprintf(TopicDeviceCommandDownFormat, cmdTestPrefix, f.org, strings.ToUpper(cmdTestEpEUIHex))
+	f.handler.handleMessage(testutil.TestContext(), topic, []byte(`{"data":"AQ=="}`))
+
+	f.outcome(t, DeviceEventDownlinkQueued)
+}
+
+func TestCommandHandler_UnaddressableCommandsPublishNothing(t *testing.T) {
+	t.Parallel()
+	org := uuid.New().String()
+	cases := map[string]string{
+		"too few segments": cmdTestPrefix + "/bad",
+		"invalid org":      fmt.Sprintf(TopicDeviceCommandDownFormat, cmdTestPrefix, "not-a-uuid", cmdTestEpEUIHex),
+		"nil org":          fmt.Sprintf(TopicDeviceCommandDownFormat, cmdTestPrefix, uuid.Nil, cmdTestEpEUIHex),
+		"invalid EUI":      fmt.Sprintf(TopicDeviceCommandDownFormat, cmdTestPrefix, org, "not-hex"),
+	}
+	for name, topic := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f := newCommandFixture()
+			f.handler.handleMessage(testutil.TestContext(), topic, []byte(`{"data":"AQ=="}`))
+			assert.Zero(t, f.enqueuer.callCount())
+			assert.Empty(t, f.pub.messages(), "without an organization and endpoint there is no topic to answer on")
+		})
+	}
 }
 
 // recordingLogger captures log messages for assertion.
@@ -418,7 +505,7 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 	t.Run("nil client logs error", func(t *testing.T) {
 		t.Parallel()
 		log := &recordingLogger{}
-		h := NewCommandHandler(nil, &mockDownlinkEnqueuer{}, &mockTenantLookup{}, log, "mioty")
+		h := NewCommandHandler(nil, &mockDownlinkEnqueuer{}, &mockTenantLookup{}, log, cmdTestPrefix)
 		ctx, cancel := context.WithCancel(testutil.TestContext())
 		cancel()
 		assert.NotPanics(t, func() { h.Start(ctx) })
@@ -428,7 +515,7 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 	t.Run("nil enqueuer logs error", func(t *testing.T) {
 		t.Parallel()
 		log := &recordingLogger{}
-		h := NewCommandHandler(newMockCommandPublisher(), nil, &mockTenantLookup{}, log, "mioty")
+		h := NewCommandHandler(newMockCommandPublisher(), nil, &mockTenantLookup{}, log, cmdTestPrefix)
 		ctx, cancel := context.WithCancel(testutil.TestContext())
 		cancel()
 		assert.NotPanics(t, func() { h.Start(ctx) })
@@ -438,7 +525,7 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 	t.Run("nil lookup logs error", func(t *testing.T) {
 		t.Parallel()
 		log := &recordingLogger{}
-		h := NewCommandHandler(newMockCommandPublisher(), &mockDownlinkEnqueuer{}, nil, log, "mioty")
+		h := NewCommandHandler(newMockCommandPublisher(), &mockDownlinkEnqueuer{}, nil, log, cmdTestPrefix)
 		ctx, cancel := context.WithCancel(testutil.TestContext())
 		cancel()
 		assert.NotPanics(t, func() { h.Start(ctx) })
@@ -447,7 +534,7 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 
 	t.Run("nil logger silent return", func(t *testing.T) {
 		t.Parallel()
-		h := NewCommandHandler(newMockCommandPublisher(), &mockDownlinkEnqueuer{}, &mockTenantLookup{}, nil, "mioty")
+		h := NewCommandHandler(newMockCommandPublisher(), &mockDownlinkEnqueuer{}, &mockTenantLookup{}, nil, cmdTestPrefix)
 		ctx, cancel := context.WithCancel(testutil.TestContext())
 		cancel()
 		assert.NotPanics(t, func() { h.Start(ctx) })
@@ -459,29 +546,20 @@ func TestCommandHandler_NilDependencies_EarlyReturn(t *testing.T) {
 func TestCommandHandler_ContextPropagation(t *testing.T) {
 	t.Parallel()
 
-	orgUUID := uuid.New()
-	enqueuer := &mockDownlinkEnqueuer{returnID: 1}
-	lookup := &mockTenantLookup{mapping: map[uuid.UUID]int64{orgUUID: 42}}
-	pub := newMockCommandPublisher()
-	log := &MockLogger{}
-	handler := NewCommandHandler(pub, enqueuer, lookup, log, "mioty")
+	f := newCommandFixture()
 
 	// Inject a marker value into the Start context
 	type ctxKey struct{}
 	startCtx, cancel := context.WithCancel(context.WithValue(testutil.TestContext(), ctxKey{}, "test-marker"))
 	defer cancel()
 
-	go handler.Start(startCtx)
-	require.Eventually(t, func() bool { return pub.hasSubscribers() }, testTimeout, testPollInterval)
+	go f.handler.Start(startCtx)
+	require.Eventually(t, func() bool { return f.pub.hasSubscribers() }, testTimeout, testPollInterval)
 
-	// Simulate a valid command message
-	topic := "mioty/" + orgUUID.String() + "/device/70b3d59cd00009e6/command/down"
-	cmdPayload := buildCommandPayload(base64.StdEncoding.EncodeToString([]byte("test")), false)
-	pub.simulateMessage(topic, cmdPayload)
+	f.pub.simulateMessage(f.commandTopic(), []byte(`{"data":"dGVzdA==","confirmed":false}`))
+	require.Eventually(t, func() bool { return f.enqueuer.callCount() > 0 }, testTimeout, testPollInterval)
 
-	require.Eventually(t, func() bool { return enqueuer.callCount() > 0 }, testTimeout, testPollInterval)
-
-	call := enqueuer.lastCall()
+	call := f.enqueuer.lastCall()
 
 	// Assert the context carries the start-time marker (subscribe-time ctx flowed through)
 	assert.Equal(t, "test-marker", call.Ctx.Value(ctxKey{}))
@@ -489,11 +567,11 @@ func TestCommandHandler_ContextPropagation(t *testing.T) {
 	// Assert the handler enriched the context with tenant/org
 	tenantID, err := pkgcontext.GetTenantID(call.Ctx)
 	require.NoError(t, err)
-	assert.Equal(t, int64(42), tenantID)
+	assert.Equal(t, cmdTestTenantID, tenantID)
 
 	orgID, err := pkgcontext.GetOrganizationID(call.Ctx)
 	require.NoError(t, err)
-	assert.Equal(t, orgUUID, orgID)
+	assert.Equal(t, f.org, orgID)
 }
 
 // Test constants for timing
@@ -501,10 +579,6 @@ const (
 	testTimeout      = 2 * 1e9  // 2 seconds in nanoseconds (time.Duration)
 	testPollInterval = 10 * 1e6 // 10 milliseconds
 )
-
-// mockLogger for command handler tests (re-uses the same pattern from client_test.go)
-// Note: MockLogger is already defined in client_test.go within the same package.
-// We rely on it being available since both files are in package mqtt.
 
 // Ensure mockDownlinkEnqueuer implements DownlinkEnqueuer
 var _ DownlinkEnqueuer = (*mockDownlinkEnqueuer)(nil)

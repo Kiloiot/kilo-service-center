@@ -56,18 +56,41 @@ Update `KC-Core/config.yaml` to match your host service addresses. Key settings:
 - `storage.username` and `storage.password` -- database credentials
 - BSSCI and SCACI TLS certificate paths
 
-## Step 4: Build and Start KC-Core
+## Step 4: Create the Master Key
 
-From `KC-Core/`:
+KC-Core and KC-Identity encrypt every endpoint, session, message and TLS key
+at rest under a master key read from the `KILOCENTER_MASTER_KEY` environment
+variable, and refuse to start without it. Generate it once and keep it in a
+file only your user can read:
+
+```bash
+mkdir -p ~/.config/kilocenter
+(umask 077 && openssl rand -hex 32 > ~/.config/kilocenter/master.key)
+```
+
+Export it in every shell (or service unit) that starts KC-Core or KC-Identity;
+both must receive the same value:
+
+```bash
+export KILOCENTER_MASTER_KEY="$(cat ~/.config/kilocenter/master.key)"
+```
+
+Back the file up with your other secrets and never replace it for an existing
+database: if it is lost, the stored keys cannot be decrypted and every
+endpoint and base station has to be provisioned again.
+
+## Step 5: Build and Start KC-Core
+
+From `KC-Core/`, with `KILOCENTER_MASTER_KEY` exported:
 
 ```bash
 go build -o kilocenter ./cmd/kilocenter/
 ./kilocenter -config config.yaml
 ```
 
-## Step 5: Build and Start KC-Identity
+## Step 6: Build and Start KC-Identity
 
-From `KC-Identity/`:
+From `KC-Identity/`, with `KILOCENTER_MASTER_KEY` exported:
 
 ```bash
 go build -o identity ./cmd/identity/
@@ -76,7 +99,7 @@ go build -o identity ./cmd/identity/
 
 KC-Identity provides user authentication, organization management, and API key services on port 50052.
 
-## Step 6: Build and Start KC-Gateway
+## Step 7: Build and Start KC-Gateway
 
 From `KC-Gateway/`:
 
@@ -87,7 +110,14 @@ go build -o gateway ./cmd/gateway/
 
 KC-Gateway proxies external gRPC-web requests to KC-Core and KC-Identity. It must be started after both upstream services are healthy.
 
-## Step 7: Start KC-Web
+The shipped configurations keep KC-Core and KC-Identity on `localhost`, so the
+internal calls between the three services never leave the host. If you bind
+either service to another address (`grpc.host`) or run them on separate hosts,
+generate a shared secret with `openssl rand -hex 32` and export it as
+`KILOCENTER_INTERNAL_AUTH_PEER_SECRET` for all three: the services refuse to
+start without one of at least 32 characters.
+
+## Step 8: Start KC-Web
 
 From `KC-Web/`:
 
@@ -96,7 +126,7 @@ bun install
 bun run dev
 ```
 
-## Step 8: Validate
+## Step 9: Validate
 
 - KC-Core health: [http://localhost:8086/health](http://localhost:8086/health)
 - KC-Identity health: [http://localhost:8088/health](http://localhost:8088/health)

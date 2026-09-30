@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -103,55 +104,52 @@ func (r *capturingMIOTYMessageRepo) GetMessages() []*mioty.AttachPropagateMessag
 func (r *capturingMIOTYMessageRepo) CreateULDataMessage(_ context.Context, _ *mioty.ULDataMessage) error {
 	return nil
 }
+
 func (r *capturingMIOTYMessageRepo) CreateDetachMessage(_ context.Context, _ *mioty.DetachMessage, _ map[string]interface{}) error {
 	return nil
 }
-func (r *capturingMIOTYMessageRepo) CreateAttachMessage(_ context.Context, _ *mioty.AttachMessage, _ map[string]interface{}) error {
-	return nil
-}
+
 func (r *capturingMIOTYMessageRepo) CreateDetachPropagateMessage(_ context.Context, _ *mioty.DetachPropagateMessage) error {
 	return nil
 }
+
 func (r *capturingMIOTYMessageRepo) GetULDataMessage(_ context.Context, _ string, _ int64) (*mioty.ULDataMessage, error) {
 	return nil, nil
 }
-func (r *capturingMIOTYMessageRepo) GetDetachMessage(_ context.Context, _ string, _ int64) (*mioty.DetachMessage, error) {
-	return nil, nil
-}
+
 func (r *capturingMIOTYMessageRepo) ListULDataMessages(_ context.Context, _ mioty.ULDataMessageFilter) ([]*mioty.ULDataMessage, int64, error) {
 	return nil, 0, nil
 }
+
 func (r *capturingMIOTYMessageRepo) UpdateULDataBaseStations(_ context.Context, _ int64, _ uint64, _ uint32, _ int64, _ []byte) error {
 	return nil
 }
-func (r *capturingMIOTYMessageRepo) GetMessageStatsByBaseStation(_ context.Context, _ uint64, _ int64) (*mioty.MessageStats, error) {
-	return nil, nil
-}
-func (r *capturingMIOTYMessageRepo) GetExtendedMessageStatsByBaseStation(_ context.Context, _ uint64, _ int64) (*mioty.MessageStats, error) {
-	return nil, nil
-}
+
 func (r *capturingMIOTYMessageRepo) GetMessageStatsByEndpoint(_ context.Context, _ uint64, _ int64) (*mioty.MessageStats, error) {
 	return nil, nil
 }
+
 func (r *capturingMIOTYMessageRepo) GetOverallStats(_ context.Context, _ int64) (*mioty.MessageStats, error) {
 	return nil, nil
 }
+
 func (r *capturingMIOTYMessageRepo) GetAnalyticsOverview(_ context.Context, _ int64, _, _ time.Time) (*mioty.AnalyticsOverviewStats, error) {
 	return nil, nil
 }
+
 func (r *capturingMIOTYMessageRepo) GetHourlyActivity(_ context.Context, _ int64, _, _ time.Time) ([]mioty.HourlyActivity, error) {
 	return nil, nil
 }
+
 func (r *capturingMIOTYMessageRepo) GetDailyActivity(_ context.Context, _ int64, _, _ time.Time) ([]mioty.DailyActivity, error) {
 	return nil, nil
 }
+
 func (r *capturingMIOTYMessageRepo) GetTopEndpointsByActivity(_ context.Context, _ int64, _, _ time.Time, _ int) ([]mioty.EndpointActivity, error) {
 	return nil, nil
 }
+
 func (r *capturingMIOTYMessageRepo) GetSignalQualityStats(_ context.Context, _ int64, _, _ time.Time) (*mioty.SignalQualityStats, error) {
-	return nil, nil
-}
-func (r *capturingMIOTYMessageRepo) GetSignalQualityByBaseStation(_ context.Context, _ int64, _, _ time.Time) ([]mioty.BaseStationSignalQuality, error) {
 	return nil, nil
 }
 
@@ -183,7 +181,7 @@ type attPrpTestEndpointRepo struct {
 	getByEUICalls                    int
 	createCalls                      int
 	updateCalls                      int
-	updateFieldsCalls                int
+	endpointUpdateCalls              int
 	updateLastSeenCalls              int
 	updateRadioMetricsCalls          int
 	updateRadioMetricsSelectiveCalls int
@@ -214,9 +212,32 @@ func (r *attPrpTestEndpointRepo) Get(_ context.Context, eui models.EUI) (*models
 	return nil, storage.ErrNotFound
 }
 
-func (r *attPrpTestEndpointRepo) UpdateFields(_ context.Context, _ int64, _ int64, _ map[string]interface{}) error {
-	r.updateFieldsCalls++
+func (r *attPrpTestEndpointRepo) EndpointRegistrationUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointRegistrationParams) error {
+	r.endpointUpdateCalls++
 	return nil
+}
+
+func (r *attPrpTestEndpointRepo) EndpointAttachmentStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachmentStateParams) error {
+	r.endpointUpdateCalls++
+	return nil
+}
+
+func (r *attPrpTestEndpointRepo) EndpointAttachSessionUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachSessionParams) error {
+	r.endpointUpdateCalls++
+	return nil
+}
+
+func (r *attPrpTestEndpointRepo) EndpointDetachStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointDetachStateParams) error {
+	r.endpointUpdateCalls++
+	return nil
+}
+
+func (r *attPrpTestEndpointRepo) TransitionEndpointStatus(context.Context, int64, int64, string) (bool, error) {
+	return true, nil
+}
+
+func (r *attPrpTestEndpointRepo) RestateEndpointStatus(ctx context.Context, tenantID, endpointID int64, status string) (bool, error) {
+	return r.TransitionEndpointStatus(ctx, tenantID, endpointID, status)
 }
 
 // Stub implementations for remaining EndpointRepository methods
@@ -224,56 +245,67 @@ func (r *attPrpTestEndpointRepo) Create(context.Context, *models.EndPoint) error
 	r.createCalls++
 	return nil
 }
+
 func (r *attPrpTestEndpointRepo) GetByID(context.Context, int64, int64) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (r *attPrpTestEndpointRepo) GetByTenant(context.Context, int64) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (r *attPrpTestEndpointRepo) CountByTenant(context.Context, int64) (int64, error) { return 0, nil }
+
 func (r *attPrpTestEndpointRepo) ListByTenantPaginated(context.Context, int64, int, int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (r *attPrpTestEndpointRepo) Update(context.Context, *models.EndPoint) error {
 	r.updateCalls++
 	return nil
 }
+
 func (r *attPrpTestEndpointRepo) UpdateLastSeen(context.Context, int64, models.EUI, uint32) error {
 	r.updateLastSeenCalls++
 	return nil
 }
-func (r *attPrpTestEndpointRepo) UpdateRadioMetrics(context.Context, int64, models.EUI, float64, float64, float64, int64, int64, string) error {
-	r.updateRadioMetricsCalls++
-	return nil
-}
-func (r *attPrpTestEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, interfaces.RadioMetricsUpdate) error {
+
+func (r *attPrpTestEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, models.RadioMetricsUpdate) error {
 	r.updateRadioMetricsSelectiveCalls++
 	return nil
 }
-func (r *attPrpTestEndpointRepo) UpdateDetachMetrics(context.Context, int64, models.EUI, interfaces.DetachMetricsUpdate) error {
-	r.updateDetachMetricsCalls++
-	return nil
-}
-func (r *attPrpTestEndpointRepo) StreamAllForPropagation(context.Context, int64, int) ([]*models.EndPoint, error) {
-	return nil, nil
-}
-func (r *attPrpTestEndpointRepo) HasEndpointsSince(context.Context, time.Time) (bool, error) {
-	return false, nil
-}
-func (r *attPrpTestEndpointRepo) GetEndpointWithKeysForDetachValidation(context.Context, models.EUI) (*models.EndPoint, error) {
-	return nil, storage.ErrNotFound
-}
+
 func (r *attPrpTestEndpointRepo) GetPreferredBsEui(context.Context, int64, []byte) (*uint64, bool, error) {
 	return nil, false, nil
 }
-func (r *attPrpTestEndpointRepo) DeleteByTenant(context.Context, int64, []byte) error {
-	r.deleteByTenantCalls++
+
+func (r *attPrpTestEndpointRepo) RestartPacketCounter(context.Context, int64, int64) error {
 	return nil
 }
+
+func (r *attPrpTestEndpointRepo) LockAttachCounter(context.Context, int64, int64) (*uint32, error) {
+	return nil, nil
+}
+
+func (*attPrpTestEndpointRepo) GetByAttachmentChangedSince(context.Context, int64, string, *time.Time) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
+func (r *attPrpTestEndpointRepo) CreateWithStatus(ctx context.Context, ep *models.EndPoint, status string) error {
+	ep.EpStatus = status
+	return r.Create(ctx, ep)
+}
+
+func (r *attPrpTestEndpointRepo) DeleteByTenant(context.Context, int64, []byte) (int64, error) {
+	r.deleteByTenantCalls++
+	return 0, nil
+}
+
 func (r *attPrpTestEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	r.updateWithEUICalls++
 	return ep, nil
 }
+
 func (r *attPrpTestEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 	return nil
 }
@@ -296,26 +328,12 @@ func (s *capturingStorage) EndPoints() interfaces.EndpointRepository {
 	}
 	return s.endpointRepo
 }
-func (s *capturingStorage) DownlinkQueue() interfaces.DownlinkQueueRepository { return nil }
-func (s *capturingStorage) BaseStationReceptions() interfaces.BaseStationReceptionRepository {
-	return nil
-}
 func (s *capturingStorage) EndPointSessions() interfaces.EndPointSessionRepository { return nil }
-func (s *capturingStorage) EndPointKeys() interfaces.EndPointKeyRepository         { return nil }
-func (s *capturingStorage) RoamingAgreements() interfaces.RoamingAgreementRepository {
-	return nil
-}
-func (s *capturingStorage) BaseStations() interfaces.BaseStationRepository { return nil }
+func (s *capturingStorage) BaseStations() interfaces.BaseStationRepository         { return nil }
 func (s *capturingStorage) BaseStationSessions() interfaces.BaseStationSessionRepository {
 	return nil
 }
 func (s *capturingStorage) DLRXStatus() interfaces.DLRXStatusRepository { return nil }
-func (s *capturingStorage) PendingOperations() interfaces.PendingOperationRepository {
-	if s.pendingOps == nil {
-		s.pendingOps = &attPrpCapturingPendingOps{}
-	}
-	return s.pendingOps
-}
 
 // attPrpUpdateMetadataCall captures a single UpdateMetadata invocation.
 type attPrpUpdateMetadataCall struct {
@@ -331,11 +349,11 @@ type attPrpCapturingPendingOps struct {
 	updates []attPrpUpdateMetadataCall
 }
 
-func (r *attPrpCapturingPendingOps) Create(_ context.Context, _ *interfaces.PendingOperationRequest) error {
+func (r *attPrpCapturingPendingOps) Create(_ context.Context, _ *models.PendingOperationRequest) error {
 	return nil
 }
 
-func (r *attPrpCapturingPendingOps) CreateBatch(ctx context.Context, reqs []*interfaces.PendingOperationRequest) error {
+func (r *attPrpCapturingPendingOps) CreateBatch(ctx context.Context, reqs []*models.PendingOperationRequest) error {
 	for _, req := range reqs {
 		if err := r.Create(ctx, req); err != nil {
 			return err
@@ -343,6 +361,7 @@ func (r *attPrpCapturingPendingOps) CreateBatch(ctx context.Context, reqs []*int
 	}
 	return nil
 }
+
 func (r *attPrpCapturingPendingOps) UpdateMetadata(_ context.Context, sessionID, operationID int64, metadata json.RawMessage) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -351,14 +370,16 @@ func (r *attPrpCapturingPendingOps) UpdateMetadata(_ context.Context, sessionID,
 	r.updates = append(r.updates, attPrpUpdateMetadataCall{SessionID: sessionID, OperationID: operationID, Metadata: dup})
 	return nil
 }
+
 func (r *attPrpCapturingPendingOps) DeleteBySessionAndOperation(_ context.Context, _ int64, _ int64) error {
 	return nil
 }
-func (r *attPrpCapturingPendingOps) DeleteByOperation(_ context.Context, _ int64) error { return nil }
+
 func (r *attPrpCapturingPendingOps) DeleteBySession(_ context.Context, _ int64) (int64, error) {
 	return 0, nil
 }
-func (r *attPrpCapturingPendingOps) GetBySession(_ context.Context, _ int64) ([]*interfaces.PendingOperation, error) {
+
+func (r *attPrpCapturingPendingOps) GetBySession(_ context.Context, _ int64) ([]*models.PendingOperation, error) {
 	return nil, nil
 }
 
@@ -381,10 +402,7 @@ func (s *capturingStorage) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository {
 func (s *capturingStorage) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
 	return nil
 }
-func (s *capturingStorage) Users() interfaces.UserRepository                 { return nil }
 func (s *capturingStorage) APIKeys() interfaces.APIKeyRepository             { return nil }
-func (s *capturingStorage) Integrations() interfaces.IntegrationRepository   { return nil }
-func (s *capturingStorage) Manufacturers() interfaces.ManufacturerRepository { return nil }
 func (s *capturingStorage) DeviceModels() interfaces.DeviceModelRepository   { return nil }
 func (s *capturingStorage) Blueprints() interfaces.BlueprintRepository       { return nil }
 func (s *capturingStorage) Organizations() interfaces.OrganizationRepository { return nil }
@@ -394,8 +412,8 @@ func (s *capturingStorage) SCACISessions() interfaces.SCACISessionRepository { r
 func (s *capturingStorage) SCACIOperations() interfaces.SCACIOperationRepository {
 	return nil
 }
-func (s *capturingStorage) DownlinkQueueReader() interfaces.DownlinkQueueReader { return nil }
-func (s *capturingStorage) BeginTx(_ context.Context) (interfaces.Transaction, error) {
+
+func (s *capturingStorage) BeginTx(_ context.Context) (bssci.AttachTx, error) {
 	return nil, nil
 }
 func (s *capturingStorage) Ping(_ context.Context) error { return nil }
@@ -415,7 +433,7 @@ func (s *capturingEventStore) CreateEvent(_ context.Context, event *models.Syste
 }
 
 // GetEvents implements the interface method (returns captured events)
-func (s *capturingEventStore) GetEvents(_ context.Context, _ interfaces.SystemEventFilter) ([]*models.SystemEvent, error) {
+func (s *capturingEventStore) GetEvents(_ context.Context, _ models.SystemEventFilter) ([]*models.SystemEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := make([]*models.SystemEvent, len(s.events))
@@ -433,22 +451,27 @@ func (s *capturingEventStore) CapturedEvents() []*models.SystemEvent {
 }
 
 // Stub implementations for other SystemEventStore methods
-func (s *capturingEventStore) GetEventsFiltered(_ context.Context, _ interfaces.SystemEventFilter) ([]*models.SystemEvent, error) {
+func (s *capturingEventStore) GetEventsFiltered(_ context.Context, _ models.SystemEventFilter) ([]*models.SystemEvent, error) {
 	return nil, nil
 }
-func (s *capturingEventStore) GetActiveAlerts(_ context.Context, _ interfaces.AlertFilter) ([]*models.SystemEvent, error) {
+
+func (s *capturingEventStore) GetActiveAlerts(_ context.Context, _ models.AlertFilter) ([]*models.SystemEvent, error) {
 	return nil, nil
 }
+
 func (s *capturingEventStore) GetEventStats(_ context.Context, _ string, _ time.Time) (*models.SystemEventStats, error) {
 	return nil, nil
 }
+
 func (s *capturingEventStore) RecordSCACIError(_ context.Context, _ int64, _ int64, _ string, _ int64, _ int, _ string) error {
 	return nil
 }
-func (s *capturingEventStore) CountEvents(_ context.Context, _ interfaces.SystemEventFilter) (int64, error) {
+
+func (s *capturingEventStore) CountEvents(_ context.Context, _ models.SystemEventFilter) (int64, error) {
 	return 0, nil
 }
-func (s *capturingEventStore) CountActiveAlerts(_ context.Context, _ interfaces.AlertFilter) (int64, error) {
+
+func (s *capturingEventStore) CountActiveAlerts(_ context.Context, _ models.AlertFilter) (int64, error) {
 	return 0, nil
 }
 
@@ -501,7 +524,6 @@ func TestAttachPropagateCompletionIntegration_WithPendingOp(t *testing.T) {
 
 	server := bssci.NewTestServer(testLogger, storage, eventStore, testTenantID,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	// Create mock connection
 	mockConn := &attPrpTestConn{}
@@ -585,7 +607,7 @@ func TestAttachPropagateCompletionIntegration_WithPendingOp(t *testing.T) {
 
 	// Find the completion event (EventTypeAttachPropagateCompleted)
 	var foundCompletionEvent bool
-	expectedBsEuiStr := fmt.Sprintf("%016X", testBsEui) // Format BS EUI as uppercase hex with leading zeros
+	expectedBsEuiStr := mioty.FormatEUI64(testBsEui) // Format BS EUI as uppercase hex with leading zeros
 	for _, evt := range capturedEvents {
 		if evt.EventType == bssci.EventTypeAttachPropagateCompleted {
 			foundCompletionEvent = true
@@ -623,7 +645,6 @@ func TestAttachPropagateCompletionIntegration_NoPendingOp(t *testing.T) {
 
 	server := bssci.NewTestServer(testLogger, storage, eventStore, testTenantID,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	// Create mock connection
 	mockConn := &attPrpTestConn{}
@@ -735,7 +756,7 @@ func TestEUIPrecisionValidation(t *testing.T) {
 			var err error
 			var epEUI uint64
 			if tc.euiFloat64 > float64(maxSafeFloat64Int) {
-				err = fmt.Errorf("epEui exceeds float64 precision limit")
+				err = errors.New(errFmtEpEuiExceedsFloat64PrecisionLimit)
 			} else {
 				epEUI = uint64(tc.euiFloat64)
 			}
@@ -767,9 +788,9 @@ func TestEUIPrecisionLossDetection(t *testing.T) {
 	// Due to float64's 53-bit mantissa, precision is lost for values > 2^53
 	// Original: 12302652060373954850
 	// Recovered: 12302652060373954560 (approximately - varies by platform)
-	t.Logf("Original EUI:  %d (0x%016X)", originalEUI, originalEUI)
+	t.Logf("Original EUI:  %d (0x%s)", originalEUI, mioty.FormatEUI64(originalEUI))
 	t.Logf("As float64:    %.0f", asFloat64)
-	t.Logf("Recovered EUI: %d (0x%016X)", recoveredEUI, recoveredEUI)
+	t.Logf("Recovered EUI: %d (0x%s)", recoveredEUI, mioty.FormatEUI64(recoveredEUI))
 
 	// The key assertion: precision is lost for large values
 	if originalEUI > (1 << 53) {
@@ -807,7 +828,6 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(testLogger, eventStore)
 	server := bssci.NewTestServer(testLogger, storageImpl, eventStore, testTenantID,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	mockConn := &attPrpTestConn{}
 	session := &bssci.Session{
@@ -848,18 +868,19 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 	require.NoError(t, server.CallHandleAttachPropagateResponse(session, msg, data),
 		"failure path must keep session alive (handler returns nil after sendError)")
 
-	// Wire response: sendMessage writes header + msgpack payload (two Write calls).
+	// Wire response: sendMessage writes the header and msgpack payload as one frame.
 	frames := mockConn.Frames()
-	require.GreaterOrEqual(t, len(frames), 2, "sendMessage must write header + payload")
-	assert.Len(t, frames[0], 12, "header is 8-byte magic + 4-byte length")
+	require.GreaterOrEqual(t, len(frames), 1, "sendMessage must write the frame")
+	require.Greater(t, len(frames[0]), mioty.FrameHeaderSize, "frame carries the 8-byte magic, 4-byte length and payload")
+	assert.Equal(t, mioty.MIOTYFrameIdentifier[:], frames[0][:8], "frame starts with the BSSCI identifier")
 
 	var wireResp map[string]interface{}
-	require.NoError(t, msgpack.Unmarshal(frames[1], &wireResp), "payload must be msgpack-decodable")
+	require.NoError(t, msgpack.Unmarshal(frames[0][mioty.FrameHeaderSize:], &wireResp), "payload must be msgpack-decodable")
 	assert.Equal(t, mioty.CmdError, wireResp["command"], "rejected propagate must reply with mioty.CmdError")
 	assert.Equal(t, testOpId, testInt64(t, wireResp["opId"]), "response opId must echo the request")
 	assert.Equal(t, int64(bssci.POSIX_EPROTO), testInt64(t, wireResp["code"]), "POSIX code must be EPROTO per BSSCI-4-01")
-	assert.Equal(t, bssci.ResolveErrorMessage(bssci.ErrAttachPropagateFailed), wireResp["message"],
-		"wire message must be cataloged via ErrAttachPropagateFailed")
+	assert.Equal(t, wireMsgAttachPropagateFailed, wireResp["message"],
+		"wire message must be the cataloged attach-propagate failure text")
 
 	// Pending-op metadata persistence.
 	updates := bssci.StatusMetadataUpdates(statusSvc)
@@ -890,8 +911,8 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 	require.NotNil(t, endpointEvt, "endpoint-scoped failure event missing")
 	require.NotNil(t, baseStationEvt, "base-station-scoped failure event missing")
 
-	epStr := fmt.Sprintf("%016X", testEpEui)
-	bsStr := fmt.Sprintf("%016X", testBsEui)
+	epStr := mioty.FormatEUI64(testEpEui)
+	bsStr := mioty.FormatEUI64(testBsEui)
 	assert.Equal(t, fmt.Sprintf(bssci.TitleAttachPropagateFailedForEndpointOnBS, epStr, bsStr), endpointEvt.Title,
 		"endpoint event title must match cataloged TitleAttachPropagateFailedForEndpointOnBS format")
 	assert.Equal(t, epStr, endpointEvt.SourceName, "endpoint SourceName must be the EUI")
@@ -900,7 +921,7 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 	// Endpoint must not be mutated on the rejected path.
 	assert.Equal(t, 0, endpointRepo.createCalls, "no Create on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.updateCalls, "no Update on rejected propagate")
-	assert.Equal(t, 0, endpointRepo.updateFieldsCalls, "no UpdateFields on rejected propagate")
+	assert.Equal(t, 0, endpointRepo.endpointUpdateCalls, "no endpoint field update on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.updateLastSeenCalls, "no UpdateLastSeen on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.updateRadioMetricsCalls, "no UpdateRadioMetrics on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.updateRadioMetricsSelectiveCalls, "no UpdateRadioMetricsSelective on rejected propagate")
@@ -908,3 +929,10 @@ func TestHandleAttachPropagateResponse_Rejected(t *testing.T) {
 	assert.Equal(t, 0, endpointRepo.updateWithEUICalls, "no UpdateWithEUI on rejected propagate")
 	assert.Equal(t, 0, endpointRepo.deleteByTenantCalls, "no DeleteByTenant on rejected propagate")
 }
+
+// Error format strings shared by this package's failure paths; verbs are filled at the point of failure.
+const (
+	// wireMsgAttachPropagateFailed is the exact catalog text the rejected attachPrp carries on the wire.
+	wireMsgAttachPropagateFailed            = "Attach propagate failed"
+	errFmtEpEuiExceedsFloat64PrecisionLimit = "epEui exceeds float64 precision limit"
+)

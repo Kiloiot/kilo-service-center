@@ -82,3 +82,17 @@ var (
 	// ErrOrgResolutionFailed indicates external org claim could not be resolved to a valid organization
 	ErrOrgResolutionFailed = errors.New("external org claim resolution failed")
 )
+
+// ErrEntropyUnavailable reports a failure of the platform randomness source;
+// no state, nonce, or verifier may be issued from a predictable fallback.
+var ErrEntropyUnavailable = errors.New("secure randomness unavailable")
+
+// Error-wrapping prefixes naming the operation that failed. Callers see the
+// prefix ahead of the wrapped cause in the error chain.
+const (
+	errPrefixCEDefaultOrgLookup = "CE default org lookup failed for tenant"
+	errPrefixVerifyPassword     = "verify password"
+	errPrefixIssueAccessToken   = "issue access token"
+	errPrefixIssueRefreshToken  = "issue refresh token"
+	errPrefixGenerateSalt       = "generate salt"
+)

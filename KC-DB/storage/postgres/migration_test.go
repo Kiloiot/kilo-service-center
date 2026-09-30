@@ -15,6 +15,8 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // migrationTest represents a single migration with optional validation
@@ -76,18 +78,58 @@ func extractMigrationInfo(filename string) (int, string) {
 // migrationValidators maps migration numbers to their validation functions
 // This allows us to add validators incrementally for critical migrations
 var migrationValidators = map[int]func(*testing.T, *sql.DB){
-	1:  validateInitialSchema,
-	2:  validateBasestationExtensions, // checks migration 002 actual artifacts
-	3:  validateEndpointExtensions,    // checks migration 003 actual artifacts
-	4:  validateBasestationReceptions, // checks migration 004 actual artifacts
-	5:  validateEndpointSessions,      // checks migration 005 actual artifacts
-	6:  validateEndpointKeys,          // checks migration 006 actual artifacts
-	7:  validateBasestationSessions,   // checks migration 007 actual artifacts
-	8:  validatePerformanceIndexes,
-	11: validateMessagePartitioning,
-	12: validateKeyStorageSchema, // TO UPDATE - needs migration 012 actual artifacts
-	13: validateSecurityConstraints,
-	14: validateArchiveTables,
+	1:   validateInitialSchema,
+	2:   validateBasestationExtensions, // checks migration 002 actual artifacts
+	3:   validateEndpointExtensions,    // checks migration 003 actual artifacts
+	4:   validateBasestationReceptions, // checks migration 004 actual artifacts
+	5:   validateEndpointSessions,      // checks migration 005 actual artifacts
+	6:   validateEndpointKeys,          // checks migration 006 actual artifacts
+	7:   validateBasestationSessions,   // checks migration 007 actual artifacts
+	8:   validatePerformanceIndexes,
+	11:  validateMessagePartitioning,
+	12:  validateKeyStorageSchema, // TO UPDATE - needs migration 012 actual artifacts
+	13:  validateSecurityConstraints,
+	14:  validateArchiveTables,
+	145: validateDropEndpointKeys,
+	147: validateDropPlaceholderStatistics,
+	148: validateArchiveOperationTracking,
+	149: validateConsolidateCertificates,
+	150: validateConsolidateConnectionEvents,
+	151: validateDropDeadColumns,
+	152: validateDropSubpackets,
+	153: validateDropKeyStorage,
+	154: validateRemoveOrganizationQuotas,
+	155: validateCorrectMessageDeduplication,
+	156: validateScaciFailedOperationsIndex,
+	157: validateTrafficFilterIndexes,
+	158: validateErrorCenterIndex,
+	159: validateBaseStationSessionServiceCenter,
+	160: validateDownlinkApplicationQueueID,
+	161: validateUplinkReceptionTimeAndDetachCounter,
+	162: validateDeadDownlinkQueueColumnsDropped,
+	163: validateMessagePacketCounterReuse,
+	164: validateDownlinkEndpointAcknowledgement,
+	165: validateDownlinkWindowClaim,
+	166: validateUnsignedApplicationQueueID,
+	167: validateUnsignedMessagePacketCounter,
+	168: validateEndpointStatusChangedAt,
+	169: validateApplicationQueueIDZero,
+	170: validateEndpointAttachmentChangedAt,
+	171: validateLiveSessionPerOrganization,
+	172: validateApplicationQueueIDInFlight,
+	174: validateGPSWithoutFixCleared,
+	175: validateSystemEventStatusNew,
+	176: validateRoleGrandfathering,
+	177: validateEventDeviceEUIsCanonical,
+	178: validateBSSCIServiceCenterURLOptional,
+	179: validateEventDetailKeysCamelCase,
+	180: validateSCACISessionServiceCenter,
+	181: validateCertificateGeneratedBaseStationCategory,
+	182: validateStoredRowNotifications,
+	183: validateMovedEventNotifications,
+	184: validateDownlinkOrigin,
+	185: validateStreamStorageOrder,
+	186: validateSCACIUplinkDeliveryIdentity,
 	// Additional validators can be added here as they are implemented
 	// 28: validateMiotyPersistentCompliance,
 	// 31: validateFoo,
@@ -472,14 +514,335 @@ func validateArchiveTables(t *testing.T, db *sql.DB) {
 	}
 }
 
+func validateDropEndpointKeys(t *testing.T, db *sql.DB) {
+	// Migration 145 retires the endpoint_keys subsystem: the table, its archive,
+	// and the two key-only functions are gone, while the shared archive/audit
+	// functions remain for the other archive tables.
+	assert.False(t, tableExists(t, db, "endpoint_keys"),
+		"endpoint_keys should be dropped by migration 145")
+	assert.False(t, tableExists(t, db, "endpoint_keys_archive"),
+		"endpoint_keys_archive should be dropped by migration 145")
+
+	assert.False(t, functionExists(t, db, "validate_key_format"),
+		"validate_key_format() should be dropped by migration 145")
+	assert.False(t, functionExists(t, db, "ensure_single_active_key"),
+		"ensure_single_active_key() should be dropped by migration 145")
+
+	assert.True(t, functionExists(t, db, "set_archived_at"),
+		"shared set_archived_at() must survive migration 145")
+	assert.True(t, functionExists(t, db, "update_audit_fields"),
+		"shared update_audit_fields() must survive migration 145")
+}
+
+func validateDropPlaceholderStatistics(t *testing.T, db *sql.DB) {
+	assert.False(t, tableExists(t, db, "table_statistics"))
+	assert.False(t, functionExists(t, db, "update_table_statistics"))
+}
+
+func validateArchiveOperationTracking(t *testing.T, db *sql.DB) {
+	assert.False(t, tableExists(t, db, "bssci_operation_tracking"))
+	assert.True(t, tableExists(t, db, "bssci_pending_operations"), "canonical pending operations must survive")
+}
+
+func validateConsolidateCertificates(t *testing.T, db *sql.DB) {
+	assert.False(t, tableExists(t, db, "basestation_certificates"))
+	for _, column := range []string{"tls_ca_certificate", "tls_certificate", "tls_key", "tls_cert_fingerprint", "tls_cert_expires_at"} {
+		assert.Contains(t, getColumnList(t, db, "basestations"), column)
+	}
+}
+
+func validateConsolidateConnectionEvents(t *testing.T, db *sql.DB) {
+	assert.False(t, tableExists(t, db, "basestation_connection_events"))
+}
+
+func validateDropDeadColumns(t *testing.T, db *sql.DB) {
+	downlinkColumns := getColumnList(t, db, "downlink_queue")
+	for _, column := range []string{"response_to_message_id", "retry_interval", "transmission_status", "tx_power_dbm", "transmitted_by_basestation_id", "correlation_id", "retry_count"} {
+		assert.NotContains(t, downlinkColumns, column)
+	}
+	assert.NotContains(t, getColumnList(t, db, "basestations"), "hardware_name")
+	endpointColumns := getColumnList(t, db, "endpoints")
+	assert.NotContains(t, endpointColumns, "nwk_addr")
+	assert.NotContains(t, endpointColumns, "ep_eui_alt")
+	sessionColumns := getColumnList(t, db, "basestation_sessions")
+	for _, column := range []string{"messages_received", "messages_sent", "bytes_received", "bytes_sent"} {
+		assert.NotContains(t, sessionColumns, column)
+	}
+	downlinkIndexes := getIndexList(t, db, "downlink_queue")
+	assert.Contains(t, downlinkIndexes, "idx_downlink_queue_mioty_prio")
+	for _, index := range []string{"idx_downlink_queue_correlation", "idx_downlink_queue_response", "idx_downlink_queue_retry"} {
+		assert.NotContains(t, downlinkIndexes, index)
+	}
+	assert.NotContains(t, getConstraintList(t, db, "downlink_queue"), "downlink_queue_retry_limit")
+}
+
+func validateDropSubpackets(t *testing.T, db *sql.DB) {
+	assert.False(t, tableExists(t, db, "mioty_subpackets"))
+	assert.True(t, tableExists(t, db, "mioty_message_deduplication"), "deduplication table is live and must survive")
+}
+
+func validateDropKeyStorage(t *testing.T, db *sql.DB) {
+	for _, table := range []string{"encryption_keys", "key_usage_log", "encrypted_fields"} {
+		assert.False(t, tableExists(t, db, table), "%s should be dropped by migration 153", table)
+	}
+	for _, fn := range []string{"rotate_encryption_key", "check_key_expiration", "log_key_operation", "detect_anomalous_access"} {
+		assert.False(t, functionExists(t, db, fn), "%s() should be dropped by migration 153", fn)
+	}
+	assert.True(t, functionExists(t, db, "update_audit_fields"), "shared update_audit_fields() must survive migration 153")
+	assert.True(t, functionExists(t, db, "enforce_tenant_isolation"), "enforce_tenant_isolation() must survive migration 153")
+}
+
+func validateRemoveOrganizationQuotas(t *testing.T, db *sql.DB) {
+	orgColumns := getColumnList(t, db, "organizations")
+	for _, column := range []string{"can_have_base_stations", "max_base_station_count", "max_endpoint_count"} {
+		assert.NotContains(t, orgColumns, column, "organizations.%s should be dropped by migration 154", column)
+	}
+	tenantColumns := getColumnList(t, db, "tenants")
+	for _, column := range []string{"max_basestations", "max_endpoints"} {
+		assert.NotContains(t, tenantColumns, column, "tenants.%s should be dropped by migration 154", column)
+	}
+}
+
+func validateCorrectMessageDeduplication(t *testing.T, db *sql.DB) {
+	dedupColumns := getColumnList(t, db, "mioty_message_deduplication")
+	for _, column := range []string{"owner_tenant_id", "ep_eui", "packet_cnt", "message_hash", "first_message_id", "first_bs_eui", "first_received_at", "last_received_at", "duplicate_count"} {
+		assert.Contains(t, dedupColumns, column, "mioty_message_deduplication.%s should exist after migration 155", column)
+	}
+	assert.NotContains(t, dedupColumns, "id", "the legacy surrogate key should be gone")
+	assert.True(t, tableExists(t, db, "message_delivery_outbox"), "message_delivery_outbox should exist after migration 155")
+	assert.Contains(t, getIndexList(t, db, "message_delivery_outbox"), "idx_message_delivery_outbox_due")
+}
+
+func validateScaciFailedOperationsIndex(t *testing.T, db *sql.DB) {
+	assert.Contains(t, getIndexList(t, db, "scaci_operation_log"), "idx_scaci_op_log_tenant_failed", "failed-operation groups need their partial index after migration 156")
+}
+
+func validateTrafficFilterIndexes(t *testing.T, db *sql.DB) {
+	messageIndexes := getIndexList(t, db, "messages")
+	for _, index := range []string{"idx_messages_tenant_duplicate", "idx_messages_tenant_dl_open", "idx_messages_tenant_profile_mode"} {
+		assert.Contains(t, messageIndexes, index, "messages.%s should exist after migration 157", index)
+	}
+	assert.Contains(t, getIndexList(t, db, "downlink_queue"), "idx_downlink_queue_tenant_status_priority", "queue view ordering needs its index after migration 157")
+}
+
+func validateErrorCenterIndex(t *testing.T, db *sql.DB) {
+	assert.Contains(t, getIndexList(t, db, "system_events"), "idx_system_events_tenant_failures", "the errors center scan needs its partial index after migration 158")
+}
+
+func validateBaseStationSessionServiceCenter(t *testing.T, db *sql.DB) {
+	assert.Contains(t, getColumnList(t, db, "basestation_sessions"), "sc_eui", "session rows record their owning service center after migration 159")
+	assert.Contains(t, getIndexList(t, db, "basestation_sessions"), "idx_basestation_sessions_active_sc_eui", "the startup reconciliation scan needs its partial index after migration 159")
+}
+
+func validateSCACISessionServiceCenter(t *testing.T, db *sql.DB) {
+	assert.Contains(t, getColumnList(t, db, "scaci_sessions"), "sc_eui", "SCACI session rows record their owning service center after migration 180")
+	assert.Contains(t, getIndexList(t, db, "scaci_sessions"), "idx_scaci_sessions_live_sc_eui", "the startup reconciliation scan needs its partial index after migration 180")
+}
+
+// sqlAuditCertificateGenerated counts the certificate.generated events still
+// filed under audit; the preflight runs the same count.
+const sqlAuditCertificateGenerated = `SELECT count(*) FROM system_events
+	WHERE event_type = 'certificate.generated' AND event_category = 'audit'`
+
+func validateCertificateGeneratedBaseStationCategory(t *testing.T, db *sql.DB) {
+	var underAudit int
+	require.NoError(t, db.QueryRow(sqlAuditCertificateGenerated).Scan(&underAudit))
+	assert.Zero(t, underAudit, "every certificate.generated event is filed under basestation after migration 181")
+}
+
+func validateUplinkReceptionTimeAndDetachCounter(t *testing.T, db *sql.DB) {
+	var dataType, nullable string
+	require.NoError(t, db.QueryRow(`SELECT data_type, is_nullable FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'mioty_message_deduplication' AND column_name = 'first_rx_time'`).Scan(&dataType, &nullable))
+	assert.Equal(t, "bigint", dataType, "first_rx_time holds a nanosecond radio time after migration 161")
+	assert.Equal(t, "NO", nullable, "every classifier row carries its reception time after migration 161")
+	for _, column := range []string{"packet_cnt", "last_packet_cnt", "last_detach_packet_cnt"} {
+		require.NoError(t, db.QueryRow(`SELECT data_type FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'endpoints' AND column_name = $1`, column).Scan(&dataType))
+		assert.Equal(t, "bigint", dataType, "endpoints.%s holds the full 32-bit packet counter", column)
+	}
+}
+
+func validateDownlinkApplicationQueueID(t *testing.T, db *sql.DB) {
+	assert.Contains(t, getColumnList(t, db, "downlink_queue"), "ac_que_id")
+	assert.Contains(t, getIndexList(t, db, "downlink_queue"), "idx_downlink_queue_tenant_ac_que_id")
+	assert.Contains(t, getConstraintList(t, db, "downlink_queue"), "downlink_queue_ac_que_id_positive")
+	assert.Contains(t, getConstraintList(t, db, "downlink_queue"), "unique_queue_id", "que_id stays the installation-wide service center id")
+}
+
+func validateMessagePacketCounterReuse(t *testing.T, db *sql.DB) {
+	assert.Contains(t, getColumnList(t, db, "messages"), "packet_cnt_reused")
+	assert.Contains(t, getColumnList(t, db, "messages_archive"), "packet_cnt_reused", "the archive mirrors the live layout")
+}
+
+func validateDeadDownlinkQueueColumnsDropped(t *testing.T, db *sql.DB) {
+	downlinkColumns := getColumnList(t, db, "downlink_queue")
+	for _, column := range []string{"prio", "valid_until", "packet_cnt_array"} {
+		assert.NotContains(t, downlinkColumns, column, "downlink_queue.%s is dropped after migration 162", column)
+	}
+	assert.Contains(t, downlinkColumns, "failure_reason")
+	assert.NotContains(t, getIndexList(t, db, "downlink_queue"), "idx_downlink_queue_mioty_prio")
+}
+
+func validateDownlinkEndpointAcknowledgement(t *testing.T, db *sql.DB) {
+	assert.Contains(t, getColumnList(t, db, "downlink_queue"), "endpoint_acked_at")
+	assert.Contains(t, getIndexList(t, db, "downlink_queue"), "idx_downlink_queue_ack_window")
+}
+
+func validateDownlinkWindowClaim(t *testing.T, db *sql.DB) {
+	assert.Contains(t, getColumnList(t, db, "messages"), "dl_window_claimed")
+	assert.Contains(t, getColumnList(t, db, "messages_archive"), "dl_window_claimed", "the archive mirrors the live layout")
+}
+
+func validateUnsignedApplicationQueueID(t *testing.T, db *sql.DB) {
+	var dataType string
+	require.NoError(t, db.QueryRow(`SELECT data_type FROM information_schema.columns
+		WHERE table_name = 'downlink_queue' AND column_name = 'ac_que_id'`).Scan(&dataType))
+	assert.Equal(t, "numeric", dataType, "ac_que_id holds the full unsigned 64-bit range")
+}
+
+func validateApplicationQueueIDZero(t *testing.T, db *sql.DB) {
+	var check string
+	require.NoError(t, db.QueryRow(`SELECT pg_get_constraintdef(oid) FROM pg_constraint
+		WHERE conname = 'downlink_queue_ac_que_id_unsigned_64'`).Scan(&check))
+	assert.Contains(t, check, ">= (0)", "ac_que_id accepts the Application Center queue id 0")
+}
+
+func validateUnsignedMessagePacketCounter(t *testing.T, db *sql.DB) {
+	for _, table := range []string{"messages", "messages_archive"} {
+		var dataType string
+		require.NoError(t, db.QueryRow(`SELECT data_type FROM information_schema.columns
+			WHERE table_name = $1 AND column_name = 'packet_cnt'`, table).Scan(&dataType))
+		assert.Equal(t, "bigint", dataType, "%s.packet_cnt holds the full unsigned 32-bit range", table)
+	}
+}
+
+func validateLiveSessionPerOrganization(t *testing.T, db *sql.DB) {
+	var definition string
+	require.NoError(t, db.QueryRow(`SELECT indexdef FROM pg_indexes
+		WHERE schemaname = 'public' AND indexname = 'idx_scaci_sessions_unique_active'`).Scan(&definition))
+	assert.Contains(t, definition, "(tenant_id, organization_id, ac_eui) NULLS NOT DISTINCT",
+		"one live session per Application Center of an organization")
+}
+
+func validateSystemEventStatusNew(t *testing.T, db *sql.DB) {
+	var columnDefault, nullable string
+	require.NoError(t, db.QueryRow(`SELECT column_default, is_nullable FROM information_schema.columns
+		WHERE table_name = 'system_events' AND column_name = 'status'`).Scan(&columnDefault, &nullable))
+	assert.Contains(t, columnDefault, "'new'", "an unhandled event is new")
+	assert.Equal(t, "NO", nullable, "every event has a status")
+	var active int
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM system_events WHERE status = 'active'`).Scan(&active))
+	assert.Zero(t, active, "no event keeps the retired active status")
+	var constraints []string
+	rows, err := db.Query(`SELECT conname || ':' || convalidated FROM pg_constraint
+		WHERE conrelid = 'system_events'::regclass AND contype = 'c' AND conname LIKE 'system_events_status%'`)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
+	for rows.Next() {
+		var c string
+		require.NoError(t, rows.Scan(&c))
+		constraints = append(constraints, c)
+	}
+	require.NoError(t, rows.Err())
+	assert.Equal(t, []string{"system_events_status_check:true"}, constraints,
+		"the status check is validated and the NOT NULL helper check is gone")
+}
+
+func validateApplicationQueueIDInFlight(t *testing.T, db *sql.DB) {
+	var definition string
+	require.NoError(t, db.QueryRow(`SELECT indexdef FROM pg_indexes
+		WHERE schemaname = 'public' AND indexname = 'idx_downlink_queue_org_ac_que_id_in_flight'`).Scan(&definition))
+	assert.Contains(t, definition, "(tenant_id, organization_id, ac_que_id)", "an Application Center queue id is scoped to its organization")
+	assert.Contains(t, definition, "downlink_queue_in_flight", "and to the downlinks still in flight")
+	assert.NotContains(t, getIndexList(t, db, "downlink_queue"), "idx_downlink_queue_tenant_ac_que_id")
+	known := append([]mioty.DLQueueStatus{mioty.DLQueueStatusPending, mioty.DLQueueStatusScheduled,
+		mioty.DLQueueStatusReserved, mioty.DLQueueStatusQueued}, mioty.TerminalStatuses()...)
+	for _, status := range known {
+		require.True(t, status.Known(), status)
+		var inFlight bool
+		require.NoError(t, db.QueryRow(`SELECT downlink_queue_in_flight($1)`, string(status)).Scan(&inFlight))
+		assert.Equal(t, !status.Terminal(), inFlight, "downlink_queue_in_flight(%s) is the complement of Terminal", status)
+	}
+}
+
+func validateRoleGrandfathering(t *testing.T, db *sql.DB) {
+	for _, table := range []string{"role_grandfathered_users", "role_grandfathered_memberships"} {
+		var n int
+		require.NoError(t, db.QueryRow(`SELECT count(*) FROM information_schema.tables
+			WHERE table_schema = 'identity' AND table_name = $1`, table).Scan(&n))
+		assert.Equal(t, 1, n, "identity.%s records the switches 000176 turned on", table)
+	}
+}
+
+func validateGPSWithoutFixCleared(t *testing.T, db *sql.DB) {
+	var noFixPositions int
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM basestations
+		WHERE location_source = 'gps' AND latitude = 0 AND longitude = 0`).Scan(&noFixPositions))
+	assert.Zero(t, noFixPositions, "no GPS report without a fix is stored as a position")
+}
+
+// sqlNonCanonicalEventDeviceEUIs counts the events whose bsEui or epEui detail
+// is an EUI not in the canonical form; the preflight runs the same count.
+const sqlNonCanonicalEventDeviceEUIs = `SELECT count(*) FROM system_events
+	WHERE (data ? 'bsEui' OR data ? 'epEui') AND jsonb_typeof(data) = 'object' AND (
+	     (jsonb_typeof(data->'bsEui') = 'string' AND data->>'bsEui' !~ '^[0-9A-F]{16}$' AND translate(data->>'bsEui', '-:', '') ~ '^[0-9A-Fa-f]{16}$')
+	  OR (jsonb_typeof(data->'epEui') = 'string' AND data->>'epEui' !~ '^[0-9A-F]{16}$' AND translate(data->>'epEui', '-:', '') ~ '^[0-9A-Fa-f]{16}$')
+	  OR (jsonb_typeof(data->'bsEui') = 'number' AND data->>'bsEui' ~ '^[0-9]{1,20}$' AND (data->>'bsEui')::numeric <= 18446744073709551615)
+	  OR (jsonb_typeof(data->'epEui') = 'number' AND data->>'epEui' ~ '^[0-9]{1,20}$' AND (data->>'epEui')::numeric <= 18446744073709551615))`
+
+func validateEventDeviceEUIsCanonical(t *testing.T, db *sql.DB) {
+	var nonCanonical int
+	require.NoError(t, db.QueryRow(sqlNonCanonicalEventDeviceEUIs).Scan(&nonCanonical))
+	assert.Zero(t, nonCanonical, "every event names its device EUIs in the canonical form")
+}
+
+// sqlSnakeCaseEventDetailKeys counts the events that still hold a detail key
+// migration 179 renames; the preflight runs the same count.
+const sqlSnakeCaseEventDetailKeys = `SELECT count(*) FROM system_events
+	WHERE jsonb_typeof(data) = 'object'
+	  AND data ?| ARRAY['basestation_name', 'basestation_id', 'endpoint_id', 'operation_id', 'operation_type',
+	                    'target_bs', 'target_bs_list', 'target_bs_count', 'is_online', 'connection_type', 'session_id']`
+
+func validateEventDetailKeysCamelCase(t *testing.T, db *sql.DB) {
+	var snakeCase int
+	require.NoError(t, db.QueryRow(sqlSnakeCaseEventDetailKeys).Scan(&snakeCase))
+	assert.Zero(t, snakeCase, "every event names its details in camelCase")
+}
+
+func validateBSSCIServiceCenterURLOptional(t *testing.T, db *sql.DB) {
+	var checks int
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM pg_constraint
+		WHERE conrelid = 'basestations'::regclass AND conname = 'check_bssci_config'`).Scan(&checks))
+	assert.Zero(t, checks, "a BSSCI base station may store an unknown Service Center URL as NULL")
+}
+
+func validateEndpointStatusChangedAt(t *testing.T, db *sql.DB) {
+	var dataType string
+	require.NoError(t, db.QueryRow(`SELECT data_type FROM information_schema.columns
+		WHERE table_name = 'endpoints' AND column_name = 'status_changed_at'`).Scan(&dataType))
+	assert.Equal(t, "timestamp with time zone", dataType, "endpoints.status_changed_at records the status decision time")
+}
+
+func validateEndpointAttachmentChangedAt(t *testing.T, db *sql.DB) {
+	var dataType string
+	require.NoError(t, db.QueryRow(`SELECT data_type FROM information_schema.columns
+		WHERE table_name = 'endpoints' AND column_name = 'attachment_changed_at'`).Scan(&dataType))
+	assert.Equal(t, "timestamp with time zone", dataType, "endpoints.attachment_changed_at records the attachment decision time")
+	var renamedAway int
+	require.NoError(t, db.QueryRow(`SELECT count(*) FROM information_schema.columns
+		WHERE table_name = 'endpoints' AND column_name = 'status_changed_at'`).Scan(&renamedAway))
+	assert.Zero(t, renamedAway, "endpoints.status_changed_at is renamed, not copied")
+}
+
 func validateFinalSchema(t *testing.T, db *sql.DB) {
 	// Validate all tables exist
 	expectedTables := []string{
 		"tenants", "endpoints", "basestations", "messages", "downlink_queue",
 		"roaming_agreements", "basestation_receptions", "endpoint_sessions",
-		"endpoint_keys", "basestation_sessions", "system_events",
+		"basestation_sessions", "system_events",
 		"messages_archive", "basestation_receptions_archive",
-		"endpoint_sessions_archive", "endpoint_keys_archive",
+		"endpoint_sessions_archive",
 	}
 
 	existingTables := getTableList(t, db)
@@ -492,10 +855,23 @@ func tableExists(t *testing.T, db *sql.DB, tableName string) bool {
 	var exists bool
 	err := db.QueryRow(`
 		SELECT EXISTS (
-			SELECT 1 FROM information_schema.tables 
+			SELECT 1 FROM information_schema.tables
 			WHERE table_schema = 'public' AND table_name = $1
 		)
 	`, tableName).Scan(&exists)
+	require.NoError(t, err)
+	return exists
+}
+
+func functionExists(t *testing.T, db *sql.DB, functionName string) bool {
+	var exists bool
+	err := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM pg_proc p
+			JOIN pg_namespace n ON p.pronamespace = n.oid
+			WHERE n.nspname = 'public' AND p.proname = $1
+		)
+	`, functionName).Scan(&exists)
 	require.NoError(t, err)
 	return exists
 }

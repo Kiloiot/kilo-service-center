@@ -10,11 +10,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ============================================================================
@@ -23,63 +27,61 @@ import (
 
 // mockSCACISessionRepository implements interfaces.SCACISessionRepository for testing
 type mockSCACISessionRepository struct {
-	checkSessionResumableFunc func(ctx context.Context, tenantID int64, acUUID [16]byte, acOpId int64, scOpId int64) (*models.SCACISessionResumptionInfo, error)
-	getSessionByAcUUIDFunc    func(ctx context.Context, tenantID int64, acUUID [16]byte) (*models.SCACISession, error)
+	checkSessionResumableFunc func(ctx context.Context, ac models.SCACIApplicationCenter, acUUID [16]byte) (*models.SCACISessionResumptionInfo, error)
+	getSessionByAcUUIDFunc    func(ctx context.Context, ac models.SCACIApplicationCenter, acUUID [16]byte) (*models.SCACISession, error)
+	createCalls               int
 }
 
-func (m *mockSCACISessionRepository) CheckSessionResumable(ctx context.Context, tenantID int64, acUUID [16]byte, acOpId int64, scOpId int64) (*models.SCACISessionResumptionInfo, error) {
+func (m *mockSCACISessionRepository) CheckSessionResumable(ctx context.Context, ac models.SCACIApplicationCenter, acUUID [16]byte) (*models.SCACISessionResumptionInfo, error) {
 	if m.checkSessionResumableFunc != nil {
-		return m.checkSessionResumableFunc(ctx, tenantID, acUUID, acOpId, scOpId)
+		return m.checkSessionResumableFunc(ctx, ac, acUUID)
 	}
 	return nil, nil
 }
 
-func (m *mockSCACISessionRepository) GetSessionByAcUUID(ctx context.Context, tenantID int64, acUUID [16]byte) (*models.SCACISession, error) {
+func (m *mockSCACISessionRepository) GetSessionByAcUUID(ctx context.Context, ac models.SCACIApplicationCenter, acUUID [16]byte) (*models.SCACISession, error) {
 	if m.getSessionByAcUUIDFunc != nil {
-		return m.getSessionByAcUUIDFunc(ctx, tenantID, acUUID)
+		return m.getSessionByAcUUIDFunc(ctx, ac, acUUID)
 	}
 	return nil, nil
 }
 
 // Stub methods for remaining interface methods (not used in these tests)
 func (m *mockSCACISessionRepository) CreateSession(_ context.Context, _ *models.SCACISessionCreateRequest) (*models.SCACISession, error) {
+	m.createCalls++
 	return nil, nil
 }
+
 func (m *mockSCACISessionRepository) GetSessionByID(_ context.Context, _, _ int64) (*models.SCACISession, error) {
 	return nil, nil
 }
-func (m *mockSCACISessionRepository) GetActiveSessionByAcEUI(_ context.Context, _ int64, _ [8]byte) (*models.SCACISession, error) {
-	return nil, nil
-}
+
 func (m *mockSCACISessionRepository) GetSessionByScUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
 	return nil, nil
 }
-func (m *mockSCACISessionRepository) UpdateSession(_ context.Context, _, _ int64, _ *models.SCACISessionUpdateRequest) error {
+
+func (m *mockSCACISessionRepository) ResumeSession(_ context.Context, _, _ int64, _ *models.SCACISessionResume) error {
 	return nil
 }
+
 func (m *mockSCACISessionRepository) UpdateOperationIDs(_ context.Context, _, _ int64, _, _ int64) error {
 	return nil
 }
+
 func (m *mockSCACISessionRepository) UpdateHeartbeat(_ context.Context, _, _ int64) error {
 	return nil
 }
-func (m *mockSCACISessionRepository) DisconnectSession(_ context.Context, _, _ int64) error {
-	return nil
-}
+
 func (m *mockSCACISessionRepository) TerminateSession(_ context.Context, _, _ int64) error {
 	return nil
 }
-func (m *mockSCACISessionRepository) TerminateAllSessions(_ context.Context, _ int64, _ [8]byte) error {
-	return nil
-}
+
 func (m *mockSCACISessionRepository) ListSessions(_ context.Context, _ *models.SCACISessionFilter) ([]*models.SCACISession, int64, error) {
 	return nil, 0, nil
 }
+
 func (m *mockSCACISessionRepository) GetSessionStatistics(_ context.Context, _ int64) (*models.SCACISessionStatistics, error) {
 	return nil, nil
-}
-func (m *mockSCACISessionRepository) CleanupExpiredSessions(_ context.Context, _ int64) (int64, error) {
-	return 0, nil
 }
 
 // mockOrgResolver implements org.Resolver for testing
@@ -156,7 +158,7 @@ func TestValidateConnect_NilCertificate(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	req := &scaci.Connect{
@@ -192,7 +194,7 @@ func TestValidateConnect_CertificateExpired(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	req := &scaci.Connect{
@@ -230,7 +232,7 @@ func TestValidateConnect_CertificateNotYetValid(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	req := &scaci.Connect{
@@ -268,7 +270,7 @@ func TestValidateConnect_CertificateMissingClientAuth(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	req := &scaci.Connect{
@@ -312,7 +314,7 @@ func TestValidateConnect_ValidCertificate_NewSession(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	req := &scaci.Connect{
@@ -388,7 +390,7 @@ func TestValidateConnect_StrictOrgResolution_FailsClosed(t *testing.T) {
 	// STRICT MODE: strictOrgResolution=true
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, true, certVerifier, // strictOrgResolution=true
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	req := &scaci.Connect{
@@ -445,7 +447,7 @@ func TestValidateConnect_CommunityMode_FallsBack(t *testing.T) {
 	// COMMUNITY MODE: strictOrgResolution=false
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, defaultTenantID, false, certVerifier, // strictOrgResolution=false
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	req := &scaci.Connect{
@@ -493,7 +495,7 @@ func TestNegotiateVersion_ValidVersion(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "1.0.0")
@@ -514,7 +516,7 @@ func TestNegotiateVersion_MajorVersionMismatch(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "2.0.0")
@@ -535,7 +537,7 @@ func TestNegotiateVersion_MinorVersionTooHigh(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "1.5.0")
@@ -556,7 +558,7 @@ func TestNegotiateVersion_InvalidFormat(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	negotiated, errToken := svc.NegotiateVersion(testutil.TestContext(), "invalid-version")
@@ -580,7 +582,7 @@ func TestNegotiateVersion_UsesPkgConstants(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	// Request with version matching SupportedMajorVersion.SupportedMinorVersion
@@ -615,13 +617,13 @@ func TestResolveResume_InvalidUUIDLength(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	// Invalid UUID (only 8 bytes instead of 16)
 	acUUID := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
 
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 1, -1, "1.0.0")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 1, -1, "1.0.0")
 
 	if canResume {
 		t.Error("expected resume to fail with invalid UUID length")
@@ -638,7 +640,7 @@ func TestResolveResume_ZeroUUID(t *testing.T) {
 	log := logger.NewNop()
 	// Mock sessionRepo to return nil (no session found with zero UUID)
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return nil, nil // No session found
 		},
 	}
@@ -647,13 +649,13 @@ func TestResolveResume_ZeroUUID(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, log, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString,
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString, scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	// All-zeros UUID (16 bytes of zeros) - valid length but non-existent
 	acUUID := make([]byte, 16)
 
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 1, -1, scaci.ProtocolVersionString)
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 1, -1, scaci.ProtocolVersionString)
 
 	if canResume {
 		t.Error("expected resume to fail with zero UUID")
@@ -672,7 +674,7 @@ func TestResolveResume_SessionNotResumable(t *testing.T) {
 
 	// Mock sessionRepo to return non-resumable session
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:            false,
 				ReasonIfNotResumable: "opId out of sequence",
@@ -684,7 +686,7 @@ func TestResolveResume_SessionNotResumable(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	acUUID := []byte{
@@ -692,7 +694,7 @@ func TestResolveResume_SessionNotResumable(t *testing.T) {
 		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 	}
 
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 1, -1, "1.0.0")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 1, -1, "1.0.0")
 
 	if canResume {
 		t.Error("expected resume to fail when session is not resumable")
@@ -709,7 +711,7 @@ func TestResolveResume_SuccessfulResume(t *testing.T) {
 
 	// Mock sessionRepo to return resumable session
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:            true,
 				ReasonIfNotResumable: "",
@@ -721,7 +723,7 @@ func TestResolveResume_SuccessfulResume(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	acUUID := []byte{
@@ -729,7 +731,7 @@ func TestResolveResume_SuccessfulResume(t *testing.T) {
 		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 	}
 
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 10, -10, "1.0.0")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 10, -10, "1.0.0")
 
 	if !canResume {
 		t.Error("expected resume to succeed")
@@ -739,220 +741,61 @@ func TestResolveResume_SuccessfulResume(t *testing.T) {
 	}
 }
 
-// TestResolveResume_AcOpIdRegression validates SCACI-S.1-05:
-// Resume must be rejected when AC opId has regressed (lower than stored value)
-func TestResolveResume_AcOpIdRegression(t *testing.T) {
-	logger := logger.NewNop()
-	orgResolver := &mockOrgResolver{}
-	certVerifier := &mockCertificateVerifier{}
+// Stored counters the resume rule tests compare against (SCACI §3.3.1).
+const (
+	resumeStoredAcOpID int64 = 100
+	resumeStoredScOpID int64 = -100
+)
 
-	// Mock sessionRepo to validate AC opId and reject regression
-	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, acOpId int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
-			lastKnownAcOpId := int64(100)
-			// AC opIds are positive and increment - provided must be >= last known
-			if acOpId < lastKnownAcOpId {
-				return &models.SCACISessionResumptionInfo{
-					CanResume:            false,
-					ReasonIfNotResumable: "AC opId regression: provided=50, expected>=100",
-					LastKnownAcOpId:      lastKnownAcOpId,
-					LastKnownScOpId:      -100,
-				}, nil
-			}
+// storedCountersRepo reports a resumable session with the stored counters.
+func storedCountersRepo() *mockSCACISessionRepository {
+	return &mockSCACISessionRepository{
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:       true,
-				LastKnownAcOpId: lastKnownAcOpId,
-				LastKnownScOpId: -100,
+				LastKnownAcOpId: resumeStoredAcOpID,
+				LastKnownScOpId: resumeStoredScOpID,
 			}, nil
 		},
-	}
-
-	svc := NewHandshakeService(
-		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
-	).(*handshakeService)
-
-	acUUID := []byte{
-		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
-	}
-
-	// Attempt resume with regressed AC opId (50 < 100)
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 50, -100, "1.0.0")
-
-	if canResume {
-		t.Error("expected resume to fail when AC opId has regressed")
-	}
-	if errToken != scaci.ErrOpIdOutOfOrder {
-		t.Errorf("expected ErrOpIdOutOfOrder for AC regression, got: %s", errToken)
 	}
 }
 
-// TestResolveResume_ScOpIdRegression validates SCACI-3.2-03:
-// Resume must be rejected when SC opId has regressed (higher than stored value, since SC opIds are negative/decrementing)
-func TestResolveResume_ScOpIdRegression(t *testing.T) {
-	logger := logger.NewNop()
-	orgResolver := &mockOrgResolver{}
-	certVerifier := &mockCertificateVerifier{}
-
-	// Mock sessionRepo to validate SC opId and reject regression
-	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, scOpId int64) (*models.SCACISessionResumptionInfo, error) {
-			lastKnownScOpId := int64(-100)
-			// SC opIds are negative and decrement - provided must be <= last known
-			if scOpId > lastKnownScOpId {
-				return &models.SCACISessionResumptionInfo{
-					CanResume:            false,
-					ReasonIfNotResumable: "SC opId regression: provided=-50, expected<=-100",
-					LastKnownAcOpId:      100,
-					LastKnownScOpId:      lastKnownScOpId,
-				}, nil
-			}
-			return &models.SCACISessionResumptionInfo{
-				CanResume:       true,
-				LastKnownAcOpId: 100,
-				LastKnownScOpId: lastKnownScOpId,
-			}, nil
-		},
+// The application center's operation IDs are checked against the counters
+// the service center stored (SCACI §3.3.1): snAcOpId is the minimum AC
+// operation ID the service center must know, snScOpId the maximum SC
+// operation ID the application center knows.
+func TestResolveResume_OperationIDsAgainstTheStoredCounters(t *testing.T) {
+	cases := []struct {
+		name      string
+		acOpID    int64
+		scOpID    int64
+		resumable bool
+	}{
+		{name: "both sides agree", acOpID: resumeStoredAcOpID, scOpID: resumeStoredScOpID, resumable: true},
+		{name: "operations beyond both bounds are reissued", acOpID: resumeStoredAcOpID / 2, scOpID: resumeStoredScOpID / 2, resumable: true},
+		{name: "the service center lost an application center operation", acOpID: resumeStoredAcOpID + 1, scOpID: resumeStoredScOpID, resumable: false},
+		{name: "the application center knows a service center operation never issued", acOpID: resumeStoredAcOpID, scOpID: resumeStoredScOpID - 1, resumable: false},
 	}
-
-	svc := NewHandshakeService(
-		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
-	).(*handshakeService)
-
 	acUUID := []byte{
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewHandshakeService(
+				storedCountersRepo(), logger.NewNop(), &mockOrgResolver{}, 1, false, &mockCertificateVerifier{},
+				0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
+			).(*handshakeService)
 
-	// Attempt resume with regressed SC opId (-50 > -100, regression for negative values)
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 100, -50, "1.0.0")
+			canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, tc.acOpID, tc.scOpID, "1.0.0")
 
-	if canResume {
-		t.Error("expected resume to fail when SC opId has regressed")
-	}
-	if errToken != scaci.ErrOpIdOutOfOrder {
-		t.Errorf("expected ErrOpIdOutOfOrder for SC regression, got: %s", errToken)
-	}
-}
-
-// TestResolveResume_BothOpIdsValid validates successful resumption when both opIds are valid
-func TestResolveResume_BothOpIdsValid(t *testing.T) {
-	logger := logger.NewNop()
-	orgResolver := &mockOrgResolver{}
-	certVerifier := &mockCertificateVerifier{}
-
-	// Mock sessionRepo to validate both opIds and allow resume
-	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, acOpId int64, scOpId int64) (*models.SCACISessionResumptionInfo, error) {
-			lastKnownAcOpId := int64(100)
-			lastKnownScOpId := int64(-100)
-
-			// AC opIds must be >= last known (positive, incrementing)
-			if acOpId < lastKnownAcOpId {
-				return &models.SCACISessionResumptionInfo{
-					CanResume:            false,
-					ReasonIfNotResumable: "AC opId regression",
-					LastKnownAcOpId:      lastKnownAcOpId,
-					LastKnownScOpId:      lastKnownScOpId,
-				}, nil
+			assert.Equal(t, tc.resumable, canResume)
+			if tc.resumable {
+				assert.Empty(t, errToken)
+				return
 			}
-			// SC opIds must be <= last known (negative, decrementing)
-			if scOpId > lastKnownScOpId {
-				return &models.SCACISessionResumptionInfo{
-					CanResume:            false,
-					ReasonIfNotResumable: "SC opId regression",
-					LastKnownAcOpId:      lastKnownAcOpId,
-					LastKnownScOpId:      lastKnownScOpId,
-				}, nil
-			}
-			return &models.SCACISessionResumptionInfo{
-				CanResume:       true,
-				LastKnownAcOpId: lastKnownAcOpId,
-				LastKnownScOpId: lastKnownScOpId,
-			}, nil
-		},
-	}
-
-	svc := NewHandshakeService(
-		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
-	).(*handshakeService)
-
-	acUUID := []byte{
-		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
-	}
-
-	// Resume with valid opIds: AC=100 (matches), SC=-100 (matches)
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 100, -100, "1.0.0")
-
-	if !canResume {
-		t.Error("expected resume to succeed when both opIds are valid")
-	}
-	if errToken != "" {
-		t.Errorf("expected no error, got: %s", errToken)
-	}
-}
-
-// TestResolveResume_OpIdsAdvanced validates resumption accepts advanced opIds
-// (AC higher than stored, SC lower than stored)
-func TestResolveResume_OpIdsAdvanced(t *testing.T) {
-	logger := logger.NewNop()
-	orgResolver := &mockOrgResolver{}
-	certVerifier := &mockCertificateVerifier{}
-
-	// Mock sessionRepo to accept advanced opIds
-	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, acOpId int64, scOpId int64) (*models.SCACISessionResumptionInfo, error) {
-			lastKnownAcOpId := int64(100)
-			lastKnownScOpId := int64(-100)
-
-			// AC opIds must be >= last known
-			if acOpId < lastKnownAcOpId {
-				return &models.SCACISessionResumptionInfo{
-					CanResume:            false,
-					ReasonIfNotResumable: "AC opId regression",
-					LastKnownAcOpId:      lastKnownAcOpId,
-					LastKnownScOpId:      lastKnownScOpId,
-				}, nil
-			}
-			// SC opIds must be <= last known
-			if scOpId > lastKnownScOpId {
-				return &models.SCACISessionResumptionInfo{
-					CanResume:            false,
-					ReasonIfNotResumable: "SC opId regression",
-					LastKnownAcOpId:      lastKnownAcOpId,
-					LastKnownScOpId:      lastKnownScOpId,
-				}, nil
-			}
-			return &models.SCACISessionResumptionInfo{
-				CanResume:       true,
-				LastKnownAcOpId: lastKnownAcOpId,
-				LastKnownScOpId: lastKnownScOpId,
-			}, nil
-		},
-	}
-
-	svc := NewHandshakeService(
-		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
-	).(*handshakeService)
-
-	acUUID := []byte{
-		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-		0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
-	}
-
-	// Resume with advanced opIds: AC=150 (> 100), SC=-150 (< -100)
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 150, -150, "1.0.0")
-
-	if !canResume {
-		t.Error("expected resume to succeed when opIds have advanced")
-	}
-	if errToken != "" {
-		t.Errorf("expected no error, got: %s", errToken)
+			assert.Equal(t, scaci.ErrOpIdOutOfOrder, errToken)
+		})
 	}
 }
 
@@ -969,7 +812,7 @@ func TestResolveResume_VersionMismatch(t *testing.T) {
 
 	// Mock sessionRepo to return a session with NegotiatedVersion="1.0.0"
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:         true,
 				LastKnownAcOpId:   100,
@@ -981,7 +824,7 @@ func TestResolveResume_VersionMismatch(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	acUUID := []byte{
@@ -990,7 +833,7 @@ func TestResolveResume_VersionMismatch(t *testing.T) {
 	}
 
 	// Attempt resume with different version (1.1.0 vs stored 1.0.0)
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 100, -100, "1.1.0")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 100, -100, "1.1.0")
 
 	if canResume {
 		t.Error("expected resume to fail when version mismatches stored negotiated version")
@@ -1008,7 +851,7 @@ func TestResolveResume_VersionMatch(t *testing.T) {
 
 	// Mock sessionRepo to return a session with NegotiatedVersion="1.0.0"
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:         true,
 				LastKnownAcOpId:   100,
@@ -1020,7 +863,7 @@ func TestResolveResume_VersionMatch(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	acUUID := []byte{
@@ -1029,7 +872,7 @@ func TestResolveResume_VersionMatch(t *testing.T) {
 	}
 
 	// Resume with matching version
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 100, -100, "1.0.0")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 100, -100, "1.0.0")
 
 	if !canResume {
 		t.Error("expected resume to succeed when version matches stored negotiated version")
@@ -1048,7 +891,7 @@ func TestResolveResume_PatchDifferentAllowsResume(t *testing.T) {
 
 	// Mock sessionRepo to return a session with NegotiatedVersion="1.0.0"
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:         true,
 				LastKnownAcOpId:   100,
@@ -1060,7 +903,7 @@ func TestResolveResume_PatchDifferentAllowsResume(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	acUUID := []byte{
@@ -1070,7 +913,7 @@ func TestResolveResume_PatchDifferentAllowsResume(t *testing.T) {
 
 	// Resume with different patch version (1.0.5 vs stored 1.0.0)
 	// Per SCACI §2.3: patch version MUST be ignored
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 100, -100, "1.0.5")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 100, -100, "1.0.5")
 
 	if !canResume {
 		t.Error("expected resume to succeed when only patch version differs (§2.3 requires patch ignored)")
@@ -1089,7 +932,7 @@ func TestResolveResume_MinorDifferentRejects(t *testing.T) {
 
 	// Mock sessionRepo to return a session with NegotiatedVersion="1.0.0"
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:         true,
 				LastKnownAcOpId:   100,
@@ -1101,7 +944,7 @@ func TestResolveResume_MinorDifferentRejects(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	acUUID := []byte{
@@ -1110,7 +953,7 @@ func TestResolveResume_MinorDifferentRejects(t *testing.T) {
 	}
 
 	// Resume with different minor version (1.1.0 vs stored 1.0.0)
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 100, -100, "1.1.0")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 100, -100, "1.1.0")
 
 	if canResume {
 		t.Error("expected resume to fail when minor version differs")
@@ -1129,7 +972,7 @@ func TestResolveResume_MajorDifferentRejects(t *testing.T) {
 
 	// Mock sessionRepo to return a session with NegotiatedVersion="1.0.0"
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:         true,
 				LastKnownAcOpId:   100,
@@ -1141,7 +984,7 @@ func TestResolveResume_MajorDifferentRejects(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	acUUID := []byte{
@@ -1150,7 +993,7 @@ func TestResolveResume_MajorDifferentRejects(t *testing.T) {
 	}
 
 	// Resume with different major version (2.0.0 vs stored 1.0.0)
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 100, -100, "2.0.0")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 100, -100, "2.0.0")
 
 	if canResume {
 		t.Error("expected resume to fail when major version differs")
@@ -1169,7 +1012,7 @@ func TestResolveResume_EmptyStoredVersionAllowsResume(t *testing.T) {
 
 	// Mock sessionRepo to return a previous session with empty NegotiatedVersion
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:         true,
 				LastKnownAcOpId:   50,
@@ -1181,7 +1024,7 @@ func TestResolveResume_EmptyStoredVersionAllowsResume(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0",
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", "1.0.0", scaci.NewSessionFactory(clock.SystemClock{}),
 	).(*handshakeService)
 
 	acUUID := []byte{
@@ -1190,7 +1033,7 @@ func TestResolveResume_EmptyStoredVersionAllowsResume(t *testing.T) {
 	}
 
 	// Resume with any version when stored is empty (backwards compatibility)
-	canResume, errToken := svc.ResolveResume(testutil.TestContext(), 1, acUUID, nil, 50, -50, "1.0.0")
+	canResume, errToken := svc.ResolveResume(testutil.TestContext(), scaci.ApplicationCenter{TenantID: 1}, acUUID, nil, 50, -50, "1.0.0")
 
 	if !canResume {
 		t.Error("expected resume to succeed when stored version is empty (previous session)")
@@ -1232,7 +1075,7 @@ func TestValidateConnect_CrossTenantResumeRejected(t *testing.T) {
 	// Session repo: CheckSessionResumable allows resume, but GetSessionByAcUUID
 	// returns a session owned by tenant 1 (the victim tenant)
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			// Resume allowed at opId/version level
 			return &models.SCACISessionResumptionInfo{
 				CanResume:         true,
@@ -1241,7 +1084,7 @@ func TestValidateConnect_CrossTenantResumeRejected(t *testing.T) {
 				NegotiatedVersion: scaci.ProtocolVersionString,
 			}, nil
 		},
-		getSessionByAcUUIDFunc: func(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
+		getSessionByAcUUIDFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISession, error) {
 			// Return session owned by tenant 1 (different from certificate tenant 2)
 			return &models.SCACISession{
 				ID:         1,
@@ -1258,7 +1101,7 @@ func TestValidateConnect_CrossTenantResumeRejected(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, log, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString,
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString, scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	// Build Connect request with resume fields pointing to tenant 1's session
@@ -1313,7 +1156,7 @@ func TestValidateConnect_SameTenantResumeSucceeds(t *testing.T) {
 
 	// Session repo: both functions confirm session belongs to tenant 1
 	sessionRepo := &mockSCACISessionRepository{
-		checkSessionResumableFunc: func(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
 			return &models.SCACISessionResumptionInfo{
 				CanResume:         true,
 				LastKnownAcOpId:   10,
@@ -1321,7 +1164,7 @@ func TestValidateConnect_SameTenantResumeSucceeds(t *testing.T) {
 				NegotiatedVersion: scaci.ProtocolVersionString,
 			}, nil
 		},
-		getSessionByAcUUIDFunc: func(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
+		getSessionByAcUUIDFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISession, error) {
 			// Return session owned by tenant 1 (same as certificate)
 			return &models.SCACISession{
 				ID:         1,
@@ -1338,7 +1181,7 @@ func TestValidateConnect_SameTenantResumeSucceeds(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, log, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString,
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString, scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	// Build Connect request with resume fields
@@ -1366,6 +1209,9 @@ func TestValidateConnect_SameTenantResumeSucceeds(t *testing.T) {
 	if !session.Resumed {
 		t.Error("expected session.Resumed=true")
 	}
+	if session.State != scaci.StateConnecting {
+		t.Errorf("a resumed session serves no SC-initiated traffic before conCmp (SCACI §3.3): state=%s", session.State)
+	}
 	if session.TenantID != 1 {
 		t.Errorf("expected TenantID=1, got %d", session.TenantID)
 	}
@@ -1377,136 +1223,38 @@ func TestValidateConnect_SameTenantResumeSucceeds(t *testing.T) {
 	}
 }
 
-// ============================================================================
-// Metadata Preservation Tests (SCACI §3.3.1 info field)
-// ============================================================================
-
-// TestSessionFromModel_PreservesNestedMetadata validates that sessionFromModel
-// preserves non-string metadata values when reconstructing a session from DB.
-// This is critical for SCACI §3.3.1 info field support (arbitrary key-value object).
-// Ref: handshake_service.go:470-475 (sessionFromModel metadata handling)
-func TestSessionFromModel_PreservesNestedMetadata(t *testing.T) {
-	log := logger.NewNop()
-	sessionRepo := &mockSCACISessionRepository{}
-	orgResolver := &mockOrgResolver{}
-	certVerifier := &mockCertificateVerifier{}
-
-	svc := NewHandshakeService(
-		sessionRepo, log, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString,
-	).(*handshakeService)
-
-	// Build DB session with nested metadata (simulates info field per §3.3.1)
-	dbSession := &models.SCACISession{
-		ID:          123,
-		TenantID:    42,
-		AcEUI:       [8]byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22},
-		SnAcUUID:    [16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10},
-		SnScUUID:    [16]byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20},
-		ConnectedAt: time.Now(),
-		LastOpIDAc:  100,
-		LastOpIDSc:  -100,
-		Status:      "active",
-		Metadata: map[string]interface{}{
-			"vendor":    "TestVendor",
-			"model":     "TestModel",
-			"name":      "TestAC",
-			"swVersion": "2.0.0",
-			// info field: nested object per SCACI §3.3.1
-			"info": map[string]interface{}{
-				"firmware":     "v1.2.3",
-				"serialNo":     12345,
-				"capabilities": []interface{}{"downlink", "multicast"},
-				"nested": map[string]interface{}{
-					"deep": "value",
-				},
-			},
+// A resume whose snAcOpId is below the service center's AC counter admits the
+// application center's reissue of the operations in between (SCACI §1, §3.2).
+func TestValidateConnect_ResumeOpensReissueWindow(t *testing.T) {
+	const knownAcOpID, snAcOpID, snScOpID = int64(10), int64(8), int64(-4)
+	acUUID := [16]byte{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30}
+	sessionRepo := &mockSCACISessionRepository{
+		checkSessionResumableFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
+			return &models.SCACISessionResumptionInfo{CanResume: true, NegotiatedVersion: scaci.ProtocolVersionString}, nil
+		},
+		getSessionByAcUUIDFunc: func(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISession, error) {
+			return &models.SCACISession{ID: 1, TenantID: 1, SnAcUUID: acUUID, LastOpIDAc: knownAcOpID, LastOpIDSc: snScOpID}, nil
 		},
 	}
+	orgResolver := &mockOrgResolver{
+		resolveCertFunc: func(_ context.Context, _ *x509.Certificate) (uuid.UUID, int64, error) {
+			return uuid.Nil, 1, nil
+		},
+	}
+	certVerifier := &mockCertificateVerifier{verifyCertificateFunc: func(_ *x509.Certificate) string { return "" }}
+	svc := NewHandshakeService(sessionRepo, logger.NewNop(), orgResolver, 1, false, certVerifier,
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString, scaci.NewSessionFactory(clock.SystemClock{}))
 
-	// Call sessionFromModel (private method exposed via handshakeService type)
-	session := svc.sessionFromModel(dbSession)
+	ackOpID, scOpID := snAcOpID, snScOpID
+	session, _, errToken := svc.ValidateConnect(testutil.TestContext(), &scaci.Connect{
+		Version: scaci.ProtocolVersionString, AcEui: 0xAABBCCDDEEFF1122, SnAcUUID: scaci.UUID16(acUUID),
+		SnAcOpId: &ackOpID, SnScOpId: &scOpID,
+	}, createValidTestCert("tenant-1"))
 
-	// Assert basic fields
-	if session.ID != 123 {
-		t.Errorf("expected ID=123, got %d", session.ID)
-	}
-	if session.TenantID != 42 {
-		t.Errorf("expected TenantID=42, got %d", session.TenantID)
-	}
-
-	// Assert string metadata is preserved
-	if session.Metadata["vendor"] != "TestVendor" {
-		t.Errorf("expected vendor=TestVendor, got %v", session.Metadata["vendor"])
-	}
-	if session.Metadata["model"] != "TestModel" {
-		t.Errorf("expected model=TestModel, got %v", session.Metadata["model"])
-	}
-
-	// Assert nested info object is preserved (CRITICAL for §3.3.1)
-	info, ok := session.Metadata["info"]
-	if !ok {
-		t.Fatal("info field should be preserved in metadata")
-	}
-	infoMap, ok := info.(map[string]interface{})
-	if !ok {
-		t.Fatalf("info should be map[string]interface{}, got %T", info)
-	}
-
-	// Verify nested values
-	if infoMap["firmware"] != "v1.2.3" {
-		t.Errorf("expected info.firmware=v1.2.3, got %v", infoMap["firmware"])
-	}
-	// serialNo is numeric - verify it wasn't dropped
-	if infoMap["serialNo"] != 12345 {
-		t.Errorf("expected info.serialNo=12345, got %v", infoMap["serialNo"])
-	}
-	// capabilities is a slice - verify it wasn't dropped
-	caps, ok := infoMap["capabilities"].([]interface{})
-	if !ok || len(caps) != 2 {
-		t.Errorf("expected info.capabilities to be slice with 2 elements, got %v", infoMap["capabilities"])
-	}
-	// nested object - verify deep nesting preserved
-	nestedObj, ok := infoMap["nested"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected info.nested to be map, got %T", infoMap["nested"])
-	}
-	if nestedObj["deep"] != "value" {
-		t.Errorf("expected info.nested.deep=value, got %v", nestedObj["deep"])
-	}
-}
-
-// TestSessionFromModel_EmptyMetadata validates sessionFromModel handles nil/empty metadata
-func TestSessionFromModel_EmptyMetadata(t *testing.T) {
-	log := logger.NewNop()
-	sessionRepo := &mockSCACISessionRepository{}
-	orgResolver := &mockOrgResolver{}
-	certVerifier := &mockCertificateVerifier{}
-
-	svc := NewHandshakeService(
-		sessionRepo, log, orgResolver, 1, false, certVerifier,
-		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString,
-	).(*handshakeService)
-
-	dbSession := &models.SCACISession{
-		ID:          456,
-		TenantID:    1,
-		AcEUI:       [8]byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22},
-		SnAcUUID:    [16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10},
-		SnScUUID:    [16]byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20},
-		ConnectedAt: time.Now(),
-		Metadata:    nil, // No metadata
-	}
-
-	session := svc.sessionFromModel(dbSession)
-
-	// Should not panic and should create empty map
-	if session.Metadata == nil {
-		t.Error("Metadata should be initialized to empty map, not nil")
-	}
-	if len(session.Metadata) != 0 {
-		t.Errorf("expected empty metadata map, got %d entries", len(session.Metadata))
-	}
+	require.Empty(t, errToken)
+	require.NotNil(t, session)
+	assert.NoError(t, session.AcceptAcOpId(snAcOpID+1), "the application center reissues an operation the service center already saw")
+	assert.Error(t, session.AcceptAcOpId(snAcOpID), "operations the application center saw completed are not reissued")
 }
 
 // ============================================================================
@@ -1563,7 +1311,7 @@ func TestValidateConnect_FullFlow_WithCertificateValidation(t *testing.T) {
 
 	svc := NewHandshakeService(
 		sessionRepo, logger, orgResolver, 1, false, certVerifier,
-		0x9999888877776666, "KiloCenter", "KC-2000", "prod-sc", "1.0.5",
+		0x9999888877776666, "KiloCenter", "KC-2000", "prod-sc", "1.0.5", scaci.NewSessionFactory(clock.SystemClock{}),
 	)
 
 	req := &scaci.Connect{
@@ -1615,5 +1363,37 @@ func TestValidateConnect_FullFlow_WithCertificateValidation(t *testing.T) {
 	}
 	if resp.Model == nil || *resp.Model != "KC-2000" {
 		t.Errorf("expected Model=KC-2000, got %v", resp.Model)
+	}
+}
+
+// TestValidateConnect_SessionEntropyFailure proves a failed session factory
+// rejects the connect with the catalog token and persists nothing.
+func TestValidateConnect_SessionEntropyFailure(t *testing.T) {
+	sessionRepo := &mockSCACISessionRepository{}
+	orgResolver := &mockOrgResolver{}
+	certVerifier := &mockCertificateVerifier{}
+
+	failingFactory := func(int64, uint64, scaci.UUID16) (*scaci.Session, error) {
+		return nil, errTestEntropyExhausted
+	}
+	svc := NewHandshakeService(
+		sessionRepo, logger.NewNop(), orgResolver, 1, false, certVerifier,
+		0x1122334455667788, "KiloCenter", "KC-1000", "test-sc", scaci.ProtocolVersionString, failingFactory,
+	)
+
+	req := &scaci.Connect{
+		Version: scaci.ProtocolVersionString,
+		AcEui:   0xAABBCCDDEEFF1122,
+	}
+	session, resp, errToken := svc.ValidateConnect(testutil.TestContext(), req, createValidTestCert("entropy-test"))
+
+	if errToken != scaci.ErrSessionEntropyFailure {
+		t.Fatalf("expected %s, got %q", scaci.ErrSessionEntropyFailure, errToken)
+	}
+	if session != nil || resp != nil {
+		t.Error("no session or response may exist after an entropy failure")
+	}
+	if sessionRepo.createCalls != 0 {
+		t.Errorf("no session may be persisted after an entropy failure, got %d creates", sessionRepo.createCalls)
 	}
 }

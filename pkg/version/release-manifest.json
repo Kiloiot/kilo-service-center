@@ -1,14 +1,14 @@
 {
-  "version": "v1.2.0+c9efdb9",
-  "buildTime": "2026-07-22T21:02:45Z",
-  "gitCommit": "c9efdb9618771af93a507c1a20332b027763e1eb",
-  "gitBranch": "CHIRP-3538-bssci-version-negotiation-eui64",
-  "buildUser": "timkrav",
-  "goVersion": "go1.26.4",
+  "version": "dev",
+  "buildTime": "",
+  "gitCommit": "",
+  "gitBranch": "",
+  "buildUser": "",
+  "goVersion": "",
   "artifacts": {
     "kcCore": "KC-Core/bin/kilocenter"
   },
-  "schemaVersion": 142,
+  "schemaVersion": 186,
   "edition": "Community Edition",
   "editionCode": "ce",
   "licenseId": "AGPL-3.0-or-later",

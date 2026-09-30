@@ -19,9 +19,6 @@ type BlueprintRepository interface {
 	// GetByID retrieves a blueprint by ID with tenant isolation
 	GetByID(ctx context.Context, tenantID int64, id uuid.UUID) (*models.Blueprint, error)
 
-	// GetByVersion retrieves a blueprint by device model ID and version
-	GetByVersion(ctx context.Context, tenantID int64, deviceModelID uuid.UUID, version string) (*models.Blueprint, error)
-
 	// GetByTypeEUI retrieves a blueprint by Type EUI with tenant isolation
 	// Type EUI is an 8-byte MIOTY identifier unique per tenant
 	GetByTypeEUI(ctx context.Context, tenantID int64, typeEUI []byte) (*models.Blueprint, error)
@@ -30,14 +27,8 @@ type BlueprintRepository interface {
 	// Returns nil if no default is set
 	GetDefaultForModel(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) (*models.Blueprint, error)
 
-	// ListByDeviceModel retrieves blueprints for a device model with pagination
-	ListByDeviceModel(ctx context.Context, tenantID int64, deviceModelID uuid.UUID, limit, offset int) ([]*models.Blueprint, error)
-
 	// List retrieves blueprints for a tenant with pagination and optional filters
 	List(ctx context.Context, params *models.BlueprintListParams) ([]*models.Blueprint, error)
-
-	// ListWithModel retrieves blueprints with joined device model and manufacturer data
-	ListWithModel(ctx context.Context, params *models.BlueprintListParams) ([]*models.BlueprintWithModel, error)
 
 	// Count returns the total count of blueprints for a tenant
 	Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error)
@@ -50,9 +41,6 @@ type BlueprintRepository interface {
 
 	// SetDefault sets a blueprint as its device model's default within the isSystem-selected scope, clearing any existing default.
 	SetDefault(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error
-
-	// ClearDefault clears the default flag for a blueprint within the isSystem-selected scope.
-	ClearDefault(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID) error
 
 	// UpdateRegistryInfo updates the GitHub registry metadata for a blueprint within the isSystem-selected scope.
 	UpdateRegistryInfo(ctx context.Context, tenantID int64, isSystem bool, id uuid.UUID, repo, commitSHA, prURL string, verified bool) error

@@ -47,7 +47,7 @@ func newPairFixture(t *testing.T) (*Server, *memoryStatusService, *pairDLRXRepo,
 	server := NewTestServer(log, storage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 	server.config = &Config{MessageEncoding: EncodingJSON}
-	server.RegisterHandlers()
+	server.SetEndpointOwnerResolver(EndpointOwnedBy(1))
 
 	conn := &bsscitest.TestConn{Encoding: EncodingJSON}
 	session := &Session{
@@ -70,7 +70,7 @@ func newPairFixture(t *testing.T) (*Server, *memoryStatusService, *pairDLRXRepo,
 
 func sendPair(server *Server, session *Session, dlRxStatQry bool) error {
 	return server.SendDLDataQueue(session.ID, TestEpEui01, [][]byte{{0x01, 0x02}}, 42,
-		0, false, nil, 0, false, false, false, false, 1, dlRxStatQry)
+		0, false, nil, 0, false, false, false, false, 1, nil, dlRxStatQry)
 }
 
 // TestSendDLDataQueue_PairEmitsQueryBeforeQueue: with the dlRxStatQry hint the
@@ -113,7 +113,7 @@ func TestSendDLDataQueue_NoHintEmitsQueueOnly(t *testing.T) {
 // durably record the pair's recovery records aborts before any wire write.
 func TestSendDLDataQueue_BatchPersistFailureEmitsNeitherFrame(t *testing.T) {
 	server, statusSvc, _, session, conn := newPairFixture(t)
-	statusSvc.recordErr = errors.New("insert failed")
+	statusSvc.recordErr = errInsertFailed
 
 	err := sendPair(server, session, true)
 
@@ -125,7 +125,7 @@ func TestSendDLDataQueue_BatchPersistFailureEmitsNeitherFrame(t *testing.T) {
 // persist the DL RX correlation row is a pre-write failure for the whole pair.
 func TestSendDLDataQueue_CorrelationFailureEmitsNeitherFrame(t *testing.T) {
 	server, statusSvc, dlrx, session, conn := newPairFixture(t)
-	dlrx.createErr = errors.New("correlation insert failed")
+	dlrx.createErr = errCorrelationInsertFailed
 
 	err := sendPair(server, session, true)
 
@@ -141,7 +141,7 @@ func TestSendDLDataQueue_CorrelationFailureEmitsNeitherFrame(t *testing.T) {
 // frame to the corrupt connection.
 func TestSendDLDataQueue_QueryWriteFailurePreservesBothOperations(t *testing.T) {
 	server, statusSvc, _, session, conn := newPairFixture(t)
-	conn.FailWrites = true
+	conn.StalledWrites = true
 
 	err := sendPair(server, session, true)
 
@@ -155,11 +155,27 @@ func TestSendDLDataQueue_QueryWriteFailurePreservesBothOperations(t *testing.T) 
 	assert.NoError(t, getErr, "queue operation preserved for resume")
 }
 
+// TestSendDLDataQueue_NothingWrittenIsNotAmbiguous: a write that put no byte
+// of the frame on the wire (a closed connection) is a definite failure, not
+// an ambiguous one - the recovery row is removed and the caller may release
+// the reserved downlink.
+func TestSendDLDataQueue_NothingWrittenIsNotAmbiguous(t *testing.T) {
+	server, statusSvc, _, session, conn := newPairFixture(t)
+	conn.FailWrites = true
+
+	err := sendPair(server, session, false)
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrAmbiguousWrite, "nothing reached the wire")
+	_, getErr := statusSvc.GetPendingOperation(session, -1)
+	assert.Error(t, getErr, "the unsent operation's recovery row is removed")
+}
+
 // TestSendDLDataQueue_CounterNeverRolledBack: whatever fails, allocated IDs
 // stay consumed (harmless gap) - never restored.
 func TestSendDLDataQueue_CounterNeverRolledBack(t *testing.T) {
 	server, statusSvc, _, session, _ := newPairFixture(t)
-	statusSvc.recordErr = errors.New("insert failed")
+	statusSvc.recordErr = errInsertFailed
 
 	require.Error(t, sendPair(server, session, true))
 	assert.Equal(t, int64(-2), session.LastScOpId, "both consumed IDs stay consumed")
@@ -167,4 +183,26 @@ func TestSendDLDataQueue_CounterNeverRolledBack(t *testing.T) {
 	statusSvc.recordErr = nil
 	require.NoError(t, sendPair(server, session, true))
 	assert.Equal(t, int64(-4), session.LastScOpId, "fresh IDs continue past the gap")
+}
+
+// Sentinel errors returned by this package; callers match them with errors.Is.
+var (
+	errInsertFailed            = errors.New("insert failed")
+	errCorrelationInsertFailed = errors.New("correlation insert failed")
+)
+
+// TestSendDLDataQueue_RefusesUnidirectionalSession: a base station that
+// connected without bidi transmits no downlinks, so no dlDataQue is written to
+// it and nothing is recorded for a resume to reissue.
+func TestSendDLDataQueue_RefusesUnidirectionalSession(t *testing.T) {
+	server, statusSvc, _, session, conn := newPairFixture(t)
+	session.Bidirectional = false
+
+	err := sendPair(server, session, false)
+
+	require.ErrorIs(t, err, ErrSessionNotBidirectional)
+	assert.NotErrorIs(t, err, ErrAmbiguousWrite, "nothing reached the wire, so the row may be released")
+	assert.Zero(t, conn.MessageCount(), "no dlDataQue reaches a unidirectional base station")
+	_, getErr := statusSvc.GetPendingOperation(session, -1)
+	assert.Error(t, getErr, "no recovery record is written")
 }

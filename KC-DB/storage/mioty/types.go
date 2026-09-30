@@ -18,13 +18,10 @@ package mioty
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // ============================================================================
@@ -33,6 +30,9 @@ import (
 
 // MIOTYFrameIdentifier is the 8-byte ASCII identifier for MIOTY frames
 var MIOTYFrameIdentifier = [8]byte{'M', 'I', 'O', 'T', 'Y', 'B', '0', '1'} // "MIOTYB01"
+
+// SCACIFrameIdentifier is the 8-byte ASCII identifier for SCACI frames (SCACI §3.1)
+var SCACIFrameIdentifier = [8]byte{'M', 'I', 'O', 'T', 'Y', 'A', '0', '1'} // "MIOTYA01"
 
 // MIOTY BSSCI Protocol Version Constants
 const (
@@ -46,21 +46,142 @@ const (
 	MIOTYProtocolVersion = "1.0.0"
 )
 
+// End Point classes (radio protocol §3.1): class A End Points communicate
+// bidirectionally, class Z End Points only transmit.
+const (
+	EndpointClassBidirectional  = "A"
+	EndpointClassUnidirectional = "Z"
+)
+
+// EndpointClass names the class of a bidirectional or unidirectional End Point.
+func EndpointClass(bidi bool) string {
+	if bidi {
+		return EndpointClassBidirectional
+	}
+	return EndpointClassUnidirectional
+}
+
 // Blueprint Decode Status Constants
-// These mirror KC-Core/pkg/blueprint/constants.go for use in KC-DB without circular imports
+// These mirror the blueprint package constants for use in KC-DB without circular imports
 const (
 	// DecodeStatusFailed indicates decoding was attempted but failed
 	DecodeStatusFailed = "failed"
-	// DecodeStatusSkipped indicates decoding was skipped (no blueprint configured)
-	DecodeStatusSkipped = "skipped"
 )
 
 // Blueprint Decode Error Constants
-// These mirror KC-Core/pkg/blueprint/errors_catalog.go for use in KC-DB without circular imports
+// These mirror the blueprint package error catalog for use in KC-DB without circular imports
 const (
 	// ErrInvalidJSONPayload indicates the decoded payload was not valid JSON
 	ErrInvalidJSONPayload = "blueprint.error.invalid_json_payload"
 )
+
+// Message Encoding Constants
+// BSSCI Section 1 - Dual encoding support (JSON and MessagePack). These are the
+// persisted encoding identifiers stored with base station sessions.
+const (
+	// EncodingMessagePack is the default MIOTY message encoding (binary)
+	EncodingMessagePack = "msgpack"
+	// EncodingJSON is the alternative MIOTY message encoding (text-based)
+	EncodingJSON = "json"
+)
+
+// DL Data Result Status Constants (BSSCI §5.14.1)
+// Stored in the downlink queue result field after transmission or revocation.
+const (
+	// DLDataResultSent indicates the downlink was successfully sent
+	DLDataResultSent = "sent"
+	// DLDataResultInvalid indicates the downlink was rejected due to a
+	// validation error
+	DLDataResultInvalid = "invalid"
+	// DLDataResultExpired indicates the downlink expired before transmission
+	DLDataResultExpired = "expired"
+	// DLDataResultRevoked indicates the downlink was revoked via dlDataRevCmp
+	DLDataResultRevoked = "revoked"
+)
+
+// resultQueueStatuses stores each BSSCI §3.14.1 result as the queue status it
+// ends a downlink in.
+var resultQueueStatuses = map[string]DLQueueStatus{
+	DLDataResultSent:    DLQueueStatusTransmitted,
+	DLDataResultInvalid: DLQueueStatusFailed,
+	DLDataResultExpired: DLQueueStatusExpired,
+	DLDataResultRevoked: DLQueueStatusRevoked,
+}
+
+// QueueStatusForResult names the queue status a downlink result is stored as;
+// ok is false for a name that is no BSSCI §3.14.1 result.
+func QueueStatusForResult(result string) (DLQueueStatus, bool) {
+	status, ok := resultQueueStatuses[result]
+	return status, ok
+}
+
+// ResultForQueueStatus names the result a queue status stores; ok is false
+// for a status no result ends a downlink in.
+func ResultForQueueStatus(status DLQueueStatus) (string, bool) {
+	for result, stored := range resultQueueStatuses {
+		if stored == status {
+			return result, true
+		}
+	}
+	return "", false
+}
+
+// DLQueueStatus is a persisted downlink queue lifecycle state (BSSCI §5.11-5.14).
+type DLQueueStatus string
+
+// Downlink queue lifecycle states tracking downlink message progression.
+const (
+	// DLQueueStatusPending is queued awaiting scheduler processing
+	DLQueueStatusPending DLQueueStatus = "pending"
+	// DLQueueStatusScheduled means the scheduler selected it for transmission
+	DLQueueStatusScheduled DLQueueStatus = "scheduled"
+	// DLQueueStatusReserved is durably reserved for dispatch; confirmed queued after the wire send
+	DLQueueStatusReserved DLQueueStatus = "reserved"
+	// DLQueueStatusQueued was sent to the BS via dlDataQue, awaiting transmission
+	DLQueueStatusQueued DLQueueStatus = "queued"
+	// DLQueueStatusTransmitted means the BS reported successful transmission via dlDataRes (BSSCI 5.14)
+	DLQueueStatusTransmitted DLQueueStatus = "transmitted"
+	// DLQueueStatusDelivered means the endpoint acknowledged receipt (if ack requested)
+	DLQueueStatusDelivered DLQueueStatus = "delivered"
+	// DLQueueStatusFailed means the BS reported transmission failure via dlDataRes (BSSCI 5.14)
+	DLQueueStatusFailed DLQueueStatus = "failed"
+	// DLQueueStatusExpired means the validity period elapsed before transmission
+	DLQueueStatusExpired DLQueueStatus = "expired"
+	// DLQueueStatusRevoked means it was revoked via dlDataRev before transmission
+	DLQueueStatusRevoked DLQueueStatus = "revoked"
+	// DLQueueStatusAcked means an endpoint acknowledgment was received (dlDataRes)
+	DLQueueStatusAcked DLQueueStatus = "acked"
+)
+
+// Terminal reports whether the queue entry has reached a final state that no
+// later BSSCI or SCACI message moves it out of.
+func (s DLQueueStatus) Terminal() bool {
+	switch s {
+	case DLQueueStatusTransmitted, DLQueueStatusDelivered, DLQueueStatusFailed,
+		DLQueueStatusExpired, DLQueueStatusRevoked, DLQueueStatusAcked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Known reports whether the value is one of the persisted queue states.
+func (s DLQueueStatus) Known() bool {
+	switch s {
+	case DLQueueStatusPending, DLQueueStatusScheduled, DLQueueStatusReserved, DLQueueStatusQueued:
+		return true
+	default:
+		return s.Terminal()
+	}
+}
+
+// TerminalStatuses lists every terminal queue state, in declaration order.
+func TerminalStatuses() []DLQueueStatus {
+	return []DLQueueStatus{
+		DLQueueStatusTransmitted, DLQueueStatusDelivered, DLQueueStatusFailed,
+		DLQueueStatusExpired, DLQueueStatusRevoked, DLQueueStatusAcked,
+	}
+}
 
 // Frame represents the binary frame structure that wraps all BSSCI messages
 type Frame struct {
@@ -69,14 +190,21 @@ type Frame struct {
 	Payload     []byte  // The actual JSON or MessagePack encoded message
 }
 
+// FrameHeaderSize is the fixed frame prefix: the 8-byte identifier plus the
+// 4-byte little-endian payload size.
+const FrameHeaderSize = 12
+
+// numeric4Len is the wire length of the Numeric[4] nonce/sign arrays.
+const numeric4Len = 4
+
 // Serialize converts a Frame to bytes
 func (f *Frame) Serialize() []byte {
-	result := make([]byte, 12+len(f.Payload))
+	result := make([]byte, FrameHeaderSize+len(f.Payload))
 	copy(result[0:8], f.Identifier[:])
 	// Note: Payload length is checked at frame construction time, not here
 	// In practice, BSSCI payloads never exceed uint32 max
 	binary.LittleEndian.PutUint32(result[8:12], uint32(len(f.Payload))) //nolint:gosec // payload size validated at construction
-	copy(result[12:], f.Payload)
+	copy(result[FrameHeaderSize:], f.Payload)
 	return result
 }
 
@@ -121,7 +249,8 @@ type (
 	// SessionUUID is a 16-byte session identifier
 	SessionUUID [16]byte
 
-	// NetworkKey is a 16-byte network session key
+	// NetworkKey is a 16-byte End Point network key or network session key,
+	// Numeric[16] on the SCACI wire (§3.6.1, §3.9.1)
 	NetworkKey [16]byte
 
 	// Nonce is a 4-byte nonce value
@@ -147,84 +276,19 @@ type Subpackets struct {
 // Used for nonce and signature fields in SCACI EP Status messages
 type Numeric4 [4]uint8
 
-// MarshalJSON implements custom JSON marshaling to numeric array
-func (n Numeric4) MarshalJSON() ([]byte, error) {
-	// Serialize as [1,2,3,4], not base64
-	return json.Marshal([4]uint8(n))
-}
+// UplinkUserData is the n bytes of End Point user data an uplink carries,
+// Numeric[n] on the wire (SCACI §3.8.1, §3.9.1).
+type UplinkUserData []byte
 
-// UnmarshalJSON implements custom JSON unmarshaling with length validation
-func (n *Numeric4) UnmarshalJSON(data []byte) error {
-	// First unmarshal to a slice to check length
-	var slice []uint8
-	if err := json.Unmarshal(data, &slice); err != nil {
-		return fmt.Errorf("nonce/sign must be 4-element numeric array: %w", err)
-	}
-	if len(slice) != 4 {
-		return fmt.Errorf("nonce/sign must be 4-element numeric array, got %d elements", len(slice))
-	}
-	// Copy to fixed array
-	copy(n[:], slice)
-	return nil
-}
-
-// EncodeMsgpack implements vmihailenco/msgpack/v5 custom encoding
-func (n Numeric4) EncodeMsgpack(enc *msgpack.Encoder) error {
-	// Encode as 4-element array
-	if err := enc.EncodeArrayLen(4); err != nil {
-		return err
-	}
-	for _, v := range n {
-		if err := enc.EncodeUint8(v); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// DecodeMsgpack implements vmihailenco/msgpack/v5 custom decoding
-func (n *Numeric4) DecodeMsgpack(dec *msgpack.Decoder) error {
-	arrLen, err := dec.DecodeArrayLen()
-	if err != nil {
-		return err
-	}
-	if arrLen != 4 {
-		return fmt.Errorf("nonce/sign must be 4 elements, got %d", arrLen)
-	}
-
-	for i := 0; i < 4; i++ {
-		v, err := dec.DecodeUint8()
-		if err != nil {
-			return err
-		}
-		n[i] = v
-	}
-	return nil
-}
+// DownlinkUserData is the userData of a downlink queue request: n bytes of
+// End Point user data for each of m packet counters, Numeric[m][n] on the
+// wire (SCACI §3.10.1, BSSCI §3.12.1). JSON encoding keeps the base64 entries
+// the persisted queue rows already use; JSON decoding reads either shape.
+type DownlinkUserData [][]byte
 
 // ============================================================================
 // 5.3 Connect Operation
 // ============================================================================
-
-// MarshalJSON marshals the SessionUUID as an array of integers [1,2,3,...] instead of base64
-// BSSCI §4-4.5 requires UUIDs to be marshaled as arrays of integers, not base64 strings
-func (u SessionUUID) MarshalJSON() ([]byte, error) {
-	arr := make([]int, 16)
-	for i, b := range u {
-		arr[i] = int(b)
-	}
-	return json.Marshal(arr)
-}
-
-// EncodeMsgpack marshals the UUID as an array of integers for MessagePack
-// Uses value receiver to work with non-addressable values (struct fields passed by value)
-func (u SessionUUID) EncodeMsgpack(enc *msgpack.Encoder) error {
-	arr := make([]int, 16)
-	for i, b := range u {
-		arr[i] = int(b)
-	}
-	return enc.Encode(arr)
-}
 
 // Connect represents the "con" message from Base Station to Service Center
 type Connect struct {
@@ -483,14 +547,14 @@ type ULDataComplete struct {
 // ULDataTransmit represents the "ulDataTx" message
 type ULDataTransmit struct {
 	BaseMessage
-	BsEui     *uint64  `json:"bsEui,omitempty" msgpack:"bsEui,omitempty"`     // Target base station (optional, SC chooses if omitted)
-	EpEui     uint64   `json:"epEui" msgpack:"epEui"`                         // End Point EUI64
-	NwkSnKey  [16]byte `json:"nwkSnKey" msgpack:"nwkSnKey"`                   // 16-byte EP network session key
-	ShAddr    uint16   `json:"shAddr" msgpack:"shAddr"`                       // EP short address
-	PacketCnt uint32   `json:"packetCnt" msgpack:"packetCnt"`                 // EP packet counter
-	Profile   *string  `json:"profile,omitempty" msgpack:"profile,omitempty"` // Mioty profile for transmission
-	UserData  []byte   `json:"userData" msgpack:"userData"`                   // n-byte EP user data
-	Format    *uint8   `json:"format,omitempty" msgpack:"format,omitempty"`   // User data format ID (8-bit, default 0)
+	BsEui     *uint64        `json:"bsEui,omitempty" msgpack:"bsEui,omitempty"`     // Target base station (optional, SC chooses if omitted)
+	EpEui     uint64         `json:"epEui" msgpack:"epEui"`                         // End Point EUI64
+	NwkSnKey  NetworkKey     `json:"nwkSnKey" msgpack:"nwkSnKey"`                   // 16-byte EP network session key
+	ShAddr    uint16         `json:"shAddr" msgpack:"shAddr"`                       // EP short address
+	PacketCnt uint32         `json:"packetCnt" msgpack:"packetCnt"`                 // EP packet counter
+	Profile   *string        `json:"profile,omitempty" msgpack:"profile,omitempty"` // Mioty profile for transmission
+	UserData  UplinkUserData `json:"userData" msgpack:"userData"`                   // n-byte EP user data
+	Format    *uint8         `json:"format,omitempty" msgpack:"format,omitempty"`   // User data format ID (8-bit, default 0)
 }
 
 // ULDataTransmitResponse represents the "ulDataTxRsp" message
@@ -512,18 +576,18 @@ type ULDataTransmitComplete struct {
 // DLDataQueue represents the "dlDataQue" message
 type DLDataQueue struct {
 	BaseMessage
-	EpEui        uint64   `json:"epEui" msgpack:"epEui"`                                   // End Point EUI64
-	QueId        uint64   `json:"queId" msgpack:"queId"`                                   // Assigned queue ID (64-bit)
-	CntDepend    bool     `json:"cntDepend" msgpack:"cntDepend"`                           // userData is counter-dependent
-	PacketCnt    []uint32 `json:"packetCnt,omitempty" msgpack:"packetCnt,omitempty"`       // Counters for userData (if cntDepend)
-	UserData     [][]byte `json:"userData" msgpack:"userData"`                             // User data for each counter
-	Format       *uint8   `json:"format,omitempty" msgpack:"format,omitempty"`             // User data format ID (8-bit)
-	Prio         *float32 `json:"prio,omitempty" msgpack:"prio,omitempty"`                 // Priority (default 0)
-	ResponseExp  *bool    `json:"responseExp,omitempty" msgpack:"responseExp,omitempty"`   // Request EP response
-	ResponsePrio *bool    `json:"responsePrio,omitempty" msgpack:"responsePrio,omitempty"` // Request priority EP response
-	DlWindReq    *bool    `json:"dlWindReq,omitempty" msgpack:"dlWindReq,omitempty"`       // Request further EP DL window
-	ExpOnly      *bool    `json:"expOnly,omitempty" msgpack:"expOnly,omitempty"`           // Send only if EP expects response
-	DlRxStatQry  *bool    `json:"dlRxStatQry,omitempty" msgpack:"dlRxStatQry,omitempty"`   // SCACI §3.10.1: Query DL RX status from endpoint
+	EpEui        uint64           `json:"epEui" msgpack:"epEui"`                                   // End Point EUI64
+	QueId        uint64           `json:"queId" msgpack:"queId"`                                   // Assigned queue ID (64-bit)
+	CntDepend    bool             `json:"cntDepend" msgpack:"cntDepend"`                           // userData is counter-dependent
+	PacketCnt    []uint32         `json:"packetCnt,omitempty" msgpack:"packetCnt,omitempty"`       // Counters for userData (if cntDepend)
+	UserData     DownlinkUserData `json:"userData" msgpack:"userData"`                             // User data for each counter
+	Format       *uint8           `json:"format,omitempty" msgpack:"format,omitempty"`             // User data format ID (8-bit)
+	Prio         *float32         `json:"prio,omitempty" msgpack:"prio,omitempty"`                 // Priority (default 0)
+	ResponseExp  *bool            `json:"responseExp,omitempty" msgpack:"responseExp,omitempty"`   // Request EP response
+	ResponsePrio *bool            `json:"responsePrio,omitempty" msgpack:"responsePrio,omitempty"` // Request priority EP response
+	DlWindReq    *bool            `json:"dlWindReq,omitempty" msgpack:"dlWindReq,omitempty"`       // Request further EP DL window
+	ExpOnly      *bool            `json:"expOnly,omitempty" msgpack:"expOnly,omitempty"`           // Send only if EP expects response
+	DlRxStatQry  *bool            `json:"dlRxStatQry,omitempty" msgpack:"dlRxStatQry,omitempty"`   // SCACI §3.10.1: Query DL RX status from endpoint
 }
 
 // DLDataQueueResponse represents the "dlDataQueRsp" message
@@ -692,13 +756,13 @@ type ErrorAck struct {
 // Outbound Field Validation Catalog (BSSCI §2.5.3)
 // ============================================================================
 
-// OutboundFieldCatalog defines allowed fields for SC→BS messages per BSSCI §2.5.3
+// outboundFieldCatalog defines allowed fields for SC→BS messages per BSSCI §2.5.3
 // Each entry lists exact field names from struct json/msgpack tags (source: types.go)
 // Built from actual sendMessage call sites - verified via:
-// rg -n "sendMessage\(session" kilocenter-modules/KC-Core/pkg/bssci -g'*.go'
-var OutboundFieldCatalog = map[string][]string{
+// rg -n "sendMessage\(session" in the bssci package source
+var outboundFieldCatalog = map[string][]string{
 	// Control operations (responses we send)
-	CmdConnectResponse: {"version", "scEui", "vendor", "model", "name", "swVersion", "info", "snResume", "snScUuid", "snBsOpId", "snScOpId"},
+	CmdConnectResponse: {"version", "scEui", "vendor", "model", "name", "swVersion", "info", "snResume", "snScUuid"},
 	CmdConnectComplete: {},
 	CmdPing:            {}, // SC-initiated ping request
 	CmdPingResponse:    {},
@@ -744,6 +808,7 @@ var OutboundFieldCatalog = map[string][]string{
 	CmdDLDataResultComplete: {},
 
 	// DL RX Status (BS→SC status report + SC-initiated query)
+	CmdDLRxStatusResponse:      {}, // SC responds to dlRxStat with command+opId only (§3.15.2)
 	CmdDLRxStatusComplete:      {}, // BS sends dlRxStat, SC sends dlRxStatCmp
 	CmdDLRxStatusQuery:         {"epEui", "startTime", "endTime", "limit", "offset"},
 	CmdDLRxStatusQueryResponse: {},
@@ -770,21 +835,21 @@ var OutboundFieldCatalog = map[string][]string{
 
 // AllowedOutboundFields returns the whitelist for a given command
 func AllowedOutboundFields(command string) ([]string, bool) {
-	fields, ok := OutboundFieldCatalog[command]
+	fields, ok := outboundFieldCatalog[command]
 	return fields, ok
 }
 
-// OutboundMandatoryFields defines required fields for SC→BS commands (non-pointer struct fields per BSSCI spec)
+// outboundMandatoryFields defines required fields for SC→BS commands (non-pointer struct fields per BSSCI spec)
 // Used by validateOutboundMessage to enforce mandatory field presence before transmission
-var OutboundMandatoryFields = map[string][]string{
+var outboundMandatoryFields = map[string][]string{
 	// §5.3.2 Connect Response - version, scEui, snResume, snScUuid are mandatory
 	CmdConnectResponse: {"version", "scEui", "snResume", "snScUuid"},
 
 	// §5.5.2 Status Response - code, message, time, dutyCycle are mandatory
 	CmdStatusResponse: {"code", "message", "time", "dutyCycle"},
 
-	// §5.6.2 Attach Response - nwkSnKey, shAddr are mandatory
-	CmdAttachResponse: {"nwkSnKey", "shAddr"},
+	// §3.6.2 Attach Response - nwkSnKey is mandatory; shAddr is sent only when the base station did not assign one
+	CmdAttachResponse: {"nwkSnKey"},
 
 	// §5.7.2 Detach Response - sign is mandatory
 	CmdDetachResponse: {"sign"},
@@ -840,6 +905,7 @@ var OutboundMandatoryFields = map[string][]string{
 	CmdDLDataRevokeComplete:    {},
 	CmdDLDataResultResponse:    {},
 	CmdDLDataResultComplete:    {},
+	CmdDLRxStatusResponse:      {},
 	CmdDLRxStatusComplete:      {},
 	CmdDLRxStatusQueryResponse: {},
 	CmdDLRxStatusQueryComplete: {},
@@ -856,7 +922,7 @@ var OutboundMandatoryFields = map[string][]string{
 
 // MandatoryOutboundFields returns the mandatory fields for a given SC→BS command
 func MandatoryOutboundFields(command string) ([]string, bool) {
-	fields, ok := OutboundMandatoryFields[command]
+	fields, ok := outboundMandatoryFields[command]
 	return fields, ok
 }
 
@@ -956,6 +1022,14 @@ const (
 	CmdVMDLDataResponse     = "vm.dlDataRsp"     // Direction: BStoSC - response for VM downlink data
 	CmdVMDLDataComplete     = "vm.dlDataCmp"     // Direction: BStoSC - completion for VM downlink data
 )
+
+// EndpointFrameCommands lists the operations a base station opens with a
+// frame an endpoint transmitted: attach (BSSCI §3.6), detach (§3.7) and
+// uplink data (§3.10). The propagations the service center sends are not
+// among them.
+func EndpointFrameCommands() []string {
+	return []string{CmdAttach, CmdDetach, CmdULData}
+}
 
 // ============================================================================
 // MIOTY Constants
@@ -1074,8 +1148,11 @@ const (
 	ErrorInProgress = 115
 )
 
-// MaxDLUserDataBytes is the maximum downlink payload size per MIOTY radio protocol §4.3.2
+// MaxDLUserDataBytes is the maximum downlink payload size per MIOTY radio protocol §3.6.6.3
 const MaxDLUserDataBytes = 200
+
+// MaxULUserDataBytes is the maximum uplink payload size per MIOTY radio protocol §3.6.5.5
+const MaxULUserDataBytes = 200
 
 // DL RX Status field validation ranges (BSSCI §5.15.1)
 const (
@@ -1089,150 +1166,14 @@ const (
 // Helper Functions
 // ============================================================================
 
-// EUI64FromBytes converts an 8-byte array to EUI64
-func EUI64FromBytes(b [8]byte) EUI64 {
-	var result uint64
-	for i := 0; i < 8; i++ {
-		result = (result << 8) | uint64(b[i])
-	}
-	return EUI64(result)
-}
-
 // ToBytes converts EUI64 to an 8-byte array
 func (e EUI64) ToBytes() [8]byte {
 	var result [8]byte
-	for i := 7; i >= 0; i-- {
+	for i := len(result) - 1; i >= 0; i-- {
 		result[i] = byte(e)
 		e >>= 8
 	}
 	return result
-}
-
-// String returns the EUI64 as a hex string
-func (e EUI64) String() string {
-	bytes := e.ToBytes()
-	return hex.EncodeToString(bytes[:])
-}
-
-// TimeFromUnixNano converts UnixNano to time.Time
-func TimeFromUnixNano(ns UnixNano) time.Time {
-	return time.Unix(0, int64(ns))
-}
-
-// ToUnixNano converts time.Time to UnixNano
-func ToUnixNano(t time.Time) UnixNano {
-	return UnixNano(t.UnixNano())
-}
-
-// EndpointSummary represents basic endpoint information for API responses
-type EndpointSummary struct {
-	EUI          string    `json:"eui"`
-	MessageCount int       `json:"messageCount"`
-	LastSeen     time.Time `json:"lastSeen"`
-	FirstSeen    time.Time `json:"firstSeen"`
-	AvgRSSI      float64   `json:"avgRssi"`
-	AvgSNR       float64   `json:"avgSnr"`
-}
-
-// EndpointResponse represents a paginated endpoint response
-type EndpointResponse struct {
-	Endpoints  []EndpointSummary `json:"endpoints"`
-	Page       int               `json:"page"`
-	PageSize   int               `json:"pageSize"`
-	TotalCount int               `json:"totalCount"`
-	TotalPages int               `json:"totalPages"`
-}
-
-// EndpointStats represents detailed endpoint statistics
-type EndpointStats struct {
-	EUI                string    `json:"eui"`
-	TotalMessages      int       `json:"totalMessages"`
-	LastSeen           time.Time `json:"lastSeen"`
-	FirstSeen          time.Time `json:"firstSeen"`
-	AvgRSSI            float64   `json:"avgRssi"`
-	MinRSSI            float64   `json:"minRssi"`
-	MaxRSSI            float64   `json:"maxRssi"`
-	AvgSNR             float64   `json:"avgSnr"`
-	MinSNR             float64   `json:"minSnr"`
-	MaxSNR             float64   `json:"maxSnr"`
-	UniqueBaseStations int       `json:"uniqueBaseStations"`
-	ActiveDays         int       `json:"activeDays"`
-}
-
-// BaseStationSummary represents basic base station information
-type BaseStationSummary struct {
-	EUI             string    `json:"eui"`
-	Name            string    `json:"name"`
-	IsOnline        bool      `json:"isOnline"`
-	MessageCount    int       `json:"messageCount"`
-	LastSeen        time.Time `json:"lastSeen"`
-	FirstSeen       time.Time `json:"firstSeen"`
-	UniqueEndpoints int       `json:"uniqueEndpoints"`
-	AvgRSSI         float64   `json:"avgRssi"`
-	AvgSNR          float64   `json:"avgSnr"`
-}
-
-// BaseStationResponse represents a paginated base station response
-type BaseStationResponse struct {
-	BaseStations []BaseStationSummary `json:"baseStations"`
-	Page         int                  `json:"page"`
-	PageSize     int                  `json:"pageSize"`
-	TotalCount   int                  `json:"totalCount"`
-	TotalPages   int                  `json:"totalPages"`
-}
-
-// BaseStationDetails represents detailed base station information from the basestations table
-// This includes MIOTY status response fields per BSSCI v1.0.0 Section 3.5.2
-type BaseStationDetails struct {
-	ID             int64      `json:"id"`
-	EUI            string     `json:"eui"`
-	Name           string     `json:"name"`
-	Description    *string    `json:"description,omitempty"`
-	ConnectionType string     `json:"connectionType"`
-	IsOnline       bool       `json:"isOnline"`
-	LastSeenAt     *time.Time `json:"lastSeenAt,omitempty"`
-
-	// MIOTY Status Response Fields from base station per BSSCI v1.0.0 Section 3.5.2
-	StatusCode         int        `json:"statusCode,omitempty"`         // Status code from base station, using POSIX error numbers, 0 for "ok"
-	StatusMessage      *string    `json:"statusMessage,omitempty"`      // Status message from base station
-	SystemTime         *int64     `json:"systemTime,omitempty"`         // Unix UTC system time, 64 bit, ns resolution
-	DutyCycle          *float64   `json:"dutyCycle,omitempty"`          // Fraction of TX time, sliding window over one hour
-	UptimeSeconds      *int64     `json:"uptimeSeconds,omitempty"`      // System uptime in seconds
-	TemperatureCelsius *float64   `json:"temperatureCelsius,omitempty"` // System temperature in degree Celsius
-	CPULoad            *float64   `json:"cpuLoad,omitempty"`            // CPU utilization, normalized to 1.0 for all cores
-	MemoryLoad         *float64   `json:"memoryLoad,omitempty"`         // Memory utilization, normalized to 1.0
-	BSConfig           *string    `json:"bsConfig,omitempty"`           // Configuration object from base station (JSON string)
-	LastStatusAt       *time.Time `json:"lastStatusAt,omitempty"`       // Timestamp when status response was last received
-
-	// Hardware Info
-	Vendor  *string `json:"vendor,omitempty"`
-	Model   *string `json:"model,omitempty"`
-	Version *string `json:"version,omitempty"`
-
-	// Location
-	Latitude  *float64 `json:"latitude,omitempty"`
-	Longitude *float64 `json:"longitude,omitempty"`
-	Altitude  *float64 `json:"altitude,omitempty"`
-
-	// Timestamps
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-// BaseStationStats represents detailed base station statistics
-type BaseStationStats struct {
-	EUI             string    `json:"eui"`
-	TotalMessages   int       `json:"totalMessages"`
-	LastSeen        time.Time `json:"lastSeen"`
-	FirstSeen       time.Time `json:"firstSeen"`
-	AvgRSSI         float64   `json:"avgRssi"`
-	MinRSSI         float64   `json:"minRssi"`
-	MaxRSSI         float64   `json:"maxRssi"`
-	AvgSNR          float64   `json:"avgSnr"`
-	MinSNR          float64   `json:"minSnr"`
-	MaxSNR          float64   `json:"maxSnr"`
-	UniqueEndpoints int       `json:"uniqueEndpoints"`
-	ActiveDays      int       `json:"activeDays"`
 }
 
 // BaseStationMessageStats holds aggregated message statistics for a base station
@@ -1245,6 +1186,7 @@ type BaseStationMessageStats struct {
 	MessagesThisMonth int64      `json:"messagesThisMonth"`
 	AvgRSSI           float64    `json:"avgRssi"`
 	AvgSNR            float64    `json:"avgSnr"`
+	FirstMessageAt    *time.Time `json:"firstMessageAt,omitempty"`
 	LastMessageAt     *time.Time `json:"lastMessageAt,omitempty"`
 }
 
@@ -1260,32 +1202,10 @@ type BaseStationOnlineInterval struct {
 // Analytics Types (for dashboard and reporting)
 // ============================================================================
 
-// AnalyticsOverview represents high-level network analytics
-type AnalyticsOverview struct {
-	StartTime          time.Time        `json:"startTime"`
-	EndTime            time.Time        `json:"endTime"`
-	TotalMessages      int              `json:"totalMessages"`
-	ActiveEndpoints    int              `json:"activeEndpoints"`
-	ActiveBaseStations int              `json:"activeBaseStations"`
-	AvgRSSI            float64          `json:"avgRssi"`
-	AvgSNR             float64          `json:"avgSnr"`
-	FirstMessage       time.Time        `json:"firstMessage"`
-	LastMessage        time.Time        `json:"lastMessage"`
-	HourlyActivity     []HourlyActivity `json:"hourlyActivity"`
-}
-
 // HourlyActivity represents message activity per hour
 type HourlyActivity struct {
 	Hour         time.Time `db:"hour" json:"hour"`
 	MessageCount int       `db:"message_count" json:"messageCount"`
-}
-
-// ActivityAnalytics represents detailed activity analytics
-type ActivityAnalytics struct {
-	StartTime    time.Time          `json:"startTime"`
-	EndTime      time.Time          `json:"endTime"`
-	DailyStats   []DailyActivity    `json:"dailyStats"`
-	TopEndpoints []EndpointActivity `json:"topEndpoints"`
 }
 
 // DailyActivity represents activity per day
@@ -1315,36 +1235,6 @@ type EndpointActivity struct {
 	EUIFormatted string    `db:"-" json:"eui"`
 	MessageCount int       `db:"message_count" json:"messageCount"`
 	LastSeen     time.Time `db:"last_seen" json:"lastSeen"`
-}
-
-// SignalQualityAnalytics represents signal quality analytics
-type SignalQualityAnalytics struct {
-	StartTime     time.Time                  `json:"startTime"`
-	EndTime       time.Time                  `json:"endTime"`
-	Overall       SignalQualityOverall       `json:"overall"`
-	ByBaseStation []BaseStationSignalQuality `json:"byBaseStation"`
-}
-
-// SignalQualityOverall represents overall signal quality metrics
-type SignalQualityOverall struct {
-	AvgRSSI       float64 `json:"avgRssi"`
-	MinRSSI       float64 `json:"minRssi"`
-	MaxRSSI       float64 `json:"maxRssi"`
-	MedianRSSI    float64 `json:"medianRssi"`
-	AvgSNR        float64 `json:"avgSnr"`
-	MinSNR        float64 `json:"minSnr"`
-	MaxSNR        float64 `json:"maxSnr"`
-	MedianSNR     float64 `json:"medianSnr"`
-	TotalMessages int     `json:"totalMessages"`
-}
-
-// BaseStationSignalQuality represents signal quality per base station
-type BaseStationSignalQuality struct {
-	EUI          uint64  `db:"bs_eui" json:"-"`
-	EUIFormatted string  `db:"-" json:"eui"`
-	AvgRSSI      float64 `db:"avg_rssi" json:"avgRssi"`
-	AvgSNR       float64 `db:"avg_snr" json:"avgSnr"`
-	MessageCount int     `db:"message_count" json:"messageCount"`
 }
 
 // ============================================================================
@@ -1399,14 +1289,22 @@ type ULDataMessage struct {
 	OrgUUID     *string    `json:"orgUuid,omitempty" db:"org_uuid"`
 	ReceivedAt  time.Time  `json:"receivedAt" db:"received_at"`
 	ProcessedAt *time.Time `json:"processedAt" db:"processed_at"`
+	// StoredAt is when the database stored the row, by the database clock;
+	// the live uplink stream reads in this order.
+	StoredAt time.Time `json:"-" msgpack:"-" db:"created_at"`
 
 	// Multi-BS context per SCACI §3.8.1 - persisted to base_stations JSONB column
 	BaseStations []BaseStationReception `json:"baseStations,omitempty" msgpack:"baseStations,omitempty" db:"base_stations"`
 
-	// Duplicate flag per SCACI §3.8.1 - persisted to duplicate BOOLEAN column
+	// Duplicate is persisted to the duplicate column, which turns true once a
+	// further base station's reception merged into the message; the SCACI
+	// delivery sends PacketCntReused in its place.
 	// Pointer matches scaci.ULData.Duplicate *bool for consistent wire/broadcast shape
-	// Always set to non-nil: &false on first reception, &true on duplicate
 	Duplicate *bool `json:"duplicate,omitempty" msgpack:"duplicate,omitempty"`
+
+	// PacketCntReused marks a counter the endpoint already used outside the
+	// duplicate window; SCACI reports it as duplicate=true (§3.8.1)
+	PacketCntReused bool `json:"packetCntReused,omitempty" db:"packet_cnt_reused"`
 
 	// Blueprint decoding metadata (Migration 000105)
 	// Stores decoded payload and decoding context per MIOTY Application Layer Specification
@@ -1436,43 +1334,16 @@ type DetachMessage struct {
 	Profile    *string     `json:"profile,omitempty" db:"profile" msgpack:"profile,omitempty"`
 	Subpackets *Subpackets `json:"subpackets,omitempty" db:"subpackets" msgpack:"subpackets,omitempty"`
 
+	// Detach signature validation provenance (BSSCI §5.7): records whether the
+	// signature was cryptographically validated or recorded without verification.
+	ValidationStatus string `json:"validationStatus,omitempty" db:"validation_status" msgpack:"validationStatus,omitempty"`
+
 	// Metadata for mioty_messages table storage
 	ID             string     `json:"id" db:"id"`                              // UUID
 	BasestationEui []byte     `json:"bsEui" db:"basestation_eui"`              // 8-byte BS EUI (BYTEA in DB)
 	TenantID       int64      `json:"tenantId" db:"tenant_id"`                 // Endpoint owner tenant (roaming support)
 	OrgUUID        *string    `json:"orgUuid,omitempty" db:"org_uuid"`         // Endpoint owner org (roaming support)
 	MessageType    string     `json:"messageType" db:"message_type"`           // "detach" enum value
-	Direction      string     `json:"direction" db:"direction"`                // "uplink" enum value
-	InterfaceType  string     `json:"interfaceType" db:"interface_type"`       // "bssci" enum value
-	ReceivedAt     time.Time  `json:"receivedAt" db:"received_at"`             // TIMESTAMPTZ
-	ProcessedAt    *time.Time `json:"processedAt,omitempty" db:"processed_at"` // TIMESTAMPTZ (nullable)
-	CreatedAt      time.Time  `json:"createdAt" db:"created_at"`               // TIMESTAMPTZ
-	UpdatedAt      time.Time  `json:"updatedAt" db:"updated_at"`               // TIMESTAMPTZ
-}
-
-// AttachMessage represents an attach message per BSSCI v1.0.0 §5.6-5.6.3
-type AttachMessage struct {
-	// Required fields per BSSCI v1.0.0 §5.6.1
-	CommandType string  `json:"command" db:"command" msgpack:"command"`
-	OpId        int64   `json:"opId" db:"operation_id" msgpack:"opId"` // Signed: positive for BS
-	EpEui       []byte  `json:"epEui" db:"ep_eui" msgpack:"epEui"`     // 8-byte EUI (BYTEA in DB)
-	RxTime      int64   `json:"rxTime" db:"rx_time" msgpack:"rxTime"`  // Unix UTC center of last subpacket (ns)
-	PacketCnt   uint32  `json:"packetCnt" db:"packet_cnt" msgpack:"packetCnt"`
-	SNR         float64 `json:"snr" db:"snr" msgpack:"snr"`
-	RSSI        float64 `json:"rssi" db:"rssi" msgpack:"rssi"`
-	Signature   []byte  `json:"sign" db:"signature" msgpack:"sign"` // 4-byte EP signature (BYTEA in DB)
-
-	// Optional fields per BSSCI v1.0.0 §5.6.1
-	RxDuration *int64      `json:"rxDuration,omitempty" db:"rx_duration" msgpack:"rxDuration,omitempty"`
-	EqSnr      *float64    `json:"eqSnr,omitempty" db:"eq_snr" msgpack:"eqSnr,omitempty"`
-	Profile    *string     `json:"profile,omitempty" db:"profile" msgpack:"profile,omitempty"`
-	Subpackets *Subpackets `json:"subpackets,omitempty" db:"subpackets" msgpack:"subpackets,omitempty"`
-
-	// Metadata for mioty_messages table storage
-	ID             string     `json:"id" db:"id"`                              // UUID
-	BasestationEui []byte     `json:"bsEui" db:"basestation_eui"`              // 8-byte BS EUI (BYTEA in DB)
-	TenantID       int64      `json:"tenantId" db:"tenant_id"`                 // Tenant isolation
-	MessageType    string     `json:"messageType" db:"message_type"`           // "attach" enum value
 	Direction      string     `json:"direction" db:"direction"`                // "uplink" enum value
 	InterfaceType  string     `json:"interfaceType" db:"interface_type"`       // "bssci" enum value
 	ReceivedAt     time.Time  `json:"receivedAt" db:"received_at"`             // TIMESTAMPTZ

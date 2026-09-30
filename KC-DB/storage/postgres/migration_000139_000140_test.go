@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/golang-migrate/migrate/v4"
 	migratepostgres "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -27,7 +29,8 @@ func newMigrator(t *testing.T, db *sqlx.DB) *migrate.Migrate {
 
 	m, err := migrate.NewWithDatabaseInstance(
 		fmt.Sprintf("file://%s", filepath.ToSlash(migrationsDir)),
-		"postgres", driver)
+		"postgres", driver,
+	)
 	require.NoError(t, err)
 	return m
 }
@@ -95,7 +98,7 @@ func TestMigration000139LegacyPreservation(t *testing.T) {
 	assert.Equal(t, 1, renamedCount, "legacy archive must follow BS EUI renames")
 
 	// Archival statistics cover both tables: combined plus split counts
-	svc := NewArchivalService(db.DB, logger.NewNop())
+	svc := NewArchivalService(db.DB, logger.NewNop(), clock.SystemClock{})
 	stats, err := svc.GetArchivalStats(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), stats.LegacyArchiveCount)

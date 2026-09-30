@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 
+import { useAuthSettings, useRegisterAccount } from "@hooks";
 import {
   Alert,
   Box,
@@ -11,7 +12,6 @@ import {
   Typography,
 } from "@mui/material";
 
-import { apiService } from "@services/api";
 import { useFeatureFlags } from "@contexts/FeatureFlagContext";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
@@ -20,6 +20,7 @@ import { storageService } from "@utils/storage";
 import {
   AUTH_LAYOUT,
   DEFAULT_ORG_NAME,
+  FEATURE_FLAG,
   ROUTES,
   STORAGE_KEYS,
 } from "@constants/app";
@@ -41,6 +42,7 @@ import {
   VAL_PASSWORD_CONFIRM_MISMATCH,
   VAL_PASSWORD_REQUIRED,
 } from "@constants/messages";
+import { componentSpacing } from "@theme/index";
 
 import AuthBranding from "../components/AuthBranding";
 
@@ -50,21 +52,16 @@ const Register: React.FC = () => {
   const { setUser } = useSession();
   const { setOrganization } = useOrganization();
   const { isEnabled } = useFeatureFlags();
-  const showCompanyName = isEnabled("enterprise_organizations");
+  const showCompanyName = isEnabled(FEATURE_FLAG.ENTERPRISE_ORGANIZATIONS);
 
-  // Redirect to login if registration is disabled
+  // Redirect to login if registration is disabled; when the settings cannot
+  // be fetched the page still renders.
+  const { data: authSettings } = useAuthSettings();
   useEffect(() => {
-    apiService
-      .getAuthSettings()
-      .then((settings) => {
-        if (!settings.registration_enabled) {
-          navigate(ROUTES.LOGIN, { replace: true });
-        }
-      })
-      .catch(() => {
-        // If settings fetch fails, allow the page to render
-      });
-  }, [navigate]);
+    if (authSettings && !authSettings.registration_enabled) {
+      navigate(ROUTES.LOGIN, { replace: true });
+    }
+  }, [authSettings, navigate]);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -74,7 +71,8 @@ const Register: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(false);
+  const registerAccount = useRegisterAccount();
+  const isLoading = registerAccount.isPending;
 
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
@@ -98,9 +96,8 @@ const Register: React.FC = () => {
 
     if (!validate()) return;
 
-    setIsLoading(true);
     try {
-      const result = await apiService.registerAccount({
+      const result = await registerAccount.mutateAsync({
         email: email.trim(),
         password,
         firstName: firstName.trim(),
@@ -142,8 +139,6 @@ const Register: React.FC = () => {
       navigate(ROUTES.HOME);
     } catch {
       setError(ERR_REGISTRATION_FAILED);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -157,7 +152,7 @@ const Register: React.FC = () => {
       <Paper
         sx={{
           p: AUTH_LAYOUT.CARD_PADDING,
-          maxWidth: 480,
+          maxWidth: componentSpacing.formCard.registerMaxWidth,
           width: "100%",
           textAlign: "center",
         }}
@@ -250,7 +245,7 @@ const Register: React.FC = () => {
             sx={{ mt: AUTH_LAYOUT.SPACING_MT, mb: AUTH_LAYOUT.SPACING_MB }}
           >
             {isLoading ? (
-              <CircularProgress size={AUTH_LAYOUT.SPINNER_SIZE} />
+              <CircularProgress size={componentSpacing.spinner.section} />
             ) : (
               ACTION_CREATE_ACCOUNT
             )}

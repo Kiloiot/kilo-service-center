@@ -38,7 +38,27 @@ From the repository root:
 cp .env.example .env
 ```
 
-Edit `.env` if you want to change database credentials or log level. The defaults work for a local evaluation.
+Generate the key-material master key and put it in `.env`. It is required:
+Docker Compose refuses to start the stack while `KILOCENTER_MASTER_KEY` is
+empty.
+
+```bash
+openssl rand -hex 32
+```
+
+Paste the 64 hexadecimal characters after `KILOCENTER_MASTER_KEY=` in `.env`.
+Every endpoint, session, message and TLS key is encrypted at rest under this
+key. Keep a copy with your other secrets and never change it for an existing
+database: if it is lost, the stored keys cannot be decrypted and every
+endpoint and base station has to be provisioned again.
+
+Generate the internal peer secret the same way and paste it after
+`KILOCENTER_INTERNAL_PEER_SECRET=`. KC-Gateway, KC-Core and KC-Identity
+reach each other over the Docker network and trust each other's identity
+headers only from a peer presenting this secret; the services refuse to
+start without one of at least 32 characters.
+
+Edit `.env` further if you want to change database credentials or log level; the other defaults work for a local evaluation.
 
 ## Step 2: TLS Certificates (Automatic)
 
@@ -101,7 +121,7 @@ Then open KC-Web in your browser:
 
 - [http://localhost/](http://localhost/)
 
-## Default Admin Account
+## What Is the Default Admin Login?
 
 A default admin user is created on first startup via database migration:
 
@@ -110,11 +130,17 @@ A default admin user is created on first startup via database migration:
 | **Email** | `admin@kilocenter.local` |
 | **Password** | `admin123!` |
 
-This account has full admin privileges including tenant, base station, and endpoint management.
+Sign in with this account first and change its password straight away under
+**Change Password** in the user menu, the same way you would set your own
+password on a new router or gateway. Choosing and keeping the installation's
+credentials is part of installing it. The account holds every role (see
+[User Roles and Permissions](../05-Security/04-users-and-roles.md)); use it to
+create accounts for the people who work with the installation and give each of
+them the roles they need.
 
-The account is for isolated evaluation. A production setup needs installation-owned credentials,
-protected signing keys and verified network restrictions, not just an administrator-password change.
-Use the normal user-management interface to manage accounts. Do not edit identity tables by hand
+A production setup also needs installation-owned signing keys and network restrictions; see the
+[installation safety notice](../05-Security/02-installation-safety.md). Use the normal
+user-management interface to manage accounts. Do not edit identity tables by hand
 as a troubleshooting shortcut; doing so can leave related sessions or permissions inconsistent.
 
 > **Note:** MQTT integration is disabled by default. The Mosquitto broker runs in Docker but KC-Core does not connect to it until you enable MQTT in `config/config.docker.yaml`. See [MQTT First Steps](../04-Integrations/03-mqtt-first-steps.md) when you are ready to set up MQTT.
@@ -176,7 +202,10 @@ key compromise needs a planned key rotation and session-revocation procedure.
 |---------|-------------|-----|
 | `certgen` writes files owned by root | UID/GID mismatch | Set `UID=$(id -u)` and `GID=$(id -g)` in `.env` |
 | `kc-web` shows gRPC errors | `kc-gateway` not healthy | Check `docker compose ps` and gateway logs |
+| `KILOCENTER_MASTER_KEY is required` when starting | Master key not set in `.env` | Generate one as shown in Step 1 |
+| `KILOCENTER_INTERNAL_PEER_SECRET is required` when starting | Internal peer secret not set in `.env` | Generate one as shown in Step 1 |
 | `kilocenter` exits immediately | Missing certificates | Check `certgen` logs: `docker compose logs certgen` |
+| `kilocenter` exits with `run the rekey command` after an upgrade | Key material from an earlier release not converted yet | Follow [Key material migration](../06-Operations/02-key-material-migration.md) |
 | Port 80 already in use | Another web server running | Stop it or change the host port mapping |
 | Base station TLS failure | Certificate mismatch | Ensure base station trusts the CA certificate (`ca.crt`) |
 | `invalid_token` after login | HMAC secret mismatch | Ensure `hmac_secret` is identical in `config.identity-docker.yaml` and `config.gateway-docker.yaml` |

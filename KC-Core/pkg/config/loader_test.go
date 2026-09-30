@@ -7,6 +7,47 @@ import (
 	"testing"
 )
 
+// Rate-limit fixture values for the loader validation tests.
+const (
+	invalidZeroLimit   = 0
+	testRequestsPerMin = 5
+)
+
+// testConfigWithoutGRPCWeb sets a gRPC port and nothing about gRPC-web.
+const testConfigWithoutGRPCWeb = `
+grpc:
+  port: 9090
+`
+
+func writeTestConfig(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	return path
+}
+
+func TestLoadGateway_EnablesGRPCWebWhenTheKeyIsAbsent(t *testing.T) {
+	cfg, err := LoadGateway(writeTestConfig(t, testConfigWithoutGRPCWeb))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !cfg.GRPC.Web.Enabled {
+		t.Error("the gateway is the browser ingress: a config without grpc.web.enabled must still serve gRPC-web")
+	}
+}
+
+func TestLoadCore_KeepsGRPCWebOffWhenTheKeyIsAbsent(t *testing.T) {
+	cfg, err := Load(writeTestConfig(t, testConfigWithoutGRPCWeb))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.GRPC.Web.Enabled {
+		t.Error("KC-Core leaves gRPC-web to the gateway by default")
+	}
+}
+
 func TestLoad_RegistryProviderTokenFromEnv(t *testing.T) {
 	// Write a minimal config YAML with token: "" (mirrors production config.yaml)
 	dir := t.TempDir()
@@ -128,6 +169,34 @@ func TestLoad_SCEUIDefault(t *testing.T) {
 	}
 }
 
+func TestLoad_RoamingAndDeliveryDefaults(t *testing.T) {
+	clearSCEUIEnv(t)
+	cfg, err := Load(writeSCEUIConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	roaming := cfg.Protocol.Roaming
+	if roaming.CacheEnabled != DefaultProtocolRoamingCacheEnabled || roaming.CacheTTL != DefaultProtocolRoamingCacheTTL ||
+		roaming.CacheMaxSize != DefaultProtocolRoamingCacheMaxSize || roaming.EnableAuditTrail != DefaultProtocolRoamingEnableAuditTrail {
+		t.Errorf("protocol.roaming = %+v, want the documented defaults", roaming)
+	}
+	if cfg.Protocol.Delivery.MaxBackoff != DefaultProtocolDeliveryMaxBackoff {
+		t.Errorf("protocol.delivery.max_backoff = %v, want %v", cfg.Protocol.Delivery.MaxBackoff, DefaultProtocolDeliveryMaxBackoff)
+	}
+	if cfg.Protocol.Delivery.ReceptionWindow != DefaultProtocolDeliveryReceptionWindow {
+		t.Errorf("protocol.delivery.reception_window = %v, want %v", cfg.Protocol.Delivery.ReceptionWindow, DefaultProtocolDeliveryReceptionWindow)
+	}
+	if cfg.Protocol.DownlinkExpiry.Lifetime != DefaultProtocolDownlinkLifetime ||
+		cfg.Protocol.DownlinkExpiry.SweepInterval != DefaultProtocolDownlinkExpirySweepInterval ||
+		cfg.Protocol.DownlinkExpiry.BatchSize != DefaultProtocolDownlinkExpiryBatchSize {
+		t.Errorf("protocol.downlink_expiry = %+v, want the documented defaults", cfg.Protocol.DownlinkExpiry)
+	}
+	if cfg.Protocol.SCACIResumeMaxPendingOperations != DefaultProtocolSCACIResumeMaxPendingOperations {
+		t.Errorf("protocol.scaci_resume_max_pending_operations = %d, want %d",
+			cfg.Protocol.SCACIResumeMaxPendingOperations, DefaultProtocolSCACIResumeMaxPendingOperations)
+	}
+}
+
 func TestLoad_SCEUIFromFile(t *testing.T) {
 	clearSCEUIEnv(t)
 	cfg, err := Load(writeSCEUIConfig(t, "CA-FE-CA-FE-CA-FE-CA-FE"))
@@ -245,11 +314,11 @@ func TestLoad_SCEUILegacyIgnoredWhenFileSet(t *testing.T) {
 
 func TestInternalTrustStartupFailsWithGRPCWeb(t *testing.T) {
 	cfg := &Config{
-		General: GeneralConfig{ServerName: "test"},
-		Storage: StorageConfig{Type: "postgres", Host: "localhost", Port: 5432},
+		General: GeneralConfig{ServerName: "test", TenantID: DefaultGeneralTenantID},
+		Storage: StorageConfig{Type: "postgres", Host: "localhost", Port: DefaultStoragePort},
 		GRPC: GRPCConfig{
-			InternalTrustEnabled: true,
-			Web:                  GRPCWebConfig{Enabled: true},
+			InternalTrustEnabled: flagEnabled,
+			Web:                  GRPCWebConfig{Enabled: flagEnabled},
 		},
 	}
 	err := cfg.Validate()
@@ -264,15 +333,16 @@ func TestInternalTrustStartupFailsWithGRPCWeb(t *testing.T) {
 // validBaseConfig returns a minimal Config that passes general and storage validation.
 func validBaseConfig() *Config {
 	return &Config{
-		General: GeneralConfig{ServerName: "test"},
-		Storage: StorageConfig{Type: "postgres", Host: "localhost", Port: 5432},
+		General:      GeneralConfig{ServerName: "test", TenantID: DefaultGeneralTenantID},
+		Storage:      StorageConfig{Type: "postgres", Host: "localhost", Port: DefaultStoragePort},
+		Certificates: defaultCertificateConfig(),
 	}
 }
 
 func TestValidate_RegistrationRequiresLocalLogin(t *testing.T) {
 	cfg := validBaseConfig()
-	cfg.Auth.RegistrationEnabled = true
-	cfg.Auth.LocalLoginEnabled = false
+	cfg.Auth.RegistrationEnabled = flagEnabled
+	cfg.Auth.LocalLoginEnabled = flagDisabled
 
 	err := cfg.Validate()
 	if err == nil {
@@ -285,9 +355,9 @@ func TestValidate_RegistrationRequiresLocalLogin(t *testing.T) {
 
 func TestValidate_RegistrationWithLocalLoginPasses(t *testing.T) {
 	cfg := validBaseConfig()
-	cfg.Auth.Enabled = true
-	cfg.Auth.RegistrationEnabled = true
-	cfg.Auth.LocalLoginEnabled = true
+	cfg.Auth.Enabled = flagEnabled
+	cfg.Auth.RegistrationEnabled = flagEnabled
+	cfg.Auth.LocalLoginEnabled = flagEnabled
 	cfg.Auth.HMACSecret = "this-is-a-secret-that-is-at-least-32-bytes-long!"
 
 	err := cfg.Validate()
@@ -298,8 +368,8 @@ func TestValidate_RegistrationWithLocalLoginPasses(t *testing.T) {
 
 func TestValidate_RateLimitRequestsPerMinPositive(t *testing.T) {
 	cfg := validBaseConfig()
-	cfg.Gateway.RateLimit.Enabled = true
-	cfg.Gateway.RateLimit.RequestsPerMin = 0
+	cfg.Gateway.RateLimit.Enabled = flagEnabled
+	cfg.Gateway.RateLimit.RequestsPerMin = invalidZeroLimit
 
 	err := cfg.Validate()
 	if err == nil {
@@ -312,8 +382,8 @@ func TestValidate_RateLimitRequestsPerMinPositive(t *testing.T) {
 
 func TestValidate_RateLimitBurstPositive(t *testing.T) {
 	cfg := validBaseConfig()
-	cfg.Gateway.RateLimit.Enabled = true
-	cfg.Gateway.RateLimit.RequestsPerMin = 5
+	cfg.Gateway.RateLimit.Enabled = flagEnabled
+	cfg.Gateway.RateLimit.RequestsPerMin = testRequestsPerMin
 	cfg.Gateway.RateLimit.Burst = 0
 
 	err := cfg.Validate()
@@ -327,10 +397,10 @@ func TestValidate_RateLimitBurstPositive(t *testing.T) {
 
 func TestValidate_RateLimitCleanupIntervalPositive(t *testing.T) {
 	cfg := validBaseConfig()
-	cfg.Gateway.RateLimit.Enabled = true
-	cfg.Gateway.RateLimit.RequestsPerMin = 5
+	cfg.Gateway.RateLimit.Enabled = flagEnabled
+	cfg.Gateway.RateLimit.RequestsPerMin = testRequestsPerMin
 	cfg.Gateway.RateLimit.Burst = 3
-	cfg.Gateway.RateLimit.CleanupInterval = 0
+	cfg.Gateway.RateLimit.CleanupInterval = invalidZeroLimit
 
 	err := cfg.Validate()
 	if err == nil {
@@ -343,7 +413,7 @@ func TestValidate_RateLimitCleanupIntervalPositive(t *testing.T) {
 
 func TestValidate_RateLimitDisabledSkipsValidation(t *testing.T) {
 	cfg := validBaseConfig()
-	cfg.Gateway.RateLimit.Enabled = false
+	cfg.Gateway.RateLimit.Enabled = flagDisabled
 
 	err := cfg.Validate()
 	if err != nil {

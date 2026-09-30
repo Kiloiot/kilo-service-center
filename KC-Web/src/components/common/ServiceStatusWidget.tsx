@@ -2,7 +2,7 @@
  * Service Status Widget
  *
  * Reusable service health status table component.
- * Renders Status/Service/Latency columns with a "Last checked" timestamp.
+ * Renders Status/Service/Latency columns with the time of the last check.
  */
 
 import {
@@ -16,6 +16,8 @@ import {
   Typography,
 } from "@mui/material";
 
+import { formatTime24h } from "@utils/date-format";
+import { formatMilliseconds } from "@utils/formatters";
 import { SYSTEM_STATUS } from "@constants/messages";
 import { ErrorIcon, SuccessIcon } from "@theme/icons";
 
@@ -75,7 +77,9 @@ export function ServiceStatusTable({
                 )}
               </TableCell>
               <TableCell align="right">
-                <Typography variant="body2">{service.latencyMs}ms</Typography>
+                <Typography variant="body2">
+                  {formatMilliseconds(service.latencyMs)}
+                </Typography>
               </TableCell>
             </TableRow>
           ))}
@@ -84,7 +88,7 @@ export function ServiceStatusTable({
       <Box sx={{ mt: 2, textAlign: "center" }}>
         <Typography variant="caption" color="text.secondary">
           {SYSTEM_STATUS.LABEL_LAST_CHECKED}:{" "}
-          {timestamp ? new Date(timestamp).toLocaleTimeString() : "N/A"}
+          {timestamp ? formatTime24h(timestamp) : SYSTEM_STATUS.NOT_CHECKED}
         </Typography>
       </Box>
     </>

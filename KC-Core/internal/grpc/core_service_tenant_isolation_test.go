@@ -20,6 +20,9 @@ import (
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
+// testListPageSize is the page size used by tenant isolation list requests.
+const testListPageSize = 10
+
 // ============================================================================
 // Tenant Isolation Mock: Endpoint Service
 // ============================================================================
@@ -30,7 +33,7 @@ type mockEndpointSvcIsolation struct {
 	listFunc          func(ctx context.Context, tenantID int64, limit, offset int) ([]*models.EndPoint, error)
 	getByEUIFunc      func(ctx context.Context, eui []byte, tenantID int64) (*models.EndPoint, error)
 	createFunc        func(ctx context.Context, ep *models.EndPoint) (*models.EndPoint, error)
-	deleteFunc        func(ctx context.Context, eui []byte, tenantID int64) error
+	deleteFunc        func(ctx context.Context, eui []byte, tenantID int64) (int64, error)
 }
 
 func (m *mockEndpointSvcIsolation) Create(ctx context.Context, ep *models.EndPoint) (*models.EndPoint, error) {
@@ -53,12 +56,12 @@ func (m *mockEndpointSvcIsolation) Update(_ context.Context, ep *models.EndPoint
 	return ep, nil
 }
 
-func (m *mockEndpointSvcIsolation) Delete(ctx context.Context, eui []byte, tenantID int64) error {
+func (m *mockEndpointSvcIsolation) Delete(ctx context.Context, eui []byte, tenantID int64) (int64, error) {
 	m.capturedTenantIDs = append(m.capturedTenantIDs, tenantID)
 	if m.deleteFunc != nil {
 		return m.deleteFunc(ctx, eui, tenantID)
 	}
-	return nil
+	return 0, nil
 }
 
 func (m *mockEndpointSvcIsolation) ListByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
@@ -75,6 +78,10 @@ func (m *mockEndpointSvcIsolation) List(ctx context.Context, tenantID int64, lim
 
 func (m *mockEndpointSvcIsolation) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	return ep, nil
+}
+
+func (m *mockEndpointSvcIsolation) CreateWithStatus(ctx context.Context, ep *models.EndPoint, _ string) (*models.EndPoint, error) {
+	return m.Create(ctx, ep)
 }
 
 func (m *mockEndpointSvcIsolation) CheckEUIGloballyUnique(_ context.Context, _ []byte) error {
@@ -105,9 +112,9 @@ func (m *mockBasestationSvcIsolation) Update(_ context.Context, bs *models.BaseS
 	return bs, nil
 }
 
-func (m *mockBasestationSvcIsolation) Delete(_ context.Context, _ []byte, tenantID int64) error {
+func (m *mockBasestationSvcIsolation) Delete(_ context.Context, _ []byte, tenantID int64) (*models.BaseStation, error) {
 	m.capturedTenantIDs = append(m.capturedTenantIDs, tenantID)
-	return nil
+	return &models.BaseStation{TenantID: tenantID}, nil
 }
 
 func (m *mockBasestationSvcIsolation) List(ctx context.Context, tenantID int64, limit, offset int) ([]*models.BaseStation, error) {
@@ -233,13 +240,13 @@ func newIsolationTestService() *isolationTestServices {
 	msgListMock := &mockMessageListingSvcIsolation{}
 	integMock := &mockIntegrationSvcIsolation{}
 
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		endpointSvc:    epMock,
 		basestationSvc: bsMock,
 		msgListingSvc:  msgListMock,
 		integrationSvc: integMock,
 		log:            &mockLogger{},
-	}
+	})
 
 	return &isolationTestServices{
 		svc:          svc,
@@ -275,14 +282,14 @@ func TestTenantIsolation_ListEndpoints_OnlyReturnsSameTenant(t *testing.T) {
 
 	// Tenant 42 lists endpoints
 	ctx42 := contextForTenant(42)
-	resp42, err := ts.svc.ListEndPoints(ctx42, &pb.ListEndPointsRequest{PageSize: 10})
+	resp42, err := ts.svc.ListEndPoints(ctx42, &pb.ListEndPointsRequest{PageSize: testListPageSize})
 	require.NoError(t, err)
 	require.NotNil(t, resp42)
 	assert.Len(t, resp42.Endpoints, 1)
 
 	// Tenant 99 lists endpoints — gets empty
 	ctx99 := contextForTenant(99)
-	resp99, err := ts.svc.ListEndPoints(ctx99, &pb.ListEndPointsRequest{PageSize: 10})
+	resp99, err := ts.svc.ListEndPoints(ctx99, &pb.ListEndPointsRequest{PageSize: testListPageSize})
 	require.NoError(t, err)
 	require.NotNil(t, resp99)
 	assert.Len(t, resp99.Endpoints, 0)
@@ -335,9 +342,25 @@ func TestTenantIsolation_DeleteEndpoint_TenantPropagation(t *testing.T) {
 	_, err = ts.svc.DeleteEndPoint(ctx99, &pb.DeleteEndPointRequest{EpEui: "0000000000000001"})
 	require.NoError(t, err)
 
-	require.Len(t, ts.endpointMock.capturedTenantIDs, 2)
-	assert.Equal(t, int64(42), ts.endpointMock.capturedTenantIDs[0])
-	assert.Equal(t, int64(99), ts.endpointMock.capturedTenantIDs[1])
+	assert.Equal(t, []int64{42, 99}, ts.endpointMock.capturedTenantIDs,
+		"the delete runs under the caller's tenant")
+}
+
+func TestTenantIsolation_DeleteEndpoint_ForeignEndpointReadsAsNotFound(t *testing.T) {
+	ts := newIsolationTestService()
+	deleted := false
+	ts.endpointMock.deleteFunc = func(_ context.Context, _ []byte, tenantID int64) (int64, error) {
+		if tenantID != 42 {
+			return 0, storage.ErrNotFound
+		}
+		deleted = true
+		return 1, nil
+	}
+
+	_, err := ts.svc.DeleteEndPoint(contextForTenant(99), &pb.DeleteEndPointRequest{EpEui: "0000000000000001"})
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+	assert.False(t, deleted, "an endpoint of another tenant is never deleted")
 }
 
 // ============================================================================
@@ -356,13 +379,13 @@ func TestTenantIsolation_ListBaseStations_OnlyReturnsSameTenant(t *testing.T) {
 
 	// Tenant 42 sees its base station
 	ctx42 := contextForTenant(42)
-	resp42, err := ts.svc.ListBaseStations(ctx42, &pb.ListBaseStationsRequest{PageSize: 10})
+	resp42, err := ts.svc.ListBaseStations(ctx42, &pb.ListBaseStationsRequest{PageSize: testListPageSize})
 	require.NoError(t, err)
 	assert.Len(t, resp42.Basestations, 1)
 
 	// Tenant 99 sees nothing
 	ctx99 := contextForTenant(99)
-	resp99, err := ts.svc.ListBaseStations(ctx99, &pb.ListBaseStationsRequest{PageSize: 10})
+	resp99, err := ts.svc.ListBaseStations(ctx99, &pb.ListBaseStationsRequest{PageSize: testListPageSize})
 	require.NoError(t, err)
 	assert.Len(t, resp99.Basestations, 0)
 
@@ -379,11 +402,11 @@ func TestTenantIsolation_ListMessages_OnlyReturnsSameTenant(t *testing.T) {
 	ts := newIsolationTestService()
 
 	ctx42 := contextForTenant(42)
-	_, err := ts.svc.ListMessages(ctx42, &pb.ListMessagesRequest{PageSize: 10})
+	_, err := ts.svc.ListMessages(ctx42, &pb.ListMessagesRequest{PageSize: testListPageSize})
 	require.NoError(t, err)
 
 	ctx99 := contextForTenant(99)
-	_, err = ts.svc.ListMessages(ctx99, &pb.ListMessagesRequest{PageSize: 10})
+	_, err = ts.svc.ListMessages(ctx99, &pb.ListMessagesRequest{PageSize: testListPageSize})
 	require.NoError(t, err)
 
 	require.Len(t, ts.msgListMock.capturedTenantIDs, 2)
@@ -423,21 +446,21 @@ func TestTenantIsolation_MissingTenant_FailsClosed(t *testing.T) {
 		{
 			name: "ListEndPoints",
 			call: func() error {
-				_, err := ts.svc.ListEndPoints(ctx, &pb.ListEndPointsRequest{PageSize: 10})
+				_, err := ts.svc.ListEndPoints(ctx, &pb.ListEndPointsRequest{PageSize: testListPageSize})
 				return err
 			},
 		},
 		{
 			name: "ListBaseStations",
 			call: func() error {
-				_, err := ts.svc.ListBaseStations(ctx, &pb.ListBaseStationsRequest{PageSize: 10})
+				_, err := ts.svc.ListBaseStations(ctx, &pb.ListBaseStationsRequest{PageSize: testListPageSize})
 				return err
 			},
 		},
 		{
 			name: "ListMessages",
 			call: func() error {
-				_, err := ts.svc.ListMessages(ctx, &pb.ListMessagesRequest{PageSize: 10})
+				_, err := ts.svc.ListMessages(ctx, &pb.ListMessagesRequest{PageSize: testListPageSize})
 				return err
 			},
 		},
@@ -451,7 +474,7 @@ func TestTenantIsolation_MissingTenant_FailsClosed(t *testing.T) {
 		{
 			name: "ListIntegrations",
 			call: func() error {
-				_, err := ts.svc.ListIntegrations(ctx, &pb.ListIntegrationsRequest{PageSize: 10})
+				_, err := ts.svc.ListIntegrations(ctx, &pb.ListIntegrationsRequest{PageSize: testListPageSize})
 				return err
 			},
 		},
@@ -484,11 +507,11 @@ func TestTenantIsolation_ListIntegrations_OnlyReturnsSameTenant(t *testing.T) {
 	ts := newIsolationTestService()
 
 	ctx42 := contextForTenant(42)
-	_, err := ts.svc.ListIntegrations(ctx42, &pb.ListIntegrationsRequest{PageSize: 10})
+	_, err := ts.svc.ListIntegrations(ctx42, &pb.ListIntegrationsRequest{PageSize: testListPageSize})
 	require.NoError(t, err)
 
 	ctx99 := contextForTenant(99)
-	_, err = ts.svc.ListIntegrations(ctx99, &pb.ListIntegrationsRequest{PageSize: 10})
+	_, err = ts.svc.ListIntegrations(ctx99, &pb.ListIntegrationsRequest{PageSize: testListPageSize})
 	require.NoError(t, err)
 
 	require.Len(t, ts.integMock.capturedTenantIDs, 2)

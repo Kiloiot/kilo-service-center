@@ -163,6 +163,8 @@ Created on first startup via database migration:
 - Email: admin@kilocenter.local
 - Password: admin123!
 
+Change the password straight away after the first sign-in (user menu, Change Password). The account holds every role. Self-registered accounts start without roles until an administrator grants them in Users & Roles; roles are Admin, Tenant Manager, Base Station Manager and Endpoint Manager (GitBook/05-Security/04-users-and-roles.md).
+
 ---
 
 ## 5. gRPC API
@@ -240,18 +242,22 @@ mqtt:
 
 ### Event Topics (published by KiloCenter)
 
-- `mioty/{org}/device/{eui}/event/up` — uplink data (JSON: epEui, userData, rxTime, rssi, snr, bsEui)
-- `mioty/{org}/device/{eui}/event/attach` — endpoint attached
-- `mioty/{org}/device/{eui}/event/detach` — endpoint detached
-- `mioty/{org}/device/{eui}/event/downlink_result` — downlink delivery result
+- `mioty/{org}/device/{eui}/event/up` — uplink data (JSON: bsEui, rssi, snr, rxTime in ns, cnt, data as base64, dlOpen, responseExp, dlAck, and decodedPayload when a blueprint decodes it)
+- `mioty/{org}/device/{eui}/event/attach` — endpoint attached (JSON: epEui, bsEui, event)
+- `mioty/{org}/device/{eui}/event/detach` — endpoint detached (JSON: epEui, bsEui, event)
+- `mioty/{org}/device/{eui}/event/downlink_queued` — a command/down downlink was queued (JSON: epEui, queId, ref when the command had one)
+- `mioty/{org}/device/{eui}/event/downlink_rejected` — a command/down downlink was refused (JSON: epEui, code, message, ref when the command had one); codes: mqtt.command.empty_payload, message_too_large, invalid_json, invalid_field, missing_data, data_with_entries, empty_entries, missing_packet_cnt, duplicate_packet_cnt, invalid_base64, payload_too_large, org_unresolved, enqueue_failed, or a core catalog token such as scaci.error.endpoint_not_found
+- `mioty/{org}/device/{eui}/event/downlink_result` — downlink delivery result (JSON: epEui, queId, result sent/expired/invalid; bsEui, txTime and packetCnt only when sent)
+
+Queue ids are at most 2^53-1, so JSON clients read them exactly.
 
 ### Command Topic (consumed by KiloCenter)
 
-- `mioty/{org}/device/{eui}/command/down` — queue downlink (JSON: userData as hex)
+- `mioty/{org}/device/{eui}/command/down` — queue downlink. JSON: `data` (base64, at most 200 decoded bytes, empty for a pure acknowledgement) or `entries` (`[{"packetCnt":N,"data":"base64"}]`, counter-dependent, mutually exclusive with data); optional `confirmed` (responseExp), `prio`, `format`, `responsePrio`, `dlWindReq`, `expOnly`, `dlRxStatQry`, and `ref` (echoed in downlink_queued and downlink_rejected). `{"data":"AQIDBA==","confirmed":false}` stays valid.
 
 ### QoS
 
-Uplinks: QoS 1 (at-least-once). Lifecycle events and downlink commands: configurable.
+Uplinks: QoS 1 (at-least-once). Lifecycle events (attach, detach, downlink_queued, downlink_rejected, downlink_result) and downlink commands: configurable.
 
 ---
 

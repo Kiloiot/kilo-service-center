@@ -2,7 +2,7 @@ package mqtt
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"testing"
 
@@ -13,6 +13,9 @@ import (
 )
 
 // mockPublisher records Publish calls for verification.
+// testErrBrokerUnavailable is the publish-failure fixture text.
+const testErrBrokerUnavailable = "broker unavailable"
+
 type mockPublisher struct {
 	mu        sync.Mutex
 	calls     []publishCall
@@ -121,13 +124,13 @@ func TestPublishDeviceEvent_DownlinkResultUsesEventsQoS(t *testing.T) {
 
 func TestPublishDeviceEvent_PropagatesPublishError(t *testing.T) {
 	t.Parallel()
-	mock := &mockPublisher{returnErr: fmt.Errorf("broker unavailable")}
+	mock := &mockPublisher{returnErr: errors.New(testErrBrokerUnavailable)}
 	pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
 	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "broker unavailable")
+	assert.Contains(t, err.Error(), testErrBrokerUnavailable)
 }
 
 func TestPublishDeviceEvent_NotRetained(t *testing.T) {

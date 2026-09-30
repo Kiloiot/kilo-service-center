@@ -4,19 +4,26 @@ package adapters
 import (
 	"context"
 
-	dbadapters "github.com/Kiloiot/kilo-service-center/KC-DB/storage/adapters"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	adminservice "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/admin"
 )
 
-// TenantStoreAdapterWrapper wraps TenantStoreAdapter to implement admin.TenantStore.
+// tenantStore covers the tenant operations the wrapper bridges. Satisfied
+// structurally by the KC-DB tenant store adapter.
+type tenantStore interface {
+	GetTenantByID(ctx context.Context, id int64) (*models.Tenant, error)
+	CreateTenant(ctx context.Context, name string, description *string) (*models.Tenant, error)
+	DeleteTenant(ctx context.Context, id int64) error
+}
+
+// TenantStoreAdapterWrapper wraps the KC-DB tenant store to implement admin.TenantStore.
 // The KC-DB adapter uses *string for description, but admin.TenantStore uses string.
 type TenantStoreAdapterWrapper struct {
-	adapter *dbadapters.TenantStoreAdapter
+	adapter tenantStore
 }
 
 // NewTenantStoreAdapterWrapper creates a new wrapper.
-func NewTenantStoreAdapterWrapper(adapter *dbadapters.TenantStoreAdapter) *TenantStoreAdapterWrapper {
+func NewTenantStoreAdapterWrapper(adapter tenantStore) *TenantStoreAdapterWrapper {
 	return &TenantStoreAdapterWrapper{adapter: adapter}
 }
 

@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
@@ -59,15 +61,15 @@ func setupAPIKeyTestData(t *testing.T, db *sqlx.DB) (tenantID int64, orgA, orgB 
 	orgB = uuid.MustParse("66666666-7777-8888-9999-aaaaaaaaaaaa")
 
 	_, err := db.Exec(`
-		INSERT INTO organizations (org_id, tenant_id, name, can_have_base_stations, created_at, updated_at)
-		VALUES ($1, $2, 'Org A', true, NOW(), NOW())
+		INSERT INTO organizations (org_id, tenant_id, name, created_at, updated_at)
+		VALUES ($1, $2, 'Org A', NOW(), NOW())
 		ON CONFLICT (org_id) DO NOTHING
 	`, orgA, tenantID)
 	require.NoError(t, err)
 
 	_, err = db.Exec(`
-		INSERT INTO organizations (org_id, tenant_id, name, can_have_base_stations, created_at, updated_at)
-		VALUES ($1, $2, 'Org B', true, NOW(), NOW())
+		INSERT INTO organizations (org_id, tenant_id, name, created_at, updated_at)
+		VALUES ($1, $2, 'Org B', NOW(), NOW())
 		ON CONFLICT (org_id) DO NOTHING
 	`, orgB, tenantID)
 	require.NoError(t, err)
@@ -108,7 +110,7 @@ func TestAPIKeyRepository_List_AdminView(t *testing.T) {
 		Name: "sa-key-1", KeyType: models.KeyTypeServiceAccount, IsActive: true,
 	})
 
-	repo := NewAPIKeyRepository(db)
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
 
 	// Admin view: nil userID returns all keys for org
 	keys, err := repo.List(ctx, tenantID, orgA, nil, 100, 0)
@@ -149,7 +151,7 @@ func TestAPIKeyRepository_List_UserScoped(t *testing.T) {
 		Name: "sa-key", KeyType: models.KeyTypeServiceAccount, IsActive: true,
 	})
 
-	repo := NewAPIKeyRepository(db)
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
 
 	// User-scoped: returns user's keys + SA keys (but NOT other user's keys)
 	keys, err := repo.List(ctx, tenantID, orgA, &userID, 100, 0)
@@ -185,7 +187,7 @@ func TestAPIKeyRepository_List_CrossOrgIsolation(t *testing.T) {
 		Name: "orgB-key", KeyType: models.KeyTypeUser, IsActive: true,
 	})
 
-	repo := NewAPIKeyRepository(db)
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
 
 	// Query org A — should NOT see org B's keys
 	keysA, err := repo.List(ctx, tenantID, orgA, nil, 100, 0)
@@ -218,7 +220,7 @@ func TestAPIKeyRepository_List_Pagination(t *testing.T) {
 		})
 	}
 
-	repo := NewAPIKeyRepository(db)
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
 
 	// Page 1: limit=2, offset=0
 	page1, err := repo.List(ctx, tenantID, orgA, nil, 2, 0)
@@ -266,7 +268,7 @@ func TestAPIKeyRepository_Count_AdminView(t *testing.T) {
 		Name: "count-sa-key", KeyType: models.KeyTypeServiceAccount, IsActive: true,
 	})
 
-	repo := NewAPIKeyRepository(db)
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
 
 	count, err := repo.Count(ctx, tenantID, orgA, nil)
 	require.NoError(t, err)
@@ -306,7 +308,7 @@ func TestAPIKeyRepository_Count_UserScoped(t *testing.T) {
 		Name: "sa-counted-key", KeyType: models.KeyTypeServiceAccount, IsActive: true,
 	})
 
-	repo := NewAPIKeyRepository(db)
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
 
 	count, err := repo.Count(ctx, tenantID, orgA, &userID)
 	require.NoError(t, err)
@@ -329,7 +331,7 @@ func TestAPIKeyRepository_GetByIDAndOrg_WrongOrg(t *testing.T) {
 		Name: "wrong-org-key", KeyType: models.KeyTypeUser, IsActive: true,
 	})
 
-	repo := NewAPIKeyRepository(db)
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
 
 	// Should succeed with correct org
 	key, err := repo.GetByIDAndOrg(ctx, keyID, orgA)
@@ -339,7 +341,7 @@ func TestAPIKeyRepository_GetByIDAndOrg_WrongOrg(t *testing.T) {
 	// Should fail with wrong org
 	_, err = repo.GetByIDAndOrg(ctx, keyID, orgB)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, interfaces.ErrRecordNotFound), "wrong org should return ErrRecordNotFound")
+	assert.True(t, errors.Is(err, storage.ErrRecordNotFound), "wrong org should return ErrRecordNotFound")
 }
 
 func TestAPIKeyRepository_DeleteByIDAndOrg_WrongOrg(t *testing.T) {
@@ -358,12 +360,12 @@ func TestAPIKeyRepository_DeleteByIDAndOrg_WrongOrg(t *testing.T) {
 		Name: "delete-wrong-org-key", KeyType: models.KeyTypeUser, IsActive: true,
 	})
 
-	repo := NewAPIKeyRepository(db)
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
 
 	// Should fail with wrong org
 	err := repo.DeleteByIDAndOrg(ctx, keyID, orgB)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, interfaces.ErrRecordNotFound), "wrong org should return ErrRecordNotFound")
+	assert.True(t, errors.Is(err, storage.ErrRecordNotFound), "wrong org should return ErrRecordNotFound")
 
 	// Key should still exist
 	key, err := repo.GetByIDAndOrg(ctx, keyID, orgA)
@@ -377,5 +379,5 @@ func TestAPIKeyRepository_DeleteByIDAndOrg_WrongOrg(t *testing.T) {
 	// Key should be gone
 	_, err = repo.GetByIDAndOrg(ctx, keyID, orgA)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, interfaces.ErrRecordNotFound))
+	assert.True(t, errors.Is(err, storage.ErrRecordNotFound))
 }

@@ -82,17 +82,17 @@ func (cv *certificateVerifier) VerifyCertificate(ctx context.Context, cert *x509
 	// Check 1: Certificate expiry validation
 	if now.Before(cert.NotBefore) {
 		cv.logger.ErrorContext(ctx, scaci.LogSCACICertNotYetValid,
-			"notBefore", cert.NotBefore,
-			"now", now,
-			"subject", cert.Subject.String())
+			logger.FieldNotBefore, cert.NotBefore,
+			logger.FieldNow, now,
+			logger.FieldSubject, cert.Subject.String())
 		return scaci.ErrCertNotYetValid
 	}
 
 	if now.After(cert.NotAfter) {
 		cv.logger.ErrorContext(ctx, scaci.LogSCACICertExpired,
-			"notAfter", cert.NotAfter,
-			"now", now,
-			"subject", cert.Subject.String())
+			logger.FieldNotAfter, cert.NotAfter,
+			logger.FieldNow, now,
+			logger.FieldSubject, cert.Subject.String())
 		return scaci.ErrCertExpired
 	}
 
@@ -107,23 +107,23 @@ func (cv *certificateVerifier) VerifyCertificate(ctx context.Context, cert *x509
 
 	if !hasClientAuth {
 		cv.logger.ErrorContext(ctx, scaci.LogSCACICertMissingClientAuth,
-			"subject", cert.Subject.String(),
-			"extKeyUsage", cert.ExtKeyUsage)
+			logger.FieldSubject, cert.Subject.String(),
+			logger.FieldExtKeyUsage, cert.ExtKeyUsage)
 		return scaci.ErrCertMissingClientAuth
 	}
 
 	// Check 3: Subject validation (basic presence check)
 	if cert.Subject.CommonName == "" && len(cert.Subject.Organization) == 0 {
 		cv.logger.ErrorContext(ctx, scaci.LogSCACICertInvalidSubject,
-			"subject", cert.Subject.String())
+			logger.FieldSubject, cert.Subject.String())
 		return scaci.ErrCertInvalidSubject
 	}
 
 	cv.logger.DebugContext(ctx, scaci.LogSCACICertValidationPassed,
-		"subject", cert.Subject.String(),
-		"cn", cert.Subject.CommonName,
-		"notBefore", cert.NotBefore,
-		"notAfter", cert.NotAfter)
+		logger.FieldSubject, cert.Subject.String(),
+		logger.FieldCn, cert.Subject.CommonName,
+		logger.FieldNotBefore, cert.NotBefore,
+		logger.FieldNotAfter, cert.NotAfter)
 
 	return ""
 }

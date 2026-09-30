@@ -3,23 +3,33 @@ package federation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	pkgfederation "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/federation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
+
+// CEInstallationStore reads the singleton CE installation record and
+// completes its onboarding once.
+type CEInstallationStore interface {
+	Get(ctx context.Context) (*models.CEInstallation, error)
+	CompleteOnboarding(ctx context.Context, companyName string, at time.Time) (uuid.UUID, error)
+}
 
 // CEBootstrapService handles CE installation status and onboarding completion.
 // It is intended to run in CE mode; in ECE mode these RPCs are no-ops that return an
 // appropriate error.
 type CEBootstrapService struct {
-	installationRepo interfaces.CEInstallationRepository
+	installationRepo CEInstallationStore
 	logger           logger.Logger
+	clock            clock.Clock
 	edition          string
 
 	relayController RelayController
@@ -27,17 +37,23 @@ type CEBootstrapService struct {
 	connectedFn     func() bool
 }
 
-// NewCEBootstrapService creates a new CEBootstrapService.
+// NewCEBootstrapService creates a new CEBootstrapService; the installation
+// store, logger and clock are required.
 func NewCEBootstrapService(
-	installationRepo interfaces.CEInstallationRepository,
+	installationRepo CEInstallationStore,
 	log logger.Logger,
+	clk clock.Clock,
 	edition string,
-) *CEBootstrapService {
+) (*CEBootstrapService, error) {
+	if installationRepo == nil || log == nil || clk == nil {
+		return nil, ErrBootstrapDependencyMissing
+	}
 	return &CEBootstrapService{
 		installationRepo: installationRepo,
 		logger:           log,
+		clock:            clk,
 		edition:          edition,
-	}
+	}, nil
 }
 
 // WithRelayController injects the relay controller for post-onboarding activation.
@@ -58,23 +74,20 @@ func (s *CEBootstrapService) WithConnectedFn(fn func() bool) *CEBootstrapService
 	return s
 }
 
-// GetCEStatus returns the current CE installation status.
-func (s *CEBootstrapService) GetCEStatus(ctx context.Context, _ *pb.GetCEStatusRequest) (*pb.GetCEStatusResponse, error) {
-	if s.edition != "ce" {
-		return nil, status.Error(codes.Unimplemented, "GetCEStatus is only available in CE mode")
+// Status returns the current CE installation state.
+func (s *CEBootstrapService) Status(ctx context.Context) (pkgfederation.CEStatus, error) {
+	if s.edition != pkgconfig.EditionCommunity {
+		return pkgfederation.CEStatus{}, pkgfederation.ErrNotCommunityEdition
 	}
 
 	inst, err := s.installationRepo.Get(ctx)
-	if err != nil {
-		s.logger.ErrorContext(ctx, "Failed to fetch CE installation", "error", err)
-		return nil, status.Error(codes.Internal, "failed to read CE installation")
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		s.logger.ErrorContext(ctx, LogInstallationFetchFailed, logger.FieldError, err)
+		return pkgfederation.CEStatus{}, fmt.Errorf("%w: %w", pkgfederation.ErrInstallationRead, err)
 	}
 
 	if inst == nil || inst.OnboardingCompletedAt == nil {
-		return &pb.GetCEStatusResponse{
-			OnboardingRequired:  true,
-			FederationConnected: false,
-		}, nil
+		return pkgfederation.CEStatus{OnboardingRequired: true}, nil
 	}
 
 	federationConnected := false
@@ -82,63 +95,36 @@ func (s *CEBootstrapService) GetCEStatus(ctx context.Context, _ *pb.GetCEStatusR
 		federationConnected = s.connectedFn()
 	}
 
-	return &pb.GetCEStatusResponse{
+	return pkgfederation.CEStatus{
 		OnboardingRequired:  false,
-		CeId:                inst.CEID.String(),
+		CEID:                inst.CEID.String(),
 		CompanyName:         inst.CompanyName,
 		FederationConnected: federationConnected,
 	}, nil
 }
 
-// CompleteCEOnboarding stores the company name and generates a CE ID if none exists.
-func (s *CEBootstrapService) CompleteCEOnboarding(ctx context.Context, req *pb.CompleteCEOnboardingRequest) (*pb.CompleteCEOnboardingResponse, error) {
-	if s.edition != "ce" {
-		return nil, status.Error(codes.Unimplemented, "CompleteCEOnboarding is only available in CE mode")
+// CompleteOnboarding records the company name, creating the installation and
+// its CE ID when there is none. The call is unauthenticated, so the store
+// completes onboarding at most once, also for concurrent calls.
+func (s *CEBootstrapService) CompleteOnboarding(ctx context.Context, companyName string) (pkgfederation.OnboardingResult, error) {
+	if s.edition != pkgconfig.EditionCommunity {
+		return pkgfederation.OnboardingResult{}, pkgfederation.ErrNotCommunityEdition
 	}
-	if req.CompanyName == "" {
-		return nil, status.Error(codes.InvalidArgument, "company_name is required")
+	if companyName == "" {
+		return pkgfederation.OnboardingResult{}, pkgfederation.ErrCompanyNameRequired
 	}
 
-	inst, err := s.installationRepo.Get(ctx)
+	ceID, err := s.installationRepo.CompleteOnboarding(ctx, companyName, s.clock.Now())
+	if errors.Is(err, storage.ErrInstallationOnboarded) {
+		return pkgfederation.OnboardingResult{}, pkgfederation.ErrOnboardingAlreadyCompleted
+	}
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to read CE installation: %v", err)
+		return pkgfederation.OnboardingResult{}, fmt.Errorf("%w: %w", pkgfederation.ErrInstallationWrite, err)
 	}
 
-	now := time.Now()
-	if inst == nil {
-		ceID := uuid.New()
-		newInst := &interfaces.CEInstallation{
-			CEID:                  ceID,
-			CompanyName:           req.CompanyName,
-			OnboardingCompletedAt: &now,
-		}
-		if createErr := s.installationRepo.Create(ctx, newInst); createErr != nil {
-			return nil, status.Errorf(codes.Internal, "failed to create CE installation: %v", createErr)
-		}
-		s.logger.InfoContext(ctx, "CE onboarding completed", "ce_id", ceID, "company", req.CompanyName)
-		s.activateRelay(ctx)
-		return &pb.CompleteCEOnboardingResponse{
-			CeId:        ceID.String(),
-			CompanyName: req.CompanyName,
-		}, nil
-	}
-
-	// Already onboarded: update company name if changed
-	if inst.CompanyName != req.CompanyName || inst.OnboardingCompletedAt == nil {
-		updates := map[string]interface{}{
-			"company_name":            req.CompanyName,
-			"onboarding_completed_at": now,
-		}
-		if updateErr := s.installationRepo.Update(ctx, updates); updateErr != nil {
-			return nil, status.Errorf(codes.Internal, "failed to update CE installation: %v", updateErr)
-		}
-	}
-
+	s.logger.InfoContext(ctx, LogOnboardingCompleted, logger.FieldCeID, ceID, logger.FieldCompany, companyName)
 	s.activateRelay(ctx)
-	return &pb.CompleteCEOnboardingResponse{
-		CeId:        inst.CEID.String(),
-		CompanyName: req.CompanyName,
-	}, nil
+	return pkgfederation.OnboardingResult{CEID: ceID.String(), CompanyName: companyName}, nil
 }
 
 // activateRelay enables relay routing and starts the relay client after onboarding.
@@ -148,7 +134,11 @@ func (s *CEBootstrapService) activateRelay(ctx context.Context) {
 	}
 	if s.relayController != nil {
 		if err := s.relayController.EnsureStarted(ctx); err != nil {
-			s.logger.WarnContext(ctx, "Failed to start federation relay after onboarding", "error", err)
+			if errors.Is(err, pkgfederation.ErrRelayOnboardingIncomplete) {
+				s.logger.InfoContext(ctx, LogRelayStartDeferredOnboarding)
+			} else {
+				s.logger.WarnContext(ctx, LogRelayStartFailed, logger.FieldError, err)
+			}
 		}
 	}
 }
@@ -156,12 +146,12 @@ func (s *CEBootstrapService) activateRelay(ctx context.Context) {
 // IsCEOnboardingRequired returns true if the CE has not completed onboarding.
 // Used by the disposition resolver gate to block relay until onboarding is done.
 func (s *CEBootstrapService) IsCEOnboardingRequired(ctx context.Context) (bool, error) {
-	if s.edition != "ce" {
+	if s.edition != pkgconfig.EditionCommunity {
 		return false, nil
 	}
 	inst, err := s.installationRepo.Get(ctx)
-	if err != nil {
-		return true, fmt.Errorf("ce installation check: %w", err)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return true, fmt.Errorf("%w: %w", ErrInstallationCheck, err)
 	}
 	return inst == nil || inst.OnboardingCompletedAt == nil, nil
 }

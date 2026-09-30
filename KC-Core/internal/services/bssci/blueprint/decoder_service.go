@@ -10,6 +10,7 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/numconv"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -21,10 +22,36 @@ type DecoderService struct {
 	evaluator *ExpressionEvaluator
 }
 
+const componentBlueprintDecoder = "blueprint-decoder"
+
+// Bit-layout arithmetic for the blueprint payload decoder.
+const (
+	bitsPerByte = 8
+	msbBitIndex = bitsPerByte - 1
+	// float32BitSize/float64BitSize select IEEE 754 decoding paths; extraction
+	// of any wider field is rejected.
+	float32BitSize = 32
+	float64BitSize = 64
+	maxExtractBits = 64
+)
+
+// IEEE 754 exponent field values and biases used by the clamping float
+// decoders (NaN decodes to 0, infinities to +/-infApprox).
+const (
+	float32ExpMax     = 0xFF
+	float64ExpMax     = 0x7FF
+	float32DenormBias = 126
+	float32ExpBias    = 127
+	float64DenormBias = 1022
+	float64ExpBias    = 1023
+	infApprox         = 1e308
+)
+
 // NewDecoderService creates a new DecoderService instance.
+// componentBlueprintDecoder labels this component in structured logs.
 func NewDecoderService(log logger.Logger) *DecoderService {
 	return &DecoderService{
-		log:       log.WithField("component", "blueprint-decoder"),
+		log:       log.WithField(logger.FieldComponent, componentBlueprintDecoder),
 		evaluator: NewExpressionEvaluator(),
 	}
 }
@@ -41,17 +68,17 @@ func (s *DecoderService) Decode(
 	// Parse the blueprint specification
 	spec, err := s.parseBlueprint(bp.SpecJSON)
 	if err != nil {
-		s.log.WarnContext(ctx, "Failed to parse blueprint specification",
-			"blueprint_id", bp.ID,
-			"error", err)
+		s.log.WarnContext(ctx, LogBlueprintSpecParseFailed,
+			logger.FieldBlueprintID, bp.ID,
+			logger.FieldError, err)
 		return blueprint.NewDecodeError(blueprint.ErrInvalidBlueprintJSON, err.Error()), nil
 	}
 
 	// Validate the specification
 	if err := spec.Validate(); err != nil {
-		s.log.WarnContext(ctx, "Blueprint validation failed",
-			"blueprint_id", bp.ID,
-			"error", err)
+		s.log.WarnContext(ctx, LogBlueprintValidationFailed,
+			logger.FieldBlueprintID, bp.ID,
+			logger.FieldError, err)
 		if ve, ok := err.(*blueprint.ValidationError); ok {
 			return blueprint.NewDecodeError(ve.Token, ve.Detail), nil
 		}
@@ -61,27 +88,27 @@ func (s *DecoderService) Decode(
 	// Find the format definition for the given format ID
 	format := spec.GetUplinkFormat(formatID)
 	if format == nil {
-		s.log.DebugContext(ctx, "Format ID not found in blueprint",
-			"blueprint_id", bp.ID,
-			"format_id", formatID)
+		s.log.DebugContext(ctx, LogBlueprintFormatIDNotFound,
+			logger.FieldBlueprintID, bp.ID,
+			logger.FieldFormatID, formatID)
 		return blueprint.NewDecodeError(
 			blueprint.ErrFormatIDNotFound,
-			fmt.Sprintf("format_id=%d not found in blueprint", formatID),
+			fmt.Sprintf(errFmtFormatIDNotInBlueprint, formatID),
 		), nil
 	}
 
 	// Check payload length
 	requiredBits := s.calculateRequiredBits(format)
-	requiredBytes := (requiredBits + 7) / 8
+	requiredBytes := (requiredBits + bitsPerByte - 1) / bitsPerByte
 	if len(userData) < requiredBytes {
-		s.log.DebugContext(ctx, "Payload too short for format",
-			"blueprint_id", bp.ID,
-			"format_id", formatID,
-			"required_bytes", requiredBytes,
-			"actual_bytes", len(userData))
+		s.log.DebugContext(ctx, LogBlueprintPayloadTooShort,
+			logger.FieldBlueprintID, bp.ID,
+			logger.FieldFormatID, formatID,
+			logger.FieldRequiredBytes, requiredBytes,
+			logger.FieldActualBytes, len(userData))
 		return blueprint.NewDecodeError(
 			blueprint.ErrPayloadTooShort,
-			fmt.Sprintf("need %d bytes, got %d", requiredBytes, len(userData)),
+			fmt.Sprintf(errFmtPayloadBytesShort, requiredBytes, len(userData)),
 		), nil
 	}
 
@@ -91,20 +118,20 @@ func (s *DecoderService) Decode(
 	// Decode the payload
 	decodedData, err := s.decodePayload(userData, format, mergedCalibration)
 	if err != nil {
-		s.log.DebugContext(ctx, "Payload decode failed",
-			"blueprint_id", bp.ID,
-			"format_id", formatID,
-			"error", err)
+		s.log.DebugContext(ctx, LogBlueprintPayloadDecodeFailed,
+			logger.FieldBlueprintID, bp.ID,
+			logger.FieldFormatID, formatID,
+			logger.FieldError, err)
 		if de, ok := err.(*blueprint.DecodeError); ok {
 			return blueprint.NewDecodeError(de.Token, de.Detail), nil
 		}
 		return blueprint.NewDecodeError(blueprint.ErrInternalDecodePanic, err.Error()), nil
 	}
 
-	s.log.DebugContext(ctx, "Payload decoded successfully",
-		"blueprint_id", bp.ID,
-		"format_id", formatID,
-		"field_count", len(decodedData))
+	s.log.DebugContext(ctx, LogBlueprintPayloadDecoded,
+		logger.FieldBlueprintID, bp.ID,
+		logger.FieldFormatID, formatID,
+		logger.FieldFieldCountSnake, len(decodedData))
 
 	return blueprint.NewDecodeResult(decodedData, formatID, bp.Version), nil
 }
@@ -116,20 +143,20 @@ func (s *DecoderService) parseBlueprint(specJSON json.RawMessage) (*blueprint.Sp
 
 // calculateRequiredBits calculates the total bits required for a payload format.
 func (s *DecoderService) calculateRequiredBits(format *blueprint.PayloadFormat) int {
-	maxBitOffset := 0
+	highestBitOffset := 0
 	for _, component := range format.Components {
 		endBit := 0
 		if component.Offset != nil {
 			endBit = *component.Offset + component.Size
 		} else {
 			// Sequential layout - calculate from previous components
-			endBit = maxBitOffset + component.Size
+			endBit = highestBitOffset + component.Size
 		}
-		if endBit > maxBitOffset {
-			maxBitOffset = endBit
+		if endBit > highestBitOffset {
+			highestBitOffset = endBit
 		}
 	}
-	return maxBitOffset
+	return highestBitOffset
 }
 
 // decodePayload decodes the payload bytes according to the format definition.
@@ -176,7 +203,7 @@ func (s *DecoderService) decodePayload(
 		}
 
 		// Apply scale and bias for numeric types
-		if numVal, ok := toFloat64(value); ok {
+		if numVal, ok := numconv.ToFloat64(value); ok {
 			if component.Scale != 0 {
 				numVal = numVal * component.Scale
 			}
@@ -197,8 +224,8 @@ func (s *DecoderService) decodePayload(
 				}
 			}
 			// Apply calibration as multiplier
-			if numVal, ok := toFloat64(value); ok {
-				if calFloat, ok := toFloat64(calVal); ok {
+			if numVal, ok := numconv.ToFloat64(value); ok {
+				if calFloat, ok := numconv.ToFloat64(calVal); ok {
 					value = numVal * calFloat
 				}
 			}
@@ -237,16 +264,16 @@ func (s *DecoderService) decodePayload(
 // littleEndian controls byte order for multi-byte numeric types (per section 2.2.10).
 func (s *DecoderService) extractValue(data []byte, bitOffset, bitSize int, fieldType string, littleEndian bool) (interface{}, error) {
 	// Validate bounds
-	totalBits := len(data) * 8
+	totalBits := len(data) * bitsPerByte
 	if bitOffset < 0 || bitOffset+bitSize > totalBits {
-		return nil, fmt.Errorf("bit range [%d:%d] exceeds payload size %d bits", bitOffset, bitOffset+bitSize, totalBits)
+		return nil, fmt.Errorf(errFmtBitRangeExceedsPayload, bitOffset, bitOffset+bitSize, totalBits)
 	}
 
 	switch fieldType {
 	case blueprint.FieldTypeBool:
-		byteIndex := bitOffset / 8
-		bitIndex := bitOffset % 8
-		return (data[byteIndex] & (1 << (7 - bitIndex))) != 0, nil
+		byteIndex := bitOffset / bitsPerByte
+		bitIndex := bitOffset % bitsPerByte
+		return (data[byteIndex] & (1 << (msbBitIndex - bitIndex))) != 0, nil
 
 	case blueprint.FieldTypeUint:
 		return s.extractUint(data, bitOffset, bitSize, littleEndian)
@@ -268,15 +295,15 @@ func (s *DecoderService) extractValue(data []byte, bitOffset, bitSize int, field
 
 	case blueprint.FieldTypeFloat:
 		switch bitSize {
-		case 32:
-			uval, err := s.extractUint(data, bitOffset, 32, littleEndian)
+		case float32BitSize:
+			uval, err := s.extractUint(data, bitOffset, float32BitSize, littleEndian)
 			if err != nil {
 				return nil, err
 			}
 			//nolint:gosec // G115: intentional truncation for 32-bit float conversion
 			return float64FromBits32(uint32(uval)), nil
-		case 64:
-			uval, err := s.extractUint(data, bitOffset, 64, littleEndian)
+		case float64BitSize:
+			uval, err := s.extractUint(data, bitOffset, float64BitSize, littleEndian)
 			if err != nil {
 				return nil, err
 			}
@@ -290,21 +317,21 @@ func (s *DecoderService) extractValue(data []byte, bitOffset, bitSize int, field
 		return float64(uval), nil
 
 	case blueprint.FieldTypeBytes, blueprint.FieldTypeBinary:
-		if bitOffset%8 != 0 || bitSize%8 != 0 {
-			return nil, fmt.Errorf("bytes type requires byte-aligned offset and size")
+		if bitOffset%bitsPerByte != 0 || bitSize%bitsPerByte != 0 {
+			return nil, errBytesTypeAlignment
 		}
-		startByte := bitOffset / 8
-		numBytes := bitSize / 8
+		startByte := bitOffset / bitsPerByte
+		numBytes := bitSize / bitsPerByte
 		result := make([]byte, numBytes)
 		copy(result, data[startByte:startByte+numBytes])
 		return result, nil
 
 	case blueprint.FieldTypeString:
-		if bitOffset%8 != 0 || bitSize%8 != 0 {
-			return nil, fmt.Errorf("string type requires byte-aligned offset and size")
+		if bitOffset%bitsPerByte != 0 || bitSize%bitsPerByte != 0 {
+			return nil, errStringTypeAlignment
 		}
-		startByte := bitOffset / 8
-		numBytes := bitSize / 8
+		startByte := bitOffset / bitsPerByte
+		numBytes := bitSize / bitsPerByte
 		return string(data[startByte : startByte+numBytes]), nil
 
 	case blueprint.FieldTypeEnum:
@@ -312,7 +339,7 @@ func (s *DecoderService) extractValue(data []byte, bitOffset, bitSize int, field
 		return s.extractUint(data, bitOffset, bitSize, littleEndian)
 
 	default:
-		return nil, fmt.Errorf("unsupported field type: %s", fieldType)
+		return nil, fmt.Errorf(errFmtUnsupportedFieldType, fieldType)
 	}
 }
 
@@ -320,17 +347,17 @@ func (s *DecoderService) extractValue(data []byte, bitOffset, bitSize int, field
 // When littleEndian is true and the value is byte-aligned, bytes are read LSB-first
 // per MIOTY Application Layer Spec section 2.2.10.
 func (s *DecoderService) extractUint(data []byte, bitOffset, bitSize int, littleEndian bool) (uint64, error) {
-	if bitSize > 64 {
-		return 0, fmt.Errorf("bit size %d exceeds maximum of 64", bitSize)
+	if bitSize > maxExtractBits {
+		return 0, fmt.Errorf(errFmtBitSizeExceedsMax, bitSize)
 	}
 
 	// Little-endian fast path for byte-aligned multi-byte values
-	if littleEndian && bitOffset%8 == 0 && bitSize%8 == 0 {
-		startByte := bitOffset / 8
-		numBytes := bitSize / 8
+	if littleEndian && bitOffset%bitsPerByte == 0 && bitSize%bitsPerByte == 0 {
+		startByte := bitOffset / bitsPerByte
+		numBytes := bitSize / bitsPerByte
 		var result uint64
 		for i := 0; i < numBytes; i++ {
-			result |= uint64(data[startByte+i]) << (i * 8)
+			result |= uint64(data[startByte+i]) << (i * bitsPerByte)
 		}
 		return result, nil
 	}
@@ -338,9 +365,9 @@ func (s *DecoderService) extractUint(data []byte, bitOffset, bitSize int, little
 	// Big-endian (default) bit-by-bit extraction
 	var result uint64
 	for i := 0; i < bitSize; i++ {
-		byteIndex := (bitOffset + i) / 8
-		bitIndex := (bitOffset + i) % 8
-		if (data[byteIndex] & (1 << (7 - bitIndex))) != 0 {
+		byteIndex := (bitOffset + i) / bitsPerByte
+		bitIndex := (bitOffset + i) % bitsPerByte
+		if (data[byteIndex] & (1 << (msbBitIndex - bitIndex))) != 0 {
 			result |= 1 << (bitSize - 1 - i)
 		}
 	}
@@ -363,53 +390,35 @@ func mergeCalibration(blueprintCal, deviceCal map[string]interface{}) map[string
 	return merged
 }
 
-// toFloat64 converts a value to float64 if possible.
-func toFloat64(v interface{}) (float64, bool) {
-	switch val := v.(type) {
-	case float64:
-		return val, true
-	case float32:
-		return float64(val), true
-	case int64:
-		return float64(val), true
-	case int:
-		return float64(val), true
-	case uint64:
-		return float64(val), true
-	default:
-		return 0, false
-	}
-}
-
 // float64FromBits32 converts 32-bit IEEE 754 to float64.
 func float64FromBits32(bits uint32) float64 {
 	// Extract components
 	sign := (bits >> 31) & 1
-	exp := (bits >> 23) & 0xFF
+	exp := (bits >> 23) & float32ExpMax
 	mantissa := bits & 0x7FFFFF
 
 	// Handle special cases
 	if exp == 0 && mantissa == 0 {
 		// In Go, -0.0 and 0.0 are the same value
-		return 0.0
+		return 0
 	}
-	if exp == 0xFF {
+	if exp == float32ExpMax {
 		if mantissa != 0 {
-			return 0.0 // NaN -> 0 for simplicity
+			return 0 // NaN -> 0 for simplicity
 		}
 		if sign == 1 {
-			return -1e308 // -Inf approximation
+			return -infApprox // -Inf approximation
 		}
-		return 1e308 // +Inf approximation
+		return infApprox // +Inf approximation
 	}
 
 	// Normal number
 	f := float64(mantissa) / float64(1<<23)
 	if exp == 0 {
 		// Denormalized
-		f = f * float64(int64(1)<<(exp-126))
+		f = f * float64(int64(1)<<(exp-float32DenormBias))
 	} else {
-		f = (1.0 + f) * float64(int64(1)<<(int(exp)-127))
+		f = (1 + f) * float64(int64(1)<<(int(exp)-float32ExpBias))
 	}
 	if sign == 1 {
 		f = -f
@@ -422,28 +431,28 @@ func float64FromBits64(bits uint64) float64 {
 	// Use standard library math package via unsafe pointer
 	// For safety, we implement a simple conversion
 	sign := (bits >> 63) & 1
-	exp := (bits >> 52) & 0x7FF
+	exp := (bits >> 52) & float64ExpMax
 	mantissa := bits & 0xFFFFFFFFFFFFF
 
 	if exp == 0 && mantissa == 0 {
 		// In Go, -0.0 and 0.0 are the same value
-		return 0.0
+		return 0
 	}
-	if exp == 0x7FF {
+	if exp == float64ExpMax {
 		if mantissa != 0 {
-			return 0.0 // NaN -> 0
+			return 0 // NaN -> 0
 		}
 		if sign == 1 {
-			return -1e308
+			return -infApprox
 		}
-		return 1e308
+		return infApprox
 	}
 
 	f := float64(mantissa) / float64(uint64(1)<<52)
 	if exp == 0 {
-		f = f * float64(int64(1)<<(int(exp)-1022)) //nolint:gosec // G115: intentional for IEEE 754 math
+		f = f * float64(int64(1)<<(int(exp)-float64DenormBias)) //nolint:gosec // G115: intentional for IEEE 754 math
 	} else {
-		f = (1.0 + f) * float64(int64(1)<<(int(exp)-1023)) //nolint:gosec // G115: intentional for IEEE 754 math
+		f = (1 + f) * float64(int64(1)<<(int(exp)-float64ExpBias)) //nolint:gosec // G115: intentional for IEEE 754 math
 	}
 	if sign == 1 {
 		f = -f

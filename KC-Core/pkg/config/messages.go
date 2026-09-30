@@ -6,6 +6,8 @@ const (
 	ErrConfigReadFmt = "error reading config file: %w"
 	// ErrConfigUnmarshalFmt formats config unmarshal errors.
 	ErrConfigUnmarshalFmt = "error unmarshaling config: %w"
+	// errConfigBindEnvFmt formats a failed environment binding with the variable name.
+	errConfigBindEnvFmt = "error binding environment variable %s: %w"
 
 	// ErrSCEUIInvalidFmt formats Service Center EUI parse failures with the offending source.
 	ErrSCEUIInvalidFmt = "invalid Service Center EUI from %s: %w"
@@ -22,12 +24,19 @@ const (
 	ErrStorageHostRequired = "storage host is required"
 	// ErrInvalidStoragePortFmt formats storage port range errors.
 	ErrInvalidStoragePortFmt = "invalid storage port: %d"
-	// ErrInvalidAPIPortFmt formats API port range errors.
-	ErrInvalidAPIPortFmt = "invalid API port: %d"
 	// ErrInvalidGRPCPortFmt formats gRPC port range errors.
 	ErrInvalidGRPCPortFmt = "invalid gRPC port: %d"
 	// ErrInternalTrustWithGRPCWeb indicates internal_trust_enabled=true is incompatible with grpc.web.enabled=true.
 	ErrInternalTrustWithGRPCWeb = "internal_trust_enabled=true requires grpc.web.enabled=false (gateway handles gRPC-web)"
+
+	// ErrInternalTrustPeerAuthRequiredFmt refuses a listener that trusts identity headers on an address other hosts reach without the peer secret.
+	ErrInternalTrustPeerAuthRequiredFmt = "grpc.internal_trust_enabled=true on grpc.host %q (not a loopback address) requires internal_auth.peer_secret of at least %d characters, got %d"
+	// ErrIdentityPeerAuthRequiredFmt refuses a KC-Identity listener on an address other hosts reach without the peer secret.
+	ErrIdentityPeerAuthRequiredFmt = "KC-Identity trusts internal identity headers on grpc.host %q (not a loopback address): internal_auth.peer_secret of at least %d characters is required, got %d"
+	// ErrIdentityUpstreamPeerAuthRequiredFmt refuses a KC-Core whose KC-Identity runs on another host without the peer secret.
+	ErrIdentityUpstreamPeerAuthRequiredFmt = "identity.address host %q is not a loopback address: internal_auth.peer_secret of at least %d characters is required, got %d"
+	// ErrGatewayPeerAuthRequiredFmt refuses a gateway whose KC-Core or KC-Identity runs on another host without the peer secret.
+	ErrGatewayPeerAuthRequiredFmt = "gateway upstream host %q is not a loopback address: internal_auth.peer_secret of at least %d characters is required, got %d"
 
 	// Auth configuration validation errors (fatal — abort startup).
 
@@ -85,9 +94,6 @@ const (
 	// MsgRedisPortInvalid indicates Redis port is out of valid range.
 	MsgRedisPortInvalid = "redis.port must be between 1 and 65535"
 
-	// MsgUICallbackURLRequired indicates ui_callback_url is required when external auth enabled.
-	MsgUICallbackURLRequired = "auth.ui_callback_url is required when OIDC or OAuth2 is enabled"
-
 	// MsgOIDCRegCallbackURLRequired indicates registration_callback_url is required when registration enabled.
 	MsgOIDCRegCallbackURLRequired = "auth.oidc.registration_callback_url is required when registration_enabled=true"
 
@@ -116,6 +122,30 @@ const (
 	ErrCECertTenantMappingIncompatible = "edition=ce is incompatible with protocol.scaci_cert_tenant_mapping=true"
 	// ErrCEExternalOrgClaimIncompatible indicates CE cannot use external org claims.
 	ErrCEExternalOrgClaimIncompatible = "edition=ce is incompatible with oidc.external_org_claim"
-	// ErrCETenantIDRequired indicates CE requires a configured tenant ID.
-	ErrCETenantIDRequired = "edition=ce requires general.tenant_id > 0"
+	// ErrPlatformTenantIDRequired indicates a configuration without the platform tenant.
+	ErrPlatformTenantIDRequired = "general.tenant_id must be > 0: it names the platform tenant that owns operator and audit events"
+
+	// ECE edition SCACI isolation requirements (fatal — abort startup).
+
+	// ErrECEOrgEnforcementRequired indicates an ECE KC-Core or KC-Gateway must enforce organization isolation.
+	ErrECEOrgEnforcementRequired = "edition=ece requires general.org_enforcement_enabled=true"
+	// ErrECEStrictOrgResolutionRequired indicates an ECE KC-Core SCACI listener must fail closed on org resolution.
+	ErrECEStrictOrgResolutionRequired = "edition=ece with protocol.scaci_enabled=true requires protocol.strict_org_resolution=true"
+
+	// ErrStrictOrgResolutionRequiresCertTenantMapping indicates a SCACI
+	// listener whose strict org resolution cannot map certificates to tenants.
+	ErrStrictOrgResolutionRequiresCertTenantMapping = "protocol.strict_org_resolution=true with protocol.scaci_enabled=true requires protocol.scaci_cert_tenant_mapping=true"
+
+	// Certificate service settings (fatal — abort startup).
+
+	// ErrCertificatesCleanupIntervalPositive indicates the bundle cleanup interval must be positive.
+	ErrCertificatesCleanupIntervalPositive = "certificates.cleanup_interval_min must be positive"
+	// ErrCertificatesServerValidityDaysPositive indicates the server certificate validity must be positive.
+	ErrCertificatesServerValidityDaysPositive = "certificates.server_validity_days must be positive"
+	// ErrCertificatesCertGenPathRequired indicates the certgen binary path is required.
+	ErrCertificatesCertGenPathRequired = "certificates.certgen_path must not be empty"
+	// ErrCertificatesCertsDirRequired indicates the permanent certificate directory is required.
+	ErrCertificatesCertsDirRequired = "certificates.certs_dir must not be empty"
+	// ErrCertificatesTempDirRequired indicates the bundle directory is required.
+	ErrCertificatesTempDirRequired = "certificates.temp_dir must not be empty"
 )

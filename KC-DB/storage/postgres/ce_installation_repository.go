@@ -6,11 +6,26 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
+
+// sqlCompleteOnboarding creates the installation with a new CE ID, or
+// completes an unfinished one and keeps its CE ID; an installation that has
+// completed onboarding matches no row, so concurrent calls complete it once.
+const sqlCompleteOnboarding = `
+	INSERT INTO ce_installation (id, ce_id, company_name, onboarding_completed_at, created_at, updated_at)
+	VALUES (1, gen_random_uuid(), $1, $2, $2, $2)
+	ON CONFLICT (id) DO UPDATE
+	SET company_name = EXCLUDED.company_name,
+	    onboarding_completed_at = EXCLUDED.onboarding_completed_at,
+	    updated_at = EXCLUDED.updated_at
+	WHERE ce_installation.onboarding_completed_at IS NULL
+	RETURNING ce_id`
 
 // CEInstallationRepository manages the singleton CE installation record using PostgreSQL.
 type CEInstallationRepository struct {
@@ -22,29 +37,32 @@ func NewCEInstallationRepository(db *sqlx.DB) *CEInstallationRepository {
 	return &CEInstallationRepository{db: db}
 }
 
-// Get retrieves the singleton installation record. Returns nil, nil if none exists.
-func (r *CEInstallationRepository) Get(ctx context.Context) (*interfaces.CEInstallation, error) {
-	var row interfaces.CEInstallation
+// Get retrieves the singleton installation record, or storage.ErrNotFound before one exists.
+func (r *CEInstallationRepository) Get(ctx context.Context) (*models.CEInstallation, error) {
+	var row models.CEInstallation
 	err := r.db.GetContext(ctx, &row, `SELECT * FROM ce_installation WHERE id = 1`)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, storage.ErrNotFound
 		}
-		return nil, fmt.Errorf("ce_installation get: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapCeInstallationGet, err)
 	}
 	return &row, nil
 }
 
-// Create inserts the initial singleton record.
-func (r *CEInstallationRepository) Create(ctx context.Context, inst *interfaces.CEInstallation) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO ce_installation (id, ce_id, company_name, onboarding_completed_at, federation_token, token_issued_at)
-		VALUES (1, $1, $2, $3, $4, $5)
-	`, inst.CEID, inst.CompanyName, inst.OnboardingCompletedAt, inst.FederationToken, inst.TokenIssuedAt)
-	if err != nil {
-		return fmt.Errorf("ce_installation create: %w", err)
+// CompleteOnboarding records companyName as completed at the given time and
+// returns the installation's CE ID. It fails with
+// storage.ErrInstallationOnboarded once onboarding has completed.
+func (r *CEInstallationRepository) CompleteOnboarding(ctx context.Context, companyName string, at time.Time) (uuid.UUID, error) {
+	var ceID uuid.UUID
+	err := r.db.GetContext(ctx, &ceID, sqlCompleteOnboarding, companyName, at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, storage.ErrInstallationOnboarded
 	}
-	return nil
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("%s: %w", errWrapCeInstallationCompleteOnboarding, err)
+	}
+	return ceID, nil
 }
 
 // Update applies partial updates using a field map. Only provided keys are changed.
@@ -66,9 +84,12 @@ func (r *CEInstallationRepository) Update(ctx context.Context, updates map[strin
 	query := fmt.Sprintf("UPDATE ce_installation SET %s WHERE id = 1", strings.Join(setClauses, ", "))
 	res, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("ce_installation update: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCeInstallationUpdate, err)
 	}
-	rows, _ := res.RowsAffected()
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapCeInstallationUpdate, err)
+	}
 	if rows == 0 {
 		return storage.ErrNotFound
 	}

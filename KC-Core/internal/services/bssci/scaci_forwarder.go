@@ -7,48 +7,52 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // FormatEUI64 helper
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger" // FormatEUI64 helper
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 )
 
-// scaciBroadcaster interface is defined in pkg/bssci/server.go
-// We reference it via the bssci package
-type scaciBroadcaster interface {
+// SCACIServerBroadcaster is the SCACI server surface the forwarder relays
+// uplink data and downlink results onto.
+type SCACIServerBroadcaster interface {
 	BroadcastULData(ctx context.Context, tenantID int64, data *mioty.ULDataMessage) error
-	BroadcastDLDataResult(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error
+	ApplicationCenterResults
 }
 
-// scaciEPStatusBroadcaster interface for EPStatus forwarding
-// Used to convert between bssci.EPStatusData and scaci.EPStatusData
-type scaciEPStatusBroadcaster interface {
+// SCACIEPStatusServerBroadcaster is the SCACI server surface EPStatus messages
+// are relayed onto.
+type SCACIEPStatusServerBroadcaster interface {
 	BroadcastEPStatus(ctx context.Context, tenantID int64, data *scaci.EPStatusData) error
 }
 
+// SCACIForwarderWithSetter is the broadcaster the BSSCI side consumes plus the
+// typed wiring point the composition root calls once SCACI exists. The setter
+// is typed: a previous untyped variant was reached through a runtime type
+// assertion that could never succeed, leaving forwarding silently disconnected.
+type SCACIForwarderWithSetter interface {
+	bssci.SCACIBroadcaster
+	ApplicationCenterResults
+	SetSCACIServer(scaci SCACIServerBroadcaster)
+}
+
 type scaciForwarder struct {
-	scaciServer scaciBroadcaster
+	scaciServer SCACIServerBroadcaster
 	mu          sync.RWMutex
 	logger      logger.Logger
 }
 
 // NewSCACIForwarder creates a new SCACI forwarder
-func NewSCACIForwarder(log logger.Logger) bssci.SCACIBroadcaster {
+func NewSCACIForwarder(log logger.Logger) SCACIForwarderWithSetter {
 	return &scaciForwarder{
 		logger: log,
 	}
 }
 
-// SetSCACI sets the SCACI server reference (for wiring after SCACI construction)
-func (f *scaciForwarder) SetSCACI(scaci scaciBroadcaster) {
+// SetSCACIServer wires the SCACI server for broadcasting. SCACI is constructed
+// after the forwarder, so the reference is supplied once at that point.
+func (f *scaciForwarder) SetSCACIServer(scaci SCACIServerBroadcaster) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.scaciServer = scaci
-}
-
-// SetSCACIServer wires the SCACI server for broadcasting
-// Public wrapper around SetSCACI for main.go usage
-func (f *scaciForwarder) SetSCACIServer(scaci scaciBroadcaster) {
-	f.SetSCACI(scaci)
 }
 
 // BroadcastULData forwards uplink data to SCACI clients
@@ -66,8 +70,8 @@ func (f *scaciForwarder) BroadcastULData(ctx context.Context, tenantID int64, da
 	// Delegate to real SCACI broadcaster (preserves exact behavior)
 	if err := scaci.BroadcastULData(ctx, tenantID, data); err != nil {
 		f.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToForwardULDataToSCACI,
-			"epEui", data.EpEui,
-			"error", err)
+			logger.FieldEpEui, data.EpEui,
+			logger.FieldError, err)
 		// Do not fail BSSCI operation if SCACI forwarding fails
 		return err
 	}
@@ -75,23 +79,22 @@ func (f *scaciForwarder) BroadcastULData(ctx context.Context, tenantID int64, da
 	return nil
 }
 
-// BroadcastDLDataResult forwards downlink results to SCACI clients
-// Delegates to real scaciBroadcaster.BroadcastDLDataResult
-func (f *scaciForwarder) BroadcastDLDataResult(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error {
+// BroadcastDLDataResult forwards a downlink result to queuer, the Application
+// Center that queued the downlink, under acQueID.
+func (f *scaciForwarder) BroadcastDLDataResult(ctx context.Context, queuer scaci.ApplicationCenter, acQueID uint64, result *mioty.DLDataResult) error {
 	f.mu.RLock()
-	scaci := f.scaciServer
+	scaciServer := f.scaciServer
 	f.mu.RUnlock()
 
-	if scaci == nil {
+	if scaciServer == nil {
 		// No SCACI server available - this is normal if no Application Centers are connected
 		return nil
 	}
 
-	// Delegate to real SCACI broadcaster (preserves exact behavior from downlink_handlers.go:340)
-	if err := scaci.BroadcastDLDataResult(ctx, tenantID, result); err != nil {
+	if err := scaciServer.BroadcastDLDataResult(ctx, queuer, acQueID, result); err != nil {
 		f.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToBroadcastDLResultToSCACI,
-			"tenantID", tenantID,
-			"error", err)
+			logger.FieldTenantID, queuer.TenantID,
+			logger.FieldError, err)
 		// Do not fail BSSCI operation if SCACI forwarding fails
 		return err
 	}
@@ -106,15 +109,16 @@ func (f *scaciForwarder) BroadcastDLDataResult(ctx context.Context, tenantID int
 // scaciEPStatusAdapter adapts SCACI server to bssci.SCACIEPStatusBroadcaster interface
 // Converts between bssci.EPStatusData and scaci.EPStatusData types
 type scaciEPStatusAdapter struct {
-	scaciServer scaciEPStatusBroadcaster
+	scaciServer SCACIEPStatusServerBroadcaster
 	mu          sync.RWMutex
 	logger      logger.Logger
 }
 
-// SCACIEPStatusAdapterWithSetter extends bssci.SCACIEPStatusBroadcaster with server wiring
+// SCACIEPStatusAdapterWithSetter extends EPStatusBroadcaster with the typed
+// wiring point for the SCACI server.
 type SCACIEPStatusAdapterWithSetter interface {
-	bssci.SCACIEPStatusBroadcaster
-	SetSCACIServer(scaciSvr interface{})
+	EPStatusBroadcaster
+	SetSCACIServer(scaciSvr SCACIEPStatusServerBroadcaster)
 }
 
 // NewSCACIEPStatusAdapter creates a new adapter for EPStatus forwarding
@@ -124,14 +128,13 @@ func NewSCACIEPStatusAdapter(log logger.Logger) SCACIEPStatusAdapterWithSetter {
 	}
 }
 
-// SetSCACIServer wires the SCACI server for EPStatus broadcasting
-// Accepts interface{} to allow main.go type assertion without import cycles
-func (a *scaciEPStatusAdapter) SetSCACIServer(scaciSvr interface{}) {
+// SetSCACIServer wires the SCACI server for EPStatus broadcasting. The typed
+// parameter replaces an interface{} whose failed assertion was silently
+// ignored, leaving EPStatus forwarding disconnected with no error.
+func (a *scaciEPStatusAdapter) SetSCACIServer(scaciSvr SCACIEPStatusServerBroadcaster) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if svr, ok := scaciSvr.(scaciEPStatusBroadcaster); ok {
-		a.scaciServer = svr
-	}
+	a.scaciServer = scaciSvr
 }
 
 // BroadcastEPStatus implements bssci.SCACIEPStatusBroadcaster interface
@@ -166,8 +169,8 @@ func (a *scaciEPStatusAdapter) BroadcastEPStatus(ctx context.Context, tenantID i
 	// Delegate to real SCACI broadcaster
 	if err := scaciSvr.BroadcastEPStatus(ctx, tenantID, scaciData); err != nil {
 		a.logger.ErrorContext(ctx, bssci.LogBSSCIEPStatusForwardFailed,
-			"epEui", pkgmioty.FormatEUI64(data.EpEui),
-			"error", err)
+			logger.FieldEpEui, mioty.FormatEUI64(data.EpEui),
+			logger.FieldError, err)
 		return err
 	}
 

@@ -1,456 +1,383 @@
-// Package logger provides structured logging for KiloCenter
+// Package logger re-exports the shared structured logging package so existing
+// KC-Core import paths keep working. The canonical implementation now lives in
+// github.com/Kiloiot/kilo-service-center/pkg/logger.
 package logger
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"os"
-	"runtime"
-	"strings"
-	"sync"
-	"time"
-
-	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
+	pkglogger "github.com/Kiloiot/kilo-service-center/pkg/logger"
 )
 
-// Level represents the logging level
-type Level int
+// Logger is the structured logging interface.
+type Logger = pkglogger.Logger
 
-// Logging levels from most to least verbose
+// Field is a key-value pair for structured logging.
+type Field = pkglogger.Field
+
+// Initialize sets up the default logger.
+func Initialize(level, format string) { pkglogger.Initialize(level, format) }
+
+// Get returns the default logger instance.
+func Get() Logger { return pkglogger.Get() }
+
+// Err creates an error field.
+func Err(err error) Field { return pkglogger.Err(err) }
+
+// NewNop returns a logger that silently discards all output.
+func NewNop() Logger { return pkglogger.NewNop() }
+
+// Structured logging field keys re-exported from the shared package.
 const (
-	// DebugLevel enables debug and all higher severity logs
-	DebugLevel Level = iota
-	// InfoLevel enables info and all higher severity logs
-	InfoLevel
-	// WarnLevel enables warning and all higher severity logs
-	WarnLevel
-	// ErrorLevel enables error and fatal logs
-	ErrorLevel
-	// FatalLevel enables only fatal logs
-	FatalLevel
+	FieldError                 = pkglogger.FieldError
+	FieldOpID                  = pkglogger.FieldOpID
+	FieldEpEui                 = pkglogger.FieldEpEui
+	FieldSessionID             = pkglogger.FieldSessionID
+	FieldTenantID              = pkglogger.FieldTenantID
+	FieldBsEui                 = pkglogger.FieldBsEui
+	FieldID                    = pkglogger.FieldID
+	FieldEpEuiSnake            = pkglogger.FieldEpEuiSnake
+	FieldTenantIDSnake         = pkglogger.FieldTenantIDSnake
+	FieldTenantIDCamel         = pkglogger.FieldTenantIDCamel
+	FieldEui                   = pkglogger.FieldEui
+	FieldQueID                 = pkglogger.FieldQueID
+	FieldBsEuiSnake            = pkglogger.FieldBsEuiSnake
+	FieldUserIDSnake           = pkglogger.FieldUserIDSnake
+	FieldMethod                = pkglogger.FieldMethod
+	FieldPanic                 = pkglogger.FieldPanic
+	FieldStack                 = pkglogger.FieldStack
+	FieldCommand               = pkglogger.FieldCommand
+	FieldComponent             = pkglogger.FieldComponent
+	FieldPrefix                = pkglogger.FieldPrefix
+	FieldOrgIDSnake            = pkglogger.FieldOrgIDSnake
+	FieldUserIDCamel           = pkglogger.FieldUserIDCamel
+	FieldOrgIDCamel            = pkglogger.FieldOrgIDCamel
+	FieldName                  = pkglogger.FieldName
+	FieldAcEui                 = pkglogger.FieldAcEui
+	FieldTopic                 = pkglogger.FieldTopic
+	FieldBaseStation           = pkglogger.FieldBaseStation
+	FieldSpec                  = pkglogger.FieldSpec
+	FieldReason                = pkglogger.FieldReason
+	FieldOrgID                 = pkglogger.FieldOrgID
+	FieldOrgUUID               = pkglogger.FieldOrgUUID
+	FieldOperation             = pkglogger.FieldOperation
+	FieldBlueprintID           = pkglogger.FieldBlueprintID
+	FieldVersion               = pkglogger.FieldVersion
+	FieldField                 = pkglogger.FieldField
+	FieldSessionIDSnake        = pkglogger.FieldSessionIDSnake
+	FieldGot                   = pkglogger.FieldGot
+	FieldExpected              = pkglogger.FieldExpected
+	FieldEndpointEUI           = pkglogger.FieldEndpointEUI
+	FieldCertCN                = pkglogger.FieldCertCN
+	FieldValue                 = pkglogger.FieldValue
+	FieldStatus                = pkglogger.FieldStatus
+	FieldPath                  = pkglogger.FieldPath
+	FieldEndpointEui           = pkglogger.FieldEndpointEui
+	FieldAddress               = pkglogger.FieldAddress
+	FieldBody                  = pkglogger.FieldBody
+	FieldResult                = pkglogger.FieldResult
+	FieldPort                  = pkglogger.FieldPort
+	FieldPacketCnt             = pkglogger.FieldPacketCnt
+	FieldDuration              = pkglogger.FieldDuration
+	FieldType                  = pkglogger.FieldType
+	FieldPacketCntSnake        = pkglogger.FieldPacketCntSnake
+	FieldOutput                = pkglogger.FieldOutput
+	FieldOpIDSnake             = pkglogger.FieldOpIDSnake
+	FieldMacType               = pkglogger.FieldMacType
+	FieldKeyID                 = pkglogger.FieldKeyID
+	FieldKey                   = pkglogger.FieldKey
+	FieldEmail                 = pkglogger.FieldEmail
+	FieldBaseStationEui        = pkglogger.FieldBaseStationEui
+	FieldToken                 = pkglogger.FieldToken
+	FieldSize                  = pkglogger.FieldSize
+	FieldRxTime                = pkglogger.FieldRxTime
+	FieldMessage               = pkglogger.FieldMessage
+	FieldHost                  = pkglogger.FieldHost
+	FieldEndpointID            = pkglogger.FieldEndpointID
+	FieldCount                 = pkglogger.FieldCount
+	FieldSubject               = pkglogger.FieldSubject
+	FieldServingTenant         = pkglogger.FieldServingTenant
+	FieldProvider              = pkglogger.FieldProvider
+	FieldOrgName               = pkglogger.FieldOrgName
+	FieldLength                = pkglogger.FieldLength
+	FieldFile                  = pkglogger.FieldFile
+	FieldEvent                 = pkglogger.FieldEvent
+	FieldErrorToken            = pkglogger.FieldErrorToken
+	FieldSessionTenant         = pkglogger.FieldSessionTenant
+	FieldScOpID                = pkglogger.FieldScOpID
+	FieldRole                  = pkglogger.FieldRole
+	FieldPageSize              = pkglogger.FieldPageSize
+	FieldOffset                = pkglogger.FieldOffset
+	FieldFormatID              = pkglogger.FieldFormatID
+	FieldExternalID            = pkglogger.FieldExternalID
+	FieldEndPoint              = pkglogger.FieldEndPoint
+	FieldEncoding              = pkglogger.FieldEncoding
+	FieldDlRxSnr               = pkglogger.FieldDlRxSnr
+	FieldDlRxRssi              = pkglogger.FieldDlRxRssi
+	FieldCertType              = pkglogger.FieldCertType
+	FieldUserDataLen           = pkglogger.FieldUserDataLen
+	FieldTypeEui               = pkglogger.FieldTypeEui
+	FieldTenant                = pkglogger.FieldTenant
+	FieldShortAddr             = pkglogger.FieldShortAddr
+	FieldRequestedVersion      = pkglogger.FieldRequestedVersion
+	FieldRequested             = pkglogger.FieldRequested
+	FieldRepetition            = pkglogger.FieldRepetition
+	FieldRemote                = pkglogger.FieldRemote
+	FieldRelayID               = pkglogger.FieldRelayID
+	FieldQueueID               = pkglogger.FieldQueueID
+	FieldOwnerTenantID         = pkglogger.FieldOwnerTenantID
+	FieldOwnerTenant           = pkglogger.FieldOwnerTenant
+	FieldFailed                = pkglogger.FieldFailed
+	FieldErr                   = pkglogger.FieldErr
+	FieldEndpointIDCamel       = pkglogger.FieldEndpointIDCamel
+	FieldDeviceModelID         = pkglogger.FieldDeviceModelID
+	FieldDataLen               = pkglogger.FieldDataLen
+	FieldConnectState          = pkglogger.FieldConnectState
+	FieldCn                    = pkglogger.FieldCn
+	FieldCertPath              = pkglogger.FieldCertPath
+	FieldCert                  = pkglogger.FieldCert
+	FieldBsOpID                = pkglogger.FieldBsOpID
+	FieldBidirectional         = pkglogger.FieldBidirectional
+	FieldBidi                  = pkglogger.FieldBidi
+	FieldBaseStationEUI        = pkglogger.FieldBaseStationEUI
+	FieldArgs                  = pkglogger.FieldArgs
+	FieldWideCarrOff           = pkglogger.FieldWideCarrOff
+	FieldValidRange            = pkglogger.FieldValidRange
+	FieldValidityDays          = pkglogger.FieldValidityDays
+	FieldValidationStatus      = pkglogger.FieldValidationStatus
+	FieldTxTime                = pkglogger.FieldTxTime
+	FieldTotalSessions         = pkglogger.FieldTotalSessions
+	FieldTotalEndpoints        = pkglogger.FieldTotalEndpoints
+	FieldTLS                   = pkglogger.FieldTLS
+	FieldSwVersion             = pkglogger.FieldSwVersion
+	FieldState                 = pkglogger.FieldState
+	FieldStaleSessionID        = pkglogger.FieldStaleSessionID
+	FieldDisplacedSessionID    = pkglogger.FieldDisplacedSessionID
+	FieldStage                 = pkglogger.FieldStage
+	FieldSpecCompliance        = pkglogger.FieldSpecCompliance
+	FieldSnr                   = pkglogger.FieldSnr
+	FieldSignLen               = pkglogger.FieldSignLen
+	FieldSignal                = pkglogger.FieldSignal
+	FieldSessionTenantID       = pkglogger.FieldSessionTenantID
+	FieldSessionIDCamel        = pkglogger.FieldSessionIDCamel
+	FieldSessionCount          = pkglogger.FieldSessionCount
+	FieldSelectedVersion       = pkglogger.FieldSelectedVersion
+	FieldRssi                  = pkglogger.FieldRssi
+	FieldResumed               = pkglogger.FieldResumed
+	FieldResolvedOrgID         = pkglogger.FieldResolvedOrgID
+	FieldQuery                 = pkglogger.FieldQuery
+	FieldQos                   = pkglogger.FieldQos
+	FieldPageToken             = pkglogger.FieldPageToken
+	FieldOwnerTenantIDSnake    = pkglogger.FieldOwnerTenantIDSnake
+	FieldOwnerTenantSnake      = pkglogger.FieldOwnerTenantSnake
+	FieldOwnerOrgUUID          = pkglogger.FieldOwnerOrgUUID
+	FieldOpType                = pkglogger.FieldOpType
+	FieldOperationType         = pkglogger.FieldOperationType
+	FieldOpCount               = pkglogger.FieldOpCount
+	FieldNow                   = pkglogger.FieldNow
+	FieldNotBefore             = pkglogger.FieldNotBefore
+	FieldNotAfter              = pkglogger.FieldNotAfter
+	FieldMessageID             = pkglogger.FieldMessageID
+	FieldMessageIDSnake        = pkglogger.FieldMessageIDSnake
+	FieldAttempt               = pkglogger.FieldAttempt
+	FieldChannel               = pkglogger.FieldChannel
+	FieldChannels              = pkglogger.FieldChannels
+	FieldMaxEntries            = pkglogger.FieldMaxEntries
+	FieldMax                   = pkglogger.FieldMax
+	FieldLongBlkDist           = pkglogger.FieldLongBlkDist
+	FieldLocalLoginEnabled     = pkglogger.FieldLocalLoginEnabled
+	FieldLimit                 = pkglogger.FieldLimit
+	FieldKeyIDSnake            = pkglogger.FieldKeyIDSnake
+	FieldHostname              = pkglogger.FieldHostname
+	FieldHint                  = pkglogger.FieldHint
+	FieldHeaderUser            = pkglogger.FieldHeaderUser
+	FieldFormat                = pkglogger.FieldFormat
+	FieldExternalOrgValue      = pkglogger.FieldExternalOrgValue
+	FieldEventType             = pkglogger.FieldEventType
+	FieldEuiHex                = pkglogger.FieldEuiHex
+	FieldErrorTokenSnake       = pkglogger.FieldErrorTokenSnake
+	FieldErrors                = pkglogger.FieldErrors
+	FieldEntry                 = pkglogger.FieldEntry
+	FieldEndpointEuiCamel      = pkglogger.FieldEndpointEuiCamel
+	FieldDefault               = pkglogger.FieldDefault
+	FieldDbSessionID           = pkglogger.FieldDbSessionID
+	FieldData                  = pkglogger.FieldData
+	FieldCurrentSize           = pkglogger.FieldCurrentSize
+	FieldCode                  = pkglogger.FieldCode
+	FieldCeID                  = pkglogger.FieldCeID
+	FieldCacheTTL              = pkglogger.FieldCacheTTL
+	FieldCacheSize             = pkglogger.FieldCacheSize
+	FieldCa                    = pkglogger.FieldCa
+	FieldBssciOpID             = pkglogger.FieldBssciOpID
+	FieldBranch                = pkglogger.FieldBranch
+	FieldAge                   = pkglogger.FieldAge
+	FieldAddr                  = pkglogger.FieldAddr
+	FieldWorkingDirectory      = pkglogger.FieldWorkingDirectory
+	FieldValidationStatusCamel = pkglogger.FieldValidationStatusCamel
+	FieldUserID                = pkglogger.FieldUserID
+	FieldUserDataLenSnake      = pkglogger.FieldUserDataLenSnake
+	FieldUpstream              = pkglogger.FieldUpstream
+	FieldTotalBaseStations     = pkglogger.FieldTotalBaseStations
+	FieldTotal                 = pkglogger.FieldTotal
+	FieldTopics                = pkglogger.FieldTopics
+	FieldTo                    = pkglogger.FieldTo
+	FieldTLSMinVersion         = pkglogger.FieldTLSMinVersion
+	FieldTLSEnabled            = pkglogger.FieldTLSEnabled
+	FieldTimestamp             = pkglogger.FieldTimestamp
+	FieldTimeout               = pkglogger.FieldTimeout
+	FieldTenantStr             = pkglogger.FieldTenantStr
+	FieldSupportedMinor        = pkglogger.FieldSupportedMinor
+	FieldSupportedMajor        = pkglogger.FieldSupportedMajor
+	FieldStrictMode            = pkglogger.FieldStrictMode
+	FieldStoredVersion         = pkglogger.FieldStoredVersion
+	FieldStoredValue           = pkglogger.FieldStoredValue
+	FieldStoredParseErr        = pkglogger.FieldStoredParseErr
+	FieldStoredMinor           = pkglogger.FieldStoredMinor
+	FieldStoredMajor           = pkglogger.FieldStoredMajor
+	FieldStoredAttachCnt       = pkglogger.FieldStoredAttachCnt
+	FieldStatusFilter          = pkglogger.FieldStatusFilter
+	FieldSpecSection           = pkglogger.FieldSpecSection
+	FieldSnScUUID              = pkglogger.FieldSnScUUID
+	FieldSnAcUUID              = pkglogger.FieldSnAcUUID
+	FieldSlug                  = pkglogger.FieldSlug
+	FieldSkippedByTenant       = pkglogger.FieldSkippedByTenant
+	FieldShAddr                = pkglogger.FieldShAddr
+	FieldSeverity              = pkglogger.FieldSeverity
+	FieldSessionUUID           = pkglogger.FieldSessionUUID
+	FieldServingTenantSnake    = pkglogger.FieldServingTenantSnake
+	FieldServiceCenterURL      = pkglogger.FieldServiceCenterURL
+	FieldSchemaVersion         = pkglogger.FieldSchemaVersion
+	FieldScEui                 = pkglogger.FieldScEui
+	FieldScAuthoritativeOpID   = pkglogger.FieldScAuthoritativeOpID
+	FieldRevoked               = pkglogger.FieldRevoked
+	FieldRetained              = pkglogger.FieldRetained
+	FieldRestoredScOpID        = pkglogger.FieldRestoredScOpID
+	FieldRestoredBsOpID        = pkglogger.FieldRestoredBsOpID
+	FieldResponseExp           = pkglogger.FieldResponseExp
+	FieldResolvedTenantID      = pkglogger.FieldResolvedTenantID
+	FieldRequiredBytes         = pkglogger.FieldRequiredBytes
+	FieldRequiredBsOpID        = pkglogger.FieldRequiredBsOpID
+	FieldRequestVersion        = pkglogger.FieldRequestVersion
+	FieldRequestsPerMin        = pkglogger.FieldRequestsPerMin
+	FieldRequestParseErr       = pkglogger.FieldRequestParseErr
+	FieldRequestedBsEui        = pkglogger.FieldRequestedBsEui
+	FieldReqMinor              = pkglogger.FieldReqMinor
+	FieldReqMajor              = pkglogger.FieldReqMajor
+	FieldRegistrationEnabled   = pkglogger.FieldRegistrationEnabled
+	FieldReconciledCount       = pkglogger.FieldReconciledCount
+	FieldReceivedMessage       = pkglogger.FieldReceivedMessage
+	FieldReceivedCode          = pkglogger.FieldReceivedCode
+	FieldRawMessage            = pkglogger.FieldRawMessage
+	FieldQueueIDSnake          = pkglogger.FieldQueueIDSnake
+	FieldQryOpID               = pkglogger.FieldQryOpID
+	FieldPrURL                 = pkglogger.FieldPrURL
+	FieldPropagatedCount       = pkglogger.FieldPropagatedCount
+	FieldPreferredBsEui        = pkglogger.FieldPreferredBsEui
+	FieldPreAttach             = pkglogger.FieldPreAttach
+	FieldPosixCode             = pkglogger.FieldPosixCode
+	FieldPersistedVersion      = pkglogger.FieldPersistedVersion
+	FieldPersistedBsOpID       = pkglogger.FieldPersistedBsOpID
+	FieldPendingCount          = pkglogger.FieldPendingCount
+	FieldPayloadCount          = pkglogger.FieldPayloadCount
+	FieldPacketCntLen          = pkglogger.FieldPacketCntLen
+	FieldOrigins               = pkglogger.FieldOrigins
+	FieldOrgEnforcementEnabled = pkglogger.FieldOrgEnforcementEnabled
+	FieldOpTenantID            = pkglogger.FieldOpTenantID
+	FieldOperationIDSnake      = pkglogger.FieldOperationIDSnake
+	FieldOldEui                = pkglogger.FieldOldEui
+	FieldOidcEnabled           = pkglogger.FieldOidcEnabled
+	FieldOauth2Enabled         = pkglogger.FieldOauth2Enabled
+	FieldNonceLen              = pkglogger.FieldNonceLen
+	FieldNewEui                = pkglogger.FieldNewEui
+	FieldNegotiatedVersion     = pkglogger.FieldNegotiatedVersion
+	FieldNegotiated            = pkglogger.FieldNegotiated
+	FieldModelID               = pkglogger.FieldModelID
+	FieldMetadata              = pkglogger.FieldMetadata
+	FieldMaxInt64              = pkglogger.FieldMaxInt64
+	FieldMaxEntriesSnake       = pkglogger.FieldMaxEntriesSnake
+	FieldLogLevel              = pkglogger.FieldLogLevel
+	FieldListenAddr            = pkglogger.FieldListenAddr
+	FieldLastScOpID            = pkglogger.FieldLastScOpID
+	FieldLastPacketCnt         = pkglogger.FieldLastPacketCnt
+	FieldLastBsOpID            = pkglogger.FieldLastBsOpID
+	FieldKeyLength             = pkglogger.FieldKeyLength
+	FieldIssuer                = pkglogger.FieldIssuer
+	FieldIssuedScOpID          = pkglogger.FieldIssuedScOpID
+	FieldIndex                 = pkglogger.FieldIndex
+	FieldIncomingAttachCnt     = pkglogger.FieldIncomingAttachCnt
+	FieldIdentity              = pkglogger.FieldIdentity
+	FieldHealthPort            = pkglogger.FieldHealthPort
+	FieldHealthPortSnake       = pkglogger.FieldHealthPortSnake
+	FieldHealthCheckPort       = pkglogger.FieldHealthCheckPort
+	FieldHeaderTenant          = pkglogger.FieldHeaderTenant
+	FieldHeaderOrg             = pkglogger.FieldHeaderOrg
+	FieldHasSnScOpId           = pkglogger.FieldHasSnScOpId
+	FieldHasSnAcOpId           = pkglogger.FieldHasSnAcOpId
+	FieldGrpcPort              = pkglogger.FieldGrpcPort
+	FieldGrpcPortSnake         = pkglogger.FieldGrpcPortSnake
+	FieldGitCommit             = pkglogger.FieldGitCommit
+	FieldGitBranch             = pkglogger.FieldGitBranch
+	FieldFrom                  = pkglogger.FieldFrom
+	FieldFilePath              = pkglogger.FieldFilePath
+	FieldFieldsUpdated         = pkglogger.FieldFieldsUpdated
+	FieldFieldCount            = pkglogger.FieldFieldCount
+	FieldFieldCountSnake       = pkglogger.FieldFieldCountSnake
+	FieldFallbackOrg           = pkglogger.FieldFallbackOrg
+	FieldFailureThreshold      = pkglogger.FieldFailureThreshold
+	FieldExtKeyUsage           = pkglogger.FieldExtKeyUsage
+	FieldExpiresAt             = pkglogger.FieldExpiresAt
+	FieldExpectedFields        = pkglogger.FieldExpectedFields
+	FieldEventTypeSnake        = pkglogger.FieldEventTypeSnake
+	FieldEpStatus              = pkglogger.FieldEpStatus
+	FieldEpEUIHex              = pkglogger.FieldEpEUIHex
+	FieldEnvironment           = pkglogger.FieldEnvironment
+	FieldEndpointTenant        = pkglogger.FieldEndpointTenant
+	FieldEndpointModel         = pkglogger.FieldEndpointModel
+	FieldEnabled               = pkglogger.FieldEnabled
+	FieldEdition               = pkglogger.FieldEdition
+	FieldEceEndpoint           = pkglogger.FieldEceEndpoint
+	FieldDuplicateCount        = pkglogger.FieldDuplicateCount
+	FieldDualChannel           = pkglogger.FieldDualChannel
+	FieldDualChan              = pkglogger.FieldDualChan
+	FieldDlAck                 = pkglogger.FieldDlAck
+	FieldDir                   = pkglogger.FieldDir
+	FieldDegraded              = pkglogger.FieldDegraded
+	FieldDefaultTenantID       = pkglogger.FieldDefaultTenantID
+	FieldDefaultTenant         = pkglogger.FieldDefaultTenant
+	FieldDbSessionIDCamel      = pkglogger.FieldDbSessionIDCamel
+	FieldDbEncoding            = pkglogger.FieldDbEncoding
+	FieldDb                    = pkglogger.FieldDb
+	FieldCore                  = pkglogger.FieldCore
+	FieldContext               = pkglogger.FieldContext
+	FieldConfirmed             = pkglogger.FieldConfirmed
+	FieldConfiguredPath        = pkglogger.FieldConfiguredPath
+	FieldCompany               = pkglogger.FieldCompany
+	FieldCommitSha             = pkglogger.FieldCommitSha
+	FieldClientVersion         = pkglogger.FieldClientVersion
+	FieldClientVersionSnake    = pkglogger.FieldClientVersionSnake
+	FieldClaimedScOpID         = pkglogger.FieldClaimedScOpID
+	FieldCertTenantID          = pkglogger.FieldCertTenantID
+	FieldCertTenant            = pkglogger.FieldCertTenant
+	FieldCertIDSnake           = pkglogger.FieldCertIDSnake
+	FieldCertEui               = pkglogger.FieldCertEui
+	FieldCertCn                = pkglogger.FieldCertCn
+	FieldCacheMaxSize          = pkglogger.FieldCacheMaxSize
+	FieldCacheEnabled          = pkglogger.FieldCacheEnabled
+	FieldBurst                 = pkglogger.FieldBurst
+	FieldBuildTime             = pkglogger.FieldBuildTime
+	FieldBssciRef              = pkglogger.FieldBssciRef
+	FieldBsReportedScOpID      = pkglogger.FieldBsReportedScOpID
+	FieldBsName                = pkglogger.FieldBsName
+	FieldBroker                = pkglogger.FieldBroker
+	FieldBlueprintModel        = pkglogger.FieldBlueprintModel
+	FieldBaseStationCount      = pkglogger.FieldBaseStationCount
+	FieldBackoff               = pkglogger.FieldBackoff
+	FieldAuthUser              = pkglogger.FieldAuthUser
+	FieldAuthTenant            = pkglogger.FieldAuthTenant
+	FieldAuthOrg               = pkglogger.FieldAuthOrg
+	FieldAttachCnt             = pkglogger.FieldAttachCnt
+	FieldAllowAllOrigins       = pkglogger.FieldAllowAllOrigins
+	FieldActualBytes           = pkglogger.FieldActualBytes
+	FieldActual                = pkglogger.FieldActual
+	FieldActiveMacTypes        = pkglogger.FieldActiveMacTypes
+	FieldAcOpID                = pkglogger.FieldAcOpID
+	FieldAckedAtNs             = pkglogger.FieldAckedAtNs
 )
-
-// Format constants
-const (
-	// FormatJSON specifies JSON output format
-	FormatJSON = "json"
-)
-
-var (
-	levelNames = map[Level]string{
-		DebugLevel: "DEBUG",
-		InfoLevel:  "INFO",
-		WarnLevel:  "WARN",
-		ErrorLevel: "ERROR",
-		FatalLevel: "FATAL",
-	}
-
-	levelColors = map[Level]string{
-		DebugLevel: "\033[36m", // Cyan
-		InfoLevel:  "\033[32m", // Green
-		WarnLevel:  "\033[33m", // Yellow
-		ErrorLevel: "\033[31m", // Red
-		FatalLevel: "\033[35m", // Magenta
-	}
-
-	resetColor = "\033[0m"
-)
-
-// extractContextFields extracts tenant/org/user metadata from context for automatic log enrichment.
-// This enables context-aware logging where tenant, organization, and user IDs are automatically
-// included in log entries without explicit field passing.
-//
-// Returns a map with available context fields. Missing fields are omitted (not set to empty/zero values).
-// errorFieldKey is the structured log field name for error values.
-const errorFieldKey = "error"
-
-func extractContextFields(ctx context.Context) map[string]interface{} {
-	fields := make(map[string]interface{})
-
-	// Extract tenant ID (int64)
-	if tenantID, err := pkgcontext.GetTenantID(ctx); err == nil {
-		fields["tenant_id"] = tenantID
-	}
-
-	// Extract organization ID (UUID)
-	if orgID, err := pkgcontext.GetOrganizationID(ctx); err == nil {
-		fields["organization_id"] = orgID.String()
-	}
-
-	// Extract user ID (string)
-	if userID, err := pkgcontext.GetUserID(ctx); err == nil {
-		fields["user_id"] = userID
-	}
-
-	return fields
-}
-
-// Logger defines the interface for logging in KiloCenter
-type Logger interface {
-	// Basic logging methods
-	Debug(msg string, fields ...interface{})
-	Info(msg string, fields ...interface{})
-	Warn(msg string, fields ...interface{})
-	Error(msg string, fields ...interface{})
-	Fatal(msg string, fields ...interface{})
-
-	// Context-aware logging methods.
-	// These methods automatically extract and inject tenant/org/user metadata from context.
-	DebugContext(ctx context.Context, msg string, fields ...interface{})
-	InfoContext(ctx context.Context, msg string, fields ...interface{})
-	WarnContext(ctx context.Context, msg string, fields ...interface{})
-	ErrorContext(ctx context.Context, msg string, fields ...interface{})
-	FatalContext(ctx context.Context, msg string, fields ...interface{})
-
-	// WithField returns a new logger with the given field
-	WithField(key string, value interface{}) Logger
-
-	// WithFields returns a new logger with the given fields
-	WithFields(fields map[string]interface{}) Logger
-}
-
-// Field represents a key-value pair for structured logging
-type Field struct {
-	Key   string
-	Value interface{}
-}
-
-// logger is the default implementation
-type logger struct {
-	mu       sync.Mutex
-	level    Level
-	format   string
-	output   io.Writer
-	fields   map[string]interface{}
-	useColor bool
-}
-
-var (
-	defaultLogger *logger
-	once          sync.Once
-)
-
-// Initialize sets up the default logger
-func Initialize(level, format string) {
-	once.Do(func() {
-		lvl := parseLevel(level)
-		useColor := format != FormatJSON && isTerminal()
-
-		defaultLogger = &logger{
-			level:    lvl,
-			format:   format,
-			output:   os.Stdout,
-			fields:   make(map[string]interface{}),
-			useColor: useColor,
-		}
-	})
-}
-
-// Get returns the default logger instance
-func Get() Logger {
-	if defaultLogger == nil {
-		Initialize("info", FormatJSON)
-	}
-	return defaultLogger
-}
-
-// WithField creates a new logger with the given field
-func (l *logger) WithField(key string, value interface{}) Logger {
-	newLogger := &logger{
-		level:    l.level,
-		format:   l.format,
-		output:   l.output,
-		fields:   copyFields(l.fields),
-		useColor: l.useColor,
-	}
-	newLogger.fields[key] = value
-	return newLogger
-}
-
-// WithFields creates a new logger with the given fields
-func (l *logger) WithFields(fields map[string]interface{}) Logger {
-	newLogger := &logger{
-		level:    l.level,
-		format:   l.format,
-		output:   l.output,
-		fields:   mergeFields(l.fields, fields),
-		useColor: l.useColor,
-	}
-	return newLogger
-}
-
-// Log methods
-func (l *logger) Debug(msg string, fields ...interface{}) {
-	l.log(DebugLevel, msg, fields...)
-}
-
-func (l *logger) Info(msg string, fields ...interface{}) {
-	l.log(InfoLevel, msg, fields...)
-}
-
-func (l *logger) Warn(msg string, fields ...interface{}) {
-	l.log(WarnLevel, msg, fields...)
-}
-
-func (l *logger) Error(msg string, fields ...interface{}) {
-	l.log(ErrorLevel, msg, fields...)
-}
-
-func (l *logger) Fatal(msg string, fields ...interface{}) {
-	l.log(FatalLevel, msg, fields...)
-	os.Exit(1)
-}
-
-// Context-aware logging methods.
-// These methods automatically extract tenant/org/user from context and merge with provided fields.
-
-func (l *logger) DebugContext(ctx context.Context, msg string, fields ...interface{}) {
-	contextFields := extractContextFields(ctx)
-	allFields := mergeFields(contextFields, toMap(fields...))
-	l.logWithFields(DebugLevel, msg, allFields)
-}
-
-func (l *logger) InfoContext(ctx context.Context, msg string, fields ...interface{}) {
-	contextFields := extractContextFields(ctx)
-	allFields := mergeFields(contextFields, toMap(fields...))
-	l.logWithFields(InfoLevel, msg, allFields)
-}
-
-func (l *logger) WarnContext(ctx context.Context, msg string, fields ...interface{}) {
-	contextFields := extractContextFields(ctx)
-	allFields := mergeFields(contextFields, toMap(fields...))
-	l.logWithFields(WarnLevel, msg, allFields)
-}
-
-func (l *logger) ErrorContext(ctx context.Context, msg string, fields ...interface{}) {
-	contextFields := extractContextFields(ctx)
-	allFields := mergeFields(contextFields, toMap(fields...))
-	l.logWithFields(ErrorLevel, msg, allFields)
-}
-
-func (l *logger) FatalContext(ctx context.Context, msg string, fields ...interface{}) {
-	contextFields := extractContextFields(ctx)
-	allFields := mergeFields(contextFields, toMap(fields...))
-	l.logWithFields(FatalLevel, msg, allFields)
-	os.Exit(1)
-}
-
-// log is the core logging function
-func (l *logger) log(level Level, msg string, fields ...interface{}) {
-	if level < l.level {
-		return
-	}
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	// Combine logger fields with call fields
-	allFields := mergeFields(l.fields, toMap(fields...))
-
-	// Add standard fields
-	allFields["timestamp"] = time.Now().Format(time.RFC3339)
-	allFields["level"] = levelNames[level]
-	allFields["message"] = msg
-
-	// Add caller information for errors
-	if level >= ErrorLevel {
-		if file, line := getCaller(); file != "" {
-			allFields["file"] = file
-			allFields["line"] = line
-		}
-	}
-
-	// Format and output
-	if l.format == FormatJSON {
-		l.outputJSON(allFields)
-	} else {
-		l.outputText(level, msg, allFields)
-	}
-}
-
-// logWithFields is a helper for context-aware logging that accepts a map of fields
-// instead of variadic interface{} pairs. Used by *Context methods.
-func (l *logger) logWithFields(level Level, msg string, fields map[string]interface{}) {
-	if level < l.level {
-		return
-	}
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	// Combine logger fields with provided fields
-	allFields := mergeFields(l.fields, fields)
-
-	// Add standard fields
-	allFields["timestamp"] = time.Now().Format(time.RFC3339)
-	allFields["level"] = levelNames[level]
-	allFields["message"] = msg
-
-	// Add caller information for errors
-	if level >= ErrorLevel {
-		if file, line := getCaller(); file != "" {
-			allFields["file"] = file
-			allFields["line"] = line
-		}
-	}
-
-	// Format and output
-	if l.format == FormatJSON {
-		l.outputJSON(allFields)
-	} else {
-		l.outputText(level, msg, allFields)
-	}
-}
-
-// outputJSON formats the log entry as JSON
-func (l *logger) outputJSON(fields map[string]interface{}) {
-	if data, err := json.Marshal(fields); err == nil {
-		_, _ = fmt.Fprintln(l.output, string(data)) //nolint:errcheck,gosec // Logging should not crash the application
-	}
-}
-
-// outputText formats the log entry as human-readable text
-func (l *logger) outputText(level Level, msg string, fields map[string]interface{}) {
-	// Build the log line
-	var sb strings.Builder
-
-	// Timestamp
-	sb.WriteString(time.Now().Format("2006-01-02 15:04:05"))
-	sb.WriteString(" ")
-
-	// Level with color
-	if l.useColor {
-		sb.WriteString(levelColors[level])
-	}
-	fmt.Fprintf(&sb, "[%-5s]", levelNames[level])
-	if l.useColor {
-		sb.WriteString(resetColor)
-	}
-	sb.WriteString(" ")
-
-	// Message
-	sb.WriteString(msg)
-
-	// Additional fields
-	for key, value := range fields {
-		if key == "timestamp" || key == "level" || key == "message" {
-			continue
-		}
-		fmt.Fprintf(&sb, " %s=%v", key, value)
-	}
-
-	_, _ = fmt.Fprintln(l.output, sb.String()) //nolint:errcheck,gosec // Logging should not crash the application
-}
-
-// Helper functions
-
-func parseLevel(level string) Level {
-	switch strings.ToLower(level) {
-	case "debug":
-		return DebugLevel
-	case "info":
-		return InfoLevel
-	case "warn", "warning":
-		return WarnLevel
-	case errorFieldKey:
-		return ErrorLevel
-	case "fatal":
-		return FatalLevel
-	default:
-		return InfoLevel
-	}
-}
-
-func getCaller() (string, int) {
-	_, file, line, ok := runtime.Caller(3)
-	if !ok {
-		return "", 0
-	}
-
-	// Extract just the filename
-	parts := strings.Split(file, "/")
-	if len(parts) > 0 {
-		file = parts[len(parts)-1]
-	}
-
-	return file, line
-}
-
-func isTerminal() bool {
-	fileInfo, _ := os.Stdout.Stat()
-	return (fileInfo.Mode() & os.ModeCharDevice) != 0
-}
-
-func copyFields(fields map[string]interface{}) map[string]interface{} {
-	copied := make(map[string]interface{})
-	for key, value := range fields {
-		copied[key] = value
-	}
-	return copied
-}
-
-func mergeFields(base map[string]interface{}, override map[string]interface{}) map[string]interface{} {
-	merged := copyFields(base)
-	for key, value := range override {
-		merged[key] = value
-	}
-	return merged
-}
-
-func toMap(fields ...interface{}) map[string]interface{} {
-	m := make(map[string]interface{})
-	i := 0
-	for i < len(fields) {
-		if f, ok := fields[i].(Field); ok {
-			m[f.Key] = f.Value
-			i++
-			continue
-		}
-		if i+1 >= len(fields) {
-			break
-		}
-		key, ok := fields[i].(string)
-		if !ok {
-			i += 2
-			continue
-		}
-		val := fields[i+1] //nolint:gosec // G602: bounds guarded above (i+1 >= len(fields) breaks)
-		if e, ok := val.(error); ok {
-			m[key] = e.Error()
-		} else {
-			m[key] = val
-		}
-		i += 2
-	}
-	return m
-}
-
-// String creates a string field
-func String(key, value string) Field {
-	return Field{Key: key, Value: value}
-}
-
-// Int creates an integer field
-func Int(key string, value int) Field {
-	return Field{Key: key, Value: value}
-}
-
-// Bool creates a boolean field
-func Bool(key string, value bool) Field {
-	return Field{Key: key, Value: value}
-}
-
-// Err creates an error field
-func Err(err error) Field {
-	if err == nil {
-		return Field{Key: errorFieldKey, Value: nil}
-	}
-	return Field{Key: errorFieldKey, Value: err.Error()}
-}
-
-// Any creates a field with any value
-func Any(key string, value interface{}) Field {
-	return Field{Key: key, Value: value}
-}

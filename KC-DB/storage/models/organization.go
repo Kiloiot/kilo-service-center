@@ -56,18 +56,15 @@ func (h HstoreMap) Value() (driver.Value, error) {
 // Migration 029 creates one default org per existing tenant
 // Migration 000099: Added description, quota fields, and tags
 type Organization struct {
-	OrgID               uuid.UUID `db:"org_id"`
-	TenantID            int64     `db:"tenant_id"`
-	Name                string    `db:"name"`
-	State               string    `db:"state"`                                                          // active, suspended, archived
-	ExternalID          *string   `db:"external_id" json:"external_id,omitempty"`                       // External IdP identifier for org claim mapping (nullable)
-	Description         *string   `db:"description" json:"description,omitempty"`                       // nullable description
-	CanHaveBaseStations bool      `db:"can_have_base_stations" json:"can_have_base_stations"`           // quota flag
-	MaxBaseStationCount *int      `db:"max_base_station_count" json:"max_base_station_count,omitempty"` // NULL = unlimited
-	MaxEndpointCount    *int      `db:"max_endpoint_count" json:"max_endpoint_count,omitempty"`         // NULL = unlimited
-	Tags                HstoreMap `db:"tags" json:"tags,omitempty"`                                     // HSTORE key-value metadata (uses custom scanner)
-	CreatedAt           time.Time `db:"created_at"`
-	UpdatedAt           time.Time `db:"updated_at"`
+	OrgID       uuid.UUID `db:"org_id"`
+	TenantID    int64     `db:"tenant_id"`
+	Name        string    `db:"name"`
+	State       string    `db:"state"`                                    // active, suspended, archived
+	ExternalID  *string   `db:"external_id" json:"external_id,omitempty"` // External IdP identifier for org claim mapping (nullable)
+	Description *string   `db:"description" json:"description,omitempty"` // nullable description
+	Tags        HstoreMap `db:"tags" json:"tags,omitempty"`               // HSTORE key-value metadata (uses custom scanner)
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 // OrganizationMember represents a user's membership in an organization

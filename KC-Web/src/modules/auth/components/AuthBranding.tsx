@@ -7,9 +7,9 @@ import React from "react";
 
 import { Box, Chip, Link as MuiLink } from "@mui/material";
 
-import { APP_EDITION, APP_NAME } from "@constants/app";
+import { ProductLogo } from "@components/common/ProductLogo";
+import { APP_EDITION, LOGO } from "@constants/app";
 import { BRAND } from "@constants/messages";
-import kiloLogo from "@assets/kilo-logo.png";
 
 interface AuthBrandingProps {
   versionInfo?: {
@@ -34,11 +34,9 @@ const AuthBranding: React.FC<AuthBrandingProps> = ({
       alignItems: "center",
     }}
   >
-    <img
-      src={kiloLogo}
-      alt={APP_NAME}
-      style={{ maxWidth: "200px", height: "auto", marginBottom: "8px" }}
-    />
+    <Box sx={{ mb: 2 }}>
+      <ProductLogo width={LOGO.AUTH_WIDTH} />
+    </Box>
     <Chip
       label={versionInfo?.edition ?? APP_EDITION}
       size="small"

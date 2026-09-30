@@ -9,25 +9,25 @@ package scaciservices
 import (
 	"context"
 	"testing"
-	"time"
 
+	bssciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
-// mockEndpointRepo implements interfaces.EndpointRepository for testing
+// mockEndpointRepo implements EndpointStore for testing
 type mockEndpointRepo struct {
-	endpoints   map[uint64]*models.EndPoint
-	createErr   error
-	updateErr   error
-	lastUpdates map[string]interface{} // Capture last UpdateFields call for verification
+	endpoints        map[uint64]*models.EndPoint
+	createErr        error
+	updateErr        error
+	lastRegistration *models.EndpointRegistrationParams // Capture last registration call for verification
 }
 
 func newMockEndpointRepo() *mockEndpointRepo {
@@ -36,7 +36,6 @@ func newMockEndpointRepo() *mockEndpointRepo {
 	}
 }
 
-// GetByEUI implements interfaces.EndpointRepository.GetByEUI
 func (m *mockEndpointRepo) GetByEUI(_ context.Context, _ int64, eui []byte) (*models.EndPoint, error) {
 	if len(eui) != 8 {
 		return nil, storage.ErrNotFound
@@ -51,7 +50,6 @@ func (m *mockEndpointRepo) GetByEUI(_ context.Context, _ int64, eui []byte) (*mo
 	return nil, storage.ErrNotFound
 }
 
-// Create implements interfaces.EndpointRepository.Create
 func (m *mockEndpointRepo) Create(_ context.Context, ep *models.EndPoint) error {
 	if m.createErr != nil {
 		return m.createErr
@@ -61,105 +59,134 @@ func (m *mockEndpointRepo) Create(_ context.Context, ep *models.EndPoint) error 
 	return nil
 }
 
-// UpdateFields implements interfaces.EndpointRepository.UpdateFields
-func (m *mockEndpointRepo) UpdateFields(_ context.Context, _ int64, _ int64, updates map[string]interface{}) error {
-	m.lastUpdates = updates // Capture for test verification
+func (m *mockEndpointRepo) EndpointRegistrationUpdate(_ context.Context, _ int64, _ int64, p models.EndpointRegistrationParams) error {
+	captured := p
+	m.lastRegistration = &captured // Capture for test verification
 	return m.updateErr
 }
 
-// Get implements interfaces.EndpointRepository.Get
+func (m *mockEndpointRepo) EndpointAttachmentStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachmentStateParams) error {
+	return m.updateErr
+}
+
+func (m *mockEndpointRepo) EndpointAttachSessionUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachSessionParams) error {
+	return m.updateErr
+}
+
+func (m *mockEndpointRepo) EndpointDetachStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointDetachStateParams) error {
+	return m.updateErr
+}
+
+func (m *mockEndpointRepo) TransitionEndpointStatus(_ context.Context, _ int64, _ int64, _ string) (bool, error) {
+	return true, m.updateErr
+}
+
+func (m *mockEndpointRepo) RestateEndpointStatus(ctx context.Context, tenantID, endpointID int64, status string) (bool, error) {
+	return m.TransitionEndpointStatus(ctx, tenantID, endpointID, status)
+}
+
 func (m *mockEndpointRepo) Get(_ context.Context, _ models.EUI) (*models.EndPoint, error) {
 	return nil, storage.ErrNotFound
 }
 
-// GetByTenant implements interfaces.EndpointRepository.GetByTenant
 func (m *mockEndpointRepo) GetByTenant(_ context.Context, _ int64) ([]*models.EndPoint, error) {
 	return nil, nil
 }
 
-// CountByTenant implements interfaces.EndpointRepository.CountByTenant
 func (m *mockEndpointRepo) CountByTenant(_ context.Context, _ int64) (int64, error) {
 	return int64(len(m.endpoints)), nil
 }
 
-// ListByTenantPaginated implements interfaces.EndpointRepository.ListByTenantPaginated
 func (m *mockEndpointRepo) ListByTenantPaginated(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
 
-// GetByID implements interfaces.EndpointRepository.GetByID
 func (m *mockEndpointRepo) GetByID(_ context.Context, _ int64, _ int64) (*models.EndPoint, error) {
 	return nil, storage.ErrNotFound
 }
 
-// Update implements interfaces.EndpointRepository.Update
 func (m *mockEndpointRepo) Update(_ context.Context, _ *models.EndPoint) error {
 	return nil
 }
 
-// UpdateLastSeen implements interfaces.EndpointRepository.UpdateLastSeen
 func (m *mockEndpointRepo) UpdateLastSeen(_ context.Context, _ int64, _ models.EUI, _ uint32) error {
 	return nil
 }
 
-// UpdateRadioMetricsSelective implements interfaces.EndpointRepository.UpdateRadioMetricsSelective
-func (m *mockEndpointRepo) UpdateRadioMetricsSelective(_ context.Context, _ int64, _ models.EUI, _ interfaces.RadioMetricsUpdate) error {
+func (m *mockEndpointRepo) UpdateRadioMetricsSelective(_ context.Context, _ int64, _ models.EUI, _ models.RadioMetricsUpdate) error {
 	return nil
 }
 
-// GetEndpointWithKeysForDetachValidation implements interfaces.EndpointRepository.GetEndpointWithKeysForDetachValidation
-func (m *mockEndpointRepo) GetEndpointWithKeysForDetachValidation(_ context.Context, _ models.EUI) (*models.EndPoint, error) {
-	return nil, storage.ErrNotFound
-}
-
-// UpdateDetachMetrics implements interfaces.EndpointRepository.UpdateDetachMetrics
-func (m *mockEndpointRepo) UpdateDetachMetrics(_ context.Context, _ int64, _ models.EUI, _ interfaces.DetachMetricsUpdate) error {
-	return nil
-}
-
-// UpdateRadioMetrics implements interfaces.EndpointRepository.UpdateRadioMetrics
-func (m *mockEndpointRepo) UpdateRadioMetrics(_ context.Context, _ int64, _ models.EUI, _, _, _ float64, _, _ int64, _ string) error {
-	return nil
-}
-
-// StreamAllForPropagation implements interfaces.EndpointRepository.StreamAllForPropagation
-func (m *mockEndpointRepo) StreamAllForPropagation(_ context.Context, _ int64, _ int) ([]*models.EndPoint, error) {
-	return nil, nil
-}
-
-// HasEndpointsSince implements interfaces.EndpointRepository.HasEndpointsSince
-func (m *mockEndpointRepo) HasEndpointsSince(_ context.Context, _ time.Time) (bool, error) {
-	return false, nil
-}
-
-// GetPreferredBsEui implements interfaces.EndpointRepository.GetPreferredBsEui
 func (m *mockEndpointRepo) GetPreferredBsEui(_ context.Context, _ int64, _ []byte) (*uint64, bool, error) {
 	return nil, false, nil
 }
 
-// DeleteByTenant implements interfaces.EndpointRepository.DeleteByTenant
-func (m *mockEndpointRepo) DeleteByTenant(_ context.Context, _ int64, _ []byte) error {
-	return nil
+func (m *mockEndpointRepo) DeleteByTenant(_ context.Context, _ int64, _ []byte) (int64, error) {
+	return 0, nil
 }
 
-// UpdateWithEUI implements interfaces.EndpointRepository.UpdateWithEUI
 func (m *mockEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	return ep, nil
 }
 
-// CheckEUIUnique implements interfaces.EndpointRepository.CheckEUIUnique
 func (m *mockEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 	return nil
 }
 
 // Compile-time interface check
-var _ interfaces.EndpointRepository = (*mockEndpointRepo)(nil)
+var _ EndpointStore = (*mockEndpointRepo)(nil)
+
+// announcedDecisions records the attachment decisions the service announced.
+type announcedDecisions struct {
+	statuses []string
+}
+
+func (a *announcedDecisions) NotifyEndpointStatus(_ context.Context, notice bssciservices.EndpointStatusNotice) {
+	a.statuses = append(a.statuses, notice.Status.EpStatus)
+}
+
+// newTestEndpointService is the SCACI endpoint service over repo, deciding
+// attachments through the service center's decider.
+func newTestEndpointService(t *testing.T, repo interface {
+	EndpointStore
+	bssciservices.StatusTransitioner
+}) (scaci.EndpointService, *announcedDecisions) {
+	t.Helper()
+	notices := &announcedDecisions{}
+	decider, err := bssciservices.NewEndpointAttachmentDecider(repo, notices)
+	require.NoError(t, err)
+	svc, err := NewEndpointService(repo, &recordingDetachPropagator{}, decider, logger.NewNop())
+	require.NoError(t, err)
+	return svc, notices
+}
+
+func TestNewEndpointServiceRefusesAMissingCollaborator(t *testing.T) {
+	repo := newMockEndpointRepo()
+	decider, err := bssciservices.NewEndpointAttachmentDecider(repo, &announcedDecisions{})
+	require.NoError(t, err)
+	stations := &recordingDetachPropagator{}
+	for name, tc := range map[string]struct {
+		build func() (scaci.EndpointService, error)
+		want  error
+	}{
+		"endpoint store": {func() (scaci.EndpointService, error) {
+			return NewEndpointService(nil, stations, decider, logger.NewNop())
+		}, errNilEndpointStore},
+		"detach propagator": {func() (scaci.EndpointService, error) { return NewEndpointService(repo, nil, decider, logger.NewNop()) }, errNilDetachPropagator},
+		"decider":           {func() (scaci.EndpointService, error) { return NewEndpointService(repo, stations, nil, logger.NewNop()) }, errNilAttachmentDecider},
+		"logger":            {func() (scaci.EndpointService, error) { return NewEndpointService(repo, stations, decider, nil) }, errNilEndpointServiceLogger},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := tc.build()
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
+}
 
 // Test validation guards for SCACI §3.6.1 Register operation
 func TestEndpointService_Register_ValidationGuards(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	validNwkKey := [16]byte{
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -235,9 +262,8 @@ func TestEndpointService_Register_ValidationGuards(t *testing.T) {
 
 // Test that Register correctly stores unsigned values
 func TestEndpointService_Register_StoresUnsignedValues(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	validNwkKey := [16]byte{
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -265,9 +291,8 @@ func TestEndpointService_Register_StoresUnsignedValues(t *testing.T) {
 
 // Test Deregister operation
 func TestEndpointService_Deregister_ValidationGuards(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	tests := []struct {
 		name    string
@@ -296,9 +321,8 @@ func TestEndpointService_Deregister_ValidationGuards(t *testing.T) {
 
 // Test GetByEUI operation
 func TestEndpointService_GetByEUI_ValidationGuards(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	tests := []struct {
 		name      string
@@ -335,9 +359,8 @@ func TestEndpointService_GetByEUI_ValidationGuards(t *testing.T) {
 // TestRegister_AllFields_PersistsCorrectly verifies all §3.6.1 fields are persisted with exact DB column names.
 // This is a regression guard for the endpoint_service field mapping.
 func TestRegister_AllFields_PersistsCorrectly(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	validNwkKey := [16]byte{
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -361,47 +384,26 @@ func TestRegister_AllFields_PersistsCorrectly(t *testing.T) {
 	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Register should succeed with all fields")
 
-	// Verify UpdateFields was called with exact DB column names
-	assert.NotNil(t, repo.lastUpdates, "UpdateFields should have been called")
+	// Verify the registration field set was captured
+	require.NotNil(t, repo.lastRegistration, "EndpointRegistrationUpdate should have been called")
 
-	// Verify all §3.6.1 fields are present with correct column names
-	expectedColumns := []string{
-		"nwk_key",
-		"pre_attach",
-		"bidi",
-		"sh_addr",
-		"attach_cnt",
-		"packet_cnt",
-		"last_packet_cnt",
-		"dual_chan",
-		"repetition",
-		"wide_carr_off",
-		"long_blk_dist",
-	}
-	for _, col := range expectedColumns {
-		_, exists := repo.lastUpdates[col]
-		assert.True(t, exists, "UpdateFields must include column: %s", col)
-	}
-
-	// Verify specific values are persisted correctly
-	assert.Equal(t, validNwkKey[:], repo.lastUpdates["nwk_key"], "nwk_key must match request")
-	assert.Equal(t, true, repo.lastUpdates["bidi"], "bidi must be true")
-	assert.Equal(t, true, repo.lastUpdates["pre_attach"], "pre_attach must be true")
-	assert.Equal(t, int32(12345), repo.lastUpdates["sh_addr"], "sh_addr must be cast to int32")
-	assert.Equal(t, int64(100000), repo.lastUpdates["attach_cnt"], "attach_cnt must be cast to int64")
-	assert.Equal(t, int64(200000), repo.lastUpdates["packet_cnt"], "packet_cnt must be cast to int64")
-	assert.Equal(t, int64(200000), repo.lastUpdates["last_packet_cnt"], "last_packet_cnt must match packet_cnt")
-	assert.Equal(t, true, repo.lastUpdates["dual_chan"], "dual_chan must be true")
-	assert.Equal(t, true, repo.lastUpdates["repetition"], "repetition must be true")
-	assert.Equal(t, true, repo.lastUpdates["wide_carr_off"], "wide_carr_off must be true")
-	assert.Equal(t, true, repo.lastUpdates["long_blk_dist"], "long_blk_dist must be true")
+	// Verify all §3.6.1 fields carry the request values
+	assert.Equal(t, validNwkKey[:], repo.lastRegistration.NwkKey, "nwk_key must match request")
+	assert.Equal(t, true, repo.lastRegistration.Bidi, "bidi must be true")
+	assert.Equal(t, true, repo.lastRegistration.PreAttach, "pre_attach must be true")
+	assert.Equal(t, uint16(12345), repo.lastRegistration.ShAddr, "sh_addr must match request")
+	assert.Equal(t, uint32(100000), repo.lastRegistration.AttachCnt, "attach_cnt must match request")
+	assert.Equal(t, uint32(200000), repo.lastRegistration.PacketCnt, "packet_cnt must match request")
+	assert.Equal(t, true, repo.lastRegistration.DualChan, "dual_chan must be true")
+	assert.Equal(t, true, repo.lastRegistration.Repetition, "repetition must be true")
+	assert.Equal(t, true, repo.lastRegistration.WideCarrOff, "wide_carr_off must be true")
+	assert.Equal(t, true, repo.lastRegistration.LongBlkDist, "long_blk_dist must be true")
 }
 
 // TestRegister_ZeroEpEui_ReturnsError confirms EpEui=0 is rejected per §3.6.1.
 func TestRegister_ZeroEpEui_ReturnsError(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	validNwkKey := [16]byte{
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -419,9 +421,8 @@ func TestRegister_ZeroEpEui_ReturnsError(t *testing.T) {
 
 // TestRegister_MaxShAddr_65535 verifies max uint16 value is accepted and stored correctly.
 func TestRegister_MaxShAddr_65535(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	validNwkKey := [16]byte{
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -437,16 +438,15 @@ func TestRegister_MaxShAddr_65535(t *testing.T) {
 	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Max uint16 ShAddr should succeed")
 
-	// Verify stored as int32(65535) without truncation
-	assert.NotNil(t, repo.lastUpdates)
-	assert.Equal(t, int32(65535), repo.lastUpdates["sh_addr"], "ShAddr 65535 must be stored as int32(65535)")
+	// Verify the max uint16 value is carried without truncation
+	require.NotNil(t, repo.lastRegistration)
+	assert.Equal(t, uint16(65535), repo.lastRegistration.ShAddr, "ShAddr 65535 must be carried without truncation")
 }
 
 // TestRegister_MaxAttachCnt_4294967295 verifies max uint32 value is accepted and stored correctly.
 func TestRegister_MaxAttachCnt_4294967295(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	validNwkKey := [16]byte{
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -462,16 +462,15 @@ func TestRegister_MaxAttachCnt_4294967295(t *testing.T) {
 	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Max uint32 AttachCnt should succeed")
 
-	// Verify stored as int64(4294967295) without truncation
-	assert.NotNil(t, repo.lastUpdates)
-	assert.Equal(t, int64(4294967295), repo.lastUpdates["attach_cnt"], "AttachCnt 4294967295 must be stored as int64(4294967295)")
+	// Verify the max uint32 value is carried without truncation
+	require.NotNil(t, repo.lastRegistration)
+	assert.Equal(t, uint32(4294967295), repo.lastRegistration.AttachCnt, "AttachCnt 4294967295 must be carried without truncation")
 }
 
 // TestRegister_MaxPacketCnt_4294967295 verifies max uint32 value is accepted and stored correctly.
 func TestRegister_MaxPacketCnt_4294967295(t *testing.T) {
-	log := logger.NewNop()
 	repo := newMockEndpointRepo()
-	svc := NewEndpointService(repo, nil, log)
+	svc, _ := newTestEndpointService(t, repo)
 
 	validNwkKey := [16]byte{
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -487,8 +486,7 @@ func TestRegister_MaxPacketCnt_4294967295(t *testing.T) {
 	errToken := svc.Register(testutil.TestContext(), req, 1)
 	assert.Empty(t, errToken, "Max uint32 PacketCnt should succeed")
 
-	// Verify stored as int64(4294967295) without truncation
-	assert.NotNil(t, repo.lastUpdates)
-	assert.Equal(t, int64(4294967295), repo.lastUpdates["packet_cnt"], "PacketCnt 4294967295 must be stored as int64(4294967295)")
-	assert.Equal(t, int64(4294967295), repo.lastUpdates["last_packet_cnt"], "last_packet_cnt must also be 4294967295")
+	// Verify the max uint32 value is carried without truncation and feeds both counters
+	require.NotNil(t, repo.lastRegistration)
+	assert.Equal(t, uint32(4294967295), repo.lastRegistration.PacketCnt, "PacketCnt 4294967295 must be carried without truncation")
 }

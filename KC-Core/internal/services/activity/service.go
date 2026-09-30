@@ -10,267 +10,185 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/authz"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
+
+// EventReader lists the events of one base station or endpoint.
+type EventReader interface {
+	ListByBaseStation(ctx context.Context, tenantID int64, bsEui []byte, filters *grpcservices.EventFilters, limit, offset int) ([]*grpcservices.Event, int64, error)
+	ListByEndPoint(ctx context.Context, tenantID int64, epEui []byte, filters *grpcservices.EventFilters, limit, offset int) ([]*grpcservices.Event, int64, error)
+}
+
+// MessageReader lists the uplinks of one base station or endpoint.
+type MessageReader interface {
+	ListBaseStationMessages(ctx context.Context, tenantID int64, bsEui []byte, filters *grpcservices.MessageFilters, limit, offset int) ([]*mioty.ULDataMessage, int64, error)
+	ListMessages(ctx context.Context, tenantID int64, filters *grpcservices.MessageFilters, limit, offset int) ([]*mioty.ULDataMessage, int64, error)
+}
 
 // Service implements grpcservices.ActivityService.
 type Service struct {
-	eventSvc   grpcservices.EventService
-	messageSvc grpcservices.MessageListingService
+	eventSvc   EventReader
+	messageSvc MessageReader
 	log        logger.Logger
 }
 
+// overfetchFactor over-reads each source page so merged pagination can
+// tolerate uneven interleaving between sources.
+const overfetchFactor = 2
+
 // New creates a new ActivityService.
-func New(eventSvc grpcservices.EventService, messageSvc grpcservices.MessageListingService, log logger.Logger) *Service {
-	return &Service{
-		eventSvc:   eventSvc,
-		messageSvc: messageSvc,
-		log:        log,
-	}
+func New(eventSvc EventReader, messageSvc MessageReader, log logger.Logger) *Service {
+	return &Service{eventSvc: eventSvc, messageSvc: messageSvc, log: log}
 }
 
 // pageTokenData encodes pagination state for cursor-based pagination.
 type pageTokenData struct {
-	EventOffset   int   `json:"eo"`
-	MessageOffset int   `json:"mo"`
-	LastTimestamp int64 `json:"lt"` // Unix nanoseconds
+	EventOffset   int `json:"eo"`
+	MessageOffset int `json:"mo"`
+}
+
+// feed is one device's two activity sources, read from an offset each.
+type feed struct {
+	events   func(filters *grpcservices.EventFilters, limit, offset int) ([]*grpcservices.Event, int64, error)
+	messages func(filters *grpcservices.MessageFilters, limit, offset int) ([]*mioty.ULDataMessage, int64, error)
+	// messageScope narrows the uplink filters to the device, when the reader needs it there.
+	messageScope   func(*grpcservices.MessageFilters)
+	eventsFailed   string
+	messagesFailed string
+	device         []byte
 }
 
 // ListBaseStationActivity returns merged events and messages for a base station.
 // Items are sorted by timestamp descending with unified pagination.
-func (s *Service) ListBaseStationActivity(
-	ctx context.Context,
-	tenantID int64,
-	bsEui []byte,
-	filters *grpcservices.ActivityFilters,
-	pageSize int,
-	pageToken string,
+func (s *Service) ListBaseStationActivity(ctx context.Context, tenantID int64, bsEui []byte,
+	filters *grpcservices.ActivityFilters, pageSize int, pageToken string,
 ) (*grpcservices.ActivityListResult, error) {
-	// Default page size
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
-
-	// Parse page token for cursor state
-	var cursor pageTokenData
-	if pageToken != "" {
-		tokenBytes, err := base64.StdEncoding.DecodeString(pageToken)
-		if err == nil {
-			_ = json.Unmarshal(tokenBytes, &cursor)
-		}
-	}
-
-	// Convert activity filters to service-specific filters
-	eventFilters := &grpcservices.EventFilters{}
-	messageFilters := &grpcservices.MessageFilters{}
-
-	if filters != nil {
-		eventFilters.StartTime = filters.StartTime
-		eventFilters.EndTime = filters.EndTime
-		messageFilters.StartTime = filters.StartTime
-		messageFilters.EndTime = filters.EndTime
-	}
-
-	// Fetch events - use larger limit to allow for merging
-	fetchLimit := pageSize * 2
-	events, eventTotal, err := s.eventSvc.ListByBaseStation(ctx, tenantID, bsEui, eventFilters, fetchLimit, cursor.EventOffset)
-	if err != nil {
-		s.log.ErrorContext(ctx, "failed to fetch events for activity feed", "error", err, "bsEui", bsEui)
-		events = []*grpcservices.Event{}
-		eventTotal = 0
-	}
-
-	// Fetch messages
-	messages, messageTotal, err := s.messageSvc.ListBaseStationMessages(ctx, tenantID, bsEui, messageFilters, fetchLimit, cursor.MessageOffset)
-	if err != nil {
-		s.log.ErrorContext(ctx, "failed to fetch messages for activity feed", "error", err, "bsEui", bsEui)
-		messages = nil
-		messageTotal = 0
-	}
-
-	// Merge into activity items
-	items := make([]*grpcservices.ActivityItem, 0, len(events)+len(messages))
-
-	for _, e := range events {
-		items = append(items, &grpcservices.ActivityItem{
-			Type:       grpcservices.ActivityItemTypeEvent,
-			OccurredAt: e.Timestamp,
-			Event:      e,
-		})
-	}
-
-	for _, m := range messages {
-		var occurredAt time.Time
-		if m.RxTime > 0 {
-			occurredAt = time.Unix(0, m.RxTime)
-		} else {
-			occurredAt = time.Now()
-		}
-		items = append(items, &grpcservices.ActivityItem{
-			Type:       grpcservices.ActivityItemTypeMessage,
-			OccurredAt: occurredAt,
-			Message:    m,
-		})
-	}
-
-	// Sort by timestamp descending (most recent first)
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].OccurredAt.After(items[j].OccurredAt)
-	})
-
-	// Apply pagination limit
-	totalCount := eventTotal + messageTotal
-	hasMore := len(items) > pageSize
-	if len(items) > pageSize {
-		items = items[:pageSize]
-	}
-
-	// Generate next page token
-	var nextPageToken string
-	if hasMore && len(items) > 0 {
-		// Count how many events and messages we consumed in this page
-		eventConsumed := 0
-		messageConsumed := 0
-		for _, item := range items {
-			if item.Type == grpcservices.ActivityItemTypeEvent {
-				eventConsumed++
-			} else {
-				messageConsumed++
-			}
-		}
-
-		nextCursor := pageTokenData{
-			EventOffset:   cursor.EventOffset + eventConsumed,
-			MessageOffset: cursor.MessageOffset + messageConsumed,
-			LastTimestamp: items[len(items)-1].OccurredAt.UnixNano(),
-		}
-		tokenBytes, _ := json.Marshal(nextCursor)
-		nextPageToken = base64.StdEncoding.EncodeToString(tokenBytes)
-	}
-
-	return &grpcservices.ActivityListResult{
-		Items:         items,
-		NextPageToken: nextPageToken,
-		TotalCount:    totalCount,
-	}, nil
+	return s.list(ctx, feed{
+		events: func(f *grpcservices.EventFilters, limit, offset int) ([]*grpcservices.Event, int64, error) {
+			return s.eventSvc.ListByBaseStation(ctx, tenantID, bsEui, f, limit, offset)
+		},
+		messages: func(f *grpcservices.MessageFilters, limit, offset int) ([]*mioty.ULDataMessage, int64, error) {
+			return s.messageSvc.ListBaseStationMessages(ctx, tenantID, bsEui, f, limit, offset)
+		},
+		messageScope: func(*grpcservices.MessageFilters) {},
+		eventsFailed: LogActivityBSEventsFetchFailed, messagesFailed: LogActivityBSMessagesFetchFailed, device: bsEui,
+	}, filters, pageSize, pageToken), nil
 }
 
-// ListEndpointActivity returns merged events and messages for an endpoint.
-// Items are sorted by timestamp descending with unified pagination.
-func (s *Service) ListEndpointActivity(
-	ctx context.Context,
-	tenantID int64,
-	epEui []byte,
-	filters *grpcservices.ActivityFilters,
-	pageSize int,
-	pageToken string,
+// ListEndpointActivity returns merged events and messages for an endpoint;
+// both readers start the endpoint's history at its registration.
+func (s *Service) ListEndpointActivity(ctx context.Context, tenantID int64, epEui []byte,
+	filters *grpcservices.ActivityFilters, pageSize int, pageToken string,
 ) (*grpcservices.ActivityListResult, error) {
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	return s.list(ctx, feed{
+		events: func(f *grpcservices.EventFilters, limit, offset int) ([]*grpcservices.Event, int64, error) {
+			return s.eventSvc.ListByEndPoint(ctx, tenantID, epEui, f, limit, offset)
+		},
+		messages: func(f *grpcservices.MessageFilters, limit, offset int) ([]*mioty.ULDataMessage, int64, error) {
+			return s.messageSvc.ListMessages(ctx, tenantID, f, limit, offset)
+		},
+		messageScope: func(f *grpcservices.MessageFilters) { f.EpEui = epEui },
+		eventsFailed: LogActivityEPEventsFetchFailed, messagesFailed: LogActivityEPMessagesFetchFailed, device: epEui,
+	}, filters, pageSize, pageToken), nil
+}
 
-	var cursor pageTokenData
-	if pageToken != "" {
-		tokenBytes, err := base64.StdEncoding.DecodeString(pageToken)
-		if err == nil {
-			_ = json.Unmarshal(tokenBytes, &cursor)
-		}
+// list merges one page of a device's events and uplinks, newest first.
+func (s *Service) list(ctx context.Context, f feed, window *grpcservices.ActivityFilters, pageSize int, pageToken string) *grpcservices.ActivityListResult {
+	pageSize = clampPageSize(pageSize)
+	cursor := decodeCursor(pageToken)
+	eventFilters, messageFilters := &grpcservices.EventFilters{}, &grpcservices.MessageFilters{}
+	if window != nil {
+		eventFilters.StartTime, eventFilters.EndTime = window.StartTime, window.EndTime
+		messageFilters.StartTime, messageFilters.EndTime = window.StartTime, window.EndTime
 	}
-
-	eventFilters := &grpcservices.EventFilters{}
-	messageFilters := &grpcservices.MessageFilters{
-		EpEui: epEui,
-	}
-
-	if filters != nil {
-		eventFilters.StartTime = filters.StartTime
-		eventFilters.EndTime = filters.EndTime
-		messageFilters.StartTime = filters.StartTime
-		messageFilters.EndTime = filters.EndTime
-	}
-
-	fetchLimit := pageSize * 2
-	events, eventTotal, err := s.eventSvc.ListByEndPoint(ctx, tenantID, epEui, eventFilters, fetchLimit, cursor.EventOffset)
-	if err != nil {
-		s.log.ErrorContext(ctx, "failed to fetch events for endpoint activity feed", "error", err, "epEui", epEui)
-		events = []*grpcservices.Event{}
-		eventTotal = 0
-	}
-
-	messages, messageTotal, err := s.messageSvc.ListMessages(ctx, tenantID, messageFilters, fetchLimit, cursor.MessageOffset)
-	if err != nil {
-		s.log.ErrorContext(ctx, "failed to fetch messages for endpoint activity feed", "error", err, "epEui", epEui)
-		messages = nil
-		messageTotal = 0
-	}
-
-	items := make([]*grpcservices.ActivityItem, 0, len(events)+len(messages))
-
-	for _, e := range events {
-		items = append(items, &grpcservices.ActivityItem{
-			Type:       grpcservices.ActivityItemTypeEvent,
-			OccurredAt: e.Timestamp,
-			Event:      e,
-		})
-	}
-
-	for _, m := range messages {
-		var occurredAt time.Time
-		if m.RxTime > 0 {
-			occurredAt = time.Unix(0, m.RxTime)
-		} else {
-			occurredAt = time.Now()
-		}
-		items = append(items, &grpcservices.ActivityItem{
-			Type:       grpcservices.ActivityItemTypeMessage,
-			OccurredAt: occurredAt,
-			Message:    m,
-		})
-	}
-
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].OccurredAt.After(items[j].OccurredAt)
+	f.messageScope(messageFilters)
+	fetchLimit := pageSize * overfetchFactor
+	events, eventTotal, err := readableEvents(ctx, eventFilters, func(ef *grpcservices.EventFilters) ([]*grpcservices.Event, int64, error) {
+		return f.events(ef, fetchLimit, cursor.EventOffset)
 	})
-
-	totalCount := eventTotal + messageTotal
-	hasMore := len(items) > pageSize
-	if len(items) > pageSize {
-		items = items[:pageSize]
+	if err != nil {
+		s.log.ErrorContext(ctx, f.eventsFailed, logger.FieldError, err, logger.FieldEui, f.device)
+		events, eventTotal = nil, 0
 	}
-
-	var nextPageToken string
-	if hasMore && len(items) > 0 {
-		eventConsumed := 0
-		messageConsumed := 0
-		for _, item := range items {
-			if item.Type == grpcservices.ActivityItemTypeEvent {
-				eventConsumed++
-			} else {
-				messageConsumed++
-			}
-		}
-
-		nextCursor := pageTokenData{
-			EventOffset:   cursor.EventOffset + eventConsumed,
-			MessageOffset: cursor.MessageOffset + messageConsumed,
-			LastTimestamp: items[len(items)-1].OccurredAt.UnixNano(),
-		}
-		tokenBytes, _ := json.Marshal(nextCursor)
-		nextPageToken = base64.StdEncoding.EncodeToString(tokenBytes)
+	messages, messageTotal, err := f.messages(messageFilters, fetchLimit, cursor.MessageOffset)
+	if err != nil {
+		s.log.ErrorContext(ctx, f.messagesFailed, logger.FieldError, err, logger.FieldEui, f.device)
+		messages, messageTotal = nil, 0
 	}
+	items, next := page(merge(events, messages), pageSize, cursor)
+	return &grpcservices.ActivityListResult{Items: items, NextPageToken: next, TotalCount: eventTotal + messageTotal}
+}
 
-	return &grpcservices.ActivityListResult{
-		Items:         items,
-		NextPageToken: nextPageToken,
-		TotalCount:    totalCount,
-	}, nil
+func clampPageSize(pageSize int) int {
+	switch {
+	case pageSize <= 0:
+		return defaultPageSize
+	case pageSize > maxPageSize:
+		return maxPageSize
+	}
+	return pageSize
+}
+
+// decodeCursor reads a page token; an unreadable one starts at the top.
+func decodeCursor(pageToken string) pageTokenData {
+	var cursor pageTokenData
+	if raw, err := base64.StdEncoding.DecodeString(pageToken); err == nil {
+		if json.Unmarshal(raw, &cursor) != nil {
+			return pageTokenData{}
+		}
+	}
+	return cursor
+}
+
+// merge orders events and uplinks newest first.
+func merge(events []*grpcservices.Event, messages []*mioty.ULDataMessage) []*grpcservices.ActivityItem {
+	items := make([]*grpcservices.ActivityItem, 0, len(events)+len(messages))
+	for _, e := range events {
+		items = append(items, &grpcservices.ActivityItem{Type: grpcservices.ActivityItemTypeEvent, OccurredAt: e.Timestamp, Event: e})
+	}
+	for _, m := range messages {
+		items = append(items, &grpcservices.ActivityItem{Type: grpcservices.ActivityItemTypeMessage, OccurredAt: time.Unix(0, m.RxTime), Message: m})
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].OccurredAt.After(items[j].OccurredAt) })
+	return items
+}
+
+// page cuts one page and the token of the next: the offsets each source consumed.
+func page(items []*grpcservices.ActivityItem, pageSize int, cursor pageTokenData) ([]*grpcservices.ActivityItem, string) {
+	if len(items) <= pageSize {
+		return items, ""
+	}
+	items = items[:pageSize]
+	next := cursor
+	for _, item := range items {
+		if item.Type == grpcservices.ActivityItemTypeEvent {
+			next.EventOffset++
+		} else {
+			next.MessageOffset++
+		}
+	}
+	raw, err := json.Marshal(next)
+	if err != nil {
+		return items, ""
+	}
+	return items, base64.StdEncoding.EncodeToString(raw)
 }
 
 // Ensure Service implements ActivityService interface.
 var _ grpcservices.ActivityService = (*Service)(nil)
+
+// readableEvents narrows fetch to the event categories the caller's roles may read.
+func readableEvents(
+	ctx context.Context,
+	filters *grpcservices.EventFilters,
+	fetch func(*grpcservices.EventFilters) ([]*grpcservices.Event, int64, error),
+) ([]*grpcservices.Event, int64, error) {
+	categories, unrestricted := authz.VisibleEventCategories(authz.FromContext(ctx), nil)
+	if !unrestricted && len(categories) == 0 {
+		return nil, 0, nil
+	}
+	filters.Categories = categories
+	return fetch(filters)
+}

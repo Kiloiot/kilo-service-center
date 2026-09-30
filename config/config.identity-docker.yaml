@@ -40,8 +40,6 @@ auth:
   audience: "kilocenter-api"
   algorithm: "HS256"
   tenant_claim: "tenant_id"
-  bootstrap:
-    enabled: false
 
 redis:
   host: "redis"

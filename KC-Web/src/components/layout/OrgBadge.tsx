@@ -4,6 +4,7 @@ import { Chip } from "@mui/material";
 
 import { useFeatureFlags } from "@contexts/FeatureFlagContext";
 import { useOrganization } from "@contexts/OrganizationContext";
+import { FEATURE_FLAG } from "@constants/app";
 import { ORG_BADGE } from "@constants/messages";
 import { AdminIcon } from "@theme/icons";
 
@@ -12,11 +13,11 @@ import { AdminIcon } from "@theme/icons";
  * Displays current organization name in application shell.
  * Hidden in CE (enterprise_organizations flag controls visibility).
  */
-export const OrgBadge: React.FC = () => {
+const OrgBadge: React.FC = () => {
   const { organizationName, organizationId } = useOrganization();
   const { isEnabled } = useFeatureFlags();
 
-  if (!isEnabled("enterprise_organizations")) return null;
+  if (!isEnabled(FEATURE_FLAG.ENTERPRISE_ORGANIZATIONS)) return null;
 
   if (!organizationId) {
     return (

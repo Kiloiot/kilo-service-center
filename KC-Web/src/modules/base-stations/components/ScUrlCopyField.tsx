@@ -1,5 +1,6 @@
 /**
- * Read-only Service Center URL field with a copy-to-clipboard button.
+ * Read-only Service Center URL field with a copy-to-clipboard button, and a
+ * warning naming the setting when no URL is configured.
  * Used in BaseStationDetails for both the main edit view and
  * the post-regeneration certificate view.
  */
@@ -11,6 +12,8 @@ import { IconButton, InputAdornment, TextField, Tooltip } from "@mui/material";
 
 import { BASE_STATION_DETAILS } from "@constants/messages";
 import { CheckCircleIcon, ContentCopyIcon } from "@theme/icons";
+
+import ServiceCenterUrlWarning from "./ServiceCenterUrlWarning";
 
 interface ScUrlCopyFieldProps {
   value: string;
@@ -29,37 +32,40 @@ const ScUrlCopyField: React.FC<ScUrlCopyFieldProps> = ({
   inputSxGetter,
   mb = 3,
 }) => (
-  <TextField
-    label={BASE_STATION_DETAILS.LABEL_SC_URL}
-    value={value}
-    fullWidth
-    slotProps={{
-      input: {
-        readOnly: true,
-        endAdornment: (
-          <InputAdornment position="end">
-            <Tooltip
-              title={
-                copied
-                  ? BASE_STATION_DETAILS.LABEL_SC_URL_COPIED
-                  : BASE_STATION_DETAILS.ACTION_COPY_SC_URL
-              }
-            >
-              <IconButton size="small" onClick={onCopy} edge="end">
-                {copied ? (
-                  <CheckCircleIcon fontSize="small" color="success" />
-                ) : (
-                  <ContentCopyIcon fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
-          </InputAdornment>
-        ),
-        sx: (theme: Theme) => inputSxGetter(theme),
-      },
-    }}
-    sx={{ mb }}
-  />
+  <>
+    {!value && <ServiceCenterUrlWarning mb={2} />}
+    <TextField
+      label={BASE_STATION_DETAILS.LABEL_SC_URL}
+      value={value}
+      fullWidth
+      slotProps={{
+        input: {
+          readOnly: true,
+          endAdornment: (
+            <InputAdornment position="end">
+              <Tooltip
+                title={
+                  copied
+                    ? BASE_STATION_DETAILS.LABEL_SC_URL_COPIED
+                    : BASE_STATION_DETAILS.ACTION_COPY_SC_URL
+                }
+              >
+                <IconButton size="small" onClick={onCopy} edge="end">
+                  {copied ? (
+                    <CheckCircleIcon fontSize="small" color="success" />
+                  ) : (
+                    <ContentCopyIcon fontSize="small" />
+                  )}
+                </IconButton>
+              </Tooltip>
+            </InputAdornment>
+          ),
+          sx: (theme: Theme) => inputSxGetter(theme),
+        },
+      }}
+      sx={{ mb }}
+    />
+  </>
 );
 
 export default ScUrlCopyField;

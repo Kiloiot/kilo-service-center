@@ -6,11 +6,12 @@
  */
 
 import type { ReactNode } from "react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
+import { useAuthSettings } from "@hooks";
+
 import GlobalLoader from "@components/common/GlobalLoader";
-import { apiService } from "@services/api";
 import { useSession } from "@contexts/SessionContext";
 import { logger } from "@utils/logger";
 import { ROUTES } from "@constants/app";
@@ -30,8 +31,11 @@ interface AuthGuardProps {
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const { isAuthenticated, isHydrated } = useSession();
   const location = useLocation();
-  const [authEnabled, setAuthEnabled] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: settings,
+    isPending: settingsPending,
+    error: settingsError,
+  } = useAuthSettings();
 
   // Public routes that don't require authentication
   const publicPaths = [ROUTES.LOGIN, ROUTES.REGISTER, ROUTES.AUTH_CALLBACK];
@@ -40,31 +44,25 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   );
 
   useEffect(() => {
-    const checkAuthSettings = async () => {
-      try {
-        const settings = await apiService.getAuthSettings();
-        // Auth is enabled if local login is enabled OR external providers are enabled
-        const enabled =
-          settings.local_login_enabled ||
-          settings.oidc?.enabled ||
-          settings.oauth2?.enabled ||
-          false;
-        setAuthEnabled(enabled);
-      } catch (error) {
-        // Fail-closed: if settings can't be fetched, require authentication
-        logger.error(ERR_AUTH_SETTINGS_LOAD, error);
-        setAuthEnabled(true);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (settingsError) logger.error(ERR_AUTH_SETTINGS_LOAD, settingsError);
+  }, [settingsError]);
 
-    checkAuthSettings();
-  }, []);
+  // A failed refetch keeps the last loaded settings; with none loaded, fail closed.
+  const authEnabled = settings
+    ? settings.local_login_enabled ||
+      settings.oidc?.enabled ||
+      settings.oauth2?.enabled ||
+      false
+    : settingsError !== null;
 
-  // Wait for both session hydration and auth settings
-  if (!isHydrated || loading) {
+  // A paused (offline) settings request is pending but not loading; it must not open the gate.
+  if (!isHydrated || settingsPending) {
     return <GlobalLoader />;
+  }
+
+  // Registration is for visitors; a signed-in user goes to the dashboard.
+  if (isAuthenticated && location.pathname.startsWith(ROUTES.REGISTER)) {
+    return <Navigate to={ROUTES.HOME} replace />;
   }
 
   // Public routes bypass auth check

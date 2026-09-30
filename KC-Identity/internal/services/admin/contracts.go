@@ -19,6 +19,11 @@ type UserAdminStore interface {
 	SetPasswordHash(ctx context.Context, userID uuid.UUID, passwordHash string) error
 }
 
+// SessionRevoker ends every refresh-token session a user holds.
+type SessionRevoker interface {
+	RevokeByUserID(ctx context.Context, userID uuid.UUID) error
+}
+
 // OrganizationStore provides organization persistence operations.
 type OrganizationStore interface {
 	GetByID(ctx context.Context, id uuid.UUID, tenantID int64) (*models.Organization, error)
@@ -26,7 +31,7 @@ type OrganizationStore interface {
 	Create(ctx context.Context, org *models.Organization) error
 	Update(ctx context.Context, id uuid.UUID, tenantID int64, updates map[string]interface{}) error
 	Delete(ctx context.Context, id uuid.UUID, tenantID int64) error
-	List(ctx context.Context, tenantID *int64, limit, offset int) ([]*models.Organization, int64, error)
+	ListOrganizations(ctx context.Context, tenantID *int64, limit, offset int) ([]*models.Organization, int64, error)
 }
 
 // TenantStore provides tenant persistence operations.

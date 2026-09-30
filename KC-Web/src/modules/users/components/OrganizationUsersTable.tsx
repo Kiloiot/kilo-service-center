@@ -9,17 +9,16 @@ import React from "react";
 
 import type { OrganizationUserUI, SystemUserUI } from "@api-types/api";
 
+import type { SortDirection } from "@constants/app";
 import { ORG_USERS_PAGE } from "@constants/messages";
 
 import UsersTableBase, { type OrderBy } from "./UsersTableBase";
 
 type OrgOrderBy = "email" | "role" | "status" | "createdAt";
-type OrderDirection = "asc" | "desc";
-
 export interface OrganizationUsersTableProps {
   users: OrganizationUserUI[];
   orderBy: OrgOrderBy;
-  orderDirection: OrderDirection;
+  orderDirection: SortDirection;
   onSort: (field: OrgOrderBy) => void;
   onEdit: (user: OrganizationUserUI) => void;
   onRemove: (user: OrganizationUserUI) => void;

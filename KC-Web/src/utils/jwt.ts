@@ -4,6 +4,8 @@
  */
 
 import { logger } from "@utils/logger";
+import { ENCODING, MS_PER_SECOND } from "@constants/app";
+import { LOG_MESSAGES } from "@constants/messages";
 import { externalOrgClaimPath } from "@config/env";
 
 /**
@@ -20,7 +22,7 @@ import { externalOrgClaimPath } from "@config/env";
 export function decodeJwtPayload(
   token: string,
 ): Record<string, unknown> | null {
-  if (!token || token.split(".").length !== 3) {
+  if (!token || token.split(".").length !== ENCODING.JWT_SEGMENT_COUNT) {
     return null;
   }
 
@@ -37,16 +39,30 @@ export function decodeJwtPayload(
     const jsonPayload = decodeURIComponent(
       atob(base64)
         .split("")
-        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .map(
+          (c) =>
+            "%" +
+            c
+              .charCodeAt(0)
+              .toString(ENCODING.HEX_RADIX)
+              .padStart(ENCODING.HEX_DIGITS_PER_BYTE, "0"),
+        )
         .join(""),
     );
 
     // Step 4: Parse JSON payload
     return JSON.parse(jsonPayload);
   } catch (error) {
-    logger.error("Failed to decode JWT payload:", error);
+    logger.error(LOG_MESSAGES.JWT_DECODE_FAILED, error);
     return null;
   }
+}
+
+/** The token's expiry in epoch milliseconds, or null when it carries no exp claim. */
+export function tokenExpiryMs(token: string): number | null {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload.exp !== "number") return null;
+  return payload.exp * MS_PER_SECOND;
 }
 
 /**
@@ -99,26 +115,4 @@ export function extractUserId(token: string): string | null {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   return typeof userId === "string" && uuidRegex.test(userId) ? userId : null;
-}
-
-/**
- * Extract tenant ID from external IdP JWT
- * Uses same configurable claim path as organization ID for tenant context propagation.
- *
- * @param token - Full JWT token
- * @returns Tenant UUID string, or null if not found/invalid
- */
-export function extractTenantId(token: string): string | null {
-  const payload = decodeJwtPayload(token);
-  if (!payload) return null;
-
-  const tenantId = payload[externalOrgClaimPath];
-
-  // Validate UUID format
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-  return typeof tenantId === "string" && uuidRegex.test(tenantId)
-    ? tenantId
-    : null;
 }

@@ -3,9 +3,11 @@ package postgres
 import (
 	"encoding/binary"
 	"testing"
+	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,6 +58,50 @@ func TestMarkDLRXStatusReceived_CrossBaseStationIsolation(t *testing.T) {
 	matched, err = repo.MarkDLRXStatusReceived(ctx, tenantID, epEui, euiBytesFromUint64(0xCCCCCCCCCCCCCCCC), 7)
 	require.NoError(t, err)
 	assert.False(t, matched, "a report for an un-queried base station must not match")
+}
+
+// TestDLRXStatus_ReportRidesOnlyTheFirstUplinkAfterIt verifies SCACI §3.8.1:
+// dlRxSnr/dlRxRssi report the endpoint's previous DL reception, so a report is
+// attached to the first uplink after it and never repeated on later uplinks.
+func TestDLRXStatus_ReportRidesOnlyTheFirstUplinkAfterIt(t *testing.T) {
+	f := newUplinkStoreFixture(t)
+	repo := NewDLRXStatusRepository(f.db, logger.NewNop())
+	ctx := testutil.TestContext()
+	epEui := mioty.EUI64Bytes(uplinkStoreEpEui)
+	stations := [][]byte{mioty.EUI64Bytes(uplinkStoreBsEuiOne)}
+	report := func(snr float64) {
+		t.Helper()
+		require.NoError(t, repo.CreateDLRXStatus(ctx, &mioty.DLRXStatus{
+			TenantID: uplinkStoreTenantA, EpEui: epEui, BsEui: stations[0],
+			RxTime: time.Now().UnixNano(), PacketCnt: 1, DlRxSnr: snr, DlRxRssi: -90,
+		}))
+	}
+	attached := func() []*mioty.DLRXStatus {
+		t.Helper()
+		statuses, err := repo.GetDLRXStatusSinceLastHeard(ctx, uplinkStoreTenantA, epEui, stations)
+		require.NoError(t, err)
+		return statuses
+	}
+	uplink := func(packetCnt uint32) {
+		t.Helper()
+		_, err := f.store.Persist(ctx, uplinkRequest(uplinkStoreTenantA, uplinkStoreEpEui, uplinkStoreBsEuiOne, packetCnt, []byte{byte(packetCnt)}))
+		require.NoError(t, err)
+	}
+
+	report(7.5)
+	statuses := attached()
+	require.Len(t, statuses, 1, "the first uplink after the report carries it")
+	assert.Equal(t, 7.5, statuses[0].DlRxSnr)
+
+	uplink(1)
+	assert.Empty(t, attached(), "a report the previous uplink already carried is not repeated")
+	uplink(2)
+	assert.Empty(t, attached(), "nor on any later uplink")
+
+	report(4.25)
+	statuses = attached()
+	require.Len(t, statuses, 1, "a newer report rides the next uplink")
+	assert.Equal(t, 4.25, statuses[0].DlRxSnr)
 }
 
 func euiBytesFromUint64(v uint64) []byte {

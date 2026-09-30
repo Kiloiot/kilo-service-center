@@ -11,10 +11,11 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/authz"
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
@@ -160,7 +161,9 @@ func TestCreateApiKey_InvalidKeyType(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
-		apiKeySvc: &mockAPIKeyService{},
+		audit:        discardAudit{},
+		apiKeySvc:    &mockAPIKeyService{},
+		orgDirectory: &mockOrgService{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -190,6 +193,7 @@ func TestCreateApiKey_NonAdminRejected(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		audit:     discardAudit{},
 		apiKeySvc: &mockAPIKeyService{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
@@ -225,10 +229,11 @@ func TestGetApiKey_OrgScoped(t *testing.T) {
 	keyID := uuid.New()
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		apiKeySvc: &mockAPIKeyService{
 			getByIDAndOrgFunc: func(_ context.Context, id, org uuid.UUID) (*models.APIKey, error) {
 				if org != orgID {
-					return nil, interfaces.ErrRecordNotFound
+					return nil, storage.ErrRecordNotFound
 				}
 				return &models.APIKey{
 					ID:    id,
@@ -266,6 +271,8 @@ func TestListOrganizationUsers_StatusFilterInactive(t *testing.T) {
 	var capturedStatus string
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.AllRoles),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -298,6 +305,8 @@ func TestAddOrganizationUser_InvalidRole(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.AllRoles),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -369,10 +378,10 @@ func (m *mockOrgService) ListAll(_ context.Context, _, _ int) ([]*models.Organiz
 func crossTenantOrgService() *mockOrgService {
 	return &mockOrgService{
 		getByIDFunc: func(_ context.Context, _ uuid.UUID, _ int64) (*models.Organization, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 		getByIDUnscopedFunc: func(_ context.Context, _ uuid.UUID) (*models.Organization, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 }
@@ -390,6 +399,8 @@ func TestCrossTenantOrg_AddOrgUser(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.Roles{TenantManager: true}),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -418,6 +429,8 @@ func TestCrossTenantOrg_GetOrgUser(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.Roles{TenantManager: true}),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -445,6 +458,8 @@ func TestCrossTenantOrg_UpdateOrgUser(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.Roles{TenantManager: true}),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -477,6 +492,8 @@ func TestCrossTenantOrg_RemoveOrgUser(t *testing.T) {
 	targetUserID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.Roles{TenantManager: true}),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -504,6 +521,8 @@ func TestCrossTenantOrg_ListOrgUsers(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.Roles{TenantManager: true}),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -538,6 +557,7 @@ func TestListApiKeys_AdminOnly(t *testing.T) {
 		},
 	}
 	svc := &IdentityService{
+		audit:        discardAudit{},
 		apiKeySvc:    &mockAPIKeyService{},
 		adminUserSvc: nonAdminUserSvc,
 	}
@@ -560,6 +580,7 @@ func TestListApiKeys_OrgAndTenantScoped(t *testing.T) {
 	var capturedOrgID uuid.UUID
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		apiKeySvc: &mockAPIKeyService{
 			listFunc: func(_ context.Context, tID int64, oID uuid.UUID, _ *uuid.UUID, _, _ int) ([]*models.APIKey, int64, error) {
 				capturedTenantID = tID

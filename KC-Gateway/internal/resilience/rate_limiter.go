@@ -26,10 +26,16 @@ type RegistrationRateLimiter struct {
 	closeOnce sync.Once
 }
 
+const secondsPerMinute = 60.0
+
+// unknownPeerIP labels rate-limit accounting when the peer address is absent.
+const unknownPeerIP = "unknown"
+
 // NewRegistrationRateLimiter creates a rate limiter from gateway config.
+// secondsPerMinute converts a per-minute request budget to a per-second rate.
 func NewRegistrationRateLimiter(cfg config.GatewayRateLimitConfig) *RegistrationRateLimiter {
 	rl := &RegistrationRateLimiter{
-		rate:  rate.Limit(float64(cfg.RequestsPerMin) / 60.0),
+		rate:  rate.Limit(float64(cfg.RequestsPerMin) / secondsPerMinute),
 		burst: cfg.Burst,
 		methods: map[string]bool{
 			registerAccountIdentityMethod:                          true,
@@ -103,7 +109,7 @@ func (rl *RegistrationRateLimiter) cleanup(interval time.Duration) {
 func extractIP(ss grpc.ServerStream) string {
 	p, ok := peer.FromContext(ss.Context())
 	if !ok || p.Addr == nil {
-		return "unknown"
+		return unknownPeerIP
 	}
 	// peer.Addr.String() returns "ip:port"; extract just the ip
 	addr := p.Addr.String()

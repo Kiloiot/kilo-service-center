@@ -1,14 +1,14 @@
 {
-  "version": "v1.2.0+c9efdb9",
-  "buildTime": "2026-07-22T21:02:45Z",
-  "gitCommit": "c9efdb9618771af93a507c1a20332b027763e1eb",
-  "gitBranch": "CHIRP-3538-bssci-version-negotiation-eui64",
+  "version": "v1.3.0+d3ea8188",
+  "buildTime": "2026-09-28T11:00:41Z",
+  "gitCommit": "d3ea81889b83011dd8cbc082ba7fdccb551f2050",
+  "gitBranch": "audit/dead-code-cleanup",
   "buildUser": "timkrav",
-  "goVersion": "go1.26.4",
+  "goVersion": "go1.26.5",
   "artifacts": {
     "kcCore": "KC-Core/bin/kilocenter"
   },
-  "schemaVersion": 142,
+  "schemaVersion": 186,
   "edition": "Community Edition",
   "editionCode": "ce",
   "licenseId": "AGPL-3.0-or-later",

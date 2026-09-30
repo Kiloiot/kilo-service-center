@@ -9,7 +9,7 @@ import (
 )
 
 // TestDetachValidationStatusKnownEndpoint verifies that detach operations
-// for known endpoints are marked with "validated" status (Issue #4).
+// for known endpoints in disabled mode are marked "unverified" (no crypto check).
 func TestDetachValidationStatusKnownEndpoint(t *testing.T) {
 	t.Parallel()
 
@@ -21,7 +21,7 @@ func TestDetachValidationStatusKnownEndpoint(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, tenantID)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -29,7 +29,7 @@ func TestDetachValidationStatusKnownEndpoint(t *testing.T) {
 	msg := &Message{Command: "detach", OpId: opID, Data: payload}
 
 	// Execute detach handler
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// Use StatusService to verify pending operation
 	pending, err := env.server.statusSvc.GetPendingOperation(env.session, opID)
@@ -39,12 +39,12 @@ func TestDetachValidationStatusKnownEndpoint(t *testing.T) {
 	// Verify ValidationStatus in metadata
 	validationStatus, exists := pending.Metadata["validationStatus"]
 	require.True(t, exists, "validationStatus must be present in metadata")
-	assert.Equal(t, ValidationStatusValidated, validationStatus,
-		"known endpoint must have 'validated' status")
+	assert.Equal(t, ValidationStatusUnverified, validationStatus,
+		"known endpoint in disabled mode must have 'unverified' status")
 }
 
 // TestDetachValidationStatusUnknownEndpoint verifies that detach operations
-// for unknown endpoints are marked with "unknown_endpoint" status (Issue #4).
+// for unknown endpoints with no validator configured are marked "unverified".
 func TestDetachValidationStatusUnknownEndpoint(t *testing.T) {
 	t.Parallel()
 
@@ -55,7 +55,7 @@ func TestDetachValidationStatusUnknownEndpoint(t *testing.T) {
 
 	// Create test environment with NO endpoint in repository
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, nil) // nil endpoint = unknown endpoint
 
@@ -63,7 +63,7 @@ func TestDetachValidationStatusUnknownEndpoint(t *testing.T) {
 	msg := &Message{Command: "detach", OpId: opID, Data: payload}
 
 	// Execute detach handler
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// Use StatusService to verify pending operation
 	pending, err := env.server.statusSvc.GetPendingOperation(env.session, opID)
@@ -73,8 +73,8 @@ func TestDetachValidationStatusUnknownEndpoint(t *testing.T) {
 	// Verify ValidationStatus in metadata
 	validationStatus, exists := pending.Metadata["validationStatus"]
 	require.True(t, exists, "validationStatus must be present in metadata")
-	assert.Equal(t, ValidationStatusUnknownEndpoint, validationStatus,
-		"unknown endpoint must have 'unknown_endpoint' status")
+	assert.Equal(t, ValidationStatusUnverified, validationStatus,
+		"unknown endpoint with no validator must have 'unverified' status")
 }
 
 // TestDetachMetadataValidationStatusRoundTrip verifies that ValidationStatus
@@ -88,8 +88,8 @@ func TestDetachMetadataValidationStatusRoundTrip(t *testing.T) {
 		validationStatus string
 	}{
 		{"Validated", ValidationStatusValidated},
-		{"UnknownEndpoint", ValidationStatusUnknownEndpoint},
-		{"Disabled", ValidationStatusDisabled},
+		{"Unverified", ValidationStatusUnverified},
+		{"InvalidSignature", ValidationStatusInvalidSignature},
 	}
 
 	for _, tc := range testCases {
@@ -155,8 +155,9 @@ func TestDetachMetadataValidationStatusRoundTrip(t *testing.T) {
 	}
 }
 
-// TestMapToDetachMetadataBackwardCompatibility verifies that old pending operations
-// without validationStatus field default to "validated" for backward compatibility (Issue #4).
+// TestMapToDetachMetadataBackwardCompatibility verifies that old pending
+// operations without a validationStatus field default to "unverified": a
+// missing field must never grant a validation the operation did not earn.
 func TestMapToDetachMetadataBackwardCompatibility(t *testing.T) {
 	t.Parallel()
 
@@ -180,9 +181,8 @@ func TestMapToDetachMetadataBackwardCompatibility(t *testing.T) {
 	reconstructed := mapToDetachMetadata(oldMetadataMap)
 	require.NotNil(t, reconstructed, "mapToDetachMetadata must succeed for old metadata")
 
-	// Verify ValidationStatus defaults to "validated" for backward compatibility
-	assert.Equal(t, ValidationStatusValidated, reconstructed.ValidationStatus,
-		"old operations without validationStatus must default to 'validated'")
+	assert.Equal(t, ValidationStatusUnverified, reconstructed.ValidationStatus,
+		"old operations without validationStatus must default to 'unverified'")
 }
 
 // TestDetachValidationStatusConstants verifies that validation status constants
@@ -193,10 +193,10 @@ func TestDetachValidationStatusConstants(t *testing.T) {
 	// Verify constant values match spec
 	assert.Equal(t, "validated", ValidationStatusValidated,
 		"ValidationStatusValidated must be 'validated'")
-	assert.Equal(t, "unknown_endpoint", ValidationStatusUnknownEndpoint,
-		"ValidationStatusUnknownEndpoint must be 'unknown_endpoint'")
-	assert.Equal(t, "disabled", ValidationStatusDisabled,
-		"ValidationStatusDisabled must be 'disabled'")
+	assert.Equal(t, "unverified", ValidationStatusUnverified,
+		"ValidationStatusUnverified must be 'unverified'")
+	assert.Equal(t, "invalid_signature", ValidationStatusInvalidSignature,
+		"ValidationStatusInvalidSignature must be 'invalid_signature'")
 }
 
 // TestDetachMetadataValidationStatusPersistence verifies that ValidationStatus
@@ -212,7 +212,7 @@ func TestDetachMetadataValidationStatusPersistence(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, tenantID)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -220,7 +220,7 @@ func TestDetachMetadataValidationStatusPersistence(t *testing.T) {
 	msg := &Message{Command: "detach", OpId: opID, Data: payload}
 
 	// Execute detach handler
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// Use StatusService to retrieve pending operation
 	pending, err := env.server.statusSvc.GetPendingOperation(env.session, opID)
@@ -230,8 +230,8 @@ func TestDetachMetadataValidationStatusPersistence(t *testing.T) {
 	// Verify ValidationStatus in metadata map (native types, not JSON-decoded)
 	validationStatus, exists := pending.Metadata["validationStatus"]
 	require.True(t, exists, "validationStatus must be in metadata")
-	assert.Equal(t, ValidationStatusValidated, validationStatus,
-		"ValidationStatus must be 'validated' for known endpoint")
+	assert.Equal(t, ValidationStatusUnverified, validationStatus,
+		"ValidationStatus must be 'unverified' for known endpoint in disabled mode")
 
 	// Verify other key fields are set
 	endpointID, exists := pending.Metadata["endpointID"]

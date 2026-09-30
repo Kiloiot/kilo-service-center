@@ -8,6 +8,9 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+// testInternalErrorToken is a catalog-style token used only for assembly assertions.
+const testInternalErrorToken = "scaci.error.test"
+
 // ============================================================================
 // Assembly Tests: Verify wire format contains only spec-defined keys
 // Per SCACI §§2.4-2.5: Messages use MessagePack with spec-defined field names
@@ -176,7 +179,7 @@ func TestErrorAssembly(t *testing.T) {
 		BaseMessage: BaseMessage{Command: CmdError, OpId: 1},
 		Code:        POSIX_EINVAL,
 		Message:     "Invalid operation",
-		ErrorToken:  "scaci.error.test", // Internal tracking, not on wire per spec
+		ErrorToken:  testInternalErrorToken, // Internal tracking, not on wire per spec
 	}
 
 	data, err := msgpack.Marshal(msg)

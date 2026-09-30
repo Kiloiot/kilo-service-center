@@ -2,17 +2,19 @@ package grpc
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -28,13 +30,17 @@ type fakeEndpointSvc struct{}
 func (f *fakeEndpointSvc) GetByEUI(_ context.Context, _ []byte, _ int64) (*models.EndPoint, error) {
 	return &models.EndPoint{EUI: models.EUIFromString("0102030405060708")}, nil
 }
+
 func (f *fakeEndpointSvc) Create(_ context.Context, _ *models.EndPoint) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *fakeEndpointSvc) Update(_ context.Context, _ *models.EndPoint) (*models.EndPoint, error) {
 	return nil, nil
 }
-func (f *fakeEndpointSvc) Delete(_ context.Context, _ []byte, _ int64) error { return nil }
+func (f *fakeEndpointSvc) Delete(_ context.Context, _ []byte, _ int64) (int64, error) {
+	return 0, nil
+}
 func (f *fakeEndpointSvc) ListByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -42,27 +48,37 @@ func (f *fakeEndpointSvc) ListByModelWithSnapshot(_ context.Context, _ int64, _ 
 func (f *fakeEndpointSvc) List(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *fakeEndpointSvc) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	return ep, nil
 }
+func (f *fakeEndpointSvc) CreateWithStatus(ctx context.Context, ep *models.EndPoint, _ string) (*models.EndPoint, error) {
+	return f.Create(ctx, ep)
+}
+
 func (f *fakeEndpointSvc) CheckEUIGloballyUnique(_ context.Context, _ []byte) error { return nil }
 
 // fakeLegacyStorage is a minimal fake that implements storage.Storage interface
 type fakeLegacyStorage struct{}
 
-func (f *fakeLegacyStorage) EnqueueDownlink(_ context.Context, _ *storage.DownlinkMessage) (*storage.DownlinkMessage, error) {
+func (f *fakeLegacyStorage) EnqueueDownlink(_ context.Context, _ *storage.DownlinkMessage, _ time.Duration) (*storage.DownlinkMessage, error) {
 	return &storage.DownlinkMessage{ID: 1, QueID: 12345}, nil
 }
+
 func (f *fakeLegacyStorage) CreateEndPoint(_ context.Context, _ *models.EndPoint) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) GetEndPoint(_ context.Context, _ []byte, _ int64) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) UpdateEndPoint(_ context.Context, _ *models.EndPoint) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) DeleteEndPoint(_ context.Context, _ []byte, _ int64) error { return nil }
+
 func (f *fakeLegacyStorage) ListEndPointsByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -70,74 +86,89 @@ func (f *fakeLegacyStorage) ListEndPointsByModelWithSnapshot(_ context.Context, 
 func (f *fakeLegacyStorage) ListEndPoints(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) CreateBaseStation(_ context.Context, _ *models.BaseStation) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) GetBaseStation(_ context.Context, _ []byte, _ int64) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) UpdateBaseStation(_ context.Context, _ *models.BaseStation) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) DeleteBaseStation(_ context.Context, _ []byte, _ int64) error { return nil }
+
 func (f *fakeLegacyStorage) ListBaseStations(_ context.Context, _ int64, _, _ int) ([]*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) GetDownlinkQueue(_ context.Context, _, _ string) ([]*storage.DownlinkMessage, error) {
 	return nil, nil
 }
-func (f *fakeLegacyStorage) GetDownlinkResults(_ context.Context, _, _ string, _ *uuid.UUID, _ string, _, _ *time.Time, _, _ int) ([]*storage.DownlinkMessage, int, error) {
+
+func (f *fakeLegacyStorage) GetDownlinkResults(_ context.Context, _ int64, _ *uuid.UUID, _ storage.DownlinkResultFilter, _, _ int) ([]*storage.DownlinkMessage, int, error) {
 	return nil, 0, nil
 }
-func (f *fakeLegacyStorage) UpdateDownlinkStatus(_ context.Context, _, _ string, _ *uuid.UUID) error {
+
+func (f *fakeLegacyStorage) UpdateDownlinkStatus(_ context.Context, _ string, _ mioty.DLQueueStatus, _ *uuid.UUID) error {
 	return nil
 }
-func (f *fakeLegacyStorage) UpdateDownlinkBaseStation(_ context.Context, _ uint64, _ string, _ uint64) error {
-	return nil
-}
+
 func (f *fakeLegacyStorage) GetDownlinkByQueueID(_ context.Context, _ uint64, _ string) (*storage.DownlinkMessage, error) {
 	return nil, nil
 }
-func (f *fakeLegacyStorage) GetDownlinkByPacketCnt(_ context.Context, _, _ string, _ uint32) (*storage.DownlinkMessage, error) {
-	return nil, nil
+
+func (f *fakeLegacyStorage) RevokeDownlink(context.Context, storage.DownlinkRevocation) (bool, error) {
+	return true, nil
 }
-func (f *fakeLegacyStorage) RevokeDownlink(_ context.Context, _ int64, _ string) error { return nil }
+
 func (f *fakeLegacyStorage) UpdateDownlinkResult(_ context.Context, _ int64, _ string, _ *int64, _ *uint32, _, _ []byte, _ string, _ *uuid.UUID) error {
 	return nil
 }
+
 func (f *fakeLegacyStorage) CreateDLRXStatus(_ context.Context, _ *mioty.DLRXStatus) error {
 	return nil
 }
+
 func (f *fakeLegacyStorage) GetDLRXStatusByEndpoint(_ context.Context, _ int64, _ []byte, _, _ int, _, _ *time.Time) ([]*mioty.DLRXStatus, int, error) {
 	return nil, 0, nil
 }
+
 func (f *fakeLegacyStorage) GetAverageDLRXMetrics(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (float64, float64, int, error) {
 	return 0, 0, 0, nil
 }
+
 func (f *fakeLegacyStorage) CreateDLRXStatusQuery(_ context.Context, _ int64, _ *uuid.UUID, _, _ []byte, _ int64) error {
 	return nil
 }
+
 func (f *fakeLegacyStorage) MarkDLRXStatusReceived(_ context.Context, _ int64, _ []byte, _ []byte, _ int64) (bool, error) {
 	return false, nil
 }
+
 func (f *fakeLegacyStorage) ExpireDLRXStatusQuery(_ context.Context, _ time.Time) (int64, error) {
 	return 0, nil
 }
+
 func (f *fakeLegacyStorage) GetDLRXStatusQueryHistory(_ context.Context, _ int64, _ []byte, _, _ int, _, _ *time.Time) ([]*mioty.DLRXStatusQuery, int, error) {
 	return nil, 0, nil
 }
+
 func (f *fakeLegacyStorage) GetDLRXStatusQueryStats(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (int64, int64, int64, error) {
 	return 0, 0, 0, nil
 }
-func (f *fakeLegacyStorage) GetEndpointBaseStation(_ context.Context, _, _ string) (string, error) {
-	return "", nil
-}
+
 func (f *fakeLegacyStorage) GetBaseStationMessageStats(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (*mioty.BaseStationMessageStats, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) GetBaseStationEndpointCounts(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (map[string]int64, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) GetBaseStationLastSeen(_ context.Context, _ int64, _ []byte) (*time.Time, error) {
 	return nil, nil
 }
@@ -148,37 +179,28 @@ func (f *fakeLegacyStorage) Close() error                 { return nil }
 func (f *fakeLegacyStorage) GetEndpointOwner(_ context.Context, _ []byte) (int64, error) {
 	return 0, nil
 }
+
 func (f *fakeLegacyStorage) GetEndpointWithOwnership(_ context.Context, _ []byte, _ int64) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *fakeLegacyStorage) IsRoamingEnabled(_ context.Context, _ int64) (bool, error) {
 	return false, nil
 }
+
 func (f *fakeLegacyStorage) AreTenantsPartners(_ context.Context, _, _ int64) (bool, error) {
 	return false, nil
 }
+
 func (f *fakeLegacyStorage) RecordRoamingEvent(_ context.Context, _ *models.RoamingEvent) error {
 	return nil
 }
-func (f *fakeLegacyStorage) GetRoamingStatistics(_ context.Context, _ int64) (*models.RoamingStatistics, error) {
-	return nil, nil
-}
-func (f *fakeLegacyStorage) UpdateEndpointRoamingStatus(_ context.Context, _ []byte, _ int64) error {
-	return nil
-}
-func (f *fakeLegacyStorage) GetRoamingEndpointsInSession(_ context.Context, _ int64) ([]models.RoamingEndpointInfo, error) {
-	return nil, nil
-}
+
 func (f *fakeLegacyStorage) AddRoamingEndpointToSession(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
+
 func (f *fakeLegacyStorage) RemoveRoamingEndpointFromSession(_ context.Context, _ int64, _ string) error {
-	return nil
-}
-func (f *fakeLegacyStorage) GetTenantRoamingConfig(_ context.Context, _ int64) (*models.TenantRoamingConfig, error) {
-	return nil, nil
-}
-func (f *fakeLegacyStorage) UpdateTenantRoamingConfig(_ context.Context, _ int64, _ *models.TenantRoamingConfig) error {
 	return nil
 }
 
@@ -186,18 +208,34 @@ func (f *fakeLegacyStorage) UpdateTenantRoamingConfig(_ context.Context, _ int64
 // SCACI §3.10: Required for all SendDownlink tests
 type fakeSCACIQueuer struct {
 	lastPacketCnt []uint32           // Captures packet counter values sent to SCACI
-	lastQueId     uint64             // Captures the QueId passed to QueueDownlinkInternal
 	lastDlReq     *mioty.DLDataQueue // Captures the full request for inspection
+	lastOrgID     *uuid.UUID         // Organization the handler queued under
+	calls         int
+	failWith      error // Refusal returned instead of queueing
+	deferred      bool  // No bidirectional base station: the row stays pending
 }
 
-func (f *fakeSCACIQueuer) QueueDownlinkInternal(_ context.Context, _ int64, _ *uuid.UUID, req *mioty.DLDataQueue) (*scaci.DLDataQueueResult, error) {
+// testServiceCenterQueueID is the queue id the fake SCACI core persists every
+// downlink under.
+const testServiceCenterQueueID = uint64(7001)
+
+var downlinkTestOrg = uuid.MustParse("6aa6b3db-ceaa-4a71-8ece-59cc2263f019")
+
+func (f *fakeSCACIQueuer) QueueDownlinkInternal(_ context.Context, _ int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (*scaci.DLDataQueueResult, error) {
+	f.calls++
+	f.lastOrgID = orgID
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
 	if req != nil {
 		f.lastPacketCnt = req.PacketCnt
-		f.lastQueId = req.QueId
 		f.lastDlReq = req
 	}
+	if f.deferred {
+		return &scaci.DLDataQueueResult{QueID: testServiceCenterQueueID, OpID: -12345, Status: bssci.DLQueueStatusPending}, nil
+	}
 	return &scaci.DLDataQueueResult{
-		QueID:  req.QueId,
+		QueID:  testServiceCenterQueueID,
 		BsEui:  0x0102030405060708,
 		OpID:   -12345,
 		Status: grpcerrors.StatusQueued,
@@ -212,6 +250,7 @@ func (f *fakeSessionDirectory) GetSessionByEUI(_ uint64) interface{}           {
 func (f *fakeSessionDirectory) SelectBidirectionalSession(_ int64, _ *uint64) (string, uint64, error) {
 	return "", 0, nil
 }
+
 func (f *fakeSessionDirectory) FindSessionForEndpointAttachment(_ uint64) (string, error) {
 	return "", nil
 }
@@ -222,109 +261,74 @@ type fakeBasestationSvc struct{}
 func (f *fakeBasestationSvc) Create(_ context.Context, _ *models.BaseStation) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (f *fakeBasestationSvc) GetByEUI(_ context.Context, _ []byte, _ int64) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (f *fakeBasestationSvc) Update(_ context.Context, _ *models.BaseStation) (*models.BaseStation, error) {
 	return nil, nil
 }
-func (f *fakeBasestationSvc) Delete(_ context.Context, _ []byte, _ int64) error { return nil }
+func (f *fakeBasestationSvc) Delete(_ context.Context, _ []byte, _ int64) (*models.BaseStation, error) {
+	return &models.BaseStation{}, nil
+}
 func (f *fakeBasestationSvc) List(_ context.Context, _ int64, _, _ int) ([]*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (f *fakeBasestationSvc) UpdateEUI(_ context.Context, _ int64, _, _ []byte) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (f *fakeBasestationSvc) ListAllLocations(_ context.Context) ([]*models.BaseStation, error) {
 	return nil, nil
 }
 
-// fakeMessageSvc implements grpcservices.MessageService
+// fakeMessageSvc is the downlink listing, edit and DL RX status fake that answers nothing.
 type fakeMessageSvc struct{}
 
-func (f *fakeMessageSvc) GetDownlinkByQueueID(_ context.Context, _ uint64, _ string) (*storage.DownlinkMessage, error) {
-	return nil, nil
-}
-func (f *fakeMessageSvc) GetDownlinkQueue(_ context.Context, _, _ string) ([]*storage.DownlinkMessage, error) {
-	return nil, nil
-}
-func (f *fakeMessageSvc) GetDownlinkResults(_ context.Context, _, _ string, _ *uuid.UUID, _ string, _, _ *time.Time, _, _ int) ([]*storage.DownlinkMessage, int, error) {
+func (f *fakeMessageSvc) ListDownlinkQueue(_ context.Context, _ int64, _ storage.DownlinkQueueFilter, _, _ int) ([]*storage.DownlinkMessage, int64, error) {
 	return nil, 0, nil
 }
+
+func (f *fakeMessageSvc) UpdatePendingDownlink(_ context.Context, _ int64, _ *uuid.UUID, _ []byte, _ int64, _ storage.DownlinkPatch) (*storage.DownlinkMessage, error) {
+	return nil, nil
+}
+
+func (f *fakeMessageSvc) GetDownlinkResults(_ context.Context, _ int64, _ *uuid.UUID, _ storage.DownlinkResultFilter, _, _ int) ([]*storage.DownlinkMessage, int, error) {
+	return nil, 0, nil
+}
+
 func (f *fakeMessageSvc) GetDLRXStatusByEndpoint(_ context.Context, _ int64, _ []byte, _, _ int, _, _ *time.Time) ([]*mioty.DLRXStatus, int, error) {
 	return nil, 0, nil
 }
+
 func (f *fakeMessageSvc) GetAverageDLRXMetrics(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (float64, float64, int, error) {
 	return 0, 0, 0, nil
 }
-func (f *fakeMessageSvc) GetEndpointBaseStation(_ context.Context, _, _ string) (string, error) {
-	return "", nil
+
+func (f *fakeMessageSvc) ServingStation(_ context.Context, _ int64, _ uint64) (uint64, bool, error) {
+	return 0, false, nil
 }
 
-// fakeDownlinkSvc implements bssci.DownlinkService (minimal for SendDownlink tests)
-type fakeDownlinkSvc struct{}
+// fakeDownlinkCmd implements bssci.DownlinkCommander
+type fakeDownlinkCmd struct{}
 
-func (f *fakeDownlinkSvc) EnqueueDownlink(_ context.Context, _ uint64, _ []byte, _ float32, _ int64) (int64, error) {
-	return 0, nil
-}
-func (f *fakeDownlinkSvc) ProcessDLDataResult(_ context.Context, _ *bssci.Session, _ *mioty.DLDataResult) (map[string]interface{}, error) {
-	return nil, nil
-}
-func (f *fakeDownlinkSvc) UpdateDownlinkStatus(_ context.Context, _ uint64, _ string, _ string) error {
-	return nil
-}
-func (f *fakeDownlinkSvc) ProcessRevokeResponse(_ context.Context, _ *bssci.Session, _ int64, _ int64, _ uint64) (map[string]interface{}, error) {
-	return nil, nil
+func (f *fakeDownlinkCmd) SendDLRXStatusQuery(_ string, _ uint64) error { return nil }
+
+// fakeDownlinkRevoker implements downlinks.Revoker and records what it revoked.
+type fakeDownlinkRevoker struct {
+	bsEui   uint64
+	err     error
+	revoked []uint64
+	refs    []scheduler.DownlinkRef
 }
 
-// fakeStatusSvc implements bssci.StatusService (minimal for SendDownlink tests)
-type fakeStatusSvc struct{}
-
-func (f *fakeStatusSvc) RecordPendingOperation(_ context.Context, _ *bssci.Session, _ int64, _ *bssci.PendingOperation, _ int64) error {
-	return nil
+func (f *fakeDownlinkRevoker) RevokeDownlink(_ context.Context, ref scheduler.DownlinkRef) (uint64, error) {
+	f.revoked = append(f.revoked, ref.QueID)
+	f.refs = append(f.refs, ref)
+	return f.bsEui, f.err
 }
-
-func (f *fakeStatusSvc) RecordPendingOperations(_ context.Context, _ *bssci.Session, _ []*bssci.PendingOperation, _ int64) error {
-	return nil
-}
-
-func (f *fakeStatusSvc) RestorePendingOperation(_ *bssci.Session, _ int64, _ *bssci.PendingOperation) {
-}
-func (f *fakeStatusSvc) GetPendingOperation(_ *bssci.Session, _ int64) (*bssci.PendingOperation, error) {
-	return nil, nil
-}
-func (f *fakeStatusSvc) RemovePendingOperation(_ context.Context, _ *bssci.Session, _ int64) error {
-	return nil
-}
-func (f *fakeStatusSvc) ExtractQueueMetadata(_ *bssci.Session, _ int64) (uint64, int64, string) {
-	return 0, 0, ""
-}
-
-func (f *fakeStatusSvc) UpdatePendingOperationMetadata(_ context.Context, _ *bssci.Session, _ int64, _ map[string]interface{}, _ json.RawMessage) error {
-	return nil
-}
-
-func (f *fakeStatusSvc) PersistedOperations(_ context.Context, _ int64) ([]bssci.PersistedOperation, error) {
-	return nil, nil
-}
-
-func (f *fakeStatusSvc) DeletePendingOperations(_ context.Context, _ *bssci.Session) (int64, error) {
-	return 0, nil
-}
-
-func (f *fakeStatusSvc) EvictCachedOperations(_ *bssci.Session) {}
-
-// fakeDownlinkCmd implements bssci.DownlinkCommander (minimal for SendDownlink tests)
-type fakeDownlinkCmd struct {
-	lastPacketCnt []int64 // Captures packet counter values sent to base station
-}
-
-func (f *fakeDownlinkCmd) SendDLDataQueue(_ string, _ uint64, _ [][]byte, _ int64, _ float32, _ bool, packetCnt []int64, _ uint8, _ bool, _ bool, _ bool, _ bool, _ int64, _ bool) error {
-	f.lastPacketCnt = packetCnt
-	return nil
-}
-func (f *fakeDownlinkCmd) SendDLDataRevoke(_ string, _ uint64, _ uint64) error { return nil }
-func (f *fakeDownlinkCmd) SendDLRXStatusQuery(_ string, _ uint64) error        { return nil }
 
 // fakeULTransmit implements bssci.ULTransmitter (minimal for SendDownlink tests)
 type fakeULTransmit struct{}
@@ -345,29 +349,16 @@ func (f *fakePingCmd) InitiatePing(_ context.Context, _ uint64, _ int64) (int64,
 	return 0, nil
 }
 
-// fakeDownlinkScheduler implements scheduler.DownlinkScheduler (minimal for SendDownlink tests)
-type fakeDownlinkScheduler struct{}
-
-func (f *fakeDownlinkScheduler) QueueDownlink(_ context.Context, _ *mioty.DLDataQueue, _ int64) (uint64, uint64, error) {
-	return 12345, 0x0102030405060708, nil
-}
-
-func (f *fakeDownlinkScheduler) RevokeDownlink(_ int64, _ uint64) (uint64, error) {
-	return 0x0102030405060708, nil
-}
-
 // Compile-time interface assertions prevent future regressions when interfaces evolve
-var _ grpcservices.EndpointService = (*fakeEndpointSvc)(nil)
-var _ grpcservices.BaseStationService = (*fakeBasestationSvc)(nil)
-var _ grpcservices.MessageService = (*fakeMessageSvc)(nil)
-var _ bssci.DownlinkService = (*fakeDownlinkSvc)(nil)
-var _ bssci.StatusService = (*fakeStatusSvc)(nil)
-var _ bssci.DownlinkCommander = (*fakeDownlinkCmd)(nil)
-var _ bssci.ULTransmitter = (*fakeULTransmit)(nil)
-var _ bssci.StatusRequester = (*fakeStatusReq)(nil)
-var _ bssci.PingCommander = (*fakePingCmd)(nil)
-var _ scheduler.DownlinkScheduler = (*fakeDownlinkScheduler)(nil)
-var _ DownlinkStore = (*fakeLegacyStorage)(nil)
+var (
+	_ grpcservices.EndpointService    = (*fakeEndpointSvc)(nil)
+	_ grpcservices.BaseStationService = (*fakeBasestationSvc)(nil)
+	_ messageSvcFake                  = (*fakeMessageSvc)(nil)
+	_ bssci.DownlinkCommander         = (*fakeDownlinkCmd)(nil)
+	_ bssci.ULTransmitter             = (*fakeULTransmit)(nil)
+	_ bssci.StatusRequester           = (*fakeStatusReq)(nil)
+	_ bssci.PingCommander             = (*fakePingCmd)(nil)
+)
 
 // BSSCI §§5.11-5.12.3 packet counter validation (kilocenter_service.go:626-629):
 // - Accepts values in uint32 range [0, 4294967295] (see TestSendDownlink_ValidPacketCounters)
@@ -399,33 +390,22 @@ func TestSendDownlink_ValidPacketCounters(t *testing.T) {
 			storage := &fakeLegacyStorage{}
 
 			svc, err := NewCoreService(CoreServiceDeps{
-				EndpointSvc:       &fakeEndpointSvc{},
-				BasestationSvc:    &fakeBasestationSvc{},
-				MessageSvc:        &fakeMessageSvc{},
-				DownlinkSvc:       &fakeDownlinkSvc{},
-				StatusSvc:         &fakeStatusSvc{},
-				DownlinkCmd:       &fakeDownlinkCmd{},
-				DownlinkScheduler: &fakeDownlinkScheduler{},
-				SessionDir:        &fakeSessionDirectory{},
-				ULTransmit:        &fakeULTransmit{},
-				StatusReq:         &fakeStatusReq{},
-				PingCmd:           &fakePingCmd{},
-				StatsStore:        storage,
-				DownlinkStore:     storage,
-				DLRXStorage:       storage,
-				SCEui:             0x0000000000000001,
-				SCVendor:          "Test",
-				SCModel:           "TestCenter",
-				SCName:            "test-instance",
-				SCSwVersion:       "test-1.0",
+				Log:          logger.NewNop(),
+				Audit:        &captureAuditRecorder{},
+				Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
+				BaseStations: BaseStationHandlerDeps{BaseStations: &fakeBasestationSvc{}, Stats: storage, StatusReq: &fakeStatusReq{}, Ping: &fakePingCmd{}, Sessions: &fakeSessionDirectory{}},
+				Downlinks:    downlinkHandlerDeps(t, downlinkFakes{endpoints: &fakeEndpointSvc{}, messages: &fakeMessageSvc{}}),
+				ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
+				DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
+				System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
 			})
 			if err != nil {
 				t.Fatalf("NewCoreService() error = %v", err)
 			}
 			// SCACI §3.10: Wire SCACI queuer (required for SendDownlink)
-			svc = svc.WithSCACIQueuer(scaciQueuer)
+			svc.useDownlinks(downlinkFakes{queuer: scaciQueuer})
 
-			ctx := testutil.TestContextWithTenant(1)
+			ctx := testutil.TestContextWithTenantAndOrg(1, downlinkTestOrg)
 			payloads := make([][]byte, len(tt.packetCnt))
 			for i := range payloads {
 				payloads[i] = []byte("test")
@@ -503,32 +483,21 @@ func TestSendDownlink_NegativePacketCounter(t *testing.T) {
 			storage := &fakeLegacyStorage{}
 
 			svc, err := NewCoreService(CoreServiceDeps{
-				EndpointSvc:       &fakeEndpointSvc{},
-				BasestationSvc:    &fakeBasestationSvc{},
-				MessageSvc:        &fakeMessageSvc{},
-				DownlinkSvc:       &fakeDownlinkSvc{},
-				StatusSvc:         &fakeStatusSvc{},
-				DownlinkCmd:       &fakeDownlinkCmd{},
-				DownlinkScheduler: &fakeDownlinkScheduler{},
-				SessionDir:        &fakeSessionDirectory{},
-				ULTransmit:        &fakeULTransmit{},
-				StatusReq:         &fakeStatusReq{},
-				PingCmd:           &fakePingCmd{},
-				StatsStore:        storage,
-				DownlinkStore:     storage,
-				DLRXStorage:       storage,
-				SCEui:             0x0000000000000001,
-				SCVendor:          "Test",
-				SCModel:           "TestCenter",
-				SCName:            "test-instance",
-				SCSwVersion:       "test-1.0",
+				Log:          logger.NewNop(),
+				Audit:        &captureAuditRecorder{},
+				Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
+				BaseStations: BaseStationHandlerDeps{BaseStations: &fakeBasestationSvc{}, Stats: storage, StatusReq: &fakeStatusReq{}, Ping: &fakePingCmd{}, Sessions: &fakeSessionDirectory{}},
+				Downlinks:    downlinkHandlerDeps(t, downlinkFakes{endpoints: &fakeEndpointSvc{}, messages: &fakeMessageSvc{}}),
+				ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
+				DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
+				System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
 			})
 			if err != nil {
 				t.Fatalf("NewCoreService() error = %v", err)
 			}
-			svc = svc.WithSCACIQueuer(scaciQueuer)
+			svc.useDownlinks(downlinkFakes{queuer: scaciQueuer})
 
-			ctx := testutil.TestContextWithTenant(1)
+			ctx := testutil.TestContextWithTenantAndOrg(1, downlinkTestOrg)
 			req := &pb.SendDownlinkRequest{
 				EpEui:        "0102030405060708",
 				Payloads:     [][]byte{[]byte("test")},
@@ -596,32 +565,21 @@ func TestSendDownlink_OverflowPacketCounter(t *testing.T) {
 			storage := &fakeLegacyStorage{}
 
 			svc, err := NewCoreService(CoreServiceDeps{
-				EndpointSvc:       &fakeEndpointSvc{},
-				BasestationSvc:    &fakeBasestationSvc{},
-				MessageSvc:        &fakeMessageSvc{},
-				DownlinkSvc:       &fakeDownlinkSvc{},
-				StatusSvc:         &fakeStatusSvc{},
-				DownlinkCmd:       &fakeDownlinkCmd{},
-				DownlinkScheduler: &fakeDownlinkScheduler{},
-				SessionDir:        &fakeSessionDirectory{},
-				ULTransmit:        &fakeULTransmit{},
-				StatusReq:         &fakeStatusReq{},
-				PingCmd:           &fakePingCmd{},
-				StatsStore:        storage,
-				DownlinkStore:     storage,
-				DLRXStorage:       storage,
-				SCEui:             0x0000000000000001,
-				SCVendor:          "Test",
-				SCModel:           "TestCenter",
-				SCName:            "test-instance",
-				SCSwVersion:       "test-1.0",
+				Log:          logger.NewNop(),
+				Audit:        &captureAuditRecorder{},
+				Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
+				BaseStations: BaseStationHandlerDeps{BaseStations: &fakeBasestationSvc{}, Stats: storage, StatusReq: &fakeStatusReq{}, Ping: &fakePingCmd{}, Sessions: &fakeSessionDirectory{}},
+				Downlinks:    downlinkHandlerDeps(t, downlinkFakes{endpoints: &fakeEndpointSvc{}, messages: &fakeMessageSvc{}}),
+				ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
+				DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
+				System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
 			})
 			if err != nil {
 				t.Fatalf("NewCoreService() error = %v", err)
 			}
-			svc = svc.WithSCACIQueuer(scaciQueuer)
+			svc.useDownlinks(downlinkFakes{queuer: scaciQueuer})
 
-			ctx := testutil.TestContextWithTenant(1)
+			ctx := testutil.TestContextWithTenantAndOrg(1, downlinkTestOrg)
 			req := &pb.SendDownlinkRequest{
 				EpEui:        "0102030405060708",
 				Payloads:     [][]byte{[]byte("test")},
@@ -694,32 +652,21 @@ func TestSendDownlink_MixedValidInvalid(t *testing.T) {
 			storage := &fakeLegacyStorage{}
 
 			svc, err := NewCoreService(CoreServiceDeps{
-				EndpointSvc:       &fakeEndpointSvc{},
-				BasestationSvc:    &fakeBasestationSvc{},
-				MessageSvc:        &fakeMessageSvc{},
-				DownlinkSvc:       &fakeDownlinkSvc{},
-				StatusSvc:         &fakeStatusSvc{},
-				DownlinkCmd:       &fakeDownlinkCmd{},
-				DownlinkScheduler: &fakeDownlinkScheduler{},
-				SessionDir:        &fakeSessionDirectory{},
-				ULTransmit:        &fakeULTransmit{},
-				StatusReq:         &fakeStatusReq{},
-				PingCmd:           &fakePingCmd{},
-				StatsStore:        storage,
-				DownlinkStore:     storage,
-				DLRXStorage:       storage,
-				SCEui:             0x0000000000000001,
-				SCVendor:          "Test",
-				SCModel:           "TestCenter",
-				SCName:            "test-instance",
-				SCSwVersion:       "test-1.0",
+				Log:          logger.NewNop(),
+				Audit:        &captureAuditRecorder{},
+				Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
+				BaseStations: BaseStationHandlerDeps{BaseStations: &fakeBasestationSvc{}, Stats: storage, StatusReq: &fakeStatusReq{}, Ping: &fakePingCmd{}, Sessions: &fakeSessionDirectory{}},
+				Downlinks:    downlinkHandlerDeps(t, downlinkFakes{endpoints: &fakeEndpointSvc{}, messages: &fakeMessageSvc{}}),
+				ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
+				DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
+				System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
 			})
 			if err != nil {
 				t.Fatalf("NewCoreService() error = %v", err)
 			}
-			svc = svc.WithSCACIQueuer(scaciQueuer)
+			svc.useDownlinks(downlinkFakes{queuer: scaciQueuer})
 
-			ctx := testutil.TestContextWithTenant(1)
+			ctx := testutil.TestContextWithTenantAndOrg(1, downlinkTestOrg)
 			payloads := make([][]byte, len(tt.packetCnt))
 			for i := range payloads {
 				payloads[i] = []byte("test")
@@ -754,5 +701,42 @@ func TestSendDownlink_MixedValidInvalid(t *testing.T) {
 				t.Errorf("SendDownlink() message = %q, want %q", st.Message(), expectedMessage)
 			}
 		})
+	}
+}
+
+// TestSendDownlink_DeferredReportsPending pins the operator-facing contract
+// when no bidirectional base station is connected: the downlink is accepted,
+// the response carries the pending status, and the audit event names no
+// base station because none holds the downlink yet.
+func TestSendDownlink_DeferredReportsPending(t *testing.T) {
+	auditCapture := &captureAuditRecorder{}
+	svc := testCoreService(coreFields{
+		scaciQueuer: &fakeSCACIQueuer{deferred: true},
+		audit:       auditCapture,
+		log:         logger.NewNop(),
+	})
+
+	resp, err := svc.SendDownlink(testutil.TestContextWithTenantAndOrg(1, downlinkTestOrg), &pb.SendDownlinkRequest{
+		EpEui:    "0102030405060708",
+		Payloads: [][]byte{{0x01}},
+	})
+	if err != nil {
+		t.Fatalf("SendDownlink() deferred delivery must not fail: %v", err)
+	}
+	if resp.Status != string(bssci.DLQueueStatusPending) {
+		t.Fatalf("SendDownlink() status = %q, want %q", resp.Status, bssci.DLQueueStatusPending)
+	}
+	if resp.Id == "" {
+		t.Fatal("SendDownlink() response missing Id")
+	}
+	if len(auditCapture.events) != 1 {
+		t.Fatalf("audit events = %d, want 1", len(auditCapture.events))
+	}
+	details := auditCapture.events[0].Details
+	if _, named := details[bssci.EventKeyBsEui]; named {
+		t.Fatalf("audit event names a base station for a deferred downlink: %v", details)
+	}
+	if details["status"] != string(bssci.DLQueueStatusPending) {
+		t.Fatalf("audit status = %v, want %q", details["status"], bssci.DLQueueStatusPending)
 	}
 }

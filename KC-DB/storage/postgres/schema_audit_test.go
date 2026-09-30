@@ -12,6 +12,14 @@ import (
 )
 
 // TestSchemaBaseline captures the current database schema after all migrations
+// Model file locations used by the schema audit.
+const (
+	modelFileBasestation = "storage/models/basestation.go"
+	modelFileEndpoint    = "storage/models/endpoint.go"
+	modelFileMessage     = "storage/mioty/types.go"
+	modelFileDownlink    = "storage/storage.go"
+)
+
 func TestSchemaBaseline(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping schema baseline in short mode")
@@ -21,12 +29,13 @@ func TestSchemaBaseline(t *testing.T) {
 	defer cleanup()
 
 	timestamp := time.Now().Format("20060102-150405")
-	// Evidence is written outside the public module tree (repo hygiene:
-	// kilocenter-modules must not carry internal compliance artefacts);
-	// override with SCHEMA_AUDIT_EVIDENCE_DIR when the internal layout differs
+	// The audit document is kept only when SCHEMA_AUDIT_EVIDENCE_DIR names a
+	// real evidence directory (see the schema-audit-evidence Make target);
+	// ordinary test runs write into the test's temporary directory so they
+	// leave no artefacts behind
 	evidenceDir := os.Getenv("SCHEMA_AUDIT_EVIDENCE_DIR")
 	if evidenceDir == "" {
-		evidenceDir = "../../../../compliance/evidence/automation"
+		evidenceDir = t.TempDir()
 	}
 	outputFile := fmt.Sprintf("%s/schema-audit-%s.md", evidenceDir, timestamp)
 
@@ -171,7 +180,7 @@ func TestSchemaBaseline(t *testing.T) {
 
 	// Write to file (the evidence directory is not tracked in every checkout)
 	require.NoError(t, os.MkdirAll(filepath.Dir(outputFile), 0o755))
-	err = os.WriteFile(outputFile, []byte(output.String()), 0644)
+	err = os.WriteFile(outputFile, []byte(output.String()), 0o644)
 	require.NoError(t, err)
 
 	t.Logf("Schema audit written to: %s", outputFile)
@@ -196,12 +205,12 @@ func TestStructTagConsistency(t *testing.T) {
 	}
 
 	checks := []TableCheck{
-		{Table: "basestations", ModelFile: "storage/models/basestation.go", KeyColumns: []string{"id", "tenant_id", "bs_eui", "name"}},
-		{Table: "endpoints", ModelFile: "storage/models/endpoint.go", KeyColumns: []string{"id", "tenant_id", "ep_eui", "name"}},
-		{Table: "endpoint_sessions", ModelFile: "storage/models/endpoint.go", KeyColumns: []string{"id", "endpoint_id", "tenant_id", "last_packet_cnt"}},
-		{Table: "basestation_sessions", ModelFile: "storage/models/basestation.go", KeyColumns: []string{"id", "basestation_id", "tenant_id", "sn_bs_uuid", "sn_sc_uuid"}},
-		{Table: "messages", ModelFile: "storage/models/message.go", KeyColumns: []string{"id", "tenant_id", "ep_eui", "bs_eui"}},
-		{Table: "downlink_queue", ModelFile: "storage/models/downlink.go", KeyColumns: []string{"id", "tenant_id", "ep_eui", "que_id"}},
+		{Table: "basestations", ModelFile: modelFileBasestation, KeyColumns: []string{"id", "tenant_id", "bs_eui", "name"}},
+		{Table: "endpoints", ModelFile: modelFileEndpoint, KeyColumns: []string{"id", "tenant_id", "ep_eui", "name"}},
+		{Table: "endpoint_sessions", ModelFile: modelFileEndpoint, KeyColumns: []string{"id", "endpoint_id", "tenant_id", "last_packet_cnt"}},
+		{Table: "basestation_sessions", ModelFile: modelFileBasestation, KeyColumns: []string{"id", "basestation_id", "tenant_id", "sn_bs_uuid", "sn_sc_uuid"}},
+		{Table: "messages", ModelFile: modelFileMessage, KeyColumns: []string{"id", "tenant_id", "ep_eui", "bs_eui"}},
+		{Table: "downlink_queue", ModelFile: modelFileDownlink, KeyColumns: []string{"id", "tenant_id", "ep_eui", "que_id"}},
 	}
 
 	var mismatches []string

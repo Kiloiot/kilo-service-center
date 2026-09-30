@@ -20,22 +20,9 @@ type DLRXStatusRepository interface {
 	GetDLRXStatusByEndpoint(ctx context.Context, tenantID int64, epEui []byte,
 		limit, offset int, startTime, endTime *time.Time) ([]*mioty.DLRXStatus, int, error)
 
-	// GetLatestDLRXStatus retrieves the most recent DL RX status for an endpoint
-	GetLatestDLRXStatus(ctx context.Context, tenantID int64, epEui []byte) (*mioty.DLRXStatus, error)
-
-	// GetLatestDLRXStatusPerEndpoint retrieves the latest status for all endpoints (aggregate)
-	GetLatestDLRXStatusPerEndpoint(ctx context.Context, tenantID int64) ([]*mioty.DLRXStatus, error)
-
-	// GetDLRXStatusByTimeRange retrieves DL RX status records within a time window
-	GetDLRXStatusByTimeRange(ctx context.Context, tenantID int64,
-		startTime, endTime time.Time) ([]*mioty.DLRXStatus, error)
-
 	// GetAverageDLRXMetrics calculates average SNR and RSSI for an endpoint over a time period
 	GetAverageDLRXMetrics(ctx context.Context, tenantID int64, epEui []byte,
 		startTime, endTime *time.Time) (avgSnr, avgRssi float64, count int, err error)
-
-	// DeleteOldDLRXStatus removes DL RX status records older than the retention period
-	DeleteOldDLRXStatus(ctx context.Context, tenantID int64, retentionDays int) (int64, error)
 
 	// CreateDLRXStatusQuery tracks a dlRxStatQry request for correlation (BSSCI §5.15 audit trail)
 	// orgUUID is nullable for backward compatibility (nil if not available from context)
@@ -60,9 +47,7 @@ type DLRXStatusRepository interface {
 	GetDLRXStatusQueryStats(ctx context.Context, tenantID int64, epEui []byte,
 		startTime, endTime *time.Time) (pending, received, timeout int64, err error)
 
-	// GetLatestDLRXStatusByBaseStations returns latest DL RX status for each bs_eui in a single query (SCACI §3.8.1)
-	// Used for batch hydration of dlRxSnr/dlRxRssi in multi-BS UL data without N+1 queries
-	// Uses DISTINCT ON (Postgres-specific) to get one row per base station
-	// Signature uses []byte for consistency with other DL RX methods (caller does uint64→bytes conversion)
-	GetLatestDLRXStatusByBaseStations(ctx context.Context, tenantID int64, epEui []byte, bsEuis [][]byte) ([]*mioty.DLRXStatus, error)
+	// GetDLRXStatusSinceLastHeard returns, per base station, the latest DL RX status reported
+	// after the endpoint was last heard: the dlRxSnr/dlRxRssi of its next uplink (SCACI §3.8.1)
+	GetDLRXStatusSinceLastHeard(ctx context.Context, tenantID int64, epEui []byte, bsEuis [][]byte) ([]*mioty.DLRXStatus, error)
 }

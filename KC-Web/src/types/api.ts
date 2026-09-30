@@ -8,6 +8,22 @@
  * UI types provide frontend-friendly formats for components.
  */
 
+import type {
+  BaseStationStatus,
+  BsConnectionType,
+  BsConnectionTypeLabel,
+  EndpointActivity,
+  EndpointAttachStatus,
+  ErrorBucket,
+  EventOperation,
+  EventOutcome,
+  LocationSource,
+  TimeRange,
+} from "@constants/app";
+import { HTTP_STATUS } from "@constants/app";
+
+import type { Tagged } from "./tagged";
+
 // ============================================================================
 // API Response Types (Backend format - matches gRPC proto messages)
 // ============================================================================
@@ -37,24 +53,14 @@ export interface ApiKeyCreateResponse {
   rawKey: string;
 }
 
-export interface CreateApiKeyRequest {
-  name: string;
-  keyType: string;
-  expiresAt?: string;
-}
-
 // Base Station API Types
 export interface BaseStationAPI {
   eui?: string; // Present in detail responses
   bsEui?: string; // Present in list responses (snake_case from backend)
   name: string;
   isOnline: boolean;
-  messageCount: number;
   lastSeen: string;
   firstSeen: string;
-  uniqueEndpoints: number;
-  avgRssi: number;
-  avgSnr: number;
   // Detail fields (present on detail API responses)
   connectionType?: string;
   serviceCenterUrl?: string;
@@ -72,19 +78,34 @@ export interface BaseStationAPI {
   altitude?: number;
   locationSource?: string;
   locationUpdatedAt?: string;
+  certificateExpiresAt?: string;
+  tlsCertFingerprint?: string;
+  // Last completed BSSCI connect handshake
+  sessionStartedAt?: string;
 }
 
-export interface BaseStationResponse {
-  baseStations: BaseStationAPI[];
-  page: number;
-  pageSize: number;
-  totalCount: number;
-  totalPages: number;
+/** Outcome of an on-demand status request (RequestBaseStationStatus). */
+export interface BaseStationStatusRequestResult {
+  success: boolean;
+  message: string;
+  opId?: string;
+}
+
+/** A base station with coordinates, as ListAllBaseStationLocations reports it. */
+export interface BaseStationLocationDTO {
+  bsEui: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  altitude?: number;
+  locationSource: string;
+  isOnline: boolean;
+  orgId: string;
 }
 
 export interface BaseStationDetailAPI extends BaseStationAPI {
   description?: string;
-  connectionType: "bssci" | "mqtt";
+  connectionType: BsConnectionType;
   serviceCenterUrl?: string;
   version?: string;
   latitude?: number;
@@ -93,10 +114,6 @@ export interface BaseStationDetailAPI extends BaseStationAPI {
   locationSource?: string;
   locationUpdatedAt?: string;
   sessionUuid?: string;
-  sessionStartedAt?: string;
-  statusCode: number;
-  statusMessage?: string;
-  tlsCertExpiresAt?: string;
   createdAt: string;
   updatedAt: string;
   // MIOTY status metrics per BSSCI v1.0.0 §3.5.2
@@ -113,7 +130,7 @@ export interface BaseStationDetailAPI extends BaseStationAPI {
 // Base Station Reception info per SCACI §3.8.1
 export interface BaseStationReceptionAPI {
   bsEui: string;
-  rxTime: number;
+  rxTime: string; // Unix nanoseconds, carried as a string (int64 exceeds Number.MAX_SAFE_INTEGER)
   snr: number;
   rssi: number;
   eqSnr?: number;
@@ -130,39 +147,6 @@ export interface BaseStationReceptionAPI {
   };
 }
 
-// Base Station Messages API Types
-export interface BaseStationMessageAPI {
-  id: string;
-  receivedAt: string;
-  messageType: string; // "ulData", "attach", "detach", etc.
-  direction: "uplink" | "downlink";
-  epEui: string;
-  bsEui: string;
-  packetCnt: number;
-  snr: number;
-  rssi: number;
-  userData?: string; // Base64 encoded
-  dlOpen?: boolean;
-  responseExp?: boolean;
-  // Radio metrics
-  eqSnr?: number;
-  rxDuration?: number;
-  frequency?: number;
-  // Multi-BS support per SCACI §3.8.1
-  baseStations?: BaseStationReceptionAPI[];
-  duplicate?: boolean;
-  // Endpoint info
-  endpointName?: string;
-  /** Set when the uplink was received by a base station belonging to a foreign tenant. */
-  ownerTenantId?: number;
-  /** True when the endpoint is currently served by a non-home tenant's infrastructure. */
-  isRoaming?: boolean;
-  // Blueprint decode results
-  decodedPayload?: Record<string, unknown>;
-  decodeStatus?: string;
-  decodeErrorCode?: string;
-}
-
 export interface BaseStationMessagesFilter {
   startTime?: string;
   endTime?: string;
@@ -175,68 +159,29 @@ export interface BaseStationMessagesFilter {
   maxSnr?: number;
 }
 
-export interface BaseStationMessagesPage {
-  messages: BaseStationMessageAPI[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
-
-export interface BaseStationMessagesStats {
-  totalMessages: number;
-  uplinkMessages: number;
-  downlinkMessages: number;
-  uniqueEndpoints: number;
-  averageRssi: number;
-  averageSnr: number;
-  messagesLastHour: number;
-  messagesToday: number;
-  messagesThisWeek: number;
-  messagesThisMonth: number;
-  messagesByType: Record<string, number>;
-  topEndpoints: Array<{
-    epEui: string;
-    endpointName?: string;
-    messageCount: number;
-    lastSeen: string;
-    averageRssi: number;
-    averageSnr: number;
-  }>;
-}
-
-// Unified Activity Feed Types
-export interface ActivityEventItem {
-  id: string;
-  eventType: string;
-  category: string;
-  severity: string;
-  title: string;
-  description: string;
-  timestamp: Date;
-  sourceName?: string;
-}
-
-export interface ActivityItem {
-  type: "event" | "message";
-  occurredAt: Date;
-  event?: ActivityEventItem;
-  message?: BaseStationMessageAPI;
-}
-
-export interface BaseStationActivityFilter {
+/** A date range narrowing a base station's or an endpoint's activity feed. */
+export interface ActivityFilter {
   startTime?: string;
   endTime?: string;
 }
 
-export interface BaseStationActivityPage {
-  items: ActivityItem[];
-  nextPageToken?: string;
-  totalCount: number;
+/** The payload of each kind of Activity row (ACTIVITY_KIND). */
+export interface ActivityRowPayload {
+  event: { entry: EventLogEntryUI };
+  uplink: { uplink: UplinkUI };
 }
 
-export interface EndpointActivityPage {
-  items: ActivityItem[];
+export type ActivityKind = keyof ActivityRowPayload;
+
+/** One row of a device's Activity table: a system event or a stored uplink. */
+export type ActivityRow<K extends ActivityKind = ActivityKind> = Tagged<
+  ActivityRowPayload,
+  K
+>;
+
+/** One page of a device's activity feed and the cursor of the next page. */
+export interface ActivityPage {
+  items: ActivityRow[];
   nextPageToken?: string;
   totalCount: number;
 }
@@ -248,15 +193,17 @@ export interface EndpointAPI {
   name?: string;
   lastSeen?: string;
   createdAt: string;
-  status: "active" | "inactive";
+  status: EndpointActivity;
   batteryLevel?: number;
   shAddr?: number;
   bidi?: boolean; // Derived from ep_class: 'A' = true, 'Z' = false
   // MIOTY configuration fields per BSSCI v1.0.0 §3.8.1
   preAttach?: boolean;
   carrierOffset?: number;
-  nwkSnKey?: string;
-  appKey?: string;
+  /** A network session key is stored; reads never carry the key. */
+  nwkSnKeySet?: boolean;
+  /** An application key is stored; reads never carry the key. */
+  appKeySet?: boolean;
   dualChan?: boolean;
   repetition?: boolean;
   wideCarrOff?: boolean;
@@ -265,25 +212,18 @@ export interface EndpointAPI {
   attachCnt?: number; // Attachment counter
   lastPacketCnt?: number; // Packet counter (last received)
   // Attach status from ep_status column (replaces propagated/propagatedAt/propagationCount)
-  attachStatus?: "attached" | "detached" | "attaching" | "pending" | "unknown";
+  attachStatus?: EndpointAttachStatus;
+  // Base stations hold an earlier attach propagate profile (BSSCI §3.8.1)
+  reattachPending?: boolean;
   // Type EUI (8-byte device type identifier)
   typeEui?: string;
   // Blueprint device model association
   deviceModelId?: string;
-}
-
-// Endpoint V2 API Types (includes roaming support)
-export interface EndpointAPIV2 extends EndpointAPI {
-  ownerTenantId?: number;
-  isRoaming: boolean;
-}
-
-export interface EndpointsResponse {
-  endpoints: EndpointAPI[];
-  page: number;
-  pageSize: number;
-  totalCount: number;
-  totalPages: number;
+  // Latest reception and the station serving the endpoint (detail read only)
+  lastRssi?: number;
+  lastSnr?: number;
+  lastEqSnr?: number;
+  servingBsEui?: string;
 }
 
 // CreateEndpointRequest - all MIOTY protocol fields required per BSSCI §3.8.1, SCACI §3.6.1
@@ -316,7 +256,7 @@ export interface UpdateEndpointRequest {
   name?: string;
   shAddr?: number; // Must be nonzero if provided (1-65535)
   nwkSnKey?: string; // 32-char hex, non-zero bytes
-  appKey?: string; // 32-char hex if provided
+  appKey?: string | null; // 32-char hex sets it, null removes the stored key
   bidi?: boolean;
   preAttach?: boolean;
   dualChan?: boolean;
@@ -331,71 +271,28 @@ export interface UpdateEndpointRequest {
   newEpEui?: string; // 16-char hex — triggers EUI cascade if different from current
 }
 
-// Event API Types
-export interface EventAPI {
-  id: string;
-  timestamp: string;
-  createdAt: string;
-  category: string;
-  event_type: string; // Snake case to match backend
-  title: string;
-  message?: string;
-  description?: string;
-  source_name?: string;
-  severity: "success" | "warning" | "error" | "info"; // Backend uses severity, not status
-  metadata?: Record<string, unknown>;
-}
-
-export interface EventsResponse {
-  events: EventAPI[];
-  page?: number;
-  pageSize?: number;
-  totalCount?: number;
-}
-
-// BSSCI Event Types (matches system_events table structure)
-export interface BSSCIEventAPI {
-  id: string;
-  timestamp: string;
-  event_type: string; // Snake case to match backend
-  category: string; // Category like 'bssci', 'system', etc.
-  severity: string; // 'info', 'warning', 'error', 'critical'
-  source_name?: string; // Source identifier
-  title: string; // Event title
-  description?: string; // Event description
-  data?: Record<string, unknown>; // Additional event data
-}
-
-export interface BSSCIEventsResponse {
-  events: BSSCIEventAPI[];
-  page: number;
-  page_size: number;
-  total_count: number;
-  total_pages: number;
-}
-
-// Certificate API Types
-export interface CertificateAPI {
-  type: string;
-  name: string;
-  path: string;
-  expiryDate: string;
-  issuer: string;
-  subject: string;
-  serialNumber: string;
-}
-
-export interface CertificateStatusResponse {
-  certificates: CertificateAPI[];
-  status: "ok" | "warning" | "error";
-  message?: string;
-}
-
 export interface GenerateCertificateRequest {
   bsEui: string;
   validityDays: number;
   organizationName?: string;
   countryCode?: string;
+}
+
+/** One server-side certificate as the Certificates page shows it. */
+export interface CertificateSummary {
+  subject: string;
+  issuer: string;
+  notBefore: Date;
+  notAfter: Date;
+  daysUntilExpiry: number;
+  isValid: boolean;
+}
+
+/** The service center's certificates and the names a renewal issues. */
+export interface ServerCertificateStatus {
+  serverCert?: CertificateSummary;
+  caCert?: CertificateSummary;
+  renewalNames: string[];
 }
 
 export interface GenerateCertificateResponse {
@@ -423,19 +320,6 @@ export interface AnalyticsOverviewAPI {
   }>;
 }
 
-// Alert API Types
-export interface AlertSummaryAPI {
-  critical: number;
-  warning: number;
-  info: number;
-  recent: Array<{
-    id: string;
-    level: "critical" | "warning" | "info";
-    message: string;
-    timestamp: string;
-  }>;
-}
-
 // ============================================================================
 // Frontend UI Types (Consistent format for components)
 // ============================================================================
@@ -444,18 +328,20 @@ export interface BaseStationUI {
   id: string;
   eui: string;
   name?: string;
-  status: "online" | "offline";
-  connectionType: "BSSCI" | "MQTT";
+  status: BaseStationStatus;
+  connectionType: BsConnectionTypeLabel;
   createdAt: string;
   lastSeen: string;
+  lastHandshake?: string;
   serviceCenterUrl: string;
   certificateExpiryDate?: string;
+  certificateFingerprint?: string;
   version?: string;
   // Geolocation
   latitude?: number;
   longitude?: number;
   altitude?: number;
-  locationSource?: "gps" | "manual";
+  locationSource?: LocationSource;
   locationUpdatedAt?: string;
   // MIOTY status metrics (available in detail view) per BSSCI v1.0.0 §3.5.2
   systemTime?: number;
@@ -468,12 +354,21 @@ export interface BaseStationUI {
   lastStatusAt?: string;
 }
 
+/** A base station pin on the dashboard map. */
+export interface BaseStationLocationUI {
+  eui: string;
+  name?: string;
+  latitude: number;
+  longitude: number;
+  status: BaseStationUI["status"];
+}
+
 // Uses epEui as primary identifier per gRPC contract
 export interface EndpointUI {
   id: string; // Backward compat alias for epEui (used as key in lists/grids)
   epEui: string; // Primary identifier (was numeric id)
   name?: string;
-  status: "active" | "inactive";
+  status: EndpointActivity;
   batteryLevel?: number;
   lastSeen?: string;
   createdAt: string; // Required for weekly addition tracking (matches EndpointAPI)
@@ -481,14 +376,17 @@ export interface EndpointUI {
   attachCnt?: number;
   lastPacketCnt?: number;
   // Attach status from ep_status column (replaces propagated/propagatedAt/propagationCount)
-  attachStatus: "attached" | "detached" | "attaching" | "pending" | "unknown";
+  attachStatus: EndpointAttachStatus;
+  reattachPending?: boolean;
   // MIOTY configuration fields per BSSCI v1.0.0 §3.8.1
   shAddr?: number;
   bidi?: boolean; // Derived from ep_class: 'A' = true, 'Z' = false
   preAttach?: boolean;
   carrierOffset?: number;
-  nwkSnKey?: string;
-  appKey?: string;
+  /** A network session key is stored; reads never carry the key. */
+  nwkSnKeySet?: boolean;
+  /** An application key is stored; reads never carry the key. */
+  appKeySet?: boolean;
   dualChan?: boolean;
   repetition?: boolean;
   wideCarrOff?: boolean;
@@ -501,76 +399,16 @@ export interface EndpointUI {
   typeEui?: string;
   // Blueprint device model association
   deviceModelId?: string;
-}
-
-export interface EventUI {
-  id: string;
-  type: "success" | "warning" | "error" | "info";
-  severity: "success" | "warning" | "error" | "info";
-  message: string;
-  time: string; // Relative time like "2 hours ago"
-  timestamp: string; // ISO timestamp for date grouping
-  title?: string; // Event title for display
-  category?: string;
-  eventType?: string; // Backend event_type (e.g. service.started)
-  sourceName?: string; // Service or component that emitted the event
-  metadata?: Record<string, unknown>; // Extra data from backend
-}
-
-export interface CertificateUI {
-  name: string;
-  status: "valid" | "expiring" | "expired";
-  expiryDate: string;
-  daysUntilExpiry: number;
-  issuer: string;
-  subject: string;
+  // Latest reception and the station serving the endpoint (detail read only)
+  lastRssi?: number;
+  lastSnr?: number;
+  lastEqSnr?: number;
+  servingBsEui?: string;
 }
 
 // ============================================================================
 // Error Types
 // ============================================================================
-
-export class ApiError extends Error {
-  public status: number;
-  public code?: string;
-  public token?: string;
-  public details?: unknown;
-
-  constructor(
-    status: number,
-    message: string,
-    details?: unknown,
-    code?: string,
-    token?: string,
-  ) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = code;
-    this.token = token;
-    this.details = details;
-  }
-
-  isUnauthorized(): boolean {
-    return this.status === 401;
-  }
-
-  isForbidden(): boolean {
-    return this.status === 403;
-  }
-
-  isNotFound(): boolean {
-    return this.status === 404;
-  }
-
-  isServerError(): boolean {
-    return this.status >= 500;
-  }
-
-  isNetworkError(): boolean {
-    return this.status === 0;
-  }
-}
 
 /**
  * Predicate for 401-shaped errors across transports.
@@ -578,6 +416,28 @@ export class ApiError extends Error {
  * status === 401 or an isUnauthorized() method. Keeps callers free
  * of transport-specific imports.
  */
+/** Errors the transport raises: an HTTP-like status plus classifier methods. */
+export interface ApiErrorLike extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly token?: string;
+  isNotFound(): boolean;
+  isUnauthorized(): boolean;
+  isForbidden(): boolean;
+  isAlreadyExists(): boolean;
+  isInvalidArgument(): boolean;
+}
+
+export function isApiError(err: unknown): err is ApiErrorLike {
+  if (!(err instanceof Error)) return false;
+  const candidate = err as Partial<ApiErrorLike>;
+  return (
+    typeof candidate.status === "number" &&
+    typeof candidate.isNotFound === "function" &&
+    typeof candidate.isForbidden === "function"
+  );
+}
+
 export function isUnauthorizedError(err: unknown): boolean {
   if (err === null || typeof err !== "object") {
     return false;
@@ -595,7 +455,7 @@ export function isUnauthorizedError(err: unknown): boolean {
       // fall through to status check
     }
   }
-  return candidate.status === 401;
+  return candidate.status === HTTP_STATUS.UNAUTHORIZED;
 }
 
 // ============================================================================
@@ -603,68 +463,13 @@ export function isUnauthorizedError(err: unknown): boolean {
 // ============================================================================
 
 /**
- * SCACI Session Summary per SCACI v1.0.0 §3.3
- * Matches gRPC ScaciSession message in kilocenter.proto
- */
-export interface SCACISessionSummary {
-  id: number;
-  acEui: string; // Hex-encoded Application Center EUI
-  snAcUuid: string; // Hex-encoded AC session UUID
-  snScUuid: string; // Hex-encoded SC session UUID
-  status: string; // active, disconnected, terminated
-  lastOpIdAc: number; // Last AC operation ID
-  lastOpIdSc: number; // Last SC operation ID
-  canResume: boolean; // Whether session can be resumed
-  connectedAt: string; // ISO timestamp
-  lastHeartbeat?: string; // ISO timestamp
-  sessionDuration: number; // Duration in seconds
-  tlsVersion: string; // TLS version used
-  cipherSuite: string; // TLS cipher suite
-}
-
-/**
- * SCACI Operation DTO per SCACI v1.0.0 §3.4-3.14
- * Matches gRPC ScaciOperation message in kilocenter.proto
- */
-export interface SCACIOperationDTO {
-  opId: string; // int64 carried as string (proto jstype=JS_STRING) to avoid JS Number precision loss on large opIds.
-  command: string; // ulData, dlDataQue, etc.
-  direction: string; // inbound or outbound
-  state: string; // pending, acknowledged, completed, failed
-  initiatedAt: string; // ISO timestamp
-  acknowledgedAt?: string; // ISO timestamp
-  completedAt?: string; // ISO timestamp
-  duration: number; // Duration in seconds
-  errorMessage?: string;
-}
-
-/**
- * SCACI Error DTO per SCACI v1.0.0 §3.14
- * Matches gRPC ScaciError message in kilocenter.proto
- */
-export interface SCACIErrorDTO {
-  id: string;
-  eventType: string;
-  category: string;
-  severity: string;
-  title: string;
-  description: string;
-  sessionId?: number;
-  opId?: string; // int64 carried as string (proto jstype=JS_STRING).
-  command?: string;
-  errorCode?: string;
-  errorMsg: string;
-  occurredAt: string; // ISO timestamp
-}
-
-/**
  * SCACI Downlink Queue DTO per SCACI v1.0.0 §3.12
  * Matches gRPC ScaciDownlinkQueue message in kilocenter.proto
  */
 export interface SCACIDownlinkQueueDTO {
-  queId: string; // int64 carried as string (proto jstype=JS_STRING) so 64-bit IDs round-trip losslessly (JS Number rounds anything above 2^53; queIds are ~1.78e18).
+  queId: string; // int64 queue id carried as a string (exceeds Number.MAX_SAFE_INTEGER)
   epEui: string; // Hex-encoded endpoint EUI
-  payload: string; // Base64-encoded payload
+  payloads: string[]; // Hex-encoded userData, one entry per packetCnt when cntDepend
   cntDepend: boolean;
   packetCnt?: number[];
   format: number;
@@ -674,7 +479,7 @@ export interface SCACIDownlinkQueueDTO {
   dlWindReq: boolean;
   expOnly: boolean;
   result?: string;
-  txTime?: number; // Unix nanoseconds
+  txTime?: string; // Unix nanoseconds, carried as a string
   bsEui?: string; // Hex-encoded base station EUI
   createdAt: string; // ISO timestamp
   id?: string; // DB row ID (only in results)
@@ -683,14 +488,12 @@ export interface SCACIDownlinkQueueDTO {
   scheduledAt?: string;
   transmittedAt?: string;
   transmissionPacketCnt?: number;
+  endpointAckedAt?: string; // ISO time the device acknowledged the transmitted downlink (BSSCI §3.10.1 dlAck)
+  acceptedAt?: string; // ISO time bsEui accepted the downlink (BSSCI §3.12 dlDataQueRsp)
 }
 
-/**
- * Downlink send request DTO
- * Matches gRPC SendDownlinkRequest fields
- */
-export interface SendDownlinkRequest {
-  epEui: string;
+/** The SCACI §3.10.1 dlDataQue fields an operator composes or edits. */
+export interface DownlinkContent {
   payloads: string[]; // hex-encoded
   priority: number;
   cntDepend: boolean;
@@ -703,89 +506,211 @@ export interface SendDownlinkRequest {
   dlRxStatQry: boolean;
 }
 
-export interface SendDownlinkResponse {
+/** Matches gRPC SendDownlinkRequest fields. */
+export interface SendDownlinkRequest extends DownlinkContent {
+  epEui: string;
+}
+
+/** The fields a pending downlink is rewritten with (UpdatePendingDownlink). */
+export interface UpdatePendingDownlinkRequest extends SendDownlinkRequest {
+  queId: string;
+}
+
+// ============================================================================
+// Traffic and Logs Types
+// ============================================================================
+
+/** The device a Traffic or Logs view is narrowed to; empty for the tenant-wide view. */
+export interface DeviceScope {
+  epEui?: string;
+  bsEui?: string;
+}
+
+/** One server-side page: the rows and the total the filter matches. */
+export interface Page<T> {
+  items: T[];
+  totalCount: number;
+}
+
+/** A listing RPC result before it is cut into pages. */
+export interface ListResult<T> {
+  items: T[];
+  nextPageToken?: string;
+  totalCount: number;
+}
+
+/** ListMessages predicates (SCACI §3.8.1 ulData). */
+export interface UplinkFilter extends DeviceScope {
+  timeRange: TimeRange;
+  duplicate?: boolean;
+  dlOpen?: boolean;
+  profile?: string;
+  mode?: string;
+}
+
+/** A stored ulData as ListMessages returns it; userData is hex. */
+export interface UplinkAPI {
   id: string;
-  status: string;
+  opId?: string;
+  epEui: string;
+  bsEui: string;
+  packetCnt: number;
+  snr: number;
+  rssi: number;
+  dlOpen: boolean;
+  responseExp: boolean;
+  dlAck: boolean;
+  duplicate: boolean;
+  userData: string;
+  format?: number; // SCACI §3.8.1 userData format identifier
+  receptions: BaseStationReceptionAPI[];
+  /** DECODE_STATUS of the blueprint decode of the payload. */
+  decodeStatus: string;
+  /** The blueprint error token of a failed decode. */
+  decodeErrorCode?: string;
+  /** The blueprint's output when the Service Center decoded the payload. */
+  decodedPayload?: Record<string, unknown>;
 }
 
-export interface RevokeDownlinkResponse {
-  status: string;
+/** An uplink row: radio fields come from the reception of the base station in view. */
+export interface UplinkUI {
+  id: string;
+  opId?: string;
+  epEui: string;
+  bsEui: string;
+  rxTime?: string; // Unix nanoseconds, carried as a string
+  packetCnt: number;
+  snr: number;
+  rssi: number;
+  eqSnr?: number;
+  dlOpen: boolean;
+  responseExp: boolean;
+  dlAck: boolean;
+  duplicate: boolean;
+  userData: string;
+  format?: number; // SCACI §3.8.1 userData format identifier
+  receptions: BaseStationReceptionAPI[];
+  decodeStatus: string;
+  decodeErrorCode?: string;
+  decodedPayload?: Record<string, unknown>;
+}
+
+/** ListDownlinkQueue predicates (SCACI §3.10.1 dlDataQue); bsEui names the station holding the downlink. */
+export interface DownlinkQueueFilter extends DeviceScope {
+  status?: string;
+  priority?: string;
+  queId?: string;
+}
+
+/** GetDownlinkResults predicates (SCACI §3.12.1 dlDataRes). */
+export interface DownlinkResultFilter extends DeviceScope {
+  timeRange: TimeRange;
+  result?: string;
+  queId?: string;
+}
+
+/** ListEvents predicates behind the Events and Audit logs. */
+export interface EventLogFilter extends DeviceScope {
+  timeRange: TimeRange;
+  category?: string;
+  operation?: EventOperation;
+  outcome?: EventOutcome;
+  opId?: string;
+  search?: string;
+}
+
+/** A system event as ListEvents returns it; data is the projected event details. */
+export interface EventRecordAPI {
+  id: string;
+  eventType: string;
+  category: string;
+  severity: string;
+  title: string;
+  description: string;
+  sourceName: string;
+  userId: string;
+  userEmail: string;
+  timestamp: Date;
+  data?: unknown;
+}
+
+export interface EventLogEntryUI {
+  id: string;
+  timestamp: string;
+  eventType: string;
+  category: string;
+  severity: string;
+  title: string;
+  description: string;
+  /** What the Scope column names: the event's source, else the device its data records. */
+  scope?: string;
+  userId?: string;
+  userEmail?: string;
+  opId?: string;
+  data?: Record<string, unknown>;
+}
+
+/** ListErrorGroups predicates: one bucket over a time range. */
+export interface ErrorGroupFilter {
+  bucket: ErrorBucket;
+  timeRange: TimeRange;
+}
+
+export interface ErrorGroupUI {
+  eventType: string;
+  code: string;
   message: string;
+  sourceName: string;
+  firstSeen: string;
+  lastSeen: string;
+  count: number;
+  lastOpId?: string;
 }
 
-export interface DownlinkQueueResponse {
-  messages: SCACIDownlinkQueueDTO[];
-  nextPageToken?: string;
+/** Uplink totals of one base station (GetBaseStationMessageStats) or endpoint (GetEndPointStats). */
+export interface TrafficSummaryUI {
+  totalMessages: number;
+  avgRssi: number;
+  avgSnr: number;
+  firstSeen?: string;
+  lastSeen?: string;
+  uniqueEndpoints?: number;
+  messagesToday?: number;
+  messagesThisWeek?: number;
+  messagesThisMonth?: number;
+  activeDays?: number;
+}
+
+/** A DL RX status an end point reported through a base station (BSSCI §3.15). */
+export interface DlRxStatusDTO {
+  bsEui: string;
+  rxTime?: string; // Unix UTC nanoseconds, carried as a string
+  packetCnt: number;
+  dlRxSnr: number; // dB
+  dlRxRssi: number; // dBm
+}
+
+export interface DlRxStatusResponse {
+  statuses: DlRxStatusDTO[];
   totalCount: number;
 }
 
-export interface DownlinkResultsResponse {
-  results: SCACIDownlinkQueueDTO[];
-  nextPageToken?: string;
-  totalCount: number;
+/** A DL RX status query the service center sent to a base station (BSSCI §3.15). */
+export interface DlRxStatusQueryDTO {
+  bsEui: string;
+  opId?: string;
+  status: string;
+  requestedAt?: string; // ISO timestamp
 }
 
-/**
- * SCACI Statistics per SCACI v1.0.0 aggregated metrics
- * Matches gRPC ScaciStatistics message in kilocenter.proto
- */
-export interface SCACIStatistics {
-  activeSessions: number;
-  resumableSessions: number;
-  totalOperations: number;
-  ulDataForwarded: number;
-  dlQueued: number;
-  errorRate: number;
-  operationSummary?: {
-    pending: number;
-    acknowledged: number;
-    completed: number;
-    failed: number;
-  };
+export interface DlRxStatusQueriesResponse {
+  queries: DlRxStatusQueryDTO[];
+  pendingCount: number;
 }
 
-/**
- * SCACI Session Detail Response per SCACI v1.0.0 §3.3
- * Matches gRPC GetScaciSessionResponse message in kilocenter.proto
- */
-export interface SCACISessionDetailResponse {
-  session: SCACISessionSummary;
-  recentOperations: SCACIOperationDTO[];
-  pendingOperations: SCACIOperationDTO[];
-  recentErrors: SCACIErrorDTO[];
-}
-
-/**
- * SCACI Session List Response (paginated)
- * Matches gRPC ListScaciSessionsResponse message in kilocenter.proto
- */
-export interface SCACISessionListResponse {
-  sessions: SCACISessionSummary[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-/**
- * SCACI Error List Response (paginated)
- * Matches gRPC ListScaciErrorsResponse message in kilocenter.proto
- */
-export interface SCACIErrorListResponse {
-  errors: SCACIErrorDTO[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-/**
- * SCACI Queue List Response (paginated)
- * Matches gRPC ListScaciQueuesResponse message in kilocenter.proto
- */
-export interface SCACIQueueListResponse {
-  queue: SCACIDownlinkQueueDTO[];
-  total: number;
-  limit: number;
-  offset: number;
+export interface QueryDlRxStatusResponse {
+  queryInitiated: boolean;
+  message: string;
 }
 
 // ============================================================================
@@ -814,6 +739,7 @@ export interface SystemStatusResponse {
   healthy: boolean; // Overall system health (all services must be healthy)
   timestamp: string; // ISO timestamp
   error?: string; // Set when status check fails (e.g., no endpoints configured)
+  startedAt?: string; // Service Center process start (last restart)
 }
 
 // ============================================================================
@@ -832,6 +758,14 @@ export interface ProviderSettingsAPI {
   logout_url?: string;
 }
 
+/** The rules a new password must meet (gRPC PasswordPolicy in identity.proto). */
+export interface PasswordPolicyAPI {
+  min_length: number;
+  max_length: number;
+  requires_letter: boolean;
+  requires_digit: boolean;
+}
+
 /**
  * AuthSettingsAPI represents combined local and external auth settings.
  * Matches gRPC AuthSettings message in kilocenter.proto
@@ -848,6 +782,7 @@ export interface AuthSettingsAPI {
   // Nested provider settings
   oidc?: ProviderSettingsAPI;
   oauth2?: ProviderSettingsAPI;
+  password_policy?: PasswordPolicyAPI;
 }
 
 /**
@@ -862,6 +797,17 @@ export interface UserMembershipAPI {
   isOrgAdmin: boolean;
   isBaseStationAdmin: boolean;
   isEndpointAdmin: boolean;
+}
+
+/**
+ * UserRolesAPI are the roles the signed-in user holds in the current
+ * organization. Matches gRPC UserRoles message in identity.proto
+ */
+export interface UserRolesAPI {
+  admin: boolean;
+  tenantManager: boolean;
+  baseStationManager: boolean;
+  endpointManager: boolean;
 }
 
 /**
@@ -905,13 +851,6 @@ export interface LoginResponseAPI {
 export interface LoginRequest {
   email: string;
   password: string;
-}
-
-/**
- * RefreshRequest represents the request body for token refresh.
- */
-export interface RefreshRequest {
-  refreshToken: string;
 }
 
 /**
@@ -988,21 +927,6 @@ export interface UpdateUserRequest {
   is_endpoint_manager?: boolean;
 }
 
-/**
- * ChangePasswordRequest represents the request body for changing a user's password.
- */
-export interface ChangePasswordRequest {
-  password: string;
-}
-
-/**
- * UsersListResponse represents the API response for listing users.
- */
-export interface UsersListResponse {
-  users: SystemUserAPI[];
-  total: number;
-}
-
 // ============================================================================
 // Organization Types
 // ============================================================================
@@ -1017,9 +941,6 @@ export interface OrganizationAPI {
   name: string;
   description?: string; // nullable
   state: string;
-  can_have_base_stations: boolean;
-  max_base_station_count?: number;
-  max_endpoint_count?: number;
   tags?: Record<string, string>;
   created_at: string;
   updated_at: string;
@@ -1035,9 +956,6 @@ export interface OrganizationUI {
   name: string;
   description?: string;
   state: string;
-  canHaveBaseStations: boolean;
-  maxBaseStationCount?: number;
-  maxEndpointCount?: number;
   tags?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
@@ -1050,9 +968,6 @@ export interface OrganizationUI {
 export interface CreateOrganizationRequest {
   name: string;
   description?: string;
-  can_have_base_stations?: boolean;
-  max_base_station_count?: number;
-  max_endpoint_count?: number;
   tags?: Record<string, string>;
 }
 
@@ -1063,18 +978,7 @@ export interface UpdateOrganizationRequest {
   name?: string;
   description?: string;
   state?: string;
-  can_have_base_stations?: boolean;
-  max_base_station_count?: number;
-  max_endpoint_count?: number;
   tags?: Record<string, string>;
-}
-
-/**
- * OrganizationsListResponse represents the API response for listing organizations.
- */
-export interface OrganizationsListResponse {
-  organizations: OrganizationAPI[];
-  total: number;
 }
 
 /**
@@ -1146,36 +1050,12 @@ export interface UpdateOrgUserRequest {
   is_endpoint_admin?: boolean;
 }
 
-/**
- * OrganizationUsersListResponse represents the API response for listing organization members.
- */
-export interface OrganizationUsersListResponse {
-  users: OrganizationUserAPI[];
-  total: number;
-}
-
 // ============================================================================
 // Blueprint Feature: Device Catalog and Payload Decoding Types
 // ============================================================================
 
 // Which catalog a list query targets: "system" (shared) vs "custom" (tenant-owned).
 export type BlueprintScope = "system" | "custom";
-
-/**
- * ManufacturerAPI represents the API response format for manufacturers.
- * Uses camelCase per backend JSON conventions.
- */
-export interface ManufacturerAPI {
-  id: string;
-  tenantId: number;
-  name: string;
-  website?: string;
-  isVerified: boolean;
-  isSystem: boolean;
-  modelCount?: number; // Populated on list queries
-  createdAt: string;
-  updatedAt: string;
-}
 
 /**
  * ManufacturerUI represents the UI-friendly format for manufacturers.
@@ -1211,35 +1091,6 @@ export interface UpdateManufacturerRequest {
 }
 
 /**
- * ManufacturersListResponse represents the API response for listing manufacturers.
- */
-export interface ManufacturersListResponse {
-  manufacturers: ManufacturerAPI[];
-  total: number;
-}
-
-/**
- * DeviceModelAPI represents the API response format for device models.
- * Uses camelCase per backend JSON conventions.
- */
-export interface DeviceModelAPI {
-  id: string;
-  manufacturerId: string;
-  tenantId: number;
-  name: string;
-  code: string;
-  typeEui?: string; // 16-char hex (8 bytes)
-  description?: string;
-  datasheetUrl?: string;
-  isSystem: boolean;
-  blueprintCount?: number; // Populated on list queries
-  createdAt: string;
-  updatedAt: string;
-  // Joined data
-  manufacturer?: ManufacturerAPI;
-}
-
-/**
  * DeviceModelUI represents the UI-friendly format for device models.
  */
 export interface DeviceModelUI {
@@ -1255,20 +1106,6 @@ export interface DeviceModelUI {
   blueprintCount: number;
   createdAt: string;
   updatedAt: string;
-  manufacturerName?: string;
-}
-
-/**
- * CreateDeviceModelRequest represents the request body for creating a device model.
- * isSystem is admin-only; the server rejects it for non-admin callers.
- */
-export interface CreateDeviceModelRequest {
-  name: string;
-  code: string;
-  typeEui?: string; // 16-char hex (8 bytes)
-  description?: string;
-  datasheetUrl?: string;
-  isSystem?: boolean;
 }
 
 /**
@@ -1291,35 +1128,6 @@ export interface UpdateDeviceModelRequest {
   name?: string;
   description?: string;
   datasheetUrl?: string;
-}
-
-/**
- * DeviceModelsListResponse represents the API response for listing device models.
- */
-export interface DeviceModelsListResponse {
-  models: DeviceModelAPI[];
-  total: number;
-}
-
-/**
- * BlueprintAPI represents the API response format for blueprints.
- * Uses camelCase per backend JSON conventions.
- */
-export interface BlueprintAPI {
-  id: string;
-  deviceModelId: string;
-  tenantId: number;
-  version: string;
-  typeEui: string; // 16-char hex (8 bytes)
-  specJson: object; // Blueprint specification JSON
-  isDefault: boolean;
-  isSystem: boolean;
-  registryRepo?: string;
-  registryCommitSha?: string;
-  registryVerified: boolean;
-  registryPrUrl?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 /**
@@ -1374,21 +1182,6 @@ export interface UpdateBlueprintRequest {
   specJson?: object;
 }
 
-/**
- * BlueprintsListResponse represents the API response for listing blueprints.
- */
-export interface BlueprintsListResponse {
-  blueprints: BlueprintListItemAPI[];
-  total: number;
-}
-
-// setAsDefault also moves the model's default pointer (custom models only).
-export interface BulkAssignBlueprintRequest {
-  blueprintId: string;
-  deviceModelId: string;
-  setAsDefault: boolean;
-}
-
 export interface BulkAssignBlueprintResponse {
   affectedCount: number;
 }
@@ -1430,24 +1223,18 @@ export interface RegistrySubmitResponse {
   branch: string;
 }
 
-/**
- * BaseStationLocation represents a base station's location for global coverage display.
- */
-export interface BaseStationLocation {
-  bsEui: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  altitude?: number;
-  locationSource: string;
-  isOnline: boolean;
-  orgId: string;
+export interface RevokeDownlinkResponse {
+  status: string;
+  message: string;
 }
 
-/**
- * ListAllBaseStationLocationsResponse contains all located base stations across tenants.
- */
-export interface ListAllBaseStationLocationsResponse {
-  locations: BaseStationLocation[];
-  totalCount: number;
+/** Outcome of revoking every revocable downlink a queue filter matches. */
+export interface DownlinkFlushResult {
+  revoked: number;
+  failed: number;
+}
+
+export interface SendDownlinkResponse {
+  id: string;
+  status: string;
 }

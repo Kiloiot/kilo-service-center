@@ -12,21 +12,24 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   CircularProgress,
-  Grid,
   Typography,
 } from "@mui/material";
 
 import SearchField from "@components/common/SearchField";
+import { StatCard, StatCardRow } from "@components/common/StatCard";
 import { useSession } from "@contexts/SessionContext";
+import { useCapabilities } from "@hooks/useCapabilities";
 import { useOrganizations } from "@hooks/useOrganizations";
-import { ORG_STATE, ROUTES } from "@constants/app";
+import { getErrorMessage } from "@utils/error-message";
+import { toggleSortDirection } from "@utils/list-query";
+import type { SortDirection } from "@constants/app";
+import { ORG_STATE, PAGINATION, ROUTES, SORT_DIRECTION } from "@constants/app";
 import {
   ERR_LOAD_ORGANIZATIONS,
   ORGANIZATIONS_PAGE,
 } from "@constants/messages";
+import { organizationDetailPath } from "@router/paths";
 import {
   AddIcon,
   ArchiveIcon,
@@ -34,26 +37,28 @@ import {
   ErrorIcon,
   SuccessIcon,
 } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
 import AddOrganizationDialog from "../components/AddOrganizationDialog";
 import OrganizationsTable from "../components/OrganizationsTable";
 
 type OrderBy = "name" | "state" | "createdAt";
-type OrderDirection = "asc" | "desc";
-
 const Organizations: React.FC = () => {
   const navigate = useNavigate();
-  const { isAdmin, isHydrated } = useSession();
+  const { isHydrated } = useSession();
+  const { isServerAdmin: isAdmin } = useCapabilities();
 
   // Local UI state
   const [search, setSearch] = useState("");
   const [orderBy, setOrderBy] = useState<OrderBy>("name");
-  const [orderDirection, setOrderDirection] = useState<OrderDirection>("asc");
+  const [orderDirection, setOrderDirection] = useState<SortDirection>(
+    SORT_DIRECTION.ASC,
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
 
   // React Query hook for data fetching
   const { data, isLoading, isError, error } = useOrganizations(
-    50,
+    PAGINATION.ADMIN_LIST_PAGE_SIZE,
     0,
     undefined,
     {
@@ -94,7 +99,7 @@ const Organizations: React.FC = () => {
         bValue = b.createdAt;
       }
 
-      if (orderDirection === "asc") {
+      if (orderDirection === SORT_DIRECTION.ASC) {
         return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
       }
       return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
@@ -103,15 +108,15 @@ const Organizations: React.FC = () => {
 
   const handleSort = (field: OrderBy) => {
     if (orderBy === field) {
-      setOrderDirection(orderDirection === "asc" ? "desc" : "asc");
+      setOrderDirection(toggleSortDirection(orderDirection));
     } else {
       setOrderBy(field);
-      setOrderDirection("asc");
+      setOrderDirection(SORT_DIRECTION.ASC);
     }
   };
 
   const handleRowClick = (id: string) => {
-    navigate(`${ROUTES.ORGANIZATIONS}/${id}`);
+    navigate(organizationDetailPath(id));
   };
 
   // Calculate statistics
@@ -154,77 +159,32 @@ const Organizations: React.FC = () => {
         </Button>
       </Box>
 
-      {/* Statistics Cards */}
-      <Grid container spacing={3} mb={3}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <BusinessIcon
-                  sx={{ fontSize: 40, color: "primary.main", mr: 2 }}
-                />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {ORGANIZATIONS_PAGE.TOTAL_ORGANIZATIONS}
-                  </Typography>
-                  <Typography variant="h4">{organizations.length}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <SuccessIcon
-                  sx={{ fontSize: 40, color: "success.main", mr: 2 }}
-                />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {ORGANIZATIONS_PAGE.ACTIVE_ORGANIZATIONS}
-                  </Typography>
-                  <Typography variant="h4">{activeCount}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <ErrorIcon
-                  sx={{ fontSize: 40, color: "warning.main", mr: 2 }}
-                />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {ORGANIZATIONS_PAGE.SUSPENDED_ORGANIZATIONS}
-                  </Typography>
-                  <Typography variant="h4">{suspendedCount}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <ArchiveIcon
-                  sx={{ fontSize: 40, color: "text.secondary", mr: 2 }}
-                />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {ORGANIZATIONS_PAGE.ARCHIVED_ORGANIZATIONS}
-                  </Typography>
-                  <Typography variant="h4">{archivedCount}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <StatCardRow>
+        <StatCard
+          label={ORGANIZATIONS_PAGE.TOTAL_ORGANIZATIONS}
+          value={organizations.length}
+          icon={<BusinessIcon />}
+          color="primary"
+        />
+        <StatCard
+          label={ORGANIZATIONS_PAGE.ACTIVE_ORGANIZATIONS}
+          value={activeCount}
+          icon={<SuccessIcon />}
+          color="success"
+        />
+        <StatCard
+          label={ORGANIZATIONS_PAGE.SUSPENDED_ORGANIZATIONS}
+          value={suspendedCount}
+          icon={<ErrorIcon />}
+          color="warning"
+        />
+        <StatCard
+          label={ORGANIZATIONS_PAGE.ARCHIVED_ORGANIZATIONS}
+          value={archivedCount}
+          icon={<ArchiveIcon />}
+          color="secondary"
+        />
+      </StatCardRow>
 
       {/* Search */}
       <Box display="flex" gap={2} mb={3}>
@@ -241,7 +201,7 @@ const Organizations: React.FC = () => {
           display="flex"
           justifyContent="center"
           alignItems="center"
-          minHeight="200px"
+          minHeight={componentSpacing.stateView.listMinHeight}
         >
           <CircularProgress />
         </Box>
@@ -250,7 +210,7 @@ const Organizations: React.FC = () => {
       {/* Error Alert */}
       {isError && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          {error instanceof Error ? error.message : ERR_LOAD_ORGANIZATIONS}
+          {getErrorMessage(error, ERR_LOAD_ORGANIZATIONS)}
         </Alert>
       )}
 

@@ -402,6 +402,11 @@ export class UserProfile extends jspb.Message {
   getLastName(): string;
   setLastName(value: string): void;
 
+  hasRoles(): boolean;
+  clearRoles(): void;
+  getRoles(): UserRoles | undefined;
+  setRoles(value?: UserRoles): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): UserProfile.AsObject;
   static toObject(includeInstance: boolean, msg: UserProfile): UserProfile.AsObject;
@@ -422,6 +427,39 @@ export namespace UserProfile {
     defaultOrgId: string,
     firstName: string,
     lastName: string,
+    roles?: UserRoles.AsObject,
+  }
+}
+
+export class UserRoles extends jspb.Message {
+  getAdmin(): boolean;
+  setAdmin(value: boolean): void;
+
+  getTenantManager(): boolean;
+  setTenantManager(value: boolean): void;
+
+  getBaseStationManager(): boolean;
+  setBaseStationManager(value: boolean): void;
+
+  getEndpointManager(): boolean;
+  setEndpointManager(value: boolean): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): UserRoles.AsObject;
+  static toObject(includeInstance: boolean, msg: UserRoles): UserRoles.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: UserRoles, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): UserRoles;
+  static deserializeBinaryFromReader(message: UserRoles, reader: jspb.BinaryReader): UserRoles;
+}
+
+export namespace UserRoles {
+  export type AsObject = {
+    admin: boolean,
+    tenantManager: boolean,
+    baseStationManager: boolean,
+    endpointManager: boolean,
   }
 }
 
@@ -504,6 +542,11 @@ export class AuthSettings extends jspb.Message {
   getRegistrationEnabled(): boolean;
   setRegistrationEnabled(value: boolean): void;
 
+  hasPasswordPolicy(): boolean;
+  clearPasswordPolicy(): void;
+  getPasswordPolicy(): PasswordPolicy | undefined;
+  setPasswordPolicy(value?: PasswordPolicy): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): AuthSettings.AsObject;
   static toObject(includeInstance: boolean, msg: AuthSettings): AuthSettings.AsObject;
@@ -526,6 +569,39 @@ export namespace AuthSettings {
     oidc?: ProviderSettings.AsObject,
     oauth2?: ProviderSettings.AsObject,
     registrationEnabled: boolean,
+    passwordPolicy?: PasswordPolicy.AsObject,
+  }
+}
+
+export class PasswordPolicy extends jspb.Message {
+  getMinLength(): number;
+  setMinLength(value: number): void;
+
+  getMaxLength(): number;
+  setMaxLength(value: number): void;
+
+  getRequiresLetter(): boolean;
+  setRequiresLetter(value: boolean): void;
+
+  getRequiresDigit(): boolean;
+  setRequiresDigit(value: boolean): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): PasswordPolicy.AsObject;
+  static toObject(includeInstance: boolean, msg: PasswordPolicy): PasswordPolicy.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: PasswordPolicy, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): PasswordPolicy;
+  static deserializeBinaryFromReader(message: PasswordPolicy, reader: jspb.BinaryReader): PasswordPolicy;
+}
+
+export namespace PasswordPolicy {
+  export type AsObject = {
+    minLength: number,
+    maxLength: number,
+    requiresLetter: boolean,
+    requiresDigit: boolean,
   }
 }
 
@@ -982,15 +1058,6 @@ export class CreateOrganizationRequest extends jspb.Message {
   getDescription(): string;
   setDescription(value: string): void;
 
-  getCanHaveBaseStations(): boolean;
-  setCanHaveBaseStations(value: boolean): void;
-
-  getMaxBaseStationCount(): number;
-  setMaxBaseStationCount(value: number): void;
-
-  getMaxEndpointCount(): number;
-  setMaxEndpointCount(value: number): void;
-
   getTagsMap(): jspb.Map<string, string>;
   clearTagsMap(): void;
   serializeBinary(): Uint8Array;
@@ -1007,9 +1074,6 @@ export namespace CreateOrganizationRequest {
   export type AsObject = {
     name: string,
     description: string,
-    canHaveBaseStations: boolean,
-    maxBaseStationCount: number,
-    maxEndpointCount: number,
     tagsMap: Array<[string, string]>,
   }
 }
@@ -1088,15 +1152,6 @@ export class UpdateOrganizationRequest extends jspb.Message {
   getDescription(): string;
   setDescription(value: string): void;
 
-  getCanHaveBaseStations(): boolean;
-  setCanHaveBaseStations(value: boolean): void;
-
-  getMaxBaseStationCount(): number;
-  setMaxBaseStationCount(value: number): void;
-
-  getMaxEndpointCount(): number;
-  setMaxEndpointCount(value: number): void;
-
   getTagsMap(): jspb.Map<string, string>;
   clearTagsMap(): void;
   serializeBinary(): Uint8Array;
@@ -1114,9 +1169,6 @@ export namespace UpdateOrganizationRequest {
     id: string,
     name: string,
     description: string,
-    canHaveBaseStations: boolean,
-    maxBaseStationCount: number,
-    maxEndpointCount: number,
     tagsMap: Array<[string, string]>,
   }
 }
@@ -1260,15 +1312,6 @@ export class Organization extends jspb.Message {
   getExternalId(): string;
   setExternalId(value: string): void;
 
-  getCanHaveBaseStations(): boolean;
-  setCanHaveBaseStations(value: boolean): void;
-
-  getMaxBaseStationCount(): number;
-  setMaxBaseStationCount(value: number): void;
-
-  getMaxEndpointCount(): number;
-  setMaxEndpointCount(value: number): void;
-
   getTagsMap(): jspb.Map<string, string>;
   clearTagsMap(): void;
   hasCreatedAt(): boolean;
@@ -1299,9 +1342,6 @@ export namespace Organization {
     description: string,
     state: string,
     externalId: string,
-    canHaveBaseStations: boolean,
-    maxBaseStationCount: number,
-    maxEndpointCount: number,
     tagsMap: Array<[string, string]>,
     createdAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,
     updatedAt?: google_protobuf_timestamp_pb.Timestamp.AsObject,

@@ -4,47 +4,56 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestDurationToInterval verifies time.Duration → PostgreSQL interval conversion
-func TestDurationToInterval(t *testing.T) {
-	tests := []struct {
-		name     string
-		duration time.Duration
-		expected string
-	}{
-		{
-			name:     "24 hours",
-			duration: 24 * time.Hour,
-			expected: "86400.000000 seconds",
-		},
-		{
-			name:     "10 minutes",
-			duration: 10 * time.Minute,
-			expected: "600.000000 seconds",
-		},
-		{
-			name:     "1 hour 30 minutes",
-			duration: 90 * time.Minute,
-			expected: "5400.000000 seconds",
-		},
-		{
-			name:     "zero duration",
-			duration: 0,
-			expected: "0.000000 seconds",
-		},
+// fixedOperationClock pins the repository clock to one instant.
+type fixedOperationClock struct{ now time.Time }
+
+func (c fixedOperationClock) Now() time.Time { return c.now }
+
+func TestOperationStatus_WindowFollowsTheInjectedClock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := durationToInterval(tt.duration)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+	db := SetupTestDB(t)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Logf("failed to close db: %v", err)
+		}
+	}()
+
+	const testOpID = "test-clock-window-op"
+	appClock := fixedOperationClock{now: time.Date(2020, 1, 15, 12, 0, 0, 0, time.UTC)}
+	CleanupTestData(t, db, "system_events", "data::text", "%"+testOpID+"%")
+	defer CleanupTestData(t, db, "system_events", "data::text", "%"+testOpID+"%")
+
+	_, err := db.Exec(`
+		INSERT INTO system_events (event_category, event_type, title, occurred_at, data)
+		VALUES
+			($1, 'endpoint_attached', 'Inside the window', $2, $4),
+			($1, 'endpoint_detached', 'Outside the window', $3, $4)
+	`, testEventCategoryBSSCI, appClock.now.Add(-time.Hour), appClock.now.Add(-testEventWindow-time.Hour),
+		`{"operationId": "`+testOpID+`"}`)
+	require.NoError(t, err)
+
+	repo := NewOperationStatusRepository(db, appClock)
+	ctx := testutil.TestContext()
+
+	events, err := repo.GetOperationEventsByID(ctx, testOpID, []string{testEventCategoryBSSCI}, testEventWindow, "", 10)
+	require.NoError(t, err)
+	require.Len(t, events, 1, "only the event inside the window measured from the injected clock")
+	assert.Equal(t, "endpoint_attached", events[0].EventType)
+
+	summary, err := repo.GetEventSummary(ctx, []string{testEventCategoryBSSCI}, testEventWindow)
+	require.NoError(t, err)
+	assert.Equal(t, 1, summary["endpoint_attached"])
+	assert.Zero(t, summary["endpoint_detached"])
 }
 
 // TestGetOperationEventsByID_InvalidOperationType verifies error for invalid operation type
@@ -60,7 +69,7 @@ func TestGetOperationEventsByID_InvalidOperationType(t *testing.T) {
 		}
 	}()
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Invalid operation type should return error
@@ -68,7 +77,7 @@ func TestGetOperationEventsByID_InvalidOperationType(t *testing.T) {
 		ctx,
 		"12345",
 		[]string{testEventCategoryBSSCI},
-		24*time.Hour,
+		testEventWindow,
 		"invalid_type", // Invalid
 		10,
 	)
@@ -101,10 +110,10 @@ func TestGetOperationEventsByID_AttachFilter(t *testing.T) {
 			($1, 'attach_propagate_initiated', 'Attach started', NOW() - interval '1 hour', $2),
 			($1, 'endpoint_attached', 'Endpoint attached', NOW() - interval '30 minutes', $2),
 			($1, 'detach_propagate_initiated', 'Detach started', NOW() - interval '15 minutes', $2)
-	`, testEventCategoryBSSCI, `{"operation_id": "`+testOpID+`"}`)
+	`, testEventCategoryBSSCI, `{"operationId": "`+testOpID+`"}`)
 	require.NoError(t, err)
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Attach filter should return only attach events
@@ -112,7 +121,7 @@ func TestGetOperationEventsByID_AttachFilter(t *testing.T) {
 		ctx,
 		testOpID,
 		[]string{testEventCategoryBSSCI},
-		24*time.Hour,
+		testEventWindow,
 		"attach",
 		10,
 	)
@@ -150,10 +159,10 @@ func TestGetOperationEventsByID_DetachFilter(t *testing.T) {
 			($1, 'attach_propagate_initiated', 'Attach started', NOW() - interval '1 hour', $2),
 			($1, 'detach_propagate_initiated', 'Detach started', NOW() - interval '30 minutes', $2),
 			($1, 'endpoint_detached', 'Endpoint detached', NOW() - interval '15 minutes', $2)
-	`, testEventCategoryBSSCI, `{"operation_id": "`+testOpID+`"}`)
+	`, testEventCategoryBSSCI, `{"operationId": "`+testOpID+`"}`)
 	require.NoError(t, err)
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Detach filter should return only detach events
@@ -161,7 +170,7 @@ func TestGetOperationEventsByID_DetachFilter(t *testing.T) {
 		ctx,
 		testOpID,
 		[]string{testEventCategoryBSSCI},
-		24*time.Hour,
+		testEventWindow,
 		"detach",
 		10,
 	)
@@ -201,10 +210,10 @@ func TestGetOperationEventsByID_AllOperations(t *testing.T) {
 			($1, 'detach_propagate_initiated', 'Detach started', NOW() - interval '30 minutes', $2),
 			($1, 'endpoint_attached', 'Endpoint attached', NOW() - interval '20 minutes', $2),
 			($1, 'endpoint_detached', 'Endpoint detached', NOW() - interval '10 minutes', $2)
-	`, testEventCategoryBSSCI, `{"operation_id": "`+testOpID+`"}`)
+	`, testEventCategoryBSSCI, `{"operationId": "`+testOpID+`"}`)
 	require.NoError(t, err)
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Empty filter should return all attach/detach events
@@ -212,7 +221,7 @@ func TestGetOperationEventsByID_AllOperations(t *testing.T) {
 		ctx,
 		testOpID,
 		[]string{testEventCategoryBSSCI},
-		24*time.Hour,
+		testEventWindow,
 		"", // All operations
 		10,
 	)
@@ -234,7 +243,7 @@ func TestGetOperationEventsByID_NoResults(t *testing.T) {
 		}
 	}()
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Non-existent operation ID should return empty slice, not error
@@ -242,7 +251,7 @@ func TestGetOperationEventsByID_NoResults(t *testing.T) {
 		ctx,
 		"nonexistent-op-99999",
 		[]string{testEventCategoryBSSCI},
-		24*time.Hour,
+		testEventWindow,
 		"",
 		10,
 	)
@@ -288,7 +297,7 @@ func TestGetEndpointOperationsByID_FindsEvents(t *testing.T) {
 	`, testEventCategoryBSSCI)
 	require.NoError(t, err)
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Search by endpoint ID (with tenant) should find events by EUI
@@ -297,7 +306,7 @@ func TestGetEndpointOperationsByID_FindsEvents(t *testing.T) {
 		testEndpointID,
 		1, // tenant ID
 		[]string{testEventCategoryBSSCI},
-		24*time.Hour,
+		testEventWindow,
 		10,
 		0, // offset
 	)
@@ -319,7 +328,7 @@ func TestGetEndpointOperationsByID_NoResults(t *testing.T) {
 		}
 	}()
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Non-existent endpoint should return ErrNotFound (not found for tenant)
@@ -328,7 +337,7 @@ func TestGetEndpointOperationsByID_NoResults(t *testing.T) {
 		99999, // Non-existent
 		1,     // tenant ID
 		[]string{testEventCategoryBSSCI},
-		24*time.Hour,
+		testEventWindow,
 		10,
 		0, // offset
 	)
@@ -361,7 +370,7 @@ func TestGetBSSCIStatusSummary_ReturnsStatuses(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Query base station status
@@ -369,7 +378,7 @@ func TestGetBSSCIStatusSummary_ReturnsStatuses(t *testing.T) {
 		ctx,
 		1, // tenant_id
 		[]string{testEventCategoryBSSCI},
-		24*time.Hour,
+		testEventWindow,
 	)
 
 	require.NoError(t, err)
@@ -401,7 +410,7 @@ func TestGetBSSCIStatusSummary_NoResults(t *testing.T) {
 		_, _ = db.Exec("UPDATE basestations SET is_online = true, last_seen_at = NOW()")
 	}()
 
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test: Query with very short window should return empty slice
@@ -409,7 +418,7 @@ func TestGetBSSCIStatusSummary_NoResults(t *testing.T) {
 		ctx,
 		1, // tenant_id
 		[]string{testEventCategoryBSSCI},
-		1*time.Second, // Very short event window
+		time.Second, // Very short event window
 	)
 
 	require.NoError(t, err)
@@ -424,7 +433,7 @@ func TestGetEndpointOperationsByID_TenantIsolation(t *testing.T) {
 
 	db := SetupTestDB(t)
 	defer func() { _ = db.Close() }()
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create tenants first
@@ -458,13 +467,13 @@ func TestGetEndpointOperationsByID_TenantIsolation(t *testing.T) {
 
 	// Test: Tenant 1 should see events
 	events, err := repo.GetEndpointOperationsByID(ctx, 999, 1,
-		[]string{testEventCategoryBSSCI}, 24*time.Hour, 10, 0)
+		[]string{testEventCategoryBSSCI}, testEventWindow, 10, 0)
 	require.NoError(t, err)
 	assert.NotEmpty(t, events)
 
 	// Test: Tenant 2 should get ErrNotFound (cross-tenant access blocked)
 	_, err = repo.GetEndpointOperationsByID(ctx, 999, 2,
-		[]string{testEventCategoryBSSCI}, 24*time.Hour, 10, 0)
+		[]string{testEventCategoryBSSCI}, testEventWindow, 10, 0)
 	require.Error(t, err)
 	// Note: Using strings.Contains because errors.ErrNotFound may be wrapped
 	assert.Contains(t, err.Error(), "not found")
@@ -478,7 +487,7 @@ func TestGetBSSCIStatusSummary_NullLastSeenAt(t *testing.T) {
 
 	db := SetupTestDB(t)
 	defer func() { _ = db.Close() }()
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Insert base station with NULL last_seen_at
@@ -492,7 +501,7 @@ func TestGetBSSCIStatusSummary_NullLastSeenAt(t *testing.T) {
 	// Test: Should not panic on NULL
 	statuses, err := repo.GetBSSCIStatusSummary(ctx,
 		1, // tenant_id
-		[]string{testEventCategoryBSSCI}, 24*time.Hour)
+		[]string{testEventCategoryBSSCI}, testEventWindow)
 	require.NoError(t, err)
 
 	for _, status := range statuses {
@@ -511,7 +520,7 @@ func TestGetEventSummary_Aggregation(t *testing.T) {
 
 	db := SetupTestDB(t)
 	defer func() { _ = db.Close() }()
-	repo := NewOperationStatusRepository(db)
+	repo := NewOperationStatusRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Insert multiple events of different types
@@ -531,7 +540,7 @@ func TestGetEventSummary_Aggregation(t *testing.T) {
 	}
 
 	// Test: 5-minute window aggregation
-	summary, err := repo.GetEventSummary(ctx, []string{testEventCategoryBSSCI}, 5*time.Minute)
+	summary, err := repo.GetEventSummary(ctx, []string{testEventCategoryBSSCI}, testAggregationWindow)
 	require.NoError(t, err)
 
 	// Verify counts

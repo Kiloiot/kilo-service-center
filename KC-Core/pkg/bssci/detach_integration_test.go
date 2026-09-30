@@ -1,10 +1,12 @@
 package bssci
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -37,14 +39,14 @@ func TestDetachThreeWayHandshake(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, 1)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
 	payload := buildDetachPayload(epEui)
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
 		"CmdDetachResponse must be sent to the base station")
 
@@ -55,7 +57,7 @@ func TestDetachThreeWayHandshake(t *testing.T) {
 	assert.Equal(t, mioty.CmdDetach, pending.OperationType)
 	assert.Equal(t, endpoint.ID, pending.Metadata["endpointID"])
 
-	require.NoError(t, env.server.handleDetachComplete(env.server, env.session, &Message{
+	require.NoError(t, env.server.handleDetachComplete(env.session, &Message{
 		Command: mioty.CmdDetachComplete,
 		OpId:    opID,
 	}, map[string]interface{}{}))
@@ -76,7 +78,7 @@ func TestDetachOptionalFieldsPreserved(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, 1)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -89,7 +91,7 @@ func TestDetachOptionalFieldsPreserved(t *testing.T) {
 	t.Logf("Before handleDetach: session.ID=%q, session.DbSessionID=%d, opID=%d",
 		env.session.ID, env.session.DbSessionID, opID)
 
-	err := env.server.handleDetach(env.server, env.session, msg, payload)
+	err := env.server.handleDetach(env.session, msg, payload)
 
 	// Check if an error message was sent instead of success
 	env.conn.Mu.Lock()
@@ -116,7 +118,7 @@ func TestDetachOptionalFieldsPreserved(t *testing.T) {
 	}
 }
 
-// TestDetachTelemetryUpdates verifies UpdateFields receives detach telemetry.
+// TestDetachTelemetryUpdates verifies the detach-state update receives detach telemetry.
 func TestDetachTelemetryUpdates(t *testing.T) {
 	t.Parallel()
 
@@ -127,20 +129,21 @@ func TestDetachTelemetryUpdates(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, 1)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
 	payload := buildDetachPayload(epEui)
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
-	require.NotEmpty(t, env.repo.updateFieldsCalls, "detach must update endpoint telemetry")
-	update := env.repo.updateFieldsCalls[0]
-	assert.Contains(t, update, "last_detach_time")
-	assert.Contains(t, update, "last_detach_packet_cnt")
-	assert.Equal(t, PropagateStatusDetachReceived, update["propagate_status"])
+	require.NotEmpty(t, env.repo.detachStateCalls, "detach must update endpoint telemetry")
+	update := env.repo.detachStateCalls[0]
+	require.NotNil(t, update.LastDetachTime, "detach must set last_detach_time")
+	require.NotNil(t, update.LastDetachPacketCnt, "detach must set last_detach_packet_cnt")
+	require.NotNil(t, update.PropagateStatus, "detach must set propagate_status")
+	assert.Equal(t, PropagateStatusDetachReceived, *update.PropagateStatus)
 }
 
 // TestDetachAuditEventRecorded ensures detach flow emits an audit event.
@@ -154,7 +157,7 @@ func TestDetachAuditEventRecorded(t *testing.T) {
 	)
 	endpoint := buildTestEndpoint(epEui, 1)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -162,13 +165,13 @@ func TestDetachAuditEventRecorded(t *testing.T) {
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
 	// Step 1: Handle detach request
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
 		"detach must send detachRsp to base station")
 
 	// Step 2: Complete three-way handshake with detachCmp
 	// Audit event is created during handleDetachComplete per server.go:3003
-	require.NoError(t, env.server.handleDetachComplete(env.server, env.session, &Message{
+	require.NoError(t, env.server.handleDetachComplete(env.session, &Message{
 		Command: mioty.CmdDetachComplete,
 		OpId:    opID,
 	}, map[string]interface{}{}))
@@ -208,13 +211,14 @@ func newDetachTestEnv(t *testing.T, cfg *Config, endpoint *models.EndPoint) *det
 	)
 	server.config = cfg
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
+	server.detachValidator = &fakeDetachSignatureValidator{
+		endpoints: server.endpointRepo.(*fakeEndpointRepo).endpoints,
+	}
 	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
 	}
-	// Initialize deduplicator for UL data tests
-	server.SetDeduplicator(NewMessageDeduplicator(5 * time.Minute))
 	// Wire UplinkIngestService for handleULData tests
 	server.SetUplinkIngestService(NewMockUplinkIngestSvc())
 
@@ -273,9 +277,46 @@ func buildTestEndpoint(epEui uint64, tenant int64) *models.EndPoint {
 	}
 }
 
+// detachableEndpointRepo holds one attached endpoint a detach completion can
+// detach, so that completion is the one announcing the detachment.
+func detachableEndpointRepo(epEui uint64, tenant int64, endpointID int64) *fakeEndpointRepo {
+	ep := buildTestEndpoint(epEui, tenant)
+	ep.ID = endpointID
+	ep.EpStatus = EndpointStatusAttached
+	return newFakeEndpointRepo(ep)
+}
+
 func uuidBytes() []byte {
 	id := uuid.New()
 	return id[:]
+}
+
+// fakeDetachSignatureValidator is the injected authoritative validator for
+// enabled-mode tests: it compares the detach signature against the seeded
+// endpoint's stored attach signature and returns owner tenant metadata.
+type fakeDetachSignatureValidator struct {
+	endpoints map[uint64]*models.EndPoint
+}
+
+func (f *fakeDetachSignatureValidator) ValidateDetachSignature(_ context.Context, epEUI uint64, detachSign []byte) (*DetachValidationResult, error) {
+	ep, ok := f.endpoints[epEUI]
+	if !ok {
+		return nil, ErrDetachValidationEndpointNotFound
+	}
+	if !bytes.Equal(detachSign, ep.Sign) {
+		return &DetachValidationResult{
+			Valid:            false,
+			TenantID:         ep.TenantID,
+			OwnerTenantID:    ep.TenantID,
+			ValidationStatus: ValidationStatusInvalidSignature,
+		}, ErrDetachSignatureInvalid
+	}
+	return &DetachValidationResult{
+		Valid:            true,
+		TenantID:         ep.TenantID,
+		OwnerTenantID:    ep.TenantID,
+		ValidationStatus: ValidationStatusValidated,
+	}, nil
 }
 
 // recordingConn removed - migrated to TestConn (testconn_test.go) with thread safety
@@ -296,9 +337,16 @@ func (r *recordingEventStore) CreateEvent(_ context.Context, event *models.Syste
 
 // fakeEndpointRepo implements interfaces.EndpointRepository with minimal behavior for tests.
 type fakeEndpointRepo struct {
-	mu                sync.Mutex
-	endpoints         map[uint64]*models.EndPoint
-	updateFieldsCalls []map[string]interface{}
+	mu                   sync.Mutex
+	endpoints            map[uint64]*models.EndPoint
+	attachmentStateCalls []models.EndpointAttachmentStateParams
+	detachStateCalls     []models.EndpointDetachStateParams
+	detachStateTenants   []int64
+	radioMetricsTenants  []int64
+	radioMetricsUpdates  []models.RadioMetricsUpdate
+	// lookupErr, when set, is returned by GetByEUI and Get to simulate a
+	// repository failure that must fail the detach closed.
+	lookupErr error
 }
 
 func newFakeEndpointRepo(endpoints ...*models.EndPoint) *fakeEndpointRepo {
@@ -312,6 +360,11 @@ func newFakeEndpointRepo(endpoints ...*models.EndPoint) *fakeEndpointRepo {
 }
 
 func (f *fakeEndpointRepo) GetByEUI(_ context.Context, tenantID int64, eui []byte) (*models.EndPoint, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.lookupErr != nil {
+		return nil, f.lookupErr
+	}
 	key := binary.BigEndian.Uint64(eui)
 	// Tenant-specific lookup only (cross-tenant fallback handled by caller via Get)
 	if ep, ok := f.endpoints[key]; ok && ep.TenantID == tenantID {
@@ -323,6 +376,11 @@ func (f *fakeEndpointRepo) GetByEUI(_ context.Context, tenantID int64, eui []byt
 }
 
 func (f *fakeEndpointRepo) Get(_ context.Context, eui models.EUI) (*models.EndPoint, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.lookupErr != nil {
+		return nil, f.lookupErr
+	}
 	if ep, ok := f.endpoints[eui.ToUint64()]; ok {
 		clone := *ep
 		return &clone, nil
@@ -331,6 +389,8 @@ func (f *fakeEndpointRepo) Get(_ context.Context, eui models.EUI) (*models.EndPo
 }
 
 func (f *fakeEndpointRepo) GetByID(_ context.Context, id int64, tenantID int64) (*models.EndPoint, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for _, ep := range f.endpoints {
 		if ep.ID == id && ep.TenantID == tenantID {
 			clone := *ep
@@ -340,19 +400,45 @@ func (f *fakeEndpointRepo) GetByID(_ context.Context, id int64, tenantID int64) 
 	return nil, nil
 }
 
-func (f *fakeEndpointRepo) UpdateFields(_ context.Context, _ int64, _ int64, updates map[string]interface{}) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.updateFieldsCalls = append(f.updateFieldsCalls, updates)
+func (f *fakeEndpointRepo) EndpointRegistrationUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointRegistrationParams) error {
 	return nil
 }
 
-func (f *fakeEndpointRepo) UpdateDetachMetrics(context.Context, int64, models.EUI, interfaces.DetachMetricsUpdate) error {
+func (f *fakeEndpointRepo) EndpointAttachmentStateUpdate(_ context.Context, _ int64, _ int64, p models.EndpointAttachmentStateParams) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.attachmentStateCalls = append(f.attachmentStateCalls, p)
 	return nil
+}
+
+func (f *fakeEndpointRepo) EndpointAttachSessionUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachSessionParams) error {
+	return nil
+}
+
+func (f *fakeEndpointRepo) EndpointDetachStateUpdate(_ context.Context, tenantID int64, _ int64, p models.EndpointDetachStateParams) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.detachStateCalls = append(f.detachStateCalls, p)
+	f.detachStateTenants = append(f.detachStateTenants, tenantID)
+	return nil
+}
+
+func (f *fakeEndpointRepo) TransitionEndpointStatus(_ context.Context, tenantID, endpointID int64, status string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, ep := range f.endpoints {
+		if ep.ID == endpointID && ep.TenantID == tenantID {
+			changed := ep.EpStatus != status
+			ep.EpStatus = status
+			return changed, nil
+		}
+	}
+	return false, nil
 }
 
 // Remaining methods satisfy the interface but are not used in these tests.
 func (f *fakeEndpointRepo) Create(context.Context, *models.EndPoint) error { return nil }
+
 func (f *fakeEndpointRepo) GetByTenant(context.Context, int64) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -364,38 +450,34 @@ func (f *fakeEndpointRepo) Update(context.Context, *models.EndPoint) error { ret
 func (f *fakeEndpointRepo) UpdateLastSeen(_ context.Context, _ int64, _ models.EUI, _ uint32) error {
 	return nil
 }
-func (f *fakeEndpointRepo) UpdateRadioMetrics(context.Context, int64, models.EUI, float64, float64, float64, int64, int64, string) error {
+
+func (f *fakeEndpointRepo) UpdateRadioMetricsSelective(_ context.Context, tenantID int64, _ models.EUI, update models.RadioMetricsUpdate) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.radioMetricsTenants = append(f.radioMetricsTenants, tenantID)
+	f.radioMetricsUpdates = append(f.radioMetricsUpdates, update)
 	return nil
 }
-func (f *fakeEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, interfaces.RadioMetricsUpdate) error {
-	return nil
-}
-func (f *fakeEndpointRepo) StreamAllForPropagation(context.Context, int64, int) ([]*models.EndPoint, error) {
-	return nil, nil
-}
-func (f *fakeEndpointRepo) HasEndpointsSince(context.Context, time.Time) (bool, error) {
-	return false, nil
-}
-func (f *fakeEndpointRepo) GetEndpointWithKeysForDetachValidation(context.Context, models.EUI) (*models.EndPoint, error) {
-	return nil, storage.ErrNotFound
-}
+
 func (f *fakeEndpointRepo) GetPreferredBsEui(context.Context, int64, []byte) (*uint64, bool, error) {
 	return nil, false, nil // No preference in tests
 }
-func (f *fakeEndpointRepo) DeleteByTenant(context.Context, int64, []byte) error {
-	return nil
+
+func (f *fakeEndpointRepo) DeleteByTenant(context.Context, int64, []byte) (int64, error) {
+	return 0, nil
 }
+
 func (f *fakeEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	return ep, nil
 }
+
 func (f *fakeEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 	return nil
 }
 
 // stubStorage minimally satisfies interfaces.Storage for these tests.
 type stubStorage struct {
-	msgRepo     *stubMIOTYMessageRepo
-	pendingRepo interfaces.PendingOperationRepository
+	msgRepo *stubMIOTYMessageRepo
 }
 
 func newStubStorage() *stubStorage {
@@ -404,34 +486,26 @@ func newStubStorage() *stubStorage {
 			detachs:          make([]*mioty.DetachMessage, 0),
 			detachPropagates: make([]*mioty.DetachPropagateMessage, 0),
 		},
-		pendingRepo: &stubPendingOperationRepo{},
 	}
 }
 
-func (s *stubStorage) EndPoints() interfaces.EndpointRepository                         { return nil }
-func (s *stubStorage) DownlinkQueue() interfaces.DownlinkQueueRepository                { return nil }
-func (s *stubStorage) BaseStationReceptions() interfaces.BaseStationReceptionRepository { return nil }
-func (s *stubStorage) EndPointSessions() interfaces.EndPointSessionRepository           { return nil }
-func (s *stubStorage) EndPointKeys() interfaces.EndPointKeyRepository                   { return nil }
-func (s *stubStorage) RoamingAgreements() interfaces.RoamingAgreementRepository         { return nil }
-func (s *stubStorage) BaseStations() interfaces.BaseStationRepository                   { return nil }
-func (s *stubStorage) BaseStationSessions() interfaces.BaseStationSessionRepository     { return nil }
-func (s *stubStorage) DLRXStatus() interfaces.DLRXStatusRepository                      { return nil }
-func (s *stubStorage) PendingOperations() interfaces.PendingOperationRepository         { return s.pendingRepo }
-func (s *stubStorage) MIOTYMessages() interfaces.MIOTYMessageRepository                 { return s.msgRepo }
-func (s *stubStorage) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository               { return nil }
+func (s *stubStorage) EndPoints() interfaces.EndpointRepository                     { return nil }
+func (s *stubStorage) EndPointSessions() interfaces.EndPointSessionRepository       { return nil }
+func (s *stubStorage) BaseStations() interfaces.BaseStationRepository               { return nil }
+func (s *stubStorage) BaseStationSessions() interfaces.BaseStationSessionRepository { return nil }
+func (s *stubStorage) DLRXStatus() interfaces.DLRXStatusRepository                  { return nil }
+
+func (s *stubStorage) MIOTYMessages() interfaces.MIOTYMessageRepository   { return s.msgRepo }
+func (s *stubStorage) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository { return nil }
 func (s *stubStorage) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
 	return nil
 }
-func (s *stubStorage) Users() interfaces.UserRepository                        { return nil }
-func (s *stubStorage) APIKeys() interfaces.APIKeyRepository                    { return nil }
-func (s *stubStorage) Integrations() interfaces.IntegrationRepository          { return nil }
-func (s *stubStorage) Manufacturers() interfaces.ManufacturerRepository        { return nil } // Blueprint catalog
-func (s *stubStorage) DeviceModels() interfaces.DeviceModelRepository          { return nil } // Blueprint catalog
-func (s *stubStorage) Blueprints() interfaces.BlueprintRepository              { return nil } // Blueprint catalog
-func (s *stubStorage) BeginTx(context.Context) (interfaces.Transaction, error) { return nil, nil }
-func (s *stubStorage) Ping(context.Context) error                              { return nil }
-func (s *stubStorage) Close() error                                            { return nil }
+func (s *stubStorage) APIKeys() interfaces.APIKeyRepository           { return nil }
+func (s *stubStorage) DeviceModels() interfaces.DeviceModelRepository { return nil } // Blueprint catalog
+func (s *stubStorage) Blueprints() interfaces.BlueprintRepository     { return nil } // Blueprint catalog
+func (s *stubStorage) BeginTx(context.Context) (AttachTx, error)      { return nil, nil }
+func (s *stubStorage) Ping(context.Context) error                     { return nil }
+func (s *stubStorage) Close() error                                   { return nil }
 
 // Additional accessors for Storage interface
 func (s *stubStorage) Organizations() interfaces.OrganizationRepository     { return nil }
@@ -439,7 +513,6 @@ func (s *stubStorage) GetSqlxDB() *sqlx.DB                                  { re
 func (s *stubStorage) SystemEvents() interfaces.SystemEventStore            { return nil }
 func (s *stubStorage) SCACISessions() interfaces.SCACISessionRepository     { return nil }
 func (s *stubStorage) SCACIOperations() interfaces.SCACIOperationRepository { return nil }
-func (s *stubStorage) DownlinkQueueReader() interfaces.DownlinkQueueReader  { return nil }
 
 // stubMIOTYMessageRepo captures detach messages for assertions if needed.
 type stubMIOTYMessageRepo struct {
@@ -459,57 +532,54 @@ func (r *stubMIOTYMessageRepo) CreateDetachMessage(_ context.Context, msg *mioty
 func (r *stubMIOTYMessageRepo) CreateULDataMessage(context.Context, *mioty.ULDataMessage) error {
 	return nil
 }
-func (r *stubMIOTYMessageRepo) CreateAttachMessage(context.Context, *mioty.AttachMessage, map[string]interface{}) error {
-	return nil
-}
+
 func (r *stubMIOTYMessageRepo) CreateAttachPropagateMessage(context.Context, *mioty.AttachPropagateMessage) error {
 	return nil
 }
+
 func (r *stubMIOTYMessageRepo) CreateDetachPropagateMessage(_ context.Context, msg *mioty.DetachPropagateMessage) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.detachPropagates = append(r.detachPropagates, msg)
 	return nil
 }
+
 func (r *stubMIOTYMessageRepo) GetULDataMessage(context.Context, string, int64) (*mioty.ULDataMessage, error) {
 	return nil, nil
 }
-func (r *stubMIOTYMessageRepo) GetDetachMessage(context.Context, string, int64) (*mioty.DetachMessage, error) {
-	return nil, nil
-}
+
 func (r *stubMIOTYMessageRepo) ListULDataMessages(context.Context, mioty.ULDataMessageFilter) ([]*mioty.ULDataMessage, int64, error) {
 	return nil, 0, nil
 }
-func (r *stubMIOTYMessageRepo) GetMessageStatsByBaseStation(context.Context, uint64, int64) (*mioty.MessageStats, error) {
-	return nil, nil
-}
-func (r *stubMIOTYMessageRepo) GetExtendedMessageStatsByBaseStation(context.Context, uint64, int64) (*mioty.MessageStats, error) {
-	return nil, nil
-}
+
 func (r *stubMIOTYMessageRepo) GetMessageStatsByEndpoint(context.Context, uint64, int64) (*mioty.MessageStats, error) {
 	return nil, nil
 }
+
 func (r *stubMIOTYMessageRepo) GetOverallStats(context.Context, int64) (*mioty.MessageStats, error) {
 	return nil, nil
 }
+
 func (r *stubMIOTYMessageRepo) GetAnalyticsOverview(context.Context, int64, time.Time, time.Time) (*mioty.AnalyticsOverviewStats, error) {
 	return nil, nil
 }
+
 func (r *stubMIOTYMessageRepo) GetHourlyActivity(context.Context, int64, time.Time, time.Time) ([]mioty.HourlyActivity, error) {
 	return nil, nil
 }
+
 func (r *stubMIOTYMessageRepo) GetDailyActivity(context.Context, int64, time.Time, time.Time) ([]mioty.DailyActivity, error) {
 	return nil, nil
 }
+
 func (r *stubMIOTYMessageRepo) GetTopEndpointsByActivity(context.Context, int64, time.Time, time.Time, int) ([]mioty.EndpointActivity, error) {
 	return nil, nil
 }
+
 func (r *stubMIOTYMessageRepo) GetSignalQualityStats(context.Context, int64, time.Time, time.Time) (*mioty.SignalQualityStats, error) {
 	return nil, nil
 }
-func (r *stubMIOTYMessageRepo) GetSignalQualityByBaseStation(context.Context, int64, time.Time, time.Time) ([]mioty.BaseStationSignalQuality, error) {
-	return nil, nil
-}
+
 func (r *stubMIOTYMessageRepo) UpdateULDataBaseStations(context.Context, int64, uint64, uint32, int64, []byte) error {
 	return nil
 }
@@ -534,26 +604,6 @@ func (r *stubMIOTYMessageRepo) GetMonthlyActivity(context.Context, int64, time.T
 	return nil, nil
 }
 
-type stubPendingOperationRepo struct{}
-
-func (stubPendingOperationRepo) Create(context.Context, *interfaces.PendingOperationRequest) error {
-	return nil
-}
-func (stubPendingOperationRepo) CreateBatch(context.Context, []*interfaces.PendingOperationRequest) error {
-	return nil
-}
-func (stubPendingOperationRepo) UpdateMetadata(context.Context, int64, int64, json.RawMessage) error {
-	return nil
-}
-func (stubPendingOperationRepo) DeleteBySessionAndOperation(context.Context, int64, int64) error {
-	return nil
-}
-func (stubPendingOperationRepo) DeleteByOperation(context.Context, int64) error        { return nil }
-func (stubPendingOperationRepo) DeleteBySession(context.Context, int64) (int64, error) { return 0, nil }
-func (stubPendingOperationRepo) GetBySession(context.Context, int64) ([]*interfaces.PendingOperation, error) {
-	return nil, nil
-}
-
 // --- Tests: DET-01, DET-02, DET-03 (detach signature validation) ----------------
 
 // TestDetachSignatureValidationSuccess verifies DET-01: signature validation succeeds
@@ -570,7 +620,7 @@ func TestDetachSignatureValidationSuccess(t *testing.T) {
 	endpoint.Sign = []byte{10, 20, 30, 40} // Stored attach signature
 
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: true, // DET-01: validation enabled
+		DetachSignatureValidationEnabled: detachSigValidationOn, // DET-01: validation enabled
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -578,7 +628,7 @@ func TestDetachSignatureValidationSuccess(t *testing.T) {
 	payload["sign"] = []interface{}{10.0, 20.0, 30.0, 40.0} // Matching signature
 
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
-	err := env.server.handleDetach(env.server, env.session, msg, payload)
+	err := env.server.handleDetach(env.session, msg, payload)
 
 	require.NoError(t, err, "detach with valid signature must succeed")
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
@@ -604,7 +654,7 @@ func TestDetachSignatureValidationFailure(t *testing.T) {
 	endpoint.Sign = []byte{10, 20, 30, 40} // Stored attach signature
 
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: true, // DET-01: validation enabled
+		DetachSignatureValidationEnabled: detachSigValidationOn, // DET-01: validation enabled
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -612,7 +662,7 @@ func TestDetachSignatureValidationFailure(t *testing.T) {
 	payload["sign"] = []interface{}{99.0, 88.0, 77.0, 66.0} // Mismatched signature
 
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
-	err := env.server.handleDetach(env.server, env.session, msg, payload)
+	err := env.server.handleDetach(env.session, msg, payload)
 
 	require.NoError(t, err, "handleDetach must not return error (sends error to BS instead)")
 
@@ -640,7 +690,7 @@ func TestDetachSignatureValidationDisabled(t *testing.T) {
 	endpoint.Sign = []byte{10, 20, 30, 40} // Stored attach signature
 
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false, // DET-01: validation disabled
+		DetachSignatureValidationEnabled: detachSigValidationOff, // DET-01: validation disabled
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -648,7 +698,7 @@ func TestDetachSignatureValidationDisabled(t *testing.T) {
 	payload["sign"] = []interface{}{99.0, 88.0, 77.0, 66.0} // Mismatched signature
 
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
-	err := env.server.handleDetach(env.server, env.session, msg, payload)
+	err := env.server.handleDetach(env.session, msg, payload)
 
 	require.NoError(t, err, "detach must succeed when validation disabled")
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
@@ -658,6 +708,97 @@ func TestDetachSignatureValidationDisabled(t *testing.T) {
 	pending, err := env.server.statusSvc.GetPendingOperation(env.session, opID)
 	require.NoError(t, err, "pending op stored when validation disabled")
 	require.NotNil(t, pending, "pending op stored when validation disabled")
+}
+
+// TestDetach_EnabledValidationFailure_NoPersistenceBeforeReject proves the
+// known-endpoint signature check runs before any persistence: a forged detach in
+// enabled mode is rejected with no pending operation, no detach message, and no
+// telemetry write.
+func TestDetach_EnabledValidationFailure_NoPersistenceBeforeReject(t *testing.T) {
+	t.Parallel()
+
+	const (
+		opID  = int64(910)
+		epEui = uint64(0x00AABBCCDDEE01)
+	)
+
+	endpoint := buildTestEndpoint(epEui, 1)
+	endpoint.Sign = []byte{10, 20, 30, 40} // Stored attach signature
+
+	env := newDetachTestEnv(t, &Config{
+		DetachSignatureValidationEnabled: detachSigValidationOn,
+		MessageEncoding:                  EncodingJSON,
+	}, endpoint)
+
+	payload := buildDetachPayload(epEui)
+	payload["sign"] = []interface{}{99.0, 88.0, 77.0, 66.0} // Mismatched signature
+
+	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload),
+		"handler sends the error frame and returns nil")
+
+	assert.False(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
+		"no detach response on a rejected signature")
+
+	pending, perr := env.server.statusSvc.GetPendingOperation(env.session, opID)
+	if perr == nil {
+		assert.Nil(t, pending, "no pending operation persisted before a rejected signature")
+	}
+
+	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
+	msgRepo.mu.Lock()
+	detachCount := len(msgRepo.detachs)
+	msgRepo.mu.Unlock()
+	assert.Zero(t, detachCount, "no detach message persisted before a rejected signature")
+
+	assert.Empty(t, env.repo.detachStateCalls, "no telemetry write before a rejected signature")
+}
+
+// TestDetach_ValidationStatusWrittenToDetachRow proves the resolved validation
+// provenance is carried onto the persisted detach message: "validated" for an
+// enabled+validated known endpoint, "unverified" when validation is disabled.
+func TestDetach_ValidationStatusWrittenToDetachRow(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		enabled  bool
+		opID     int64
+		epEui    uint64
+		expected string
+	}{
+		{"enabled_validated", detachSigValidationOn, 921, 0x00AABBCCDDEE02, ValidationStatusValidated},
+		{"disabled_unverified", detachSigValidationOff, 922, 0x00AABBCCDDEE03, ValidationStatusUnverified},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			endpoint := buildTestEndpoint(tc.epEui, 1)
+			endpoint.Sign = []byte{10, 20, 30, 40}
+
+			env := newDetachTestEnv(t, &Config{
+				DetachSignatureValidationEnabled: tc.enabled,
+				MessageEncoding:                  EncodingJSON,
+			}, endpoint)
+
+			payload := buildDetachPayload(tc.epEui)
+			payload["sign"] = []interface{}{10.0, 20.0, 30.0, 40.0} // Matching signature
+
+			msg := &Message{Command: mioty.CmdDetach, OpId: tc.opID, Data: payload}
+			require.NoError(t, env.server.handleDetach(env.session, msg, payload))
+			require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse))
+
+			msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
+			msgRepo.mu.Lock()
+			defer msgRepo.mu.Unlock()
+			require.Len(t, msgRepo.detachs, 1, "exactly one detach message must be persisted")
+			assert.Equal(t, tc.expected, msgRepo.detachs[0].ValidationStatus,
+				"persisted detach message must carry the resolved validation status")
+		})
+	}
 }
 
 // TestDetachTenantOrgPropagation verifies DET-02: tenant/org context is resolved
@@ -674,7 +815,7 @@ func TestDetachTenantOrgPropagation(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, tenantID)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -692,7 +833,7 @@ func TestDetachTenantOrgPropagation(t *testing.T) {
 	payload := buildDetachPayload(epEui)
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// DET-02: Verify detach was processed successfully (response sent)
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
@@ -721,7 +862,7 @@ func TestDetachCrossTenantLookup(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, endpointTenant)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -731,7 +872,7 @@ func TestDetachCrossTenantLookup(t *testing.T) {
 	payload := buildDetachPayload(epEui)
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
-	err := env.server.handleDetach(env.server, env.session, msg, payload)
+	err := env.server.handleDetach(env.session, msg, payload)
 	require.NoError(t, err, "cross-tenant detach must succeed via EUI fallback")
 
 	// Verify detach was processed (response sent)
@@ -747,6 +888,66 @@ func TestDetachCrossTenantLookup(t *testing.T) {
 		"pending op must reference correct endpoint")
 }
 
+// TestDetachCompleteUsesOwnerTenant verifies the detCmp leg targets the
+// endpoint owner recorded in the pending-operation metadata: under roaming the
+// serving session belongs to a different tenant, and the owner's endpoint
+// state, radio metrics, and system event must land under the owner tenant.
+func TestDetachCompleteUsesOwnerTenant(t *testing.T) {
+	t.Parallel()
+
+	const (
+		opID          = int64(507)
+		epEui         = uint64(0x004444555566667)
+		ownerTenant   = int64(200) // Endpoint owned by tenant 200
+		servingTenant = int64(300) // Serving base station belongs to tenant 300
+	)
+
+	endpoint := buildTestEndpoint(epEui, ownerTenant)
+	env := newDetachTestEnv(t, &Config{
+		DetachSignatureValidationEnabled: detachSigValidationOff,
+		MessageEncoding:                  EncodingJSON,
+	}, endpoint)
+	env.session.ResolvedTenantID = servingTenant
+
+	payload := buildDetachPayload(epEui)
+	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
+
+	require.NoError(t, env.server.handleDetachComplete(env.session, &Message{
+		Command: mioty.CmdDetachComplete,
+		OpId:    opID,
+	}, map[string]interface{}{}))
+
+	env.repo.mu.Lock()
+	detachTenants := append([]int64(nil), env.repo.detachStateTenants...)
+	radioTenants := append([]int64(nil), env.repo.radioMetricsTenants...)
+	env.repo.mu.Unlock()
+
+	require.NotEmpty(t, detachTenants, "detach state must be written")
+	for _, tid := range detachTenants {
+		assert.Equal(t, ownerTenant, tid,
+			"every detach state write must target the endpoint owner, not the serving tenant")
+	}
+	require.NotEmpty(t, radioTenants, "radio metrics must be written on detCmp")
+	for _, tid := range radioTenants {
+		assert.Equal(t, ownerTenant, tid,
+			"radio metrics must target the endpoint owner, not the serving tenant")
+	}
+
+	env.events.mu.Lock()
+	events := append([]*models.SystemEvent(nil), env.events.created...)
+	env.events.mu.Unlock()
+	var sawDetached bool
+	for _, ev := range events {
+		if ev.EventType == models.EventTypeEndpointDetached {
+			sawDetached = true
+			assert.Equal(t, fmt.Sprintf("%d", ownerTenant), ev.TenantID,
+				"the detach event must be filed under the endpoint owner tenant")
+		}
+	}
+	assert.True(t, sawDetached, "an endpoint_detached event must be recorded")
+}
+
 // TestDetachPayloadNormalization verifies DET-03: handler correctly processes
 // payload with json.Number values and signature arrays (the shapes produced by
 // strict JSON decoding with UseNumber).
@@ -760,7 +961,7 @@ func TestDetachPayloadNormalization(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, 1)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -777,12 +978,14 @@ func TestDetachPayloadNormalization(t *testing.T) {
 		"eqSnr":      json.Number("14.2"),                        // Becomes float64
 		"profile":    "eu1",                                      // Stays string
 		"rxDuration": json.Number("500"),                         // Will be normalized to int64
-		"sign": []interface{}{json.Number("1"), json.Number("2"),
-			json.Number("3"), json.Number("4")}, // Will be normalized to []byte
+		"sign": []interface{}{
+			json.Number("1"), json.Number("2"),
+			json.Number("3"), json.Number("4"),
+		}, // Will be normalized to []byte
 	}
 
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// DET-03: Verify handler processed payload successfully (response sent)
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
@@ -815,7 +1018,7 @@ func TestDetachCrossTenantContextIsolation(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, endpointTenant)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -825,7 +1028,7 @@ func TestDetachCrossTenantContextIsolation(t *testing.T) {
 
 	payload := buildDetachPayload(epEui)
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// FIX-1: Verify message stored with endpoint owner tenant using Background context
 	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
@@ -850,7 +1053,7 @@ func TestDetachUnknownEndpointMetadataPersistence(t *testing.T) {
 
 	// Setup: NO endpoint registered (nil endpoint = unknown device scenario)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, nil) // nil = unknown endpoint
 
@@ -862,7 +1065,7 @@ func TestDetachUnknownEndpointMetadataPersistence(t *testing.T) {
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
 	// Execute detach for unknown endpoint
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 	env.conn.Mu.Lock()
 	commandsSnapshot := append([]map[string]interface{}(nil), env.conn.SentMessages...)
 	env.conn.Mu.Unlock()
@@ -946,7 +1149,7 @@ func TestDetachOrgResolverFailureFallback(t *testing.T) {
 
 	endpoint := buildTestEndpoint(epEui, tenantID)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -959,7 +1162,7 @@ func TestDetachOrgResolverFailureFallback(t *testing.T) {
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
 	// FIX-4: Handler should succeed despite org resolver failure
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// Verify message persisted with tenant but nil org UUID
 	msgRepo := env.server.protocolMessages.(*stubMIOTYMessageRepo)
@@ -1011,7 +1214,7 @@ func TestSendDetachPropagatePersistence(t *testing.T) {
 	// Setup endpoint owned by tenant 100
 	endpoint := buildTestEndpoint(epEui, endpointTenant)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
@@ -1084,7 +1287,7 @@ func TestSendDetachPropagateUnknownEndpoint(t *testing.T) {
 
 	// Setup: NO endpoint registered (nil endpoint = unknown device scenario)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, nil) // nil = unknown endpoint
 
@@ -1132,7 +1335,7 @@ func TestDetachValidatorUnknownEndpointSuccess(t *testing.T) {
 
 	// Setup: NO endpoint registered (nil endpoint = unknown device scenario)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false, // Not used for unknown endpoints
+		DetachSignatureValidationEnabled: detachSigValidationOff, // Not used for unknown endpoints
 		MessageEncoding:                  EncodingJSON,
 	}, nil) // nil = unknown endpoint
 
@@ -1154,7 +1357,7 @@ func TestDetachValidatorUnknownEndpointSuccess(t *testing.T) {
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
 	// Execute detach for unknown endpoint with valid signature
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// Verify detachRsp was sent (signature validated successfully)
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
@@ -1178,7 +1381,7 @@ func TestDetachValidatorUnknownEndpointFailure(t *testing.T) {
 
 	// Setup: NO endpoint registered (nil endpoint = unknown device scenario)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false, // Not used for unknown endpoints
+		DetachSignatureValidationEnabled: detachSigValidationOn, // enabled: the injected validator decides
 		MessageEncoding:                  EncodingJSON,
 	}, nil) // nil = unknown endpoint
 
@@ -1191,7 +1394,7 @@ func TestDetachValidatorUnknownEndpointFailure(t *testing.T) {
 		return &DetachValidationResult{
 			Valid:            false,
 			ValidationStatus: ValidationStatusInvalidSignature,
-		}, fmt.Errorf("signature validation failed")
+		}, errors.New(errFmtSignatureValidationFailed)
 	})
 	env.server.SetDetachValidator(mockValidator)
 
@@ -1199,7 +1402,7 @@ func TestDetachValidatorUnknownEndpointFailure(t *testing.T) {
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
 	// Execute detach for unknown endpoint with invalid signature
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload),
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload),
 		"handleDetach must not return error (sends error to BS instead)")
 
 	// Verify error was sent to base station (signature validation failed)
@@ -1229,7 +1432,7 @@ func TestDetachValidatorNotConfigured(t *testing.T) {
 
 	// Setup: NO endpoint registered (nil endpoint = unknown device scenario)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false, // Not used for unknown endpoints
+		DetachSignatureValidationEnabled: detachSigValidationOff, // Not used for unknown endpoints
 		MessageEncoding:                  EncodingJSON,
 	}, nil) // nil = unknown endpoint
 
@@ -1239,7 +1442,7 @@ func TestDetachValidatorNotConfigured(t *testing.T) {
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
 
 	// Execute detach for unknown endpoint without validator
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
 	// Verify detachRsp was sent (validation skipped, logged warning)
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
@@ -1251,9 +1454,10 @@ func TestDetachValidatorNotConfigured(t *testing.T) {
 	require.NotNil(t, pending, "pending op must exist when validation skipped")
 }
 
-// TestDetachValidatorKnownEndpointBypassed verifies validator is NOT
-// called for known endpoints (uses existing signature validation flow).
-func TestDetachValidatorKnownEndpointBypassed(t *testing.T) {
+// TestDetachValidatorDecidesForKnownEndpoints verifies the injected validator
+// is the single authority in enabled mode: it is called for known endpoints
+// too, and its verdict decides the detach.
+func TestDetachValidatorDecidesForKnownEndpoints(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -1266,14 +1470,15 @@ func TestDetachValidatorKnownEndpointBypassed(t *testing.T) {
 	endpoint.Sign = []byte{10, 20, 30, 40}
 
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: true, // Known endpoint uses this flag
+		DetachSignatureValidationEnabled: detachSigValidationOn,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 
-	// Configure mock validator that should NOT be called
 	validatorCalled := false
-	mockValidator := NewMockDetachSignatureValidator(func(_ context.Context, _ uint64, _ []byte) (*DetachValidationResult, error) {
-		validatorCalled = true // This should NOT happen for known endpoints
+	mockValidator := NewMockDetachSignatureValidator(func(_ context.Context, gotEUI uint64, gotSign []byte) (*DetachValidationResult, error) {
+		validatorCalled = true
+		assert.Equal(t, epEui, gotEUI)
+		assert.Len(t, gotSign, 4)
 		return &DetachValidationResult{
 			Valid:            true,
 			TenantID:         1,
@@ -1284,19 +1489,111 @@ func TestDetachValidatorKnownEndpointBypassed(t *testing.T) {
 	env.server.SetDetachValidator(mockValidator)
 
 	payload := buildDetachPayload(epEui)
-	payload["sign"] = []interface{}{10.0, 20.0, 30.0, 40.0} // Matching signature
+	payload["sign"] = []interface{}{10.0, 20.0, 30.0, 40.0}
 
 	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
-	require.NoError(t, env.server.handleDetach(env.server, env.session, msg, payload))
+	require.NoError(t, env.server.handleDetach(env.session, msg, payload))
 
-	// Verify validator was NOT called (known endpoint uses existing flow)
-	assert.False(t, validatorCalled, "validator must NOT be called for known endpoints")
+	assert.True(t, validatorCalled, "the injected validator must decide known-endpoint detaches in enabled mode")
 
-	// Verify detach processed successfully
 	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
 		"detRsp must be sent for known endpoint")
 
 	pending, err := env.server.statusSvc.GetPendingOperation(env.session, opID)
 	require.NoError(t, err, "pending op must be stored for known endpoint")
 	require.NotNil(t, pending, "pending op must exist for known endpoint")
+}
+
+// Error format strings shared by this package's failure paths; verbs are filled at the point of failure.
+const (
+	errFmtSignatureValidationFailed = "signature validation failed"
+)
+
+// fakeRoamingErrService fails DetectAndValidateRoaming to exercise the
+// roaming-validation-failure path; the other methods are inert.
+type fakeRoamingErrService struct{ detectErr error }
+
+func (f *fakeRoamingErrService) DetectAndValidateRoaming(_ context.Context, _ []byte, servingTenantID int64) (bool, int64, error) {
+	return false, servingTenantID, f.detectErr
+}
+
+func (f *fakeRoamingErrService) RecordAttach(context.Context, []byte, []byte, int64) error {
+	return nil
+}
+
+func (f *fakeRoamingErrService) RecordDetach(context.Context, []byte, []byte, int64) error {
+	return nil
+}
+
+func (f *fakeRoamingErrService) UpdateSessionRoaming(context.Context, int64, []byte, bool, int64) error {
+	return nil
+}
+
+// TestDetach_OwnerLookupFailure_FailsClosed proves a repository failure during
+// owner resolution aborts the detach instead of treating a known endpoint as
+// unknown: no pending operation is persisted and no detach response is sent.
+func TestDetach_OwnerLookupFailure_FailsClosed(t *testing.T) {
+	t.Parallel()
+
+	const (
+		opID  = int64(707)
+		epEui = uint64(0x1234567890A1)
+	)
+
+	endpoint := buildTestEndpoint(epEui, 100)
+	env := newDetachTestEnv(t, &Config{
+		DetachSignatureValidationEnabled: detachSigValidationOff,
+		MessageEncoding:                  EncodingJSON,
+	}, endpoint)
+	env.repo.lookupErr = errors.New("connection refused")
+
+	payload := buildDetachPayload(epEui)
+	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
+
+	err := env.server.handleDetach(env.session, msg, payload)
+	require.NoError(t, err, "handler returns nil after sending the error frame")
+
+	assert.False(t, env.conn.SeenCommand(mioty.CmdDetachResponse),
+		"no detach response on a failed owner lookup")
+	pending, perr := env.server.statusSvc.GetPendingOperation(env.session, opID)
+	if perr == nil {
+		assert.Nil(t, pending, "no pending operation persisted on a failed owner lookup")
+	}
+	assert.Empty(t, env.repo.detachStateCalls, "no telemetry write on a failed owner lookup")
+}
+
+// TestDetach_RoamingFailure_OwnerNotReassigned proves that when roaming
+// validation fails for a known endpoint detaching through another tenant's
+// base station, the detach is still recorded under the true owner tenant and
+// never reassigned to the serving tenant.
+func TestDetach_RoamingFailure_OwnerNotReassigned(t *testing.T) {
+	t.Parallel()
+
+	const (
+		opID          = int64(808)
+		epEui         = uint64(0x1234567890A2)
+		ownerTenant   = int64(100)
+		servingTenant = int64(200)
+	)
+
+	endpoint := buildTestEndpoint(epEui, ownerTenant)
+	env := newDetachTestEnv(t, &Config{
+		DetachSignatureValidationEnabled: detachSigValidationOff,
+		MessageEncoding:                  EncodingJSON,
+	}, endpoint)
+	env.session.ResolvedTenantID = servingTenant
+	env.server.SetRoamingService(&fakeRoamingErrService{detectErr: errors.New("roaming backend down")})
+
+	payload := buildDetachPayload(epEui)
+	msg := &Message{Command: mioty.CmdDetach, OpId: opID, Data: payload}
+
+	err := env.server.handleDetach(env.session, msg, payload)
+	require.NoError(t, err)
+	require.True(t, env.conn.SeenCommand(mioty.CmdDetachResponse))
+
+	require.NotEmpty(t, env.repo.detachStateTenants, "a telemetry write must occur for the known endpoint")
+	for _, tid := range env.repo.detachStateTenants {
+		assert.Equal(t, ownerTenant, tid,
+			"detach must be recorded under the owner tenant, never the serving tenant")
+	}
 }

@@ -17,6 +17,8 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/authz"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
@@ -24,6 +26,30 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
+
+// Auth-settings fixtures returned by the mock auth service; mocks hand out
+// a copy so tests cannot mutate the shared value.
+var (
+	authSettingsFixture = grpcservices.AuthSettings{
+		Enabled:             true,
+		LocalLoginEnabled:   true,
+		LoginURL:            "/login",
+		LoginLabel:          "Sign In",
+		LoginRedirect:       true,
+		LogoutURL:           "/logout",
+		RefreshTokenEnabled: true,
+		OIDCEnabled:         false,
+	}
+
+	authSettingsMinimalFixture = grpcservices.AuthSettings{Enabled: true, LocalLoginEnabled: true}
+)
+
+// testAuthInterceptorEnabled enables JWT verification in interceptor tests.
+const testAuthInterceptorEnabled = true
+
+// testFullMethodListEndPoints is the gRPC method path used to exercise the
+// auth interceptor.
+const testFullMethodListEndPoints = "/kilocenter.api.v1.CoreService/ListEndPoints"
 
 // ============================================================================
 // Mock Implementations for Auth Tests
@@ -164,6 +190,7 @@ func TestLogin_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: mockAuth,
 		log:     &mockLogger{},
 	}
@@ -186,6 +213,7 @@ func TestLogin_Success(t *testing.T) {
 
 func TestLogin_MissingEmail(t *testing.T) {
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: &mockAuthService{},
 		log:     &mockLogger{},
 	}
@@ -209,6 +237,7 @@ func TestLogin_MissingEmail(t *testing.T) {
 
 func TestLogin_MissingPassword(t *testing.T) {
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: &mockAuthService{},
 		log:     &mockLogger{},
 	}
@@ -238,6 +267,7 @@ func TestLogin_InvalidCredentials(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: mockAuth,
 		log:     &mockLogger{},
 	}
@@ -260,6 +290,7 @@ func TestLogin_InvalidCredentials(t *testing.T) {
 
 func TestLogin_ServiceNotConfigured(t *testing.T) {
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: nil,
 		log:     &mockLogger{},
 	}
@@ -297,6 +328,7 @@ func TestRefreshTokens_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: mockAuth,
 		log:     &mockLogger{},
 	}
@@ -316,6 +348,7 @@ func TestRefreshTokens_Success(t *testing.T) {
 
 func TestRefreshTokens_MissingToken(t *testing.T) {
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: &mockAuthService{},
 		log:     &mockLogger{},
 	}
@@ -359,6 +392,8 @@ func TestGetProfile_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		roles:   fixedRoles(authz.Roles{EndpointManager: true}),
+		audit:   discardAudit{},
 		authSvc: mockAuth,
 		log:     &mockLogger{},
 	}
@@ -374,6 +409,8 @@ func TestGetProfile_Success(t *testing.T) {
 	assert.Equal(t, "test@example.com", resp.User.Email)
 	assert.Equal(t, orgID.String(), resp.User.DefaultOrgId)
 	assert.Len(t, resp.User.Memberships, 1)
+	assert.True(t, resp.User.GetRoles().GetEndpointManager(), "the profile carries the caller's roles")
+	assert.False(t, resp.User.GetRoles().GetBaseStationManager())
 }
 
 // ============================================================================
@@ -415,6 +452,7 @@ func TestCreateUser_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:        discardAudit{},
 		adminUserSvc: mockAdmin,
 		log:          &mockLogger{},
 	}
@@ -440,6 +478,7 @@ func TestCreateUser_MissingEmail(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -485,6 +524,7 @@ func TestGetUser_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:        discardAudit{},
 		adminUserSvc: mockAdmin,
 		log:          &mockLogger{},
 	}
@@ -506,6 +546,7 @@ func TestGetUser_InvalidIDFormat(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -545,13 +586,14 @@ func TestListUsers_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:        discardAudit{},
 		adminUserSvc: mockAdmin,
 		log:          &mockLogger{},
 	}
 
 	ctx := adminTestContext(callerID)
 	req := &pb.ListUsersRequest{
-		PageSize: 10,
+		PageSize: testPageSize,
 	}
 
 	resp, err := svc.ListUsers(ctx, req)
@@ -574,6 +616,7 @@ func TestDeleteUser_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:        discardAudit{},
 		adminUserSvc: mockAdmin,
 		log:          &mockLogger{},
 	}
@@ -597,20 +640,13 @@ func TestDeleteUser_Success(t *testing.T) {
 func TestGetAuthSettings_Success(t *testing.T) {
 	mockAuth := &mockAuthService{
 		getAuthSettingsFunc: func(_ context.Context) (*grpcservices.AuthSettings, error) {
-			return &grpcservices.AuthSettings{
-				Enabled:             true,
-				LocalLoginEnabled:   true,
-				LoginURL:            "/login",
-				LoginLabel:          "Sign In",
-				LoginRedirect:       true,
-				LogoutURL:           "/logout",
-				RefreshTokenEnabled: true,
-				OIDCEnabled:         false,
-			}, nil
+			s := authSettingsFixture
+			return &s, nil
 		},
 	}
 
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: mockAuth,
 		log:     &mockLogger{},
 	}
@@ -627,14 +663,39 @@ func TestGetAuthSettings_Success(t *testing.T) {
 	assert.Equal(t, "/login", resp.Settings.LoginUrl)
 }
 
+func TestGetAuthSettings_CarriesThePasswordPolicy(t *testing.T) {
+	policy := grpcservices.PasswordPolicy{
+		MinLength: config.AuthPasswordMinLength, MaxLength: config.AuthPasswordMaxLength,
+		RequiresLetter: true, RequiresDigit: true,
+	}
+	svc := &IdentityService{
+		authSvc: &mockAuthService{getAuthSettingsFunc: func(context.Context) (*grpcservices.AuthSettings, error) {
+			return &grpcservices.AuthSettings{PasswordPolicy: policy}, nil
+		}},
+		audit: discardAudit{},
+		log:   &mockLogger{},
+	}
+
+	resp, err := svc.GetAuthSettings(testutil.TestContext(), &pb.GetAuthSettingsRequest{})
+
+	require.NoError(t, err)
+	got := resp.GetSettings().GetPasswordPolicy()
+	assert.Equal(t, policy.MinLength, got.GetMinLength())
+	assert.Equal(t, policy.MaxLength, got.GetMaxLength())
+	assert.True(t, got.GetRequiresLetter())
+	assert.True(t, got.GetRequiresDigit())
+}
+
 func TestGetAuthSettings_RegistrationEnabled_WhenServiceWired(t *testing.T) {
 	mockAuth := &mockAuthService{
 		getAuthSettingsFunc: func(_ context.Context) (*grpcservices.AuthSettings, error) {
-			return &grpcservices.AuthSettings{Enabled: true, LocalLoginEnabled: true}, nil
+			s := authSettingsMinimalFixture
+			return &s, nil
 		},
 	}
 
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		authSvc:         mockAuth,
 		registrationSvc: &mockRegistrationService{},
 		log:             &mockLogger{},
@@ -648,11 +709,13 @@ func TestGetAuthSettings_RegistrationEnabled_WhenServiceWired(t *testing.T) {
 func TestGetAuthSettings_RegistrationDisabled_WhenServiceNil(t *testing.T) {
 	mockAuth := &mockAuthService{
 		getAuthSettingsFunc: func(_ context.Context) (*grpcservices.AuthSettings, error) {
-			return &grpcservices.AuthSettings{Enabled: true, LocalLoginEnabled: true}, nil
+			s := authSettingsMinimalFixture
+			return &s, nil
 		},
 	}
 
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		authSvc:         mockAuth,
 		registrationSvc: nil,
 		log:             &mockLogger{},
@@ -677,6 +740,7 @@ func TestLogout_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: mockAuth,
 		log:     &mockLogger{},
 	}
@@ -705,6 +769,7 @@ func TestChangePassword_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: mockAuth,
 		log:     &mockLogger{},
 	}
@@ -726,6 +791,7 @@ func TestChangePassword_MissingCurrentPassword(t *testing.T) {
 	userID := uuid.New()
 
 	svc := &IdentityService{
+		audit:   discardAudit{},
 		authSvc: &mockAuthService{},
 		log:     &mockLogger{},
 	}
@@ -757,6 +823,7 @@ func TestChangePassword_MissingCurrentPassword(t *testing.T) {
 
 func TestExchangeOIDC_MissingCode(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		externalAuthSvc: &mockExternalAuthService{},
 		log:             &mockLogger{},
 	}
@@ -780,6 +847,7 @@ func TestExchangeOIDC_MissingCode(t *testing.T) {
 
 func TestExchangeOIDC_MissingState(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		externalAuthSvc: &mockExternalAuthService{},
 		log:             &mockLogger{},
 	}
@@ -803,6 +871,7 @@ func TestExchangeOIDC_MissingState(t *testing.T) {
 
 func TestExchangeOIDC_ServiceNotConfigured(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		externalAuthSvc: nil,
 		log:             &mockLogger{},
 	}
@@ -830,6 +899,7 @@ func TestExchangeOIDC_Success(t *testing.T) {
 	testOrgID := uuid.New()
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		externalAuthSvc: &mockExternalAuthService{
 			completeOIDCLoginFunc: func(_ context.Context, _, _ string) (*grpcservices.AuthLoginResult, error) {
 				return &grpcservices.AuthLoginResult{
@@ -875,6 +945,7 @@ func TestExchangeOIDC_Success(t *testing.T) {
 
 func TestExchangeOIDC_NilTokensReturnsInternalError(t *testing.T) {
 	svc := &IdentityService{
+		audit: discardAudit{},
 		externalAuthSvc: &mockExternalAuthService{
 			completeOIDCLoginFunc: func(_ context.Context, _, _ string) (*grpcservices.AuthLoginResult, error) {
 				return &grpcservices.AuthLoginResult{
@@ -907,6 +978,7 @@ func TestExchangeOIDC_NilTokensReturnsInternalError(t *testing.T) {
 
 func TestExchangeOIDC_NilProfileReturnsInternalError(t *testing.T) {
 	svc := &IdentityService{
+		audit: discardAudit{},
 		externalAuthSvc: &mockExternalAuthService{
 			completeOIDCLoginFunc: func(_ context.Context, _, _ string) (*grpcservices.AuthLoginResult, error) {
 				return &grpcservices.AuthLoginResult{
@@ -943,6 +1015,7 @@ func TestExchangeOIDC_NilProfileReturnsInternalError(t *testing.T) {
 
 func TestExchangeOAuth2_MissingCode(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		externalAuthSvc: &mockExternalAuthService{},
 		log:             &mockLogger{},
 	}
@@ -966,6 +1039,7 @@ func TestExchangeOAuth2_MissingCode(t *testing.T) {
 
 func TestExchangeOAuth2_MissingState(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		externalAuthSvc: &mockExternalAuthService{},
 		log:             &mockLogger{},
 	}
@@ -989,6 +1063,7 @@ func TestExchangeOAuth2_MissingState(t *testing.T) {
 
 func TestExchangeOAuth2_ServiceNotConfigured(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		externalAuthSvc: nil,
 		log:             &mockLogger{},
 	}
@@ -1016,6 +1091,7 @@ func TestExchangeOAuth2_Success(t *testing.T) {
 	testOrgID := uuid.New()
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		externalAuthSvc: &mockExternalAuthService{
 			completeOAuth2LoginFunc: func(_ context.Context, _, _ string) (*grpcservices.AuthLoginResult, error) {
 				return &grpcservices.AuthLoginResult{
@@ -1111,7 +1187,7 @@ func TestAuthInterceptor_UserClaimExtracted(t *testing.T) {
 	require.NoError(t, err)
 
 	ai, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{
-		Enabled:     true,
+		Enabled:     testAuthInterceptorEnabled,
 		TenantClaim: "tenant_id",
 		HMACSecret:  string(secret),
 	})
@@ -1125,7 +1201,7 @@ func TestAuthInterceptor_UserClaimExtracted(t *testing.T) {
 		capturedCtx = ctx
 		return "ok", nil
 	}
-	info := &grpc.UnaryServerInfo{FullMethod: "/kilocenter.api.v1.CoreService/ListEndPoints"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethodListEndPoints}
 	_, err = ai.UnaryInterceptor()(ctx, nil, info, handler)
 	require.NoError(t, err)
 
@@ -1139,6 +1215,7 @@ func TestUpdateUser_EmptyEmailInMask_Rejected(t *testing.T) {
 	targetID := uuid.New()
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 			updateFunc: func(_ context.Context, _ uuid.UUID, _ *grpcservices.UserUpdateRequest) (*models.User, error) {

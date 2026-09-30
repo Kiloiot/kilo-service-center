@@ -10,11 +10,12 @@ import (
 	"fmt"
 	"net"
 
-	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger" // Shared MIOTY helpers (FormatEUI64, EPStatus)
 	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // handleConnect processes Connect messages per SCACI §3.3
@@ -44,40 +45,43 @@ func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Cert
 	// completes, so these sites use s.safeCtx() (a plain value-free context).
 	// Certificate CN is logged as an explicit field; tenant resolution happens
 	// in HandshakeService.
-	certCN := "unknown"
+	certCN := unknownCertCN
 	if cert != nil && cert.Subject.CommonName != "" {
 		certCN = cert.Subject.CommonName
 	}
-	s.logger.DebugContext(s.safeCtx(), LogSCACIProcessingConnect, "certCN", certCN)
+	s.logger.DebugContext(s.safeCtx(), LogSCACIProcessingConnect, logger.FieldCertCN, certCN)
 
 	// Step 1: Decode Connect message from payload (transport layer)
 	var req Connect
-	if err := msgpack.Unmarshal(payload, &req); err != nil {
-		s.logger.ErrorContext(s.safeCtx(), LogSCACIDecodeConnectFailed, "error", err)
-		return s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errInvalidConnectFormat)
+	if err := decodePayload(payload, &req); err != nil {
+		s.logger.ErrorContext(s.safeCtx(), LogSCACIDecodeConnectFailed, logger.FieldError, err)
+		errToken := decodeFailureToken(err, errInvalidConnectFormat, errInvalidConnectFormat)
+		s.recordConnectRefused(conn, nil, cert, 0, errToken)
+		s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
+		return nil
 	}
 
 	// Step 2: Validate transport-layer requirements per SCACI §3.3
 
 	// SCACI §3.3-02: Connect MUST use opId == OpIDConnect (0)
 	if opId != OpIDConnect {
-		s.logger.ErrorContext(s.safeCtx(), LogSCACIConnectOpIDMustBeZero, "opId", opId)
-		_ = s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errConnectOpIdMustBeZero)
-		_ = conn.Close()
-		return fmt.Errorf("invalid connect opId")
+		s.logger.ErrorContext(s.safeCtx(), LogSCACIConnectOpIDMustBeZero, logger.FieldOpID, opId)
+		s.recordConnectRefused(conn, nil, cert, req.AcEui, errConnectOpIdMustBeZero)
+		s.refuseConnection(conn, nil, opId, errConnectOpIdMustBeZero)
+		return errInvalidConnectOpId
 	}
 
 	// SCACI §3.3.1-01: Validate mandatory fields via sessionValidator
 	if errToken := s.sessionValidator.ValidateConnectFields(&req); errToken != "" {
-		_ = s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
-		_ = conn.Close()
-		return fmt.Errorf("connect validation failed: %s", errToken)
+		s.recordConnectRefused(conn, nil, cert, req.AcEui, errToken)
+		s.refuseConnection(conn, nil, opId, errToken)
+		return fmt.Errorf(errFmtConnectValidationFailed, errToken)
 	}
 
 	// Debug: Log resume field state
 	s.logger.DebugContext(s.safeCtx(), LogSCACIConnectResumeFields,
-		"hasSnAcOpId", req.SnAcOpId != nil,
-		"hasSnScOpId", req.SnScOpId != nil)
+		logger.FieldHasSnAcOpId, req.SnAcOpId != nil,
+		logger.FieldHasSnScOpId, req.SnScOpId != nil)
 
 	// Step 3: Delegate to HandshakeService for business logic
 	// Service handles: tenant resolution, version negotiation, session resumption, session creation, metadata
@@ -86,37 +90,21 @@ func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Cert
 	if errToken != "" {
 		// Service returned error token - sendErrorWithCatalog handles POSIXCode resolution
 		// (version errors have POSIXCode=POSIX_ENOTSUP in catalog; others use default)
-		_ = s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
-		_ = conn.Close()
-		return fmt.Errorf("handshake validation failed: %s", errToken)
+		s.recordConnectRefused(conn, nil, cert, req.AcEui, errToken)
+		s.refuseConnection(conn, nil, opId, errToken)
+		return fmt.Errorf(errFmtHandshakeValidationFailed, errToken)
 	}
 
 	// Enforce organization context in strict mode
 	// When org_enforcement_enabled=true, reject sessions with nil organization UUID
 	if s.config.OrgEnforcementEnabled && newSession.OrganizationID == uuid.Nil {
 		s.logger.WarnContext(s.sessionContext(newSession), LogSCACIOrgEnforcementNilUUID,
-			"acEui", newSession.AcEui,
-			"orgEnforcementEnabled", true)
-		_ = s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errOrgHeaderRequired)
-		_ = conn.Close()
-		return fmt.Errorf("org enforcement: organization UUID required but not resolved from certificate")
+			logger.FieldAcEui, newSession.AcEui,
+			logger.FieldOrgEnforcementEnabled, true)
+		s.recordConnectRefused(conn, newSession, cert, req.AcEui, errOrgHeaderRequired)
+		s.refuseConnection(conn, nil, opId, errOrgHeaderRequired)
+		return errOrgUUIDNotResolved
 	}
-
-	// Step 4: Update session mapping (transport concern)
-	// Map connection → session for future message routing
-	s.sessionsMu.Lock()
-	if newSession.Resumed {
-		// Remove old connection mapping BEFORE assigning new one
-		for oldConn, sess := range s.sessions {
-			if sess.ID == newSession.ID && oldConn != conn {
-				delete(s.sessions, oldConn)
-				break
-			}
-		}
-	}
-	s.sessions[conn] = newSession
-	s.sessionsMu.Unlock()
-	*session = newSession
 
 	// Store negotiated version in session for persistence in handleConnectComplete (SCACI §§2.1-2.3)
 	if resp.Version != nil {
@@ -150,15 +138,22 @@ func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Cert
 		syncCancel()
 
 		if err != nil {
-			s.logger.ErrorContext(s.sessionContext(newSession), LogSCACIPersistSessionFailed, "error", err)
-			_ = s.sendErrorWithCatalog(conn, newSession, opId, POSIX_EINVAL, ErrInternalError)
-			_ = conn.Close()
-			return fmt.Errorf("persist connect sync failed: %w", err)
+			s.logger.ErrorContext(s.sessionContext(newSession), LogSCACIPersistSessionFailed, logger.FieldError, err)
+			s.recordConnectRefused(conn, newSession, cert, req.AcEui, ErrInternalError)
+			s.refuseConnection(conn, newSession, opId, ErrInternalError)
+			return fmt.Errorf(errFmtPersistConnectSyncFailed, err)
 		}
 		newSession.ID = id
-		// Mark as already persisted so handleConnectComplete doesn't re-create
-		newSession.SyncPersisted = true
 	}
+
+	// Only a session whose row exists takes the connection over from the
+	// previous one of its application center.
+	adopted, replaced := s.registry.adopt(s.sessionContext(newSession), conn, newSession)
+	if !adopted {
+		return s.refuseUnheldResume(conn, newSession, opId)
+	}
+	s.recordSuperseded(replaced)
+	*session = newSession
 
 	// Step 4c: Record Connect request for audit trail (§3.3)
 	// Connect is always logged (unlike Ping which is configurable)
@@ -169,7 +164,7 @@ func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Cert
 
 		requestData := map[string]interface{}{
 			"version":  req.Version,
-			"acEui":    pkgmioty.FormatEUI64(req.AcEui),
+			"acEui":    mioty.FormatEUI64(req.AcEui),
 			"snAcUuid": hex.EncodeToString(req.SnAcUUID[:]),
 			"resumed":  newSession.Resumed,
 		}
@@ -198,7 +193,7 @@ func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Cert
 			requestData["snScOpId"] = *req.SnScOpId
 		}
 		if err := s.operationRecorder.Record(recCtx, newSession, opId, CmdConnect, models.OperationDirectionInbound, requestData); err != nil {
-			s.logger.WarnContext(s.sessionContext(newSession), LogSCACIRecordConnectOpFailed, "error", err)
+			s.logger.WarnContext(s.sessionContext(newSession), LogSCACIRecordConnectOpFailed, logger.FieldError, err)
 			// Continue - operation tracking is for audit, not critical path
 		}
 	}
@@ -222,12 +217,12 @@ func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Cert
 
 		responseData := map[string]interface{}{
 			"version":  resp.Version,
-			"scEui":    pkgmioty.FormatEUI64(resp.ScEui),
+			"scEui":    mioty.FormatEUI64(resp.ScEui),
 			"snScUuid": hex.EncodeToString(resp.SnScUUID[:]),
 			"snResume": resp.SnResume,
 		}
 		if err := s.operationRepo.UpdateOperationState(rspCtx, newSession.ID, opId, models.OperationStateAcknowledged, responseData); err != nil {
-			s.logger.WarnContext(s.sessionContext(newSession), LogSCACIRecordConnectRspOpFailed, "error", err)
+			s.logger.WarnContext(s.sessionContext(newSession), LogSCACIRecordConnectRspOpFailed, logger.FieldError, err)
 			// Continue - operation tracking is for audit, not critical path
 		}
 	}
@@ -242,17 +237,24 @@ func (s *Server) handleConnect(conn net.Conn, session **Session, cert *x509.Cert
 //
 // No response is sent per spec - handshake is complete.
 func (s *Server) handleConnectComplete(conn net.Conn, session *Session, opId int64) error {
+	completedAt := s.clock.Now()
 	if session == nil {
-		return s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errNoActiveSession)
+		s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errNoActiveSession)
+		return nil
 	}
 
 	// Per SCACI §3.3, the entire connect handshake must use opId=OpIDConnect (0)
 	if opId != OpIDConnect {
 		s.logger.WarnContext(s.sessionContext(session), LogSCACIConnectCmpNonZeroOpID,
-			"opId", opId,
-			"acEui", pkgmioty.FormatEUI64(session.AcEui))
-		_ = s.sendErrorWithCatalog(conn, session, opId, POSIX_EINVAL, errConCmpOpIDMustBeZero)
+			logger.FieldOpID, opId,
+			logger.FieldAcEui, mioty.FormatEUI64(session.AcEui))
+		s.sendErrorWithCatalog(conn, session, opId, POSIX_EINVAL, errConCmpOpIDMustBeZero)
 		return conn.Close()
+	}
+	// The connect operation completes once (SCACI §3.3).
+	if session.connected() {
+		s.sendErrorWithCatalog(conn, session, opId, POSIX_EPROTO, errUnsolicitedResponse)
+		return nil
 	}
 
 	// Capture TLS version and cipher suite per SCACI §1 evidence requirements
@@ -261,47 +263,18 @@ func (s *Server) handleConnectComplete(conn net.Conn, session *Session, opId int
 	tlsVersion := TLSVersionName(state.Version)
 	cipherSuite := tls.CipherSuiteName(state.CipherSuite)
 
-	// Transition to active
-	s.sessionsMu.Lock()
-	session.State = StateActive
-	session.UpdateLastSeen()
-
-	// Session already contains all necessary data
-	s.sessionsMu.Unlock()
+	if !s.admitConnected(conn, session, completedAt, tlsVersion, cipherSuite) {
+		s.recordConnectRefused(conn, session, nil, session.AcEui, errNoActiveSession)
+		return conn.Close()
+	}
 
 	s.logger.DebugContext(s.sessionContext(session), LogSCACIConnectComplete,
-		"acEui", pkgmioty.FormatEUI64(session.AcEui),
-		"resumed", session.Resumed)
+		logger.FieldAcEui, mioty.FormatEUI64(session.AcEui),
+		logger.FieldResumed, session.Resumed)
 
-	// Update ConnectComplete state for audit trail (§3.3)
-	// State transition: acknowledged → completed (completes three-way handshake)
-	if session.ID > 0 && s.operationRepo != nil {
-		cmpCtx, cmpCancel := context.WithTimeout(s.sessionContext(session), dbconfig.DefaultQueryTimeout)
-		defer cmpCancel()
-
-		completeData := map[string]interface{}{
-			"acEui":       pkgmioty.FormatEUI64(session.AcEui),
-			"resumed":     session.Resumed,
-			"tlsVersion":  tlsVersion,
-			"cipherSuite": cipherSuite,
-		}
-		if err := s.operationRepo.UpdateOperationState(cmpCtx, session.ID, opId, models.OperationStateCompleted, completeData); err != nil {
-			s.logger.WarnContext(s.sessionContext(session), LogSCACIRecordConnectCmpOpFailed, "error", err)
-			// Continue - operation tracking is for audit, not critical path
-		}
-	}
-
-	// Persist the resume update async - fresh sessions were sync-persisted in
-	// handleConnect (SyncPersisted flag), so only resumed sessions reach this.
-	if !session.SyncPersisted {
-		s.sessionPersistence.PersistResumeAsync(s.sessionContext(session), session, tlsVersion, cipherSuite)
-	}
-
-	// SCACI §1: Replay pending operations on successful session resume
-	// Only SC-originated operations (negative opIds) are replayed: CmdULData and CmdDLDataResult
-	if session.Resumed {
-		go s.replayPendingOperations(conn, session)
-	}
-
+	// Filed before the audit write, so it reaches the log close to the moment it carries.
+	s.recordSessionEvent(session, liveEventType(session), "", conn, completedAt)
+	s.recordConnectComplete(session, opId, tlsVersion, cipherSuite)
+	s.reissueHeld(conn, session)
 	return nil
 }

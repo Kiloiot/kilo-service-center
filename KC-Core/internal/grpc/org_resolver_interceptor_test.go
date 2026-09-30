@@ -16,6 +16,16 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
+const (
+	testMsgOrgNotFound = "org not found"
+
+	// testFullMethod is a tenant-scoped method the interceptor must guard.
+	testFullMethod = "/test/Method"
+
+	// testHealthCheckMethod is on the interceptor skip list.
+	testHealthCheckMethod = "/grpc.health.v1.Health/Check"
+)
+
 // mockOrgResolver implements org.Resolver for testing
 type mockOrgResolver struct {
 	lookupResult int64
@@ -58,7 +68,7 @@ func TestNewOrgResolverInterceptor_RequiresResolver(t *testing.T) {
 func TestNewOrgResolverInterceptor_Success(t *testing.T) {
 	interceptor, err := NewOrgResolverInterceptor(OrgResolverInterceptorConfig{
 		Resolver:    &mockOrgResolver{lookupResult: 42},
-		SkipMethods: []string{"/grpc.health.v1.Health/Check"},
+		SkipMethods: []string{testHealthCheckMethod},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -82,7 +92,7 @@ func TestOrgResolverInterceptor_MissingMetadata(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -115,7 +125,7 @@ func TestOrgResolverInterceptor_MissingOrgID(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -149,7 +159,7 @@ func TestOrgResolverInterceptor_InvalidOrgID(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -182,7 +192,7 @@ func TestOrgResolverInterceptor_MissingUserID(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -216,7 +226,7 @@ func TestOrgResolverInterceptor_InvalidUserID(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -237,7 +247,7 @@ func TestOrgResolverInterceptor_ResolutionFailure(t *testing.T) {
 	interceptor, _ := NewOrgResolverInterceptor(OrgResolverInterceptorConfig{
 		Resolver: &mockOrgResolver{
 			lookupResult: 0,
-			lookupError:  status.Error(codes.NotFound, "org not found"),
+			lookupError:  status.Error(codes.NotFound, testMsgOrgNotFound),
 		},
 	})
 
@@ -254,7 +264,7 @@ func TestOrgResolverInterceptor_ResolutionFailure(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -291,7 +301,7 @@ func TestOrgResolverInterceptor_Success(t *testing.T) {
 		return "success", nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	resp, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err != nil {
@@ -339,7 +349,7 @@ func TestOrgResolverInterceptor_Success(t *testing.T) {
 func TestOrgResolverInterceptor_SkipMethods(t *testing.T) {
 	interceptor, _ := NewOrgResolverInterceptor(OrgResolverInterceptorConfig{
 		Resolver:    &mockOrgResolver{lookupResult: 42},
-		SkipMethods: []string{"/grpc.health.v1.Health/Check"},
+		SkipMethods: []string{testHealthCheckMethod},
 	})
 
 	// Create context without metadata (would normally fail)
@@ -352,7 +362,7 @@ func TestOrgResolverInterceptor_SkipMethods(t *testing.T) {
 	}
 
 	// Test skipped method
-	info := &grpc.UnaryServerInfo{FullMethod: "/grpc.health.v1.Health/Check"}
+	info := &grpc.UnaryServerInfo{FullMethod: testHealthCheckMethod}
 	resp, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err != nil {
@@ -400,7 +410,7 @@ func TestOrgResolverInterceptor_AuthIdentity_TenantMatch(t *testing.T) {
 		return "ok", nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err != nil {
@@ -440,7 +450,7 @@ func TestOrgResolverInterceptor_AuthIdentity_TenantMismatch(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -486,7 +496,7 @@ func TestOrgResolverInterceptor_AuthIdentity_OrgMismatch(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -532,7 +542,7 @@ func TestOrgResolverInterceptor_AuthIdentity_UserMismatch(t *testing.T) {
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -575,7 +585,7 @@ func TestOrgResolverInterceptor_ServiceAccountPrincipal_NoUserHeader(t *testing.
 		return "ok", nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err != nil {
@@ -614,7 +624,7 @@ func TestOrgResolverInterceptor_ServiceAccountPrincipal_UserHeaderRejected(t *te
 		return nil, nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err == nil {
@@ -655,7 +665,7 @@ func TestOrgResolverInterceptor_NoAuthIdentity_SetsFromHeaders(t *testing.T) {
 		return "ok", nil
 	}
 
-	info := &grpc.UnaryServerInfo{FullMethod: "/test/Method"}
+	info := &grpc.UnaryServerInfo{FullMethod: testFullMethod}
 	_, err := interceptor.UnaryInterceptor()(ctx, nil, info, handler)
 
 	if err != nil {

@@ -2,9 +2,7 @@ package models
 
 // Organization states - used for Organization.State field.
 const (
-	OrganizationStateActive    = "active"
-	OrganizationStateSuspended = "suspended"
-	OrganizationStateArchived  = "archived"
+	OrganizationStateActive = "active"
 )
 
 // Organization member roles - used for OrganizationMember.Role field.
@@ -29,6 +27,4 @@ const (
 )
 
 // Organization member field names - used for update map keys.
-const (
-	MemberFieldRole = "role"
-)
+const ()

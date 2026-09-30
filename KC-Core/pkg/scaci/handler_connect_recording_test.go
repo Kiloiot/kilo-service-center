@@ -3,7 +3,7 @@
 // Coverage:
 //   - Connect operation recording (§3.3) - always recorded for audit trail
 //   - Ping operation recording (§3.4) - configurable via LogPingOperations
-//   - nonReplayableReasons inclusion verification
+//   - non-replay reason verification against the command table
 //   - State transitions: Record() for initial request, UpdateOperationState() for response/complete
 //
 // These tests verify that handlers correctly use:
@@ -64,21 +64,6 @@ func (m *MockSCACIOperationRepository) GetOperationByOpID(ctx context.Context, s
 	return args.Get(0).(*models.SCACIOperation), args.Error(1)
 }
 
-// GetRecentOperations mocks recent operations retrieval (not used in these tests)
-func (m *MockSCACIOperationRepository) GetRecentOperations(_ context.Context, _ int64, _ int) ([]*models.SCACIOperation, error) {
-	panic("not implemented")
-}
-
-// CleanupCompletedOperations mocks cleanup (not used in these tests)
-func (m *MockSCACIOperationRepository) CleanupCompletedOperations(_ context.Context, _ int64) (int64, error) {
-	panic("not implemented")
-}
-
-// GetTenantOperationSummary mocks tenant summary (not used in these tests)
-func (m *MockSCACIOperationRepository) GetTenantOperationSummary(_ context.Context, _ int64, _ int) (*models.SCACIOperationSummary, error) {
-	panic("not implemented")
-}
-
 // UpdateOperationStateWithError mocks error state updates (not used in these tests)
 func (m *MockSCACIOperationRepository) UpdateOperationStateWithError(_ context.Context, _ int64, _ int64, _ models.OperationState, _ int, _ string, _ string, _ map[string]interface{}) error {
 	panic("not implemented")
@@ -103,7 +88,8 @@ func TestOperationRecorderMockRecord(t *testing.T) {
 	}
 
 	// Setup mock expectation
-	mockRecorder.On("Record",
+	mockRecorder.On(
+		"Record",
 		mock.Anything, // ctx
 		session,
 		int64(0), // opId for Connect
@@ -127,7 +113,7 @@ func TestOperationRecorderMockRecord(t *testing.T) {
 
 // TestConnectCommandsInNonReplayable verifies Connect commands are marked non-replayable.
 func TestConnectCommandsInNonReplayable(t *testing.T) {
-	// Verify Connect-related commands are in nonReplayableReasons
+	// Verify Connect-related commands carry a non-replay reason in the command table
 	connectCommands := []string{
 		CmdConnect,
 		CmdConnectResponse,
@@ -135,8 +121,8 @@ func TestConnectCommandsInNonReplayable(t *testing.T) {
 	}
 
 	for _, cmd := range connectCommands {
-		reason, exists := nonReplayableReasons[cmd]
-		assert.True(t, exists, "Command %s should be in nonReplayableReasons", cmd)
+		reason, exists := testNonReplayReason(cmd)
+		assert.True(t, exists, "Command %s should carry a non-replay reason", cmd)
 		assert.Contains(t, reason, "3.3", "Reason for %s should reference §3.3", cmd)
 	}
 }
@@ -199,7 +185,7 @@ func TestConnectCompleteRecordingData(t *testing.T) {
 
 // TestPingCommandsInNonReplayable verifies Ping commands are marked non-replayable.
 func TestPingCommandsInNonReplayable(t *testing.T) {
-	// Verify Ping-related commands are in nonReplayableReasons
+	// Verify Ping-related commands carry a non-replay reason in the command table
 	pingCommands := []string{
 		CmdPing,
 		CmdPingResponse,
@@ -207,8 +193,8 @@ func TestPingCommandsInNonReplayable(t *testing.T) {
 	}
 
 	for _, cmd := range pingCommands {
-		reason, exists := nonReplayableReasons[cmd]
-		assert.True(t, exists, "Command %s should be in nonReplayableReasons", cmd)
+		reason, exists := testNonReplayReason(cmd)
+		assert.True(t, exists, "Command %s should carry a non-replay reason", cmd)
 		assert.Contains(t, reason, "3.4", "Reason for %s should reference §3.4", cmd)
 	}
 }
@@ -274,7 +260,8 @@ func TestPingRecordingConfigFlag(t *testing.T) {
 
 			// Simulate the conditional recording logic from handlePing
 			if config.LogPingOperations && session.ID > 0 {
-				mockRecorder.On("Record",
+				mockRecorder.On(
+					"Record",
 					mock.Anything,
 					session,
 					int64(5),
@@ -333,7 +320,8 @@ func TestConnectOperationDirections(t *testing.T) {
 			mockRecorder := new(MockOperationRecorder)
 			session := &Session{ID: 1, TenantID: 100}
 
-			mockRecorder.On("Record",
+			mockRecorder.On(
+				"Record",
 				mock.Anything,
 				session,
 				int64(0),
@@ -368,7 +356,8 @@ func TestPingOperationDirections(t *testing.T) {
 			mockRecorder := new(MockOperationRecorder)
 			session := &Session{ID: 1, TenantID: 100}
 
-			mockRecorder.On("Record",
+			mockRecorder.On(
+				"Record",
 				mock.Anything,
 				session,
 				int64(5), // positive for AC-initiated
@@ -402,7 +391,8 @@ func TestSCInitiatedPingOperationDirections(t *testing.T) {
 			mockRecorder := new(MockOperationRecorder)
 			session := &Session{ID: 1, TenantID: 100}
 
-			mockRecorder.On("Record",
+			mockRecorder.On(
+				"Record",
 				mock.Anything,
 				session,
 				int64(-10), // negative for SC-initiated
@@ -430,7 +420,8 @@ func TestRecordingErrorNonBlocking(t *testing.T) {
 	session := &Session{ID: 1, TenantID: 100}
 
 	// Simulate a recording error
-	mockRecorder.On("Record",
+	mockRecorder.On(
+		"Record",
 		mock.Anything,
 		session,
 		int64(0),
@@ -479,7 +470,8 @@ func TestConnectStateTransitions(t *testing.T) {
 	session := &Session{ID: 1, TenantID: 100}
 
 	// Step 1: Connect request → Record() creates pending row
-	mockRecorder.On("Record",
+	mockRecorder.On(
+		"Record",
 		mock.Anything,
 		session,
 		int64(0), // opId for Connect
@@ -489,7 +481,8 @@ func TestConnectStateTransitions(t *testing.T) {
 	).Return(nil).Once()
 
 	// Step 2: ConnectResponse → UpdateOperationState(acknowledged), NOT Record()
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1), // sessionID
 		int64(0), // opId
@@ -498,7 +491,8 @@ func TestConnectStateTransitions(t *testing.T) {
 	).Return(nil).Once()
 
 	// Step 3: ConnectComplete → UpdateOperationState(completed), NOT Record()
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1), // sessionID
 		int64(0), // opId
@@ -538,7 +532,8 @@ func TestConnectResponseUsesUpdateNotRecord(t *testing.T) {
 	// ConnectResponse should NOT call Record
 	// It should only call UpdateOperationState
 
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1),
 		int64(0),
@@ -563,7 +558,8 @@ func TestConnectCompleteUsesUpdateNotRecord(t *testing.T) {
 	// ConnectComplete should NOT call Record
 	// It should only call UpdateOperationState
 
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1),
 		int64(0),
@@ -588,7 +584,8 @@ func TestPingStateTransitions_ACInitiated(t *testing.T) {
 	opId := int64(5) // positive for AC-initiated
 
 	// Step 1: Ping request → Record() creates pending row
-	mockRecorder.On("Record",
+	mockRecorder.On(
+		"Record",
 		mock.Anything,
 		session,
 		opId,
@@ -598,7 +595,8 @@ func TestPingStateTransitions_ACInitiated(t *testing.T) {
 	).Return(nil).Once()
 
 	// Step 2: PingResponse → UpdateOperationState(acknowledged), NOT Record()
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1),
 		opId,
@@ -607,7 +605,8 @@ func TestPingStateTransitions_ACInitiated(t *testing.T) {
 	).Return(nil).Once()
 
 	// Step 3: PingComplete → UpdateOperationState(completed), NOT Record()
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1),
 		opId,
@@ -641,7 +640,8 @@ func TestPingStateTransitions_SCInitiated(t *testing.T) {
 	opId := int64(-10) // negative for SC-initiated
 
 	// Step 1: Ping request (initiatePing) → Record() creates pending row
-	mockRecorder.On("Record",
+	mockRecorder.On(
+		"Record",
 		mock.Anything,
 		session,
 		opId,
@@ -651,7 +651,8 @@ func TestPingStateTransitions_SCInitiated(t *testing.T) {
 	).Return(nil).Once()
 
 	// Step 2: PingResponse (handlePingResponse) → UpdateOperationState(acknowledged)
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1),
 		opId,
@@ -660,7 +661,8 @@ func TestPingStateTransitions_SCInitiated(t *testing.T) {
 	).Return(nil).Once()
 
 	// Step 3: PingComplete (handlePingResponse) → UpdateOperationState(completed)
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1),
 		opId,
@@ -691,7 +693,8 @@ func TestStateTransitionErrorNonBlocking(t *testing.T) {
 	mockOpRepo := new(MockSCACIOperationRepository)
 
 	// Simulate a state transition error
-	mockOpRepo.On("UpdateOperationState",
+	mockOpRepo.On(
+		"UpdateOperationState",
 		mock.Anything,
 		int64(1),
 		int64(0),

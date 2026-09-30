@@ -33,7 +33,6 @@ protocol:
     enabled: true
     ece_endpoint: "localhost:50055"
     heartbeat_interval: 60s
-    outbox_max_size: 10000
     reconnect_max_backoff: 5m
 
 grpc:

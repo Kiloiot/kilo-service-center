@@ -149,12 +149,12 @@ func TestRequestBaseStationStatus_AcceptsBsEuiHex(t *testing.T) {
 		},
 	}
 	statusReq := &capturingStatusReq{opID: 42}
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		basestationSvc: bsSvc,
 		sessionDir:     &euiSessionDir{expectedEUI: highBitEUI},
 		statusReq:      statusReq,
 		log:            &mockLogger{},
-	}
+	})
 
 	ctx := testutil.TestContextWithTenant(1)
 	resp, err := svc.RequestBaseStationStatus(ctx, &pb.BaseStationStatusRequest{
@@ -170,12 +170,12 @@ func TestRequestBaseStationStatus_AcceptsBsEuiHex(t *testing.T) {
 }
 
 func TestRequestBaseStationStatus_RejectsMissingEUI(t *testing.T) {
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		basestationSvc: &mockBasestationSvc{},
 		sessionDir:     &euiSessionDir{},
 		statusReq:      &capturingStatusReq{},
 		log:            &mockLogger{},
-	}
+	})
 
 	ctx := testutil.TestContextWithTenant(1)
 	_, err := svc.RequestBaseStationStatus(ctx, &pb.BaseStationStatusRequest{})
@@ -192,11 +192,11 @@ func TestInitiatePing_AcceptsBsEuiHex(t *testing.T) {
 		},
 	}
 	pingCmd := &capturingPingCmd{opID: 7}
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		basestationSvc: bsSvc,
 		pingCmd:        pingCmd,
 		log:            &mockLogger{},
-	}
+	})
 
 	ctx := testutil.TestContextWithTenant(1)
 	resp, err := svc.InitiatePing(ctx, &pb.InitiatePingRequest{
@@ -213,11 +213,11 @@ func TestInitiatePing_AcceptsBsEuiHex(t *testing.T) {
 }
 
 func TestInitiatePing_RejectsMismatchedEUIs(t *testing.T) {
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		basestationSvc: &mockBasestationSvc{},
 		pingCmd:        &capturingPingCmd{},
 		log:            &mockLogger{},
-	}
+	})
 
 	ctx := testutil.TestContextWithTenant(1)
 	_, err := svc.InitiatePing(ctx, &pb.InitiatePingRequest{

@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
 
 // tenantResolver implements bssci.TenantResolver interface
@@ -22,9 +21,9 @@ import (
 //   - BSSCI §5.13: Tenant resolution during dlDataRev
 //   - BSSCI §5.14: Tenant resolution during dlDataRes
 type tenantResolver struct {
-	queueTenants   map[int64]string              // Hot path cache for queue-to-tenant mappings
-	queueTenantsMu sync.RWMutex                  // Protects queueTenants map access
-	queueStore     interfaces.DownlinkQueueStore // Cold path via repository interface
+	queueTenants   map[int64]string       // Hot path cache for queue-to-tenant mappings
+	queueTenantsMu sync.RWMutex           // Protects queueTenants map access
+	queueStore     DownlinkQueueOwnership // Cold path via repository interface
 }
 
 // NewTenantResolver creates a new tenant resolver service
@@ -36,7 +35,7 @@ type tenantResolver struct {
 //  1. Check in-memory cache (hot path)
 //  2. Query via DownlinkQueueStore if cache miss (cold path)
 //  3. Populate cache on successful repository lookup
-func NewTenantResolver(queueStore interfaces.DownlinkQueueStore) bssci.TenantResolver {
+func NewTenantResolver(queueStore DownlinkQueueOwnership) bssci.TenantResolver {
 	return &tenantResolver{
 		queueTenants: make(map[int64]string),
 		queueStore:   queueStore,
@@ -57,7 +56,7 @@ func NewTenantResolver(queueStore interfaces.DownlinkQueueStore) bssci.TenantRes
 //   - error if queueID invalid (<=0) or not found in cache/repository
 func (r *tenantResolver) ResolveTenant(ctx context.Context, queueID int64) (string, error) {
 	if queueID <= 0 {
-		return "", fmt.Errorf("invalid queue ID: %d", queueID)
+		return "", fmt.Errorf(errFmtInvalidQueueID, queueID)
 	}
 
 	// Hot path: Check cache
@@ -70,12 +69,12 @@ func (r *tenantResolver) ResolveTenant(ctx context.Context, queueID int64) (stri
 
 	// Cold path: Repository lookup via DownlinkQueueStore interface
 	if r.queueStore == nil {
-		return "", fmt.Errorf("queue store not available for tenant resolution")
+		return "", errQueueStoreUnavailable
 	}
 
 	tenantID, err := r.queueStore.GetTenantIDByQueueID(ctx, uint64(queueID))
 	if err != nil {
-		return "", fmt.Errorf("cannot resolve tenant for queue %d: %w", queueID, err)
+		return "", fmt.Errorf(errFmtCannotResolveTenantForQueue, queueID, err)
 	}
 
 	tidStr := strconv.FormatInt(tenantID, 10)

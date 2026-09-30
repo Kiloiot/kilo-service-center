@@ -65,7 +65,7 @@ func TestResolveBlueprintForEndpoint_SnapshotFirst(t *testing.T) {
 				DeviceModelID:     &modelID,
 				BlueprintSnapshot: tt.snapshot,
 			}
-			svc := NewResolverService(logger.NewNop(), repo, nil, nil)
+			svc := NewResolverService(logger.NewNop(), repo)
 
 			bp, err := svc.ResolveBlueprintForEndpoint(testutil.TestContext(), 1, ep, nil)
 			require.NoError(t, err)

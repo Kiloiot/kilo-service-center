@@ -3,7 +3,7 @@
 //
 // Coverage:
 //   - handleEPStatusResponse: marks operation as acknowledged
-//   - handleEPStatusComplete: marks operation as completed
+//   - handleEPStatusResponse: completes the operation with epStatCmp
 //   - Session nil handling for both handlers
 //   - ResponseData format verification
 package scaci
@@ -32,7 +32,7 @@ func TestHandleEPStatusResponse_StateTransition(t *testing.T) {
 }
 
 func TestHandleEPStatusComplete_StateTransition(t *testing.T) {
-	// Per SCACI §3.13.3: EPStatusComplete transitions operation from Acknowledged → Completed
+	// Per SCACI §3.13.3: the SC-sent EPStatusComplete transitions operation from Acknowledged → Completed
 
 	targetState := models.OperationStateCompleted
 
@@ -53,7 +53,7 @@ func TestHandleEPStatusResponse_ResponseDataFormat(t *testing.T) {
 }
 
 func TestHandleEPStatusComplete_ResponseDataFormat(t *testing.T) {
-	// Verify the responseData format used by handleEPStatusComplete at handler_operations.go:1244-1247
+	// Verify the responseData format handleEPStatusResponse records on completion
 	responseData := map[string]interface{}{
 		"status":      "completed",
 		"completedAt": time.Now().UTC().Format(time.RFC3339),
@@ -131,7 +131,7 @@ func TestEPStatusHandshake_CorrectOrder(t *testing.T) {
 	// SCACI §3.13 three-way handshake:
 	// 1. SC sends EPStatus (CmdEPStatus)
 	// 2. AC sends EPStatusResponse (CmdEPStatusResponse)
-	// 3. AC sends EPStatusComplete (CmdEPStatusComplete)
+	// 3. SC sends EPStatusComplete (CmdEPStatusComplete)
 
 	// Verify command sequence
 	assert.Equal(t, "epStat", CmdEPStatus, "first message")
@@ -145,7 +145,7 @@ func TestEPStatusHandshake_StateProgression(t *testing.T) {
 	states := []models.OperationState{
 		models.OperationStatePending,      // After SC sends EPStatus
 		models.OperationStateAcknowledged, // After AC sends EPStatusResponse
-		models.OperationStateCompleted,    // After AC sends EPStatusComplete
+		models.OperationStateCompleted,    // After SC sends EPStatusComplete
 	}
 
 	// Verify states are distinct
@@ -174,7 +174,7 @@ func TestEPStatusHandlers_LogMessages(t *testing.T) {
 // =============================================================================
 
 func TestSession_UpdateLastSeen_Timestamps(t *testing.T) {
-	// Both handlers call session.UpdateLastSeen()
+	// Both handlers call session.UpdateLastSeen(time.Now())
 	// Verify UpdateLastSeen updates the timestamp
 
 	session := &Session{
@@ -187,7 +187,7 @@ func TestSession_UpdateLastSeen_Timestamps(t *testing.T) {
 		"initial LastSeen should be before now")
 
 	// Update LastSeen
-	session.UpdateLastSeen()
+	session.UpdateLastSeen(time.Now())
 
 	// LastSeen should be recent
 	assert.False(t, session.LastSeen.IsZero(), "LastSeen should not be zero after update")

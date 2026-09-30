@@ -59,9 +59,3 @@ type DeviceModelListParams struct {
 	Offset         int
 	SearchTerm     string // Optional search term for name/code
 }
-
-// DeviceModelWithManufacturer represents a device model with its manufacturer details
-type DeviceModelWithManufacturer struct {
-	DeviceModel
-	ManufacturerName string `db:"manufacturer_name" json:"manufacturerName"`
-}

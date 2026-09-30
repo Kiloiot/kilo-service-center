@@ -10,8 +10,9 @@
 //     HandshakeService receives certificate and resolves tenant internally (NOT pre-resolved).
 //     Enables tenant re-validation during session resumption (fail-closed security).
 //
-//   - Session Persistence: Delegates to existing interfaces.SCACISessionRepository (14 methods).
-//     NO new SessionRepository interface is created - we reuse the existing scoped interface.
+//   - Session Persistence: every write of a session's row goes through one
+//     owner (scaciservices.SessionRows), reached through SessionPersistence and,
+//     from the SessionRegistry, SessionLifecycleStore.
 //
 //   - Error Handling: Services return tokens from pkg/scaci/errors_catalog.go (79+ tokens).
 //     Transport layer resolves tokens via GetErrorDefinition() before sendError().
@@ -32,7 +33,6 @@
 //   - constants.go                    - Session timeouts, operation limits
 //   - pkg/org/resolver.go             - org.Resolver interface (injected into handshake service)
 //   - scheduler/errors.go             - ULTransmitScheduler, DownlinkScheduler interfaces
-//   - interfaces.SCACISessionRepository - Session persistence (14 scoped methods)
 //   - message_repository.go           - Canonical write paths for uplink/downlink
 //
 // Call Flow:
@@ -53,6 +53,7 @@ import (
 	"crypto/x509"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -72,10 +73,8 @@ import (
 //   - Rejects resume attempts if certificate tenant doesn't match stored session tenant
 //
 // Session Persistence:
-//   - Uses existing interfaces.SCACISessionRepository (14 methods)
-//   - CheckSessionResumable() validates resume tokens per SCACI §3.3
-//   - CreateSession() establishes new sessions with UUID generation
-//   - UpdateOperationIDs() tracks AC/SC operation ID progression
+//   - Reads the stored session a resume names (resumability, counters, version)
+//   - Applies ResumeOpIDConflict to the counters (SCACI §3.3.1)
 //
 // Error Handling:
 //   - Returns error tokens from errors_catalog.go (e.g., ErrMajorVersionUnsupported)
@@ -108,7 +107,8 @@ type HandshakeService interface {
 	// Example Usage:
 	//   session, resp, errToken := svc.ValidateConnect(ctx, &req, clientCert)
 	//   if errToken != "" {
-	//       return s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
+	//       s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
+	//       return nil
 	//   }
 	ValidateConnect(ctx context.Context, req *Connect, cert *x509.Certificate) (*Session, *ConnectResponse, string)
 
@@ -129,6 +129,10 @@ type HandshakeService interface {
 	// Spec Reference: §2.1-2.3 version negotiation rules
 	NegotiateVersion(ctx context.Context, clientVersion string) (negotiatedVersion string, errToken string)
 
+	// CertificateTenant is the tenant the client certificate resolves to;
+	// ok is false when it resolves to none.
+	CertificateTenant(ctx context.Context, cert *x509.Certificate) (tenantID int64, ok bool)
+
 	// ResolveResume validates session resumption per SCACI §3.3 and §§2.1-2.3
 	//
 	// Checks if an existing session can be resumed by validating:
@@ -137,11 +141,9 @@ type HandshakeService interface {
 	//   - Session is in resumable state (not terminated)
 	//   - Protocol version matches originally negotiated version (§2.1-2.3)
 	//
-	// Uses interfaces.SCACISessionRepository.CheckSessionResumable() for validation
-	//
 	// Parameters:
 	//   - ctx: Request context
-	//   - tenantID: Tenant scope for session lookup
+	//   - ac: The Application Center whose session is looked up
 	//   - acUUID: Application Center session UUID (snAcUuid from Connect)
 	//   - scUUID: Service Center session UUID (snScUuid from Connect, optional for resume)
 	//   - acOpId: Last AC operation ID (from snAcOpId field)
@@ -154,7 +156,7 @@ type HandshakeService interface {
 	//     - ErrVersionMismatchOnResume if requestVersion != stored negotiated_version
 	//
 	// Spec Reference: §3.3 session resumption flow, §§2.1-2.3 version consistency
-	ResolveResume(ctx context.Context, tenantID int64, acUUID []byte, scUUID []byte, acOpId, scOpId int64, requestVersion string) (canResume bool, errToken string)
+	ResolveResume(ctx context.Context, ac ApplicationCenter, acUUID []byte, scUUID []byte, acOpId, scOpId int64, requestVersion string) (canResume bool, errToken string)
 }
 
 // EndpointService manages endpoint register/deregister per MIOTY §3.6-3.7
@@ -173,15 +175,14 @@ type HandshakeService interface {
 //   - This ensures all connected base stations clear their local endpoint state
 //
 // Error Handling:
-//   - Returns error tokens from errors_catalog.go (e.g., errInvalidNwkKeyLength)
+//   - Returns error tokens from errors_catalog.go (e.g., ErrMissingEpEui)
 //   - Transport layer resolves tokens before sending error response
 type EndpointService interface {
 	// Register creates or updates an endpoint per SCACI §3.6
 	//
 	// Validates:
-	//   - EpEui is non-zero
-	//   - NwkKey length == 16 bytes (MIOTY §3.6.1 requirement)
-	//   - ShAddr, AttachCnt, PacketCnt fit in database types
+	//   - EpEui is non-zero (the reg decoder already checked every field's
+	//     type and range, nwkKey as Numeric[16] included)
 	//
 	// Persistence:
 	//   - New endpoint: message_repository.CreateEndpointRecord()
@@ -203,17 +204,13 @@ type EndpointService interface {
 	// Example Usage:
 	//   errToken := svc.Register(ctx, &req, tenantID)
 	//   if errToken != "" {
-	//       return s.sendErrorWithCatalog(conn, session, opId, POSIX_EINVAL, errToken)
+	//       s.sendErrorWithCatalog(conn, session, opId, POSIX_EINVAL, errToken)
+	//       return nil
 	//   }
 	Register(ctx context.Context, req *Register, tenantID int64) string
 
-	// Deregister removes an endpoint and triggers BSSCI detach propagation per SCACI §3.7
-	//
-	// Flow:
-	//   1. Validate endpoint exists for tenant
-	//   2. Mark endpoint as inactive in database
-	//   3. Call DetachPropagator.SendDetachPropagateToAll(epEui)
-	//   4. Base stations receive detachProp messages and clear local state
+	// Deregister detaches the tenant's endpoint per SCACI §3.7; the base
+	// stations are sent the detachment when the deregistration completes.
 	//
 	// Parameters:
 	//   - ctx: Request context
@@ -222,14 +219,6 @@ type EndpointService interface {
 	//
 	// Returns:
 	//   - string: Error token (errEndpointNotFound, errDatabaseError) or "" on success
-	//
-	// Spec Reference: §3.7 deregister flow
-	//
-	// Example Usage:
-	//   errToken := svc.Deregister(ctx, req.EpEui, tenantID)
-	//   if errToken != "" {
-	//       return s.sendErrorWithCatalog(conn, session, opId, POSIX_ENOENT, errToken)
-	//   }
 	Deregister(ctx context.Context, epEui uint64, tenantID int64) string
 
 	// GetByEUI retrieves an endpoint by EUI for a specific tenant
@@ -249,50 +238,25 @@ type EndpointService interface {
 	// Example Usage:
 	//   endpoint, errToken := svc.GetByEUI(ctx, tenantID, eui)
 	//   if errToken != "" {
-	//       return s.sendErrorWithCatalog(conn, session, opId, POSIX_ENOENT, errToken)
+	//       s.sendErrorWithCatalog(conn, session, opId, POSIX_ENOENT, errToken)
+	//       return nil
 	//   }
 	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.EndPoint, string)
 
-	// GetGlobal retrieves an endpoint by EUI without tenant filter (cross-tenant lookup)
-	//
-	// Used for roaming scenarios where endpoint's owner tenant may differ from
-	// session tenant. Matches BSSCI pattern at server.go:5197-5202.
-	//
-	// Parameters:
-	//   - ctx: Request context
-	//   - eui: Endpoint EUI (8-byte slice)
-	//
-	// Returns:
-	//   - *models.EndPoint: Endpoint record if found, nil otherwise
-	//   - string: Error token (ErrEndpointNotFound, ErrDatabaseError) or "" on success
-	//
-	// Example Usage:
-	//   endpoint, errToken := svc.GetGlobal(ctx, eui)
-	//   if errToken == ErrEndpointNotFound {
-	//       // Endpoint not found in any tenant
-	//   }
-	GetGlobal(ctx context.Context, eui []byte) (*models.EndPoint, string)
+	// Attach attaches the endpoint an application center pre-attached
+	// (SCACI §3.6.1), announcing a change once.
+	Attach(ctx context.Context, endpoint *models.EndPoint) string
 
-	// PropagateDetachToAll triggers BSSCI detach propagation to all base stations
-	//
-	// Encapsulates detachPropagator usage so handlers don't need direct access
-	// to BSSCI server.
-	//
-	// Called by handleDeregisterComplete after AC confirms endpoint deregistration.
-	// Per SCACI §3.7, detach propagation happens AFTER the three-way handshake
-	// completes, not during the initial Deregister message.
+	// PropagateDetachToAll sends the tenant's endpoint detPrp to every
+	// connected base station once its deregistration completes (SCACI §3.7.3).
 	//
 	// Parameters:
+	//   - tenantID: Tenant that owns the endpoint
 	//   - epEui: Endpoint EUI to detach from all base stations
 	//
 	// Returns:
 	//   - []error: Slice of errors (one per failed base station), empty if all succeeded
-	//
-	// Example Usage:
-	//   if errs := svc.PropagateDetachToAll(ctx, epEui); len(errs) > 0 {
-	//       logger.Warn("Some base stations failed detach propagation", zap.Errors("errors", errs))
-	//   }
-	PropagateDetachToAll(ctx context.Context, epEui uint64) []error
+	PropagateDetachToAll(ctx context.Context, tenantID int64, epEui uint64) []error
 }
 
 // ULService schedules uplink transmissions per MIOTY §3.9
@@ -337,7 +301,8 @@ type ULService interface {
 	// Example Usage:
 	//   opId, bsEui, errToken := svc.ScheduleULTransmit(ctx, &req, tenantID)
 	//   if errToken != "" {
-	//       return s.sendErrorWithCatalog(conn, session, scOpId, POSIX_EAGAIN, errToken)
+	//       s.sendErrorWithCatalog(conn, session, scOpId, POSIX_EAGAIN, errToken)
+	//       return nil
 	//   }
 	ScheduleULTransmit(ctx context.Context, req *mioty.ULDataTransmit, tenantID int64) (opId int64, bsEui uint64, errToken string)
 }
@@ -350,9 +315,16 @@ type ULService interface {
 //  3. Maintains queue ID consistency (SC-issued negative IDs)
 //
 // Queue ID Semantics:
-//   - SC issues negative queue IDs (queId < 0)
-//   - BS issues positive operation IDs (opId > 0)
-//   - These are correlated but distinct per BSSCI §3.12
+//   - Every downlink is persisted under a service center queue ID, the only
+//     ID a base station ever sees (BSSCI §3.12)
+//   - An Application Center's own queue ID (SCACI §3.10.1) is stored beside
+//     it, unique among its organization's downlinks in flight, and is the
+//     ID dlDataRes reports back
+//
+// Error Mapping:
+//   - scheduler.ErrSchedulerNoResources / ErrSchedulerResourceMissing on queue → deferred delivery, no error
+//   - scheduler.ErrSchedulerQueueNotFound → errDownlinkNotFound (POSIX_ENOENT)
+//   - Generic errors                      → errFailedRecordOperation / errSchedulerUnavailable (POSIX_EIO)
 //
 // This service ensures SCACI handlers don't need to understand BSSCI scheduling
 // internals while maintaining proper error token propagation.
@@ -360,9 +332,12 @@ type DLService interface {
 	// QueueDownlink delegates to BSSCI DownlinkScheduler per SCACI §3.10
 	//
 	// Flow:
-	//   1. Call scheduler.EnqueueDownlink() on BSSCI server
-	//   2. Scheduler selects bidirectional base station
-	//   3. Returns SC-issued queue ID (negative) + BS EUI
+	//   1. Call scheduler.QueueDownlink() on the BSSCI server for the already
+	//      persisted pending row
+	//   2. Scheduler selects a bidirectional base station and dispatches now
+	//   3. Without a connected bidirectional base station the row stays
+	//      pending and the outcome is Deferred: the dispatcher delivers it in
+	//      the endpoint's next downlink window
 	//
 	// Parameters:
 	//   - ctx: Request context
@@ -370,68 +345,38 @@ type DLService interface {
 	//   - tenantID: Tenant scope for endpoint/BS lookup
 	//
 	// Returns:
-	//   - queId: SC-issued queue ID (negative per SCACI semantics)
-	//   - bsEui: Base station EUI selected for downlink
+	//   - outcome: queue ID and the delivering base station EUI (zero when deferred)
 	//   - errToken: Error token if queueing fails, "" on success
 	//
 	// Spec Reference: §3.10 DL Data Queue operation
-	//
-	// Example Usage:
-	//   queId, bsEui, errToken := svc.QueueDownlink(ctx, &req, tenantID)
-	//   if errToken != "" {
-	//       return s.sendErrorWithCatalog(conn, session, scOpId, POSIX_EAGAIN, errToken)
-	//   }
-	QueueDownlink(ctx context.Context, req *mioty.DLDataQueue, tenantID int64) (queId uint64, bsEui uint64, errToken string)
+	QueueDownlink(ctx context.Context, req *mioty.DLDataQueue, tenantID int64, organizationID uuid.UUID) (outcome DownlinkQueueOutcome, errToken string)
 
-	// RevokeDownlink removes queued downlink per SCACI §3.11
-	//
-	// Flow:
-	//   1. Call scheduler.RevokeDownlink() with queId
-	//   2. Scheduler removes from queue if still pending
-	//   3. Returns BS EUI where downlink was queued
+	// RevokeDownlink revokes the downlink the reference names per SCACI §3.11:
+	// in the queue while it is pending, else at the base station holding it.
+	// A reference naming an organization and endpoint reaches only that
+	// owner's downlink, so another owner's queue id reads as not found.
 	//
 	// Error Mapping:
 	//   - scheduler.ErrSchedulerQueueNotFound → errDownlinkNotFound (POSIX_ENOENT)
-	//   - scheduler.ErrSchedulerNoResources   → errSchedulerUnavailable (POSIX_EAGAIN)
+	//   - any other scheduler failure         → errSchedulerUnavailable (POSIX_ENOTSUP)
 	//
-	// Parameters:
-	//   - ctx: Request context
-	//   - queId: SC-issued queue ID (from prior QueueDownlink call)
-	//   - tenantID: Tenant scope for authorization
-	//
-	// Returns:
-	//   - bsEui: Base station EUI where downlink was queued
-	//   - errToken: Error token if revoke fails, "" on success
-	//
-	// Spec Reference: §3.11 DL Data Revoke operation
-	//
-	// Example Usage:
-	//   bsEui, errToken := svc.RevokeDownlink(ctx, req.QueId, tenantID)
-	//   if errToken != "" {
-	//       return s.sendErrorWithCatalog(conn, session, scOpId, POSIX_ENOENT, errToken)
-	//   }
-	RevokeDownlink(ctx context.Context, queId uint64, tenantID int64) (bsEui uint64, errToken string)
+	// Returns the EUI of the base station asked to revoke, zero when revoked
+	// in the queue, and the error token, "" on success.
+	RevokeDownlink(ctx context.Context, ref scheduler.DownlinkRef) (bsEui uint64, errToken string)
 
 	// Storage persistence methods for downlink queue database operations
 
-	// GetDownlinkByQueueID retrieves a downlink by queue ID
-	GetDownlinkByQueueID(ctx context.Context, queId uint64, tenantID string) (*storage.DownlinkMessage, error)
-
-	// EnqueueDownlink persists a downlink message to the queue
+	// EnqueueDownlink persists a downlink message under a newly assigned
+	// service center queue ID; storage.ErrDuplicateKey reports that its
+	// Application Center queue ID is already in flight in its organization
 	EnqueueDownlink(ctx context.Context, dlMsg *storage.DownlinkMessage) (*storage.DownlinkMessage, error)
 
-	// UpdateDownlinkStatus updates the status field of a downlink message.
-	// orgID parameter scopes updates to a specific organization per §3.10.
-	UpdateDownlinkStatus(ctx context.Context, id string, status string, orgID *uuid.UUID) error
+	// GetDownlinksByPacketCnt lists the in-flight counter-dependent downlinks
+	// the query names (SCACI §3.11.1); empty when none is
+	GetDownlinksByPacketCnt(ctx context.Context, query storage.PacketCounterDownlinks) ([]*storage.DownlinkMessage, error)
 
-	// GetDownlinkByPacketCnt retrieves a downlink by endpoint and packet count
-	GetDownlinkByPacketCnt(ctx context.Context, tenantID string, epEui string, packetCnt uint32) (*storage.DownlinkMessage, error)
-
-	// GetDownlinkQueue retrieves all pending/scheduled downlinks for an endpoint
-	GetDownlinkQueue(ctx context.Context, deviceEUI string, tenantID string) ([]*storage.DownlinkMessage, error)
-
-	// RevokeDownlinkByID revokes a downlink by database ID
-	RevokeDownlinkByID(ctx context.Context, queId int64, tenantID string) error
+	// GetDownlinkQueue lists the tenant's in-flight downlinks the filter narrows
+	GetDownlinkQueue(ctx context.Context, tenantID int64, filter storage.DownlinkQueueFilter) ([]*storage.DownlinkMessage, error)
 }
 
 // StatusService provides server status and monitoring per MIOTY §3.5
@@ -530,7 +475,8 @@ type SessionValidator interface {
 	//
 	// Example Usage:
 	//   if errToken := s.sessionValidator.ValidateConnectFields(&req); errToken != "" {
-	//       return s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
+	//       s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errToken)
+	//       return nil
 	//   }
 	// Pure and stateless: performs no I/O and no logging, so it takes no context.
 	ValidateConnectFields(req *Connect) string
@@ -590,7 +536,7 @@ type OperationRecorder interface {
 	//   - ctx: Request context (typically 5s timeout for operation recording)
 	//   - session: Active session (provides SessionID, TenantID for scoping)
 	//   - opId: Operation ID from message
-	//   - command: Command string (e.g., "register", "deregister", "ulDataTx")
+	//   - command: Command string (e.g., register, deregister, ulDataTx)
 	//   - direction: models.OperationDirectionInbound or models.OperationDirectionOutbound
 	//   - data: Pre-built map for RequestData/ResponseData field (handler constructs this)
 	//
@@ -607,6 +553,15 @@ type OperationRecorder interface {
 	Record(ctx context.Context, session *Session, opId int64,
 		command string, direction models.OperationDirection,
 		data map[string]interface{}) error
+
+	// EnsureUplinkOperation records under opId the ulData operation that
+	// delivers the stored uplink sourceMessageID (mioty.ULDataMessage.ID) to
+	// the session, unless the session has one already: an operation keeps its
+	// opId and state however often its delivery is retried (SCACI §3.2). It
+	// returns the session's operation for the uplink and whether it recorded
+	// it now.
+	EnsureUplinkOperation(ctx context.Context, session *Session, opId int64,
+		sourceMessageID string, data map[string]interface{}) (*models.SCACIOperation, bool, error)
 }
 
 // ErrorRecorder handles SCACI error persistence and event creation per §3.14
@@ -686,95 +641,40 @@ type ErrorRecorder interface {
 	CompleteErrorHandshake(ctx context.Context, session *Session, opId int64) error
 }
 
-// SessionPersistence wraps existing interfaces.SCACISessionRepository for async session persistence
-//
-// This interface abstracts session persistence so handlers don't directly call
-// sessionRepo.UpdateSession/CreateSession. It wraps the existing repository with async handling
-// and proper error logging, following the established pattern from handler_connect.go.
-//
-// Implementation Notes:
-//   - Uses already-injected interfaces.SCACISessionRepository (no new KC-DB exports)
-//   - Performs async persistence in goroutine (matches current behavior)
-//   - Logs errors but doesn't block handler response (best-effort persistence)
-//
-// Example Usage (handler_connect.go):
-//
-//	s.sessionPersistence.PersistResumeAsync(ctx, session, tlsVersion, cipherSuite)
-//	// Handler continues without waiting for DB write
+// SessionPersistence writes the session rows the connect and ping operations
+// own. Every method is synchronous; the server runs the writes that must
+// outlive a connection on its own detached, drained task group.
 type SessionPersistence interface {
-	// PersistResumeAsync updates the persisted row of a resumed session after
-	// the Connect handshake: lastHeartbeat, status, TLS evidence, opId
-	// counters, metadata. Fresh sessions are persisted synchronously via
-	// PersistConnectSync - this path never creates rows and never mutates the
-	// live session (the goroutine reads an immutable snapshot only).
-	//
-	// Parameters:
-	//   - session: Resumed session (Resumed == true, ID > 0)
-	//   - tlsVersion: TLS version negotiated (e.g., "TLS 1.2", "TLS 1.3") per SCACI §1
-	//   - cipherSuite: TLS cipher suite name per SCACI §1
-	//
-	// Goroutine Behavior:
-	//   - Spawns goroutine bounded by ConnectPersistTimeout, detached from the
-	//     caller's cancellation
-	//   - Logs errors but doesn't propagate to handler (best-effort persistence)
-	PersistResumeAsync(ctx context.Context, session *Session, tlsVersion, cipherSuite string)
-
-	// PersistConnectSync creates session synchronously, returning DB ID for operation logging.
-	//
-	// Used for fresh connects only - ensures session.ID is assigned BEFORE operation logging
-	// so that Connect audit rows have real session IDs (SCACI §3.3-04 audit trail).
-	//
-	// Resumed sessions use PersistResumeAsync (they already have session.ID > 0).
-	//
-	// Parameters:
-	//   - ctx: Request context with timeout (typically ConnectPersistTimeout)
-	//   - session: Session object with all metadata (must have ID == 0 for fresh connect)
-	//   - certFingerprint: SHA256 fingerprint of client certificate
-	//   - certSubject: Certificate subject DN
-	//   - remoteAddr: Client IP address from connection
-	//   - tlsVersion: TLS version negotiated (e.g., "TLS 1.2", "TLS 1.3") per SCACI §1
-	//   - cipherSuite: TLS cipher suite name per SCACI §1
-	//   - negotiatedVersion: Protocol version from successful negotiation per SCACI §§2.1-2.3
-	//
-	// Returns:
-	//   - int64: Database-assigned session ID (> 0 on success)
-	//   - error: Database error if persistence fails
-	//
-	// Example Usage (handler_connect.go):
-	//   if newSession.ID == 0 {
-	//       id, err := s.sessionPersistence.PersistConnectSync(ctx, newSession, ...)
-	//       if err != nil { return sendError(POSIX_EINVAL, ErrInternalError) }
-	//       newSession.ID = id
-	//   }
-	//   // Now operationRecorder.Record works with real session ID
+	// PersistConnectSync creates the row of a fresh session and returns its ID,
+	// so the connect audit rows carry a real session ID (SCACI §3.3). The TLS
+	// evidence and the negotiated version (§§2.1-2.3) are stored with it.
 	PersistConnectSync(ctx context.Context, session *Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) (int64, error)
 
-	// PersistHeartbeatAsync updates session heartbeat timestamp in database
-	//
-	// Called by ping handlers (handlePing, handlePingResponse, handlePingComplete)
-	// and SC-initiated ping (initiatePing) to persist keepalive activity.
-	//
-	// Behavior:
-	//   - Spawns goroutine with ConnectPersistTimeout (non-blocking)
-	//   - Uses context-aware logging for tenant/org tracing
-	//   - Logs errors but doesn't fail the operation (best-effort)
-	//   - Skips persistence if session == nil or session.ID == 0 (not yet persisted)
-	//
-	// Parameters:
-	//   - ctx: Request context with session metadata (from s.sessionContext(session))
-	//   - session: Active SCACI session with ID, TenantID populated
-	//
-	// Spec Reference: SCACI §3.4 ping operation keepalive
-	PersistHeartbeatAsync(ctx context.Context, session *Session)
+	// PersistHeartbeat records keepalive activity of a persisted session
+	// (SCACI §3.4).
+	PersistHeartbeat(ctx context.Context, session *Session) error
+
+	// PersistOpIDs stores a snapshot of the session's paired operation ID
+	// counters (SCACI §3.2); a stored counter never moves back.
+	PersistOpIDs(ctx context.Context, session *Session, ids OpIDPair) error
+}
+
+// SessionLifecycleStore records on a session's row the moves of its
+// connection (SCACI §1): the connection that resumed it and the loss of its
+// connection, after which it stays resumable. The session registry calls it in
+// the order of those moves.
+type SessionLifecycleStore interface {
+	// PersistResume updates the row of a resumed session after the connect
+	// operation: status, heartbeat, TLS evidence and metadata, unless the
+	// session stopped being resumable meanwhile.
+	PersistResume(ctx context.Context, session *Session, tlsVersion, cipherSuite string) error
+
+	// PersistDisconnect records the loss of the session's connection; a
+	// session a newer one already replaced stays terminated.
+	PersistDisconnect(ctx context.Context, session *Session) error
 }
 
 // NOTES ON MISSING INTERFACES:
-//
-// SessionRepository:
-//   - NOT defined here - we REUSE interfaces.SCACISessionRepository (14 methods)
-//   - Existing interface is already narrow and scoped to session operations
-//   - Creating a duplicate interface would violate DRY principle
-//   - Server struct uses: sessionRepo interfaces.SCACISessionRepository
 //
 // org.Resolver:
 //   - Defined in pkg/org/resolver.go
@@ -786,12 +686,6 @@ type SessionPersistence interface {
 //   - Used by EndpointService implementation for BSSCI integration
 //   - No changes needed - existing interface is correct
 
-// SessionCounterStore persists the paired AC/SC operation ID counters
-// (SCACI §3.2). Satisfied structurally by the SCACI session repository.
-type SessionCounterStore interface {
-	UpdateOperationIDs(ctx context.Context, tenantID, sessionID int64, acOpId, scOpId int64) error
-}
-
 // OperationStore owns the SCACI operation lifecycle rows used for the
 // three-way handshake audit trail and resume replay (SCACI §3.2-§3.3).
 // Satisfied structurally by the SCACI operation repository.
@@ -800,6 +694,20 @@ type OperationStore interface {
 	UpdateOperationState(ctx context.Context, sessionID int64, opId int64, state models.OperationState, responseData map[string]interface{}) error
 	GetOperationByOpID(ctx context.Context, sessionID int64, opId int64) (*models.SCACIOperation, error)
 	GetPendingOperations(ctx context.Context, sessionID int64) ([]*models.SCACIOperation, error)
+}
+
+// ResumeHolder holds the resumable sessions that have no connection and
+// records the service center operations produced meanwhile, for their resume
+// to reissue (SCACI §1). Satisfied by the SCACI services' resume holder.
+type ResumeHolder interface {
+	// Hold records for session until it is released.
+	Hold(ctx context.Context, session *Session)
+	// Release stops holding every session next supersedes and returns the
+	// held session with next's ID, if any.
+	Release(ctx context.Context, next *Session) (*Session, bool)
+	// Record records the command with record for every held session of the
+	// tenant that reaches selects.
+	Record(ctx context.Context, tenantID int64, reaches func(*Session) bool, command string, record OperationRecord) error
 }
 
 // OrganizationDirectory resolves the default organization for a tenant.
@@ -828,4 +736,17 @@ type ErrorOperationStore interface {
 		state models.OperationState, errorCode int, errorToken string, errorMessage string,
 		responseData map[string]interface{}) error
 	CompleteFailedOperation(ctx context.Context, sessionID int64, opId int64, responseData map[string]interface{}) error
+}
+
+// SessionEventStore files the lifecycle of application center sessions in the
+// system event log (SCACI §1, §3.3). Satisfied structurally by the SCACI event
+// store.
+type SessionEventStore interface {
+	RecordSessionEvent(ctx context.Context, event *models.SCACISessionEvent) error
+}
+
+// ErrorEventStore covers the error event emission the error recorder performs
+// (SCACI §3.14). Satisfied structurally by the system event store.
+type ErrorEventStore interface {
+	RecordSCACIError(ctx context.Context, tenantID int64, sessionID int64, command string, opId int64, errorCode int, errorMsg string) error
 }

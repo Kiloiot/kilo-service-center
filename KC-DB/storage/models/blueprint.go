@@ -50,14 +50,14 @@ func (s *BlueprintSnapshot) ToBlueprint() (*Blueprint, error) {
 	if s.SourceBlueprintID != "" {
 		id, err := uuid.Parse(s.SourceBlueprintID)
 		if err != nil {
-			return nil, fmt.Errorf("parse source_blueprint_id: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapParseSourceBlueprintID, err)
 		}
 		bp.ID = id
 	}
 	if s.TypeEUI != "" {
 		b, err := hex.DecodeString(s.TypeEUI)
 		if err != nil {
-			return nil, fmt.Errorf("decode snapshot type_eui: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapDecodeSnapshotTypeEui, err)
 		}
 		bp.TypeEUI = b
 	}
@@ -92,14 +92,5 @@ type BlueprintListParams struct {
 	Offset        int
 }
 
-// BlueprintWithModel represents a blueprint with its device model and manufacturer details
-type BlueprintWithModel struct {
-	Blueprint
-	DeviceModelName  string    `db:"device_model_name" json:"deviceModelName"`
-	DeviceModelCode  string    `db:"device_model_code" json:"deviceModelCode"`
-	ManufacturerID   uuid.UUID `db:"manufacturer_id" json:"manufacturerId"`
-	ManufacturerName string    `db:"manufacturer_name" json:"manufacturerName"`
-}
-
 // Note: BlueprintSpec, PayloadFormat, PayloadComponent, and DecodeResult types
-// are defined in KC-Core/pkg/blueprint/types.go. Import from there to avoid duplication.
+// are defined in the blueprint package types. Import from there to avoid duplication.

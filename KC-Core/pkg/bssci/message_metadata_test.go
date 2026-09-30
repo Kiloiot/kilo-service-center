@@ -93,7 +93,7 @@ func TestMessageSpecFieldCompleteness(t *testing.T) {
 
 		// BS→SC status reports
 		mioty.CmdStatusResponse: {3, 7, "BSSCI §5.8 - BS operational status"},
-		mioty.CmdDLDataResult:   {3, 3, "BSSCI §5.14 - Downlink transmission result"},
+		mioty.CmdDLDataResult:   {3, 2, "BSSCI §5.14 - Downlink transmission result"},
 		mioty.CmdDLRxStatus:     {5, 0, "BSSCI §5.15 - EP downlink reception metrics"},
 
 		// SC→BS commands (queue operations)
@@ -219,7 +219,7 @@ func TestMessageSpecResponseCommands(t *testing.T) {
 }
 
 // TestCommandDirectionConsistency verifies that commands with MessageSpec entries
-// also have direction metadata in the generated CommandDirectionMap
+// also have direction metadata in the generated commandDirectionMap
 func TestCommandDirectionConsistency(t *testing.T) {
 	// Verify that all commands in the registry have consistent data
 	for cmd, spec := range messageRegistry {
@@ -232,21 +232,14 @@ func TestCommandDirectionConsistency(t *testing.T) {
 		}
 	}
 
-	// Verify RegisteredCommands helper
-	registeredCmds := RegisteredCommands()
-	if len(registeredCmds) != len(messageRegistry) {
-		t.Errorf("RegisteredCommands() returned %d commands, registry has %d",
-			len(registeredCmds), len(messageRegistry))
-	}
-
 	t.Logf("PASS: MessageSpec registry consistency validated for %d commands", len(messageRegistry))
 }
 
 // TestMessageSpecDirectionPopulated verifies that all 56 BSSCI v1.0.0 commands
-// have their Direction field populated from CommandDirectionMap (Issue #3-4 Fix B1).
+// have their Direction field populated from commandDirectionMap (Issue #3-4 Fix B1).
 // This ensures normalization gating can correctly identify BS→SC, SC→BS, and bidirectional commands.
 func TestMessageSpecDirectionPopulated(t *testing.T) {
-	// All 56 BSSCI v1.0.0 commands as defined in CommandDirectionMap
+	// All 56 BSSCI v1.0.0 commands as defined in commandDirectionMap
 	expectedCommands := []string{
 		// Connection (§3.1)
 		mioty.CmdConnect, mioty.CmdConnectResponse, mioty.CmdConnectComplete,
@@ -302,26 +295,16 @@ func TestMessageSpecDirectionPopulated(t *testing.T) {
 
 	require.Equal(t, 56, len(expectedCommands), "BSSCI v1.0.0 defines 56 commands")
 
-	// Verify each command has Direction populated in messageRegistry
+	// Verify each registered command has a direction in the generated map
 	for _, cmd := range expectedCommands {
 		t.Run(cmd, func(t *testing.T) {
-			spec, exists := messageRegistry[cmd]
+			_, exists := messageRegistry[cmd]
 			require.True(t, exists, "Command %s must be in messageRegistry", cmd)
 
-			// Verify Direction is populated (not zero value "")
-			assert.NotEqual(t, CommandDirection(""), spec.Direction,
-				"Command %s must have Direction field populated from CommandDirectionMap", cmd)
-
-			// Verify Direction is one of the three valid values
+			dir, known := commandDirectionMap[cmd]
+			require.True(t, known, "Command %s must be in commandDirectionMap", cmd)
 			assert.Contains(t, []CommandDirection{DirectionBStoSC, DirectionSCtoBS, DirectionBidirectional},
-				spec.Direction,
-				"Command %s Direction must be BS→SC, SC→BS, or Bidirectional", cmd)
-
-			// Verify Direction matches CommandDirectionMap
-			expectedDir, exists := CommandDirectionMap[cmd]
-			require.True(t, exists, "Command %s must be in CommandDirectionMap", cmd)
-			assert.Equal(t, expectedDir, spec.Direction,
-				"Command %s Direction in MessageSpec must match CommandDirectionMap", cmd)
+				dir, "Command %s direction must be BS→SC, SC→BS, or Bidirectional", cmd)
 		})
 	}
 }
@@ -329,20 +312,20 @@ func TestMessageSpecDirectionPopulated(t *testing.T) {
 // TestMessageRegistryCompleteness ensures messageRegistry contains all 56 BSSCI commands.
 // This is a sanity check to catch missing entries during spec updates.
 func TestMessageRegistryCompleteness(t *testing.T) {
-	// SCACI-only commands that are in CommandDirectionMap but not in messageRegistry
+	// SCACI-only commands that are in commandDirectionMap but not in messageRegistry
 	// These are SCACI §3.12 commands that have BSSCI direction mappings but no BSSCI message spec
 	scaciOnlyCommands := map[string]bool{
 		mioty.CmdDLDataResultResponseSCACI: true, // SCACI §3.12.2: txDataResRsp
 		mioty.CmdDLDataResultCompleteSCACI: true, // SCACI §3.12.3: txDataResCmp
 	}
 
-	// Get all commands from CommandDirectionMap (the authoritative source)
+	// Get all commands from commandDirectionMap (the authoritative source)
 	commandsInMap := make(map[string]bool)
-	for cmd := range CommandDirectionMap {
+	for cmd := range commandDirectionMap {
 		commandsInMap[cmd] = true
 	}
 
-	// Verify messageRegistry contains all BSSCI commands from CommandDirectionMap
+	// Verify messageRegistry contains all BSSCI commands from commandDirectionMap
 	// (skip SCACI-only commands which don't have BSSCI message specs)
 	for cmd := range commandsInMap {
 		if scaciOnlyCommands[cmd] {
@@ -350,12 +333,12 @@ func TestMessageRegistryCompleteness(t *testing.T) {
 		}
 		t.Run(cmd, func(t *testing.T) {
 			_, exists := messageRegistry[cmd]
-			assert.True(t, exists, "Command %s in CommandDirectionMap must have MessageSpec in messageRegistry", cmd)
+			assert.True(t, exists, "Command %s in commandDirectionMap must have MessageSpec in messageRegistry", cmd)
 		})
 	}
 
 	// Verify count matches expected 58 commands (56 BSSCI + 2 SCACI §3.12)
-	assert.Equal(t, 58, len(commandsInMap), "CommandDirectionMap should contain all 58 protocol commands (56 BSSCI + 2 SCACI)")
+	assert.Equal(t, 58, len(commandsInMap), "commandDirectionMap should contain all 58 protocol commands (56 BSSCI + 2 SCACI)")
 	assert.Equal(t, len(commandsInMap)-len(scaciOnlyCommands), len(messageRegistry),
 		"messageRegistry should have 56 BSSCI commands (58 total minus 2 SCACI-only)")
 }

@@ -9,9 +9,21 @@ import (
 
 const testBucketSeconds = int64(3600) // 1 hour
 
+// Bucket geometry fixtures for availability computations.
+const (
+	// testMetricsSpan is the three-bucket window width.
+	testMetricsSpan = 3 * time.Hour
+
+	// testOnlineSpan covers bucket 0 fully and half of bucket 1.
+	testOnlineSpan = 90 * time.Minute
+
+	// testNowOffset places "now" at the start of bucket 2.
+	testNowOffset = 2 * time.Hour
+)
+
 func testWindow() (start, end time.Time) {
 	start = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	end = start.Add(3 * time.Hour)
+	end = start.Add(testMetricsSpan)
 	return start, end
 }
 
@@ -57,7 +69,7 @@ func TestComputeAvailabilityBuckets_TimeWeightedAndClamped(t *testing.T) {
 	now := end
 
 	// Bucket 0 fully online; bucket 1 online for the first half; bucket 2 offline.
-	endB0B1Half := start.Add(90 * time.Minute)
+	endB0B1Half := start.Add(testOnlineSpan)
 	intervals := []mioty.BaseStationOnlineInterval{
 		{Start: start, End: &endB0B1Half},
 	}
@@ -81,7 +93,7 @@ func TestComputeAvailabilityBuckets_TimeWeightedAndClamped(t *testing.T) {
 
 func TestComputeAvailabilityBuckets_ActiveSessionBoundedByNow(t *testing.T) {
 	start, end := testWindow()
-	now := start.Add(2 * time.Hour) // active "now" sits at the start of bucket 2
+	now := start.Add(testNowOffset) // active "now" sits at the start of bucket 2
 
 	// Active session (nil End) started at window start; online up to now only.
 	intervals := []mioty.BaseStationOnlineInterval{{Start: start}}

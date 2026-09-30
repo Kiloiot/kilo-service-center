@@ -3,7 +3,14 @@ package bssci
 import (
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+)
+
+// Fixture log message and field value the observer must capture verbatim.
+const (
+	testWarnMessage    = "Test warning message"
+	testWarnFieldValue = "value"
 )
 
 // TestObserverCapture verifies the recording logger captures WARN entries so
@@ -13,7 +20,7 @@ func TestObserverCapture(t *testing.T) {
 
 	ctx := testutil.TestContext()
 
-	testLogger.WarnContext(ctx, "Test warning message", "field", "value")
+	testLogger.WarnContext(ctx, testWarnMessage, logger.FieldField, testWarnFieldValue)
 
 	warnLogs := testLogger.getEntriesByLevel("WARN")
 

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Gateway/internal/resilience"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -16,39 +18,93 @@ import (
 // statusHealthy is the health endpoint status value for a passing check.
 const statusHealthy = "healthy"
 
-// Handler provides gateway health check endpoints.
-type Handler struct {
-	core            *grpc.ClientConn
-	identity        *grpc.ClientConn
-	coreBreaker     *resilience.UpstreamBreaker
-	identityBreaker *resilience.UpstreamBreaker
+// Health endpoint status values and canned JSON bodies.
+const (
+	statusDegraded    = "degraded"
+	stateShutdown     = "SHUTDOWN"
+	bodyStatusPrefix  = `{"status":"`
+	bodyStatusSuffix  = `"}`
+	bodyUnhealthy     = `{"status":"unhealthy"}`
+	bodyAlive         = `{"status":"alive"}`
+	serviceLabelValue = "kc-gateway"
+)
+
+// Health endpoint routes.
+const (
+	routeHealth      = "/health"
+	routeHealthReady = "/health/ready"
+	routeHealthLive  = "/health/live"
+	routeHealthPing  = "/health/ping"
+)
+
+// readHeaderTimeout bounds how long the health server waits for request headers.
+const readHeaderTimeout = 5 * time.Second
+
+// shutdownTimeout bounds the health server's graceful shutdown.
+const shutdownTimeout = 5 * time.Second
+
+// Health server log messages.
+const (
+	logHealthResponseWriteFailed = "Failed to write health response"
+	logHealthServerShutdownError = "Health server shutdown error"
+)
+
+// connectionState reports an upstream connection's connectivity state; it is
+// the only capability the health endpoints use from a client connection.
+type connectionState interface {
+	GetState() connectivity.State
 }
 
-// NewHandler creates a health handler that checks both upstream connections and breaker state.
-func NewHandler(core, identity *grpc.ClientConn, coreBreaker, identityBreaker *resilience.UpstreamBreaker) *Handler {
-	return &Handler{
+// breakerState reports a circuit breaker's current state, numerically for the
+// readiness decision and by name for the health payload.
+type breakerState interface {
+	State() resilience.BreakerState
+	StateName() string
+}
+
+// handler provides gateway health check endpoints.
+type handler struct {
+	core            connectionState
+	identity        connectionState
+	coreBreaker     breakerState
+	identityBreaker breakerState
+	log             logger.Logger
+}
+
+// newHandler creates a health handler that checks both upstream connections and breaker state.
+func newHandler(core, identity connectionState, coreBreaker, identityBreaker breakerState, log logger.Logger) *handler {
+	return &handler{
 		core:            core,
 		identity:        identity,
 		coreBreaker:     coreBreaker,
 		identityBreaker: identityBreaker,
+		log:             log,
+	}
+}
+
+// writeBody sends a response body; the status is already written, so a
+// failed write can only be logged.
+func (h *handler) writeBody(w http.ResponseWriter, r *http.Request, body string) {
+	if _, err := w.Write([]byte(body)); err != nil {
+		h.log.WarnContext(r.Context(), logHealthResponseWriteFailed, logger.FieldPath, r.URL.Path, logger.FieldError, err)
 	}
 }
 
 // checkConn returns the connectivity state and whether it is considered healthy.
-func checkConn(conn *grpc.ClientConn) (string, bool) {
+func checkConn(conn connectionState) (string, bool) {
 	if conn == nil {
-		return "SHUTDOWN", false
+		return stateShutdown, false
 	}
 	state := conn.GetState()
 	healthy := state == connectivity.Ready || state == connectivity.Idle
 	return state.String(), healthy
 }
 
-// ServeHealth handles the /health endpoint with upstream and breaker state.
-func (h *Handler) ServeHealth(w http.ResponseWriter, _ *http.Request) {
+// serveHealth handles the /health endpoint with upstream and breaker state.
+func (h *handler) serveHealth(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"status":    statusHealthy,
-		"service":   "kc-gateway",
+		"service":   serviceLabelValue,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -74,21 +130,23 @@ func (h *Handler) ServeHealth(w http.ResponseWriter, _ *http.Request) {
 	}
 	resp["circuit_breaker"] = cbState
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(grpcconst.HeaderContentType, grpcconst.ContentTypeJSON)
 
 	if !coreOK || !identityOK {
-		resp["status"] = "degraded"
+		resp["status"] = statusDegraded
 		w.WriteHeader(http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)
 	}
 
-	_ = json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.log.WarnContext(r.Context(), logHealthResponseWriteFailed, logger.FieldPath, r.URL.Path, logger.FieldError, err)
+	}
 }
 
-// ServeReady handles the /health/ready endpoint.
+// serveReady handles the /health/ready endpoint.
 // Returns 503 if any upstream is unhealthy or any breaker is open.
-func (h *Handler) ServeReady(w http.ResponseWriter, _ *http.Request) {
+func (h *handler) serveReady(w http.ResponseWriter, r *http.Request) {
 	_, coreOK := checkConn(h.core)
 	_, identityOK := checkConn(h.identity)
 
@@ -97,52 +155,70 @@ func (h *Handler) ServeReady(w http.ResponseWriter, _ *http.Request) {
 
 	ready := coreOK && identityOK && !coreBreakerOpen && !identityBreakerOpen
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(grpcconst.HeaderContentType, grpcconst.ContentTypeJSON)
 	if ready {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"` + statusHealthy + `"}`))
+		h.writeBody(w, r, bodyStatusPrefix+statusHealthy+bodyStatusSuffix)
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte(`{"status":"unhealthy"}`))
+		h.writeBody(w, r, bodyUnhealthy)
 	}
 }
 
-// ServeLive handles the /health/live endpoint (unconditional 200).
-func ServeLive(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+// serveLive handles the /health/live endpoint (unconditional 200).
+func (h *handler) serveLive(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set(grpcconst.HeaderContentType, grpcconst.ContentTypeJSON)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"alive"}`))
+	h.writeBody(w, r, bodyAlive)
 }
 
-// ServePing handles the /health/ping endpoint (unconditional 200).
-func ServePing(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+// servePing handles the /health/ping endpoint (unconditional 200).
+func (h *handler) servePing(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set(grpcconst.HeaderContentType, grpcconst.ContentTypeJSON)
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"` + statusHealthy + `"}`))
+	h.writeBody(w, r, bodyStatusPrefix+statusHealthy+bodyStatusSuffix)
 }
 
 // StartHealthServer starts the HTTP health endpoint with all standard paths.
-func StartHealthServer(ctx context.Context, port int, core, identity *grpc.ClientConn, coreBreaker, identityBreaker *resilience.UpstreamBreaker) error {
-	h := NewHandler(core, identity, coreBreaker, identityBreaker)
+func StartHealthServer(ctx context.Context, log logger.Logger, port int, core, identity *grpc.ClientConn, coreBreaker, identityBreaker *resilience.UpstreamBreaker) error {
+	// Explicit nil-to-interface conversion: a nil concrete pointer must reach
+	// the handler as a nil interface so its nil checks keep working.
+	var coreState, identityState connectionState
+	if core != nil {
+		coreState = core
+	}
+	if identity != nil {
+		identityState = identity
+	}
+	var coreBreakerState, identityBreakerState breakerState
+	if coreBreaker != nil {
+		coreBreakerState = coreBreaker
+	}
+	if identityBreaker != nil {
+		identityBreakerState = identityBreaker
+	}
+	h := newHandler(coreState, identityState, coreBreakerState, identityBreakerState, log)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", h.ServeHealth)
-	mux.HandleFunc("/health/ready", h.ServeReady)
-	mux.HandleFunc("/health/live", ServeLive)
-	mux.HandleFunc("/health/ping", ServePing)
+	mux.HandleFunc(routeHealth, h.serveHealth)
+	mux.HandleFunc(routeHealthReady, h.serveReady)
+	mux.HandleFunc(routeHealthLive, h.serveLive)
+	mux.HandleFunc(routeHealthPing, h.servePing)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
 	//nolint:gosec // G118: shutdown deliberately uses a fresh context - the parent is already done
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout) // context-root: shutdown
 		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.WarnContext(shutdownCtx, logHealthServerShutdownError, logger.FieldError, err)
+		}
 	}()
 
 	return server.ListenAndServe()

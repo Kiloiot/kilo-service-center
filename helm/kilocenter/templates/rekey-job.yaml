@@ -1,0 +1,86 @@
+{{- if .Values.rekey.enabled }}
+{{- if and .Values.rekey.legacyPassphrase .Values.rekey.allowPublishedDevelopmentKey }}
+{{- fail "rekey.legacyPassphrase and rekey.allowPublishedDevelopmentKey are mutually exclusive: set rekey.allowPublishedDevelopmentKey=false when supplying the passphrase" }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kilocenter.fullname" . }}-rekey
+  labels:
+    {{- include "kilocenter.componentLabels" (dict "context" . "component" "rekey") | nindent 4 }}
+  annotations:
+    # Runs before application pods (and therefore before their startup
+    # migrations): the startup migrations stop at 000143 until every key
+    # surface is converted, and the strict envelope readers require it too.
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-4"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "kilocenter.selectorLabels" (dict "context" . "component" "rekey") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 1000
+      # Envelopes only fit the endpoint key columns once migration 000143 has
+      # relaxed their 16-byte checks, so the schema is brought to that version
+      # first; later migrations wait for the rekeyed data.
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.rekey.image.repository }}:{{ .Values.rekey.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["migrate"]
+          args:
+            - -command=up
+            - -to={{ .Values.rekey.migrateToVersion }}
+          env:
+            {{- include "kilocenter.databaseEnv" . | nindent 12 }}
+      containers:
+        - name: rekey
+          image: "{{ .Values.rekey.image.repository }}:{{ .Values.rekey.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["rekey"]
+          args:
+            - -mode={{ .Values.rekey.mode }}
+            {{- if .Values.rekey.legacyPassphrase }}
+            - -legacy-passphrase-env=KILOCENTER_LEGACY_PASSPHRASE
+            {{- end }}
+            {{- if .Values.rekey.allowPublishedDevelopmentKey }}
+            - -allow-published-development-key
+            {{- end }}
+            {{- if .Values.rekey.archiveExport.existingClaim }}
+            - -archive-export={{ .Values.rekey.archiveExport.mountPath }}/endpoint-keys-{{ .Release.Revision }}.enc
+            {{- end }}
+          env:
+            {{- include "kilocenter.databaseEnv" . | nindent 12 }}
+            - name: KILOCENTER_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.rekeyHookSecretName" . }}
+                  key: master-key
+            {{- if .Values.rekey.legacyPassphrase }}
+            - name: KILOCENTER_LEGACY_PASSPHRASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.rekeyHookSecretName" . }}
+                  key: legacy-passphrase
+            {{- end }}
+          {{- if .Values.rekey.archiveExport.existingClaim }}
+          volumeMounts:
+            - name: archive-export
+              mountPath: {{ .Values.rekey.archiveExport.mountPath }}
+          {{- end }}
+      {{- with .Values.rekey.archiveExport.existingClaim }}
+      volumes:
+        - name: archive-export
+          persistentVolumeClaim:
+            claimName: {{ . }}
+      {{- end }}
+{{- end }}

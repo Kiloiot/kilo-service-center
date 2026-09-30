@@ -4,6 +4,7 @@ import { Box, Button, Typography } from "@mui/material";
 
 import { ERROR_BOUNDARY, UI_COMMON } from "@constants/messages";
 import { isDevelopment } from "@config/env";
+import { componentSpacing } from "@theme/index";
 
 /**
  * Shared Error Boundary Component
@@ -90,11 +91,17 @@ export class ErrorBoundary extends Component<
 
           {/* Show stack trace only in development */}
           {isDevelopment && this.state.error?.stack && (
-            <Box sx={{ mt: 4, textAlign: "left", maxWidth: 800 }}>
+            <Box
+              sx={{
+                mt: 4,
+                textAlign: "left",
+                maxWidth: componentSpacing.stateView.boundaryDetailsMaxWidth,
+              }}
+            >
               <details>
-                <summary style={{ cursor: "pointer", marginBottom: 8 }}>
+                <Box component="summary" sx={{ cursor: "pointer", mb: 2 }}>
                   {ERROR_BOUNDARY.STACK_TRACE_SUMMARY}
-                </summary>
+                </Box>
                 <Box
                   component="pre"
                   sx={{
@@ -102,7 +109,7 @@ export class ErrorBoundary extends Component<
                     bgcolor: "grey.100",
                     borderRadius: 1,
                     overflow: "auto",
-                    fontSize: "0.75rem",
+                    fontSize: (theme) => theme.typography.caption.fontSize,
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-word",
                   }}

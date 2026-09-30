@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -13,14 +12,14 @@ import (
 // It persists error information to the operation log and emits system events.
 type errorRecorderImpl struct {
 	operationRepo ErrorOperationStore
-	eventStore    interfaces.SystemEventStore
+	eventStore    ErrorEventStore
 	log           logger.Logger
 }
 
 // NewErrorRecorder creates a new ErrorRecorder implementation.
 func NewErrorRecorder(
 	operationRepo ErrorOperationStore,
-	eventStore interfaces.SystemEventStore,
+	eventStore ErrorEventStore,
 	log logger.Logger,
 ) ErrorRecorder {
 	return &errorRecorderImpl{
@@ -70,9 +69,9 @@ func (r *errorRecorderImpl) RecordOutboundError(
 		)
 		if updateErr != nil {
 			r.log.WarnContext(ctx, LogSCACIPersistOutboundErrorFailed,
-				"opId", opId,
-				"errorToken", errorToken,
-				"error", updateErr)
+				logger.FieldOpID, opId,
+				logger.FieldErrorToken, errorToken,
+				logger.FieldError, updateErr)
 		}
 	}
 
@@ -89,8 +88,8 @@ func (r *errorRecorderImpl) RecordOutboundError(
 		)
 		if eventErr != nil {
 			r.log.WarnContext(ctx, LogSCACIRecordEventFailed,
-				"opId", opId,
-				"error", eventErr)
+				logger.FieldOpID, opId,
+				logger.FieldError, eventErr)
 		}
 	}
 
@@ -126,8 +125,8 @@ func (r *errorRecorderImpl) RecordInboundError(
 		)
 		if updateErr != nil {
 			r.log.WarnContext(ctx, LogSCACIPersistInboundErrorFailed,
-				"opId", opId,
-				"error", updateErr)
+				logger.FieldOpID, opId,
+				logger.FieldError, updateErr)
 			return updateErr
 		}
 	}
@@ -138,15 +137,15 @@ func (r *errorRecorderImpl) RecordInboundError(
 			ctx,
 			session.TenantID,
 			session.ID,
-			"error", // command is "error" for inbound error messages
+			CmdError, // inbound error messages are recorded under the error command
 			opId,
 			posixCode,
 			message,
 		)
 		if eventErr != nil {
 			r.log.WarnContext(ctx, LogSCACIRecordEventFailed,
-				"opId", opId,
-				"error", eventErr)
+				logger.FieldOpID, opId,
+				logger.FieldError, eventErr)
 		}
 	}
 

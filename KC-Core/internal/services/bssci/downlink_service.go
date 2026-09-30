@@ -2,265 +2,249 @@ package bssciservices
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
-	"fmt"
 	"math"
 	"strconv"
-	"time"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
+// DownlinkOutcomeWriter records how a downlink a base station held ended: the
+// result it reported, its refusal of the queue, or its revocation. The first
+// two return the row for the downlink's originators.
+type DownlinkOutcomeWriter interface {
+	UpdateDownlinkResult(ctx context.Context, tenantID int64, bsEUI uint64, result *mioty.DLDataResult) (*storage.DownlinkMessage, error)
+	FailQueuedDownlink(ctx context.Context, queID int64, tenantID int64, bsEUI uint64, reason string) (*storage.DownlinkMessage, error)
+	RevokeDownlink(ctx context.Context, revocation storage.DownlinkRevocation) (bool, error)
+}
+
+// StationResultReporter tells a downlink's originators the result a base
+// station gave for it.
+type StationResultReporter interface {
+	ReportStationResult(ctx context.Context, downlink *storage.DownlinkMessage, result mioty.DLDataResult, station *bssci.Session)
+}
+
+// DownlinkServiceDeps are the downlink service's collaborators, all required.
+type DownlinkServiceDeps struct {
+	Logger     logger.Logger
+	Tenants    bssci.TenantResolver
+	Outcomes   DownlinkOutcomeWriter
+	Holders    DownlinkHolderWriter
+	Results    StationResultReporter
+	Serializer bssci.QueueSerializer
+	Clock      clock.Clock
+}
+
 type downlinkService struct {
-	logger           logger.Logger
-	tenantResolver   bssci.TenantResolver
-	orgResolver      org.Resolver
-	queueStore       interfaces.DownlinkQueueStore
-	storage          interfaces.Storage
-	scaciBroadcaster bssci.SCACIBroadcaster
-	auditLogger      bssci.AuditLogger
-	queueSerializer  bssci.QueueSerializer
+	logger          logger.Logger
+	tenantResolver  bssci.TenantResolver
+	downlinks       DownlinkOutcomeWriter
+	holders         DownlinkHolderWriter
+	results         StationResultReporter
+	queueSerializer bssci.QueueSerializer
+	clock           clock.Clock
 }
 
-// NewDownlinkService creates a new downlink service with all required dependencies.
-func NewDownlinkService(
-	log logger.Logger,
-	queueStore interfaces.DownlinkQueueStore,
-	tenantResolver bssci.TenantResolver,
-	orgResolver org.Resolver,
-	stor interfaces.Storage,
-	scaciBroadcaster bssci.SCACIBroadcaster,
-	auditLogger bssci.AuditLogger,
-	queueSerializer bssci.QueueSerializer,
-) bssci.DownlinkService {
+// NewDownlinkService creates the downlink service; every collaborator is
+// mandatory, so a wiring fault surfaces at startup instead of on the first
+// downlink result.
+func NewDownlinkService(deps DownlinkServiceDeps) (bssci.DownlinkService, error) {
+	switch {
+	case deps.Logger == nil:
+		return nil, ErrNilDownlinkServiceLogger
+	case deps.Tenants == nil:
+		return nil, ErrNilTenantResolver
+	case deps.Outcomes == nil:
+		return nil, ErrNilDownlinkWriter
+	case deps.Holders == nil:
+		return nil, ErrNilDownlinkHolderWriter
+	case deps.Results == nil:
+		return nil, ErrNilStationResultReporter
+	case deps.Serializer == nil:
+		return nil, ErrNilQueueSerializer
+	case deps.Clock == nil:
+		return nil, ErrNilDownlinkServiceClock
+	}
 	return &downlinkService{
-		logger:           log,
-		tenantResolver:   tenantResolver,
-		orgResolver:      orgResolver,
-		queueStore:       queueStore,
-		storage:          stor,
-		scaciBroadcaster: scaciBroadcaster,
-		auditLogger:      auditLogger,
-		queueSerializer:  queueSerializer,
-	}
+		logger:          deps.Logger,
+		tenantResolver:  deps.Tenants,
+		downlinks:       deps.Outcomes,
+		holders:         deps.Holders,
+		results:         deps.Results,
+		queueSerializer: deps.Serializer,
+		clock:           deps.Clock,
+	}, nil
 }
 
-// EnqueueDownlink enqueues a downlink message using the storage interface.
-func (d *downlinkService) EnqueueDownlink(ctx context.Context, epEui uint64, userData []byte, priority float32, tenantID int64) (int64, error) {
-	// Create downlink message using real storage.DownlinkMessage type
-	downlink := &storage.DownlinkMessage{
-		EPEUI:    fmt.Sprintf("%016X", epEui),
-		TenantID: fmt.Sprintf("%d", tenantID),
-		Payload:  userData,
-		Priority: priority,
-		Status:   "queued",
-	}
-
-	// Delegate to storage.MIOTYDownlinks().EnqueueDownlink method
-	// This method uses MIOTY-specific types and returns strongly-typed results
-	result, err := d.storage.MIOTYDownlinks().EnqueueDownlink(ctx, downlink)
-	if err != nil {
-		d.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToEnqueueDownlink,
-			"error", err,
-			"epEui", epEui)
-		return 0, bssci.NewCatalogError(bssci.ErrFailedToEnqueueDownlink, bssci.POSIX_EAGAIN)
-	}
-
-	d.logger.InfoContext(ctx, bssci.LogBSSCIEnqueuedDownlink,
-		"queId", result.QueID,
-		"epEui", epEui)
-
-	// Register queue-to-tenant mapping for result processing (BSSCI §5.12)
-	d.tenantResolver.RegisterQueueTenant(result.QueID, strconv.FormatInt(tenantID, 10))
-
-	return result.QueID, nil
-}
-
-// UpdateDownlinkStatus updates downlink message status via the storage interface.
-func (d *downlinkService) UpdateDownlinkStatus(ctx context.Context, queId uint64, _ string, status string) error {
-	return d.storage.MIOTYDownlinks().UpdateDownlinkStatus(ctx, fmt.Sprintf("%d", queId), status, nil)
-}
-
-// ProcessDLDataResult handles complete downlink result processing (BSSCI §5.14)
-// Extracts orchestration logic from handleDLDataResult handler
+// ProcessDLDataResult records the result a base station reported for a
+// downlink (BSSCI §3.14) and reports it to the downlink's originators. A
+// result for a downlink that already ended, expired or revoked while the
+// station held it, leaves the outcome its originators were told; the
+// station's operation completes either way.
 func (d *downlinkService) ProcessDLDataResult(ctx context.Context, session *bssci.Session, result *mioty.DLDataResult) (map[string]interface{}, error) {
-	// Resolve the owning tenant for this downlink using queue ID
-	var ownerTenantID int64
-	var ownerTenantStr string
+	queueID, ownerTenantID, err := d.resultOwner(ctx, result)
+	if err != nil {
+		return nil, err
+	}
+	d.logger.InfoContext(ctx, bssci.LogBSSCIReceivedDLDataResFromBaseStation, withTransmissionFields([]interface{}{
+		logger.FieldBsEui, session.BaseStationEUI,
+		logger.FieldEpEui, result.EpEui,
+		logger.FieldQueID, result.QueId,
+		logger.FieldResult, result.Result,
+		logger.FieldTenantIDCamel, ownerTenantID,
+	}, result)...)
 
-	// Range guard for uint64 -> int64 conversion
+	// The endpoint, the owner tenant and the holding station are part of the match (BSSCI §3.14).
+	downlink, err := d.downlinks.UpdateDownlinkResult(ctx, ownerTenantID, session.BaseStationEUI, result)
+	switch {
+	case errors.Is(err, storage.ErrDownlinkFinished):
+		d.logger.InfoContext(ctx, bssci.LogBSSCIResultForFinishedDownlink,
+			logger.FieldQueID, result.QueId, logger.FieldResult, result.Result)
+	case err != nil:
+		return nil, d.resultWriteFailure(ctx, result, err)
+	default:
+		d.logger.DebugContext(ctx, bssci.LogBSSCIUpdatedDownlinkResult, withTransmissionFields([]interface{}{
+			logger.FieldQueID, result.QueId,
+			logger.FieldResult, result.Result,
+		}, result)...)
+		d.results.ReportStationResult(ctx, downlink, *result, session)
+	}
+	d.tenantResolver.UnregisterQueueTenant(queueID)
+	return d.queueSerializer.BuildDLDataResultResponse(result.OpId, result), nil
+}
+
+// resultOwner resolves the tenant owning the downlink a dlDataRes names and
+// returns the queue id as the queue stores it.
+func (d *downlinkService) resultOwner(ctx context.Context, result *mioty.DLDataResult) (int64, int64, error) {
 	if result.QueId > math.MaxInt64 {
 		d.logger.ErrorContext(ctx, bssci.LogBSSCIQueueIDOutOfRange,
-			"queId", result.QueId,
-			"maxInt64", math.MaxInt64)
-		return nil, fmt.Errorf("queue ID out of range: %d", result.QueId)
+			logger.FieldQueID, result.QueId,
+			logger.FieldMaxInt64, math.MaxInt64)
+		return 0, 0, bssci.NewCatalogError(bssci.ErrQueueIDOutOfRange, bssci.POSIX_ERANGE)
 	}
-
-	tidStr, err := d.tenantResolver.ResolveTenant(ctx, int64(result.QueId))
+	queueID := int64(result.QueId)
+	owner, err := d.tenantResolver.ResolveTenant(ctx, queueID)
 	if err != nil {
 		d.logger.ErrorContext(ctx, bssci.LogBSSCICannotResolveTenantForDownlinkResult,
-			"queId", result.QueId,
-			"error", err)
-		return nil, fmt.Errorf("cannot resolve tenant for queue %d: %w", result.QueId, err)
+			logger.FieldQueID, result.QueId,
+			logger.FieldError, err)
+		return 0, 0, bssci.NewCatalogError(bssci.ErrCannotResolveTenantForQueue, bssci.POSIX_EPROTO)
 	}
-
-	ownerTenantStr = tidStr
-	if tid, err := strconv.ParseInt(tidStr, 10, 64); err == nil {
-		ownerTenantID = tid
-	} else {
-		d.logger.ErrorContext(ctx, bssci.LogBSSCIInvalidTenantIDFormat,
-			"tenantStr", tidStr,
-			"error", err)
-		return nil, fmt.Errorf("invalid tenant ID format: %s", tidStr)
+	ownerTenantID, err := d.parseOwner(ctx, owner)
+	if err != nil {
+		return 0, 0, err
 	}
-
-	d.logger.InfoContext(ctx, bssci.LogBSSCIReceivedDLDataResFromBaseStation,
-		"bsEui", session.BaseStationEUI,
-		"epEui", result.EpEui,
-		"queId", result.QueId,
-		"result", result.Result,
-		"txTime", result.TxTime,
-		"packetCnt", result.PacketCnt,
-		"tenantId", ownerTenantStr)
-
-	// Update downlink queue in database with transmission result
-	if d.storage != nil {
-		// Convert base station EUI to bytes for storage
-		bsEuiBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(bsEuiBytes, session.BaseStationEUI)
-
-		// Convert endpoint EUI to bytes for validation
-		epEuiBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(epEuiBytes, result.EpEui)
-
-		// Convert txTime to int64 pointer for storage
-		var txTimePtr *int64
-		if result.TxTime != nil {
-			txTimePtr = result.TxTime
-		}
-
-		// Update the downlink result in the database with tenant and endpoint validation
-		//nolint:gosec // G115: uint64->int64 safe, guarded by range check above
-		err := d.storage.MIOTYDownlinks().UpdateDownlinkResult(ctx, int64(result.QueId), result.Result, txTimePtr, result.PacketCnt, bsEuiBytes, epEuiBytes, ownerTenantStr, nil)
-		if err != nil {
-			d.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDownlinkResult,
-				"queId", result.QueId,
-				"result", result.Result,
-				"error", err)
-
-			// Return appropriate error based on error type
-			if errors.Is(err, storage.ErrDownlinkNotFound) {
-				return nil, fmt.Errorf("queue ID not found: %d", result.QueId)
-			}
-			return nil, fmt.Errorf("database update failed: %w", err)
-		}
-
-		d.logger.DebugContext(ctx, bssci.LogBSSCIUpdatedDownlinkResult,
-			"queId", result.QueId,
-			"result", result.Result,
-			"txTime", result.TxTime)
-
-		// Forward result to Application Centers via SCACI (non-blocking)
-		if d.scaciBroadcaster != nil {
-			// Create isolated copy and set bsEui only for "sent" per SCACI §3.12.1
-			resultForAC := *result
-			if result.Result == mioty.ResultSent {
-				resultForAC.BsEui = new(uint64)
-				*resultForAC.BsEui = session.BaseStationEUI
-			} else {
-				resultForAC.BsEui = nil
-			}
-
-			// Derive timeout context from caller context (preserves tenant/org metadata)
-			ctxWithTimeout, cancel := context.WithTimeout(ctx, 2*time.Second)
-
-			// Pass derived context and cancel into goroutine explicitly
-			go func(ctx context.Context, cancel context.CancelFunc, tenantID int64, payload mioty.DLDataResult) {
-				defer cancel() // Ensure timeout cleanup
-
-				if err := d.scaciBroadcaster.BroadcastDLDataResult(ctx, tenantID, &payload); err != nil {
-					d.logger.WarnContext(ctx, bssci.LogBSSCIFailedToBroadcastDLResultToSCACI,
-						"queId", payload.QueId,
-						"error", err)
-				}
-			}(ctxWithTimeout, cancel, ownerTenantID, resultForAC)
-		}
-	}
-
-	// Record event based on result via audit logger
-	if err := d.auditLogger.RecordDLResult(ctx, ownerTenantStr, session, result); err != nil {
-		d.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToRecordDLDataResultEvent, "error", err)
-	}
-
-	// Clean up queue-to-tenant mapping after result processed
-	//nolint:gosec // G115: uint64->int64 safe, guarded by range check above
-	d.tenantResolver.UnregisterQueueTenant(int64(result.QueId))
-
-	// Build dlDataResRsp response via queue serializer
-	response := d.queueSerializer.BuildDLDataResultResponse(result.OpId, result)
-	return response, nil
+	return queueID, ownerTenantID, nil
 }
 
-// ProcessRevokeResponse handles downlink revoke response processing (BSSCI §5.13)
-// Extracts orchestration logic from handleDLDataRevokeResponse handler
-func (d *downlinkService) ProcessRevokeResponse(ctx context.Context, session *bssci.Session, opId int64, queueID int64, endpointEUI uint64) (map[string]interface{}, error) {
-	// Validate queue ID
+// parseOwner reads the owner tenant the resolver names for a queue id.
+func (d *downlinkService) parseOwner(ctx context.Context, owner string) (int64, error) {
+	ownerTenantID, err := strconv.ParseInt(owner, 10, 64)
+	if err != nil {
+		d.logger.ErrorContext(ctx, bssci.LogBSSCIInvalidTenantIDFormat,
+			logger.FieldTenantStr, owner,
+			logger.FieldError, err)
+		return 0, bssci.NewCatalogError(bssci.ErrInvalidTenantIDFormat, bssci.POSIX_EINVAL)
+	}
+	return ownerTenantID, nil
+}
+
+// resultWriteFailure logs a result that could not be recorded and names the
+// error the base station is answered with.
+func (d *downlinkService) resultWriteFailure(ctx context.Context, result *mioty.DLDataResult, err error) error {
+	d.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDownlinkResult,
+		logger.FieldQueID, result.QueId,
+		logger.FieldResult, result.Result,
+		logger.FieldError, err)
+	if errors.Is(err, storage.ErrDownlinkNotFound) {
+		return bssci.NewCatalogError(bssci.ErrQueueIDNotFound, bssci.POSIX_EPROTO)
+	}
+	return bssci.NewCatalogError(bssci.ErrDatabaseUpdateFailed, bssci.POSIX_EIO)
+}
+
+// withTransmissionFields appends the optional txTime and packetCnt a
+// dlDataRes carries (BSSCI §3.14.1) as values, leaving out absent ones.
+func withTransmissionFields(fields []interface{}, result *mioty.DLDataResult) []interface{} {
+	if result.TxTime != nil {
+		fields = append(fields, logger.FieldTxTime, *result.TxTime)
+	}
+	if result.PacketCnt != nil {
+		fields = append(fields, logger.FieldPacketCnt, *result.PacketCnt)
+	}
+	return fields
+}
+
+// ProcessRevokeResponse records a base station's confirmation of a dlDataRev
+// (BSSCI §3.13) and answers with dlDataRevCmp; revoked reports whether the
+// downlink became revoked. A downlink that already ended, such as one the
+// service center expired before asking its station to drop it, keeps its
+// outcome, so the confirmation reports nothing a second time.
+func (d *downlinkService) ProcessRevokeResponse(ctx context.Context, session *bssci.Session, opId int64, queueID int64, endpointEUI uint64) (map[string]interface{}, bool, error) {
 	if queueID <= 0 {
 		d.logger.ErrorContext(ctx, bssci.LogBSSCIInvalidQueueIDInRevokeResponse,
-			"queueId", queueID,
-			"opId", opId)
-		return nil, bssci.NewCatalogError(bssci.ErrInvalidQueueID, bssci.POSIX_EINVAL)
+			logger.FieldQueueID, queueID,
+			logger.FieldOpID, opId)
+		return nil, false, bssci.NewCatalogError(bssci.ErrInvalidQueueID, bssci.POSIX_EINVAL)
 	}
+	revoked, err := d.revoke(ctx, session, queueID, endpointEUI)
+	if err != nil {
+		return nil, false, err
+	}
+	return d.queueSerializer.BuildDLDataRevokeComplete(opId), revoked, nil
+}
 
-	// Resolve the owning tenant for this downlink using queue ID
-	tidStr, err := d.tenantResolver.ResolveTenant(ctx, queueID)
+// ProcessRevokeRefusal records a base station's error answer to a dlDataRev
+// (BSSCI §3.17): the station does not hold the downlink, so it will never be
+// transmitted, and it ends revoked as a confirmed revoke would (§3.13). A
+// downlink that already ended, expired by the sweep or finished by a late
+// dlDataRes, keeps its outcome and is reported to nobody again.
+func (d *downlinkService) ProcessRevokeRefusal(ctx context.Context, session *bssci.Session, refusal bssci.RevokeRefusal) (bool, error) {
+	d.logger.WarnContext(ctx, bssci.LogBSSCIRevokeRefusedByStation,
+		logger.FieldBsEui, session.BaseStationEUI,
+		logger.FieldEpEui, refusal.EndpointEUI,
+		logger.FieldQueID, refusal.QueueID,
+		logger.FieldCode, refusal.Code,
+		logger.FieldMessage, refusal.Message)
+	return d.revoke(ctx, session, refusal.QueueID, refusal.EndpointEUI)
+}
+
+// revoke records the answering station's downlink revoked under its owner
+// tenant, persisted before the operation completes (BSSCI §3.13), and
+// reports whether the station still held it in flight.
+func (d *downlinkService) revoke(ctx context.Context, session *bssci.Session, queueID int64, endpointEUI uint64) (bool, error) {
+	owner, err := d.tenantResolver.ResolveTenant(ctx, queueID)
 	if err != nil {
 		d.logger.ErrorContext(ctx, bssci.LogBSSCICannotResolveTenantForRevoke,
-			"queueId", queueID,
-			"opId", opId,
-			"error", err)
-		return nil, bssci.NewCatalogError(bssci.ErrCannotResolveTenantForQueue, bssci.POSIX_EIO)
+			logger.FieldQueueID, queueID,
+			logger.FieldError, err)
+		return false, bssci.NewCatalogError(bssci.ErrCannotResolveTenantForQueue, bssci.POSIX_EIO)
 	}
-
-	ownerTenantStr := tidStr
-
+	ownerTenantID, err := d.parseOwner(ctx, owner)
+	if err != nil {
+		return false, err
+	}
+	station := session.BaseStationEUI
 	d.logger.InfoContext(ctx, bssci.LogBSSCIProcessingRevokeResponse,
-		"bsEui", session.BaseStationEUI,
-		"epEui", endpointEUI,
-		"queId", queueID,
-		"tenantId", ownerTenantStr)
-
-	// Clean up queue-to-tenant mapping AFTER successful tenant resolution
+		logger.FieldBsEui, station,
+		logger.FieldEpEui, endpointEUI,
+		logger.FieldQueID, queueID,
+		logger.FieldTenantIDCamel, ownerTenantID)
 	d.tenantResolver.UnregisterQueueTenant(queueID)
 
-	// Update database to mark as revoked (BSSCI §5.13.3 requires persistence before completion)
-	if d.storage == nil {
-		d.logger.ErrorContext(ctx, bssci.LogBSSCIStorageUnavailableForRevoke,
-			"queId", queueID,
-			"opId", opId)
-		return nil, bssci.NewCatalogError(bssci.ErrDatabaseUpdateFailed, bssci.POSIX_EIO)
-	}
-
-	err = d.storage.MIOTYDownlinks().RevokeDownlink(ctx, queueID, ownerTenantStr)
+	revoked, err := d.downlinks.RevokeDownlink(ctx, storage.DownlinkRevocation{QueID: queueID, TenantID: ownerTenantID, Station: &station})
 	if err != nil {
 		d.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDownlinkAsRevoked,
-			"queId", queueID,
-			"error", err)
-		return nil, bssci.NewCatalogError(bssci.ErrDatabaseUpdateFailed, bssci.POSIX_EIO)
+			logger.FieldQueID, queueID,
+			logger.FieldError, err)
+		return false, bssci.NewCatalogError(bssci.ErrDatabaseUpdateFailed, bssci.POSIX_EIO)
 	}
-
-	// Record event via audit logger
-	// Note: This would need RecordDLRevokeResponse method on AuditLogger interface
-	// For now, manually create event similar to original handler
-	// TODO: Add RecordDLRevokeResponse to AuditLogger interface
-
-	// Build dlDataRevCmp complete response using serializer (canonical constant enforcement)
-	response := d.queueSerializer.BuildDLDataRevokeComplete(opId)
-	return response, nil
+	if !revoked {
+		d.logger.InfoContext(ctx, bssci.LogBSSCIRevokeAnswerForDownlinkNotHeld, logger.FieldQueID, queueID, logger.FieldBsEui, station)
+	}
+	return revoked, nil
 }

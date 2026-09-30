@@ -30,14 +30,22 @@ for per-language quickstarts, or use the [Language Examples](#language-examples)
 
 ### Community Edition
 
-Community Edition runs in single-tenant mode with authentication and organization
-enforcement disabled (`auth.enabled: false`, `org_enforcement_enabled: false`).
-No headers are required — all RPCs are accessible directly.
+Community Edition runs single-tenant with organization enforcement off
+(`org_enforcement_enabled: false`). Sign in with `Login` and send the access token in the
+`authorization` header; no organization or user header is needed.
 
 ```bash
-grpcurl -plaintext -d '{}' \
+grpcurl -plaintext -H "authorization: Bearer $ACCESS_TOKEN" -d '{}' \
   localhost:9090 kilocenter.api.v1.KiloCenterService/GetSystemStatus
 ```
+
+### Roles
+
+Every call except the public ones needs a signed-in user holding a role that covers it; a call
+the roles do not cover returns `PERMISSION_DENIED`. User API keys act with their user's roles;
+service-account API keys act as Base Station Manager and Endpoint Manager in their own
+organization only. The full list of calls per role is in
+[User Roles and Permissions](../05-Security/04-users-and-roles.md#which-roles-does-each-api-call-require).
 
 ### Enterprise Edition
 
@@ -52,7 +60,7 @@ When authentication is enabled (`KILOCENTER_AUTH_ENABLED=true`), three metadata 
 **Dual bearer auth:** The `authorization` header accepts two token shapes:
 
 1. **JWT tokens** (format: `header.payload.signature`) — validated via JWKS/HMAC. Tenant, org, and user are extracted from JWT claims.
-2. **Opaque API keys** (any non-JWT shape) — hashed and looked up server-side. Tenant and org come from the key record. User context is set only for user-type keys; service-account keys carry no user identity.
+2. **Opaque API keys** (any non-JWT shape) — hashed and looked up server-side. Tenant and org come from the key record. User context is set only for user-type keys; a service-account key carries no user identity and acts as Base Station Manager and Endpoint Manager in its own organization.
 
 **Identity validation:** When auth establishes identity (JWT or API key), the `x-user-id` and `x-organization-id` headers must *confirm* the authenticated identity — they cannot replace it. A mismatch between header values and the authenticated context returns `PermissionDenied`.
 
@@ -60,7 +68,7 @@ When authentication is enabled (`KILOCENTER_AUTH_ENABLED=true`), three metadata 
 `Login`, `RefreshTokens`, `GetAuthSettings`, `ExchangeOIDC`, `ExchangeOAuth2`, `GetReleaseInfo`, `RegisterAccount`
 
 **Org-exempt methods** (auth required, no org header):
-`GetSystemStatus`, `GetProfile`, `Logout`, `ChangePassword`, User/Org/Membership CRUD (org context resolved from request fields)
+`GetSystemStatus`, `GetProfile`, `Logout`, `ChangePassword`, User/Org/Membership CRUD (org context resolved from request fields). Org-exempt calls still need the roles listed in [User Roles and Permissions](../05-Security/04-users-and-roles.md#which-roles-does-each-api-call-require).
 
 API tokens are created through KC-Web or the `CreateApiKey` RPC.
 
@@ -71,12 +79,34 @@ API tokens are created through KC-Web or the `CreateApiKey` RPC.
 | RPC | Request | Response | Description |
 |-----|---------|----------|-------------|
 | `CreateEndPoint` | CreateEndPointRequest | EndPoint | Register new endpoint |
-| `GetEndPoint` | GetEndPointRequest | EndPoint | Get endpoint details |
+| `GetEndPoint` | GetEndPointRequest | EndPoint | Get endpoint details; `reveal_keys` returns the named keys in clear |
 | `UpdateEndPoint` | UpdateEndPointRequest | EndPoint | Update endpoint configuration |
 | `DeleteEndPoint` | DeleteEndPointRequest | Empty | Remove endpoint |
 | `ListEndPoints` | ListEndPointsRequest | ListEndPointsResponse | List endpoints with pagination |
 | `AttachEndPoint` | AttachEndPointRequest | AttachEndPointResponse | Attach endpoint to base station |
 | `DetachEndPoint` | DetachEndPointRequest | DetachEndPointResponse | Detach endpoint from base station |
+
+#### How do I read an endpoint's keys?
+
+Every call that returns an `EndPoint` returns `nwk_sn_key` and `app_key`
+empty and reports whether each is stored in `nwk_sn_key_set` and
+`app_key_set`. To read a key, call `GetEndPoint` with `reveal_keys` naming it
+(`ENDPOINT_KEY_NWK_SN_KEY`, `ENDPOINT_KEY_APP_KEY`). This needs the Endpoint
+Manager or Admin role, and every reveal of a stored key writes an
+`endpoint.keys_revealed` event to the Audit Log naming the caller, the
+endpoint and the keys, never their values. `UpdateEndPoint` changes a key only
+when its path is in the update mask, so an update that leaves the keys out of
+the mask keeps them. To remove a stored application key, send `app_key` in the
+mask with no value; this writes an `endpoint.keys_removed` event to the Audit
+Log. The network session key cannot be removed, only replaced.
+
+#### UpdateEndPoint Status
+
+With `status` in `update_mask`, `UpdateEndPoint` attaches (`attached`) or detaches (`detached`) the endpoint the same way `AttachEndPoint` and `DetachEndPoint` do: the base stations are sent the attachment or detachment, and application centers receive one `epStat`. The other masked fields are saved first.
+
+- A `status` equal to the endpoint's current status changes nothing.
+- Any other value, `attaching` included, returns `INVALID_ARGUMENT`.
+- On a server without the attachment service, a status change returns `UNIMPLEMENTED` (`KC-GRPC-ERR-906`) and nothing is saved.
 
 ### Base Stations (9)
 
@@ -225,7 +255,7 @@ The `BaseStation` message includes geolocation fields:
 |-----|---------|----------|-------------|
 | `GenerateCertificate` | GenerateCertificateRequest | GenerateCertificateResponse | Generate client certificate |
 | `DownloadCertificate` | DownloadCertificateRequest | DownloadCertificateResponse | Download certificate |
-| `DownloadBaseStationCertificate` | DownloadBaseStationCertificateRequest | DownloadCertificateResponse | Download base station certificate |
+| `DownloadBaseStationCertificate` | DownloadBaseStationCertificateRequest | DownloadCertificateResponse | Download a base station's CA certificate (the service center CA) or its stored client certificate; `FAILED_PRECONDITION` when no copy of the client certificate is stored |
 | `GenerateServerCertificates` | GenerateServerCertificatesRequest | GenerateServerCertificatesResponse | Generate server certificates |
 | `RenewServerCertificates` | RenewServerCertificatesRequest | RenewServerCertificatesResponse | Renew server certificates |
 | `GetServerCertificateStatus` | GetServerCertificateStatusRequest | GetServerCertificateStatusResponse | Certificate status |
@@ -284,7 +314,7 @@ Cross-tenant RPCs for server administrators. These require authentication but ar
 |-----|---------|----------|-------------|
 | `ListAllBaseStationLocations` | ListAllBaseStationLocationsRequest | ListAllBaseStationLocationsResponse | Returns all base station locations across all tenants |
 
-### Auth & Session (8) — Enterprise
+### Auth & Session (8)
 
 | RPC | Request | Response | Description |
 |-----|---------|----------|-------------|
@@ -297,13 +327,15 @@ Cross-tenant RPCs for server administrators. These require authentication but ar
 | `ExchangeOIDC` | ExchangeOIDCRequest | LoginResponse | Exchange OIDC code for tokens |
 | `ExchangeOAuth2` | ExchangeOAuth2Request | LoginResponse | Exchange OAuth2 code for tokens |
 
-### Self-Service Registration (1) — Enterprise
+### Self-Service Registration (1)
+
+A registered account starts without roles; an administrator grants them in Users & Roles.
 
 | RPC | Request | Response | Description |
 |-----|---------|----------|-------------|
 | `RegisterAccount` | RegisterAccountRequest | LoginResponse | Register new account and receive tokens |
 
-### Users (6) — Enterprise
+### Users (6) — Admin Only
 
 | RPC | Request | Response | Description |
 |-----|---------|----------|-------------|
@@ -353,6 +385,9 @@ stream.on('data', (message) => { /* handle message */ });
 stream.on('error', (err) => { /* handle error */ });
 stream.on('end', () => { /* stream closed */ });
 ```
+
+Every stream is server-side, so a gRPC-web client uses its default HTTP
+transport. KC-Gateway does not accept gRPC-web over WebSocket.
 
 ## Pagination
 

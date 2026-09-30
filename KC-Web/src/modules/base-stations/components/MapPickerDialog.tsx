@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { MapContainer, Marker, TileLayer, useMapEvents } from "react-leaflet";
+import { MapContainer, useMapEvents } from "react-leaflet";
 
 import {
   Button,
@@ -16,12 +16,9 @@ import {
   DialogTitle,
   Typography,
 } from "@mui/material";
-import L from "leaflet";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-// Fix Leaflet default marker icon paths (broken by bundlers)
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
+import { BaseTileLayer } from "@components/common/map/BaseTileLayer";
+import { PositionMarker } from "@components/common/map/PositionMarker";
 import { MAP_DEFAULTS } from "@constants/app";
 import {
   ACTION_CANCEL,
@@ -29,15 +26,6 @@ import {
   INSTR_MAP_PICKER,
   TITLE_MAP_PICKER,
 } from "@constants/messages";
-import { env } from "@config/env";
-
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)
-  ._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-});
 
 interface MapPickerDialogProps {
   open: boolean;
@@ -113,14 +101,9 @@ export default function MapPickerDialog({
           zoom={zoom}
           style={{ height: MAP_DEFAULTS.PICKER_HEIGHT, width: "100%" }}
         >
-          <TileLayer
-            attribution={
-              env.mapTileAttribution || MAP_DEFAULTS.TILE_ATTRIBUTION
-            }
-            url={env.mapTileUrl || MAP_DEFAULTS.TILE_URL}
-          />
+          <BaseTileLayer />
           <MapClickHandler onLocationSelect={handleLocationSelect} />
-          {selectedPosition && <Marker position={selectedPosition} />}
+          {selectedPosition && <PositionMarker position={selectedPosition} />}
         </MapContainer>
       </DialogContent>
       <DialogActions>

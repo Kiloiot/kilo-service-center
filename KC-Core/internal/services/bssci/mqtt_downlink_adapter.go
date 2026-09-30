@@ -2,8 +2,8 @@ package bssciservices
 
 import (
 	"context"
-	"sync/atomic"
-	"time"
+	"errors"
+	"fmt"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
@@ -11,12 +11,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 	"github.com/google/uuid"
 )
-
-var mqttQueueIDSeed = uint64(time.Now().UnixNano()) //nolint:gosec // G115: UnixNano is positive for current epoch
-
-func nextMQTTQueueID() uint64 {
-	return atomic.AddUint64(&mqttQueueIDSeed, 1)
-}
 
 // DownlinkQueuer abstracts SCACI downlink queueing at the service layer.
 type DownlinkQueuer interface {
@@ -29,25 +23,37 @@ type mqttDownlinkAdapter struct {
 }
 
 // NewMQTTDownlinkAdapter creates an adapter that satisfies mqtt.DownlinkEnqueuer.
-func NewMQTTDownlinkAdapter(queuer DownlinkQueuer) mqtt.DownlinkEnqueuer {
-	return &mqttDownlinkAdapter{queuer: queuer}
+func NewMQTTDownlinkAdapter(queuer DownlinkQueuer) (mqtt.DownlinkEnqueuer, error) {
+	if queuer == nil {
+		return nil, ErrNilQueuer
+	}
+	return &mqttDownlinkAdapter{queuer: queuer}, nil
 }
 
-func (a *mqttDownlinkAdapter) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID,
-	epEUI uint64, payload []byte, confirmed bool) (uint64, error) {
-	queID := nextMQTTQueueID()
-	responseExp := confirmed
-
-	resultQueID, err := a.queuer.QueueDownlink(ctx, tenantID, orgID, &mioty.DLDataQueue{
-		EpEui:       epEUI,
-		QueId:       queID,
-		UserData:    [][]byte{payload},
-		ResponseExp: &responseExp,
-	})
+// EnqueueFromMQTT queues the downlink and returns the service center queue id
+// it was persisted under; MQTT carries no Application Center queue id.
+func (a *mqttDownlinkAdapter) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error) {
+	queID, err := a.queuer.QueueDownlink(ctx, tenantID, orgID, req)
 	if err != nil {
-		return 0, err
+		return 0, withRefusal(err)
 	}
-	return resultQueID, nil
+	return queID, nil
+}
+
+// withRefusal names a core refusal by its catalog token and message, so the
+// MQTT publisher can tell why its downlink was not queued.
+func withRefusal(err error) error {
+	var queueErr *scaci.DLDataQueueError
+	if errors.As(err, &queueErr) {
+		def := scaci.GetErrorDefinition(queueErr.Token)
+		return fmt.Errorf("%w: %w", &mqtt.DownlinkRefusal{Code: def.Token, Message: def.Message}, err)
+	}
+	var catalogErr *bssci.CatalogError
+	if errors.As(err, &catalogErr) {
+		refusal := &mqtt.DownlinkRefusal{Code: catalogErr.Token, Message: bssci.ResolveErrorMessage(catalogErr.Token)}
+		return fmt.Errorf("%w: %w", refusal, err)
+	}
+	return err
 }
 
 // SCACIDownlinkServer is the subset of scaci.Server needed for downlink queueing.
@@ -61,8 +67,11 @@ type scaciDownlinkQueuer struct {
 }
 
 // NewSCACIDownlinkQueuer creates a DownlinkQueuer that delegates to scaci.Server.QueueDownlinkInternal.
-func NewSCACIDownlinkQueuer(server SCACIDownlinkServer) DownlinkQueuer {
-	return &scaciDownlinkQueuer{server: server}
+func NewSCACIDownlinkQueuer(server SCACIDownlinkServer) (DownlinkQueuer, error) {
+	if server == nil {
+		return nil, ErrNilSCACIServer
+	}
+	return &scaciDownlinkQueuer{server: server}, nil
 }
 
 func (q *scaciDownlinkQueuer) QueueDownlink(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error) {

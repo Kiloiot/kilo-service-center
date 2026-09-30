@@ -19,7 +19,7 @@
  * etc.) explicitly skip org/user requirements.
  */
 
-import { DEFAULT_EXTERNAL_ORG_CLAIM_PATH } from "@constants/app";
+import { DEFAULT_EXTERNAL_ORG_CLAIM_PATH, MAP_DEFAULTS } from "@constants/app";
 
 export interface EnvConfig {
   /** Base URL for gRPC-web requests (empty string uses proxy) */
@@ -31,16 +31,15 @@ export interface EnvConfig {
   /** JWT claim path for external IdP organization ID extraction */
   externalOrgClaimPath: string;
   /** Application version from release manifest (centralized versioning) */
-  appVersion: string;
   /** Build timestamp from release manifest */
   buildTime: string;
   /** Git commit hash from release manifest */
   gitCommit: string;
   /** Database schema version from release manifest */
   schemaVersion: number;
-  /** Custom map tile provider URL (deployment-configurable) */
+  /** Map tile provider URL: the deployment's, else the keyless default */
   mapTileUrl: string;
-  /** Custom map tile attribution string (deployment-configurable) */
+  /** Map tile attribution: the deployment's, else the default provider's */
   mapTileAttribution: string;
 }
 
@@ -54,13 +53,13 @@ export const env: EnvConfig = {
     import.meta.env.VITE_EXTERNAL_ORG_CLAIM_PATH ||
     DEFAULT_EXTERNAL_ORG_CLAIM_PATH,
   // Centralized versioning - injected at build time from release/manifest.json
-  appVersion: __APP_VERSION__,
   buildTime: __BUILD_TIME__,
   gitCommit: __GIT_COMMIT__,
   schemaVersion: __SCHEMA_VERSION__,
   // Map tile provider (deployment-configurable)
-  mapTileUrl: import.meta.env.VITE_MAP_TILE_URL || "",
-  mapTileAttribution: import.meta.env.VITE_MAP_TILE_ATTRIBUTION || "",
+  mapTileUrl: import.meta.env.VITE_MAP_TILE_URL || MAP_DEFAULTS.TILE_URL,
+  mapTileAttribution:
+    import.meta.env.VITE_MAP_TILE_ATTRIBUTION || MAP_DEFAULTS.TILE_ATTRIBUTION,
 };
 
 // Named exports for convenience
@@ -69,7 +68,6 @@ export const {
   isProduction,
   isDevelopment,
   externalOrgClaimPath,
-  appVersion,
   buildTime,
   gitCommit,
   schemaVersion,

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 )
@@ -218,7 +218,7 @@ func TestRemoveUser_MemberNotFound(t *testing.T) {
 
 	memberStore := &mockMemberStore{
 		getMemberFn: func(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*models.OrganizationMemberWithEmail, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 	}
 

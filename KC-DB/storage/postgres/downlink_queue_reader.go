@@ -3,217 +3,92 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"log"
-	"strconv"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/jmoiron/sqlx"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
-	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 )
 
 // DownlinkQueueReader implements read-only downlink queue operations
 // Reuses storage.DownlinkMessage to avoid struct duplication
 type DownlinkQueueReader struct {
-	db *sqlx.DB
+	log logger.Logger
+	db  *sqlx.DB
 }
 
 // Ensure DownlinkQueueReader implements the interfaces
-var _ interfaces.DownlinkQueueReader = (*DownlinkQueueReader)(nil)
-var _ interfaces.DownlinkQueueStore = (*DownlinkQueueReader)(nil)
+var (
+	_ interfaces.DownlinkQueueReader = (*DownlinkQueueReader)(nil)
+	_ interfaces.DownlinkQueueStore  = (*DownlinkQueueReader)(nil)
+)
 
 // NewDownlinkQueueReader creates a new downlink queue reader
-func NewDownlinkQueueReader(db *sqlx.DB) *DownlinkQueueReader {
-	return &DownlinkQueueReader{db: db}
+func NewDownlinkQueueReader(db *sqlx.DB, log logger.Logger) *DownlinkQueueReader {
+	return &DownlinkQueueReader{
+		log: log, db: db}
 }
 
-// ListTenantQueue retrieves pending downlink messages for a tenant
-func (r *DownlinkQueueReader) ListTenantQueue(ctx context.Context, tenantID int64, epFilter *[8]byte, limit, offset int) ([]*storage.DownlinkMessage, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 1000 {
-		limit = 1000
-	}
-	if offset < 0 {
-		offset = 0
-	}
+// downlinkQueueColumnsListed follow downlinkListingColumns in the queue
+// listing: what a base station reported so far and the downlink window it
+// waits for.
+const downlinkQueueColumnsListed = `result, tx_time, earliest_at`
 
-	// Build query with optional endpoint filter
-	// Status filter covers every in-flight state so the UI shows messages
-	// that have already been pushed to the base station (status="queued")
-	// in addition to those still waiting on the SC scheduler. Terminal states
-	// (transmitted, delivered, acked, failed, expired, revoked) are excluded
-	// because they belong to the results view, not the queue view.
-	query := `
-		SELECT
-			id, ep_eui, tenant_id, organization_id, payload,
-			priority, status, attempts, max_attempts,
-			que_id, cnt_depend, packet_cnt, format,
-			response_exp, response_prio, dl_wind_req, exp_only, dl_rx_stat_qry,
-			result, tx_time, bs_eui,
-			created_at, transmitted_at, acknowledged_at, earliest_at, user_data
-		FROM downlink_queue
-		WHERE tenant_id = $1
-		AND status IN ($2, $3, $4, $5)`
-
-	args := []interface{}{
-		tenantID,
-		bssci.DLQueueStatusPending,
-		bssci.DLQueueStatusScheduled,
-		bssci.DLQueueStatusReserved,
-		bssci.DLQueueStatusQueued,
-	}
-	argIndex := 6
-
-	// Add endpoint filter if provided
-	if epFilter != nil {
-		query += fmt.Sprintf(" AND ep_eui = $%d", argIndex)
-		args = append(args, epFilter[:])
-		argIndex++
-	}
-
-	query += fmt.Sprintf(" ORDER BY priority DESC, created_at ASC LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
-	args = append(args, limit, offset)
-
-	rows, err := r.db.QueryContext(ctx, query, args...)
+// ListTenantQueue lists one page of a tenant's queued downlinks, highest
+// priority first.
+func (r *DownlinkQueueReader) ListTenantQueue(ctx context.Context, tenantID int64, filter storage.DownlinkQueueFilter, limit, offset int) ([]*storage.DownlinkMessage, error) {
+	scope := downlinkQueueScope(tenantID, filter)
+	query := "SELECT " + downlinkListingColumns + ", " + downlinkQueueColumnsListed +
+		" FROM downlink_queue WHERE " + scope.where() +
+		" ORDER BY priority DESC, created_at ASC" + scope.page(limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, scope.args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query downlink queue: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapQueryDownlinkQueue, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			// TODO: Repository lacks logger field - add for proper error tracking
-			log.Printf("failed to close rows in downlink queue query: %v", err)
+			r.log.Warn(logMsgCloseRowsDownlinkQueue, logger.FieldError, err)
 		}
 	}()
 
 	var messages []*storage.DownlinkMessage
-
 	for rows.Next() {
-		var msg storage.DownlinkMessage
-		var epEuiBytes []byte
-		var bsEuiBytes []byte
-		var packetCntArray pq.Int64Array
-		var result sql.NullString
-		var txTime sql.NullInt64
-		var transmittedAt, acknowledgedAt, earliestAt sql.NullTime
-		var userDataJSON []byte
-		var orgID *uuid.UUID
-
-		err := rows.Scan(
-			&msg.ID,
-			&epEuiBytes,
-			&tenantID,
-			&orgID,
-			&msg.Payload,
-			&msg.Priority,
-			&msg.Status,
-			&msg.Attempts,
-			&msg.MaxAttempts,
-			&msg.QueID,
-			&msg.CntDepend,
-			&packetCntArray,
-			&msg.Format,
-			&msg.ResponseExp,
-			&msg.ResponsePrio,
-			&msg.DlWindReq,
-			&msg.ExpOnly,
-			&msg.DlRxStatQry,
-			&result,
-			&txTime,
-			&bsEuiBytes,
-			&msg.CreatedAt,
-			&transmittedAt,
-			&acknowledgedAt,
-			&earliestAt,
-			&userDataJSON,
-		)
-
+		msg, err := scanQueueListingRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan downlink message: %w", err)
+			return nil, err
 		}
-
-		// Convert bytes to hex strings
-		msg.EPEUI = hex.EncodeToString(epEuiBytes)
-		msg.TenantID = strconv.FormatInt(tenantID, 10)
-		msg.OrganizationID = orgID
-
-		if len(bsEuiBytes) == 8 {
-			msg.TxBSEUI = hex.EncodeToString(bsEuiBytes)
-		}
-
-		// Convert nullable fields
-		if result.Valid {
-			msg.Result = result.String
-		}
-		if txTime.Valid {
-			msg.TxTime = txTime.Int64
-		}
-		if transmittedAt.Valid {
-			msg.SentAt = &transmittedAt.Time
-		}
-		if earliestAt.Valid {
-			msg.ScheduledAt = &earliestAt.Time
-		}
-
-		// Convert packet counter array
-		if packetCntArray != nil {
-			msg.PacketCntArray = []int64(packetCntArray)
-		}
-
-		// Nil-safe user_data JSON unmarshaling
-		if len(userDataJSON) > 0 {
-			var dlQueue mioty.DLDataQueue
-			if err := json.Unmarshal(userDataJSON, &dlQueue); err == nil {
-				msg.UserData = dlQueue.UserData
-				// Populate single Payload field for backward compatibility
-				if len(msg.UserData) > 0 && msg.Payload == nil {
-					msg.Payload = msg.UserData[0]
-				}
-			}
-			// Skip unmarshaling errors to handle NULL or empty JSON gracefully
-		}
-
-		messages = append(messages, &msg)
+		messages = append(messages, msg)
 	}
-
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating downlink messages: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapErrorIteratingDownlinkMessages, err)
 	}
-
 	return messages, nil
 }
 
-// CountTenantQueue returns the count of pending downlink messages for a tenant
-// epFilter optionally filters by endpoint EUI (must match ListTenantQueue filter)
-// Use parameterized status constants to avoid literal strings
-func (r *DownlinkQueueReader) CountTenantQueue(ctx context.Context, tenantID int64, epFilter *[8]byte) (int64, error) {
-	query := `
-		SELECT COUNT(*)
-		FROM downlink_queue
-		WHERE tenant_id = $1
-		AND status IN ($2, $3)`
-
-	args := []interface{}{tenantID, bssci.DLQueueStatusPending, bssci.DLQueueStatusScheduled}
-
-	// Add endpoint filter if provided (matches ListTenantQueue logic)
-	if epFilter != nil {
-		query += " AND ep_eui = $4"
-		args = append(args, epFilter[:])
-	}
-
-	var count int64
-	err := r.db.QueryRowContext(ctx, query, args...).Scan(&count)
+// scanQueueListingRow reads one row of the queue listing.
+func scanQueueListingRow(row rowScanner) (*storage.DownlinkMessage, error) {
+	var result sql.NullString
+	var txTime sql.NullInt64
+	var earliestAt sql.NullTime
+	msg, err := scanDownlinkListing(row, &result, &txTime, &earliestAt)
 	if err != nil {
-		return 0, fmt.Errorf("failed to count downlink queue: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapScanDownlinkMessage, err)
 	}
+	msg.Result = result.String
+	msg.TxTime = txTime.Int64
+	msg.ScheduledAt = nullTimePtr(earliestAt)
+	return msg, nil
+}
 
+// CountTenantQueue counts the downlinks ListTenantQueue lists for the filter.
+func (r *DownlinkQueueReader) CountTenantQueue(ctx context.Context, tenantID int64, filter storage.DownlinkQueueFilter) (int64, error) {
+	scope := downlinkQueueScope(tenantID, filter)
+	var count int64
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM downlink_queue WHERE "+scope.where(), scope.args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("%s: %w", errWrapCountDownlinkQueue, err)
+	}
 	return count, nil
 }
 
@@ -222,14 +97,44 @@ func (r *DownlinkQueueReader) CountTenantQueue(ctx context.Context, tenantID int
 // Implements interfaces.DownlinkQueueStore
 func (r *DownlinkQueueReader) GetTenantIDByQueueID(ctx context.Context, queueID uint64) (int64, error) {
 	var tenantID int64
-	// Reuse exact SQL from old Server.getDownlinkTenantByQueueID method
 	query := `SELECT tenant_id FROM downlink_queue WHERE que_id = $1`
 	err := r.db.QueryRowContext(ctx, query, queueID).Scan(&tenantID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return 0, fmt.Errorf("queue ID not found: %d", queueID)
+			return 0, fmt.Errorf(errFmtQueueIDNotFound, queueID)
 		}
-		return 0, fmt.Errorf("failed to get tenant for queue %d: %w", queueID, err)
+		return 0, fmt.Errorf(errFmtGetTenantForQueue, queueID, err)
 	}
 	return tenantID, nil
+}
+
+// downlinkQueueScope renders the predicate shared by the queue listing and
+// its count so both always agree on what "in the queue" means. Terminal
+// states belong to the results view; without an explicit status the queue
+// covers every in-flight state, including rows a base station holds.
+func downlinkQueueScope(tenantID int64, filter storage.DownlinkQueueFilter) *sqlScope {
+	scope := newSQLScope()
+	scope.equals(colTenantID, tenantID)
+	if filter.Status != nil {
+		scope.equals(colStatus, *filter.Status)
+	} else {
+		scope.and(sqlDownlinkInFlight)
+	}
+	if filter.EpEUI != nil {
+		scope.equals(colEpEUI, filter.EpEUI[:])
+	}
+	if filter.BsEUI != nil {
+		scope.equals(colBsEUI, filter.BsEUI[:])
+	}
+	if filter.Priority != nil {
+		scope.equals(colPriority, *filter.Priority)
+	}
+	if filter.QueID != nil {
+		scope.equals(colQueID, *filter.QueID)
+	}
+	scope.organization(filter.OrganizationID)
+	if filter.QueuedFrom != nil {
+		scope.atLeast(colCreatedAt, *filter.QueuedFrom)
+	}
+	return scope
 }

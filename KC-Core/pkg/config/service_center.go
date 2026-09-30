@@ -1,8 +1,10 @@
 package config
 
 import (
-	"errors"
 	"fmt"
+	"net"
+	"strings"
+	"time"
 )
 
 // ValidateServiceCenterConfig enforces BSSCI §1 compliance.
@@ -17,68 +19,129 @@ import (
 // to enforce BSSCI §1 "fixed network location" requirement.
 func ValidateServiceCenterConfig(cfg *ProtocolConfig) error {
 	if cfg.BSCIHost == "" {
-		return errors.New("protocol.bsci_host required for BSSCI §1 compliance (non-empty string)")
+		return errBSSCIHostRequired
 	}
 
-	if cfg.BSCIPort < 1 || cfg.BSCIPort > 65535 {
-		return fmt.Errorf("protocol.bsci_port must be in range [1,65535], got %d", cfg.BSCIPort)
+	if cfg.BSCIPort < 1 || cfg.BSCIPort > MaxPortNumber {
+		return fmt.Errorf(errFmtBSSCIPortOutOfRange, cfg.BSCIPort)
+	}
+
+	if cfg.ManagementPort < 1 || cfg.ManagementPort > MaxPortNumber {
+		return fmt.Errorf(errFmtManagementPortOutOfRange, cfg.ManagementPort)
 	}
 
 	if !cfg.BSCITLS.Enabled {
-		return errors.New("protocol.bsci_tls.enabled must be true (BSSCI requires mutual TLS)")
+		return errBSSCITLSMustBeEnabled
 	}
 
 	if cfg.AckTimeout <= 0 {
-		return fmt.Errorf("protocol.ack_timeout must be positive milliseconds, got %d", cfg.AckTimeout)
+		return fmt.Errorf(errFmtAckTimeoutNotPositive, cfg.AckTimeout)
 	}
 
 	if cfg.ConnectionEstablishmentTimeout <= 0 {
-		return fmt.Errorf("protocol.connection_establishment_timeout must be positive milliseconds, got %d", cfg.ConnectionEstablishmentTimeout)
+		return fmt.Errorf(errFmtConnEstablishTimeoutNotPositive, cfg.ConnectionEstablishmentTimeout)
+	}
+
+	if cfg.SocketWriteTimeout <= 0 {
+		return fmt.Errorf(errFmtSocketWriteTimeoutNotPositive, cfg.SocketWriteTimeout)
 	}
 
 	if cfg.StatusRequestInterval <= 0 {
-		return fmt.Errorf("protocol.status_request_interval must be positive seconds, got %d", cfg.StatusRequestInterval)
+		return fmt.Errorf(errFmtStatusRequestIntervalNotPositive, cfg.StatusRequestInterval)
 	}
 
 	if cfg.StatusRequestInitialDelay < 0 {
-		return fmt.Errorf("protocol.status_request_initial_delay must not be negative, got %d", cfg.StatusRequestInitialDelay)
+		return fmt.Errorf(errFmtStatusRequestInitialDelayNegative, cfg.StatusRequestInitialDelay)
 	}
 
 	if cfg.DLRXQueryTimeout <= 0 {
-		return fmt.Errorf("protocol.dlrx_query_timeout must be positive seconds, got %d", cfg.DLRXQueryTimeout)
+		return fmt.Errorf(errFmtDLRXQueryTimeoutNotPositive, cfg.DLRXQueryTimeout)
 	}
 
 	if cfg.DLRXCleanupInterval <= 0 {
-		return fmt.Errorf("protocol.dlrx_cleanup_interval must be positive seconds, got %d", cfg.DLRXCleanupInterval)
+		return fmt.Errorf(errFmtDLRXCleanupIntervalNotPositive, cfg.DLRXCleanupInterval)
 	}
 
 	if cfg.DuplicateWindow <= 0 {
-		return fmt.Errorf("protocol.duplicate_window must be positive seconds, got %d", cfg.DuplicateWindow)
+		return fmt.Errorf(errFmtDuplicateWindowNotPositive, cfg.DuplicateWindow)
 	}
 
 	if cfg.BSCICertificatePollInterval <= 0 {
-		return fmt.Errorf("protocol.bsci_certificate_poll_interval must be a positive duration, got %s", cfg.BSCICertificatePollInterval)
+		return fmt.Errorf(errFmtCertPollIntervalNotPositive, cfg.BSCICertificatePollInterval)
+	}
+
+	if cfg.Delivery.PollInterval <= 0 || cfg.Delivery.BatchSize <= 0 || cfg.Delivery.RetryBackoff <= 0 ||
+		cfg.Delivery.MaxBackoff < cfg.Delivery.RetryBackoff {
+		return fmt.Errorf(errFmtDeliveryConfigInvalid, cfg.Delivery.PollInterval, cfg.Delivery.BatchSize, cfg.Delivery.RetryBackoff, cfg.Delivery.MaxBackoff)
+	}
+
+	if cfg.Delivery.ReceptionWindow < 0 || cfg.Delivery.ReceptionWindow >= time.Duration(cfg.DuplicateWindow)*time.Second {
+		return fmt.Errorf(errFmtDeliveryReceptionWindowInvalid, cfg.Delivery.ReceptionWindow, cfg.DuplicateWindow)
+	}
+
+	if cfg.DownlinkExpiry.Lifetime <= 0 || cfg.DownlinkExpiry.SweepInterval <= 0 || cfg.DownlinkExpiry.BatchSize <= 0 {
+		return fmt.Errorf(errFmtDownlinkExpiryConfigInvalid, cfg.DownlinkExpiry.Lifetime, cfg.DownlinkExpiry.SweepInterval, cfg.DownlinkExpiry.BatchSize)
+	}
+
+	if cfg.SCACIResumeMaxPendingOperations <= 0 {
+		return fmt.Errorf(errFmtSCACIResumeLimitNotPositive, cfg.SCACIResumeMaxPendingOperations)
+	}
+
+	if cfg.Roaming.CacheEnabled && (cfg.Roaming.CacheTTL <= 0 || cfg.Roaming.CacheMaxSize <= 0) {
+		return fmt.Errorf(errFmtRoamingCacheConfigInvalid, cfg.Roaming.CacheTTL, cfg.Roaming.CacheMaxSize)
 	}
 
 	return nil
 }
 
-// GetServiceCenterURL returns the canonical BSSCI URL per BSSCI §1.
-// Format: tls://host:port
-//
-// This URL is provided to base stations during certificate generation
-// and must match the actual network location where the Service Center listens.
-//
-// Priority:
-//  1. BSCIExternalURL if configured (client-facing URL, e.g., tls://bssci.example.com:5000)
-//  2. Falls back to tls://BSCIHost:BSCIPort (useful when BSCIHost is not 0.0.0.0)
-//
-// Supports both DNS names and IP addresses per BSSCI §1 requirements.
+// GetServiceCenterURL returns the BSSCI URL base stations connect to (BSSCI §1):
+// BSCIExternalURL when configured, else tls://BSCIHost:BSCIPort. It is empty
+// when that address is a wildcard or loopback one, which no base station can
+// reach; protocol.bsci_external_url fixes it.
 func GetServiceCenterURL(cfg *ProtocolConfig) string {
 	if cfg.BSCIExternalURL != "" {
+		if !isStationReachable(ExternalBSSCIHost(cfg)) {
+			return ""
+		}
 		return cfg.BSCIExternalURL
 	}
-	return fmt.Sprintf("tls://%s:%d", cfg.BSCIHost, cfg.BSCIPort)
+	if !isStationReachable(cfg.BSCIHost) {
+		return ""
+	}
+	return fmt.Sprintf(URLSchemeTLSFmt, cfg.BSCIHost, cfg.BSCIPort)
+}
+
+// StoredServiceCenterURL is how a base station record stores a service center
+// URL: nil, stored as NULL, when GetServiceCenterURL knows none.
+func StoredServiceCenterURL(url string) *string {
+	if url == "" {
+		return nil
+	}
+	return &url
+}
+
+// isStationReachable reports whether a base station on another machine can
+// reach host.
+func isStationReachable(host string) bool {
+	return !IsWildcardHost(host) && !isLoopbackHost(host)
+}
+
+// ExternalBSSCIHost is the host of the configured external BSSCI URL, or empty
+// when none is configured or it names the wildcard address.
+func ExternalBSSCIHost(cfg *ProtocolConfig) string {
+	raw := cfg.BSCIExternalURL
+	if raw == "" {
+		return ""
+	}
+	raw = strings.TrimPrefix(strings.TrimPrefix(raw, urlSchemePrefixTLS), urlSchemePrefixTCP)
+	host := raw
+	if h, _, err := net.SplitHostPort(raw); err == nil && h != "" {
+		host = h
+	}
+	if IsWildcardHost(host) {
+		return ""
+	}
+	return host
 }
 
 // ValidateSCACIConfig enforces SCACI §1 compliance.
@@ -99,26 +162,26 @@ func ValidateSCACIConfig(cfg *ProtocolConfig) error {
 	}
 
 	if cfg.SCACIHost == "" {
-		return errors.New("protocol.scaci_host required when SCACI enabled (SCACI §1 fixed network location)")
+		return errSCACIHostRequired
 	}
 
-	if cfg.SCACIPort < 1 || cfg.SCACIPort > 65535 {
-		return fmt.Errorf("protocol.scaci_port must be in range [1,65535], got %d", cfg.SCACIPort)
+	if cfg.SCACIPort < 1 || cfg.SCACIPort > MaxPortNumber {
+		return fmt.Errorf(errFmtSCACIPortOutOfRange, cfg.SCACIPort)
 	}
 
 	if !cfg.SCACITLS.Enabled {
-		return errors.New("protocol.scaci_tls.enabled must be true (SCACI requires mutual TLS)")
+		return errSCACITLSMustBeEnabled
 	}
 
 	// Validate TLS files are specified when TLS enabled
 	if cfg.SCACITLS.CertFile == "" {
-		return errors.New("protocol.scaci_tls.cert_file required when SCACI TLS enabled")
+		return errSCACICertFileRequired
 	}
 	if cfg.SCACITLS.KeyFile == "" {
-		return errors.New("protocol.scaci_tls.key_file required when SCACI TLS enabled")
+		return errSCACIKeyFileRequired
 	}
 	if cfg.SCACITLS.CAFile == "" {
-		return errors.New("protocol.scaci_tls.ca_file required for mutual TLS")
+		return errSCACICAFileRequired
 	}
 
 	return nil

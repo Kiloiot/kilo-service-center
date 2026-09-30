@@ -6,24 +6,69 @@
  */
 
 import type {
+  BlueprintScope,
   CreateBlueprintRequest,
   DecodePreviewRequest,
+  RegistrySubmitRequest,
   UpdateBlueprintRequest,
 } from "@api-types/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from "@services/api";
+import { catalogApi } from "@services/api";
 import { BLUEPRINT_LABELS } from "@constants/messages";
 import { queryKeys } from "@config/query-keys";
+
+import { useCatalogInvalidation } from "./useCatalogInvalidation";
 
 /**
  * Hook to fetch blueprints for a device model
  */
-export function useBlueprints(deviceModelId: string | undefined) {
+export function useBlueprints(
+  deviceModelId: string | undefined,
+  scope?: BlueprintScope,
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
-    queryKey: queryKeys.blueprints.list(deviceModelId ?? ""),
-    queryFn: () => api.getBlueprints(deviceModelId!),
-    enabled: !!deviceModelId,
+    queryKey: queryKeys.blueprints.list(deviceModelId ?? "", scope),
+    queryFn: () => catalogApi.getBlueprints(deviceModelId!, scope),
+    enabled: !!deviceModelId && (options.enabled ?? true),
+  });
+}
+
+export function useModelSnapshotCount(
+  deviceModelId: string | undefined,
+  options: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: queryKeys.blueprints.modelSnapshotCount(deviceModelId ?? ""),
+    queryFn: () => catalogApi.countModelSnapshotEndpoints(deviceModelId!),
+    enabled: !!deviceModelId && (options.enabled ?? true),
+  });
+}
+
+export function useBulkAssignBlueprint() {
+  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
+  return useMutation({
+    mutationFn: (
+      request: Parameters<typeof catalogApi.bulkAssignBlueprint>[0],
+    ) => catalogApi.bulkAssignBlueprint(request),
+    onSuccess: () => {
+      invalidateCatalog();
+      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
+    },
+  });
+}
+
+export function useSubmitToRegistry(blueprintId: string | null | undefined) {
+  const invalidateCatalog = useCatalogInvalidation();
+  return useMutation({
+    mutationFn: (data: RegistrySubmitRequest) => {
+      if (!blueprintId)
+        throw new Error(BLUEPRINT_LABELS.ERR_BLUEPRINT_ID_REQUIRED);
+      return catalogApi.submitToRegistry(blueprintId, data);
+    },
+    onSuccess: () => invalidateCatalog(),
   });
 }
 
@@ -33,7 +78,7 @@ export function useBlueprints(deviceModelId: string | undefined) {
 export function useBlueprint(id: string | undefined) {
   return useQuery({
     queryKey: queryKeys.blueprints.detail(id ?? ""),
-    queryFn: () => api.getBlueprint(id!),
+    queryFn: () => catalogApi.getBlueprint(id!),
     enabled: !!id,
   });
 }
@@ -42,7 +87,7 @@ export function useBlueprint(id: string | undefined) {
  * Hook to create a new blueprint
  */
 export function useCreateBlueprint() {
-  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
     mutationFn: ({
       deviceModelId,
@@ -50,12 +95,8 @@ export function useCreateBlueprint() {
     }: {
       deviceModelId: string;
       data: CreateBlueprintRequest;
-    }) => api.createBlueprint(deviceModelId, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.list(variables.deviceModelId),
-      });
-    },
+    }) => catalogApi.createBlueprint(deviceModelId, data),
+    onSuccess: () => invalidateCatalog(),
   });
 }
 
@@ -63,40 +104,11 @@ export function useCreateBlueprint() {
  * Hook to update a blueprint
  */
 export function useUpdateBlueprint() {
-  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
-    mutationFn: ({
-      id,
-      data,
-    }: {
-      id: string;
-      deviceModelId: string;
-      data: UpdateBlueprintRequest;
-    }) => api.updateBlueprint(id, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.detail(variables.id),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.list(variables.deviceModelId),
-      });
-    },
-  });
-}
-
-/**
- * Hook to delete a blueprint
- */
-export function useDeleteBlueprint() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id }: { id: string; deviceModelId: string }) =>
-      api.deleteBlueprint(id),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.list(variables.deviceModelId),
-      });
-    },
+    mutationFn: ({ id, data }: { id: string; data: UpdateBlueprintRequest }) =>
+      catalogApi.updateBlueprint(id, data),
+    onSuccess: () => invalidateCatalog(),
   });
 }
 
@@ -104,16 +116,10 @@ export function useDeleteBlueprint() {
  * Hook to set a blueprint as default
  */
 export function useSetBlueprintDefault() {
-  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
-    mutationFn: ({ id }: { id: string }) => api.setBlueprintDefault(id),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.detail(variables.id),
-      });
-      // Invalidate all lists since default status affects display
-      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints.all });
-    },
+    mutationFn: ({ id }: { id: string }) => catalogApi.setBlueprintDefault(id),
+    onSuccess: () => invalidateCatalog(),
   });
 }
 
@@ -125,7 +131,7 @@ export function useDecodePreview(blueprintId: string | undefined) {
     mutationFn: (data: DecodePreviewRequest) => {
       if (!blueprintId)
         throw new Error(BLUEPRINT_LABELS.ERR_BLUEPRINT_ID_REQUIRED);
-      return api.decodePreview(blueprintId, data);
+      return catalogApi.decodePreview(blueprintId, data);
     },
   });
 }

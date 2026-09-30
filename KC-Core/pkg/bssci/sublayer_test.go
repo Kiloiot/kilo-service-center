@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	bssciutil "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -21,7 +23,7 @@ type sublayerMockConn struct {
 
 func (m *sublayerMockConn) Write(b []byte) (n int, err error) {
 	var msg map[string]interface{}
-	if jsonErr := json.Unmarshal(b, &msg); jsonErr == nil {
+	if jsonErr := json.Unmarshal(bssciutil.FramePayload(b), &msg); jsonErr == nil {
 		m.sentMessages = append(m.sentMessages, msg)
 	}
 	return len(b), nil

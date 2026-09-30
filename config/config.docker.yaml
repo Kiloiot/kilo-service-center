@@ -29,16 +29,37 @@ protocol:
     key_file: "/app/certificates/server.key"
     ca_file: "/app/certificates/ca.crt"
     min_version: "1.3"
+  # Operations a disconnected Application Center session holds for its resume;
+  # one more ends the session's resumability.
+  scaci_resume_max_pending_operations: 10000
 
   # Protocol parameters
-  max_retransmissions: 3
   ack_timeout: 5000
   connection_establishment_timeout: 30000
+  socket_write_timeout: 10000
   status_request_interval: 30
   status_request_initial_delay: 5
   dlrx_query_timeout: 300
   dlrx_cleanup_interval: 60
   duplicate_window: 300
+  # Outbox delivery worker: stored uplinks are fanned out to SCACI and MQTT
+  # from the message_delivery_outbox table; failures retry with an exponential
+  # backoff capped at max_backoff until delivered, permanent failures park.
+  # A new uplink is due once reception_window has passed, so the receptions of
+  # the other base stations that heard it are in its one ulData.
+  delivery:
+    poll_interval: "1s"
+    batch_size: 50
+    retry_backoff: "2s"
+    max_backoff: "5m"
+    reception_window: "500ms"
+  # Downlink lifetime: a downlink not handed to a base station within lifetime
+  # expires; the sweep reports it to its Application Center (dlDataRes), to the
+  # MQTT downlink_result topic and in the downlink results.
+  downlink_expiry:
+    lifetime: "24h"
+    sweep_interval: "5s"
+    batch_size: 100
   message_encoding: "msgpack"
   bsci_certificate_poll_interval: "10s"
   # Service Center EUI. Empty defers to KILOCENTER_PROTOCOL_SC_EUI, the legacy
@@ -64,7 +85,6 @@ storage:
   enable_migrations: true
   message_retention_days: 90
   archival_enabled: true
-  archival_check_interval: 3600
 
 mqtt:
   enabled: true
@@ -85,35 +105,8 @@ grpc:
   host: "0.0.0.0"
   rbac_role_cache_ttl_seconds: 30
   internal_trust_enabled: true
-  tls_enabled: false
   web:
     enabled: false
 
 status:
   timeout: 5s
-  endpoints:
-    - name: "KC-Core"
-      url: "http://localhost:8086/health/ping"
-      type: "http"
-    - name: "PostgreSQL"
-      url: "postgres"
-      type: "db"
-    - name: "BSSCI"
-      host: "localhost"
-      port: 5000
-      type: "tcp"
-    - name: "SCACI"
-      host: "localhost"
-      port: 5001
-      type: "tcp"
-    - name: "gRPC (internal)"
-      host: "localhost"
-      port: 50051
-      type: "tcp"
-    - name: "KC-Identity"
-      url: "http://kc-identity:8088/health"
-      type: "http"
-    - name: "MQTT"
-      type: "mqtt"
-    - name: "Archival"
-      type: "archival"

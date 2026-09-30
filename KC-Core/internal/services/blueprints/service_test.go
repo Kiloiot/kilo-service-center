@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,10 +13,13 @@ import (
 	"testing"
 	"time"
 
+	blueprintregistry "github.com/Kiloiot/kilo-service-center/KC-Core/internal/adapters/blueprints"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
@@ -32,7 +34,21 @@ const (
 	registryBranchPrefix = "blueprint/"
 	registryBlueprintDir = ""
 	registryFileExt      = ".json"
+
+	// registryEnabled / registryDisabled name the registry feature switch in test configs.
+	registryEnabled  = true
+	registryDisabled = false
+
+	// registryTestHTTPTimeoutSecs bounds registry HTTP calls against the local test server.
+	registryTestHTTPTimeoutSecs = 2
+
+	// submittedBlueprintPathSuffix is the structured registry path a successful
+	// submission must write: {manufacturer}/{model}/{version}.json.
+	submittedBlueprintPathSuffix = "/repos/org/repo/contents/weptech/robin-m/v1.0.1.json"
 )
+
+// errRepoDown simulates a repository backend failure in stubs.
+var errRepoDown = errors.New("db down")
 
 // registryTestServerOpts configures the test registry server behavior.
 type registryTestServerOpts struct {
@@ -111,7 +127,7 @@ func newRegistryTestServer(t *testing.T, opts ...registryTestServerOpts) *regist
 			return
 		}
 
-		var req createFileRequest
+		var req blueprintregistry.CreateFileRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Errorf("decode request: %v", err)
 		}
@@ -135,7 +151,7 @@ func newRegistryTestServer(t *testing.T, opts ...registryTestServerOpts) *regist
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		var pr createPRRequest
+		var pr blueprintregistry.CreatePRRequest
 		if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
 			t.Errorf("decode PR request: %v", err)
 		}
@@ -178,11 +194,7 @@ func (m *mockBlueprintRepository) GetByID(ctx context.Context, tenantID int64, i
 	if m.getByIDFn != nil {
 		return m.getByIDFn(ctx, tenantID, id)
 	}
-	return nil, interfaces.ErrRecordNotFound
-}
-
-func (m *mockBlueprintRepository) GetByVersion(_ context.Context, _ int64, _ uuid.UUID, _ string) (*models.Blueprint, error) {
-	return nil, nil
+	return nil, storage.ErrRecordNotFound
 }
 
 func (m *mockBlueprintRepository) GetByTypeEUI(_ context.Context, _ int64, _ []byte) (*models.Blueprint, error) {
@@ -196,15 +208,7 @@ func (m *mockBlueprintRepository) GetDefaultForModel(ctx context.Context, tenant
 	return nil, nil
 }
 
-func (m *mockBlueprintRepository) ListByDeviceModel(_ context.Context, _ int64, _ uuid.UUID, _, _ int) ([]*models.Blueprint, error) {
-	return nil, nil
-}
-
 func (m *mockBlueprintRepository) List(_ context.Context, _ *models.BlueprintListParams) ([]*models.Blueprint, error) {
-	return nil, nil
-}
-
-func (m *mockBlueprintRepository) ListWithModel(_ context.Context, _ *models.BlueprintListParams) ([]*models.BlueprintWithModel, error) {
 	return nil, nil
 }
 
@@ -252,7 +256,7 @@ func TestCreateBlueprint_AutoDefault(t *testing.T) {
 					return &models.Blueprint{ID: uuid.New(), IsDefault: p.IsDefault}, nil
 				},
 			}
-			svc := New(&mockManufacturerRepository{}, dmRepo, bpRepo, 1, nil, &testLogger{})
+			svc := New(&mockManufacturerRepository{}, dmRepo, bpRepo, 1, nil, &testLogger{}, &mockTxRunner{}, nil)
 			if _, err := svc.CreateBlueprint(testutil.TestContext(), &grpcservices.BlueprintCreateRequest{
 				DeviceModelID: modelID, Version: "1.0.0", IsDefault: tc.reqDefault,
 			}); err != nil {
@@ -276,10 +280,6 @@ func (m *mockBlueprintRepository) SetDefault(_ context.Context, _ int64, _ bool,
 	return nil
 }
 
-func (m *mockBlueprintRepository) ClearDefault(_ context.Context, _ int64, _ bool, _ uuid.UUID) error {
-	return nil
-}
-
 func (m *mockBlueprintRepository) UpdateRegistryInfo(ctx context.Context, tenantID int64, _ bool, id uuid.UUID, repo, commitSHA, prURL string, verified bool) error {
 	if m.updateRegistryInfo != nil {
 		return m.updateRegistryInfo(ctx, tenantID, id, repo, commitSHA, prURL, verified)
@@ -291,7 +291,7 @@ func (m *mockBlueprintRepository) Delete(_ context.Context, _ int64, _ bool, _ u
 	return nil
 }
 
-// mockManufacturerRepository implements interfaces.ManufacturerRepository for testing.
+// mockManufacturerRepository is the manufacturer catalog double.
 type mockManufacturerRepository struct {
 	getByIDFn func(ctx context.Context, tenantID int64, id uuid.UUID) (*models.Manufacturer, error)
 }
@@ -327,10 +327,6 @@ func (m *mockManufacturerRepository) Delete(_ context.Context, _ int64, _ bool, 
 	return nil
 }
 
-func (m *mockManufacturerRepository) SetVerified(_ context.Context, _ int64, _ uuid.UUID, _ bool) error {
-	return nil
-}
-
 // mockDeviceModelRepository implements interfaces.DeviceModelRepository for testing.
 type mockDeviceModelRepository struct {
 	getByIDFn func(ctx context.Context, tenantID int64, id uuid.UUID) (*models.DeviceModel, error)
@@ -352,23 +348,11 @@ func (m *mockDeviceModelRepository) GetByID(ctx context.Context, tenantID int64,
 	return nil, nil
 }
 
-func (m *mockDeviceModelRepository) GetByCode(_ context.Context, _ int64, _ uuid.UUID, _ string) (*models.DeviceModel, error) {
-	return nil, nil
-}
-
 func (m *mockDeviceModelRepository) GetByTypeEUI(_ context.Context, _ int64, _ []byte) (*models.DeviceModel, error) {
 	return nil, nil
 }
 
-func (m *mockDeviceModelRepository) ListByManufacturer(_ context.Context, _ int64, _ uuid.UUID, _, _ int) ([]*models.DeviceModel, error) {
-	return nil, nil
-}
-
 func (m *mockDeviceModelRepository) List(_ context.Context, _ *models.DeviceModelListParams) ([]*models.DeviceModel, error) {
-	return nil, nil
-}
-
-func (m *mockDeviceModelRepository) ListWithManufacturer(_ context.Context, _ *models.DeviceModelListParams) ([]*models.DeviceModelWithManufacturer, error) {
 	return nil, nil
 }
 
@@ -419,6 +403,8 @@ func TestSubmitToRegistry_Disabled(t *testing.T) {
 		1, // tenantID
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.SubmitToRegistry(ctx, uuid.New(), &grpcservices.RegistrySubmitRequest{})
@@ -432,8 +418,10 @@ func TestSubmitToRegistry_Disabled(t *testing.T) {
 		&mockDeviceModelRepository{},
 		&mockBlueprintRepository{},
 		1,
-		&config.RegistryProviderConfig{Enabled: false},
+		&config.RegistryProviderConfig{Enabled: registryDisabled},
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err = svc2.SubmitToRegistry(ctx, uuid.New(), &grpcservices.RegistrySubmitRequest{})
@@ -452,10 +440,12 @@ func TestSubmitToRegistry_APIURLRequired(t *testing.T) {
 		&mockBlueprintRepository{},
 		1,
 		&config.RegistryProviderConfig{
-			Enabled: true,
+			Enabled: registryEnabled,
 			APIURL:  "", // Empty URL
 		},
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.SubmitToRegistry(ctx, uuid.New(), &grpcservices.RegistrySubmitRequest{})
@@ -473,15 +463,17 @@ func TestSubmitToRegistry_BlueprintNotFound(t *testing.T) {
 		&mockDeviceModelRepository{},
 		&mockBlueprintRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Blueprint, error) {
-				return nil, interfaces.ErrRecordNotFound
+				return nil, storage.ErrRecordNotFound
 			},
 		},
 		1,
 		&config.RegistryProviderConfig{
-			Enabled: true,
+			Enabled: registryEnabled,
 			APIURL:  "https://api.example.com",
 		},
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.SubmitToRegistry(ctx, uuid.New(), &grpcservices.RegistrySubmitRequest{})
@@ -516,10 +508,12 @@ func TestSubmitToRegistry_AlreadySubmitted(t *testing.T) {
 		},
 		1,
 		&config.RegistryProviderConfig{
-			Enabled: true,
+			Enabled: registryEnabled,
 			APIURL:  "https://api.example.com",
 		},
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.SubmitToRegistry(ctx, uuid.New(), &grpcservices.RegistrySubmitRequest{})
@@ -538,6 +532,8 @@ func TestPrepareBlueprintContent_ValidJSON(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	bp := &models.Blueprint{
@@ -569,8 +565,10 @@ func TestPrepareBlueprintContent_ValidJSON(t *testing.T) {
 	}
 
 	// Verify required fields are present (including enriched metadata)
-	expectedFields := []string{"id", "device_model_id", "version", "type_eui", "spec", "is_default",
-		"manufacturer_name", "device_model_name", "device_model_code", "created_at", "updated_at"}
+	expectedFields := []string{
+		"id", "device_model_id", "version", "type_eui", "spec", "is_default",
+		"manufacturer_name", "device_model_name", "device_model_code", "created_at", "updated_at",
+	}
 	for _, field := range expectedFields {
 		if _, ok := result[field]; !ok {
 			t.Errorf("expected field %q not found in content", field)
@@ -628,7 +626,7 @@ func TestSubmitToRegistry_Success(t *testing.T) {
 	}
 
 	cfg := &config.RegistryProviderConfig{
-		Enabled:       true,
+		Enabled:       registryEnabled,
 		APIURL:        server.URL,
 		Owner:         registryOwner,
 		Repo:          registryRepo,
@@ -636,7 +634,7 @@ func TestSubmitToRegistry_Success(t *testing.T) {
 		BranchPrefix:  registryBranchPrefix,
 		BlueprintPath: registryBlueprintDir,
 		FileExtension: registryFileExt,
-		HTTPTimeout:   2,
+		HTTPTimeout:   registryTestHTTPTimeoutSecs,
 	}
 
 	svc := New(
@@ -654,6 +652,8 @@ func TestSubmitToRegistry_Success(t *testing.T) {
 		1,
 		cfg,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	result, err := svc.SubmitToRegistry(ctx, blueprintID, &grpcservices.RegistrySubmitRequest{
@@ -677,12 +677,9 @@ func TestSubmitToRegistry_Success(t *testing.T) {
 	if result.PRUrl != "https://registry.example.com/org/repo/pull/1" {
 		t.Errorf("expected PR URL %q, got %q", "https://registry.example.com/org/repo/pull/1", result.PRUrl)
 	}
-	if result.RepoPath != "org/repo" {
-		t.Errorf("expected repo path %q, got %q", "org/repo", result.RepoPath)
-	}
 
-	// Verify file path uses structured directory: weptech/robin-m/v1.0.1.json
-	expectedPathSuffix := "/repos/org/repo/contents/weptech/robin-m/v1.0.1.json"
+	// Verify file path uses structured directory: blueprints/weptech/robin-m/v1.0.1.json
+	expectedPathSuffix := submittedBlueprintPathSuffix
 	if !strings.HasSuffix(server.capturedPath, expectedPathSuffix) {
 		t.Errorf("expected file path ending with %q, got %q", expectedPathSuffix, server.capturedPath)
 	}
@@ -742,7 +739,7 @@ func TestSubmitToRegistry_UpdateRegistryInfo(t *testing.T) {
 	}
 
 	cfg := &config.RegistryProviderConfig{
-		Enabled:       true,
+		Enabled:       registryEnabled,
 		APIURL:        server.URL,
 		Owner:         registryOwner,
 		Repo:          registryRepo,
@@ -750,7 +747,7 @@ func TestSubmitToRegistry_UpdateRegistryInfo(t *testing.T) {
 		BranchPrefix:  registryBranchPrefix,
 		BlueprintPath: registryBlueprintDir,
 		FileExtension: registryFileExt,
-		HTTPTimeout:   2,
+		HTTPTimeout:   registryTestHTTPTimeoutSecs,
 	}
 
 	svc := New(
@@ -768,6 +765,8 @@ func TestSubmitToRegistry_UpdateRegistryInfo(t *testing.T) {
 		1,
 		cfg,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.SubmitToRegistry(ctx, blueprintID, &grpcservices.RegistrySubmitRequest{
@@ -792,41 +791,9 @@ func TestSubmitToRegistry_UpdateRegistryInfo(t *testing.T) {
 	}
 }
 
-// TestGenerateSlug verifies slug generation rules.
-func TestGenerateSlug(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"lowercase", "My Model", "my-model"},
-		{"trim spaces", "  hello  ", "hello"},
-		{"strip special chars", "foo@bar#baz", "foobarbaz"},
-		{"collapse hyphens", "foo--bar---baz", "foo-bar-baz"},
-		{"empty input", "", "model"},
-		{"only special chars", "!@#$%", "model"},
-		{"unicode stripped", "model-\u00e9", "model-"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := generateSlug(tc.input)
-			if tc.name == "unicode stripped" {
-				// Unicode handling may vary; just ensure non-empty
-				if got == "" {
-					t.Errorf("expected non-empty slug for %q", tc.input)
-				}
-				return
-			}
-			if got != tc.expected {
-				t.Errorf("generateSlug(%q) = %q, want %q", tc.input, got, tc.expected)
-			}
-		})
-	}
-}
-
-// TestCreateDeviceModelWithBlueprint_TxStarterNotConfigured tests that an error is returned when tx starter is nil.
-func TestCreateDeviceModelWithBlueprint_TxStarterNotConfigured(t *testing.T) {
+// TestCreateDeviceModelWithBlueprint_TxRunnerNotConfigured tests that an error
+// is returned when no transaction runner was supplied.
+func TestCreateDeviceModelWithBlueprint_TxRunnerNotConfigured(t *testing.T) {
 	ctx := testutil.TestContext()
 
 	svc := New(
@@ -836,6 +803,8 @@ func TestCreateDeviceModelWithBlueprint_TxStarterNotConfigured(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		nil, // no transaction runner
+		nil,
 	)
 
 	_, _, err := svc.CreateDeviceModelWithBlueprint(ctx, &grpcservices.DeviceModelWithBlueprintRequest{
@@ -845,7 +814,7 @@ func TestCreateDeviceModelWithBlueprint_TxStarterNotConfigured(t *testing.T) {
 		DecoderScript:  []byte(`{"codec":"test"}`),
 	})
 	if err == nil {
-		t.Fatal("expected error for unconfigured tx starter")
+		t.Fatal("expected error when no transaction runner is configured")
 	}
 	if !errors.Is(err, nil) {
 		// Just verify it's a meaningful error
@@ -869,7 +838,9 @@ func TestCreateDeviceModelWithBlueprint_ManufacturerNotFound(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
-	).WithTxStarter(&mockTxStarter{})
+		&mockTxRunner{},
+		nil,
+	)
 
 	_ = mockMfrRepo // suppress unused warning in older toolchains
 
@@ -893,12 +864,14 @@ func TestDecodePreview_BlueprintNotFound(t *testing.T) {
 		&mockDeviceModelRepository{},
 		&mockBlueprintRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Blueprint, error) {
-				return nil, interfaces.ErrRecordNotFound
+				return nil, storage.ErrRecordNotFound
 			},
 		},
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.DecodePreview(ctx, uuid.New(), []byte{0x01, 0x02}, 0)
@@ -928,6 +901,8 @@ func TestDecodePreview_DecoderNotConfigured(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.DecodePreview(ctx, bpID, []byte{0x01}, 0)
@@ -947,19 +922,47 @@ type mockManufacturerRepoNotFound struct {
 }
 
 func (m *mockManufacturerRepoNotFound) GetByID(_ context.Context, _ int64, _ uuid.UUID) (*models.Manufacturer, error) {
-	return nil, interfaces.ErrRecordNotFound
+	return nil, storage.ErrRecordNotFound
 }
 
-// mockTxStarter implements TxStarter for testing.
-type mockTxStarter struct {
-	beginErr error
+// mockBlueprintTx delegates the two creates a blueprint creation performs to
+// the repositories behind them.
+type mockBlueprintTx struct {
+	deviceModels interfaces.DeviceModelRepository
+	blueprints   interfaces.BlueprintRepository
 }
 
-func (m *mockTxStarter) BeginTx(_ context.Context) (interfaces.Transaction, error) {
-	if m.beginErr != nil {
-		return nil, m.beginErr
+func (m *mockBlueprintTx) CreateDeviceModel(ctx context.Context,
+	params *models.DeviceModelCreateParams,
+) (*models.DeviceModel, error) {
+	return m.deviceModels.Create(ctx, params)
+}
+
+func (m *mockBlueprintTx) CreateBlueprint(ctx context.Context,
+	params *models.BlueprintCreateParams,
+) (*models.Blueprint, error) {
+	return m.blueprints.Create(ctx, params)
+}
+
+// mockTxRunner stands in for the storage transaction runner. Commit and
+// rollback belong to the adapter and are covered by its own tests.
+type mockTxRunner struct {
+	tx     *mockBlueprintTx
+	runErr error
+}
+
+func (m *mockTxRunner) Run(_ context.Context, fn func(BlueprintTx) error) error {
+	if m.runErr != nil {
+		return m.runErr
 	}
-	return nil, errors.New("mock transaction not fully implemented")
+	tx := m.tx
+	if tx == nil {
+		tx = &mockBlueprintTx{
+			deviceModels: &mockDeviceModelRepository{},
+			blueprints:   &mockBlueprintRepository{},
+		}
+	}
+	return fn(tx)
 }
 
 // --- New tests for structured registry submission ---
@@ -1002,7 +1005,7 @@ func registryTestService(t *testing.T, server *registryTestServer, bp *models.Bl
 		},
 		1,
 		&config.RegistryProviderConfig{
-			Enabled:       true,
+			Enabled:       registryEnabled,
 			APIURL:        server.URL,
 			Owner:         registryOwner,
 			Repo:          registryRepo,
@@ -1010,9 +1013,11 @@ func registryTestService(t *testing.T, server *registryTestServer, bp *models.Bl
 			BranchPrefix:  registryBranchPrefix,
 			BlueprintPath: registryBlueprintDir,
 			FileExtension: registryFileExt,
-			HTTPTimeout:   2,
+			HTTPTimeout:   registryTestHTTPTimeoutSecs,
 		},
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 }
 
@@ -1020,28 +1025,6 @@ func TestSubmitToRegistry_VersionAlreadyExists_Preflight(t *testing.T) {
 	ctx := testutil.TestContext()
 	// Preflight returns 200 (file exists)
 	server := newRegistryTestServer(t, registryTestServerOpts{preflightStatus: http.StatusOK})
-	t.Cleanup(server.Close)
-
-	blueprintID, modelID, mfrID, bp := registryTestFixture()
-	svc := registryTestService(t, server, bp, modelID, mfrID, "Weptech", "Robin M", "robin-m")
-
-	_, err := svc.SubmitToRegistry(ctx, blueprintID, &grpcservices.RegistrySubmitRequest{
-		ContributorName:  "Test",
-		ContributorEmail: "test@example.com",
-	})
-	if !errors.Is(err, ErrRegistryVersionAlreadyExists) {
-		t.Errorf("expected ErrRegistryVersionAlreadyExists, got %v", err)
-	}
-}
-
-func TestSubmitToRegistry_VersionAlreadyExists_CommitConflict(t *testing.T) {
-	ctx := testutil.TestContext()
-	// Preflight returns 404 (not found), but PUT returns 409 (conflict)
-	server := newRegistryTestServer(t, registryTestServerOpts{
-		preflightStatus: http.StatusNotFound,
-		commitStatus:    http.StatusConflict,
-		commitBody:      `{"message":"conflict"}`,
-	})
 	t.Cleanup(server.Close)
 
 	blueprintID, modelID, mfrID, bp := registryTestFixture()
@@ -1102,7 +1085,7 @@ func TestSubmitToRegistry_DeviceModelNotFound(t *testing.T) {
 		&mockManufacturerRepository{},
 		&mockDeviceModelRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.DeviceModel, error) {
-				return nil, interfaces.ErrRecordNotFound
+				return nil, storage.ErrRecordNotFound
 			},
 		},
 		&mockBlueprintRepository{
@@ -1111,8 +1094,10 @@ func TestSubmitToRegistry_DeviceModelNotFound(t *testing.T) {
 			},
 		},
 		1,
-		&config.RegistryProviderConfig{Enabled: true, APIURL: "https://api.example.com"},
+		&config.RegistryProviderConfig{Enabled: registryEnabled, APIURL: "https://api.example.com"},
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.SubmitToRegistry(ctx, blueprintID, &grpcservices.RegistrySubmitRequest{
@@ -1144,7 +1129,7 @@ func TestSubmitToRegistry_ManufacturerNotFound(t *testing.T) {
 	svc := New(
 		&mockManufacturerRepository{
 			getByIDFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Manufacturer, error) {
-				return nil, interfaces.ErrRecordNotFound
+				return nil, storage.ErrRecordNotFound
 			},
 		},
 		&mockDeviceModelRepository{
@@ -1158,8 +1143,10 @@ func TestSubmitToRegistry_ManufacturerNotFound(t *testing.T) {
 			},
 		},
 		1,
-		&config.RegistryProviderConfig{Enabled: true, APIURL: "https://api.example.com"},
+		&config.RegistryProviderConfig{Enabled: registryEnabled, APIURL: "https://api.example.com"},
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.SubmitToRegistry(ctx, blueprintID, &grpcservices.RegistrySubmitRequest{
@@ -1186,123 +1173,6 @@ func TestSubmitToRegistry_InvalidPathSegment(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidRegistryPathSegment) {
 		t.Errorf("expected ErrInvalidRegistryPathSegment, got %v", err)
-	}
-}
-
-func TestNormalizeVersion(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"1.0", "v1.0"},
-		{"v1.0", "v1.0"},
-		{"V2.0", "v2.0"},
-		{"v1.0.3-rc1", "v1.0.3-rc1"},
-		{"  v3.0  ", "v3.0"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.input, func(t *testing.T) {
-			got := normalizeVersion(tc.input)
-			if got != tc.expected {
-				t.Errorf("normalizeVersion(%q) = %q, want %q", tc.input, got, tc.expected)
-			}
-		})
-	}
-}
-
-func TestSanitizeVersionSegment(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		expected  string
-		expectErr bool
-	}{
-		{"valid semver", "v1.0", "v1.0", false},
-		{"with rc suffix", "v1.0.3-rc1", "v1.0.3-rc1", false},
-		{"uppercase normalized", "V2.0", "v2.0", false},
-		{"traversal rejected", "../etc", "", true},
-		{"slash rejected", "v1/../../etc", "", true},
-		{"empty rejected", "", "", true},
-		{"spaces trimmed", "  v1.0  ", "v1.0", false},
-		{"bare v prefix rejected", "v", "", true},
-		{"slash in version rejected", "v1/2", "", true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := sanitizeVersionSegment(tc.input)
-			if tc.expectErr {
-				if !errors.Is(err, ErrInvalidRegistryPathSegment) {
-					t.Errorf("expected ErrInvalidRegistryPathSegment, got err=%v val=%q", err, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.expected {
-				t.Errorf("sanitizeVersionSegment(%q) = %q, want %q", tc.input, got, tc.expected)
-			}
-		})
-	}
-}
-
-func TestSanitizePathSegment(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		expected  string
-		expectErr bool
-	}{
-		{"normal name", "Weptech", "weptech", false},
-		{"with spaces", "My Company", "my-company", false},
-		{"empty rejected", "", "", true},
-		{"only specials rejected", "!@#$%", "", true},
-		{"NUL stripped", "\x00test", "test", false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := sanitizePathSegment(tc.input)
-			if tc.expectErr {
-				if !errors.Is(err, ErrInvalidRegistryPathSegment) {
-					t.Errorf("expected ErrInvalidRegistryPathSegment, got err=%v val=%q", err, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.expected {
-				t.Errorf("sanitizePathSegment(%q) = %q, want %q", tc.input, got, tc.expected)
-			}
-		})
-	}
-}
-
-func TestIsCommitConflict422(t *testing.T) {
-	tests := []struct {
-		name     string
-		body     string
-		expected bool
-	}{
-		{"fast forward conflict", `{"message":"Update is not a fast forward"}`, true},
-		{"SHA mismatch", `{"message":"main is at abc123 but expected def456"}`, true},
-		{"non-conflict 422", `{"message":"path contains a malformed path component"}`, false},
-		{"sha not supplied", `{"message":"Invalid request.\n\n\"sha\" wasn't supplied."}`, true},
-		{"case-insensitive fast forward", `{"message":"UPDATE IS NOT A FAST FORWARD"}`, true},
-		{"sha only no conflict", `{"message":"sha"}`, false},
-		{"empty body", ``, false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := isCommitConflict422([]byte(tc.body))
-			if got != tc.expected {
-				t.Errorf("isCommitConflict422(%q) = %v, want %v", tc.body, got, tc.expected)
-			}
-		})
 	}
 }
 
@@ -1364,76 +1234,6 @@ func TestSubmitToRegistry_InvalidModelCodeRejected(t *testing.T) {
 	}
 }
 
-func TestSanitizeModelCodeSegment(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		expected  string
-		expectErr bool
-	}{
-		{"valid lowercase", "robin-m", "robin-m", false},
-		{"valid alphanumeric", "valid123", "valid123", false},
-		{"slash rejected", "robin/m", "", true},
-		{"uppercase rejected", "Robin-M", "", true},
-		{"empty rejected", "", "", true},
-		{"spaces only rejected", "   ", "", true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := sanitizeModelCodeSegment(tc.input)
-			if tc.expectErr {
-				if !errors.Is(err, ErrInvalidRegistryPathSegment) {
-					t.Errorf("expected ErrInvalidRegistryPathSegment, got err=%v val=%q", err, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.expected {
-				t.Errorf("sanitizeModelCodeSegment(%q) = %q, want %q", tc.input, got, tc.expected)
-			}
-		})
-	}
-}
-
-func TestCanonicalizeModelCode(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		expected  string
-		expectErr bool
-	}{
-		{"valid lowercase", "robin-m", "robin-m", false},
-		{"uppercase normalized", "Robin-M", "robin-m", false},
-		{"all uppercase", "VALID123", "valid123", false},
-		{"slash rejected", "robin/m", "", true},
-		{"space rejected", "robin m", "", true},
-		{"empty rejected", "", "", true},
-		{"leading hyphen rejected", "-leading", "", true},
-		{"trailing hyphen rejected", "trailing-", "", true},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := canonicalizeModelCode(tc.input)
-			if tc.expectErr {
-				if !errors.Is(err, ErrInvalidModelCode) {
-					t.Errorf("expected ErrInvalidModelCode, got err=%v val=%q", err, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.expected {
-				t.Errorf("canonicalizeModelCode(%q) = %q, want %q", tc.input, got, tc.expected)
-			}
-		})
-	}
-}
-
 func TestCreateDeviceModel_EmptyCodeGeneratesSlug(t *testing.T) {
 	ctx := testutil.TestContext()
 
@@ -1462,6 +1262,8 @@ func TestCreateDeviceModel_EmptyCodeGeneratesSlug(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.CreateDeviceModel(ctx, &grpcservices.DeviceModelCreateRequest{
@@ -1491,6 +1293,8 @@ func TestCreateDeviceModel_InvalidCodeRejected(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.CreateDeviceModel(ctx, &grpcservices.DeviceModelCreateRequest{
@@ -1531,6 +1335,8 @@ func TestCreateDeviceModel_ValidCodeCanonicalized(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.CreateDeviceModel(ctx, &grpcservices.DeviceModelCreateRequest{
@@ -1561,6 +1367,8 @@ func TestUpdateDeviceModel_InvalidCodeRejected(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	invalidCode := "robin/m"
@@ -1592,6 +1400,8 @@ func TestUpdateDeviceModel_ValidCodeCanonicalized(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	code := "Robin-M"
@@ -1618,19 +1428,21 @@ func TestResolveEffectiveTypeEUI_RepoErrorPropagates(t *testing.T) {
 		&mockDeviceModelRepository{},
 		&mockBlueprintRepository{
 			getDefaultForModelFn: func(_ context.Context, _ int64, _ uuid.UUID) (*models.Blueprint, error) {
-				return nil, fmt.Errorf("db down")
+				return nil, errRepoDown
 			},
 		},
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	_, err := svc.ResolveEffectiveTypeEUI(ctx, 1, uuid.New())
 	if err == nil {
 		t.Fatal("expected error from repo failure, got nil")
 	}
-	if !strings.Contains(err.Error(), "db down") {
+	if !errors.Is(err, errRepoDown) {
 		t.Errorf("expected wrapped repo error, got %v", err)
 	}
 }
@@ -1649,6 +1461,8 @@ func TestResolveEffectiveTypeEUI_NilBlueprintNoError(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	eui, err := svc.ResolveEffectiveTypeEUI(ctx, 1, uuid.New())
@@ -1680,6 +1494,8 @@ func TestResolveEffectiveTypeEUI_ValidTypeEUIReturned(t *testing.T) {
 		1,
 		nil,
 		&testLogger{},
+		&mockTxRunner{},
+		nil,
 	)
 
 	eui, err := svc.ResolveEffectiveTypeEUI(ctx, 1, uuid.New())
@@ -1693,5 +1509,27 @@ func TestResolveEffectiveTypeEUI_ValidTypeEUIReturned(t *testing.T) {
 	copy(expected[:], expectedBytes)
 	if *eui != expected {
 		t.Errorf("expected EUI %v, got %v", expected, *eui)
+	}
+}
+
+func TestSubmitToRegistry_VersionAlreadyExists_CommitConflict(t *testing.T) {
+	ctx := testutil.TestContext()
+	// Preflight returns 404 (not found), but PUT returns 409 (conflict)
+	server := newRegistryTestServer(t, registryTestServerOpts{
+		preflightStatus: http.StatusNotFound,
+		commitStatus:    http.StatusConflict,
+		commitBody:      `{"message":"conflict"}`,
+	})
+	t.Cleanup(server.Close)
+
+	blueprintID, modelID, mfrID, bp := registryTestFixture()
+	svc := registryTestService(t, server, bp, modelID, mfrID, "Weptech", "Robin M", "robin-m")
+
+	_, err := svc.SubmitToRegistry(ctx, blueprintID, &grpcservices.RegistrySubmitRequest{
+		ContributorName:  "Test",
+		ContributorEmail: "test@example.com",
+	})
+	if !errors.Is(err, ErrRegistryVersionAlreadyExists) {
+		t.Errorf("expected ErrRegistryVersionAlreadyExists, got %v", err)
 	}
 }

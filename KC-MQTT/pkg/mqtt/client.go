@@ -44,9 +44,9 @@ func NewClient(cfg *config.MQTTConfig, log logger.Logger) (Publisher, error) {
 	opts := mqtt.NewClientOptions()
 
 	// Set broker URL
-	brokerURL := fmt.Sprintf("tcp://%s:%d", cfg.Host, cfg.Port)
+	brokerURL := fmt.Sprintf(BrokerURLTCPFormat, cfg.Host, cfg.Port)
 	if cfg.TLS.Enabled {
-		brokerURL = fmt.Sprintf("ssl://%s:%d", cfg.Host, cfg.Port)
+		brokerURL = fmt.Sprintf(BrokerURLSSLFormat, cfg.Host, cfg.Port)
 	}
 	opts.AddBroker(brokerURL)
 
@@ -64,8 +64,8 @@ func NewClient(cfg *config.MQTTConfig, log logger.Logger) (Publisher, error) {
 		// Production safety guard: prevent disabling certificate verification in production
 		// This ensures TLS security is maintained in production deployments
 		insecureSkipVerify := cfg.TLS.InsecureSkipVerify
-		if insecureSkipVerify && os.Getenv("KILOCENTER_ENV") == "production" {
-			return nil, errors.New("TLS certificate verification cannot be disabled in production")
+		if insecureSkipVerify && os.Getenv("KILOCENTER_ENV") == EnvironmentProduction {
+			return nil, errors.New(ErrTLSVerifyDisabledInProduction)
 		}
 
 		tlsConfig := &tls.Config{
@@ -122,7 +122,7 @@ func NewClient(cfg *config.MQTTConfig, log logger.Logger) (Publisher, error) {
 
 // Connect establishes connection to the MQTT broker
 func (c *Client) Connect(ctx context.Context) error {
-	c.logger.InfoContext(ctx, "Connecting to MQTT broker", "host", c.config.Host, "port", c.config.Port)
+	c.logger.InfoContext(ctx, LogMQTTConnecting, logger.FieldHost, c.config.Host, logger.FieldPort, c.config.Port)
 
 	token := c.client.Connect()
 	if !token.WaitTimeout(DefaultConnectTimeout) {
@@ -137,13 +137,13 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.connected = true
 	c.mu.Unlock()
 
-	c.logger.InfoContext(ctx, "Successfully connected to MQTT broker")
+	c.logger.InfoContext(ctx, LogMQTTConnected)
 	return nil
 }
 
 // Disconnect closes the connection to the MQTT broker
 func (c *Client) Disconnect(ctx context.Context) {
-	c.logger.InfoContext(ctx, "Disconnecting from MQTT broker")
+	c.logger.InfoContext(ctx, LogMQTTDisconnecting)
 
 	c.mu.Lock()
 	c.connected = false
@@ -174,7 +174,7 @@ func (c *Client) Publish(ctx context.Context, topic string, qos byte, retained b
 		return fmt.Errorf("%s: %w", ErrPublishFailed, err)
 	}
 
-	c.logger.DebugContext(ctx, "Published message", "topic", topic, "qos", qos, "retained", retained)
+	c.logger.DebugContext(ctx, LogMQTTMessagePublished, logger.FieldTopic, topic, logger.FieldQos, qos, logger.FieldRetained, retained)
 	return nil
 }
 
@@ -204,7 +204,7 @@ func (c *Client) Subscribe(ctx context.Context, topic string, qos byte, handler 
 	c.subscriptions[topic] = pahoHandler
 	c.mu.Unlock()
 
-	c.logger.InfoContext(ctx, "Subscribed to topic", "topic", topic, "qos", qos)
+	c.logger.InfoContext(ctx, LogMQTTSubscribed, logger.FieldTopic, topic, logger.FieldQos, qos)
 	return nil
 }
 
@@ -229,7 +229,7 @@ func (c *Client) Unsubscribe(ctx context.Context, topics ...string) error {
 	}
 	c.mu.Unlock()
 
-	c.logger.InfoContext(ctx, "Unsubscribed from topics", "topics", topics)
+	c.logger.InfoContext(ctx, LogMQTTUnsubscribed, logger.FieldTopics, topics)
 	return nil
 }
 
@@ -237,7 +237,7 @@ func (c *Client) Unsubscribe(ctx context.Context, topics ...string) error {
 // Note: Paho callbacks do not support context.Context parameters
 // This is a known limitation of the Paho MQTT library
 func (c *Client) onConnect(client mqtt.Client) {
-	c.logger.Info("MQTT client connected")
+	c.logger.Info(LogMQTTClientConnected)
 
 	// Resubscribe to all topics on reconnect
 	c.mu.RLock()
@@ -248,10 +248,10 @@ func (c *Client) onConnect(client mqtt.Client) {
 	c.mu.RUnlock()
 
 	for topic, handler := range subs {
-		if token := client.Subscribe(topic, 1, handler); token.Wait() && token.Error() != nil {
-			c.logger.Error(LogMQTTResubscribeFailed, "topic", topic, "err", token.Error())
+		if token := client.Subscribe(topic, QoSAtLeastOnce, handler); token.Wait() && token.Error() != nil {
+			c.logger.Error(LogMQTTResubscribeFailed, logger.FieldTopic, topic, logger.FieldErr, token.Error())
 		} else {
-			c.logger.Debug("Resubscribed to topic", "topic", topic)
+			c.logger.Debug(LogMQTTResubscribed, logger.FieldTopic, topic)
 		}
 	}
 
@@ -261,8 +261,10 @@ func (c *Client) onConnect(client mqtt.Client) {
 }
 
 // onConnectionLost is called when the connection is lost
+// Paho invokes this callback with no context, so the non-context logger
+// methods are used deliberately here.
 func (c *Client) onConnectionLost(_ mqtt.Client, err error) {
-	c.logger.Warn(LogMQTTConnectionLost, "err", err)
+	c.logger.Warn(LogMQTTConnectionLost, logger.FieldErr, err)
 
 	c.mu.Lock()
 	c.connected = false
@@ -270,6 +272,8 @@ func (c *Client) onConnectionLost(_ mqtt.Client, err error) {
 }
 
 // onReconnecting is called when the client is reconnecting
+// Paho invokes this callback with no context, so the non-context logger
+// methods are used deliberately here.
 func (c *Client) onReconnecting(_ mqtt.Client, _ *mqtt.ClientOptions) {
-	c.logger.Info("MQTT client reconnecting")
+	c.logger.Info(LogMQTTReconnecting)
 }

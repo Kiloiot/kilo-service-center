@@ -113,6 +113,9 @@ services:
       KILOCENTER_STORAGE_PORT: 5432
       KILOCENTER_STORAGE_USERNAME: ${KILOCENTER_DB_USER:-kilocenter}
       KILOCENTER_STORAGE_PASSWORD: ${KILOCENTER_DB_PASSWORD:-changeme}
+      KILOCENTER_MASTER_KEY: ${KILOCENTER_MASTER_KEY:?KILOCENTER_MASTER_KEY is required (openssl rand -hex 32)}
+      # Shared secret KC-Gateway, KC-Core and KC-Identity present on internal calls (REQUIRED: the services reach each other over the network)
+      KILOCENTER_INTERNAL_AUTH_PEER_SECRET: ${KILOCENTER_INTERNAL_PEER_SECRET:?KILOCENTER_INTERNAL_PEER_SECRET is required (openssl rand -hex 32)}
       KILOCENTER_STORAGE_DATABASE: ${KILOCENTER_DB_NAME:-kilocenter}
       KILOCENTER_STORAGE_SSL_MODE: disable
       KILOCENTER_STORAGE_ENABLE_MIGRATIONS: "true"
@@ -165,6 +168,9 @@ services:
       KILOCENTER_STORAGE_PORT: 5432
       KILOCENTER_STORAGE_USERNAME: ${KILOCENTER_DB_USER:-kilocenter}
       KILOCENTER_STORAGE_PASSWORD: ${KILOCENTER_DB_PASSWORD:-changeme}
+      KILOCENTER_MASTER_KEY: ${KILOCENTER_MASTER_KEY:?KILOCENTER_MASTER_KEY is required (openssl rand -hex 32)}
+      # Shared secret KC-Gateway, KC-Core and KC-Identity present on internal calls (REQUIRED: the services reach each other over the network)
+      KILOCENTER_INTERNAL_AUTH_PEER_SECRET: ${KILOCENTER_INTERNAL_PEER_SECRET:?KILOCENTER_INTERNAL_PEER_SECRET is required (openssl rand -hex 32)}
       KILOCENTER_STORAGE_DATABASE: ${KILOCENTER_DB_NAME:-kilocenter}
       KILOCENTER_STORAGE_SSL_MODE: disable
       KILOCENTER_IDENTITY_ADDRESS: "kc-identity:50052"
@@ -195,7 +201,7 @@ services:
     volumes:
       - cert_data:/app/certificates:ro
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -213,6 +219,7 @@ services:
         condition: service_healthy
     environment:
       KILOCENTER_GATEWAY_UPSTREAM_ADDRESS: "kilocenter:50051"
+      KILOCENTER_INTERNAL_AUTH_PEER_SECRET: ${KILOCENTER_INTERNAL_PEER_SECRET:?KILOCENTER_INTERNAL_PEER_SECRET is required (openssl rand -hex 32)}
       KILOCENTER_GATEWAY_IDENTITY_ADDRESS: "kc-identity:50052"
       KILOCENTER_GATEWAY_HEALTH_PORT: 8087
       KILOCENTER_GRPC_PORT: 9090

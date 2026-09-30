@@ -7,6 +7,7 @@
 import React, { useState } from "react";
 
 import {
+  Alert,
   Button,
   Dialog,
   DialogActions,
@@ -14,7 +15,9 @@ import {
   DialogTitle,
 } from "@mui/material";
 
+import { useFeedback } from "@contexts/feedback";
 import { useCreateOrganization } from "@hooks/useOrganizations";
+import { getErrorMessage } from "@utils/error-message";
 import { ORGANIZATION_FORM } from "@constants/messages";
 
 import OrganizationFormFields from "./OrganizationFormFields";
@@ -30,20 +33,16 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({
 }) => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [canHaveBaseStations, setCanHaveBaseStations] = useState(true);
-  const [maxBsCount, setMaxBsCount] = useState("");
-  const [maxEpCount, setMaxEpCount] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
 
-  const { mutate: createOrg, isPending } = useCreateOrganization();
+  const createOrganization = useCreateOrganization();
+  const feedback = useFeedback();
 
   const handleReset = () => {
     setName("");
     setDescription("");
-    setCanHaveBaseStations(true);
-    setMaxBsCount("");
-    setMaxEpCount("");
     setTags({});
+    createOrganization.reset();
   };
 
   const handleClose = () => {
@@ -52,22 +51,16 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({
   };
 
   const handleSubmit = () => {
-    // Convert 0 or empty to undefined (NULL in DB = unlimited)
-    const parsedMaxBs = maxBsCount ? parseInt(maxBsCount, 10) : undefined;
-    const parsedMaxEp = maxEpCount ? parseInt(maxEpCount, 10) : undefined;
-
-    createOrg(
+    createOrganization.mutate(
       {
         name,
         description: description || undefined,
-        can_have_base_stations: canHaveBaseStations,
-        max_base_station_count: parsedMaxBs === 0 ? undefined : parsedMaxBs,
-        max_endpoint_count: parsedMaxEp === 0 ? undefined : parsedMaxEp,
         tags: Object.keys(tags).length > 0 ? tags : undefined,
       },
       {
         onSuccess: () => {
           handleClose();
+          feedback.success(ORGANIZATION_FORM.SUCCESS_CREATE);
         },
       },
     );
@@ -77,18 +70,20 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>{ORGANIZATION_FORM.DIALOG_TITLE_ADD}</DialogTitle>
       <DialogContent>
+        {createOrganization.isError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {getErrorMessage(
+              createOrganization.error,
+              ORGANIZATION_FORM.ERR_CREATE_FAILED,
+            )}
+          </Alert>
+        )}
         <OrganizationFormFields
           name={name}
           description={description}
-          canHaveBaseStations={canHaveBaseStations}
-          maxBsCount={maxBsCount}
-          maxEpCount={maxEpCount}
           tags={tags}
           onNameChange={setName}
           onDescriptionChange={setDescription}
-          onCanHaveBaseStationsChange={setCanHaveBaseStations}
-          onMaxBsCountChange={setMaxBsCount}
-          onMaxEpCountChange={setMaxEpCount}
           onTagsChange={setTags}
           autoFocus
         />
@@ -98,7 +93,7 @@ const AddOrganizationDialog: React.FC<AddOrganizationDialogProps> = ({
         <Button
           onClick={handleSubmit}
           variant="contained"
-          disabled={!name || isPending}
+          disabled={!name || createOrganization.isPending}
         >
           {ORGANIZATION_FORM.ACTION_SUBMIT}
         </Button>

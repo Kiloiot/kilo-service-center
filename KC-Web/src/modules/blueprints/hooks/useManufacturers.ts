@@ -5,15 +5,20 @@
  * Uses centralized query keys for cache management.
  */
 
+import { useMemo } from "react";
+
 import type {
   BlueprintScope,
   CreateManufacturerRequest,
   UpdateManufacturerRequest,
 } from "@api-types/api";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
-import { api } from "@services/api";
+import { catalogApi } from "@services/api";
+import { BLUEPRINT_SCOPE } from "@constants/app";
 import { queryKeys } from "@config/query-keys";
+
+import { useCatalogInvalidation } from "./useCatalogInvalidation";
 
 /**
  * Hook to fetch all manufacturers
@@ -21,7 +26,29 @@ import { queryKeys } from "@config/query-keys";
 export function useManufacturers(scope?: BlueprintScope) {
   return useQuery({
     queryKey: queryKeys.blueprints.manufacturers(scope),
-    queryFn: () => api.getManufacturers(scope),
+    queryFn: () => catalogApi.getManufacturers(scope),
+  });
+}
+
+/**
+ * Manufacturers of both catalogs, the tenant's Custom ones first, for pickers
+ * that may bind an endpoint to either catalog.
+ */
+export function useCatalogManufacturers() {
+  const custom = useManufacturers(BLUEPRINT_SCOPE.CUSTOM);
+  const system = useManufacturers(BLUEPRINT_SCOPE.SYSTEM);
+  const data = useMemo(
+    () => [...(custom.data ?? []), ...(system.data ?? [])],
+    [custom.data, system.data],
+  );
+  return { data, isLoading: custom.isLoading || system.isLoading };
+}
+
+export function useManufacturer(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.blueprints.manufacturerDetail(id ?? ""),
+    queryFn: () => catalogApi.getManufacturer(id!),
+    enabled: !!id,
   });
 }
 
@@ -29,15 +56,11 @@ export function useManufacturers(scope?: BlueprintScope) {
  * Hook to create a new manufacturer
  */
 export function useCreateManufacturer() {
-  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
     mutationFn: (data: CreateManufacturerRequest) =>
-      api.createManufacturer(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.manufacturers(),
-      });
-    },
+      catalogApi.createManufacturer(data),
+    onSuccess: () => invalidateCatalog(),
   });
 }
 
@@ -45,7 +68,7 @@ export function useCreateManufacturer() {
  * Hook to update a manufacturer
  */
 export function useUpdateManufacturer() {
-  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
     mutationFn: ({
       id,
@@ -53,12 +76,8 @@ export function useUpdateManufacturer() {
     }: {
       id: string;
       data: UpdateManufacturerRequest;
-    }) => api.updateManufacturer(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.manufacturers(),
-      });
-    },
+    }) => catalogApi.updateManufacturer(id, data),
+    onSuccess: () => invalidateCatalog(),
   });
 }
 
@@ -66,13 +85,9 @@ export function useUpdateManufacturer() {
  * Hook to delete a manufacturer
  */
 export function useDeleteManufacturer() {
-  const queryClient = useQueryClient();
+  const invalidateCatalog = useCatalogInvalidation();
   return useMutation({
-    mutationFn: (id: string) => api.deleteManufacturer(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints.manufacturers(),
-      });
-    },
+    mutationFn: (id: string) => catalogApi.deleteManufacturer(id),
+    onSuccess: () => invalidateCatalog(),
   });
 }

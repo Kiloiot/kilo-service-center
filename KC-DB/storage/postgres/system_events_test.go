@@ -6,13 +6,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 )
 
 // setupSystemEventsTestDB creates a test database with testcontainers
@@ -69,14 +73,14 @@ func TestGetEvents_TenantIsolation(t *testing.T) {
 	insertTestEvent(t, db, tenantA, "endpoint.attached", "endpoint", "EP Attached A2", now.Add(-1*time.Second), nil)
 	insertTestEvent(t, db, tenantB, "endpoint.attached", "endpoint", "EP Attached B1", now, nil)
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Query for tenant A only
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "100",
-		Limit:    10,
+		Limit:    testEventQueryLimit,
 	})
 	require.NoError(t, err)
 	assert.Len(t, events, 2, "Should return exactly 2 events for tenant A")
@@ -87,9 +91,9 @@ func TestGetEvents_TenantIsolation(t *testing.T) {
 	}
 
 	// Query for tenant B only
-	eventsB, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	eventsB, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "200",
-		Limit:    10,
+		Limit:    testEventQueryLimit,
 	})
 	require.NoError(t, err)
 	assert.Len(t, eventsB, 1, "Should return exactly 1 event for tenant B")
@@ -115,16 +119,16 @@ func TestGetEvents_SinceFilter(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "event.medium", "system", "Medium Event", now.Add(-30*time.Second), nil)
 	insertTestEvent(t, db, tenantID, "event.recent", "system", "Recent Event", now.Add(-10*time.Second), nil)
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Query events since 20 seconds ago
 	since := now.Add(-20 * time.Second)
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "300",
 		Since:    &since,
-		Limit:    10,
+		Limit:    testEventQueryLimit,
 	})
 	require.NoError(t, err)
 	assert.Len(t, events, 1, "Should return only the recent event")
@@ -150,14 +154,14 @@ func TestGetEvents_LimitFilter(t *testing.T) {
 		insertTestEvent(t, db, tenantID, "event.test", "system", "Event", now.Add(-time.Duration(i)*time.Second), nil)
 	}
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Query with limit of 3
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "400",
-		Limit:    3,
+		Limit:    testEventLimitFilterValue,
 	})
 	require.NoError(t, err)
 	assert.Len(t, events, 3, "Should return exactly 3 events")
@@ -182,17 +186,17 @@ func TestGetEvents_CombinedFilters(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "event.recent", "endpoint", "Recent Endpoint", now.Add(-10*time.Second), nil)
 	insertTestEvent(t, db, tenantID, "event.recent", "system", "Recent System", now.Add(-5*time.Second), nil)
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Query: tenant + since + category
 	since := now.Add(-20 * time.Second)
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID:   "500",
 		Since:      &since,
 		Categories: []string{"endpoint"},
-		Limit:      10,
+		Limit:      testEventQueryLimit,
 	})
 	require.NoError(t, err)
 	assert.Len(t, events, 1, "Should return only recent endpoint event")
@@ -211,14 +215,14 @@ func TestGetEvents_EmptyResult(t *testing.T) {
 	const tenantID = int64(600)
 	createSystemEventsTestTenant(t, db, tenantID, "EmptyResultTest")
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Query for non-existent tenant
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "999999",
-		Limit:    10,
+		Limit:    testEventQueryLimit,
 	})
 	require.NoError(t, err, "Should not error on empty result")
 	assert.Empty(t, events, "Should return empty slice, not nil")
@@ -233,14 +237,14 @@ func TestGetEvents_InvalidTenantID(t *testing.T) {
 	db := setupSystemEventsTestDB(t)
 	defer func() { _ = db.Close() }()
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Query with invalid tenant ID (non-numeric)
-	_, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	_, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "not-a-number",
-		Limit:    10,
+		Limit:    testEventQueryLimit,
 	})
 	assert.Error(t, err, "Should error on invalid tenant ID format")
 	assert.Contains(t, err.Error(), "invalid tenant ID format")
@@ -269,13 +273,13 @@ func TestGetEvents_JSONBDataUnmarshal(t *testing.T) {
 	}
 	insertTestEvent(t, db, tenantID, "endpoint.attached", "endpoint", "EP Attached", now, testData)
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "700",
-		Limit:    10,
+		Limit:    testEventQueryLimit,
 	})
 	require.NoError(t, err)
 	require.Len(t, events, 1)
@@ -309,13 +313,13 @@ func TestGetEvents_OrderByDefault(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "event.middle", "system", "Middle", now.Add(-2*time.Second), nil)
 	insertTestEvent(t, db, tenantID, "event.newest", "system", "Newest", now.Add(-1*time.Second), nil)
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "800",
-		Limit:    10,
+		Limit:    testEventQueryLimit,
 	})
 	require.NoError(t, err)
 	require.Len(t, events, 3)
@@ -338,15 +342,15 @@ func TestGetEvents_CreateEventRoundtrip(t *testing.T) {
 	const tenantID = int64(900)
 	createSystemEventsTestTenant(t, db, tenantID, "RoundtripTest")
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Create event using the store's CreateEvent method
 	now := time.Now()
 	event := &models.SystemEvent{
 		TenantID:    "900",
-		EventType:   "test.roundtrip",
+		EventType:   testEventTypeRoundtrip,
 		Category:    "system",
 		Severity:    "info",
 		SourceType:  "service_center",
@@ -362,13 +366,21 @@ func TestGetEvents_CreateEventRoundtrip(t *testing.T) {
 	require.NoError(t, err, "CreateEvent should succeed")
 
 	// Retrieve the event
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID: "900",
-		Limit:    10,
+		Limit:    testEventQueryLimit,
 	})
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	assert.Equal(t, "Roundtrip Test Event", events[0].Title)
+}
+
+func TestCreateEvent_RejectsAnEventWithoutATenant(t *testing.T) {
+	store := NewSystemEventStore(nil, clock.SystemClock{}, logger.Get())
+	err := store.CreateEvent(testutil.TestContext(), &models.SystemEvent{
+		EventType: testEventTypeRoundtrip, Category: "system", Severity: "info", Title: "No tenant",
+	})
+	assert.ErrorIs(t, err, errTextTenantIDRequired, "an event is never filed under an invented tenant")
 }
 
 // TestGetEvents_MultipleCategories_IncludesProtocol verifies that category filtering
@@ -392,15 +404,15 @@ func TestGetEvents_MultipleCategories_IncludesProtocol(t *testing.T) {
 	insertTestEvent(t, db, tenantID, "test.protocol", models.EventCategoryProtocol, "Protocol Event", now.Add(-2*time.Second), nil)
 	insertTestEvent(t, db, tenantID, "test.message", models.EventCategoryMessage, "Message Event", now.Add(-3*time.Second), nil)
 
-	store := NewSystemEventStore(db.DB)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Filter by protocol categories only
-	events, err := store.GetEvents(ctx, interfaces.SystemEventFilter{
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{
 		TenantID:   "950",
 		Categories: []string{models.EventCategorySCACI, models.EventCategoryBSSCI, models.EventCategoryProtocol},
-		Limit:      10,
+		Limit:      testEventQueryLimit,
 	})
 	require.NoError(t, err)
 	assert.Len(t, events, 3, "Should return 3 events matching protocol categories")
@@ -414,4 +426,110 @@ func TestGetEvents_MultipleCategories_IncludesProtocol(t *testing.T) {
 	assert.True(t, categories[models.EventCategoryBSSCI], "Should include bssci event")
 	assert.True(t, categories[models.EventCategoryProtocol], "Should include protocol event")
 	assert.False(t, categories[models.EventCategoryMessage], "Should not include message event")
+}
+
+// TestGetEvents_ReturnsActingUser pins the audit trail: an operator action
+// reads back with the user who performed it, a service-raised event with none.
+func TestGetEvents_ReturnsActingUser(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupSystemEventsTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	const tenantID = int64(960)
+	const actor = "7a1d9c52-4f0e-4b8e-9d7a-3f2c1b0e5d44"
+	createSystemEventsTestTenant(t, db, tenantID, "ActingUserTest")
+
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
+	defer cancel()
+
+	now := time.Now()
+	require.NoError(t, store.CreateEvent(ctx, &models.SystemEvent{
+		TenantID:   "960",
+		EventType:  models.EventTypeDownlinkQueued,
+		Category:   models.EventCategoryAudit,
+		Severity:   models.EventSeverityInfo,
+		SourceType: models.SourceTypeEndpoint,
+		SourceName: "70B3D56770111505",
+		UserID:     actor,
+		Title:      models.EventTitleDownlinkQueued,
+		CreatedAt:  now,
+	}))
+	insertTestEvent(t, db, tenantID, models.EventTypeServiceStarted, models.EventCategorySystem, "Service started", now.Add(-time.Second), nil)
+
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{TenantID: "960", Limit: testEventQueryLimit})
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, actor, events[0].UserID, "an operator action names its actor")
+	assert.Empty(t, events[1].UserID, "a service-raised event has no actor")
+}
+
+// TestGetEvents_ResolvesTheActorEmailWithinTheTenant pins the actor email's
+// tenant boundary: an actor who belongs or belonged to an organization of the
+// event's tenant is named by email, while a member of another tenant only, or
+// a user of no organization, stays an id.
+func TestGetEvents_ResolvesTheActorEmailWithinTheTenant(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupSystemEventsTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	const tenantA, tenantB = int64(970), int64(971)
+	createSystemEventsTestTenant(t, db, tenantA, "ActorEmailTenantA")
+	createSystemEventsTestTenant(t, db, tenantB, "ActorEmailTenantB")
+	orgA, orgB := uuid.New(), uuid.New()
+	for org, tenant := range map[uuid.UUID]int64{orgA: tenantA, orgB: tenantB} {
+		_, err := db.Exec(`INSERT INTO organizations (org_id, tenant_id, name) VALUES ($1, $2, $3)`, org, tenant, org.String())
+		require.NoError(t, err)
+	}
+	colleague, former, foreigner, outsider := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for user, email := range map[uuid.UUID]string{
+		colleague: "colleague@tenant-a.example",
+		former:    "former@tenant-a.example",
+		foreigner: "foreigner@tenant-b.example",
+		outsider:  "outsider@example",
+	} {
+		_, err := db.Exec(`INSERT INTO users (id, email) VALUES ($1, $2)`, user, email)
+		require.NoError(t, err)
+	}
+	for user, org := range map[uuid.UUID]uuid.UUID{colleague: orgA, foreigner: orgB} {
+		_, err := db.Exec(`INSERT INTO organization_members (org_id, user_id) VALUES ($1, $2)`, org, user)
+		require.NoError(t, err)
+	}
+	_, err := db.Exec(`INSERT INTO organization_members (org_id, user_id, status) VALUES ($1, $2, 'removed')`, orgA, former)
+	require.NoError(t, err)
+
+	store := NewSystemEventStore(db.DB, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
+	defer cancel()
+	now := time.Now()
+	for i, actor := range []uuid.UUID{colleague, former, foreigner, outsider} {
+		require.NoError(t, store.CreateEvent(ctx, &models.SystemEvent{
+			TenantID:   "970",
+			EventType:  models.EventTypeDownlinkQueued,
+			Category:   models.EventCategoryAudit,
+			Severity:   models.EventSeverityInfo,
+			SourceType: models.SourceTypeEndpoint,
+			UserID:     actor.String(),
+			Title:      models.EventTitleDownlinkQueued,
+			CreatedAt:  now.Add(-time.Duration(i) * time.Second),
+		}))
+	}
+
+	events, err := store.GetEvents(ctx, models.SystemEventFilter{TenantID: "970", Limit: testEventQueryLimit})
+	require.NoError(t, err)
+	require.Len(t, events, 4)
+	emails := map[string]string{}
+	for _, e := range events {
+		emails[e.UserID] = e.UserEmail
+	}
+	assert.Equal(t, "colleague@tenant-a.example", emails[colleague.String()], "a member of the tenant is named by email")
+	assert.Equal(t, "former@tenant-a.example", emails[former.String()], "a removed member stays named on the events they caused")
+	assert.Empty(t, emails[foreigner.String()], "another tenant's user never reveals an email")
+	assert.Empty(t, emails[outsider.String()], "a user of no organization of the tenant never reveals an email")
 }

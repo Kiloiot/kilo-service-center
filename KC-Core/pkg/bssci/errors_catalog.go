@@ -19,8 +19,6 @@ const (
 	errFailedToEncode        = "bssci.error.failed_to_encode"
 	errFailedToMarshal       = "bssci.error.failed_to_marshal"
 	errFailedToMarshalMeta   = "bssci.error.failed_to_marshal_metadata"
-	errFailedToWrite         = "bssci.error.failed_to_write"
-	errFailedToWriteHeader   = "bssci.error.failed_to_write_header"
 	errFailedToWritePayload  = "bssci.error.failed_to_write_payload"
 	errFailedToDecode        = "bssci.error.failed_to_decode"
 	errFailedToDecodePayload = "bssci.error.failed_to_decode_payload"
@@ -34,8 +32,6 @@ const (
 	errUnsupportedMajorVersion = "bssci.error.unsupported_major_version"
 	errUnsupportedMinorVersion = "bssci.error.unsupported_minor_version"
 
-	// Message normalization errors (BSSCI §2.4)
-	errNormalizationFailed   = "bssci.error.normalization_failed"
 	errMandatoryFieldMissing = "bssci.error.mandatory_field_missing"
 	errInvalidFieldType      = "bssci.error.invalid_field_type"
 	errConditionalRuleFailed = "bssci.error.conditional_rule_failed"
@@ -46,6 +42,7 @@ const (
 	errOperationIDBackwards        = "bssci.error.operation_id_backwards"
 	errOperationIDIncreasing       = "bssci.error.operation_id_increasing"
 	errSCOperationIDMustBeNegative = "bssci.error.sc_operation_id_must_be_negative"
+	errOperationNotOpen            = "bssci.error.operation_not_open"
 	errOperationIDValidation       = "bssci.error.operation_id_validation"
 	errInvalidConnectOpId          = "bssci.error.invalid_connect_op_id"
 	errConnectOpIDNotZero          = "bssci.error.connect_op_id_not_zero"
@@ -59,9 +56,6 @@ const (
 	errUnsupportedUUIDType         = "bssci.error.unsupported_uuid_type"
 	errUUIDDataNil                 = "bssci.error.uuid_data_nil"
 	errNoConnectedBaseStations     = "bssci.error.no_connected_base_stations"
-	errFailedToLoadCA              = "bssci.error.failed_to_load_ca"
-	errFailedToParseCA             = "bssci.error.failed_to_parse_ca"
-	errFailedToLoadTLS             = "bssci.error.failed_to_load_tls"
 	errFailedToStartTLS            = "bssci.error.failed_to_start_tls"
 	errCommandBeforeHandshake      = "bssci.error.command_before_handshake"
 	errInboundServiceCenterCommand = "bssci.error.inbound_service_center_command"
@@ -70,19 +64,23 @@ const (
 	errMissingBidiFlag             = "bssci.error.missing_bidi_flag"
 
 	// Attach operation errors (BSSCI §3.6)
-	errMissingEpEui                = "bssci.error.missing_ep_eui"
-	errAttachOperationFailed       = "bssci.error.attach_operation_failed"
-	errAttachPropagateFailed       = "bssci.error.attach_propagate_failed"
-	errPropagationBroadcastFailure = "bssci.error.propagation_broadcast_failure"
-	errEndpointAttachFailed        = "bssci.error.endpoint_attach_failed"
-	errInvalidEndpointEUIFormat    = "bssci.error.invalid_endpoint_eui_format"
-	errBaseStationNotBidirectional = "bssci.error.base_station_not_bidirectional"
-	errNoPendingAttachOperation    = "bssci.error.no_pending_attach_operation"
-	errInvalidNwkSnKeyLength       = "bssci.error.invalid_nwk_sn_key_length"
-	errBaseStationEUIOutOfRange    = "bssci.error.base_station_eui_out_of_range"
+	errMissingEpEui                 = "bssci.error.missing_ep_eui"
+	errAttachOperationFailed        = "bssci.error.attach_operation_failed"
+	errAttachPropagateFailed        = "bssci.error.attach_propagate_failed"
+	errPropagationBroadcastFailure  = "bssci.error.propagation_broadcast_failure"
+	errEndpointAttachFailed         = "bssci.error.endpoint_attach_failed"
+	errInvalidEndpointEUIFormat     = "bssci.error.invalid_endpoint_eui_format"
+	errBaseStationNotBidirectional  = "bssci.error.base_station_not_bidirectional"
+	errNoPendingAttachOperation     = "bssci.error.no_pending_attach_operation"
+	errAttachOwnerLookupFailed      = "bssci.error.attach_owner_lookup_failed"
+	errPropagateOwnerLookupFailed   = "bssci.error.propagate_owner_lookup_failed"
+	errNetworkSessionKeyUnavailable = "bssci.error.network_session_key_unavailable"
+	errInvalidNwkSnKeyLength        = "bssci.error.invalid_nwk_sn_key_length"
+	errBaseStationEUIOutOfRange     = "bssci.error.base_station_eui_out_of_range"
 
 	// Detach operation errors (BSSCI §3.7)
 	errDetachOperationFailed    = "bssci.error.detach_operation_failed"
+	errDetachOwnerLookupFailed  = "bssci.error.detach_owner_lookup_failed"
 	errDetachPropagateFailed    = "bssci.error.detach_propagate_failed"
 	errEndpointDetachFailed     = "bssci.error.endpoint_detach_failed"
 	errNoPendingDetachOperation = "bssci.error.no_pending_detach_operation"
@@ -93,7 +91,7 @@ const (
 	// Downlink adapter errors (BSSCI §5.13)
 	errDLQueueNilResult = "bssci.error.dl_queue_nil_result"
 
-	// Downlink payload size (MIOTY radio protocol §4.3.2)
+	// Downlink payload size (MIOTY radio protocol §3.6.6.3)
 	errDLPayloadTooLarge = "bssci.error.dl_payload_too_large"
 
 	// Downlink data queue errors (BSSCI §3.9)
@@ -135,9 +133,7 @@ const (
 
 	// Database and persistence errors
 	errDatabaseError          = "bssci.error.database_error"
-	errDatabaseNotAvailable   = "bssci.error.database_not_available"
 	errDatabaseUpdateFailed   = "bssci.error.database_update_failed"
-	errDeduplicationError     = "bssci.error.deduplication_error"
 	errPacketCounterCollision = "bssci.error.packet_counter_collision"
 
 	// Version and protocol compatibility errors
@@ -147,15 +143,11 @@ const (
 	// Propagation and operation failures
 	errOperationFailed          = "bssci.error.operation_failed"
 	errOperationNotFound        = "bssci.error.operation_not_found"
-	errPropagateFailed          = "bssci.error.propagate_failed"
-	errEndpointOperationFailed  = "bssci.error.endpoint_operation_failed"
 	errFailedToSendError        = "bssci.error.failed_to_send_error"
 	errBaseStationReportedError = "bssci.error.base_station_reported_error"
-	errFailedToEnqueueDownlink  = "bssci.error.failed_to_enqueue_downlink"
 
 	// Variable MAC (VM) operation errors
 	errVMOperationSentByBS      = "bssci.error.vm_operation_sent_by_bs"
-	errMissingMacType           = "bssci.error.missing_mac_type"
 	errMissingRxTime            = "bssci.error.missing_rx_time"
 	errFailedToSendVMActivate   = "bssci.error.failed_to_send_vm_activate"
 	errFailedToSendVMDeactivate = "bssci.error.failed_to_send_vm_deactivate"
@@ -170,7 +162,7 @@ const (
 	// Session lookup errors (DL RX status query, roaming support)
 	errSessionNotReady               = "bssci.error.session_not_ready"
 	errSessionNotBidirectional       = "bssci.error.session_not_bidirectional"
-	errFailedToEncryptKey            = "bssci.error.failed_to_encrypt_key"
+	errServingStationLookupFailed    = "bssci.error.serving_station_lookup_failed"
 	errFailedToDecryptKey            = "bssci.error.failed_to_decrypt_key"
 	errMissingEncryptedKey           = "bssci.error.missing_encrypted_key"
 	errFailedToDecodeUserData        = "bssci.error.failed_to_decode_user_data"
@@ -186,6 +178,8 @@ const (
 	errInvalidSnrValue               = "bssci.error.invalid_snr_value"
 	errInvalidRssiValue              = "bssci.error.invalid_rssi_value"
 	errInvalidEqSnrValue             = "bssci.error.invalid_eqsnr_value"
+	errInvalidSubpackets             = "bssci.error.invalid_subpackets"
+	errULUserDataTooLong             = "bssci.error.ul_user_data_too_long"
 	errEndpointNotProvisioned        = "bssci.error.endpoint_not_provisioned"
 	errRoamingNotAllowed             = "bssci.error.roaming_not_allowed"
 	errResponseExpRequiresDlOpen     = "bssci.error.response_exp_requires_dl_open"
@@ -226,15 +220,9 @@ const (
 	ErrMgmtJSONEncodeFailed        = "bssci.mgmt.json_encode_failed"
 	ErrMgmtFailedToBindAddress     = "bssci.mgmt.failed_to_bind_address"
 	ErrMgmtServerFailed            = "bssci.mgmt.server_failed"
-	ErrMgmtInvalidTenantContext    = "bssci.mgmt.invalid_tenant_context"
-	ErrMgmtNoConnectedSessions     = "bssci.mgmt.no_connected_sessions"
-	ErrMgmtSessionLookupFailed     = "bssci.mgmt.session_lookup_failed"
 
 	// Type conversion and validation errors
 	errInvalidFieldValue = "bssci.error.invalid_field_value"
-
-	// Organization context enforcement
-	errOrgContextMissing = "bssci.error.org_context_missing"
 
 	// Float validation errors (BSSCI §5.15.1)
 	errInvalidFloatNaN = "bssci.err.invalid_float_nan"
@@ -249,23 +237,14 @@ const (
 	errOutboundUnknownCommand        = "bssci.error.outbound_unknown_command"
 	errOutboundMarshalFailed         = "bssci.error.outbound_marshal_failed"
 	errOutboundInvalidFieldType      = "bssci.error.outbound_invalid_field_type"
-
-	// Unknown/generic errors
-	errUnknownError = "bssci.error.unknown"
 )
 
-// Exported error constants for service layer implementations
-// These reference the package-private constants above and are needed by
-// internal/services/bssci implementations that use package-private tokens
+// Catalog tokens emitted or matched outside this package: the service-layer
+// emitters and the gRPC status mapping.
 const (
 	// Version negotiation errors (used by SessionService)
-	ErrVersionIncompatible     = errVersionIncompatible
 	ErrUnsupportedMajorVersion = errUnsupportedMajorVersion
 	ErrUnsupportedMinorVersion = errUnsupportedMinorVersion
-	ErrInvalidVersionFormat    = errInvalidVersionFormat
-	ErrInvalidMajorVersion     = errInvalidMajorVersion
-	ErrInvalidMinorVersion     = errInvalidMinorVersion
-	ErrInvalidPatchVersion     = errInvalidPatchVersion
 
 	// Connection errors (used by ConnectionService)
 	ErrBaseStationNotRegistered = errBaseStationNotRegistered
@@ -273,24 +252,27 @@ const (
 	// Operation errors (used by StatusService)
 	ErrOperationNotFound = errOperationNotFound
 
+	// Session/ping tokens matched by the gRPC layer when mapping catalog
+	// errors to status codes.
+	ErrTokenSessionNotFound = errSessionNotFound
+	ErrTokenCannotSendPing  = errCannotSendPing
+
 	// Downlink errors (used by DownlinkService)
 	ErrDLQueueNilResult            = errDLQueueNilResult
-	ErrFailedToEnqueueDownlink     = errFailedToEnqueueDownlink
 	ErrInvalidQueueID              = errInvalidQueueID              // BSSCI §5.13 revoke validation
 	ErrCannotResolveTenantForQueue = errCannotResolveTenantForQueue // BSSCI §5.13 tenant routing
 	ErrDatabaseUpdateFailed        = errDatabaseUpdateFailed        // BSSCI §5.13 persistence errors
-	ErrInvalidPacketCounter        = errInvalidPacketCounter        // BSSCI §3.12 counter-dependent packet validation
+	ErrQueueIDOutOfRange           = errQueueIDOutOfRange           // BSSCI §3.14 dlDataRes queue id range
+	ErrInvalidTenantIDFormat       = errInvalidTenantIDFormat       // BSSCI §3.14 dlDataRes tenant routing
+	ErrQueueIDNotFound             = errQueueIDNotFound             // BSSCI §3.14 dlDataRes unknown queue id
 
 	// DL RX status validation errors (BSSCI §3.11, additional hardening)
-	ErrInvalidDlRxSnr  = errInvalidDlRxSnr  // dlRxSnr must be in uint32 range
-	ErrInvalidDlRxRssi = errInvalidDlRxRssi // dlRxRssi must be in uint32 range
 
 	// Propagation broadcast errors (used by propagation service)
 	ErrPropagationBroadcastFailure = errPropagationBroadcastFailure
 
-	// Propagate-rejection errors (used by handlePropagateResponseFailure)
-	ErrAttachPropagateFailed = errAttachPropagateFailed
-	ErrDetachPropagateFailed = errDetachPropagateFailed
+	// Uplink classifier refusals (used by the uplink ingest service)
+	ErrTokenPacketCounterCollision = errPacketCounterCollision
 
 	// Note: ErrBaseStationTenantMismatch is now defined in ul_transmit.go as a proper error sentinel
 )
@@ -387,18 +369,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "§3.1",
 		Severity:    SeverityError,
 	},
-	errFailedToWrite: {
-		Token:       "bssci.error.failed_to_write",
-		Message:     "Failed to write",
-		SpecSection: "§3.1",
-		Severity:    SeverityError,
-	},
-	errFailedToWriteHeader: {
-		Token:       "bssci.error.failed_to_write_header",
-		Message:     "Failed to write header",
-		SpecSection: "§3.1",
-		Severity:    SeverityError,
-	},
 	errFailedToWritePayload: {
 		Token:       "bssci.error.failed_to_write_payload",
 		Message:     "Failed to write payload",
@@ -463,12 +433,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 	},
 
 	// Message normalization errors (BSSCI §2.4)
-	errNormalizationFailed: {
-		Token:       "bssci.error.normalization_failed",
-		Message:     "Message normalization failed",
-		SpecSection: "§2.4",
-		Severity:    "protocol_violation",
-	},
 	errMandatoryFieldMissing: {
 		Token:       "bssci.error.mandatory_field_missing",
 		Message:     "Mandatory field missing",
@@ -504,6 +468,12 @@ var errorDefinitions = map[string]ErrorDefinition{
 	errOperationIDBackwards: {
 		Token:       "bssci.error.operation_id_backwards",
 		Message:     "Base station operation ID must not go backwards",
+		SpecSection: "§3.2",
+		Severity:    "protocol_violation",
+	},
+	errOperationNotOpen: {
+		Token:       "bssci.error.operation_not_open",
+		Message:     "Base station operation ID does not name an open operation",
 		SpecSection: "§3.2",
 		Severity:    "protocol_violation",
 	},
@@ -573,24 +543,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.no_connected_base_stations",
 		Message:     "No connected base stations available",
 		SpecSection: "§3",
-		Severity:    SeverityError,
-	},
-	errFailedToLoadCA: {
-		Token:       "bssci.error.failed_to_load_ca",
-		Message:     "Failed to load CA certificate",
-		SpecSection: "§1",
-		Severity:    SeverityError,
-	},
-	errFailedToParseCA: {
-		Token:       "bssci.error.failed_to_parse_ca",
-		Message:     "Failed to parse CA certificate",
-		SpecSection: "§1",
-		Severity:    SeverityError,
-	},
-	errFailedToLoadTLS: {
-		Token:       "bssci.error.failed_to_load_tls",
-		Message:     "Failed to load TLS certificate",
-		SpecSection: "§1",
 		Severity:    SeverityError,
 	},
 	errFailedToStartTLS: {
@@ -679,6 +631,24 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "§3.6",
 		Severity:    SeverityError,
 	},
+	errAttachOwnerLookupFailed: {
+		Token:       "bssci.error.attach_owner_lookup_failed",
+		Message:     "Attach owner lookup failed",
+		SpecSection: "§3.6",
+		Severity:    SeverityError,
+	},
+	errPropagateOwnerLookupFailed: {
+		Token:       "bssci.error.propagate_owner_lookup_failed",
+		Message:     "Propagate owner lookup failed",
+		SpecSection: "§5.8",
+		Severity:    SeverityError,
+	},
+	errNetworkSessionKeyUnavailable: {
+		Token:       "bssci.error.network_session_key_unavailable",
+		Message:     "Endpoint network session key unavailable",
+		SpecSection: "§3.8",
+		Severity:    SeverityError,
+	},
 	errInvalidNwkSnKeyLength: {
 		Token:       "bssci.error.invalid_nwk_sn_key_length",
 		Message:     "Network session key must be exactly 16 bytes",
@@ -696,6 +666,12 @@ var errorDefinitions = map[string]ErrorDefinition{
 	errDetachOperationFailed: {
 		Token:       "bssci.error.detach_operation_failed",
 		Message:     "Detach operation failed",
+		SpecSection: "§3.7",
+		Severity:    SeverityError,
+	},
+	errDetachOwnerLookupFailed: {
+		Token:       "bssci.error.detach_owner_lookup_failed",
+		Message:     "Detach owner lookup failed",
 		SpecSection: "§3.7",
 		Severity:    SeverityError,
 	},
@@ -756,11 +732,11 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Severity:    SeverityError,
 	},
 
-	// Downlink payload size (MIOTY radio protocol §4.3.2)
+	// Downlink payload size (MIOTY radio protocol §3.6.6.3)
 	errDLPayloadTooLarge: {
 		Token:       "bssci.error.dl_payload_too_large",
-		Message:     "Downlink payload exceeds 200-byte maximum (MIOTY radio protocol §4.3.2)",
-		SpecSection: "§4.3.2",
+		Message:     "Downlink payload exceeds 200-byte maximum (MIOTY radio protocol §3.6.6.3)",
+		SpecSection: "§3.6.6.3",
 		Severity:    SeverityError,
 	},
 
@@ -963,28 +939,16 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "§4",
 		Severity:    SeverityError,
 	},
-	errDatabaseNotAvailable: {
-		Token:       "bssci.error.database_not_available",
-		Message:     "Database not available",
-		SpecSection: "§4",
-		Severity:    SeverityError,
-	},
 	errDatabaseUpdateFailed: {
 		Token:       "bssci.error.database_update_failed",
 		Message:     "Database update failed",
 		SpecSection: "§4",
 		Severity:    SeverityError,
 	},
-	errDeduplicationError: {
-		Token:       "bssci.error.deduplication_error",
-		Message:     "Deduplication error",
-		SpecSection: "§3.8",
-		Severity:    SeverityError,
-	},
 	errPacketCounterCollision: {
 		Token:       "bssci.error.packet_counter_collision",
 		Message:     "Packet counter collision detected during deduplication",
-		SpecSection: "§3.8",
+		SpecSection: "§3.10",
 		Severity:    SeverityError,
 	},
 
@@ -1015,18 +979,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "§3",
 		Severity:    SeverityError,
 	},
-	errPropagateFailed: {
-		Token:       "bssci.error.propagate_failed",
-		Message:     "Propagate failed",
-		SpecSection: "§3",
-		Severity:    SeverityError,
-	},
-	errEndpointOperationFailed: {
-		Token:       "bssci.error.endpoint_operation_failed",
-		Message:     "Endpoint operation failed",
-		SpecSection: "§3.6",
-		Severity:    SeverityError,
-	},
 	errFailedToSendError: {
 		Token:       "bssci.error.failed_to_send_error",
 		Message:     "Failed to send error",
@@ -1046,12 +998,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Message:     "VM operation should be sent by Service Center, not received from Base Station",
 		SpecSection: "§3",
 		Severity:    "protocol_violation",
-	},
-	errMissingMacType: {
-		Token:       "bssci.error.missing_mac_type",
-		Message:     "Missing macType in VM uplink data",
-		SpecSection: "§3",
-		Severity:    SeverityError,
 	},
 	errMissingRxTime: {
 		Token:       "bssci.error.missing_rx_time",
@@ -1109,15 +1055,15 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "§5.16 (DL RX status query), bidirectional capability check",
 		Severity:    SeverityError,
 	},
+	errServingStationLookupFailed: {
+		Token:       errServingStationLookupFailed,
+		Message:     "Failed to look up the base station serving the endpoint",
+		SpecSection: "§3.12 (DL data queue), radio §3.6.1 (DL window)",
+		Severity:    SeverityError,
+	},
 	errFailedToSendULDataTransmitComplete: {
 		Token:       "bssci.error.failed_to_send_ul_data_transmit_complete",
 		Message:     "Failed to send UL data transmit completion",
-		SpecSection: "§3.8",
-		Severity:    SeverityError,
-	},
-	errFailedToEncryptKey: {
-		Token:       "bssci.error.failed_to_encrypt_key",
-		Message:     "Failed to encrypt key",
 		SpecSection: "§3.8",
 		Severity:    SeverityError,
 	},
@@ -1209,6 +1155,18 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "bssci.error.invalid_eqsnr_value",
 		Message:     "Invalid value type for optional field: eqSnr (must be numeric)",
 		SpecSection: "§3.8",
+		Severity:    "protocol_violation",
+	},
+	errInvalidSubpackets: {
+		Token:       "bssci.error.invalid_subpackets",
+		Message:     "Invalid optional field: subpackets (snr, rssi and frequency must be numeric arrays of one non-zero length, phase of the same length)",
+		SpecSection: "§3.10.1",
+		Severity:    "protocol_violation",
+	},
+	errULUserDataTooLong: {
+		Token:       "bssci.error.ul_user_data_too_long",
+		Message:     "Uplink userData exceeds the 200-byte radio payload maximum (radio protocol §3.6.5.5)",
+		SpecSection: "§3.10.1",
 		Severity:    "protocol_violation",
 	},
 	errEndpointNotProvisioned: {
@@ -1389,24 +1347,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "N/A",
 		Severity:    SeverityError,
 	},
-	ErrMgmtInvalidTenantContext: {
-		Token:       "bssci.mgmt.invalid_tenant_context",
-		Message:     "Cannot resolve tenant context for operation",
-		SpecSection: "§3.2", // Operation context
-		Severity:    SeverityError,
-	},
-	ErrMgmtNoConnectedSessions: {
-		Token:       "bssci.mgmt.no_connected_sessions",
-		Message:     "No connected base station sessions available",
-		SpecSection: "§3.3",
-		Severity:    SeverityError,
-	},
-	ErrMgmtSessionLookupFailed: {
-		Token:       "bssci.mgmt.session_lookup_failed",
-		Message:     "Failed to look up session state",
-		SpecSection: "§3.3",
-		Severity:    SeverityError,
-	},
 
 	// Type conversion and validation errors
 	errInvalidFieldValue: {
@@ -1417,12 +1357,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 	},
 
 	// Organization context enforcement
-	errOrgContextMissing: {
-		Token:       "bssci.error.org_context_missing",
-		Message:     "Organization context required in strict mode (gRPC metadata missing X-Organization-ID)",
-		SpecSection: "§3.1",
-		Severity:    SeverityError,
-	},
 
 	// Float validation errors (BSSCI §5.15.1)
 	errInvalidFloatNaN: {
@@ -1489,13 +1423,14 @@ var errorDefinitions = map[string]ErrorDefinition{
 	},
 
 	// Unknown/generic errors
-	errUnknownError: {
-		Token:       "bssci.error.unknown",
-		Message:     "Unknown error",
-		SpecSection: "§4",
-		Severity:    SeverityError,
-	},
 }
+
+// unknownErrorDefinitionMessage and specSectionErrorHandling back the
+// fallback definition returned for tokens missing from the catalog.
+const (
+	unknownErrorDefinitionMessage = "Unknown error"
+	specSectionErrorHandling      = "§4"
+)
 
 // GetErrorDefinition retrieves the error definition for a given token
 // Returns a default definition if token not found
@@ -1506,8 +1441,8 @@ func GetErrorDefinition(token string) ErrorDefinition {
 	// Return default for unknown tokens
 	return ErrorDefinition{
 		Token:       token,
-		Message:     "Unknown error",
-		SpecSection: "§4",
+		Message:     unknownErrorDefinitionMessage,
+		SpecSection: specSectionErrorHandling,
 		Severity:    SeverityError,
 	}
 }

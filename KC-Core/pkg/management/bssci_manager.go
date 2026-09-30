@@ -9,7 +9,9 @@ import (
 	"net/http"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	pkggrpc "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // JSON response field keys for management endpoints.
@@ -18,21 +20,41 @@ const (
 	responseKeyErrors  = "errors"
 )
 
-// BSSCIManager manages BSSCI operations for API access
-type BSSCIManager struct {
-	server       *bssci.Server
-	messageStore interface{} // Will be *postgres.DB
-	tenantID     int64
-	logger       logger.Logger
+// SessionPropagator is the BSSCI server surface the management API drives:
+// attach/detach propagation to one session or to every connected session, plus
+// the connected-session listing.
+type SessionPropagator interface {
+	SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSnKey []byte,
+		shortAddr uint16, bidirectional bool, lastPacketCnt uint32, dualChannel bool,
+		repetition uint8, wideCarrOff bool, longBlkDist bool) error
+	SendAttachPropagateToAll(endpointEUI uint64, nwkSnKey []byte,
+		shortAddr uint16, bidirectional bool, lastPacketCnt uint32, dualChannel bool,
+		repetition uint8, wideCarrOff bool, longBlkDist bool) []error
+	SendDetachPropagate(sessionID string, endpointEUI uint64) error
+	SendDetachPropagateToAll(endpointEUI uint64) []error
+	GetConnectedSessions() []map[string]interface{}
 }
 
+// BSSCIManager manages BSSCI operations for API access
+type BSSCIManager struct {
+	server SessionPropagator
+	logger logger.Logger
+}
+
+const (
+	routeAttachPropagate    = "/api/internal/attach-propagate"
+	routeAttachPropagateAll = "/api/internal/attach-propagate-all"
+	routeConnectedSessions  = "/api/internal/connected-sessions"
+	routeDetachPropagate    = "/api/internal/detach-propagate"
+	routeDetachPropagateAll = "/api/internal/detach-propagate-all"
+)
+
 // NewBSSCIManager creates a new BSSCI manager
-func NewBSSCIManager(server *bssci.Server, messageStore interface{}, tenantID int64, log logger.Logger) *BSSCIManager {
+// Internal management HTTP routes (loopback only).
+func NewBSSCIManager(server SessionPropagator, log logger.Logger) *BSSCIManager {
 	return &BSSCIManager{
-		server:       server,
-		messageStore: messageStore,
-		tenantID:     tenantID,
-		logger:       log,
+		server: server,
+		logger: log,
 	}
 }
 
@@ -60,16 +82,16 @@ func (m *BSSCIManager) StartHTTPServer(port int) error {
 	mux := http.NewServeMux()
 
 	// Add endpoint for attach propagate
-	mux.HandleFunc("/api/internal/attach-propagate", m.handleAttachPropagate)
-	mux.HandleFunc("/api/internal/attach-propagate-all", m.handleAttachPropagateAll)
-	mux.HandleFunc("/api/internal/connected-sessions", m.handleGetConnectedSessions)
+	mux.HandleFunc(routeAttachPropagate, m.handleAttachPropagate)
+	mux.HandleFunc(routeAttachPropagateAll, m.handleAttachPropagateAll)
+	mux.HandleFunc(routeConnectedSessions, m.handleGetConnectedSessions)
 
 	// Add endpoint for detach propagate
-	mux.HandleFunc("/api/internal/detach-propagate", m.handleDetachPropagate)
-	mux.HandleFunc("/api/internal/detach-propagate-all", m.handleDetachPropagateAll)
+	mux.HandleFunc(routeDetachPropagate, m.handleDetachPropagate)
+	mux.HandleFunc(routeDetachPropagateAll, m.handleDetachPropagateAll)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	m.logger.Info("Starting BSSCI management HTTP server", "address", addr)
+	m.logger.Info(logMgmtServerStarting, logger.FieldAddress, addr)
 
 	// Use http.Server for better control and error handling
 	server := &http.Server{
@@ -82,16 +104,16 @@ func (m *BSSCIManager) StartHTTPServer(port int) error {
 	// Create a listener to test if the address is available
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtFailedToBindAddress), "address", addr, "error", err)
+		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtFailedToBindAddress), logger.FieldAddress, addr, logger.FieldError, err)
 		return fmt.Errorf("%s: %w", bssci.ResolveErrorMessage(bssci.ErrMgmtFailedToBindAddress), err)
 	}
 
-	m.logger.Info("BSSCI management HTTP server listening", "address", addr)
+	m.logger.Info(logMgmtServerListening, logger.FieldAddress, addr)
 
 	// Serve using the listener (this will block)
 	err = server.Serve(listener)
 	if err != nil && err != http.ErrServerClosed {
-		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtServerFailed), "address", addr, "error", err)
+		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtServerFailed), logger.FieldAddress, addr, logger.FieldError, err)
 		return fmt.Errorf("%s: %w", bssci.ResolveErrorMessage(bssci.ErrMgmtServerFailed), err)
 	}
 
@@ -131,10 +153,10 @@ func (m *BSSCIManager) handleAttachPropagate(w http.ResponseWriter, r *http.Requ
 	}
 
 	// DEBUG: Log what we received for single session attach propagate
-	m.logger.Debug(bssci.LogBSSCIAttachPropagateDebug,
-		"sessionID", sessionID,
-		"repetition", req.Repetition,
-		"epEui", req.EndpointEUI)
+	m.logger.DebugContext(r.Context(), bssci.LogBSSCIAttachPropagateDebug,
+		logger.FieldSessionID, sessionID,
+		logger.FieldRepetition, req.Repetition,
+		logger.FieldEpEui, req.EndpointEUI)
 
 	// Convert boolean repetition to uint8 (0 or 1)
 	var repetitionValue uint8
@@ -154,19 +176,18 @@ func (m *BSSCIManager) handleAttachPropagate(w http.ResponseWriter, r *http.Requ
 		req.WideCarrOff,
 		req.LongBlkDist,
 	)
-
 	if err != nil {
-		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtAttachPropagateFailed),
-			"sessionID", sessionID,
-			"epEui", req.EndpointEUI,
-			"error", err)
+		m.logger.ErrorContext(r.Context(), bssci.ResolveErrorMessage(bssci.ErrMgmtAttachPropagateFailed),
+			logger.FieldSessionID, sessionID,
+			logger.FieldEpEui, req.EndpointEUI,
+			logger.FieldError, err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtAttachPropagateFailed), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(pkggrpc.HeaderContentType, pkggrpc.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(map[string]bool{responseKeySuccess: true}); err != nil {
-		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), "error", err)
+		m.logger.ErrorContext(r.Context(), bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), logger.FieldError, err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), http.StatusInternalServerError)
 		return
 	}
@@ -174,25 +195,17 @@ func (m *BSSCIManager) handleAttachPropagate(w http.ResponseWriter, r *http.Requ
 
 // handleAttachPropagateAll handles attach propagate requests for all connected sessions
 func (m *BSSCIManager) handleAttachPropagateAll(w http.ResponseWriter, r *http.Request) {
-	m.logger.Debug("handleAttachPropagateAll called", "method", r.Method)
-
 	if r.Method != http.MethodPost {
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 
-	m.logger.Debug("About to decode JSON request body")
 	var req AttachPropagateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		m.logger.Error("Failed to decode JSON", "error", err)
+		m.logger.ErrorContext(r.Context(), logMgmtDecodeFailed, logger.FieldError, err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtInvalidRequestBody), http.StatusBadRequest)
 		return
 	}
-	m.logger.Debug("Successfully decoded request",
-		"epEui", req.EndpointEUI,
-		"shAddr", req.ShortAddr,
-		"bidi", req.Bidirectional)
-
 	// Decode base64-encoded network session key
 	nwkSnKey, err := base64.StdEncoding.DecodeString(req.NwkSnKey)
 	if err != nil {
@@ -207,17 +220,17 @@ func (m *BSSCIManager) handleAttachPropagateAll(w http.ResponseWriter, r *http.R
 	}
 
 	// Log the actual values we're passing to SendAttachPropagateToAll
-	m.logger.Info("Received attach propagate request",
-		"endpointEUI", req.EndpointEUI,
-		"shortAddr", req.ShortAddr,
-		"bidirectional", req.Bidirectional,
-		"lastPacketCnt", req.LastPacketCnt,
-		"dualChannel", req.DualChannel,
-		"repetition", req.Repetition,
-		"wideCarrOff", req.WideCarrOff,
-		"longBlkDist", req.LongBlkDist)
+	m.logger.InfoContext(r.Context(), logMgmtAttachPropagateReceived,
+		logger.FieldEndpointEUI, req.EndpointEUI,
+		logger.FieldShortAddr, req.ShortAddr,
+		logger.FieldBidirectional, req.Bidirectional,
+		logger.FieldLastPacketCnt, req.LastPacketCnt,
+		logger.FieldDualChannel, req.DualChannel,
+		logger.FieldRepetition, req.Repetition,
+		logger.FieldWideCarrOff, req.WideCarrOff,
+		logger.FieldLongBlkDist, req.LongBlkDist)
 	if req.Repetition {
-		m.logger.Warn("Repetition is enabled - may affect DL performance", "endpointEUI", req.EndpointEUI)
+		m.logger.WarnContext(r.Context(), logMgmtRepetitionEnabled, logger.FieldEndpointEUI, req.EndpointEUI)
 	}
 
 	// Convert boolean repetition to uint8 (0 or 1)
@@ -227,7 +240,7 @@ func (m *BSSCIManager) handleAttachPropagateAll(w http.ResponseWriter, r *http.R
 	}
 
 	// Run the attach propagate synchronously to return accurate result
-	m.logger.Info("Starting SendAttachPropagateToAll", "endpointEUI", req.EndpointEUI)
+	m.logger.InfoContext(r.Context(), logMgmtAttachPropagateAllStarting, logger.FieldEndpointEUI, req.EndpointEUI)
 	errors := m.server.SendAttachPropagateToAll(
 		req.EndpointEUI,
 		nwkSnKey,
@@ -245,27 +258,27 @@ func (m *BSSCIManager) handleAttachPropagateAll(w http.ResponseWriter, r *http.R
 		errorMessages := make([]string, len(errors))
 		for i, err := range errors {
 			errorMessages[i] = err.Error()
-			m.logger.Error("Attach propagate failed",
-				"endpointEUI", req.EndpointEUI,
-				"error", err)
+			m.logger.ErrorContext(r.Context(), logMgmtAttachPropagateFailed,
+				logger.FieldEndpointEUI, req.EndpointEUI,
+				logger.FieldError, err)
 		}
 		response = map[string]interface{}{
 			responseKeySuccess: false,
 			responseKeyErrors:  errorMessages,
 		}
 	} else {
-		m.logger.Info("Attach propagate sent successfully to all sessions",
-			"endpointEUI", req.EndpointEUI,
-			"sessionCount", len(m.server.GetConnectedSessions()))
+		m.logger.InfoContext(r.Context(), logMgmtAttachPropagateAllOK,
+			logger.FieldEndpointEUI, req.EndpointEUI,
+			logger.FieldSessionCount, len(m.server.GetConnectedSessions()))
 		response = map[string]interface{}{
 			responseKeySuccess: true,
 			responseKeyErrors:  []string{},
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(pkggrpc.HeaderContentType, pkggrpc.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), "error", err)
+		m.logger.ErrorContext(r.Context(), bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), logger.FieldError, err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), http.StatusInternalServerError)
 		return
 	}
@@ -283,50 +296,51 @@ func (m *BSSCIManager) handleGetConnectedSessions(w http.ResponseWriter, r *http
 	// Convert to JSON-friendly format with enriched session metadata (BSSCI §5-5.3)
 	sessionList := []map[string]interface{}{}
 	for _, session := range sessions {
+		bsEui, _ := session[sessionKeyBaseStationEUI].(uint64)
 		sessionData := map[string]interface{}{
-			"id":                 session["id"],
-			"basestation_eui":    fmt.Sprintf("%016X", session["baseStationEui"]),
-			"name":               session["name"],
-			"vendor":             session["vendor"],
-			"model":              session["model"],
-			"connected_at":       session["connected"],
-			"last_seen":          session["lastSeen"],
-			"client_version":     session["clientVersion"],
-			"negotiated_version": session["negotiatedVersion"],
-			"bidirectional":      session["bidirectional"],
-			"handshake_complete": session["handshakeComplete"],
-			"bs_op_id":           session["bsOpId"],
-			"sc_op_id":           session["scOpId"],
-			"encoding":           session["encoding"],
-			"can_resume":         session["canResume"],
+			"id":                 session[sessionKeyID],
+			"basestation_eui":    mioty.FormatEUI64(bsEui),
+			"name":               session[sessionKeyName],
+			"vendor":             session[sessionKeyVendor],
+			"model":              session[sessionKeyModel],
+			"connected_at":       session[sessionKeyConnected],
+			"last_seen":          session[sessionKeyLastSeen],
+			"client_version":     session[sessionKeyClientVersion],
+			"negotiated_version": session[sessionKeyNegotiatedVersion],
+			"bidirectional":      session[sessionKeyBidirectional],
+			"handshake_complete": session[sessionKeyHandshakeComplete],
+			"bs_op_id":           session[sessionKeyBsOpID],
+			"sc_op_id":           session[sessionKeyScOpID],
+			"encoding":           session[sessionKeyEncoding],
+			"can_resume":         session[sessionKeyCanResume],
 			// ATT-02: Tenant/org fields for roaming-aware propagation
-			"resolved_tenant_id": session["resolvedTenantID"],
-			"organization_id":    session["organizationID"],
+			"resolved_tenant_id": session[sessionKeyResolvedTenantID],
+			"organization_id":    session[sessionKeyOrganizationID],
 		}
 
 		// Add optional session metadata (BSSCI §3.3, §5.3)
-		if sessionUUID, ok := session["sessionUuid"]; ok {
+		if sessionUUID, ok := session[sessionKeySessionUUID]; ok {
 			sessionData["session_uuid"] = sessionUUID
 		}
-		if snBsUUID, ok := session["snBsUuid"]; ok {
+		if snBsUUID, ok := session[sessionKeySnBsUUID]; ok {
 			sessionData["sn_bs_uuid"] = snBsUUID
 		}
-		if snScUUID, ok := session["snScUuid"]; ok {
+		if snScUUID, ok := session[sessionKeySnScUUID]; ok {
 			sessionData["sn_sc_uuid"] = snScUUID
 		}
-		if geoLocation, ok := session["geoLocation"]; ok {
+		if geoLocation, ok := session[sessionKeyGeoLocation]; ok {
 			sessionData["geo_location"] = geoLocation
 		}
-		if connectInfo, ok := session["connectInfo"]; ok {
+		if connectInfo, ok := session[sessionKeyConnectInfo]; ok {
 			sessionData["connect_info"] = connectInfo
 		}
 
 		sessionList = append(sessionList, sessionData)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(pkggrpc.HeaderContentType, pkggrpc.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(sessionList); err != nil {
-		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), "error", err)
+		m.logger.ErrorContext(r.Context(), bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), logger.FieldError, err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), http.StatusInternalServerError)
 		return
 	}
@@ -357,9 +371,9 @@ func (m *BSSCIManager) handleDetachPropagate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(pkggrpc.HeaderContentType, pkggrpc.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(map[string]bool{responseKeySuccess: true}); err != nil {
-		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), "error", err)
+		m.logger.ErrorContext(r.Context(), bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), logger.FieldError, err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), http.StatusInternalServerError)
 		return
 	}
@@ -379,7 +393,7 @@ func (m *BSSCIManager) handleDetachPropagateAll(w http.ResponseWriter, r *http.R
 	}
 
 	// Run the detach propagate synchronously to return accurate result
-	m.logger.Info("Starting SendDetachPropagateToAll", "endpointEUI", req.EndpointEUI)
+	m.logger.InfoContext(r.Context(), logMgmtDetachPropagateAllStarting, logger.FieldEndpointEUI, req.EndpointEUI)
 	errors := m.server.SendDetachPropagateToAll(req.EndpointEUI)
 
 	var response map[string]interface{}
@@ -387,27 +401,27 @@ func (m *BSSCIManager) handleDetachPropagateAll(w http.ResponseWriter, r *http.R
 		errorMessages := make([]string, len(errors))
 		for i, err := range errors {
 			errorMessages[i] = err.Error()
-			m.logger.Error("Detach propagate failed",
-				"endpointEUI", req.EndpointEUI,
-				"error", err)
+			m.logger.ErrorContext(r.Context(), logMgmtDetachPropagateFailed,
+				logger.FieldEndpointEUI, req.EndpointEUI,
+				logger.FieldError, err)
 		}
 		response = map[string]interface{}{
 			responseKeySuccess: false,
 			responseKeyErrors:  errorMessages,
 		}
 	} else {
-		m.logger.Info("Detach propagate sent successfully to all sessions",
-			"endpointEUI", req.EndpointEUI,
-			"sessionCount", len(m.server.GetConnectedSessions()))
+		m.logger.InfoContext(r.Context(), logMgmtDetachPropagateAllOK,
+			logger.FieldEndpointEUI, req.EndpointEUI,
+			logger.FieldSessionCount, len(m.server.GetConnectedSessions()))
 		response = map[string]interface{}{
 			responseKeySuccess: true,
 			responseKeyErrors:  []string{},
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(pkggrpc.HeaderContentType, pkggrpc.ContentTypeJSON)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		m.logger.Error(bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), "error", err)
+		m.logger.ErrorContext(r.Context(), bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), logger.FieldError, err)
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), http.StatusInternalServerError)
 		return
 	}

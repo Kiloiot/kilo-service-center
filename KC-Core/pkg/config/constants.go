@@ -145,8 +145,16 @@ const (
 	// DefaultIdentityAddress is the default KC-Identity gRPC address for KC-Core.
 	DefaultIdentityAddress = "localhost:50052"
 
-	// DefaultInternalAuthPeerSecret is the default peer secret (empty = disabled in dev mode).
+	// DefaultInternalAuthPeerSecret is the default peer secret: none, which
+	// only an internal hop on a loopback address may run without.
 	DefaultInternalAuthPeerSecret = ""
+
+	// InternalAuthPeerSecretMinLength is the shortest peer secret an internal
+	// gRPC hop other hosts reach accepts (openssl rand -hex 32 gives 64).
+	InternalAuthPeerSecretMinLength = 32
+
+	// LoopbackHostname names this machine in a bind or dial address.
+	LoopbackHostname = "localhost"
 )
 
 // =========================================================================
@@ -184,14 +192,6 @@ const (
 
 // Time duration constants (cannot be const, must be var for time arithmetic)
 var (
-	// AuthDefaultStateTTL is the default TTL for OIDC/OAuth2 state parameters.
-	// 5 minutes is standard practice for OAuth2 state tokens.
-	AuthDefaultStateTTL = 5 * time.Minute
-
-	// AuthDefaultNonceTTL is the default TTL for OIDC nonce parameters.
-	// 5 minutes matches state TTL for consistency.
-	AuthDefaultNonceTTL = 5 * time.Minute
-
 	// AuthRedisConnectTimeout is the timeout for Redis connection attempts.
 	// 5 seconds provides reasonable balance between responsiveness and reliability.
 	AuthRedisConnectTimeout = 5 * time.Second
@@ -218,6 +218,17 @@ const (
 
 	// DefaultGeneralEnvironment is the default runtime environment.
 	DefaultGeneralEnvironment = "development"
+
+	// EnvironmentProduction is the production environment selector.
+	EnvironmentProduction = "production"
+
+	// ProbeLoopbackHost is the host same-process status probes dial when a
+	// listener is bound to a wildcard address.
+	ProbeLoopbackHost = "localhost"
+
+	// Bind addresses that mean "every interface".
+	wildcardHostIPv4 = "0.0.0.0"
+	wildcardHostIPv6 = "::"
 
 	// DefaultGeneralLogLevel is the default logging verbosity.
 	DefaultGeneralLogLevel = "info"
@@ -254,6 +265,25 @@ const (
 	EditionECE = "ece"
 	// EditionCommunity identifies the Community Edition feature set (federation relay enabled).
 	EditionCommunity = "ce"
+
+	// MaxPortNumber is the highest valid TCP/UDP port.
+	MaxPortNumber = 65535
+
+	// MQTTSchemeTCP is the plain MQTT broker URL scheme.
+	MQTTSchemeTCP = "tcp"
+	// MQTTSchemeSSL is the TLS MQTT broker URL scheme.
+	MQTTSchemeSSL = "ssl"
+
+	// TLSVersionValue12 selects TLS 1.2 as the configured minimum version.
+	TLSVersionValue12 = "1.2"
+	// TLSVersionValue13 selects TLS 1.3 as the configured minimum version.
+	TLSVersionValue13 = "1.3"
+
+	// URLSchemeTLSFmt renders the BSSCI service center URL.
+	URLSchemeTLSFmt = "tls://%s:%d"
+	// URL schemes stripped when reading the host of the external BSSCI URL.
+	urlSchemePrefixTLS = "tls://"
+	urlSchemePrefixTCP = "tcp://"
 	// DefaultEdition is the edition used when none is configured.
 	DefaultEdition = EditionCommunity
 
@@ -266,11 +296,6 @@ const (
 // IsCommunityEdition returns true when the configured edition is Community Edition.
 func IsCommunityEdition(edition string) bool {
 	return edition == EditionCommunity
-}
-
-// IsEnterpriseEdition returns true when the configured edition is Enterprise Cloud Edition.
-func IsEnterpriseEdition(edition string) bool {
-	return edition == EditionECE
 }
 
 // EditionLabel returns the canonical human-readable label for an edition code.
@@ -294,8 +319,6 @@ const (
 	DefaultFederationEnabled = false
 	// DefaultFederationHeartbeatIntervalSeconds is the interval between CE heartbeats on the relay stream.
 	DefaultFederationHeartbeatIntervalSeconds = 60
-	// DefaultFederationOutboxMaxSize caps the unacknowledged outbox entries.
-	DefaultFederationOutboxMaxSize = 10000
 	// DefaultFederationReconnectMaxBackoffSeconds is the maximum reconnect delay in seconds.
 	DefaultFederationReconnectMaxBackoffSeconds = 300
 	// DefaultFederationIngressGRPCPort is the port for the ECE federation-ingress gRPC server.
@@ -330,6 +353,10 @@ const (
 	// DefaultProtocolBSCIPort is the BSSCI listener port.
 	DefaultProtocolBSCIPort = 5000
 
+	// DefaultProtocolManagementPort is the loopback port of the internal BSSCI
+	// management API.
+	DefaultProtocolManagementPort = 8081
+
 	// DefaultProtocolBSCITLSEnabled controls TLS for BSSCI connections.
 	DefaultProtocolBSCITLSEnabled = true
 
@@ -343,8 +370,8 @@ const (
 	DefaultProtocolBSCITLSCAFile = "certificates/ca.crt"
 
 	// DefaultProtocolBSCITLSMinVersion is the minimum TLS version for BSSCI.
-	// TLS 1.3 per MIOTY Security Guide v1.1; operators may override to "1.2".
-	DefaultProtocolBSCITLSMinVersion = "1.3"
+	// BSSCI mandates TLS with mutual certificates and sets no floor, so 1.2 admits every conforming base station; operators raise it.
+	DefaultProtocolBSCITLSMinVersion = "1.2"
 
 	// DefaultProtocolSCACIEnabled controls whether SCACI server is started.
 	DefaultProtocolSCACIEnabled = true
@@ -361,6 +388,33 @@ const (
 
 	// DefaultProtocolSCACILogStatusOps controls logging of SCACI Status operations.
 	DefaultProtocolSCACILogStatusOps = true
+
+	// DefaultProtocolSCACIResumeMaxPendingOperations is how many service center
+	// operations a disconnected Application Center session holds for its resume.
+	DefaultProtocolSCACIResumeMaxPendingOperations = 10000
+
+	// SCACIDashboardDefaultWindow is the lookback the SCACI statistics and
+	// status RPCs use when the request carries no range.
+	SCACIDashboardDefaultWindow = 24 * time.Hour
+
+	// DiagnosticsMaxBundleBytes caps the diagnostics archive a server admin can download.
+	DiagnosticsMaxBundleBytes = 8 << 20
+	// DiagnosticsResponseHeadroomBytes covers the response fields that travel
+	// with the archive.
+	DiagnosticsResponseHeadroomBytes = 64 << 10
+	// GatewayUpstreamMaxResponseBytes is the largest response KC-Gateway
+	// accepts from an upstream; it carries a full diagnostics bundle.
+	GatewayUpstreamMaxResponseBytes = DiagnosticsMaxBundleBytes + DiagnosticsResponseHeadroomBytes
+	// DiagnosticsMaxEvents bounds the newest events the bundle carries.
+	DiagnosticsMaxEvents = 500
+	// DiagnosticsMaxSessions bounds the base station sessions listed in the bundle.
+	DiagnosticsMaxSessions = 200
+	// DiagnosticsGenerationTimeout bounds the reads behind one bundle.
+	DiagnosticsGenerationTimeout = 30 * time.Second
+	// DiagnosticsArchiveFilename is the download name of the bundle.
+	DiagnosticsArchiveFilename = "kilocenter-diagnostics.zip"
+	// DiagnosticsContentType is the media type of the bundle.
+	DiagnosticsContentType = "application/zip"
 
 	// DefaultProtocolSCVendor is the Service Center vendor name.
 	DefaultProtocolSCVendor = "Kilo"
@@ -383,14 +437,14 @@ const (
 	// EnvProtocolSCEUI nor an explicit protocol.sc_eui file value is present.
 	EnvLegacyServiceCenterEUI = "SERVICE_CENTER_EUI"
 
-	// DefaultProtocolMaxRetransmissions is the max retry count for operations.
-	DefaultProtocolMaxRetransmissions = 3
-
 	// DefaultProtocolAckTimeout is the acknowledgement timeout in milliseconds.
 	DefaultProtocolAckTimeout = 5000
 
 	// DefaultProtocolConnectionEstablishmentTimeout bounds a fresh connection before its con arrives, in milliseconds.
 	DefaultProtocolConnectionEstablishmentTimeout = 30000
+
+	// DefaultProtocolSocketWriteTimeout bounds every BSSCI and SCACI frame write, in milliseconds.
+	DefaultProtocolSocketWriteTimeout = 10000
 
 	// DefaultProtocolStatusRequestInterval is how often the SC polls a base station for status, in seconds.
 	DefaultProtocolStatusRequestInterval = 30
@@ -404,24 +458,38 @@ const (
 	// DefaultProtocolDuplicateWindow is the duplicate detection window in seconds.
 	DefaultProtocolDuplicateWindow = 300
 
+	// DefaultProtocolDeliveryPollInterval is how often the delivery worker claims due outbox rows.
+	DefaultProtocolDeliveryPollInterval = time.Second
+	// DefaultProtocolDeliveryBatchSize is the number of outbox rows claimed per poll.
+	DefaultProtocolDeliveryBatchSize = 50
+	// DefaultProtocolDeliveryRetryBackoff is the base of the exponential retry backoff.
+	DefaultProtocolDeliveryRetryBackoff = 2 * time.Second
+	// DefaultProtocolDeliveryMaxBackoff caps the wait between retries of a transiently failing delivery.
+	DefaultProtocolDeliveryMaxBackoff = 5 * time.Minute
+	// DefaultProtocolDeliveryReceptionWindow is how long a new uplink waits for the receptions of
+	// the other base stations to merge into it before it is delivered (SCACI §3.8.1 baseStations).
+	DefaultProtocolDeliveryReceptionWindow = 500 * time.Millisecond
+
+	// DefaultProtocolDownlinkLifetime is how long a queued downlink waits for a downlink window before it expires.
+	DefaultProtocolDownlinkLifetime = 24 * time.Hour
+	// DefaultProtocolDownlinkExpirySweepInterval is how often overdue downlinks are expired and
+	// reported; one indexed statement over the pending rows, so an Application Center learns of
+	// an expiry within seconds.
+	DefaultProtocolDownlinkExpirySweepInterval = 5 * time.Second
+	// DefaultProtocolDownlinkExpiryBatchSize is the number of downlinks one sweep statement expires.
+	DefaultProtocolDownlinkExpiryBatchSize = 100
+
+	// DefaultProtocolRoamingCacheEnabled caches endpoint owners for roaming decisions.
+	DefaultProtocolRoamingCacheEnabled = true
+	// DefaultProtocolRoamingCacheTTL is how long a cached endpoint owner is trusted.
+	DefaultProtocolRoamingCacheTTL = 5 * time.Minute
+	// DefaultProtocolRoamingCacheMaxSize bounds the number of cached endpoint owners.
+	DefaultProtocolRoamingCacheMaxSize = 10000
+	// DefaultProtocolRoamingEnableAuditTrail records roaming attach and detach events.
+	DefaultProtocolRoamingEnableAuditTrail = true
+
 	// DefaultProtocolCertificatePollInterval is the base station certificate change poll interval.
 	DefaultProtocolCertificatePollInterval = 10 * time.Second
-
-	// DefaultProtocolPropBatchSize is the propagation batch size.
-	DefaultProtocolPropBatchSize = 500
-
-	// DefaultProtocolPropInterBatchDelay is the inter-batch delay duration string.
-	DefaultProtocolPropInterBatchDelay = "100ms"
-
-	// DefaultProtocolPropMaxRetries is the max propagation retry attempts.
-	DefaultProtocolPropMaxRetries = 3
-
-	// DefaultProtocolPropRetryBackoff is the propagation retry backoff duration string.
-	DefaultProtocolPropRetryBackoff = "30s"
-
-	// DefaultProtocolPropCoolDown is the propagation cooldown duration string.
-	// 0 disables auto-reset.
-	DefaultProtocolPropCoolDown = "2h"
 )
 
 // =========================================================================
@@ -504,20 +572,6 @@ const (
 // WebGUI Defaults (loader.go:155-159)
 // =========================================================================
 
-const (
-	// DefaultWebGUIEnabled controls whether WebGUI is served.
-	DefaultWebGUIEnabled = false
-
-	// DefaultWebGUIPort is the WebGUI server port.
-	DefaultWebGUIPort = 8081
-
-	// DefaultWebGUIHost is the WebGUI bind address.
-	DefaultWebGUIHost = "0.0.0.0"
-
-	// DefaultWebGUIStaticPath is the path to WebGUI static assets.
-	DefaultWebGUIStaticPath = "./web/dist"
-)
-
 // =========================================================================
 // Monitoring Defaults (loader.go:161-166)
 // =========================================================================
@@ -559,23 +613,22 @@ const (
 	// When true, KC-Core trusts identity headers from gateway and disables its own auth/gRPC-web.
 	DefaultGRPCInternalTrustEnabled = false
 
-	// DefaultGRPCTLSEnabled controls TLS for gRPC connections.
-	DefaultGRPCTLSEnabled = false
-
-	// DefaultGRPCMaxRecvMsgSize is the max receive message size in bytes (4 MB).
-	DefaultGRPCMaxRecvMsgSize = 4194304
-
-	// DefaultGRPCMaxSendMsgSize is the max send message size in bytes (4 MB).
-	DefaultGRPCMaxSendMsgSize = 4194304
-
-	// DefaultGRPCStreamPollInterval is the streaming RPC poll interval.
+	// DefaultGRPCStreamPollInterval is the fallback read of the streaming RPCs; stored rows wake them at once.
 	DefaultGRPCStreamPollInterval = "5s"
 
 	// DefaultGRPCStreamBatchSize is the streaming response batch size.
 	DefaultGRPCStreamBatchSize = 100
 
+	// DefaultGRPCStreamOverlap is how far each stream read reaches back behind
+	// the newest row it read: the longest a writer may take to commit a row
+	// after the database stamped it.
+	DefaultGRPCStreamOverlap = "10s"
+
 	// DefaultGRPCCountCacheTTL is how long unary event COUNT(*) results are cached.
 	DefaultGRPCCountCacheTTL = "10s"
+
+	// CountCacheComputeTimeout bounds a shared event COUNT(*), which no caller's deadline covers.
+	CountCacheComputeTimeout = 30 * time.Second
 
 	// DefaultRBACRoleCacheTTLSeconds is the default TTL for cached RBAC role lookups.
 	DefaultRBACRoleCacheTTLSeconds = 30
@@ -592,8 +645,13 @@ const (
 	// DefaultGRPCEnableHealth controls gRPC health service.
 	DefaultGRPCEnableHealth = true
 
-	// DefaultGRPCWebEnabled controls gRPC-web multiplexing.
-	DefaultGRPCWebEnabled = true
+	// DefaultGatewayGRPCWebEnabled is true: KC-Gateway is the browser ingress,
+	// so a gateway configuration that omits grpc.web.enabled still serves it.
+	DefaultGatewayGRPCWebEnabled = true
+
+	// DefaultGRPCWebEnabled is false: KC-Gateway terminates gRPC-web; a self-hosted
+	// deployment that talks to KC-Core directly enables it explicitly.
+	DefaultGRPCWebEnabled = false
 
 	// DefaultGRPCWebAllowCredentials controls CORS credentials for gRPC-web.
 	DefaultGRPCWebAllowCredentials = true
@@ -601,9 +659,6 @@ const (
 	// DefaultGRPCWebAllowAllOrigins is false by default for security.
 	// Set to true only in development with explicit config.
 	DefaultGRPCWebAllowAllOrigins = false
-
-	// DefaultGRPCWebEnableWebsockets enables gRPC-web over WebSockets.
-	DefaultGRPCWebEnableWebsockets = true
 
 	// GRPCWebDefaultMaxAgeSeconds is the CORS preflight cache duration.
 	GRPCWebDefaultMaxAgeSeconds = 3600
@@ -683,30 +738,6 @@ const (
 
 	// DefaultAuthLogoutURL is the post-logout redirect URL.
 	DefaultAuthLogoutURL = ""
-
-	// DefaultAuthBootstrapEnabled controls admin bootstrap on startup.
-	DefaultAuthBootstrapEnabled = false
-
-	// DefaultAuthBootstrapEmail is the initial admin email.
-	DefaultAuthBootstrapEmail = ""
-
-	// DefaultAuthBootstrapPasswordHash is the initial admin password hash.
-	DefaultAuthBootstrapPasswordHash = ""
-
-	// DefaultAuthBootstrapTenantID is the bootstrap tenant ID.
-	DefaultAuthBootstrapTenantID = 0
-
-	// DefaultAuthBootstrapOrgName is the bootstrap organization name.
-	DefaultAuthBootstrapOrgName = ""
-
-	// DefaultAuthBootstrapCreateOrg controls org creation on bootstrap.
-	DefaultAuthBootstrapCreateOrg = false
-
-	// DefaultAuthBootstrapCreateMembership controls membership on bootstrap.
-	DefaultAuthBootstrapCreateMembership = false
-
-	// DefaultAuthUICallbackURL is the UI callback for external auth.
-	DefaultAuthUICallbackURL = ""
 
 	// DefaultAuthOIDCEnabled controls OIDC provider.
 	DefaultAuthOIDCEnabled = false
@@ -804,9 +835,6 @@ const (
 // =========================================================================
 
 const (
-	// DefaultAlertsSummaryLookbackHours is the lookback period for alert summaries.
-	DefaultAlertsSummaryLookbackHours = 24
-
 	// DefaultAlertsRecentAlertsLimit is the max recent alerts in summary.
 	DefaultAlertsRecentAlertsLimit = 5
 )
@@ -814,17 +842,6 @@ const (
 // =========================================================================
 // Analytics Defaults (loader.go:257-260)
 // =========================================================================
-
-const (
-	// DefaultAnalyticsWindowHours is the default analytics query window.
-	DefaultAnalyticsWindowHours = 24
-
-	// DefaultAnalyticsActivityDays is the recent activity window in days.
-	DefaultAnalyticsActivityDays = 7
-
-	// DefaultAnalyticsTopEndpointsLimit is the max endpoints in top-N queries.
-	DefaultAnalyticsTopEndpointsLimit = 10
-)
 
 // =========================================================================
 // Certificate Defaults
@@ -841,11 +858,11 @@ const (
 	// DefaultCertificatesTempDir is the directory for temporary certificate downloads.
 	DefaultCertificatesTempDir = "/tmp/kilocenter-certs"
 
-	// DefaultCertificatesCleanupIntervalMin is the cleanup interval in minutes.
-	DefaultCertificatesCleanupIntervalMin = 15
-
 	// DefaultCertificatesServerValidityDays is the default validity period for generated server certificates.
 	DefaultCertificatesServerValidityDays = 365
+
+	// DefaultCertificatesCleanupIntervalMin is how often, in minutes, expired certificate bundles are removed.
+	DefaultCertificatesCleanupIntervalMin = 15
 
 	// DefaultCertificatesHostname is the fallback hostname for server certificate generation.
 	DefaultCertificatesHostname = "localhost"
@@ -887,9 +904,6 @@ const (
 
 	// DefaultRegistryProviderHTTPTimeout is the HTTP client timeout in seconds.
 	DefaultRegistryProviderHTTPTimeout = 30
-
-	// DefaultRegistryProviderSchemaURL is empty; configure if schema validation needed.
-	DefaultRegistryProviderSchemaURL = ""
 
 	// DefaultRegistryProviderToken is empty; set via KILOCENTER_REGISTRY_PROVIDER_TOKEN env var.
 	DefaultRegistryProviderToken = ""

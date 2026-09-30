@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 
-import type { AuthSettingsAPI, LoginRequest } from "@api-types/api";
+import type { LoginRequest } from "@api-types/api";
 import { isUnauthorizedError } from "@api-types/api";
+import { useAuthSettings, useLogin } from "@hooks";
 import {
   Alert,
   Box,
@@ -13,7 +14,6 @@ import {
   Typography,
 } from "@mui/material";
 
-import { apiService } from "@services/api";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { useSystem } from "@contexts/SystemContext";
@@ -33,14 +33,19 @@ import {
   VAL_EMAIL_REQUIRED,
   VAL_PASSWORD_REQUIRED,
 } from "@constants/messages";
+import { componentSpacing } from "@theme/index";
 
 import AuthBranding from "../components/AuthBranding";
 
 const Login: React.FC = () => {
   const { versionInfo } = useSystem();
-  const [settings, setSettings] = useState<AuthSettingsAPI | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const {
+    data: settings,
+    isLoading: loading,
+    isError: settingsFailed,
+  } = useAuthSettings();
+  const login = useLogin();
+  const submitting = login.isPending;
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,31 +58,20 @@ const Login: React.FC = () => {
   const { setUser } = useSession();
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const authSettings = await apiService.getAuthSettings();
-        setSettings(authSettings);
+    if (settingsFailed) setError(ERR_AUTH_SETTINGS_LOAD);
+  }, [settingsFailed]);
 
-        // Auto-redirect if configured (provider takes precedence)
-        if (authSettings.oidc?.enabled && authSettings.oidc.login_redirect) {
-          window.location.replace(authSettings.oidc.login_url);
-          return;
-        }
-        if (
-          authSettings.oauth2?.enabled &&
-          authSettings.oauth2.login_redirect
-        ) {
-          window.location.replace(authSettings.oauth2.login_url);
-          return;
-        }
-      } catch {
-        setError(ERR_AUTH_SETTINGS_LOAD);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSettings();
-  }, []);
+  // Auto-redirect if configured (provider takes precedence)
+  useEffect(() => {
+    if (!settings) return;
+    if (settings.oidc?.enabled && settings.oidc.login_redirect) {
+      window.location.replace(settings.oidc.login_url);
+      return;
+    }
+    if (settings.oauth2?.enabled && settings.oauth2.login_redirect) {
+      window.location.replace(settings.oauth2.login_url);
+    }
+  }, [settings]);
 
   const validateForm = (): boolean => {
     const errors: { email?: string; password?: string } = {};
@@ -91,11 +85,10 @@ const Login: React.FC = () => {
     e.preventDefault();
     if (!validateForm()) return;
 
-    setSubmitting(true);
     setError(null);
     try {
       const payload: LoginRequest = { email: email.trim(), password };
-      const loginResponse = await apiService.login(payload);
+      const loginResponse = await login.mutateAsync(payload);
 
       const session = persistAuthSession(loginResponse);
       setUser(session.user);
@@ -109,8 +102,6 @@ const Login: React.FC = () => {
       } else {
         setError(ERR_AUTH_LOGIN_FAILED);
       }
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -185,7 +176,7 @@ const Login: React.FC = () => {
               sx={{ mt: AUTH_LAYOUT.SPACING_MT }}
             >
               {submitting ? (
-                <CircularProgress size={AUTH_LAYOUT.SPINNER_SIZE} />
+                <CircularProgress size={componentSpacing.spinner.section} />
               ) : (
                 ACTION_LOGIN
               )}

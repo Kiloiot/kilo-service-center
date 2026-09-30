@@ -1,8 +1,10 @@
 package bssci
 
 import (
+	"context"
 	"crypto/aes"
 	"encoding/binary"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,24 +28,46 @@ func testPresharedKey() []byte {
 	return key
 }
 
-// generateAttachSignature computes CMAC signature per MIOTY radio spec section 3.7.1.3.
+// recordingAttachPersistence stands in for the transactional attach
+// persister and records every attach it persisted.
+type recordingAttachPersistence struct {
+	mu       sync.Mutex
+	attaches []AttachSessionRecord
+}
+
+func (r *recordingAttachPersistence) PersistAttachSession(_ context.Context, rec AttachSessionRecord) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.attaches = append(r.attaches, rec)
+	return nil
+}
+
+func (r *recordingAttachPersistence) PersistAttachPropagateSession(context.Context, AttachPropagateSessionRecord) error {
+	return nil
+}
+
+func (r *recordingAttachPersistence) persisted() []AttachSessionRecord {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]AttachSessionRecord(nil), r.attaches...)
+}
+
+// generateAttachSignature computes the attach signature per MIOTY radio spec
+// §3.7.1.3: the 4 most significant CMAC bytes over the 16-byte Fig. 3-15 IV
+// [EUI64 | 0xFF | 0x00 | attachCnt (4 bytes) | 0xFF 0xFF].
 func generateAttachSignature(epEUI uint64, attachCnt uint32, presharedKey []byte) []byte {
-	// Build CMAC initialization vector: [EUI64 | 0xFF | 0x00 | attachCnt(24-bit) | 0xFFFF]
-	iv := make([]byte, 15)
+	iv := make([]byte, 16)
 	binary.BigEndian.PutUint64(iv[0:8], epEUI)
 	iv[8] = 0xFF
 	iv[9] = 0x00
-	maskedCnt := attachCnt & 0xFFFFFF
-	iv[10] = byte(maskedCnt >> 16)
-	iv[11] = byte(maskedCnt >> 8)
-	iv[12] = byte(maskedCnt)
-	iv[13] = 0xFF
+	binary.BigEndian.PutUint32(iv[10:14], attachCnt)
 	iv[14] = 0xFF
+	iv[15] = 0xFF
 
 	block, _ := aes.NewCipher(presharedKey)
 	mac, _ := cmac.New(block)
 	mac.Write(iv)
-	return mac.Sum(nil)[:4] // First 4 bytes
+	return mac.Sum(nil)[:4]
 }
 
 // TestAttachReplayProtection_RejectReplay validates BSSCI attach counter replay protection.
@@ -86,17 +110,13 @@ func TestAttachReplayProtection_RejectReplay(t *testing.T) {
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc,
 		broadcaster, queueSerializer, auditLogger, tenantResolver,
 	)
-	server.config = &Config{
-		MessageEncoding:          EncodingJSON,
-		DisableAttachPersistence: true,
-	}
+	server.config = &Config{MessageEncoding: EncodingJSON}
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
 	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
 	}
-	server.RegisterHandlers()
 
 	// Create TestConn and session
 	testConn := &bsscitest.TestConn{Encoding: "json"}
@@ -210,14 +230,13 @@ func TestAttachReplayProtection_RejectLowerCounter(t *testing.T) {
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc,
 		broadcaster, queueSerializer, auditLogger, tenantResolver,
 	)
-	server.config = &Config{MessageEncoding: EncodingJSON, DisableAttachPersistence: true}
+	server.config = &Config{MessageEncoding: EncodingJSON}
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
 	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
 	}
-	server.RegisterHandlers()
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
@@ -308,14 +327,13 @@ func TestAttachReplayProtection_RolloverEdgeCase(t *testing.T) {
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc,
 		broadcaster, queueSerializer, auditLogger, tenantResolver,
 	)
-	server.config = &Config{MessageEncoding: EncodingJSON, DisableAttachPersistence: true}
+	server.config = &Config{MessageEncoding: EncodingJSON}
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
 	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
 	}
-	server.RegisterHandlers()
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
@@ -358,21 +376,47 @@ func TestAttachReplayProtection_RolloverEdgeCase(t *testing.T) {
 		Data:    data,
 	}
 
-	_ = server.CallHandleMessage(session, msg, data)
+	persistence := &recordingAttachPersistence{}
+	server.attachPersistence = persistence
+
+	require.NoError(t, server.CallHandleMessage(session, msg, data))
 
 	_, message := testConn.LastError()
 	assert.NotEqual(t, ResolveErrorMessage(errAttachCounterNotMonotonic), message,
 		"Rollover should NOT trigger replay protection error")
+	assert.True(t, testConn.SeenCommand(mioty.CmdAttachResponse), "a rolled-over counter is accepted and answered")
+	require.Len(t, persistence.persisted(), 1, "the rolled-over attach is persisted")
 }
 
 // TestAttachReplayProtection_FirstAttachNilCounter validates first attach acceptance.
-// When endpoint has no stored counter (nil), any incoming counter should pass replay check.
-// Note: Similar to rollover test, may fail at transaction stage due to test stubs.
+// An endpoint with no stored counter, or one that never attached over the air
+// (no recorded attach signature) whatever counter provisioning stored, passes
+// the replay check with any incoming counter, 0 included (radio protocol §3.6.5.3).
 func TestAttachReplayProtection_FirstAttachNilCounter(t *testing.T) {
 	t.Parallel()
 
+	provisioned := uint32(0)
+	incoming := uint32(5)
+	cases := []struct {
+		name        string
+		storedCnt   *uint32
+		attachedOTA bool
+		incomingCnt uint32
+	}{
+		{name: "no stored counter", storedCnt: nil, attachedOTA: true, incomingCnt: incoming},
+		{name: "provisioned counter before the first over-the-air attach", storedCnt: &provisioned, attachedOTA: false, incomingCnt: provisioned},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertFirstAttachAccepted(t, tc.storedCnt, tc.attachedOTA, tc.incomingCnt)
+		})
+	}
+}
+
+func assertFirstAttachAccepted(t *testing.T, storedCnt *uint32, attachedOTA bool, incomingCnt uint32) {
+	t.Helper()
 	presharedKey := testPresharedKey()
-	incomingCnt := uint32(5)
 
 	validSign := generateAttachSignature(TestEpEui01, incomingCnt, presharedKey)
 
@@ -382,9 +426,11 @@ func TestAttachReplayProtection_FirstAttachNilCounter(t *testing.T) {
 		ID:        1001,
 		EUI:       euiBytes,
 		TenantID:  1,
-		AttachCnt: nil, // First attach - no stored counter
-		Sign:      validSign,
+		AttachCnt: storedCnt,
 		NwkSnKey:  presharedKey,
+	}
+	if attachedOTA {
+		endpoint.Sign = validSign
 	}
 
 	testLogger := logger.NewNop()
@@ -401,14 +447,13 @@ func TestAttachReplayProtection_FirstAttachNilCounter(t *testing.T) {
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc,
 		broadcaster, queueSerializer, auditLogger, tenantResolver,
 	)
-	server.config = &Config{MessageEncoding: EncodingJSON, DisableAttachPersistence: true}
+	server.config = &Config{MessageEncoding: EncodingJSON}
 	server.endpointRepo = newFakeEndpointRepo(endpoint)
 	server.SetStorageForTest(storage)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
 	}
-	server.RegisterHandlers()
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
@@ -451,9 +496,15 @@ func TestAttachReplayProtection_FirstAttachNilCounter(t *testing.T) {
 		Data:    data,
 	}
 
-	_ = server.CallHandleMessage(session, msg, data)
+	persistence := &recordingAttachPersistence{}
+	server.attachPersistence = persistence
+
+	require.NoError(t, server.CallHandleMessage(session, msg, data))
 
 	_, message := testConn.LastError()
 	assert.NotEqual(t, ResolveErrorMessage(errAttachCounterNotMonotonic), message,
 		"First attach should NOT trigger replay protection error")
+	assert.True(t, testConn.SeenCommand(mioty.CmdAttachResponse), "the accepted attach is answered with attRsp")
+	require.Len(t, persistence.persisted(), 1, "the accepted attach is persisted")
+	assert.Equal(t, incomingCnt, persistence.persisted()[0].AttachCnt)
 }

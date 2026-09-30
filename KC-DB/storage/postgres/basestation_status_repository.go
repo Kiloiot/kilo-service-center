@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/jmoiron/sqlx"
@@ -13,19 +14,20 @@ import (
 // BaseStationStatusRepository implements base station status history storage operations
 // Implements interfaces.MIOTYBaseStationStatusRepository
 type BaseStationStatusRepository struct {
-	db *sqlx.DB
+	clock clock.Clock
+	db    *sqlx.DB
 }
 
 // NewBaseStationStatusRepository creates a new base station status repository
-func NewBaseStationStatusRepository(db *sqlx.DB) *BaseStationStatusRepository {
-	return &BaseStationStatusRepository{db: db}
+func NewBaseStationStatusRepository(db *sqlx.DB, clk clock.Clock) *BaseStationStatusRepository {
+	return &BaseStationStatusRepository{clock: clk, db: db}
 }
 
 // Create stores a new base station status record per BSSCI §3.5.2
 func (r *BaseStationStatusRepository) Create(ctx context.Context, status *mioty.BaseStationStatusRecord) error {
 	// Set timestamp if not already set
 	if status.ReceivedAt.IsZero() {
-		status.ReceivedAt = time.Now()
+		status.ReceivedAt = r.clock.Now()
 	}
 
 	query := `
@@ -50,16 +52,16 @@ func (r *BaseStationStatusRepository) Create(ctx context.Context, status *mioty.
 		configStr = &s
 	}
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.db.ExecContext(
+		ctx, query,
 		status.TenantID, status.BaseStationID, status.BasestationEUI, status.OperationID,
 		status.StatusCode, status.StatusMessage, status.SystemTime,
 		status.DutyCycle, status.UptimeSeconds, status.Temperature, status.CPULoad, status.MemoryLoad,
 		configStr, status.Latitude, status.Longitude, status.Altitude,
 		status.ReceivedAt,
 	)
-
 	if err != nil {
-		return fmt.Errorf("insert base station status record: %w", err)
+		return fmt.Errorf("%s: %w", errWrapInsertBaseStationStatusRecord, err)
 	}
 
 	return nil

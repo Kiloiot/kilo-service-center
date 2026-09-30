@@ -1,15 +1,8 @@
 import React from "react";
 
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-} from "@mui/material";
+import { ConfirmDialog } from "@ui";
 
-import { ACTION_CANCEL, BASE_STATION_DETAILS } from "@constants/messages";
+import { BASE_STATION_DETAILS } from "@constants/messages";
 
 interface BaseStationCertRegenDialogProps {
   open: boolean;
@@ -26,22 +19,17 @@ const BaseStationCertRegenDialog: React.FC<BaseStationCertRegenDialogProps> = ({
   isRegenerating,
 }) => {
   return (
-    <Dialog open={open} onClose={onClose}>
-      <DialogTitle>
-        {BASE_STATION_DETAILS.REGENERATE_CERTS_CONFIRM_TITLE}
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText>
-          {BASE_STATION_DETAILS.REGENERATE_CERTS_CONFIRM_TEXT}
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{ACTION_CANCEL}</Button>
-        <Button onClick={onConfirm} color="warning" disabled={isRegenerating}>
-          {BASE_STATION_DETAILS.ACTION_REGENERATE}
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <ConfirmDialog
+      open={open}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      pending={isRegenerating}
+      color="warning"
+      title={BASE_STATION_DETAILS.REGENERATE_CERTS_CONFIRM_TITLE}
+      message={BASE_STATION_DETAILS.REGENERATE_CERTS_CONFIRM_TEXT}
+      confirmLabel={BASE_STATION_DETAILS.ACTION_REGENERATE}
+      pendingLabel={BASE_STATION_DETAILS.ACTION_REGENERATE}
+    />
   );
 };
 

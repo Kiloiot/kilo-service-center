@@ -5,84 +5,117 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
 	"github.com/Kiloiot/kilo-service-center/KC-MQTT/pkg/mqtt"
 )
 
 // MQTT payload field keys shared by the published event bodies.
 const (
-	mqttKeyEpEui = "epEui"
-	mqttKeyBsEui = "bsEui"
-	mqttKeyQueId = "queId"
+	mqttKeyEpEui       = "epEui"
+	mqttKeyBsEui       = "bsEui"
+	mqttKeyQueId       = "queId"
+	mqttKeyDlOpen      = "dlOpen"
+	mqttKeyResponseExp = "responseExp"
+	mqttKeyDlAck       = "dlAck"
+	mqttKeyTxTime      = "txTime"
+	mqttKeyPacketCnt   = "packetCnt"
 )
 
-// mqttAdapter bridges bssci.MQTTEventPublisher → mqtt.DeviceEventPublisher.PublishDeviceEvent.
-// Converts uint64 EUIs to hex strings, builds JSON payloads, and delegates to KC-MQTT.
-type mqttAdapter struct {
+// MQTTAdapter bridges bssci.MQTTEventPublisher and the downlink result
+// publisher onto mqtt.DeviceEventPublisher.PublishDeviceEvent: it converts
+// uint64 EUIs to hex strings, builds the JSON payloads and delegates to KC-MQTT.
+type MQTTAdapter struct {
 	pub mqtt.DeviceEventPublisher
 }
 
-// NewMQTTAdapter creates an adapter that satisfies bssci.MQTTEventPublisher using KC-MQTT.
-func NewMQTTAdapter(pub mqtt.DeviceEventPublisher) bssci.MQTTEventPublisher {
-	return &mqttAdapter{pub: pub}
+// NewMQTTAdapter creates the adapter over KC-MQTT; it satisfies bssci.MQTTEventPublisher.
+func NewMQTTAdapter(pub mqtt.DeviceEventPublisher) *MQTTAdapter {
+	return &MQTTAdapter{pub: pub}
 }
 
-func (a *mqttAdapter) PublishUplink(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64,
-	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, decodedPayload []byte) error {
-	epEUIHex := fmt.Sprintf("%016x", epEUI)
-	msg := map[string]interface{}{
-		mqttKeyBsEui: fmt.Sprintf("%016x", bsEUI),
-		"rssi":       rssi,
-		"snr":        snr,
-		"rxTime":     rxTime,
-		"cnt":        packetCnt,
-		"data":       userData,
+// PublishUplink publishes an uplink on the organization's up topic.
+func (a *MQTTAdapter) PublishUplink(ctx context.Context, orgUUID string, msg *mioty.ULDataMessage) error {
+	epEUIHex := mioty.FormatEUI64Lower(msg.EpEui)
+	event := map[string]interface{}{
+		mqttKeyBsEui:       mioty.FormatEUI64Lower(msg.BsEui),
+		"rssi":             msg.RSSI,
+		"snr":              msg.SNR,
+		"rxTime":           msg.RxTime,
+		"cnt":              msg.PacketCnt,
+		"data":             msg.UserData,
+		mqttKeyDlOpen:      msg.DlOpen,
+		mqttKeyResponseExp: msg.ResponseExp,
+		mqttKeyDlAck:       msg.DlAck,
 	}
-	if len(decodedPayload) > 0 {
-		msg["decodedPayload"] = json.RawMessage(decodedPayload)
+	if len(msg.DecodedPayload) > 0 {
+		event["decodedPayload"] = json.RawMessage(msg.DecodedPayload)
 	}
-	payload, err := json.Marshal(msg)
+	payload, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("mqtt adapter: failed to marshal uplink payload: %w", err)
+		return fmt.Errorf("%w: %w", errMarshalUplinkPayload, err)
 	}
 	return a.pub.PublishDeviceEvent(ctx, orgUUID, epEUIHex, mqtt.DeviceEventUp, payload)
 }
 
-func (a *mqttAdapter) PublishAttach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
-	epEUIHex := fmt.Sprintf("%016x", epEUI)
-	payload, err := json.Marshal(map[string]interface{}{
-		mqttKeyEpEui: epEUIHex,
-		mqttKeyBsEui: fmt.Sprintf("%016x", bsEUI),
-		"event":      "attach",
-	})
+// PublishAttach publishes an endpoint attach on the organization's topic.
+func (a *MQTTAdapter) PublishAttach(ctx context.Context, orgUUID string, epEUI uint64, heardBy *uint64) error {
+	epEUIHex := mioty.FormatEUI64Lower(epEUI)
+	payload, err := json.Marshal(attachmentEvent(epEUIHex, mqtt.DeviceEventAttach, heardBy))
 	if err != nil {
-		return fmt.Errorf("mqtt adapter: failed to marshal attach payload: %w", err)
+		return fmt.Errorf("%w: %w", errMarshalAttachPayload, err)
 	}
 	return a.pub.PublishDeviceEvent(ctx, orgUUID, epEUIHex, mqtt.DeviceEventAttach, payload)
 }
 
-func (a *mqttAdapter) PublishDetach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
-	epEUIHex := fmt.Sprintf("%016x", epEUI)
-	payload, err := json.Marshal(map[string]interface{}{
-		mqttKeyEpEui: epEUIHex,
-		mqttKeyBsEui: fmt.Sprintf("%016x", bsEUI),
-		"event":      "detach",
-	})
+// PublishDetach publishes an endpoint detach on the organization's topic.
+func (a *MQTTAdapter) PublishDetach(ctx context.Context, orgUUID string, epEUI uint64, heardBy *uint64) error {
+	epEUIHex := mioty.FormatEUI64Lower(epEUI)
+	payload, err := json.Marshal(attachmentEvent(epEUIHex, mqtt.DeviceEventDetach, heardBy))
 	if err != nil {
-		return fmt.Errorf("mqtt adapter: failed to marshal detach payload: %w", err)
+		return fmt.Errorf("%w: %w", errMarshalDetachPayload, err)
 	}
 	return a.pub.PublishDeviceEvent(ctx, orgUUID, epEUIHex, mqtt.DeviceEventDetach, payload)
 }
 
-func (a *mqttAdapter) PublishDownlinkResult(ctx context.Context, orgUUID string, epEUI uint64, queID uint64, result string) error {
-	epEUIHex := fmt.Sprintf("%016x", epEUI)
-	payload, err := json.Marshal(map[string]interface{}{
+// attachmentEvent is the body of an attach or detach event; bsEui names the
+// base station that heard an over-the-air one and is absent for a decision
+// taken in the service center.
+func attachmentEvent(epEUIHex, event string, heardBy *uint64) map[string]interface{} {
+	body := map[string]interface{}{mqttKeyEpEui: epEUIHex, "event": event}
+	if heardBy != nil {
+		body[mqttKeyBsEui] = mioty.FormatEUI64Lower(*heardBy)
+	}
+	return body
+}
+
+// PublishDownlinkResult publishes a downlink result on the organization's downlink_result topic.
+func (a *MQTTAdapter) PublishDownlinkResult(ctx context.Context, orgUUID string, result *mioty.DLDataResult) error {
+	epEUIHex := mioty.FormatEUI64Lower(result.EpEui)
+	event := map[string]interface{}{
 		mqttKeyEpEui: epEUIHex,
-		mqttKeyQueId: queID,
-		"result":     result,
-	})
+		mqttKeyQueId: result.QueId,
+		"result":     result.Result,
+	}
+	if result.Result == mioty.ResultSent {
+		addTransmission(event, result)
+	}
+	payload, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("mqtt adapter: failed to marshal downlink result payload: %w", err)
+		return fmt.Errorf("%w: %w", errMarshalDownlinkResultPayload, err)
 	}
 	return a.pub.PublishDeviceEvent(ctx, orgUUID, epEUIHex, mqtt.DeviceEventDownlinkResult, payload)
+}
+
+// addTransmission adds where and when a sent downlink went out (BSSCI §3.14.1).
+func addTransmission(event map[string]interface{}, result *mioty.DLDataResult) {
+	if result.BsEui != nil {
+		event[mqttKeyBsEui] = mioty.FormatEUI64Lower(*result.BsEui)
+	}
+	if result.TxTime != nil {
+		event[mqttKeyTxTime] = *result.TxTime
+	}
+	if result.PacketCnt != nil {
+		event[mqttKeyPacketCnt] = *result.PacketCnt
+	}
 }

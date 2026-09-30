@@ -41,6 +41,7 @@ const (
 	CoreService_RevokeDownlink_FullMethodName                 = "/kilocenter.api.v1.CoreService/RevokeDownlink"
 	CoreService_ListDownlinkQueue_FullMethodName              = "/kilocenter.api.v1.CoreService/ListDownlinkQueue"
 	CoreService_GetDownlinkResults_FullMethodName             = "/kilocenter.api.v1.CoreService/GetDownlinkResults"
+	CoreService_UpdatePendingDownlink_FullMethodName          = "/kilocenter.api.v1.CoreService/UpdatePendingDownlink"
 	CoreService_SendULTransmit_FullMethodName                 = "/kilocenter.api.v1.CoreService/SendULTransmit"
 	CoreService_RequestBaseStationStatus_FullMethodName       = "/kilocenter.api.v1.CoreService/RequestBaseStationStatus"
 	CoreService_InitiatePing_FullMethodName                   = "/kilocenter.api.v1.CoreService/InitiatePing"
@@ -50,6 +51,8 @@ const (
 	CoreService_GetSystemStatus_FullMethodName                = "/kilocenter.api.v1.CoreService/GetSystemStatus"
 	CoreService_GetStatistics_FullMethodName                  = "/kilocenter.api.v1.CoreService/GetStatistics"
 	CoreService_GetReleaseInfo_FullMethodName                 = "/kilocenter.api.v1.CoreService/GetReleaseInfo"
+	CoreService_ListCapabilities_FullMethodName               = "/kilocenter.api.v1.CoreService/ListCapabilities"
+	CoreService_GetDiagnosticsBundle_FullMethodName           = "/kilocenter.api.v1.CoreService/GetDiagnosticsBundle"
 	CoreService_CreateIntegration_FullMethodName              = "/kilocenter.api.v1.CoreService/CreateIntegration"
 	CoreService_GetIntegration_FullMethodName                 = "/kilocenter.api.v1.CoreService/GetIntegration"
 	CoreService_UpdateIntegration_FullMethodName              = "/kilocenter.api.v1.CoreService/UpdateIntegration"
@@ -59,6 +62,7 @@ const (
 	CoreService_GetActivityAnalytics_FullMethodName           = "/kilocenter.api.v1.CoreService/GetActivityAnalytics"
 	CoreService_GetSignalQualityAnalytics_FullMethodName      = "/kilocenter.api.v1.CoreService/GetSignalQualityAnalytics"
 	CoreService_ListEvents_FullMethodName                     = "/kilocenter.api.v1.CoreService/ListEvents"
+	CoreService_ListErrorGroups_FullMethodName                = "/kilocenter.api.v1.CoreService/ListErrorGroups"
 	CoreService_ListBaseStationActivity_FullMethodName        = "/kilocenter.api.v1.CoreService/ListBaseStationActivity"
 	CoreService_ListEndpointActivity_FullMethodName           = "/kilocenter.api.v1.CoreService/ListEndpointActivity"
 	CoreService_StreamEvents_FullMethodName                   = "/kilocenter.api.v1.CoreService/StreamEvents"
@@ -149,6 +153,8 @@ type CoreServiceClient interface {
 	RevokeDownlink(ctx context.Context, in *RevokeDownlinkRequest, opts ...grpc.CallOption) (*RevokeDownlinkResponse, error)
 	ListDownlinkQueue(ctx context.Context, in *ListDownlinkQueueRequest, opts ...grpc.CallOption) (*ListDownlinkQueueResponse, error)
 	GetDownlinkResults(ctx context.Context, in *GetDownlinkResultsRequest, opts ...grpc.CallOption) (*GetDownlinkResultsResponse, error)
+	// Rewrites a downlink that is still pending in the queue (SCACI §3.10.1 fields).
+	UpdatePendingDownlink(ctx context.Context, in *UpdatePendingDownlinkRequest, opts ...grpc.CallOption) (*DownlinkMessage, error)
 	// UL Data Transmit operations (BSSCI 3.11)
 	SendULTransmit(ctx context.Context, in *SendULTransmitRequest, opts ...grpc.CallOption) (*SendULTransmitResponse, error)
 	// Base Station operations (BSSCI 3.5)
@@ -163,6 +169,10 @@ type CoreServiceClient interface {
 	GetSystemStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SystemStatus, error)
 	GetStatistics(ctx context.Context, in *GetStatisticsRequest, opts ...grpc.CallOption) (*Statistics, error)
 	GetReleaseInfo(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ReleaseInfo, error)
+	// Non-secret capabilities of this service center (edition and feature toggles).
+	ListCapabilities(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCapabilitiesResponse, error)
+	// Server administrators only: a zip of projected, non-secret service state.
+	GetDiagnosticsBundle(ctx context.Context, in *GetDiagnosticsBundleRequest, opts ...grpc.CallOption) (*GetDiagnosticsBundleResponse, error)
 	// Integrations
 	CreateIntegration(ctx context.Context, in *CreateIntegrationRequest, opts ...grpc.CallOption) (*Integration, error)
 	GetIntegration(ctx context.Context, in *GetIntegrationRequest, opts ...grpc.CallOption) (*Integration, error)
@@ -175,6 +185,8 @@ type CoreServiceClient interface {
 	GetSignalQualityAnalytics(ctx context.Context, in *GetSignalQualityAnalyticsRequest, opts ...grpc.CallOption) (*GetSignalQualityAnalyticsResponse, error)
 	// Events & Alerts
 	ListEvents(ctx context.Context, in *ListEventsRequest, opts ...grpc.CallOption) (*ListEventsResponse, error)
+	// Failed operations and error events grouped per bucket.
+	ListErrorGroups(ctx context.Context, in *ListErrorGroupsRequest, opts ...grpc.CallOption) (*ListErrorGroupsResponse, error)
 	// Unified Activity Feed (Events + Messages with pagination)
 	ListBaseStationActivity(ctx context.Context, in *ListBaseStationActivityRequest, opts ...grpc.CallOption) (*ListBaseStationActivityResponse, error)
 	ListEndpointActivity(ctx context.Context, in *ListEndpointActivityRequest, opts ...grpc.CallOption) (*ListEndpointActivityResponse, error)
@@ -463,6 +475,16 @@ func (c *coreServiceClient) GetDownlinkResults(ctx context.Context, in *GetDownl
 	return out, nil
 }
 
+func (c *coreServiceClient) UpdatePendingDownlink(ctx context.Context, in *UpdatePendingDownlinkRequest, opts ...grpc.CallOption) (*DownlinkMessage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DownlinkMessage)
+	err := c.cc.Invoke(ctx, CoreService_UpdatePendingDownlink_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *coreServiceClient) SendULTransmit(ctx context.Context, in *SendULTransmitRequest, opts ...grpc.CallOption) (*SendULTransmitResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SendULTransmitResponse)
@@ -553,6 +575,26 @@ func (c *coreServiceClient) GetReleaseInfo(ctx context.Context, in *emptypb.Empt
 	return out, nil
 }
 
+func (c *coreServiceClient) ListCapabilities(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCapabilitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCapabilitiesResponse)
+	err := c.cc.Invoke(ctx, CoreService_ListCapabilities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) GetDiagnosticsBundle(ctx context.Context, in *GetDiagnosticsBundleRequest, opts ...grpc.CallOption) (*GetDiagnosticsBundleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDiagnosticsBundleResponse)
+	err := c.cc.Invoke(ctx, CoreService_GetDiagnosticsBundle_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *coreServiceClient) CreateIntegration(ctx context.Context, in *CreateIntegrationRequest, opts ...grpc.CallOption) (*Integration, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Integration)
@@ -637,6 +679,16 @@ func (c *coreServiceClient) ListEvents(ctx context.Context, in *ListEventsReques
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListEventsResponse)
 	err := c.cc.Invoke(ctx, CoreService_ListEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) ListErrorGroups(ctx context.Context, in *ListErrorGroupsRequest, opts ...grpc.CallOption) (*ListErrorGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListErrorGroupsResponse)
+	err := c.cc.Invoke(ctx, CoreService_ListErrorGroups_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1235,6 +1287,8 @@ type CoreServiceServer interface {
 	RevokeDownlink(context.Context, *RevokeDownlinkRequest) (*RevokeDownlinkResponse, error)
 	ListDownlinkQueue(context.Context, *ListDownlinkQueueRequest) (*ListDownlinkQueueResponse, error)
 	GetDownlinkResults(context.Context, *GetDownlinkResultsRequest) (*GetDownlinkResultsResponse, error)
+	// Rewrites a downlink that is still pending in the queue (SCACI §3.10.1 fields).
+	UpdatePendingDownlink(context.Context, *UpdatePendingDownlinkRequest) (*DownlinkMessage, error)
 	// UL Data Transmit operations (BSSCI 3.11)
 	SendULTransmit(context.Context, *SendULTransmitRequest) (*SendULTransmitResponse, error)
 	// Base Station operations (BSSCI 3.5)
@@ -1249,6 +1303,10 @@ type CoreServiceServer interface {
 	GetSystemStatus(context.Context, *emptypb.Empty) (*SystemStatus, error)
 	GetStatistics(context.Context, *GetStatisticsRequest) (*Statistics, error)
 	GetReleaseInfo(context.Context, *emptypb.Empty) (*ReleaseInfo, error)
+	// Non-secret capabilities of this service center (edition and feature toggles).
+	ListCapabilities(context.Context, *emptypb.Empty) (*ListCapabilitiesResponse, error)
+	// Server administrators only: a zip of projected, non-secret service state.
+	GetDiagnosticsBundle(context.Context, *GetDiagnosticsBundleRequest) (*GetDiagnosticsBundleResponse, error)
 	// Integrations
 	CreateIntegration(context.Context, *CreateIntegrationRequest) (*Integration, error)
 	GetIntegration(context.Context, *GetIntegrationRequest) (*Integration, error)
@@ -1261,6 +1319,8 @@ type CoreServiceServer interface {
 	GetSignalQualityAnalytics(context.Context, *GetSignalQualityAnalyticsRequest) (*GetSignalQualityAnalyticsResponse, error)
 	// Events & Alerts
 	ListEvents(context.Context, *ListEventsRequest) (*ListEventsResponse, error)
+	// Failed operations and error events grouped per bucket.
+	ListErrorGroups(context.Context, *ListErrorGroupsRequest) (*ListErrorGroupsResponse, error)
 	// Unified Activity Feed (Events + Messages with pagination)
 	ListBaseStationActivity(context.Context, *ListBaseStationActivityRequest) (*ListBaseStationActivityResponse, error)
 	ListEndpointActivity(context.Context, *ListEndpointActivityRequest) (*ListEndpointActivityResponse, error)
@@ -1401,6 +1461,9 @@ func (UnimplementedCoreServiceServer) ListDownlinkQueue(context.Context, *ListDo
 func (UnimplementedCoreServiceServer) GetDownlinkResults(context.Context, *GetDownlinkResultsRequest) (*GetDownlinkResultsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDownlinkResults not implemented")
 }
+func (UnimplementedCoreServiceServer) UpdatePendingDownlink(context.Context, *UpdatePendingDownlinkRequest) (*DownlinkMessage, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdatePendingDownlink not implemented")
+}
 func (UnimplementedCoreServiceServer) SendULTransmit(context.Context, *SendULTransmitRequest) (*SendULTransmitResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendULTransmit not implemented")
 }
@@ -1428,6 +1491,12 @@ func (UnimplementedCoreServiceServer) GetStatistics(context.Context, *GetStatist
 func (UnimplementedCoreServiceServer) GetReleaseInfo(context.Context, *emptypb.Empty) (*ReleaseInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetReleaseInfo not implemented")
 }
+func (UnimplementedCoreServiceServer) ListCapabilities(context.Context, *emptypb.Empty) (*ListCapabilitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCapabilities not implemented")
+}
+func (UnimplementedCoreServiceServer) GetDiagnosticsBundle(context.Context, *GetDiagnosticsBundleRequest) (*GetDiagnosticsBundleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDiagnosticsBundle not implemented")
+}
 func (UnimplementedCoreServiceServer) CreateIntegration(context.Context, *CreateIntegrationRequest) (*Integration, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateIntegration not implemented")
 }
@@ -1454,6 +1523,9 @@ func (UnimplementedCoreServiceServer) GetSignalQualityAnalytics(context.Context,
 }
 func (UnimplementedCoreServiceServer) ListEvents(context.Context, *ListEventsRequest) (*ListEventsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListEvents not implemented")
+}
+func (UnimplementedCoreServiceServer) ListErrorGroups(context.Context, *ListErrorGroupsRequest) (*ListErrorGroupsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListErrorGroups not implemented")
 }
 func (UnimplementedCoreServiceServer) ListBaseStationActivity(context.Context, *ListBaseStationActivityRequest) (*ListBaseStationActivityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListBaseStationActivity not implemented")
@@ -2012,6 +2084,24 @@ func _CoreService_GetDownlinkResults_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CoreService_UpdatePendingDownlink_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePendingDownlinkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).UpdatePendingDownlink(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_UpdatePendingDownlink_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).UpdatePendingDownlink(ctx, req.(*UpdatePendingDownlinkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CoreService_SendULTransmit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SendULTransmitRequest)
 	if err := dec(in); err != nil {
@@ -2174,6 +2264,42 @@ func _CoreService_GetReleaseInfo_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CoreService_ListCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).ListCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_ListCapabilities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).ListCapabilities(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_GetDiagnosticsBundle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDiagnosticsBundleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).GetDiagnosticsBundle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_GetDiagnosticsBundle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).GetDiagnosticsBundle(ctx, req.(*GetDiagnosticsBundleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CoreService_CreateIntegration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateIntegrationRequest)
 	if err := dec(in); err != nil {
@@ -2332,6 +2458,24 @@ func _CoreService_ListEvents_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CoreServiceServer).ListEvents(ctx, req.(*ListEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_ListErrorGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListErrorGroupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).ListErrorGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_ListErrorGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).ListErrorGroups(ctx, req.(*ListErrorGroupsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3361,6 +3505,10 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CoreService_GetDownlinkResults_Handler,
 		},
 		{
+			MethodName: "UpdatePendingDownlink",
+			Handler:    _CoreService_UpdatePendingDownlink_Handler,
+		},
+		{
 			MethodName: "SendULTransmit",
 			Handler:    _CoreService_SendULTransmit_Handler,
 		},
@@ -3397,6 +3545,14 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CoreService_GetReleaseInfo_Handler,
 		},
 		{
+			MethodName: "ListCapabilities",
+			Handler:    _CoreService_ListCapabilities_Handler,
+		},
+		{
+			MethodName: "GetDiagnosticsBundle",
+			Handler:    _CoreService_GetDiagnosticsBundle_Handler,
+		},
+		{
 			MethodName: "CreateIntegration",
 			Handler:    _CoreService_CreateIntegration_Handler,
 		},
@@ -3431,6 +3587,10 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListEvents",
 			Handler:    _CoreService_ListEvents_Handler,
+		},
+		{
+			MethodName: "ListErrorGroups",
+			Handler:    _CoreService_ListErrorGroups_Handler,
 		},
 		{
 			MethodName: "ListBaseStationActivity",

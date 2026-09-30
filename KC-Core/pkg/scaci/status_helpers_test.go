@@ -124,8 +124,8 @@ func TestBuildBaseStationStatus_WithTelemetry(t *testing.T) {
 // (EUI, Bidi, Vendor, Model, Name) are always emitted regardless of telemetry state.
 func TestBuildBaseStationStatus_AlwaysEmitsIdentity(t *testing.T) {
 	bidi := true
-	vendor := "Fraunhofer"
-	model := "AVA-BS"
+	vendor := "vendor-a"
+	model := "model-1"
 
 	testCases := []struct {
 		name         string
@@ -155,10 +155,10 @@ func TestBuildBaseStationStatus_AlwaysEmitsIdentity(t *testing.T) {
 			if result.Bidi == nil || *result.Bidi != true {
 				t.Error("Bidi should be emitted when set")
 			}
-			if result.Vendor == nil || *result.Vendor != "Fraunhofer" {
+			if result.Vendor == nil || *result.Vendor != "vendor-a" {
 				t.Error("Vendor should be emitted when set")
 			}
-			if result.Model == nil || *result.Model != "AVA-BS" {
+			if result.Model == nil || *result.Model != "model-1" {
 				t.Error("Model should be emitted when set")
 			}
 			if result.Name == nil || *result.Name != "Production BS 01" {

@@ -5,7 +5,9 @@ import (
 	"context"
 	"time"
 
-	grpcpkg "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	audit "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/passwordpolicy"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 )
@@ -57,6 +59,12 @@ type OrganizationService interface {
 	ListAll(ctx context.Context, limit, offset int) ([]*models.Organization, int64, error)
 }
 
+// OrganizationDirectory looks an organization up across tenants; API keys
+// read it in every edition to scope a key to its organization's tenant.
+type OrganizationDirectory interface {
+	GetByIDUnscoped(ctx context.Context, id uuid.UUID) (*models.Organization, error)
+}
+
 // MembershipService handles organization membership operations
 type MembershipService interface {
 	AddUser(ctx context.Context, orgID, userID uuid.UUID, role string) error
@@ -79,11 +87,18 @@ type APIKeyService interface {
 }
 
 // EventWriter writes system events to the event store.
-type EventWriter = grpcpkg.EventWriter
+type EventWriter = audit.EventWriter
 
-// AuditEmitter emits audit events. Implemented by grpcpkg.AuditEmitter.
-type AuditEmitter interface {
-	EmitAudit(ctx context.Context, ev grpcpkg.AuditEvent)
+// AuditRecorder records audit events and reports one it could not write.
+// Implemented by audit.Recorder.
+type AuditRecorder interface {
+	Record(ctx context.Context, ev audit.Event)
+}
+
+// RequiredAuditRecorder records the audit event a secret cannot be disclosed
+// without, returning the write failure so it is withheld. Implemented by audit.Recorder.
+type RequiredAuditRecorder interface {
+	RecordRequired(ctx context.Context, ev audit.Event) error
 }
 
 // AuthTokens contains access and refresh tokens
@@ -117,7 +132,11 @@ type AuthSettings struct {
 	RefreshTokenEnabled bool
 	OIDCEnabled         bool
 	OIDCProviderURL     string
+	PasswordPolicy      PasswordPolicy
 }
+
+// PasswordPolicy states the rules a new password must meet.
+type PasswordPolicy = passwordpolicy.Policy
 
 // UserCreateRequest contains fields for creating a new user
 type UserCreateRequest struct {
