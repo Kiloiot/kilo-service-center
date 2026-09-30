@@ -336,6 +336,7 @@ var certSentinelTokens = []struct {
 	{certificates.ErrCAKeyCopy, grpcerrors.ErrTokenCAKeyCopyFailed},
 	{certificates.ErrGenerationFailed, grpcerrors.ErrTokenCertGenerationFailed},
 	{certificates.ErrTypeRequired, grpcerrors.ErrTokenCertTypeRequired},
+	{certificates.ErrKeyUnreadable, grpcerrors.ErrTokenInternalError},
 	{certificates.ErrKeyDownloadNotRecorded, grpcerrors.ErrTokenInternalError},
 	{certificates.ErrNotFound, grpcerrors.ErrTokenCertNotFound},
 	{certificates.ErrCertificateNotStored, grpcerrors.ErrTokenCertNotStored},

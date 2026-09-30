@@ -642,6 +642,10 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   point at faults of the service center itself.
 - Downloading a base station's private key no longer hangs until the request
   times out: the key's row lock blocked the audit record of its own download.
+- A stored base station private key that cannot be decrypted, for example
+  under a wrong master key, is answered with an internal error instead of
+  "certificate not found", which read as a key already downloaded. The key
+  stays stored and can be downloaded once the master key is correct.
 - A base station location outside the globe (latitude beyond ±90, longitude
   beyond ±180) is refused with `INVALID_ARGUMENT` and a message naming the
   valid range, instead of an internal error.

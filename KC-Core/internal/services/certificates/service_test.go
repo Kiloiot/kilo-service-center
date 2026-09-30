@@ -984,7 +984,8 @@ func TestPrivateKey_ConcurrentDownloadsHandItOutOnce(t *testing.T) {
 }
 
 // TestStoredPrivateKey_SurvivesADecryptFailure: a key that fails to decrypt
-// (a wrong master key) is refused and stays stored for a later download.
+// (a wrong master key) is refused as unreadable, not as taken, and stays
+// stored for a later download.
 func TestStoredPrivateKey_SurvivesADecryptFailure(t *testing.T) {
 	sealed := base64.StdEncoding.EncodeToString([]byte("station key"))
 	eui := []byte{0xCA, 0xFE, 0xCA, 0xFE, 0xCA, 0xFE, 0xCA, 0xFE}
@@ -996,8 +997,8 @@ func TestStoredPrivateKey_SurvivesADecryptFailure(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if _, _, err := svc.GetStoredCertificate(testutil.TestContext(), testOwnerTenant, eui, CertTypeKey); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("undecryptable key: %v, want ErrNotFound", err)
+	if _, _, err := svc.GetStoredCertificate(testutil.TestContext(), testOwnerTenant, eui, CertTypeKey); !errors.Is(err, ErrKeyUnreadable) {
+		t.Fatalf("undecryptable key: %v, want ErrKeyUnreadable", err)
 	}
 	if repo.bs.TLSKey == nil {
 		t.Fatal("a decrypt failure lost the stored key")

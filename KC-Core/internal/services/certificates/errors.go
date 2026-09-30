@@ -40,6 +40,8 @@ var (
 	ErrCertificateNotStored = errors.New("certificate not stored")
 	// ErrKeySuperseded reports a bundle whose private key is no longer the station's stored key.
 	ErrKeySuperseded = errors.New("bundle private key superseded")
+	// ErrKeyUnreadable reports a stored private key kept because it could not be decrypted.
+	ErrKeyUnreadable = errors.New("stored private key unreadable")
 	// ErrKeyDownloadNotRecorded reports a private key kept because its download could not be recorded.
 	ErrKeyDownloadNotRecorded = errors.New("private key download not recorded")
 	// ErrServerGenerationFailed reports a failed server certificate run.

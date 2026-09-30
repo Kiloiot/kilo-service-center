@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -139,6 +140,33 @@ func TestDownloadBaseStationPrivateKey_IsRefusedAndKeptWhenItCannotBeRecorded(t 
 	require.NoError(t, err, "once the event store is back the key is handed out")
 	assert.Equal(t, certTestStoredKey, string(resp.GetContent()))
 	assert.Len(t, capture.events, 1)
+}
+
+var errTestKeyUnreadable = errors.New("wrong master key")
+
+// unreadableKeyEncryptor fails every decryption, like a wrong master key.
+type unreadableKeyEncryptor struct{ plainKeyEncryptor }
+
+func (unreadableKeyEncryptor) DecryptKey(string) ([]byte, error) {
+	return nil, errTestKeyUnreadable
+}
+
+func TestDownloadBaseStationPrivateKey_UnreadableKeyIsInternalAndKept(t *testing.T) {
+	recorder, capture := productionRecorder(t)
+	stations := newKeyedCertStations()
+	cfg := &config.Config{Certificates: config.CertificateConfig{CertsDir: t.TempDir(), TempDir: filepath.Join(t.TempDir(), "bundles")}}
+	certSvc, err := certificates.New(testutil.TestContext(), cfg, logger.NewNop(), stations, unreadableKeyEncryptor{}, selfSignedCertGen, clock.SystemClock{}, recorder)
+	require.NoError(t, err)
+	svc := testCoreService(coreFields{certSvc: certSvc, audit: recorder, log: logger.NewNop()})
+
+	resp, err := svc.DownloadBaseStationCertificate(keyDownloadCtx(), &pb.DownloadBaseStationCertificateRequest{BsEui: testOwnedBsEui, CertType: certificates.CertTypeKey})
+
+	assert.Nil(t, resp)
+	st := status.Convert(err)
+	assert.Equal(t, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInternalError), st.Code(), "an unreadable key is not a key already taken")
+	assert.Equal(t, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInternalError), st.Message())
+	assert.True(t, stations.stored(), "an unreadable key stays stored for a download once the master key is fixed")
+	assert.Empty(t, capture.events)
 }
 
 func TestDownloadBundlePrivateKey_IsRefusedAndKeptWhenItCannotBeRecorded(t *testing.T) {
