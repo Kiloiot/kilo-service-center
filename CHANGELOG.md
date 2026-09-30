@@ -400,6 +400,11 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   database on every request; both binaries share one organization resolver.
 
 ### Added
+- MQTT `event/up` carries the whole uplink: `epEui`, `eqSnr`, `rxDuration`,
+  `format`, `profile`, `mode`, `subpackets`, every receiving base station in
+  `baseStations` (with `dlRxSnr`/`dlRxRssi` when reported), `duplicate` and
+  `packetCntReused`, and the decode outcome in `decodeStatus`,
+  `decodeErrorCode` and `blueprintTypeEui`. The earlier fields are unchanged.
 - `AuthSettings.password_policy` (field 11, new message `PasswordPolicy`): the
   minimum and maximum length and the letter and digit requirements every new
   password must meet, so clients can state the rules before a password is

@@ -106,6 +106,71 @@ func TestMQTTAdapter_PublishUplink_CarriesTheDownlinkWindowFlags(t *testing.T) {
 	assert.Equal(t, float64(43), payload["cnt"], "the published fields stay unchanged")
 }
 
+func TestMQTTAdapter_PublishUplink_CarriesEveryUplinkField(t *testing.T) {
+	t.Parallel()
+	mock := &mockDeviceEventPublisher{}
+	adapter := NewMQTTAdapter(mock)
+	eqSnr, rxDuration, format := 19.8, int64(250000000), uint8(3)
+	profile, mode, dup := "eu868", "ulp", true
+	dlRxSnr, dlRxRssi := 12.5, -90.25
+	subpackets := &mioty.Subpackets{SNR: []float64{20, 21}, RSSI: []float64{-45, -46}, Frequency: []int64{868180000, 868220000}}
+
+	err := adapter.PublishUplink(testutil.TestContext(), "org", &mioty.ULDataMessage{
+		EpEui: 0x70B3D56770111505, BsEui: 0x70B3D59CD00009E6, RSSI: -45.3, SNR: 29.2, RxTime: 1790769339000000000,
+		PacketCnt: 96, UserData: []byte{0x00, 0x29}, EqSnr: &eqSnr, RxDuration: &rxDuration, Profile: &profile,
+		Mode: &mode, Format: &format, Subpackets: subpackets, Duplicate: &dup, PacketCntReused: true,
+		BaseStations: []mioty.BaseStationReception{
+			{BsEui: 0x70B3D59CD00009E6, RxTime: 1790769339000000000, Snr: 29.2, Rssi: -45.3, EqSnr: &eqSnr, DlRxSnr: &dlRxSnr, DlRxRssi: &dlRxRssi, Profile: &profile, Mode: &mode, Subpackets: subpackets},
+			{BsEui: 0x70B3D59CD00009BB, RxTime: 1790769339000000100, Snr: 3.5, Rssi: -120.5},
+		},
+		DecodedPayload:   json.RawMessage(`{"temperature":41}`),
+		DecodeStatus:     "success",
+		BlueprintTypeEUI: []byte{0x70, 0xB3, 0xD5, 0x67, 0x70, 0x11, 0x00, 0x00},
+	})
+	require.NoError(t, err)
+
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal(mock.lastCall().Payload, &payload))
+	assert.Equal(t, "70b3d56770111505", payload["epEui"])
+	assert.InDelta(t, 19.8, payload["eqSnr"], 0.001)
+	assert.Equal(t, float64(250000000), payload["rxDuration"])
+	assert.Equal(t, "eu868", payload["profile"])
+	assert.Equal(t, "ulp", payload["mode"])
+	assert.Equal(t, float64(3), payload["format"])
+	assert.Equal(t, true, payload["duplicate"])
+	assert.Equal(t, true, payload["packetCntReused"])
+	assert.Equal(t, "success", payload["decodeStatus"])
+	assert.Equal(t, "70b3d56770110000", payload["blueprintTypeEui"])
+	assert.Equal(t, map[string]interface{}{"temperature": float64(41)}, payload["decodedPayload"])
+	assert.Equal(t, []interface{}{float64(868180000), float64(868220000)}, payload["subpackets"].(map[string]interface{})["frequency"])
+
+	stations := payload["baseStations"].([]interface{})
+	require.Len(t, stations, 2, "every receiving station is published")
+	first := stations[0].(map[string]interface{})
+	assert.Equal(t, "70b3d59cd00009e6", first["bsEui"])
+	assert.InDelta(t, 12.5, first["dlRxSnr"], 0.001)
+	assert.InDelta(t, -90.25, first["dlRxRssi"], 0.001)
+	assert.Equal(t, "70b3d59cd00009bb", stations[1].(map[string]interface{})["bsEui"])
+}
+
+func TestMQTTAdapter_PublishUplink_ReportsWhyAPayloadWasNotDecoded(t *testing.T) {
+	t.Parallel()
+	mock := &mockDeviceEventPublisher{}
+	adapter := NewMQTTAdapter(mock)
+
+	err := adapter.PublishUplink(testutil.TestContext(), "org", &mioty.ULDataMessage{
+		EpEui: 1, BsEui: 2, DecodeStatus: "failed", DecodeErrorCode: "blueprint.decode.payload_too_short",
+	})
+	require.NoError(t, err)
+
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal(mock.lastCall().Payload, &payload))
+	assert.Equal(t, "failed", payload["decodeStatus"])
+	assert.Equal(t, "blueprint.decode.payload_too_short", payload["decodeErrorCode"])
+	assert.NotContains(t, payload, "decodedPayload")
+	assert.NotContains(t, payload, "blueprintTypeEui")
+}
+
 func TestMQTTAdapter_PublishUplink_ZeroPaddedEUI(t *testing.T) {
 	t.Parallel()
 	mock := &mockDeviceEventPublisher{}

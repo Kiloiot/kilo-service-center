@@ -133,24 +133,42 @@ mosquitto_sub -h localhost -p 1883 \
 
 ```json
 {
+  "epEui": "70b3d59cd00009e6",
   "bsEui": "0011223344556677",
   "rssi": -95,
   "snr": 7.5,
+  "eqSnr": 6.9,
   "rxTime": 1737025800000000000,
+  "rxDuration": 250000000,
   "cnt": 1234,
-  "data": "SGVsbG8=",
+  "data": "ACk=",
+  "format": 0,
+  "profile": "eu868",
+  "mode": "ulp",
+  "subpackets": { "snr": [7.1, 7.9], "rssi": [-95.2, -94.8], "frequency": [868180000, 868220000] },
   "dlOpen": true,
   "responseExp": false,
-  "dlAck": false
+  "dlAck": false,
+  "baseStations": [
+    { "bsEui": "0011223344556677", "rxTime": 1737025800000000000, "snr": 7.5, "rssi": -95, "eqSnr": 6.9 },
+    { "bsEui": "8899aabbccddeeff", "rxTime": 1737025800000000100, "snr": 2.1, "rssi": -118.4 }
+  ],
+  "decodedPayload": { "temperature": 41 },
+  "decodeStatus": "success",
+  "blueprintTypeEui": "70b3d56770110000"
 }
 ```
 
-- `data` is base64-encoded payload bytes.
-- `rxTime` is a Unix timestamp in nanoseconds. It is larger than 2^53, so a JavaScript client that needs every nanosecond must read it with a big-integer JSON parser.
+- `epEui` is the endpoint; it is also the device segment of the topic.
+- `bsEui`, `rssi`, `snr`, `eqSnr`, `rxTime`, `rxDuration`, `profile`, `mode` and `subpackets` describe the first reception; `baseStations` lists every base station that received the uplink, each with its own metrics, and a base station that reported downlink reception quality adds `dlRxSnr` and `dlRxRssi`.
+- `data` is base64-encoded payload bytes; `format` is the uplink's payload format number.
+- `rxTime` and `rxDuration` are nanoseconds. `rxTime` is larger than 2^53, so a JavaScript client that needs every nanosecond must read it with a big-integer JSON parser.
+- `subpackets` holds the per-subpacket `snr` (dB), `rssi` (dBm), `frequency` (Hz) and, when the base station reports it, `phase` (degrees).
 - `dlOpen` is `true` when the endpoint opened a downlink window after this uplink; a queued downlink can be sent in it.
 - `responseExp` is `true` when the endpoint expects a response in that window.
 - `dlAck` is `true` when the endpoint acknowledges the downlink it received in its previous window.
-- A payload that also has a matching blueprint carries a `decodedPayload` object.
+- `duplicate` is `true` when the endpoint reused a packet counter, with `packetCntReused` when that happened outside the duplicate window.
+- `decodeStatus` is `success`, `failed`, `skipped` (no blueprint) or `pending`. On success `decodedPayload` holds the decoded values and `blueprintTypeEui` names the blueprint's device type; on failure `decodeErrorCode` names the reason.
 
 ### `event/attach`
 

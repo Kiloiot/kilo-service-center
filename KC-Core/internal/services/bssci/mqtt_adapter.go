@@ -12,14 +12,11 @@ import (
 
 // MQTT payload field keys shared by the published event bodies.
 const (
-	mqttKeyEpEui       = "epEui"
-	mqttKeyBsEui       = "bsEui"
-	mqttKeyQueId       = "queId"
-	mqttKeyDlOpen      = "dlOpen"
-	mqttKeyResponseExp = "responseExp"
-	mqttKeyDlAck       = "dlAck"
-	mqttKeyTxTime      = "txTime"
-	mqttKeyPacketCnt   = "packetCnt"
+	mqttKeyEpEui     = "epEui"
+	mqttKeyBsEui     = "bsEui"
+	mqttKeyQueId     = "queId"
+	mqttKeyTxTime    = "txTime"
+	mqttKeyPacketCnt = "packetCnt"
 )
 
 // MQTTAdapter bridges bssci.MQTTEventPublisher and the downlink result
@@ -36,26 +33,11 @@ func NewMQTTAdapter(pub mqtt.DeviceEventPublisher) *MQTTAdapter {
 
 // PublishUplink publishes an uplink on the organization's up topic.
 func (a *MQTTAdapter) PublishUplink(ctx context.Context, orgUUID string, msg *mioty.ULDataMessage) error {
-	epEUIHex := mioty.FormatEUI64Lower(msg.EpEui)
-	event := map[string]interface{}{
-		mqttKeyBsEui:       mioty.FormatEUI64Lower(msg.BsEui),
-		"rssi":             msg.RSSI,
-		"snr":              msg.SNR,
-		"rxTime":           msg.RxTime,
-		"cnt":              msg.PacketCnt,
-		"data":             msg.UserData,
-		mqttKeyDlOpen:      msg.DlOpen,
-		mqttKeyResponseExp: msg.ResponseExp,
-		mqttKeyDlAck:       msg.DlAck,
-	}
-	if len(msg.DecodedPayload) > 0 {
-		event["decodedPayload"] = json.RawMessage(msg.DecodedPayload)
-	}
-	payload, err := json.Marshal(event)
+	payload, err := json.Marshal(newMQTTUplinkEvent(msg))
 	if err != nil {
 		return fmt.Errorf("%w: %w", errMarshalUplinkPayload, err)
 	}
-	return a.pub.PublishDeviceEvent(ctx, orgUUID, epEUIHex, mqtt.DeviceEventUp, payload)
+	return a.pub.PublishDeviceEvent(ctx, orgUUID, mioty.FormatEUI64Lower(msg.EpEui), mqtt.DeviceEventUp, payload)
 }
 
 // PublishAttach publishes an endpoint attach on the organization's topic.
