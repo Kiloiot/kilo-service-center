@@ -22,6 +22,13 @@ func (failingStream) Context() context.Context { return testutil.TestContext() }
 
 // A request the service refuses is the caller's mistake and is logged as a
 // warning; only a failure of the service itself is logged as an error.
+// The status message and the methods of the failing calls.
+const (
+	failedCallMessage      = "call failed"
+	failedCallUnaryMethod  = "/svc/Unary"
+	failedCallStreamMethod = "/svc/Stream"
+)
+
 func TestFailedCall_IsAnErrorOnlyWhenTheServiceFailed(t *testing.T) {
 	t.Parallel()
 
@@ -30,18 +37,18 @@ func TestFailedCall_IsAnErrorOnlyWhenTheServiceFailed(t *testing.T) {
 		err   error
 		level string
 	}{
-		{"invalid argument", status.Error(codes.InvalidArgument, "bad"), "warn"},
-		{"not found", status.Error(codes.NotFound, "gone"), "warn"},
-		{"already exists", status.Error(codes.AlreadyExists, "dup"), "warn"},
-		{"permission denied", status.Error(codes.PermissionDenied, "no"), "warn"},
-		{"unauthenticated", status.Error(codes.Unauthenticated, "who"), "warn"},
-		{"failed precondition", status.Error(codes.FailedPrecondition, "state"), "warn"},
-		{"out of range", status.Error(codes.OutOfRange, "range"), "warn"},
-		{"aborted", status.Error(codes.Aborted, "conflict"), "warn"},
-		{"canceled", status.Error(codes.Canceled, "gone away"), "warn"},
-		{"internal", status.Error(codes.Internal, "boom"), "error"},
-		{"unavailable", status.Error(codes.Unavailable, "down"), "error"},
-		{"deadline exceeded", status.Error(codes.DeadlineExceeded, "slow"), "error"},
+		{"invalid argument", status.Error(codes.InvalidArgument, failedCallMessage), "warn"},
+		{"not found", status.Error(codes.NotFound, failedCallMessage), "warn"},
+		{"already exists", status.Error(codes.AlreadyExists, failedCallMessage), "warn"},
+		{"permission denied", status.Error(codes.PermissionDenied, failedCallMessage), "warn"},
+		{"unauthenticated", status.Error(codes.Unauthenticated, failedCallMessage), "warn"},
+		{"failed precondition", status.Error(codes.FailedPrecondition, failedCallMessage), "warn"},
+		{"out of range", status.Error(codes.OutOfRange, failedCallMessage), "warn"},
+		{"aborted", status.Error(codes.Aborted, failedCallMessage), "warn"},
+		{"canceled", status.Error(codes.Canceled, failedCallMessage), "warn"},
+		{"internal", status.Error(codes.Internal, failedCallMessage), "error"},
+		{"unavailable", status.Error(codes.Unavailable, failedCallMessage), "error"},
+		{"deadline exceeded", status.Error(codes.DeadlineExceeded, failedCallMessage), "error"},
 		{"plain error", errors.New("boom"), "error"},
 	}
 	for _, tc := range cases {
@@ -49,13 +56,13 @@ func TestFailedCall_IsAnErrorOnlyWhenTheServiceFailed(t *testing.T) {
 			t.Parallel()
 
 			unaryLog := newCapturingLogger()
-			_, err := unaryInterceptor(unaryLog)(testutil.TestContext(), nil, &grpc.UnaryServerInfo{FullMethod: "/svc/Unary"},
+			_, err := unaryInterceptor(unaryLog)(testutil.TestContext(), nil, &grpc.UnaryServerInfo{FullMethod: failedCallUnaryMethod},
 				func(context.Context, interface{}) (interface{}, error) { return nil, tc.err })
 			require.ErrorIs(t, err, tc.err)
 			assert.Equal(t, tc.level, levelOf(t, unaryLog, LogGRPCUnaryCallFailed))
 
 			streamLog := newCapturingLogger()
-			err = streamInterceptor(streamLog)(nil, failingStream{}, &grpc.StreamServerInfo{FullMethod: "/svc/Stream"},
+			err = streamInterceptor(streamLog)(nil, failingStream{}, &grpc.StreamServerInfo{FullMethod: failedCallStreamMethod},
 				func(interface{}, grpc.ServerStream) error { return tc.err })
 			require.ErrorIs(t, err, tc.err)
 			assert.Equal(t, tc.level, levelOf(t, streamLog, LogGRPCStreamCallFailed))

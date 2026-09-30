@@ -21,8 +21,12 @@ type resetConn struct{ net.Conn }
 func (resetConn) Read([]byte) (int, error)        { return 0, errPeerReset }
 func (resetConn) Close() error                    { return nil }
 func (resetConn) SetReadDeadline(time.Time) error { return nil }
+
+// resetPeerPort is the source port of the peer that resets the link.
+const resetPeerPort = 40000
+
 func (resetConn) RemoteAddr() net.Addr {
-	return &net.TCPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 40000}
+	return &net.TCPAddr{IP: net.IPv4(203, 0, 113, 7), Port: resetPeerPort}
 }
 
 // A peer that is not a base station speaking TLS, or that drops the link, is

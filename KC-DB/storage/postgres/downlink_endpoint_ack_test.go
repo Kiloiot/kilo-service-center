@@ -109,6 +109,12 @@ func TestMarkEndpointAcknowledged_ConcurrentReceptionsMarkOnce(t *testing.T) {
 	assert.False(t, <-second, "the second reception finds the downlink already acknowledged")
 }
 
+// How long, and how often, waitForBlockedUpdate looks for a session waiting on a lock.
+const (
+	blockedUpdateWait = 10 * time.Second
+	blockedUpdatePoll = 10 * time.Millisecond
+)
+
 // waitForBlockedUpdate waits until a session of the test database waits on a row lock.
 func waitForBlockedUpdate(t *testing.T, db *sqlx.DB) {
 	t.Helper()
@@ -117,7 +123,7 @@ func waitForBlockedUpdate(t *testing.T, db *sqlx.DB) {
 		require.NoError(t, db.QueryRow(`SELECT count(*) FROM pg_stat_activity
 			WHERE datname = current_database() AND wait_event_type = 'Lock'`).Scan(&waiting))
 		return waiting > 0
-	}, 10*time.Second, 10*time.Millisecond)
+	}, blockedUpdateWait, blockedUpdatePoll)
 }
 
 // TestGetDownlinkResults_ReportsTheEndpointAcknowledgement: the results
