@@ -9,27 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.0] - 2026-09-30
 
-KiloCenter 2.0 is a major release. It changes what an operator must configure, what the API
-publishes and how the data is stored, and an upgrade needs the steps in
+KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, described in
 [Key material migration](GitBook/06-Operations/02-key-material-migration.md).
 
-**Why this is a major version, not 1.4:**
+**Why this is 2.0 and not 1.4:**
 
-- **Configuration an upgrade must provide.** The services refuse to start without
-  `KILOCENTER_MASTER_KEY`, which encrypts endpoint and base station keys at rest, and without
-  `KILOCENTER_INTERNAL_AUTH_PEER_SECRET` when KC-Gateway, KC-Core and KC-Identity reach each
-  other over a network. KC-Core also needs `identity.address`, and KC-Core and KC-Identity must
-  be upgraded together.
-- **Stored data is converted.** Migrations 000143 to 000186 run on upgrade, and the `rekey` tool
-  re-encrypts every stored key before the schema can move past 000143. A 1.x release cannot run
-  against the upgraded database.
-- **Published API removed or changed.**
-  - The organization quota fields are gone.
-  - `IdentityInternalService.GetUserMembership` is replaced by `GetUserRoles`.
-  - gRPC-web over WebSocket is replaced by server streams.
+- **New settings are required before the upgrade.**
+  - Set a master key (`KILOCENTER_MASTER_KEY`). It encrypts your endpoint and base station keys
+    at rest, and the services do not start without it.
+  - When KC-Gateway, KC-Core and KC-Identity run on separate hosts or containers, also set a
+    shared internal secret (`KILOCENTER_INTERNAL_AUTH_PEER_SECRET`).
+  - Upgrade KC-Core and KC-Identity together.
+- **Your stored keys are converted.** The upgrade re-encrypts every stored key under the master
+  key, and after that the database can no longer be used with a 1.x release. Back it up first.
+- **Parts of the API changed.**
+  - The organization quota fields are removed.
   - Endpoint keys are masked on every read.
-  - Every call checks the caller's role and returns `PERMISSION_DENIED` when the role does not
+  - Every call now checks the user's role and answers `PERMISSION_DENIED` when the role does not
     cover it.
+  - The web interface's WebSocket connection is replaced by gRPC-web server streams.
 
 **What else changes, in brief** (the full list follows):
 
@@ -187,11 +185,6 @@ publishes and how the data is stored, and an upgrade needs the steps in
 - Every service center operation sent over SCACI is recorded for resume before
   it is written; a broadcast reports each failed session and continues with the
   rest.
-- **ECE:** with SCACI enabled, the Enterprise edition's KC-Core requires
-  `protocol.strict_org_resolution: true` and
-  `protocol.scaci_cert_tenant_mapping: true` and refuses to start otherwise.
-  KC-Identity and KC-Gateway run no SCACI listener and do not check these
-  settings.
 - Every BSSCI and SCACI frame write is bounded by the new
   `protocol.socket_write_timeout` (default 10 s), so one stalled peer no longer
   blocks delivery to the others.
@@ -502,8 +495,7 @@ publishes and how the data is stored, and an upgrade needs the steps in
   renewed) are filed under the platform tenant `general.tenant_id`, and only
   administrators read them: the event list, event stream, error groups and the
   base station and endpoint activity timelines all apply the caller's
-  readable event categories. The Enterprise Edition now refuses to start
-  without `general.tenant_id`, as the Community Edition already did.
+  readable event categories.
 - Integrations are managed by administrators only, and their settings are
   write-only: `GetIntegration`, `ListIntegrations` and the create and update
   responses name each configured setting with the value `configured` instead
@@ -534,9 +526,6 @@ publishes and how the data is stored, and an upgrade needs the steps in
   not the certificate pinned for the station, is now refused as if the station
   were not registered. A station registered without a certificate is pinned to
   the first certificate that names it.
-- In the enterprise edition KC-Core and KC-Gateway refuse to start without
-  `general.org_enforcement_enabled=true`. KC-Identity does not read the
-  setting and starts without it.
 - The unauthenticated CE onboarding call completes onboarding exactly once:
   two concurrent calls on an installation that had not finished onboarding
   both succeeded, and the later one overwrote the company name.
