@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -83,6 +84,37 @@ func TestBaseStationTakeTLSKey_DoesNotWaitOnAKeyBeingTaken(t *testing.T) {
 	require.Error(t, inner, "a take while the key is held gets nothing")
 	assert.NotErrorIs(t, inner, context.DeadlineExceeded, "it is refused, not left waiting")
 	assert.Less(t, waited, takeKeyTestLockWait/2)
+}
+
+// TestBaseStationTakeTLSKey_RecordsAnEventOfTheStationWhileTakingTheKey: the
+// audit event naming the station is written on another connection while the
+// key is held, so the key's row lock must not block rows that refer to it.
+func TestBaseStationTakeTLSKey_RecordsAnEventOfTheStationWhileTakingTheKey(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	repo, eui := seedStationKey(t)
+	ctx := testutil.TestContext()
+	station, err := repo.GetByEUI(ctx, takeKeyTestOwner, eui[:])
+	require.NoError(t, err)
+	events := NewSystemEventStore(repo.db.DB, clock.SystemClock{}, logger.Get())
+	recordCtx, cancel := context.WithTimeout(ctx, takeKeyTestLockWait)
+	t.Cleanup(cancel)
+
+	err = repo.TakeTLSKey(ctx, takeKeyTestOwner, eui[:], func(string) error {
+		return events.CreateEvent(recordCtx, &models.SystemEvent{
+			TenantID:      strconv.FormatInt(takeKeyTestOwner, 10),
+			EventType:     models.EventTypeCertificatePrivateKeyDownloaded,
+			Category:      models.EventCategoryAudit,
+			Severity:      models.EventSeverityInfo,
+			SourceType:    models.SourceTypeBaseStation,
+			SourceName:    takeKeyTestBsName,
+			BasestationID: &station.ID,
+			Title:         models.EventTitleCertificatePrivateKeyDownloaded,
+		})
+	})
+
+	require.NoError(t, err, "the event is recorded while the key is held, not blocked by its lock")
 }
 
 // TestBaseStationTakeTLSKey_HandsTheKeyOutOnce: another tenant takes nothing,

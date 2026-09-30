@@ -13,10 +13,11 @@ import (
 // sqlLockBaseStationTLSKey reads a station's stored private key under a row
 // lock that a concurrent take is refused rather than queued behind, since the
 // holder may need another pooled connection before it can release the lock.
+// NO KEY UPDATE, because that connection records an event referencing the row.
 const sqlLockBaseStationTLSKey = `
 	SELECT id, tls_key FROM basestations
 	WHERE tenant_id = $1 AND bs_eui = $2 AND tls_key IS NOT NULL AND tls_key <> ''
-	FOR UPDATE NOWAIT`
+	FOR NO KEY UPDATE NOWAIT`
 
 const sqlClearBaseStationTLSKey = `UPDATE basestations SET tls_key = NULL, updated_at = NOW() WHERE id = $1`
 
