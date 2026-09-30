@@ -86,6 +86,11 @@ const (
 	DeviceEventDownlinkRejected = "downlink_rejected"
 )
 
+// DownlinkResultAcknowledged is the event/downlink_result value reporting that
+// the endpoint acknowledged the downlink (BSSCI §3.10.1 dlAck), beside the
+// sent, expired and invalid results of SCACI §3.12.1.
+const DownlinkResultAcknowledged = "acknowledged"
+
 // topicDeviceCommandDownWildcard is TopicDeviceCommandDownFormat with the org and endpoint segments wildcarded.
 var topicDeviceCommandDownWildcard = fmt.Sprintf(TopicDeviceCommandDownFormat, "%s", "+", "+")
 

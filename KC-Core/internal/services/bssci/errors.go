@@ -17,8 +17,8 @@ var (
 	errConfirmDownlinkQueued = errors.New("failed to confirm a downlink queued")
 	// errMarkEndpointAck reports a failed record of an endpoint's downlink acknowledgement.
 	errMarkEndpointAck = errors.New("failed to record the endpoint acknowledgement of a downlink")
-	// errRecordDownlinkAckEvent reports a failed event for an endpoint's downlink acknowledgement.
-	errRecordDownlinkAckEvent = errors.New("failed to record the downlink acknowledgement event")
+	// errReportDownlinkAck reports an acknowledged downlink its originators could not be told of.
+	errReportDownlinkAck = errors.New("failed to report the endpoint acknowledgement of a downlink")
 	// errUnidentifiedDownlink reports a queue row whose endpoint cannot be parsed.
 	errUnidentifiedDownlink = errors.New("downlink result reporter: unidentified downlink")
 	// errFailRejectedDownlink reports a failed update of a downlink its base station rejected.
@@ -104,8 +104,8 @@ var (
 	ErrNilEndpointAckStore = errors.New("endpoint acknowledgement recorder: downlink queue is nil")
 	// ErrNilEndpointAckLogger rejects an endpoint acknowledgement recorder built without a logger.
 	ErrNilEndpointAckLogger = errors.New("endpoint acknowledgement recorder: logger is nil")
-	// ErrNilEndpointAckEvents rejects an endpoint acknowledgement recorder built without an event recorder.
-	ErrNilEndpointAckEvents = errors.New("endpoint acknowledgement recorder: event recorder is nil")
+	// ErrNilEndpointAckReporter rejects an endpoint acknowledgement recorder built without a reporter.
+	ErrNilEndpointAckReporter = errors.New("endpoint acknowledgement recorder: reporter is nil")
 	// ErrNilDownlinkAckRecorder rejects an uplink ingest service built without its acknowledgement recorder.
 	ErrNilDownlinkAckRecorder = errors.New("uplink ingest service: downlink acknowledgement recorder is nil")
 	// errNilAttachTransactionRunner rejects an attachment persister built without its transaction runner.

@@ -79,7 +79,7 @@ const sqlExpireOverdueDownlinks = `
 		FOR UPDATE SKIP LOCKED
 	) AS due
 	WHERE d.id = due.id
-	RETURNING d.id, d.que_id, d.ac_que_id, d.ep_eui, d.tenant_id, d.organization_id, d.ac_eui,
+	RETURNING d.id, d.que_id, d.ac_que_id, d.ep_eui, d.tenant_id, d.organization_id, d.ac_eui, d.ref,
 		CASE WHEN due.status = ANY($5::text[]) THEN d.bs_eui END`
 
 // heldStatuses are the queue states in which a base station holds a downlink.

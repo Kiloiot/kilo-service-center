@@ -19,7 +19,7 @@ import (
 func queuedByTheSession() interface{} {
 	return mock.MatchedBy(func(dl *storage.DownlinkMessage) bool {
 		return dl != nil && dl.ACQueID != nil && *dl.ACQueID == coreACQueID && dl.QueID == 0 &&
-			dl.ACEUI != nil && *dl.ACEUI == coreQueuerAcEui
+			dl.ACEUI != nil && *dl.ACEUI == coreQueuerAcEui && dl.Ref == ""
 	})
 }
 
@@ -45,7 +45,7 @@ func TestProcessDLDataQueueCore_AcceptedWhenTheQueueRecordFails(t *testing.T) {
 			EpEui:    coreEpEUI,
 			QueId:    coreACQueID,
 			UserData: [][]byte{{0xAB}},
-		}, applicationQueueIDOf(coreACQueID))
+		}, applicationQueueIDOf(coreACQueID), "")
 	require.Empty(t, errToken)
 	require.Zero(t, posixCode)
 	require.NotNil(t, result)

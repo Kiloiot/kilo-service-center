@@ -12,9 +12,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// DownlinkQueuer abstracts SCACI downlink queueing at the service layer.
+// DownlinkQueuer abstracts SCACI downlink queueing at the service layer; ref
+// is the MQTT command's correlation ref, stored with the downlink.
 type DownlinkQueuer interface {
-	QueueDownlink(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error)
+	QueueDownlink(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (uint64, error)
 }
 
 // mqttDownlinkAdapter wraps DownlinkQueuer to satisfy mqtt.DownlinkEnqueuer.
@@ -30,10 +31,11 @@ func NewMQTTDownlinkAdapter(queuer DownlinkQueuer) (mqtt.DownlinkEnqueuer, error
 	return &mqttDownlinkAdapter{queuer: queuer}, nil
 }
 
-// EnqueueFromMQTT queues the downlink and returns the service center queue id
-// it was persisted under; MQTT carries no Application Center queue id.
-func (a *mqttDownlinkAdapter) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error) {
-	queID, err := a.queuer.QueueDownlink(ctx, tenantID, orgID, req)
+// EnqueueFromMQTT queues the downlink with the command's ref and returns the
+// service center queue id it was persisted under; MQTT carries no Application
+// Center queue id.
+func (a *mqttDownlinkAdapter) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (uint64, error) {
+	queID, err := a.queuer.QueueDownlink(ctx, tenantID, orgID, req, ref)
 	if err != nil {
 		return 0, withRefusal(err)
 	}
@@ -58,7 +60,7 @@ func withRefusal(err error) error {
 
 // SCACIDownlinkServer is the subset of scaci.Server needed for downlink queueing.
 type SCACIDownlinkServer interface {
-	QueueDownlinkInternal(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (*scaci.DLDataQueueResult, error)
+	QueueDownlinkInternal(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (*scaci.DLDataQueueResult, error)
 }
 
 // scaciDownlinkQueuer wraps SCACIDownlinkServer to satisfy DownlinkQueuer.
@@ -74,8 +76,8 @@ func NewSCACIDownlinkQueuer(server SCACIDownlinkServer) (DownlinkQueuer, error) 
 	return &scaciDownlinkQueuer{server: server}, nil
 }
 
-func (q *scaciDownlinkQueuer) QueueDownlink(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error) {
-	result, err := q.server.QueueDownlinkInternal(ctx, tenantID, orgID, req)
+func (q *scaciDownlinkQueuer) QueueDownlink(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (uint64, error) {
+	result, err := q.server.QueueDownlinkInternal(ctx, tenantID, orgID, req, ref)
 	if err != nil {
 		return 0, err
 	}

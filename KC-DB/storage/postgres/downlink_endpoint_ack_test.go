@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -44,11 +45,14 @@ func TestMarkEndpointAcknowledged_MarksTheDownlinkOfThePreviousWindow(t *testing
 	seedWindowDownlink(t, db, 321, orgs[321], 840003, mioty.DLQueueStatusQueued, 41)
 	seedWindowDownlink(t, db, 322, orgs[322], 840004, mioty.DLQueueStatusTransmitted, 41)
 
-	queID, marked, err := downlinks.MarkEndpointAcknowledged(t.Context(), 321, ackEndpointEUI, 41)
+	acknowledged, marked, err := downlinks.MarkEndpointAcknowledged(t.Context(), 321, ackEndpointEUI, 41)
 
 	require.NoError(t, err)
 	assert.True(t, marked)
-	assert.Equal(t, int64(840001), queID, "the acknowledged downlink is named")
+	assert.Equal(t, int64(840001), acknowledged.QueID, "the acknowledged downlink is named")
+	assert.Equal(t, "321", acknowledged.TenantID)
+	require.NotNil(t, acknowledged.OrganizationID)
+	assert.Equal(t, orgs[321], *acknowledged.OrganizationID, "the row names the organization its acknowledgement is published to")
 	first := endpointAckedAt(t, db, 840001)
 	require.NotNil(t, first, "the downlink of window 41 is acknowledged")
 	assert.Nil(t, endpointAckedAt(t, db, 840002), "another window's downlink is not")
@@ -59,6 +63,61 @@ func TestMarkEndpointAcknowledged_MarksTheDownlinkOfThePreviousWindow(t *testing
 	require.NoError(t, err)
 	assert.False(t, again, "a repeated acknowledgement marks nothing new")
 	assert.Equal(t, first, endpointAckedAt(t, db, 840001))
+}
+
+// TestMarkEndpointAcknowledged_AfterACounterResetMarksTheNewestTransmission:
+// an endpoint whose counter restarted reuses a window, so its dlAck
+// acknowledges the downlink transmitted last in that window; the older one
+// stays unacknowledged.
+func TestMarkEndpointAcknowledged_AfterACounterResetMarksTheNewestTransmission(t *testing.T) {
+	downlinks, db, orgs := applicationQueueIDFixture(t)
+	seedWindowDownlink(t, db, 321, orgs[321], 840021, mioty.DLQueueStatusTransmitted, 5)
+	seedWindowDownlink(t, db, 321, orgs[321], 840022, mioty.DLQueueStatusTransmitted, 5)
+	_, err := db.Exec(`UPDATE downlink_queue SET transmitted_at = transmitted_at - INTERVAL '1 hour' WHERE que_id = 840021`)
+	require.NoError(t, err)
+
+	acknowledged, marked, err := downlinks.MarkEndpointAcknowledged(t.Context(), 321, ackEndpointEUI, 5)
+
+	require.NoError(t, err)
+	require.True(t, marked)
+	assert.Equal(t, int64(840022), acknowledged.QueID)
+	assert.NotNil(t, endpointAckedAt(t, db, 840022))
+	assert.Nil(t, endpointAckedAt(t, db, 840021), "the transmission before the reset is not the one acknowledged")
+}
+
+// TestMarkEndpointAcknowledged_ConcurrentReceptionsMarkOnce: the receptions
+// of one uplink by several base stations arrive together; a reception that
+// picked the downlink while another held it marks nothing once the other
+// commits, so the acknowledgement is reported once.
+func TestMarkEndpointAcknowledged_ConcurrentReceptionsMarkOnce(t *testing.T) {
+	downlinks, db, orgs := applicationQueueIDFixture(t)
+	seedWindowDownlink(t, db, 321, orgs[321], 840031, mioty.DLQueueStatusTransmitted, 9)
+	first, err := db.BeginTxx(t.Context(), nil)
+	require.NoError(t, err)
+	_, err = first.Exec(sqlMarkEndpointAcknowledged, 321, mioty.EUI64Bytes(ackEndpointEUI), 9, mioty.DLQueueStatusTransmitted, time.Now())
+	require.NoError(t, err)
+
+	second := make(chan bool)
+	go func() {
+		_, marked, err := downlinks.MarkEndpointAcknowledged(t.Context(), 321, ackEndpointEUI, 9)
+		assert.NoError(t, err)
+		second <- marked
+	}()
+	waitForBlockedUpdate(t, db)
+	require.NoError(t, first.Commit())
+
+	assert.False(t, <-second, "the second reception finds the downlink already acknowledged")
+}
+
+// waitForBlockedUpdate waits until a session of the test database waits on a row lock.
+func waitForBlockedUpdate(t *testing.T, db *sqlx.DB) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		var waiting int
+		require.NoError(t, db.QueryRow(`SELECT count(*) FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock'`).Scan(&waiting))
+		return waiting > 0
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 // TestGetDownlinkResults_ReportsTheEndpointAcknowledgement: the results

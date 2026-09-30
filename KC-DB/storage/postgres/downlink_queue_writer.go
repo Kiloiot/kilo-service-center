@@ -61,7 +61,7 @@ func (r *DownlinkQueueWriter) EnqueueDownlink(ctx context.Context, downlink *sto
 		downlink.QueID, downlink.CntDepend, packetCntArray, int(downlink.Format),
 		downlink.ResponseExp, downlink.ResponsePrio, downlink.DlWindReq, downlink.ExpOnly,
 		downlink.DlRxStatQry, userDataJSON, applicationQueueIDParam(downlink.ACQueID),
-		enqueuedAt, enqueuedAt.Add(lifetime), optionalEUIParam(downlink.ACEUI),
+		enqueuedAt, enqueuedAt.Add(lifetime), optionalEUIParam(downlink.ACEUI), downlink.Ref,
 	).Scan(&downlink.ID, &downlink.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", errWrapEnqueueDownlink, classifyEnqueueError(err))
@@ -71,7 +71,7 @@ func (r *DownlinkQueueWriter) EnqueueDownlink(ctx context.Context, downlink *sto
 }
 
 // sqlEnqueueDownlink inserts a pending row whose window opens at $20 and
-// closes at $21.
+// closes at $21; an empty ref ($23) is stored as NULL.
 const sqlEnqueueDownlink = `
 	INSERT INTO downlink_queue (
 		ep_eui, tenant_id, organization_id, payload,
@@ -79,14 +79,14 @@ const sqlEnqueueDownlink = `
 		que_id, cnt_depend, packet_cnt, format,
 		response_exp, response_prio, dl_wind_req, exp_only,
 		dl_rx_stat_qry, user_data, ac_que_id, created_at, earliest_at, latest_at,
-		ac_eui
+		ac_eui, ref
 	) VALUES (
 		$1, $2, $3, $4,
 		$5, $6, $7, $8,
 		$9, $10, $11, $12,
 		$13, $14, $15, $16,
 		$17, $18, $19, $20, $20, $21,
-		$22
+		$22, NULLIF($23::text, '')
 	) RETURNING id, created_at`
 
 // optionalEUIParam renders a nullable EUI column; nil is NULL.

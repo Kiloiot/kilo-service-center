@@ -460,6 +460,18 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   the same downlink as before.
 - MQTT `event/downlink_queued` (the queue id of an accepted command) and
   `event/downlink_rejected` (a stable `code` and `message`), both echoing `ref`.
+- MQTT `event/downlink_result` carries the `ref` of the `command/down` that
+  queued the downlink on every result, so your application can match results
+  to its commands without keeping its own list of queue ids. A `ref` longer
+  than 128 bytes is refused with `mqtt.command.ref_too_long`. Migration 000187
+  adds `downlink_queue.ref`.
+- MQTT `event/downlink_result` with `"result": "acknowledged"`: published once
+  when the endpoint confirms, with the acknowledgement flag of its next uplink,
+  that it received a sent downlink. It carries the downlink's `queId`, your
+  `ref` and the acknowledged window in `packetCnt`. When the endpoint's packet
+  counter restarted, the downlink sent last in that window is the one
+  acknowledged. Application Centers keep reading the flag from `ulData`, as
+  SCACI defines no such result.
 
 ### Removed
 - Organization and tenant quota fields, columns and UI (`can_have_base_stations`,
@@ -642,6 +654,9 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   point at faults of the service center itself.
 - Downloading a base station's private key no longer hangs until the request
   times out: the key's row lock blocked the audit record of its own download.
+- An uplink whose receptions by several base stations arrive at the same time
+  records the endpoint's acknowledgement of its downlink once; two receptions
+  could both record it, and the event appeared twice.
 - A stored base station private key that cannot be decrypted, for example
   under a wrong master key, is answered with an internal error instead of
   "certificate not found", which read as a key already downloaded. The key

@@ -93,7 +93,7 @@ func (s *Server) enqueueOrganization(ctx context.Context, session *Session) uuid
 // queuedDownlink is the session's pending queue row of the request, with the
 // SCACI §3.10.1 defaults of its optional fields; the service center queue id
 // is assigned when the row is persisted.
-func queuedDownlink(req *DLDataQueue, session *Session, enqueueOrg uuid.UUID, acQueID *uint64) *storage.DownlinkMessage {
+func queuedDownlink(req *DLDataQueue, session *Session, enqueueOrg uuid.UUID, acQueID *uint64, ref string) *storage.DownlinkMessage {
 	dlMsg := &storage.DownlinkMessage{
 		EPEUI:          mioty.FormatEUI64(req.EpEui),
 		TenantID:       strconv.FormatInt(session.TenantID, 10),
@@ -103,6 +103,7 @@ func queuedDownlink(req *DLDataQueue, session *Session, enqueueOrg uuid.UUID, ac
 		MaxAttempts:    dlQueueMaxAttempts,
 		ACQueID:        acQueID,
 		ACEUI:          queuingApplicationCenter(session, acQueID),
+		Ref:            ref,
 		CntDepend:      req.CntDepend,
 		Priority:       valueOr(req.Prio),
 		Format:         valueOr(req.Format),

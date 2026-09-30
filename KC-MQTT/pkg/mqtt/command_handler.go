@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -28,10 +29,11 @@ func (r *DownlinkRefusal) Error() string {
 	return fmt.Sprintf(errFmtDownlinkRefusal, r.Code, r.Message)
 }
 
-// DownlinkEnqueuer abstracts SCACI downlink queueing for MQTT command handler.
-// A refusal it can name is returned wrapping a *DownlinkRefusal.
+// DownlinkEnqueuer abstracts SCACI downlink queueing for MQTT command handler;
+// ref is stored with the downlink and carried by its results. A refusal it
+// can name is returned wrapping a *DownlinkRefusal.
 type DownlinkEnqueuer interface {
-	EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error)
+	EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (uint64, error)
 }
 
 // TenantLookup resolves organization UUIDs to tenant IDs.
@@ -154,7 +156,7 @@ func (h *CommandHandler) handleMessage(ctx context.Context, topic string, rawPay
 
 	enrichedCtx := pkgcontext.WithTenantID(ctx, tenantID)
 	enrichedCtx = pkgcontext.WithOrganizationID(enrichedCtx, target.org)
-	queID, err := h.enqueuer.EnqueueFromMQTT(enrichedCtx, tenantID, &target.org, req)
+	queID, err := h.enqueuer.EnqueueFromMQTT(enrichedCtx, tenantID, &target.org, req, cmd.Ref)
 	if err != nil {
 		h.reject(ctx, target, cmd.Ref, err)
 		return
@@ -189,8 +191,9 @@ func (h *CommandHandler) parseTopic(ctx context.Context, topic string) (commandT
 	return commandTarget{org: org, epEUI: epEUI, epEUIHex: mioty.FormatEUI64Lower(epEUI)}, true
 }
 
-// decodeCommand parses the message; a field of the wrong type still yields the
-// rest of the command so its ref can be echoed.
+// decodeCommand parses the message; a field of the wrong type, and a ref
+// beyond the length the queue stores, still yield the rest of the command so
+// its ref can be echoed.
 func decodeCommand(rawPayload []byte) (commandPayload, error) {
 	var cmd commandPayload
 	switch {
@@ -202,6 +205,8 @@ func decodeCommand(rawPayload []byte) (commandPayload, error) {
 	err := json.Unmarshal(rawPayload, &cmd)
 	var typeErr *json.UnmarshalTypeError
 	switch {
+	case err == nil && len(cmd.Ref) > storage.MaxDownlinkRefBytes:
+		return cmd, refusalRefTooLong
 	case err == nil:
 		return cmd, nil
 	case errors.As(err, &typeErr) && typeErr.Field != "":

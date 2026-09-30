@@ -81,7 +81,7 @@ func TestProcessDLDataQueueCore_StoresApplicationQueueIDBesideServiceCenterID(t 
 			EpEui:    coreEpEUI,
 			QueId:    coreACQueID,
 			UserData: [][]byte{{0x01, 0x02, 0x03}},
-		}, applicationQueueIDOf(coreACQueID))
+		}, applicationQueueIDOf(coreACQueID), "")
 	require.Empty(t, errToken)
 	require.Zero(t, posixCode)
 	require.NotNil(t, result)
@@ -106,7 +106,7 @@ func TestProcessDLDataQueueCore_DuplicateApplicationQueueIDIsEEXIST(t *testing.T
 			EpEui:    coreEpEUI,
 			QueId:    coreACQueID,
 			UserData: [][]byte{{0x01}},
-		}, applicationQueueIDOf(coreACQueID))
+		}, applicationQueueIDOf(coreACQueID), "")
 	assert.Nil(t, result)
 	assert.Equal(t, errQueIDExists, errToken)
 	assert.Equal(t, POSIX_EEXIST, posixCode)
@@ -139,7 +139,7 @@ func TestProcessDLDataQueueCore_DispatchFailureStillAccepted(t *testing.T) {
 					EpEui:    coreEpEUI,
 					QueId:    coreACQueID,
 					UserData: [][]byte{{0xAA}},
-				}, applicationQueueIDOf(coreACQueID))
+				}, applicationQueueIDOf(coreACQueID), "")
 			require.Empty(t, errToken)
 			require.Zero(t, posixCode)
 			require.NotNil(t, result)
@@ -154,14 +154,16 @@ func TestProcessDLDataQueueCore_DispatchFailureStillAccepted(t *testing.T) {
 
 // TestQueueDownlinkInternal_ReturnsServiceCenterQueueID pins the gRPC and
 // MQTT view: an internal request carries no Application Center id, the row is
-// persisted without one, and the caller receives the service center id,
-// pending while no base station can take it (SCACI §3.10).
+// persisted without one and with the MQTT command's ref, and the caller
+// receives the service center id, pending while no base station can take it
+// (SCACI §3.10).
 func TestQueueDownlinkInternal_ReturnsServiceCenterQueueID(t *testing.T) {
+	const commandRef = "order-17"
 	orgID := uuid.New()
 	mockDL := new(MockDLService)
 	mockDL.On("EnqueueDownlink", mock.Anything, mock.MatchedBy(func(dl *storage.DownlinkMessage) bool {
 		return dl != nil && dl.ACQueID == nil && dl.ACEUI == nil && dl.Status == bssci.DLQueueStatusPending &&
-			dl.OrganizationID != nil && *dl.OrganizationID == orgID
+			dl.OrganizationID != nil && *dl.OrganizationID == orgID && dl.Ref == commandRef
 	})).Return(&storage.DownlinkMessage{ID: 45, QueID: coreInternalQueID}, nil)
 	mockDL.On("QueueDownlink", mock.Anything, dispatchedUnder(coreInternalQueID), coreTenantID, orgID).
 		Return(DownlinkQueueOutcome{QueID: uint64(coreInternalQueID), Deferred: true}, "")
@@ -170,7 +172,7 @@ func TestQueueDownlinkInternal_ReturnsServiceCenterQueueID(t *testing.T) {
 	result, err := server.QueueDownlinkInternal(testutil.TestContext(), coreTenantID, &orgID, &mioty.DLDataQueue{
 		EpEui:    coreEpEUI,
 		UserData: [][]byte{{0x01}},
-	})
+	}, commandRef)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, uint64(coreInternalQueID), result.QueID)
@@ -192,7 +194,7 @@ func TestQueueDownlinkInternal_ExhaustedServiceCenterIDsIsAPersistenceFailure(t 
 	result, err := server.QueueDownlinkInternal(testutil.TestContext(), coreTenantID, &orgID, &mioty.DLDataQueue{
 		EpEui:    coreEpEUI,
 		UserData: [][]byte{{0x01}},
-	})
+	}, "")
 	require.Nil(t, result)
 	var queueErr *DLDataQueueError
 	require.ErrorAs(t, err, &queueErr)
@@ -262,7 +264,7 @@ func TestProcessDLDataQueueCore_RefusesUnidirectionalEndpoint(t *testing.T) {
 			EpEui:    coreEpEUI,
 			QueId:    coreACQueID,
 			UserData: [][]byte{{0x01}},
-		}, applicationQueueIDOf(coreACQueID))
+		}, applicationQueueIDOf(coreACQueID), "")
 
 	assert.Nil(t, result)
 	assert.Equal(t, errEndpointNotBidirectional, errToken)
@@ -290,7 +292,7 @@ func TestProcessDLDataQueueCore_AcceptsEveryUnsigned64BitApplicationQueueID(t *t
 			EpEui:    coreEpEUI,
 			QueId:    beyondSigned,
 			UserData: [][]byte{{0x01}},
-		}, applicationQueueIDOf(beyondSigned))
+		}, applicationQueueIDOf(beyondSigned), "")
 	require.Empty(t, errToken)
 	require.Zero(t, posixCode)
 	require.NotNil(t, result)

@@ -253,7 +253,7 @@ func TestMQTTAdapter_PublishDownlinkResult_CorrectPayload(t *testing.T) {
 	mock := &mockDeviceEventPublisher{}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishDownlinkResult(testutil.TestContext(), "org-uuid", &mioty.DLDataResult{
+	err := adapter.PublishDownlinkResult(testutil.TestContext(), "org-uuid", "", &mioty.DLDataResult{
 		EpEui: 0x70B3D59CD00009E6, QueId: 12345, Result: "success",
 	})
 
@@ -277,7 +277,7 @@ func TestMQTTAdapter_PublishDownlinkResult_SentCarriesTheTransmission(t *testing
 	packetCnt := uint32(44)
 	bsEui := uint64(0x70B3D59CD00009E6)
 
-	err := adapter.PublishDownlinkResult(testutil.TestContext(), "org-uuid", &mioty.DLDataResult{
+	err := adapter.PublishDownlinkResult(testutil.TestContext(), "org-uuid", "", &mioty.DLDataResult{
 		EpEui: 0x70B3D5677011150A, QueId: 9007199254740991, Result: mioty.ResultSent,
 		TxTime: &txTime, PacketCnt: &packetCnt, BsEui: &bsEui,
 	})
@@ -296,7 +296,7 @@ func TestMQTTAdapter_PublishDownlinkResult_NotSentOmitsTheTransmission(t *testin
 	mock := &mockDeviceEventPublisher{}
 	adapter := NewMQTTAdapter(mock)
 
-	err := adapter.PublishDownlinkResult(testutil.TestContext(), "org-uuid", &mioty.DLDataResult{
+	err := adapter.PublishDownlinkResult(testutil.TestContext(), "org-uuid", "", &mioty.DLDataResult{
 		EpEui: 0x70B3D5677011150A, QueId: 7, Result: mioty.DLDataResultExpired,
 	})
 	require.NoError(t, err)
@@ -307,6 +307,52 @@ func TestMQTTAdapter_PublishDownlinkResult_NotSentOmitsTheTransmission(t *testin
 	for _, key := range []string{"bsEui", "txTime", "packetCnt"} {
 		assert.NotContains(t, payload, key, "only a sent result reports its transmission")
 	}
+}
+
+// TestMQTTAdapter_PublishDownlinkResult_CarriesTheCommandRef: every result
+// carries the ref of the MQTT command that queued the downlink; a downlink
+// queued without one reports none.
+func TestMQTTAdapter_PublishDownlinkResult_CarriesTheCommandRef(t *testing.T) {
+	t.Parallel()
+	for _, result := range []string{mioty.ResultSent, mioty.ResultExpired, mioty.ResultInvalid} {
+		for _, ref := range []string{"order-17", ""} {
+			mock := &mockDeviceEventPublisher{}
+			require.NoError(t, NewMQTTAdapter(mock).PublishDownlinkResult(testutil.TestContext(), "org-uuid", ref,
+				&mioty.DLDataResult{EpEui: 0x70B3D59CD00009E6, QueId: 12345, Result: result}))
+
+			var payload map[string]interface{}
+			require.NoError(t, json.Unmarshal(mock.lastCall().Payload, &payload))
+			if ref == "" {
+				assert.NotContains(t, payload, "ref", "%s without a ref", result)
+				continue
+			}
+			assert.Equal(t, ref, payload["ref"], result)
+		}
+	}
+}
+
+// TestMQTTAdapter_PublishDownlinkAcknowledged_Payload pins the acknowledged
+// result: the downlink's queue id, the window the endpoint acknowledged and
+// the command's ref, on the downlink_result topic of the endpoint.
+func TestMQTTAdapter_PublishDownlinkAcknowledged_Payload(t *testing.T) {
+	t.Parallel()
+	mock := &mockDeviceEventPublisher{}
+	adapter := NewMQTTAdapter(mock)
+
+	require.NoError(t, adapter.PublishDownlinkAcknowledged(testutil.TestContext(), "org-uuid", "order-17",
+		0x70B3D5677011150A, 9007199254740991, 44))
+
+	call := mock.lastCall()
+	assert.Equal(t, "org-uuid", call.OrgUUID)
+	assert.Equal(t, "70b3d5677011150a", call.EpEUIHex)
+	assert.Equal(t, mqtt.DeviceEventDownlinkResult, call.EventType)
+	assert.JSONEq(t, `{"epEui":"70b3d5677011150a","queId":9007199254740991,"result":"acknowledged","packetCnt":44,"ref":"order-17"}`,
+		string(call.Payload))
+
+	require.NoError(t, adapter.PublishDownlinkAcknowledged(testutil.TestContext(), "org-uuid", "",
+		0x70B3D5677011150A, 7, 0))
+	assert.JSONEq(t, `{"epEui":"70b3d5677011150a","queId":7,"result":"acknowledged","packetCnt":0}`,
+		string(mock.lastCall().Payload), "a downlink queued without a ref reports none")
 }
 
 func TestMQTTAdapter_PropagatesPublishError(t *testing.T) {

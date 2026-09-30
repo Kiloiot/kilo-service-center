@@ -3,6 +3,7 @@ package mqtt
 import (
 	"fmt"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
@@ -186,6 +187,8 @@ const (
 	RejectMsgOrgUnresolved       = "the organization in the topic could not be resolved"
 	RejectCodeEnqueueFailed      = "mqtt.command.enqueue_failed"
 	RejectMsgEnqueueFailed       = "the service center could not queue the downlink"
+	RejectCodeRefTooLong         = "mqtt.command.ref_too_long"
+	RejectMsgRefTooLongFmt       = "ref exceeds %d bytes"
 	errFmtDownlinkRefusal        = "%s: %s"
 )
 
@@ -202,4 +205,5 @@ var (
 	refusalPayloadTooLarge    = &DownlinkRefusal{Code: RejectCodePayloadTooLarge, Message: fmt.Sprintf(RejectMsgPayloadTooLargeFmt, mioty.MaxDLUserDataBytes)}
 	refusalOrgUnresolved      = &DownlinkRefusal{Code: RejectCodeOrgUnresolved, Message: RejectMsgOrgUnresolved}
 	refusalEnqueueFailed      = &DownlinkRefusal{Code: RejectCodeEnqueueFailed, Message: RejectMsgEnqueueFailed}
+	refusalRefTooLong         = &DownlinkRefusal{Code: RejectCodeRefTooLong, Message: fmt.Sprintf(RejectMsgRefTooLongFmt, storage.MaxDownlinkRefBytes)}
 )

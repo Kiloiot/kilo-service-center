@@ -22,6 +22,7 @@ import (
 //   - tenantID: Authenticated tenant ID from gRPC context
 //   - orgID: Organization UUID for audit trail (may be nil)
 //   - req: MIOTY DLDataQueue request from gRPC
+//   - ref: Correlation ref of an MQTT command, stored with the downlink for its results; empty for none
 //
 // Returns:
 //   - *DLDataQueueResult: Result containing queId, bsEui, opId, status
@@ -31,6 +32,7 @@ func (s *Server) QueueDownlinkInternal(
 	tenantID int64,
 	orgID *uuid.UUID,
 	req *mioty.DLDataQueue,
+	ref string,
 ) (*DLDataQueueResult, error) {
 	// Create synthetic session for internal calls
 	var orgUUID uuid.UUID
@@ -64,7 +66,7 @@ func (s *Server) QueueDownlinkInternal(
 
 	// Internal callers carry no Application Center queue id: the service
 	// center's own id identifies the downlink to them.
-	result, errToken, posixCode := s.processDLDataQueueCore(ctx, session, opId, dlReq, nil)
+	result, errToken, posixCode := s.processDLDataQueueCore(ctx, session, opId, dlReq, nil, ref)
 	if errToken != "" {
 		s.logger.WarnContext(ctx, LogSCACIDLDataQueueFailed,
 			logger.FieldOpID, opId,
@@ -114,7 +116,8 @@ func (r *DLDataQueueCoreResult) Status() mioty.DLQueueStatus {
 //
 // It validates the request and the endpoint, persists the downlink under a
 // service center queue id beside acQueID, the Application Center's queue id
-// (any 64-bit value, SCACI §3.10.1; nil for a request without one), records
+// (any 64-bit value, SCACI §3.10.1; nil for a request without one) and ref,
+// the correlation ref of the MQTT command that queued it (empty for none), records
 // the operation of a persistent session, and hands the row to the BSSCI
 // scheduler. Once the row is persisted the downlink is accepted; when it
 // cannot be handed to a base station now it stays pending for the
@@ -130,6 +133,7 @@ func (s *Server) processDLDataQueueCore(
 	opId int64,
 	req *DLDataQueue,
 	acQueID *uint64,
+	ref string,
 ) (result *DLDataQueueCoreResult, errToken string, posixCode int) {
 	if session == nil {
 		return nil, errNoActiveSession, POSIX_EINVAL
@@ -144,7 +148,7 @@ func (s *Server) processDLDataQueueCore(
 	if enqueueOrg == uuid.Nil {
 		return nil, errDownlinkOrgUnresolved, POSIX_EINVAL
 	}
-	dlMsg := queuedDownlink(req, session, enqueueOrg, acQueID)
+	dlMsg := queuedDownlink(req, session, enqueueOrg, acQueID, ref)
 	queID, errToken, posixCode := s.persistQueuedDownlink(ctx, dlMsg)
 	if errToken != "" {
 		return nil, errToken, posixCode

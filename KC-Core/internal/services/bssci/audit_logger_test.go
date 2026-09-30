@@ -169,7 +169,8 @@ func TestRecordDownlinkAcknowledged_RecordsTheEndpointAcknowledgement(t *testing
 	downlinks := queuedDownlinks{downlink: &storage.DownlinkMessage{Payload: []byte{0x33}}}
 	audit := mustAuditLogger(t, events, downlinks, ownersStation)
 
-	require.NoError(t, audit.RecordDownlinkAcknowledged(testutil.TestContext(), auditOwnerTenantID, auditEndpointEUI, auditQueueID, auditPacketCnt))
+	acknowledged := &storage.DownlinkMessage{QueID: auditQueueID, TenantID: auditOwnerTenant, EPEUI: mioty.FormatEUI64(auditEndpointEUI)}
+	require.NoError(t, audit.RecordDownlinkAcknowledged(testutil.TestContext(), acknowledged, auditPacketCnt))
 
 	event := events.lastEvent
 	require.NotNil(t, event)

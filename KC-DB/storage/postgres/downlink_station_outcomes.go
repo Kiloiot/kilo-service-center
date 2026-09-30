@@ -152,23 +152,25 @@ func (r *DownlinkStationOutcomes) FailQueuedDownlink(ctx context.Context, queID 
 
 // MarkEndpointAcknowledged records that the endpoint acknowledged the
 // downlink the tenant transmitted in the window of windowPacketCnt (BSSCI
-// §3.10.1 dlAck), and returns the queue id of the downlink it marked; false
-// when no unacknowledged one matched.
-func (r *DownlinkStationOutcomes) MarkEndpointAcknowledged(ctx context.Context, tenantID int64, epEUI uint64, windowPacketCnt int64) (int64, bool, error) {
-	var queID int64
-	err := r.db.QueryRowxContext(ctx, sqlMarkEndpointAcknowledged,
-		tenantID, mioty.EUI64Bytes(epEUI), windowPacketCnt, mioty.DLQueueStatusTransmitted, r.clock.Now()).Scan(&queID)
+// §3.10.1 dlAck), and returns the row it marked for the downlink's
+// originators; false when no unacknowledged one matched.
+func (r *DownlinkStationOutcomes) MarkEndpointAcknowledged(ctx context.Context, tenantID int64, epEUI uint64, windowPacketCnt int64) (*storage.DownlinkMessage, bool, error) {
+	row := r.db.QueryRowxContext(ctx, sqlMarkEndpointAcknowledged,
+		tenantID, mioty.EUI64Bytes(epEUI), windowPacketCnt, mioty.DLQueueStatusTransmitted, r.clock.Now())
+	downlink, err := scanDownlinkOutcome(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, false, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return 0, false, fmt.Errorf("%s: %w", errWrapMarkEndpointAcknowledged, err)
+		return nil, false, fmt.Errorf("%s: %w", errWrapMarkEndpointAcknowledged, err)
 	}
-	return queID, true, nil
+	return downlink, true, nil
 }
 
 // sqlMarkEndpointAcknowledged acknowledges the newest transmitted downlink of
-// the window; a repeated acknowledgement finds it already marked.
+// the window; a repeated acknowledgement finds it already marked. The outer
+// endpoint_acked_at test makes the second of two concurrent receptions of one
+// uplink, which picked the same row, mark nothing once the first committed.
 const sqlMarkEndpointAcknowledged = `
 	UPDATE downlink_queue
 	SET endpoint_acked_at = $5, updated_at = $5
@@ -178,5 +180,5 @@ const sqlMarkEndpointAcknowledged = `
 		  AND status = $4 AND endpoint_acked_at IS NULL
 		ORDER BY transmitted_at DESC NULLS LAST, id DESC
 		LIMIT 1
-	)
-	RETURNING que_id`
+	) AND endpoint_acked_at IS NULL
+	RETURNING ` + downlinkOutcomeColumns

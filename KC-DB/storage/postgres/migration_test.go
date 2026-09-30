@@ -130,6 +130,7 @@ var migrationValidators = map[int]func(*testing.T, *sql.DB){
 	184: validateDownlinkOrigin,
 	185: validateStreamStorageOrder,
 	186: validateSCACIUplinkDeliveryIdentity,
+	187: validateDownlinkCommandRef,
 	// Additional validators can be added here as they are implemented
 	// 28: validateMiotyPersistentCompliance,
 	// 31: validateFoo,

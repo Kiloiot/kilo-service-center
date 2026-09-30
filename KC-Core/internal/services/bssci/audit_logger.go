@@ -127,14 +127,14 @@ func (a *DownlinkAuditLog) RecordDLRevokeResponse(ctx context.Context, tenant st
 }
 
 // RecordDownlinkAcknowledged records the endpoint acknowledging, in the uplink
-// after packetCnt, the downlink queued under queueID (BSSCI §3.10.1 dlAck).
-func (a *DownlinkAuditLog) RecordDownlinkAcknowledged(ctx context.Context, tenantID int64, epEUI uint64, queueID int64, packetCnt uint32) error {
-	queID, err := wireQueueID(queueID)
+// after packetCnt, the downlink (BSSCI §3.10.1 dlAck).
+func (a *DownlinkAuditLog) RecordDownlinkAcknowledged(ctx context.Context, downlink *storage.DownlinkMessage, packetCnt uint32) error {
+	queID, tenantID, err := queueOwner(downlink.QueID, downlink.TenantID)
 	if err != nil {
 		return err
 	}
 	return a.record(ctx, dlAcknowledgedKind, downlinkFacts{
-		tenantID: tenantID, queID: queID, epEUI: mioty.FormatEUI64(epEUI), packetCnt: &packetCnt,
+		tenantID: tenantID, queID: queID, epEUI: downlink.EPEUI, packetCnt: &packetCnt,
 	})
 }
 

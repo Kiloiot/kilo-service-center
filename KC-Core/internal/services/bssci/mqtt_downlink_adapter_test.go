@@ -35,15 +35,17 @@ type queueDownlinkCall struct {
 	TenantID int64
 	OrgID    *uuid.UUID
 	Request  *mioty.DLDataQueue
+	Ref      string
 }
 
-func (m *mockDownlinkQueuer) QueueDownlink(_ context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error) {
+func (m *mockDownlinkQueuer) QueueDownlink(_ context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls = append(m.calls, queueDownlinkCall{
 		TenantID: tenantID,
 		OrgID:    orgID,
 		Request:  req,
+		Ref:      ref,
 	})
 	return m.returnID, m.returnErr
 }
@@ -92,7 +94,8 @@ var (
 
 // TestMQTTDownlinkAdapter_QueuesTheRequestUnchanged pins that the adapter
 // hands the command's dlDataQue request to the core as built, with no
-// Application Center queue id, in a single queueing call.
+// Application Center queue id and with the command's ref, in a single
+// queueing call.
 func TestMQTTDownlinkAdapter_QueuesTheRequestUnchanged(t *testing.T) {
 	t.Parallel()
 	mock := &mockDownlinkQueuer{returnID: 42}
@@ -101,7 +104,7 @@ func TestMQTTDownlinkAdapter_QueuesTheRequestUnchanged(t *testing.T) {
 	confirmed := true
 	req := &mioty.DLDataQueue{EpEui: 0x70B3D59CD00009E6, UserData: mioty.DownlinkUserData{[]byte("test")}, ResponseExp: &confirmed}
 
-	queID, err := adapter.EnqueueFromMQTT(testutil.TestContext(), 42, &orgID, req)
+	queID, err := adapter.EnqueueFromMQTT(testutil.TestContext(), 42, &orgID, req, "order-17")
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(42), queID)
@@ -111,6 +114,7 @@ func TestMQTTDownlinkAdapter_QueuesTheRequestUnchanged(t *testing.T) {
 	assert.Zero(t, call.Request.QueId)
 	assert.Equal(t, int64(42), call.TenantID)
 	assert.Equal(t, &orgID, call.OrgID)
+	assert.Equal(t, "order-17", call.Ref)
 }
 
 // TestMQTTDownlinkAdapter_CoreRefusalsCarryTheirCatalogCode pins that every
@@ -142,7 +146,7 @@ func TestMQTTDownlinkAdapter_CoreRefusalsCarryTheirCatalogCode(t *testing.T) {
 			adapter := newTestAdapter(t, &mockDownlinkQueuer{returnErr: tc.err})
 			orgID := uuid.New()
 
-			queID, err := adapter.EnqueueFromMQTT(testutil.TestContext(), 1, &orgID, &mioty.DLDataQueue{EpEui: 0x1234})
+			queID, err := adapter.EnqueueFromMQTT(testutil.TestContext(), 1, &orgID, &mioty.DLDataQueue{EpEui: 0x1234}, "")
 			require.Error(t, err)
 			assert.Zero(t, queID)
 			var refusal *mqtt.DownlinkRefusal
@@ -159,7 +163,7 @@ func TestMQTTDownlinkAdapter_UnnamedFailureStaysUnnamed(t *testing.T) {
 	adapter := newTestAdapter(t, &mockDownlinkQueuer{returnErr: errTestQueueFull})
 	orgID := uuid.New()
 
-	queID, err := adapter.EnqueueFromMQTT(testutil.TestContext(), 1, &orgID, &mioty.DLDataQueue{EpEui: 0x1234})
+	queID, err := adapter.EnqueueFromMQTT(testutil.TestContext(), 1, &orgID, &mioty.DLDataQueue{EpEui: 0x1234}, "")
 	require.ErrorIs(t, err, errTestQueueFull)
 	assert.Zero(t, queID)
 	var refusal *mqtt.DownlinkRefusal
@@ -172,9 +176,11 @@ func TestMQTTDownlinkAdapter_UnnamedFailureStaysUnnamed(t *testing.T) {
 type mockSCACIDownlinkServer struct {
 	returnResult *scaci.DLDataQueueResult
 	returnErr    error
+	ref          string
 }
 
-func (m *mockSCACIDownlinkServer) QueueDownlinkInternal(_ context.Context, _ int64, _ *uuid.UUID, _ *mioty.DLDataQueue) (*scaci.DLDataQueueResult, error) {
+func (m *mockSCACIDownlinkServer) QueueDownlinkInternal(_ context.Context, _ int64, _ *uuid.UUID, _ *mioty.DLDataQueue, ref string) (*scaci.DLDataQueueResult, error) {
+	m.ref = ref
 	return m.returnResult, m.returnErr
 }
 
@@ -186,9 +192,10 @@ func TestSCACIDownlinkQueuer_SuccessReturnsQueID(t *testing.T) {
 		returnResult: &scaci.DLDataQueueResult{QueID: 42},
 	}
 	queuer := mustQueuer(t, mock)
-	id, err := queuer.QueueDownlink(testutil.TestContext(), 1, nil, &mioty.DLDataQueue{})
+	id, err := queuer.QueueDownlink(testutil.TestContext(), 1, nil, &mioty.DLDataQueue{}, "order-17")
 	require.NoError(t, err)
 	assert.Equal(t, uint64(42), id)
+	assert.Equal(t, "order-17", mock.ref, "the ref reaches the core")
 }
 
 func TestSCACIDownlinkQueuer_ErrorPropagates(t *testing.T) {
@@ -197,7 +204,7 @@ func TestSCACIDownlinkQueuer_ErrorPropagates(t *testing.T) {
 		returnErr: errTestSCACIUnavailable,
 	}
 	queuer := mustQueuer(t, mock)
-	id, err := queuer.QueueDownlink(testutil.TestContext(), 1, nil, &mioty.DLDataQueue{})
+	id, err := queuer.QueueDownlink(testutil.TestContext(), 1, nil, &mioty.DLDataQueue{}, "")
 	assert.Error(t, err)
 	assert.Equal(t, uint64(0), id)
 }
@@ -209,7 +216,7 @@ func TestSCACIDownlinkQueuer_NilResultReturnsError(t *testing.T) {
 		returnErr:    nil,
 	}
 	queuer := mustQueuer(t, mock)
-	id, err := queuer.QueueDownlink(testutil.TestContext(), 1, nil, &mioty.DLDataQueue{})
+	id, err := queuer.QueueDownlink(testutil.TestContext(), 1, nil, &mioty.DLDataQueue{}, "")
 	assert.Error(t, err)
 	var catErr *bssci.CatalogError
 	require.ErrorAs(t, err, &catErr)

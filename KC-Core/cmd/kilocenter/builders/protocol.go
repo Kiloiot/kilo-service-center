@@ -218,7 +218,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	// transactional persist that classifies duplicates and enqueues delivery.
 	// The delivery worker drains exactly the channels the ingest queues.
 	channels := deliveryChannels(infra)
-	endpointAcks, err := bssciservices.NewEndpointAckRecorder(infra.Repos.Downlinks, bssciSvcBundle.AuditLogger, infra.LoggerIface)
+	endpointAcks, err := bssciservices.NewEndpointAckRecorder(infra.Repos.Downlinks, bssciSvcBundle.ResultReporter, infra.LoggerIface)
 	if err != nil {
 		return nil, err
 	}
@@ -784,7 +784,14 @@ func BuildFederationIngestDeps(_ context.Context, infra *Infrastructure) (*bssci
 	if err != nil {
 		return nil, err
 	}
-	endpointAcks, err := bssciservices.NewEndpointAckRecorder(infra.Repos.Downlinks, downlinkEvents, infra.LoggerIface)
+	// The ingress process runs no SCACI server; an acknowledgement reaches no
+	// Application Center anyway (SCACI §3.12.1 has no such result).
+	ackReporter, err := bssciservices.NewDownlinkResultReporter(bssciservices.NewSCACIForwarder(infra.LoggerIface),
+		downlinkResultPublisher(infra), downlinkEvents, bssciservices.NewBackgroundWork(), infra.LoggerIface)
+	if err != nil {
+		return nil, err
+	}
+	endpointAcks, err := bssciservices.NewEndpointAckRecorder(infra.Repos.Downlinks, ackReporter, infra.LoggerIface)
 	if err != nil {
 		return nil, err
 	}
@@ -808,6 +815,15 @@ func BuildFederationIngestDeps(_ context.Context, infra *Infrastructure) (*bssci
 		infra.TenantID,
 		syntheticEUI,
 	)
+}
+
+// downlinkResultPublisher publishes downlink results on the MQTT topics when
+// the process has an MQTT client, and nowhere otherwise.
+func downlinkResultPublisher(infra *Infrastructure) bssciservices.DownlinkResultPublisher {
+	if infra.MQTTClient == nil {
+		return bssciservices.DownlinkResultsWithoutMQTT{}
+	}
+	return bssciservices.NewMQTTAdapter(mqtt.NewPublisher(infra.MQTTClient, infra.Config.MQTT.TopicPrefix))
 }
 
 // uplinkWindows converts the validated protocol settings into the windows the

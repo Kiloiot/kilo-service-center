@@ -221,7 +221,7 @@ const testServiceCenterQueueID = uint64(7001)
 
 var downlinkTestOrg = uuid.MustParse("6aa6b3db-ceaa-4a71-8ece-59cc2263f019")
 
-func (f *fakeSCACIQueuer) QueueDownlinkInternal(_ context.Context, _ int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (*scaci.DLDataQueueResult, error) {
+func (f *fakeSCACIQueuer) QueueDownlinkInternal(_ context.Context, _ int64, orgID *uuid.UUID, req *mioty.DLDataQueue, _ string) (*scaci.DLDataQueueResult, error) {
 	f.calls++
 	f.lastOrgID = orgID
 	if f.failWith != nil {

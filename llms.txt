@@ -65,7 +65,7 @@ Streaming RPCs: StreamMessages, StreamBaseStationMessages, StreamEvents, StreamB
 
 ## MQTT
 
-Disabled by default. Topic format: `{prefix}/{org_uuid}/device/{ep_eui_hex}/{channel}/{type}`. Channels: event/up (uplinks, with the dlOpen/responseExp/dlAck window flags), event/attach, event/detach, event/downlink_queued (queId of an accepted command, ref echoed), event/downlink_rejected (stable code and message, ref echoed), event/downlink_result (bsEui/txTime/packetCnt when sent), command/down (downlink commands: base64 data of at most 200 bytes, empty for a pure acknowledgement, or counter-dependent entries; optional confirmed, prio, format, responsePrio, dlWindReq, expOnly, dlRxStatQry, ref).
+Disabled by default. Topic format: `{prefix}/{org_uuid}/device/{ep_eui_hex}/{channel}/{type}`. Channels: event/up (uplinks, with the dlOpen/responseExp/dlAck window flags), event/attach, event/detach, event/downlink_queued (queId of an accepted command, ref echoed), event/downlink_rejected (stable code and message, ref echoed), event/downlink_result (sent/expired/invalid, then acknowledged once when the endpoint confirms a sent downlink; ref of the command on every result; bsEui/txTime/packetCnt when sent), command/down (downlink commands: base64 data of at most 200 bytes, empty for a pure acknowledgement, or counter-dependent entries; optional confirmed, prio, format, responsePrio, dlWindReq, expOnly, dlRxStatQry, ref).
 
 ## Key Directories
 

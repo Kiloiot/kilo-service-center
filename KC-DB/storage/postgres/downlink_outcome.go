@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"database/sql"
 	"strconv"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -10,8 +11,9 @@ import (
 
 // downlinkOutcomeColumns identify a downlink to the originators its result is
 // reported to: the queue ids, the endpoint, the owner tenant, the enqueuing
-// organization and the Application Center that queued it.
-const downlinkOutcomeColumns = `id, que_id, ac_que_id, ep_eui, tenant_id, organization_id, ac_eui`
+// organization, the Application Center that queued it and the ref of the
+// MQTT command that queued it.
+const downlinkOutcomeColumns = `id, que_id, ac_que_id, ep_eui, tenant_id, organization_id, ac_eui, ref`
 
 // sqlDownlinkInFlight holds for a downlink_queue row still in flight. The
 // database function (migration 000172) is the one declaration of the
@@ -33,8 +35,9 @@ func scanDownlinkOutcome(row rowScanner, extra ...interface{}) (*storage.Downlin
 	var downlink storage.DownlinkMessage
 	var epEUI, acEUI []byte
 	var tenantID int64
+	var ref sql.NullString
 	dest := append([]interface{}{
-		&downlink.ID, &downlink.QueID, applicationQueueIDScanner{&downlink.ACQueID}, &epEUI, &tenantID, &downlink.OrganizationID, &acEUI,
+		&downlink.ID, &downlink.QueID, applicationQueueIDScanner{&downlink.ACQueID}, &epEUI, &tenantID, &downlink.OrganizationID, &acEUI, &ref,
 	}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return nil, err
@@ -42,5 +45,6 @@ func scanDownlinkOutcome(row rowScanner, extra ...interface{}) (*storage.Downlin
 	downlink.EPEUI = mioty.FormatEUIBytes(epEUI)
 	downlink.ACEUI = mioty.OptionalEUI64FromBytes(acEUI)
 	downlink.TenantID = strconv.FormatInt(tenantID, 10)
+	downlink.Ref = ref.String
 	return &downlink, nil
 }

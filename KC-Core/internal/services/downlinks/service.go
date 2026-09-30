@@ -53,7 +53,7 @@ func (s *Service) Queue(ctx context.Context, owner Owner, content Content) (*sca
 		return nil, err
 	}
 	orgID := owner.OrganizationID
-	result, err := s.queuer.QueueDownlinkInternal(ctx, owner.TenantID, &orgID, checked.queueRequest(owner.EpEUI))
+	result, err := s.queuer.QueueDownlinkInternal(ctx, owner.TenantID, &orgID, checked.queueRequest(owner.EpEUI), "")
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrQueue, err)
 	}

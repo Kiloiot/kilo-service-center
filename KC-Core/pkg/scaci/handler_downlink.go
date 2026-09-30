@@ -30,9 +30,9 @@ func (s *Server) handleDLDataQueue(conn net.Conn, session *Session, opId int64, 
 		return nil
 	}
 	// SCACI §3.10.1: the Application Center assigns the queue id, any
-	// 64-bit value, zero included.
+	// 64-bit value, zero included; it carries no MQTT command ref.
 	ctx := s.sessionContext(session)
-	result, errToken, posixCode := s.processDLDataQueueCore(ctx, session, opId, &req, &req.QueId)
+	result, errToken, posixCode := s.processDLDataQueueCore(ctx, session, opId, &req, &req.QueId, "")
 	if errToken != "" {
 		s.sendErrorWithCatalog(conn, session, opId, posixCode, errToken)
 		return nil

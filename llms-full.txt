@@ -246,14 +246,14 @@ mqtt:
 - `mioty/{org}/device/{eui}/event/attach` — endpoint attached (JSON: epEui, bsEui, event)
 - `mioty/{org}/device/{eui}/event/detach` — endpoint detached (JSON: epEui, bsEui, event)
 - `mioty/{org}/device/{eui}/event/downlink_queued` — a command/down downlink was queued (JSON: epEui, queId, ref when the command had one)
-- `mioty/{org}/device/{eui}/event/downlink_rejected` — a command/down downlink was refused (JSON: epEui, code, message, ref when the command had one); codes: mqtt.command.empty_payload, message_too_large, invalid_json, invalid_field, missing_data, data_with_entries, empty_entries, missing_packet_cnt, duplicate_packet_cnt, invalid_base64, payload_too_large, org_unresolved, enqueue_failed, or a core catalog token such as scaci.error.endpoint_not_found
-- `mioty/{org}/device/{eui}/event/downlink_result` — downlink delivery result (JSON: epEui, queId, result sent/expired/invalid; bsEui, txTime and packetCnt only when sent)
+- `mioty/{org}/device/{eui}/event/downlink_rejected` — a command/down downlink was refused (JSON: epEui, code, message, ref when the command had one); codes: mqtt.command.empty_payload, message_too_large, invalid_json, invalid_field, missing_data, data_with_entries, empty_entries, missing_packet_cnt, duplicate_packet_cnt, invalid_base64, payload_too_large, org_unresolved, enqueue_failed, ref_too_long, or a core catalog token such as scaci.error.endpoint_not_found
+- `mioty/{org}/device/{eui}/event/downlink_result` — downlink delivery result (JSON: epEui, queId, result sent/expired/invalid/acknowledged, ref when the command had one; bsEui and txTime only when sent; packetCnt when sent (the window it was sent in) and when acknowledged (the window the endpoint acknowledged with dlAck); acknowledged is published once per transmitted downlink)
 
 Queue ids are at most 2^53-1, so JSON clients read them exactly.
 
 ### Command Topic (consumed by KiloCenter)
 
-- `mioty/{org}/device/{eui}/command/down` — queue downlink. JSON: `data` (base64, at most 200 decoded bytes, empty for a pure acknowledgement) or `entries` (`[{"packetCnt":N,"data":"base64"}]`, counter-dependent, mutually exclusive with data); optional `confirmed` (responseExp), `prio`, `format`, `responsePrio`, `dlWindReq`, `expOnly`, `dlRxStatQry`, and `ref` (echoed in downlink_queued and downlink_rejected). `{"data":"AQIDBA==","confirmed":false}` stays valid.
+- `mioty/{org}/device/{eui}/command/down` — queue downlink. JSON: `data` (base64, at most 200 decoded bytes, empty for a pure acknowledgement) or `entries` (`[{"packetCnt":N,"data":"base64"}]`, counter-dependent, mutually exclusive with data); optional `confirmed` (responseExp), `prio`, `format`, `responsePrio`, `dlWindReq`, `expOnly`, `dlRxStatQry`, and `ref` (at most 128 bytes; echoed in downlink_queued, downlink_rejected and every downlink_result). `{"data":"AQIDBA==","confirmed":false}` stays valid.
 
 ### QoS
 

@@ -51,6 +51,10 @@ var (
 
 // Message struct removed - use mioty.ULDataMessage from KC-DB/storage/mioty/types.go instead
 
+// MaxDownlinkRefBytes bounds the ref an MQTT downlink command carries; the
+// downlink_queue.ref CHECK constraint (migration 000187) holds the same bound.
+const MaxDownlinkRefBytes = 128
+
 // DownlinkMessage represents a downlink message
 type DownlinkMessage struct {
 	ID                    int64
@@ -68,6 +72,7 @@ type DownlinkMessage struct {
 	QueID                 int64   // Service center queue ID, the one base stations see (BSSCI 3.12.1)
 	ACQueID               *uint64 // Queue ID the Application Center assigned (SCACI 3.10.1); nil when enqueued without one
 	ACEUI                 *uint64 // EUI of the Application Center that queued it, told its result (SCACI 3.12); nil when none did
+	Ref                   string  // Correlation ref of the MQTT command that queued it, echoed with its results; empty when none
 	CntDepend             bool    // True if userData is counter dependent
 	PacketCntArray        []int64 // End Point packet counters for which userData is valid
 	Format                uint8   // User data format identifier (8 bit)

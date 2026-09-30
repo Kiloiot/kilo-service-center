@@ -17,6 +17,8 @@ const (
 	mqttKeyQueId     = "queId"
 	mqttKeyTxTime    = "txTime"
 	mqttKeyPacketCnt = "packetCnt"
+	mqttKeyResult    = "result"
+	mqttKeyRef       = "ref"
 )
 
 // MQTTAdapter bridges bssci.MQTTEventPublisher and the downlink result
@@ -71,22 +73,45 @@ func attachmentEvent(epEUIHex, event string, heardBy *uint64) map[string]interfa
 	return body
 }
 
-// PublishDownlinkResult publishes a downlink result on the organization's downlink_result topic.
-func (a *MQTTAdapter) PublishDownlinkResult(ctx context.Context, orgUUID string, result *mioty.DLDataResult) error {
-	epEUIHex := mioty.FormatEUI64Lower(result.EpEui)
-	event := map[string]interface{}{
-		mqttKeyEpEui: epEUIHex,
-		mqttKeyQueId: result.QueId,
-		"result":     result.Result,
-	}
+// PublishDownlinkResult publishes a downlink result on the organization's
+// downlink_result topic, with the ref of the command that queued it.
+func (a *MQTTAdapter) PublishDownlinkResult(ctx context.Context, orgUUID, ref string, result *mioty.DLDataResult) error {
+	event := downlinkResultEvent(result.EpEui, result.QueId, result.Result, ref)
 	if result.Result == mioty.ResultSent {
 		addTransmission(event, result)
 	}
+	return a.publishDownlinkResultEvent(ctx, orgUUID, result.EpEui, event)
+}
+
+// PublishDownlinkAcknowledged publishes on the organization's downlink_result
+// topic that the endpoint acknowledged the downlink in the uplink after
+// packetCnt, with the ref of the command that queued it.
+func (a *MQTTAdapter) PublishDownlinkAcknowledged(ctx context.Context, orgUUID, ref string, epEUI, queID uint64, packetCnt uint32) error {
+	event := downlinkResultEvent(epEUI, queID, mqtt.DownlinkResultAcknowledged, ref)
+	event[mqttKeyPacketCnt] = packetCnt
+	return a.publishDownlinkResultEvent(ctx, orgUUID, epEUI, event)
+}
+
+// downlinkResultEvent is the body every downlink_result carries; ref is
+// omitted for a downlink queued without one.
+func downlinkResultEvent(epEUI, queID uint64, result, ref string) map[string]interface{} {
+	event := map[string]interface{}{
+		mqttKeyEpEui:  mioty.FormatEUI64Lower(epEUI),
+		mqttKeyQueId:  queID,
+		mqttKeyResult: result,
+	}
+	if ref != "" {
+		event[mqttKeyRef] = ref
+	}
+	return event
+}
+
+func (a *MQTTAdapter) publishDownlinkResultEvent(ctx context.Context, orgUUID string, epEUI uint64, event map[string]interface{}) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errMarshalDownlinkResultPayload, err)
 	}
-	return a.pub.PublishDeviceEvent(ctx, orgUUID, epEUIHex, mqtt.DeviceEventDownlinkResult, payload)
+	return a.pub.PublishDeviceEvent(ctx, orgUUID, mioty.FormatEUI64Lower(epEUI), mqtt.DeviceEventDownlinkResult, payload)
 }
 
 // addTransmission adds where and when a sent downlink went out (BSSCI §3.14.1).

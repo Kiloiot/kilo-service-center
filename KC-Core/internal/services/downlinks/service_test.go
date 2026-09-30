@@ -35,7 +35,7 @@ type queuerFake struct {
 	err    error
 }
 
-func (f *queuerFake) QueueDownlinkInternal(_ context.Context, _ int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (*scaci.DLDataQueueResult, error) {
+func (f *queuerFake) QueueDownlinkInternal(_ context.Context, _ int64, orgID *uuid.UUID, req *mioty.DLDataQueue, _ string) (*scaci.DLDataQueueResult, error) {
 	f.req, f.orgID = req, orgID
 	return f.result, f.err
 }

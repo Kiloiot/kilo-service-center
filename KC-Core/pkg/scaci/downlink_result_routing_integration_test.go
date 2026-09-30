@@ -46,6 +46,10 @@ func (noResultEvents) RecordDLResult(context.Context, string, *bssci.Session, *m
 
 func (noResultEvents) RecordQueueExpiry(context.Context, *storage.DownlinkMessage) error { return nil }
 
+func (noResultEvents) RecordDownlinkAcknowledged(context.Context, *storage.DownlinkMessage, uint32) error {
+	return nil
+}
+
 // storesDownlinkAs has the harness store the organization's next downlink
 // under the service center queue id queID.
 func (h *organizationHarness) storesDownlinkAs(orgID uuid.UUID, queID int64) {

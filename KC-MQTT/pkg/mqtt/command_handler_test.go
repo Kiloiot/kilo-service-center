@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
@@ -43,12 +44,13 @@ type enqueueCall struct {
 	TenantID int64
 	OrgID    *uuid.UUID
 	Request  *mioty.DLDataQueue
+	Ref      string
 }
 
-func (m *mockDownlinkEnqueuer) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (uint64, error) {
+func (m *mockDownlinkEnqueuer) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.calls = append(m.calls, enqueueCall{Ctx: ctx, TenantID: tenantID, OrgID: orgID, Request: req})
+	m.calls = append(m.calls, enqueueCall{Ctx: ctx, TenantID: tenantID, OrgID: orgID, Request: req, Ref: ref})
 	return m.returnID, m.returnErr
 }
 
@@ -270,6 +272,7 @@ func TestCommandHandler_LegacyCommandBehavesAsBefore(t *testing.T) {
 	assert.Equal(t, cmdTestEpEUIHex, body["epEui"])
 	assert.Equal(t, float64(cmdTestQueID), body["queId"], "the queue id is exact for a JavaScript consumer")
 	assert.NotContains(t, body, "ref", "no ref is echoed when the command carried none")
+	assert.Empty(t, f.enqueuer.lastCall().Ref, "a command without a ref queues a downlink without one")
 }
 
 func TestCommandHandler_ConfirmedFlagPropagated(t *testing.T) {
@@ -347,6 +350,7 @@ func TestCommandHandler_RefEchoedOnEveryOutcome(t *testing.T) {
 	queued := newCommandFixture()
 	queued.send(`{"data":"AQ==","ref":"order-17"}`)
 	assert.Equal(t, "order-17", queued.outcome(t, DeviceEventDownlinkQueued)["ref"])
+	assert.Equal(t, "order-17", queued.enqueuer.lastCall().Ref, "the ref is queued with the downlink for its results")
 
 	rejected := newCommandFixture()
 	rejected.send(`{"data":"not base64!","ref":"order-18"}`)
@@ -356,6 +360,26 @@ func TestCommandHandler_RefEchoedOnEveryOutcome(t *testing.T) {
 	wrongType.send(`{"data":"AQ==","format":300,"ref":"order-19"}`)
 	assert.Equal(t, "order-19", wrongType.rejected(t, RejectCodeInvalidField)["ref"],
 		"the ref survives a field of the wrong type")
+}
+
+// TestCommandHandler_RefIsBoundedLikeTheQueueStoresIt: a ref of
+// storage.MaxDownlinkRefBytes is queued with the downlink; a longer one is
+// refused before anything is queued, and still echoed for correlation.
+func TestCommandHandler_RefIsBoundedLikeTheQueueStoresIt(t *testing.T) {
+	t.Parallel()
+	longest := strings.Repeat("r", storage.MaxDownlinkRefBytes)
+	queued := newCommandFixture()
+	queued.send(`{"data":"AQ==","ref":"` + longest + `"}`)
+	assert.Equal(t, longest, queued.enqueuer.lastCall().Ref)
+	queued.outcome(t, DeviceEventDownlinkQueued)
+
+	tooLong := longest + "r"
+	refused := newCommandFixture()
+	refused.send(`{"data":"AQ==","ref":"` + tooLong + `"}`)
+	assert.Zero(t, refused.enqueuer.callCount(), "nothing is queued")
+	body := refused.rejected(t, RejectCodeRefTooLong)
+	assert.Equal(t, fmt.Sprintf(RejectMsgRefTooLongFmt, storage.MaxDownlinkRefBytes), body["message"])
+	assert.Equal(t, tooLong, body["ref"])
 }
 
 func TestCommandHandler_ValidationRefusalsAreReported(t *testing.T) {

@@ -72,7 +72,7 @@ Supported `event_type` values:
 | `detach` | Endpoint detached from a base station |
 | `downlink_queued` | A `command/down` downlink was accepted and queued |
 | `downlink_rejected` | A `command/down` downlink was refused, with the reason |
-| `downlink_result` | Result of a queued downlink |
+| `downlink_result` | Result of a queued downlink, and the endpoint's acknowledgement of it |
 
 ### Command Topic (Consumed by KiloCenter)
 
@@ -203,7 +203,7 @@ Each attachment and detachment is published once. `bsEui` names the base station
 ```
 
 - `queId` identifies the downlink in the later `event/downlink_result`. It is always at most 2^53-1, so every JSON client reads it exactly.
-- `ref` echoes the `ref` of your command and is omitted when the command had none.
+- `ref` echoes the `ref` of your command and is omitted when the command had none. KiloCenter stores it with the downlink, so every later `event/downlink_result` of the downlink carries it too.
 
 ### `event/downlink_rejected`
 
@@ -233,6 +233,7 @@ Each attachment and detachment is published once. `bsEui` names the base station
 | `mqtt.command.payload_too_large` | A decoded payload exceeds 200 bytes |
 | `mqtt.command.org_unresolved` | The organization in the topic cannot be resolved |
 | `mqtt.command.enqueue_failed` | The service center could not queue the downlink |
+| `mqtt.command.ref_too_long` | `ref` exceeds 128 bytes |
 
 Refusals by the service center core carry its catalog token, for example `scaci.error.endpoint_not_found` for an endpoint that is not registered to you.
 
@@ -247,11 +248,35 @@ A message on a malformed topic (an invalid organization UUID or endpoint EUI) ca
   "result": "sent",
   "bsEui": "70b3d59cd00009e6",
   "txTime": 1737025801000000000,
-  "packetCnt": 1235
+  "packetCnt": 1235,
+  "ref": "order-17"
 }
 ```
 
-Possible `result` values: `sent`, `expired`, `invalid`. Only a `sent` result carries `bsEui` (the base station that transmitted the downlink), `txTime` (Unix time of transmission in nanoseconds) and `packetCnt` (the endpoint packet counter of the window it was sent in).
+Possible `result` values:
+
+| `result` | When it is published |
+|----------|----------------------|
+| `sent` | A base station transmitted the downlink |
+| `expired` | The downlink expired before it was transmitted, in the service center queue or at the base station |
+| `invalid` | A base station refused the downlink |
+| `acknowledged` | The endpoint confirmed it received the transmitted downlink |
+
+- Only a `sent` result carries `bsEui` (the base station that transmitted the downlink) and `txTime` (Unix time of transmission in nanoseconds).
+- `packetCnt` is the endpoint packet counter of the downlink window: the window the downlink was sent in for `sent`, and the window the endpoint acknowledged for `acknowledged`.
+- `ref` is the `ref` of the `command/down` that queued the downlink, on every result, and is omitted when the command had none. A downlink queued by an Application Center or through the API has no `ref`.
+
+`sent`, `expired` and `invalid` are final: each downlink reports exactly one of them. `acknowledged` follows a `sent` result when the endpoint's next uplink sets the downlink acknowledgement flag (`dlAck`, which also appears on `event/up`) for the window the downlink was sent in. It is published once per transmitted downlink: a repeated reception of that uplink, an uplink whose acknowledgement matches no transmitted downlink, and an uplink without the flag publish nothing. When the endpoint's packet counter restarted and reused a window, the downlink transmitted last in that window is the one acknowledged. A downlink the endpoint never acknowledges publishes no `acknowledged`, so absence after `sent` means the endpoint has not confirmed it.
+
+```json
+{
+  "epEui": "70b3d59cd00009e6",
+  "queId": 4503599627370497,
+  "result": "acknowledged",
+  "packetCnt": 1235,
+  "ref": "order-17"
+}
+```
 
 ### `command/down` (You Publish This)
 
@@ -309,12 +334,13 @@ An empty `data` queues a pure acknowledgement downlink:
 | `dlWindReq` | boolean | Request a further downlink window from the endpoint |
 | `expOnly` | boolean | Send only when the endpoint expects a response |
 | `dlRxStatQry` | boolean | Ask the endpoint for its downlink reception status |
-| `ref` | string | Your correlation id, echoed in `downlink_queued` and `downlink_rejected` |
+| `ref` | string | Your correlation id of at most 128 bytes, echoed in `downlink_queued`, `downlink_rejected` and every `downlink_result` of the downlink |
 
 Validation rules:
 - Exactly one of `data` and `entries` is present.
 - Every `data` value is valid base64 and decodes to at most 200 bytes, the radio downlink payload limit.
 - Every entry has a `packetCnt` (0 to 4294967295), and no counter repeats.
+- `ref`, when present, is at most 128 bytes.
 - Raw MQTT payload maximum: 1 MB.
 - A refused command is reported on `event/downlink_rejected`; nothing is queued.
 
@@ -374,7 +400,8 @@ mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
      -m '{"data":"AQIDBA==","confirmed":false}'
    ```
 2. KiloCenter resolves the org and validates the command. You receive `.../event/downlink_queued` with the `queId`, or `.../event/downlink_rejected` with the reason.
-3. When a base station sends the downlink, or it expires, you receive `.../event/downlink_result` with the same `queId`.
+3. When a base station sends the downlink, or it expires, you receive `.../event/downlink_result` with the same `queId` and your `ref`.
+4. When the endpoint confirms it received a sent downlink, you receive a second `.../event/downlink_result` with `"result": "acknowledged"`.
 
 ### Observe Attach/Detach Lifecycle
 
