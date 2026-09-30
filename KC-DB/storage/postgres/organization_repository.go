@@ -72,13 +72,14 @@ func (r *OrganizationRepository) GetOrgByTenantID(ctx context.Context, tenantID 
 	return &org, nil
 }
 
-// Create creates a new organization
+// Create creates a new organization with its description and tags; no tags
+// store the column's empty default.
 func (r *OrganizationRepository) Create(ctx context.Context, org *models.Organization) error {
 	query := `
 		INSERT INTO organizations (
-			org_id, tenant_id, name, state, created_at, updated_at
+			org_id, tenant_id, name, state, description, tags, created_at, updated_at
 		) VALUES (
-			:org_id, :tenant_id, :name, :state, NOW(), NOW()
+			:org_id, :tenant_id, :name, :state, :description, COALESCE(:tags, CAST('' AS hstore)), NOW(), NOW()
 		) RETURNING created_at, updated_at`
 
 	stmt, err := r.db.PrepareNamedContext(ctx, query)

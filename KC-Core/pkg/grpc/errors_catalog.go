@@ -318,6 +318,7 @@ const (
 	ErrTokenBaseStationOwnershipFailed = "KC-GRPC-ERR-230"
 	ErrTokenNwkSnKeyLength             = "KC-GRPC-ERR-231"
 	ErrTokenNwkSnKeyZero               = "KC-GRPC-ERR-282"
+	ErrTokenOrgTagsImmutable           = "KC-GRPC-ERR-283"
 	ErrTokenShortAddressZero           = "KC-GRPC-ERR-232"
 	ErrTokenShortAddressOverflow       = "KC-GRPC-ERR-233"
 	ErrTokenFormatOverflow             = "KC-GRPC-ERR-234"
@@ -1556,6 +1557,11 @@ var errorCatalog = map[string]ErrorDefinition{
 	ErrTokenNwkSnKeyZero: {
 		Token:   ErrTokenNwkSnKeyZero,
 		Message: "nwkSnKey must not be all zeros",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenOrgTagsImmutable: {
+		Token:   ErrTokenOrgTagsImmutable,
+		Message: "organization tags are set when it is created and cannot be changed",
 		Code:    codes.InvalidArgument,
 	},
 	ErrTokenAppKeyLength: {

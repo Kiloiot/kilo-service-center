@@ -66,6 +66,7 @@ func (s *OrganizationAdminService) Create(ctx context.Context, req *grpcservices
 		Name:        req.Name,
 		Description: description,
 		State:       models.OrganizationStateActive,
+		Tags:        models.HstoreMap(req.Tags),
 	}
 
 	if err := s.orgStore.Create(ctx, org); err != nil {

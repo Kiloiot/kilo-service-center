@@ -356,6 +356,8 @@ A registered account starts without roles; an administrator grants them in Users
 | `DeleteOrganization` | DeleteOrganizationRequest | DeleteOrganizationResponse | Delete organization |
 | `ListOrganizations` | ListOrganizationsRequest | ListOrganizationsResponse | List organizations |
 
+`CreateOrganization` stores the request's `tags` with the organization, and `GetOrganization` and `ListOrganizations` return them in `Organization.tags`. Tags are fixed once the organization exists: an `UpdateOrganization` that sets `tags` is refused with `INVALID_ARGUMENT` (`KC-GRPC-ERR-283`) and changes nothing. An integration that creates organizations can therefore tag each one with its own identifiers and check them before it acts on the organization. An organization created without tags returns none.
+
 ### Organization Memberships (6) — Enterprise
 
 | RPC | Request | Response | Description |

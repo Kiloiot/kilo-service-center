@@ -44,6 +44,7 @@ func (s *IdentityService) CreateOrganization(ctx context.Context, req *pb.Create
 		Name:        req.Name,
 		Description: req.Description,
 		TenantID:    0,
+		Tags:        req.Tags,
 	}
 
 	org, err := s.orgSvc.Create(ctx, createReq)
@@ -96,6 +97,11 @@ func (s *IdentityService) GetOrganization(ctx context.Context, req *pb.GetOrgani
 func (s *IdentityService) UpdateOrganization(ctx context.Context, req *pb.UpdateOrganizationRequest) (*pb.UpdateOrganizationResponse, error) {
 	if err := s.requireServerAdmin(ctx); err != nil {
 		return nil, err
+	}
+	// Tags are fixed at creation, so an integration can tell the organization it created apart.
+	if len(req.Tags) > 0 {
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgTagsImmutable),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgTagsImmutable))
 	}
 	orgID, tenantID, err := s.validateOrgAccessUnscoped(ctx, req.Id)
 	if err != nil {

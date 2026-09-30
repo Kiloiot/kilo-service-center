@@ -166,11 +166,13 @@ type UserUpdateRequest struct {
 	Note                 *string
 }
 
-// OrganizationCreateRequest contains fields for creating an organization
+// OrganizationCreateRequest contains fields for creating an organization;
+// Tags are set only here and never change afterwards.
 type OrganizationCreateRequest struct {
 	Name        string
 	Description string
 	TenantID    int64
+	Tags        map[string]string
 }
 
 // OrganizationUpdateRequest contains fields for updating an organization

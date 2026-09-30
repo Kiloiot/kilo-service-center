@@ -657,6 +657,12 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
 - An uplink whose receptions by several base stations arrive at the same time
   records the endpoint's acknowledgement of its downlink once; two receptions
   could both record it, and the event appeared twice.
+- `CreateOrganization` stores the organization's `tags` and `description`;
+  both were dropped, so an organization created in KC-Web or through the API
+  read back without them. `GetOrganization` and `ListOrganizations` return
+  the tags. Tags are fixed at creation: an `UpdateOrganization` that sets
+  `tags` is refused with `INVALID_ARGUMENT` (`KC-GRPC-ERR-283`), where it was
+  silently ignored.
 - A stored base station private key that cannot be decrypted, for example
   under a wrong master key, is answered with an internal error instead of
   "certificate not found", which read as a key already downloaded. The key
