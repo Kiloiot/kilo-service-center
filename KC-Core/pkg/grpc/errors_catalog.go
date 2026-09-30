@@ -317,6 +317,7 @@ const (
 	// UL Transmit errors (KC-GRPC-ERR-230 to KC-GRPC-ERR-240)
 	ErrTokenBaseStationOwnershipFailed = "KC-GRPC-ERR-230"
 	ErrTokenNwkSnKeyLength             = "KC-GRPC-ERR-231"
+	ErrTokenNwkSnKeyZero               = "KC-GRPC-ERR-282"
 	ErrTokenShortAddressZero           = "KC-GRPC-ERR-232"
 	ErrTokenShortAddressOverflow       = "KC-GRPC-ERR-233"
 	ErrTokenFormatOverflow             = "KC-GRPC-ERR-234"
@@ -1550,6 +1551,11 @@ var errorCatalog = map[string]ErrorDefinition{
 	ErrTokenNwkSnKeyLength: {
 		Token:   ErrTokenNwkSnKeyLength,
 		Message: "nwkSnKey must be exactly 16 bytes",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenNwkSnKeyZero: {
+		Token:   ErrTokenNwkSnKeyZero,
+		Message: "nwkSnKey must not be all zeros",
 		Code:    codes.InvalidArgument,
 	},
 	ErrTokenAppKeyLength: {

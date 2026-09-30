@@ -119,7 +119,7 @@ func (f *auditFixture) createEndpoint(t *testing.T, tenantID int64) *models.EndP
 	t.Helper()
 	ep := &models.EndPoint{
 		EUI: models.EUIFromString(persistEpEUI), Name: "audit-persistence-endpoint", TenantID: tenantID,
-		EPClass: "A", Tags: make(map[string]string), NwkSnKey: make([]byte, 16),
+		EPClass: "A", Tags: make(map[string]string), NwkSnKey: testNetworkKey(),
 	}
 	require.NoError(t, f.endpoints.Create(testutil.TestContext(), ep))
 	stored, err := f.endpoints.GetByEUI(testutil.TestContext(), tenantID, ep.EUI[:])

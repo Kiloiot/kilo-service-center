@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -313,7 +314,7 @@ func TestSendULTransmit_CrossTenantBaseStation(t *testing.T) {
 	req := &pb.SendULTransmitRequest{
 		EpEui:     "0000000000000001",
 		BsEui:     "AAAAAAAAAAAAAAAA", // Base station owned by different tenant
-		NwkSnKey:  make([]byte, 16),
+		NwkSnKey:  testNetworkKey(),
 		ShAddr:    1,
 		PacketCnt: 1,
 		UserData:  []byte("test"),
@@ -369,7 +370,7 @@ func TestSendULTransmit_ValidTenantOfflineBaseStation(t *testing.T) {
 	req := &pb.SendULTransmitRequest{
 		EpEui:     "0000000000000001",
 		BsEui:     "AAAAAAAAAAAAAAAA", // Valid base station owned by tenant 100
-		NwkSnKey:  make([]byte, 16),
+		NwkSnKey:  testNetworkKey(),
 		ShAddr:    1,
 		PacketCnt: 1,
 		UserData:  []byte("test"),
@@ -412,7 +413,7 @@ func TestSendULTransmit_DatabaseErrorDuringOwnershipCheck(t *testing.T) {
 	req := &pb.SendULTransmitRequest{
 		EpEui:     "0000000000000001",
 		BsEui:     "AAAAAAAAAAAAAAAA",
-		NwkSnKey:  make([]byte, 16),
+		NwkSnKey:  testNetworkKey(),
 		ShAddr:    1,
 		PacketCnt: 1,
 		UserData:  []byte("test"),
@@ -476,7 +477,7 @@ func TestSendULTransmit_NoBsEuiSpecified(t *testing.T) {
 	req := &pb.SendULTransmitRequest{
 		EpEui:     "0000000000000001",
 		BsEui:     "", // No base station specified - should skip ownership check
-		NwkSnKey:  make([]byte, 16),
+		NwkSnKey:  testNetworkKey(),
 		ShAddr:    1,
 		PacketCnt: 1,
 		UserData:  []byte("test"),
@@ -543,7 +544,7 @@ func TestSendULTransmit_SuccessfulRequest(t *testing.T) {
 	req := &pb.SendULTransmitRequest{
 		EpEui:     "0000000000000001",
 		BsEui:     "AAAAAAAAAAAAAAAA",
-		NwkSnKey:  make([]byte, 16),
+		NwkSnKey:  testNetworkKey(),
 		ShAddr:    1,
 		PacketCnt: 1,
 		UserData:  []byte("test"),
@@ -912,7 +913,7 @@ func TestGRPCCreateEndpoint_GlobalUniqueness(t *testing.T) {
 			EpClass:  mioty.EndpointClassBidirectional,
 			EpEui:    "1122334455667788",
 			Name:     "gRPC Test EP",
-			NwkSnKey: make([]byte, 16), // Required field
+			NwkSnKey: testNetworkKey(), // Required field
 		},
 	}
 
@@ -956,7 +957,7 @@ func TestGRPCCreateEndpoint_SameTenantDuplicate(t *testing.T) {
 			EpClass:  mioty.EndpointClassBidirectional,
 			EpEui:    "AABBCCDDEEFF0011",
 			Name:     "Test Endpoint",
-			NwkSnKey: make([]byte, 16),
+			NwkSnKey: testNetworkKey(),
 		},
 	}
 
@@ -1060,7 +1061,7 @@ func TestGRPCCreateEndpoint_InvalidAppKeyLength(t *testing.T) {
 		Endpoint: &pb.EndPoint{
 			EpEui:    "1122334455667788",
 			Name:     "Test",
-			NwkSnKey: make([]byte, 16),
+			NwkSnKey: testNetworkKey(),
 			AppKey:   make([]byte, 15),
 		},
 	}
@@ -1085,7 +1086,7 @@ func TestGRPCCreateEndpoint_MissingTenant(t *testing.T) {
 	ctx := testutil.TestContext()
 
 	req := &pb.CreateEndPointRequest{
-		Endpoint: &pb.EndPoint{EpEui: "0x1122334455667788", Name: "Test", NwkSnKey: make([]byte, 16)},
+		Endpoint: &pb.EndPoint{EpEui: "0x1122334455667788", Name: "Test", NwkSnKey: testNetworkKey()},
 	}
 
 	_, err := service.CreateEndPoint(ctx, req)
@@ -2093,6 +2094,7 @@ func TestUpdateEndPoint_MaskValidationRejections(t *testing.T) {
 		{"invalid status", &pb.EndPoint{EpEui: eui, Status: "bogus"}, []string{fieldMaskStatus}, grpcerrors.ErrTokenInvalidEndpointStatus},
 		{"nwk wrong length", &pb.EndPoint{EpEui: eui, NwkSnKey: []byte{1, 2, 3}}, []string{fieldMaskNwkSnKey}, grpcerrors.ErrTokenNwkSnKeyLength},
 		{"nwk not clearable", &pb.EndPoint{EpEui: eui, NwkSnKey: nil}, []string{fieldMaskNwkSnKey}, grpcerrors.ErrTokenNwkSnKeyLength},
+		{"nwk zero-filled", &pb.EndPoint{EpEui: eui, NwkSnKey: make([]byte, 16)}, []string{fieldMaskNwkSnKey}, grpcerrors.ErrTokenNwkSnKeyZero},
 		{"app wrong length", &pb.EndPoint{EpEui: eui, AppKey: []byte{1, 2, 3}}, []string{fieldMaskAppKey}, grpcerrors.ErrTokenAppKeyLength},
 	}
 
@@ -2392,7 +2394,7 @@ func TestGRPCCreateEndPoint_TagsPersisted(t *testing.T) {
 			EpEui:    "AABBCCDDEEFF0011",
 			Name:     "Test Endpoint With Tags",
 			EpClass:  "A",
-			NwkSnKey: make([]byte, 16),
+			NwkSnKey: testNetworkKey(),
 			AppKey:   make([]byte, 16),
 			Tags: map[string]string{
 				"env":    "test",
@@ -2433,7 +2435,7 @@ func TestGRPCCreateEndPoint_DerivesBidiFromEpClass(t *testing.T) {
 			EpEui:    "AABBCCDDEEFF00AA",
 			Name:     "Test Endpoint Bidi",
 			EpClass:  "A",
-			NwkSnKey: make([]byte, 16),
+			NwkSnKey: testNetworkKey(),
 		},
 	}
 
@@ -2459,7 +2461,7 @@ func TestGRPCCreateEndPoint_RefusesAnUnknownEpClass(t *testing.T) {
 			log:         &mockLogger{},
 		})
 		req := &pb.CreateEndPointRequest{
-			Endpoint: &pb.EndPoint{EpEui: "AABBCCDDEEFF00AB", Name: "Unknown class", EpClass: class, NwkSnKey: make([]byte, 16)},
+			Endpoint: &pb.EndPoint{EpEui: "AABBCCDDEEFF00AB", Name: "Unknown class", EpClass: class, NwkSnKey: testNetworkKey()},
 		}
 
 		_, err := service.CreateEndPoint(testutil.TestContextWithTenant(123), req)
@@ -3357,7 +3359,7 @@ func TestCreateEndPoint_TypeEUI_PrecedenceOverride(t *testing.T) {
 			EpClass:       mioty.EndpointClassBidirectional,
 			EpEui:         "0000000000000001",
 			Name:          "Test EP",
-			NwkSnKey:      make([]byte, 16),
+			NwkSnKey:      testNetworkKey(),
 			ShAddr:        1,
 			LastPacketCnt: 0,
 			DeviceModelId: modelID.String(),
@@ -3397,7 +3399,7 @@ func TestCreateEndPoint_TypeEUI_ResolverErrorPropagates(t *testing.T) {
 			EpClass:       mioty.EndpointClassBidirectional,
 			EpEui:         "0000000000000001",
 			Name:          "Test EP",
-			NwkSnKey:      make([]byte, 16),
+			NwkSnKey:      testNetworkKey(),
 			ShAddr:        1,
 			LastPacketCnt: 0,
 			DeviceModelId: modelID.String(),
@@ -4140,4 +4142,9 @@ func (m *locationMockBsSvc) ListAllLocations(ctx context.Context) ([]*models.Bas
 		return m.listAllLocationsFunc(ctx)
 	}
 	return nil, nil
+}
+
+// testNetworkKey is a valid network session key: 16 bytes, not all zeros.
+func testNetworkKey() []byte {
+	return bytes.Repeat([]byte{0x5A}, 16)
 }

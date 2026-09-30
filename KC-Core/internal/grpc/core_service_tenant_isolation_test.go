@@ -315,7 +315,7 @@ func TestTenantIsolation_CreateEndpoint_TenantPropagation(t *testing.T) {
 			EpEui:    "0000000000000001",
 			Name:     "Test EP",
 			EpClass:  "A",
-			NwkSnKey: make([]byte, 16),
+			NwkSnKey: testNetworkKey(),
 			AppKey:   make([]byte, 16),
 		},
 	}

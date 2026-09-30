@@ -55,7 +55,7 @@ func TestSendULTransmit_RejectsMalformedEndpointEUI(t *testing.T) {
 				log: &mockLogger{},
 			})
 			_, err := svc.SendULTransmit(testutil.TestContextWithTenant(1), &pb.SendULTransmitRequest{
-				EpEui: eui, BsEui: "70B3D59CD00009E6", NwkSnKey: make([]byte, 16), PacketCnt: 1, UserData: []byte{0x01},
+				EpEui: eui, BsEui: "70B3D59CD00009E6", NwkSnKey: testNetworkKey(), PacketCnt: 1, UserData: []byte{0x01},
 			})
 			require.Error(t, err)
 			assert.Equal(t, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidEndpointEUIFormat), status.Code(err), "EUI %q", eui)

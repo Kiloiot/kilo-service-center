@@ -2,6 +2,7 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -276,9 +277,8 @@ func (s *EndpointHandlers) CreateEndPoint(ctx context.Context, req *pb.CreateEnd
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenEndpointEUIRequired),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEndpointEUIRequired))
 	}
-	if len(req.Endpoint.NwkSnKey) != 16 {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenNwkSnKeyLength),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNwkSnKeyLength))
+	if err := networkKeyError(req.Endpoint.NwkSnKey); err != nil {
+		return nil, err
 	}
 	if len(req.Endpoint.AppKey) > 0 && len(req.Endpoint.AppKey) != 16 {
 		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAppKeyLength),
@@ -699,9 +699,8 @@ func applyMaskedIdentityFields(endpoint *models.EndPoint, req *pb.UpdateEndPoint
 		endpoint.Bidi = bidi
 	}
 	if fieldInMask(mask, fieldMaskNwkSnKey) {
-		if len(req.Endpoint.NwkSnKey) != endpointKeyLen {
-			return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenNwkSnKeyLength),
-				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNwkSnKeyLength))
+		if err := networkKeyError(req.Endpoint.NwkSnKey); err != nil {
+			return err
 		}
 		endpoint.NwkSnKey = req.Endpoint.NwkSnKey
 	}
@@ -1065,4 +1064,18 @@ func (s *EndpointHandlers) DetachEndPoint(ctx context.Context, req *pb.DetachEnd
 		return nil, err
 	}
 	return &pb.DetachEndPointResponse{OperationId: result.OperationID, Status: result.Status}, nil
+}
+
+// networkKeyError refuses a network session key a base station could not use:
+// not 16 bytes, or all zeros.
+func networkKeyError(key []byte) error {
+	if len(key) != endpointKeyLen {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenNwkSnKeyLength),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNwkSnKeyLength))
+	}
+	if bytes.Equal(key, make([]byte, endpointKeyLen)) {
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenNwkSnKeyZero),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNwkSnKeyZero))
+	}
+	return nil
 }

@@ -627,6 +627,10 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   single-host install on `localhost` needs nothing.
 
 ### Fixed
+- Creating or updating an endpoint with an all-zero network session key is
+  refused with `INVALID_ARGUMENT` (`KC-GRPC-ERR-282`). Such a key can never be
+  sent to a base station, and the endpoint used to be stored and then fail
+  to attach with an internal error.
 - Downloading a base station's private key no longer hangs until the request
   times out: the key's row lock blocked the audit record of its own download.
 - A base station location outside the globe (latitude beyond ±90, longitude

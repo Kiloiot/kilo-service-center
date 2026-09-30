@@ -7,11 +7,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	endpointpkg "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	kcerrors "github.com/Kiloiot/kilo-service-center/KC-DB/common/errors"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -153,4 +156,24 @@ func TestCreateEndPoint_RefusedPreAttachmentStoresNothing(t *testing.T) {
 	created, err := createPreAttachEndpoint(svc, true)
 	require.NoError(t, err, "the refused create left no endpoint behind, so it can be sent again")
 	assert.Equal(t, endpointpkg.EndpointStatusAttached, created.AttachStatus)
+}
+
+// A zero-filled network key can never be sent to a base station, so a create
+// that names one is refused before anything is stored.
+func TestCreateEndPoint_ZeroFilledNetworkKeyStoresNothing(t *testing.T) {
+	table := newPreAttachTable()
+	svc := preAttachService(table, &preAttachAttachments{table: table})
+
+	_, err := svc.CreateEndPoint(testutil.TestContextWithTenant(preAttachTestTenant), &pb.CreateEndPointRequest{Endpoint: &pb.EndPoint{
+		EpClass:  mioty.EndpointClassBidirectional,
+		EpEui:    preAttachTestEUI,
+		Name:     "zero key",
+		NwkSnKey: make([]byte, 16),
+	}})
+
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Equal(t, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNwkSnKeyZero), st.Message())
+	assert.Empty(t, table.stored, "no endpoint is left behind")
 }
