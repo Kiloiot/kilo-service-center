@@ -1,8 +1,8 @@
 {
-  "version": "v1.3.0+d3ea8188",
-  "buildTime": "2026-09-28T11:00:41Z",
-  "gitCommit": "d3ea81889b83011dd8cbc082ba7fdccb551f2050",
-  "gitBranch": "audit/dead-code-cleanup",
+  "version": "v2.0.0+9606db9",
+  "buildTime": "2026-09-30T11:08:36Z",
+  "gitCommit": "9606db9d2ac88b7c161bdea05b332a156e5975dc",
+  "gitBranch": "dev-deploy-2026-09-30",
   "buildUser": "timkrav",
   "goVersion": "go1.26.5",
   "artifacts": {
