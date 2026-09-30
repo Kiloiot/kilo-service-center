@@ -29,27 +29,48 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
     cover it.
   - The web interface's WebSocket connection is replaced by gRPC-web server streams.
 
-**What else changes, in brief** (the full list follows):
+**Cleanup and bug fixes.** A major cleanup release:
+- Dead code, unused settings and unused exported declarations are removed, along with the old
+  System screen and the WebSocket transport.
+- Large components are split into smaller, focused parts.
+- Hard-coded values are moved into shared catalogs and configuration.
+- More than fifty bugs are fixed across uplinks, downlinks, sessions, certificates and the web
+  interface. They are listed under Fixed below.
 
+**New in the web interface:**
+- **Live updates.** Dashboards, lists and activity refresh within about a second of a message
+  arriving, with no manual refresh.
+- **Activity on every base station and endpoint.** One table shows each uplink with its radio
+  metrics, payload and decoded values inline. Rows expand to the receiving stations, their
+  subpackets and the ulData message.
+- **Traffic.** Uplinks show decoded values when the endpoint has a blueprint. Downlinks can be
+  queued, revoked and followed to delivery.
+- **Blueprints.** A blueprint can be assigned from the endpoint's page.
+- **Logs.** An error center and an event log with filters replace the old activity feed, and
+  the dashboard shows an Alerts card.
+- **Base stations.** A map of the stations, plus certificate status and expiry. A station's
+  certificate bundle can be downloaded, and the server certificate renewed without losing the
+  names stations connect by.
+- **Users and roles.** Administrators grant roles. A refused password shows the reason, and API
+  keys can be created in the community edition.
+
+**New in the service center:**
 - **Protocol conformance.** Uplinks, downlinks, attach and detach follow BSSCI v1.0.0 and SCACI
-  v1.0.0 end to end:
-  - Base station and Application Center sessions survive a restart and resume.
-  - One uplink received by several base stations is delivered once, listing every receiving
-    station.
-  - Downlinks are queued, revoked, expired and reported to the Application Center that queued
-    them.
+  v1.0.0 end to end.
+- **Sessions.** Base station and Application Center sessions survive a restart and resume.
+- **Uplinks.** One uplink received by several base stations is delivered once, listing every
+  receiving station.
+- **Downlinks.** Downlinks are queued, revoked, expired and reported to the Application Center
+  that queued them.
 - **Tenant isolation and security.**
-  - Roles are enforced, and every secret handed out is audited first.
+  - Roles are enforced on every call, and secrets are audited before they are handed out.
   - Base station certificates are bound to their station.
   - SCACI sessions, queue ids and results stay within their organization.
-  - Internal calls between the services are authenticated.
-- **Web interface.**
-  - Dashboards, lists and activity update live, within about a second of the row being written.
-  - Each base station and endpoint has an Activity table with the payload and its decoded
-    values inline, and blueprints can be assigned from the endpoint page.
-  - Downlinks can be queued, revoked and followed to delivery, and certificates can be
-    downloaded and renewed.
-  - The interface has a Logs view, and the Base Stations page shows the stations on a map.
+  - Calls between the services are authenticated.
+- **New API fields.** The endpoint's latest RSSI, SNR and equivalent SNR, the downlink accept
+  and acknowledge times, the base station certificate expiry, and a password policy.
+- **New MQTT fields and events.** `dlOpen`, `responseExp` and `dlAck` on uplinks, delivery details
+  on downlink results, more `command/down` options, and `event/downlink_queued`.
 
 > **Breaking:** organization quotas are gone. `can_have_base_stations`,
 > `max_base_station_count` and `max_endpoint_count` no longer exist on
