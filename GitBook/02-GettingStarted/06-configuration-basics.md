@@ -26,11 +26,25 @@ In container mode, KC-Core reads `config/config.docker.yaml`. All service addres
 
 - **Database**: host, port, credentials (default: `localhost:5433`, user `kilocenter`, password `changeme`)
 - **KC-Core health**: port `8086`
-- **KC-Gateway gRPC-web**: port `9090`
+- **KC-Gateway gRPC-web**: port `9090` (the documented browser ingress; KC-Core's own gRPC-web multiplexing is off by default and is enabled with `grpc.web.enabled: true` only when a deployment talks to KC-Core directly)
 - **KC-Gateway health**: port `8087`
-- **BSSCI**: port `5000`, TLS certificate paths
+- **BSSCI**: port `5000` in `config/config.docker.yaml`, `5005` in `KC-Core/config.yaml`, TLS certificate paths
 - **SCACI**: port `5001`, TLS certificate paths
 - **MQTT**: broker host, port, and credentials
+- **Dashboard service status**: the rows follow the `general`, `protocol`, `grpc`, `identity` and `mqtt` settings automatically; `status.timeout` is the only status setting
+
+## What Is the Platform Tenant?
+
+`general.tenant_id` (default `1`) names the platform tenant. KiloCenter files
+operator and audit events that belong to the whole installation under it:
+users being created, changed or deleted, organizations and API keys being
+deleted, and server certificates being generated or renewed. Every edition
+requires a value greater than zero and refuses to start without one.
+
+Treat the platform tenant as reserved for these events. Only administrators
+can read them, and members of an organization that shares the tenant see only
+the event categories their roles cover. See
+[User Roles and Permissions](../05-Security/04-users-and-roles.md).
 
 ## TLS Certificate Paths
 
@@ -56,6 +70,44 @@ Paths in the source dev config are relative to the KC-Core working directory. Co
 
 - **Docker Compose:** Server certificates are generated automatically on first `docker compose up`. See [Docker Compose Installation](03-installation-docker-compose.md).
 - **Linux Host:** Generate server certificates manually with `KC-Core/certgen` before starting KC-Core. See [Linux Host Installation](04-installation-linux-host.md).
+
+## Downlink Lifetime
+
+A downlink waits in the service center queue until the endpoint opens a downlink window. `protocol.downlink_expiry` bounds that wait:
+
+```yaml
+protocol:
+  downlink_expiry:
+    lifetime: "24h"        # how long a queued downlink waits for a window
+    sweep_interval: "5s"   # how often overdue downlinks are expired
+    batch_size: 100        # downlinks expired per statement
+    revoke_not_held_codes: [2]  # dlDataRev refusal codes meaning "not held"
+```
+
+A downlink still waiting in the service center queue when `lifetime` has passed, or when the `expiresAt` of the MQTT command that queued it has passed, is never sent. It is marked expired and reported as `expired` to the Application Center that queued it (`dlDataRes`), on the MQTT `downlink_result` topic, and in the downlink results.
+
+A downlink a base station already holds at that moment is not reported yet: only the station knows whether it transmitted it. KiloCenter asks the station to drop it (`dlDataRev`) and shows it as **Revoking**. It ends `expired` when the station confirms the revoke, answers that it does not hold the downlink, or reconnects with a new session that discarded it. When the station reports first that it transmitted the downlink, the result is `sent`. A connected station that has not settled the downlink is asked again once per `sweep_interval`, never while its previous `dlDataRev` still awaits an answer; a station that is offline is asked again when it reconnects. Time passing alone never ends a downlink a connected station holds.
+
+Deleting a base station ends every downlink it held, queued, reserved or **Revoking**, as `expired` at once, whatever its deadline; none returns to the queue. A deleted station that is still powered may still transmit them, so power it off or let its queue empty before you delete it. If the deletion cannot end them, for example because the database was unavailable, the next sweep does.
+
+A station refuses the revoke of a downlink it does not hold with a BSSCI error, whose POSIX code the specification leaves to the manufacturer. `revoke_not_held_codes` lists the codes your stations use for that answer (default `[2]`, ENOENT). Any other refusal, such as an unsupported operation, proves nothing about the downlink, which stays **Revoking** until the station reports a result, answers with a "not held" code or reconnects; a station that keeps refusing with another code keeps it **Revoking** and is asked again each `sweep_interval`. If your stations answer "not held" with another code, add the codes they use; only add a code that your stations use for "not held" alone. The same rule applies to revokes an operator or Application Center requests.
+
+In the Helm chart the keys are `kcCore.config.protocol.downlinkExpiry.lifetime`, `sweepInterval`, `batchSize` and `revokeNotHeldCodes`.
+
+## Application Center Session Resumption
+
+When an Application Center loses its SCACI connection, its session stays resumable. Every uplink (`ulData`), endpoint status (`epStat`) and result of a downlink it queued (`dlDataRes`) produced while it is disconnected is kept for that session and sent when the Application Center resumes it (`snResume` true), before anything new, with operation IDs that continue from before the loss. This also holds across a KC-Core restart. An Application Center that starts a new session instead receives none of it.
+
+An Application Center is its `acEui` within its organization. Application Centers of two organizations that use the same `acEui` each keep their own session: neither replaces or resumes the other's, and each receives only the results of the downlinks it queued.
+
+`protocol.scaci_resume_max_pending_operations` bounds what a disconnected session holds:
+
+```yaml
+protocol:
+  scaci_resume_max_pending_operations: 10000
+```
+
+When a session already holds that many operations, the next one ends its resumability: the service center discards the session, and the Application Center starts a new session when it reconnects. Uplinks and downlink results remain available through MQTT and the API. In the Helm chart the key is `kcCore.config.scaci.resumeMaxPendingOperations`.
 
 ## Default Credentials
 

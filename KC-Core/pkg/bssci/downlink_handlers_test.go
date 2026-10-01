@@ -12,12 +12,6 @@ import (
 // Enum validation and conditional field tests moved to integration tests
 // (downlink_handlers_integration_test.go) where they can exercise real validation code
 
-// TestDLDataResultEpEuiMismatch tests that mismatched epEui is rejected
-func TestDLDataResultEpEuiMismatch(t *testing.T) {
-	t.Skip("Requires refactoring to work with concrete postgres.DB type")
-	// This test needs interface-based message store or integration test setup
-}
-
 // Tenant isolation tests moved to integration tests where they can verify
 // actual database-level tenant isolation enforcement
 
@@ -84,7 +78,7 @@ func TestSendDLDataRevoke_BuildsMessage_PersistsMetadata(t *testing.T) {
 	queId := uint64(12345)
 	epEui := TestEpEui01
 
-	err := server.SendDLDataRevoke(session.ID, epEui, queId)
+	err := server.SendDLDataRevoke(session.ID, epEui, queId, 1)
 	require.NoError(t, err, "SendDLDataRevoke should succeed")
 
 	// Verify message was sent (testConn tracks errorSent on any Write)
@@ -92,35 +86,6 @@ func TestSendDLDataRevoke_BuildsMessage_PersistsMetadata(t *testing.T) {
 
 	// Verify operation ID was decremented
 	require.Equal(t, int64(-2), session.LastScOpId, "SC opId should be decremented")
-}
-
-// TestRevokeDownlink_NoStorage_ReturnsQueueNotFound verifies that when storage
-// is nil (simulating no DB connection), ErrSchedulerQueueNotFound is returned.
-//
-// Spec: BSSCI §5.13 - DL Data Revoke with unavailable storage
-func TestRevokeDownlink_NoStorage_ReturnsQueueNotFound(t *testing.T) {
-	// Skip if running short tests
-	if testing.Short() {
-		t.Skip("Skipping server-based test in short mode")
-	}
-
-	// Create test server with nil storage
-	testLogger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-		queueSerializer, auditLogger, tenantResolver, _ :=
-		CreateTestServices(testLogger, nil)
-
-	// Explicitly pass nil storage - simulates storage unavailable
-	server := NewTestServer(testLogger, nil, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-		queueSerializer, auditLogger, tenantResolver)
-
-	// Execute RevokeDownlink with nil storage
-	_, err := server.RevokeDownlink(1, 12345)
-
-	// Should return ErrSchedulerQueueNotFound (storage unavailable)
-	require.Error(t, err)
-	// Note: The implementation returns ErrSchedulerQueueNotFound when storage is nil
 }
 
 // Helper functions

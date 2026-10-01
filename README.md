@@ -194,7 +194,7 @@ http://localhost/
 | **Email** | `admin@kilocenter.local` |
 | **Password** | `admin123!` |
 
-> **Warning:** Change the default admin password or remove this account before any production or public-facing deployment. The default credentials are published in this repository.
+Change this password straight away under **Change Password** in the user menu, the same way you would set your own password on a new router or gateway; choosing and keeping the installation's credentials is part of installing it. The account holds every role. Accounts created through self-registration start without any role until an administrator grants one in **Users & Roles**; see [User Roles and Permissions](GitBook/05-Security/04-users-and-roles.md).
 
 > **Important:** KC-Identity and KC-Gateway must share the same HMAC secret for JWT authentication to work. The secret is configured in `config/config.identity-docker.yaml` and `config/config.gateway-docker.yaml` under `auth.hmac_secret`. If these values differ, you will see `invalid_token` errors after login. See the [Docker Compose guide](GitBook/02-GettingStarted/03-installation-docker-compose.md#authentication-secret-hmac) for details.
 
@@ -330,6 +330,8 @@ This repository is not the recommended production rollout vehicle. Use Kilo Clou
 KiloCenter Community Edition is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
 
 If you run a modified version as a network service, the AGPL requires you to make the modified source available to users. The source repository is [github.com/Kiloiot/kilo-service-center](https://github.com/Kiloiot/kilo-service-center).
+
+Code adapted from third-party projects keeps its original license; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 See [TRADEMARKS.md](TRADEMARKS.md) for trademark policy.
 

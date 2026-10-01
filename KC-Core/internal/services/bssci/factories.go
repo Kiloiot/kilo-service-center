@@ -3,12 +3,11 @@ package bssciservices
 import (
 	"sync"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 )
 
 // BSSCIServiceBundle packages all BSSCI service dependencies
@@ -18,40 +17,47 @@ type BSSCIServiceBundle struct {
 	DownlinkSvc         bssci.DownlinkService
 	StatusSvc           bssci.StatusService
 	ConnectionSvc       bssci.BaseStationConnectionRegistry
-	Broadcaster         bssci.SCACIBroadcaster         // Initially unwired - set via SetSCACIServer
-	EPStatusBroadcaster bssci.SCACIEPStatusBroadcaster // EPStatus adapter - set via SetSCACIEPStatusServer
+	Broadcaster         SCACIForwarderWithSetter       // Unwired until SCACI exists; the typed setter is called by the composition root
+	EPStatusBroadcaster SCACIEPStatusAdapterWithSetter // EPStatus adapter; wired the same way
 	QueueSerializer     bssci.QueueSerializer
-	AuditLogger         bssci.AuditLogger
+	AuditLogger         *DownlinkAuditLog
 	TenantResolver      bssci.TenantResolver
+	// ResultReporter tells a downlink's originators its final result.
+	ResultReporter *DownlinkResultReporter
+	// ServingStations decides the base station serving an endpoint.
+	ServingStations *ServingStationPolicy
 }
 
-// BSSCIInfrastructure holds infrastructure that bssci.Server still accesses directly
-// COMPLETE list based on current bssci.NewServer signature
-// Note: KeyEncryptor and DeduplicatorSeed are NOT included - server creates them internally
-type BSSCIInfrastructure struct {
-	ConnectionMgr    *basestation.ConnectionManager
-	Storage          interfaces.Storage          // Uses repository interfaces
-	SystemEventStore interfaces.SystemEventStore // For event recording
-	BasestationRepo  interfaces.BaseStationRepository
-	EndpointRepo     interfaces.EndpointRepository
-	PendingOps       *map[bssci.SessionOpKey]*bssci.PendingOperation
-	PendingOpsMu     *sync.RWMutex
-	OrgResolver      org.Resolver
-	FallbackTenantID int64
+// DownlinkQueueStores is the downlink queue the composition root hands the
+// bundle: the repository fills the downlink service's queue ports and the
+// endpoint locations the serving station policy decides on.
+type DownlinkQueueStores interface {
+	DownlinkOutcomeWriter
+	DownlinkRevocationWriter
+	DownlinkHolderWriter
+	EndpointLocator
+	DownlinkLookup
 }
 
 // NewBSSCIServices creates all BSSCI services with explicit dependencies
 func NewBSSCIServices(
-	storage interfaces.Storage,
-	systemEventStore interfaces.SystemEventStore,
-	queueStore *postgres.DownlinkQueueReader,
+	sessionRepo BaseStationSessionStore,
+	baseStationRepo BaseStationStore,
+	pendingOpsRepo PendingOperationStore,
+	downlinkRepo DownlinkQueueStores,
+	systemEventStore SystemEventRecorder,
+	queueStore DownlinkQueueOwnership,
 	connectionMgr *basestation.ConnectionManager,
 	log logger.Logger,
 	tenantID int64,
-	orgResolver org.Resolver,
+	serviceCenterEUI uint64,
 	pendingOps *map[bssci.SessionOpKey]*bssci.PendingOperation,
 	pendingOpsMu *sync.RWMutex,
 	supportedProtocolVersions []string,
+	clk clock.Clock,
+	mqttResults DownlinkResultPublisher,
+	work BackgroundRunner,
+	revokeNotHeldCodes []int,
 ) (*BSSCIServiceBundle, error) {
 	// Create services in dependency order
 	versionNegotiator, err := NewVersionNegotiator(supportedProtocolVersions, log)
@@ -61,18 +67,23 @@ func NewBSSCIServices(
 
 	// SessionService uses repository interfaces
 	sessionSvc := NewSessionService(
-		storage.BaseStationSessions(),
-		storage.BaseStations(),
-		storage.PendingOperations(),
+		sessionRepo,
+		pendingOpsRepo,
 		systemEventStore,
 		tenantID,
+		serviceCenterEUI,
 		log,
 	)
 	// StatusService uses PendingOperationRepository
-	statusSvc := NewStatusService(pendingOps, pendingOpsMu, storage.PendingOperations(), log)
+	statusSvc := NewStatusService(pendingOps, pendingOpsMu, pendingOpsRepo, log)
 	connectionSvc := NewConnectionRegistry(connectionMgr, log)
 	queueSerializer := NewQueueSerializer()
-	auditLogger := NewAuditLogger(systemEventStore)
+	auditLogger, err := NewAuditLogger(AuditLogDeps{
+		Events: systemEventStore, Downlinks: downlinkRepo, Stations: baseStationRepo, Clock: clk, Logger: log,
+	})
+	if err != nil {
+		return nil, err
+	}
 	tenantResolver := NewTenantResolver(queueStore)
 
 	// Create broadcaster WITHOUT SCACI server wired
@@ -83,17 +94,29 @@ func NewBSSCIServices(
 	// Will be wired via SetSCACIServer() on the adapter after SCACI creation
 	epStatusBroadcaster := NewSCACIEPStatusAdapter(log)
 
-	// DownlinkService uses interfaces.Storage with repository accessors
-	downlinkSvc := NewDownlinkService(
-		log,
-		queueStore,
-		tenantResolver,
-		orgResolver,
-		storage,
-		broadcaster, // Unwired initially - SCACI server injected later
-		auditLogger,
-		queueSerializer,
-	)
+	// The broadcaster reaches Application Centers once the SCACI server is wired.
+	resultReporter, err := NewDownlinkResultReporter(broadcaster, mqttResults, auditLogger, auditLogger, work, log)
+	if err != nil {
+		return nil, err
+	}
+	servingStations, err := NewServingStationPolicy(downlinkRepo)
+	if err != nil {
+		return nil, err
+	}
+	revokeAnswers, err := NewRevokeAnswers(RevokeAnswerDeps{
+		Logger: log, Tenants: tenantResolver, Revocations: downlinkRepo, Expiries: resultReporter,
+		Serializer: queueSerializer, NotHeldCodes: revokeNotHeldCodes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	downlinkSvc, err := NewDownlinkService(DownlinkServiceDeps{
+		Logger: log, Tenants: tenantResolver, Outcomes: downlinkRepo, Holders: downlinkRepo,
+		Results: resultReporter, Serializer: queueSerializer, Clock: clk,
+	}, revokeAnswers)
+	if err != nil {
+		return nil, err
+	}
 
 	return &BSSCIServiceBundle{
 		SessionSvc:          sessionSvc,
@@ -106,5 +129,7 @@ func NewBSSCIServices(
 		QueueSerializer:     queueSerializer,
 		AuditLogger:         auditLogger,
 		TenantResolver:      tenantResolver,
+		ResultReporter:      resultReporter,
+		ServingStations:     servingStations,
 	}, nil
 }

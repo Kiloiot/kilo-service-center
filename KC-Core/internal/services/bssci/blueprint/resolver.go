@@ -3,35 +3,42 @@ package blueprint
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
+	"github.com/google/uuid"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
+
+// Reader resolves blueprints by Type EUI and by device model default.
+type Reader interface {
+	GetByTypeEUI(ctx context.Context, tenantID int64, typeEUI []byte) (*models.Blueprint, error)
+	GetDefaultForModel(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) (*models.Blueprint, error)
+}
 
 // ResolverService implements the BlueprintResolver interface.
 // It finds blueprints for endpoints based on Type EUI and device model associations.
 type ResolverService struct {
-	log             logger.Logger
-	blueprintRepo   interfaces.BlueprintRepository
-	deviceModelRepo interfaces.DeviceModelRepository
-	endpointRepo    interfaces.EndpointRepository
+	log           logger.Logger
+	blueprintRepo Reader
 }
 
+const componentBlueprintResolver = "blueprint-resolver"
+
 // NewResolverService creates a new ResolverService instance.
+// componentBlueprintResolver labels this component in structured logs.
 func NewResolverService(
 	log logger.Logger,
-	blueprintRepo interfaces.BlueprintRepository,
-	deviceModelRepo interfaces.DeviceModelRepository,
-	endpointRepo interfaces.EndpointRepository,
+	blueprintRepo Reader,
 ) *ResolverService {
 	return &ResolverService{
-		log:             log.WithField("component", "blueprint-resolver"),
-		blueprintRepo:   blueprintRepo,
-		deviceModelRepo: deviceModelRepo,
-		endpointRepo:    endpointRepo,
+		log:           log.WithField(logger.FieldComponent, componentBlueprintResolver),
+		blueprintRepo: blueprintRepo,
 	}
 }
 
@@ -49,29 +56,29 @@ func (s *ResolverService) ResolveBlueprint(
 ) (*models.Blueprint, error) {
 	// If typeEUI is nil or empty, we can't resolve
 	if len(typeEUI) == 0 {
-		s.log.DebugContext(ctx, "No Type EUI provided, skipping blueprint resolution")
+		s.log.DebugContext(ctx, LogBlueprintNoTypeEUI)
 		return nil, nil
 	}
 
 	// Try to find blueprint by Type EUI directly
 	bp, err := s.blueprintRepo.GetByTypeEUI(ctx, tenantID, typeEUI)
 	if err == nil && bp != nil {
-		s.log.DebugContext(ctx, "Found blueprint by Type EUI",
-			"blueprint_id", bp.ID,
-			"type_eui", hex.EncodeToString(typeEUI),
-			"version", bp.Version)
+		s.log.DebugContext(ctx, LogBlueprintFoundByTypeEUI,
+			logger.FieldBlueprintID, bp.ID,
+			logger.FieldTypeEui, mioty.FormatEUIBytes(typeEUI),
+			logger.FieldVersion, bp.Version)
 		return bp, nil
 	}
 
 	// Log if error is not "not found"
 	if err != nil && !isNotFoundError(err) {
-		s.log.WarnContext(ctx, "Error looking up blueprint by Type EUI",
-			"type_eui", hex.EncodeToString(typeEUI),
-			"error", err)
+		s.log.WarnContext(ctx, LogBlueprintTypeEUILookupError,
+			logger.FieldTypeEui, mioty.FormatEUIBytes(typeEUI),
+			logger.FieldError, err)
 	}
 
-	s.log.DebugContext(ctx, "No blueprint found for Type EUI",
-		"type_eui", hex.EncodeToString(typeEUI))
+	s.log.DebugContext(ctx, LogBlueprintNotFoundForTypeEUI,
+		logger.FieldTypeEui, mioty.FormatEUIBytes(typeEUI))
 	return nil, nil
 }
 
@@ -89,15 +96,15 @@ func (s *ResolverService) ResolveBlueprintForEndpoint(
 	if len(endpoint.BlueprintSnapshot) > 0 {
 		var snap models.BlueprintSnapshot
 		if err := json.Unmarshal(endpoint.BlueprintSnapshot, &snap); err != nil {
-			s.log.WarnContext(ctx, "failed to parse endpoint blueprint snapshot",
-				"endpoint_eui", endpoint.EUI.String(), "error", err)
+			s.log.WarnContext(ctx, LogBlueprintSnapshotParseFailed,
+				logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
 		} else if bp, err := snap.ToBlueprint(); err != nil {
-			s.log.WarnContext(ctx, "invalid endpoint blueprint snapshot",
-				"endpoint_eui", endpoint.EUI.String(), "error", err)
+			s.log.WarnContext(ctx, LogBlueprintSnapshotInvalid,
+				logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
 		} else {
-			s.log.DebugContext(ctx, "Resolved blueprint from endpoint snapshot",
-				"endpoint_eui", endpoint.EUI.String(),
-				"blueprint_id", bp.ID, "version", bp.Version)
+			s.log.DebugContext(ctx, LogBlueprintResolvedFromSnapshot,
+				logger.FieldEndpointEui, endpoint.EUI.String(),
+				logger.FieldBlueprintID, bp.ID, logger.FieldVersion, bp.Version)
 			return bp, nil
 		}
 	}
@@ -113,24 +120,24 @@ func (s *ResolverService) ResolveBlueprintForEndpoint(
 		// Get the default blueprint for this model
 		bp, err := s.blueprintRepo.GetDefaultForModel(ctx, tenantID, modelID)
 		if err != nil {
-			s.log.DebugContext(ctx, "Error getting default blueprint for model",
-				"device_model_id", *endpoint.DeviceModelID,
-				"error", err)
+			s.log.DebugContext(ctx, LogBlueprintModelDefaultError,
+				logger.FieldDeviceModelID, *endpoint.DeviceModelID,
+				logger.FieldError, err)
 			return nil, nil
 		}
 
 		if bp != nil {
-			s.log.DebugContext(ctx, "Resolved blueprint from device model",
-				"endpoint_eui", endpoint.EUI.String(),
-				"device_model_id", *endpoint.DeviceModelID,
-				"blueprint_id", bp.ID)
+			s.log.DebugContext(ctx, LogBlueprintResolvedFromModel,
+				logger.FieldEndpointEui, endpoint.EUI.String(),
+				logger.FieldDeviceModelID, *endpoint.DeviceModelID,
+				logger.FieldBlueprintID, bp.ID)
 			return bp, nil
 		}
 
 		// Model has no default blueprint - return nil (decode will be skipped)
-		s.log.DebugContext(ctx, "Device model has no default blueprint",
-			"endpoint_eui", endpoint.EUI.String(),
-			"device_model_id", *endpoint.DeviceModelID)
+		s.log.DebugContext(ctx, LogBlueprintModelNoDefault,
+			logger.FieldEndpointEui, endpoint.EUI.String(),
+			logger.FieldDeviceModelID, *endpoint.DeviceModelID)
 		return nil, nil
 	}
 
@@ -140,8 +147,8 @@ func (s *ResolverService) ResolveBlueprintForEndpoint(
 		return s.ResolveBlueprint(ctx, tenantID, typeEUIBytes, formatID)
 	}
 
-	s.log.DebugContext(ctx, "Endpoint has no Type EUI or device model",
-		"endpoint_eui", endpoint.EUI.String())
+	s.log.DebugContext(ctx, LogBlueprintNoTypeEUIOrModel,
+		logger.FieldEndpointEui, endpoint.EUI.String())
 	return nil, nil
 }
 
@@ -159,25 +166,19 @@ func (s *ResolverService) GetEndpointCalibration(
 	// Parse JSON calibration data
 	var calibration map[string]interface{}
 	if err := parseJSON(endpoint.CalibrationData, &calibration); err != nil {
-		s.log.WarnContext(ctx, "Failed to parse endpoint calibration data",
-			"endpoint_eui", endpoint.EUI.String(),
-			"error", err)
+		s.log.WarnContext(ctx, LogBlueprintCalibrationParseFailed,
+			logger.FieldEndpointEui, endpoint.EUI.String(),
+			logger.FieldError, err)
 		return make(map[string]interface{})
 	}
 
 	return calibration
 }
 
-// isNotFoundError checks if an error indicates a "not found" condition.
+// isNotFoundError reports a missing record from either storage sentinel,
+// including wrapped errors.
 func isNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-	// Check for common "not found" patterns
-	errStr := err.Error()
-	return errStr == "not found" ||
-		errStr == "record not found" ||
-		errStr == "no rows in result set"
+	return errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrRecordNotFound)
 }
 
 // parseJSON parses JSON data into the target interface.

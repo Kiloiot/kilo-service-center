@@ -21,7 +21,6 @@ func newErrorAckFixture(t *testing.T, opID int64) (*Server, StatusService, *Sess
 	server := NewTestServer(log, storage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 	server.config = &Config{MessageEncoding: EncodingJSON}
-	server.RegisterHandlers()
 	session := &Session{
 		ProtocolSessionState: ProtocolSessionState{
 			ID:                "errorack-test",
@@ -56,7 +55,7 @@ func TestErrorAck_Unsolicited_RemovesNothing(t *testing.T) {
 	server, statusSvc, session := newErrorAckFixture(t, opID)
 
 	msg, data := errorAckMsg(opID)
-	require.NoError(t, server.handleErrorAck(server, session, msg, data))
+	require.NoError(t, server.handleErrorAck(session, msg, data))
 
 	_, err := statusSvc.GetPendingOperation(session, opID)
 	assert.NoError(t, err, "unsolicited errorAck must not remove the pending operation")
@@ -72,7 +71,7 @@ func TestErrorAck_AckOnly_RemovesNothing(t *testing.T) {
 	require.NoError(t, server.sendError(session, opID, POSIX_EPROTO, "test rejection"))
 
 	msg, data := errorAckMsg(opID)
-	require.NoError(t, server.handleErrorAck(server, session, msg, data))
+	require.NoError(t, server.handleErrorAck(session, msg, data))
 
 	_, err := statusSvc.GetPendingOperation(session, opID)
 	assert.NoError(t, err, "ack-only errorAck must not remove the pending operation")
@@ -88,13 +87,13 @@ func TestErrorAck_Finalizing_RemovesExactlyOnce(t *testing.T) {
 	require.NoError(t, server.sendErrorReplacingOperation(session, opID, POSIX_EPROTO, "operation replaced"))
 
 	msg, data := errorAckMsg(opID)
-	require.NoError(t, server.handleErrorAck(server, session, msg, data))
+	require.NoError(t, server.handleErrorAck(session, msg, data))
 
 	_, err := statusSvc.GetPendingOperation(session, opID)
 	assert.Error(t, err, "finalizing errorAck completes the operation and removes its pending row")
 
 	// A duplicate errorAck finds no awaited entry and changes nothing
-	require.NoError(t, server.handleErrorAck(server, session, msg, data))
+	require.NoError(t, server.handleErrorAck(session, msg, data))
 }
 
 // TestErrorAck_WrongSession_RemovesNothing: the awaited-errorAck expectation
@@ -120,7 +119,7 @@ func TestErrorAck_WrongSession_RemovesNothing(t *testing.T) {
 	}
 
 	msg, data := errorAckMsg(opID)
-	require.NoError(t, server.handleErrorAck(server, otherSession, msg, data))
+	require.NoError(t, server.handleErrorAck(otherSession, msg, data))
 
 	_, err := statusSvc.GetPendingOperation(session, opID)
 	assert.NoError(t, err, "an errorAck on a different session must not finalize this session's operation")
@@ -137,7 +136,7 @@ func TestErrorAck_PositiveOpID_NoPendingTouch(t *testing.T) {
 	require.NoError(t, server.sendError(session, posOpID, POSIX_EPROTO, "inbound command rejected"))
 
 	msg, data := errorAckMsg(posOpID)
-	require.NoError(t, server.handleErrorAck(server, session, msg, data))
+	require.NoError(t, server.handleErrorAck(session, msg, data))
 
 	_, err := statusSvc.GetPendingOperation(session, negOpID)
 	assert.NoError(t, err, "positive-opId errorAck must not touch SC pending operations")

@@ -146,6 +146,17 @@ message UserProfile {
   string default_org_id = 6;          // UUID (optional)
   string first_name = 7;
   string last_name = 8;
+  UserRoles roles = 9;                // Effective roles in the caller's current organization
+}
+
+// UserRoles are the roles a user holds in one organization: the user's own
+// role flags combined with the flags of an active membership in it. An
+// inactive user holds none.
+message UserRoles {
+  bool admin = 1;
+  bool tenant_manager = 2;
+  bool base_station_manager = 3;
+  bool endpoint_manager = 4;
 }
 
 message UserMembership {
@@ -169,6 +180,16 @@ message AuthSettings {
   ProviderSettings oidc = 8;
   ProviderSettings oauth2 = 9;
   bool registration_enabled = 10;
+  PasswordPolicy password_policy = 11;  // Rules every new password must meet
+}
+
+// PasswordPolicy states the rules the service applies to a new password, so
+// clients can explain them before a password is refused.
+message PasswordPolicy {
+  int32 min_length = 1;       // Minimum length in characters
+  int32 max_length = 2;       // Maximum length in characters
+  bool requires_letter = 3;   // At least one letter
+  bool requires_digit = 4;    // At least one digit
 }
 
 message ProviderSettings {
@@ -274,11 +295,11 @@ message User {
 // ============================================================================
 
 message CreateOrganizationRequest {
+  // 3-5 carried the organization quotas removed in 1.4.0; never reuse them.
+  reserved 3 to 5;
+  reserved "can_have_base_stations", "max_base_station_count", "max_endpoint_count";
   string name = 1;
   string description = 2;
-  bool can_have_base_stations = 3;
-  int32 max_base_station_count = 4;
-  int32 max_endpoint_count = 5;
   map<string, string> tags = 6;
 }
 
@@ -295,12 +316,12 @@ message GetOrganizationResponse {
 }
 
 message UpdateOrganizationRequest {
+  // 4-6 carried the organization quotas removed in 1.4.0; never reuse them.
+  reserved 4 to 6;
+  reserved "can_have_base_stations", "max_base_station_count", "max_endpoint_count";
   string id = 1;  // UUID
   string name = 2;
   string description = 3;
-  bool can_have_base_stations = 4;
-  int32 max_base_station_count = 5;
-  int32 max_endpoint_count = 6;
   map<string, string> tags = 7;
 }
 
@@ -329,15 +350,15 @@ message ListOrganizationsResponse {
 }
 
 message Organization {
+  // 7-9 carried the organization quotas removed in 1.4.0; never reuse them.
+  reserved 7 to 9;
+  reserved "can_have_base_stations", "max_base_station_count", "max_endpoint_count";
   string id = 1;                       // UUID
   int64 tenant_id = 2;
   string name = 3;
   string description = 4;
   string state = 5;                    // active, inactive, archived
   string external_id = 6;
-  bool can_have_base_stations = 7;
-  int32 max_base_station_count = 8;
-  int32 max_endpoint_count = 9;
   map<string, string> tags = 10;
   google.protobuf.Timestamp created_at = 11;
   google.protobuf.Timestamp updated_at = 12;

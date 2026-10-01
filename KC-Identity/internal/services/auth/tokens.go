@@ -14,23 +14,23 @@ import (
 
 // Token type claim values
 const (
-	TokenTypeAccess  = "access"
-	TokenTypeRefresh = "refresh"
+	tokenTypeAccess  = "access"
+	tokenTypeRefresh = "refresh"
 )
 
 // Standard JWT claims
 const (
-	ClaimSubject    = "sub"
-	ClaimIssuer     = "iss"
-	ClaimAudience   = "aud"
-	ClaimIssuedAt   = "iat"
-	ClaimExpiration = "exp"
-	ClaimTokenType  = "typ"
-	ClaimJWTID      = "jti"
+	claimSubject    = "sub"
+	claimIssuer     = "iss"
+	claimAudience   = "aud"
+	claimIssuedAt   = "iat"
+	claimExpiration = "exp"
+	claimTokenType  = "typ"
+	claimJWTID      = "jti"
 )
 
-// TokenIssuer handles JWT token creation for local authentication.
-type TokenIssuer struct {
+// JWTTokenIssuer handles JWT token creation for local authentication.
+type JWTTokenIssuer struct {
 	jwtAuth     *jwtauth.JWTAuth
 	tenantClaim string
 	issuer      string
@@ -39,15 +39,18 @@ type TokenIssuer struct {
 	refreshTTL  time.Duration
 }
 
-// NewTokenIssuer creates a new token issuer with the given configuration.
-func NewTokenIssuer(
+const jwtAlgHS256 = "HS256"
+
+// NewJWTTokenIssuer creates a new token issuer with the given configuration.
+// jwtAlgHS256 is the HMAC-SHA256 JWT signing algorithm identifier.
+func NewJWTTokenIssuer(
 	hmacSecret []byte,
 	tenantClaim string,
 	issuer string,
 	audience string,
 	accessTTL time.Duration,
 	refreshTTL time.Duration,
-) *TokenIssuer {
+) *JWTTokenIssuer {
 	// Apply defaults from config constants if not set
 	if issuer == "" {
 		issuer = config.AuthDefaultIssuer
@@ -56,9 +59,9 @@ func NewTokenIssuer(
 		audience = config.AuthDefaultAudience
 	}
 
-	jwtAuth := jwtauth.New("HS256", hmacSecret, nil)
+	jwtAuth := jwtauth.New(jwtAlgHS256, hmacSecret, nil)
 
-	return &TokenIssuer{
+	return &JWTTokenIssuer{
 		jwtAuth:     jwtAuth,
 		tenantClaim: tenantClaim,
 		issuer:      issuer,
@@ -69,17 +72,17 @@ func NewTokenIssuer(
 }
 
 // IssueAccessToken creates a new access token for the given user and org.
-func (ti *TokenIssuer) IssueAccessToken(userID uuid.UUID, orgID *uuid.UUID) (string, error) {
+func (ti *JWTTokenIssuer) IssueAccessToken(userID uuid.UUID, orgID *uuid.UUID) (string, error) {
 	now := time.Now().UTC()
 	exp := now.Add(ti.accessTTL)
 
 	claims := map[string]interface{}{
-		ClaimSubject:    userID.String(),
-		ClaimIssuer:     ti.issuer,
-		ClaimAudience:   ti.audience,
-		ClaimIssuedAt:   now.Unix(),
-		ClaimExpiration: exp.Unix(),
-		ClaimTokenType:  TokenTypeAccess,
+		claimSubject:    userID.String(),
+		claimIssuer:     ti.issuer,
+		claimAudience:   ti.audience,
+		claimIssuedAt:   now.Unix(),
+		claimExpiration: exp.Unix(),
+		claimTokenType:  tokenTypeAccess,
 	}
 
 	// Add org claim if present
@@ -89,7 +92,7 @@ func (ti *TokenIssuer) IssueAccessToken(userID uuid.UUID, orgID *uuid.UUID) (str
 
 	_, tokenString, err := ti.jwtAuth.Encode(claims)
 	if err != nil {
-		return "", fmt.Errorf("issue access token: %w", err)
+		return "", fmt.Errorf("%s: %w", errPrefixIssueAccessToken, err)
 	}
 
 	return tokenString, nil
@@ -97,7 +100,7 @@ func (ti *TokenIssuer) IssueAccessToken(userID uuid.UUID, orgID *uuid.UUID) (str
 
 // IssueRefreshToken creates a new refresh token for the given user.
 // Refresh tokens have longer TTL and are stored in the database for rotation.
-func (ti *TokenIssuer) IssueRefreshToken(userID uuid.UUID) (string, error) {
+func (ti *JWTTokenIssuer) IssueRefreshToken(userID uuid.UUID) (string, error) {
 	now := time.Now().UTC()
 	exp := now.Add(ti.refreshTTL)
 
@@ -105,18 +108,18 @@ func (ti *TokenIssuer) IssueRefreshToken(userID uuid.UUID) (string, error) {
 	tokenID := uuid.New()
 
 	claims := map[string]interface{}{
-		ClaimSubject:    userID.String(),
-		ClaimIssuer:     ti.issuer,
-		ClaimAudience:   ti.audience,
-		ClaimIssuedAt:   now.Unix(),
-		ClaimExpiration: exp.Unix(),
-		ClaimTokenType:  TokenTypeRefresh,
-		ClaimJWTID:      tokenID.String(), // JWT ID for uniqueness
+		claimSubject:    userID.String(),
+		claimIssuer:     ti.issuer,
+		claimAudience:   ti.audience,
+		claimIssuedAt:   now.Unix(),
+		claimExpiration: exp.Unix(),
+		claimTokenType:  tokenTypeRefresh,
+		claimJWTID:      tokenID.String(), // JWT ID for uniqueness
 	}
 
 	_, tokenString, err := ti.jwtAuth.Encode(claims)
 	if err != nil {
-		return "", fmt.Errorf("issue refresh token: %w", err)
+		return "", fmt.Errorf("%s: %w", errPrefixIssueRefreshToken, err)
 	}
 
 	return tokenString, nil
@@ -124,7 +127,7 @@ func (ti *TokenIssuer) IssueRefreshToken(userID uuid.UUID) (string, error) {
 
 // ParseRefreshToken validates and parses a refresh token.
 // Returns the user ID and token if valid.
-func (ti *TokenIssuer) ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Token, error) {
+func (ti *JWTTokenIssuer) ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Token, error) {
 	token, err := ti.jwtAuth.Decode(tokenString)
 	if err != nil {
 		return uuid.Nil, nil, ErrInvalidRefreshToken
@@ -132,10 +135,10 @@ func (ti *TokenIssuer) ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Tok
 
 	// Validate typ claim
 	var typClaim interface{}
-	if err := token.Get(ClaimTokenType, &typClaim); err != nil {
+	if err := token.Get(claimTokenType, &typClaim); err != nil {
 		return uuid.Nil, nil, ErrInvalidRefreshToken
 	}
-	if typStr, ok := typClaim.(string); !ok || typStr != TokenTypeRefresh {
+	if typStr, ok := typClaim.(string); !ok || typStr != tokenTypeRefresh {
 		return uuid.Nil, nil, ErrInvalidRefreshToken
 	}
 
@@ -159,17 +162,17 @@ func (ti *TokenIssuer) ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Tok
 }
 
 // GetAccessTTL returns the access token TTL in seconds.
-func (ti *TokenIssuer) GetAccessTTL() int64 {
+func (ti *JWTTokenIssuer) GetAccessTTL() int64 {
 	return int64(ti.accessTTL.Seconds())
 }
 
 // GetRefreshTTL returns the refresh token TTL in seconds.
-func (ti *TokenIssuer) GetRefreshTTL() int64 {
+func (ti *JWTTokenIssuer) GetRefreshTTL() int64 {
 	return int64(ti.refreshTTL.Seconds())
 }
 
 // GetRefreshExpiresAt returns the expiration time for a new refresh token.
-func (ti *TokenIssuer) GetRefreshExpiresAt() time.Time {
+func (ti *JWTTokenIssuer) GetRefreshExpiresAt() time.Time {
 	return time.Now().UTC().Add(ti.refreshTTL)
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/google/uuid"
 )
 
 // ULTransmitScheduler allows SCACI to schedule uplink transmissions via BSSCI without import cycles.
@@ -56,24 +57,26 @@ type DownlinkScheduler interface {
 	//   - ctx: Request context for cancellation and tenant metadata
 	//   - req: DL data queue request containing endpoint, payload, and delivery options
 	//   - tenantID: Tenant context for base station selection and queue dispatch
+	//   - organizationID: Organization the downlink was enqueued under; the
+	//     exact-row dispatch is scoped to it (never the base station session's
+	//     organization)
 	//
 	// Returns:
 	//   - queuedQueId: Actual queue ID assigned (may differ from requested if collision)
-	//   - bsEui: EUI of base station that will deliver the message
-	//   - error: ErrSchedulerNoResources if temporary, ErrSchedulerResourceMissing for permanent failures
+	//   - bsEui: EUI of the base station that now holds the message: the one serving the endpoint, or a station of its tenant when its location is unknown
+	//   - error: ErrSchedulerNoResources when no connected bidirectional station can take it
 	//
 	// Error Semantics:
-	//   - ErrSchedulerNoResources: No bidirectional BS available (retry later)
-	//   - ErrSchedulerResourceMissing: Requested BS/EP not available (permanent for these params)
+	//   - ErrSchedulerNoResources: The serving station, or every station of the tenant for an endpoint with no known location, is offline or unidirectional; the row waits for the next downlink window
 	//   - ErrSchedulerQueueNotFound: No matching pending queue row to dispatch
 	//   - Other errors: Infrastructure failures (database, network, etc.)
-	QueueDownlink(ctx context.Context, req *mioty.DLDataQueue, tenantID int64) (queuedQueId uint64, bsEui uint64, err error)
+	QueueDownlink(ctx context.Context, req *mioty.DLDataQueue, tenantID int64, organizationID uuid.UUID) (queuedQueId uint64, bsEui uint64, err error)
 
 	// RevokeDownlink cancels a queued downlink message before delivery (SCACI §3.11).
 	//
 	// Parameters:
-	//   - tenantID: Tenant context for authorization and queue lookup
-	//   - queId: Queue ID to revoke
+	//   - ctx: Request context for cancellation and tenant metadata
+	//   - ref: The tenant's queue id to revoke, narrowed to an owner when set
 	//
 	// Returns:
 	//   - bsEui: EUI of base station that had the queue entry
@@ -83,5 +86,15 @@ type DownlinkScheduler interface {
 	//   - ErrSchedulerQueueNotFound: Queue entry doesn't exist or already processed
 	//   - ErrSchedulerResourceMissing: Base station no longer connected
 	//   - Other errors: Infrastructure failures (database, network, etc.)
-	RevokeDownlink(tenantID int64, queId uint64) (bsEui uint64, err error)
+	RevokeDownlink(ctx context.Context, ref DownlinkRef) (bsEui uint64, err error)
+}
+
+// DownlinkRef names the downlink a revoke ends: the tenant's service center
+// queue id, narrowed to the organization and endpoint when they are set so
+// another owner's queue id reads as not found.
+type DownlinkRef struct {
+	TenantID       int64
+	QueID          uint64
+	OrganizationID *uuid.UUID
+	EpEUI          *uint64
 }

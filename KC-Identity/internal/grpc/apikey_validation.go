@@ -8,21 +8,30 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+)
+
+// Validation messages for the internal API-key RPCs that have no catalog
+// token; the strings are part of the internal wire contract.
+const (
+	statusMsgKeyHashRequired            = "key_hash is required"
+	statusMsgAPIKeyServiceNotConfigured = "API key service not configured" //nolint:gosec // G101: status text about service wiring, not a credential
 )
 
 // ValidateAPIKey looks up an API key by hash and returns its metadata.
 func (s *IdentityInternalService) ValidateAPIKey(ctx context.Context, req *pb.ValidateAPIKeyRequest) (*pb.ValidateAPIKeyResponse, error) {
 	if req.KeyHash == "" {
-		return nil, status.Error(codes.InvalidArgument, "key_hash is required")
+		return nil, status.Error(codes.InvalidArgument, statusMsgKeyHashRequired)
 	}
 
 	if s.apiKeyRepo == nil {
-		return nil, status.Error(codes.Internal, "API key service not configured")
+		return nil, status.Error(codes.Internal, statusMsgAPIKeyServiceNotConfigured)
 	}
 
 	info, err := s.apiKeyRepo.GetByHash(ctx, req.KeyHash)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, "API key not found")
+		return nil, status.Error(codes.NotFound, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenApiKeyNotFound))
 	}
 
 	resp := &pb.ValidateAPIKeyResponse{
@@ -41,7 +50,7 @@ func (s *IdentityInternalService) ValidateAPIKey(ctx context.Context, req *pb.Va
 // UpdateAPIKeyLastUsed updates the last-used timestamp for an API key.
 func (s *IdentityInternalService) UpdateAPIKeyLastUsed(ctx context.Context, req *pb.UpdateAPIKeyLastUsedRequest) (*pb.UpdateAPIKeyLastUsedResponse, error) {
 	if req.Id == "" {
-		return nil, status.Error(codes.InvalidArgument, "id is required")
+		return nil, status.Error(codes.InvalidArgument, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenIDRequired))
 	}
 
 	if s.apiKeyRepo == nil {
@@ -50,12 +59,12 @@ func (s *IdentityInternalService) UpdateAPIKeyLastUsed(ctx context.Context, req 
 
 	id, err := uuid.Parse(req.Id)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "invalid id format")
+		return nil, status.Error(codes.InvalidArgument, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
 	}
 
 	// Fire-and-forget semantics: log but don't fail on update errors
 	if err := s.apiKeyRepo.UpdateLastUsed(ctx, id); err != nil {
-		s.log.ErrorContext(ctx, "failed to update API key last used", "id", req.Id, "error", err)
+		s.log.ErrorContext(ctx, LogAPIKeyLastUsedUpdateFailed, logger.FieldID, req.Id, logger.FieldError, err)
 	}
 
 	return &pb.UpdateAPIKeyLastUsedResponse{}, nil

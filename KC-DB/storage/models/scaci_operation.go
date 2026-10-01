@@ -46,13 +46,6 @@ type SCACIOperationRequest struct {
 	RequestData map[string]interface{} `json:"request_data,omitempty"`
 }
 
-// SCACIOperationStateUpdate represents a request to update operation state
-type SCACIOperationStateUpdate struct {
-	State        string                 `json:"state" validate:"required,oneof=pending acknowledged completed completed_with_warnings failed"`
-	ResponseData map[string]interface{} `json:"response_data,omitempty"`
-	ErrorMessage *string                `json:"error_message,omitempty"`
-}
-
 // OperationState represents the state of a SCACI operation
 type OperationState string
 
@@ -74,6 +67,17 @@ const (
 	// OperationStateFailed indicates the operation failed
 	OperationStateFailed OperationState = "failed"
 )
+
+// OperationRequestKeyServiceCenterQueueID is the request data key under which
+// a recorded dlDataQue keeps the service center queue id of the downlink it
+// queued (SCACI §3.10.1), tying the audit record to the queue row.
+const OperationRequestKeyServiceCenterQueueID = "scQueId"
+
+// OperationRequestKeySourceMessageID is the request data key under which a
+// recorded outbound ulData keeps the ID of the stored uplink it delivers
+// (messages.id), so a session holds one operation per uplink however often
+// its delivery is retried (SCACI §3.2). It never reaches the wire.
+const OperationRequestKeySourceMessageID = "sourceMessageId"
 
 // OperationDirection represents the direction of a SCACI operation
 type OperationDirection string
@@ -142,4 +146,25 @@ type SCACIOperationSummary struct {
 	DirectionCounts map[string]int64 `json:"direction_counts"` // Count by direction (inbound, outbound)
 	StateCounts     map[string]int64 `json:"state_counts"`     // Count by state (pending, completed, failed)
 	ErrorCount      int64            `json:"error_count"`      // Count of failed operations
+}
+
+// SCACIOperationErrorGroup is one bucket of failed operations sharing a
+// command, POSIX error code and catalog token.
+type SCACIOperationErrorGroup struct {
+	Command      string
+	ErrorCode    *int
+	ErrorToken   *string
+	ErrorMessage *string
+	SessionID    int64
+	FirstSeen    time.Time
+	LastSeen     time.Time
+	Count        int64
+}
+
+// SCACIPingSummary describes the latest completed ping and the pings that
+// failed or never completed inside a range.
+type SCACIPingSummary struct {
+	LastPingAt  *time.Time
+	LastPingRTT *time.Duration
+	MissedPings int64
 }

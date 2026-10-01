@@ -2,7 +2,6 @@ package bssci
 
 import (
 	"context"
-	"crypto/aes"
 	"encoding/binary"
 	"sync"
 	"testing"
@@ -12,10 +11,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	mioty "github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
-	"github.com/aead/cmac"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,32 +27,12 @@ func profileTestKey() []byte {
 	return key
 }
 
-// computeProfileTestSignature generates a valid CMAC signature for attach tests.
-func computeProfileTestSignature(epEUI uint64, attachCnt uint32, presharedKey []byte) []byte {
-	// Build CMAC initialization vector: [EUI64 | 0xFF | 0x00 | attachCnt(24-bit) | 0xFFFF]
-	iv := make([]byte, 15)
-	binary.BigEndian.PutUint64(iv[0:8], epEUI)
-	iv[8] = 0xFF
-	iv[9] = 0x00
-	maskedCnt := attachCnt & 0xFFFFFF
-	iv[10] = byte(maskedCnt >> 16)
-	iv[11] = byte(maskedCnt >> 8)
-	iv[12] = byte(maskedCnt)
-	iv[13] = 0xFF
-	iv[14] = 0xFF
-
-	block, _ := aes.NewCipher(presharedKey)
-	mac, _ := cmac.New(block)
-	mac.Write(iv)
-	return mac.Sum(nil)[:4] // First 4 bytes
-}
-
 // profileTrackingEndpointRepo extends fakeEndpointRepo to track UpdateRadioMetricsSelective calls
 // and actually update the in-memory endpoint's profile field for verification.
 type profileTrackingEndpointRepo struct {
 	mu             sync.Mutex
 	endpoints      map[uint64]*models.EndPoint
-	radioUpdates   []interfaces.RadioMetricsUpdate
+	radioUpdates   []models.RadioMetricsUpdate
 	lastUpdateEUI  models.EUI
 	lastUpdateTime time.Time
 }
@@ -69,7 +46,7 @@ func newProfileTrackingEndpointRepo(endpoints ...*models.EndPoint) *profileTrack
 	}
 	return &profileTrackingEndpointRepo{
 		endpoints:    m,
-		radioUpdates: make([]interfaces.RadioMetricsUpdate, 0),
+		radioUpdates: make([]models.RadioMetricsUpdate, 0),
 	}
 }
 
@@ -106,11 +83,27 @@ func (f *profileTrackingEndpointRepo) GetByID(_ context.Context, id int64, tenan
 	return nil, nil
 }
 
-func (f *profileTrackingEndpointRepo) UpdateFields(_ context.Context, _ int64, _ int64, _ map[string]interface{}) error {
+func (f *profileTrackingEndpointRepo) EndpointRegistrationUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointRegistrationParams) error {
 	return nil
 }
 
-func (f *profileTrackingEndpointRepo) UpdateRadioMetricsSelective(_ context.Context, tenantID int64, eui models.EUI, update interfaces.RadioMetricsUpdate) error {
+func (f *profileTrackingEndpointRepo) EndpointAttachmentStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachmentStateParams) error {
+	return nil
+}
+
+func (f *profileTrackingEndpointRepo) EndpointAttachSessionUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachSessionParams) error {
+	return nil
+}
+
+func (f *profileTrackingEndpointRepo) EndpointDetachStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointDetachStateParams) error {
+	return nil
+}
+
+func (f *profileTrackingEndpointRepo) TransitionEndpointStatus(context.Context, int64, int64, string) (bool, error) {
+	return false, nil
+}
+
+func (f *profileTrackingEndpointRepo) UpdateRadioMetricsSelective(_ context.Context, tenantID int64, eui models.EUI, update models.RadioMetricsUpdate) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -136,7 +129,7 @@ func (f *profileTrackingEndpointRepo) UpdateRadioMetricsSelective(_ context.Cont
 }
 
 // GetLastRadioUpdate returns the most recent radio metrics update for assertions.
-func (f *profileTrackingEndpointRepo) GetLastRadioUpdate() *interfaces.RadioMetricsUpdate {
+func (f *profileTrackingEndpointRepo) GetLastRadioUpdate() *models.RadioMetricsUpdate {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.radioUpdates) == 0 {
@@ -156,17 +149,15 @@ func (f *profileTrackingEndpointRepo) GetEndpoint(eui uint64) *models.EndPoint {
 	return nil
 }
 
-// Remaining methods satisfy interfaces.EndpointRepository
-func (f *profileTrackingEndpointRepo) UpdateDetachMetrics(context.Context, int64, models.EUI, interfaces.DetachMetricsUpdate) error {
-	return nil
-}
 func (f *profileTrackingEndpointRepo) Create(context.Context, *models.EndPoint) error { return nil }
 func (f *profileTrackingEndpointRepo) GetByTenant(context.Context, int64) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *profileTrackingEndpointRepo) CountByTenant(context.Context, int64) (int64, error) {
 	return 0, nil
 }
+
 func (f *profileTrackingEndpointRepo) ListByTenantPaginated(context.Context, int64, int, int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -174,27 +165,19 @@ func (f *profileTrackingEndpointRepo) Update(context.Context, *models.EndPoint) 
 func (f *profileTrackingEndpointRepo) UpdateLastSeen(context.Context, int64, models.EUI, uint32) error {
 	return nil
 }
-func (f *profileTrackingEndpointRepo) UpdateRadioMetrics(context.Context, int64, models.EUI, float64, float64, float64, int64, int64, string) error {
-	return nil
-}
-func (f *profileTrackingEndpointRepo) StreamAllForPropagation(context.Context, int64, int) ([]*models.EndPoint, error) {
-	return nil, nil
-}
-func (f *profileTrackingEndpointRepo) HasEndpointsSince(context.Context, time.Time) (bool, error) {
-	return false, nil
-}
-func (f *profileTrackingEndpointRepo) GetEndpointWithKeysForDetachValidation(context.Context, models.EUI) (*models.EndPoint, error) {
-	return nil, storage.ErrNotFound
-}
+
 func (f *profileTrackingEndpointRepo) GetPreferredBsEui(context.Context, int64, []byte) (*uint64, bool, error) {
 	return nil, false, nil // No preference in tests
 }
-func (f *profileTrackingEndpointRepo) DeleteByTenant(context.Context, int64, []byte) error {
-	return nil
+
+func (f *profileTrackingEndpointRepo) DeleteByTenant(context.Context, int64, []byte) (int64, error) {
+	return 0, nil
 }
+
 func (f *profileTrackingEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	return ep, nil
 }
+
 func (f *profileTrackingEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 	return nil
 }
@@ -251,17 +234,14 @@ func newProfileTestFixture(t *testing.T, initialProfile string) *profileTestFixt
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc,
 		broadcaster, queueSerializer, auditLogger, tenantResolver,
 	)
-	server.config = &Config{
-		MessageEncoding:          EncodingJSON,
-		DisableAttachPersistence: true,
-	}
+	server.config = &Config{MessageEncoding: EncodingJSON}
 	server.endpointRepo = repo
 	server.SetStorageForTest(stubStore)
+	server.attachPersistence = &recordingAttachPersistence{}
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
 	}
-	server.RegisterHandlers()
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{
@@ -294,9 +274,20 @@ func newProfileTestFixture(t *testing.T, initialProfile string) *profileTestFixt
 // sendAttach sends an attach message with optional profile field via CallHandleMessage.
 func (f *profileTestFixture) sendAttach(profile *string) {
 	f.t.Helper()
+	f.sendAttachWith(func(data map[string]interface{}) {
+		// Add profile field if provided (even if empty string)
+		if profile != nil {
+			data["profile"] = *profile
+		}
+	})
+}
+
+// sendAttachWith sends a valid attach message after edit adjusts its fields.
+func (f *profileTestFixture) sendAttachWith(edit func(data map[string]interface{})) {
+	f.t.Helper()
 
 	// Generate valid signature for current attachCnt
-	validSign := computeProfileTestSignature(TestEpEui01, f.currentAttCnt, f.presharedKey)
+	validSign := generateAttachSignature(TestEpEui01, f.currentAttCnt, f.presharedKey)
 	signFloats := make([]interface{}, 4)
 	for i, b := range validSign {
 		signFloats[i] = float64(b)
@@ -329,10 +320,7 @@ func (f *profileTestFixture) sendAttach(profile *string) {
 		"longBlkDist": false,
 	}
 
-	// Add profile field if provided (even if empty string)
-	if profile != nil {
-		data["profile"] = *profile
-	}
+	edit(data)
 
 	msg := &Message{
 		Command: mioty.CmdAttach,
@@ -514,17 +502,13 @@ func TestDetachProfileGuardNonRegression(t *testing.T) {
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc,
 		broadcaster, queueSerializer, auditLogger, tenantResolver,
 	)
-	server.config = &Config{
-		MessageEncoding:          EncodingJSON,
-		DisableAttachPersistence: true,
-	}
+	server.config = &Config{MessageEncoding: EncodingJSON}
 	server.endpointRepo = repo
 	server.SetStorageForTest(stubStore)
 	server.orgResolver = &fakeOrgResolver{
 		tenantToOrg: make(map[int64]uuid.UUID),
 		orgToTenant: make(map[uuid.UUID]int64),
 	}
-	server.RegisterHandlers()
 
 	testConn := &bsscitest.TestConn{Encoding: "json"}
 	session := &Session{

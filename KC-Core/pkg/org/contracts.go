@@ -55,6 +55,7 @@ type Resolver interface {
 	//   - error: ErrInvalidCert if CN can't be parsed, or resolution error
 	//
 	// Usage: SCACI/BSSCI servers extract org context from client certificates
+	// once per connection, so implementations resolve the tenant uncached.
 	// Thread Safety: Must be safe for concurrent calls
 	ResolveCert(ctx context.Context, cert *x509.Certificate) (uuid.UUID, int64, error)
 

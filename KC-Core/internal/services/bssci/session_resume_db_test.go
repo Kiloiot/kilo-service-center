@@ -5,8 +5,11 @@ import (
 	"testing"
 	"time"
 
+	repodoubles "github.com/Kiloiot/kilo-service-center/KC-Core/internal/testsupport/repodoubles"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	bsscitestutil "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/google/uuid"
 
@@ -18,28 +21,31 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
-func newResumeTestService(t *testing.T, tenantID int64) (*sessionService, *mockBaseStationSessionRepo) {
+// errTestDatabaseUnavailable is the fixture lookup error for the resume tests.
+var errTestDatabaseUnavailable = errors.New("database unavailable")
+
+func newResumeTestService(t *testing.T, tenantID int64) (*sessionService, *repodoubles.BaseStationSessionRepo) {
 	t.Helper()
 	svc, mockRepo, _ := newTakeoverTestService(t, tenantID)
 	return svc, mockRepo
 }
 
-func newTakeoverTestService(t *testing.T, tenantID int64) (*sessionService, *mockBaseStationSessionRepo, *mockPendingOpsStore) {
+func newTakeoverTestService(t *testing.T, tenantID int64) (*sessionService, *repodoubles.BaseStationSessionRepo, *mockPendingOpsStore) {
 	t.Helper()
-	mockRepo := newMockBaseStationSessionRepo()
+	mockRepo := repodoubles.NewBaseStationSessionRepo()
 	pendingOps := newMockPendingOpsStore()
 	svc := NewSessionService(
 		mockRepo,
-		&mockBaseStationRepo{},
 		pendingOps,
-		&mockSystemEventStore{},
+		&repodoubles.SystemEventStore{},
 		tenantID,
+		bssci.TestScEui01,
 		logger.NewNop(),
 	).(*sessionService)
 	return svc, mockRepo, pendingOps
 }
 
-func seedResumableSession(repo *mockBaseStationSessionRepo, id, tenantID int64, bsUUID, scUUID [16]byte, bsOpId, scOpId int64) *models.BaseStationSession {
+func seedResumableSession(repo *repodoubles.BaseStationSessionRepo, id, tenantID int64, bsUUID, scUUID [16]byte, bsOpId, scOpId int64) *models.BaseStationSession {
 	protocolVersion := mioty.MIOTYProtocolVersion
 	session := &models.BaseStationSession{
 		ID:              id,
@@ -55,7 +61,7 @@ func seedResumableSession(repo *mockBaseStationSessionRepo, id, tenantID int64, 
 		ProtocolVersion: &protocolVersion,
 		StartedAt:       time.Now().Add(-1 * time.Hour),
 	}
-	repo.sessions[id] = session
+	repo.Sessions[id] = session
 	return session
 }
 
@@ -141,6 +147,25 @@ func TestHandleResume_StaleScCounterAccepted(t *testing.T) {
 	restoredSession := outcome.Previous
 	assert.Equal(t, int64(-800), restoredSession.LastScOpId,
 		"the authoritative persisted SC counter is restored, not the stale reported one")
+}
+
+// Counters far behind the persisted ones still resume: snBsOpId and snScOpId
+// are one-sided constraints (§5.3.1), and a station that lost unjournaled SC
+// operations in flight reports the same; a station holding another session
+// refuses the conRsp instead, which retires the session.
+func TestHandleResume_CountersBehindPersistedStillResume(t *testing.T) {
+	svc, mockRepo := newResumeTestService(t, 100)
+
+	bsUUID := [16]byte{0x9A, 0xAD, 0xA4, 0xB0, 0x8D, 0xBD, 0x46, 0xD7, 0xBB, 0x2E, 0x36, 0x95, 0x58, 0xDE, 0x83, 0x82}
+	seedResumableSession(mockRepo, 3, 100, bsUUID, [16]byte{0x03}, 8806, -1791)
+
+	testSession := &bssci.Session{ProtocolSessionState: bssci.ProtocolSessionState{ResolvedTenantID: 100}}
+	outcome := svc.HandleResume(testutil.TestContext(), testSession, bsUUID[:],
+		int64Ptr(6), int64Ptr(-4), 0x70B3D59CD00009E6)
+
+	require.Equal(t, bssci.ResumeCompatible, outcome.Disposition)
+	assert.Equal(t, int64(8806), outcome.Previous.LastBsOpId)
+	assert.Equal(t, int64(-1791), outcome.Previous.LastScOpId)
 }
 
 // TestHandleResume_RequiredBsOpIdBeyondPersisted verifies rejection when the
@@ -360,7 +385,7 @@ func TestPersistSessionResumeUpdatesProtocolVersion(t *testing.T) {
 	// Seed repository with existing session lacking protocol_version (legacy row)
 	scUUID := [16]byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A}
 	bsUUID := [16]byte{0x0A, 0x09, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA}
-	mockRepo.sessions[99] = &models.BaseStationSession{
+	mockRepo.Sessions[99] = &models.BaseStationSession{
 		ID:            99,
 		CanResume:     true,
 		Encoding:      "msgpack",
@@ -389,7 +414,7 @@ func TestPersistSessionResumeUpdatesProtocolVersion(t *testing.T) {
 
 	// Verify repository row now has protocol_version populated and the resume
 	// activation restored the active, resumable state
-	stored := mockRepo.sessions[99]
+	stored := mockRepo.Sessions[99]
 	require.NotNil(t, stored)
 	if assert.NotNil(t, stored.ProtocolVersion, "protocol_version should be persisted on resume") {
 		assert.Equal(t, mioty.MIOTYProtocolVersion, *stored.ProtocolVersion)
@@ -454,7 +479,7 @@ func TestMarkDisconnected_StaleConnectionDoesNotTouchNewerSession(t *testing.T) 
 // than silently degraded into a fresh session that strands the old state.
 func TestHandleResume_InfrastructureFailure(t *testing.T) {
 	svc, mockRepo := newResumeTestService(t, 100)
-	mockRepo.findErr = errors.New("database unavailable")
+	mockRepo.FindErr = errTestDatabaseUnavailable
 
 	bsUUID := [16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
 	testSession := &bssci.Session{
@@ -568,7 +593,7 @@ func TestPersistSessionFreshTakeoverAbortsWhenPendingDeleteFails(t *testing.T) {
 	stale := seedResumableSession(mockRepo, 63, 900, [16]byte{0x31}, [16]byte{0x41}, 10, -5)
 	stale.Status = models.SessionStatusActive
 	pendingOps.seed(63, -1)
-	pendingOps.deleteErr = errors.New("database unavailable")
+	pendingOps.deleteErr = errTestDatabaseUnavailable
 
 	baseStation := &basestation.BaseStation{ID: 1, TenantID: 900}
 	freshSession := &bssci.Session{
@@ -586,7 +611,7 @@ func TestPersistSessionFreshTakeoverAbortsWhenPendingDeleteFails(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Zero(t, freshSession.DbSessionID, "no session row is created when the retirement is incomplete")
-	assert.Len(t, mockRepo.sessions, 1, "only the retired session row exists")
+	assert.Len(t, mockRepo.Sessions, 1, "only the retired session row exists")
 }
 
 func TestMarkDisconnected_RetiredSessionStaysRetired(t *testing.T) {
@@ -605,7 +630,7 @@ func TestMarkDisconnected_RetiredSessionStaysRetired(t *testing.T) {
 		ProtocolVersion: &protocolVersion,
 		StartedAt:       time.Now().Add(-1 * time.Hour),
 	}
-	mockRepo.sessions[dbSession.ID] = dbSession
+	mockRepo.Sessions[dbSession.ID] = dbSession
 
 	session := &bssci.Session{
 		ProtocolSessionState: bssci.ProtocolSessionState{
@@ -685,13 +710,14 @@ func TestPersistSessionFreshTakeoverRetiresLeftoverResumableSession(t *testing.T
 	assert.NotEqual(t, freshSession.DbSessionID, secondSession.DbSessionID)
 }
 
-// TestPersistSessionFreshTakeoverAbortsOnIncompleteRetirement verifies the
-// activation aborts when the leftover resumable state cannot be fully
-// discarded, so no new session row is created on top of reissuable state.
+// TestPersistSessionFreshTakeoverRetirementFailures verifies the activation
+// aborts when the leftover resumable state cannot be fully discarded, so no new
+// session row is created on top of reissuable state, while a failure to delete
+// an already-retired row's operations does not deny the new session.
 func TestPersistSessionFreshTakeoverRetirementFailures(t *testing.T) {
 	testCases := []struct {
 		name            string
-		arrange         func(repo *mockBaseStationSessionRepo, pendingOps *mockPendingOpsStore)
+		arrange         func(repo *repodoubles.BaseStationSessionRepo, pendingOps *mockPendingOpsStore)
 		wantAbort       bool
 		leftoverStatus  models.BaseStationSessionStatus
 		leftoverPending []int64
@@ -700,8 +726,8 @@ func TestPersistSessionFreshTakeoverRetirementFailures(t *testing.T) {
 			// A row left resumable would be reissued on a later resume, so the
 			// activation must not proceed.
 			name: "retirement fails",
-			arrange: func(repo *mockBaseStationSessionRepo, _ *mockPendingOpsStore) {
-				repo.terminateResumableErr = errors.New("database unavailable")
+			arrange: func(repo *repodoubles.BaseStationSessionRepo, _ *mockPendingOpsStore) {
+				repo.TerminateResumableErr = errTestDatabaseUnavailable
 			},
 			wantAbort:       true,
 			leftoverStatus:  models.SessionStatusDisconnected,
@@ -711,8 +737,8 @@ func TestPersistSessionFreshTakeoverRetirementFailures(t *testing.T) {
 			// The row is already retired, so its leftover operations are unreachable
 			// and failing to delete them must not deny the new session.
 			name: "pending operation delete fails",
-			arrange: func(_ *mockBaseStationSessionRepo, pendingOps *mockPendingOpsStore) {
-				pendingOps.deleteErr = errors.New("database unavailable")
+			arrange: func(_ *repodoubles.BaseStationSessionRepo, pendingOps *mockPendingOpsStore) {
+				pendingOps.deleteErr = errTestDatabaseUnavailable
 			},
 			wantAbort:       false,
 			leftoverStatus:  models.SessionStatusTerminated,
@@ -745,17 +771,50 @@ func TestPersistSessionFreshTakeoverRetirementFailures(t *testing.T) {
 			if tc.wantAbort {
 				require.Error(t, err)
 				assert.Zero(t, freshSession.DbSessionID, "no session row is created when a row stays resumable")
-				assert.Len(t, mockRepo.sessions, 1, "only the leftover session row exists")
+				assert.Len(t, mockRepo.Sessions, 1, "only the leftover session row exists")
 			} else {
 				require.NoError(t, err)
 				assert.NotZero(t, freshSession.DbSessionID, "the new session is created once the row is retired")
-				assert.Len(t, mockRepo.sessions, 2, "the leftover row and the new session row exist")
+				assert.Len(t, mockRepo.Sessions, 2, "the leftover row and the new session row exist")
 			}
 			assert.Equal(t, tc.leftoverStatus, leftover.Status)
 			assert.Equal(t, tc.leftoverPending, pendingOps.operationIDs(73),
 				"the leftover operations stay until they can be discarded")
 		})
 	}
+}
+
+// A failed purge of a retired row's pending operations does not deny the new
+// session and is reported with the retired session id.
+func TestPersistSessionFreshTakeoverReportsRetiredPurgeFailure(t *testing.T) {
+	mockRepo := repodoubles.NewBaseStationSessionRepo()
+	pendingOps := newMockPendingOpsStore()
+	recorder := bsscitestutil.NewRecordingLogger()
+	svc := NewSessionService(mockRepo, pendingOps,
+		&repodoubles.SystemEventStore{}, 940, bssci.TestScEui01, recorder).(*sessionService)
+
+	seedResumableSession(mockRepo, 74, 940, [16]byte{0x92}, [16]byte{0xA2}, 20, -9)
+	pendingOps.seed(74, -11)
+	pendingOps.deleteErr = errTestDatabaseUnavailable
+
+	freshSession := &bssci.Session{
+		ProtocolSessionState: bssci.ProtocolSessionState{
+			ID:                "connection-d",
+			ResolvedTenantID:  940,
+			SessionUUID:       []byte{0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF, 0xE0},
+			BsUUID:            []byte{0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xF0},
+			NegotiatedVersion: mioty.MIOTYProtocolVersion,
+			Encoding:          "msgpack",
+		},
+	}
+	require.NoError(t, svc.PersistSession(testutil.TestContext(), freshSession, &basestation.BaseStation{ID: 1, TenantID: 940}, false, nil))
+
+	failures := recorder.FilterMessage(bssci.LogBSSCIFailedToDeletePendingOperations)
+	require.Len(t, failures, 1, "the purge failure is reported once")
+	assert.Equal(t, int64(74), failures[0].FieldMap()[logger.FieldStaleSessionID])
+	loggedErr, ok := failures[0].FieldMap()[logger.FieldError].(error)
+	require.True(t, ok)
+	assert.ErrorIs(t, loggedErr, errTestDatabaseUnavailable)
 }
 
 // newResumeClaimConnection builds a resuming connection for the seeded row: the
@@ -787,13 +846,11 @@ func TestPersistSessionResumeClaimIsExclusive(t *testing.T) {
 	row := seedResumableSession(mockRepo, 92, tenantID, bsUUID, scUUID, 4000, -2000)
 
 	winner := newResumeClaimConnection("connection-a", tenantID, bsUUID, scUUID)
-	winner.DbSessionID = row.ID
 	require.NoError(t, svc.PersistSession(testutil.TestContext(), winner, nil, true, nil))
 	require.Equal(t, models.SessionStatusActive, row.Status, "the first claimant activates the row")
 	require.Equal(t, row.ID, winner.DbSessionID)
 
 	loser := newResumeClaimConnection("connection-b", tenantID, bsUUID, scUUID)
-	loser.DbSessionID = row.ID
 
 	err := svc.PersistSession(testutil.TestContext(), loser, nil, true, nil)
 
@@ -806,6 +863,24 @@ func TestPersistSessionResumeClaimIsExclusive(t *testing.T) {
 	if assert.NotNil(t, row.ConnectionId) {
 		assert.Equal(t, "connection-a", *row.ConnectionId, "the claimant keeps the row's connection identity")
 	}
+}
+
+// A resume claim the repository fails leaves the connection owning no row.
+func TestPersistSessionResumeClaimFailureOwnsNoRow(t *testing.T) {
+	const tenantID = int64(921)
+	bsUUID := [16]byte{0xC1, 0xC2, 0xC3}
+	scUUID := [16]byte{0xD1, 0xD2, 0xD3}
+
+	svc, mockRepo := newResumeTestService(t, tenantID)
+	row := seedResumableSession(mockRepo, 95, tenantID, bsUUID, scUUID, 40, -20)
+	mockRepo.ActivateErr = errTestDatabaseUnavailable
+
+	session := newResumeClaimConnection("connection-a", tenantID, bsUUID, scUUID)
+	err := svc.PersistSession(testutil.TestContext(), session, nil, true, nil)
+
+	require.ErrorIs(t, err, errTestDatabaseUnavailable)
+	assert.Zero(t, session.DbSessionID, "an unclaimed row never becomes this connection's")
+	assert.Equal(t, models.SessionStatusDisconnected, row.Status, "the row stays resumable")
 }
 
 // TestPersistSessionResumeRefusedWhenRowNotResumable verifies every non-claimable
@@ -850,7 +925,6 @@ func TestPersistSessionResumeRefusedWhenRowNotResumable(t *testing.T) {
 			before := *row
 
 			session := newResumeClaimConnection("connection-b", tenantID, bsUUID, scUUID)
-			session.DbSessionID = row.ID
 
 			err := svc.PersistSession(testutil.TestContext(), session, nil, true, nil)
 
@@ -895,7 +969,6 @@ func TestPersistSessionResumeRefusedAfterFreshTakeoverDiscardedRow(t *testing.T)
 	}
 	require.NoError(t, svc.PersistSession(testutil.TestContext(), fresh, baseStation, false, nil))
 
-	claimant.DbSessionID = row.ID
 	err := svc.PersistSession(testutil.TestContext(), claimant, nil, true, nil)
 
 	require.ErrorIs(t, err, bssci.ErrResumeAlreadyClaimed)

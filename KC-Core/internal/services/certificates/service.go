@@ -4,43 +4,56 @@ package certificates
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
-	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"time"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/crypto"
-	pkggrpc "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
-	"github.com/google/uuid"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // Certificate generator flags and canonical certificate file names.
 const (
-	certGenFlagDir  = "-dir"
-	certGenFlagDays = "-days"
+	certGenFlagDir        = "-dir"
+	certGenFlagDays       = "-days"
+	certGenFlagClient     = "-client"
+	certGenFlagClientOnly = "-client-only"
+	certGenFlagServer     = "-server"
+	certGenFlagServerOnly = "-server-only"
+	certGenFlagAltNames   = "-san"
+	// altNameSeparator joins the names of the -san flag.
+	altNameSeparator = ","
 
 	caCertFileName     = "ca.crt"
 	caKeyFileName      = "ca.key"
 	serverCertFileName = "server.crt"
+	clientCertFileName = "client.crt"
+	clientKeyFileName  = "client.key"
+	certInfoFileName   = "info.json"
+
+	// Download filenames handed to the browser.
+	downloadNameCACert        = "kilocenter-ca-certificate.crt"
+	downloadNameFmtClientCert = "basestation-%s-client-certificate.crt"
+	downloadNameFmtPrivateKey = "basestation-%s-private-key.key"
+	downloadNameFmtBSCACert   = "basestation-%s-ca-certificate.crt"
+
+	// Directory and secret-file permissions for generated material.
+	certDirPerm  = 0o750
+	certFilePerm = 0o600
+
+	// maxValidityDays caps requested certificate validity (three years).
+	maxValidityDays = 1095
 )
 
 // KeyEncryptor is the narrow key-encryption contract the certificate service
-// consumes (implemented by crypto.KeyEncryptor).
+// consumes (implemented by the keymaterial cipher adapter over pkg/keycrypto).
 type KeyEncryptor interface {
 	EncryptKey(key []byte) (string, error)
 	DecryptKey(encrypted string) ([]byte, error)
@@ -48,14 +61,14 @@ type KeyEncryptor interface {
 
 // CertGenRunner executes the certificate generator with the given arguments.
 // Injected so tests can produce real PEM material without the external
-// certgen binary; the default runner shells out to the configured path.
+// certgen binary; ExecCertGen shells out to the configured path.
 type CertGenRunner func(ctx context.Context, certGenPath string, args ...string) (stdout, stderr string, err error)
 
-// execCertGen is the production CertGenRunner: it runs the certgen binary,
+// ExecCertGen is the production CertGenRunner: it runs the certgen binary,
 // reporting a typed generator-not-found error when the binary is absent.
-func execCertGen(ctx context.Context, certGenPath string, args ...string) (string, string, error) {
+func ExecCertGen(ctx context.Context, certGenPath string, args ...string) (string, string, error) {
 	if _, err := os.Stat(certGenPath); err != nil {
-		return "", "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGeneratorNotFound, errors.New(certGenPath))
+		return "", "", fmt.Errorf("%w: %w", ErrGeneratorNotFound, errors.New(certGenPath))
 	}
 	cmd := exec.CommandContext(ctx, certGenPath, args...)
 	var stdout, stderr bytes.Buffer
@@ -65,670 +78,110 @@ func execCertGen(ctx context.Context, certGenPath string, args ...string) (strin
 	return stdout.String(), stderr.String(), err
 }
 
-// Service implements grpcservices.CertificateService.
-type Service struct {
-	config             *config.Config
-	logger             logger.Logger
+// BaseStationStore reads a base station by EUI, persists certificate fields
+// and hands out a stored private key once, reporting a station without one as
+// storage.ErrNotFound.
+type BaseStationStore interface {
+	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.BaseStation, error)
+	Update(ctx context.Context, tenantID, id int64, updates map[string]interface{}) error
+	TakeTLSKey(ctx context.Context, tenantID int64, eui []byte, open func(sealed string) error) error
+}
+
+// DisclosureRecorder records the audit event a private key cannot leave the
+// service center without, returning the write failure so the key is kept.
+type DisclosureRecorder interface {
+	RecordRequired(ctx context.Context, ev audit.Event) error
+}
+
+// settings are the validated certificate settings the service works with.
+type settings struct {
 	certGenPath        string
 	certsDir           string
 	tempDir            string
 	serverValidityDays int
-	protocolConfig     *config.ProtocolConfig
-	bsRepo             interfaces.BaseStationRepository
-	keyEncryptor       KeyEncryptor
-	certGen            CertGenRunner
+	serverNames        []string
+	protocol           *config.ProtocolConfig
 }
 
-// New creates a new certificate service. The base-station repository and key
-// encryptor are mandatory: ownership verification and durable persistence are
-// part of issuance, so an incompletely wired service must never be able to
-// mint a certificate. certGen may be nil (defaults to running the configured
-// certgen binary).
-func New(cfg *config.Config, log logger.Logger, bsRepo interfaces.BaseStationRepository, keyEncryptor KeyEncryptor, certGen CertGenRunner) (*Service, error) {
-	if bsRepo == nil || keyEncryptor == nil {
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenServiceNotConfigured, nil)
-	}
-	if certGen == nil {
-		certGen = execCertGen
-	}
-	ctx := context.Background()
+// Service implements grpcservices.CertificateService.
+type Service struct {
+	clock        clock.Clock
+	logger       logger.Logger
+	settings     settings
+	bsRepo       BaseStationStore
+	keyEncryptor KeyEncryptor
+	certGen      CertGenRunner
+	disclosures  DisclosureRecorder
+}
 
-	// Use certificate config paths if available, fall back to constants
-	certGenPath := cfg.Certificates.CertGenPath
-	if certGenPath == "" {
-		certGenPath = config.DefaultCertificatesCertGenPath
+// New creates a certificate service over the validated certificate settings
+// of cfg. Every collaborator is required: ownership verification, durable
+// persistence and the record of every private key download are part of the
+// service, so an incompletely wired one must never mint or hand out a
+// certificate. ctx scopes the startup logging.
+func New(ctx context.Context, cfg *config.Config, log logger.Logger, bsRepo BaseStationStore, keyEncryptor KeyEncryptor, certGen CertGenRunner, clk clock.Clock, disclosures DisclosureRecorder) (*Service, error) {
+	if cfg == nil || log == nil || bsRepo == nil || keyEncryptor == nil || certGen == nil || clk == nil || disclosures == nil {
+		return nil, ErrServiceNotConfigured
 	}
-	certsDir := cfg.Certificates.CertsDir
-	if certsDir == "" {
-		certsDir = config.DefaultCertificatesCertsDir
+	s := &Service{
+		clock:  clk,
+		logger: log,
+		settings: settings{
+			certGenPath:        cfg.Certificates.CertGenPath,
+			certsDir:           cfg.Certificates.CertsDir,
+			tempDir:            cfg.Certificates.TempDir,
+			serverValidityDays: cfg.Certificates.ServerValidityDays,
+			serverNames:        cfg.Certificates.ServerNames,
+			protocol:           &cfg.Protocol,
+		},
+		bsRepo:       bsRepo,
+		keyEncryptor: keyEncryptor,
+		certGen:      certGen,
+		disclosures:  disclosures,
 	}
-	tempDir := cfg.Certificates.TempDir
-	if tempDir == "" {
-		tempDir = config.DefaultCertificatesTempDir
-	}
+	s.reportStartupPaths(ctx)
+	return s, nil
+}
 
-	// Fail-fast validation: check if certgen binary exists at startup
-	// This helps debug issues with relative paths and working directory mismatches
-	if _, err := os.Stat(certGenPath); err != nil {
-		wd, _ := os.Getwd()
-		log.WarnContext(ctx, pkggrpc.LogCertConfigMissingPath,
-			"configured_path", certGenPath,
-			"working_directory", wd,
-			"hint", pkggrpc.LogCertConfigMissingPathHint)
+// reportStartupPaths logs a missing certgen binary or certificate directory
+// at start-up, which helps debug relative paths and working directory
+// mismatches, and creates the bundle directory.
+func (s *Service) reportStartupPaths(ctx context.Context) {
+	if _, err := os.Stat(s.settings.certGenPath); err != nil {
+		s.logger.WarnContext(ctx, LogCertConfigMissingPath,
+			logger.FieldConfiguredPath, s.settings.certGenPath,
+			logger.FieldWorkingDirectory, workingDirectory(),
+			logger.FieldHint, LogCertConfigMissingPathHint)
 	} else {
-		log.InfoContext(ctx, pkggrpc.LogCertGeneratorPathInfo, "path", certGenPath)
+		s.logger.InfoContext(ctx, LogCertGeneratorPathInfo, logger.FieldPath, s.settings.certGenPath)
 	}
 
-	if _, err := os.Stat(certsDir); err != nil {
-		log.WarnContext(ctx, pkggrpc.LogCertDirectoryNotFound,
-			"path", certsDir,
-			"hint", "Run certgen to generate certificates before starting")
+	if _, err := os.Stat(s.settings.certsDir); err != nil {
+		s.logger.WarnContext(ctx, LogCertDirectoryNotFound,
+			logger.FieldPath, s.settings.certsDir,
+			logger.FieldHint, LogCertDirectoryNotFoundHint)
 	}
 
-	// Resolve server validity days with bounds check
-	serverValidityDays := cfg.Certificates.ServerValidityDays
-	if serverValidityDays <= 0 {
-		serverValidityDays = config.DefaultCertificatesServerValidityDays
-		log.WarnContext(ctx, pkggrpc.LogCertInvalidServerValidityDays, "default", serverValidityDays)
-	}
-
-	// Ensure temp directory exists
-	if err := os.MkdirAll(tempDir, 0750); err != nil {
-		log.ErrorContext(ctx, pkggrpc.LogCertTempDirCreateFailed, "error", err)
-	}
-
-	return &Service{
-		config:             cfg,
-		logger:             log,
-		certGenPath:        certGenPath,
-		certsDir:           certsDir,
-		tempDir:            tempDir,
-		serverValidityDays: serverValidityDays,
-		protocolConfig:     &cfg.Protocol,
-		bsRepo:             bsRepo,
-		keyEncryptor:       keyEncryptor,
-		certGen:            certGen,
-	}, nil
-}
-
-// GenerateCertificate generates a new certificate for a base station.
-func (s *Service) GenerateCertificate(ctx context.Context, req *grpcservices.CertificateRequest) (*grpcservices.CertificateResponse, error) {
-	s.logger.InfoContext(ctx, pkggrpc.LogCertGenerationRequested,
-		"bs_eui", req.BsEUI,
-		"name", req.BaseStationName,
-		"validity_days", req.ValidityDays)
-
-	// Validate and normalize the Base Station EUI (accepts dashed, colon-separated, or plain 16-hex)
-	euiValue, euiErr := validation.ParseEUI(req.BsEUI)
-	if euiErr != nil {
-		s.logger.WarnContext(ctx, pkggrpc.LogCertInvalidEUI, "bs_eui", req.BsEUI, "error", euiErr)
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenInvalidBasestationEUIFormat, nil)
-	}
-	// Canonical uppercase-dashed form used as the certificate CN and in stored metadata
-	bsEUIDashed := mioty.FormatEUI64Dashed(euiValue)
-
-	// Validate validity days (max 3 years = 1095 days)
-	if req.ValidityDays < 1 || req.ValidityDays > 1095 {
-		s.logger.WarnContext(ctx, pkggrpc.LogCertInvalidValidityDays, "validity_days", req.ValidityDays)
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenInvalidValidityPeriod, nil)
-	}
-
-	// Certificate issuance is tenant-scoped: without a tenant, a certificate
-	// could be minted for any EUI. Fail closed.
-	if req.TenantID <= 0 {
-		s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped,
-			"bs_eui", req.BsEUI, "tenant_id", req.TenantID)
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenMissingTenantCtx, nil)
-	}
-
-	// Tenant ownership must be verified BEFORE any file or certgen work: the
-	// requesting tenant must already own a base station registered with this
-	// EUI, or a certificate could be minted for another tenant's station
-	// (cross-tenant impersonation). Fail closed.
-	euiBytes := binary.BigEndian.AppendUint64(nil, euiValue)
-	if _, ownErr := s.bsRepo.GetByEUI(ctx, req.TenantID, euiBytes); ownErr != nil {
-		s.logger.WarnContext(ctx, pkggrpc.LogCertPersistenceSkipped,
-			"bs_eui", req.BsEUI, "tenant_id", req.TenantID, "error", ownErr)
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenBaseStationNotFound, ownErr)
-	}
-
-	// Generate unique ID for this certificate set
-	certID := uuid.New().String()
-	certDir := filepath.Join(s.tempDir, certID)
-	s.logger.InfoContext(ctx, pkggrpc.LogCertDirectoryInfo, "path", certDir)
-
-	// Create temporary directory for certificates
-	if err := os.MkdirAll(certDir, 0750); err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertDirCreateFailed, "error", err)
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCertDirCreateFailed, err)
-	}
-
-	s.logger.InfoContext(ctx, pkggrpc.LogCertGeneratorPathInfo, "path", s.certGenPath)
-
-	// Copy the existing CA certificate from KC-Core instead of generating a new one
-	kcCoreCertsPath := s.certsDir
-	caCertSrc := filepath.Clean(filepath.Join(kcCoreCertsPath, caCertFileName))
-	caCertDst := filepath.Join(certDir, caCertFileName)
-
-	// Copy CA certificate
-	caCertData, err := os.ReadFile(caCertSrc) // #nosec G304 - path validated via filepath.Clean
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertCACertReadFailed, "error", err)
-		if rmErr := os.RemoveAll(certDir); rmErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
-		}
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertReadFailed, err)
-	}
-
-	if err := os.WriteFile(caCertDst, caCertData, 0600); err != nil { //nolint:gosec // G703: path built from configured cert dir and canonically validated EUI
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertCACertCopyFailed, "error", err)
-		if rmErr := os.RemoveAll(certDir); rmErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
-		}
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertCopyFailed, err)
-	}
-
-	s.logger.InfoContext(ctx, pkggrpc.LogCertCACertCopied, "from", caCertSrc, "to", caCertDst)
-
-	// Also copy the CA key so we can sign client certificates
-	caKeySrc := filepath.Clean(filepath.Join(kcCoreCertsPath, caKeyFileName))
-	caKeyDst := filepath.Join(certDir, caKeyFileName)
-
-	caKeyData, err := os.ReadFile(caKeySrc) // #nosec G304 - path validated via filepath.Clean
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertCAKeyReadFailed, "error", err)
-		if rmErr := os.RemoveAll(certDir); rmErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
-		}
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCAKeyReadFailed, err)
-	}
-
-	if err := os.WriteFile(caKeyDst, caKeyData, 0600); err != nil { //nolint:gosec // G703: path built from configured cert dir and canonically validated EUI
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertCAKeyCopyFailed, "error", err)
-		if rmErr := os.RemoveAll(certDir); rmErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
-		}
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCAKeyCopyFailed, err)
-	}
-
-	// Execute certificate generation with -client-only flag
-	genArgs := []string{
-		certGenFlagDir, certDir,
-		certGenFlagDays, fmt.Sprintf("%d", req.ValidityDays),
-		"-client", bsEUIDashed,
-		"-client-only",
-	}
-	s.logger.InfoContext(ctx, pkggrpc.LogCertGenerationExecuting, "command", s.certGenPath, "args", genArgs)
-
-	stdout, stderr, err := s.certGen(ctx, s.certGenPath, genArgs...)
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertGenerationFailed, "error", err)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr)
-		if rmErr := os.RemoveAll(certDir); rmErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
-		}
-		if _, typed := pkggrpc.TokenOf(err); typed {
-			return nil, err
-		}
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, fmt.Errorf("%s: %w", stderr, err))
-	}
-
-	s.logger.InfoContext(ctx, pkggrpc.LogCertGenerationSuccess)
-	s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout)
-
-	// Read the generated certificate to extract expiry date
-	certPath := filepath.Join(certDir, "client.crt")
-	certPEM, err := os.ReadFile(certPath) // #nosec G304 - path constructed from UUID certDir
-	var certExpiryStr string
-	var certExpiryTime time.Time
-	if err == nil {
-		block, _ := pem.Decode(certPEM)
-		if block != nil {
-			cert, parseErr := x509.ParseCertificate(block.Bytes)
-			if parseErr == nil {
-				certExpiryStr = cert.NotAfter.Format(time.RFC3339)
-				certExpiryTime = cert.NotAfter
-			}
-		}
-	}
-
-	// Save certificate info for later retrieval
-	certInfoData := map[string]interface{}{
-		"bsEui":        bsEUIDashed,
-		"createdAt":    time.Now().Format(time.RFC3339),
-		"expiresAt":    certExpiryStr,
-		"validityDays": req.ValidityDays,
-	}
-	infoJSON, _ := json.Marshal(certInfoData)
-	if err := os.WriteFile(filepath.Join(certDir, "info.json"), infoJSON, 0600); err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertInfoWriteFailed, "error", err)
-	}
-
-	// Persistence is part of issuance: if the generated certificate and its
-	// encrypted key cannot be durably recorded on the base station, no
-	// certificate is returned and the temporary artifacts are removed, so a
-	// station never receives a certificate the service center did not persist.
-	if persistErr := s.persistCertsToBaseStation(ctx, certDir, euiBytes, req.TenantID, certExpiryTime); persistErr != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertPersistenceSkipped, "error", persistErr)
-		if rmErr := os.RemoveAll(certDir); rmErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertDirRemoveFailed, "error", rmErr)
-		}
-		return nil, pkggrpc.NewTokenError(pkggrpc.ErrTokenCertPersistenceFailed, persistErr)
-	}
-
-	// Build canonical Service Center URL from config
-	serviceCenterURL := config.GetServiceCenterURL(s.protocolConfig)
-
-	// Create download references with certID for gRPC download (valid for 15 minutes)
-	expiresAt := time.Now().Add(15 * time.Minute)
-	downloadUrls := map[string]string{
-		"ca_cert":     certID,
-		"client_cert": certID,
-		"private_key": certID,
-	}
-
-	return &grpcservices.CertificateResponse{
-		BsEUI:            bsEUIDashed,
-		ServiceCenterURL: serviceCenterURL,
-		DownloadURLs:     downloadUrls,
-		ExpiresAt:        &expiresAt,
-	}, nil
-}
-
-// DownloadCertificateByID downloads a generated certificate by ID and type.
-func (s *Service) DownloadCertificateByID(ctx context.Context, certType, certID string) ([]byte, string, error) {
-	// Read the certificate info to get the EUI
-	infoPath := filepath.Join(s.tempDir, certID, "info.json")
-	infoData, err := os.ReadFile(infoPath) // #nosec G304 - certID is UUID-based
-	var certInfo struct {
-		BsEui string `json:"bsEui"`
-	}
-	if err == nil {
-		if unmarshalErr := json.Unmarshal(infoData, &certInfo); unmarshalErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogCertUnmarshalFailed, "error", unmarshalErr)
-		}
-	}
-
-	// Use EUI in filename if available, otherwise use certID
-	euiPart := certInfo.BsEui
-	if euiPart == "" {
-		if len(certID) >= 8 {
-			euiPart = certID[:8]
-		} else {
-			euiPart = certID // Use full certID when shorter than 8
-		}
-	}
-
-	// Validate certificate type and set descriptive filename
-	var filename, downloadName string
-	switch certType {
-	case pkggrpc.CertTypeCA:
-		filename = caCertFileName
-		downloadName = "kilocenter-ca-certificate.crt"
-	case "server":
-		filename = serverCertFileName
-		downloadName = fmt.Sprintf("basestation-%s-server-certificate.crt", euiPart)
-	case pkggrpc.CertTypeClient:
-		filename = "client.crt"
-		downloadName = fmt.Sprintf("basestation-%s-client-certificate.crt", euiPart)
-	case pkggrpc.CertTypeKey:
-		filename = "client.key"
-		downloadName = fmt.Sprintf("basestation-%s-private-key.key", euiPart)
-	default:
-		s.logger.ErrorContext(ctx, pkggrpc.LogDownloadCertFailed, "cert_type", certType, "error", "invalid cert type")
-		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertTypeRequired, nil)
-	}
-
-	// Build file path
-	filePath := filepath.Join(s.tempDir, certID, filename)
-
-	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, errors.New(certType))
-	}
-
-	// Read file
-	data, err := os.ReadFile(filePath) // #nosec G304 - validated certType and UUID certID
-	if err != nil {
-		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, err)
-	}
-
-	// If this was the private key, schedule cleanup
-	if certType == pkggrpc.CertTypeKey {
-		go func() {
-			time.Sleep(1 * time.Second)
-			certPath := filepath.Join(s.tempDir, certID)
-			if rmErr := os.RemoveAll(certPath); rmErr != nil {
-				s.logger.WarnContext(ctx, pkggrpc.LogCertTempDirRemoveFailed,
-					"certID", certID, "path", certPath, "error", rmErr)
-			}
-		}()
-	}
-
-	return data, downloadName, nil
-}
-
-// deriveServerHostname extracts the hostname for server certificate generation.
-// Priority: BSCIExternalURL host > BSCIHost (if not wildcard) > DefaultCertificatesHostname
-func (s *Service) deriveServerHostname() string {
-	if s.protocolConfig.BSCIExternalURL != "" {
-		raw := s.protocolConfig.BSCIExternalURL
-		raw = strings.TrimPrefix(raw, "tls://")
-		raw = strings.TrimPrefix(raw, "tcp://")
-		host := raw
-		if h, _, err := net.SplitHostPort(raw); err == nil && h != "" {
-			host = h
-		}
-		if host != "" && host != config.DefaultProtocolBSCIHost {
-			return host
-		}
-	}
-	if s.protocolConfig.BSCIHost != "" && s.protocolConfig.BSCIHost != config.DefaultProtocolBSCIHost {
-		return s.protocolConfig.BSCIHost
-	}
-	return config.DefaultCertificatesHostname
-}
-
-// GenerateServerCertificates generates new server certificates.
-func (s *Service) GenerateServerCertificates(ctx context.Context) error {
-	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenRequested)
-
-	// Get the KC-Core certificates directory
-	kcCorePath := s.certsDir
-	s.logger.InfoContext(ctx, pkggrpc.LogCertCertsPathInfo, "path", kcCorePath)
-
-	// Ensure directory exists
-	if err := os.MkdirAll(kcCorePath, 0750); err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertsDirCreateFailed, "error", err)
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertDirCreateFailed, err)
-	}
-
-	// Execute certificate generation for server certificates
-	serverHostname := s.deriveServerHostname()
-	genArgs := []string{
-		certGenFlagDir, kcCorePath,
-		certGenFlagDays, fmt.Sprintf("%d", s.serverValidityDays),
-		"-server", serverHostname,
-	}
-	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenExecuting, "command", s.certGenPath, "args", genArgs, "hostname", serverHostname)
-
-	stdout, stderr, err := s.certGen(ctx, s.certGenPath, genArgs...)
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogServerCertGenFailed, "error", err)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr)
-		if _, typed := pkggrpc.TokenOf(err); typed {
-			return err
-		}
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertServerGenerationFailed, fmt.Errorf("%s: %w", stderr, err))
-	}
-
-	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenSuccess)
-	return nil
-}
-
-// RenewServerCertificates renews server certificates using -server-only to preserve the existing CA.
-func (s *Service) RenewServerCertificates(ctx context.Context) error {
-	s.logger.InfoContext(ctx, pkggrpc.LogServerCertRenewalRequested)
-
-	kcCorePath := s.certsDir
-
-	// Require existing server certificate (nothing to renew otherwise)
-	if _, err := os.Stat(filepath.Join(kcCorePath, serverCertFileName)); os.IsNotExist(err) {
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenNoCertsToRenew, nil)
-	}
-
-	// Require CA files (-server-only needs them to sign)
-	if _, err := os.Stat(filepath.Join(kcCorePath, caCertFileName)); os.IsNotExist(err) {
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertReadFailed, nil)
-	}
-	if _, err := os.Stat(filepath.Join(kcCorePath, caKeyFileName)); os.IsNotExist(err) {
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCAKeyReadFailed, nil)
-	}
-
-	// Execute certgen with -server-only to regenerate server cert without touching the CA
-	serverHostname := s.deriveServerHostname()
-	genArgs := []string{
-		certGenFlagDir, kcCorePath,
-		certGenFlagDays, fmt.Sprintf("%d", s.serverValidityDays),
-		"-server", serverHostname,
-		"-server-only",
-	}
-	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenExecuting, "command", s.certGenPath, "args", genArgs, "hostname", serverHostname)
-
-	stdout, stderr, err := s.certGen(ctx, s.certGenPath, genArgs...)
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogServerCertGenFailed, "error", err)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStdout, "output", stdout)
-		s.logger.DebugContext(ctx, pkggrpc.LogCertGenerationStderr, "output", stderr)
-		if _, typed := pkggrpc.TokenOf(err); typed {
-			return err
-		}
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertServerGenerationFailed, fmt.Errorf("%s: %w", stderr, err))
-	}
-
-	s.logger.InfoContext(ctx, pkggrpc.LogServerCertGenSuccess)
-	return nil
-}
-
-// GetServerCertificateStatus returns the status of server certificates.
-func (s *Service) GetServerCertificateStatus(_ context.Context) (*grpcservices.CertificateStatus, error) {
-	status := &grpcservices.CertificateStatus{}
-
-	// Get the KC-Core certificates directory
-	kcCorePath := s.certsDir
-
-	// Check server certificate
-	serverCertPath := filepath.Join(kcCorePath, serverCertFileName)
-	if serverInfo := s.getCertificateInfo(serverCertPath); serverInfo != nil {
-		status.HasServerCert = true
-		status.ServerCertExpiry = &serverInfo.ExpiryDate
-		status.Subject = serverInfo.Subject
-		status.Issuer = serverInfo.Issuer
-		status.NeedsRenewal = serverInfo.ExpiryDate.Before(time.Now().AddDate(0, 1, 0))
-	}
-
-	// Check CA certificate
-	caCertPath := filepath.Join(kcCorePath, caCertFileName)
-	if caInfo := s.getCertificateInfo(caCertPath); caInfo != nil {
-		status.HasCACert = true
-		status.CACertExpiry = &caInfo.ExpiryDate
-		if caInfo.ExpiryDate.Before(time.Now().AddDate(0, 1, 0)) {
-			status.NeedsRenewal = true
-		}
-	}
-
-	return status, nil
-}
-
-// CleanupExpiredCertificates removes certificate directories older than 15 minutes.
-func (s *Service) CleanupExpiredCertificates(ctx context.Context) {
-	entries, err := os.ReadDir(s.tempDir)
-	if err != nil {
-		return
-	}
-
-	cutoffTime := time.Now().Add(-15 * time.Minute)
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			info, infoErr := entry.Info()
-			if infoErr != nil {
-				continue
-			}
-
-			if info.ModTime().Before(cutoffTime) {
-				if rmErr := os.RemoveAll(filepath.Join(s.tempDir, entry.Name())); rmErr != nil {
-					s.logger.WarnContext(ctx, pkggrpc.LogCertExpiredDirRemoveFailed,
-						"dir", entry.Name(), "error", rmErr)
-				}
-			}
-		}
+	if err := os.MkdirAll(s.settings.tempDir, certDirPerm); err != nil {
+		s.logger.ErrorContext(ctx, LogCertTempDirCreateFailed, logger.FieldError, err)
 	}
 }
 
-// certInfo holds parsed certificate information
-type certInfo struct {
-	ExpiryDate time.Time
-	Subject    string
-	Issuer     string
-}
-
-// getCertificateInfo reads and parses certificate information
-func (s *Service) getCertificateInfo(certPath string) *certInfo {
-	if _, err := os.Stat(certPath); os.IsNotExist(err) {
-		return nil
-	}
-
-	certPEM, err := os.ReadFile(certPath) // #nosec G304 - path from trusted KC-Core certs dir
-	if err != nil {
-		s.logger.ErrorContext(context.Background(), pkggrpc.LogCertFileReadFailed,
-			"certPath", certPath, "error", err)
-		return nil
-	}
-
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		s.logger.ErrorContext(context.Background(), pkggrpc.LogCertPEMBlockParseFailed, "certPath", certPath)
-		return nil
-	}
-
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		s.logger.ErrorContext(context.Background(), pkggrpc.LogCertParseFailed,
-			"certPath", certPath, "error", err)
-		return nil
-	}
-
-	issuer := cert.Issuer.CommonName
-	if issuer == "" && len(cert.Issuer.Organization) > 0 {
-		issuer = cert.Issuer.Organization[0]
-	}
-
-	subject := cert.Subject.CommonName
-	if subject == "" && len(cert.Subject.Organization) > 0 {
-		subject = cert.Subject.Organization[0]
-	}
-
-	return &certInfo{
-		ExpiryDate: cert.NotAfter,
-		Subject:    subject,
-		Issuer:     issuer,
-	}
-}
-
-// GetStoredCertificate retrieves TLS certificates stored in base station record.
-func (s *Service) GetStoredCertificate(ctx context.Context, tenantID int64, bsEui []byte, certType string) ([]byte, string, error) {
-	if s.bsRepo == nil {
-		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenServiceNotConfigured, nil)
-	}
-
-	// Validate cert type using canonical constants
-	if certType != pkggrpc.CertTypeCA && certType != pkggrpc.CertTypeClient && certType != pkggrpc.CertTypeKey {
-		s.logger.ErrorContext(ctx, pkggrpc.LogDownloadCertFailed, "cert_type", certType, "error", pkggrpc.ErrTokenCertTypeRequired)
-		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertTypeRequired, nil)
-	}
-
-	bs, err := s.bsRepo.GetByEUI(ctx, tenantID, bsEui)
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertBSNotFound, "bs_eui", hex.EncodeToString(bsEui), "error", err)
-		return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenBaseStationNotFound, err)
-	}
-
-	euiHex := hex.EncodeToString(bsEui)
-	var data []byte
-	var filename string
-
-	switch certType {
-	case pkggrpc.CertTypeCA:
-		if bs.TLSCACertificate == nil || *bs.TLSCACertificate == "" {
-			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, nil)
-		}
-		data = []byte(*bs.TLSCACertificate)
-		filename = fmt.Sprintf("basestation-%s-ca-certificate.crt", euiHex)
-	case pkggrpc.CertTypeClient:
-		if bs.TLSCertificate == nil || *bs.TLSCertificate == "" {
-			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, nil)
-		}
-		data = []byte(*bs.TLSCertificate)
-		filename = fmt.Sprintf("basestation-%s-client-certificate.crt", euiHex)
-	case pkggrpc.CertTypeKey:
-		if bs.TLSKey == nil || *bs.TLSKey == "" {
-			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, nil)
-		}
-		if s.keyEncryptor == nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogDownloadCertFailed, "bs_eui", euiHex, "error", pkggrpc.ErrTokenServiceNotConfigured)
-			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenServiceNotConfigured, nil)
-		}
-		decrypted, decryptErr := s.keyEncryptor.DecryptKey(*bs.TLSKey)
-		if decryptErr != nil {
-			s.logger.ErrorContext(ctx, pkggrpc.LogDownloadCertFailed, "bs_eui", euiHex, "error", decryptErr)
-			return nil, "", pkggrpc.NewTokenError(pkggrpc.ErrTokenCertNotFound, nil)
-		}
-		data = decrypted
-		filename = fmt.Sprintf("basestation-%s-private-key.key", euiHex)
-	}
-
-	return data, filename, nil
-}
-
-// persistCertsToBaseStation stores generated certs in base station TLS fields.
-func (s *Service) persistCertsToBaseStation(ctx context.Context, certDir string, bsEui []byte, tenantID int64, expiryTime time.Time) error {
-	// First lookup the base station to get its ID (Update requires int64 ID, not EUI)
-	bs, err := s.bsRepo.GetByEUI(ctx, tenantID, bsEui)
-	if err != nil {
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenBaseStationNotFound, nil)
-	}
-
-	// Read certificate files with proper error handling
-	caCertData, err := os.ReadFile(filepath.Join(certDir, caCertFileName)) // #nosec G304 - path from UUID-based certDir
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertFileReadFailed, "file", caCertFileName, "error", err)
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCACertReadFailed, nil)
-	}
-	clientCertData, err := os.ReadFile(filepath.Join(certDir, "client.crt")) // #nosec G304 - path from UUID-based certDir
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertFileReadFailed, "file", "client.crt", "error", err)
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
-	}
-	clientKeyData, err := os.ReadFile(filepath.Join(certDir, "client.key")) // #nosec G304 - path from UUID-based certDir
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertFileReadFailed, "file", "client.key", "error", err)
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
-	}
-
-	// Parse certificate and compute fingerprint for audit/identity
-	block, _ := pem.Decode(clientCertData)
-	if block == nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertPEMBlockParseFailed, "file", "client.crt")
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertParseFailed, "file", "client.crt", "error", err)
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
-	}
-	fingerprint := crypto.CertFingerprintSHA256(cert.Raw)
-
-	// Encrypt private key (required for storage)
-	encrypted, encErr := s.keyEncryptor.EncryptKey(clientKeyData)
-	if encErr != nil {
-		s.logger.ErrorContext(ctx, pkggrpc.LogCertGenerationFailed, "operation", "encrypt", "error", encErr)
-		return pkggrpc.NewTokenError(pkggrpc.ErrTokenCertGenerationFailed, nil)
-	}
-
-	updates := map[string]interface{}{
-		"tls_ca_certificate":   string(caCertData),
-		"tls_certificate":      string(clientCertData),
-		"tls_key":              encrypted,
-		"tls_cert_fingerprint": fingerprint,
-		"tls_cert_expires_at":  expiryTime,
-	}
-
-	// Update uses (ctx, tenantID, id int64, updates) - use bs.ID from lookup
-	return s.bsRepo.Update(ctx, tenantID, bs.ID, updates)
+// caCertPath locates the service center CA certificate, the one station
+// certificates are issued with.
+func (s *Service) caCertPath() string {
+	return filepath.Join(s.settings.certsDir, caCertFileName)
 }
 
 // Ensure Service implements grpcservices.CertificateService
 var _ grpcservices.CertificateService = (*Service)(nil)
+
+// workingDirectory names the directory relative paths resolve against, or
+// the reason it cannot be determined, for a start-up diagnostic.
+func workingDirectory() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return err.Error()
+	}
+	return wd
+}

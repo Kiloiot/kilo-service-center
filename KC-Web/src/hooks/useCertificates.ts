@@ -6,7 +6,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiService } from "@services/api";
+import { certificatesApi } from "@services/api";
 import { queryKeys } from "@config/query-keys";
 
 /**
@@ -15,7 +15,7 @@ import { queryKeys } from "@config/query-keys";
 export function useServerCertificateStatus() {
   return useQuery({
     queryKey: queryKeys.certificates.status(),
-    queryFn: () => apiService.getCertificateStatus(),
+    queryFn: () => certificatesApi.getCertificateStatus(),
   });
 }
 
@@ -25,7 +25,7 @@ export function useServerCertificateStatus() {
 export function useGenerateServerCertificates() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => apiService.generateServerCertificates(),
+    mutationFn: () => certificatesApi.generateServerCertificates(),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: queryKeys.certificates.status(),
@@ -39,7 +39,7 @@ export function useGenerateServerCertificates() {
 export function useRenewServerCertificates() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => apiService.renewServerCertificates(),
+    mutationFn: () => certificatesApi.renewServerCertificates(),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: queryKeys.certificates.status(),

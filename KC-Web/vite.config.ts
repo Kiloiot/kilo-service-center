@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
@@ -56,6 +56,40 @@ function loadVersionInfo(): {
   }
 }
 
+/**
+ * A gRPC-web stream whose upstream drops mid-response must end for the
+ * browser too. The proxy otherwise keeps the browser's response open: the
+ * stream never reconnects, and each hung stream holds one of the six
+ * connections the browser opens to this host, until module requests of a
+ * lazy route wait or fail ("Failed to fetch dynamically imported module").
+ */
+type ProxyConfigure = NonNullable<ProxyOptions['configure']>;
+
+const endBrowserResponseWithUpstream: ProxyConfigure = (proxy) => {
+  proxy.on('proxyRes', (proxyRes, _req, res) => {
+    proxyRes.on('close', () => {
+      if (!proxyRes.complete) res.destroy();
+    });
+  });
+};
+
+/**
+ * A gRPC-web stream counts as open in the browser once its response headers
+ * arrive, and a quiet stream sends them before any message. Node would hold a
+ * proxied response's headers until its first body bytes, so they are flushed
+ * as soon as the proxy starts relaying.
+ */
+const flushHeadersOnRelay: ProxyConfigure = (proxy) => {
+  proxy.on('proxyRes', (_proxyRes, _req, res) => {
+    res.once('pipe', () => res.flushHeaders());
+  });
+};
+
+const grpcWebProxy: ProxyConfigure = (proxy, options) => {
+  endBrowserResponseWithUpstream(proxy, options);
+  flushHeadersOnRelay(proxy, options);
+};
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   loadEnv(mode, process.cwd(), '');
@@ -74,11 +108,13 @@ export default defineConfig(({ mode }) => {
         'google-protobuf/google/protobuf/field_mask_pb',
         '@improbable-eng/grpc-web',
         // Linked package for CJS protobuf stubs - Vite pre-bundles these
-        '@kilocenter/grpc-stubs',
+        '@kilocenter/grpc-stubs/core_pb',
+        '@kilocenter/grpc-stubs/core_pb_service',
+        '@kilocenter/grpc-stubs/identity_pb',
+        '@kilocenter/grpc-stubs/identity_pb_service',
         // Emotion packages - pre-bundle to prevent duplicate instance warning
         '@emotion/react',
         '@emotion/styled',
-        '@emotion/cache',
       ],
       rolldownOptions: {
         transform: {
@@ -106,7 +142,6 @@ export default defineConfig(({ mode }) => {
             )
               return 'vendor-grpc';
             if (id.includes('leaflet') || id.includes('react-leaflet')) return 'vendor-maps';
-            if (id.includes('recharts')) return 'vendor-charts';
             if (id.includes('@tanstack/react-query')) return 'vendor-query';
             if (id.includes('@mui/') || id.includes('@emotion/')) return 'vendor-ui';
           },
@@ -128,39 +163,41 @@ export default defineConfig(({ mode }) => {
       __TRADEMARK_NOTICE__: JSON.stringify(versionInfo.trademarkNotice),
     },
     resolve: {
-      alias: {
-        // Path Aliases - Locked Folder Structure per FRONTEND_DELIVERY_PLAN Section 0
-        '@': path.resolve(__dirname, './src'),
-        '@app': path.resolve(__dirname, './src/app'),
-        '@modules': path.resolve(__dirname, './src/modules'),
-        '@components': path.resolve(__dirname, './src/components'),
-        '@ui': path.resolve(__dirname, './src/ui'),
-        '@layouts': path.resolve(__dirname, './src/layouts'),
-        // gRPC stubs: linked package for CJS pre-bundling (must be before @services)
-        '@services/grpc': path.resolve(__dirname, './node_modules/@kilocenter/grpc-stubs'),
-        '@services': path.resolve(__dirname, './src/services'),
-        '@contexts': path.resolve(__dirname, './src/context'),
-        '@hooks': path.resolve(__dirname, './src/hooks'),
-        '@utils': path.resolve(__dirname, './src/utils'),
-        '@constants': path.resolve(__dirname, './src/constants'),
-        '@styles': path.resolve(__dirname, './src/styles'),
-        '@router': path.resolve(__dirname, './src/router'),
-        '@api-types': path.resolve(__dirname, './src/types'),
-        '@locales': path.resolve(__dirname, './src/locales'),
-        '@assets': path.resolve(__dirname, './src/assets'),
-        '@config': path.resolve(__dirname, './src/config'),
-        '@theme': path.resolve(__dirname, './src/theme'),
-        '@mappers': path.resolve(__dirname, './src/mappers'),
-      },
+      alias: [
+        { find: '@', replacement: path.resolve(__dirname, './src') },
+        { find: '@app', replacement: path.resolve(__dirname, './src/app') },
+        { find: '@modules', replacement: path.resolve(__dirname, './src/modules') },
+        { find: '@components', replacement: path.resolve(__dirname, './src/components') },
+        { find: '@ui', replacement: path.resolve(__dirname, './src/ui') },
+        { find: '@layouts', replacement: path.resolve(__dirname, './src/layouts') },
+        // Generated stubs come from the linked CJS package; every other file under
+        // services/grpc (transport, codec, errors, metadata, client) resolves from source.
+        {
+          find: /^@services\/grpc\/((?:core|identity)_pb(?:_service)?)$/,
+          replacement: path.resolve(__dirname, './node_modules/@kilocenter/grpc-stubs/$1'),
+        },
+        { find: '@services', replacement: path.resolve(__dirname, './src/services') },
+        { find: '@contexts', replacement: path.resolve(__dirname, './src/context') },
+        { find: '@hooks', replacement: path.resolve(__dirname, './src/hooks') },
+        { find: '@utils', replacement: path.resolve(__dirname, './src/utils') },
+        { find: '@constants', replacement: path.resolve(__dirname, './src/constants') },
+        { find: '@styles', replacement: path.resolve(__dirname, './src/styles') },
+        { find: '@router', replacement: path.resolve(__dirname, './src/router') },
+        { find: '@api-types', replacement: path.resolve(__dirname, './src/types') },
+        { find: '@config', replacement: path.resolve(__dirname, './src/config') },
+        { find: '@theme', replacement: path.resolve(__dirname, './src/theme') },
+        { find: '@mappers', replacement: path.resolve(__dirname, './src/mappers') },
+      ],
     },
     server: {
       allowedHosts: ['.trycloudflare.com'],
       proxy: {
-        // gRPC-web proxy to ingress endpoint (KC-Core gRPC-web)
+        // gRPC-web proxy to the KC-Gateway ingress
         // Routes all gRPC-web traffic for KiloCenterService, IdentityService, and CoreService
         '^/kilocenter\\.api\\.v1\\.': {
           target: process.env.INGRESS_GRPC_URL || 'http://localhost:9090',
           changeOrigin: true,
+          configure: grpcWebProxy,
         },
       },
     },

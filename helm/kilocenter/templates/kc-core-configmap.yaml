@@ -32,10 +32,22 @@ data:
         key_file: "/app/certificates/server.key"
         ca_file: "/app/certificates/ca.crt"
         min_version: {{ .Values.kcCore.config.scaci.tlsMinVersion | quote }}
-      max_retransmissions: {{ .Values.kcCore.config.protocol.maxRetransmissions }}
+      scaci_resume_max_pending_operations: {{ .Values.kcCore.config.scaci.resumeMaxPendingOperations }}
       ack_timeout: {{ .Values.kcCore.config.protocol.ackTimeout }}
       duplicate_window: {{ .Values.kcCore.config.protocol.duplicateWindow }}
+      delivery:
+        poll_interval: {{ .Values.kcCore.config.protocol.delivery.pollInterval | quote }}
+        batch_size: {{ .Values.kcCore.config.protocol.delivery.batchSize }}
+        retry_backoff: {{ .Values.kcCore.config.protocol.delivery.retryBackoff | quote }}
+        max_backoff: {{ .Values.kcCore.config.protocol.delivery.maxBackoff | quote }}
+        reception_window: {{ .Values.kcCore.config.protocol.delivery.receptionWindow | quote }}
+      downlink_expiry:
+        lifetime: {{ .Values.kcCore.config.protocol.downlinkExpiry.lifetime | quote }}
+        sweep_interval: {{ .Values.kcCore.config.protocol.downlinkExpiry.sweepInterval | quote }}
+        batch_size: {{ .Values.kcCore.config.protocol.downlinkExpiry.batchSize }}
+        revoke_not_held_codes: {{ .Values.kcCore.config.protocol.downlinkExpiry.revokeNotHeldCodes | toJson }}
       connection_establishment_timeout: {{ .Values.kcCore.config.protocol.connectionEstablishmentTimeout }}
+      socket_write_timeout: {{ .Values.kcCore.config.protocol.socketWriteTimeout }}
       status_request_interval: {{ .Values.kcCore.config.protocol.statusRequestInterval }}
       status_request_initial_delay: {{ .Values.kcCore.config.protocol.statusRequestInitialDelay }}
       dlrx_query_timeout: {{ .Values.kcCore.config.protocol.dlrxQueryTimeout }}
@@ -66,7 +78,6 @@ data:
       enable_migrations: true
       message_retention_days: {{ .Values.kcCore.config.messageRetentionDays }}
       archival_enabled: true
-      archival_check_interval: 3600
 
     mqtt:
       enabled: true
@@ -86,7 +97,6 @@ data:
       host: "0.0.0.0"
       rbac_role_cache_ttl_seconds: 30
       internal_trust_enabled: true
-      tls_enabled: false
       web:
         enabled: false
 
@@ -95,23 +105,3 @@ data:
 
     status:
       timeout: 5s
-      endpoints:
-        - name: "KC-Core"
-          url: "http://localhost:{{ .Values.kcCore.config.health.port }}/health/ping"
-          type: "http"
-        - name: "KC-Identity"
-          url: "http://{{ include "kilocenter.fullname" . }}-identity:{{ .Values.kcIdentity.config.health.port }}/health"
-          type: "http"
-        - name: "PostgreSQL"
-          type: "db"
-        - name: "gRPC (internal)"
-          host: "localhost"
-          port: {{ .Values.kcCore.config.grpc.port }}
-          type: "tcp"
-        - name: "KC-Gateway"
-          url: "http://{{ include "kilocenter.fullname" . }}-gateway:{{ .Values.kcGateway.config.health.port }}/health"
-          type: "http"
-        - name: "MQTT"
-          type: "mqtt"
-        - name: "Archival"
-          type: "archival"

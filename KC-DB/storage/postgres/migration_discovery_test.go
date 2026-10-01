@@ -12,9 +12,9 @@ import (
 func TestMigrationDiscovery(t *testing.T) {
 	migrations := discoverMigrations(t)
 
-	// We have 135 migration files (numbered 1-142 with gaps at 24, 25, 26, 52,
+	// We have 184 migration files (numbered 1-191 with gaps at 24, 25, 26, 52,
 	// 78, 79 and 141 reserved for the downlink dispatch saga)
-	assert.Len(t, migrations, 135, "Should discover exactly 135 migrations")
+	assert.Len(t, migrations, 184, "Should discover exactly 184 migrations")
 
 	// Verify migrations are sorted by number
 	for i := 1; i < len(migrations); i++ {
@@ -27,7 +27,7 @@ func TestMigrationDiscovery(t *testing.T) {
 	assert.NotEmpty(t, migrations[0].description, "Migration should have description")
 
 	// Verify last migration
-	assert.Equal(t, 142, migrations[len(migrations)-1].number, "Last migration should be #142")
+	assert.Equal(t, 191, migrations[len(migrations)-1].number, "Last migration should be #191")
 
 	// Verify specific migrations exist
 	expectedMigrations := map[int]string{
@@ -100,6 +100,51 @@ func TestMigrationDiscovery(t *testing.T) {
 		139: "restore_message_archival",
 		140: "purge_completed_bssci_pending_operations",
 		142: "add_dlrx_correlation_index",
+		143: "encrypt_endpoint_keys_at_rest",
+		144: "drop_endpoint_preshared_key",
+		145: "drop_endpoint_keys",
+		147: "drop_placeholder_table_statistics",
+		148: "archive_legacy_bssci_operation_tracking",
+		149: "consolidate_basestation_certificate_records",
+		150: "consolidate_basestation_connection_events",
+		151: "drop_dead_columns_and_indexes",
+		152: "drop_orphaned_mioty_subpackets",
+		153: "drop_unused_key_storage",
+		154: "remove_organization_quotas",
+		155: "correct_message_deduplication",
+		159: "basestation_session_service_center",
+		160: "downlink_application_queue_id",
+		161: "uplink_reception_time_and_detach_counter",
+		162: "drop_dead_downlink_queue_columns",
+		163: "message_packet_counter_reuse",
+		164: "downlink_endpoint_acknowledgement",
+		165: "downlink_window_claim",
+		166: "downlink_application_queue_id_unsigned",
+		167: "message_packet_counter_unsigned",
+		168: "endpoint_status_changed_at",
+		169: "downlink_application_queue_id_zero",
+		170: "endpoint_attachment_changed_at",
+		171: "scaci_live_session_per_organization",
+		172: "downlink_application_queue_id_in_flight",
+		173: "endpoint_profile_changed_at",
+		174: "basestation_gps_without_fix",
+		175: "system_event_status_new",
+		176: "grandfather_role_switches",
+		177: "canonical_event_device_euis",
+		178: "drop_bssci_service_center_url_check",
+		179: "camel_case_event_detail_keys",
+		180: "scaci_session_service_center",
+		181: "certificate_generated_basestation_category",
+		182: "notify_stored_rows",
+		183: "notify_moved_events",
+		184: "downlink_origin",
+		185: "stream_storage_order",
+		186: "scaci_uplink_delivery_identity",
+		187: "downlink_command_ref",
+		188: "downlink_ack_delivery",
+		189: "downlink_command_ref_unique",
+		190: "downlink_revoking",
+		191: "downlink_sent_after_expiry",
 	}
 
 	for num, expectedDesc := range expectedMigrations {
@@ -206,19 +251,19 @@ func TestMigrationValidatorsMapCompleteness(t *testing.T) {
 	}
 
 	// Count how many migrations have validators
-	validatedCount := 0
+	validated := 0
 	for _, mig := range migrations {
 		if mig.validate != nil {
-			validatedCount++
+			validated++
 		}
 	}
 
 	t.Logf("Migration validation coverage: %d/%d (%.1f%%)",
-		validatedCount, len(migrations),
-		float64(validatedCount)/float64(len(migrations))*100)
+		validated, len(migrations),
+		float64(validated)/float64(len(migrations))*100)
 
 	// Goal: eventually have validators for critical migrations
 	// Current: 12 validators (migrations 1-14 minus 9, 10)
-	require.GreaterOrEqual(t, validatedCount, 12,
+	require.GreaterOrEqual(t, validated, 12,
 		"Should have at least 12 validators (migrations 1-14)")
 }

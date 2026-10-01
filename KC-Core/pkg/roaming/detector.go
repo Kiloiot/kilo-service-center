@@ -3,11 +3,14 @@ package roaming
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
@@ -19,9 +22,6 @@ var ErrEndpointNotFound = errors.New("endpoint not found")
 type EndpointOwnershipResolver interface {
 	// GetEndpointOwner returns the owner tenant ID for an endpoint
 	GetEndpointOwner(ctx context.Context, epEui []byte) (ownerTenantID int64, err error)
-
-	// GetEndpointWithOwnership returns full endpoint data including ownership
-	GetEndpointWithOwnership(ctx context.Context, epEui []byte, servingTenantID int64) (*models.EndPoint, error)
 
 	// IsRoamingEnabled checks if roaming is enabled for a tenant
 	IsRoamingEnabled(ctx context.Context, tenantID int64) (bool, error)
@@ -36,60 +36,55 @@ type EventRecorder interface {
 	RecordRoamingEvent(ctx context.Context, event *models.RoamingEvent) error
 }
 
-// DetectorConfig configuration for the roaming detector
+// DetectorConfig configures the roaming detector from protocol.roaming.
 type DetectorConfig struct {
 	CacheEnabled     bool
 	CacheTTL         time.Duration
 	CacheMaxSize     int
 	EnableAuditTrail bool
-	EnableMetrics    bool
 }
 
-// DefaultDetectorConfig returns default configuration
-func DefaultDetectorConfig() *DetectorConfig {
-	return &DetectorConfig{
-		CacheEnabled:     true,
-		CacheTTL:         5 * time.Minute,
-		CacheMaxSize:     10000,
-		EnableAuditTrail: true,
-		EnableMetrics:    true,
-	}
-}
+// Roaming event reasons recorded on attach/detach transitions.
+const (
+	reasonRoamingToForeign    = "Endpoint roaming to foreign network"
+	reasonAttachedHome        = "Endpoint attached to home network"
+	reasonDetachingForeign    = "Endpoint detaching from foreign network"
+	reasonDetachedHome        = "Endpoint detached from home network"
+	reasonBaseStationHandover = "Base station handover"
+)
 
-// ownershipCacheEntry represents a cached ownership entry
+// cacheSweepsPerTTL sets the cleanup cadence relative to the cache TTL.
+const cacheSweepsPerTTL = 2
+
+// ownershipCacheEntry caches an endpoint's owner only; roaming depends on the hearing station and is decided per call.
 type ownershipCacheEntry struct {
-	OwnerTenantID   int64
-	ServingTenantID int64
-	IsRoaming       bool
-	CachedAt        time.Time
-	LastAccessedAt  time.Time
+	OwnerTenantID  int64
+	CachedAt       time.Time
+	LastAccessedAt time.Time
 }
 
 // Detector implements roaming detection with caching
 type Detector struct {
-	config     *DetectorConfig
+	clock      clock.Clock
+	config     DetectorConfig
 	resolver   EndpointOwnershipResolver
 	recorder   EventRecorder
 	cache      map[string]*ownershipCacheEntry // key: hex(epEui)
 	cacheMutex sync.RWMutex
-	metrics    *Metrics
 }
 
-// NewDetector creates a new roaming detector
-func NewDetector(config *DetectorConfig, resolver EndpointOwnershipResolver, recorder EventRecorder) *Detector {
-	if config == nil {
-		config = DefaultDetectorConfig()
+// NewDetector creates a new roaming detector and rejects a missing collaborator.
+func NewDetector(config DetectorConfig, resolver EndpointOwnershipResolver, recorder EventRecorder, clk clock.Clock) (*Detector, error) {
+	if resolver == nil || recorder == nil || clk == nil {
+		return nil, errMissingDetectorDependency
 	}
 
 	d := &Detector{
+		clock:    clk,
 		config:   config,
 		resolver: resolver,
 		recorder: recorder,
 		cache:    make(map[string]*ownershipCacheEntry),
-	}
-
-	if config.EnableMetrics {
-		d.metrics = NewMetrics()
 	}
 
 	// Start cache cleanup goroutine
@@ -97,63 +92,44 @@ func NewDetector(config *DetectorConfig, resolver EndpointOwnershipResolver, rec
 		go d.cacheCleanupLoop()
 	}
 
-	return d
+	return d, nil
 }
 
-// DetectRoaming determines if an endpoint is roaming
+// DetectRoaming compares the endpoint's owner with the serving tenant of this reception.
 func (d *Detector) DetectRoaming(ctx context.Context, epEui []byte, servingTenantID int64) (isRoaming bool, ownerTenantID int64, err error) {
-	epEuiHex := hex.EncodeToString(epEui)
+	ownerTenantID, err = d.owner(ctx, epEui)
+	if err != nil {
+		return false, 0, err
+	}
+	return ownerTenantID != servingTenantID, ownerTenantID, nil
+}
 
-	// Check cache first
+// owner resolves the endpoint's owner tenant, from the cache when enabled.
+func (d *Detector) owner(ctx context.Context, epEui []byte) (int64, error) {
+	epEuiHex := mioty.FormatEUIBytes(epEui)
 	if d.config.CacheEnabled {
 		if entry, found := d.getCacheEntry(epEuiHex); found {
-			if d.metrics != nil {
-				d.metrics.IncrementCacheHit()
-			}
-			return entry.IsRoaming, entry.OwnerTenantID, nil
-		}
-		if d.metrics != nil {
-			d.metrics.IncrementCacheMiss()
+			return entry.OwnerTenantID, nil
 		}
 	}
 
-	// Resolve ownership from database
-	ownerTenantID, err = d.resolver.GetEndpointOwner(ctx, epEui)
+	ownerTenantID, err := d.resolver.GetEndpointOwner(ctx, epEui)
 	if err != nil {
 		if errors.Is(err, ErrEndpointNotFound) {
-			return false, 0, ErrEndpointNotFound
+			return 0, ErrEndpointNotFound
 		}
-		_ = ctx // Silence unused variable warning
-		return false, 0, fmt.Errorf("failed to resolve ownership for endpoint %s: %w", epEuiHex, err)
+		return 0, fmt.Errorf(errFmtResolveOwnershipForEndpoint, epEuiHex, err)
 	}
 
-	// Determine if roaming
-	isRoaming = ownerTenantID != servingTenantID
-
-	// Cache the result
 	if d.config.CacheEnabled {
+		now := d.clock.Now()
 		d.setCacheEntry(epEuiHex, &ownershipCacheEntry{
-			OwnerTenantID:   ownerTenantID,
-			ServingTenantID: servingTenantID,
-			IsRoaming:       isRoaming,
-			CachedAt:        time.Now(),
-			LastAccessedAt:  time.Now(),
+			OwnerTenantID:  ownerTenantID,
+			CachedAt:       now,
+			LastAccessedAt: now,
 		})
 	}
-
-	// Record metrics
-	if d.metrics != nil {
-		if isRoaming {
-			d.metrics.IncrementRoamingDetected()
-		} else {
-			d.metrics.IncrementLocalDetected()
-		}
-	}
-
-	// Debug log (logger implementation would go here)
-	_ = ctx // Silence unused variable warning
-
-	return isRoaming, ownerTenantID, nil
+	return ownerTenantID, nil
 }
 
 // RecordAttachEvent records an endpoint attach event
@@ -168,13 +144,13 @@ func (d *Detector) RecordAttachEvent(ctx context.Context, epEui []byte, ownerTen
 		OwnerTenantID:   ownerTenantID,
 		ServingTenantID: servingTenantID,
 		ToBsEUI:         bsEui,
-		CreatedAt:       time.Now(),
+		CreatedAt:       d.clock.Now(),
 	}
 
 	if ownerTenantID != servingTenantID {
-		event.Reason = "Endpoint roaming to foreign network"
+		event.Reason = reasonRoamingToForeign
 	} else {
-		event.Reason = "Endpoint attached to home network"
+		event.Reason = reasonAttachedHome
 	}
 
 	return d.recorder.RecordRoamingEvent(ctx, event)
@@ -192,13 +168,13 @@ func (d *Detector) RecordDetachEvent(ctx context.Context, epEui []byte, ownerTen
 		OwnerTenantID:   ownerTenantID,
 		ServingTenantID: servingTenantID,
 		FromBsEUI:       bsEui,
-		CreatedAt:       time.Now(),
+		CreatedAt:       d.clock.Now(),
 	}
 
 	if ownerTenantID != servingTenantID {
-		event.Reason = "Endpoint detaching from foreign network"
+		event.Reason = reasonDetachingForeign
 	} else {
-		event.Reason = "Endpoint detached from home network"
+		event.Reason = reasonDetachedHome
 	}
 
 	return d.recorder.RecordRoamingEvent(ctx, event)
@@ -217,8 +193,8 @@ func (d *Detector) RecordHandoverEvent(ctx context.Context, epEui []byte, ownerT
 		ServingTenantID: servingTenantID,
 		FromBsEUI:       fromBsEui,
 		ToBsEUI:         toBsEui,
-		Reason:          "Base station handover",
-		CreatedAt:       time.Now(),
+		Reason:          reasonBaseStationHandover,
+		CreatedAt:       d.clock.Now(),
 	}
 
 	return d.recorder.RecordRoamingEvent(ctx, event)
@@ -234,59 +210,31 @@ func (d *Detector) ValidateRoamingAllowed(ctx context.Context, ownerTenantID, se
 	// Check if owner tenant has roaming enabled
 	ownerRoamingEnabled, err := d.resolver.IsRoamingEnabled(ctx, ownerTenantID)
 	if err != nil {
-		return fmt.Errorf("failed to check roaming status for owner tenant %d: %w", ownerTenantID, err)
+		return fmt.Errorf(errFmtCheckRoamingStatusForOwnerTenant, ownerTenantID, err)
 	}
 	if !ownerRoamingEnabled {
-		return fmt.Errorf("roaming not enabled for owner tenant %d", ownerTenantID)
+		return fmt.Errorf(errFmtRoamingNotEnabledForOwnerTenant, ownerTenantID)
 	}
 
 	// Check if serving tenant has roaming enabled
 	servingRoamingEnabled, err := d.resolver.IsRoamingEnabled(ctx, servingTenantID)
 	if err != nil {
-		return fmt.Errorf("failed to check roaming status for serving tenant %d: %w", servingTenantID, err)
+		return fmt.Errorf(errFmtCheckRoamingStatusForServingTenant, servingTenantID, err)
 	}
 	if !servingRoamingEnabled {
-		return fmt.Errorf("roaming not enabled for serving tenant %d", servingTenantID)
+		return fmt.Errorf(errFmtRoamingNotEnabledForServingTenant, servingTenantID)
 	}
 
 	// Check if tenants are partners
 	arePartners, err := d.resolver.AreTenantsPartners(ctx, ownerTenantID, servingTenantID)
 	if err != nil {
-		return fmt.Errorf("failed to check partnership between tenants: %w", err)
+		return fmt.Errorf(errFmtCheckPartnershipBetweenTenants, err)
 	}
 	if !arePartners {
-		return fmt.Errorf("no roaming agreement between tenants %d and %d", ownerTenantID, servingTenantID)
+		return fmt.Errorf(errFmtNoRoamingAgreement, ownerTenantID, servingTenantID)
 	}
 
 	return nil
-}
-
-// InvalidateCache invalidates cache entry for an endpoint
-func (d *Detector) InvalidateCache(epEui []byte) {
-	if !d.config.CacheEnabled {
-		return
-	}
-
-	epEuiHex := hex.EncodeToString(epEui)
-	d.cacheMutex.Lock()
-	delete(d.cache, epEuiHex)
-	d.cacheMutex.Unlock()
-}
-
-// ClearCache clears the entire cache
-func (d *Detector) ClearCache() {
-	if !d.config.CacheEnabled {
-		return
-	}
-
-	d.cacheMutex.Lock()
-	d.cache = make(map[string]*ownershipCacheEntry)
-	d.cacheMutex.Unlock()
-}
-
-// GetMetrics returns roaming metrics
-func (d *Detector) GetMetrics() *Metrics {
-	return d.metrics
 }
 
 // getCacheEntry retrieves a cache entry
@@ -300,12 +248,12 @@ func (d *Detector) getCacheEntry(epEuiHex string) (*ownershipCacheEntry, bool) {
 	}
 
 	// Check if entry is expired
-	if time.Since(entry.CachedAt) > d.config.CacheTTL {
+	if d.clock.Now().Sub(entry.CachedAt) > d.config.CacheTTL {
 		return nil, false
 	}
 
 	// Update last accessed time
-	entry.LastAccessedAt = time.Now()
+	entry.LastAccessedAt = d.clock.Now()
 	return entry, true
 }
 
@@ -335,7 +283,7 @@ func (d *Detector) setCacheEntry(epEuiHex string, entry *ownershipCacheEntry) {
 
 // cacheCleanupLoop periodically removes expired entries
 func (d *Detector) cacheCleanupLoop() {
-	ticker := time.NewTicker(d.config.CacheTTL / 2)
+	ticker := time.NewTicker(d.config.CacheTTL / cacheSweepsPerTTL)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -348,7 +296,7 @@ func (d *Detector) cleanupExpiredEntries() {
 	d.cacheMutex.Lock()
 	defer d.cacheMutex.Unlock()
 
-	now := time.Now()
+	now := d.clock.Now()
 	for key, entry := range d.cache {
 		if now.Sub(entry.CachedAt) > d.config.CacheTTL {
 			delete(d.cache, key)

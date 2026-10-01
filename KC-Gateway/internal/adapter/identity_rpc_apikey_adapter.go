@@ -30,24 +30,24 @@ func (a *IdentityRPCAPIKeyAdapter) LookupByHash(ctx context.Context, hash string
 		KeyHash: hash,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("identity RPC ValidateAPIKey failed: %w", err)
+		return nil, fmt.Errorf("%s: %w", ErrIdentityValidateAPIKeyFailed, err)
 	}
 
 	id, err := uuid.Parse(resp.GetId())
 	if err != nil {
-		return nil, fmt.Errorf("invalid API key ID from identity service: %w", err)
+		return nil, fmt.Errorf("%s: %w", ErrInvalidAPIKeyID, err)
 	}
 
 	orgID, err := uuid.Parse(resp.GetOrganizationId())
 	if err != nil {
-		return nil, fmt.Errorf("invalid org ID from identity service: %w", err)
+		return nil, fmt.Errorf("%s: %w", ErrInvalidOrgID, err)
 	}
 
 	var userID *uuid.UUID
 	if resp.GetUserId() != "" {
 		parsed, err := uuid.Parse(resp.GetUserId())
 		if err != nil {
-			return nil, fmt.Errorf("invalid user ID from identity service: %w", err)
+			return nil, fmt.Errorf("%s: %w", ErrInvalidUserID, err)
 		}
 		userID = &parsed
 	}

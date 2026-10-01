@@ -15,6 +15,12 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 )
 
+// Certificate validity offsets used by the test fixtures.
+const (
+	testCertDay  = 24 * time.Hour
+	testCertYear = 365 * testCertDay
+)
+
 // Helper to create test certificate with custom properties
 func createTestCert(notBefore, notAfter time.Time, extKeyUsage []x509.ExtKeyUsage, subject pkix.Name) *x509.Certificate {
 	privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
@@ -40,9 +46,9 @@ func TestVerifyCertificate_Valid(t *testing.T) {
 	// Create valid cert: not expired, has ClientAuth, valid subject
 	now := time.Now()
 	cert := createTestCert(
-		now.Add(-24*time.Hour),                                                  // NotBefore: yesterday
-		now.Add(365*24*time.Hour),                                               // NotAfter: 1 year from now
-		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},                          // Has ClientAuth
+		now.Add(-testCertDay),                          // NotBefore: yesterday
+		now.Add(testCertYear),                          // NotAfter: 1 year from now
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, // Has ClientAuth
 		pkix.Name{CommonName: "test-client", Organization: []string{"TestOrg"}}, // Valid subject
 	)
 
@@ -69,8 +75,8 @@ func TestVerifyCertificate_NotYetValid(t *testing.T) {
 	// Create cert that's not yet valid (NotBefore is in the future)
 	now := time.Now()
 	cert := createTestCert(
-		now.Add(24*time.Hour),                          // NotBefore: tomorrow
-		now.Add(365*24*time.Hour),                      // NotAfter: 1 year from now
+		now.Add(testCertDay),                           // NotBefore: tomorrow
+		now.Add(testCertYear),                          // NotAfter: 1 year from now
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, // Has ClientAuth
 		pkix.Name{CommonName: "test-client"},
 	)
@@ -88,8 +94,8 @@ func TestVerifyCertificate_Expired(t *testing.T) {
 	// Create expired cert (NotAfter is in the past)
 	now := time.Now()
 	cert := createTestCert(
-		now.Add(-365*24*time.Hour),                     // NotBefore: 1 year ago
-		now.Add(-24*time.Hour),                         // NotAfter: yesterday
+		now.Add(-testCertYear),                         // NotBefore: 1 year ago
+		now.Add(-testCertDay),                          // NotAfter: yesterday
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, // Has ClientAuth
 		pkix.Name{CommonName: "test-client"},
 	)
@@ -107,8 +113,8 @@ func TestVerifyCertificate_MissingClientAuth(t *testing.T) {
 	// Create cert without ClientAuth (has ServerAuth instead)
 	now := time.Now()
 	cert := createTestCert(
-		now.Add(-24*time.Hour),
-		now.Add(365*24*time.Hour),
+		now.Add(-testCertDay),
+		now.Add(testCertYear),
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, // Wrong key usage
 		pkix.Name{CommonName: "test-client"},
 	)
@@ -126,8 +132,8 @@ func TestVerifyCertificate_NoExtKeyUsage(t *testing.T) {
 	// Create cert with no ExtKeyUsage at all
 	now := time.Now()
 	cert := createTestCert(
-		now.Add(-24*time.Hour),
-		now.Add(365*24*time.Hour),
+		now.Add(-testCertDay),
+		now.Add(testCertYear),
 		[]x509.ExtKeyUsage{}, // Empty ExtKeyUsage
 		pkix.Name{CommonName: "test-client"},
 	)
@@ -145,8 +151,8 @@ func TestVerifyCertificate_InvalidSubject_Empty(t *testing.T) {
 	// Create cert with empty subject (no CN, no Organization)
 	now := time.Now()
 	cert := createTestCert(
-		now.Add(-24*time.Hour),
-		now.Add(365*24*time.Hour),
+		now.Add(-testCertDay),
+		now.Add(testCertYear),
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		pkix.Name{}, // Empty subject
 	)
@@ -164,8 +170,8 @@ func TestVerifyCertificate_ValidSubject_OnlyOrganization(t *testing.T) {
 	// Create cert with Organization but no CN (should be valid)
 	now := time.Now()
 	cert := createTestCert(
-		now.Add(-24*time.Hour),
-		now.Add(365*24*time.Hour),
+		now.Add(-testCertDay),
+		now.Add(testCertYear),
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		pkix.Name{Organization: []string{"TestOrg"}}, // Only org, no CN
 	)
@@ -183,8 +189,8 @@ func TestVerifyCertificate_MultipleExtKeyUsages(t *testing.T) {
 	// Create cert with multiple ExtKeyUsages including ClientAuth
 	now := time.Now()
 	cert := createTestCert(
-		now.Add(-24*time.Hour),
-		now.Add(365*24*time.Hour),
+		now.Add(-testCertDay),
+		now.Add(testCertYear),
 		[]x509.ExtKeyUsage{
 			x509.ExtKeyUsageServerAuth,
 			x509.ExtKeyUsageClientAuth, // Has ClientAuth among others

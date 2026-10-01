@@ -2,7 +2,7 @@ package grpc
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 	"time"
 
@@ -12,11 +12,21 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/authz"
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/admin"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
+)
+
+// testPageSize is the page size requested by list RPC fixtures.
+const testPageSize = 10
+
+// Store-failure errors returned by the mock repositories.
+var (
+	errFixtureNotFound          = errors.New("not found")
+	errFixtureConnectionRefused = errors.New("connection refused")
 )
 
 // ============================================================================
@@ -28,6 +38,7 @@ func TestRequireServerAdmin_Success(t *testing.T) {
 	now := time.Now()
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 			listFunc: func(_ context.Context, _, _ int) ([]*models.User, int64, error) {
@@ -40,17 +51,37 @@ func TestRequireServerAdmin_Success(t *testing.T) {
 	}
 
 	ctx := adminTestContext(callerID)
-	resp, err := svc.ListUsers(ctx, &pb.ListUsersRequest{PageSize: 10})
+	resp, err := svc.ListUsers(ctx, &pb.ListUsersRequest{PageSize: testPageSize})
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Len(t, resp.Users, 1)
 }
 
+func TestRequireServerAdmin_DeactivatedAdminDenied(t *testing.T) {
+	callerID := uuid.New()
+
+	svc := &IdentityService{
+		adminUserSvc: &mockAdminUserService{
+			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
+				return &models.User{ID: id, IsAdmin: true, IsActive: false}, nil
+			},
+		},
+		log: &mockLogger{},
+	}
+
+	_, err := svc.ListUsers(adminTestContext(callerID), &pb.ListUsersRequest{PageSize: testPageSize})
+
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAdminRequired), st.Code())
+}
+
 func TestRequireServerAdmin_NonAdmin(t *testing.T) {
 	callerID := uuid.New()
 
 	svc := &IdentityService{
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
 				return &models.User{ID: id, IsAdmin: false, IsActive: true}, nil
@@ -60,7 +91,7 @@ func TestRequireServerAdmin_NonAdmin(t *testing.T) {
 	}
 
 	ctx := adminTestContext(callerID)
-	_, err := svc.ListUsers(ctx, &pb.ListUsersRequest{PageSize: 10})
+	_, err := svc.ListUsers(ctx, &pb.ListUsersRequest{PageSize: testPageSize})
 
 	require.Error(t, err)
 	st, ok := status.FromError(err)
@@ -70,16 +101,17 @@ func TestRequireServerAdmin_NonAdmin(t *testing.T) {
 }
 
 // ============================================================================
-// requireOrgAdmin Tests (tested via ListOrganizationUsers which calls resolveOrgAccess)
+// resolveOrgAccess: a tenant manager of the organization is admitted within its tenant
 // ============================================================================
 
-func TestRequireOrgAdmin_Success(t *testing.T) {
+func TestResolveOrgAccess_TenantManager(t *testing.T) {
 	callerID := uuid.New()
 	orgID := uuid.New()
 
 	svc := &IdentityService{
+		roles: orgRoles{orgID: {TenantManager: true}},
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
-			// Non-admin caller so requireServerAdmin fails and falls through to requireOrgAdmin
 			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
 				return &models.User{ID: id, IsAdmin: false, IsActive: true}, nil
 			},
@@ -90,7 +122,7 @@ func TestRequireOrgAdmin_Success(t *testing.T) {
 				if oID == orgID && uID == callerID {
 					return &grpcservices.OrganizationMember{OrgID: oID, UserID: uID, IsOrgAdmin: true, Role: "admin"}, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errFixtureNotFound
 			},
 			listMembersFunc: func(_ context.Context, _ uuid.UUID, _ string, _, _ int) ([]*grpcservices.OrganizationMember, int64, error) {
 				return []*grpcservices.OrganizationMember{}, 0, nil
@@ -104,19 +136,21 @@ func TestRequireOrgAdmin_Success(t *testing.T) {
 
 	resp, err := svc.ListOrganizationUsers(ctx, &pb.ListOrganizationUsersRequest{
 		OrgId:    orgID.String(),
-		PageSize: 10,
+		PageSize: testPageSize,
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 }
 
-func TestRequireOrgAdmin_WrongOrg(t *testing.T) {
+func TestResolveOrgAccess_TenantManagerOfAnotherOrganization(t *testing.T) {
 	callerID := uuid.New()
 	orgID := uuid.New()
 	wrongOrgID := uuid.New()
 
 	svc := &IdentityService{
+		roles: orgRoles{orgID: {TenantManager: true}},
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
 				return &models.User{ID: id, IsAdmin: false, IsActive: true}, nil
@@ -129,7 +163,7 @@ func TestRequireOrgAdmin_WrongOrg(t *testing.T) {
 				if oID == orgID && uID == callerID {
 					return &grpcservices.OrganizationMember{OrgID: oID, UserID: uID, IsOrgAdmin: true, Role: "admin"}, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errFixtureNotFound
 			},
 		},
 		log: &mockLogger{},
@@ -140,7 +174,7 @@ func TestRequireOrgAdmin_WrongOrg(t *testing.T) {
 
 	_, err := svc.ListOrganizationUsers(ctx, &pb.ListOrganizationUsersRequest{
 		OrgId:    wrongOrgID.String(),
-		PageSize: 10,
+		PageSize: testPageSize,
 	})
 
 	require.Error(t, err)
@@ -150,11 +184,13 @@ func TestRequireOrgAdmin_WrongOrg(t *testing.T) {
 	assert.Equal(t, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgAdminRequired), st.Message())
 }
 
-func TestRequireOrgAdmin_NonAdmin(t *testing.T) {
+func TestResolveOrgAccess_MemberWithoutRoles(t *testing.T) {
 	callerID := uuid.New()
 	orgID := uuid.New()
 
 	svc := &IdentityService{
+		roles: orgRoles{},
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
 				return &models.User{ID: id, IsAdmin: false, IsActive: true}, nil
@@ -167,7 +203,7 @@ func TestRequireOrgAdmin_NonAdmin(t *testing.T) {
 				if oID == orgID && uID == callerID {
 					return &grpcservices.OrganizationMember{OrgID: oID, UserID: uID, IsOrgAdmin: false, Role: "member"}, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errFixtureNotFound
 			},
 		},
 		log: &mockLogger{},
@@ -178,7 +214,7 @@ func TestRequireOrgAdmin_NonAdmin(t *testing.T) {
 
 	_, err := svc.ListOrganizationUsers(ctx, &pb.ListOrganizationUsersRequest{
 		OrgId:    orgID.String(),
-		PageSize: 10,
+		PageSize: testPageSize,
 	})
 
 	require.Error(t, err)
@@ -189,15 +225,17 @@ func TestRequireOrgAdmin_NonAdmin(t *testing.T) {
 }
 
 // ============================================================================
-// requireServerOrOrgAdmin Tests (tested via AddOrganizationUser which calls resolveOrgAccess)
+// resolveOrgAccess: administrators, tenant managers and callers without either role
 // ============================================================================
 
-func TestRequireServerOrOrgAdmin_ServerAdmin(t *testing.T) {
+func TestResolveOrgAccess_AdministratorAddsMember(t *testing.T) {
 	callerID := uuid.New()
 	orgID := uuid.New()
 	targetUserID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.AllRoles),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -235,14 +273,15 @@ func TestRequireServerOrOrgAdmin_ServerAdmin(t *testing.T) {
 	require.NotNil(t, resp.Member)
 }
 
-func TestRequireServerOrOrgAdmin_OrgAdmin(t *testing.T) {
+func TestResolveOrgAccess_TenantManagerAddsMember(t *testing.T) {
 	callerID := uuid.New()
 	orgID := uuid.New()
 	targetUserID := uuid.New()
 
 	svc := &IdentityService{
+		roles: orgRoles{orgID: {TenantManager: true}},
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
-			// Non-admin caller; requireServerAdmin will fail, falling through to requireOrgAdmin
 			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
 				return &models.User{ID: id, IsAdmin: false, IsActive: true}, nil
 			},
@@ -257,7 +296,7 @@ func TestRequireServerOrOrgAdmin_OrgAdmin(t *testing.T) {
 				if oID == orgID && uID == targetUserID {
 					return &grpcservices.OrganizationMember{OrgID: oID, UserID: uID, Role: models.OrganizationRoleMember}, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errFixtureNotFound
 			},
 			addUserFunc: func(_ context.Context, _, _ uuid.UUID, _ string) error {
 				return nil
@@ -280,11 +319,13 @@ func TestRequireServerOrOrgAdmin_OrgAdmin(t *testing.T) {
 	require.NotNil(t, resp.Member)
 }
 
-func TestRequireServerOrOrgAdmin_Neither(t *testing.T) {
+func TestResolveOrgAccess_NeitherRoleCannotAddMember(t *testing.T) {
 	callerID := uuid.New()
 	orgID := uuid.New()
 
 	svc := &IdentityService{
+		roles: orgRoles{},
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
 				return &models.User{ID: id, IsAdmin: false, IsActive: true}, nil
@@ -297,7 +338,7 @@ func TestRequireServerOrOrgAdmin_Neither(t *testing.T) {
 				if oID == orgID && uID == callerID {
 					return &grpcservices.OrganizationMember{OrgID: oID, UserID: uID, IsOrgAdmin: false, Role: "member"}, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errFixtureNotFound
 			},
 		},
 		log: &mockLogger{},
@@ -329,6 +370,8 @@ func TestAddOrgUser_ByUserId_ServerAdmin(t *testing.T) {
 	targetUserID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.AllRoles),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -377,8 +420,9 @@ func TestAddOrgUser_ByEmail_OrgAdmin(t *testing.T) {
 	targetEmail := "target@example.com"
 
 	svc := &IdentityService{
+		roles: orgRoles{orgID: {TenantManager: true}},
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
-			// Non-admin caller; falls through to org admin check
 			getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
 				return &models.User{ID: id, IsAdmin: false, IsActive: true}, nil
 			},
@@ -386,7 +430,7 @@ func TestAddOrgUser_ByEmail_OrgAdmin(t *testing.T) {
 				if email == targetEmail {
 					return &models.User{ID: targetUserID, Email: targetEmail, IsActive: true}, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errFixtureNotFound
 			},
 		},
 		orgSvc: sameTenantOrgService(),
@@ -402,7 +446,7 @@ func TestAddOrgUser_ByEmail_OrgAdmin(t *testing.T) {
 						Role:   models.OrganizationRoleMember,
 					}, nil
 				}
-				return nil, fmt.Errorf("not found")
+				return nil, errFixtureNotFound
 			},
 			addUserFunc: func(_ context.Context, oID, uID uuid.UUID, role string) error {
 				assert.Equal(t, orgID, oID)
@@ -434,6 +478,8 @@ func TestAddOrgUser_ByEmail_UserNotFound(t *testing.T) {
 	orgID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.AllRoles),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 			getByEmailFunc: func(_ context.Context, _ string) (*models.User, error) {
@@ -470,6 +516,8 @@ func TestAddOrgUser_BothUserIdAndEmail(t *testing.T) {
 	orgID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.AllRoles),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -504,6 +552,8 @@ func TestAddOrgUser_NeitherUserIdNorEmail(t *testing.T) {
 	orgID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.AllRoles),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 		},
@@ -536,10 +586,12 @@ func TestAddOrgUser_ByEmail_StoreError(t *testing.T) {
 	orgID := uuid.New()
 
 	svc := &IdentityService{
+		roles: fixedRoles(authz.AllRoles),
+		audit: discardAudit{},
 		adminUserSvc: &mockAdminUserService{
 			getByIDFunc: adminGetByIDFunc(callerID),
 			getByEmailFunc: func(_ context.Context, _ string) (*models.User, error) {
-				return nil, fmt.Errorf("connection refused")
+				return nil, errFixtureConnectionRefused
 			},
 		},
 		orgSvc: &mockOrgService{

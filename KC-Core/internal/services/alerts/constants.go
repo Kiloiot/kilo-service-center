@@ -3,13 +3,16 @@ package alerts
 
 import "github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 
+// AlertStatuses are the states an alert can be listed by.
+var AlertStatuses = []string{
+	models.EventStatusNew,
+	models.EventStatusAcknowledged,
+	models.EventStatusResolved,
+}
+
 // AlertSeverities defines severities that qualify as alerts (warning+).
 var AlertSeverities = []string{
 	models.EventSeverityWarning,
 	models.EventSeverityError,
 	models.EventSeverityCritical,
 }
-
-// DefaultRecentAlertsLimit is the default limit for recent alerts in summary.
-// Use config alerts.recent_alerts_limit to override.
-const DefaultRecentAlertsLimit = 5

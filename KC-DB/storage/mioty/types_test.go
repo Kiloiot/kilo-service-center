@@ -230,3 +230,63 @@ func TestErrorMessageMarshaling(t *testing.T) {
 		})
 	}
 }
+
+func encodeDLDataQueueWire(t *testing.T, userData interface{}) []byte {
+	t.Helper()
+	data, err := msgpack.Marshal(map[string]interface{}{
+		"command":   "dlDataQue",
+		"opId":      7,
+		"epEui":     uint64(0x70B3D59CD00009E7),
+		"queId":     uint64(42),
+		"cntDepend": true,
+		"packetCnt": []uint32{10, 11},
+		"userData":  userData,
+	})
+	require.NoError(t, err)
+	return data
+}
+
+func TestDLDataQueue_DecodesSpecNumericUserData(t *testing.T) {
+	data := encodeDLDataQueueWire(t, [][]int{{1, 2, 255}, {}})
+
+	var req DLDataQueue
+	require.NoError(t, msgpack.Unmarshal(data, &req))
+
+	assert.Equal(t, [][]byte{{0x01, 0x02, 0xFF}, {}}, [][]byte(req.UserData))
+	assert.Equal(t, uint64(42), req.QueId)
+	assert.Equal(t, []uint32{10, 11}, req.PacketCnt)
+}
+
+func TestDLDataQueue_DecodesBinaryUserDataEntries(t *testing.T) {
+	data := encodeDLDataQueueWire(t, [][]byte{{0x0A, 0x0B}, {0x0C}})
+
+	var req DLDataQueue
+	require.NoError(t, msgpack.Unmarshal(data, &req))
+
+	assert.Equal(t, [][]byte{{0x0A, 0x0B}, {0x0C}}, [][]byte(req.UserData))
+}
+
+// A persisted queue row keeps the DLDataQueue JSON with base64 userData
+// entries; it still decodes now that JSON also takes Numeric arrays.
+func TestDLDataQueue_PersistedJSONRoundTrips(t *testing.T) {
+	stored, err := json.Marshal(&DLDataQueue{UserData: DownlinkUserData{{0x01, 0xFF}, {}}})
+	require.NoError(t, err)
+
+	var decoded DLDataQueue
+	require.NoError(t, json.Unmarshal(stored, &decoded))
+
+	assert.Equal(t, [][]byte{{0x01, 0xFF}, {}}, [][]byte(decoded.UserData))
+}
+
+func TestDLDataQueue_RejectsUserDataValueOutsideByteRange(t *testing.T) {
+	for name, userData := range map[string]interface{}{
+		"above 255": [][]int{{1, 256}},
+		"negative":  [][]int{{-1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var req DLDataQueue
+			err := msgpack.Unmarshal(encodeDLDataQueueWire(t, userData), &req)
+			require.ErrorIs(t, err, ErrNumericOutOfRange)
+		})
+	}
+}

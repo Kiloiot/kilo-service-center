@@ -5,13 +5,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 )
 
 func TestCreateSessionPersistsProtocolVersion(t *testing.T) {
@@ -25,11 +29,12 @@ func TestCreateSessionPersistsProtocolVersion(t *testing.T) {
 	}()
 
 	sqlxDB := sqlx.NewDb(db, "sqlmock")
-	repo := NewBaseStationSessionRepository(sqlxDB)
+	repo := NewBaseStationSessionRepository(sqlxDB, clock.SystemClock{}, logger.Get())
 
 	bsUUID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 	scUUID := [16]byte{16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1}
 	protocolVersion := "1.0.0"
+	scEUI := models.EUI{0x4B, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}
 
 	rows := sqlmock.NewRows([]string{"id", "started_at", "created_at", "updated_at"}).
 		AddRow(int64(1), time.Now(), time.Now(), time.Now())
@@ -39,9 +44,9 @@ func TestCreateSessionPersistsProtocolVersion(t *testing.T) {
             basestation_id, tenant_id, sn_bs_uuid, sn_sc_uuid,
             sn_bs_op_id, sn_sc_op_id, status,
             connection_id, remote_addr, can_resume,
-            organization_id, encoding, protocol_version, connect_info, started_at, created_at, updated_at
+            organization_id, encoding, protocol_version, connect_info, sc_eui, started_at, created_at, updated_at
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, COALESCE($14, '{}'::jsonb), NOW(), NOW(), NOW()
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, COALESCE($14, '{}'::jsonb), $15, NOW(), NOW(), NOW()
         )
         RETURNING id, started_at, created_at, updated_at`)
 
@@ -58,9 +63,10 @@ func TestCreateSessionPersistsProtocolVersion(t *testing.T) {
 			(*string)(nil),
 			true,
 			(*uuid.UUID)(nil),
-			bssci.EncodingMessagePack,
+			mioty.EncodingMessagePack,
 			&protocolVersion,
 			(*map[string]interface{})(nil), // connect_info
+			scEUI[:],
 		).
 		WillReturnRows(rows)
 
@@ -70,8 +76,9 @@ func TestCreateSessionPersistsProtocolVersion(t *testing.T) {
 		SnBsUuid:        bsUUID,
 		SnScUuid:        scUUID,
 		CanResume:       true,
-		Encoding:        bssci.EncodingMessagePack,
+		Encoding:        mioty.EncodingMessagePack,
 		ProtocolVersion: &protocolVersion,
+		ScEui:           scEUI,
 	}
 
 	if _, err := repo.CreateSession(testutil.TestContext(), req); err != nil {

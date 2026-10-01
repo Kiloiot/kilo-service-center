@@ -27,9 +27,11 @@ KiloCenter uses a self-signed Certificate Authority (CA) to issue all certificat
 | CA private key | Signs server and client certificates | -- | `certificates/ca.key` |
 | Server certificate | KC-Core BSSCI/SCACI TLS listeners | 1 year | `certificates/server.crt` |
 | Server private key | TLS handshake | -- | `certificates/server.key` |
-| Client certificate | Per-base-station mutual TLS (optional) | 1 year | Generated on demand |
+| Client certificate | Per-base-station mutual TLS | 1 year | Generated on demand |
 
 Base stations trust the **CA certificate**, not individual server certificates. This means server certificates can be renewed without touching base stations, as long as the same CA signs them.
+
+A base station's client certificate is bound to that station in every edition. A certificate whose common name is a station EUI (`70-B3-D5-9C-D0-00-09-E6`) connects only as that station. The service center pins the fingerprint of the certificate it issued for a station, or, for a station registered without one, of the first certificate that names it; a later certificate with another fingerprint is refused as if the station were not registered. Replacing a station's certificate therefore means issuing the new one through KiloCenter, which stores its fingerprint.
 
 If you regenerate the CA, all existing server and client certificates become invalid and must be reissued. Back up `ca.key` securely.
 

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -12,6 +14,15 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+)
+
+// Detector configuration values shared by the scenario tests in this file.
+const (
+	testCacheDisabled     = false
+	testCacheEnabled      = true
+	testAuditTrailEnabled = true
+	testCacheTTL          = 100 * time.Millisecond
+	testCacheMaxSize      = 100
 )
 
 // Mock for EndpointOwnershipResolver
@@ -50,6 +61,22 @@ type MockEventRecorder struct {
 func (m *MockEventRecorder) RecordRoamingEvent(ctx context.Context, event *models.RoamingEvent) error {
 	args := m.Called(ctx, event)
 	return args.Error(0)
+}
+
+func newTestDetector(t *testing.T, config DetectorConfig, resolver EndpointOwnershipResolver, recorder EventRecorder, clk clock.Clock) *Detector {
+	t.Helper()
+	detector, err := NewDetector(config, resolver, recorder, clk)
+	require.NoError(t, err)
+	return detector
+}
+
+func TestNewDetector_RejectsMissingCollaborators(t *testing.T) {
+	_, err := NewDetector(DetectorConfig{}, nil, new(MockEventRecorder), clock.SystemClock{})
+	assert.ErrorIs(t, err, errMissingDetectorDependency)
+	_, err = NewDetector(DetectorConfig{}, new(MockOwnershipResolver), nil, clock.SystemClock{})
+	assert.ErrorIs(t, err, errMissingDetectorDependency)
+	_, err = NewDetector(DetectorConfig{}, new(MockOwnershipResolver), new(MockEventRecorder), nil)
+	assert.ErrorIs(t, err, errMissingDetectorDependency)
 }
 
 func TestDetector_DetectRoaming(t *testing.T) {
@@ -106,11 +133,11 @@ func TestDetector_DetectRoaming(t *testing.T) {
 			mockRecorder := new(MockEventRecorder)
 			tt.setupMocks(mockResolver)
 
-			config := &DetectorConfig{
-				CacheEnabled: false, // Disable cache for deterministic tests
+			config := DetectorConfig{
+				CacheEnabled: testCacheDisabled, // Disable cache for deterministic tests
 			}
 
-			detector := NewDetector(config, mockResolver, mockRecorder)
+			detector := newTestDetector(t, config, mockResolver, mockRecorder, clock.SystemClock{})
 
 			isRoaming, ownerTenantID, err := detector.DetectRoaming(
 				testutil.TestContext(),
@@ -177,8 +204,8 @@ func TestDetector_ValidateRoamingAllowed(t *testing.T) {
 					Return(tt.arePartners, nil)
 			}
 
-			config := &DetectorConfig{}
-			detector := NewDetector(config, mockResolver, mockRecorder)
+			config := DetectorConfig{}
+			detector := newTestDetector(t, config, mockResolver, mockRecorder, clock.SystemClock{})
 
 			err := detector.ValidateRoamingAllowed(testutil.TestContext(), tt.ownerTenantID, tt.servingTenantID)
 
@@ -234,10 +261,10 @@ func TestDetector_RecordEvents(t *testing.T) {
 			mockRecorder := new(MockEventRecorder)
 			tt.setupMock(mockRecorder)
 
-			config := &DetectorConfig{
-				EnableAuditTrail: true,
+			config := DetectorConfig{
+				EnableAuditTrail: testAuditTrailEnabled,
 			}
-			detector := NewDetector(config, mockResolver, mockRecorder)
+			detector := newTestDetector(t, config, mockResolver, mockRecorder, clock.SystemClock{})
 
 			var err error
 			if tt.isAttach {
@@ -257,6 +284,28 @@ func TestDetector_RecordEvents(t *testing.T) {
 	}
 }
 
+func TestDetector_CachedOwnerIsJudgedPerServingTenant(t *testing.T) {
+	mockResolver := new(MockOwnershipResolver)
+	epEui := []byte{0x70, 0xB3, 0xD5, 0x67, 0x70, 0x11, 0x15, 0x05}
+	const ownerTenantID, foreignTenantID = int64(1), int64(9)
+	mockResolver.On("GetEndpointOwner", mock.Anything, epEui).Return(ownerTenantID, nil).Once()
+
+	config := DetectorConfig{CacheEnabled: testCacheEnabled, CacheTTL: time.Hour, CacheMaxSize: testCacheMaxSize}
+	detector := newTestDetector(t, config, mockResolver, new(MockEventRecorder), testutil.NewFakeClock(time.Now()))
+	ctx := testutil.TestContext()
+
+	isRoaming, owner, err := detector.DetectRoaming(ctx, epEui, ownerTenantID)
+	require.NoError(t, err)
+	assert.False(t, isRoaming, "a reception through the owner's station is not roaming")
+	assert.Equal(t, ownerTenantID, owner)
+
+	isRoaming, owner, err = detector.DetectRoaming(ctx, epEui, foreignTenantID)
+	require.NoError(t, err)
+	assert.True(t, isRoaming, "a reception through another tenant's station roams even while the owner is cached")
+	assert.Equal(t, ownerTenantID, owner)
+	mockResolver.AssertExpectations(t)
+}
+
 func TestDetector_CacheIntegration(t *testing.T) {
 	mockResolver := new(MockOwnershipResolver)
 	mockRecorder := new(MockEventRecorder)
@@ -265,12 +314,13 @@ func TestDetector_CacheIntegration(t *testing.T) {
 	epEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
 	mockResolver.On("GetEndpointOwner", mock.Anything, epEui).Return(int64(1), nil).Once()
 
-	config := &DetectorConfig{
-		CacheEnabled: true,
-		CacheTTL:     100 * time.Millisecond,
-		CacheMaxSize: 100,
+	config := DetectorConfig{
+		CacheEnabled: testCacheEnabled,
+		CacheTTL:     testCacheTTL,
+		CacheMaxSize: testCacheMaxSize,
 	}
-	detector := NewDetector(config, mockResolver, mockRecorder)
+	fakeClock := testutil.NewFakeClock(time.Now())
+	detector := newTestDetector(t, config, mockResolver, mockRecorder, fakeClock)
 
 	ctx := testutil.TestContext()
 
@@ -289,8 +339,8 @@ func TestDetector_CacheIntegration(t *testing.T) {
 	// Mock should only be called once due to caching
 	mockResolver.AssertExpectations(t)
 
-	// Wait for cache to expire
-	time.Sleep(150 * time.Millisecond)
+	// Move past the cache TTL without sleeping.
+	fakeClock.Advance(testCacheTTL + time.Millisecond)
 
 	// Setup mock for another call after expiry
 	mockResolver.On("GetEndpointOwner", mock.Anything, epEui).Return(int64(1), nil).Once()
@@ -302,28 +352,4 @@ func TestDetector_CacheIntegration(t *testing.T) {
 	assert.Equal(t, int64(1), owner3)
 
 	mockResolver.AssertExpectations(t)
-}
-
-func TestDetector_Metrics(t *testing.T) {
-	mockResolver := new(MockOwnershipResolver)
-	mockRecorder := new(MockEventRecorder)
-
-	epEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	mockResolver.On("GetEndpointOwner", mock.Anything, epEui).Return(int64(1), nil)
-
-	config := &DetectorConfig{
-		EnableMetrics: true,
-		CacheEnabled:  true, // Enable cache to track cache misses
-	}
-	detector := NewDetector(config, mockResolver, mockRecorder)
-
-	// Perform detection
-	_, _, err := detector.DetectRoaming(testutil.TestContext(), epEui, 2)
-	require.NoError(t, err)
-
-	// Get metrics
-	metrics := detector.GetMetrics()
-	assert.Equal(t, uint64(1), metrics.GetRoamingDetected())
-	assert.Equal(t, uint64(0), metrics.GetCacheHits())
-	assert.Equal(t, uint64(1), metrics.GetCacheMisses())
 }

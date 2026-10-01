@@ -9,33 +9,19 @@
  */
 
 // Common utilities
-export {
-  base64ToHex,
-  formatEUI,
-  formatUnixNs,
-  normalizeStatus,
-  parseISODate,
-  unixNsToDate,
-} from "./common.mapper";
 
 // Base station mappers
-export { mapBaseStation, mapBaseStationList } from "./base-station.mapper";
+export { mapBaseStation } from "./base-station.mapper";
+export { mapBaseStationLocation } from "./base-station-location.mapper";
 
 // Endpoint mappers
-export {
-  deriveActivityStatus,
-  deriveAttachState,
-  mapEndpoint,
-} from "./endpoint.mapper";
+export { mapEndpoint } from "./endpoint.mapper";
 
-// Event and certificate mappers
-export {
-  deriveCertificateStatus,
-  mapCertificate,
-  mapCertificateList,
-  mapEvent,
-  mapEventList,
-} from "./event.mapper";
+// Event mappers
+export { mapEventLogEntry } from "./event-log.mapper";
+
+// Uplink mappers
+export { mapStationUplink, mapUplink } from "./uplink.mapper";
 
 // User mappers
 export { mapUser, mapUserList } from "./user.mapper";
@@ -49,10 +35,16 @@ export {
 } from "./organization.mapper";
 
 // Auth mappers (snake_case → camelCase for login response)
-export {
-  mapAuthTokens,
-  mapLoginResponse,
-  mapUserMembership,
-  mapUserProfile,
-  type RawUserProfile,
-} from "./auth.mapper";
+export { mapLoginResponse, mapUserProfile } from "./auth.mapper";
+
+// Pagination
+export { mapListPage } from "./pagination.mapper";
+
+// SCACI control plane
+export { mapScaciSession, mapScaciStatus } from "./scaci.mapper";
+
+// Alerts
+export { mapAlert, mapAlertSummary } from "./alert.mapper";
+
+// Base station operations
+export { mapBaseStationAvailability } from "./base-station-operations.mapper";

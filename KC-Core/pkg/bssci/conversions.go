@@ -2,6 +2,7 @@
 package bssci
 
 import (
+	"math"
 	"strconv"
 	"strings"
 )
@@ -11,24 +12,33 @@ import (
 //
 // Usage pattern - caller MUST propagate error through sendError:
 //
-//	val, errToken := safeUint8(int64Var, "macType")
+//	val, errToken := safeUint8(int64Var)
 //	if errToken != "" {
 //	    return s.sendError(session, msg.OpId, ResolveErrorMessage(errToken), mioty.ErrorInvalid)
 //	}
 //
 // POSIX mapping: Always use mioty.ErrorInvalid (EINVAL = 22) for field range violations
 // per BSSCI §4 error handling.
-func safeUint8(v int64, _ string) (uint8, string) {
-	if v < 0 || v > 255 {
+func safeUint8(v int64) (uint8, string) {
+	if v < 0 || v > math.MaxUint8 {
 		return 0, errInvalidFieldValue
 	}
 	return uint8(v), ""
 }
 
+// safeUint16 converts int64 to uint16 with bounds checking
+// See safeUint8 for usage pattern - caller must propagate via sendError
+func safeUint16(v int64) (uint16, string) {
+	if v < 0 || v > math.MaxUint16 {
+		return 0, errInvalidFieldValue
+	}
+	return uint16(v), ""
+}
+
 // safeUint32 converts int64 to uint32 with bounds checking
 // See safeUint8 for usage pattern - caller must propagate via sendError
-func safeUint32(v int64, _ string) (uint32, string) {
-	if v < 0 || v > 4294967295 {
+func safeUint32(v int64) (uint32, string) {
+	if v < 0 || v > math.MaxUint32 {
 		return 0, errInvalidFieldValue
 	}
 	return uint32(v), ""
@@ -36,7 +46,7 @@ func safeUint32(v int64, _ string) (uint32, string) {
 
 // safeUint64 converts int64 to uint64 with bounds checking (negative check only)
 // See safeUint8 for usage pattern - caller must propagate via sendError
-func safeUint64(v int64, _ string) (uint64, string) {
+func safeUint64(v int64) (uint64, string) {
 	if v < 0 {
 		return 0, errInvalidFieldValue
 	}

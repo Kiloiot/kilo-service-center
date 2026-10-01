@@ -1,9 +1,11 @@
 // Package grpc provides gRPC service constants and utilities for the KiloCenter API.
 package grpc
 
-// PublicMethods lists gRPC methods that skip authentication.
+import "sort"
+
+// publicMethods lists gRPC methods that skip authentication.
 // This is the single source of truth — consumed by auth interceptor and gateway.
-var PublicMethods = map[string]bool{
+var publicMethods = map[string]bool{
 	"/grpc.health.v1.Health/Check":                                   true,
 	"/grpc.health.v1.Health/Watch":                                   true,
 	"/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo": true,
@@ -29,11 +31,11 @@ var PublicMethods = map[string]bool{
 	"/kilocenter.api.v1.CoreService/CompleteCEOnboarding":       true,
 }
 
-// OrgExemptMethods lists gRPC methods that skip the org resolver interceptor.
-// Superset of PublicMethods — includes methods that need auth but not org context.
+// orgExemptMethods lists gRPC methods that skip the org resolver interceptor.
+// Superset of publicMethods — includes methods that need auth but not org context.
 // Identity admin RPCs validate org access via explicit request fields (validateOrgAccess)
 // instead of the org resolver interceptor, so they are exempt.
-var OrgExemptMethods = map[string]bool{
+var orgExemptMethods = map[string]bool{
 	// All public methods are also org-exempt
 	"/grpc.health.v1.Health/Check":                                   true,
 	"/grpc.health.v1.Health/Watch":                                   true,
@@ -111,10 +113,21 @@ var OrgExemptMethods = map[string]bool{
 
 // IsPublicMethod checks if a gRPC method should skip authentication.
 func IsPublicMethod(fullMethod string) bool {
-	return PublicMethods[fullMethod]
+	return publicMethods[fullMethod]
 }
 
 // IsOrgExemptMethod checks if a gRPC method should skip org resolver.
 func IsOrgExemptMethod(fullMethod string) bool {
-	return OrgExemptMethods[fullMethod]
+	return orgExemptMethods[fullMethod]
+}
+
+// OrgExemptMethodList returns the org-exempt methods in a stable order for
+// interceptor skip lists.
+func OrgExemptMethodList() []string {
+	methods := make([]string, 0, len(orgExemptMethods))
+	for method := range orgExemptMethods {
+		methods = append(methods, method)
+	}
+	sort.Strings(methods)
+	return methods
 }

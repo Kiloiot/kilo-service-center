@@ -2,28 +2,18 @@ package bssci
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-// VMOperation tracks pending VM operations for three-way handshake
-type VMOperation struct {
-	Type      string    // "activate", "deactivate", "dlData"
-	Endpoint  uint64    // Endpoint EUI
-	MACType   uint8     // MAC type (0-7)
-	Data      []byte    // For downlink data
-	Timestamp time.Time // When operation started
-}
-
 // handleVMActivate handles VM activate request from Service Center
 //
 
-func (s *Server) handleVMActivate(_ *Server, _ *Session, _ *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMActivate(_ *Session, _ *Message, _ map[string]interface{}) error {
 	// This would be initiated by Service Center, not received from base station
 	// Keeping for completeness but typically won't be called
 	return fmt.Errorf("%s", ResolveErrorMessage(errVMOperationSentByBS))
@@ -32,7 +22,7 @@ func (s *Server) handleVMActivate(_ *Server, _ *Session, _ *Message, _ map[strin
 // handleVMActivateResponse handles vm.activateRsp from base station
 //
 
-func (s *Server) handleVMActivateResponse(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
+func (s *Server) handleVMActivateResponse(session *Session, msg *Message, data map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
@@ -43,12 +33,7 @@ func (s *Server) handleVMActivateResponse(_ *Server, session *Session, msg *Mess
 	// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation reads
 	var pendingOp *PendingOperation
 	if s.statusSvc != nil {
-		var err error
-		pendingOp, err = s.statusSvc.GetPendingOperation(session, msg.OpId)
-		if err != nil {
-			s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToGetPendingOperation,
-				"opId", msg.OpId, "error", err)
-		}
+		pendingOp = s.pendingOperationOrWarn(session, msg.OpId)
 	}
 	if pendingOp != nil {
 		// Convert []byte to uint64
@@ -56,7 +41,7 @@ func (s *Server) handleVMActivateResponse(_ *Server, session *Session, msg *Mess
 			epEui = binary.BigEndian.Uint64(pendingOp.Endpoint)
 		}
 		// Convert int to uint8
-		macType, _ = safeUint8(int64(pendingOp.MACType), "macType")
+		macType, _ = safeUint8(int64(pendingOp.MACType))
 	}
 
 	// Check result field to determine success/failure
@@ -67,13 +52,13 @@ func (s *Server) handleVMActivateResponse(_ *Server, session *Session, msg *Mess
 
 	if result {
 		s.logger.InfoContext(s.sessionContext(session), LogBSSCIVMActivateSucceeded,
-			"bsEui", session.BaseStationEUI,
-			"epEui", epEui,
-			"macType", macType,
-			"opId", msg.OpId)
+			logger.FieldBsEui, session.BaseStationEUI,
+			logger.FieldEpEui, epEui,
+			logger.FieldMacType, macType,
+			logger.FieldOpID, msg.OpId)
 
 		// Update session's active VM types
-		s.mu.Lock()
+		session.mu.Lock()
 		if session.ActiveVMTypes == nil {
 			session.ActiveVMTypes = make(map[uint64][]uint8)
 		}
@@ -88,70 +73,62 @@ func (s *Server) handleVMActivateResponse(_ *Server, session *Session, msg *Mess
 		if !found {
 			session.ActiveVMTypes[epEui] = append(session.ActiveVMTypes[epEui], macType)
 		}
-		s.mu.Unlock()
+		session.mu.Unlock()
 
 		// Record success event
 		if s.eventStore != nil && epEui != 0 {
 			eventData := map[string]interface{}{
-				"bsEui":   fmt.Sprintf("%016X", session.BaseStationEUI),
-				"epEui":   fmt.Sprintf("%016X", epEui),
-				"macType": macType,
-				"opId":    msg.OpId,
-				"status":  "success",
-				"message": fmt.Sprintf("VM MAC type %d activated for endpoint", macType),
+				models.EventDetailKeyBsEui:   mioty.FormatEUI64(session.BaseStationEUI),
+				models.EventDetailKeyEpEui:   mioty.FormatEUI64(epEui),
+				models.EventDetailKeyMacType: macType,
+				models.EventDetailKeyOpID:    msg.OpId,
+				eventDataKeyStatus:           eventStatusSuccess,
+				models.EventDetailKeyMessage: fmt.Sprintf(eventMsgFmtVMActivated, macType),
 			}
 
-			ctx := s.sessionContext(session)
-			if err := s.eventStore.CreateEvent(ctx, &models.SystemEvent{
+			s.recordVMEvent(session, eventData, LogBSSCIFailedToRecordVMActivateSuccessEvent, &models.SystemEvent{
 				TenantID:    fmt.Sprintf("%d", resolvedTenant(session, s.tenantID)),
 				EventType:   EventTypeVMActivateSuccess,
 				Category:    mioty.CategoryEndpoint,
 				Severity:    SeverityInfo,
-				Title:       fmt.Sprintf("VM Activate Success - MAC Type %d", macType),
-				Description: fmt.Sprintf("Successfully activated VM MAC type %d for endpoint %016X on base station %s", macType, epEui, session.Name),
+				Title:       fmt.Sprintf(eventTitleFmtVMActivateSuccess, macType),
+				Description: fmt.Sprintf(eventDescFmtVMActivateSuccess, macType, mioty.FormatEUI64(epEui), session.Name),
 				SourceType:  mioty.SourceTypeEndpoint,
-				SourceName:  fmt.Sprintf("%016X", epEui),
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
-				Details:     func() []byte { b, _ := json.Marshal(eventData); return b }(),
-			}); err != nil {
-				s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRecordVMActivateSuccessEvent, "error", err)
-			}
+				SourceName:  mioty.FormatEUI64(epEui),
+				CreatedAt:   s.clock.Now(),
+				UpdatedAt:   s.clock.Now(),
+			})
 		}
 	} else {
 		s.logger.WarnContext(s.sessionContext(session), LogBSSCIVMActivateFailed,
-			"bsEui", session.BaseStationEUI,
-			"epEui", epEui,
-			"macType", macType,
-			"opId", msg.OpId)
+			logger.FieldBsEui, session.BaseStationEUI,
+			logger.FieldEpEui, epEui,
+			logger.FieldMacType, macType,
+			logger.FieldOpID, msg.OpId)
 
 		// Record failure event
 		if s.eventStore != nil && epEui != 0 {
 			eventData := map[string]interface{}{
-				"bsEui":   fmt.Sprintf("%016X", session.BaseStationEUI),
-				"epEui":   fmt.Sprintf("%016X", epEui),
-				"macType": macType,
-				"opId":    msg.OpId,
-				"status":  "failed",
-				"error":   "Base station rejected VM activate request",
+				models.EventDetailKeyBsEui:   mioty.FormatEUI64(session.BaseStationEUI),
+				models.EventDetailKeyEpEui:   mioty.FormatEUI64(epEui),
+				models.EventDetailKeyMacType: macType,
+				models.EventDetailKeyOpID:    msg.OpId,
+				eventDataKeyStatus:           eventStatusFailed,
+				models.EventDetailKeyError:   eventErrVMActivateRejected,
 			}
 
-			ctx := s.sessionContext(session)
-			if err := s.eventStore.CreateEvent(ctx, &models.SystemEvent{
+			s.recordVMEvent(session, eventData, LogBSSCIFailedToRecordVMActivateFailureEvent, &models.SystemEvent{
 				TenantID:    fmt.Sprintf("%d", resolvedTenant(session, s.tenantID)),
 				EventType:   EventTypeVMActivateFailed,
 				Category:    mioty.CategoryEndpoint,
 				Severity:    SeverityError,
-				Title:       fmt.Sprintf("VM Activate Failed - MAC Type %d", macType),
-				Description: fmt.Sprintf("Failed to activate VM MAC type %d for endpoint %016X on base station %s", macType, epEui, session.Name),
+				Title:       fmt.Sprintf(eventTitleFmtVMActivateFailed, macType),
+				Description: fmt.Sprintf(eventDescFmtVMActivateFailed, macType, mioty.FormatEUI64(epEui), session.Name),
 				SourceType:  mioty.SourceTypeEndpoint,
-				SourceName:  fmt.Sprintf("%016X", epEui),
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
-				Details:     func() []byte { b, _ := json.Marshal(eventData); return b }(),
-			}); err != nil {
-				s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRecordVMActivateFailureEvent, "error", err)
-			}
+				SourceName:  mioty.FormatEUI64(epEui),
+				CreatedAt:   s.clock.Now(),
+				UpdatedAt:   s.clock.Now(),
+			})
 		}
 	}
 
@@ -161,23 +138,23 @@ func (s *Server) handleVMActivateResponse(_ *Server, session *Session, msg *Mess
 // handleVMActivateComplete handles vm.activateCmp from base station
 //
 
-func (s *Server) handleVMActivateComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMActivateComplete(session *Session, msg *Message, _ map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
 
 	// Clean up pending operation from database
 	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
-	if err := s.removePendingOperation(session, msg.OpId); err != nil {
+	if err := s.pendingOps.remove(s.sessionContext(session), session, msg.OpId); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOperation,
-			"sessionID", session.DbSessionID,
-			"opId", msg.OpId,
-			"error", err)
+			logger.FieldSessionID, session.DbSessionID,
+			logger.FieldOpID, msg.OpId,
+			logger.FieldError, err)
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCIVMActivateOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
+		logger.FieldBsEui, session.BaseStationEUI,
+		logger.FieldOpID, msg.OpId)
 
 	return nil
 }
@@ -185,7 +162,7 @@ func (s *Server) handleVMActivateComplete(_ *Server, session *Session, msg *Mess
 // handleVMDeactivateResponse handles vm.deactivateRsp from base station
 //
 
-func (s *Server) handleVMDeactivateResponse(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
+func (s *Server) handleVMDeactivateResponse(session *Session, msg *Message, data map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
@@ -196,12 +173,7 @@ func (s *Server) handleVMDeactivateResponse(_ *Server, session *Session, msg *Me
 	// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation reads
 	var pendingOp *PendingOperation
 	if s.statusSvc != nil {
-		var err error
-		pendingOp, err = s.statusSvc.GetPendingOperation(session, msg.OpId)
-		if err != nil {
-			s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToGetPendingOperation,
-				"opId", msg.OpId, "error", err)
-		}
+		pendingOp = s.pendingOperationOrWarn(session, msg.OpId)
 	}
 	if pendingOp != nil {
 		// Convert []byte to uint64
@@ -209,7 +181,7 @@ func (s *Server) handleVMDeactivateResponse(_ *Server, session *Session, msg *Me
 			epEui = binary.BigEndian.Uint64(pendingOp.Endpoint)
 		}
 		// Convert int to uint8
-		macType, _ = safeUint8(int64(pendingOp.MACType), "macType")
+		macType, _ = safeUint8(int64(pendingOp.MACType))
 	}
 
 	// Check result field
@@ -220,13 +192,13 @@ func (s *Server) handleVMDeactivateResponse(_ *Server, session *Session, msg *Me
 
 	if result {
 		s.logger.InfoContext(s.sessionContext(session), LogBSSCIVMDeactivateSucceeded,
-			"bsEui", session.BaseStationEUI,
-			"epEui", epEui,
-			"macType", macType,
-			"opId", msg.OpId)
+			logger.FieldBsEui, session.BaseStationEUI,
+			logger.FieldEpEui, epEui,
+			logger.FieldMacType, macType,
+			logger.FieldOpID, msg.OpId)
 
 		// Remove MAC type from session's active VM types
-		s.mu.Lock()
+		session.mu.Lock()
 		if session.ActiveVMTypes != nil {
 			activeTypes := session.ActiveVMTypes[epEui]
 			newTypes := []uint8{}
@@ -237,42 +209,38 @@ func (s *Server) handleVMDeactivateResponse(_ *Server, session *Session, msg *Me
 			}
 			session.ActiveVMTypes[epEui] = newTypes
 		}
-		s.mu.Unlock()
+		session.mu.Unlock()
 
 		// Record success event
 		if s.eventStore != nil && epEui != 0 {
 			eventData := map[string]interface{}{
-				"bsEui":   fmt.Sprintf("%016X", session.BaseStationEUI),
-				"epEui":   fmt.Sprintf("%016X", epEui),
-				"macType": macType,
-				"opId":    msg.OpId,
-				"status":  "success",
-				"message": fmt.Sprintf("VM MAC type %d deactivated for endpoint", macType),
+				models.EventDetailKeyBsEui:   mioty.FormatEUI64(session.BaseStationEUI),
+				models.EventDetailKeyEpEui:   mioty.FormatEUI64(epEui),
+				models.EventDetailKeyMacType: macType,
+				models.EventDetailKeyOpID:    msg.OpId,
+				eventDataKeyStatus:           eventStatusSuccess,
+				models.EventDetailKeyMessage: fmt.Sprintf(eventMsgFmtVMDeactivated, macType),
 			}
 
-			ctx := s.sessionContext(session)
-			if err := s.eventStore.CreateEvent(ctx, &models.SystemEvent{
+			s.recordVMEvent(session, eventData, LogBSSCIFailedToRecordVMDeactivateSuccessEvent, &models.SystemEvent{
 				TenantID:    fmt.Sprintf("%d", resolvedTenant(session, s.tenantID)),
 				EventType:   EventTypeVMDeactivateSuccess,
 				Category:    mioty.CategoryEndpoint,
 				Severity:    SeverityInfo,
-				Title:       fmt.Sprintf("VM Deactivate Success - MAC Type %d", macType),
-				Description: fmt.Sprintf("Successfully deactivated VM MAC type %d for endpoint %016X on base station %s", macType, epEui, session.Name),
+				Title:       fmt.Sprintf(eventTitleFmtVMDeactivateSuccess, macType),
+				Description: fmt.Sprintf(eventDescFmtVMDeactivateSuccess, macType, mioty.FormatEUI64(epEui), session.Name),
 				SourceType:  mioty.SourceTypeEndpoint,
-				SourceName:  fmt.Sprintf("%016X", epEui),
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
-				Details:     func() []byte { b, _ := json.Marshal(eventData); return b }(),
-			}); err != nil {
-				s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRecordVMDeactivateSuccessEvent, "error", err)
-			}
+				SourceName:  mioty.FormatEUI64(epEui),
+				CreatedAt:   s.clock.Now(),
+				UpdatedAt:   s.clock.Now(),
+			})
 		}
 	} else {
 		s.logger.WarnContext(s.sessionContext(session), LogBSSCIVMDeactivateFailed,
-			"bsEui", session.BaseStationEUI,
-			"epEui", epEui,
-			"macType", macType,
-			"opId", msg.OpId)
+			logger.FieldBsEui, session.BaseStationEUI,
+			logger.FieldEpEui, epEui,
+			logger.FieldMacType, macType,
+			logger.FieldOpID, msg.OpId)
 	}
 
 	return nil
@@ -281,23 +249,23 @@ func (s *Server) handleVMDeactivateResponse(_ *Server, session *Session, msg *Me
 // handleVMDeactivateComplete handles vm.deactivateCmp from base station
 //
 
-func (s *Server) handleVMDeactivateComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMDeactivateComplete(session *Session, msg *Message, _ map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
 
 	// Clean up pending operation from database
 	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
-	if err := s.removePendingOperation(session, msg.OpId); err != nil {
+	if err := s.pendingOps.remove(s.sessionContext(session), session, msg.OpId); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOperation,
-			"sessionID", session.DbSessionID,
-			"opId", msg.OpId,
-			"error", err)
+			logger.FieldSessionID, session.DbSessionID,
+			logger.FieldOpID, msg.OpId,
+			logger.FieldError, err)
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCIVMDeactivateOperationCompleted,
-		"bsEui", session.BaseStationEUI,
-		"opId", msg.OpId)
+		logger.FieldBsEui, session.BaseStationEUI,
+		logger.FieldOpID, msg.OpId)
 
 	return nil
 }
@@ -305,7 +273,7 @@ func (s *Server) handleVMDeactivateComplete(_ *Server, session *Session, msg *Me
 // handleVMStatusResponse handles vm.statusRsp from base station
 //
 
-func (s *Server) handleVMStatusResponse(_ *Server, session *Session, msg *Message, data map[string]interface{}) error {
+func (s *Server) handleVMStatusResponse(session *Session, msg *Message, data map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
@@ -315,12 +283,7 @@ func (s *Server) handleVMStatusResponse(_ *Server, session *Session, msg *Messag
 	// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation reads
 	var pendingOp *PendingOperation
 	if s.statusSvc != nil {
-		var err error
-		pendingOp, err = s.statusSvc.GetPendingOperation(session, msg.OpId)
-		if err != nil {
-			s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToGetPendingOperation,
-				"opId", msg.OpId, "error", err)
-		}
+		pendingOp = s.pendingOperationOrWarn(session, msg.OpId)
 	}
 	if pendingOp != nil {
 		if len(pendingOp.Endpoint) == 8 {
@@ -332,19 +295,19 @@ func (s *Server) handleVMStatusResponse(_ *Server, session *Session, msg *Messag
 	macTypesRaw, ok := data["macTypes"].([]interface{})
 	if !ok {
 		s.logger.WarnContext(s.sessionContext(session), LogBSSCIVMStatusResponseMissingMacTypesField,
-			"bsEui", session.BaseStationEUI,
-			"epEui", epEui)
+			logger.FieldBsEui, session.BaseStationEUI,
+			logger.FieldEpEui, epEui)
 		return nil
 	}
 
 	macTypes := []uint8{}
 	for _, mt := range macTypesRaw {
 		if macType, ok := mt.(float64); ok {
-			macTypeSafe, errToken := safeUint8(int64(macType), "macType")
+			macTypeSafe, errToken := safeUint8(int64(macType))
 			if errToken != "" {
 				s.logger.WarnContext(s.sessionContext(session), LogBSSCIIntegerOverflowInMacTypeParsing,
-					"field", "macType",
-					"error", ResolveErrorMessage(errToken))
+					logger.FieldField, logger.FieldMacType,
+					logger.FieldError, ResolveErrorMessage(errToken))
 				continue // Skip invalid macType
 			}
 			macTypes = append(macTypes, macTypeSafe)
@@ -352,51 +315,47 @@ func (s *Server) handleVMStatusResponse(_ *Server, session *Session, msg *Messag
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCIVMStatusReceived,
-		"bsEui", session.BaseStationEUI,
-		"epEui", epEui,
-		"activeMacTypes", macTypes,
-		"opId", msg.OpId)
+		logger.FieldBsEui, session.BaseStationEUI,
+		logger.FieldEpEui, epEui,
+		logger.FieldActiveMacTypes, macTypes,
+		logger.FieldOpID, msg.OpId)
 
 	// Update session's active VM types
-	s.mu.Lock()
+	session.mu.Lock()
 	if session.ActiveVMTypes == nil {
 		session.ActiveVMTypes = make(map[uint64][]uint8)
 	}
 	session.ActiveVMTypes[epEui] = macTypes
-	s.mu.Unlock()
+	session.mu.Unlock()
 
 	// Record status event
 	if s.eventStore != nil && epEui != 0 {
 		eventData := map[string]interface{}{
-			"bsEui":          fmt.Sprintf("%016X", session.BaseStationEUI),
-			"epEui":          fmt.Sprintf("%016X", epEui),
-			"activeMacTypes": macTypes,
-			"opId":           msg.OpId,
+			models.EventDetailKeyBsEui:          mioty.FormatEUI64(session.BaseStationEUI),
+			models.EventDetailKeyEpEui:          mioty.FormatEUI64(epEui),
+			models.EventDetailKeyActiveMacTypes: macTypes,
+			models.EventDetailKeyOpID:           msg.OpId,
 		}
 
-		ctx := s.sessionContext(session)
-		if err := s.eventStore.CreateEvent(ctx, &models.SystemEvent{
+		s.recordVMEvent(session, eventData, LogBSSCIFailedToRecordVMStatusEvent, &models.SystemEvent{
 			TenantID:    fmt.Sprintf("%d", resolvedTenant(session, s.tenantID)),
 			EventType:   EventTypeVMStatusReceived,
 			Category:    mioty.CategoryEndpoint,
 			Severity:    SeverityInfo,
-			Title:       fmt.Sprintf("VM Status - %d Active MAC Types", len(macTypes)),
-			Description: fmt.Sprintf("Endpoint %016X has %d active VM MAC types on base station %s", epEui, len(macTypes), session.Name),
+			Title:       fmt.Sprintf(eventTitleFmtVMStatus, len(macTypes)),
+			Description: fmt.Sprintf(eventDescFmtVMStatus, mioty.FormatEUI64(epEui), len(macTypes), session.Name),
 			SourceType:  mioty.SourceTypeEndpoint,
-			SourceName:  fmt.Sprintf("%016X", epEui),
-			CreatedAt:   time.Now(),
-			UpdatedAt:   time.Now(),
-			Details:     func() []byte { b, _ := json.Marshal(eventData); return b }(),
-		}); err != nil {
-			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRecordVMStatusEvent, "error", err)
-		}
+			SourceName:  mioty.FormatEUI64(epEui),
+			CreatedAt:   s.clock.Now(),
+			UpdatedAt:   s.clock.Now(),
+		})
 	}
 
 	// Remove from pending operations
 	// BSSCI §§5.11-5.12.3 Gap 1: Use StatusService for pending operation removal
-	if err := s.removePendingOperation(session, msg.OpId); err != nil {
+	if err := s.pendingOps.remove(s.sessionContext(session), session, msg.OpId); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOperation,
-			"opId", msg.OpId, "error", err)
+			logger.FieldOpID, msg.OpId, logger.FieldError, err)
 	}
 
 	return nil
@@ -406,9 +365,7 @@ func (s *Server) handleVMStatusResponse(_ *Server, session *Session, msg *Messag
 
 // SendVMActivate sends a VM activate command to a base station
 func (s *Server) SendVMActivate(sessionID string, epEui uint64, macType uint8) error {
-	s.mu.RLock()
-	session, exists := s.sessions[sessionID]
-	s.mu.RUnlock()
+	session, exists := s.sessions.get(sessionID)
 
 	if !exists {
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
@@ -417,7 +374,7 @@ func (s *Server) SendVMActivate(sessionID string, epEui uint64, macType uint8) e
 	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
 	// the counter, persist the pending record, then write the frame. The
 	// counter is never rolled back.
-	opId, err := s.beginScOperation(session)
+	opId, err := s.pendingOps.begin(s.sessionContext(session), session)
 	if err != nil {
 		return err
 	}
@@ -435,14 +392,14 @@ func (s *Server) SendVMActivate(sessionID string, epEui uint64, macType uint8) e
 	binary.BigEndian.PutUint64(euiBytes, epEui)
 
 	// Persist operation to database
-	if err := s.persistPendingOperation(session, opId, mioty.CmdVMActivate, vmActivate, euiBytes, map[string]interface{}{
+	if err := s.pendingOps.persist(s.safeCtx(), session, opId, mioty.CmdVMActivate, vmActivate, euiBytes, map[string]interface{}{
 		"epEui":   epEui,
 		"macType": macType,
 	}); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistVMActivateOperation,
-			"sessionID", sessionID,
-			"opId", opId,
-			"error", err)
+			logger.FieldSessionID, sessionID,
+			logger.FieldOpID, opId,
+			logger.FieldError, err)
 		return err
 	}
 
@@ -451,30 +408,28 @@ func (s *Server) SendVMActivate(sessionID string, epEui uint64, macType uint8) e
 			// The frame may be partially on the wire: keep the pending row for
 			// resume reissue with the original ID and close the transport.
 			s.closeTransportAfterWriteFailure(session, opId, err)
-		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		} else if cleanupErr := s.pendingOps.remove(s.sessionContext(session), session, opId); cleanupErr != nil {
 			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOpAfterSendFailure,
-				"sessionID", session.DbSessionID,
-				"opId", opId,
-				"error", cleanupErr)
+				logger.FieldSessionID, session.DbSessionID,
+				logger.FieldOpID, opId,
+				logger.FieldError, cleanupErr)
 		}
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendVMActivate), err)
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentVMActivateCommand,
-		"sessionID", sessionID,
-		"epEui", epEui,
-		"macType", macType,
-		"opId", opId)
+		logger.FieldSessionID, sessionID,
+		logger.FieldEpEui, epEui,
+		logger.FieldMacType, macType,
+		logger.FieldOpID, opId)
 
 	return nil
 }
 
 // SendVMDeactivate sends a VM deactivate command to a base station
 func (s *Server) SendVMDeactivate(sessionID string, epEui uint64, macType uint8) error {
-	s.mu.RLock()
-	session, exists := s.sessions[sessionID]
-	s.mu.RUnlock()
+	session, exists := s.sessions.get(sessionID)
 
 	if !exists {
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
@@ -483,7 +438,7 @@ func (s *Server) SendVMDeactivate(sessionID string, epEui uint64, macType uint8)
 	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
 	// the counter, persist the pending record, then write the frame. The
 	// counter is never rolled back.
-	opId, err := s.beginScOperation(session)
+	opId, err := s.pendingOps.begin(s.sessionContext(session), session)
 	if err != nil {
 		return err
 	}
@@ -501,14 +456,14 @@ func (s *Server) SendVMDeactivate(sessionID string, epEui uint64, macType uint8)
 	binary.BigEndian.PutUint64(euiBytes, epEui)
 
 	// Persist operation to database
-	if err := s.persistPendingOperation(session, opId, mioty.CmdVMDeactivate, vmDeactivate, euiBytes, map[string]interface{}{
+	if err := s.pendingOps.persist(s.safeCtx(), session, opId, mioty.CmdVMDeactivate, vmDeactivate, euiBytes, map[string]interface{}{
 		"epEui":   epEui,
 		"macType": macType,
 	}); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistVMDeactivateOperation,
-			"sessionID", sessionID,
-			"opId", opId,
-			"error", err)
+			logger.FieldSessionID, sessionID,
+			logger.FieldOpID, opId,
+			logger.FieldError, err)
 		return err
 	}
 
@@ -517,30 +472,28 @@ func (s *Server) SendVMDeactivate(sessionID string, epEui uint64, macType uint8)
 			// The frame may be partially on the wire: keep the pending row for
 			// resume reissue with the original ID and close the transport.
 			s.closeTransportAfterWriteFailure(session, opId, err)
-		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		} else if cleanupErr := s.pendingOps.remove(s.sessionContext(session), session, opId); cleanupErr != nil {
 			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOpAfterSendFailure,
-				"sessionID", session.DbSessionID,
-				"opId", opId,
-				"error", cleanupErr)
+				logger.FieldSessionID, session.DbSessionID,
+				logger.FieldOpID, opId,
+				logger.FieldError, cleanupErr)
 		}
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendVMDeactivate), err)
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentVMDeactivateCommand,
-		"sessionID", sessionID,
-		"epEui", epEui,
-		"macType", macType,
-		"opId", opId)
+		logger.FieldSessionID, sessionID,
+		logger.FieldEpEui, epEui,
+		logger.FieldMacType, macType,
+		logger.FieldOpID, opId)
 
 	return nil
 }
 
 // SendVMStatus sends a VM status request to a base station
 func (s *Server) SendVMStatus(sessionID string, epEui uint64) error {
-	s.mu.RLock()
-	session, exists := s.sessions[sessionID]
-	s.mu.RUnlock()
+	session, exists := s.sessions.get(sessionID)
 
 	if !exists {
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
@@ -549,7 +502,7 @@ func (s *Server) SendVMStatus(sessionID string, epEui uint64) error {
 	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
 	// the counter, persist the pending record, then write the frame. The
 	// counter is never rolled back.
-	opId, err := s.beginScOperation(session)
+	opId, err := s.pendingOps.begin(s.sessionContext(session), session)
 	if err != nil {
 		return err
 	}
@@ -566,13 +519,13 @@ func (s *Server) SendVMStatus(sessionID string, epEui uint64) error {
 	binary.BigEndian.PutUint64(euiBytes, epEui)
 
 	// Persist operation to database
-	if err := s.persistPendingOperation(session, opId, mioty.CmdVMStatus, vmStatus, euiBytes, map[string]interface{}{
+	if err := s.pendingOps.persist(s.safeCtx(), session, opId, mioty.CmdVMStatus, vmStatus, euiBytes, map[string]interface{}{
 		"epEui": epEui,
 	}); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistVMStatusOperation,
-			"sessionID", sessionID,
-			"opId", opId,
-			"error", err)
+			logger.FieldSessionID, sessionID,
+			logger.FieldOpID, opId,
+			logger.FieldError, err)
 		return err
 	}
 
@@ -581,29 +534,27 @@ func (s *Server) SendVMStatus(sessionID string, epEui uint64) error {
 			// The frame may be partially on the wire: keep the pending row for
 			// resume reissue with the original ID and close the transport.
 			s.closeTransportAfterWriteFailure(session, opId, err)
-		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		} else if cleanupErr := s.pendingOps.remove(s.sessionContext(session), session, opId); cleanupErr != nil {
 			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOpAfterSendFailure,
-				"sessionID", session.DbSessionID,
-				"opId", opId,
-				"error", cleanupErr)
+				logger.FieldSessionID, session.DbSessionID,
+				logger.FieldOpID, opId,
+				logger.FieldError, cleanupErr)
 		}
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendVMStatus), err)
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentVMStatusRequest,
-		"sessionID", sessionID,
-		"epEui", epEui,
-		"opId", opId)
+		logger.FieldSessionID, sessionID,
+		logger.FieldEpEui, epEui,
+		logger.FieldOpID, opId)
 
 	return nil
 }
 
 // SendVMDownlinkData sends downlink data via VM sub-channel
 func (s *Server) SendVMDownlinkData(sessionID string, epEui uint64, macType uint8, userData []byte) error {
-	s.mu.RLock()
-	session, exists := s.sessions[sessionID]
-	s.mu.RUnlock()
+	session, exists := s.sessions.get(sessionID)
 
 	if !exists {
 		return fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
@@ -612,7 +563,7 @@ func (s *Server) SendVMDownlinkData(sessionID string, epEui uint64, macType uint
 	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
 	// the counter, persist the pending record, then write the frame. The
 	// counter is never rolled back.
-	opId, err := s.beginScOperation(session)
+	opId, err := s.pendingOps.begin(s.sessionContext(session), session)
 	if err != nil {
 		return err
 	}
@@ -620,7 +571,7 @@ func (s *Server) SendVMDownlinkData(sessionID string, epEui uint64, macType uint
 	// Create VM downlink data message per BSSCI spec
 	// TxTime is optional - only set when needed
 	var txTime *int64
-	ts := time.Now().UnixNano() / 1e6 // Unix milliseconds
+	ts := s.clock.Now().UnixMilli()
 	if ts > 0 {
 		txTime = &ts
 	}
@@ -653,15 +604,15 @@ func (s *Server) SendVMDownlinkData(sessionID string, epEui uint64, macType uint
 	}
 
 	// Persist operation to database
-	if err := s.persistPendingOperation(session, opId, mioty.CmdVMDLData, vmDlDataMap, euiBytes, map[string]interface{}{
+	if err := s.pendingOps.persist(s.safeCtx(), session, opId, mioty.CmdVMDLData, vmDlDataMap, euiBytes, map[string]interface{}{
 		"epEui":   epEui,
 		"macType": macType,
 		"data":    userData,
 	}); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistVMDownlinkDataOperation,
-			"sessionID", sessionID,
-			"opId", opId,
-			"error", err)
+			logger.FieldSessionID, sessionID,
+			logger.FieldOpID, opId,
+			logger.FieldError, err)
 		return err
 	}
 
@@ -670,22 +621,22 @@ func (s *Server) SendVMDownlinkData(sessionID string, epEui uint64, macType uint
 			// The frame may be partially on the wire: keep the pending row for
 			// resume reissue with the original ID and close the transport.
 			s.closeTransportAfterWriteFailure(session, opId, err)
-		} else if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+		} else if cleanupErr := s.pendingOps.remove(s.sessionContext(session), session, opId); cleanupErr != nil {
 			// Nothing reached the wire; the recovery row is removed.
 			s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingVMOpAfterSendFailure,
-				"sessionID", session.DbSessionID,
-				"opId", opId,
-				"error", cleanupErr)
+				logger.FieldSessionID, session.DbSessionID,
+				logger.FieldOpID, opId,
+				logger.FieldError, cleanupErr)
 		}
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendVMDlData), err)
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISentVMDownlinkData,
-		"sessionID", sessionID,
-		"epEui", epEui,
-		"macType", macType,
-		"dataLen", len(userData),
-		"opId", opId)
+		logger.FieldSessionID, sessionID,
+		logger.FieldEpEui, epEui,
+		logger.FieldMacType, macType,
+		logger.FieldDataLen, len(userData),
+		logger.FieldOpID, opId)
 
 	return nil
 }
@@ -693,14 +644,14 @@ func (s *Server) SendVMDownlinkData(sessionID string, epEui uint64, macType uint
 // handleVMDeactivate is a stub - deactivate is initiated by Service Center
 //
 
-func (s *Server) handleVMDeactivate(_ *Server, _ *Session, _ *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMDeactivate(_ *Session, _ *Message, _ map[string]interface{}) error {
 	return fmt.Errorf("%s", ResolveErrorMessage(errVMOperationSentByBS))
 }
 
 // handleVMStatus is a stub - status request is initiated by Service Center
 //
 
-func (s *Server) handleVMStatus(_ *Server, _ *Session, _ *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMStatus(_ *Session, _ *Message, _ map[string]interface{}) error {
 	return fmt.Errorf("%s", ResolveErrorMessage(errVMOperationSentByBS))
 }
 
@@ -713,20 +664,18 @@ func (s *Server) handleVMStatus(_ *Server, _ *Session, _ *Message, _ map[string]
 
 // handleVMStatusComplete handles VM status complete message from base station
 // Community edition: Emits catalog error to base station, does not clean up pending operations
-func (s *Server) handleVMStatusComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMStatusComplete(session *Session, msg *Message, _ map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
-	s.logger.WarnContext(s.sessionContext(session), "VM status complete not supported in community edition",
-		"eui", session.BaseStationEUI,
-		"opId", msg.OpId)
+	s.logger.WarnContext(s.sessionContext(session), LogBSSCIVMStatusCompleteNotSupported,
+		logger.FieldEui, session.BaseStationEUI,
+		logger.FieldOpID, msg.OpId)
 
 	// Emit catalog error to base station per BSSCI protocol
 	// Use POSIX_ENOSYS (38) to match existing catalog token for unsupported commands
 	catalogErr := NewCatalogError(errUnsupportedCommand, POSIX_ENOSYS)
-	// sendCatalogError always returns the catalog token as an error and logs any
-	// transport failure itself, so there is nothing left to report here.
-	_ = s.sendCatalogError(session, msg.OpId, catalogErr)
+	s.sendCatalogError(session, msg.OpId, catalogErr)
 
 	// Return error for internal tracking
 	// Known limitation: pending operations are not cleaned up for unsupported VM commands.
@@ -735,20 +684,18 @@ func (s *Server) handleVMStatusComplete(_ *Server, session *Session, msg *Messag
 
 // handleVMDLData handles VM downlink data request (SC-initiated)
 // Community edition: Emits catalog error to base station, does not clean up pending operations
-func (s *Server) handleVMDLData(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMDLData(session *Session, msg *Message, _ map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
-	s.logger.WarnContext(s.sessionContext(session), "VM downlink data not supported in community edition",
-		"eui", session.BaseStationEUI,
-		"opId", msg.OpId)
+	s.logger.WarnContext(s.sessionContext(session), LogBSSCIVMDLDataNotSupported,
+		logger.FieldEui, session.BaseStationEUI,
+		logger.FieldOpID, msg.OpId)
 
 	// Emit catalog error to base station per BSSCI protocol
 	// Use POSIX_ENOSYS (38) to match existing catalog token for unsupported commands
 	catalogErr := NewCatalogError(errUnsupportedCommand, POSIX_ENOSYS)
-	// sendCatalogError always returns the catalog token as an error and logs any
-	// transport failure itself, so there is nothing left to report here.
-	_ = s.sendCatalogError(session, msg.OpId, catalogErr)
+	s.sendCatalogError(session, msg.OpId, catalogErr)
 
 	// Return error for internal tracking
 	// Known limitation: pending operations are not cleaned up for unsupported VM commands.
@@ -757,20 +704,18 @@ func (s *Server) handleVMDLData(_ *Server, session *Session, msg *Message, _ map
 
 // handleVMDLDataResponse handles VM downlink data response from base station
 // Community edition: Emits catalog error to base station, does not clean up pending operations
-func (s *Server) handleVMDLDataResponse(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMDLDataResponse(session *Session, msg *Message, _ map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
-	s.logger.WarnContext(s.sessionContext(session), "VM downlink data response not supported in community edition",
-		"eui", session.BaseStationEUI,
-		"opId", msg.OpId)
+	s.logger.WarnContext(s.sessionContext(session), LogBSSCIVMDLDataResponseNotSupported,
+		logger.FieldEui, session.BaseStationEUI,
+		logger.FieldOpID, msg.OpId)
 
 	// Emit catalog error to base station per BSSCI protocol
 	// Use POSIX_ENOSYS (38) to match existing catalog token for unsupported commands
 	catalogErr := NewCatalogError(errUnsupportedCommand, POSIX_ENOSYS)
-	// sendCatalogError always returns the catalog token as an error and logs any
-	// transport failure itself, so there is nothing left to report here.
-	_ = s.sendCatalogError(session, msg.OpId, catalogErr)
+	s.sendCatalogError(session, msg.OpId, catalogErr)
 
 	// Return error for internal tracking
 	// Known limitation: pending operations are not cleaned up for unsupported VM commands.
@@ -779,20 +724,18 @@ func (s *Server) handleVMDLDataResponse(_ *Server, session *Session, msg *Messag
 
 // handleVMDLDataComplete handles VM downlink data complete message from base station
 // Community edition: Emits catalog error to base station, does not clean up pending operations
-func (s *Server) handleVMDLDataComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
+func (s *Server) handleVMDLDataComplete(session *Session, msg *Message, _ map[string]interface{}) error {
 	if session == nil {
 		return fmt.Errorf("%s", ResolveErrorMessage(errSessionNil))
 	}
-	s.logger.WarnContext(s.sessionContext(session), "VM downlink data complete not supported in community edition",
-		"eui", session.BaseStationEUI,
-		"opId", msg.OpId)
+	s.logger.WarnContext(s.sessionContext(session), LogBSSCIVMDLDataCompleteNotSupported,
+		logger.FieldEui, session.BaseStationEUI,
+		logger.FieldOpID, msg.OpId)
 
 	// Emit catalog error to base station per BSSCI protocol
 	// Use POSIX_ENOSYS (38) to match existing catalog token for unsupported commands
 	catalogErr := NewCatalogError(errUnsupportedCommand, POSIX_ENOSYS)
-	// sendCatalogError always returns the catalog token as an error and logs any
-	// transport failure itself, so there is nothing left to report here.
-	_ = s.sendCatalogError(session, msg.OpId, catalogErr)
+	s.sendCatalogError(session, msg.OpId, catalogErr)
 
 	// Return error for internal tracking
 	// Known limitation: pending operations are not cleaned up for unsupported VM commands.

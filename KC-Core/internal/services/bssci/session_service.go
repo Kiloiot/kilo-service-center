@@ -4,47 +4,50 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 )
 
 type sessionService struct {
-	sessionsByUUID   map[string]*bssci.Session               // REAL map
-	bsSessionRepo    interfaces.BaseStationSessionRepository // Repository interface for session persistence
-	bsRepo           interfaces.BaseStationRepository        // Base station repository
-	pendingOpsRepo   interfaces.PendingOperationRepository   // Pending operations of a retired session
-	systemEventStore interfaces.SystemEventStore             // System event store (injected separately, not from storage)
+	sessionsByUUID   map[string]*bssci.Session // REAL map
+	bsSessionRepo    BaseStationSessionStore   // Repository interface for session persistence
+	pendingOpsRepo   PendingOperationPurger    // Pending operations of a retired session
+	systemEventStore SystemEventRecorder       // System event store (injected separately, not from storage)
 	tenantID         int64
+	scEUI            models.EUI // Service center that owns the sessions it creates or resumes
 	mu               sync.RWMutex
 	logger           logger.Logger
 }
 
 // NewSessionService creates a new session service with repository-based persistence
 func NewSessionService(
-	bsSessionRepo interfaces.BaseStationSessionRepository,
-	bsRepo interfaces.BaseStationRepository,
-	pendingOpsRepo interfaces.PendingOperationRepository,
-	systemEventStore interfaces.SystemEventStore,
+	bsSessionRepo BaseStationSessionStore,
+	pendingOpsRepo PendingOperationPurger,
+	systemEventStore SystemEventRecorder,
 	tenantID int64,
+	serviceCenterEUI uint64,
 	log logger.Logger,
 ) bssci.SessionService {
 	return &sessionService{
 		sessionsByUUID:   make(map[string]*bssci.Session),
 		bsSessionRepo:    bsSessionRepo,
-		bsRepo:           bsRepo,
 		pendingOpsRepo:   pendingOpsRepo,
 		systemEventStore: systemEventStore,
 		tenantID:         tenantID,
+		scEUI:            models.EUI(mioty.EUI64(serviceCenterEUI).ToBytes()),
 		logger:           log,
 	}
 }
@@ -83,16 +86,16 @@ func (s *sessionService) HandleResume(ctx context.Context, session *bssci.Sessio
 	binary.BigEndian.PutUint64(euiBytes, bsEUI)
 
 	dbSession, err := s.bsSessionRepo.FindResumableSession(ctx, s.resolvedTenantID(session), euiBytes, bsUUIDArray)
+	if errors.Is(err, storage.ErrNotFound) {
+		return bssci.ResumeOutcome{Disposition: bssci.ResumeNoMatch}
+	}
 	if err != nil {
 		// A lookup failure must not degrade into a fresh session while the
 		// old resumable state lingers; reject the connect instead.
 		return bssci.ResumeOutcome{
 			Disposition: bssci.ResumeInfrastructureFailure,
-			Err:         fmt.Errorf("resumable session lookup failed: %w", err),
+			Err:         fmt.Errorf("%w: %w", errResumableSessionLookup, err),
 		}
-	}
-	if dbSession == nil {
-		return bssci.ResumeOutcome{Disposition: bssci.ResumeNoMatch}
 	}
 
 	restoredSession := s.hydrateSessionFromDB(dbSession, bsEUI)
@@ -110,9 +113,9 @@ func (s *sessionService) HandleResume(ctx context.Context, session *bssci.Sessio
 	// differences are compatible; major/minor must match).
 	if !resumeVersionCompatible(restoredSession.NegotiatedVersion, session.NegotiatedVersion) {
 		s.logger.WarnContext(ctx, bssci.LogBSSCIResumeRejectedVersionIncompatible,
-			"bsEui", bsEUI,
-			"persistedVersion", restoredSession.NegotiatedVersion,
-			"selectedVersion", session.NegotiatedVersion)
+			logger.FieldBsEui, bsEUI,
+			logger.FieldPersistedVersion, restoredSession.NegotiatedVersion,
+			logger.FieldSelectedVersion, session.NegotiatedVersion)
 		return bssci.ResumeOutcome{
 			Disposition: bssci.ResumeInconsistent,
 			Previous:    restoredSession,
@@ -160,24 +163,24 @@ func (s *sessionService) resumeCountersConsistent(ctx context.Context, bsEUI uin
 	if bsOpId != nil && *bsOpId > knownBsOpId {
 		// The BS requires a minimum operation state the SC does not know
 		s.logger.WarnContext(ctx, bssci.LogBSSCIResumeRejectedBsOpIDBeyondPersisted,
-			"bsEui", bsEUI,
-			"requiredBsOpId", *bsOpId,
-			"persistedBsOpId", knownBsOpId)
+			logger.FieldBsEui, bsEUI,
+			logger.FieldRequiredBsOpID, *bsOpId,
+			logger.FieldPersistedBsOpID, knownBsOpId)
 		return false
 	}
 	if scOpId != nil && *scOpId < knownScOpId {
 		// The BS claims a more negative SC operation ID than the SC issued
 		s.logger.WarnContext(ctx, bssci.LogBSSCIResumeRejectedScOpIDBeyondIssued,
-			"bsEui", bsEUI,
-			"claimedScOpId", *scOpId,
-			"issuedScOpId", knownScOpId)
+			logger.FieldBsEui, bsEUI,
+			logger.FieldClaimedScOpID, *scOpId,
+			logger.FieldIssuedScOpID, knownScOpId)
 		return false
 	}
 	if scOpId != nil && *scOpId != knownScOpId {
 		s.logger.WarnContext(ctx, bssci.LogBSSCIResumeAcceptedStaleBsCounter,
-			"bsEui", bsEUI,
-			"bsReportedScOpId", *scOpId,
-			"scAuthoritativeOpId", knownScOpId)
+			logger.FieldBsEui, bsEUI,
+			logger.FieldBsReportedScOpID, *scOpId,
+			logger.FieldScAuthoritativeOpID, knownScOpId)
 	}
 	return true
 }
@@ -218,6 +221,7 @@ func (s *sessionService) hydrateSessionFromDB(dbSession *models.BaseStationSessi
 			ResolvedTenantID:  dbSession.TenantID,    // int64 → int64
 			BaseStationEUI:    bsEUI,                 // From parameter (validated by caller)
 			IsResumed:         true,                  // Mark as resumed session (BSSCI §5.3.2)
+			DisconnectedAt:    dbSession.EndedAt,
 		},
 		// Transport fields (Conn, Connected, LastSeen, etc.) initialized by caller (handleConnect)
 	}
@@ -301,12 +305,13 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 			ProtocolVersion: &negotiated,         // BSSCI §4-4.5: persist negotiated protocol version
 			ConnectInfo:     connectInfoNullJSON, // BSSCI §5.3: persist connect metadata
 			OrganizationID:  orgIDPtr,
+			ScEui:           s.scEUI,
 		}
 
 		// Persist via repository
 		dbSession, err := s.bsSessionRepo.CreateSession(ctx, req)
 		if err != nil {
-			return fmt.Errorf("failed to create session in database: %w", err)
+			return fmt.Errorf("%w: %w", errCreateSessionInDatabase, err)
 		}
 
 		// Update in-memory session
@@ -314,7 +319,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 		if dbSession.ConnectInfo.Valid {
 			session.ConnectInfo = dbSession.ConnectInfo.Data
 		}
-		// Don't set HandshakeComplete here - it's set in handleConnectComplete:1076
+		// Don't set HandshakeComplete here - it's set in handleConnectComplete (line 1076)
 
 		// Initialize per-session SC operation ID counter to 0.
 		// First SC operation will use opId -1 after decrement.
@@ -330,16 +335,16 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 		}
 		if err = s.bsSessionRepo.UpdateSession(ctx, s.resolvedTenantID(session), dbSession.ID, updateReq); err != nil {
 			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
-				"error", err,
-				"sessionID", session.DbSessionID)
-			return fmt.Errorf("failed to initialize session counters: %w", err)
+				logger.FieldError, err,
+				logger.FieldSessionID, session.DbSessionID)
+			return fmt.Errorf("%w: %w", errInitializeSessionCounters, err)
 		}
 
 		// Convert bs.EUI ([8]byte) to uint64 for logging
 		hexEUI := binary.BigEndian.Uint64(baseStation.EUI[:])
 		s.logger.InfoContext(ctx, bssci.LogBSSCIDatabaseSessionCreated,
-			"sessionID", session.DbSessionID,
-			"bsEui", fmt.Sprintf("%016X", hexEUI))
+			logger.FieldSessionID, session.DbSessionID,
+			logger.FieldBsEui, mioty.FormatEUI64(hexEUI))
 
 	} else {
 		// Resumed session - update existing record via repository
@@ -351,8 +356,8 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 		dbSession, err := s.bsSessionRepo.GetSessionByScUUID(ctx, s.resolvedTenantID(session), scUUID)
 		if err != nil {
 			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
-				"error", err,
-				"baseStationEui", session.BaseStationEUI)
+				logger.FieldError, err,
+				logger.FieldBaseStationEui, session.BaseStationEUI)
 			return err
 		}
 
@@ -361,16 +366,15 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 		// Server is authoritative for SC operation IDs.
 		session.LastScOpId = dbSession.SnScOpId
 		session.LastBsOpId = dbSession.SnBsOpId
-		session.DbSessionID = dbSession.ID
 		if dbSession.ConnectInfo.Valid {
 			session.ConnectInfo = dbSession.ConnectInfo.Data
 		}
 
 		s.logger.InfoContext(ctx, bssci.LogBSSCIDatabaseSessionUpdated,
-			"dbSessionID", session.DbSessionID,
-			"baseStationEui", session.BaseStationEUI,
-			"restoredScOpId", session.LastScOpId,
-			"restoredBsOpId", session.LastBsOpId)
+			logger.FieldDbSessionID, dbSession.ID,
+			logger.FieldBaseStationEui, session.BaseStationEUI,
+			logger.FieldRestoredScOpID, session.LastScOpId,
+			logger.FieldRestoredBsOpID, session.LastBsOpId)
 
 		// Preserve negotiated encoding over stale DB value (BSSCI Section 1)
 		// Only restore from DB if encoding hasn't been negotiated yet
@@ -381,8 +385,8 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 			} else {
 				// Invalid encoding in DB - fall back to BSSCI spec default (MessagePack)
 				s.logger.WarnContext(ctx, bssci.LogBSSCIInvalidEncodingInDatabase,
-					"dbEncoding", dbSession.Encoding,
-					"sessionID", dbSession.ID)
+					logger.FieldDbEncoding, dbSession.Encoding,
+					logger.FieldSessionID, dbSession.ID)
 				session.Encoding = bssci.EncodingMessagePack
 			}
 		}
@@ -412,6 +416,7 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 			RemoteAddr:      remoteAddr,
 			Encoding:        &session.Encoding,
 			ProtocolVersion: &negotiated, // BSSCI §4-4.5: persist negotiated version
+			ScEui:           &s.scEUI,    // a resumed session belongs to the service center that resumed it
 		}
 		if session.OrganizationID != uuid.Nil {
 			orgID := session.OrganizationID
@@ -421,23 +426,22 @@ func (s *sessionService) PersistSession(ctx context.Context, session *bssci.Sess
 		claimed, err := s.bsSessionRepo.ActivateSessionIfResumable(ctx, s.resolvedTenantID(session), dbSession.ID, updateReq)
 		if err != nil {
 			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
-				"error", err,
-				"baseStationEui", session.BaseStationEUI)
+				logger.FieldError, err,
+				logger.FieldBaseStationEui, session.BaseStationEUI)
 			return err
 		}
 		if !claimed {
 			s.logger.WarnContext(ctx, bssci.LogBSSCIResumeAlreadyClaimed,
-				"dbSessionID", dbSession.ID,
-				"baseStationEui", session.BaseStationEUI)
-			// Drop the row linkage so this connection's teardown cannot retire the claimant's session
-			session.DbSessionID = 0
-			return fmt.Errorf("resume activation for session %d: %w", dbSession.ID, bssci.ErrResumeAlreadyClaimed)
+				logger.FieldDbSessionID, dbSession.ID,
+				logger.FieldBaseStationEui, session.BaseStationEUI)
+			return fmt.Errorf(errFmtResumeActivation, dbSession.ID, bssci.ErrResumeAlreadyClaimed)
 		}
 
+		// Only the successful claim makes the row this connection's
 		session.DbSessionID = dbSession.ID
 		s.logger.InfoContext(ctx, bssci.LogBSSCIDatabaseSessionUpdated,
-			"dbSessionID", session.DbSessionID,
-			"baseStationEui", session.BaseStationEUI)
+			logger.FieldDbSessionID, session.DbSessionID,
+			logger.FieldBaseStationEui, session.BaseStationEUI)
 	}
 
 	return nil
@@ -454,16 +458,17 @@ func (s *sessionService) discardPriorSessionState(ctx context.Context, session *
 	if err == nil && dbSession != nil {
 		if terminateErr := s.bsSessionRepo.TerminateSession(ctx, tenantID, dbSession.ID); terminateErr != nil {
 			s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateStaleSession,
-				"error", terminateErr,
-				"staleSessionID", dbSession.ID,
-				"baseStationEui", session.BaseStationEUI)
-			return fmt.Errorf("terminate stale session before activation: %w", terminateErr)
+				logger.FieldError, terminateErr,
+				logger.FieldStaleSessionID, dbSession.ID,
+				logger.FieldBaseStationEui, session.BaseStationEUI)
+			return fmt.Errorf("%w: %w", errTerminateStaleSession, terminateErr)
 		}
 		s.logger.InfoContext(ctx, bssci.LogBSSCITerminatedStaleSession,
-			"staleSessionID", dbSession.ID,
-			"baseStationEui", session.BaseStationEUI)
+			logger.FieldStaleSessionID, dbSession.ID,
+			logger.FieldBaseStationEui, session.BaseStationEUI)
 
 		if delErr := s.discardPendingOperations(ctx, session, dbSession.ID); delErr != nil {
+			s.logPendingOperationDiscardFailure(ctx, session, dbSession.ID, delErr)
 			return delErr
 		}
 	}
@@ -471,17 +476,19 @@ func (s *sessionService) discardPriorSessionState(ctx context.Context, session *
 	retiredIDs, err := s.bsSessionRepo.TerminateResumableSessions(ctx, tenantID, baseStation.ID)
 	if err != nil {
 		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateResumableSessions,
-			"error", err,
-			"baseStationEui", session.BaseStationEUI)
-		return fmt.Errorf("terminate leftover resumable sessions before activation: %w", err)
+			logger.FieldError, err,
+			logger.FieldBaseStationEui, session.BaseStationEUI)
+		return fmt.Errorf("%w: %w", errTerminateResumableSessions, err)
 	}
 	for _, retiredID := range retiredIDs {
 		s.logger.InfoContext(ctx, bssci.LogBSSCITerminatedStaleSession,
-			"staleSessionID", retiredID,
-			"baseStationEui", session.BaseStationEUI)
+			logger.FieldStaleSessionID, retiredID,
+			logger.FieldBaseStationEui, session.BaseStationEUI)
 		// A retired row is never offered for resume, so its leftover operations are
 		// already unreachable: failing to delete them must not deny the new session.
-		_ = s.discardPendingOperations(ctx, session, retiredID)
+		if delErr := s.discardPendingOperations(ctx, session, retiredID); delErr != nil {
+			s.logPendingOperationDiscardFailure(ctx, session, retiredID, delErr)
+		}
 	}
 
 	return nil
@@ -492,18 +499,24 @@ func (s *sessionService) discardPriorSessionState(ctx context.Context, session *
 func (s *sessionService) discardPendingOperations(ctx context.Context, session *bssci.Session, staleSessionID int64) error {
 	deleted, err := s.pendingOpsRepo.DeleteBySession(ctx, staleSessionID)
 	if err != nil {
-		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToDeletePendingOperations,
-			"error", err,
-			"staleSessionID", staleSessionID,
-			"baseStationEui", session.BaseStationEUI)
-		return fmt.Errorf("remove pending operations of stale session: %w", err)
+		return fmt.Errorf("%w: %w", errRemovePendingOperations, err)
 	}
 	if deleted > 0 {
 		s.logger.InfoContext(ctx, bssci.LogBSSCIDeletedPendingOperations,
-			"staleSessionID", staleSessionID,
-			"count", deleted)
+			logger.FieldStaleSessionID, staleSessionID,
+			logger.FieldCount, deleted,
+			logger.FieldBaseStationEui, session.BaseStationEUI)
 	}
 	return nil
+}
+
+// logPendingOperationDiscardFailure records a failed pending-operation purge
+// of a retired session.
+func (s *sessionService) logPendingOperationDiscardFailure(ctx context.Context, session *bssci.Session, staleSessionID int64, err error) {
+	s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToDeletePendingOperations,
+		logger.FieldError, err,
+		logger.FieldStaleSessionID, staleSessionID,
+		logger.FieldBaseStationEui, session.BaseStationEUI)
 }
 
 // StoreSessionByUUID adds session to sessionsByUUID map
@@ -530,11 +543,11 @@ func (s *sessionService) MarkHandshakeComplete(session *bssci.Session) {
 // zero rows match and the newer session stays active.
 func (s *sessionService) MarkDisconnected(ctx context.Context, session *bssci.Session) error {
 	if session.DbSessionID == 0 {
-		return fmt.Errorf("cannot mark session disconnected: not persisted (DbSessionID=0)")
+		return errSessionNotPersistedDisconnect
 	}
 	err := s.bsSessionRepo.MarkDisconnected(ctx, s.resolvedTenantID(session), session.DbSessionID, session.ID, time.Now())
 	if err != nil {
-		return fmt.Errorf("failed to mark session disconnected: %w", err)
+		return fmt.Errorf("%w: %w", errMarkSessionDisconnected, err)
 	}
 	return nil
 }
@@ -570,24 +583,26 @@ func (s *sessionService) UpdateEncoding(ctx context.Context, tenantID, sessionID
 // Called immediately after successful SC-initiated operations to ensure resume correctness.
 func (s *sessionService) UpdateSessionCounters(ctx context.Context, session *bssci.Session) error {
 	if session.DbSessionID == 0 {
-		return fmt.Errorf("cannot update counters: session not persisted (DbSessionID=0)")
+		return errSessionNotPersistedCounters
 	}
 
-	// Uses the fixed atomic UpdateOperationIDs statement (sets updated_at and
-	// errors when the session row is missing) so every counter-persistence
-	// path shares one durable semantics: a zero-row update surfaces as an
-	// error instead of silent success on an inconsistent session.
+	// UpdateOperationIDs only moves the stored counters forward and errors
+	// when the session row is missing, so concurrent writes of one session
+	// need no ordering: a snapshot landing late never lowers a newer one.
+	lastBsOpID, lastScOpID := session.OperationCounters()
 	err := s.bsSessionRepo.UpdateOperationIDs(ctx, s.resolvedTenantID(session), session.DbSessionID,
-		session.LastBsOpId, session.LastScOpId)
+		lastBsOpID, lastScOpID)
+	if s.sessionRowGone(ctx, session, err) {
+		return nil
+	}
 	if err != nil {
 		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", session.DbSessionID,
-			"bsOpId", session.LastBsOpId,
-			"scOpId", session.LastScOpId)
-		return fmt.Errorf("failed to persist session counters: %w", err)
+			logger.FieldError, err,
+			logger.FieldSessionID, session.DbSessionID,
+			logger.FieldBsOpID, lastBsOpID,
+			logger.FieldScOpID, lastScOpID)
+		return fmt.Errorf("%w: %w", errPersistSessionCounters, err)
 	}
-
 	return nil
 }
 
@@ -595,7 +610,7 @@ func (s *sessionService) UpdateSessionCounters(ctx context.Context, session *bss
 // Called immediately after successful pingCmp reception to track base station health
 func (s *sessionService) UpdatePingTimestamp(ctx context.Context, session *bssci.Session) error {
 	if session.DbSessionID == 0 {
-		return fmt.Errorf("cannot update ping timestamp: session not persisted (DbSessionID=0)")
+		return errSessionNotPersistedPing
 	}
 
 	now := time.Now()
@@ -606,10 +621,10 @@ func (s *sessionService) UpdatePingTimestamp(ctx context.Context, session *bssci
 	err := s.bsSessionRepo.UpdateSession(ctx, s.resolvedTenantID(session), session.DbSessionID, updateReq)
 	if err != nil {
 		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
-			"error", err,
-			"sessionID", session.DbSessionID,
-			"timestamp", now)
-		return fmt.Errorf("failed to persist ping timestamp: %w", err)
+			logger.FieldError, err,
+			logger.FieldSessionID, session.DbSessionID,
+			logger.FieldTimestamp, now)
+		return fmt.Errorf("%w: %w", errPersistPingTimestamp, err)
 	}
 
 	return nil
@@ -619,17 +634,33 @@ func (s *sessionService) UpdatePingTimestamp(ctx context.Context, session *bssci
 // Called during disconnect cleanup per BSSCI §3 session lifecycle
 func (s *sessionService) TerminateSession(ctx context.Context, session *bssci.Session) error {
 	if session.DbSessionID == 0 {
-		return fmt.Errorf("cannot terminate session: not persisted (DbSessionID=0)")
+		return errSessionNotPersistedTerminate
 	}
 
 	err := s.bsSessionRepo.TerminateSession(ctx, s.resolvedTenantID(session), session.DbSessionID)
+	if s.sessionRowGone(ctx, session, err) {
+		return nil
+	}
 	if err != nil {
 		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateSession,
-			"error", err,
-			"sessionID", session.DbSessionID,
-			"eui", session.BaseStationEUI)
-		return fmt.Errorf("failed to terminate session: %w", err)
+			logger.FieldError, err,
+			logger.FieldSessionID, session.DbSessionID,
+			logger.FieldEui, session.BaseStationEUI)
+		return fmt.Errorf("%w: %w", errTerminateSessionFailed, err)
 	}
 
 	return nil
+}
+
+// sessionRowGone tells whether a write found no row for the session: deleting
+// its base station removed the row with the station, so the session has
+// nothing left to persist and its retirement is complete.
+func (s *sessionService) sessionRowGone(ctx context.Context, session *bssci.Session, err error) bool {
+	if !errors.Is(err, storage.ErrNotFound) {
+		return false
+	}
+	s.logger.DebugContext(ctx, LogSessionRowRemovedWithStation,
+		logger.FieldSessionID, session.DbSessionID,
+		logger.FieldEui, session.BaseStationEUI)
+	return true
 }

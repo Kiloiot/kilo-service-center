@@ -7,15 +7,26 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/health"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
-	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+)
+
+// Log messages for system status assembly. Owned by the service; the gRPC
+// delivery layer references them for its request-level logging too.
+const (
+	LogSystemStatusBSStatsFailed      = "Failed to fetch base station stats"
+	LogSystemStatusEPCountFailed      = "Failed to fetch endpoint count"
+	LogSystemStatusMsgStatsFailed     = "Failed to fetch message stats"
+	LogSystemStatusMetricsFetchFailed = "Failed to fetch system status metrics"
+	LogSystemStatusCalled             = "GetSystemStatus called"
+	LogSystemStatusManifestLoadFailed = "Failed to load release manifest for system status"
+	LogSystemStatusHealthCheckFailed  = "Failed to fetch service health statuses"
 )
 
 // BaseStationStatsFetcher is a narrow interface for base station statistics.
 type BaseStationStatsFetcher interface {
-	GetStatistics(ctx context.Context, tenantID int64) (*interfaces.BaseStationStatistics, error)
+	GetStatistics(ctx context.Context, tenantID int64) (*models.BaseStationStatistics, error)
 }
 
 // EndpointCounter is a narrow interface for endpoint counting.
@@ -34,28 +45,41 @@ type EndpointURL struct {
 	URL  string
 }
 
+// HealthChecker runs the aggregate health checks this service reports as
+// per-service statuses. It is the only capability used from the health
+// subsystem.
+type HealthChecker interface {
+	CheckHealth(ctx context.Context) *health.Response
+}
+
 // Service aggregates system status metrics from multiple repositories.
 type Service struct {
 	bsRepo       BaseStationStatsFetcher
 	epRepo       EndpointCounter
 	msgRepo      MessageStatsFetcher
 	logger       logger.Logger
-	healthSvc    *health.Service
+	healthSvc    HealthChecker
 	endpointURLs []EndpointURL
 }
 
 // New creates a new SystemStatusService with narrow repository dependencies.
+// healthChecker may be nil, in which case per-service statuses are not
+// reported.
 func New(
 	bsRepo BaseStationStatsFetcher,
 	epRepo EndpointCounter,
 	msgRepo MessageStatsFetcher,
 	log logger.Logger,
+	healthChecker HealthChecker,
+	endpointURLs []EndpointURL,
 ) *Service {
 	return &Service{
-		bsRepo:  bsRepo,
-		epRepo:  epRepo,
-		msgRepo: msgRepo,
-		logger:  log,
+		bsRepo:       bsRepo,
+		epRepo:       epRepo,
+		msgRepo:      msgRepo,
+		logger:       log,
+		healthSvc:    healthChecker,
+		endpointURLs: endpointURLs,
 	}
 }
 
@@ -72,7 +96,7 @@ func (s *Service) GetStatus(ctx context.Context, tenantID int64) (*grpcservices.
 	// Fetch base station stats (narrow: GetStatistics only)
 	if s.bsRepo != nil {
 		if bsStats, err := s.bsRepo.GetStatistics(ctx, tenantID); err != nil {
-			s.logger.WarnContext(ctx, grpcconst.LogSystemStatusBSStatsFailed, "error", err)
+			s.logger.WarnContext(ctx, LogSystemStatusBSStatsFailed, logger.FieldError, err)
 		} else if bsStats != nil {
 			metrics.ActiveBasestations = clampToInt32(bsStats.OnlineCount)
 		}
@@ -81,7 +105,7 @@ func (s *Service) GetStatus(ctx context.Context, tenantID int64) (*grpcservices.
 	// Fetch endpoint count (narrow: CountByTenant only)
 	if s.epRepo != nil {
 		if epCount, err := s.epRepo.CountByTenant(ctx, tenantID); err != nil {
-			s.logger.WarnContext(ctx, grpcconst.LogSystemStatusEPCountFailed, "error", err)
+			s.logger.WarnContext(ctx, LogSystemStatusEPCountFailed, logger.FieldError, err)
 		} else {
 			metrics.ActiveEndpoints = clampToInt32(epCount)
 		}
@@ -90,7 +114,7 @@ func (s *Service) GetStatus(ctx context.Context, tenantID int64) (*grpcservices.
 	// Fetch message stats (narrow: GetOverallStats only)
 	if s.msgRepo != nil {
 		if msgStats, err := s.msgRepo.GetOverallStats(ctx, tenantID); err != nil {
-			s.logger.WarnContext(ctx, grpcconst.LogSystemStatusMsgStatsFailed, "error", err)
+			s.logger.WarnContext(ctx, LogSystemStatusMsgStatsFailed, logger.FieldError, err)
 		} else if msgStats != nil {
 			metrics.MessagesProcessed = msgStats.TotalCount
 		}
@@ -110,13 +134,6 @@ func clampToInt32(v int64) int32 {
 	return int32(v) //nolint:gosec // bounds checked above
 }
 
-// WithHealthService adds health checking capability.
-func (s *Service) WithHealthService(healthSvc *health.Service, endpointURLs []EndpointURL) *Service {
-	s.healthSvc = healthSvc
-	s.endpointURLs = endpointURLs
-	return s
-}
-
 // GetServiceStatuses returns DTOs with service health information.
 func (s *Service) GetServiceStatuses(ctx context.Context) ([]*grpcservices.ServiceStatusDTO, error) {
 	if s.healthSvc == nil {
@@ -126,6 +143,10 @@ func (s *Service) GetServiceStatuses(ctx context.Context) ([]*grpcservices.Servi
 
 	services := make([]*grpcservices.ServiceStatusDTO, 0, len(response.Checks))
 	for name, check := range response.Checks {
+		// The dashboard lists running services; a disabled one has no health to show.
+		if check.Status == health.StatusDisabled {
+			continue
+		}
 		latencyMs := check.Duration.Milliseconds()
 		// Cap latency at max int32 to prevent overflow (G115)
 		if latencyMs > math.MaxInt32 {

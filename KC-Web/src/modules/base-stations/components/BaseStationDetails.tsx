@@ -1,62 +1,78 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, {
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useState,
+} from "react";
 
 import { useBaseStation, useDeleteBaseStation } from "@hooks";
 import {
-  Alert,
   Box,
   Card,
   CardContent,
   Divider,
   Grid,
   IconButton,
-  Snackbar,
   Tooltip,
 } from "@mui/material";
 
-import { realtimeService } from "@services/realtime";
+import { BaseStationTrafficTab } from "@modules/traffic";
+import { ViewTabs } from "@components/common/ViewTabs";
+import { realtimeStreams } from "@services/realtime";
+import { useFeedback } from "@contexts/feedback";
+import type { BaseStationStatus, BsConnectionTypeLabel } from "@constants/app";
 import {
-  calculateDaysUntilExpiry,
-  formatEUIWithDashes,
-} from "@utils/formatters";
-import { BS_DETAIL_LAYOUT } from "@constants/app";
+  BASE_STATION_DETAIL_VIEWS,
+  BASE_STATION_STATUS,
+  type BaseStationDetailView,
+  BS_DETAIL_LAYOUT,
+} from "@constants/app";
 import {
   ACTION_DELETE,
   ACTION_EDIT,
-  ERR_DELETE_BASE_STATION,
-  MSG_BS_EUI_UPDATED,
+  BASE_STATION_DETAIL_VIEW_LABELS,
+  DEVICE_DETAIL_TABS,
+  MSG_BS_UPDATED,
 } from "@constants/messages";
-import { DeleteIcon, EditIcon } from "@theme/icons";
+import { DeleteIcon, EditIcon, MessageIcon, TrafficIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
+import { BaseStationActivity } from "./BaseStationActivity";
 import BaseStationDeleteDialog from "./BaseStationDeleteDialog";
 import BaseStationEditDialog from "./BaseStationEditDialog";
 import BaseStationInfoPanel from "./BaseStationInfoPanel";
 import BaseStationLocationMap from "./BaseStationLocationMap";
-import BaseStationMessages from "./BaseStationMessages";
+import { BaseStationOperationsPanel } from "./BaseStationOperationsPanel";
+import { BaseStationStatusRequestButton } from "./BaseStationStatusRequestButton";
+
+const BASE_STATION_DETAIL_ICONS: Record<BaseStationDetailView, ReactElement> = {
+  activity: <MessageIcon />,
+  traffic: <TrafficIcon />,
+};
 
 interface BaseStationDetailsProps {
   baseStation: {
     id: string;
     eui: string;
     name?: string;
-    status: "online" | "offline";
-    connectionType: "BSSCI" | "MQTT";
+    status: BaseStationStatus;
+    connectionType: BsConnectionTypeLabel;
     lastSeen: string;
     serviceCenterUrl: string;
     certificateExpiryDate?: string;
   };
   onDelete?: (id: string) => void;
+  onEuiChange: (newEui: string, changesSaved: boolean) => void;
 }
 
 const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
   baseStation,
   onDelete,
+  onEuiChange,
 }) => {
-  const navigate = useNavigate();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const feedback = useFeedback();
 
   const deleteBaseStationMutation = useDeleteBaseStation();
 
@@ -66,43 +82,30 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
     error: detailsError,
   } = useBaseStation(baseStation.eui);
 
-  useEffect(() => {
-    realtimeService.connectBaseStationStream(baseStation.eui);
-    return () => realtimeService.disconnectBaseStationStream();
-  }, [baseStation.eui]);
-
-  const daysUntilExpiry = calculateDaysUntilExpiry(
-    baseStation.certificateExpiryDate,
+  useEffect(
+    () => realtimeStreams.watchBaseStation(baseStation.eui),
+    [baseStation.eui],
   );
-  const isExpiringSoon = daysUntilExpiry !== null && daysUntilExpiry <= 30;
-  const isExpired = daysUntilExpiry !== null && daysUntilExpiry < 0;
 
-  const handleEditSuccess = (newEui?: string) => {
-    if (newEui) {
-      setSuccessMessage(MSG_BS_EUI_UPDATED);
-      setEditDialogOpen(false);
-      navigate(`/base-stations/${formatEUIWithDashes(newEui)}`);
-    } else {
-      setEditDialogOpen(false);
-    }
+  const viewPanels: Record<BaseStationDetailView, () => ReactNode> = {
+    activity: () => <BaseStationActivity bsEui={baseStation.eui} />,
+    traffic: () => <BaseStationTrafficTab bsEui={baseStation.eui} />,
   };
 
-  const handleEditError = (message: string) => {
-    if (message) setErrorMessage(message);
+  const handleEuiChange = (newEui: string, changesSaved: boolean) => {
+    setEditDialogOpen(false);
+    onEuiChange(newEui, changesSaved);
   };
 
-  const handleDeleteConfirm = () => {
-    deleteBaseStationMutation.mutate(baseStation.eui, {
-      onSuccess: () => {
-        setDeleteDialogOpen(false);
-        if (onDelete) {
-          onDelete(baseStation.id);
-        }
-      },
-      onError: () => {
-        setErrorMessage(ERR_DELETE_BASE_STATION);
-      },
-    });
+  const handleEditSaved = () => {
+    setEditDialogOpen(false);
+    feedback.success(MSG_BS_UPDATED);
+  };
+
+  const handleDeleteConfirm = async () => {
+    await deleteBaseStationMutation.mutateAsync(baseStation.eui);
+    setDeleteDialogOpen(false);
+    onDelete?.(baseStation.id);
   };
 
   return (
@@ -115,6 +118,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
           mb={2}
         >
           <Box>
+            <BaseStationStatusRequestButton bsEui={baseStation.eui} />
             <Tooltip title={ACTION_EDIT}>
               <IconButton size="small" onClick={() => setEditDialogOpen(true)}>
                 <EditIcon />
@@ -133,7 +137,7 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
         </Box>
 
         <Grid container spacing={BS_DETAIL_LAYOUT.GRID_SPACING}>
-          <Grid size={{ xs: 12, md: 3 }}>
+          <Grid size={componentSpacing.gridSpan.quarter}>
             <BaseStationLocationMap
               latitude={baseStationDetails?.latitude}
               longitude={baseStationDetails?.longitude}
@@ -142,28 +146,40 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
             />
           </Grid>
 
-          <Grid size={{ xs: 12, md: 9 }}>
+          <Grid size={componentSpacing.gridSpan.threeQuarters}>
             <BaseStationInfoPanel
               baseStation={baseStation}
               baseStationDetails={baseStationDetails}
               loadingDetails={loadingDetails}
               detailsError={detailsError}
-              isExpiringSoon={isExpiringSoon}
-              isExpired={isExpired}
             />
           </Grid>
 
-          <Grid size={12}>
+          <Grid size={componentSpacing.gridSpan.full}>
+            <BaseStationOperationsPanel
+              bsEui={baseStation.eui}
+              online={baseStation.status === BASE_STATION_STATUS.ONLINE}
+              certificateExpiresAt={baseStationDetails?.certificateExpiryDate}
+              certificateFingerprint={
+                baseStationDetails?.certificateFingerprint
+              }
+              lastHandshake={baseStationDetails?.lastHandshake}
+            />
+          </Grid>
+
+          <Grid size={componentSpacing.gridSpan.full}>
             <Divider sx={{ my: 1 }} />
           </Grid>
 
-          <Grid size={12}>
-            <BaseStationMessages
-              bsEui={baseStation.eui}
-              basestationName={
-                baseStation.name || formatEUIWithDashes(baseStation.eui)
-              }
-            />
+          <Grid size={componentSpacing.gridSpan.full}>
+            <ViewTabs
+              views={BASE_STATION_DETAIL_VIEWS}
+              labels={BASE_STATION_DETAIL_VIEW_LABELS}
+              icons={BASE_STATION_DETAIL_ICONS}
+              ariaLabel={DEVICE_DETAIL_TABS.ARIA_BASE_STATION_TABS}
+            >
+              {(view) => viewPanels[view]()}
+            </ViewTabs>
           </Grid>
         </Grid>
       </CardContent>
@@ -182,31 +198,9 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
         onClose={() => setEditDialogOpen(false)}
         baseStation={baseStation}
         baseStationDetails={baseStationDetails}
-        onSuccess={handleEditSuccess}
-        onError={handleEditError}
+        onSuccess={handleEditSaved}
+        onEuiChange={handleEuiChange}
       />
-
-      <Snackbar
-        open={!!errorMessage}
-        autoHideDuration={6000}
-        onClose={() => setErrorMessage(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert severity="error" onClose={() => setErrorMessage(null)}>
-          {errorMessage}
-        </Alert>
-      </Snackbar>
-
-      <Snackbar
-        open={!!successMessage}
-        autoHideDuration={4000}
-        onClose={() => setSuccessMessage(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert severity="success" onClose={() => setSuccessMessage(null)}>
-          {successMessage}
-        </Alert>
-      </Snackbar>
     </Card>
   );
 };

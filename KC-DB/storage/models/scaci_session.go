@@ -6,21 +6,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// SCACISessionStatus represents the status of a SCACI session
-type SCACISessionStatus string
-
+// SCACI session lifecycle states persisted in the status column.
 const (
-	// SCACIStatusActive indicates an active SCACI session
-	SCACIStatusActive SCACISessionStatus = "active"
-
-	// SCACIStatusResumed indicates a resumed SCACI session
-	SCACIStatusResumed SCACISessionStatus = "resumed"
-
-	// SCACIStatusDisconnected indicates a disconnected session (may be resumable)
-	SCACIStatusDisconnected SCACISessionStatus = "disconnected"
-
-	// SCACIStatusTerminated indicates a terminated session (not resumable)
-	SCACIStatusTerminated SCACISessionStatus = "terminated"
+	SCACISessionStatusActive       = "active"
+	SCACISessionStatusResumed      = "resumed"
+	SCACISessionStatusDisconnected = "disconnected"
+	SCACISessionStatusTerminated   = "terminated"
 )
 
 // SCACISession represents a SCACI (Service Center to Application Center) session
@@ -92,20 +83,26 @@ type SCACISessionCreateRequest struct {
 	CanResume              bool                   `json:"can_resume"`
 	Metadata               map[string]interface{} `json:"metadata,omitempty"`
 	OrganizationID         *uuid.UUID             `json:"organization_id,omitempty"` // Kilo Cloud org UUID
+	ScEui                  EUI                    `json:"sc_eui"`                    // Service center that owns the session
 }
 
-// SCACISessionUpdateRequest represents a request to update an existing SCACI session
-type SCACISessionUpdateRequest struct {
-	Status         *string                `json:"status,omitempty"`
-	LastOpIDAc     *int64                 `json:"last_op_id_ac,omitempty"`
-	LastOpIDSc     *int64                 `json:"last_op_id_sc,omitempty"`
-	LastHeartbeat  *time.Time             `json:"last_heartbeat,omitempty"`
-	DisconnectedAt *time.Time             `json:"disconnected_at,omitempty"`
-	CanResume      *bool                  `json:"can_resume,omitempty"`
-	TLSVersion     *string                `json:"tls_version,omitempty"`  // TLS evidence on resume per SCACI §1
-	CipherSuite    *string                `json:"cipher_suite,omitempty"` // TLS evidence on resume per SCACI §1
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
-	OrganizationID *uuid.UUID             `json:"organization_id,omitempty"` // Kilo Cloud org UUID
+// SCACIApplicationCenter names the Application Center a session belongs to:
+// its acEui in one organization of a tenant (SCACI §1). A nil organization
+// names the Application Center among the sessions without one.
+type SCACIApplicationCenter struct {
+	TenantID       int64
+	OrganizationID *uuid.UUID
+	AcEUI          [8]byte
+}
+
+// SCACISessionResume is what the connection that resumed a session records
+// on its row (SCACI §1): the TLS evidence and the Connect metadata.
+type SCACISessionResume struct {
+	TLSVersion  *string
+	CipherSuite *string
+	Metadata    map[string]interface{}
+	// ScEui is the service center that now owns the session.
+	ScEui EUI
 }
 
 // SCACISessionFilter represents filter criteria for querying SCACI sessions
@@ -134,9 +131,10 @@ type SCACISessionStatistics struct {
 	TotalSessionTime       float64 `json:"total_session_time_hours"`
 }
 
-// SCACISessionResumptionInfo provides information for session resumption decision
-// Per SCACI §1, lines 22-27: session can be resumed if UUIDs match and opIds are consistent
-// Per SCACI §§2.1-2.3: resume must also use the same negotiated version
+// SCACISessionResumptionInfo is what the service center stored about the
+// session an application center asks to resume (SCACI §1): whether it can
+// still be resumed, its operation ID counters and the version it negotiated
+// (§§2.1-2.3), which the resume must use again.
 type SCACISessionResumptionInfo struct {
 	CanResume            bool    `json:"can_resume"`
 	SessionID            int64   `json:"session_id,omitempty"`
@@ -167,12 +165,12 @@ func (s *SCACISession) ToCreateRequest() *SCACISessionCreateRequest {
 
 // IsActive returns true if the session is currently active
 func (s *SCACISession) IsActive() bool {
-	return s.Status == "active" || s.Status == "resumed"
+	return s.Status == SCACISessionStatusActive || s.Status == SCACISessionStatusResumed
 }
 
 // IsResumable returns true if the session can be resumed after disconnect
 func (s *SCACISession) IsResumable() bool {
-	return s.CanResume && (s.Status == "disconnected" || s.Status == "active")
+	return s.CanResume && (s.Status == SCACISessionStatusDisconnected || s.Status == SCACISessionStatusActive)
 }
 
 // GetSessionDuration returns the current or total duration of the session

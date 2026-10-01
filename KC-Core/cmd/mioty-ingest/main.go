@@ -16,10 +16,47 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
+	"github.com/Kiloiot/kilo-service-center/pkg/keycrypto"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
+
+// Local development database defaults for this ingestion utility.
+const (
+	// defaultDBPort matches the Docker Compose host mapping for PostgreSQL.
+	defaultDBPort = 5433
+
+	// summaryCountProbeLimit fetches a single row; only the returned total
+	// count is used for the ingestion summary.
+	summaryCountProbeLimit = 1
+)
+
+// euiHexLength is the length of an EUI64 in hex characters.
+const euiHexLength = 16
+
+// Development database connection defaults (mirrors docker-compose.dev.yml).
+const (
+	defaultDBHost     = "localhost"
+	defaultDBName     = "kilocenter"
+	defaultDBUser     = "kilocenter"
+	defaultDBPassword = "changeme"
+	defaultDBSSLMode  = "disable"
+)
+
+// Base station log line markers parsed from the MIOTY log format.
+const (
+	markerDataReceived = "data received from end point"
+	markerEndPoint     = "end point "
+	markerCnt          = "cnt "
+	markerRSSI         = "RSSI "
+	markerSNR          = "SNR "
+	markerEqSNR        = "eqSNR "
+)
+
+// progressInterval throttles progress output to every N processed messages.
+const progressInterval = 100
 
 func main() {
 	// Define command-line flags
@@ -42,27 +79,37 @@ func main() {
 	tenantID := *tenantIDFlag
 
 	// Validate base station EUI format
-	if len(*baseStationEUI) != 16 {
+	if len(*baseStationEUI) != euiHexLength {
 		log.Fatalf("Invalid base station EUI: must be 16 hex characters")
 	}
 
 	// Connect to database using postgres storage
-	cfg := config.StorageConfig{
-		Host:     "localhost",
-		Port:     5433,
-		Database: "kilocenter",
-		Username: "kilocenter",
-		Password: "changeme",
-		SSLMode:  "disable",
+	storageOpts := postgres.Options{
+		Host:     defaultDBHost,
+		Port:     defaultDBPort,
+		Database: defaultDBName,
+		Username: defaultDBUser,
+		Password: defaultDBPassword,
+		SSLMode:  defaultDBSSLMode,
 	}
 
-	store, err := postgres.New(cfg)
+	cipher, err := keycrypto.NewCipherFromMasterKey(os.Getenv("KILOCENTER_MASTER_KEY"))
+	if err != nil {
+		log.Fatalf("Failed to build key-material cipher from KILOCENTER_MASTER_KEY: %v", err)
+	}
+
+	store, err := postgres.New(storageOpts, cipher)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer func() { _ = store.Close() }()
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Printf("[WARN] Failed to close database connection: %v", err)
+		}
+	}()
 
 	fmt.Println("PASS: Database connection successful")
+	repos := postgres.NewRepositories(store)
 
 	// Open log file - sanitize path to prevent path traversal
 	logFile = filepath.Clean(logFile)
@@ -77,12 +124,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
 	}
-	defer func() { _ = file.Close() }()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("[WARN] Failed to close log file: %v", err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
-	ctx := context.Background()
-	processedCount := 0
-	errorCount := 0
+	ctx := context.Background() // context-root: process
+	var processedCount int
+	var errorCount int
 
 	fmt.Printf("Processing log file: %s\n", logFile)
 
@@ -93,7 +144,7 @@ func main() {
 		}
 
 		// Skip non-data lines
-		if !strings.Contains(line, "data received from end point") {
+		if !strings.Contains(line, markerDataReceived) {
 			continue
 		}
 
@@ -101,7 +152,7 @@ func main() {
 		// Format: "DD HH:MM:SS INF data received from end point XX-XX-XX-XX-XX-XX-XX-XX, cnt N, RSSI X dBm, SNR Y dB, eqSNR Z dB"
 
 		// Extract endpoint EUI
-		epStart := strings.Index(line, "end point ") + 10
+		epStart := strings.Index(line, markerEndPoint) + len(markerEndPoint)
 		epEnd := strings.Index(line[epStart:], ",")
 		if epEnd == -1 {
 			errorCount++
@@ -111,7 +162,7 @@ func main() {
 		epEUI = strings.ReplaceAll(epEUI, "-", "")
 
 		// Extract packet count
-		cntStart := strings.Index(line, "cnt ") + 4
+		cntStart := strings.Index(line, markerCnt) + len(markerCnt)
 		cntEnd := strings.Index(line[cntStart:], ",")
 		var packetCnt int
 		if n, err := fmt.Sscanf(line[cntStart:cntStart+cntEnd], "%d", &packetCnt); n != 1 || err != nil {
@@ -121,7 +172,7 @@ func main() {
 		}
 
 		// Extract RSSI
-		rssiStart := strings.Index(line, "RSSI ") + 5
+		rssiStart := strings.Index(line, markerRSSI) + len(markerRSSI)
 		rssiEnd := strings.Index(line[rssiStart:], " ")
 		var rssi float64
 		if n, err := fmt.Sscanf(line[rssiStart:rssiStart+rssiEnd], "%f", &rssi); n != 1 || err != nil {
@@ -131,7 +182,7 @@ func main() {
 		}
 
 		// Extract SNR
-		snrStart := strings.Index(line, "SNR ") + 4
+		snrStart := strings.Index(line, markerSNR) + len(markerSNR)
 		snrEnd := strings.Index(line[snrStart:], " ")
 		var snr float64
 		if n, err := fmt.Sscanf(line[snrStart:snrStart+snrEnd], "%f", &snr); n != 1 || err != nil {
@@ -140,11 +191,7 @@ func main() {
 			continue
 		}
 
-		// Extract eqSNR (optional field, ignore parse errors)
-		eqSnrStart := strings.Index(line, "eqSNR ") + 6
-		eqSnrEnd := strings.Index(line[eqSnrStart:], " ")
-		var eqSnr float64
-		_, _ = fmt.Sscanf(line[eqSnrStart:eqSnrStart+eqSnrEnd], "%f", &eqSnr)
+		eqSnr := optionalEqSNR(line)
 
 		// Convert EUI strings to uint64
 		epEuiInt, err := strconv.ParseUint(epEUI, 16, 64)
@@ -175,14 +222,15 @@ func main() {
 			continue
 		}
 
-		// Create MIOTY UL Data message
+		// The log line has no date, so the import moment stands in for the reception time.
+		importedAt := time.Now()
 		msg := &mioty.ULDataMessage{
 			ID:          uuid.New().String(),
-			CommandType: "ulData",
+			CommandType: mioty.CmdULData,
 			OpId:        int64(processedCount + 1), // Positive for ingest (simulates BS)
 			EpEui:       epEuiInt,
 			BsEui:       bsEuiInt,
-			RxTime:      time.Now().UnixNano(),
+			RxTime:      importedAt.UnixNano(),
 			PacketCnt:   uint32(packetCnt), //nolint:gosec // G115: validated above on line 162
 
 			SNR:         snr,
@@ -192,16 +240,19 @@ func main() {
 			ResponseExp: false,
 			DlAck:       false,
 			TenantID:    tenantID,
-			ReceivedAt:  time.Now(),
+			ReceivedAt:  importedAt,
 		}
 
-		// Add optional eqSnr if present
-		if eqSnr != 0 {
-			msg.EqSnr = &eqSnr
-		}
+		msg.EqSnr = eqSnr
 
-		// Store message using message repository
-		err = store.CreateULDataMessage(ctx, msg)
+		msg.BaseStations = []mioty.BaseStationReception{{
+			BsEui: msg.BsEui, RxTime: msg.RxTime, Snr: msg.SNR, Rssi: msg.RSSI, EqSnr: msg.EqSnr,
+		}}
+		// Historical imports are classified like live traffic but never fan out.
+		_, err = repos.UplinkStore.Persist(ctx, models.UplinkPersistRequest{
+			Message: msg,
+			Window:  time.Duration(config.DefaultProtocolDuplicateWindow) * time.Second,
+		})
 		if err != nil {
 			log.Printf("[FAIL] Failed to store message: %v", err)
 			errorCount++
@@ -209,7 +260,7 @@ func main() {
 		}
 
 		processedCount++
-		if processedCount%100 == 0 {
+		if processedCount%progressInterval == 0 {
 			fmt.Printf("  Processed %d messages...\n", processedCount)
 		}
 	}
@@ -226,13 +277,32 @@ func main() {
 	var count int64
 	filter := mioty.ULDataMessageFilter{
 		TenantID: tenantID,
-		Limit:    1, // Just to get count
+		Limit:    summaryCountProbeLimit,
 		Offset:   0,
 	}
-	_, count, err = store.ListULDataMessages(ctx, filter)
+	_, count, err = repos.Messages.ListULDataMessages(ctx, filter)
 	if err != nil {
 		log.Printf("Failed to get message count: %v", err)
 	} else {
 		fmt.Printf("   Total messages in database: %d\n", count)
 	}
+}
+
+// optionalEqSNR returns the line's eqSNR; the field is optional, so a line
+// without one, or with a malformed one, yields nil.
+func optionalEqSNR(line string) *float64 {
+	start := strings.Index(line, markerEqSNR)
+	if start < 0 {
+		return nil
+	}
+	field := line[start+len(markerEqSNR):]
+	if end := strings.Index(field, " "); end >= 0 {
+		field = field[:end]
+	}
+	value, err := strconv.ParseFloat(field, 64)
+	if err != nil {
+		log.Printf("[WARN] Ignoring malformed eqSNR %q: %v", field, err)
+		return nil
+	}
+	return &value
 }

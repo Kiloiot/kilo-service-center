@@ -2,9 +2,6 @@ package mqtt
 
 import (
 	"context"
-
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
 // Publisher defines the interface for MQTT publish/subscribe operations.
@@ -53,20 +50,12 @@ type Publisher interface {
 // - Cancellation and timeout control
 type MessageHandler func(ctx context.Context, topic string, payload []byte)
 
-// ClientFactory creates Publisher instances for dependency injection.
-// This factory pattern enables:
-// - Swapping implementations (Paho, alternate MQTT libraries)
-// - Mocking in unit tests
-// - Configuration-driven client creation
-type ClientFactory interface {
-	NewClient(cfg *config.MQTTConfig, log logger.Logger) (Publisher, error)
-}
-
 // DeviceEventPublisher abstracts device event publishing to MQTT topics.
 // This allows swapping MQTT with other messaging backends (e.g., Kafka, NATS).
 type DeviceEventPublisher interface {
 	// PublishDeviceEvent publishes a device event to the canonical topic.
-	// Uses UplinkQoS for "up" events, EventsQoS for all other event types.
+	// Uses UplinkQoS for "up", DownlinkEventsQoS for downlink_queued,
+	// downlink_rejected and downlink_result, and EventsQoS for attach and detach.
 	// Returns error if orgUUID or epEUIHex are empty (prevents malformed topics).
 	PublishDeviceEvent(ctx context.Context, orgUUID string, epEUIHex string, eventType string, payload []byte) error
 }

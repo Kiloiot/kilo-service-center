@@ -8,9 +8,50 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 	_ "github.com/lib/pq" // Register PostgreSQL driver
 )
+
+// Options carries the database connection settings New needs to open a pool.
+// Callers translate their application configuration into Options at the call
+// site so the persistence layer stays independent of any app config package.
+type Options struct {
+	// Clock stamps rows; nil means the system clock.
+	Clock           clock.Clock
+	Host            string
+	Port            int
+	Database        string
+	Username        string
+	Password        string
+	SSLMode         string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+}
+
+// DSN is the connection string of the database the options name.
+func (o Options) DSN() string {
+	return o.config().GetDSN()
+}
+
+// config is the connection configuration the options describe.
+func (o Options) config() *Config {
+	return &Config{
+		Host:            o.Host,
+		Port:            o.Port,
+		Database:        o.Database,
+		Username:        o.Username,
+		Password:        o.Password,
+		SSLMode:         o.SSLMode,
+		MaxOpenConns:    o.MaxOpenConns,
+		MaxIdleConns:    o.MaxIdleConns,
+		ConnMaxLifetime: o.ConnMaxLifetime,
+		ConnMaxIdleTime: o.ConnMaxIdleTime,
+	}
+}
 
 // Config holds PostgreSQL connection configuration
 type Config struct {
@@ -26,10 +67,27 @@ type Config struct {
 	ConnMaxIdleTime time.Duration
 }
 
+const dsnFormat = "host=%s port=%d user=%s password=%s dbname=%s sslmode=%s"
+
+// connectRetryBackoffFactor grows the connect retry delay up to its cap.
+const connectRetryBackoffFactor = 1.5
+
+// retryablePatterns are the PostgreSQL error text fragments treated as
+// transient.
+var retryablePatterns = []string{
+	"connection refused",
+	"connection reset",
+	"broken pipe",
+	"deadlock detected",
+	"could not serialize",
+	"too many connections",
+}
+
 // GetDSN returns the PostgreSQL connection string
+// dsnFormat renders the PostgreSQL connection string.
 func (c *Config) GetDSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		dsnFormat,
 		c.Host,
 		c.Port,
 		c.Username,
@@ -56,37 +114,37 @@ func NewConnectionManager(config *Config, logger logger.Logger) *ConnectionManag
 
 // Connect establishes a database connection with retry logic
 func (cm *ConnectionManager) Connect(ctx context.Context) error {
-	maxRetries := 5
+	maxRetries := connectMaxRetries
 	retryDelay := time.Second
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		cm.logger.Info("Attempting database connection",
-			"attempt", attempt,
-			"max_retries", maxRetries)
+	for attempt := initialRetryAttempt; attempt <= maxRetries; attempt++ {
+		cm.logger.Info(logMsgAttemptingDatabaseConnection,
+			logger.FieldAttempt, attempt,
+			logger.FieldMaxRetries, maxRetries)
 
 		err := cm.tryConnect(ctx)
 		if err == nil {
-			cm.logger.Info("Successfully connected to database")
+			cm.logger.Info(logMsgSuccessfullyConnectedDatabase)
 			return cm.configureConnection()
 		}
 
 		if attempt < maxRetries {
-			cm.logger.Warn("Database connection failed, retrying",
-				"error", err,
-				"retry_delay", retryDelay)
+			cm.logger.Warn(logMsgDatabaseConnectionRetrying,
+				logger.FieldError, err,
+				logger.FieldRetryDelay, retryDelay)
 
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-time.After(retryDelay):
 				// Exponential backoff with jitter
-				retryDelay = time.Duration(float64(retryDelay) * 1.5)
-				if retryDelay > 30*time.Second {
-					retryDelay = 30 * time.Second
+				retryDelay = time.Duration(float64(retryDelay) * connectRetryBackoffFactor)
+				if retryDelay > connectRetryDelayMax {
+					retryDelay = connectRetryDelayMax
 				}
 			}
 		} else {
-			return fmt.Errorf("failed to connect after %d attempts: %w", maxRetries, err)
+			return fmt.Errorf(errFmtConnectAfterAttempts, maxRetries, err)
 		}
 	}
 
@@ -99,16 +157,15 @@ func (cm *ConnectionManager) tryConnect(ctx context.Context) error {
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+		return fmt.Errorf("%s: %w", errWrapOpenDatabase, err)
 	}
 
 	// Test the connection
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, connectPingTimeout)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close() // Best effort close
-		return fmt.Errorf("failed to ping database: %w", err)
+		return joinCloseError(fmt.Errorf("%s: %w", errWrapPingDatabase, err), errWrapCloseDatabase, db.Close())
 	}
 
 	cm.db = db
@@ -123,11 +180,11 @@ func (cm *ConnectionManager) configureConnection() error {
 	cm.db.SetConnMaxLifetime(cm.config.ConnMaxLifetime)
 	cm.db.SetConnMaxIdleTime(cm.config.ConnMaxIdleTime)
 
-	cm.logger.Info("Database connection pool configured",
-		"max_open_conns", cm.config.MaxOpenConns,
-		"max_idle_conns", cm.config.MaxIdleConns,
-		"conn_max_lifetime", cm.config.ConnMaxLifetime,
-		"conn_max_idle_time", cm.config.ConnMaxIdleTime)
+	cm.logger.Info(logMsgDatabaseConnectionPoolConfigured,
+		logger.FieldMaxOpenConns, cm.config.MaxOpenConns,
+		logger.FieldMaxIdleConns, cm.config.MaxIdleConns,
+		logger.FieldConnMaxLifetime, cm.config.ConnMaxLifetime,
+		logger.FieldConnMaxIdleTime, cm.config.ConnMaxIdleTime)
 
 	return nil
 }
@@ -148,21 +205,21 @@ func (cm *ConnectionManager) Close() error {
 // HealthCheck performs a health check on the database connection
 func (cm *ConnectionManager) HealthCheck(ctx context.Context) error {
 	if cm.db == nil {
-		return fmt.Errorf("database connection not established")
+		return errTextDatabaseConnectionNotEstablished
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, healthCheckPingTimeout)
 	defer cancel()
 
 	if err := cm.db.PingContext(ctx); err != nil {
-		return fmt.Errorf("database ping failed: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDatabasePing, err)
 	}
 
 	// Verify we can execute a simple query
 	var result int
 	err := cm.db.QueryRowContext(ctx, "SELECT 1").Scan(&result)
 	if err != nil {
-		return fmt.Errorf("test query failed: %w", err)
+		return fmt.Errorf("%s: %w", errWrapTestQuery, err)
 	}
 
 	return nil
@@ -187,7 +244,7 @@ func (cm *ConnectionManager) WaitForConnection(ctx context.Context, timeout time
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for database connection: %w", ctx.Err())
+			return fmt.Errorf("%s: %w", errWrapTimeoutWaitingForDatabaseConnection, ctx.Err())
 		case <-ticker.C:
 			if err := cm.HealthCheck(ctx); err == nil {
 				return nil
@@ -198,10 +255,10 @@ func (cm *ConnectionManager) WaitForConnection(ctx context.Context, timeout time
 
 // ExecuteWithRetry executes a function with retry logic
 func (cm *ConnectionManager) ExecuteWithRetry(ctx context.Context, fn func() error) error {
-	maxRetries := 3
-	retryDelay := 100 * time.Millisecond
+	maxRetries := executeMaxRetries
+	retryDelay := executeInitialRetryDelay
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	for attempt := initialRetryAttempt; attempt <= maxRetries; attempt++ {
 		err := fn()
 		if err == nil {
 			return nil
@@ -213,19 +270,19 @@ func (cm *ConnectionManager) ExecuteWithRetry(ctx context.Context, fn func() err
 		}
 
 		if attempt < maxRetries {
-			cm.logger.Debug("Retrying database operation",
-				"attempt", attempt,
-				"error", err,
-				"retry_delay", retryDelay)
+			cm.logger.Debug(logMsgRetryingDatabaseOperation,
+				logger.FieldAttempt, attempt,
+				logger.FieldError, err,
+				logger.FieldRetryDelay, retryDelay)
 
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-time.After(retryDelay):
-				retryDelay *= 2
+				retryDelay *= retryBackoffMultiplier
 			}
 		} else {
-			return fmt.Errorf("operation failed after %d retries: %w", maxRetries, err)
+			return fmt.Errorf(errFmtOperationAfterRetries, maxRetries, err)
 		}
 	}
 
@@ -241,15 +298,6 @@ func isRetryableError(err error) bool {
 	// Check for specific PostgreSQL error codes that are retryable.
 	// This is a simplified version; in production check specific error codes.
 	errStr := strings.ToLower(err.Error())
-	retryablePatterns := []string{
-		"connection refused",
-		"connection reset",
-		"broken pipe",
-		"deadlock detected",
-		"could not serialize",
-		"too many connections",
-	}
-
 	for _, pattern := range retryablePatterns {
 		if strings.Contains(errStr, pattern) {
 			return true

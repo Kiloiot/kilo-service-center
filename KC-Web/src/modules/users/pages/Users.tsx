@@ -13,22 +13,26 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  Grid,
   Typography,
 } from "@mui/material";
+import { ConfirmDialog } from "@ui";
 
 import SearchField from "@components/common/SearchField";
+import { StatCard, StatCardRow } from "@components/common/StatCard";
+import { useFeedback } from "@contexts/feedback";
 import { useSession } from "@contexts/SessionContext";
-import { ORG_MEMBER_STATUS, ORG_ROLE, ROUTES } from "@constants/app";
-import { ERR_LOAD_USERS, USERS_PAGE } from "@constants/messages";
+import { useCapabilities } from "@hooks/useCapabilities";
+import { getErrorMessage } from "@utils/error-message";
+import { toggleSortDirection } from "@utils/list-query";
+import type { SortDirection } from "@constants/app";
+import { PAGINATION, ROUTES, SORT_DIRECTION } from "@constants/app";
+import {
+  ERR_LOAD_USERS,
+  MSG_USER_DELETED,
+  USERS_PAGE,
+} from "@constants/messages";
+import { userDetailPath } from "@router/paths";
 import {
   AddIcon,
   AdminIcon,
@@ -36,11 +40,11 @@ import {
   PeopleIcon,
   SuccessIcon,
 } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
 import AddUserDialog from "../components/AddUserDialog";
 import UsersTableBase, { type OrderBy } from "../components/UsersTableBase";
-
-type OrderDirection = "asc" | "desc";
+import { systemUserRole, systemUserStatus } from "../utils/membership-labels";
 
 export interface UsersProps {
   /** When true, reduces padding for use inside tabs */
@@ -55,12 +59,15 @@ const Users: React.FC<UsersProps> = ({
   onAddDialogOpenChange,
 }) => {
   const navigate = useNavigate();
-  const { isAdmin, isHydrated } = useSession();
+  const { isHydrated } = useSession();
+  const { isServerAdmin: isAdmin } = useCapabilities();
 
   // Local UI state
   const [search, setSearch] = useState("");
   const [orderBy, setOrderBy] = useState<OrderBy>("email");
-  const [orderDirection, setOrderDirection] = useState<OrderDirection>("asc");
+  const [orderDirection, setOrderDirection] = useState<SortDirection>(
+    SORT_DIRECTION.ASC,
+  );
   const [localAddDialogOpen, setLocalAddDialogOpen] = useState(false);
   const isAddDialogOpen = addDialogOpen ?? localAddDialogOpen;
   const setAddDialogOpen = onAddDialogOpenChange ?? setLocalAddDialogOpen;
@@ -71,10 +78,15 @@ const Users: React.FC<UsersProps> = ({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // React Query hooks
-  const { data, isLoading, isError, error } = useUsers(50, 0, {
-    enabled: isHydrated && isAdmin,
-  });
+  const { data, isLoading, isError, error } = useUsers(
+    PAGINATION.ADMIN_LIST_PAGE_SIZE,
+    0,
+    {
+      enabled: isHydrated && isAdmin,
+    },
+  );
   const deleteUser = useDeleteUser();
+  const feedback = useFeedback();
 
   // Memoize users array to prevent unnecessary re-renders
   const users = useMemo(() => data?.users ?? [], [data?.users]);
@@ -99,21 +111,17 @@ const Users: React.FC<UsersProps> = ({
         aValue = a.email;
         bValue = b.email;
       } else if (orderBy === "role") {
-        aValue = a.isAdmin ? ORG_ROLE.ADMIN : ORG_ROLE.MEMBER;
-        bValue = b.isAdmin ? ORG_ROLE.ADMIN : ORG_ROLE.MEMBER;
+        aValue = systemUserRole(a);
+        bValue = systemUserRole(b);
       } else if (orderBy === "status") {
-        aValue = a.isActive
-          ? ORG_MEMBER_STATUS.ACTIVE
-          : ORG_MEMBER_STATUS.REMOVED;
-        bValue = b.isActive
-          ? ORG_MEMBER_STATUS.ACTIVE
-          : ORG_MEMBER_STATUS.REMOVED;
+        aValue = systemUserStatus(a);
+        bValue = systemUserStatus(b);
       } else if (orderBy === "createdAt") {
         aValue = a.createdAt;
         bValue = b.createdAt;
       }
 
-      if (orderDirection === "asc") {
+      if (orderDirection === SORT_DIRECTION.ASC) {
         return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
       }
       return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
@@ -122,16 +130,16 @@ const Users: React.FC<UsersProps> = ({
 
   const handleSort = (field: OrderBy) => {
     if (orderBy === field) {
-      setOrderDirection(orderDirection === "asc" ? "desc" : "asc");
+      setOrderDirection(toggleSortDirection(orderDirection));
     } else {
       setOrderBy(field);
-      setOrderDirection("asc");
+      setOrderDirection(SORT_DIRECTION.ASC);
     }
   };
 
   const handleEdit = (user: SystemUserUI | OrganizationUserUI) => {
     const id = "id" in user ? (user as SystemUserUI).id : "";
-    navigate(`${ROUTES.USERS}/${id}`);
+    navigate(userDetailPath(id));
   };
 
   const handleRemove = (user: SystemUserUI | OrganizationUserUI) => {
@@ -148,11 +156,10 @@ const Users: React.FC<UsersProps> = ({
         setDeleteConfirmOpen(false);
         setSelectedUser(null);
         setDeleteError(null);
+        feedback.success(MSG_USER_DELETED);
       },
       onError: (err: unknown) => {
-        setDeleteError(
-          err instanceof Error ? err.message : USERS_PAGE.ERR_DELETE_FAILED,
-        );
+        setDeleteError(getErrorMessage(err, USERS_PAGE.ERR_DELETE_FAILED));
       },
     });
   };
@@ -201,75 +208,32 @@ const Users: React.FC<UsersProps> = ({
         </Box>
       )}
 
-      {/* Statistics Cards */}
-      <Grid container spacing={3} mb={3}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <PeopleIcon
-                  sx={{ fontSize: 40, color: "primary.main", mr: 2 }}
-                />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {USERS_PAGE.TOTAL_USERS}
-                  </Typography>
-                  <Typography variant="h4">{users.length}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <SuccessIcon
-                  sx={{ fontSize: 40, color: "success.main", mr: 2 }}
-                />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {USERS_PAGE.ACTIVE_USERS}
-                  </Typography>
-                  <Typography variant="h4">{activeCount}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <ErrorIcon sx={{ fontSize: 40, color: "error.main", mr: 2 }} />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {USERS_PAGE.INACTIVE_USERS}
-                  </Typography>
-                  <Typography variant="h4">{inactiveCount}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <AdminIcon
-                  sx={{ fontSize: 40, color: "warning.main", mr: 2 }}
-                />
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    {USERS_PAGE.ADMIN_USERS}
-                  </Typography>
-                  <Typography variant="h4">{adminCount}</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <StatCardRow>
+        <StatCard
+          label={USERS_PAGE.TOTAL_USERS}
+          value={users.length}
+          icon={<PeopleIcon />}
+          color="primary"
+        />
+        <StatCard
+          label={USERS_PAGE.ACTIVE_USERS}
+          value={activeCount}
+          icon={<SuccessIcon />}
+          color="success"
+        />
+        <StatCard
+          label={USERS_PAGE.INACTIVE_USERS}
+          value={inactiveCount}
+          icon={<ErrorIcon />}
+          color="error"
+        />
+        <StatCard
+          label={USERS_PAGE.ADMIN_USERS}
+          value={adminCount}
+          icon={<AdminIcon />}
+          color="warning"
+        />
+      </StatCardRow>
 
       {/* Search */}
       <Box display="flex" gap={2} mb={3}>
@@ -286,7 +250,7 @@ const Users: React.FC<UsersProps> = ({
           display="flex"
           justifyContent="center"
           alignItems="center"
-          minHeight="200px"
+          minHeight={componentSpacing.stateView.listMinHeight}
         >
           <CircularProgress />
         </Box>
@@ -295,7 +259,7 @@ const Users: React.FC<UsersProps> = ({
       {/* Error Alert */}
       {isError && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          {error instanceof Error ? error.message : ERR_LOAD_USERS}
+          {getErrorMessage(error, ERR_LOAD_USERS)}
         </Alert>
       )}
 
@@ -318,38 +282,23 @@ const Users: React.FC<UsersProps> = ({
         onClose={() => setAddDialogOpen(false)}
       />
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteConfirmOpen} onClose={handleDeleteDialogClose}>
-        <DialogTitle>{USERS_PAGE.CONFIRM_DELETE_TITLE}</DialogTitle>
-        <DialogContent>
-          {deleteError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {deleteError}
-            </Alert>
-          )}
-          <DialogContentText>
-            {USERS_PAGE.CONFIRM_DELETE_MESSAGE}
-          </DialogContentText>
-          {selectedUser && (
-            <Typography variant="body2" sx={{ mt: 1, fontWeight: "medium" }}>
-              {selectedUser.email}
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleDeleteDialogClose}>
-            {USERS_PAGE.ACTION_CANCEL}
-          </Button>
-          <Button
-            onClick={confirmDelete}
-            color="error"
-            variant="contained"
-            disabled={deleteUser.isPending}
-          >
-            {USERS_PAGE.ACTION_DELETE}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteDialogClose}
+        onConfirm={confirmDelete}
+        pending={deleteUser.isPending}
+        error={deleteError}
+        title={USERS_PAGE.CONFIRM_DELETE_TITLE}
+        message={USERS_PAGE.CONFIRM_DELETE_MESSAGE}
+        confirmLabel={USERS_PAGE.ACTION_DELETE}
+        cancelLabel={USERS_PAGE.ACTION_CANCEL}
+      >
+        {selectedUser && (
+          <Typography variant="body2" sx={{ mt: 1, fontWeight: "medium" }}>
+            {selectedUser.email}
+          </Typography>
+        )}
+      </ConfirmDialog>
     </Box>
   );
 };

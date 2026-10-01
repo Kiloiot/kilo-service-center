@@ -1,5 +1,13 @@
 package mqtt
 
+import (
+	"errors"
+	"fmt"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+)
+
 // Error message constants for KC-MQTT operations
 //
 // This file centralizes all MQTT client error messages to ensure consistency,
@@ -15,10 +23,6 @@ package mqtt
 //   - Err* prefix for error messages that wrap underlying errors
 //   - LogMQTT* prefix for log messages (following package log convention)
 //   - Use present tense for error states ("failed", "invalid")
-//
-// Deduplication:
-//   - 9 unique messages extracted from 16 hardcoded occurrences
-//   - Shared messages reused across TLS setup, connection, publish, subscribe
 const (
 	// ========================================================================
 	// TLS & Certificate Errors (3 constants)
@@ -27,6 +31,10 @@ const (
 	ErrReadCACertFailed     = "failed to read CA certificate"
 	ErrParseCACertFailed    = "failed to parse CA certificate"
 	ErrLoadClientCertFailed = "failed to load client certificate"
+
+	// ErrTLSVerifyDisabledInProduction is returned when insecure_skip_verify
+	// is requested while KILOCENTER_ENV is production.
+	ErrTLSVerifyDisabledInProduction = "TLS certificate verification cannot be disabled in production"
 
 	// ========================================================================
 	// MQTT Operation Errors (4 constants)
@@ -78,7 +86,7 @@ const (
 	ErrDeviceEventEmptyEUIHex = "device event publish requires non-empty epEUIHex"
 
 	// ========================================================================
-	// Command Handler Errors (7 constants)
+	// Command Handler Errors
 	// ========================================================================
 
 	// ErrCommandInvalidTopic is returned when command topic has wrong segment count
@@ -90,17 +98,12 @@ const (
 	// ErrCommandInvalidEUIHex is returned when endpoint EUI hex in command topic is invalid
 	ErrCommandInvalidEUIHex = "invalid endpoint EUI hex in command topic"
 
-	// ErrCommandPayloadEmpty is returned when decoded command payload is empty
-	ErrCommandPayloadEmpty = "command payload is empty"
+	// LogCommandDownlinkRejected is logged when a command/down message is refused; the
+	// publisher learns the refusal on event/downlink_rejected
+	LogCommandDownlinkRejected = "MQTT command/down rejected"
 
-	// ErrCommandPayloadTooLarge is returned when decoded command payload exceeds MaxPayloadSize
-	ErrCommandPayloadTooLarge = "command payload exceeds maximum size"
-
-	// ErrCommandOrgResolveFailed is returned when organization lookup fails for command
-	ErrCommandOrgResolveFailed = "failed to resolve organization for command"
-
-	// ErrCommandEnqueueFailed is returned when downlink enqueue fails for command
-	ErrCommandEnqueueFailed = "failed to enqueue downlink from command"
+	// LogCommandEventPublishFailed is logged when a downlink_queued or downlink_rejected event cannot be published
+	LogCommandEventPublishFailed = "failed to publish MQTT command/down outcome event"
 
 	// ========================================================================
 	// Command Handler Lifecycle Constants (7 constants)
@@ -118,19 +121,122 @@ const (
 	// ErrCommandUnsubscribeFailed is logged when command/down topic unsubscription fails
 	ErrCommandUnsubscribeFailed = "failed to unsubscribe from command/down topic"
 
-	// ErrCommandPayloadDecodeFailed is logged when JSON unmarshal of command payload fails
-	ErrCommandPayloadDecodeFailed = "failed to decode command payload JSON"
-
-	// ErrCommandBase64DecodeFailed is logged when base64 decoding of command data fails
-	ErrCommandBase64DecodeFailed = "failed to decode base64 command data"
-
 	// LogCommandDownlinkEnqueued is logged when a command/down message is successfully enqueued
 	LogCommandDownlinkEnqueued = "MQTT command/down enqueued"
 
+	// LogCommandAlreadyQueued is logged when a command/down repeats the ref of
+	// a downlink already queued; the repeat queues and publishes nothing
+	LogCommandAlreadyQueued = "MQTT command/down repeats a queued ref; nothing is queued or published"
+
+	// LogCommandRefLookupFailed is logged when the ref of a command/down cannot
+	// be looked up; the command is not answered rather than possibly refused
+	// after an earlier acceptance
+	LogCommandRefLookupFailed = "MQTT command/down ref could not be looked up; nothing is queued or published"
+
+	// LogCommandOrgLookupFailed is logged when the organization of a command/down
+	// with a ref cannot be looked up; the command is not answered rather than
+	// possibly refused after an earlier acceptance
+	LogCommandOrgLookupFailed = "MQTT command/down organization could not be looked up; nothing is queued or published"
+
 	// ========================================================================
-	// Log Messages (2 constants)
+	// Log Messages
 	// ========================================================================
+
+	// LogMQTTConnecting is logged when a broker connection attempt starts
+	LogMQTTConnecting = "Connecting to MQTT broker"
+
+	// LogMQTTConnected is logged when the broker connection succeeds
+	LogMQTTConnected = "Successfully connected to MQTT broker"
+
+	// LogMQTTDisconnecting is logged when the client starts a clean disconnect
+	LogMQTTDisconnecting = "Disconnecting from MQTT broker"
+
+	// LogMQTTMessagePublished is logged after a successful publish
+	LogMQTTMessagePublished = "Published message"
+
+	// LogMQTTSubscribed is logged after a successful topic subscription
+	LogMQTTSubscribed = "Subscribed to topic"
+
+	// LogMQTTUnsubscribed is logged after a successful topic unsubscription
+	LogMQTTUnsubscribed = "Unsubscribed from topics"
+
+	// LogMQTTClientConnected is logged from the Paho on-connect callback
+	LogMQTTClientConnected = "MQTT client connected"
+
+	// LogMQTTResubscribed is logged when a topic is restored after reconnect
+	LogMQTTResubscribed = "Resubscribed to topic"
+
+	// LogMQTTReconnecting is logged from the Paho reconnecting callback
+	LogMQTTReconnecting = "MQTT client reconnecting"
 
 	LogMQTTResubscribeFailed = "Failed to resubscribe"
 	LogMQTTConnectionLost    = "MQTT connection lost"
 )
+
+// Downlink command refusals published on event/downlink_rejected: the code is
+// the stable reason a client matches on, the message explains it.
+const (
+	RejectCodeEmptyPayload       = "mqtt.command.empty_payload"
+	RejectMsgEmptyPayload        = "the command/down message is empty"
+	RejectCodeMessageTooLarge    = "mqtt.command.message_too_large"
+	RejectMsgMessageTooLargeFmt  = "the command/down message exceeds %d bytes"
+	RejectCodeInvalidJSON        = "mqtt.command.invalid_json"
+	RejectMsgInvalidJSON         = "the command/down message is not a JSON object"
+	RejectCodeInvalidField       = "mqtt.command.invalid_field"
+	RejectMsgInvalidFieldFmt     = "field %s has a value of the wrong type or range"
+	RejectCodeMissingData        = "mqtt.command.missing_data"
+	RejectMsgMissingData         = "the command needs data or entries"
+	RejectCodeDataWithEntries    = "mqtt.command.data_with_entries"
+	RejectMsgDataWithEntries     = "data and entries are mutually exclusive"
+	RejectCodeEmptyEntries       = "mqtt.command.empty_entries"
+	RejectMsgEmptyEntries        = "entries must hold at least one packet counter"
+	RejectCodeMissingPacketCnt   = "mqtt.command.missing_packet_cnt"
+	RejectMsgMissingPacketCnt    = "every entry needs a packetCnt"
+	RejectCodeDuplicatePacketCnt = "mqtt.command.duplicate_packet_cnt"
+	RejectMsgDuplicatePacketCnt  = "entries repeat a packetCnt"
+	RejectCodeInvalidBase64      = "mqtt.command.invalid_base64"
+	RejectMsgInvalidBase64       = "data is not valid base64"
+	RejectCodePayloadTooLarge    = "mqtt.command.payload_too_large"
+	RejectMsgPayloadTooLargeFmt  = "decoded data exceeds the %d-byte radio payload maximum"
+	RejectCodeOrgUnresolved      = "mqtt.command.org_unresolved"
+	RejectMsgOrgUnresolved       = "the organization in the topic could not be resolved"
+	RejectCodeEnqueueFailed      = "mqtt.command.enqueue_failed"
+	RejectMsgEnqueueFailed       = "the service center could not queue the downlink"
+	RejectCodeRefTooLong         = "mqtt.command.ref_too_long"
+	RejectMsgRefTooLongFmt       = "ref exceeds %d bytes"
+	RejectCodeCommandExpired     = "mqtt.command.expired"
+	RejectMsgCommandExpired      = "expiresAt passed before the downlink could be queued"
+	// CommandFieldExpiresAt names the command's deadline in an invalid_field refusal.
+	CommandFieldExpiresAt = "expiresAt"
+	// CommandFieldRef names the command's ref, whose own decode failure leaves no ref to recognize.
+	CommandFieldRef       = "ref"
+	errFmtDownlinkRefusal = "%s: %s"
+	// errFmtInvalidExpiresAt names the unreadable deadline, cut to the length of an RFC 3339 time, by its log field.
+	errFmtInvalidExpiresAt = "%w: %s=%s"
+)
+
+// Refusals whose code and message never vary.
+var (
+	refusalEmptyPayload       = &DownlinkRefusal{Code: RejectCodeEmptyPayload, Message: RejectMsgEmptyPayload}
+	refusalInvalidJSON        = &DownlinkRefusal{Code: RejectCodeInvalidJSON, Message: RejectMsgInvalidJSON}
+	refusalMissingData        = &DownlinkRefusal{Code: RejectCodeMissingData, Message: RejectMsgMissingData}
+	refusalDataWithEntries    = &DownlinkRefusal{Code: RejectCodeDataWithEntries, Message: RejectMsgDataWithEntries}
+	refusalEmptyEntries       = &DownlinkRefusal{Code: RejectCodeEmptyEntries, Message: RejectMsgEmptyEntries}
+	refusalMissingPacketCnt   = &DownlinkRefusal{Code: RejectCodeMissingPacketCnt, Message: RejectMsgMissingPacketCnt}
+	refusalDuplicatePacketCnt = &DownlinkRefusal{Code: RejectCodeDuplicatePacketCnt, Message: RejectMsgDuplicatePacketCnt}
+	refusalInvalidBase64      = &DownlinkRefusal{Code: RejectCodeInvalidBase64, Message: RejectMsgInvalidBase64}
+	refusalPayloadTooLarge    = &DownlinkRefusal{Code: RejectCodePayloadTooLarge, Message: fmt.Sprintf(RejectMsgPayloadTooLargeFmt, mioty.MaxDLUserDataBytes)}
+	refusalOrgUnresolved      = &DownlinkRefusal{Code: RejectCodeOrgUnresolved, Message: RejectMsgOrgUnresolved}
+	refusalEnqueueFailed      = &DownlinkRefusal{Code: RejectCodeEnqueueFailed, Message: RejectMsgEnqueueFailed}
+	refusalRefTooLong         = &DownlinkRefusal{Code: RejectCodeRefTooLong, Message: fmt.Sprintf(RejectMsgRefTooLongFmt, storage.MaxDownlinkRefBytes)}
+	refusalInvalidExpiresAt   = &DownlinkRefusal{Code: RejectCodeInvalidField, Message: fmt.Sprintf(RejectMsgInvalidFieldFmt, CommandFieldExpiresAt)}
+)
+
+// RefusalCommandExpired refuses a command whose expiresAt passed before its
+// downlink could be queued.
+var RefusalCommandExpired = &DownlinkRefusal{Code: RejectCodeCommandExpired, Message: RejectMsgCommandExpired}
+
+// ErrCommandAlreadyQueued reports a command whose ref names a downlink the
+// organization already queued for the endpoint: the command was accepted
+// before, so the repeat is not answered again.
+var ErrCommandAlreadyQueued = errors.New("downlink command already queued under its ref")

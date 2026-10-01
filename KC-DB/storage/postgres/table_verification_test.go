@@ -10,6 +10,9 @@ import (
 )
 
 // TestTableByTableVerification performs comprehensive table-by-table verification
+// tableVerificationReportFile is where verification issues are written for evidence.
+const tableVerificationReportFile = "../../../compliance/evidence/table-verification-issues.txt"
+
 func TestTableByTableVerification(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping table verification in short mode")
@@ -34,13 +37,12 @@ func TestTableByTableVerification(t *testing.T) {
 			"started_at", "last_ping_at", "ended_at",
 			"can_resume", "encoding", "protocol_version",
 			"organization_id", "created_at", "updated_at"},
-		// TODO: Add assertions for column types, constraints, and indexes (19 columns total)
 		"messages": {"id", "tenant_id", "ep_eui", "bs_eui", "rx_time", "rssi", "snr", "eq_snr",
 			"user_data", "packet_cnt", "created_at"},
 		"downlink_queue": {"id", "tenant_id", "ep_eui", "payload", "priority",
-			"valid_until", "earliest_at", "status", "attempts", "max_attempts", "transmitted_at",
+			"earliest_at", "status", "attempts", "max_attempts", "transmitted_at",
 			"acknowledged_at", "bs_eui", "failure_reason", "created_at", "updated_at",
-			"que_id", "cnt_depend", "packet_cnt_array", "result", "tx_time", "tx_bs_eui"},
+			"que_id", "cnt_depend", "result", "tx_time", "tx_bs_eui"},
 		"system_events": {"id", "tenant_id", "event_type", "event_category", "title", "description",
 			"severity", "source_type", "source_id", "data", "occurred_at", "recorded_at"},
 	}
@@ -113,7 +115,7 @@ func TestTableByTableVerification(t *testing.T) {
 
 	// Write summary report
 	if len(allIssues) > 0 {
-		reportFile := "../../../compliance/evidence/table-verification-issues.txt"
+		reportFile := tableVerificationReportFile
 		content := "Table Verification Issues\n"
 		content += fmt.Sprintf("Generated: %s\n\n", "2025-10-30")
 		content += strings.Join(allIssues, "\n")

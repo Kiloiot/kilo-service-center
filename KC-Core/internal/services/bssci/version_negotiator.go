@@ -30,10 +30,10 @@ type versionNegotiator struct {
 // of duplicates; it is parsed, normalized, and sorted once at construction.
 func NewVersionNegotiator(supported []string, log logger.Logger) (bssci.VersionNegotiator, error) {
 	if log == nil {
-		return nil, fmt.Errorf("version negotiator requires a logger")
+		return nil, errNegotiatorNilLogger
 	}
 	if len(supported) == 0 {
-		return nil, fmt.Errorf("version negotiator requires a non-empty supported version set")
+		return nil, errNegotiatorEmptySupportedSet
 	}
 
 	parsed := make([]supportedVersion, 0, len(supported))
@@ -41,11 +41,11 @@ func NewVersionNegotiator(supported []string, log logger.Logger) (bssci.VersionN
 	for _, raw := range supported {
 		major, minor, patch, cerr := bssci.ParseVersion(raw)
 		if cerr != nil {
-			return nil, fmt.Errorf("malformed supported version %q: %s", raw, cerr.Token)
+			return nil, fmt.Errorf(errFmtMalformedSupportedVersion, raw, cerr.Token)
 		}
 		canonical := fmt.Sprintf("%d.%d.%d", major, minor, patch)
 		if seen[canonical] {
-			return nil, fmt.Errorf("duplicate supported version %q", canonical)
+			return nil, fmt.Errorf(errFmtDuplicateSupportedVersion, canonical)
 		}
 		seen[canonical] = true
 		parsed = append(parsed, supportedVersion{major: major, minor: minor, patch: patch, canonical: canonical})
@@ -89,15 +89,15 @@ func (n *versionNegotiator) Negotiate(ctx context.Context, requested string) (st
 		}
 		if v.minor < reqMinor {
 			n.logger.InfoContext(ctx, bssci.LogBSSCIMinorVersionNegotiatedDown,
-				"requestedVersion", requested,
-				"selectedVersion", v.canonical)
+				logger.FieldRequestedVersion, requested,
+				logger.FieldSelectedVersion, v.canonical)
 		}
 		return v.canonical, nil
 	}
 
 	if !majorMatched {
 		n.logger.WarnContext(ctx, bssci.LogBSSCIVersionIncompatible,
-			"requestedVersion", requested)
+			logger.FieldRequestedVersion, requested)
 		return "", bssci.NewCatalogError(bssci.ErrUnsupportedMajorVersion, bssci.POSIX_EPROTO)
 	}
 
@@ -105,6 +105,6 @@ func (n *versionNegotiator) Negotiate(ctx context.Context, requested string) (st
 	// service center cannot offer a version the base station did not request
 	// (BSSCI rev1 §4.2)
 	n.logger.WarnContext(ctx, bssci.LogBSSCIMinorVersionMismatch,
-		"requestedVersion", requested)
+		logger.FieldRequestedVersion, requested)
 	return "", bssci.NewCatalogError(bssci.ErrUnsupportedMinorVersion, bssci.POSIX_EPROTO)
 }

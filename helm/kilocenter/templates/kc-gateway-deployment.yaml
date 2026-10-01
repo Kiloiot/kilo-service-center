@@ -52,6 +52,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "kilocenter.fullname" . }}
                   key: auth-hmac-secret
+            - name: KILOCENTER_INTERNAL_AUTH_PEER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: internal-peer-secret
           startupProbe:
             httpGet:
               path: /health

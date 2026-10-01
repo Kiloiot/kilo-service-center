@@ -6,198 +6,236 @@ import (
 	"fmt"
 )
 
-// Validate validates the configuration.
+// Validate validates the configuration; each rule group reports the first
+// violation it finds, in a fixed order.
 func (c *Config) Validate() error {
-	// Validate general config
+	for _, validate := range []func() error{
+		c.validateService,
+		c.validateInternalTrust,
+		c.validateLocalAuth,
+		c.validateExternalAuth,
+		c.validateCommunityEdition,
+		c.validateGatewayRateLimit,
+		c.validateCertificates,
+	} {
+		if err := validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateService checks the server identity, storage and gRPC listener.
+func (c *Config) validateService() error {
 	if c.General.ServerName == "" {
 		return errors.New(ErrServerNameRequired)
 	}
-
-	// Validate storage config
+	if c.General.TenantID <= 0 {
+		return errors.New(ErrPlatformTenantIDRequired)
+	}
 	if c.Storage.Type != StorageTypePostgres {
 		return fmt.Errorf(ErrUnsupportedStorageTypeFmt, c.Storage.Type)
 	}
-
 	if c.Storage.Host == "" {
 		return errors.New(ErrStorageHostRequired)
 	}
-
-	if c.Storage.Port <= 0 || c.Storage.Port > 65535 {
+	if c.Storage.Port <= 0 || c.Storage.Port > MaxPortNumber {
 		return fmt.Errorf(ErrInvalidStoragePortFmt, c.Storage.Port)
 	}
-
-	// Validate gRPC config if enabled
-	if c.GRPC.Enabled {
-		if c.GRPC.Port <= 0 || c.GRPC.Port > 65535 {
-			return fmt.Errorf(ErrInvalidGRPCPortFmt, c.GRPC.Port)
-		}
+	if c.GRPC.Enabled && (c.GRPC.Port <= 0 || c.GRPC.Port > MaxPortNumber) {
+		return fmt.Errorf(ErrInvalidGRPCPortFmt, c.GRPC.Port)
 	}
-
-	// Internal trust mode safety checks
 	if c.GRPC.InternalTrustEnabled && c.GRPC.Web.Enabled {
 		return errors.New(ErrInternalTrustWithGRPCWeb)
 	}
+	return nil
+}
 
-	// Auth configuration validation (SIX hard-fail rules)
-
-	// Rule 1: local_login_enabled requires auth.enabled
-	if c.Auth.LocalLoginEnabled && !c.Auth.Enabled {
+// validateLocalAuth enforces the local login, registration and refresh token
+// rules.
+func (c *Config) validateLocalAuth() error {
+	localLogin := c.Auth.Enabled && c.Auth.LocalLoginEnabled
+	switch {
+	case c.Auth.LocalLoginEnabled && !c.Auth.Enabled:
 		return errors.New(ErrLocalLoginRequiresAuth)
-	}
-
-	// Rule 2: hmac_secret required when local login enabled
-	if c.Auth.Enabled && c.Auth.LocalLoginEnabled && c.Auth.HMACSecret == "" {
+	case localLogin && c.Auth.HMACSecret == "":
 		return errors.New(ErrLocalLoginHMACSecretRequired)
-	}
-
-	// Rule 3: hmac_secret minimum length (use AuthHMACSecretMinLength constant)
-	if c.Auth.Enabled && c.Auth.LocalLoginEnabled && len(c.Auth.HMACSecret) < AuthHMACSecretMinLength {
+	case localLogin && len(c.Auth.HMACSecret) < AuthHMACSecretMinLength:
 		return fmt.Errorf(ErrLocalLoginHMACSecretTooShortFmt, AuthHMACSecretMinLength, len(c.Auth.HMACSecret))
-	}
-
-	// Rule 4: local_login_enabled and jwks_endpoint are mutually exclusive
-	if c.Auth.Enabled && c.Auth.LocalLoginEnabled && c.Auth.JWKSEndpoint != "" {
+	case localLogin && c.Auth.JWKSEndpoint != "":
 		return errors.New(ErrLocalLoginJWKSMutuallyExclusive)
-	}
-
-	// Rule: registration_enabled requires local_login_enabled
-	if c.Auth.RegistrationEnabled && !c.Auth.LocalLoginEnabled {
+	case c.Auth.RegistrationEnabled && !c.Auth.LocalLoginEnabled:
 		return errors.New(ErrRegistrationRequiresLocalLogin)
-	}
-
-	// Rule 5: refresh_token_enabled requires local_login_enabled
-	if c.Auth.RefreshTokenEnabled && !c.Auth.LocalLoginEnabled {
+	case c.Auth.RefreshTokenEnabled && !c.Auth.LocalLoginEnabled:
 		return errors.New(ErrRefreshTokenRequiresLocalLogin)
-	}
-
-	// Rule 6: refresh_token_ttl must exceed access_token_ttl when refresh enabled
-	if c.Auth.RefreshTokenEnabled && c.Auth.RefreshTokenTTL <= c.Auth.AccessTokenTTL {
+	case c.Auth.RefreshTokenEnabled && c.Auth.RefreshTokenTTL <= c.Auth.AccessTokenTTL:
 		return errors.New(ErrRefreshTokenTTLInvalid)
 	}
+	return nil
+}
 
-	// =========================================================================
-	// External auth validation rules
-	// =========================================================================
-
-	// Check if any external auth is enabled
-	externalAuthEnabled := c.Auth.OIDC.Enabled || c.Auth.OAuth2.Enabled
-
-	// Rule 7: External auth requires auth.enabled
-	if externalAuthEnabled && !c.Auth.Enabled {
+// validateExternalAuth enforces the OIDC and OAuth2 rules and the Redis store
+// external auth needs. Local JWTs are still issued after the exchange, so the
+// HMAC secret is required too.
+func (c *Config) validateExternalAuth() error {
+	if !c.Auth.OIDC.Enabled && !c.Auth.OAuth2.Enabled {
+		return nil
+	}
+	switch {
+	case !c.Auth.Enabled:
 		return errors.New(MsgAuthMustBeEnabled)
-	}
-
-	// Rule 8: External auth requires HMAC secret (we still issue local JWTs after exchange)
-	if externalAuthEnabled && c.Auth.HMACSecret == "" {
+	case c.Auth.HMACSecret == "":
 		return errors.New(MsgHMACSecretRequired)
-	}
-
-	// Rule 9: HMAC secret minimum length for external auth
-	if externalAuthEnabled && len(c.Auth.HMACSecret) < AuthHMACSecretMinLength {
+	case len(c.Auth.HMACSecret) < AuthHMACSecretMinLength:
 		return fmt.Errorf(ErrLocalLoginHMACSecretTooShortFmt, AuthHMACSecretMinLength, len(c.Auth.HMACSecret))
 	}
-
-	// OIDC validation (when OIDC enabled)
-	if c.Auth.OIDC.Enabled {
-		if c.Auth.OIDC.ProviderURL == "" {
-			return errors.New(MsgOIDCProviderURLRequired)
-		}
-		if c.Auth.OIDC.ClientID == "" {
-			return errors.New(MsgOIDCClientIDRequired)
-		}
-		if c.Auth.OIDC.ClientSecret == "" {
-			return errors.New(MsgOIDCClientSecretRequired)
-		}
-		if c.Auth.OIDC.RedirectURL == "" {
-			return errors.New(MsgOIDCRedirectURLRequired)
-		}
-		if c.Auth.OIDC.StateTTL <= 0 {
-			return errors.New(MsgStateTTLPositive)
-		}
-		if c.Auth.OIDC.NonceTTL <= 0 {
-			return errors.New(MsgNonceTTLPositive)
-		}
-		// registration_callback_url required when registration_enabled
-		if c.Auth.OIDC.RegistrationEnabled && c.Auth.OIDC.RegistrationCallbackURL == "" {
-			return errors.New(MsgOIDCRegCallbackURLRequired)
-		}
+	if err := c.validateOIDC(); err != nil {
+		return err
 	}
-
-	// OAuth2 validation (when OAuth2 enabled)
-	if c.Auth.OAuth2.Enabled {
-		if c.Auth.OAuth2.AuthorizeURL == "" {
-			return errors.New(MsgOAuth2AuthorizeURLRequired)
-		}
-		if c.Auth.OAuth2.TokenURL == "" {
-			return errors.New(MsgOAuth2TokenURLRequired)
-		}
-		if c.Auth.OAuth2.UserInfoURL == "" {
-			return errors.New(MsgOAuth2UserInfoURLRequired)
-		}
-		if c.Auth.OAuth2.ClientID == "" {
-			return errors.New(MsgOAuth2ClientIDRequired)
-		}
-		// client_secret required unless public_client=true (PKCE-only flow)
-		if !c.Auth.OAuth2.PublicClient && c.Auth.OAuth2.ClientSecret == "" {
-			return errors.New(MsgOAuth2ClientSecretRequired)
-		}
-		if c.Auth.OAuth2.RedirectURL == "" {
-			return errors.New(MsgOAuth2RedirectURLRequired)
-		}
-		if c.Auth.OAuth2.StateTTL <= 0 {
-			return errors.New(MsgStateTTLPositive)
-		}
-		// registration_callback_url required when registration_enabled
-		if c.Auth.OAuth2.RegistrationEnabled && c.Auth.OAuth2.RegistrationCallbackURL == "" {
-			return errors.New(MsgOAuth2RegCallbackURLRequired)
-		}
+	if err := c.validateOAuth2(); err != nil {
+		return err
 	}
-
-	// Redis validation (required when any external auth enabled)
-	if externalAuthEnabled {
-		if c.Redis.Host == "" {
-			return errors.New(MsgRedisRequiredForExternal)
-		}
-		if c.Redis.Port <= 0 || c.Redis.Port > 65535 {
-			return errors.New(MsgRedisPortInvalid)
-		}
-		// ui_callback_url required for external auth redirects
-		if c.Auth.UICallbackURL == "" {
-			return errors.New(MsgUICallbackURLRequired)
-		}
+	switch {
+	case c.Redis.Host == "":
+		return errors.New(MsgRedisRequiredForExternal)
+	case c.Redis.Port <= 0 || c.Redis.Port > MaxPortNumber:
+		return errors.New(MsgRedisPortInvalid)
 	}
+	return nil
+}
 
-	// CE edition incompatibility rules
-	if IsCommunityEdition(c.General.Edition) {
-		if c.General.OrgEnforcementEnabled {
-			return errors.New(ErrCEOrgEnforcementIncompatible)
-		}
-		if c.Protocol.StrictOrgResolution {
-			return errors.New(ErrCEStrictOrgResolutionIncompatible)
-		}
-		if c.Protocol.SCACICertTenantMapping {
-			return errors.New(ErrCECertTenantMappingIncompatible)
-		}
-		if c.Auth.OIDC.ExternalOrgClaim != "" {
-			return errors.New(ErrCEExternalOrgClaimIncompatible)
-		}
-		if c.General.TenantID <= 0 {
-			return errors.New(ErrCETenantIDRequired)
-		}
+func (c *Config) validateOIDC() error {
+	oidc := c.Auth.OIDC
+	if !oidc.Enabled {
+		return nil
 	}
-
-	// Gateway rate limit validation
-	if c.Gateway.RateLimit.Enabled {
-		if c.Gateway.RateLimit.RequestsPerMin <= 0 {
-			return errors.New(ErrRateLimitRequestsPerMinPositive)
-		}
-		if c.Gateway.RateLimit.Burst <= 0 {
-			return errors.New(ErrRateLimitBurstPositive)
-		}
-		if c.Gateway.RateLimit.CleanupInterval <= 0 {
-			return errors.New(ErrRateLimitCleanupIntervalPositive)
-		}
+	switch {
+	case oidc.ProviderURL == "":
+		return errors.New(MsgOIDCProviderURLRequired)
+	case oidc.ClientID == "":
+		return errors.New(MsgOIDCClientIDRequired)
+	case oidc.ClientSecret == "":
+		return errors.New(MsgOIDCClientSecretRequired)
+	case oidc.RedirectURL == "":
+		return errors.New(MsgOIDCRedirectURLRequired)
+	case oidc.StateTTL <= 0:
+		return errors.New(MsgStateTTLPositive)
+	case oidc.NonceTTL <= 0:
+		return errors.New(MsgNonceTTLPositive)
+	case oidc.RegistrationEnabled && oidc.RegistrationCallbackURL == "":
+		return errors.New(MsgOIDCRegCallbackURLRequired)
 	}
+	return nil
+}
 
+// validateOAuth2 requires a client secret unless the client is public
+// (PKCE-only flow).
+func (c *Config) validateOAuth2() error {
+	oauth := c.Auth.OAuth2
+	if !oauth.Enabled {
+		return nil
+	}
+	switch {
+	case oauth.AuthorizeURL == "":
+		return errors.New(MsgOAuth2AuthorizeURLRequired)
+	case oauth.TokenURL == "":
+		return errors.New(MsgOAuth2TokenURLRequired)
+	case oauth.UserInfoURL == "":
+		return errors.New(MsgOAuth2UserInfoURLRequired)
+	case oauth.ClientID == "":
+		return errors.New(MsgOAuth2ClientIDRequired)
+	case !oauth.PublicClient && oauth.ClientSecret == "":
+		return errors.New(MsgOAuth2ClientSecretRequired)
+	case oauth.RedirectURL == "":
+		return errors.New(MsgOAuth2RedirectURLRequired)
+	case oauth.StateTTL <= 0:
+		return errors.New(MsgStateTTLPositive)
+	case oauth.RegistrationEnabled && oauth.RegistrationCallbackURL == "":
+		return errors.New(MsgOAuth2RegCallbackURLRequired)
+	}
+	return nil
+}
+
+func (c *Config) validateGatewayRateLimit() error {
+	limit := c.Gateway.RateLimit
+	if !limit.Enabled {
+		return nil
+	}
+	switch {
+	case limit.RequestsPerMin <= 0:
+		return errors.New(ErrRateLimitRequestsPerMinPositive)
+	case limit.Burst <= 0:
+		return errors.New(ErrRateLimitBurstPositive)
+	case limit.CleanupInterval <= 0:
+		return errors.New(ErrRateLimitCleanupIntervalPositive)
+	}
+	return nil
+}
+
+// validateCertificates requires every certificate service setting; the
+// loader's defaults are its only fallback.
+func (c *Config) validateCertificates() error {
+	certs := c.Certificates
+	switch {
+	case certs.CertGenPath == "":
+		return errors.New(ErrCertificatesCertGenPathRequired)
+	case certs.CertsDir == "":
+		return errors.New(ErrCertificatesCertsDirRequired)
+	case certs.TempDir == "":
+		return errors.New(ErrCertificatesTempDirRequired)
+	case certs.ServerValidityDays <= 0:
+		return errors.New(ErrCertificatesServerValidityDaysPositive)
+	case certs.CleanupIntervalMin <= 0:
+		return errors.New(ErrCertificatesCleanupIntervalPositive)
+	}
+	return nil
+}
+
+// validateCommunityEdition refuses the organization settings the community
+// edition, which serves one default tenant, cannot run with.
+func (c *Config) validateCommunityEdition() error {
+	if c.General.Edition != EditionCommunity {
+		return nil
+	}
+	if c.General.OrgEnforcementEnabled {
+		return errors.New(ErrCEOrgEnforcementIncompatible)
+	}
+	if c.Protocol.StrictOrgResolution {
+		return errors.New(ErrCEStrictOrgResolutionIncompatible)
+	}
+	if c.Protocol.SCACICertTenantMapping {
+		return errors.New(ErrCECertTenantMappingIncompatible)
+	}
+	if c.Auth.OIDC.ExternalOrgClaim != "" {
+		return errors.New(ErrCEExternalOrgClaimIncompatible)
+	}
+	return nil
+}
+
+// validateEnterpriseOrgEnforcement refuses an ECE configuration without
+// organization enforcement. KC-Core and KC-Gateway act on the setting, so
+// only their validation applies it; KC-Identity never reads it.
+func (c *Config) validateEnterpriseOrgEnforcement() error {
+	if c.General.Edition == EditionECE && !c.General.OrgEnforcementEnabled {
+		return errors.New(ErrECEOrgEnforcementRequired)
+	}
+	return nil
+}
+
+// validateSCACIListener refuses a SCACI listener that cannot tell the
+// organizations' Application Centers apart (SCACI §1): ECE resolves every
+// peer certificate strictly, and strict resolution needs the certificate's
+// tenant mapping. Only KC-Core runs the listener, so only its validation
+// applies it.
+func (c *Config) validateSCACIListener() error {
+	if !c.Protocol.SCACIEnabled {
+		return nil
+	}
+	if c.General.Edition == EditionECE && !c.Protocol.StrictOrgResolution {
+		return errors.New(ErrECEStrictOrgResolutionRequired)
+	}
+	if c.Protocol.StrictOrgResolution && !c.Protocol.SCACICertTenantMapping {
+		return errors.New(ErrStrictOrgResolutionRequiresCertTenantMapping)
+	}
 	return nil
 }

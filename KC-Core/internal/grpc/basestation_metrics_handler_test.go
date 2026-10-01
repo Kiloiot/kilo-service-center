@@ -34,9 +34,18 @@ func (stubMessageBucketReader) CountBaseStationMessagesByBucket(_ context.Contex
 	return nil, nil
 }
 
+// Metrics handler test fixtures.
+const (
+	// testMetricsWindow is the query window width for handler tests.
+	testMetricsWindow = 24 * time.Hour
+
+	// testInvalidIntervalSeconds is a rejected zero bucket width.
+	testInvalidIntervalSeconds = 0
+)
+
 func metricsTestWindow() (startUnix, endUnix int64) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	return start.Unix(), start.Add(24 * time.Hour).Unix()
+	return start.Unix(), start.Add(testMetricsWindow).Unix()
 }
 
 // A cross-tenant or non-existent base station must surface NotFound, never fake zero data.
@@ -46,11 +55,11 @@ func TestGetBaseStationAvailability_NotFound(t *testing.T) {
 			return nil, storage.ErrNotFound
 		},
 	}
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		basestationSvc:     mockBsSvc,
 		availabilityReader: stubAvailabilityReader{},
 		log:                &mockLogger{},
-	}
+	})
 
 	startUnix, endUnix := metricsTestWindow()
 	ctx := testutil.TestContextWithTenant(100)
@@ -58,7 +67,7 @@ func TestGetBaseStationAvailability_NotFound(t *testing.T) {
 		BsEui:           "AAAAAAAAAAAAAAAA",
 		StartTime:       timestamppb.New(time.Unix(startUnix, 0)),
 		EndTime:         timestamppb.New(time.Unix(endUnix, 0)),
-		IntervalSeconds: 3600,
+		IntervalSeconds: testBucketSeconds,
 	})
 
 	require.Error(t, err)
@@ -75,11 +84,11 @@ func TestGetBaseStationMessagesReceived_NotFound(t *testing.T) {
 			return nil, storage.ErrNotFound
 		},
 	}
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		basestationSvc:      mockBsSvc,
 		messageBucketReader: stubMessageBucketReader{},
 		log:                 &mockLogger{},
-	}
+	})
 
 	startUnix, endUnix := metricsTestWindow()
 	ctx := testutil.TestContextWithTenant(100)
@@ -87,7 +96,7 @@ func TestGetBaseStationMessagesReceived_NotFound(t *testing.T) {
 		BsEui:           "AAAAAAAAAAAAAAAA",
 		StartTime:       timestamppb.New(time.Unix(startUnix, 0)),
 		EndTime:         timestamppb.New(time.Unix(endUnix, 0)),
-		IntervalSeconds: 3600,
+		IntervalSeconds: testBucketSeconds,
 	})
 
 	require.Error(t, err)
@@ -100,11 +109,11 @@ func TestGetBaseStationMessagesReceived_NotFound(t *testing.T) {
 
 // An invalid window (non-positive interval / bad bounds) must be InvalidArgument.
 func TestGetBaseStationAvailability_InvalidRequest(t *testing.T) {
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		basestationSvc:     &mockBasestationSvc{},
 		availabilityReader: stubAvailabilityReader{},
 		log:                &mockLogger{},
-	}
+	})
 
 	startUnix, endUnix := metricsTestWindow()
 	ctx := testutil.TestContextWithTenant(100)
@@ -112,7 +121,7 @@ func TestGetBaseStationAvailability_InvalidRequest(t *testing.T) {
 		BsEui:           "AAAAAAAAAAAAAAAA",
 		StartTime:       timestamppb.New(time.Unix(startUnix, 0)),
 		EndTime:         timestamppb.New(time.Unix(endUnix, 0)),
-		IntervalSeconds: 0, // invalid
+		IntervalSeconds: testInvalidIntervalSeconds, // invalid
 	})
 
 	require.Error(t, err)

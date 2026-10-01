@@ -7,17 +7,26 @@ import (
 
 // Topic format templates for MIOTY MQTT message publishing
 const (
-	// TopicDeviceEventFormat defines canonical device event topics
+	// topicDeviceEventFormat defines canonical device event topics
 	// Format: prefix/orgUUID/device/epEUIHex/event/eventType
-	TopicDeviceEventFormat = "%s/%s/device/%s/event/%s"
+	topicDeviceEventFormat = "%s/%s/device/%s/event/%s"
+
+	// BrokerURLTCPFormat and BrokerURLSSLFormat render the broker address for
+	// plain and TLS connections.
+	BrokerURLTCPFormat = "tcp://%s:%d"
+	BrokerURLSSLFormat = "ssl://%s:%d"
+
+	// Command/down topic segment offsets counted from the end of the topic:
+	// .../orgUUID/device/epEUIHex/command/down
+	CommandTopicOrgUUIDOffset = 5
+	CommandTopicEpEUIOffset   = 3
+
+	// EnvironmentProduction gates the TLS-verification safety check.
+	EnvironmentProduction = "production"
 
 	// TopicDeviceCommandDownFormat defines device command/down topics for inbound downlinks
 	// Format: prefix/orgUUID/device/epEUIHex/command/down
 	TopicDeviceCommandDownFormat = "%s/%s/device/%s/command/down"
-
-	// TopicDeviceCommandDownWildcard subscribes to all device command/down topics
-	// Format: prefix/+/device/+/command/down
-	TopicDeviceCommandDownWildcard = "%s/+/device/+/command/down"
 )
 
 // MQTT QoS (Quality of Service) levels per MQTT 3.1.1 specification
@@ -40,8 +49,12 @@ const (
 	// DownlinkQoS for critical downlink control messages
 	DownlinkQoS = QoSAtLeastOnce
 
-	// EventsQoS for non-critical system events
+	// EventsQoS for attach and detach events, which a consumer can re-read from the endpoint state.
 	EventsQoS = QoSAtMostOnce
+
+	// DownlinkEventsQoS for downlink_queued, downlink_rejected and downlink_result:
+	// a platform settles its commands on these outcomes, so none may be lost.
+	DownlinkEventsQoS = QoSAtLeastOnce
 )
 
 // Connection Timeouts
@@ -69,22 +82,32 @@ const DefaultUnsubscribeTimeout = 5 * time.Second
 
 // Device event type constants for canonical topic contract
 const (
-	DeviceEventUp             = "up"
-	DeviceEventAttach         = "attach"
-	DeviceEventDetach         = "detach"
-	DeviceEventDownlinkResult = "downlink_result"
+	DeviceEventUp               = "up"
+	DeviceEventAttach           = "attach"
+	DeviceEventDetach           = "detach"
+	DeviceEventDownlinkResult   = "downlink_result"
+	DeviceEventDownlinkQueued   = "downlink_queued"
+	DeviceEventDownlinkRejected = "downlink_rejected"
 )
+
+// DownlinkResultAcknowledged is the event/downlink_result value reporting that
+// the endpoint acknowledged the downlink (BSSCI §3.10.1 dlAck), beside the
+// sent, expired and invalid results of SCACI §3.12.1.
+const DownlinkResultAcknowledged = "acknowledged"
+
+// topicDeviceCommandDownWildcard is TopicDeviceCommandDownFormat with the org and endpoint segments wildcarded.
+var topicDeviceCommandDownWildcard = fmt.Sprintf(TopicDeviceCommandDownFormat, "%s", "+", "+")
 
 // Topic builder helpers
 
 // DeviceEventTopic constructs a canonical device event topic using hex EUI string segment
 // Format: prefix/orgUUID/device/epEUIHex/event/eventType
 func DeviceEventTopic(prefix, orgID, epEUIHex, eventType string) string {
-	return fmt.Sprintf(TopicDeviceEventFormat, prefix, orgID, epEUIHex, eventType)
+	return fmt.Sprintf(topicDeviceEventFormat, prefix, orgID, epEUIHex, eventType)
 }
 
 // DeviceCommandDownWildcardTopic constructs a wildcard subscription for all command/down topics
 // Format: prefix/+/device/+/command/down
 func DeviceCommandDownWildcardTopic(prefix string) string {
-	return fmt.Sprintf(TopicDeviceCommandDownWildcard, prefix)
+	return fmt.Sprintf(topicDeviceCommandDownWildcard, prefix)
 }

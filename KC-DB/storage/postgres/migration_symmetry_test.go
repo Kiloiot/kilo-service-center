@@ -21,6 +21,12 @@ type migrationArtifacts struct {
 	types     []string
 }
 
+// irreversibleMigrations is the canonical list of migrations that
+// intentionally ship no down script. It is currently empty: every migration
+// has a down script. A new irreversible migration must be added here with a
+// recorded reason, and a stale entry fails the suite.
+var irreversibleMigrations = map[int]string{}
+
 // TestDownScriptSymmetry validates that down scripts only drop objects
 // created by the corresponding up script
 func TestDownScriptSymmetry(t *testing.T) {
@@ -36,8 +42,11 @@ func TestDownScriptSymmetry(t *testing.T) {
 			downFile := findMigrationFile(t, migrationsDir, mig.number, "down")
 
 			if downFile == "" {
-				t.Skipf("No down migration for %d", mig.number)
-				return
+				if reason, ok := irreversibleMigrations[mig.number]; ok {
+					t.Logf("migration %d is intentionally irreversible: %s", mig.number, reason)
+					return
+				}
+				t.Fatalf("migration %d has no down script and is not in irreversibleMigrations", mig.number)
 			}
 
 			// Parse artifacts from up and down scripts
@@ -50,6 +59,27 @@ func TestDownScriptSymmetry(t *testing.T) {
 			// Verify dependency order in down script
 			checkDependencyOrder(t, mig.number, downFile)
 		})
+	}
+}
+
+// TestIrreversibleMigrationListIsCurrent fails on stale entries: an
+// irreversible-migration entry whose migration has grown a down script (or
+// disappeared) is a claim nobody checked.
+func TestIrreversibleMigrationListIsCurrent(t *testing.T) {
+	migrationsDir, err := filepath.Abs("../../migrations")
+	require.NoError(t, err)
+	known := map[int]bool{}
+	for _, mig := range discoverMigrations(t) {
+		known[mig.number] = true
+	}
+	for num := range irreversibleMigrations {
+		if !known[num] {
+			t.Errorf("irreversibleMigrations lists %d, which does not exist", num)
+			continue
+		}
+		if findMigrationFile(t, migrationsDir, num, "down") != "" {
+			t.Errorf("irreversibleMigrations lists %d, but it has a down script - remove the stale entry", num)
+		}
 	}
 }
 
@@ -374,6 +404,51 @@ func TestMigration014SymmetrySpecific(t *testing.T) {
 
 	// Verify dependency order
 	checkDependencyOrder(t, 14, downFile)
+}
+
+// TestMigration145SymmetrySpecific covers the endpoint_keys drop migration.
+// 145 is inverted relative to a normal migration: the up script drops the
+// endpoint_keys tables, the archive trigger, and the two key-only functions,
+// while the down script recreates them. Symmetry here means the down recreates
+// exactly what the up removed.
+func TestMigration145SymmetrySpecific(t *testing.T) {
+	migrationsDir, err := filepath.Abs("../../migrations")
+	require.NoError(t, err)
+
+	upFile := findMigrationFile(t, migrationsDir, 145, "up")
+	downFile := findMigrationFile(t, migrationsDir, 145, "down")
+
+	require.NotEmpty(t, upFile, "Migration 145 up file should exist")
+	require.NotEmpty(t, downFile, "Migration 145 down file should exist")
+
+	upDrops := parseDrops(t, upFile)
+	downCreates := parseCreates(t, downFile)
+
+	// Every object the up script drops must be recreated by the down script.
+	for _, table := range []string{"endpoint_keys", "endpoint_keys_archive"} {
+		assert.Contains(t, upDrops.tables, table,
+			"Migration 145 up script should drop table '%s'", table)
+		assert.Contains(t, downCreates.tables, table,
+			"Migration 145 down script should recreate table '%s'", table)
+	}
+
+	assert.Contains(t, upDrops.triggers, "set_endpoint_keys_archive_timestamp",
+		"Migration 145 up script should drop the archive trigger")
+	assert.Contains(t, downCreates.triggers, "set_endpoint_keys_archive_timestamp",
+		"Migration 145 down script should recreate the archive trigger")
+
+	for _, fn := range []string{"validate_key_format", "ensure_single_active_key"} {
+		assert.Contains(t, upDrops.functions, fn,
+			"Migration 145 up script should drop function '%s'", fn)
+		assert.Contains(t, downCreates.functions, fn,
+			"Migration 145 down script should recreate function '%s'", fn)
+	}
+
+	// The shared archive/audit functions must not be touched by either script.
+	assert.NotContains(t, upDrops.functions, "set_archived_at",
+		"Migration 145 must not drop the shared set_archived_at() function")
+	assert.NotContains(t, upDrops.functions, "update_audit_fields",
+		"Migration 145 must not drop the shared update_audit_fields() function")
 }
 
 // TestMigrationCoverage reports on which migrations have down scripts

@@ -2,14 +2,12 @@
 package auth
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -40,8 +38,11 @@ const (
 	// RegistrationCallbackTimeout is the HTTP timeout for registration callbacks.
 	RegistrationCallbackTimeout = 10 * time.Second
 
-	// RegistrationCallbackContentType is the Content-Type for callback payloads.
-	RegistrationCallbackContentType = "application/json"
+	// callbackStatusSuccessMin and callbackStatusSuccessMax bound the 2xx
+	// status range for registration callbacks. Kept as plain integers so the
+	// application service carries no net/http dependency.
+	callbackStatusSuccessMin = 200
+	callbackStatusSuccessMax = 300
 )
 
 // ============================================================================
@@ -49,30 +50,37 @@ const (
 // ============================================================================
 
 const (
-	logExternalAuthInitiated           = "external.auth.initiated"
-	logExternalAuthStateFailed         = "external.auth.state.failed"
-	logExternalAuthStateInvalid        = "external.auth.state.invalid"
-	logExternalAuthEmailNotVerified    = "external.auth.email.not_verified"
-	logExternalAuthRegDisabled         = "external.auth.registration.disabled"
-	logExternalAuthUserCreateFailed    = "external.auth.user.create.failed"
-	logExternalAuthUserCreated         = "external.auth.user.created"
-	logExternalAuthLinkFailed          = "external.auth.link.failed"
-	logExternalAuthNoMemberships       = "external.auth.no_memberships"
-	logExternalAuthSuccess             = "external.auth.success"
-	logRegistrationCallbackFailed      = "external.auth.callback.failed"
-	logRegistrationCallbackSuccess     = "external.auth.callback.success"
+	logExternalAuthInitiated        = "external.auth.initiated"
+	logExternalAuthStateFailed      = "external.auth.state.failed"
+	logExternalAuthStateInvalid     = "external.auth.state.invalid"
+	logExternalAuthEmailNotVerified = "external.auth.email.not_verified"
+	logExternalAuthRegDisabled      = "external.auth.registration.disabled"
+	logExternalAuthUserCreateFailed = "external.auth.user.create.failed"
+	logExternalAuthUserCreated      = "external.auth.user.created"
+	logExternalAuthLinkFailed       = "external.auth.link.failed"
+	logExternalAuthNoMemberships    = "external.auth.no_memberships"
+	logExternalAuthSuccess          = "external.auth.success"
+	logRegistrationCallbackFailed   = "external.auth.callback.failed"
+	logRegistrationCallbackSuccess  = "external.auth.callback.success"
+
+	// Registration-callback stages recorded on callback failure logs.
+	callbackStageMarshal               = "marshal"
+	callbackStageRequestSend           = "request_send"
+	logExternalAuthEntropyFailed       = "external.auth.entropy.failed"
 	logExternalAuthOrgResolutionFailed = "external.auth.org.resolution.failed"
 	logExternalAuthOrgResolved         = "external.auth.org.resolved"
 	logExternalAuthOrgNotInMemberships = "external.auth.org.not_in_memberships"
 )
 
-// httpClientInterface abstracts HTTP client for testing.
-type httpClientInterface interface {
-	Do(req *http.Request) (*http.Response, error)
+// RegistrationCallbackClient delivers a registration notification to the
+// configured callback URL. The transport lives in an adapter; this service only
+// decides what to send and how to report the outcome.
+type RegistrationCallbackClient interface {
+	Post(ctx context.Context, url string, payload []byte) (status int, err error)
 }
 
-// RegistrationCallbackPayload is the JSON payload sent to registration callback URLs.
-type RegistrationCallbackPayload struct {
+// registrationCallbackPayload is the JSON payload sent to registration callback URLs.
+type registrationCallbackPayload struct {
 	UserID    string    `json:"user_id"`
 	Email     string    `json:"email"`
 	Provider  string    `json:"provider"`
@@ -107,9 +115,9 @@ type ExternalAuthService struct {
 	oauth2StateStore     StateStore
 	userStore            ExternalUserStore
 	membershipStore      OrganizationMembershipStore
-	tokenIssuer          *TokenIssuer
+	tokenIssuer          AccessTokenIssuer
 	orgResolver          OrganizationResolver
-	ceProvider           *CEDefaultOrgProvider // nil in ECE
+	ceProvider           MembershipSynthesizer // nil in ECE
 	oidcEnabled          bool
 	oauth2Enabled        bool
 	oidcStateTTL         time.Duration
@@ -123,7 +131,8 @@ type ExternalAuthService struct {
 	oauth2AssumeVerified bool
 	oauth2RegCallbackURL string
 	logger               logger.Logger
-	httpClient           httpClientInterface
+	callbackClient       RegistrationCallbackClient
+	entropy              io.Reader
 }
 
 // Ensure ExternalAuthService implements grpcservices.ExternalAuthService interface.
@@ -137,8 +146,9 @@ func NewExternalAuthService(
 	oauth2StateStore StateStore,
 	userStore ExternalUserStore,
 	membershipStore OrganizationMembershipStore,
-	tokenIssuer *TokenIssuer,
+	tokenIssuer AccessTokenIssuer,
 	orgResolver OrganizationResolver,
+	callbackClient RegistrationCallbackClient,
 	cfg ExternalAuthServiceConfig,
 	log logger.Logger,
 ) *ExternalAuthService {
@@ -164,12 +174,20 @@ func NewExternalAuthService(
 		oauth2AssumeVerified: cfg.OAuth2AssumeVerified,
 		oauth2RegCallbackURL: cfg.OAuth2RegCallbackURL,
 		logger:               log,
-		httpClient:           &http.Client{Timeout: RegistrationCallbackTimeout},
+		callbackClient:       callbackClient,
+		entropy:              rand.Reader,
 	}
 }
 
+// WithEntropy overrides the randomness source for state and nonce generation.
+// Production keeps the crypto/rand default; tests inject failing readers.
+func (s *ExternalAuthService) WithEntropy(r io.Reader) *ExternalAuthService {
+	s.entropy = r
+	return s
+}
+
 // WithCEProvider sets the CE default org provider for community edition.
-func (s *ExternalAuthService) WithCEProvider(provider *CEDefaultOrgProvider) *ExternalAuthService {
+func (s *ExternalAuthService) WithCEProvider(provider MembershipSynthesizer) *ExternalAuthService {
 	s.ceProvider = provider
 	return s
 }
@@ -215,8 +233,16 @@ func (s *ExternalAuthService) InitiateOIDCLogin(ctx context.Context) (string, er
 		return "", ErrOIDCProviderDisabled
 	}
 
-	state := generateSecureToken(StateTokenLength)
-	nonce := generateSecureToken(NonceLength)
+	state, err := s.generateSecureToken(StateTokenLength)
+	if err != nil {
+		s.logger.ErrorContext(ctx, logExternalAuthEntropyFailed, logger.FieldError, err)
+		return "", err
+	}
+	nonce, err := s.generateSecureToken(NonceLength)
+	if err != nil {
+		s.logger.ErrorContext(ctx, logExternalAuthEntropyFailed, logger.FieldError, err)
+		return "", err
+	}
 
 	authState := State{
 		Provider:  ProviderOIDC,
@@ -230,13 +256,13 @@ func (s *ExternalAuthService) InitiateOIDCLogin(ctx context.Context) (string, er
 	}
 
 	if err := s.oidcStateStore.StoreState(ctx, state, stateJSON, s.oidcStateTTL); err != nil {
-		s.logger.ErrorContext(ctx, logExternalAuthStateFailed, "error", err)
+		s.logger.ErrorContext(ctx, logExternalAuthStateFailed, logger.FieldError, err)
 		return "", ErrRedisUnavailable
 	}
 
 	authURL := s.oidcClient.GetAuthorizationURL(state, nonce)
 
-	s.logger.InfoContext(ctx, logExternalAuthInitiated, "provider", ProviderOIDC)
+	s.logger.InfoContext(ctx, logExternalAuthInitiated, logger.FieldProvider, ProviderOIDC)
 	return authURL, nil
 }
 
@@ -248,7 +274,7 @@ func (s *ExternalAuthService) CompleteOIDCLogin(ctx context.Context, code, state
 
 	stateJSON, err := s.oidcStateStore.GetState(ctx, state)
 	if err != nil {
-		s.logger.WarnContext(ctx, logExternalAuthStateInvalid, "error", err)
+		s.logger.WarnContext(ctx, logExternalAuthStateInvalid, logger.FieldError, err)
 		return nil, ErrStateNotFound
 	}
 
@@ -279,19 +305,19 @@ func (s *ExternalAuthService) CompleteOIDCLogin(ctx context.Context, code, state
 			orgID, err := s.orgResolver.ResolveOrgByExternalID(ctx, externalOrgValue)
 			if err != nil {
 				s.logger.WarnContext(ctx, logExternalAuthOrgResolutionFailed,
-					"external_org_value", externalOrgValue, "error", err)
+					logger.FieldExternalOrgValue, externalOrgValue, logger.FieldError, err)
 				return nil, ErrOrgResolutionFailed
 			}
 			if orgID != uuid.Nil {
 				resolvedOrgID = orgID
 				s.logger.InfoContext(ctx, logExternalAuthOrgResolved,
-					"external_org_value", externalOrgValue, "resolved_org_id", orgID.String())
+					logger.FieldExternalOrgValue, externalOrgValue, logger.FieldResolvedOrgID, orgID.String())
 			}
 		}
 	}
 
 	if !s.oidcAssumeVerified && !claims.EmailVerified {
-		s.logger.WarnContext(ctx, logExternalAuthEmailNotVerified, "email", claims.Email)
+		s.logger.WarnContext(ctx, logExternalAuthEmailNotVerified, logger.FieldEmail, claims.Email)
 		return nil, ErrEmailNotVerified
 	}
 
@@ -309,8 +335,16 @@ func (s *ExternalAuthService) InitiateOAuth2Login(ctx context.Context) (string, 
 		return "", ErrOAuth2ProviderDisabled
 	}
 
-	state := generateSecureToken(StateTokenLength)
-	authURL, codeVerifier := s.oauth2Client.GetAuthorizationURL(state)
+	state, err := s.generateSecureToken(StateTokenLength)
+	if err != nil {
+		s.logger.ErrorContext(ctx, logExternalAuthEntropyFailed, logger.FieldError, err)
+		return "", err
+	}
+	authURL, codeVerifier, err := s.oauth2Client.GetAuthorizationURL(state)
+	if err != nil {
+		s.logger.ErrorContext(ctx, logExternalAuthEntropyFailed, logger.FieldError, err)
+		return "", err
+	}
 
 	authState := State{
 		Provider:     ProviderOAuth2,
@@ -324,11 +358,11 @@ func (s *ExternalAuthService) InitiateOAuth2Login(ctx context.Context) (string, 
 	}
 
 	if err := s.oauth2StateStore.StoreState(ctx, state, stateJSON, s.oauth2StateTTL); err != nil {
-		s.logger.ErrorContext(ctx, logExternalAuthStateFailed, "error", err)
+		s.logger.ErrorContext(ctx, logExternalAuthStateFailed, logger.FieldError, err)
 		return "", ErrRedisUnavailable
 	}
 
-	s.logger.InfoContext(ctx, logExternalAuthInitiated, "provider", ProviderOAuth2)
+	s.logger.InfoContext(ctx, logExternalAuthInitiated, logger.FieldProvider, ProviderOAuth2)
 	return authURL, nil
 }
 
@@ -340,7 +374,7 @@ func (s *ExternalAuthService) CompleteOAuth2Login(ctx context.Context, code, sta
 
 	stateJSON, err := s.oauth2StateStore.GetState(ctx, state)
 	if err != nil {
-		s.logger.WarnContext(ctx, logExternalAuthStateInvalid, "error", err)
+		s.logger.WarnContext(ctx, logExternalAuthStateInvalid, logger.FieldError, err)
 		return nil, ErrStateNotFound
 	}
 
@@ -364,7 +398,7 @@ func (s *ExternalAuthService) CompleteOAuth2Login(ctx context.Context, code, sta
 	}
 
 	if !s.oauth2AssumeVerified && !userInfo.EmailVerified {
-		s.logger.WarnContext(ctx, logExternalAuthEmailNotVerified, "email", userInfo.Email)
+		s.logger.WarnContext(ctx, logExternalAuthEmailNotVerified, logger.FieldEmail, userInfo.Email)
 		return nil, ErrEmailNotVerified
 	}
 
@@ -389,13 +423,13 @@ func (s *ExternalAuthService) findOrCreateUserFromOIDC(ctx context.Context, clai
 	if err == nil && user != nil {
 		user.ExternalID = &claims.Sub
 		if err := s.userStore.Update(ctx, user); err != nil {
-			s.logger.WarnContext(ctx, logExternalAuthLinkFailed, "error", err)
+			s.logger.WarnContext(ctx, logExternalAuthLinkFailed, logger.FieldError, err)
 		}
 		return user, nil
 	}
 
 	if !s.oidcRegEnabled {
-		s.logger.WarnContext(ctx, logExternalAuthRegDisabled, "email", claims.Email)
+		s.logger.WarnContext(ctx, logExternalAuthRegDisabled, logger.FieldEmail, claims.Email)
 		return nil, ErrRegistrationDisabled
 	}
 
@@ -410,11 +444,11 @@ func (s *ExternalAuthService) findOrCreateUserFromOIDC(ctx context.Context, clai
 	}
 
 	if err := s.userStore.Create(ctx, newUser); err != nil {
-		s.logger.ErrorContext(ctx, logExternalAuthUserCreateFailed, "error", err)
+		s.logger.ErrorContext(ctx, logExternalAuthUserCreateFailed, logger.FieldError, err)
 		return nil, err
 	}
 
-	s.logger.InfoContext(ctx, logExternalAuthUserCreated, "email", claims.Email, "provider", ProviderOIDC)
+	s.logger.InfoContext(ctx, logExternalAuthUserCreated, logger.FieldEmail, claims.Email, logger.FieldProvider, ProviderOIDC)
 	s.sendRegistrationCallback(ctx, s.oidcRegCallbackURL, newUser, ProviderOIDC)
 
 	return newUser, nil
@@ -441,14 +475,14 @@ func (s *ExternalAuthService) findOrCreateUserFromOAuth2(ctx context.Context, us
 		if externalID != "" && (user.ExternalID == nil || *user.ExternalID == "") {
 			user.ExternalID = &externalID
 			if err := s.userStore.Update(ctx, user); err != nil {
-				s.logger.WarnContext(ctx, logExternalAuthLinkFailed, "error", err)
+				s.logger.WarnContext(ctx, logExternalAuthLinkFailed, logger.FieldError, err)
 			}
 		}
 		return user, nil
 	}
 
 	if !s.oauth2RegEnabled {
-		s.logger.WarnContext(ctx, logExternalAuthRegDisabled, "email", userInfo.Email)
+		s.logger.WarnContext(ctx, logExternalAuthRegDisabled, logger.FieldEmail, userInfo.Email)
 		return nil, ErrRegistrationDisabled
 	}
 
@@ -465,11 +499,11 @@ func (s *ExternalAuthService) findOrCreateUserFromOAuth2(ctx context.Context, us
 	}
 
 	if err := s.userStore.Create(ctx, newUser); err != nil {
-		s.logger.ErrorContext(ctx, logExternalAuthUserCreateFailed, "error", err)
+		s.logger.ErrorContext(ctx, logExternalAuthUserCreateFailed, logger.FieldError, err)
 		return nil, err
 	}
 
-	s.logger.InfoContext(ctx, logExternalAuthUserCreated, "email", userInfo.Email, "provider", ProviderOAuth2)
+	s.logger.InfoContext(ctx, logExternalAuthUserCreated, logger.FieldEmail, userInfo.Email, logger.FieldProvider, ProviderOAuth2)
 	s.sendRegistrationCallback(ctx, s.oauth2RegCallbackURL, newUser, ProviderOAuth2)
 
 	return newUser, nil
@@ -496,7 +530,7 @@ func (s *ExternalAuthService) issueLocalTokensWithOrg(ctx context.Context, user 
 			IsEndpointAdmin:    ceMembership.IsEndpointAdmin,
 		})
 	} else if len(memberships) == 0 {
-		s.logger.WarnContext(ctx, logExternalAuthNoMemberships, "user_id", user.ID)
+		s.logger.WarnContext(ctx, logExternalAuthNoMemberships, logger.FieldUserIDSnake, user.ID)
 		return nil, ErrMembershipRequired
 	}
 
@@ -511,7 +545,7 @@ func (s *ExternalAuthService) issueLocalTokensWithOrg(ctx context.Context, user 
 		}
 		if defaultOrgID == uuid.Nil {
 			s.logger.WarnContext(ctx, logExternalAuthOrgNotInMemberships,
-				"user_id", user.ID, "resolved_org_id", resolvedOrgID.String())
+				logger.FieldUserIDSnake, user.ID, logger.FieldResolvedOrgID, resolvedOrgID.String())
 			defaultOrgID = memberships[0].OrgID
 		}
 	} else {
@@ -553,7 +587,7 @@ func (s *ExternalAuthService) issueLocalTokensWithOrg(ctx context.Context, user 
 		}
 	}
 
-	s.logger.InfoContext(ctx, logExternalAuthSuccess, "user_id", user.ID)
+	s.logger.InfoContext(ctx, logExternalAuthSuccess, logger.FieldUserIDSnake, user.ID)
 
 	return &grpcservices.AuthLoginResult{
 		Tokens: &grpcservices.AuthTokens{
@@ -570,7 +604,7 @@ func (s *ExternalAuthService) sendRegistrationCallback(ctx context.Context, call
 		return
 	}
 
-	payload := RegistrationCallbackPayload{
+	payload := registrationCallbackPayload{
 		UserID:    user.ID.String(),
 		Email:     user.Email,
 		Provider:  provider,
@@ -579,41 +613,30 @@ func (s *ExternalAuthService) sendRegistrationCallback(ctx context.Context, call
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		s.logger.WarnContext(ctx, logRegistrationCallbackFailed, "error", err, "stage", "marshal")
+		s.logger.WarnContext(ctx, logRegistrationCallbackFailed, logger.FieldError, err, logger.FieldStage, callbackStageMarshal)
 		return
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, callbackURL, bytes.NewReader(payloadJSON))
+	status, err := s.callbackClient.Post(ctx, callbackURL, payloadJSON)
 	if err != nil {
-		s.logger.WarnContext(ctx, logRegistrationCallbackFailed, "error", err, "stage", "request_create")
+		s.logger.WarnContext(ctx, logRegistrationCallbackFailed, logger.FieldError, err, logger.FieldStage, callbackStageRequestSend)
 		return
 	}
-	req.Header.Set("Content-Type", RegistrationCallbackContentType)
 
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		s.logger.WarnContext(ctx, logRegistrationCallbackFailed, "error", err, "stage", "request_send")
-		return
-	}
-	defer func() {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		s.logger.InfoContext(ctx, logRegistrationCallbackSuccess, "user_id", user.ID, "status", resp.StatusCode)
+	if status >= callbackStatusSuccessMin && status < callbackStatusSuccessMax {
+		s.logger.InfoContext(ctx, logRegistrationCallbackSuccess, logger.FieldUserIDSnake, user.ID, logger.FieldStatus, status)
 	} else {
-		s.logger.WarnContext(ctx, logRegistrationCallbackFailed, "status", resp.StatusCode, "user_id", user.ID)
+		s.logger.WarnContext(ctx, logRegistrationCallbackFailed, logger.FieldStatus, status, logger.FieldUserIDSnake, user.ID)
 	}
 }
 
-// generateSecureToken generates a cryptographically secure random token.
-func generateSecureToken(length int) string {
+// generateSecureToken generates a cryptographically secure random token from
+// the injected entropy source. A read failure is returned to the caller; a
+// predictable token must never be issued.
+func (s *ExternalAuthService) generateSecureToken(length int) (string, error) {
 	bytes := make([]byte, length)
-	if _, err := rand.Read(bytes); err != nil {
-		for i := range bytes {
-			bytes[i] = byte(i)
-		}
+	if _, err := io.ReadFull(s.entropy, bytes); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrEntropyUnavailable, err)
 	}
-	return base64.RawURLEncoding.EncodeToString(bytes)
+	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }

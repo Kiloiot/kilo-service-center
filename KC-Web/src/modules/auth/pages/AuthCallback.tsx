@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { Alert, Box, CircularProgress, Typography } from "@mui/material";
+import { useExchangeAuthCode, useLoadAuthProfile } from "@hooks";
+import { Alert, Box, CircularProgress, Link, Typography } from "@mui/material";
 
-import { apiService } from "@services/api";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { persistAuthSession } from "@utils/auth-session";
@@ -11,6 +11,7 @@ import { storageService } from "@utils/storage";
 import {
   AUTH_LAYOUT,
   DEFAULT_ORG_NAME,
+  OAUTH_CALLBACK_PARAMS,
   ROUTES,
   STORAGE_KEYS,
 } from "@constants/app";
@@ -29,14 +30,16 @@ const AuthCallback: React.FC = () => {
   const { setOrganization } = useOrganization();
   const { setUser } = useSession();
   const [error, setError] = useState<string | null>(null);
+  const { mutateAsync: exchangeAuthCode } = useExchangeAuthCode();
+  const { mutateAsync: loadAuthProfile } = useLoadAuthProfile();
 
   useEffect(() => {
     const handleCallback = async () => {
-      const code = searchParams.get("code");
-      const state = searchParams.get("state");
+      const code = searchParams.get(OAUTH_CALLBACK_PARAMS.CODE);
+      const state = searchParams.get(OAUTH_CALLBACK_PARAMS.STATE);
 
       // Check for error response from provider
-      const errorParam = searchParams.get("error");
+      const errorParam = searchParams.get(OAUTH_CALLBACK_PARAMS.ERROR);
       if (errorParam) {
         setError(ERR_AUTH_CALLBACK_EXCHANGE_FAILED);
         return;
@@ -45,12 +48,12 @@ const AuthCallback: React.FC = () => {
       const hashParams = new URLSearchParams(
         window.location.hash.replace(/^#/, ""),
       );
-      const accessToken = hashParams.get("access_token");
+      const accessToken = hashParams.get(OAUTH_CALLBACK_PARAMS.ACCESS_TOKEN);
       if (accessToken) {
         storageService.setItem(STORAGE_KEYS.AUTH_TOKEN, accessToken);
 
         try {
-          const profile = await apiService.getAuthProfile();
+          const profile = await loadAuthProfile();
 
           const defaultOrg = profile.memberships.find(
             (m) => m.orgId === profile.defaultOrgId,
@@ -91,15 +94,7 @@ const AuthCallback: React.FC = () => {
       }
 
       try {
-        // Try OIDC exchange first, then OAuth2 if it fails
-        // Backend will determine the correct flow based on the state
-        let loginResponse;
-        try {
-          loginResponse = await apiService.exchangeOIDC({ code, state });
-        } catch {
-          // If OIDC fails, try OAuth2
-          loginResponse = await apiService.exchangeOAuth2({ code, state });
-        }
+        const loginResponse = await exchangeAuthCode({ code, state });
 
         const session = persistAuthSession(loginResponse);
         setUser(session.user);
@@ -115,7 +110,14 @@ const AuthCallback: React.FC = () => {
     };
 
     handleCallback();
-  }, [searchParams, navigate, setOrganization, setUser]);
+  }, [
+    searchParams,
+    navigate,
+    setOrganization,
+    setUser,
+    exchangeAuthCode,
+    loadAuthProfile,
+  ]);
 
   if (error) {
     return (
@@ -128,14 +130,13 @@ const AuthCallback: React.FC = () => {
         gap={AUTH_LAYOUT.SPACING_MT}
       >
         <Alert severity="error">{error}</Alert>
-        <Typography
+        <Link
+          component="button"
           variant="body2"
-          color="primary"
-          sx={{ cursor: "pointer", textDecoration: "underline" }}
           onClick={() => navigate(ROUTES.LOGIN)}
         >
           {ACTION_RETURN_TO_LOGIN}
-        </Typography>
+        </Link>
       </Box>
     );
   }

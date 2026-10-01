@@ -13,15 +13,29 @@ func TestGet(t *testing.T) {
 		t.Fatal("Get() returned nil Info")
 	}
 
-	// Manifest should have basic fields
 	if info.Version == "" {
 		t.Error("Version is empty")
 	}
-	if info.BuildTime == "" {
-		t.Error("BuildTime is empty")
-	}
 	if info.SchemaVersion <= 0 {
 		t.Errorf("SchemaVersion is %d, want > 0", info.SchemaVersion)
+	}
+}
+
+// A source checkout embeds the development stub; only the release workflow
+// stamps a release identity, so a locally built binary must never claim one.
+func TestEmbeddedManifestIsNotProduction(t *testing.T) {
+	info, err := Get()
+	if err != nil {
+		t.Fatalf("Get() returned error: %v", err)
+	}
+	if info.Version != DevVersion {
+		t.Errorf("embedded version = %q, want %q", info.Version, DevVersion)
+	}
+	if info.GitCommit != "" || info.BuildTime != "" {
+		t.Errorf("embedded stub carries build identity: commit=%q buildTime=%q", info.GitCommit, info.BuildTime)
+	}
+	if info.IsProduction() {
+		t.Error("embedded stub reports IsProduction() = true")
 	}
 }
 

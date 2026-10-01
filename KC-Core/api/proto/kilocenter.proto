@@ -44,6 +44,8 @@ service KiloCenterService {
   rpc RevokeDownlink(RevokeDownlinkRequest) returns (RevokeDownlinkResponse);
   rpc ListDownlinkQueue(ListDownlinkQueueRequest) returns (ListDownlinkQueueResponse);
   rpc GetDownlinkResults(GetDownlinkResultsRequest) returns (GetDownlinkResultsResponse);
+  // Rewrites a downlink that is still pending in the queue (SCACI §3.10.1 fields).
+  rpc UpdatePendingDownlink(UpdatePendingDownlinkRequest) returns (DownlinkMessage);
 
   // UL Data Transmit operations (BSSCI 3.11)
   rpc SendULTransmit(SendULTransmitRequest) returns (SendULTransmitResponse);
@@ -63,6 +65,10 @@ service KiloCenterService {
   rpc GetSystemStatus(google.protobuf.Empty) returns (SystemStatus);
   rpc GetStatistics(GetStatisticsRequest) returns (Statistics);
   rpc GetReleaseInfo(google.protobuf.Empty) returns (ReleaseInfo);
+  // Non-secret capabilities of this service center (edition and feature toggles).
+  rpc ListCapabilities(google.protobuf.Empty) returns (ListCapabilitiesResponse);
+  // Server administrators only: a zip of projected, non-secret service state.
+  rpc GetDiagnosticsBundle(GetDiagnosticsBundleRequest) returns (GetDiagnosticsBundleResponse);
 
   // Auth & Session
   rpc Login(LoginRequest) returns (LoginResponse);
@@ -122,6 +128,8 @@ service KiloCenterService {
 
   // Events & Alerts
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+  // Failed operations and error events grouped per bucket.
+  rpc ListErrorGroups(ListErrorGroupsRequest) returns (ListErrorGroupsResponse);
 
   // Unified Activity Feed (Events + Messages with pagination)
   rpc ListBaseStationActivity(ListBaseStationActivityRequest) returns (ListBaseStationActivityResponse);

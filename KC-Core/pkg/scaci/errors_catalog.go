@@ -1,44 +1,45 @@
 // Package scaci implements the MIOTY Service Center Application Center Interface (SCACI) v1.0.0
 package scaci
 
-import (
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
-)
-
 // Error catalog tokens for SCACI protocol operations
 // These tokens enable centralized error messaging and localization support
 const (
 	// Session and connection errors
-	errNoActiveSession  = "scaci.error.no_active_session"
-	ErrNoActiveSession  = errNoActiveSession // Exported for service layer
-	errOpIdOutOfOrder   = "scaci.error.op_id_out_of_order"
-	ErrOpIdOutOfOrder   = errOpIdOutOfOrder // Exported for service layer
-	errOpIDSignMismatch = "scaci.error.op_id_sign_mismatch"
+	errNoActiveSession       = "scaci.error.no_active_session"
+	ErrNoActiveSession       = errNoActiveSession // Exported for service layer
+	errSessionEntropyFailure = "scaci.error.session_entropy_failure"
+	ErrSessionEntropyFailure = errSessionEntropyFailure // Exported for service layer
+	errOpIdOutOfOrder        = "scaci.error.op_id_out_of_order"
+	ErrOpIdOutOfOrder        = errOpIdOutOfOrder // Exported for service layer
+	errOpIDSignMismatch      = "scaci.error.op_id_sign_mismatch"
 
 	// Protocol/framing errors
-	errInvalidMessageFormat      = "scaci.error.invalid_message_format"
-	errMissingCommandField       = "scaci.error.missing_command_field"
-	errMissingOpIdField          = "scaci.error.missing_op_id_field"
-	errConnectRequired           = "scaci.error.connect_required"
-	errConnectWaitingCmp         = "scaci.error.connect_waiting_cmp"
-	errUnsupportedCommand        = "scaci.error.unsupported_command"
-	errProtocolViolationULCmp    = "scaci.error.protocol_violation_ul_cmp"
-	errProtocolViolationULRsp    = "scaci.error.protocol_violation_ul_rsp"
-	errProtocolViolationDLResCmp = "scaci.error.protocol_violation_dl_res_cmp"
+	errInvalidMessageFormat       = "scaci.error.invalid_message_format"
+	errMissingCommandField        = "scaci.error.missing_command_field"
+	errMissingOpIdField           = "scaci.error.missing_op_id_field"
+	errConnectRequired            = "scaci.error.connect_required"
+	errConnectWaitingCmp          = "scaci.error.connect_waiting_cmp"
+	errUnsupportedCommand         = "scaci.error.unsupported_command"
+	errProtocolViolationULCmp     = "scaci.error.protocol_violation_ul_cmp"
+	errProtocolViolationULRsp     = "scaci.error.protocol_violation_ul_rsp"
+	errProtocolViolationDLResCmp  = "scaci.error.protocol_violation_dl_res_cmp"
+	errProtocolViolationEPStatCmp = "scaci.error.protocol_violation_ep_stat_cmp"
+	errUnexpectedRegisterComplete = "scaci.error.unexpected_register_complete"
+	// errUnexpectedDeregisterComplete answers a deregCmp that completes no dereg answered with deregRsp.
+	errUnexpectedDeregisterComplete = "scaci.error.unexpected_deregister_complete"
+	errUnsolicitedResponse          = "scaci.error.unsolicited_response"
 
-	// Validation errors - General
-	errInvalidPayload           = "scaci.error.invalid_payload"
 	errInvalidRegisterPayload   = "scaci.error.invalid_register_payload"
-	ErrInvalidRegisterPayload   = errInvalidRegisterPayload // Exported for service layer (SCACI §3.6.1)
 	errInvalidDeregisterPayload = "scaci.error.invalid_deregister_payload"
 	errInvalidULDataTxPayload   = "scaci.error.invalid_ul_data_tx_payload"
 	errInvalidDLDataQuePayload  = "scaci.error.invalid_dl_data_que_payload"
 	errInvalidDLDataRevPayload  = "scaci.error.invalid_dl_data_rev_payload"
 	errMalformedPayload         = "scaci.error.malformed_payload"
+	errFieldOutOfRange          = "scaci.error.field_out_of_range"
+	errMissingMandatoryField    = "scaci.error.missing_mandatory_field"
 	errMissingEpEui             = "scaci.error.missing_ep_eui"
 	ErrMissingEpEui             = errMissingEpEui // Exported for service layer
 	errEpEuiZero                = "scaci.error.ep_eui_zero"
-	errQueIDZero                = "scaci.error.que_id_zero"
 	errUserDataEmpty            = "scaci.error.user_data_empty"
 	errDatabaseError            = "scaci.error.database_error"
 	ErrDatabaseError            = errDatabaseError // Exported for service layer
@@ -81,8 +82,6 @@ const (
 	// TLS certificate / tenant mapping errors
 	errNilCertificate        = "scaci.error.nil_certificate"
 	ErrNilCertificate        = errNilCertificate // Exported for service layer
-	errCertTenantIDRequired  = "scaci.error.cert_tenant_id_required"
-	ErrCertTenantIDRequired  = errCertTenantIDRequired // Exported for service layer
 	errCertNotYetValid       = "scaci.error.cert_not_yet_valid"
 	ErrCertNotYetValid       = errCertNotYetValid // Exported for service layer
 	errCertExpired           = "scaci.error.cert_expired"
@@ -98,11 +97,9 @@ const (
 
 	// Organization header enforcement
 	errOrgHeaderRequired = "scaci.error.org_header_required"
-	ErrOrgHeaderRequired = errOrgHeaderRequired // Exported for service layer
 
 	// Register operation errors
 	errInvalidNwkKeyLength   = "scaci.error.invalid_nwk_key_length"
-	ErrInvalidNwkKeyLength   = errInvalidNwkKeyLength // Exported for service layer
 	errInvalidNwkSnKeyLength = "scaci.error.invalid_nwk_sn_key_length"
 	errFailedCreateEndpoint  = "scaci.error.failed_create_endpoint"
 	ErrFailedCreateEndpoint  = errFailedCreateEndpoint // Exported for service layer
@@ -113,9 +110,7 @@ const (
 	errEndpointNotFound             = "scaci.error.endpoint_not_found"
 	ErrEndpointNotFound             = errEndpointNotFound // Exported for service layer
 	errSendDeregisterResponseFailed = "scaci.error.send_deregister_response_failed"
-	ErrSendDeregisterResponseFailed = errSendDeregisterResponseFailed // Exported for service layer (§3.7.2)
 	errRevokeDownlinksFailed        = "scaci.error.revoke_downlinks_failed"
-	ErrRevokeDownlinksFailed        = errRevokeDownlinksFailed // Exported for service layer (§3.7.3)
 
 	// UL Data Transmit operation errors
 	errBaseStationNotFound    = "scaci.error.base_station_not_found"
@@ -128,12 +123,7 @@ const (
 
 	// Sublayer prefix guard errors (§4)
 	errUnsupportedSublayerPrefix = "scaci.error.unsupported_sublayer_prefix"
-	ErrUnsupportedSublayerPrefix = errUnsupportedSublayerPrefix // Exported for service layer (§4)
 )
-
-// ErrBaseStationTenantMismatch indicates the requested base station belongs to a different tenant.
-// This error is imported from the BSSCI package and maps to POSIX_ENOENT when surfaced via SCACI.
-var ErrBaseStationTenantMismatch = bssci.ErrBaseStationTenantMismatch
 
 const (
 	// DL Data Queue operation errors (SCACI §3.10)
@@ -144,8 +134,11 @@ const (
 	errCntDependPacketCntOmit   = "scaci.error.cnt_depend_packet_cnt_omit"
 	errNonCntDependMultiPayload = "scaci.error.non_cnt_depend_multi_payload"
 	errQueIDExists              = "scaci.error.que_id_exists"
-	errQueueIDOutOfRange        = "scaci.error.queue_id_out_of_range"
 	errFailedPersistDownlink    = "scaci.error.failed_persist_downlink"
+	errDownlinkOrgUnresolved    = "scaci.error.downlink_org_unresolved"
+	errEndpointNotBidirectional = "scaci.error.endpoint_not_bidirectional"
+	errDownlinkCommandRefQueued = "scaci.error.downlink_command_ref_queued"
+	errDownlinkDeadlineElapsed  = "scaci.error.downlink_deadline_elapsed"
 
 	// ErrCntDependMismatch indicates a mismatch between cntDepend flag and packet count array (SCACI §3.10.2).
 	ErrCntDependMismatch = errCntDependMismatch
@@ -153,15 +146,16 @@ const (
 	ErrCntDependPacketCntOmit = errCntDependPacketCntOmit
 	// ErrNonCntDependMultiPayload indicates multiple payloads with counter-independent mode (SCACI §3.10.3).
 	ErrNonCntDependMultiPayload = errNonCntDependMultiPayload
-	// ErrQueIDExists indicates the requested queue ID already exists (SCACI §3.10.4).
-	ErrQueIDExists = errQueIDExists
-	// ErrQueueIDOutOfRange indicates the queue ID is outside valid range (SCACI §3.10.4).
-	ErrQueueIDOutOfRange = errQueueIDOutOfRange
 	// ErrFailedPersistDownlink indicates a database persistence failure for downlink (SCACI §3.10.5).
 	ErrFailedPersistDownlink = errFailedPersistDownlink
+	// ErrEndpointNotBidirectional refuses a downlink for an endpoint that opens no downlink window.
+	ErrEndpointNotBidirectional = errEndpointNotBidirectional
+	// ErrDownlinkCommandRefQueued reports an MQTT command whose ref already queued a downlink.
+	ErrDownlinkCommandRefQueued = errDownlinkCommandRefQueued
+	// ErrDownlinkDeadlineElapsed refuses an MQTT command whose deadline passed before it could be queued.
+	ErrDownlinkDeadlineElapsed = errDownlinkDeadlineElapsed
 
 	// DL Data Revoke operation errors
-	errMissingPacketCnt = "scaci.error.missing_packet_cnt"
 	errDownlinkNotFound = "scaci.error.downlink_not_found"
 
 	// ErrDownlinkNotFound indicates the requested downlink queue entry was not found
@@ -217,8 +211,6 @@ const (
 	errULDataInvalidEqSnr            = "scaci.error.uldata_invalid_eq_snr"
 	errULDataInvalidRxDuration       = "scaci.error.uldata_invalid_rx_duration"
 	errULDataSubpacketLengthMismatch = "scaci.error.uldata_subpacket_length_mismatch"
-	// ErrULDataInvalidEqSnr is exported for use by validators in assembly validation per §3.8.1
-	ErrULDataInvalidEqSnr = errULDataInvalidEqSnr
 
 	// Error message assembly validation (§3.14.1)
 	errErrorMissingCode    = "scaci.error.error_missing_code"
@@ -242,6 +234,13 @@ var errorDefinitions = map[string]ErrorDefinition{
 	errNoActiveSession: {
 		Token:       "scaci.error.no_active_session",
 		Message:     "No active session",
+		SpecSection: "§3.3",
+		Severity:    "error",
+	},
+
+	errSessionEntropyFailure: {
+		Token:       "scaci.error.session_entropy_failure",
+		Message:     "Session identifier generation failed",
 		SpecSection: "§3.3",
 		Severity:    "error",
 	},
@@ -297,9 +296,34 @@ var errorDefinitions = map[string]ErrorDefinition{
 	},
 	errProtocolViolationDLResCmp: {
 		Token:       "scaci.error.protocol_violation_dl_res_cmp",
-		Message:     "Protocol violation: Application Center sends txDataResCmp (SC should send it)",
+		Message:     "Protocol violation: Service Center issues txDataResCmp",
 		SpecSection: "§3.12.3",
 		Severity:    "protocol_violation",
+	},
+	errProtocolViolationEPStatCmp: {
+		Token:       "scaci.error.protocol_violation_ep_stat_cmp",
+		Message:     "Protocol violation: Service Center issues epStatCmp",
+		SpecSection: "§3.13.3",
+		Severity:    "protocol_violation",
+	},
+	errUnexpectedRegisterComplete: {
+		Token:       "scaci.error.unexpected_register_complete",
+		Message:     "Protocol violation: regCmp for an operation that is not a reg answered with regRsp",
+		SpecSection: "§3.6.3",
+		Severity:    "protocol_violation",
+	},
+	errUnexpectedDeregisterComplete: {
+		Token:       "scaci.error.unexpected_deregister_complete",
+		Message:     "Protocol violation: deregCmp for an operation that is not a dereg answered with deregRsp",
+		SpecSection: "§3.7.3",
+		Severity:    "protocol_violation",
+	},
+	errUnsolicitedResponse: {
+		Token:       "scaci.error.unsolicited_response",
+		Message:     "Protocol violation: response to an operation the Service Center has not initiated or already completed",
+		SpecSection: "§3.2",
+		Severity:    "protocol_violation",
+		POSIXCode:   POSIX_EPROTO,
 	},
 	errOpIdOutOfOrder: {
 		Token:       "scaci.error.op_id_out_of_order",
@@ -316,12 +340,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 	},
 
 	// Validation errors - General
-	errInvalidPayload: {
-		Token:       "scaci.error.invalid_payload",
-		Message:     "Invalid message payload",
-		SpecSection: "§3.1",
-		Severity:    "error",
-	},
 	errInvalidRegisterPayload: {
 		Token:       "scaci.error.invalid_register_payload",
 		Message:     "Invalid register payload",
@@ -358,6 +376,19 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "§3.1",
 		Severity:    "error",
 	},
+	errFieldOutOfRange: {
+		Token:       "scaci.error.field_out_of_range",
+		Message:     "Field value outside its specified range",
+		SpecSection: "§2.4",
+		Severity:    "protocol_violation",
+		POSIXCode:   POSIX_ERANGE,
+	},
+	errMissingMandatoryField: {
+		Token:       "scaci.error.missing_mandatory_field",
+		Message:     "Missing mandatory field",
+		SpecSection: "§2.4",
+		Severity:    "protocol_violation",
+	},
 	errMissingEpEui: {
 		Token:       "scaci.error.missing_ep_eui",
 		Message:     "Missing endpoint EUI",
@@ -369,12 +400,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Token:       "scaci.error.ep_eui_zero",
 		Message:     "Endpoint EUI must be non-zero",
 		SpecSection: "§3.6.1",
-		Severity:    "error",
-	},
-	errQueIDZero: {
-		Token:       "scaci.error.que_id_zero",
-		Message:     "Queue ID must be non-zero",
-		SpecSection: "§3.10.1",
 		Severity:    "error",
 	},
 	errUserDataEmpty: {
@@ -486,12 +511,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 	errNilCertificate: {
 		Token:       "scaci.error.nil_certificate",
 		Message:     "No certificate provided",
-		SpecSection: "§3.3",
-		Severity:    "error",
-	},
-	errCertTenantIDRequired: {
-		Token:       "scaci.error.cert_tenant_id_required",
-		Message:     "Certificate CN/SAN must contain tenant ID (e.g., 'tenant-123')",
 		SpecSection: "§3.3",
 		Severity:    "error",
 	},
@@ -616,7 +635,7 @@ var errorDefinitions = map[string]ErrorDefinition{
 	// DL Data Queue operation errors
 	errDLPayloadTooLarge: {
 		Token:       "scaci.error.dl_payload_too_large",
-		Message:     "Downlink payload exceeds 200-byte maximum (MIOTY radio protocol §4.3.2)",
+		Message:     "Downlink payload exceeds 200-byte maximum (MIOTY radio protocol §3.6.6.3)",
 		SpecSection: "§3.10.1",
 		Severity:    "error",
 		POSIXCode:   POSIX_EINVAL,
@@ -646,26 +665,42 @@ var errorDefinitions = map[string]ErrorDefinition{
 		SpecSection: "§3.10.1",
 		Severity:    "error",
 	},
-	errQueueIDOutOfRange: {
-		Token:       "scaci.error.queue_id_out_of_range",
-		Message:     "Queue ID exceeds maximum value (2^63-1)",
-		SpecSection: "§3.10.1",
-		Severity:    "error",
-	},
 	errFailedPersistDownlink: {
 		Token:       "scaci.error.failed_persist_downlink",
 		Message:     "Failed to persist downlink",
 		SpecSection: "§3.10.2",
 		Severity:    "error",
 	},
+	errDownlinkOrgUnresolved: {
+		Token:       "scaci.error.downlink_org_unresolved",
+		Message:     "Downlink organization could not be resolved",
+		SpecSection: "§3.10.1",
+		Severity:    "error",
+		POSIXCode:   POSIX_EINVAL,
+	},
+	errDownlinkCommandRefQueued: {
+		Token:       errDownlinkCommandRefQueued,
+		Message:     "The organization already queued a downlink for the endpoint under this command ref",
+		SpecSection: specMQTTCommandDown,
+		Severity:    "warning",
+		POSIXCode:   POSIX_EEXIST,
+	},
+	errDownlinkDeadlineElapsed: {
+		Token:       errDownlinkDeadlineElapsed,
+		Message:     "The command's deadline passed before its downlink could be queued",
+		SpecSection: specMQTTCommandDown,
+		Severity:    "warning",
+		POSIXCode:   POSIX_ETIMEDOUT,
+	},
+	errEndpointNotBidirectional: {
+		Token:       errEndpointNotBidirectional,
+		Message:     "Endpoint is not bidirectional and cannot receive downlinks",
+		SpecSection: "§3.10",
+		Severity:    "error",
+		POSIXCode:   POSIX_ENOTSUP,
+	},
 
 	// DL Data Revoke operation errors
-	errMissingPacketCnt: {
-		Token:       "scaci.error.missing_packet_cnt",
-		Message:     "Missing packet counter",
-		SpecSection: "§3.11.1",
-		Severity:    "error",
-	},
 	errDownlinkNotFound: {
 		Token:       "scaci.error.downlink_not_found",
 		Message:     "Downlink not found for packet counter",
@@ -699,7 +734,6 @@ var errorDefinitions = map[string]ErrorDefinition{
 	// ============================================================================
 
 	// DLDataResult assembly validation (§3.12.1)
-	// Note: queId uses existing errQueIDZero; no duplicate token needed
 	errDLDataResultMissingResult: {
 		Token:       errDLDataResultMissingResult,
 		Message:     "DLDataResult missing result",
@@ -905,6 +939,17 @@ var errorDefinitions = map[string]ErrorDefinition{
 	},
 }
 
+// specMQTTCommandDown cites the document that defines the conditions of an
+// MQTT command/down, which no SCACI section describes: the ref accepted once
+// and the deadline.
+const specMQTTCommandDown = "KiloCenter MQTT command/down (GitBook 04-Integrations/03-mqtt-first-steps.md)"
+
+// Fallback error-definition fields for tokens missing from the catalog.
+const (
+	unknownSpecSection = "unknown"
+	severityError      = "error"
+)
+
 // GetErrorDefinition returns the full error metadata for a token
 // Use this for new code that needs spec traceability
 func GetErrorDefinition(token string) ErrorDefinition {
@@ -915,7 +960,7 @@ func GetErrorDefinition(token string) ErrorDefinition {
 	return ErrorDefinition{
 		Token:       token,
 		Message:     token,
-		SpecSection: "unknown",
-		Severity:    "error",
+		SpecSection: unknownSpecSection,
+		Severity:    severityError,
 	}
 }

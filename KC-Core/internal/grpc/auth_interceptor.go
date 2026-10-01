@@ -10,9 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// AuthInterceptor is a type alias for the extracted interceptors.AuthInterceptor.
-type AuthInterceptor = interceptors.AuthInterceptor
-
 // AuthConfig is a type alias for the extracted interceptors.AuthConfig.
 type AuthConfig = interceptors.AuthConfig
 
@@ -23,7 +20,9 @@ type OrganizationResolver = interceptors.OrganizationResolver
 type TenantResolver = interceptors.TenantResolver
 
 // NewAuthInterceptor delegates to the extracted constructor.
-var NewAuthInterceptor = interceptors.NewAuthInterceptor
+func NewAuthInterceptor(cfg interceptors.AuthConfig) (*interceptors.AuthInterceptor, error) {
+	return interceptors.NewAuthInterceptor(cfg)
+}
 
 // APIKeyAuthenticator is the KC-Core-internal contract returning *models.APIKey.
 // Satisfied by infra.Storage.APIKeys() — the builder wraps this with CoreAPIKeyAdapter
@@ -68,10 +67,4 @@ func (a *CoreAPIKeyAdapter) UpdateLastUsed(ctx context.Context, id uuid.UUID) er
 // Delegates to KC-Core/pkg/grpc for cross-service use.
 func GetTenantFromContext(ctx context.Context) (int64, error) {
 	return grpcerrors.GetTenantFromContext(ctx)
-}
-
-// GetUserFromContext extracts user ID from gRPC context as UUID.
-// Delegates to KC-Core/pkg/grpc for cross-service use.
-func GetUserFromContext(ctx context.Context) (uuid.UUID, error) {
-	return grpcerrors.GetUserFromContext(ctx)
 }

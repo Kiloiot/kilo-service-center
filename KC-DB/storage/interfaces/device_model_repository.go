@@ -18,21 +18,12 @@ type DeviceModelRepository interface {
 	// GetByID retrieves a device model by ID with tenant isolation
 	GetByID(ctx context.Context, tenantID int64, id uuid.UUID) (*models.DeviceModel, error)
 
-	// GetByCode retrieves a device model by manufacturer ID and code
-	GetByCode(ctx context.Context, tenantID int64, manufacturerID uuid.UUID, code string) (*models.DeviceModel, error)
-
 	// GetByTypeEUI retrieves a device model by Type EUI with tenant isolation
 	// Type EUI is an 8-byte MIOTY identifier
 	GetByTypeEUI(ctx context.Context, tenantID int64, typeEUI []byte) (*models.DeviceModel, error)
 
-	// ListByManufacturer retrieves device models for a manufacturer with pagination
-	ListByManufacturer(ctx context.Context, tenantID int64, manufacturerID uuid.UUID, limit, offset int) ([]*models.DeviceModel, error)
-
 	// List retrieves device models for a tenant with pagination and optional filters
 	List(ctx context.Context, params *models.DeviceModelListParams) ([]*models.DeviceModel, error)
-
-	// ListWithManufacturer retrieves device models with joined manufacturer data
-	ListWithManufacturer(ctx context.Context, params *models.DeviceModelListParams) ([]*models.DeviceModelWithManufacturer, error)
 
 	// Count returns the total count of device models for a tenant
 	Count(ctx context.Context, tenantID int64, isSystem bool) (int64, error)

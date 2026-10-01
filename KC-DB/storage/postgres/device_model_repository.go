@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -18,12 +18,14 @@ import (
 
 // DeviceModelRepository implements the DeviceModelRepository interface for PostgreSQL
 type DeviceModelRepository struct {
-	db *sqlx.DB
+	log logger.Logger
+	db  sqlx.ExtContext
 }
 
 // NewDeviceModelRepository creates a new PostgreSQL DeviceModel repository
-func NewDeviceModelRepository(db *sqlx.DB) interfaces.DeviceModelRepository {
-	return &DeviceModelRepository{db: db}
+func NewDeviceModelRepository(db sqlx.ExtContext, log logger.Logger) *DeviceModelRepository {
+	return &DeviceModelRepository{
+		log: log, db: db}
 }
 
 // Create creates a new device model
@@ -49,23 +51,25 @@ func (r *DeviceModelRepository) Create(ctx context.Context, params *models.Devic
 			:id, :manufacturer_id, :tenant_id, :is_system, :name, :code, :type_eui, :description, :datasheet_url, NOW(), NOW()
 		) RETURNING created_at, updated_at`
 
-	stmt, err := r.db.PrepareNamedContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("prepare statement: %w", err)
-	}
-	defer func() {
-		if err := stmt.Close(); err != nil {
-			log.Printf("failed to close statement in device_model repository: %v", err)
+	rows, err := sqlx.NamedQueryContext(ctx, r.db, query, model)
+	if err == nil {
+		defer func() {
+			if closeErr := rows.Close(); closeErr != nil {
+				r.log.Warn(logMsgCloseStmtDeviceModels, logger.FieldError, closeErr)
+			}
+		}()
+		if !rows.Next() {
+			err = sql.ErrNoRows
+		} else {
+			err = rows.Scan(&model.CreatedAt, &model.UpdatedAt)
 		}
-	}()
-
-	err = stmt.QueryRowxContext(ctx, model).Scan(&model.CreatedAt, &model.UpdatedAt)
+	}
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		if errors.As(err, &pqErr) && pqErr.Code == pqCodeUniqueViolation {
 			return nil, storage.ErrDuplicateKey
 		}
-		return nil, fmt.Errorf("create device model: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapCreateDeviceModel, err)
 	}
 
 	return model, nil
@@ -80,31 +84,12 @@ func (r *DeviceModelRepository) GetByID(ctx context.Context, tenantID int64, id 
 		FROM device_models
 		WHERE (tenant_id = $1 OR is_system) AND id = $2`
 
-	err := r.db.GetContext(ctx, &model, query, tenantID, id)
+	err := sqlx.GetContext(ctx, r.db, &model, query, tenantID, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrNotFound
+			return nil, storage.ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("get device model: %w", err)
-	}
-
-	return &model, nil
-}
-
-// GetByCode retrieves a device model by manufacturer ID and code
-func (r *DeviceModelRepository) GetByCode(ctx context.Context, tenantID int64, manufacturerID uuid.UUID, code string) (*models.DeviceModel, error) {
-	var model models.DeviceModel
-	query := `
-		SELECT id, manufacturer_id, tenant_id, name, code, type_eui, description, datasheet_url, created_at, updated_at
-		FROM device_models
-		WHERE tenant_id = $1 AND manufacturer_id = $2 AND code = $3`
-
-	err := r.db.GetContext(ctx, &model, query, tenantID, manufacturerID, code)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrNotFound
-		}
-		return nil, fmt.Errorf("get device model by code: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetDeviceModel, err)
 	}
 
 	return &model, nil
@@ -118,54 +103,15 @@ func (r *DeviceModelRepository) GetByTypeEUI(ctx context.Context, tenantID int64
 		FROM device_models
 		WHERE tenant_id = $1 AND type_eui = $2`
 
-	err := r.db.GetContext(ctx, &model, query, tenantID, typeEUI)
+	err := sqlx.GetContext(ctx, r.db, &model, query, tenantID, typeEUI)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrNotFound
+			return nil, storage.ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("get device model by type EUI: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetDeviceModelByTypeEUI, err)
 	}
 
 	return &model, nil
-}
-
-// ListByManufacturer retrieves device models for a manufacturer with pagination
-func (r *DeviceModelRepository) ListByManufacturer(ctx context.Context, tenantID int64, manufacturerID uuid.UUID, limit, offset int) ([]*models.DeviceModel, error) {
-	var models []*models.DeviceModel
-
-	query := `
-		SELECT
-			dm.id, dm.manufacturer_id, dm.tenant_id, dm.name, dm.code, dm.type_eui, dm.description, dm.datasheet_url, dm.created_at, dm.updated_at,
-			COALESCE(bp.blueprint_count, 0) AS blueprint_count
-		FROM device_models dm
-		LEFT JOIN (
-			SELECT device_model_id, COUNT(*) AS blueprint_count
-			FROM blueprints
-			WHERE tenant_id = $1
-			GROUP BY device_model_id
-		) bp ON bp.device_model_id = dm.id
-		WHERE dm.tenant_id = $1 AND dm.manufacturer_id = $2` + orderByNameAsc
-
-	args := []interface{}{tenantID, manufacturerID}
-	argIndex := 3
-
-	if limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argIndex)
-		args = append(args, limit)
-		argIndex++
-	}
-
-	if offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
-		args = append(args, offset)
-	}
-
-	err := r.db.SelectContext(ctx, &models, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list device models by manufacturer: %w", err)
-	}
-
-	return models, nil
 }
 
 // List retrieves device models for a tenant with pagination and optional filters
@@ -214,57 +160,9 @@ func (r *DeviceModelRepository) List(ctx context.Context, params *models.DeviceM
 		args = append(args, params.Offset)
 	}
 
-	err := r.db.SelectContext(ctx, &deviceModels, query, args...)
+	err := sqlx.SelectContext(ctx, r.db, &deviceModels, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list device models: %w", err)
-	}
-
-	return deviceModels, nil
-}
-
-// ListWithManufacturer retrieves device models with joined manufacturer data
-func (r *DeviceModelRepository) ListWithManufacturer(ctx context.Context, params *models.DeviceModelListParams) ([]*models.DeviceModelWithManufacturer, error) {
-	var deviceModels []*models.DeviceModelWithManufacturer
-
-	query := `
-		SELECT dm.id, dm.manufacturer_id, dm.tenant_id, dm.name, dm.code, dm.type_eui,
-		       dm.description, dm.datasheet_url, dm.created_at, dm.updated_at,
-		       m.name AS manufacturer_name
-		FROM device_models dm
-		JOIN manufacturers m ON dm.manufacturer_id = m.id
-		WHERE dm.tenant_id = $1`
-
-	args := []interface{}{params.TenantID}
-	argIndex := 2
-
-	if params.ManufacturerID != nil {
-		query += fmt.Sprintf(" AND dm.manufacturer_id = $%d", argIndex)
-		args = append(args, *params.ManufacturerID)
-		argIndex++
-	}
-
-	if params.SearchTerm != "" {
-		query += fmt.Sprintf(" AND (dm.name ILIKE $%d OR dm.code ILIKE $%d)", argIndex, argIndex)
-		args = append(args, "%"+params.SearchTerm+"%")
-		argIndex++
-	}
-
-	query += " ORDER BY LOWER(dm.name) ASC, dm.name ASC, dm.id ASC"
-
-	if params.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argIndex)
-		args = append(args, params.Limit)
-		argIndex++
-	}
-
-	if params.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex) //nolint:gosec // G202: appends a parameter placeholder, values are bound
-		args = append(args, params.Offset)
-	}
-
-	err := r.db.SelectContext(ctx, &deviceModels, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list device models with manufacturer: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapListDeviceModels, err)
 	}
 
 	return deviceModels, nil
@@ -275,9 +173,9 @@ func (r *DeviceModelRepository) Count(ctx context.Context, tenantID int64, isSys
 	var count int64
 	query := `SELECT COUNT(*) FROM device_models WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END)`
 
-	err := r.db.GetContext(ctx, &count, query, tenantID, isSystem)
+	err := sqlx.GetContext(ctx, r.db, &count, query, tenantID, isSystem)
 	if err != nil {
-		return 0, fmt.Errorf("count device models: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapCountDeviceModels, err)
 	}
 
 	return count, nil
@@ -288,9 +186,9 @@ func (r *DeviceModelRepository) CountByManufacturer(ctx context.Context, tenantI
 	var count int64
 	query := `SELECT COUNT(*) FROM device_models WHERE (CASE WHEN $2 THEN is_system ELSE tenant_id = $1 END) AND manufacturer_id = $3`
 
-	err := r.db.GetContext(ctx, &count, query, tenantID, isSystem, manufacturerID)
+	err := sqlx.GetContext(ctx, r.db, &count, query, tenantID, isSystem, manufacturerID)
 	if err != nil {
-		return 0, fmt.Errorf("count device models by manufacturer: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapCountDeviceModelsByManufacturer, err)
 	}
 
 	return count, nil
@@ -347,19 +245,19 @@ func (r *DeviceModelRepository) Update(ctx context.Context, tenantID int64, isSy
 	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+		if errors.As(err, &pqErr) && pqErr.Code == pqCodeUniqueViolation {
 			return storage.ErrDuplicateKey
 		}
-		return fmt.Errorf("update device model: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateDeviceModel, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return storage.ErrNotFound
+		return storage.ErrRecordNotFound
 	}
 
 	return nil
@@ -372,19 +270,19 @@ func (r *DeviceModelRepository) Delete(ctx context.Context, tenantID int64, isSy
 	result, err := r.db.ExecContext(ctx, query, tenantID, isSystem, id)
 	if err != nil {
 		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23503" {
+		if errors.As(err, &pqErr) && pqErr.Code == pqCodeForeignKeyViolation {
 			return storage.ErrForeignKeyViolation
 		}
-		return fmt.Errorf("delete device model: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteDeviceModel, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return storage.ErrNotFound
+		return storage.ErrRecordNotFound
 	}
 
 	return nil

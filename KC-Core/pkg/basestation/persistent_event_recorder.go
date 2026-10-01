@@ -2,34 +2,35 @@ package basestation
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"strconv"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
-// eventKeyBsEui is the canonical key for base station EUI in event details
-// Matches bssci.EventKeyBsEui but defined locally to avoid import cycle
-const eventKeyBsEui = "bsEui"
+// SystemEventWriter covers the event persistence the recorder performs.
+// Satisfied structurally by the KC-DB system event store.
+type SystemEventWriter interface {
+	CreateEvent(ctx context.Context, event *models.SystemEvent) error
+}
 
-// basestationNameUnknown is the placeholder used in event titles/descriptions
-// when the base station name is not present in the event data map.
-const basestationNameUnknown = "Unknown"
+const eventKeyBsEui = models.EventDetailKeyBsEui
 
 // PersistentEventRecorder implements EventRecorder and persists events to database
 type PersistentEventRecorder struct {
 	logger     logger.Logger
-	eventStore interfaces.SystemEventStore
+	eventStore SystemEventWriter
 	tenantID   string
 }
 
 // NewPersistentEventRecorder creates a new persistent event recorder
-func NewPersistentEventRecorder(log logger.Logger, eventStore interfaces.SystemEventStore, tenantID string) *PersistentEventRecorder {
+func NewPersistentEventRecorder(log logger.Logger, eventStore SystemEventWriter, tenantID string) *PersistentEventRecorder {
 	return &PersistentEventRecorder{
 		logger:     log,
 		eventStore: eventStore,
@@ -37,96 +38,59 @@ func NewPersistentEventRecorder(log logger.Logger, eventStore interfaces.SystemE
 	}
 }
 
-// RecordEvent records an event to both logger and database
-func (r *PersistentEventRecorder) RecordEvent(ctx context.Context, eui [8]byte, eventType string, data map[string]interface{}) error {
-	euiStr := hex.EncodeToString(eui[:])
-
-	// Derive tenant from context (session-scoped), fall back to configured default
-	tenantID := r.tenantID
-	if tid, err := pkgcontext.GetTenantID(ctx); err == nil && tid > 0 {
-		tenantID = fmt.Sprintf("%d", tid)
-	}
-
-	// Determine severity based on event type
-	severity := models.EventSeverityInfo
-	var title string
-	description := ""
-
-	switch eventType {
-	case models.EventTypeBaseStationOffline, "status_offline":
-		severity = models.EventSeverityWarning
-		basestationName := basestationNameUnknown
-		if name, ok := data["basestation_name"].(string); ok && name != "" {
-			basestationName = name
-		}
-		title = fmt.Sprintf("Base Station \"%s\" went offline", basestationName)
-		description = fmt.Sprintf("Base Station \"%s\" (EUI: %s) disconnected from the Service Center", basestationName, euiStr)
-
-	case models.EventTypeBaseStationOnline, "status_online":
-		severity = models.EventSeverityInfo
-		basestationName := basestationNameUnknown
-		if name, ok := data["basestation_name"].(string); ok && name != "" {
-			basestationName = name
-		}
-		title = fmt.Sprintf("Base Station \"%s\" connected", basestationName)
-		description = fmt.Sprintf("Base Station \"%s\" (EUI: %s) successfully connected to the Service Center", basestationName, euiStr)
-
-	case models.EventTypeBSRegistered:
-		severity = models.EventSeverityInfo
-		basestationName := basestationNameUnknown
-		if name, ok := data["name"].(string); ok && name != "" {
-			basestationName = name
-		}
-		title = fmt.Sprintf("%s: %s", models.EventTitleBSRegistered, basestationName)
-		description = fmt.Sprintf("Base Station \"%s\" (EUI: %s) registered with the Service Center", basestationName, euiStr)
-
-	case models.EventTypeConnectionError:
-		severity = models.EventSeverityCritical
-		title = "Base station connection error"
-		description = fmt.Sprintf("Base station %s encountered a connection error", euiStr)
-
-	default:
-		title = fmt.Sprintf("Base station %s: %s", euiStr, eventType)
-		description = fmt.Sprintf("Event %s occurred for base station %s", eventType, euiStr)
-	}
-
-	r.logger.Info("Base station event",
-		"eui", euiStr,
-		"event_type", eventType,
-		"severity", severity,
-		"data", data,
+// RecordEvent persists a base station event that occurred at occurredAt for
+// the tenant of ctx, naming the acting user of ctx; the store stamps when it
+// was recorded. A failed write is logged, never returned, so the action the
+// event records is not undone by its audit trail.
+func (r *PersistentEventRecorder) RecordEvent(ctx context.Context, eui [8]byte, eventType string, occurredAt time.Time, data map[string]interface{}) error {
+	euiStr := mioty.FormatEUIBytes(eui[:])
+	text := describeEvent(eventType, euiStr, data)
+	r.logger.InfoContext(ctx, LogBaseStationEvent,
+		logger.FieldEui, euiStr,
+		logger.FieldEventTypeSnake, eventType,
+		logger.FieldSeverity, text.severity,
+		logger.FieldData, data,
 	)
 
+	details, err := json.Marshal(withStationEUI(data, euiStr))
+	if err != nil {
+		r.logger.ErrorContext(ctx, LogFailedToPersistEvent, logger.FieldEui, euiStr, logger.FieldError, err)
+		return nil
+	}
 	event := &models.SystemEvent{
-		TenantID:    tenantID,
+		TenantID:    r.tenantOf(ctx),
 		EventType:   eventType,
 		Category:    models.EventCategoryBaseStation,
-		Severity:    severity,
-		Title:       title,
-		Description: description,
+		Severity:    text.severity,
+		Title:       text.title,
+		Description: text.description,
 		SourceType:  models.SourceTypeBaseStation,
 		SourceName:  euiStr,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		UserID:      audit.ActingUser(ctx),
+		Details:     details,
+		CreatedAt:   occurredAt,
 	}
-
-	// Always include bsEui in details for frontend compatibility
-	eventData := make(map[string]interface{})
-	for k, v := range data {
-		eventData[k] = v
+	if err := r.eventStore.CreateEvent(ctx, event); err != nil {
+		r.logger.ErrorContext(ctx, LogFailedToPersistEvent, logger.FieldEui, euiStr, logger.FieldError, err)
 	}
-	eventData[eventKeyBsEui] = euiStr // Always add bsEui for frontend
-
-	jsonData, _ := json.Marshal(eventData)
-	event.Details = jsonData
-
-	err := r.eventStore.CreateEvent(ctx, event)
-	if err != nil {
-		r.logger.Error("Failed to persist event",
-			"eui", euiStr,
-			"error", err,
-		)
-	}
-
 	return nil
+}
+
+// tenantOf is the session- or request-scoped tenant of ctx, else the configured default.
+func (r *PersistentEventRecorder) tenantOf(ctx context.Context) string {
+	if tid, err := pkgcontext.GetTenantID(ctx); err == nil && tid > 0 {
+		return strconv.FormatInt(tid, 10)
+	}
+	return r.tenantID
+}
+
+// withStationEUI copies data and names the station in it, so the station's
+// activity feed and live updates find the event by its details.
+func withStationEUI(data map[string]interface{}, euiStr string) map[string]interface{} {
+	details := make(map[string]interface{}, len(data)+1)
+	for k, v := range data {
+		details[k] = v
+	}
+	details[eventKeyBsEui] = euiStr
+	return details
 }

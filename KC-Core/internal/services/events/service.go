@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/streampoll"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -18,8 +22,9 @@ type SystemEventStore interface {
 	CountEvents(ctx context.Context, tenantID int64, filter *EventFilter) (int64, error)
 }
 
-// EUIResolver maps a device EUI to its internal ID for event scoping. Best-effort:
-// a nil ID means "unknown", so callers fall back to the source_name EUI filter.
+// EUIResolver maps a device EUI to its internal ID for event scoping. A nil
+// ID means "unknown", so callers fall back to the source_name EUI filter; an
+// error means the lookup itself failed.
 type EUIResolver interface {
 	ResolveBaseStationID(ctx context.Context, tenantID int64, bsEui []byte) (*int64, error)
 	ResolveEndpointID(ctx context.Context, tenantID int64, epEui []byte) (*int64, error)
@@ -30,14 +35,29 @@ type EventFilter struct {
 	Categories []string
 	Severity   []string
 	EventTypes []string
-	StartTime  *int64 // Unix timestamp
-	EndTime    *int64 // Unix timestamp
+	StartTime  *time.Time
+	EndTime    *time.Time
 
 	// Scoping for base-station / endpoint views, set after EUI resolution.
 	BaseStationID  *int64
 	EndpointID     *int64
 	BaseStationEUI string
 	EndpointEUI    string
+
+	OpID   *int64
+	Search string
+
+	// StoredSince keeps the events the database stored at or after it, and
+	// OrderBy names the listing's sort column; empty sorts by occurrence.
+	StoredSince *time.Time
+	OrderBy     string
+}
+
+// RegistrationWindow tells where a view of an endpoint's history starts: the
+// requested start, or its registration when that is later; registered is
+// false for an EUI the tenant has not registered.
+type RegistrationWindow interface {
+	Start(ctx context.Context, tenantID int64, epEui []byte, requested *time.Time) (start *time.Time, registered bool, err error)
 }
 
 // DefaultEventStreamBatchSize is the default batch size for event streaming operations.
@@ -47,53 +67,106 @@ const DefaultEventStreamBatchSize = 100
 type Service struct {
 	eventStore         SystemEventStore
 	resolver           EUIResolver
+	window             RegistrationWindow
 	logger             logger.Logger
 	streamPollInterval time.Duration
+	streamOverlap      time.Duration
+	streamWake         streampoll.Waker
 	streamBatchSize    int
 }
 
-// New creates a new events service.
-func New(eventStore SystemEventStore, resolver EUIResolver, streamPollInterval time.Duration, streamBatchSize int, log logger.Logger) *Service {
+// Operation labels appended to failure log messages.
+const (
+	opListEvents            = "list events"
+	opListBaseStationEvents = "list base station events"
+	opListEndpointEvents    = "list endpoint events"
+)
+
+// New creates a new events service; streamWake announces stored events to the
+// event streams, and each stream read reaches streamOverlap back in storage order.
+func New(eventStore SystemEventStore, resolver EUIResolver, window RegistrationWindow, streamPollInterval, streamOverlap time.Duration, streamWake streampoll.Waker, streamBatchSize int, log logger.Logger) *Service {
 	if streamBatchSize <= 0 {
 		streamBatchSize = DefaultEventStreamBatchSize
 	}
 	return &Service{
 		eventStore:         eventStore,
 		resolver:           resolver,
+		window:             window,
 		logger:             log,
 		streamPollInterval: streamPollInterval,
+		streamOverlap:      streamOverlap,
+		streamWake:         streamWake,
 		streamBatchSize:    streamBatchSize,
 	}
 }
 
 // List returns events for the given tenant with optional filters.
 func (s *Service) List(ctx context.Context, tenantID int64, filters *grpcservices.EventFilters, limit, offset int) ([]*grpcservices.Event, int64, error) {
-	return s.listWithCount(ctx, tenantID, convertFilters(filters), limit, offset, "list events")
+	filter, err := convertFilters(filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	if filter != nil && filter.EndpointEUI != "" {
+		epEui, err := validation.ParseEUIBytes(filter.EndpointEUI)
+		if err != nil {
+			return nil, 0, fmt.Errorf("%w: %w", ErrInvalidEndpointEUI, err)
+		}
+		return s.listEndpointWindow(ctx, tenantID, epEui, filter, limit, offset, opListEvents)
+	}
+	return s.listWithCount(ctx, tenantID, filter, limit, offset, opListEvents)
 }
 
 // ListByBaseStation returns events for a specific base station.
 func (s *Service) ListByBaseStation(ctx context.Context, tenantID int64, bsEui []byte, filters *grpcservices.EventFilters, limit, offset int) ([]*grpcservices.Event, int64, error) {
-	filter := s.scopeBaseStation(ctx, tenantID, bsEui, convertFilters(filters))
-	return s.listWithCount(ctx, tenantID, filter, limit, offset, "list base station events")
+	filter, err := convertFilters(filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	filter, err = s.scopeBaseStation(ctx, tenantID, bsEui, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.listWithCount(ctx, tenantID, filter, limit, offset, opListBaseStationEvents)
 }
 
 // ListByEndPoint returns events for a specific endpoint.
 func (s *Service) ListByEndPoint(ctx context.Context, tenantID int64, epEui []byte, filters *grpcservices.EventFilters, limit, offset int) ([]*grpcservices.Event, int64, error) {
-	filter := s.scopeEndPoint(ctx, tenantID, epEui, convertFilters(filters))
-	return s.listWithCount(ctx, tenantID, filter, limit, offset, "list endpoint events")
+	filter, err := convertFilters(filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	filter, err = s.scopeEndPoint(ctx, tenantID, epEui, filter)
+	if err != nil {
+		return nil, 0, err
+	}
+	return s.listEndpointWindow(ctx, tenantID, epEui, filter, limit, offset, opListEndpointEvents)
+}
+
+// listEndpointWindow lists one endpoint's events from its registration on;
+// an EUI the tenant has not registered has none.
+func (s *Service) listEndpointWindow(ctx context.Context, tenantID int64, epEui []byte, filter *EventFilter, limit, offset int, op string) ([]*grpcservices.Event, int64, error) {
+	if filter == nil {
+		filter = &EventFilter{}
+	}
+	start, registered, err := s.window.Start(ctx, tenantID, epEui, filter.StartTime)
+	if err != nil || !registered {
+		return []*grpcservices.Event{}, 0, err
+	}
+	filter.StartTime = start
+	return s.listWithCount(ctx, tenantID, filter, limit, offset, op)
 }
 
 // listWithCount fetches a page of events plus the matching total.
 func (s *Service) listWithCount(ctx context.Context, tenantID int64, filter *EventFilter, limit, offset int, op string) ([]*grpcservices.Event, int64, error) {
 	events, err := s.eventStore.GetEvents(ctx, tenantID, filter, limit, offset)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to "+op, "tenantID", tenantID, "error", err)
+		s.logger.ErrorContext(ctx, logMsgFailedToPrefix+op, logger.FieldTenantID, tenantID, logger.FieldError, err)
 		return nil, 0, fmt.Errorf("%s: %w", op, err)
 	}
 
 	total, err := s.eventStore.CountEvents(ctx, tenantID, filter)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to "+op, "tenantID", tenantID, "error", err)
+		s.logger.ErrorContext(ctx, logMsgFailedToPrefix+op, logger.FieldTenantID, tenantID, logger.FieldError, err)
 		return nil, 0, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -105,154 +178,103 @@ func (s *Service) listWithCount(ctx context.Context, tenantID int64, filter *Eve
 	return result, total, nil
 }
 
-// Stream streams events for the given tenant via poll-based realtime delivery.
+// Stream streams the tenant's events recorded after the stream opened. Uses
+// GetEvents only: the poller discards totals, so a per-poll COUNT(*) would be waste.
 func (s *Service) Stream(ctx context.Context, tenantID int64, filters *grpcservices.EventFilters) (<-chan *grpcservices.Event, error) {
-	return s.stream(ctx, tenantID, filters, nil, "stream poll error"), nil
-}
-
-// StreamByBaseStation streams events for a specific base station via poll-based realtime delivery.
-func (s *Service) StreamByBaseStation(ctx context.Context, tenantID int64, bsEui []byte, filters *grpcservices.EventFilters) (<-chan *grpcservices.Event, error) {
-	// Resolve once — EUI→ID is stable for the life of the stream.
-	bsID, _ := s.resolver.ResolveBaseStationID(ctx, tenantID, bsEui)
-	euiHex := fmt.Sprintf("%016x", bsEui)
-	scope := func(f *EventFilter) {
-		f.BaseStationID = bsID
-		f.BaseStationEUI = euiHex
+	base := grpcservices.EventFilters{}
+	if filters != nil {
+		base = grpcservices.EventFilters{Categories: filters.Categories, Severity: filters.Severity, StartTime: filters.StartTime, EndTime: filters.EndTime}
 	}
-	return s.stream(ctx, tenantID, filters, scope, "stream bs events poll error"), nil
-}
-
-// StreamByEndPoint streams events for a specific endpoint via poll-based realtime delivery.
-func (s *Service) StreamByEndPoint(ctx context.Context, tenantID int64, epEui []byte, filters *grpcservices.EventFilters) (<-chan *grpcservices.Event, error) {
-	epID, _ := s.resolver.ResolveEndpointID(ctx, tenantID, epEui)
-	euiHex := fmt.Sprintf("%016x", epEui)
-	scope := func(f *EventFilter) {
-		f.EndpointID = epID
-		f.EndpointEUI = euiHex
+	if _, err := convertFilters(&base); err != nil {
+		return nil, err
 	}
-	return s.stream(ctx, tenantID, filters, scope, "stream ep events poll error"), nil
+	return streampoll.Stream(ctx, s.streamPollInterval, s.streamBatchSize, streampoll.Source[*grpcservices.Event]{
+		Fetch: func(ctx context.Context, since *time.Time, offset int) ([]*grpcservices.Event, error) {
+			return s.fetchStored(ctx, tenantID, &base, since, offset)
+		},
+		PageSize: s.streamBatchSize,
+		StoredAt: func(e *grpcservices.Event) time.Time { return e.StoredAt },
+		Key:      func(e *grpcservices.Event) string { return e.ID },
+		Overlap:  s.streamOverlap,
+		OnError: func(err error) {
+			s.logger.ErrorContext(ctx, logMsgStreamPollError, logger.FieldTenantID, tenantID, logger.FieldError, err)
+		},
+		Wake: s.streamWake,
+	}), nil
 }
 
-// stream runs the shared poll loop. scope (optional) narrows each poll to a base
-// station / endpoint. Uses GetEvents only: the poller discards totals, so a
-// per-tick COUNT(*) would be pure waste.
-func (s *Service) stream(ctx context.Context, tenantID int64, filters *grpcservices.EventFilters, scope func(*EventFilter), errMsg string) <-chan *grpcservices.Event {
-	ch := make(chan *grpcservices.Event, s.streamBatchSize)
-
-	go func() {
-		defer close(ch)
-
-		ticker := time.NewTicker(s.streamPollInterval)
-		defer ticker.Stop()
-
-		// Use filters.StartTime as moving window if provided.
-		var lastTimestamp *time.Time
-		if filters != nil && filters.StartTime != nil {
-			lastTimestamp = filters.StartTime
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				queryFilters := &grpcservices.EventFilters{}
-				if filters != nil {
-					queryFilters.Categories = filters.Categories
-					queryFilters.Severity = filters.Severity
-					queryFilters.EndTime = filters.EndTime
-				}
-				if lastTimestamp != nil {
-					queryFilters.StartTime = lastTimestamp
-				}
-
-				filter := convertFilters(queryFilters)
-				if scope != nil {
-					scope(filter)
-				}
-
-				events, err := s.eventStore.GetEvents(ctx, tenantID, filter, s.streamBatchSize, 0)
-				if err != nil {
-					s.logger.ErrorContext(ctx, errMsg, "tenantID", tenantID, "error", err)
-					continue
-				}
-
-				// Emit events in chronological order (GetEvents returns DESC).
-				// Capture prior cursor before loop to allow same-timestamp events in batch.
-				prevTimestamp := lastTimestamp
-				var latestTimestamp *time.Time
-
-				for i := len(events) - 1; i >= 0; i-- {
-					// Skip events at or before PRIOR cursor (cross-poll deduplication).
-					if prevTimestamp != nil && !events[i].CreatedAt.After(*prevTimestamp) {
-						continue
-					}
-					select {
-					case ch <- convertEvent(events[i]):
-						t := events[i].CreatedAt
-						latestTimestamp = &t
-					case <-ctx.Done():
-						return
-					}
-				}
-
-				if latestTimestamp != nil {
-					lastTimestamp = latestTimestamp
-				}
-			}
-		}
-	}()
-
-	return ch
+// fetchStored reads a page of a stream's events stored at or after since,
+// newest stored first.
+func (s *Service) fetchStored(ctx context.Context, tenantID int64, query *grpcservices.EventFilters, since *time.Time, offset int) ([]*grpcservices.Event, error) {
+	filter, err := convertFilters(query)
+	if err != nil {
+		return nil, err
+	}
+	filter.StoredSince = since
+	filter.OrderBy = models.EventOrderByStored
+	stored, err := s.eventStore.GetEvents(ctx, tenantID, filter, s.streamBatchSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	events := make([]*grpcservices.Event, len(stored))
+	for i, e := range stored {
+		events[i] = convertEvent(e)
+	}
+	return events, nil
 }
 
-// scopeBaseStation narrows a filter to a base station, resolving its EUI to an ID
-// (best-effort) and always setting the EUI fallback.
-func (s *Service) scopeBaseStation(ctx context.Context, tenantID int64, bsEui []byte, filter *EventFilter) *EventFilter {
+// scopeBaseStation narrows a filter to a base station, resolving its EUI to an
+// ID when the station is known and always setting the EUI fallback.
+func (s *Service) scopeBaseStation(ctx context.Context, tenantID int64, bsEui []byte, filter *EventFilter) (*EventFilter, error) {
 	if filter == nil {
 		filter = &EventFilter{}
 	}
-	filter.BaseStationEUI = fmt.Sprintf("%016x", bsEui)
-	if id, _ := s.resolver.ResolveBaseStationID(ctx, tenantID, bsEui); id != nil {
-		filter.BaseStationID = id
+	filter.BaseStationEUI = mioty.FormatEUIBytes(bsEui)
+	id, err := s.resolver.ResolveBaseStationID(ctx, tenantID, bsEui)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errResolveEventScope, err)
 	}
-	return filter
+	filter.BaseStationID = id
+	return filter, nil
 }
 
 // scopeEndPoint narrows a filter to an endpoint (see scopeBaseStation).
-func (s *Service) scopeEndPoint(ctx context.Context, tenantID int64, epEui []byte, filter *EventFilter) *EventFilter {
+func (s *Service) scopeEndPoint(ctx context.Context, tenantID int64, epEui []byte, filter *EventFilter) (*EventFilter, error) {
 	if filter == nil {
 		filter = &EventFilter{}
 	}
-	filter.EndpointEUI = fmt.Sprintf("%016x", epEui)
-	if id, _ := s.resolver.ResolveEndpointID(ctx, tenantID, epEui); id != nil {
-		filter.EndpointID = id
+	filter.EndpointEUI = mioty.FormatEUIBytes(epEui)
+	id, err := s.resolver.ResolveEndpointID(ctx, tenantID, epEui)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errResolveEventScope, err)
 	}
-	return filter
+	filter.EndpointID = id
+	return filter, nil
 }
 
 // convertFilters converts grpcservices.EventFilters to internal EventFilter.
-func convertFilters(filters *grpcservices.EventFilters) *EventFilter {
+func convertFilters(filters *grpcservices.EventFilters) (*EventFilter, error) {
 	if filters == nil {
-		return nil
+		return nil, nil
+	}
+	severity, err := severitiesFor(filters.Outcome, filters.Severity)
+	if err != nil {
+		return nil, err
 	}
 
 	filter := &EventFilter{
-		Categories: filters.Categories,
-		Severity:   filters.Severity,
-		EventTypes: filters.EventTypes,
+		Categories:     filters.Categories,
+		Severity:       severity,
+		EventTypes:     filters.EventTypes,
+		BaseStationEUI: filters.BsEUI,
+		EndpointEUI:    filters.EpEUI,
+		OpID:           filters.OpID,
+		Search:         filters.Search,
+		StartTime:      filters.StartTime,
+		EndTime:        filters.EndTime,
 	}
 
-	if filters.StartTime != nil {
-		ts := filters.StartTime.Unix()
-		filter.StartTime = &ts
-	}
-	if filters.EndTime != nil {
-		ts := filters.EndTime.Unix()
-		filter.EndTime = &ts
-	}
-
-	return filter
+	return filter, nil
 }
 
 // convertEvent converts models.SystemEvent to grpcservices.Event.
@@ -274,10 +296,20 @@ func convertEvent(e *models.SystemEvent) *grpcservices.Event {
 		Title:       e.Title,
 		Description: e.Description,
 		SourceName:  e.SourceName,
+		UserID:      e.UserID,
+		UserEmail:   e.UserEmail,
 		Timestamp:   e.CreatedAt,
-		Data:        e.Details,
+		Data:        projectDetails(e.EventType, e.Details),
+		StoredAt:    e.StoredAt,
 	}
 }
 
 // Ensure Service implements grpcservices.EventService
 var _ grpcservices.EventService = (*Service)(nil)
+
+// Log messages for event listing and streaming failures; the failed-to prefix
+// is completed with the operation name at the call site.
+const (
+	logMsgFailedToPrefix  = "failed to "
+	logMsgStreamPollError = "stream poll error"
+)

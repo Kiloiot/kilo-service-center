@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	"time"
 
 	pkgblueprint "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
@@ -15,26 +14,56 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/roaming"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
 )
 
+// UplinkStore classifies one reception against the persisted packet counters
+// and stores it in the same transaction as the message, the endpoint
+// last-seen state and the delivery outbox rows.
+type UplinkStore interface {
+	Persist(ctx context.Context, req models.UplinkPersistRequest) (models.UplinkPersistOutcome, error)
+}
+
+// DLRXStatusReader supplies the per-base-station downlink RX metrics reported
+// since the endpoint was last heard, attached to its next uplink (SCACI §3.8.1).
+type DLRXStatusReader interface {
+	GetDLRXStatusSinceLastHeard(ctx context.Context, tenantID int64, epEui []byte,
+		bsEuis [][]byte) ([]*mioty.DLRXStatus, error)
+}
+
+// DownlinkAckRecorder records the downlink an uplink's dlAck acknowledges
+// (BSSCI §3.10.1), whichever path delivered the uplink, against the stored
+// message that carried it.
+type DownlinkAckRecorder interface {
+	RecordEndpointAck(ctx context.Context, ownerTenantID int64, epEUI uint64, packetCnt uint32, messageID string) error
+}
+
+// UplinkWindows are the time windows of an uplink: how long its packet
+// counter stays a duplicate of its first reception, and how long its delivery
+// waits for the receptions of the other base stations (SCACI §3.8.1).
+type UplinkWindows struct {
+	Duplicate time.Duration
+	Reception time.Duration
+}
+
 // UplinkIngestServiceImpl implements bssci.UplinkIngestService.
-// It runs the shared ingest pipeline: deduplication, tenant resolution, payload decoding,
-// persistence, SCACI fan-out, and MQTT publishing.
+// It runs the shared ingest pipeline: tenant resolution, payload decoding and one
+// transactional persist that classifies the reception and queues delivery.
 type UplinkIngestServiceImpl struct {
-	deduplicator      *bssci.MessageDeduplicator
-	storage           interfaces.Storage
+	store             UplinkStore
+	windows           UplinkWindows
+	channels          []models.DeliveryChannel
+	dlrxStatuses      DLRXStatusReader
 	orgResolver       org.Resolver
 	roamingSvc        bssci.RoamingService
-	endpointRepo      interfaces.EndpointRepository
+	endpointRepo      EndpointResolver
+	endpointOwners    bssci.EndpointOwnerResolver
 	blueprintResolver bssci.BlueprintResolver
 	blueprintDecoder  bssci.BlueprintDecoder
-	broadcaster       bssci.SCACIBroadcaster
-	mqttPublisher     bssci.MQTTEventPublisher
+	downlinkAcks      DownlinkAckRecorder
 	logger            logger.Logger
 	tenantID          int64
 
@@ -45,51 +74,50 @@ type UplinkIngestServiceImpl struct {
 }
 
 // NewUplinkIngestService constructs a new UplinkIngestServiceImpl.
-// All optional collaborators (broadcaster, mqttPublisher, blueprintResolver, etc.) may be nil;
-// their associated steps are skipped gracefully when absent.
+// channels lists the delivery outbox rows every new message is queued for; the
+// MQTT channel is dropped per message when the owner organization is unknown.
+// Optional collaborators (dlrxStatuses, orgResolver, roamingSvc, blueprint
+// resolver and decoder) may be nil; their steps are skipped when absent. The
+// endpoint owner resolver and the downlink acknowledgement recorder are
+// required.
 func NewUplinkIngestService(
-	deduplicator *bssci.MessageDeduplicator,
-	stor interfaces.Storage,
+	store UplinkStore,
+	windows UplinkWindows,
+	channels []models.DeliveryChannel,
+	dlrxStatuses DLRXStatusReader,
 	orgResolver org.Resolver,
 	roamingSvc bssci.RoamingService,
-	endpointRepo interfaces.EndpointRepository,
+	endpointRepo EndpointResolver,
+	endpointOwners bssci.EndpointOwnerResolver,
 	blueprintResolver bssci.BlueprintResolver,
 	blueprintDecoder bssci.BlueprintDecoder,
-	broadcaster bssci.SCACIBroadcaster,
-	mqttPublisher bssci.MQTTEventPublisher,
+	downlinkAcks DownlinkAckRecorder,
 	log logger.Logger,
 	tenantID int64,
 	syntheticFederationBsEUI uint64,
-) *UplinkIngestServiceImpl {
+) (*UplinkIngestServiceImpl, error) {
+	if endpointOwners == nil {
+		return nil, ErrNilEndpointOwnerResolver
+	}
+	if downlinkAcks == nil {
+		return nil, ErrNilDownlinkAckRecorder
+	}
 	return &UplinkIngestServiceImpl{
-		deduplicator:             deduplicator,
-		storage:                  stor,
+		store:                    store,
+		windows:                  windows,
+		channels:                 channels,
+		dlrxStatuses:             dlrxStatuses,
 		orgResolver:              orgResolver,
 		roamingSvc:               roamingSvc,
 		endpointRepo:             endpointRepo,
+		endpointOwners:           endpointOwners,
 		blueprintResolver:        blueprintResolver,
 		blueprintDecoder:         blueprintDecoder,
-		broadcaster:              broadcaster,
-		mqttPublisher:            mqttPublisher,
+		downlinkAcks:             downlinkAcks,
 		logger:                   log,
 		tenantID:                 tenantID,
 		syntheticFederationBsEUI: syntheticFederationBsEUI,
-	}
-}
-
-// SetBlueprintResolver injects the blueprint resolver after service construction.
-func (svc *UplinkIngestServiceImpl) SetBlueprintResolver(r bssci.BlueprintResolver) {
-	svc.blueprintResolver = r
-}
-
-// SetBlueprintDecoder injects the blueprint decoder after service construction.
-func (svc *UplinkIngestServiceImpl) SetBlueprintDecoder(d bssci.BlueprintDecoder) {
-	svc.blueprintDecoder = d
-}
-
-// SetMQTTPublisher injects the MQTT publisher after service construction.
-func (svc *UplinkIngestServiceImpl) SetMQTTPublisher(p bssci.MQTTEventPublisher) {
-	svc.mqttPublisher = p
+	}, nil
 }
 
 // Ingest executes the full uplink ingest pipeline for a single uplink payload.
@@ -100,47 +128,24 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 	opts bssci.UplinkIngestOptions,
 ) (*bssci.IngestResult, error) {
 	// Step 1: Deduplication
-	isDuplicate, record, err := svc.deduplicator.CheckAndRecord(
-		payload.EpEUI,
-		payload.PacketCnt,
-		payload.BsEUI,
-		payload.UserData,
-		payload.RSSI,
-		payload.SNR,
-		payload.EqSNR,
-		payload.RxTime,
-		payload.RxDuration,
-		payload.Profile,
-		payload.Mode,
-		payload.Subpackets,
-	)
-	if err != nil {
-		svc.logger.ErrorContext(ctx, bssci.LogBSSCIUplinkDeduplicationError,
-			"ep_eui", payload.EpEUI, "packet_cnt", payload.PacketCnt, "error", err)
-		return nil, fmt.Errorf("deduplication failed: %w", err)
-	}
-
-	if isDuplicate {
-		svc.logger.DebugContext(ctx, bssci.LogBSSCIDuplicateUplinkReceived,
-			"ep_eui", payload.EpEUI, "packet_cnt", payload.PacketCnt,
-			"duplicate_count", record.DuplicateCount,
-			"total_base_stations", len(record.BaseStations))
-	} else {
-		svc.logger.InfoContext(ctx, bssci.LogBSSCIUplinkFirstReception,
-			"ep_eui", payload.EpEUI, "packet_cnt", payload.PacketCnt,
-			"size", len(payload.UserData), "rssi", payload.RSSI, "snr", payload.SNR)
-	}
-
-	// Step 2: Build ULDataMessage
-	isDup := record.DuplicateCount > 0
 	bsEUI := payload.BsEUI
 	if opts.Source == bssci.UplinkSourceFederation && svc.syntheticFederationBsEUI != 0 {
-		// Federation uplinks must not expose the real CE BS EUI in tenant-visible fields.
 		bsEUI = svc.syntheticFederationBsEUI
 	}
-
+	reception := mioty.BaseStationReception{
+		BsEui:      bsEUI,
+		RxTime:     payload.RxTime,
+		RxDuration: payload.RxDuration,
+		Snr:        payload.SNR,
+		Rssi:       payload.RSSI,
+		EqSnr:      payload.EqSNR,
+		Profile:    payload.Profile,
+		Mode:       payload.Mode,
+		Subpackets: payload.Subpackets,
+	}
 	ulDataMsg := &mioty.ULDataMessage{
 		CommandType:  mioty.CmdULData,
+		OpId:         payload.OpID,
 		EpEui:        payload.EpEUI,
 		BsEui:        bsEUI,
 		TenantID:     svc.tenantID,
@@ -152,8 +157,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 		DlOpen:       payload.DLOpen,
 		ResponseExp:  payload.ResponseExp,
 		DlAck:        payload.DlAck,
-		BaseStations: record.ConvertToBaseStationReceptions(),
-		Duplicate:    &isDup,
+		BaseStations: []mioty.BaseStationReception{reception},
 		EqSnr:        payload.EqSNR,
 		RxDuration:   payload.RxDuration,
 		Profile:      payload.Profile,
@@ -161,8 +165,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 		Format:       payload.Format,
 		Subpackets:   payload.Subpackets,
 	}
-
-	// Step 3: Tenant resolution (roaming-aware)
+	var err error
 	epEuiBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(epEuiBytes, payload.EpEUI)
 
@@ -178,36 +181,35 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 		if err != nil {
 			if errors.Is(err, roaming.ErrEndpointNotFound) {
 				svc.logger.WarnContext(ctx, bssci.LogBSSCIEndpointNotFoundDuringIngestTenantResolution,
-					"ep_eui", payload.EpEUI)
+					logger.FieldEpEuiSnake, payload.EpEUI)
 				// Disposition resolver should have prevented this; drop the packet
-				return nil, fmt.Errorf("endpoint not found during ingest: ep_eui=%d", payload.EpEUI)
+				return nil, fmt.Errorf(errFmtEndpointNotFoundDuringIngest, payload.EpEUI)
 			}
 			// Any other roaming error is fail-closed: do not fall back to serving tenant
 			// as that could assign uplinks to the wrong tenant.
 			svc.logger.ErrorContext(ctx, bssci.LogBSSCIRoamingDetectionFailedDuringIngest,
-				"ep_eui", payload.EpEUI, "error", err)
-			return nil, fmt.Errorf("roaming detection failed: %w", err)
+				logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldError, err)
+			return nil, fmt.Errorf("%w: %w", errRoamingDetectionFailed, err)
 		} else if isRoaming {
 			svc.logger.InfoContext(ctx, bssci.LogBSSCIRoamingEndpointUplink,
-				"ep_eui", payload.EpEUI,
-				"owner_tenant", ownerTenantID, "serving_tenant", servingTenantID)
+				logger.FieldEpEuiSnake, payload.EpEUI,
+				logger.FieldOwnerTenantSnake, ownerTenantID, logger.FieldServingTenantSnake, servingTenantID)
 		}
 	} else {
-		// No roaming service: perform a direct cross-tenant endpoint lookup
 		var epEUI models.EUI
 		copy(epEUI[:], epEuiBytes)
-		ep, lookupErr := svc.endpointRepo.Get(ctx, epEUI)
+		owner, lookupErr := svc.endpointOwners.ResolveOwner(ctx, epEUI)
 		if lookupErr != nil {
 			if errors.Is(lookupErr, storage.ErrNotFound) {
-				return nil, fmt.Errorf("endpoint not found during ingest: ep_eui=%d", payload.EpEUI)
+				return nil, fmt.Errorf(errFmtEndpointNotFoundDuringIngest, payload.EpEUI)
 			}
-			return nil, fmt.Errorf("endpoint lookup failed: %w", lookupErr)
+			return nil, fmt.Errorf("%w: %w", errEndpointLookupFailed, lookupErr)
 		}
-		ownerTenantID = ep.TenantID
+		ownerTenantID = owner.TenantID
 	}
 
 	if ownerTenantID <= 0 {
-		return nil, fmt.Errorf("tenant resolution yielded invalid tenant id %d for ep_eui=%d", ownerTenantID, payload.EpEUI)
+		return nil, fmt.Errorf(errFmtInvalidResolvedTenant, ownerTenantID, payload.EpEUI)
 	}
 
 	// Step 4: Build owner context
@@ -218,7 +220,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 		ownerOrgUUID, err = svc.orgResolver.GetDefaultOrgForTenant(ownerCtx, ownerTenantID)
 		if err != nil {
 			svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToResolveOrganizationForUplink,
-				"tenant_id", ownerTenantID, "error", err)
+				logger.FieldTenantIDSnake, ownerTenantID, logger.FieldError, err)
 		}
 	}
 	if ownerOrgUUID != uuid.Nil {
@@ -245,7 +247,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 				bp, bpErr := svc.blueprintResolver.ResolveBlueprintForEndpoint(ownerCtx, ownerTenantID, epModel, ulDataMsg.Format)
 				if bpErr != nil {
 					svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIBlueprintResolutionFailed,
-						"ep_eui", payload.EpEUI, "error", bpErr)
+						logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldError, bpErr)
 				} else if bp != nil {
 					ulDataMsg.DecodeStatus = pkgblueprint.DecodeStatusPending
 					ulDataMsg.BlueprintTypeEUI = bp.TypeEUI
@@ -261,7 +263,7 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 					decodeResult, decodeErr := svc.blueprintDecoder.Decode(ownerCtx, bp, ulDataMsg.UserData, formatID, calibration)
 					if decodeErr != nil {
 						svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIBlueprintDecodeError,
-							"ep_eui", payload.EpEUI, "blueprint_id", bp.ID, "error", decodeErr)
+							logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldBlueprintID, bp.ID, logger.FieldError, decodeErr)
 						ulDataMsg.DecodeStatus = pkgblueprint.DecodeStatusFailed
 						ulDataMsg.DecodeErrorCode = pkgblueprint.ErrInternalDecodePanic
 					} else if decodeResult != nil {
@@ -283,13 +285,13 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 				}
 			} else if epErr != nil && !errors.Is(epErr, storage.ErrNotFound) {
 				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToFetchEndpointForBlueprintDecode,
-					"ep_eui", payload.EpEUI, "error", epErr)
+					logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldError, epErr)
 			}
 		}
 	}
 
 	// Step 6: Hydrate DL RX metrics into BaseStations
-	if len(ulDataMsg.BaseStations) > 0 && svc.storage != nil && svc.storage.DLRXStatus() != nil {
+	if len(ulDataMsg.BaseStations) > 0 && svc.dlrxStatuses != nil {
 		bsEuiBytes := make([][]byte, 0, len(ulDataMsg.BaseStations))
 		for _, bs := range ulDataMsg.BaseStations {
 			b := make([]byte, 8)
@@ -299,11 +301,12 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 		epEuiBytesForDLRX := make([]byte, 8)
 		binary.BigEndian.PutUint64(epEuiBytesForDLRX, ulDataMsg.EpEui)
 
-		dlRxStatuses, dlRxErr := svc.storage.DLRXStatus().GetLatestDLRXStatusByBaseStations(
-			ownerCtx, ulDataMsg.TenantID, epEuiBytesForDLRX, bsEuiBytes)
+		dlRxStatuses, dlRxErr := svc.dlrxStatuses.GetDLRXStatusSinceLastHeard(
+			ownerCtx, ulDataMsg.TenantID, epEuiBytesForDLRX, bsEuiBytes,
+		)
 		if dlRxErr != nil {
 			svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToFetchDLRXStatus,
-				"ep_eui", payload.EpEUI, "error", dlRxErr)
+				logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldError, dlRxErr)
 		} else if len(dlRxStatuses) > 0 {
 			dlRxMap := make(map[uint64]*mioty.DLRXStatus, len(dlRxStatuses))
 			for _, dlRx := range dlRxStatuses {
@@ -325,67 +328,91 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 	}
 
 	// Step 7: Persist to database
-	messageID := uuid.New().String()
-	ulDataMsg.ID = messageID
-	if svc.storage != nil && svc.storage.MIOTYMessages() != nil {
-		if !isDuplicate {
-			if err := svc.storage.MIOTYMessages().CreateULDataMessage(ownerCtx, ulDataMsg); err != nil {
-				svc.logger.ErrorContext(ownerCtx, bssci.LogBSSCIFailedToPersistUplinkMessage,
-					"ep_eui", payload.EpEUI, "packet_cnt", payload.PacketCnt, "error", err)
-				return nil, fmt.Errorf("persist failed: %w", err)
-			}
-		} else if len(ulDataMsg.BaseStations) > 0 {
-			rxTimeMin := time.Now().Add(-svc.deduplicator.WindowDuration()).UnixNano()
-			baseStationsJSON, marshalErr := json.Marshal(ulDataMsg.BaseStations)
-			if marshalErr != nil {
-				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToMarshalBaseStationsForDuplicateUpdate,
-					"ep_eui", payload.EpEUI, "error", marshalErr)
-			} else if updateErr := svc.storage.MIOTYMessages().UpdateULDataBaseStations(
-				ownerCtx, ulDataMsg.TenantID, ulDataMsg.EpEui, uint32(ulDataMsg.PacketCnt),
-				rxTimeMin, baseStationsJSON); updateErr != nil {
-				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToUpdateBaseStationsForDuplicate,
-					"ep_eui", payload.EpEUI, "error", updateErr)
-			}
-		}
+	ulDataMsg.ID = uuid.New().String()
+	channels := svc.deliveryChannels(ownerCtx, payload.EpEUI, ownerOrgUUID)
+	outcome, err := svc.store.Persist(ownerCtx, models.UplinkPersistRequest{
+		Message:         ulDataMsg,
+		Window:          svc.windows.Duplicate,
+		ReceptionWindow: svc.windows.Reception,
+		Channels:        channels,
+	})
+	if err != nil {
+		return nil, svc.persistFailure(ownerCtx, payload, err)
 	}
-
-	// Step 8: SCACI fan-out
-	if svc.broadcaster != nil {
-		if broadcastErr := svc.broadcaster.BroadcastULData(ownerCtx, ownerTenantID, ulDataMsg); broadcastErr != nil {
-			svc.logger.ErrorContext(ownerCtx, bssci.LogBSSCIFailedToBroadcastUplinkToSCACI,
-				"ep_eui", payload.EpEUI, "error", broadcastErr)
-		}
+	isDuplicate := outcome.Classification == models.UplinkDuplicate
+	if isDuplicate {
+		svc.logger.DebugContext(ownerCtx, bssci.LogBSSCIDuplicateUplinkReceived,
+			logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldPacketCntSnake, payload.PacketCnt,
+			logger.FieldDuplicateCount, outcome.DuplicateCount,
+			logger.FieldTotalBaseStations, len(outcome.BaseStations))
+	} else {
+		svc.logger.InfoContext(ownerCtx, bssci.LogBSSCIUplinkFirstReception,
+			logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldPacketCntSnake, payload.PacketCnt,
+			logger.FieldSize, len(payload.UserData), logger.FieldRssi, payload.RSSI, logger.FieldSnr, payload.SNR)
 	}
-
-	// Step 9: MQTT publish
-	if svc.mqttPublisher != nil && ownerOrgUUID != uuid.Nil {
-		orgStr := ownerOrgUUID.String()
-		go func() {
-			if pubErr := svc.mqttPublisher.PublishUplink(
-				ownerCtx, orgStr,
-				payload.EpEUI, payload.BsEUI,
-				payload.RSSI, payload.SNR,
-				payload.RxTime, payload.PacketCnt,
-				payload.UserData, ulDataMsg.DecodedPayload,
-			); pubErr != nil {
-				svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIFailedToPublishUplinkToMQTT,
-					"ep_eui", payload.EpEUI, "error", pubErr)
-			}
-		}()
-	} else if svc.mqttPublisher != nil {
-		svc.logger.WarnContext(ownerCtx, bssci.LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved,
-			"ep_eui", payload.EpEUI)
-	}
-
-	resultMessageID := ""
-	if !isDuplicate {
-		resultMessageID = messageID
-	}
-
+	svc.recordEndpointAck(ownerCtx, payload, ownerTenantID, outcome.MessageID)
 	return &bssci.IngestResult{
+		IsDuplicate:   isDuplicate,
 		OwnerTenantID: ownerTenantID,
 		OwnerOrgUUID:  ownerOrgUUID,
-		IsDuplicate:   isDuplicate,
-		MessageID:     resultMessageID,
+		MessageID:     outcome.MessageID,
 	}, nil
+}
+
+// recordEndpointAck hands an uplink's dlAck, carried by the stored message
+// messageID, to the downlink queue under the endpoint's owner; a failure
+// never fails the uplink.
+func (svc *UplinkIngestServiceImpl) recordEndpointAck(ctx context.Context, payload *bssci.UplinkPayload, ownerTenantID int64, messageID string) {
+	if !payload.DlAck {
+		return
+	}
+	if err := svc.downlinkAcks.RecordEndpointAck(ctx, ownerTenantID, payload.EpEUI, payload.PacketCnt, messageID); err != nil {
+		svc.logger.WarnContext(ctx, bssci.LogBSSCIFailedToRecordEndpointAck,
+			logger.FieldEpEui, payload.EpEUI,
+			logger.FieldPacketCnt, payload.PacketCnt,
+			logger.FieldError, err)
+	}
+}
+
+// classifierRefusal pairs a store refusal with the catalog error the base station receives.
+type classifierRefusal struct {
+	cause error
+	token string
+	posix int
+	log   string
+}
+
+// classifierRefusals lists the store's refusals; any other persist failure is internal.
+var classifierRefusals = []classifierRefusal{
+	{storage.ErrPacketCounterCollision, bssci.ErrTokenPacketCounterCollision, bssci.POSIX_EEXIST, bssci.LogBSSCIUplinkPacketCounterCollision},
+}
+
+// persistFailure logs a failed persist and returns the error the base station is answered with.
+func (svc *UplinkIngestServiceImpl) persistFailure(ctx context.Context, payload *bssci.UplinkPayload, err error) error {
+	for _, refusal := range classifierRefusals {
+		if errors.Is(err, refusal.cause) {
+			svc.logger.WarnContext(ctx, refusal.log,
+				logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldPacketCntSnake, payload.PacketCnt)
+			return fmt.Errorf("%w: %w", bssci.NewCatalogError(refusal.token, refusal.posix), err)
+		}
+	}
+	svc.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToPersistUplinkMessage,
+		logger.FieldEpEuiSnake, payload.EpEUI, logger.FieldPacketCntSnake, payload.PacketCnt, logger.FieldError, err)
+	return fmt.Errorf("%w: %w", errPersistUplinkFailed, err)
+}
+
+// deliveryChannels narrows the configured channels for one message: MQTT
+// topics are organization-scoped, so a message whose owner organization
+// could not be resolved is not queued for MQTT.
+func (svc *UplinkIngestServiceImpl) deliveryChannels(ctx context.Context, epEUI uint64, ownerOrgUUID uuid.UUID) []models.DeliveryChannel {
+	channels := make([]models.DeliveryChannel, 0, len(svc.channels))
+	for _, channel := range svc.channels {
+		if channel == models.DeliveryChannelMQTT && ownerOrgUUID == uuid.Nil {
+			svc.logger.WarnContext(ctx, bssci.LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved,
+				logger.FieldEpEuiSnake, epEUI)
+			continue
+		}
+		channels = append(channels, channel)
+	}
+	return channels
 }

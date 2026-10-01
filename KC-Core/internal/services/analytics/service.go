@@ -8,6 +8,7 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 )
 
 // MessageStore provides message analytics queries.
@@ -15,7 +16,7 @@ type MessageStore interface {
 	GetAnalyticsOverview(ctx context.Context, tenantID int64, startTime, endTime time.Time) (*Stats, error)
 	GetDailyActivity(ctx context.Context, tenantID int64, startTime, endTime time.Time) ([]DailyActivity, error)
 	GetSignalQualityStats(ctx context.Context, tenantID int64, startTime, endTime time.Time) (*SignalStats, error)
-	GetTopEndpointsByActivity(ctx context.Context, tenantID int64, startTime, endTime time.Time, limit int) ([]EndpointActivityStats, error)
+	GetSignalQualityByBaseStation(ctx context.Context, tenantID int64, startTime, endTime time.Time) ([]BaseStationSignalStats, error)
 }
 
 // Stats represents analytics overview statistics.
@@ -50,50 +51,44 @@ type SignalStats struct {
 	TotalMessages int64
 }
 
-// EndpointActivityStats represents endpoint activity metrics.
-type EndpointActivityStats struct {
-	EUI          uint64
-	EUIFormatted string
+// BaseStationSignalStats is the signal quality one base station received.
+type BaseStationSignalStats struct {
+	EUI          string
+	AvgRSSI      float64
+	AvgSNR       float64
 	MessageCount int64
-	LastSeen     *time.Time
 }
 
 // Service implements grpcservices.AnalyticsService.
 type Service struct {
 	messageStore MessageStore
 	logger       logger.Logger
+	clock        clock.Clock
 }
 
-// New creates a new analytics service.
-func New(messageStore MessageStore, log logger.Logger) *Service {
+// New creates a new analytics service; clk ends an open window.
+func New(messageStore MessageStore, log logger.Logger, clk clock.Clock) *Service {
 	return &Service{
 		messageStore: messageStore,
 		logger:       log,
+		clock:        clk,
 	}
 }
 
 // GetOverview returns analytics overview for the given time range.
 func (s *Service) GetOverview(ctx context.Context, tenantID int64, startTime, endTime *time.Time) (*grpcservices.AnalyticsOverview, error) {
-	// Default to last 24 hours if not specified
-	end := time.Now()
-	start := end.Add(-24 * time.Hour)
-	if startTime != nil {
-		start = *startTime
-	}
-	if endTime != nil {
-		end = *endTime
-	}
+	start, end := s.resolveWindow(startTime, endTime, defaultAnalyticsWindow)
 
 	stats, err := s.messageStore.GetAnalyticsOverview(ctx, tenantID, start, end)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get analytics overview", "tenantID", tenantID, "error", err)
-		return nil, fmt.Errorf("get analytics overview: %w", err)
+		s.logger.ErrorContext(ctx, LogAnalyticsOverviewFailed, logger.FieldTenantID, tenantID, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", errAnalyticsOverview, err)
 	}
 
 	overview := &grpcservices.AnalyticsOverview{
-		TotalMessages:     stats.TotalMessages,
-		ActiveEndpoints:   stats.ActiveEndpoints,
-		TotalBaseStations: stats.ActiveBaseStations,
+		TotalMessages:      stats.TotalMessages,
+		ActiveEndpoints:    stats.ActiveEndpoints,
+		ActiveBaseStations: stats.ActiveBaseStations,
 	}
 
 	if stats.AvgRSSI != nil {
@@ -106,92 +101,108 @@ func (s *Service) GetOverview(ctx context.Context, tenantID int64, startTime, en
 	return overview, nil
 }
 
-// GetActivity returns activity analytics for the given time range.
-func (s *Service) GetActivity(ctx context.Context, tenantID int64, startTime, endTime *time.Time) (*grpcservices.ActivityAnalytics, error) {
-	// Default to last 7 days if not specified
-	end := time.Now()
-	start := end.Add(-7 * 24 * time.Hour)
-	if startTime != nil {
-		start = *startTime
+// GetActivity returns the window's message activity with one slot per day.
+// The totals count distinct endpoints and base stations over the whole window.
+func (s *Service) GetActivity(ctx context.Context, tenantID int64, startTime, endTime *time.Time, granularity string) (*grpcservices.ActivityAnalytics, error) {
+	if granularity != "" && granularity != GranularityDay {
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedGranularity, granularity)
 	}
-	if endTime != nil {
-		end = *endTime
-	}
+	start, end := s.resolveWindow(startTime, endTime, defaultActivityWindow)
 
-	// Get daily activity
-	dailyActivities, err := s.messageStore.GetDailyActivity(ctx, tenantID, start, end)
+	totals, err := s.messageStore.GetAnalyticsOverview(ctx, tenantID, start, end)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get daily activity", "tenantID", tenantID, "error", err)
-		return nil, fmt.Errorf("get daily activity: %w", err)
+		s.logger.ErrorContext(ctx, LogAnalyticsActivityTotalsFailed, logger.FieldTenantID, tenantID, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", errActivityTotals, err)
 	}
 
-	// Get top endpoints
-	topEndpoints, err := s.messageStore.GetTopEndpointsByActivity(ctx, tenantID, start, end, 10)
+	days, err := s.messageStore.GetDailyActivity(ctx, tenantID, start, end)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get top endpoints", "tenantID", tenantID, "error", err)
-		return nil, fmt.Errorf("get top endpoints: %w", err)
+		s.logger.ErrorContext(ctx, LogAnalyticsDailyActivityFailed, logger.FieldTenantID, tenantID, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", errDailyActivity, err)
 	}
 
-	activity := &grpcservices.ActivityAnalytics{
-		MessagesPerHour:  make(map[string]int64),
-		EndpointActivity: make(map[string]int64),
-		TopEndpoints:     make([]grpcservices.EndpointActivity, 0, len(topEndpoints)),
+	slots := make([]grpcservices.ActivitySlot, len(days))
+	for i, day := range days {
+		slots[i] = grpcservices.ActivitySlot{
+			Slot:          day.Day,
+			MessageCount:  day.MessageCount,
+			EndpointCount: day.UniqueEndpoints,
+		}
 	}
 
-	// Populate daily stats as messages per day (hour granularity requires different query)
-	for _, day := range dailyActivities {
-		activity.MessagesPerHour[day.Day.Format("2006-01-02")] = day.MessageCount
-	}
-
-	// Populate top endpoints
-	for _, ep := range topEndpoints {
-		activity.TopEndpoints = append(activity.TopEndpoints, grpcservices.EndpointActivity{
-			EPEUI:        ep.EUIFormatted,
-			MessageCount: ep.MessageCount,
-			LastSeen:     ep.LastSeen,
-		})
-		activity.EndpointActivity[ep.EUIFormatted] = ep.MessageCount
-	}
-
-	return activity, nil
+	return &grpcservices.ActivityAnalytics{
+		StartTime:          start,
+		EndTime:            end,
+		TotalMessages:      totals.TotalMessages,
+		UniqueEndpoints:    totals.ActiveEndpoints,
+		UniqueBaseStations: totals.ActiveBaseStations,
+		Slots:              slots,
+	}, nil
 }
 
 // GetSignalQuality returns signal quality analytics for the given time range.
 func (s *Service) GetSignalQuality(ctx context.Context, tenantID int64, startTime, endTime *time.Time) (*grpcservices.SignalQualityAnalytics, error) {
-	// Default to last 24 hours if not specified
-	end := time.Now()
-	start := end.Add(-24 * time.Hour)
-	if startTime != nil {
-		start = *startTime
-	}
-	if endTime != nil {
-		end = *endTime
-	}
+	start, end := s.resolveWindow(startTime, endTime, defaultAnalyticsWindow)
 
 	stats, err := s.messageStore.GetSignalQualityStats(ctx, tenantID, start, end)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get signal quality stats", "tenantID", tenantID, "error", err)
-		return nil, fmt.Errorf("get signal quality stats: %w", err)
+		s.logger.ErrorContext(ctx, LogAnalyticsSignalQualityFailed, logger.FieldTenantID, tenantID, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", errSignalQualityStats, err)
 	}
 
-	// Determine quality rating based on average RSSI
-	quality := "poor"
-	if stats.AvgRSSI > -70 {
-		quality = "excellent"
-	} else if stats.AvgRSSI > -85 {
-		quality = "good"
-	} else if stats.AvgRSSI > -100 {
-		quality = "fair"
+	stations, err := s.messageStore.GetSignalQualityByBaseStation(ctx, tenantID, start, end)
+	if err != nil {
+		s.logger.ErrorContext(ctx, LogAnalyticsSignalQualityByStationFailed, logger.FieldTenantID, tenantID, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", errSignalQualityByStation, err)
+	}
+
+	byStation := make([]grpcservices.BaseStationSignalQuality, len(stations))
+	for i, station := range stations {
+		byStation[i] = grpcservices.BaseStationSignalQuality{
+			EUI:          station.EUI,
+			AverageRSSI:  station.AvgRSSI,
+			AverageSNR:   station.AvgSNR,
+			MessageCount: station.MessageCount,
+		}
 	}
 
 	return &grpcservices.SignalQualityAnalytics{
-		AverageRSSI: stats.AvgRSSI,
-		AverageSNR:  stats.AvgSNR,
-		RSSIRange:   [2]float64{stats.MinRSSI, stats.MaxRSSI},
-		SNRRange:    [2]float64{stats.MinSNR, stats.MaxSNR},
-		Quality:     quality,
+		StartTime:     start,
+		EndTime:       end,
+		AverageRSSI:   stats.AvgRSSI,
+		AverageSNR:    stats.AvgSNR,
+		MedianRSSI:    stats.MedianRSSI,
+		MedianSNR:     stats.MedianSNR,
+		RSSIRange:     [2]float64{stats.MinRSSI, stats.MaxRSSI},
+		SNRRange:      [2]float64{stats.MinSNR, stats.MaxSNR},
+		ByBaseStation: byStation,
 	}, nil
+}
+
+// resolveWindow fills an open window bound: the end defaults to now and the
+// start to the lookback before the end.
+func (s *Service) resolveWindow(startTime, endTime *time.Time, lookback time.Duration) (time.Time, time.Time) {
+	end := s.clock.Now()
+	if endTime != nil {
+		end = *endTime
+	}
+	start := end.Add(-lookback)
+	if startTime != nil {
+		start = *startTime
+	}
+	return start, end
 }
 
 // Ensure Service implements grpcservices.AnalyticsService
 var _ grpcservices.AnalyticsService = (*Service)(nil)
+
+// GranularityDay is the only activity bucket width the message store aggregates by.
+const GranularityDay = "day"
+
+// defaultAnalyticsWindow is the lookback for overview and signal-quality
+// queries when the caller provides no explicit start time (last 24 hours).
+const defaultAnalyticsWindow = 24 * time.Hour
+
+// defaultActivityWindow is the lookback for activity queries when the caller
+// provides no explicit start time (last 7 days).
+const defaultActivityWindow = 7 * 24 * time.Hour

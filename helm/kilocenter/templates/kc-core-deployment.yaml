@@ -6,6 +6,12 @@ metadata:
     {{- include "kilocenter.componentLabels" (dict "context" . "component" "kc-core") | nindent 4 }}
 spec:
   replicas: 1
+  # One KC-Core at a time: a starting KC-Core marks every BSSCI session its
+  # service center EUI left active as disconnected, which would cut off the
+  # sessions of a pod a rolling update keeps running, and the ReadWriteOnce
+  # certificate volume attaches to one node only.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "kilocenter.selectorLabels" (dict "context" . "component" "kc-core") | nindent 6 }}
@@ -59,6 +65,17 @@ spec:
                 secretKeyRef:
                   name: {{ include "kilocenter.fullname" . }}
                   key: postgresql-password
+            - name: KILOCENTER_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: master-key
+            - name: KILOCENTER_INTERNAL_AUTH_PEER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kilocenter.fullname" . }}
+                  key: internal-peer-secret
+
             - name: KILOCENTER_MQTT_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -3,8 +3,8 @@ package postgres
 import (
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"

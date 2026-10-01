@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -13,6 +14,11 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+)
+
+const (
+	testErrFmtOrganizationNotFoundForTenantD = "organization not found for tenant %d"
+	testMsgTenantIDCannotBeZero              = "tenant ID cannot be zero"
 )
 
 // ============================================================================
@@ -35,10 +41,6 @@ func (m *mockOrgRepository) GetOrgByTenantID(ctx context.Context, tenantID int64
 	return nil, nil
 }
 
-func (m *mockOrgRepository) UpsertOrg(_ context.Context, _ *models.Organization) error {
-	return nil
-}
-
 func (m *mockOrgRepository) Create(_ context.Context, _ *models.Organization) error {
 	return nil
 }
@@ -53,14 +55,6 @@ func (m *mockOrgRepository) Update(_ context.Context, _ uuid.UUID, _ int64, _ ma
 
 func (m *mockOrgRepository) Delete(_ context.Context, _ uuid.UUID, _ int64) error {
 	return nil
-}
-
-func (m *mockOrgRepository) ListOrgMembers(_ context.Context, _ uuid.UUID, _ string) ([]*models.OrganizationMember, error) {
-	return nil, nil
-}
-
-func (m *mockOrgRepository) CheckUserMembership(_ context.Context, _ uuid.UUID, _ uuid.UUID) (bool, error) {
-	return false, nil
 }
 
 func (m *mockOrgRepository) AddMember(_ context.Context, _ *models.OrganizationMember) error {
@@ -81,18 +75,6 @@ func (m *mockOrgRepository) ListUserMemberships(_ context.Context, _ uuid.UUID) 
 
 func (m *mockOrgRepository) GetOrgByExternalID(_ context.Context, _ string) (*models.Organization, error) {
 	return nil, nil // Not used in these tests
-}
-
-func (m *mockOrgRepository) CheckBaseStationQuota(_ context.Context, _ uuid.UUID) error {
-	return nil // Not used in these tests
-}
-
-func (m *mockOrgRepository) CheckEndpointQuota(_ context.Context, _ uuid.UUID) error {
-	return nil // Not used in these tests
-}
-
-func (m *mockOrgRepository) CountOrgMembers(_ context.Context, _ uuid.UUID, _ string) (int64, error) {
-	return 0, nil // Not used in these tests
 }
 
 func (m *mockOrgRepository) ListOrganizations(_ context.Context, _ *int64, _, _ int) ([]*models.Organization, int64, error) {
@@ -165,26 +147,35 @@ func (l *capturingLogger) captureWithContext(_ context.Context, level string, ms
 func (l *capturingLogger) Debug(msg string, fields ...interface{}) {
 	l.capture("debug", msg, fields...)
 }
+
 func (l *capturingLogger) Info(msg string, fields ...interface{}) { l.capture("info", msg, fields...) }
+
 func (l *capturingLogger) Warn(msg string, fields ...interface{}) { l.capture("warn", msg, fields...) }
+
 func (l *capturingLogger) Error(msg string, fields ...interface{}) {
 	l.capture("error", msg, fields...)
 }
+
 func (l *capturingLogger) Fatal(msg string, fields ...interface{}) {
 	l.capture("fatal", msg, fields...)
 }
+
 func (l *capturingLogger) DebugContext(ctx context.Context, msg string, fields ...interface{}) {
 	l.captureWithContext(ctx, "debug", msg, fields...)
 }
+
 func (l *capturingLogger) InfoContext(ctx context.Context, msg string, fields ...interface{}) {
 	l.captureWithContext(ctx, "info", msg, fields...)
 }
+
 func (l *capturingLogger) WarnContext(ctx context.Context, msg string, fields ...interface{}) {
 	l.captureWithContext(ctx, "warn", msg, fields...)
 }
+
 func (l *capturingLogger) ErrorContext(ctx context.Context, msg string, fields ...interface{}) {
 	l.captureWithContext(ctx, "error", msg, fields...)
 }
+
 func (l *capturingLogger) FatalContext(ctx context.Context, msg string, fields ...interface{}) {
 	l.captureWithContext(ctx, "fatal", msg, fields...)
 }
@@ -277,11 +268,11 @@ func TestOrgResolverAdapter_ResolveOrganization_Success(t *testing.T) {
 // organization is not found for a tenant, the error is logged as a warning
 // and propagated to the caller.
 //
-// Requirement: adapter must handle not-found gracefully with warning logs
+// Requirement: adapter must propagate not-found to the caller
 func TestOrgResolverAdapter_ResolveOrganization_NotFound(t *testing.T) {
 	// Setup: Create repository that returns not-found error
 	expectedTenantID := int64(999)
-	notFoundErr := fmt.Errorf("organization not found for tenant %d", expectedTenantID)
+	notFoundErr := fmt.Errorf(testErrFmtOrganizationNotFoundForTenantD, expectedTenantID)
 
 	mockRepo := &mockOrgRepository{
 		getOrgByTenantIDFunc: func(_ context.Context, _ int64) (*models.Organization, error) {
@@ -300,25 +291,16 @@ func TestOrgResolverAdapter_ResolveOrganization_NotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, uuid.Nil, orgID, "Should return nil UUID on error")
 	assert.Equal(t, notFoundErr, err, "Should propagate repository error")
-
-	// Verify: Logs warning message with error details
-	assert.True(t, mockLog.hasEntry("warn", "Failed to resolve organization for tenant"),
-		"Should log warning for not-found condition")
-
-	entry := mockLog.getEntry("warn", "Failed to resolve organization for tenant")
-	require.NotNil(t, entry, "Warning entry should exist")
-	assert.Equal(t, expectedTenantID, entry.fields["tenant_id"], "Should log tenant_id")
-	assert.Equal(t, notFoundErr, entry.fields["error"], "Should log error")
 }
 
 // TestOrgResolverAdapter_ResolveOrganization_DatabaseError verifies that
-// database errors during resolution are logged with context and propagated.
+// database errors during resolution are propagated to the caller.
 //
 // Requirement: adapter must handle infrastructure failures gracefully
 func TestOrgResolverAdapter_ResolveOrganization_DatabaseError(t *testing.T) {
 	// Setup: Create repository that returns database error
 	expectedTenantID := int64(100)
-	dbErr := fmt.Errorf("database connection failed")
+	dbErr := errors.New(testMsgDatabaseConnectionFailed)
 
 	mockRepo := &mockOrgRepository{
 		getOrgByTenantIDFunc: func(_ context.Context, _ int64) (*models.Organization, error) {
@@ -337,15 +319,6 @@ func TestOrgResolverAdapter_ResolveOrganization_DatabaseError(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, uuid.Nil, orgID, "Should return nil UUID on database error")
 	assert.Equal(t, dbErr, err, "Should propagate database error")
-
-	// Verify: Logs warning with error context
-	assert.True(t, mockLog.hasEntry("warn", "Failed to resolve organization for tenant"),
-		"Should log warning for database errors")
-
-	entry := mockLog.getEntry("warn", "Failed to resolve organization for tenant")
-	require.NotNil(t, entry, "Warning entry should exist")
-	assert.Equal(t, expectedTenantID, entry.fields["tenant_id"], "Should log tenant_id")
-	assert.Equal(t, dbErr, entry.fields["error"], "Should log database error")
 }
 
 // TestOrgResolverAdapter_ResolveOrganization_LogsSuccess verifies that
@@ -422,7 +395,7 @@ func TestOrgResolverAdapter_ResolveOrganization_EmptyTenantID(t *testing.T) {
 	mockRepo := &mockOrgRepository{
 		getOrgByTenantIDFunc: func(_ context.Context, tenantID int64) (*models.Organization, error) {
 			if tenantID == 0 {
-				return nil, fmt.Errorf("tenant ID cannot be zero")
+				return nil, errors.New(testMsgTenantIDCannotBeZero)
 			}
 			return nil, nil
 		},
@@ -438,10 +411,6 @@ func TestOrgResolverAdapter_ResolveOrganization_EmptyTenantID(t *testing.T) {
 	// Verify: Returns error
 	require.Error(t, err)
 	assert.Equal(t, uuid.Nil, orgID, "Should return nil UUID on error")
-
-	// Verify: Error is logged
-	assert.True(t, mockLog.hasEntry("warn", "Failed to resolve organization for tenant"),
-		"Should log warning for tenant ID 0")
 }
 
 // TestOrgResolverAdapter_ResolveOrganization_MultipleCallsSameContext verifies
@@ -450,7 +419,7 @@ func TestOrgResolverAdapter_ResolveOrganization_EmptyTenantID(t *testing.T) {
 // Requirement: verify stateless behavior for auth interceptor usage
 func TestOrgResolverAdapter_ResolveOrganization_MultipleCallsSameContext(t *testing.T) {
 	// Setup: Create adapter that tracks call count
-	callCount := 0
+	var callCount int
 	expectedOrgID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	expectedTenantID := int64(100)
 
@@ -485,7 +454,7 @@ func TestOrgResolverAdapter_ResolveOrganization_MultipleCallsSameContext(t *test
 
 	// Verify: Debug logs for all successful resolutions
 	entries := mockLog.getEntries()
-	debugCount := 0
+	var debugCount int
 	for _, entry := range entries {
 		if entry.level == "debug" && entry.message == "Resolved organization for tenant" {
 			debugCount++

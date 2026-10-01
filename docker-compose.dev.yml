@@ -21,6 +21,7 @@ services:
     environment:
       KILOCENTER_GENERAL_LOG_LEVEL: debug
       KILOCENTER_STORAGE_PASSWORD: devpassword
+      KILOCENTER_MASTER_KEY: ${KILOCENTER_MASTER_KEY:?KILOCENTER_MASTER_KEY is required (openssl rand -hex 32)}
 
   # Development Tools
   adminer:

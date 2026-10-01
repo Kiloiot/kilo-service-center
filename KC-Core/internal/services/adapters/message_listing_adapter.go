@@ -2,43 +2,55 @@
 package adapters
 
 import (
-	"bytes"
 	"context"
-	"encoding/csv"
-	"encoding/json"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	messagesservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/messages"
-	miotyformat "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
-// MessageListingStoreAdapter adapts interfaces.MIOTYMessageRepository to messagesservice.MessageStore.
+// messageListingStore covers the uplink reads the listing adapter performs
+// against the message repository. Satisfied structurally by the KC-DB MIOTY
+// message repository.
+type messageListingStore interface {
+	ListULDataMessages(ctx context.Context, filter mioty.ULDataMessageFilter) ([]*mioty.ULDataMessage, int64, error)
+	ListStoredULData(ctx context.Context, filter mioty.ULDataMessageFilter) ([]*mioty.ULDataMessage, error)
+	GetULDataMessage(ctx context.Context, id string, tenantID int64) (*mioty.ULDataMessage, error)
+	GetBaseStationMessageStats(ctx context.Context, tenantID int64, bsEui []byte, startTime, endTime *time.Time) (*mioty.BaseStationMessageStats, error)
+}
+
+// MessageListingStoreAdapter adapts the KC-DB message repository to messagesservice.MessageStore.
 // Implements Export with domain-only constants.
 type MessageListingStoreAdapter struct {
-	repo interfaces.MIOTYMessageRepository
+	repo messageListingStore
 }
 
 // NewMessageListingStoreAdapter creates a new adapter for message listing.
-func NewMessageListingStoreAdapter(repo interfaces.MIOTYMessageRepository) *MessageListingStoreAdapter {
+func NewMessageListingStoreAdapter(repo messageListingStore) *MessageListingStoreAdapter {
 	return &MessageListingStoreAdapter{repo: repo}
 }
 
 // List returns messages for the given tenant with filters.
-func (a *MessageListingStoreAdapter) List(ctx context.Context, tenantID int64, filters *messagesservice.MessageFilter, limit, offset int) ([]*mioty.ULDataMessage, int64, error) {
+func (a *MessageListingStoreAdapter) List(ctx context.Context, tenantID int64, filters *grpcservices.MessageFilters, limit, offset int) ([]*mioty.ULDataMessage, int64, error) {
 	dbFilter := convertMessageFilter(tenantID, filters, limit, offset)
 	return a.repo.ListULDataMessages(ctx, dbFilter)
 }
 
 // ListByBaseStation returns messages for a specific base station.
-func (a *MessageListingStoreAdapter) ListByBaseStation(ctx context.Context, tenantID int64, bsEui []byte, filters *messagesservice.MessageFilter, limit, offset int) ([]*mioty.ULDataMessage, int64, error) {
+func (a *MessageListingStoreAdapter) ListByBaseStation(ctx context.Context, tenantID int64, bsEui []byte, filters *grpcservices.MessageFilters, limit, offset int) ([]*mioty.ULDataMessage, int64, error) {
 	dbFilter := convertMessageFilter(tenantID, filters, limit, offset)
-	if len(bsEui) >= 8 {
-		euiVal := bytesToUint64(bsEui)
-		dbFilter.BsEui = &euiVal
-	}
+	dbFilter.BsEui = mioty.OptionalEUI64FromBytes(bsEui)
 	return a.repo.ListULDataMessages(ctx, dbFilter)
+}
+
+// ListStored lists the uplinks stored at or after since, of the station when
+// bsEui is given, newest stored first.
+func (a *MessageListingStoreAdapter) ListStored(ctx context.Context, tenantID int64, bsEui []byte, filters *grpcservices.MessageFilters, since *time.Time, limit, offset int) ([]*mioty.ULDataMessage, error) {
+	dbFilter := convertMessageFilter(tenantID, filters, limit, offset)
+	dbFilter.BsEui = mioty.OptionalEUI64FromBytes(bsEui)
+	dbFilter.StoredSince = since
+	return a.repo.ListStoredULData(ctx, dbFilter)
 }
 
 // GetByID returns a specific message by ID.
@@ -46,9 +58,10 @@ func (a *MessageListingStoreAdapter) GetByID(ctx context.Context, tenantID int64
 	return a.repo.GetULDataMessage(ctx, messageID, tenantID)
 }
 
-// GetBaseStationStats returns message statistics for a base station.
-func (a *MessageListingStoreAdapter) GetBaseStationStats(ctx context.Context, tenantID int64, bsEui []byte, startTime, endTime time.Time) (*mioty.BaseStationMessageStats, error) {
-	return a.repo.GetBaseStationMessageStats(ctx, tenantID, bsEui, &startTime, &endTime)
+// GetBaseStationStats returns the statistics of the uplinks the base station
+// received within the window; a nil bound leaves that side open.
+func (a *MessageListingStoreAdapter) GetBaseStationStats(ctx context.Context, tenantID int64, bsEui []byte, startTime, endTime *time.Time) (*mioty.BaseStationMessageStats, error) {
+	return a.repo.GetBaseStationMessageStats(ctx, tenantID, bsEui, startTime, endTime)
 }
 
 // Search searches messages by query string.
@@ -59,22 +72,16 @@ func (a *MessageListingStoreAdapter) Search(ctx context.Context, tenantID int64,
 		Offset:     offset,
 		SearchTerm: &query,
 	}
-	if len(bsEui) >= 8 {
-		euiVal := bytesToUint64(bsEui)
-		dbFilter.BsEui = &euiVal
-	}
+	dbFilter.BsEui = mioty.OptionalEUI64FromBytes(bsEui)
 	return a.repo.ListULDataMessages(ctx, dbFilter)
 }
 
 // Export exports messages in the specified format.
 // Returns domain error for unsupported format; handler maps to gRPC token.
-func (a *MessageListingStoreAdapter) Export(ctx context.Context, tenantID int64, bsEui []byte, filters *messagesservice.MessageFilter, format string) ([]byte, error) {
+func (a *MessageListingStoreAdapter) Export(ctx context.Context, tenantID int64, bsEui []byte, filters *grpcservices.MessageFilters, format string) ([]byte, error) {
 	// Fetch messages (limited for export using domain constant)
 	dbFilter := convertMessageFilter(tenantID, filters, messagesservice.ExportMaxLimit, 0)
-	if len(bsEui) >= 8 {
-		euiVal := bytesToUint64(bsEui)
-		dbFilter.BsEui = &euiVal
-	}
+	dbFilter.BsEui = mioty.OptionalEUI64FromBytes(bsEui)
 
 	msgs, _, err := a.repo.ListULDataMessages(ctx, dbFilter)
 	if err != nil {
@@ -83,81 +90,39 @@ func (a *MessageListingStoreAdapter) Export(ctx context.Context, tenantID int64,
 
 	switch format {
 	case messagesservice.ExportFormatJSON:
-		return json.Marshal(msgs)
+		return exportJSON(msgs)
 	case messagesservice.ExportFormatCSV:
-		return a.exportToCSV(msgs)
+		return exportCSV(msgs)
 	default:
 		// Return domain error (not literal string)
 		return nil, messagesservice.ErrExportUnsupportedFormat
 	}
 }
 
-// exportToCSV converts messages to CSV bytes using domain-layer headers.
-func (a *MessageListingStoreAdapter) exportToCSV(msgs []*mioty.ULDataMessage) ([]byte, error) {
-	var buf bytes.Buffer
-	w := csv.NewWriter(&buf)
-
-	// Use domain-layer headers (NO pkg/grpc dependency)
-	if err := w.Write(messagesservice.ExportCSVHeaders); err != nil {
-		return nil, err
+// convertMessageFilter renders the service filter as the repository's.
+// Direction stays unfiltered here: the service answers a downlink direction
+// itself because stored messages are uplinks only.
+func convertMessageFilter(tenantID int64, filter *grpcservices.MessageFilters, limit, offset int) mioty.ULDataMessageFilter {
+	dbFilter := mioty.ULDataMessageFilter{TenantID: tenantID, Limit: limit, Offset: offset}
+	if filter == nil {
+		return dbFilter
 	}
-
-	for _, m := range msgs {
-		record := []string{
-			m.ID,
-			miotyformat.FormatEUI64(m.EpEui),
-			miotyformat.FormatEUI64(m.BsEui),
-			miotyformat.FormatTimestampRFC3339(m.RxTime),
-			miotyformat.FormatInt(int64(m.PacketCnt)), // PacketCnt is uint32, cast to int64
-			miotyformat.FormatFloat2Dec(m.SNR),
-			miotyformat.FormatFloat2Dec(m.RSSI),
-			miotyformat.FormatUserDataHex(m.UserData),
-		}
-		if err := w.Write(record); err != nil {
-			return nil, err
-		}
+	dbFilter.EpEui = mioty.OptionalEUI64FromBytes(filter.EpEui)
+	dbFilter.BsEui = mioty.OptionalEUI64FromBytes(filter.BsEui)
+	dbFilter.StartTime = filter.StartTime
+	dbFilter.EndTime = filter.EndTime
+	if filter.Direction != "" {
+		dbFilter.Direction = &filter.Direction
 	}
-	w.Flush()
-	return buf.Bytes(), w.Error()
-}
-
-// convertMessageFilter converts messagesservice.MessageFilter to mioty.ULDataMessageFilter.
-func convertMessageFilter(tenantID int64, filter *messagesservice.MessageFilter, limit, offset int) mioty.ULDataMessageFilter {
-	dbFilter := mioty.ULDataMessageFilter{
-		TenantID: tenantID,
-		Limit:    limit,
-		Offset:   offset,
+	dbFilter.Duplicate = filter.Duplicate
+	dbFilter.DlOpen = filter.DlOpen
+	if filter.Profile != "" {
+		dbFilter.Profile = &filter.Profile
 	}
-
-	if filter != nil {
-		if len(filter.EpEui) >= 8 {
-			epEuiVal := bytesToUint64(filter.EpEui)
-			dbFilter.EpEui = &epEuiVal
-		}
-		if len(filter.BsEui) >= 8 {
-			bsEuiVal := bytesToUint64(filter.BsEui)
-			dbFilter.BsEui = &bsEuiVal
-		}
-		dbFilter.StartTime = filter.StartTime
-		dbFilter.EndTime = filter.EndTime
-		// Direction: pass through for potential future DB-level filtering
-		// Note: Direction guard is enforced at service layer (uplink-only in storage)
-		if filter.Direction != "" {
-			dbFilter.Direction = &filter.Direction
-		}
-		// Note: MinRSSI/MaxRSSI not supported in DB filter - filtering done at application layer if needed
+	if filter.Mode != "" {
+		dbFilter.Mode = &filter.Mode
 	}
-
 	return dbFilter
-}
-
-// bytesToUint64 converts byte slice to uint64 (big-endian).
-func bytesToUint64(b []byte) uint64 {
-	if len(b) < 8 {
-		return 0
-	}
-	return uint64(b[0])<<56 | uint64(b[1])<<48 | uint64(b[2])<<40 | uint64(b[3])<<32 |
-		uint64(b[4])<<24 | uint64(b[5])<<16 | uint64(b[6])<<8 | uint64(b[7])
 }
 
 // Ensure MessageListingStoreAdapter implements messagesservice.MessageStore

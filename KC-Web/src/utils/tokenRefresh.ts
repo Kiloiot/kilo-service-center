@@ -3,53 +3,93 @@
  *
  * Schedules access token refresh before expiry so API calls never hit 401.
  * Uses the JWT `exp` claim to compute when to refresh (60s before expiry).
- * Falls back to the reactive 401-retry path in the gRPC client if the
- * proactive refresh fails (e.g., offline).
+ * A refresh the service cannot answer is retried with backoff and keeps the
+ * session; only a refresh the server refuses clears it and goes to sign-in.
  */
 
-import { apiService } from "@services/api";
-import { decodeJwtPayload } from "@utils/jwt";
+import { sessionApi } from "@services/api";
+import { exponentialBackoffMs } from "@utils/backoff";
+import { tokenExpiryMs } from "@utils/jwt";
 import { logger } from "@utils/logger";
+import { redirectToSignIn } from "@utils/signInRedirect";
 import { storageService } from "@utils/storage";
-import { STORAGE_KEYS } from "@constants/app";
-
-const REFRESH_BUFFER_MS = 60_000;
-const MIN_SCHEDULE_MS = 5_000;
+import {
+  STORAGE_KEYS,
+  TIMING_TOKEN_REFRESH_BUFFER_MS,
+  TIMING_TOKEN_REFRESH_MIN_DELAY_MS,
+  TIMING_TOKEN_REFRESH_RETRY_BASE_MS,
+  TIMING_TOKEN_REFRESH_RETRY_MAX_MS,
+  TOKEN_REFRESH_OUTCOME,
+} from "@constants/app";
+import { SESSION_ERRORS } from "@constants/messages";
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let retryAttempt = 0;
 
 function getTokenExpiryMs(): number | null {
   const token = storageService.getItem(STORAGE_KEYS.AUTH_TOKEN);
-  if (!token) return null;
+  return token ? tokenExpiryMs(token) : null;
+}
 
-  const payload = decodeJwtPayload(token);
-  if (!payload || typeof payload.exp !== "number") return null;
+function isRefreshDue(): boolean {
+  const expiryMs = getTokenExpiryMs();
+  return (
+    expiryMs === null || expiryMs - Date.now() <= TIMING_TOKEN_REFRESH_BUFFER_MS
+  );
+}
 
-  return payload.exp * 1000;
+function refreshIn(delayMs: number): void {
+  clearTimer();
+  refreshTimer = setTimeout(() => {
+    void doRefresh();
+  }, delayMs);
+}
+
+function clearTimer(): void {
+  if (refreshTimer !== null) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+function retryWithBackoff(): void {
+  const delayMs = exponentialBackoffMs(
+    retryAttempt,
+    TIMING_TOKEN_REFRESH_RETRY_BASE_MS,
+    TIMING_TOKEN_REFRESH_RETRY_MAX_MS,
+  );
+  retryAttempt++;
+  logger.warn(SESSION_ERRORS.PROACTIVE_REFRESH_RETRY, delayMs);
+  refreshIn(delayMs);
+}
+
+function endSession(): void {
+  logger.error(SESSION_ERRORS.PROACTIVE_REFRESH_REFUSED);
+  stopRefresh();
+  storageService.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+  storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+  storageService.removeItem(STORAGE_KEYS.USER_PROFILE);
+  redirectToSignIn();
 }
 
 async function doRefresh(): Promise<void> {
-  const refreshToken = storageService.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-  if (!refreshToken) return;
+  if (!storageService.getItem(STORAGE_KEYS.REFRESH_TOKEN)) return;
 
-  try {
-    const result = await apiService.refreshTokens(refreshToken);
-    storageService.setItem(STORAGE_KEYS.AUTH_TOKEN, result.accessToken);
-    if (result.refreshToken) {
-      storageService.setItem(STORAGE_KEYS.REFRESH_TOKEN, result.refreshToken);
-    }
+  // Another tab may have renewed the shared tokens since this timer was set.
+  if (!isRefreshDue()) {
     scheduleRefresh();
-  } catch {
-    logger.error("Proactive token refresh failed, clearing session");
-    storageService.removeItem(STORAGE_KEYS.AUTH_TOKEN);
-    storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-    storageService.removeItem(STORAGE_KEYS.USER_PROFILE);
-    if (
-      typeof window !== "undefined" &&
-      window.location.pathname !== "/login"
-    ) {
-      window.location.href = "/login";
-    }
+    return;
+  }
+
+  switch (await sessionApi.refreshTokens()) {
+    case TOKEN_REFRESH_OUTCOME.RENEWED:
+      scheduleRefresh();
+      return;
+    case TOKEN_REFRESH_OUTCOME.UNAVAILABLE:
+      retryWithBackoff();
+      return;
+    case TOKEN_REFRESH_OUTCOME.REFUSED:
+      endSession();
   }
 }
 
@@ -60,19 +100,16 @@ export function scheduleRefresh(): void {
   const expiryMs = getTokenExpiryMs();
   if (!expiryMs) return;
 
-  const delayMs = Math.max(
-    expiryMs - Date.now() - REFRESH_BUFFER_MS,
-    MIN_SCHEDULE_MS,
+  refreshIn(
+    Math.max(
+      expiryMs - Date.now() - TIMING_TOKEN_REFRESH_BUFFER_MS,
+      TIMING_TOKEN_REFRESH_MIN_DELAY_MS,
+    ),
   );
-  refreshTimer = setTimeout(() => {
-    void doRefresh();
-  }, delayMs);
 }
 
-/** Cancel any pending scheduled refresh. */
+/** Cancel any pending scheduled refresh and forget its retries. */
 export function stopRefresh(): void {
-  if (refreshTimer !== null) {
-    clearTimeout(refreshTimer);
-    refreshTimer = null;
-  }
+  clearTimer();
+  retryAttempt = 0;
 }

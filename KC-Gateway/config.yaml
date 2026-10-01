@@ -11,7 +11,7 @@ gateway:
     cleanup_interval: 10m
 
 internal_auth:
-  peer_secret: ""  # Empty = dev mode (no peer auth required)
+  peer_secret: ""  # Required (32+ characters) when an upstream is not a loopback address
 
 grpc:
   port: 9090
@@ -22,7 +22,6 @@ grpc:
       - "http://localhost:5173"
       - "http://localhost:3000"
     allow_credentials: true
-    enable_websockets: true
 
 auth:
   enabled: true

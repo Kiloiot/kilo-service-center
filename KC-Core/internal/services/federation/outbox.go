@@ -5,19 +5,24 @@ import (
 	"fmt"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 )
+
+// OutboxAppender inserts a pending record into the durable relay outbox.
+type OutboxAppender interface {
+	Insert(ctx context.Context, record *models.FederationOutboxRecord) error
+}
 
 // OutboxWriter inserts an uplink frame into the durable relay outbox.
 // It is called from the BSSCI handleULData path when disposition is DispositionRelay.
 type OutboxWriter struct {
-	repo   interfaces.FederationOutboxRepository
+	repo   OutboxAppender
 	logger logger.Logger
 }
 
 // NewOutboxWriter creates an OutboxWriter backed by the given repository.
-func NewOutboxWriter(repo interfaces.FederationOutboxRepository, log logger.Logger) *OutboxWriter {
+func NewOutboxWriter(repo OutboxAppender, log logger.Logger) *OutboxWriter {
 	return &OutboxWriter{repo: repo, logger: log}
 }
 
@@ -25,7 +30,7 @@ func NewOutboxWriter(repo interfaces.FederationOutboxRepository, log logger.Logg
 // The caller (handleULData) must send ulDataRsp ONLY after this returns nil.
 func (w *OutboxWriter) Enqueue(ctx context.Context, epEUI, bsEUI uint64, rawFrame []byte, receivedAtNs int64) (uuid.UUID, error) {
 	relayID := uuid.New()
-	record := &interfaces.FederationOutboxRecord{
+	record := &models.FederationOutboxRecord{
 		RelayID:      relayID,
 		EpEUI:        int64(epEUI), //nolint:gosec // G115: EUI fits int64
 		BsEUI:        int64(bsEUI), //nolint:gosec // G115: EUI fits int64
@@ -33,9 +38,9 @@ func (w *OutboxWriter) Enqueue(ctx context.Context, epEUI, bsEUI uint64, rawFram
 		ReceivedAtNs: receivedAtNs,
 	}
 	if err := w.repo.Insert(ctx, record); err != nil {
-		return uuid.Nil, fmt.Errorf("outbox enqueue: %w", err)
+		return uuid.Nil, fmt.Errorf("%w: %w", ErrOutboxEnqueue, err)
 	}
-	w.logger.DebugContext(ctx, "Uplink enqueued for federation relay",
-		"relay_id", relayID, "ep_eui", epEUI)
+	w.logger.DebugContext(ctx, LogUplinkEnqueued,
+		logger.FieldRelayID, relayID, logger.FieldEpEuiSnake, epEUI)
 	return relayID, nil
 }

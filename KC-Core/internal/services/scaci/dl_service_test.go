@@ -2,12 +2,14 @@ package scaciservices
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -24,13 +26,13 @@ type mockDownlinkScheduler struct {
 	mock.Mock
 }
 
-func (m *mockDownlinkScheduler) QueueDownlink(_ context.Context, req *mioty.DLDataQueue, tenantID int64) (uint64, uint64, error) {
+func (m *mockDownlinkScheduler) QueueDownlink(_ context.Context, req *mioty.DLDataQueue, tenantID int64, _ uuid.UUID) (uint64, uint64, error) {
 	args := m.Called(req, tenantID)
 	return args.Get(0).(uint64), args.Get(1).(uint64), args.Error(2)
 }
 
-func (m *mockDownlinkScheduler) RevokeDownlink(tenantID int64, queId uint64) (uint64, error) {
-	args := m.Called(tenantID, queId)
+func (m *mockDownlinkScheduler) RevokeDownlink(_ context.Context, ref scheduler.DownlinkRef) (uint64, error) {
+	args := m.Called(ref)
 	return args.Get(0).(uint64), args.Error(1)
 }
 
@@ -60,20 +62,17 @@ func (m *mockDLLogger) WithFields(_ map[string]interface{}) logger.Logger  { ret
 // Spec: SCACI §3.11 - DL Data Revoke success path
 func TestDLService_RevokeDownlink_Success(t *testing.T) {
 	mockScheduler := new(mockDownlinkScheduler)
-	log := &mockDLLogger{}
 
-	// Test data
-	tenantID := int64(1)
-	queId := uint64(42)
+	orgID := uuid.New()
+	epEUI := uint64(0x70B3D59CD0000042)
+	ref := scheduler.DownlinkRef{TenantID: 1, QueID: 42, OrganizationID: &orgID, EpEUI: &epEUI}
 	expectedBsEui := uint64(0x70B3D59CD00009E6)
 
-	// Setup: scheduler returns success
-	mockScheduler.On("RevokeDownlink", tenantID, queId).
-		Return(expectedBsEui, nil)
+	// The owner scope reaches the scheduler unchanged.
+	mockScheduler.On("RevokeDownlink", ref).Return(expectedBsEui, nil)
 
-	// Create service and call
-	svc := NewDLService(mockScheduler, nil, log)
-	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), queId, tenantID)
+	svc := newTestDLService(t, mockScheduler, &enqueueRecordingStore{})
+	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), ref)
 
 	// Assert results
 	assert.Equal(t, expectedBsEui, bsEui)
@@ -89,19 +88,13 @@ func TestDLService_RevokeDownlink_Success(t *testing.T) {
 // Spec: SCACI §3.11 - Queue entry not found error mapping
 func TestDLService_RevokeDownlink_QueueNotFound_MapsToDownlinkNotFound(t *testing.T) {
 	mockScheduler := new(mockDownlinkScheduler)
-	log := &mockDLLogger{}
 
-	// Test data
-	tenantID := int64(1)
-	queId := uint64(999) // Non-existent
+	ref := scheduler.DownlinkRef{TenantID: 1, QueID: 999}
 
-	// Setup: scheduler returns queue not found
-	mockScheduler.On("RevokeDownlink", tenantID, queId).
-		Return(uint64(0), scheduler.ErrSchedulerQueueNotFound)
+	mockScheduler.On("RevokeDownlink", ref).Return(uint64(0), scheduler.ErrSchedulerQueueNotFound)
 
-	// Create service and call
-	svc := NewDLService(mockScheduler, nil, log)
-	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), queId, tenantID)
+	svc := newTestDLService(t, mockScheduler, &enqueueRecordingStore{})
+	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), ref)
 
 	// Assert results
 	assert.Equal(t, uint64(0), bsEui)
@@ -117,19 +110,13 @@ func TestDLService_RevokeDownlink_QueueNotFound_MapsToDownlinkNotFound(t *testin
 // Spec: SCACI §3.11 - Scheduler unavailable error mapping
 func TestDLService_RevokeDownlink_NoResources_MapsToSchedulerUnavailable(t *testing.T) {
 	mockScheduler := new(mockDownlinkScheduler)
-	log := &mockDLLogger{}
 
-	// Test data
-	tenantID := int64(1)
-	queId := uint64(42)
+	ref := scheduler.DownlinkRef{TenantID: 1, QueID: 42}
 
-	// Setup: scheduler returns no resources
-	mockScheduler.On("RevokeDownlink", tenantID, queId).
-		Return(uint64(0), scheduler.ErrSchedulerNoResources)
+	mockScheduler.On("RevokeDownlink", ref).Return(uint64(0), scheduler.ErrSchedulerNoResources)
 
-	// Create service and call
-	svc := NewDLService(mockScheduler, nil, log)
-	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), queId, tenantID)
+	svc := newTestDLService(t, mockScheduler, &enqueueRecordingStore{})
+	bsEui, errToken := svc.RevokeDownlink(testutil.TestContext(), ref)
 
 	// Assert results
 	assert.Equal(t, uint64(0), bsEui)
@@ -137,4 +124,60 @@ func TestDLService_RevokeDownlink_NoResources_MapsToSchedulerUnavailable(t *test
 
 	// Verify mock
 	mockScheduler.AssertExpectations(t)
+}
+
+// ============================================================================
+// §3.10 DL Data Queue Service Tests
+// ============================================================================
+
+const (
+	dlQueueTestTenant int64  = 1
+	dlQueueTestQueID  uint64 = 42
+	dlQueueTestBsEui  uint64 = 0x70B3D59CD00009E6
+	dlQueueTestEpEui  uint64 = 0x70B3D56770111505
+)
+
+var errDLQueueTestDispatch = errors.New("dispatch failed")
+
+func queueDownlinkThroughScheduler(t *testing.T, schedQueID, schedBsEui uint64, schedErr error) (scaci.DownlinkQueueOutcome, string) {
+	t.Helper()
+	mockScheduler := new(mockDownlinkScheduler)
+	req := &mioty.DLDataQueue{EpEui: dlQueueTestEpEui, QueId: dlQueueTestQueID}
+	mockScheduler.On("QueueDownlink", req, dlQueueTestTenant).Return(schedQueID, schedBsEui, schedErr)
+
+	svc := newTestDLService(t, mockScheduler, &enqueueRecordingStore{})
+	outcome, errToken := svc.QueueDownlink(testutil.TestContext(), req, dlQueueTestTenant, uuid.New())
+	mockScheduler.AssertExpectations(t)
+	return outcome, errToken
+}
+
+func TestDLService_QueueDownlink_DispatchedNow(t *testing.T) {
+	outcome, errToken := queueDownlinkThroughScheduler(t, dlQueueTestQueID, dlQueueTestBsEui, nil)
+
+	require.Equal(t, "", errToken)
+	assert.Equal(t, scaci.DownlinkQueueOutcome{QueID: dlQueueTestQueID, BsEui: dlQueueTestBsEui}, outcome)
+}
+
+// SCACI §3.10 allows queueing downlink data a priori: without a connected
+// bidirectional serving station the persisted row waits for the endpoint's
+// next downlink window instead of being reported to the caller as a failure.
+func TestDLService_QueueDownlink_NoBaseStation_DefersDelivery(t *testing.T) {
+	outcome, errToken := queueDownlinkThroughScheduler(t, 0, 0, scheduler.ErrSchedulerNoResources)
+
+	require.Equal(t, "", errToken)
+	assert.Equal(t, scaci.DownlinkQueueOutcome{QueID: dlQueueTestQueID, Deferred: true}, outcome)
+}
+
+func TestDLService_QueueDownlink_QueueNotFound_MapsToDownlinkNotFound(t *testing.T) {
+	outcome, errToken := queueDownlinkThroughScheduler(t, 0, 0, scheduler.ErrSchedulerQueueNotFound)
+
+	require.Equal(t, scaci.ErrDownlinkNotFound, errToken)
+	assert.Equal(t, scaci.DownlinkQueueOutcome{}, outcome)
+}
+
+func TestDLService_QueueDownlink_DispatchFailure_MapsToFailedRecordOperation(t *testing.T) {
+	outcome, errToken := queueDownlinkThroughScheduler(t, 0, 0, errDLQueueTestDispatch)
+
+	require.Equal(t, scaci.ErrFailedRecordOperation, errToken)
+	assert.Equal(t, scaci.DownlinkQueueOutcome{}, outcome)
 }

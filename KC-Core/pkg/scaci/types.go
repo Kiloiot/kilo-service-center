@@ -2,42 +2,13 @@
 package scaci
 
 import (
-	"fmt"
+	"github.com/vmihailenco/msgpack/v5"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
-// UUID16 is a 16-byte UUID that marshals as Numeric[16] per SCACI spec
-//
-// The MIOTY SCACI specification requires UUIDs to be encoded as arrays of 16 integers,
-// not as base64 strings. This type implements custom MessagePack marshaling to ensure
-// compliance with the spec.
-type UUID16 [16]byte
-
-// MarshalMsgpack encodes UUID16 as an array of 16 uint8 values per SCACI spec
-func (u UUID16) MarshalMsgpack() ([]byte, error) {
-	return msgpack.Marshal(u[:])
-}
-
-// UnmarshalMsgpack decodes UUID16 from an array of 16 uint8 values per SCACI spec
-func (u *UUID16) UnmarshalMsgpack(dec *msgpack.Decoder) error {
-	length, err := dec.DecodeArrayLen()
-	if err != nil {
-		return err
-	}
-	if length != 16 {
-		return fmt.Errorf("expected 16 bytes for UUID, got %d", length)
-	}
-	for i := 0; i < 16; i++ {
-		b, err := dec.DecodeUint8()
-		if err != nil {
-			return err
-		}
-		u[i] = b
-	}
-	return nil
-}
+// UUID16 is a SCACI session UUID, Numeric[16] on the wire (§3.3.1, §3.3.2).
+type UUID16 = mioty.SessionUUID
 
 // BaseMessage contains core fields present in ALL SCACI messages per §3.2
 //
@@ -66,6 +37,48 @@ type Connect struct {
 	SnAcUUID  UUID16      `json:"snAcUuid" msgpack:"snAcUuid"`                       // AC session UUID (must match to resume)
 	SnAcOpId  *int64      `json:"snAcOpId,omitempty" msgpack:"snAcOpId,omitempty"`   // Minimum required known AC opId to resume
 	SnScOpId  *int64      `json:"snScOpId,omitempty" msgpack:"snScOpId,omitempty"`   // Maximum known SC opId to resume
+}
+
+// connectFields is Connect without its decoder, so the wire form decodes it
+// without recursing.
+type connectFields Connect
+
+// connectWire is the checked decode form of a con.
+type connectWire struct {
+	Version       mioty.Required[string]                   `json:"version" msgpack:"version"`
+	AcEui         mioty.Required[mioty.RangedUint[uint64]] `json:"acEui" msgpack:"acEui"`
+	SnAcUUID      mioty.Required[UUID16]                   `json:"snAcUuid" msgpack:"snAcUuid"`
+	connectFields `msgpack:",inline"`
+}
+
+// MandatoryFields is the con table of §3.3.1
+// (MIOTY_SC-AC-Interface_v1.0.0.md:225-232) without its optional rows; the
+// frame envelope requires the core fields command and opId (§3.2).
+func (w *connectWire) MandatoryFields() map[string]mioty.Presence {
+	return map[string]mioty.Presence{
+		"version":  &w.Version,
+		"acEui":    &w.AcEui,
+		"snAcUuid": &w.SnAcUUID,
+	}
+}
+
+// Message gives the checked values their Connect types.
+func (w *connectWire) Message() (Connect, error) {
+	message := Connect(w.connectFields)
+	message.Version = w.Version.Value
+	message.AcEui = w.AcEui.Value.Value
+	message.SnAcUUID = w.SnAcUUID.Value
+	return message, nil
+}
+
+// DecodeMsgpack decodes a con through its checked wire form.
+func (c *Connect) DecodeMsgpack(dec *msgpack.Decoder) error {
+	return mioty.DecodeChecked[connectWire](dec, c)
+}
+
+// UnmarshalJSON decodes a con through its checked wire form.
+func (c *Connect) UnmarshalJSON(data []byte) error {
+	return mioty.UnmarshalChecked[connectWire](data, c)
 }
 
 // ConnectResponse represents the "conRsp" message from Service Center per SCACI §3.3.2
@@ -159,17 +172,81 @@ type StatusComplete struct {
 // Register represents the "reg" message per SCACI §3.6.1
 type Register struct {
 	BaseMessage
-	EpEui       uint64   `json:"epEui" msgpack:"epEui"`             // End Point EUI64
-	Bidi        bool     `json:"bidi" msgpack:"bidi"`               // Bidirectional End Point
-	PreAttach   bool     `json:"preAttach" msgpack:"preAttach"`     // Pre-attach at Base Stations
-	NwkKey      [16]byte `json:"nwkKey" msgpack:"nwkKey"`           // 16-byte network key
-	ShAddr      uint16   `json:"shAddr" msgpack:"shAddr"`           // Short address
-	AttachCnt   uint32   `json:"attachCnt" msgpack:"attachCnt"`     // Last known attachment counter
-	PacketCnt   uint32   `json:"packetCnt" msgpack:"packetCnt"`     // Last known packet counter
-	DualChan    bool     `json:"dualChan" msgpack:"dualChan"`       // Dual channel mode
-	Repetition  bool     `json:"repetition" msgpack:"repetition"`   // DL repetition enabled
-	WideCarrOff bool     `json:"wideCarrOff" msgpack:"wideCarrOff"` // Wide carrier offset
-	LongBlkDist bool     `json:"longBlkDist" msgpack:"longBlkDist"` // Long DL interblock distance
+	EpEui       uint64           `json:"epEui" msgpack:"epEui"`             // End Point EUI64
+	Bidi        bool             `json:"bidi" msgpack:"bidi"`               // Bidirectional End Point
+	PreAttach   bool             `json:"preAttach" msgpack:"preAttach"`     // Pre-attach at Base Stations
+	NwkKey      mioty.NetworkKey `json:"nwkKey" msgpack:"nwkKey"`           // 16-byte network key
+	ShAddr      uint16           `json:"shAddr" msgpack:"shAddr"`           // Short address
+	AttachCnt   uint32           `json:"attachCnt" msgpack:"attachCnt"`     // Last known attachment counter
+	PacketCnt   uint32           `json:"packetCnt" msgpack:"packetCnt"`     // Last known packet counter
+	DualChan    bool             `json:"dualChan" msgpack:"dualChan"`       // Dual channel mode
+	Repetition  bool             `json:"repetition" msgpack:"repetition"`   // DL repetition enabled
+	WideCarrOff bool             `json:"wideCarrOff" msgpack:"wideCarrOff"` // Wide carrier offset
+	LongBlkDist bool             `json:"longBlkDist" msgpack:"longBlkDist"` // Long DL interblock distance
+}
+
+// registerWire is the checked decode form of a reg; every field of §3.6.1 is
+// mandatory.
+type registerWire struct {
+	BaseMessage
+	EpEui       mioty.Required[mioty.RangedUint[uint64]] `json:"epEui" msgpack:"epEui"`
+	Bidi        mioty.Required[bool]                     `json:"bidi" msgpack:"bidi"`
+	PreAttach   mioty.Required[bool]                     `json:"preAttach" msgpack:"preAttach"`
+	NwkKey      mioty.Required[mioty.NetworkKey]         `json:"nwkKey" msgpack:"nwkKey"`
+	ShAddr      mioty.Required[mioty.RangedUint[uint16]] `json:"shAddr" msgpack:"shAddr"`
+	AttachCnt   mioty.Required[mioty.RangedUint[uint32]] `json:"attachCnt" msgpack:"attachCnt"`
+	PacketCnt   mioty.Required[mioty.RangedUint[uint32]] `json:"packetCnt" msgpack:"packetCnt"`
+	DualChan    mioty.Required[bool]                     `json:"dualChan" msgpack:"dualChan"`
+	Repetition  mioty.Required[bool]                     `json:"repetition" msgpack:"repetition"`
+	WideCarrOff mioty.Required[bool]                     `json:"wideCarrOff" msgpack:"wideCarrOff"`
+	LongBlkDist mioty.Required[bool]                     `json:"longBlkDist" msgpack:"longBlkDist"`
+}
+
+// MandatoryFields is the reg table of §3.6.1
+// (MIOTY_SC-AC-Interface_v1.0.0.md:345-355); the frame envelope requires the
+// core fields command and opId (§3.2).
+func (w *registerWire) MandatoryFields() map[string]mioty.Presence {
+	return map[string]mioty.Presence{
+		"epEui":       &w.EpEui,
+		"bidi":        &w.Bidi,
+		"preAttach":   &w.PreAttach,
+		"nwkKey":      &w.NwkKey,
+		"shAddr":      &w.ShAddr,
+		"attachCnt":   &w.AttachCnt,
+		"packetCnt":   &w.PacketCnt,
+		"dualChan":    &w.DualChan,
+		"repetition":  &w.Repetition,
+		"wideCarrOff": &w.WideCarrOff,
+		"longBlkDist": &w.LongBlkDist,
+	}
+}
+
+// Message gives the checked values their Register types.
+func (w *registerWire) Message() (Register, error) {
+	return Register{
+		BaseMessage: w.BaseMessage,
+		EpEui:       w.EpEui.Value.Value,
+		Bidi:        w.Bidi.Value,
+		PreAttach:   w.PreAttach.Value,
+		NwkKey:      w.NwkKey.Value,
+		ShAddr:      w.ShAddr.Value.Value,
+		AttachCnt:   w.AttachCnt.Value.Value,
+		PacketCnt:   w.PacketCnt.Value.Value,
+		DualChan:    w.DualChan.Value,
+		Repetition:  w.Repetition.Value,
+		WideCarrOff: w.WideCarrOff.Value,
+		LongBlkDist: w.LongBlkDist.Value,
+	}, nil
+}
+
+// DecodeMsgpack decodes a reg through its checked wire form.
+func (r *Register) DecodeMsgpack(dec *msgpack.Decoder) error {
+	return mioty.DecodeChecked[registerWire](dec, r)
+}
+
+// UnmarshalJSON decodes a reg through its checked wire form.
+func (r *Register) UnmarshalJSON(data []byte) error {
+	return mioty.UnmarshalChecked[registerWire](data, r)
 }
 
 // RegisterResponse represents the "regRsp" message per SCACI §3.6.2
@@ -192,6 +269,34 @@ type RegisterComplete struct {
 type Deregister struct {
 	BaseMessage
 	EpEui uint64 `json:"epEui" msgpack:"epEui"` // End Point EUI64
+}
+
+// deregisterWire is the checked decode form of a dereg.
+type deregisterWire struct {
+	BaseMessage
+	EpEui mioty.Required[mioty.RangedUint[uint64]] `json:"epEui" msgpack:"epEui"`
+}
+
+// MandatoryFields is the dereg table of §3.7.1
+// (MIOTY_SC-AC-Interface_v1.0.0.md:382); the frame envelope requires the core
+// fields command and opId (§3.2).
+func (w *deregisterWire) MandatoryFields() map[string]mioty.Presence {
+	return map[string]mioty.Presence{"epEui": &w.EpEui}
+}
+
+// Message gives the checked values their Deregister types.
+func (w *deregisterWire) Message() (Deregister, error) {
+	return Deregister{BaseMessage: w.BaseMessage, EpEui: w.EpEui.Value.Value}, nil
+}
+
+// DecodeMsgpack decodes a dereg through its checked wire form.
+func (r *Deregister) DecodeMsgpack(dec *msgpack.Decoder) error {
+	return mioty.DecodeChecked[deregisterWire](dec, r)
+}
+
+// UnmarshalJSON decodes a dereg through its checked wire form.
+func (r *Deregister) UnmarshalJSON(data []byte) error {
+	return mioty.UnmarshalChecked[deregisterWire](data, r)
 }
 
 // DeregisterResponse represents the "deregRsp" message per SCACI §3.7.2
@@ -224,7 +329,7 @@ type ULData struct {
 	EpEui        uint64                 `json:"epEui" msgpack:"epEui"`                             // End Point EUI64
 	BaseStations []BaseStationReception `json:"baseStations" msgpack:"baseStations"`               // Array of BS receptions
 	PacketCnt    uint32                 `json:"packetCnt" msgpack:"packetCnt"`                     // EP packet counter
-	UserData     []byte                 `json:"userData" msgpack:"userData"`                       // n-byte user data (may be empty)
+	UserData     mioty.UplinkUserData   `json:"userData" msgpack:"userData"`                       // n-byte user data (may be empty)
 	Format       *uint8                 `json:"format,omitempty" msgpack:"format,omitempty"`       // User data format ID (8-bit)
 	DlOpen       bool                   `json:"dlOpen" msgpack:"dlOpen"`                           // DL window opened
 	ResponseExp  bool                   `json:"responseExp" msgpack:"responseExp"`                 // EP expects response
@@ -279,6 +384,35 @@ type DLDataRevoke struct {
 	BaseMessage
 	EpEui     uint64 `json:"epEui" msgpack:"epEui"`         // End Point EUI64
 	PacketCnt uint32 `json:"packetCnt" msgpack:"packetCnt"` // End Point packet counter of the scheduled data
+}
+
+// dlDataRevokeWire is the checked decode form of a dlDataRev.
+type dlDataRevokeWire struct {
+	BaseMessage
+	EpEui     mioty.Required[mioty.RangedUint[uint64]] `json:"epEui" msgpack:"epEui"`
+	PacketCnt mioty.Required[mioty.RangedUint[uint32]] `json:"packetCnt" msgpack:"packetCnt"`
+}
+
+// MandatoryFields is the dlDataRev table of §3.11.1
+// (MIOTY_SC-AC-Interface_v1.0.0.md:545-546); the frame envelope requires the
+// core fields command and opId (§3.2).
+func (w *dlDataRevokeWire) MandatoryFields() map[string]mioty.Presence {
+	return map[string]mioty.Presence{"epEui": &w.EpEui, "packetCnt": &w.PacketCnt}
+}
+
+// Message gives the checked values their DLDataRevoke types.
+func (w *dlDataRevokeWire) Message() (DLDataRevoke, error) {
+	return DLDataRevoke{BaseMessage: w.BaseMessage, EpEui: w.EpEui.Value.Value, PacketCnt: w.PacketCnt.Value.Value}, nil
+}
+
+// DecodeMsgpack decodes a dlDataRev through its checked wire form.
+func (r *DLDataRevoke) DecodeMsgpack(dec *msgpack.Decoder) error {
+	return mioty.DecodeChecked[dlDataRevokeWire](dec, r)
+}
+
+// UnmarshalJSON decodes a dlDataRev through its checked wire form.
+func (r *DLDataRevoke) UnmarshalJSON(data []byte) error {
+	return mioty.UnmarshalChecked[dlDataRevokeWire](data, r)
 }
 
 // DLDataRevokeResponse represents the "dlDataRevRsp" message per SCACI §3.11.2
@@ -464,8 +598,18 @@ const (
 // DLDataQueueResult holds the result of a dlDataQue operation.
 // Used by QueueDownlinkInternal to return results without socket I/O.
 type DLDataQueueResult struct {
-	QueID  uint64 // Queue ID assigned to the downlink
-	BsEui  uint64 // Base Station EUI that will transmit
-	OpID   int64  // Operation ID assigned
-	Status string // Final status (queued, failed, etc.)
+	QueID  uint64              // Queue ID assigned to the downlink
+	BsEui  uint64              // Base Station EUI that will transmit; zero while delivery is deferred
+	OpID   int64               // Operation ID assigned
+	Status mioty.DLQueueStatus // queued when handed to a base station, pending while deferred
+}
+
+// DownlinkQueueOutcome reports how a persisted downlink was scheduled: handed
+// to a connected bidirectional base station now, or left pending for the
+// endpoint's next downlink window because none is connected (SCACI §3.10
+// allows queueing downlink data a priori).
+type DownlinkQueueOutcome struct {
+	QueID    uint64
+	BsEui    uint64 // zero while delivery is deferred
+	Deferred bool
 }

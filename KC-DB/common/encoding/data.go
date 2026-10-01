@@ -23,7 +23,7 @@ func DecodeUserData(encoded string) ([]byte, error) {
 	}
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode base64: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapDecodeBase64, err)
 	}
 	return data, nil
 }

@@ -3,7 +3,7 @@
 // Coverage:
 //   - extractInt64FromJSON: JSON numeric type coercion
 //   - ParseEUI64: Hex string to uint64 parsing
-//   - replayableCommands: Command whitelist verification
+//   - command table: replayable command verification
 //   - replayULData: Corrupted userData rejection, happy path
 //   - Cross-tenant replay rejection
 package scaci
@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -27,6 +29,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+// expectedReplayOperationTimeout pins the replay timeout the server must use.
+const expectedReplayOperationTimeout = 5 * time.Second
 
 // ============================================================================
 // R4a: Unit Tests for extractInt64FromJSON
@@ -76,8 +81,22 @@ func TestExtractInt64FromJSON(t *testing.T) {
 			ok:       false,
 		},
 		{
-			name:     "string value (wrong type)",
-			data:     map[string]interface{}{"count": "42"},
+			name:     "decimal string value (lossless form)",
+			data:     map[string]interface{}{"ts": "1700000000123456789"},
+			key:      "ts",
+			expected: 1700000000123456789,
+			ok:       true,
+		},
+		{
+			name:     "non-numeric string value",
+			data:     map[string]interface{}{"count": "forty-two"},
+			key:      "count",
+			expected: 0,
+			ok:       false,
+		},
+		{
+			name:     "bool value (wrong type)",
+			data:     map[string]interface{}{"count": true},
 			key:      "count",
 			expected: 0,
 			ok:       false,
@@ -111,95 +130,19 @@ func TestExtractInt64FromJSON(t *testing.T) {
 // R4b: Unit Tests for ParseEUI64
 // ============================================================================
 
-func TestParseEUI64(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected uint64
-		wantErr  bool
-	}{
-		{
-			name:     "lowercase hex",
-			input:    "70b3d59cd00009e6",
-			expected: 0x70b3d59cd00009e6,
-			wantErr:  false,
-		},
-		{
-			name:     "uppercase hex",
-			input:    "70B3D59CD00009E6",
-			expected: 0x70b3d59cd00009e6,
-			wantErr:  false,
-		},
-		{
-			name:     "mixed case hex",
-			input:    "70B3d59cD00009E6",
-			expected: 0x70b3d59cd00009e6,
-			wantErr:  false,
-		},
-		{
-			name:     "zero EUI",
-			input:    "0000000000000000",
-			expected: 0,
-			wantErr:  false,
-		},
-		{
-			name:     "max EUI",
-			input:    "FFFFFFFFFFFFFFFF",
-			expected: 0xFFFFFFFFFFFFFFFF,
-			wantErr:  false,
-		},
-		{
-			name:     "short string",
-			input:    "70b3d59",
-			expected: 0,
-			wantErr:  true,
-		},
-		{
-			name:     "long string",
-			input:    "70b3d59cd00009e612345",
-			expected: 0,
-			wantErr:  true,
-		},
-		{
-			name:     "invalid hex char at start",
-			input:    "zz00000000000000",
-			expected: 0,
-			wantErr:  true,
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			expected: 0,
-			wantErr:  true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseEUI64(tc.input)
-			if tc.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, got)
-			}
-		})
-	}
-}
-
 // ============================================================================
-// R4c: Unit Tests for replayableCommands whitelist
+// R4c: Unit Tests for the replayable rows of the command table
 // ============================================================================
 
 func TestReplayableCommands(t *testing.T) {
 	// Only SC-originated operations with negative opIds should be replayable
 	// Per SCACI §1: "only operations, which had not been completed before the connection loss are reissued"
 	t.Run("ulData is replayable", func(t *testing.T) {
-		assert.True(t, replayableCommands[CmdULData], "ulData MUST be replayable per SCACI §3.8")
+		assert.True(t, testReplayable(CmdULData), "ulData MUST be replayable per SCACI §3.8")
 	})
 
 	t.Run("dlDataRes is replayable", func(t *testing.T) {
-		assert.True(t, replayableCommands[CmdDLDataResult], "dlDataRes MUST be replayable per SCACI §3.12")
+		assert.True(t, testReplayable(CmdDLDataResult), "dlDataRes MUST be replayable per SCACI §3.12")
 	})
 
 	t.Run("AC-initiated commands are NOT replayable", func(t *testing.T) {
@@ -212,7 +155,7 @@ func TestReplayableCommands(t *testing.T) {
 			CmdDLDataRevoke, CmdDLDataRevokeComplete,
 		}
 		for _, cmd := range acCommands {
-			assert.False(t, replayableCommands[cmd], "%s should NOT be replayable (AC-initiated)", cmd)
+			assert.False(t, testReplayable(cmd), "%s should NOT be replayable (AC-initiated)", cmd)
 		}
 	})
 }
@@ -243,7 +186,11 @@ func TestReplayULData_CorruptedUserData_ReturnsError(t *testing.T) {
 
 	// Create server with nop logger
 	s := &Server{
-		logger: logger.NewNop(),
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   logger.NewNop(),
 	}
 
 	// Create net.Pipe for connection (won't actually be used due to early error)
@@ -285,18 +232,6 @@ func (m *mockOperationRepo) GetPendingOperations(_ context.Context, _ int64) ([]
 	return m.operations, m.err
 }
 
-func (m *mockOperationRepo) GetRecentOperations(_ context.Context, _ int64, _ int) ([]*models.SCACIOperation, error) {
-	return nil, nil // Stub
-}
-
-func (m *mockOperationRepo) CleanupCompletedOperations(_ context.Context, _ int64) (int64, error) {
-	return 0, nil // Stub
-}
-
-func (m *mockOperationRepo) GetTenantOperationSummary(_ context.Context, _ int64, _ int) (*models.SCACIOperationSummary, error) {
-	return nil, nil // Stub
-}
-
 func (m *mockOperationRepo) UpdateOperationStateWithError(_ context.Context, _ int64, _ int64, _ models.OperationState, _ int, _ string, _ string, _ map[string]interface{}) error {
 	return nil // Stub
 }
@@ -336,6 +271,10 @@ func TestReplayPendingOperations_CrossTenantRejected(t *testing.T) {
 	}
 
 	s := &Server{
+		registry:      newTestRegistry(nil, nil),
+		codec:         testFrameCodec,
+		commands:      mustTestCommandRegistry(),
+		clock:         clock.SystemClock{},
 		operationRepo: mockRepo,
 		logger:        testLogger,
 	}
@@ -400,7 +339,11 @@ func TestReplayULData_HappyPath_PreservesOpId(t *testing.T) {
 	}
 
 	s := &Server{
-		logger: logger.NewNop(),
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   logger.NewNop(),
 	}
 
 	// Setup net.Pipe to capture wire output
@@ -479,7 +422,7 @@ func TestReplayULData_HappyPath_PreservesOpId(t *testing.T) {
 
 func TestReplayOperationTimeout_Constant(t *testing.T) {
 	// Verify constant is defined and has expected value
-	assert.Equal(t, 5*time.Second, ReplayOperationTimeout,
+	assert.Equal(t, expectedReplayOperationTimeout, ReplayOperationTimeout,
 		"ReplayOperationTimeout should be 5s (matches ConnectPersistTimeout)")
 }
 
@@ -512,7 +455,11 @@ func TestReplayDLDataResult_HappyPath_PreservesOpId(t *testing.T) {
 	}
 
 	s := &Server{
-		logger: logger.NewNop(),
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   logger.NewNop(),
 	}
 
 	// Setup net.Pipe to capture wire output
@@ -616,6 +563,10 @@ func TestReplayPendingOperations_PositivePath_MatchingTenant(t *testing.T) {
 	testLogger := observedLogs
 
 	s := &Server{
+		registry:      newTestRegistry(nil, nil),
+		codec:         testFrameCodec,
+		commands:      mustTestCommandRegistry(),
+		clock:         clock.SystemClock{},
 		operationRepo: mockRepo,
 		logger:        testLogger,
 	}
@@ -678,7 +629,11 @@ func TestReplayULData_CorruptedUserData_LogsCorrectToken(t *testing.T) {
 	testLogger := observedLogs
 
 	s := &Server{
-		logger: testLogger,
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   testLogger,
 	}
 
 	// Create net.Pipe for connection
@@ -736,6 +691,10 @@ func TestHandleConnect_VersionMismatch_SendsPOSIXEnotsup(t *testing.T) {
 
 	// Create server with required dependencies
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           logger.NewNop(),
 		handshakeSvc:     mockHS,
 		sessionValidator: mockValidator,

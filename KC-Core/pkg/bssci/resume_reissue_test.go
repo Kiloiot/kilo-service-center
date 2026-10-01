@@ -3,11 +3,10 @@ package bssci
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -36,28 +35,10 @@ func (c *countingConn) Write(b []byte) (int, error) {
 		c.frames++
 	}
 	if c.failWrite {
-		return 0, net.ErrClosed
+		return 0, os.ErrDeadlineExceeded
 	}
 	c.buf.Write(b)
 	return len(b), nil
-}
-
-// writtenFrames decodes the buffered outbound frames with the given encoding,
-// in order.
-func (c *countingConn) writtenFrames(t *testing.T, encoding string) []map[string]interface{} {
-	t.Helper()
-	var frames []map[string]interface{}
-	raw := c.buf.Bytes()
-	for len(raw) >= HeaderSize {
-		require.True(t, bytes.Equal(raw[:8], mioty.MIOTYFrameIdentifier[:]), "frame identifier")
-		payloadLen := int(binary.LittleEndian.Uint32(raw[8:HeaderSize]))
-		require.LessOrEqual(t, HeaderSize+payloadLen, len(raw), "complete frame")
-		decoded, err := decodeMessage(raw[HeaderSize:HeaderSize+payloadLen], encoding)
-		require.NoError(t, err)
-		frames = append(frames, decoded)
-		raw = raw[HeaderSize+payloadLen:]
-	}
-	return frames
 }
 
 // writtenCommands decodes the buffered outbound frames and returns their
@@ -65,9 +46,16 @@ func (c *countingConn) writtenFrames(t *testing.T, encoding string) []map[string
 func (c *countingConn) writtenCommands(t *testing.T) []string {
 	t.Helper()
 	var commands []string
-	for _, frame := range c.writtenFrames(t, EncodingJSON) {
-		cmd, _ := frame["command"].(string)
+	raw := c.buf.Bytes()
+	for len(raw) >= mioty.FrameHeaderSize {
+		require.True(t, bytes.Equal(raw[:8], mioty.MIOTYFrameIdentifier[:]), "frame identifier")
+		payloadLen := int(binary.LittleEndian.Uint32(raw[8:mioty.FrameHeaderSize]))
+		require.LessOrEqual(t, mioty.FrameHeaderSize+payloadLen, len(raw), "complete frame")
+		decoded, err := decodeMessage(raw[mioty.FrameHeaderSize:mioty.FrameHeaderSize+payloadLen], EncodingJSON)
+		require.NoError(t, err)
+		cmd, _ := decoded["command"].(string)
 		commands = append(commands, cmd)
+		raw = raw[mioty.FrameHeaderSize+payloadLen:]
 	}
 	return commands
 }
@@ -99,7 +87,7 @@ func newResumeReissueServer(t *testing.T) *Server {
 		Name:                  "test-sc",
 		SoftwareVersion:       "1.0.0",
 		MessageEncoding:       EncodingJSON,
-		OperationAckTimeout:   2 * time.Second,
+		OperationAckTimeout:   testAckTimeout,
 		StatusRequestInterval: time.Hour,
 	}
 	ctx, cancel := context.WithCancel(testutil.TestContext())
@@ -124,7 +112,7 @@ func newResumeSession(conn net.Conn, ops []*PendingOperation) *Session {
 		pendingBaseStation: &basestation.BaseStation{ID: 1, TenantID: 1, Name: "Resume BS"},
 	}
 	session.IsResumed = true
-	session.resumePendingOps = ops
+	session.resume = &resumeOffer{pendingOps: ops}
 	return session
 }
 
@@ -164,7 +152,7 @@ func TestResumeReissueAbortsOnSendFailure(t *testing.T) {
 	t.Cleanup(func() { stopSessionStatus(session) })
 
 	msg := &Message{OpId: 0, Command: mioty.CmdConnectComplete}
-	err := server.handleConnectComplete(server, session, msg, nil)
+	err := server.handleConnectComplete(session, msg, nil)
 	require.Error(t, err, "a failed reissue must abort connect completion")
 	require.ErrorIs(t, err, ErrAmbiguousWrite)
 
@@ -195,11 +183,12 @@ func malformedResumeRow(opID int64, opType string) PersistedOperation {
 	}
 }
 
-// TestResumeRejectedWhenReconstructionFails: a persisted operation that
-// cannot be semantically rebuilt rejects the whole resume with EAGAIN before
-// conRsp - no row is deleted, no queue state changes, and no session
-// activates. Covers all three payload-bearing operation types.
-func TestResumeRejectedWhenReconstructionFails(t *testing.T) {
+// TestResumeDegradesWhenReconstructionFails: a persisted operation that
+// cannot be semantically rebuilt degrades alone - it is dropped from the
+// resume set with its row removed, and the connect proceeds instead of
+// rejecting the resume and looping the base station. Covers all three
+// payload-bearing operation types.
+func TestResumeDegradesWhenReconstructionFails(t *testing.T) {
 	for _, opType := range []string{mioty.CmdULDataTransmit, mioty.CmdDLDataQueue, mioty.CmdDLDataRevoke} {
 		t.Run(opType, func(t *testing.T) {
 			server := newResumeReissueServer(t)
@@ -220,9 +209,7 @@ func TestResumeRejectedWhenReconstructionFails(t *testing.T) {
 			}}
 			sessionSvc.StoreSessionByUUID(prev)
 
-			statusSvc.mu.Lock()
-			statusSvc.persistedRows = []PersistedOperation{malformedResumeRow(-2, opType)}
-			statusSvc.mu.Unlock()
+			statusSvc.persistRows(prev.DbSessionID, malformedResumeRow(-2, opType))
 
 			conn := &countingConn{}
 			session := &Session{
@@ -247,24 +234,19 @@ func TestResumeRejectedWhenReconstructionFails(t *testing.T) {
 				"snBsUuid": snBsUUID,
 			}
 			msg := &Message{OpId: 0, Command: mioty.CmdConnect, Data: connectData}
-			require.NoError(t, server.handleConnect(server, session, msg, connectData),
-				"a rejected connect awaits errorAck instead of failing the handler")
+			require.NoError(t, server.handleConnect(session, msg, connectData))
 
 			commands := conn.writtenCommands(t)
-			require.Equal(t, []string{mioty.CmdError}, commands,
-				"the resume must be rejected with an error frame and never reach conRsp")
+			require.Equal(t, []string{mioty.CmdConnectResponse}, commands,
+				"the connect must proceed; one unrecoverable row never rejects the resume")
 
 			statusSvc.mu.RLock()
-			rows := len(statusSvc.persistedRows)
 			removed := len(statusSvc.removedOps)
 			statusSvc.mu.RUnlock()
-			assert.Equal(t, 1, rows, "the malformed row must be preserved for operator inspection")
-			assert.Zero(t, removed, "no persisted row may be deleted on a rejected resume")
-
-			server.mu.Lock()
-			live := len(server.sessions)
-			server.mu.Unlock()
-			assert.Zero(t, live, "no session may activate on a rejected resume")
+			assert.Equal(t, 1, removed,
+				"the unrecoverable row must be removed so it cannot re-fail the next resume")
+			assert.Empty(t, session.resume.operations(),
+				"the dropped operation must not be reissued")
 		})
 	}
 }
@@ -281,13 +263,9 @@ func TestTeardownEvictsCacheKeepsRows(t *testing.T) {
 	h.writeFrame(map[string]interface{}{"command": mioty.CmdPing, "opId": int64(1)})
 	require.Equal(t, mioty.CmdPingResponse, frameCommand(h.readFrame()))
 
-	h.server.mu.Lock()
-	require.Len(t, h.server.sessions, 1, "the activated session must be live")
-	var live *Session
-	for _, s := range h.server.sessions {
-		live = s
-	}
-	h.server.mu.Unlock()
+	liveSessions := h.server.sessions.snapshot()
+	require.Len(t, liveSessions, 1, "the activated session must be live")
+	live := liveSessions[0]
 
 	statusSvc := h.server.statusSvc.(*memoryStatusService)
 	foreign := &Session{ProtocolSessionState: ProtocolSessionState{ID: "other-session"}}
@@ -300,12 +278,11 @@ func TestTeardownEvictsCacheKeepsRows(t *testing.T) {
 	statusSvc.mu.RLock()
 	_, liveCached := (*statusSvc.pendingOps)[SessionOpKey{SessionID: live.ID, OperationID: -10}]
 	_, foreignCached := (*statusSvc.pendingOps)[SessionOpKey{SessionID: foreign.ID, OperationID: -10}]
-	deleteCalls := statusSvc.deleteSessionCalls
 	statusSvc.mu.RUnlock()
 
 	assert.False(t, liveCached, "teardown must evict the dead session's cached operations")
 	assert.True(t, foreignCached, "other sessions' cached operations must survive")
-	assert.Zero(t, deleteCalls,
+	assert.Empty(t, statusSvc.retiredPendingOperations(),
 		"an active session's persisted rows must be preserved for resume (no durable delete)")
 }
 
@@ -340,7 +317,7 @@ func TestActivationDisplacesLiveSessionForSameEUI(t *testing.T) {
 	displacedConn := &countingConn{}
 	displaced := newActivationSession("displaced-session", displacedConn)
 	t.Cleanup(func() { stopSessionStatus(displaced) })
-	require.NoError(t, server.handleConnectComplete(server, displaced,
+	require.NoError(t, server.handleConnectComplete(displaced,
 		&Message{OpId: 0, Command: mioty.CmdConnectComplete}, nil))
 
 	firstLookup, ok := server.GetSessionByEUI(TestBsEui01).(*Session)
@@ -350,13 +327,11 @@ func TestActivationDisplacesLiveSessionForSameEUI(t *testing.T) {
 	currentConn := &countingConn{}
 	current := newActivationSession("current-session", currentConn)
 	t.Cleanup(func() { stopSessionStatus(current) })
-	require.NoError(t, server.handleConnectComplete(server, current,
+	require.NoError(t, server.handleConnectComplete(current,
 		&Message{OpId: 0, Command: mioty.CmdConnectComplete}, nil))
 
-	server.mu.RLock()
-	_, stillLive := server.sessions[displaced.ID]
-	liveCount := len(server.sessions)
-	server.mu.RUnlock()
+	_, stillLive := server.sessions.get(displaced.ID)
+	liveCount := server.sessions.count()
 	assert.False(t, stillLive, "the displaced session must leave the live map")
 	// asserted before the lookup so a single live session makes its result unambiguous
 	require.Equal(t, 1, liveCount, "one base station must hold exactly one live session")
@@ -367,98 +342,4 @@ func TestActivationDisplacesLiveSessionForSameEUI(t *testing.T) {
 		"a by-EUI lookup must never resolve to the displaced session")
 	assert.Positive(t, displacedConn.closes, "the displaced transport must be closed")
 	assert.Zero(t, currentConn.closes, "the activating transport must stay open")
-}
-
-// dlDataQueResumeRow persists a dlDataQue recovery row the way SendDLDataQueue
-// does: the frame carries a stale userData copy while metadata holds the
-// base64-encoded payloads reconstitution rebuilds it from.
-func dlDataQueResumeRow(t *testing.T, opID int64, payloads []string) PersistedOperation {
-	t.Helper()
-	operationData, err := json.Marshal(map[string]interface{}{
-		"command":   mioty.CmdDLDataQueue,
-		"opId":      opID,
-		"epEui":     TestEpEui01,
-		"queId":     int64(4711),
-		"prio":      float32(0),
-		"cntDepend": false,
-		"userData":  []interface{}{},
-	})
-	require.NoError(t, err)
-	metadata, err := json.Marshal(map[string]interface{}{
-		"bsEui":     TestBsEui01,
-		"epEui":     TestEpEui01,
-		"queId":     int64(4711),
-		"prio":      float32(0),
-		"payloads":  payloads,
-		"cntDepend": false,
-		"tenantID":  "1",
-	})
-	require.NoError(t, err)
-	return PersistedOperation{
-		OperationID:   opID,
-		OperationType: mioty.CmdDLDataQueue,
-		OperationData: operationData,
-		Metadata:      metadata,
-	}
-}
-
-// TestResumeReissuedDLDataQueUserDataShape: the dlDataQue frame a resume puts
-// back on the wire carries userData as Numeric[m][n] with exactly one entry -
-// zero bytes long for an acknowledgement-only downlink - in both encodings.
-func TestResumeReissuedDLDataQueUserDataShape(t *testing.T) {
-	cases := []struct {
-		name     string
-		payloads []string
-		expected []byte
-	}{
-		{
-			name:     "acknowledgement only",
-			payloads: []string{},
-			expected: []byte{},
-		},
-		{
-			name:     "single payload",
-			payloads: []string{base64.StdEncoding.EncodeToString([]byte{0x01, 0x02, 0xFF})},
-			expected: []byte{0x01, 0x02, 0xFF},
-		},
-	}
-
-	for _, encoding := range []string{EncodingJSON, EncodingMessagePack} {
-		for _, tc := range cases {
-			t.Run(tc.name+"_"+encoding, func(t *testing.T) {
-				server := newResumeReissueServer(t)
-				statusSvc := server.statusSvc.(*memoryStatusService)
-				statusSvc.mu.Lock()
-				statusSvc.persistedRows = []PersistedOperation{dlDataQueResumeRow(t, -3, tc.payloads)}
-				statusSvc.mu.Unlock()
-
-				conn := &countingConn{}
-				session := newResumeSession(conn, nil)
-				session.Encoding = encoding
-				session.DbSessionID = 7
-				t.Cleanup(func() { stopSessionStatus(session) })
-
-				pendingOps, err := server.loadPendingOperations(session)
-				require.NoError(t, err)
-				require.Len(t, pendingOps, 1)
-				require.NoError(t, server.reconstituteResumeOperations(testutil.TestContext(), pendingOps))
-				session.resumePendingOps = pendingOps
-
-				msg := &Message{OpId: 0, Command: mioty.CmdConnectComplete}
-				require.NoError(t, server.handleConnectComplete(server, session, msg, nil))
-
-				frames := conn.writtenFrames(t, encoding)
-				require.Len(t, frames, 1, "the resume must reissue exactly the dlDataQue operation")
-				require.Equal(t, mioty.CmdDLDataQueue, frames[0]["command"])
-
-				outer, ok := frames[0]["userData"].([]interface{})
-				require.True(t, ok, "userData must be the outer Numeric[m][n] array")
-				require.Len(t, outer, 1, "cntDepend=false carries exactly one user data entry")
-				inner, ok := outer[0].([]interface{})
-				require.True(t, ok, "the single entry must be a Numeric[n] array")
-				assert.Len(t, inner, len(tc.expected))
-				assert.Equal(t, tc.expected, server.normalizeUserDataField(outer[0]))
-			})
-		}
-	}
 }

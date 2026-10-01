@@ -399,3 +399,40 @@ func TestSelectBidirectionalSession_SpecificBsEui(t *testing.T) {
 	assert.Equal(t, targetEui, actualBsEui,
 		"Should return requested EUI")
 }
+
+// TestGetConnectedSessionsKeys pins the key set the management API depends on.
+// The manager consumes this map by name, so a rename here silently empties
+// fields in the connected-sessions response rather than failing to compile.
+func TestGetConnectedSessionsKeys(t *testing.T) {
+	session := &Session{
+		ProtocolSessionState: ProtocolSessionState{
+			ID:                "session-1",
+			BaseStationEUI:    0x0102030405060708,
+			ClientVersion:     "1.0.0",
+			NegotiatedVersion: "1.0.0",
+			HandshakeComplete: true,
+		},
+		Name:          "test-bs",
+		Vendor:        "test-vendor",
+		Model:         "test-model",
+		Connected:     time.Now(),
+		Bidirectional: true,
+	}
+
+	server := createTestServerWithSessions(t, []*Session{session})
+
+	connected := server.GetConnectedSessions()
+	require.Len(t, connected, 1)
+
+	for _, key := range []string{
+		"id", "baseStationEui", "connected", "lastSeen", "vendor", "model", "name",
+		"clientVersion", "negotiatedVersion", "bidirectional", "handshakeComplete",
+		"resolvedTenantID", "organizationID",
+	} {
+		assert.Contains(t, connected[0], key, "GetConnectedSessions must report %q", key)
+	}
+
+	assert.Equal(t, "1.0.0", connected[0]["clientVersion"])
+	assert.Equal(t, "1.0.0", connected[0]["negotiatedVersion"])
+	assert.Equal(t, uint64(0x0102030405060708), connected[0]["baseStationEui"])
+}

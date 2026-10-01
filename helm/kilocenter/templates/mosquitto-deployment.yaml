@@ -6,6 +6,10 @@ metadata:
     {{- include "kilocenter.componentLabels" (dict "context" . "component" "mosquitto") | nindent 4 }}
 spec:
   replicas: 1
+  # With persistence enabled the ReadWriteOnce data volume attaches to one node
+  # only, so the old broker must release it before the new one starts.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "kilocenter.selectorLabels" (dict "context" . "component" "mosquitto") | nindent 6 }}

@@ -5,32 +5,42 @@
  */
 
 import type {
+  ActivityFilter,
   CreateEndpointRequest,
-  SCACIDownlinkQueueDTO,
-  SendDownlinkRequest,
   UpdateEndpointRequest,
 } from "@api-types/api";
 import {
-  useInfiniteQuery,
+  type QueryClient,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 
-import { apiService } from "@services/api";
-import { PAGINATION, REVOCABLE_QUEUE_STATUSES } from "@constants/app";
-import type { EndpointFilters } from "@config/query-keys";
+import { endpointsApi } from "@services/api";
+import type { EndpointKeyName } from "@constants/app";
 import { queryKeys } from "@config/query-keys";
+
+/**
+ * What an endpoint change makes stale: the endpoints, the model counts of
+ * endpoints bound to a blueprint, and the downlink queue of a removed endpoint.
+ */
+function invalidateEndpointViews(queryClient: QueryClient): void {
+  [
+    queryKeys.endpoints.all,
+    queryKeys.blueprints.modelSnapshotCounts(),
+    queryKeys.traffic.downlinks,
+  ].forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
+}
 
 /**
  * Fetch all endpoints. The optional `filters` arg is kept for callers
  * that already build a filters object — it currently scopes the React Query
  * cache key only; the gRPC list call is unfiltered server-side.
  */
-export function useEndpoints(filters?: EndpointFilters) {
+export function useEndpoints() {
   return useQuery({
-    queryKey: queryKeys.endpoints.list(filters),
-    queryFn: () => apiService.getEndpoints(),
+    queryKey: queryKeys.endpoints.list(),
+    queryFn: () => endpointsApi.getEndpoints(),
   });
 }
 
@@ -40,7 +50,7 @@ export function useEndpoints(filters?: EndpointFilters) {
 export function useEndpoint(eui: string) {
   return useQuery({
     queryKey: queryKeys.endpoints.detail(eui),
-    queryFn: () => apiService.getEndpointById(eui),
+    queryFn: () => endpointsApi.getEndpointById(eui),
     enabled: !!eui,
   });
 }
@@ -53,10 +63,19 @@ export function useCreateEndpoint() {
 
   return useMutation({
     mutationFn: (data: CreateEndpointRequest) =>
-      apiService.createEndpoint(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-    },
+      endpointsApi.createEndpoint(data),
+    onSuccess: () => invalidateEndpointViews(queryClient),
+  });
+}
+
+/**
+ * Reveal one stored key of an endpoint. A mutation, so the key is never kept
+ * in the query cache; each call is recorded by the service.
+ */
+export function useRevealEndpointKey() {
+  return useMutation({
+    mutationFn: ({ epEui, key }: { epEui: string; key: EndpointKeyName }) =>
+      endpointsApi.revealEndpointKey(epEui, key),
   });
 }
 
@@ -75,11 +94,8 @@ export function useUpdateEndpoint() {
     }: {
       epEui: string;
       data: UpdateEndpointRequest;
-    }) => apiService.updateEndpoint(epEui, data),
-    onSuccess: () => {
-      // Invalidate both list and detail queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-    },
+    }) => endpointsApi.updateEndpoint(epEui, data),
+    onSuccess: () => invalidateEndpointViews(queryClient),
   });
 }
 
@@ -90,10 +106,8 @@ export function useDeleteEndpoint() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (eui: string) => apiService.deleteEndpoint(eui),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-    },
+    mutationFn: (eui: string) => endpointsApi.deleteEndpoint(eui),
+    onSuccess: () => invalidateEndpointViews(queryClient),
   });
 }
 
@@ -105,10 +119,8 @@ export function useAttachEndpoint() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => apiService.attachEndpoint(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-    },
+    mutationFn: (id: string) => endpointsApi.attachEndpoint(id),
+    onSuccess: () => invalidateEndpointViews(queryClient),
   });
 }
 
@@ -120,10 +132,8 @@ export function useDetachEndpoint() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => apiService.detachEndpoint(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-    },
+    mutationFn: (id: string) => endpointsApi.detachEndpoint(id),
+    onSuccess: () => invalidateEndpointViews(queryClient),
   });
 }
 
@@ -132,122 +142,14 @@ export function useDetachEndpoint() {
  */
 export function useEndpointActivity(
   epEui: string,
-  pageToken?: string,
-  pageSize = 50,
+  filter: ActivityFilter,
+  pageToken: string,
+  pageSize: number,
 ) {
   return useQuery({
-    queryKey: queryKeys.endpoints.activity(epEui, pageToken, pageSize),
-    queryFn: () => apiService.getEndpointActivity(epEui, pageToken, pageSize),
+    queryKey: queryKeys.endpoints.activity(epEui, filter, pageToken, pageSize),
+    queryFn: () =>
+      endpointsApi.getEndpointActivity(epEui, filter, pageToken, pageSize),
     enabled: !!epEui,
-  });
-}
-
-// ============================================================================
-// Downlink Hooks
-// ============================================================================
-
-/**
- * Fetch downlink queue for an endpoint (cursor-based pagination)
- */
-export function useDownlinkQueue(eui: string, pageSize: number) {
-  return useInfiniteQuery({
-    queryKey: queryKeys.endpoints.downlinkQueue(eui, pageSize),
-    queryFn: ({ pageParam }) =>
-      apiService.listDownlinkQueue(eui, pageSize, pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextPageToken || undefined,
-    enabled: !!eui,
-  });
-}
-
-/**
- * Fetch downlink results for an endpoint (cursor-based pagination)
- */
-export function useDownlinkResults(
-  eui: string,
-  pageSize: number,
-  statusFilter?: string,
-) {
-  return useInfiniteQuery({
-    queryKey: queryKeys.endpoints.downlinkResults(eui, statusFilter, pageSize),
-    queryFn: ({ pageParam }) =>
-      apiService.getDownlinkResults(eui, pageSize, pageParam, statusFilter),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextPageToken || undefined,
-    enabled: !!eui,
-  });
-}
-
-/**
- * Send a downlink message
- */
-export function useSendDownlink() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: SendDownlinkRequest) => apiService.sendDownlink(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-    },
-  });
-}
-
-/**
- * Revoke a queued downlink message
- */
-export function useRevokeDownlink() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ epEui, queueId }: { epEui: string; queueId: string }) =>
-      apiService.revokeDownlink(epEui, queueId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-    },
-  });
-}
-
-/**
- * Flush (revoke all revocable) downlink queue entries.
- * Paginates through all queue pages to collect every revocable entry,
- * then batch-revokes via Promise.allSettled.
- */
-export function useFlushDownlinkQueue() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({ epEui }: { epEui: string }) => {
-      const allRevocable: SCACIDownlinkQueueDTO[] = [];
-      let pageToken: string | undefined;
-
-      do {
-        const response = await apiService.listDownlinkQueue(
-          epEui,
-          PAGINATION.DOWNLINK_FLUSH_PAGE_SIZE,
-          pageToken,
-        );
-        const revocable = response.messages.filter(
-          (m) => m.status && REVOCABLE_QUEUE_STATUSES.has(m.status),
-        );
-        allRevocable.push(...revocable);
-        pageToken = response.nextPageToken || undefined;
-      } while (pageToken);
-
-      if (allRevocable.length === 0) return { revoked: 0, failed: 0 };
-
-      const results = await Promise.allSettled(
-        allRevocable.map((m) =>
-          apiService.revokeDownlink(epEui, String(m.queId)),
-        ),
-      );
-
-      return {
-        revoked: results.filter((r) => r.status === "fulfilled").length,
-        failed: results.filter((r) => r.status === "rejected").length,
-      };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-    },
   });
 }

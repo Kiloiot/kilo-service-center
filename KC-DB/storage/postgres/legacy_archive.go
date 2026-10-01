@@ -23,8 +23,8 @@ const (
 // transaction as the canonical rename.
 func updateLegacyArchiveEUI(ctx context.Context, q sqlExecQuerier, column legacyArchiveEUIColumn, newEUI, oldEUI []byte) error {
 	var exists *string
-	if err := q.QueryRowContext(ctx, `SELECT to_regclass('messages_archive_pre000139')::text`).Scan(&exists); err != nil {
-		return fmt.Errorf("check legacy archive presence: %w", err)
+	if err := q.QueryRowxContext(ctx, `SELECT to_regclass('messages_archive_pre000139')::text`).Scan(&exists); err != nil {
+		return fmt.Errorf("%s: %w", errWrapCheckLegacyArchivePresence, err)
 	}
 	if exists == nil {
 		return nil
@@ -37,11 +37,11 @@ func updateLegacyArchiveEUI(ctx context.Context, q sqlExecQuerier, column legacy
 	case legacyArchiveEpEUI:
 		stmt = `UPDATE messages_archive_pre000139 SET ep_eui = $1 WHERE ep_eui = $2`
 	default:
-		return fmt.Errorf("unknown legacy archive column %d", column)
+		return fmt.Errorf(errFmtUnknownLegacyArchiveColumn, column)
 	}
 
 	if _, err := q.ExecContext(ctx, stmt, newEUI, oldEUI); err != nil {
-		return fmt.Errorf("update legacy archive: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateLegacyArchive, err)
 	}
 	return nil
 }

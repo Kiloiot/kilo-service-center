@@ -2,27 +2,35 @@ package bssciservices
 
 import (
 	"context"
-	"time"
-
 	"encoding/binary"
+	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
-// connectionRegistry adapts basestation.ConnectionManager to the narrow
+// ConnectionStateManager is the connection-manager capability the connect
+// flow consumes: global station lookup during the handshake, liveness
+// updates, and connection-scoped disconnect.
+type ConnectionStateManager interface {
+	GetBaseStationGlobal(ctx context.Context, eui [8]byte) (*basestation.BaseStation, error)
+	UpdateLastSeen(ctx context.Context, eui [8]byte) error
+	UpdateConnectionStatus(ctx context.Context, eui [8]byte, status *basestation.ConnectionStatus) error
+	DisconnectBaseStationIfCurrent(ctx context.Context, eui [8]byte, connectionID string) error
+}
+
+// connectionRegistry adapts the connection manager to the narrow
 // bssci.BaseStationConnectionRegistry contract the connect flow consumes.
 type connectionRegistry struct {
-	manager *basestation.ConnectionManager
+	manager ConnectionStateManager
 	logger  logger.Logger
 }
 
-// NewConnectionRegistry captures the concrete connection manager so callers
-// depend only on the registry contract.
-func NewConnectionRegistry(manager *basestation.ConnectionManager, log logger.Logger) bssci.BaseStationConnectionRegistry {
+// NewConnectionRegistry captures the connection manager so callers depend
+// only on the registry contract.
+func NewConnectionRegistry(manager ConnectionStateManager, log logger.Logger) bssci.BaseStationConnectionRegistry {
 	return &connectionRegistry{
 		manager: manager,
 		logger:  log,
@@ -35,30 +43,32 @@ func (c *connectionRegistry) GetBaseStationGlobal(ctx context.Context, eui [8]by
 	bs, err := c.manager.GetBaseStationGlobal(ctx, eui)
 	if err != nil || bs == nil {
 		c.logger.ErrorContext(ctx, bssci.LogBSSCIBaseStationNotFoundInDatabase,
-			"euiHex", pkgmioty.FormatEUI64(binary.BigEndian.Uint64(eui[:])),
-			"error", err)
+			logger.FieldEuiHex, mioty.FormatEUI64(binary.BigEndian.Uint64(eui[:])),
+			logger.FieldError, err)
 		return nil, bssci.NewCatalogError(bssci.ErrBaseStationNotRegistered, bssci.POSIX_EPERM)
 	}
 
 	return bs, nil
 }
 
-// RegisterConnection publishes the session's live connection and marks the
-// base station online.
+// RegisterConnection publishes the session's live connection, marks the base
+// station online and records when the session's connect handshake completed.
 func (c *connectionRegistry) RegisterConnection(ctx context.Context, session *bssci.Session, _ *basestation.BaseStation) error {
+	activatedAt := time.Now()
 	status := &basestation.ConnectionStatus{
-		IsOnline:       true,
-		LastSeen:       time.Now(),
-		ConnectionType: basestation.ConnectionTypeBSSCI,
-		SessionID:      session.ID,
+		IsOnline:         true,
+		LastSeen:         activatedAt,
+		ConnectionType:   basestation.ConnectionTypeBSSCI,
+		SessionID:        session.ID,
+		SessionStartedAt: activatedAt,
 	}
 
 	euiBytes := mioty.EUI64(session.BaseStationEUI).ToBytes()
 
 	if err := c.manager.UpdateConnectionStatus(ctx, euiBytes, status); err != nil {
 		c.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateConnectionStatus,
-			"error", err,
-			"bsEui", session.BaseStationEUI)
+			logger.FieldError, err,
+			logger.FieldBsEui, session.BaseStationEUI)
 		return err
 	}
 

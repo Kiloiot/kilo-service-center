@@ -6,8 +6,11 @@ package interceptors
 import (
 	"context"
 
-	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	audit "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
 )
 
 // APIKeyRecord is a decoupled representation of an API key for interceptor use.
@@ -50,6 +53,18 @@ type AuthConfig struct {
 	Algorithm        string
 	UserClaim        string
 	HMACSecret       string
-	EventWriter      grpcconst.EventWriter // Persists security events (nil = no persistence)
-	PlatformTenantID int64                 // Fallback tenant for pre-auth events
+	EventWriter      audit.EventWriter // Persists security events (nil = no persistence)
+	PlatformTenantID int64             // Fallback tenant for pre-auth events
+	Logger           logger.Logger     // Reports failures that do not refuse the request (nil = global logger)
+}
+
+// contextServerStream carries the context an interceptor derived into the
+// stream handler.
+type contextServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *contextServerStream) Context() context.Context {
+	return s.ctx
 }

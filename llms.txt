@@ -55,7 +55,7 @@ Three installation paths:
 2. Kubernetes: Helm chart at `helm/kilocenter/` — requires external PostgreSQL and Redis
 3. Linux Host: build from source with Go and Bun
 
-Default admin account (created on first startup): admin@kilocenter.local / admin123!
+Default admin account (created on first startup): admin@kilocenter.local / admin123! -- change the password right after the first sign-in. Self-registered accounts start without roles until an administrator grants them (roles: Admin, Tenant Manager, Base Station Manager, Endpoint Manager; see GitBook/05-Security/04-users-and-roles.md).
 
 ## API
 
@@ -65,7 +65,7 @@ Streaming RPCs: StreamMessages, StreamBaseStationMessages, StreamEvents, StreamB
 
 ## MQTT
 
-Disabled by default. Topic format: `{prefix}/{org_uuid}/device/{ep_eui_hex}/{channel}/{type}`. Channels: event/up (uplinks), event/attach, event/detach, event/downlink_result, command/down (downlink commands).
+Disabled by default. Topic format: `{prefix}/{org_uuid}/device/{ep_eui_hex}/{channel}/{type}`. Channels: event/up (uplinks, with the dlOpen/responseExp/dlAck window flags), event/attach, event/detach, event/downlink_queued (queId of an accepted command, ref echoed), event/downlink_rejected (stable code and message, ref echoed), event/downlink_result (sent/expired/invalid, then acknowledged once when the endpoint confirms a sent downlink; ref of the command on every result; bsEui/txTime/packetCnt when sent), command/down (downlink commands: base64 data of at most 200 bytes, empty for a pure acknowledgement, or counter-dependent entries; optional confirmed, prio, format, responsePrio, dlWindReq, expOnly, dlRxStatQry, ref).
 
 ## Key Directories
 

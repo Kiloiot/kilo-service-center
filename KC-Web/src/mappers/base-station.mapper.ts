@@ -11,6 +11,14 @@ import type {
   BaseStationUI,
 } from "@api-types/api";
 
+import type { LocationSource } from "@constants/app";
+import {
+  BASE_STATION_STATUS,
+  BS_CONNECTION_TYPE,
+  BS_CONNECTION_TYPE_LABEL,
+  LOCATION_SOURCE,
+} from "@constants/app";
+
 type ConnectionFields = Pick<BaseStationUI, "status" | "connectionType">;
 type LocationFields = Pick<
   BaseStationUI,
@@ -28,19 +36,27 @@ type HealthFields = Pick<
   | "lastStatusAt"
 >;
 
+/** The stored location source when it is one the UI knows, else none. */
+const toLocationSource = (
+  value: string | undefined,
+): LocationSource | undefined =>
+  Object.values(LOCATION_SOURCE).find((source) => source === value);
+
 /** Resolves online/offline + BSSCI/MQTT from list- and detail-shape payloads. */
 function mapConnectionStatus(
   bs: BaseStationAPI,
   isDetail: boolean,
 ): ConnectionFields {
   const isOnline = bs.isOnline ?? bs.is_online ?? false;
-  const connectionType: BaseStationUI["connectionType"] = isDetail
-    ? ((bs.connectionType || bs.connection_type || "bssci").toUpperCase() as
-        | "BSSCI"
-        | "MQTT")
-    : "BSSCI";
+  const wireType = isDetail
+    ? bs.connectionType || bs.connection_type
+    : undefined;
+  const connectionType: BaseStationUI["connectionType"] =
+    wireType === BS_CONNECTION_TYPE.MQTT
+      ? BS_CONNECTION_TYPE_LABEL.MQTT
+      : BS_CONNECTION_TYPE_LABEL.BSSCI;
   return {
-    status: isOnline ? "online" : "offline",
+    status: isOnline ? BASE_STATION_STATUS.ONLINE : BASE_STATION_STATUS.OFFLINE,
     connectionType,
   };
 }
@@ -52,9 +68,9 @@ function mapLocationFields(bs: BaseStationAPI): LocationFields {
     latitude: bs.latitude,
     longitude: bs.longitude,
     altitude: bs.altitude,
-    locationSource:
-      (bs.locationSource as "gps" | "manual") ||
-      (detail.locationSource as "gps" | "manual" | undefined),
+    locationSource: toLocationSource(
+      bs.locationSource || detail.locationSource,
+    ),
     locationUpdatedAt: detail.locationUpdatedAt,
   };
 }
@@ -102,21 +118,14 @@ export function mapBaseStation(bs: BaseStationAPI): BaseStationUI {
     ...mapConnectionStatus(bs, isDetail),
     createdAt: bs.firstSeen || bs.first_seen || bs.created_at || "",
     lastSeen: bs.lastSeen || bs.last_seen || bs.last_seen_at || "",
+    lastHandshake: bs.sessionStartedAt,
     serviceCenterUrl: isDetail
       ? bs.serviceCenterUrl || bs.service_center_url || ""
       : "",
     ...mapLocationFields(bs),
-    certificateExpiryDate: isDetail ? detail.tlsCertExpiresAt : undefined,
+    certificateExpiryDate: bs.certificateExpiresAt,
+    certificateFingerprint: bs.tlsCertFingerprint,
     version: isDetail ? detail.version : undefined,
     ...mapHealthStatus(bs, isDetail),
   };
-}
-
-/**
- * Transform an array of base stations
- */
-export function mapBaseStationList(
-  baseStations: BaseStationAPI[],
-): BaseStationUI[] {
-  return baseStations.map(mapBaseStation);
 }

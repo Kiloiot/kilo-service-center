@@ -76,7 +76,7 @@ func TestAttachPropagateTenantField(t *testing.T) {
 
 	// Create test environment with session tenant 200
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 	env.session.ResolvedTenantID = sessionTenant   // Override to simulate cross-tenant
@@ -85,6 +85,7 @@ func TestAttachPropagateTenantField(t *testing.T) {
 
 	// Provide stub session service to avoid nil pointer panics
 	env.server.sessionSvc = &stubSessionService{}
+	env.server.pendingOps = newPendingOperationJournal(env.server.statusSvc, env.server.sessionSvc, env.server.clock, env.server.logger)
 
 	// For this smoke test, temporarily remove endpointRepo to skip transaction operations
 	// (Issue #1 fix is in message persistence block, not endpoint updates)
@@ -93,9 +94,7 @@ func TestAttachPropagateTenantField(t *testing.T) {
 	defer func() { env.server.endpointRepo = savedRepo }()
 
 	// Register session in server's sessions map so SendAttachPropagate can find it
-	env.server.mu.Lock()
-	env.server.sessions[env.session.ID] = env.session
-	env.server.mu.Unlock()
+	env.server.sessions.add(env.session)
 
 	// Execute attach propagate (Issue #1 fix ensures endpointTenantID is used)
 	err := env.server.SendAttachPropagateToSession(testutil.TestContext(), env.session, endpoint)
@@ -139,13 +138,12 @@ func TestDetachCompleteTelemetryFields(t *testing.T) {
 
 			endpoint := buildTestEndpoint(epEui, 100)
 			env := newDetachTestEnv(t, &Config{
-				DetachSignatureValidationEnabled: false,
+				DetachSignatureValidationEnabled: detachSigValidationOff,
 				MessageEncoding:                  EncodingJSON,
 			}, endpoint)
 
 			// Use StatusService to record pending operation
 			pendingOp := &PendingOperation{
-				SessionSlug:   env.session.ID,
 				OperationID:   opID,
 				OperationType: mioty.CmdDetach,
 				Metadata: map[string]interface{}{
@@ -165,7 +163,7 @@ func TestDetachCompleteTelemetryFields(t *testing.T) {
 			require.NoError(t, err, "Failed to record pending operation")
 
 			// Execute detach complete (Issue #2 ensures rxTime is included in telemetry)
-			err = env.server.handleDetachComplete(env.server, env.session, &Message{
+			err = env.server.handleDetachComplete(env.session, &Message{
 				Command: mioty.CmdDetachComplete,
 				OpId:    opID,
 			}, map[string]interface{}{})
@@ -227,7 +225,7 @@ func TestDetachCompleteOwnerContext(t *testing.T) {
 
 			endpoint := buildTestEndpoint(epEui, tt.endpointTenant)
 			env := newDetachTestEnv(t, &Config{
-				DetachSignatureValidationEnabled: false,
+				DetachSignatureValidationEnabled: detachSigValidationOff,
 				MessageEncoding:                  EncodingJSON,
 			}, endpoint)
 			env.session.ResolvedTenantID = tt.sessionTenant // Override session tenant
@@ -249,7 +247,6 @@ func TestDetachCompleteOwnerContext(t *testing.T) {
 
 			// Use StatusService to record pending operation
 			pendingOp := &PendingOperation{
-				SessionSlug:   env.session.ID,
 				OperationID:   opID,
 				OperationType: mioty.CmdDetach,
 				Metadata:      metadata,
@@ -260,7 +257,7 @@ func TestDetachCompleteOwnerContext(t *testing.T) {
 			require.NoError(t, err, "Failed to record pending operation")
 
 			// Execute detach complete (Issue #2 ensures owner context from metadata is used)
-			err = env.server.handleDetachComplete(env.server, env.session, &Message{
+			err = env.server.handleDetachComplete(env.session, &Message{
 				Command: mioty.CmdDetachComplete,
 				OpId:    opID,
 			}, map[string]interface{}{})
@@ -332,7 +329,7 @@ func TestULDataTenantResolution(t *testing.T) {
 
 			// Create test environment
 			env := newDetachTestEnv(t, &Config{
-				DetachSignatureValidationEnabled: false,
+				DetachSignatureValidationEnabled: detachSigValidationOff,
 				MessageEncoding:                  EncodingJSON,
 			}, endpoint)
 
@@ -397,7 +394,7 @@ func TestULDataUnknownEndpoint(t *testing.T) {
 
 	// Create test environment WITHOUT an endpoint (nil = unknown)
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, nil)
 
@@ -431,8 +428,8 @@ func TestULDataUnknownEndpoint(t *testing.T) {
 	require.True(t, env.conn.SeenCommand(mioty.CmdULDataResponse),
 		"Should send ulDataRsp even for unknown endpoint")
 
-	t.Logf("PASS: UL data from unknown endpoint %016X fell back to session tenant %d",
-		unknownEpEui, sessionTenant)
+	t.Logf("PASS: UL data from unknown endpoint %s fell back to session tenant %d",
+		mioty.FormatEUI64(unknownEpEui), sessionTenant)
 }
 
 // TestULDataFormatNullPreservation verifies that missing format field is stored as NULL
@@ -448,7 +445,7 @@ func TestULDataFormatNullPreservation(t *testing.T) {
 	endpoint := buildTestEndpoint(epEui, endpointTenant)
 
 	env := newDetachTestEnv(t, &Config{
-		DetachSignatureValidationEnabled: false,
+		DetachSignatureValidationEnabled: detachSigValidationOff,
 		MessageEncoding:                  EncodingJSON,
 	}, endpoint)
 

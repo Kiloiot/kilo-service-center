@@ -4,6 +4,7 @@ package alerts
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
@@ -18,15 +19,13 @@ type AlertStore interface {
 
 // AlertFilter contains filtering criteria for alerts.
 type AlertFilter struct {
-	Severity  []string
-	Status    []string
-	StartTime *int64 // Unix timestamp
-	EndTime   *int64 // Unix timestamp
+	Severity []string
+	Status   []string
 }
 
 // Alert represents a system alert from storage (internal format).
 type Alert struct {
-	ID          int64
+	ID          string
 	TenantID    int64
 	Category    string
 	Severity    string
@@ -35,14 +34,13 @@ type Alert struct {
 	SourceName  string
 	Status      string
 	CreatedAt   int64
-	ResolvedAt  *int64
 }
 
 // AlertSummary represents alert counts (internal storage format).
 type AlertSummary struct {
 	Critical int32
+	Error    int32
 	Warning  int32
-	Info     int32
 	Recent   []*Alert
 }
 
@@ -62,13 +60,19 @@ func New(alertStore AlertStore, log logger.Logger) *Service {
 
 // List returns alerts for the given tenant with optional filters.
 func (s *Service) List(ctx context.Context, tenantID int64, filters *grpcservices.AlertFilters, limit, offset int) ([]*grpcservices.Alert, int64, error) {
+	if err := validateStatuses(filters); err != nil {
+		return nil, 0, err
+	}
+	if err := validateSeverities(filters); err != nil {
+		return nil, 0, err
+	}
 	// Convert grpcservices filters to internal format
 	filter := convertFilters(filters)
 
 	alerts, total, err := s.alertStore.List(ctx, tenantID, filter, limit, offset)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to list alerts", "tenantID", tenantID, "error", err)
-		return nil, 0, fmt.Errorf("list alerts: %w", err)
+		s.logger.ErrorContext(ctx, LogAlertsListFailed, logger.FieldTenantID, tenantID, logger.FieldError, err)
+		return nil, 0, fmt.Errorf("%w: %w", errListAlerts, err)
 	}
 
 	result := make([]*grpcservices.Alert, len(alerts))
@@ -83,8 +87,8 @@ func (s *Service) List(ctx context.Context, tenantID int64, filters *grpcservice
 func (s *Service) GetSummary(ctx context.Context, tenantID int64) (*grpcservices.AlertSummary, error) {
 	summary, err := s.alertStore.GetSummary(ctx, tenantID)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to get alert summary", "tenantID", tenantID, "error", err)
-		return nil, fmt.Errorf("get alert summary: %w", err)
+		s.logger.ErrorContext(ctx, LogAlertsSummaryFailed, logger.FieldTenantID, tenantID, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", errGetAlertSummary, err)
 	}
 
 	// Convert recent alerts
@@ -95,8 +99,8 @@ func (s *Service) GetSummary(ctx context.Context, tenantID int64) (*grpcservices
 
 	return &grpcservices.AlertSummary{
 		Critical: summary.Critical,
+		Error:    summary.Error,
 		Warning:  summary.Warning,
-		Info:     summary.Info,
 		Recent:   recent,
 	}, nil
 }
@@ -107,27 +111,16 @@ func convertFilters(filters *grpcservices.AlertFilters) *AlertFilter {
 		return nil
 	}
 
-	filter := &AlertFilter{
+	return &AlertFilter{
 		Severity: filters.Severity,
 		Status:   filters.Status,
 	}
-
-	if filters.StartTime != nil {
-		ts := filters.StartTime.Unix()
-		filter.StartTime = &ts
-	}
-	if filters.EndTime != nil {
-		ts := filters.EndTime.Unix()
-		filter.EndTime = &ts
-	}
-
-	return filter
 }
 
 // convertAlert converts internal Alert to grpcservices.Alert.
 func convertAlert(a *Alert) *grpcservices.Alert {
 	return &grpcservices.Alert{
-		ID:          fmt.Sprintf("%d", a.ID),
+		ID:          a.ID,
 		TenantID:    a.TenantID,
 		Category:    a.Category,
 		Severity:    a.Severity,
@@ -141,3 +134,29 @@ func convertAlert(a *Alert) *grpcservices.Alert {
 
 // Ensure Service implements grpcservices.AlertService
 var _ grpcservices.AlertService = (*Service)(nil)
+
+// validateStatuses rejects a status filter outside AlertStatuses.
+func validateStatuses(filters *grpcservices.AlertFilters) error {
+	if filters == nil {
+		return nil
+	}
+	for _, status := range filters.Status {
+		if !slices.Contains(AlertStatuses, status) {
+			return fmt.Errorf("%w: %s", ErrInvalidAlertStatus, status)
+		}
+	}
+	return nil
+}
+
+// validateSeverities rejects a severity filter outside AlertSeverities.
+func validateSeverities(filters *grpcservices.AlertFilters) error {
+	if filters == nil {
+		return nil
+	}
+	for _, severity := range filters.Severity {
+		if !slices.Contains(AlertSeverities, severity) {
+			return fmt.Errorf("%w: %s", ErrInvalidAlertSeverity, severity)
+		}
+	}
+	return nil
+}

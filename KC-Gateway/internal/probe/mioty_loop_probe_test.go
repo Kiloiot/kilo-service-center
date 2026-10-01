@@ -3,14 +3,12 @@
 package probe
 
 import (
-	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"testing"
@@ -27,6 +25,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // bssciAddr returns the BSSCI server address from env or default.
@@ -73,25 +72,14 @@ func writeFrame(t *testing.T, conn net.Conn, msg interface{}) {
 	t.Helper()
 	payload, err := msgpack.Marshal(msg)
 	require.NoError(t, err, "msgpack marshal")
-	frame := mioty.Frame{Identifier: mioty.MIOTYFrameIdentifier, Payload: payload}
-	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	_, err = conn.Write(frame.Serialize())
-	require.NoError(t, err, "write frame")
+	require.NoError(t, writeFramePayload(conn, mioty.MIOTYFrameIdentifier, payload), "write frame")
 }
 
 func readFrame(t *testing.T, conn net.Conn) map[string]interface{} {
 	t.Helper()
 	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	header := make([]byte, 12)
-	_, err := io.ReadFull(conn, header)
-	require.NoError(t, err, "read frame header")
-	require.True(t, bytes.Equal(header[:8], mioty.MIOTYFrameIdentifier[:]),
-		"expected MIOTYB01, got %s", string(header[:8]))
-	size := binary.LittleEndian.Uint32(header[8:])
-	require.Less(t, size, uint32(1024*1024), "payload too large")
-	buf := make([]byte, size)
-	_, err = io.ReadFull(conn, buf)
-	require.NoError(t, err, "read frame payload")
+	buf, err := readFramePayload(conn, mioty.MIOTYFrameIdentifier)
+	require.NoError(t, err, "read frame")
 	var resp map[string]interface{}
 	require.NoError(t, msgpack.Unmarshal(buf, &resp), "unmarshal response")
 	return resp
@@ -101,19 +89,17 @@ func readFrame(t *testing.T, conn net.Conn) map[string]interface{} {
 // Matches testPresharedKey() in attach_replay_protection_test.go.
 var probeNwkSnKey = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 
-// computeAttachSignature computes CMAC signature per MIOTY radio spec §3.7.1.3.
-// Pattern from KC-Core/pkg/bssci/attach_replay_protection_test.go:29.
+// computeAttachSignature computes the attach signature per MIOTY radio spec
+// §3.7.1.3 over the 16-byte Fig. 3-15 IV
+// [EUI64 | 0xFF | 0x00 | attachCnt (4 bytes) | 0xFF 0xFF].
 func computeAttachSignature(epEUI uint64, attachCnt uint32, presharedKey []byte) [4]byte {
-	iv := make([]byte, 15)
+	iv := make([]byte, 16)
 	binary.BigEndian.PutUint64(iv[0:8], epEUI)
 	iv[8] = 0xFF
 	iv[9] = 0x00
-	maskedCnt := attachCnt & 0xFFFFFF
-	iv[10] = byte(maskedCnt >> 16)
-	iv[11] = byte(maskedCnt >> 8)
-	iv[12] = byte(maskedCnt)
-	iv[13] = 0xFF
+	binary.BigEndian.PutUint32(iv[10:14], attachCnt)
 	iv[14] = 0xFF
+	iv[15] = 0xFF
 
 	block, _ := aes.NewCipher(presharedKey)
 	mac, _ := cmac.New(block)
@@ -122,6 +108,15 @@ func computeAttachSignature(epEUI uint64, attachCnt uint32, presharedKey []byte)
 	var sig [4]byte
 	copy(sig[:], result[:4])
 	return sig
+}
+
+// probeUserID is the principal the probe acts as: the seeded default
+// administrator, whose roles admit endpoint registration.
+func probeUserID() string {
+	if id := os.Getenv("PROBE_USER_ID"); id != "" {
+		return id
+	}
+	return "00000000-0000-0000-0000-000000000001"
 }
 
 func coreInternalAddr() string {
@@ -135,7 +130,7 @@ func coreInternalAddr() string {
 // Uses internal trust mode with all three required headers:
 //   - MetadataKeyInternalTenantID (required, positive int64)
 //   - MetadataKeyInternalOrgID (required for non-org-exempt methods like CreateEndPoint, valid UUID)
-//   - MetadataKeyInternalUserID (optional but included for completeness, valid UUID)
+//   - MetadataKeyInternalUserID (the acting user, whose roles must include endpoint management)
 func seedTestEndpoint(t *testing.T) {
 	t.Helper()
 	conn, err := grpc.NewClient(coreInternalAddr(),
@@ -146,7 +141,7 @@ func seedTestEndpoint(t *testing.T) {
 	md := metadata.Pairs(
 		grpcconst.MetadataKeyInternalTenantID, "1",
 		grpcconst.MetadataKeyInternalOrgID, "11111111-2222-3333-4444-555555555555",
-		grpcconst.MetadataKeyInternalUserID, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+		grpcconst.MetadataKeyInternalUserID, probeUserID(),
 	)
 	ctx := metadata.NewOutgoingContext(context.Background(), md)
 
@@ -168,8 +163,17 @@ func seedTestEndpoint(t *testing.T) {
 		}
 	}
 
-	// The BSSCI connect handler only accepts registered base stations, so the
-	// probe's station is seeded the same way.
+	// The BSSCI connect handler only accepts registered base stations and pins a
+	// station to the first certificate that names it. The probe certificate is
+	// issued per run, so the station is registered anew for each run.
+	err = conn.Invoke(ctx, "/kilocenter.api.v1.CoreService/DeleteBaseStation",
+		&pb.DeleteBaseStationRequest{BsEui: "0000000000000001"}, &emptypb.Empty{})
+	if err != nil {
+		st, _ := status.FromError(err)
+		if st.Code() != codes.NotFound {
+			t.Fatalf("failed to remove the previous run's test base station: %v", err)
+		}
+	}
 	var bsResp pb.BaseStation
 	err = conn.Invoke(ctx, "/kilocenter.api.v1.CoreService/CreateBaseStation",
 		&pb.CreateBaseStationRequest{

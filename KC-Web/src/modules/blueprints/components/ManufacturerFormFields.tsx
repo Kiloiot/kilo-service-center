@@ -11,6 +11,7 @@ import { BLUEPRINT_LABELS } from "@constants/messages";
 
 interface ManufacturerFormFieldsProps {
   name: string;
+  nameError: string | null;
   website: string;
   onNameChange: (value: string) => void;
   onWebsiteChange: (value: string) => void;
@@ -18,6 +19,7 @@ interface ManufacturerFormFieldsProps {
 
 const ManufacturerFormFields: React.FC<ManufacturerFormFieldsProps> = ({
   name,
+  nameError,
   website,
   onNameChange,
   onWebsiteChange,
@@ -25,11 +27,14 @@ const ManufacturerFormFields: React.FC<ManufacturerFormFieldsProps> = ({
   <>
     <TextField
       autoFocus
+      required
       margin="dense"
       label={BLUEPRINT_LABELS.LABEL_NAME}
       fullWidth
       value={name}
       onChange={(e) => onNameChange(e.target.value)}
+      error={!!nameError}
+      helperText={nameError}
     />
     <TextField
       margin="dense"

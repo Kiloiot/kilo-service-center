@@ -10,6 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Dotted commands exercising the VM/RC prefix guard.
+const (
+	testCmdVMPrefixed    = "vm.test"
+	testCmdRCPrefixed    = "rc.test"
+	testCmdUnknownPrefix = "xyz.test"
+)
+
 // testConn implements net.Conn for testing without panics
 type testConn struct {
 	net.Conn
@@ -38,19 +45,19 @@ func TestVMPrefixGuardAllowsRegisteredHandlers(t *testing.T) {
 	}{
 		{
 			name:          "VM prefix allowed",
-			command:       "vm.test",
+			command:       testCmdVMPrefixed,
 			shouldSucceed: true,
 			description:   "Registered vm.* handler should be invoked",
 		},
 		{
 			name:          "RC prefix allowed",
-			command:       "rc.test",
+			command:       testCmdRCPrefixed,
 			shouldSucceed: true,
 			description:   "Registered rc.* handler should be invoked",
 		},
 		{
 			name:          "Unknown prefix rejected",
-			command:       "xyz.test",
+			command:       testCmdUnknownPrefix,
 			shouldSucceed: false,
 			description:   "Unsupported sublayer prefix returns POSIX_ENOTSUP",
 		},
@@ -60,7 +67,7 @@ func TestVMPrefixGuardAllowsRegisteredHandlers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Use NewTestServerWithMemoryStatusService (StatusService is mandatory)
 			s := NewTestServerWithMemoryStatusService(logger.NewNop(), nil, nil, 1)
-			s.handlers = make(map[string]HandlerFunc)
+			s.commands = emptyTestCommandRegistry()
 			s.config = &Config{MessageEncoding: EncodingJSON}
 
 			// Create test connection
@@ -79,7 +86,7 @@ func TestVMPrefixGuardAllowsRegisteredHandlers(t *testing.T) {
 				handlerCalled = true
 				return nil
 			}
-			s.handlers[tt.command] = testHandler
+			s.overrideHandlerForTest(tt.command, testHandler)
 
 			// Create message
 			msg := &Message{

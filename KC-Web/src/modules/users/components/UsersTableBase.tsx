@@ -2,8 +2,9 @@
  * UsersTableBase Component
  *
  * Shared sortable table used by both System Users and Organization Users views.
- * Renders a single unified layout: Email, Role, Status, Org Admin, BS Admin,
- * EP Admin, Joined, Actions. System users are mapped to the same columns.
+ * Renders a single unified layout: Email, Role, Status, Tenant Manager, Base
+ * Station Manager, Endpoint Manager, Joined, Actions. System users are mapped
+ * to the same columns.
  */
 
 import React from "react";
@@ -24,84 +25,33 @@ import {
   Typography,
 } from "@mui/material";
 
-import { formatRelativeDuration } from "@utils/formatters";
-import { ORG_MEMBER_STATUS, ORG_ROLE } from "@constants/app";
-import { ORG_USERS_PAGE } from "@constants/messages";
+import { memberStatusChip } from "@utils/chipMappings";
+import { formatRelativeDuration } from "@utils/date-format";
+import type { SortDirection } from "@constants/app";
+import { ORG_ROLE, SORT_DIRECTION } from "@constants/app";
+import { DATA_TABLE, ORG_USERS_PAGE } from "@constants/messages";
 import { DeleteIcon, EditIcon } from "@theme/icons";
 
-export type OrderBy = "email" | "role" | "status" | "createdAt";
-export type OrderDirection = "asc" | "desc";
+import {
+  isOrgUser,
+  roleLabel,
+  unifiedRole,
+  unifiedStatus,
+} from "../utils/membership-labels";
 
+export type OrderBy = "email" | "role" | "status" | "createdAt";
 export interface UsersTableBaseProps {
   users: SystemUserUI[] | OrganizationUserUI[];
   orderBy: OrderBy;
-  orderDirection: OrderDirection;
+  orderDirection: SortDirection;
   onSort: (field: OrderBy) => void;
   onEdit?: (user: SystemUserUI | OrganizationUserUI) => void;
   onRemove?: (user: SystemUserUI | OrganizationUserUI) => void;
   emptyMessage?: string;
 }
 
-const getRoleLabel = (role: string): string => {
-  switch (role) {
-    case ORG_ROLE.OWNER:
-      return ORG_USERS_PAGE.ROLE_OWNER;
-    case ORG_ROLE.ADMIN:
-      return ORG_USERS_PAGE.ROLE_ADMIN;
-    case ORG_ROLE.MEMBER:
-      return ORG_USERS_PAGE.ROLE_MEMBER;
-    default:
-      return role;
-  }
-};
-
-const getStatusColor = (
-  status: string,
-): "success" | "warning" | "error" | "default" => {
-  switch (status) {
-    case ORG_MEMBER_STATUS.ACTIVE:
-      return "success";
-    case ORG_MEMBER_STATUS.INVITED:
-      return "warning";
-    case ORG_MEMBER_STATUS.REMOVED:
-      return "error";
-    default:
-      return "default";
-  }
-};
-
-const getStatusLabel = (status: string): string => {
-  switch (status) {
-    case ORG_MEMBER_STATUS.ACTIVE:
-      return ORG_USERS_PAGE.STATUS_ACTIVE;
-    case ORG_MEMBER_STATUS.INVITED:
-      return ORG_USERS_PAGE.STATUS_INVITED;
-    case ORG_MEMBER_STATUS.REMOVED:
-      return ORG_USERS_PAGE.STATUS_REMOVED;
-    default:
-      return status;
-  }
-};
-
-function isOrgUser(
-  user: SystemUserUI | OrganizationUserUI,
-): user is OrganizationUserUI {
-  return "orgId" in user;
-}
-
 function getUserId(user: SystemUserUI | OrganizationUserUI): string {
   return isOrgUser(user) ? user.userId : user.id;
-}
-
-/** Map a system user to unified role/status values for display */
-function getUnifiedRole(user: SystemUserUI | OrganizationUserUI): string {
-  if (isOrgUser(user)) return user.role;
-  return user.isAdmin ? ORG_ROLE.ADMIN : ORG_ROLE.MEMBER;
-}
-
-function getUnifiedStatus(user: SystemUserUI | OrganizationUserUI): string {
-  if (isOrgUser(user)) return user.status;
-  return user.isActive ? ORG_MEMBER_STATUS.ACTIVE : ORG_MEMBER_STATUS.REMOVED;
 }
 
 interface UsersTableRowProps {
@@ -116,8 +66,8 @@ const UsersTableRow: React.FC<UsersTableRowProps> = ({
   onRemove,
 }) => {
   const org = isOrgUser(user);
-  const role = getUnifiedRole(user);
-  const status = getUnifiedStatus(user);
+  const role = unifiedRole(user);
+  const status = unifiedStatus(user);
 
   const effectiveOrgAdmin = org
     ? user.isOrgAdmin
@@ -138,17 +88,21 @@ const UsersTableRow: React.FC<UsersTableRowProps> = ({
       </TableCell>
 
       <TableCell>
-        <Chip
-          label={getRoleLabel(role)}
-          size="small"
-          color={role === ORG_ROLE.OWNER ? "primary" : "default"}
-        />
+        {roleLabel(user) ? (
+          <Chip
+            label={roleLabel(user)}
+            size="small"
+            color={role === ORG_ROLE.OWNER ? "primary" : "default"}
+          />
+        ) : (
+          DATA_TABLE.NO_VALUE
+        )}
       </TableCell>
 
       <TableCell>
         <Chip
-          label={getStatusLabel(status)}
-          color={getStatusColor(status)}
+          label={memberStatusChip(status).label}
+          color={memberStatusChip(status).color}
           size="small"
         />
       </TableCell>
@@ -231,7 +185,9 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
             <TableCell>
               <TableSortLabel
                 active={orderBy === "email"}
-                direction={orderBy === "email" ? orderDirection : "asc"}
+                direction={
+                  orderBy === "email" ? orderDirection : SORT_DIRECTION.ASC
+                }
                 onClick={() => onSort("email")}
               >
                 {ORG_USERS_PAGE.COL_EMAIL}
@@ -241,7 +197,9 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
             <TableCell>
               <TableSortLabel
                 active={orderBy === "role"}
-                direction={orderBy === "role" ? orderDirection : "asc"}
+                direction={
+                  orderBy === "role" ? orderDirection : SORT_DIRECTION.ASC
+                }
                 onClick={() => onSort("role")}
               >
                 {ORG_USERS_PAGE.COL_ROLE}
@@ -251,21 +209,25 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
             <TableCell>
               <TableSortLabel
                 active={orderBy === "status"}
-                direction={orderBy === "status" ? orderDirection : "asc"}
+                direction={
+                  orderBy === "status" ? orderDirection : SORT_DIRECTION.ASC
+                }
                 onClick={() => onSort("status")}
               >
                 {ORG_USERS_PAGE.COL_STATUS}
               </TableSortLabel>
             </TableCell>
 
-            <TableCell>{ORG_USERS_PAGE.COL_ORG_ADMIN}</TableCell>
-            <TableCell>{ORG_USERS_PAGE.COL_BS_ADMIN}</TableCell>
-            <TableCell>{ORG_USERS_PAGE.COL_EP_ADMIN}</TableCell>
+            <TableCell>{ORG_USERS_PAGE.COL_TENANT_MANAGER}</TableCell>
+            <TableCell>{ORG_USERS_PAGE.COL_BASE_STATION_MANAGER}</TableCell>
+            <TableCell>{ORG_USERS_PAGE.COL_ENDPOINT_MANAGER}</TableCell>
 
             <TableCell>
               <TableSortLabel
                 active={orderBy === "createdAt"}
-                direction={orderBy === "createdAt" ? orderDirection : "asc"}
+                direction={
+                  orderBy === "createdAt" ? orderDirection : SORT_DIRECTION.ASC
+                }
                 onClick={() => onSort("createdAt")}
               >
                 {ORG_USERS_PAGE.COL_JOINED}

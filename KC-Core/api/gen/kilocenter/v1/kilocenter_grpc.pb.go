@@ -41,6 +41,7 @@ const (
 	KiloCenterService_RevokeDownlink_FullMethodName                 = "/kilocenter.api.v1.KiloCenterService/RevokeDownlink"
 	KiloCenterService_ListDownlinkQueue_FullMethodName              = "/kilocenter.api.v1.KiloCenterService/ListDownlinkQueue"
 	KiloCenterService_GetDownlinkResults_FullMethodName             = "/kilocenter.api.v1.KiloCenterService/GetDownlinkResults"
+	KiloCenterService_UpdatePendingDownlink_FullMethodName          = "/kilocenter.api.v1.KiloCenterService/UpdatePendingDownlink"
 	KiloCenterService_SendULTransmit_FullMethodName                 = "/kilocenter.api.v1.KiloCenterService/SendULTransmit"
 	KiloCenterService_RequestBaseStationStatus_FullMethodName       = "/kilocenter.api.v1.KiloCenterService/RequestBaseStationStatus"
 	KiloCenterService_InitiatePing_FullMethodName                   = "/kilocenter.api.v1.KiloCenterService/InitiatePing"
@@ -50,6 +51,8 @@ const (
 	KiloCenterService_GetSystemStatus_FullMethodName                = "/kilocenter.api.v1.KiloCenterService/GetSystemStatus"
 	KiloCenterService_GetStatistics_FullMethodName                  = "/kilocenter.api.v1.KiloCenterService/GetStatistics"
 	KiloCenterService_GetReleaseInfo_FullMethodName                 = "/kilocenter.api.v1.KiloCenterService/GetReleaseInfo"
+	KiloCenterService_ListCapabilities_FullMethodName               = "/kilocenter.api.v1.KiloCenterService/ListCapabilities"
+	KiloCenterService_GetDiagnosticsBundle_FullMethodName           = "/kilocenter.api.v1.KiloCenterService/GetDiagnosticsBundle"
 	KiloCenterService_Login_FullMethodName                          = "/kilocenter.api.v1.KiloCenterService/Login"
 	KiloCenterService_RefreshTokens_FullMethodName                  = "/kilocenter.api.v1.KiloCenterService/RefreshTokens"
 	KiloCenterService_GetProfile_FullMethodName                     = "/kilocenter.api.v1.KiloCenterService/GetProfile"
@@ -89,6 +92,7 @@ const (
 	KiloCenterService_GetActivityAnalytics_FullMethodName           = "/kilocenter.api.v1.KiloCenterService/GetActivityAnalytics"
 	KiloCenterService_GetSignalQualityAnalytics_FullMethodName      = "/kilocenter.api.v1.KiloCenterService/GetSignalQualityAnalytics"
 	KiloCenterService_ListEvents_FullMethodName                     = "/kilocenter.api.v1.KiloCenterService/ListEvents"
+	KiloCenterService_ListErrorGroups_FullMethodName                = "/kilocenter.api.v1.KiloCenterService/ListErrorGroups"
 	KiloCenterService_ListBaseStationActivity_FullMethodName        = "/kilocenter.api.v1.KiloCenterService/ListBaseStationActivity"
 	KiloCenterService_ListEndpointActivity_FullMethodName           = "/kilocenter.api.v1.KiloCenterService/ListEndpointActivity"
 	KiloCenterService_StreamEvents_FullMethodName                   = "/kilocenter.api.v1.KiloCenterService/StreamEvents"
@@ -180,6 +184,8 @@ type KiloCenterServiceClient interface {
 	RevokeDownlink(ctx context.Context, in *RevokeDownlinkRequest, opts ...grpc.CallOption) (*RevokeDownlinkResponse, error)
 	ListDownlinkQueue(ctx context.Context, in *ListDownlinkQueueRequest, opts ...grpc.CallOption) (*ListDownlinkQueueResponse, error)
 	GetDownlinkResults(ctx context.Context, in *GetDownlinkResultsRequest, opts ...grpc.CallOption) (*GetDownlinkResultsResponse, error)
+	// Rewrites a downlink that is still pending in the queue (SCACI §3.10.1 fields).
+	UpdatePendingDownlink(ctx context.Context, in *UpdatePendingDownlinkRequest, opts ...grpc.CallOption) (*DownlinkMessage, error)
 	// UL Data Transmit operations (BSSCI 3.11)
 	SendULTransmit(ctx context.Context, in *SendULTransmitRequest, opts ...grpc.CallOption) (*SendULTransmitResponse, error)
 	// Base Station operations (BSSCI 3.5)
@@ -194,6 +200,10 @@ type KiloCenterServiceClient interface {
 	GetSystemStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SystemStatus, error)
 	GetStatistics(ctx context.Context, in *GetStatisticsRequest, opts ...grpc.CallOption) (*Statistics, error)
 	GetReleaseInfo(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ReleaseInfo, error)
+	// Non-secret capabilities of this service center (edition and feature toggles).
+	ListCapabilities(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCapabilitiesResponse, error)
+	// Server administrators only: a zip of projected, non-secret service state.
+	GetDiagnosticsBundle(ctx context.Context, in *GetDiagnosticsBundleRequest, opts ...grpc.CallOption) (*GetDiagnosticsBundleResponse, error)
 	// Auth & Session
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	RefreshTokens(ctx context.Context, in *RefreshTokensRequest, opts ...grpc.CallOption) (*RefreshTokensResponse, error)
@@ -243,6 +253,8 @@ type KiloCenterServiceClient interface {
 	GetSignalQualityAnalytics(ctx context.Context, in *GetSignalQualityAnalyticsRequest, opts ...grpc.CallOption) (*GetSignalQualityAnalyticsResponse, error)
 	// Events & Alerts
 	ListEvents(ctx context.Context, in *ListEventsRequest, opts ...grpc.CallOption) (*ListEventsResponse, error)
+	// Failed operations and error events grouped per bucket.
+	ListErrorGroups(ctx context.Context, in *ListErrorGroupsRequest, opts ...grpc.CallOption) (*ListErrorGroupsResponse, error)
 	// Unified Activity Feed (Events + Messages with pagination)
 	ListBaseStationActivity(ctx context.Context, in *ListBaseStationActivityRequest, opts ...grpc.CallOption) (*ListBaseStationActivityResponse, error)
 	ListEndpointActivity(ctx context.Context, in *ListEndpointActivityRequest, opts ...grpc.CallOption) (*ListEndpointActivityResponse, error)
@@ -531,6 +543,16 @@ func (c *kiloCenterServiceClient) GetDownlinkResults(ctx context.Context, in *Ge
 	return out, nil
 }
 
+func (c *kiloCenterServiceClient) UpdatePendingDownlink(ctx context.Context, in *UpdatePendingDownlinkRequest, opts ...grpc.CallOption) (*DownlinkMessage, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DownlinkMessage)
+	err := c.cc.Invoke(ctx, KiloCenterService_UpdatePendingDownlink_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *kiloCenterServiceClient) SendULTransmit(ctx context.Context, in *SendULTransmitRequest, opts ...grpc.CallOption) (*SendULTransmitResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SendULTransmitResponse)
@@ -615,6 +637,26 @@ func (c *kiloCenterServiceClient) GetReleaseInfo(ctx context.Context, in *emptyp
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReleaseInfo)
 	err := c.cc.Invoke(ctx, KiloCenterService_GetReleaseInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kiloCenterServiceClient) ListCapabilities(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListCapabilitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCapabilitiesResponse)
+	err := c.cc.Invoke(ctx, KiloCenterService_ListCapabilities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kiloCenterServiceClient) GetDiagnosticsBundle(ctx context.Context, in *GetDiagnosticsBundleRequest, opts ...grpc.CallOption) (*GetDiagnosticsBundleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDiagnosticsBundleResponse)
+	err := c.cc.Invoke(ctx, KiloCenterService_GetDiagnosticsBundle_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1005,6 +1047,16 @@ func (c *kiloCenterServiceClient) ListEvents(ctx context.Context, in *ListEvents
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListEventsResponse)
 	err := c.cc.Invoke(ctx, KiloCenterService_ListEvents_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kiloCenterServiceClient) ListErrorGroups(ctx context.Context, in *ListErrorGroupsRequest, opts ...grpc.CallOption) (*ListErrorGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListErrorGroupsResponse)
+	err := c.cc.Invoke(ctx, KiloCenterService_ListErrorGroups_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1604,6 +1656,8 @@ type KiloCenterServiceServer interface {
 	RevokeDownlink(context.Context, *RevokeDownlinkRequest) (*RevokeDownlinkResponse, error)
 	ListDownlinkQueue(context.Context, *ListDownlinkQueueRequest) (*ListDownlinkQueueResponse, error)
 	GetDownlinkResults(context.Context, *GetDownlinkResultsRequest) (*GetDownlinkResultsResponse, error)
+	// Rewrites a downlink that is still pending in the queue (SCACI §3.10.1 fields).
+	UpdatePendingDownlink(context.Context, *UpdatePendingDownlinkRequest) (*DownlinkMessage, error)
 	// UL Data Transmit operations (BSSCI 3.11)
 	SendULTransmit(context.Context, *SendULTransmitRequest) (*SendULTransmitResponse, error)
 	// Base Station operations (BSSCI 3.5)
@@ -1618,6 +1672,10 @@ type KiloCenterServiceServer interface {
 	GetSystemStatus(context.Context, *emptypb.Empty) (*SystemStatus, error)
 	GetStatistics(context.Context, *GetStatisticsRequest) (*Statistics, error)
 	GetReleaseInfo(context.Context, *emptypb.Empty) (*ReleaseInfo, error)
+	// Non-secret capabilities of this service center (edition and feature toggles).
+	ListCapabilities(context.Context, *emptypb.Empty) (*ListCapabilitiesResponse, error)
+	// Server administrators only: a zip of projected, non-secret service state.
+	GetDiagnosticsBundle(context.Context, *GetDiagnosticsBundleRequest) (*GetDiagnosticsBundleResponse, error)
 	// Auth & Session
 	Login(context.Context, *LoginRequest) (*LoginResponse, error)
 	RefreshTokens(context.Context, *RefreshTokensRequest) (*RefreshTokensResponse, error)
@@ -1667,6 +1725,8 @@ type KiloCenterServiceServer interface {
 	GetSignalQualityAnalytics(context.Context, *GetSignalQualityAnalyticsRequest) (*GetSignalQualityAnalyticsResponse, error)
 	// Events & Alerts
 	ListEvents(context.Context, *ListEventsRequest) (*ListEventsResponse, error)
+	// Failed operations and error events grouped per bucket.
+	ListErrorGroups(context.Context, *ListErrorGroupsRequest) (*ListErrorGroupsResponse, error)
 	// Unified Activity Feed (Events + Messages with pagination)
 	ListBaseStationActivity(context.Context, *ListBaseStationActivityRequest) (*ListBaseStationActivityResponse, error)
 	ListEndpointActivity(context.Context, *ListEndpointActivityRequest) (*ListEndpointActivityResponse, error)
@@ -1807,6 +1867,9 @@ func (UnimplementedKiloCenterServiceServer) ListDownlinkQueue(context.Context, *
 func (UnimplementedKiloCenterServiceServer) GetDownlinkResults(context.Context, *GetDownlinkResultsRequest) (*GetDownlinkResultsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDownlinkResults not implemented")
 }
+func (UnimplementedKiloCenterServiceServer) UpdatePendingDownlink(context.Context, *UpdatePendingDownlinkRequest) (*DownlinkMessage, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdatePendingDownlink not implemented")
+}
 func (UnimplementedKiloCenterServiceServer) SendULTransmit(context.Context, *SendULTransmitRequest) (*SendULTransmitResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendULTransmit not implemented")
 }
@@ -1833,6 +1896,12 @@ func (UnimplementedKiloCenterServiceServer) GetStatistics(context.Context, *GetS
 }
 func (UnimplementedKiloCenterServiceServer) GetReleaseInfo(context.Context, *emptypb.Empty) (*ReleaseInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetReleaseInfo not implemented")
+}
+func (UnimplementedKiloCenterServiceServer) ListCapabilities(context.Context, *emptypb.Empty) (*ListCapabilitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCapabilities not implemented")
+}
+func (UnimplementedKiloCenterServiceServer) GetDiagnosticsBundle(context.Context, *GetDiagnosticsBundleRequest) (*GetDiagnosticsBundleResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDiagnosticsBundle not implemented")
 }
 func (UnimplementedKiloCenterServiceServer) Login(context.Context, *LoginRequest) (*LoginResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Login not implemented")
@@ -1950,6 +2019,9 @@ func (UnimplementedKiloCenterServiceServer) GetSignalQualityAnalytics(context.Co
 }
 func (UnimplementedKiloCenterServiceServer) ListEvents(context.Context, *ListEventsRequest) (*ListEventsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListEvents not implemented")
+}
+func (UnimplementedKiloCenterServiceServer) ListErrorGroups(context.Context, *ListErrorGroupsRequest) (*ListErrorGroupsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListErrorGroups not implemented")
 }
 func (UnimplementedKiloCenterServiceServer) ListBaseStationActivity(context.Context, *ListBaseStationActivityRequest) (*ListBaseStationActivityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListBaseStationActivity not implemented")
@@ -2508,6 +2580,24 @@ func _KiloCenterService_GetDownlinkResults_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KiloCenterService_UpdatePendingDownlink_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdatePendingDownlinkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KiloCenterServiceServer).UpdatePendingDownlink(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KiloCenterService_UpdatePendingDownlink_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KiloCenterServiceServer).UpdatePendingDownlink(ctx, req.(*UpdatePendingDownlinkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KiloCenterService_SendULTransmit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SendULTransmitRequest)
 	if err := dec(in); err != nil {
@@ -2666,6 +2756,42 @@ func _KiloCenterService_GetReleaseInfo_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KiloCenterServiceServer).GetReleaseInfo(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KiloCenterService_ListCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KiloCenterServiceServer).ListCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KiloCenterService_ListCapabilities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KiloCenterServiceServer).ListCapabilities(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KiloCenterService_GetDiagnosticsBundle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDiagnosticsBundleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KiloCenterServiceServer).GetDiagnosticsBundle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KiloCenterService_GetDiagnosticsBundle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KiloCenterServiceServer).GetDiagnosticsBundle(ctx, req.(*GetDiagnosticsBundleRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3368,6 +3494,24 @@ func _KiloCenterService_ListEvents_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KiloCenterServiceServer).ListEvents(ctx, req.(*ListEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KiloCenterService_ListErrorGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListErrorGroupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KiloCenterServiceServer).ListErrorGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KiloCenterService_ListErrorGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KiloCenterServiceServer).ListErrorGroups(ctx, req.(*ListErrorGroupsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -4397,6 +4541,10 @@ var KiloCenterService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _KiloCenterService_GetDownlinkResults_Handler,
 		},
 		{
+			MethodName: "UpdatePendingDownlink",
+			Handler:    _KiloCenterService_UpdatePendingDownlink_Handler,
+		},
+		{
 			MethodName: "SendULTransmit",
 			Handler:    _KiloCenterService_SendULTransmit_Handler,
 		},
@@ -4431,6 +4579,14 @@ var KiloCenterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetReleaseInfo",
 			Handler:    _KiloCenterService_GetReleaseInfo_Handler,
+		},
+		{
+			MethodName: "ListCapabilities",
+			Handler:    _KiloCenterService_ListCapabilities_Handler,
+		},
+		{
+			MethodName: "GetDiagnosticsBundle",
+			Handler:    _KiloCenterService_GetDiagnosticsBundle_Handler,
 		},
 		{
 			MethodName: "Login",
@@ -4587,6 +4743,10 @@ var KiloCenterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListEvents",
 			Handler:    _KiloCenterService_ListEvents_Handler,
+		},
+		{
+			MethodName: "ListErrorGroups",
+			Handler:    _KiloCenterService_ListErrorGroups_Handler,
 		},
 		{
 			MethodName: "ListBaseStationActivity",

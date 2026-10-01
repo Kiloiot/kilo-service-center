@@ -7,12 +7,14 @@ import (
 	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
+
+// pingRecentWindow bounds how old a recorded ping timestamp may be.
+const pingRecentWindow = 2 * time.Second
 
 // TestVMHandlerSignatures validates all VM handler function signatures
 // This ensures handlers conform to the expected HandlerFunc type
@@ -33,7 +35,7 @@ func TestVMHandlerSignatures(t *testing.T) {
 	data := make(map[string]interface{})
 
 	t.Run("handleVMActivate", func(t *testing.T) {
-		err := server.handleVMActivate(server, session, msg, data)
+		err := server.handleVMActivate(session, msg, data)
 		assert.Error(t, err, "VM activate should return error for BS-initiated request")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errVMOperationSentByBS))
 	})
@@ -42,7 +44,6 @@ func TestVMHandlerSignatures(t *testing.T) {
 		// Use StatusService to record pending operation
 		pendingOp := &PendingOperation{
 			OperationType: mioty.CmdVMActivate,
-			SessionSlug:   session.ID,
 			OperationID:   -1,
 			Endpoint:      []byte{0, 0, 0, 0, 0, 0, 0, 1},
 			MACType:       1,
@@ -53,17 +54,17 @@ func TestVMHandlerSignatures(t *testing.T) {
 		require.NoError(t, err, "Failed to record pending operation")
 
 		data["result"] = true
-		err = server.handleVMActivateResponse(server, session, msg, data)
+		err = server.handleVMActivateResponse(session, msg, data)
 		assert.NoError(t, err, "Valid VM activate response should succeed")
 	})
 
 	t.Run("handleVMActivateComplete", func(t *testing.T) {
-		err := server.handleVMActivateComplete(server, session, msg, data)
+		err := server.handleVMActivateComplete(session, msg, data)
 		assert.NoError(t, err, "VM activate complete should clean up operation")
 	})
 
 	t.Run("handleVMDeactivate", func(t *testing.T) {
-		err := server.handleVMDeactivate(server, session, msg, data)
+		err := server.handleVMDeactivate(session, msg, data)
 		assert.Error(t, err, "VM deactivate should return error for BS-initiated request")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errVMOperationSentByBS))
 	})
@@ -71,7 +72,6 @@ func TestVMHandlerSignatures(t *testing.T) {
 	t.Run("handleVMDeactivateResponse", func(t *testing.T) {
 		// Use StatusService to record pending operation
 		pendingOp := &PendingOperation{
-			SessionSlug:   session.ID,
 			OperationID:   -2,
 			OperationType: mioty.CmdVMDeactivate,
 			Endpoint:      []byte{0, 0, 0, 0, 0, 0, 0, 1},
@@ -84,17 +84,17 @@ func TestVMHandlerSignatures(t *testing.T) {
 
 		msg.OpId = -2
 		data["result"] = true
-		err = server.handleVMDeactivateResponse(server, session, msg, data)
+		err = server.handleVMDeactivateResponse(session, msg, data)
 		assert.NoError(t, err, "Valid VM deactivate response should succeed")
 	})
 
 	t.Run("handleVMDeactivateComplete", func(t *testing.T) {
-		err := server.handleVMDeactivateComplete(server, session, msg, data)
+		err := server.handleVMDeactivateComplete(session, msg, data)
 		assert.NoError(t, err, "VM deactivate complete should clean up operation")
 	})
 
 	t.Run("handleVMStatus", func(t *testing.T) {
-		err := server.handleVMStatus(server, session, msg, data)
+		err := server.handleVMStatus(session, msg, data)
 		assert.Error(t, err, "VM status should return error for BS-initiated request")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errVMOperationSentByBS))
 	})
@@ -102,7 +102,6 @@ func TestVMHandlerSignatures(t *testing.T) {
 	t.Run("handleVMStatusResponse", func(t *testing.T) {
 		// Use StatusService to record pending operation
 		pendingOp := &PendingOperation{
-			SessionSlug:   session.ID,
 			OperationID:   -3,
 			OperationType: mioty.CmdVMStatus,
 			Endpoint:      []byte{0, 0, 0, 0, 0, 0, 0, 1},
@@ -114,14 +113,14 @@ func TestVMHandlerSignatures(t *testing.T) {
 
 		msg.OpId = -3
 		data["macTypes"] = []interface{}{float64(1), float64(2)}
-		err = server.handleVMStatusResponse(server, session, msg, data)
+		err = server.handleVMStatusResponse(session, msg, data)
 		assert.NoError(t, err, "Valid VM status response should succeed")
 	})
 
 	t.Run("handlePingComplete", func(t *testing.T) {
 		// Test that ping complete properly records timestamp via UpdatePingTimestamp
 		// This verifies the mock's lastPing map is updated
-		err := server.handlePingComplete(server, session, msg, data)
+		err := server.handlePingComplete(session, msg, data)
 		assert.NoError(t, err, "Ping complete should succeed")
 
 		// Verify timestamp was recorded in mock's lastPing map
@@ -130,7 +129,7 @@ func TestVMHandlerSignatures(t *testing.T) {
 
 		pingTime, exists := mockSvc.GetLastPing(session.DbSessionID)
 		require.True(t, exists, "ping timestamp should be recorded")
-		assert.WithinDuration(t, time.Now(), pingTime, 2*time.Second, "ping timestamp should be recent")
+		assert.WithinDuration(t, time.Now(), pingTime, pingRecentWindow, "ping timestamp should be recent")
 	})
 }
 
@@ -158,7 +157,7 @@ func TestVMCommunityEditionStubs(t *testing.T) {
 	// (VM operations are SC-initiated, so we don't expect to receive VM DL Data from BS)
 	t.Run("handleVMDLData_unsupported", func(t *testing.T) {
 		msg.Command = mioty.CmdVMDLData
-		err := server.handleVMDLData(server, session, msg, data)
+		err := server.handleVMDLData(session, msg, data)
 		assert.Error(t, err, "Community edition should return unsupported error")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errUnsupportedCommand))
 
@@ -179,52 +178,52 @@ func TestVMNilSessionHandling(t *testing.T) {
 	data := make(map[string]interface{})
 
 	t.Run("handleVMActivateResponse_nil_session", func(t *testing.T) {
-		err := server.handleVMActivateResponse(server, nil, msg, data)
+		err := server.handleVMActivateResponse(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errSessionNil))
 	})
 
 	t.Run("handleVMActivateComplete_nil_session", func(t *testing.T) {
-		err := server.handleVMActivateComplete(server, nil, msg, data)
+		err := server.handleVMActivateComplete(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errSessionNil))
 	})
 
 	t.Run("handleVMDeactivateResponse_nil_session", func(t *testing.T) {
-		err := server.handleVMDeactivateResponse(server, nil, msg, data)
+		err := server.handleVMDeactivateResponse(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errSessionNil))
 	})
 
 	t.Run("handleVMDeactivateComplete_nil_session", func(t *testing.T) {
-		err := server.handleVMDeactivateComplete(server, nil, msg, data)
+		err := server.handleVMDeactivateComplete(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errSessionNil))
 	})
 
 	t.Run("handleVMStatusResponse_nil_session", func(t *testing.T) {
-		err := server.handleVMStatusResponse(server, nil, msg, data)
+		err := server.handleVMStatusResponse(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 		assert.Contains(t, err.Error(), ResolveErrorMessage(errSessionNil))
 	})
 
 	t.Run("handleVMStatusComplete_nil_session", func(t *testing.T) {
-		err := server.handleVMStatusComplete(server, nil, msg, data)
+		err := server.handleVMStatusComplete(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 	})
 
 	t.Run("handleVMDLData_nil_session", func(t *testing.T) {
-		err := server.handleVMDLData(server, nil, msg, data)
+		err := server.handleVMDLData(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 	})
 
 	t.Run("handleVMDLDataResponse_nil_session", func(t *testing.T) {
-		err := server.handleVMDLDataResponse(server, nil, msg, data)
+		err := server.handleVMDLDataResponse(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 	})
 
 	t.Run("handleVMDLDataComplete_nil_session", func(t *testing.T) {
-		err := server.handleVMDLDataComplete(server, nil, msg, data)
+		err := server.handleVMDLDataComplete(nil, msg, data)
 		assert.Error(t, err, "Nil session should return error")
 	})
 }
@@ -289,7 +288,6 @@ func TestVMActiveTypesTracking(t *testing.T) {
 	t.Run("activate_adds_mac_type", func(t *testing.T) {
 		// Use StatusService to record pending operation
 		pendingOp := &PendingOperation{
-			SessionSlug:   session.ID,
 			OperationID:   -1,
 			OperationType: mioty.CmdVMActivate,
 			Endpoint:      []byte{0, 0, 0, 0, 0, 0, 0, 1},
@@ -301,7 +299,7 @@ func TestVMActiveTypesTracking(t *testing.T) {
 		require.NoError(t, err, "Failed to record pending operation")
 
 		data := map[string]interface{}{"result": true}
-		err = server.handleVMActivateResponse(server, session, msg, data)
+		err = server.handleVMActivateResponse(session, msg, data)
 		require.NoError(t, err)
 
 		// Verify MAC type was added
@@ -317,7 +315,6 @@ func TestVMActiveTypesTracking(t *testing.T) {
 
 		// Use StatusService to record pending operation
 		pendingOp := &PendingOperation{
-			SessionSlug:   session.ID,
 			OperationID:   -2,
 			OperationType: mioty.CmdVMDeactivate,
 			Endpoint:      []byte{0, 0, 0, 0, 0, 0, 0, 1},
@@ -330,7 +327,7 @@ func TestVMActiveTypesTracking(t *testing.T) {
 
 		msg.OpId = -2
 		data := map[string]interface{}{"result": true}
-		err = server.handleVMDeactivateResponse(server, session, msg, data)
+		err = server.handleVMDeactivateResponse(session, msg, data)
 		require.NoError(t, err)
 
 		// Verify MAC type 1 was removed but 2 remains
@@ -345,7 +342,6 @@ func TestVMActiveTypesTracking(t *testing.T) {
 		// Use StatusService to record pending operation
 		pendingOp := &PendingOperation{
 			OperationType: mioty.CmdVMStatus,
-			SessionSlug:   session.ID,
 			OperationID:   -3,
 			Endpoint:      []byte{0, 0, 0, 0, 0, 0, 0, 1},
 			Timestamp:     time.Now(),
@@ -358,7 +354,7 @@ func TestVMActiveTypesTracking(t *testing.T) {
 		data := map[string]interface{}{
 			"macTypes": []interface{}{float64(3), float64(4)},
 		}
-		err = server.handleVMStatusResponse(server, session, msg, data)
+		err = server.handleVMStatusResponse(session, msg, data)
 		require.NoError(t, err)
 
 		// Verify MAC types were replaced
@@ -387,17 +383,4 @@ func createTestServerWithSession() *Server {
 	)
 
 	return s
-}
-
-// NewMockEventStore creates a minimal mock event store for testing
-func NewMockEventStore() *MockEventStore {
-	return &MockEventStore{}
-}
-
-// MockEventStore provides minimal event storage for tests
-type MockEventStore struct{}
-
-// CreateEvent stores an event (no-op for tests)
-func (m *MockEventStore) CreateEvent(_ interface{}, _ *models.SystemEvent) error {
-	return nil
 }

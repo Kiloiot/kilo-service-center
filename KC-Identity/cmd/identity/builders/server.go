@@ -7,18 +7,15 @@ import (
 	"strings"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
 	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
-	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
-	"google.golang.org/grpc/status"
 )
 
 const identityInternalServicePrefix = "/kilocenter.api.v1.IdentityInternalService/"
@@ -47,18 +44,18 @@ func RegisterAndServe(
 	pb.RegisterIdentityServiceServer(grpcServer, identity.IdentityService)
 	pb.RegisterIdentityInternalServiceServer(grpcServer, identity.IdentityInternalService)
 	pb.RegisterKiloCenterServiceServer(grpcServer, identity.CompatService)
-	log.Info("gRPC services registered (Identity + IdentityInternal + KiloCenterCompat)")
+	log.Info(LogGRPCServicesRegistered)
 
 	// Health service
 	healthSvc := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthSvc)
-	healthSvc.SetServingStatus("kilocenter.api.v1.IdentityService", healthpb.HealthCheckResponse_SERVING)
-	healthSvc.SetServingStatus("kilocenter.api.v1.IdentityInternalService", healthpb.HealthCheckResponse_SERVING)
+	healthSvc.SetServingStatus(pb.IdentityService_ServiceDesc.ServiceName, healthpb.HealthCheckResponse_SERVING)
+	healthSvc.SetServingStatus(pb.IdentityInternalService_ServiceDesc.ServiceName, healthpb.HealthCheckResponse_SERVING)
 
 	// Reflection for dev
 	if cfg.GRPC.EnableReflection {
 		reflection.Register(grpcServer)
-		log.Info("gRPC reflection enabled")
+		log.Info(LogGRPCReflectionEnabled)
 	}
 
 	// Start listener
@@ -66,13 +63,13 @@ func RegisterAndServe(
 	go func() {
 		lis, err := net.Listen("tcp", addr)
 		if err != nil {
-			log.Error("Failed to listen", "address", addr, "error", err)
+			log.Error(LogGRPCListenFailed, logger.FieldAddress, addr, logger.FieldError, err)
 			cancel()
 			return
 		}
-		log.Info("gRPC server listening", "address", addr)
+		log.Info(LogGRPCServerListening, logger.FieldAddress, addr)
 		if err := grpcServer.Serve(lis); err != nil {
-			log.Error("gRPC server failed", "error", err)
+			log.Error(LogGRPCServerFailed, logger.FieldError, err)
 			cancel()
 		}
 	}()
@@ -80,67 +77,53 @@ func RegisterAndServe(
 	return grpcServer
 }
 
-// buildUnaryInterceptor creates a method-aware unary interceptor.
-// IdentityInternalService methods use peer-secret auth.
-// All other methods use InternalTrust (gateway-injected headers).
+// buildUnaryInterceptor creates the method-aware unary interceptor.
 func buildUnaryInterceptor(cfg *pkgconfig.Config, infra *Infrastructure) grpc.UnaryServerInterceptor {
-	// communityMode=true: KC-Identity delegates org enforcement to KC-Gateway;
-	// org header is optional at this layer.
-	trustInterceptor := interceptors.NewInternalTrustInterceptor(infra.Log, true).
-		WithEventWriter(infra.Storage.SystemEvents()).
-		WithPlatformTenantID(infra.TenantID)
-	peerSecret := cfg.InternalAuth.PeerSecret
-
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if strings.HasPrefix(info.FullMethod, identityInternalServicePrefix) {
-			newCtx, err := validatePeerSecret(ctx, peerSecret)
-			if err != nil {
-				return nil, err
-			}
-			return handler(newCtx, req)
-		}
-		// All other methods go through InternalTrust
-		return trustInterceptor.UnaryInterceptor()(ctx, req, info, handler)
-	}
+	return methodAwareUnary(interceptors.NewPeerAuthenticator(cfg.InternalAuth.PeerSecret), newTrustInterceptor(cfg, infra))
 }
 
-// buildStreamInterceptor creates a method-aware stream interceptor.
+// buildStreamInterceptor creates the method-aware stream interceptor.
 func buildStreamInterceptor(cfg *pkgconfig.Config, infra *Infrastructure) grpc.StreamServerInterceptor {
-	// communityMode=true: KC-Identity delegates org enforcement to KC-Gateway;
-	// org header is optional at this layer.
-	trustInterceptor := interceptors.NewInternalTrustInterceptor(infra.Log, true).
-		WithEventWriter(infra.Storage.SystemEvents()).
-		WithPlatformTenantID(infra.TenantID)
-	peerSecret := cfg.InternalAuth.PeerSecret
+	return methodAwareStream(interceptors.NewPeerAuthenticator(cfg.InternalAuth.PeerSecret), newTrustInterceptor(cfg, infra))
+}
 
-	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		if strings.HasPrefix(info.FullMethod, identityInternalServicePrefix) {
-			_, err := validatePeerSecret(ss.Context(), peerSecret)
-			if err != nil {
-				return err
-			}
-			return handler(srv, ss)
+func newTrustInterceptor(cfg *pkgconfig.Config, infra *Infrastructure) *interceptors.InternalTrustInterceptor {
+	return trustGatewayPeers(infra.Log, cfg.InternalAuth.PeerSecret, infra.OrgResolverSvc, infra.Repos.SystemEvents, infra.TenantID)
+}
+
+// trustGatewayPeers runs a call without an org header under the tenant's default org; the gateway enforces orgs.
+func trustGatewayPeers(log logger.Logger, peerSecret string, defaultOrgs interceptors.DefaultOrgResolver, events audit.EventWriter, platformTenantID int64) *interceptors.InternalTrustInterceptor {
+	return interceptors.NewInternalTrustInterceptor(log, true).
+		WithPeerSecret(peerSecret).
+		WithDefaultOrgResolver(defaultOrgs).
+		WithEventWriter(events).
+		WithPlatformTenantID(platformTenantID)
+}
+
+// methodAwareUnary admits IdentityInternalService calls on the peer secret alone.
+func methodAwareUnary(peers interceptors.PeerAuthenticator, trust *interceptors.InternalTrustInterceptor) grpc.UnaryServerInterceptor {
+	trusted := trust.UnaryInterceptor()
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		if !strings.HasPrefix(info.FullMethod, identityInternalServicePrefix) {
+			return trusted(ctx, req, info, handler)
 		}
-		return trustInterceptor.StreamInterceptor()(srv, ss, info, handler)
+		if err := peers.Authenticate(ctx); err != nil {
+			return nil, err
+		}
+		return handler(ctx, req)
 	}
 }
 
-// validatePeerSecret checks the x-kc-internal-peer-secret header.
-// Empty configured secret = dev mode (bypass auth).
-func validatePeerSecret(ctx context.Context, configuredSecret string) (context.Context, error) {
-	if configuredSecret == "" {
-		return ctx, nil
+// methodAwareStream is methodAwareUnary for streaming calls.
+func methodAwareStream(peers interceptors.PeerAuthenticator, trust *interceptors.InternalTrustInterceptor) grpc.StreamServerInterceptor {
+	trusted := trust.StreamInterceptor()
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if !strings.HasPrefix(info.FullMethod, identityInternalServicePrefix) {
+			return trusted(srv, ss, info, handler)
+		}
+		if err := peers.Authenticate(ss.Context()); err != nil {
+			return err
+		}
+		return handler(srv, ss)
 	}
-
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil, status.Error(codes.Unauthenticated, "missing metadata")
-	}
-
-	secrets := md.Get(grpcconst.MetadataKeyInternalPeerSecret)
-	if len(secrets) == 0 || secrets[0] != configuredSecret {
-		return nil, status.Error(codes.Unauthenticated, "invalid peer secret")
-	}
-
-	return ctx, nil
 }

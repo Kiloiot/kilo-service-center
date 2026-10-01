@@ -10,28 +10,34 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { useChangePassword, useUser } from "@hooks";
 import {
-  Alert,
   Box,
   Button,
   Card,
   CardContent,
   CircularProgress,
-  TextField,
   Typography,
 } from "@mui/material";
 
+import { DetailNotFound } from "@components/common/DetailNotFound";
+import { NewPasswordFields } from "@components/common/NewPasswordFields";
+import { useFeedback } from "@contexts/feedback";
 import { useSession } from "@contexts/SessionContext";
-import { ROUTES, UI_TIMING } from "@constants/app";
+import { useCapabilities } from "@hooks/useCapabilities";
+import { getErrorMessage } from "@utils/error-message";
+import { ROUTES } from "@constants/app";
 import {
   MSG_PASSWORD_CHANGED,
   USER_FORM,
   USERS_PAGE,
 } from "@constants/messages";
+import { userDetailPath } from "@router/paths";
+import { componentSpacing } from "@theme/index";
 
 const UserPassword: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { isAdmin, isHydrated } = useSession();
+  const { isHydrated } = useSession();
+  const { isServerAdmin: isAdmin } = useCapabilities();
 
   // Fetch user to display context
   const {
@@ -43,44 +49,31 @@ const UserPassword: React.FC = () => {
   });
   const changePassword = useChangePassword();
 
-  // Form state
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const feedback = useFeedback();
+  const canSubmit =
+    !!newPassword &&
+    newPassword === confirmPassword &&
+    !changePassword.isPending;
 
   const handleChangePassword = async () => {
-    if (!id) return;
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError(USER_FORM.ERR_PASSWORD_MISMATCH);
-      return;
-    }
-
-    if (!newPassword) {
-      setPasswordError(USER_FORM.ERR_PASSWORD_REQUIRED);
-      return;
-    }
-
-    setPasswordError("");
-
+    if (!id || !canSubmit) return;
     try {
       await changePassword.mutateAsync({ id, password: newPassword });
       setNewPassword("");
       setConfirmPassword("");
-      setSuccessMessage(MSG_PASSWORD_CHANGED);
-      // Redirect to user detail after success
-      setTimeout(() => {
-        navigate(ROUTES.USER_DETAIL.replace(":id", id));
-      }, UI_TIMING.NAVIGATION_DELAY_MS);
-    } catch {
-      // Error handled by mutation hook
+      feedback.success(MSG_PASSWORD_CHANGED);
+    } catch (error) {
+      feedback.error(
+        getErrorMessage(error, USER_FORM.ERR_CHANGE_PASSWORD_FAILED),
+      );
     }
   };
 
   const handleBackToDetail = () => {
     if (id) {
-      navigate(ROUTES.USER_DETAIL.replace(":id", id));
+      navigate(userDetailPath(id));
     } else {
       navigate(ROUTES.USERS);
     }
@@ -102,7 +95,7 @@ const UserPassword: React.FC = () => {
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          minHeight: "400px",
+          minHeight: componentSpacing.stateView.pageMinHeight,
         }}
       >
         <CircularProgress />
@@ -112,12 +105,11 @@ const UserPassword: React.FC = () => {
 
   if (userError || !user) {
     return (
-      <Box sx={{ pt: 4, p: 3 }}>
-        <Alert severity="error">{USERS_PAGE.ERR_NOT_FOUND}</Alert>
-        <Button sx={{ mt: 2 }} onClick={() => navigate(ROUTES.USERS)}>
-          {USERS_PAGE.BACK_TO_LIST}
-        </Button>
-      </Box>
+      <DetailNotFound
+        message={USERS_PAGE.ERR_NOT_FOUND}
+        backLabel={USERS_PAGE.BACK_TO_LIST}
+        onBack={() => navigate(ROUTES.USERS)}
+      />
     );
   }
 
@@ -143,52 +135,23 @@ const UserPassword: React.FC = () => {
         {user.email}
       </Typography>
 
-      {/* Success Message */}
-      {successMessage && (
-        <Alert severity="success" sx={{ mb: 3 }}>
-          {successMessage}
-        </Alert>
-      )}
-
-      {/* Error from API */}
-      {changePassword.isError && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {changePassword.error instanceof Error
-            ? changePassword.error.message
-            : USER_FORM.ERR_CHANGE_PASSWORD_FAILED}
-        </Alert>
-      )}
-
-      {/* Validation error */}
-      {passwordError && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {passwordError}
-        </Alert>
-      )}
-
-      <Card sx={{ maxWidth: 500 }}>
+      <Card sx={{ maxWidth: componentSpacing.formCard.maxWidth }}>
         <CardContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <TextField
-              label={USER_FORM.LABEL_PASSWORD}
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              fullWidth
+            <NewPasswordFields
+              password={newPassword}
+              confirmation={confirmPassword}
+              onPasswordChange={setNewPassword}
+              onConfirmationChange={setConfirmPassword}
+              passwordLabel={USER_FORM.LABEL_PASSWORD}
+              confirmationLabel={USER_FORM.LABEL_CONFIRM_PASSWORD}
               autoFocus
-            />
-            <TextField
-              label={USER_FORM.LABEL_CONFIRM_PASSWORD}
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              fullWidth
             />
             <Box display="flex" gap={2} mt={2}>
               <Button
                 variant="contained"
                 onClick={handleChangePassword}
-                disabled={changePassword.isPending || !newPassword}
+                disabled={!canSubmit}
               >
                 {USER_FORM.ACTION_CHANGE_PASSWORD}
               </Button>

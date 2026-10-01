@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/numconv"
 )
 
 // ExpressionEvaluator handles func and condition expression evaluation for blueprints.
@@ -17,11 +19,47 @@ type ExpressionEvaluator struct {
 	calibrationRefPattern *regexp.Regexp
 }
 
+const (
+	specFieldRefRegex   = `\$([a-zA-Z]\w*)`
+	calibrationRefRegex = `\$calibration\.(\w+)`
+
+	tokenValueRef      = "$value"
+	keywordValue       = "value"
+	keywordField       = "field"
+	keywordCalibration = "calibration"
+	literalTrue        = "true"
+	literalFalse       = "false"
+
+	missingCalibrationValue = "1"
+	missingFieldValue       = "0"
+
+	// growSlack pre-sizes the normalization builder for a few bare-$
+	// expansions.
+	growSlack = 16
+)
+
+// Math function names the expression grammar accepts.
+const (
+	fnSqrt = "sqrt"
+	fnAbs  = "abs"
+	fnLog  = "log"
+	fnExp  = "exp"
+	fnSin  = "sin"
+	fnCos  = "cos"
+	fnTan  = "tan"
+)
+
+// mathFunctions lists the accepted function names in parse order.
+var mathFunctions = []string{fnSqrt, fnAbs, fnLog, fnExp, fnSin, fnCos, fnTan}
+
 // NewExpressionEvaluator creates a new expression evaluator.
+// Blueprint expression grammar (MIOTY Application Layer Spec Table 15):
+// reference tokens, keyword names excluded from field substitution, boolean
+// literals, and the defaults substituted for missing references.
 func NewExpressionEvaluator() *ExpressionEvaluator {
 	return &ExpressionEvaluator{
-		specFieldRefPattern:   regexp.MustCompile(`\$([a-zA-Z]\w*)`),
-		calibrationRefPattern: regexp.MustCompile(`\$calibration\.(\w+)`),
+		specFieldRefPattern:   regexp.MustCompile(specFieldRefRegex),
+		calibrationRefPattern: regexp.MustCompile(calibrationRefRegex),
 	}
 }
 
@@ -70,10 +108,10 @@ func (e *ExpressionEvaluator) EvaluateFunc(
 	funcExpr = e.normalizeBareCurrentValue(funcExpr)
 
 	// Replace $value with the current value
-	if numVal, ok := toFloat64(currentValue); ok {
-		funcExpr = strings.ReplaceAll(funcExpr, "$value", fmt.Sprintf("%v", numVal))
+	if numVal, ok := numconv.ToFloat64(currentValue); ok {
+		funcExpr = strings.ReplaceAll(funcExpr, tokenValueRef, fmt.Sprintf("%v", numVal))
 	} else {
-		funcExpr = strings.ReplaceAll(funcExpr, "$value", fmt.Sprintf("%v", currentValue))
+		funcExpr = strings.ReplaceAll(funcExpr, tokenValueRef, fmt.Sprintf("%v", currentValue))
 	}
 
 	// Substitute field and calibration references
@@ -87,11 +125,11 @@ func (e *ExpressionEvaluator) EvaluateFunc(
 // GetCalibrationValue retrieves a calibration value by key.
 func (e *ExpressionEvaluator) GetCalibrationValue(key string, calibration map[string]interface{}) (interface{}, error) {
 	if calibration == nil {
-		return nil, fmt.Errorf("calibration data not provided")
+		return nil, errCalibrationNotProvided
 	}
 	val, ok := calibration[key]
 	if !ok {
-		return nil, fmt.Errorf("calibration key '%s' not found", key)
+		return nil, fmt.Errorf(errFmtCalibrationKeyNotFound, key)
 	}
 	return val, nil
 }
@@ -105,12 +143,12 @@ func (e *ExpressionEvaluator) substituteCalibrationRefs(expr string, calibration
 		}
 		key := matches[1]
 		if val, ok := calibration[key]; ok {
-			if numVal, isNum := toFloat64(val); isNum {
+			if numVal, isNum := numconv.ToFloat64(val); isNum {
 				return fmt.Sprintf("%v", numVal)
 			}
 			return fmt.Sprintf("%v", val)
 		}
-		return "1" // Default to 1 for missing calibration (neutral for multiplication)
+		return missingCalibrationValue // neutral for multiplication
 	})
 }
 
@@ -119,12 +157,12 @@ func (e *ExpressionEvaluator) substituteCalibrationRefs(expr string, calibration
 // the current component value (e.g., "$/10" means "$value/10").
 func (e *ExpressionEvaluator) normalizeBareCurrentValue(expr string) string {
 	var result strings.Builder
-	result.Grow(len(expr) + 16)
+	result.Grow(len(expr) + growSlack)
 	for i := 0; i < len(expr); i++ {
 		if expr[i] == '$' {
 			next := i + 1
 			if next >= len(expr) || (!isLetter(expr[next]) && expr[next] != '_') {
-				result.WriteString("$value")
+				result.WriteString(tokenValueRef)
 				continue
 			}
 		}
@@ -148,16 +186,16 @@ func (e *ExpressionEvaluator) substituteSpecFieldRefs(expr string, fields map[st
 		}
 		fieldName := matches[1]
 		// Skip keywords that are not field references
-		if fieldName == "value" || fieldName == "field" || fieldName == "calibration" {
+		if fieldName == keywordValue || fieldName == keywordField || fieldName == keywordCalibration {
 			return match
 		}
 		if val, ok := fields[fieldName]; ok {
-			if numVal, isNum := toFloat64(val); isNum {
+			if numVal, isNum := numconv.ToFloat64(val); isNum {
 				return fmt.Sprintf("%v", numVal)
 			}
 			return fmt.Sprintf("%v", val)
 		}
-		return "0" // Default to 0 for missing fields
+		return missingFieldValue // Default to 0 for missing fields
 	})
 }
 
@@ -167,10 +205,10 @@ func (e *ExpressionEvaluator) evaluateBooleanExpression(expr string) (bool, erro
 	expr = strings.TrimSpace(expr)
 
 	// Handle literal boolean values
-	if expr == "true" {
+	if expr == literalTrue {
 		return true, nil
 	}
-	if expr == "false" {
+	if expr == literalFalse {
 		return false, nil
 	}
 
@@ -219,7 +257,7 @@ func (e *ExpressionEvaluator) evaluateBooleanExpression(expr string) (bool, erro
 		return num != 0, nil
 	}
 
-	return false, fmt.Errorf("cannot evaluate expression: %s", expr)
+	return false, fmt.Errorf(errFmtCannotEvaluateExpr, expr)
 }
 
 // compareValues compares two string values with the given operator.
@@ -253,7 +291,7 @@ func (e *ExpressionEvaluator) compareValues(left, right, op string) (bool, error
 		return left != right, nil
 	}
 
-	return false, fmt.Errorf("cannot compare non-numeric values with operator %s", op)
+	return false, fmt.Errorf(errFmtCompareNonNumeric, op)
 }
 
 // evaluateArithmeticExpression evaluates a simple arithmetic expression.
@@ -261,7 +299,7 @@ func (e *ExpressionEvaluator) compareValues(left, right, op string) (bool, error
 func (e *ExpressionEvaluator) evaluateArithmeticExpression(expr string) (interface{}, error) {
 	expr = strings.TrimSpace(expr)
 	if expr == "" {
-		return 0.0, nil
+		return 0, nil
 	}
 
 	// Simple recursive descent parser for arithmetic expressions
@@ -344,7 +382,7 @@ func (e *ExpressionEvaluator) parseTerm(expr string, pos int) (float64, int, err
 			left = left * right
 		} else {
 			if right == 0 {
-				return 0, pos, fmt.Errorf("division by zero")
+				return 0, pos, errDivisionByZero
 			}
 			left = left / right
 		}
@@ -360,7 +398,7 @@ func (e *ExpressionEvaluator) parseFactor(expr string, pos int) (float64, int, e
 	}
 
 	if pos >= len(expr) {
-		return 0, pos, fmt.Errorf("unexpected end of expression")
+		return 0, pos, errUnexpectedEndOfExpression
 	}
 
 	// Handle parentheses
@@ -374,7 +412,7 @@ func (e *ExpressionEvaluator) parseFactor(expr string, pos int) (float64, int, e
 			pos++
 		}
 		if pos >= len(expr) || expr[pos] != ')' {
-			return 0, pos, fmt.Errorf("missing closing parenthesis")
+			return 0, pos, errMissingClosingParen
 		}
 		return result, pos + 1, nil
 	}
@@ -390,7 +428,7 @@ func (e *ExpressionEvaluator) parseFactor(expr string, pos int) (float64, int, e
 	}
 
 	// Handle math functions
-	for _, fn := range []string{"sqrt", "abs", "log", "exp", "sin", "cos", "tan"} {
+	for _, fn := range mathFunctions {
 		if strings.HasPrefix(expr[pos:], fn+"(") {
 			pos += len(fn) + 1
 			arg, newPos, err := e.parseExpression(expr, pos)
@@ -402,7 +440,7 @@ func (e *ExpressionEvaluator) parseFactor(expr string, pos int) (float64, int, e
 				pos++
 			}
 			if pos >= len(expr) || expr[pos] != ')' {
-				return 0, pos, fmt.Errorf("missing closing parenthesis for %s", fn)
+				return 0, pos, fmt.Errorf(errFmtMissingClosingParenFor, fn)
 			}
 			result := e.applyMathFunc(fn, arg)
 			if negative {
@@ -419,12 +457,12 @@ func (e *ExpressionEvaluator) parseFactor(expr string, pos int) (float64, int, e
 	}
 
 	if start == pos {
-		return 0, pos, fmt.Errorf("expected number at position %d", pos)
+		return 0, pos, fmt.Errorf(errFmtExpectedNumberAtPos, pos)
 	}
 
 	num, err := strconv.ParseFloat(expr[start:pos], 64)
 	if err != nil {
-		return 0, pos, fmt.Errorf("invalid number: %s", expr[start:pos])
+		return 0, pos, fmt.Errorf(errFmtInvalidNumber, expr[start:pos])
 	}
 
 	if negative {
@@ -436,19 +474,19 @@ func (e *ExpressionEvaluator) parseFactor(expr string, pos int) (float64, int, e
 // applyMathFunc applies a math function to a value.
 func (e *ExpressionEvaluator) applyMathFunc(fn string, val float64) float64 {
 	switch fn {
-	case "sqrt":
+	case fnSqrt:
 		return math.Sqrt(val)
-	case "abs":
+	case fnAbs:
 		return math.Abs(val)
-	case "log":
+	case fnLog:
 		return math.Log(val)
-	case "exp":
+	case fnExp:
 		return math.Exp(val)
-	case "sin":
+	case fnSin:
 		return math.Sin(val)
-	case "cos":
+	case fnCos:
 		return math.Cos(val)
-	case "tan":
+	case fnTan:
 		return math.Tan(val)
 	default:
 		return val

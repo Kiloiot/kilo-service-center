@@ -2,174 +2,117 @@ package scaciservices
 
 import (
 	"context"
-	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-type sessionPersistence struct {
-	sessionRepo interfaces.SCACISessionRepository // Already-injected repository interface
-	logger      logger.Logger
+// SessionRows owns every write of a SCACI session's row: its creation, its
+// resume, the loss of its connection, its heartbeat, its operation ID
+// counters and the end of its resumability. The server, the session registry
+// and the resume holder reach it through their own narrow ports.
+type SessionRows struct {
+	creations SessionCreationRunner
+	lifecycle SessionLifecycleRows
+	activity  SessionActivityRows
+	// scEUI is this service center, the owner of the rows it creates or resumes.
+	scEUI models.EUI
 }
 
-// NewSessionPersistence creates a new session persistence service.
-// Wraps existing repository with async persistence logic.
-//
-// Parameters:
-//   - sessionRepo: Already-injected interfaces.SCACISessionRepository (no new KC-DB dependencies)
-//   - logger: Logger instance for error tracking
-func NewSessionPersistence(
-	sessionRepo interfaces.SCACISessionRepository,
-	log logger.Logger) scaci.SessionPersistence {
-	return &sessionPersistence{
-		sessionRepo: sessionRepo,
-		logger:      log,
+// Compile-time contracts: the ports SessionRows serves.
+var (
+	_ scaci.SessionPersistence    = (*SessionRows)(nil)
+	_ scaci.SessionLifecycleStore = (*SessionRows)(nil)
+	_ HeldSessionRows             = (*SessionRows)(nil)
+)
+
+// NewSessionRows builds the owner of the session rows of the service center
+// serviceCenterEUI: fresh sessions are created through the creation
+// transaction, existing rows are updated through the lifecycle and activity
+// stores.
+func NewSessionRows(creations SessionCreationRunner, lifecycle SessionLifecycleRows, activity SessionActivityRows, serviceCenterEUI uint64) (*SessionRows, error) {
+	if creations == nil || lifecycle == nil || activity == nil {
+		return nil, errMissingSessionPersistenceDependency
 	}
+	return &SessionRows{creations: creations, lifecycle: lifecycle, activity: activity,
+		scEUI: models.EUI(mioty.EUI64(serviceCenterEUI).ToBytes())}, nil
 }
 
-// connectSnapshot is the immutable copy of every session field the async
-// resume-persistence goroutine reads. Capturing it before the goroutine
-// starts prevents races with caller mutations of the live session; all
-// fields are value types, and metadata is deep-copied.
-type connectSnapshot struct {
-	Resumed       bool
-	ID            int64
-	TenantID      int64
-	AcOpIdCounter int64
-	ScOpIdCounter int64
-	Metadata      map[string]interface{}
-}
-
-// PersistResumeAsync updates the persisted row of a resumed session after
-// the Connect handshake (heartbeat, status, TLS evidence, counters,
-// metadata). Fresh sessions are persisted synchronously via
-// PersistConnectSync, so this path never creates rows and never mutates the
-// live session: the goroutine reads only the immutable snapshot taken before
-// it starts. The caller's ctx contributes tenant/org log fields only; the
-// goroutine detaches from its cancellation so persistence outlives the
-// connection that triggered it.
-func (p *sessionPersistence) PersistResumeAsync(ctx context.Context, session *scaci.Session, tlsVersion, cipherSuite string) {
-	// Snapshot BEFORE the goroutine to prevent races with caller mutations;
-	// metadata is deep-copied exactly once.
-	snap := connectSnapshot{
-		Resumed:       session.Resumed,
-		ID:            session.ID,
-		TenantID:      session.TenantID,
-		AcOpIdCounter: session.AcOpIdCounter,
-		ScOpIdCounter: session.ScOpIdCounter,
-		Metadata:      deepCopyMetadata(session.Metadata),
+// PersistResume records on the row of a resumed session the connection that
+// resumed it (status, heartbeat, TLS evidence, metadata) unless the session
+// stopped being resumable meanwhile. The operation ID counters are written
+// only by the counter path, which never moves them back. Fresh sessions are
+// persisted by PersistConnectSync, so this path never creates rows.
+func (p *SessionRows) PersistResume(ctx context.Context, session *scaci.Session, tlsVersion, cipherSuite string) error {
+	if !session.Resumed || session.ID <= 0 {
+		return errResumeRequiresPersistedSession
 	}
 
-	if !snap.Resumed || snap.ID <= 0 {
-		p.logger.ErrorContext(ctx, scaci.LogSCACIPersistSessionFailed,
-			"error", "PersistResumeAsync requires a resumed session with a persisted ID")
-		return
-	}
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), scaci.ConnectPersistTimeout)
-		defer cancel()
-
-		now := time.Now()
-		status := "active"
-
-		// TLS evidence pointers for resume per SCACI §1
-		var tlsVer, cipherSt *string
-		if tlsVersion != "" {
-			tlsVer = &tlsVersion
-		}
-		if cipherSuite != "" {
-			cipherSt = &cipherSuite
-		}
-
-		updateReq := &models.SCACISessionUpdateRequest{
-			LastHeartbeat: &now,
-			Status:        &status,
-			TLSVersion:    tlsVer,
-			CipherSuite:   cipherSt,
-			Metadata:      snap.Metadata,
-		}
-
-		// Only persist opId counters if they're non-zero (preserve "opId 0 after connect")
-		if snap.AcOpIdCounter > 0 {
-			updateReq.LastOpIDAc = &snap.AcOpIdCounter
-		}
-		if snap.ScOpIdCounter < 0 {
-			updateReq.LastOpIDSc = &snap.ScOpIdCounter
-		}
-
-		if err := p.sessionRepo.UpdateSession(ctx, snap.TenantID, snap.ID, updateReq); err != nil {
-			p.logger.ErrorContext(ctx, scaci.LogSCACIUpdateSessionFailed, "error", err)
-		}
-	}()
+	return p.lifecycle.ResumeSession(ctx, session.TenantID, session.ID, &models.SCACISessionResume{
+		TLSVersion:  optionalText(tlsVersion),
+		CipherSuite: optionalText(cipherSuite),
+		Metadata:    deepCopyMetadata(session.Metadata),
+		ScEui:       p.scEUI,
+	})
 }
 
-// PersistConnectSync creates session synchronously, returns DB ID for operation logging.
-// Used for fresh connects only - ensures session.ID is assigned BEFORE operation logging
-// so that Connect audit rows have real session IDs (SCACI §3.3-04 audit trail).
-//
-// Resumed sessions use PersistResumeAsync (they already have session.ID > 0).
-func (p *sessionPersistence) PersistConnectSync(ctx context.Context, session *scaci.Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) (int64, error) {
+// PersistConnectSync creates the row of a fresh session and returns its ID,
+// so the connect audit rows carry a real session ID (SCACI §3.3). The
+// application center's earlier sessions are retired in the same transaction
+// (SCACI §1). Resumed sessions use PersistResume.
+func (p *SessionRows) PersistConnectSync(ctx context.Context, session *scaci.Session, certFingerprint, certSubject, remoteAddr, tlsVersion, cipherSuite, negotiatedVersion string) (int64, error) {
 	createCtx, cancel := context.WithTimeout(ctx, scaci.ConnectPersistTimeout)
 	defer cancel()
 
-	// Pointer-field construction for the create request
-	var certFP, certSubj, remAddr, tlsVer, cipherSt *string
-	if certFingerprint != "" {
-		certFP = &certFingerprint
-	}
-	if certSubject != "" {
-		certSubj = &certSubject
-	}
-	if remoteAddr != "" {
-		remAddr = &remoteAddr
-	}
-	// TLS evidence per SCACI §1
-	if tlsVersion != "" {
-		tlsVer = &tlsVersion
-	}
-	if cipherSuite != "" {
-		cipherSt = &cipherSuite
-	}
-
-	// Set organization ID if not nil
-	var orgID *uuid.UUID
-	if session.OrganizationID != uuid.Nil {
-		orgID = &session.OrganizationID
-	}
-
-	// Set negotiated version - defaults to ProtocolVersionString if empty
-	negVer := negotiatedVersion
-	if negVer == "" {
-		negVer = scaci.ProtocolVersionString
-	}
-
+	ac := session.ApplicationCenter().Key()
 	createReq := &models.SCACISessionCreateRequest{
-		TenantID:               session.TenantID,
-		OrganizationID:         orgID,
-		AcEUI:                  session.GetAcEuiBytes(),
+		TenantID:               ac.TenantID,
+		OrganizationID:         ac.OrganizationID,
+		AcEUI:                  ac.AcEUI,
 		SnAcUUID:               session.SnAcUUID,
 		SnScUUID:               session.SnScUUID,
-		CertificateFingerprint: certFP,
-		ClientCertSubject:      certSubj,
-		RemoteAddr:             remAddr,
-		TLSVersion:             tlsVer,
-		CipherSuite:            cipherSt,
-		NegotiatedVersion:      negVer, // SCACI §§2.1-2.3: persist for resume validation
+		CertificateFingerprint: optionalText(certFingerprint),
+		ClientCertSubject:      optionalText(certSubject),
+		RemoteAddr:             optionalText(remoteAddr),
+		TLSVersion:             optionalText(tlsVersion),
+		CipherSuite:            optionalText(cipherSuite),
+		NegotiatedVersion:      negotiatedOrDefault(negotiatedVersion), // SCACI §§2.1-2.3: persist for resume validation
 		CanResume:              true,
-		Metadata:               deepCopyMetadata(session.Metadata), // Same helper for consistency
+		Metadata:               deepCopyMetadata(session.Metadata),
+		ScEui:                  p.scEUI,
 	}
 
-	dbSession, err := p.sessionRepo.CreateSession(createCtx, createReq)
-	if err != nil {
-		return 0, err
+	var id int64
+	err := p.creations.Run(createCtx, func(tx SessionCreationTx) error {
+		if err := tx.RetirePriorSessions(createCtx, ac); err != nil {
+			return err
+		}
+		created, err := tx.CreateSession(createCtx, createReq)
+		if err != nil {
+			return err
+		}
+		id = created.ID
+		return nil
+	})
+	return id, err
+}
+
+// optionalText is text for a nullable column: nil when empty.
+func optionalText(text string) *string {
+	if text == "" {
+		return nil
 	}
-	return dbSession.ID, nil
+	return &text
+}
+
+// negotiatedOrDefault is the negotiated version, or this service center's
+// protocol version when none was negotiated.
+func negotiatedOrDefault(negotiatedVersion string) string {
+	if negotiatedVersion == "" {
+		return scaci.ProtocolVersionString
+	}
+	return negotiatedVersion
 }
 
 // deepCopyMetadata recursively copies a map[string]interface{} structure.
@@ -227,35 +170,29 @@ func deepCopyValue(v interface{}) interface{} {
 	}
 }
 
-// PersistHeartbeatAsync updates session heartbeat timestamp in database.
-// Heartbeat persistence for ping operations per SCACI §3.4.
-//
-// Context handling:
-//   - ctx: Carries session metadata from s.sessionContext(session)
-//   - logCtx: Decoupled from cancellation via WithoutCancel (preserves tenant/org metadata)
-//   - hbCtx: Derived from logCtx with timeout for DB call
-func (p *sessionPersistence) PersistHeartbeatAsync(ctx context.Context, session *scaci.Session) {
-	if session == nil || session.ID == 0 {
-		return
+// PersistHeartbeat records keepalive activity of a persisted session (SCACI
+// §3.4); a session without a row has nothing to update.
+func (p *SessionRows) PersistHeartbeat(ctx context.Context, session *scaci.Session) error {
+	if session.ID <= 0 {
+		return nil
 	}
+	return p.activity.UpdateHeartbeat(ctx, session.TenantID, session.ID)
+}
 
-	// Capture primitives before goroutine to prevent race/dangling pointer
-	sessionID := session.ID
-	tenantID := session.TenantID
+// PersistDisconnect records the loss of the session's connection; the session
+// stays resumable (SCACI §1), one a newer session replaced stays terminated.
+func (p *SessionRows) PersistDisconnect(ctx context.Context, session *scaci.Session) error {
+	return p.lifecycle.MarkSessionDisconnected(ctx, session.TenantID, session.ID)
+}
 
-	// Decouple from caller cancellation while preserving tenant/org metadata (Go 1.21+)
-	logCtx := context.WithoutCancel(ctx)
+// PersistOpIDs stores a snapshot of the session's operation ID counters
+// (SCACI §3.2); the store never moves a counter back.
+func (p *SessionRows) PersistOpIDs(ctx context.Context, session *scaci.Session, ids scaci.OpIDPair) error {
+	return p.activity.UpdateOperationIDs(ctx, session.TenantID, session.ID, ids.AC, ids.SC)
+}
 
-	go func() {
-		// Derive timeout context from logCtx to preserve tenant/org metadata
-		hbCtx, cancel := context.WithTimeout(logCtx, scaci.ConnectPersistTimeout)
-		defer cancel()
-
-		if err := p.sessionRepo.UpdateHeartbeat(hbCtx, tenantID, sessionID); err != nil {
-			p.logger.WarnContext(logCtx, scaci.LogSCACIPersistHeartbeatFailed,
-				"sessionID", sessionID,
-				"tenantID", tenantID,
-				"error", err)
-		}
-	}()
+// EndResumability terminates the session: its application center starts a
+// new session when it reconnects (SCACI §1).
+func (p *SessionRows) EndResumability(ctx context.Context, session *scaci.Session) error {
+	return p.lifecycle.TerminateSession(ctx, session.TenantID, session.ID)
 }

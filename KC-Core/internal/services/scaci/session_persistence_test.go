@@ -2,18 +2,28 @@ package scaciservices
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+)
+
+const (
+	testServiceCenterEUI              = uint64(0x4B43000000000178)
+	testExpectedConnectPersistTimeout = 5 * time.Second
+	// persistenceSignalBuffer lets the synchronous calls signal the mock's
+	// completion channel without a concurrent reader.
+	persistenceSignalBuffer = 4
 )
 
 // ============================================================================
@@ -26,7 +36,7 @@ type mockSessionRepoForPersistence struct {
 	createCalled     bool
 	updateCalled     bool
 	lastCreateReq    *models.SCACISessionCreateRequest
-	lastUpdateReq    *models.SCACISessionUpdateRequest
+	lastUpdateReq    *models.SCACISessionResume
 	lastUpdateTenant int64
 	lastUpdateID     int64
 	createErr        error
@@ -38,6 +48,8 @@ type mockSessionRepoForPersistence struct {
 	lastHeartbeatTenantID  int64
 	lastHeartbeatSessionID int64
 	heartbeatErr           error
+	// writes lists the lifecycle and counter writes in order.
+	writes []string
 }
 
 func newMockSessionRepoForPersistence() *mockSessionRepoForPersistence {
@@ -46,7 +58,7 @@ func newMockSessionRepoForPersistence() *mockSessionRepoForPersistence {
 			ID:       123,
 			TenantID: 1,
 		},
-		completionCh: make(chan struct{}), // Unbuffered for strict synchronization
+		completionCh: make(chan struct{}, persistenceSignalBuffer),
 	}
 }
 
@@ -67,7 +79,7 @@ func (m *mockSessionRepoForPersistence) CreateSession(_ context.Context, req *mo
 	return session, nil
 }
 
-func (m *mockSessionRepoForPersistence) UpdateSession(_ context.Context, tenantID, sessionID int64, req *models.SCACISessionUpdateRequest) error {
+func (m *mockSessionRepoForPersistence) ResumeSession(_ context.Context, tenantID, sessionID int64, req *models.SCACISessionResume) error {
 	m.mu.Lock()
 	m.updateCalled = true
 	m.lastUpdateReq = req
@@ -90,7 +102,7 @@ func (m *mockSessionRepoForPersistence) getLastCreateReq() *models.SCACISessionC
 }
 
 // getLastUpdateReq returns the last update request (thread-safe)
-func (m *mockSessionRepoForPersistence) getLastUpdateReq() *models.SCACISessionUpdateRequest {
+func (m *mockSessionRepoForPersistence) getLastUpdateReq() *models.SCACISessionResume {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.lastUpdateReq
@@ -103,7 +115,7 @@ func (m *mockSessionRepoForPersistence) wasCreateCalled() bool {
 	return m.createCalled
 }
 
-// wasUpdateCalled returns whether UpdateSession was called (thread-safe)
+// wasUpdateCalled returns whether ResumeSession was called (thread-safe)
 func (m *mockSessionRepoForPersistence) wasUpdateCalled() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -125,40 +137,50 @@ func (m *mockSessionRepoForPersistence) getLastHeartbeatIDs() (int64, int64) {
 }
 
 // waitForCompletion waits for exactly one async operation to complete.
-// Use this when a test triggers exactly one CreateSession or UpdateSession call.
+// Use this when a test triggers exactly one CreateSession or ResumeSession call.
 func (m *mockSessionRepoForPersistence) waitForCompletion() {
 	<-m.completionCh
 }
 
-// waitForN waits for exactly n async operations to complete.
-// Use this when a test triggers multiple Create/Update calls.
-//
-//nolint:unused // Reserved for tests that trigger multiple async operations
-func (m *mockSessionRepoForPersistence) waitForN(n int) {
-	for i := 0; i < n; i++ {
-		<-m.completionCh
-	}
+// Stub remaining interface methods
+func (m *mockSessionRepoForPersistence) CheckSessionResumable(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISessionResumptionInfo, error) {
+	return nil, nil
 }
 
-// Stub remaining interface methods
-func (m *mockSessionRepoForPersistence) CheckSessionResumable(_ context.Context, _ int64, _ [16]byte, _ int64, _ int64) (*models.SCACISessionResumptionInfo, error) {
+func (m *mockSessionRepoForPersistence) GetSessionByAcUUID(_ context.Context, _ models.SCACIApplicationCenter, _ [16]byte) (*models.SCACISession, error) {
 	return nil, nil
 }
-func (m *mockSessionRepoForPersistence) GetSessionByAcUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
-	return nil, nil
-}
+
 func (m *mockSessionRepoForPersistence) GetSessionByID(_ context.Context, _, _ int64) (*models.SCACISession, error) {
 	return nil, nil
 }
-func (m *mockSessionRepoForPersistence) GetActiveSessionByAcEUI(_ context.Context, _ int64, _ [8]byte) (*models.SCACISession, error) {
-	return nil, nil
-}
+
 func (m *mockSessionRepoForPersistence) GetSessionByScUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
 	return nil, nil
 }
-func (m *mockSessionRepoForPersistence) UpdateOperationIDs(_ context.Context, _, _ int64, _, _ int64) error {
+
+func (m *mockSessionRepoForPersistence) UpdateOperationIDs(_ context.Context, tenantID, sessionID int64, acOpID, scOpID int64) error {
+	m.noteRowWrite(fmt.Sprintf("opIDs %d/%d %d/%d", tenantID, sessionID, acOpID, scOpID))
 	return nil
 }
+
+func (m *mockSessionRepoForPersistence) MarkSessionDisconnected(_ context.Context, tenantID, sessionID int64) error {
+	m.noteRowWrite(fmt.Sprintf("disconnected %d/%d", tenantID, sessionID))
+	return nil
+}
+
+func (m *mockSessionRepoForPersistence) noteRowWrite(write string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.writes = append(m.writes, write)
+}
+
+func (m *mockSessionRepoForPersistence) rowWrites() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.writes...)
+}
+
 func (m *mockSessionRepoForPersistence) UpdateHeartbeat(_ context.Context, tenantID, sessionID int64) error {
 	m.mu.Lock()
 	m.heartbeatCalled = true
@@ -172,23 +194,120 @@ func (m *mockSessionRepoForPersistence) UpdateHeartbeat(_ context.Context, tenan
 
 	return err
 }
-func (m *mockSessionRepoForPersistence) DisconnectSession(_ context.Context, _, _ int64) error {
+
+func (m *mockSessionRepoForPersistence) TerminateSession(_ context.Context, tenantID, sessionID int64) error {
+	m.noteRowWrite(fmt.Sprintf("terminated %d/%d", tenantID, sessionID))
 	return nil
 }
-func (m *mockSessionRepoForPersistence) TerminateSession(_ context.Context, _, _ int64) error {
-	return nil
-}
-func (m *mockSessionRepoForPersistence) TerminateAllSessions(_ context.Context, _ int64, _ [8]byte) error {
-	return nil
-}
+
 func (m *mockSessionRepoForPersistence) ListSessions(_ context.Context, _ *models.SCACISessionFilter) ([]*models.SCACISession, int64, error) {
 	return nil, 0, nil
 }
+
 func (m *mockSessionRepoForPersistence) GetSessionStatistics(_ context.Context, _ int64) (*models.SCACISessionStatistics, error) {
 	return nil, nil
 }
-func (m *mockSessionRepoForPersistence) CleanupExpiredSessions(_ context.Context, _ int64) (int64, error) {
-	return 0, nil
+
+// creationTx runs a session creation against the mock: the retirement is
+// recorded, the insert goes to the mock repository.
+type creationTx struct {
+	repo    *mockSessionRepoForPersistence
+	retired []models.SCACIApplicationCenter
+}
+
+func (c *creationTx) Run(_ context.Context, fn func(SessionCreationTx) error) error { return fn(c) }
+
+func (c *creationTx) RetirePriorSessions(_ context.Context, ac models.SCACIApplicationCenter) error {
+	c.retired = append(c.retired, ac)
+	return nil
+}
+
+func (c *creationTx) CreateSession(ctx context.Context, req *models.SCACISessionCreateRequest) (*models.SCACISession, error) {
+	if len(c.retired) == 0 {
+		return nil, errCreatedBeforeRetirement
+	}
+	return c.repo.CreateSession(ctx, req)
+}
+
+// errCreatedBeforeRetirement fails a creation that did not retire the prior
+// sessions first.
+var errCreatedBeforeRetirement = errors.New("session created before the prior sessions were retired")
+
+func newTestPersistence(t *testing.T, repo *mockSessionRepoForPersistence) *SessionRows {
+	t.Helper()
+	persistence, err := NewSessionRows(&creationTx{repo: repo}, repo, repo, testServiceCenterEUI)
+	require.NoError(t, err)
+	return persistence
+}
+
+// A fresh session retires the earlier sessions of its organization's
+// application center in the transaction that creates it (SCACI §1); a session
+// without an organization retires those without one.
+func TestPersistConnectSync_RetiresThePriorSessionsFirst(t *testing.T) {
+	orgID := uuid.New()
+	for name, tc := range map[string]struct {
+		org  uuid.UUID
+		want *uuid.UUID
+	}{
+		"organization": {org: orgID, want: &orgID},
+		"none":         {org: uuid.Nil, want: nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := newMockSessionRepoForPersistence()
+			creations := &creationTx{repo: repo}
+			persistence, err := NewSessionRows(creations, repo, repo, testServiceCenterEUI)
+			require.NoError(t, err)
+			session := &scaci.Session{TenantID: 42, OrganizationID: tc.org, AcEui: 0xAABBCCDDEEFF1122}
+
+			_, err = persistence.PersistConnectSync(testutil.TestContext(), session, "", "", "", "", "", scaci.ProtocolVersionString)
+			repo.waitForCompletion()
+
+			require.NoError(t, err)
+			assert.Equal(t, []models.SCACIApplicationCenter{{TenantID: 42, OrganizationID: tc.want, AcEUI: [8]byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22}}}, creations.retired)
+		})
+	}
+}
+
+// A created and a resumed session are both owned by this service center, the
+// ownership its startup reconciliation is scoped by.
+func TestSessionRows_RecordTheOwningServiceCenter(t *testing.T) {
+	repo := newMockSessionRepoForPersistence()
+	persistence := newTestPersistence(t, repo)
+	owner := models.EUI(mioty.EUI64(testServiceCenterEUI).ToBytes())
+
+	_, err := persistence.PersistConnectSync(testutil.TestContext(), &scaci.Session{TenantID: 42, AcEui: 0xAABBCCDDEEFF1122},
+		"", "", "", "", "", scaci.ProtocolVersionString)
+	require.NoError(t, err)
+	require.NoError(t, persistence.PersistResume(testutil.TestContext(), &scaci.Session{ID: 7, TenantID: 42, Resumed: true}, "", ""))
+
+	assert.Equal(t, owner, repo.lastCreateReq.ScEui)
+	assert.Equal(t, owner, repo.lastUpdateReq.ScEui)
+}
+
+func TestNewSessionRows_RefusesAMissingStore(t *testing.T) {
+	repo := newMockSessionRepoForPersistence()
+	_, err := NewSessionRows(nil, repo, repo, testServiceCenterEUI)
+	require.ErrorIs(t, err, errMissingSessionPersistenceDependency)
+	_, err = NewSessionRows(&creationTx{repo: repo}, nil, repo, testServiceCenterEUI)
+	require.ErrorIs(t, err, errMissingSessionPersistenceDependency)
+	_, err = NewSessionRows(&creationTx{repo: repo}, repo, nil, testServiceCenterEUI)
+	require.ErrorIs(t, err, errMissingSessionPersistenceDependency)
+}
+
+// SessionRows is the one writer of a session's row: the loss of the
+// connection, the operation ID counters and the end of resumability reach
+// the store for the session's tenant and ID.
+func TestSessionRows_WritesTheSessionRow(t *testing.T) {
+	repo := newMockSessionRepoForPersistence()
+	rows := newTestPersistence(t, repo)
+	session := &scaci.Session{ID: 7, TenantID: 42}
+	ctx := testutil.TestContext()
+
+	require.NoError(t, rows.PersistDisconnect(ctx, session))
+	require.NoError(t, rows.PersistOpIDs(ctx, session, scaci.OpIDPair{AC: 3, SC: -4}))
+	require.NoError(t, rows.EndResumability(ctx, session))
+
+	assert.Equal(t, []string{"disconnected 42/7", "opIDs 42/7 3/-4", "terminated 42/7"}, repo.rowWrites())
 }
 
 // ============================================================================
@@ -198,9 +317,8 @@ func (m *mockSessionRepoForPersistence) CleanupExpiredSessions(_ context.Context
 // TestPersistConnectSync_WritesOrganizationID validates that fresh sessions
 // have organization_id persisted to the database via the sync path.
 func TestPersistConnectSync_WritesOrganizationID(t *testing.T) {
-	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	// Create session with organization ID set
 	orgID := uuid.MustParse("11111111-2222-3333-4444-555555555555")
@@ -237,9 +355,8 @@ func TestPersistConnectSync_WritesOrganizationID(t *testing.T) {
 // TestPersistConnectSync_NilOrgID validates that nil org ID is handled
 // correctly (community mode / no org resolution).
 func TestPersistConnectSync_NilOrgID(t *testing.T) {
-	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	// Create session without organization ID (uuid.Nil)
 	session := &scaci.Session{
@@ -263,12 +380,11 @@ func TestPersistConnectSync_NilOrgID(t *testing.T) {
 	assert.Nil(t, createReq.OrganizationID, "OrganizationID should be nil when session.OrganizationID is uuid.Nil")
 }
 
-// TestPersistResumeAsync_PreservesOrgID validates that resumed sessions do
+// TestPersistResume_PreservesOrgID validates that resumed sessions do
 // NOT override organization_id (it's preserved from the original session row).
-func TestPersistResumeAsync_PreservesOrgID(t *testing.T) {
-	log := logger.NewNop()
+func TestPersistResume_PreservesOrgID(t *testing.T) {
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	// Create resumed session (has ID > 0)
 	session := &scaci.Session{
@@ -281,20 +397,15 @@ func TestPersistResumeAsync_PreservesOrgID(t *testing.T) {
 		Resumed:        true, // Resumed session
 	}
 
-	svc.PersistResumeAsync(testutil.TestContext(), session, "TLS 1.3", "TLS_AES_256_GCM_SHA384")
+	require.NoError(t, svc.PersistResume(testutil.TestContext(), session, "TLS 1.3", "TLS_AES_256_GCM_SHA384"))
 	mockRepo.waitForCompletion()
 
-	// Assert UpdateSession was called (not CreateSession)
-	require.True(t, mockRepo.wasUpdateCalled(), "UpdateSession should be called for resumed session")
+	// Assert ResumeSession was called (not CreateSession)
+	require.True(t, mockRepo.wasUpdateCalled(), "ResumeSession should be called for resumed session")
 	require.False(t, mockRepo.wasCreateCalled(), "CreateSession should NOT be called for resumed session")
 
-	// UpdateRequest does NOT have OrganizationID field - it's preserved in DB
-	// This is correct behavior: org_id is set at session creation, not changed on resume
-	updateReq := mockRepo.getLastUpdateReq()
-	require.NotNil(t, updateReq)
-	// Verify other fields are updated
-	assert.NotNil(t, updateReq.Status)
-	assert.Equal(t, "active", *updateReq.Status)
+	// The resume carries no organization: org_id is set at session creation, not changed on resume
+	require.NotNil(t, mockRepo.getLastUpdateReq())
 }
 
 // ============================================================================
@@ -304,9 +415,8 @@ func TestPersistResumeAsync_PreservesOrgID(t *testing.T) {
 // TestPersistConnectSync_WritesTLSEvidence validates that TLS version,
 // cipher suite, and certificate fingerprint are persisted.
 func TestPersistConnectSync_WritesTLSEvidence(t *testing.T) {
-	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	session := &scaci.Session{
 		TenantID: 1,
@@ -348,12 +458,11 @@ func TestPersistConnectSync_WritesTLSEvidence(t *testing.T) {
 	assert.Equal(t, "10.0.0.1:5001", *createReq.RemoteAddr)
 }
 
-// TestPersistResumeAsync_UpdatesTLSEvidence validates that TLS evidence is
+// TestPersistResume_UpdatesTLSEvidence validates that TLS evidence is
 // updated on session resume (new TLS handshake).
-func TestPersistResumeAsync_UpdatesTLSEvidence(t *testing.T) {
-	log := logger.NewNop()
+func TestPersistResume_UpdatesTLSEvidence(t *testing.T) {
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	session := &scaci.Session{
 		ID:       999,
@@ -364,7 +473,7 @@ func TestPersistResumeAsync_UpdatesTLSEvidence(t *testing.T) {
 	newTLSVersion := "TLS 1.3"
 	newCipherSuite := "TLS_CHACHA20_POLY1305_SHA256"
 
-	svc.PersistResumeAsync(testutil.TestContext(), session, newTLSVersion, newCipherSuite)
+	require.NoError(t, svc.PersistResume(testutil.TestContext(), session, newTLSVersion, newCipherSuite))
 	mockRepo.waitForCompletion()
 
 	require.True(t, mockRepo.wasUpdateCalled())
@@ -383,48 +492,19 @@ func TestPersistResumeAsync_UpdatesTLSEvidence(t *testing.T) {
 // constant bounding both persistence paths (5 seconds per constants.go).
 func TestConnectPersistTimeoutConstant(t *testing.T) {
 	// Verify the timeout constant exists and has expected value
-	assert.Equal(t, 5*time.Second, scaci.ConnectPersistTimeout,
+	assert.Equal(t, testExpectedConnectPersistTimeout, scaci.ConnectPersistTimeout,
 		"ConnectPersistTimeout should be 5 seconds per constants.go")
 }
 
-// TestPersistResumeAsync_NonBlocking validates that PersistResumeAsync
-// returns immediately without waiting for persistence to complete.
-func TestPersistResumeAsync_NonBlocking(t *testing.T) {
-	log := logger.NewNop()
-
-	// Create a slow mock that takes 500ms
-	slowMock := newSlowSessionRepo(500 * time.Millisecond)
-	svc := NewSessionPersistence(slowMock, log)
-
-	session := &scaci.Session{
-		ID:       999,
-		TenantID: 1,
-		Resumed:  true,
-	}
-
-	start := time.Now()
-	svc.PersistResumeAsync(testutil.TestContext(), session, "TLS 1.3", "TLS_AES_256_GCM_SHA384")
-	elapsed := time.Since(start)
-
-	// Should return almost immediately (not wait for 500ms mock delay)
-	assert.Less(t, elapsed, 50*time.Millisecond,
-		"PersistResumeAsync should return immediately, not block for persistence")
-
-	// Wait for async to complete deterministically
-	slowMock.waitForCompletion()
-	assert.True(t, slowMock.wasUpdateCalled(), "UpdateSession should eventually be called")
-}
-
-// TestPersistResumeAsync_RejectsFreshSession validates the resume-only
+// TestPersistResume_RejectsFreshSession validates the resume-only
 // contract: a session without a persisted ID is rejected without touching
 // the repository (fresh sessions go through PersistConnectSync).
-func TestPersistResumeAsync_RejectsFreshSession(t *testing.T) {
-	log := logger.NewNop()
+func TestPersistResume_RejectsFreshSession(t *testing.T) {
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	session := &scaci.Session{TenantID: 1, Resumed: false}
-	svc.PersistResumeAsync(testutil.TestContext(), session, "", "")
+	require.ErrorIs(t, svc.PersistResume(testutil.TestContext(), session, "", ""), errResumeRequiresPersistedSession)
 
 	assert.False(t, mockRepo.wasCreateCalled(), "a misused resume path must never create a session row")
 	assert.False(t, mockRepo.wasUpdateCalled(), "a fresh session must not be updated as a resume")
@@ -433,9 +513,8 @@ func TestPersistResumeAsync_RejectsFreshSession(t *testing.T) {
 // TestPersistConnectSync_NegotiatedVersionDefault validates that
 // negotiated_version defaults to ProtocolVersionString if empty.
 func TestPersistConnectSync_NegotiatedVersionDefault(t *testing.T) {
-	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	session := &scaci.Session{
 		TenantID: 1,
@@ -462,53 +541,14 @@ func TestPersistConnectSync_NegotiatedVersionDefault(t *testing.T) {
 }
 
 // ============================================================================
-// Helper for Non-Blocking Test
-// ============================================================================
-
-type slowSessionRepo struct {
-	mockSessionRepoForPersistence
-	delay        time.Duration
-	updateCalled bool
-	mu           sync.Mutex
-	completionCh chan struct{} // Completion signal for deterministic waiting
-}
-
-func newSlowSessionRepo(delay time.Duration) *slowSessionRepo {
-	return &slowSessionRepo{
-		delay:        delay,
-		completionCh: make(chan struct{}), // Unbuffered
-	}
-}
-
-func (s *slowSessionRepo) UpdateSession(_ context.Context, _, _ int64, _ *models.SCACISessionUpdateRequest) error {
-	time.Sleep(s.delay) // Intentional delay for non-blocking test
-	s.mu.Lock()
-	s.updateCalled = true
-	s.mu.Unlock()
-	s.completionCh <- struct{}{} // Signal completion
-	return nil
-}
-
-func (s *slowSessionRepo) wasUpdateCalled() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.updateCalled
-}
-
-func (s *slowSessionRepo) waitForCompletion() {
-	<-s.completionCh
-}
-
-// ============================================================================
 // Metadata Persistence Tests (SCACI §3.3.1 info field)
 // ============================================================================
 
 // TestPersistConnectSync_WritesNestedMetadata validates that nested metadata
 // (including info field per §3.3.1) is persisted correctly.
 func TestPersistConnectSync_WritesNestedMetadata(t *testing.T) {
-	log := logger.NewNop()
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	// Create session with nested metadata (info field per SCACI §3.3.1)
 	session := &scaci.Session{
@@ -523,7 +563,7 @@ func TestPersistConnectSync_WritesNestedMetadata(t *testing.T) {
 			"swVersion": "2.0.0",
 			// info field: arbitrary nested object per SCACI §3.3.1
 			"info": map[string]interface{}{
-				"firmware":     "v1.2.3",
+				"firmware":     testFirmwareVersion,
 				"serialNo":     12345,
 				"capabilities": []interface{}{"downlink", "multicast"},
 			},
@@ -551,19 +591,18 @@ func TestPersistConnectSync_WritesNestedMetadata(t *testing.T) {
 	require.True(t, ok, "info field should be present in persisted metadata")
 	infoMap, ok := info.(map[string]interface{})
 	require.True(t, ok, "info should be map[string]interface{}")
-	assert.Equal(t, "v1.2.3", infoMap["firmware"])
+	assert.Equal(t, testFirmwareVersion, infoMap["firmware"])
 	assert.Equal(t, 12345, infoMap["serialNo"])
 	caps, ok := infoMap["capabilities"].([]interface{})
 	require.True(t, ok, "capabilities should be slice")
 	assert.Len(t, caps, 2)
 }
 
-// TestPersistResumeAsync_WritesNestedMetadata validates that metadata is
-// persisted on resume via UpdateSession.
-func TestPersistResumeAsync_WritesNestedMetadata(t *testing.T) {
-	log := logger.NewNop()
+// TestPersistResume_WritesNestedMetadata validates that metadata is
+// persisted on resume via ResumeSession.
+func TestPersistResume_WritesNestedMetadata(t *testing.T) {
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	// Create resumed session with nested metadata
 	session := &scaci.Session{
@@ -584,10 +623,10 @@ func TestPersistResumeAsync_WritesNestedMetadata(t *testing.T) {
 		},
 	}
 
-	svc.PersistResumeAsync(testutil.TestContext(), session, "TLS 1.3", "TLS_AES_256_GCM_SHA384")
+	require.NoError(t, svc.PersistResume(testutil.TestContext(), session, "TLS 1.3", "TLS_AES_256_GCM_SHA384"))
 	mockRepo.waitForCompletion()
 
-	require.True(t, mockRepo.wasUpdateCalled(), "UpdateSession should be called for resumed session")
+	require.True(t, mockRepo.wasUpdateCalled(), "ResumeSession should be called for resumed session")
 	require.False(t, mockRepo.wasCreateCalled(), "CreateSession should NOT be called for resumed session")
 
 	updateReq := mockRepo.getLastUpdateReq()
@@ -657,7 +696,7 @@ func TestDeepCopyMetadata_NestedMapIsolation(t *testing.T) {
 	original := map[string]interface{}{
 		"vendor": "TestVendor",
 		"info": map[string]interface{}{
-			"firmware": "v1.0",
+			"firmware": testFirmwareVersionInitial,
 			"config": map[string]interface{}{
 				"setting1": "value1",
 				"setting2": 42,
@@ -668,13 +707,13 @@ func TestDeepCopyMetadata_NestedMapIsolation(t *testing.T) {
 	copied := deepCopyMetadata(original)
 
 	// Mutate the original nested maps
-	original["info"].(map[string]interface{})["firmware"] = "v2.0"
+	original["info"].(map[string]interface{})["firmware"] = testFirmwareVersionUpdated
 	original["info"].(map[string]interface{})["config"].(map[string]interface{})["setting1"] = "MODIFIED"
 	original["info"].(map[string]interface{})["newKey"] = "newValue"
 
 	// Verify copy is unchanged
 	info := copied["info"].(map[string]interface{})
-	assert.Equal(t, "v1.0", info["firmware"], "nested map should be isolated")
+	assert.Equal(t, testFirmwareVersionInitial, info["firmware"], "nested map should be isolated")
 	config := info["config"].(map[string]interface{})
 	assert.Equal(t, "value1", config["setting1"], "deeply nested map should be isolated")
 	_, hasNewKey := info["newKey"]
@@ -714,32 +753,30 @@ func TestDeepCopyMetadata_NestedSliceIsolation(t *testing.T) {
 // Heartbeat Persistence Tests (SCACI §3.4)
 // ============================================================================
 
-// TestPersistHeartbeatAsync_CallsUpdateHeartbeat validates that
-// PersistHeartbeatAsync invokes the repository's UpdateHeartbeat method.
+// TestPersistHeartbeat_CallsUpdateHeartbeat validates that
+// PersistHeartbeat invokes the repository's UpdateHeartbeat method.
 // Ref: session_persistence.go:267-291
-func TestPersistHeartbeatAsync_CallsUpdateHeartbeat(t *testing.T) {
-	log := logger.NewNop()
+func TestPersistHeartbeat_CallsUpdateHeartbeat(t *testing.T) {
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	session := &scaci.Session{
 		ID:       123,
 		TenantID: 42,
 	}
 
-	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
+	require.NoError(t, svc.PersistHeartbeat(testutil.TestContext(), session))
 	mockRepo.waitForCompletion()
 
 	assert.True(t, mockRepo.wasHeartbeatCalled(), "UpdateHeartbeat should be called")
 }
 
-// TestPersistHeartbeatAsync_CorrectIDs validates that the correct
+// TestPersistHeartbeat_CorrectIDs validates that the correct
 // tenantID and sessionID are passed to UpdateHeartbeat.
 // Ref: session_persistence.go:273-274 (primitive capture), line 284 (call)
-func TestPersistHeartbeatAsync_CorrectIDs(t *testing.T) {
-	log := logger.NewNop()
+func TestPersistHeartbeat_CorrectIDs(t *testing.T) {
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	expectedTenantID := int64(42)
 	expectedSessionID := int64(999)
@@ -749,7 +786,7 @@ func TestPersistHeartbeatAsync_CorrectIDs(t *testing.T) {
 		TenantID: expectedTenantID,
 	}
 
-	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
+	require.NoError(t, svc.PersistHeartbeat(testutil.TestContext(), session))
 	mockRepo.waitForCompletion()
 
 	tenantID, sessionID := mockRepo.getLastHeartbeatIDs()
@@ -757,250 +794,36 @@ func TestPersistHeartbeatAsync_CorrectIDs(t *testing.T) {
 	assert.Equal(t, expectedSessionID, sessionID, "sessionID should match session.ID")
 }
 
-// TestPersistHeartbeatAsync_SkipsNilSession validates that nil session
-// is handled gracefully without panicking or calling UpdateHeartbeat.
-// Ref: session_persistence.go:268-270 (guard clause)
-func TestPersistHeartbeatAsync_SkipsNilSession(t *testing.T) {
-	log := logger.NewNop()
-	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
-
-	// Should not panic
-	svc.PersistHeartbeatAsync(testutil.TestContext(), nil)
-
-	// Give goroutine time to execute if it were to (it shouldn't)
-	time.Sleep(50 * time.Millisecond)
-
-	assert.False(t, mockRepo.wasHeartbeatCalled(), "UpdateHeartbeat should NOT be called for nil session")
-}
-
-// TestPersistHeartbeatAsync_SkipsZeroID validates that sessions with
+// TestPersistHeartbeat_SkipsZeroID validates that sessions with
 // ID == 0 (not yet persisted) skip heartbeat persistence.
 // Ref: session_persistence.go:268-270 (guard clause)
-func TestPersistHeartbeatAsync_SkipsZeroID(t *testing.T) {
-	log := logger.NewNop()
+func TestPersistHeartbeat_SkipsZeroID(t *testing.T) {
 	mockRepo := newMockSessionRepoForPersistence()
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	session := &scaci.Session{
 		ID:       0, // Not yet persisted
 		TenantID: 42,
 	}
 
-	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
-
-	// Give goroutine time to execute if it were to (it shouldn't)
-	time.Sleep(50 * time.Millisecond)
+	require.NoError(t, svc.PersistHeartbeat(testutil.TestContext(), session))
 
 	assert.False(t, mockRepo.wasHeartbeatCalled(), "UpdateHeartbeat should NOT be called for session.ID == 0")
 }
 
-// TestPersistHeartbeatAsync_NonBlocking validates that PersistHeartbeatAsync
-// returns immediately without waiting for the DB call to complete.
-// Ref: session_persistence.go:279-290 (goroutine spawn)
-func TestPersistHeartbeatAsync_NonBlocking(t *testing.T) {
-	log := logger.NewNop()
-
-	// Create a slow mock that takes 500ms
-	slowMock := newSlowHeartbeatRepo(500 * time.Millisecond)
-	svc := NewSessionPersistence(slowMock, log)
-
-	session := &scaci.Session{
-		ID:       123,
-		TenantID: 42,
-	}
-
-	start := time.Now()
-	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
-	elapsed := time.Since(start)
-
-	// Should return almost immediately (not wait for 500ms mock delay)
-	assert.Less(t, elapsed, 50*time.Millisecond,
-		"PersistHeartbeatAsync should return immediately, not block for persistence")
-
-	// Wait for async to complete deterministically
-	slowMock.waitForCompletion()
-	assert.True(t, slowMock.wasHeartbeatCalled(), "UpdateHeartbeat should eventually be called")
-}
-
-// TestPersistHeartbeatAsync_UsesConnectPersistTimeout validates that
-// heartbeat persistence uses ConnectPersistTimeout constant.
-// Ref: session_persistence.go:281 (context.WithTimeout)
-func TestPersistHeartbeatAsync_UsesConnectPersistTimeout(t *testing.T) {
-	// Verify the timeout constant exists and has expected value
-	assert.Equal(t, 5*time.Second, scaci.ConnectPersistTimeout,
-		"ConnectPersistTimeout should be 5 seconds per constants.go")
-}
-
-// TestPersistHeartbeatAsync_LogsErrorOnFailure validates that errors
-// from UpdateHeartbeat are logged but don't propagate (best-effort).
+// TestPersistHeartbeat_ReturnsStoreFailure validates that the store's error
+// reaches the caller, which decides how to report it.
 // Ref: session_persistence.go:285-288 (WarnContext on error)
-func TestPersistHeartbeatAsync_LogsErrorOnFailure(t *testing.T) {
-	log := logger.NewNop()
+func TestPersistHeartbeat_ReturnsStoreFailure(t *testing.T) {
 	mockRepo := newMockSessionRepoForPersistence()
 	mockRepo.heartbeatErr = assert.AnError // Simulate DB failure
-	svc := NewSessionPersistence(mockRepo, log)
+	svc := newTestPersistence(t, mockRepo)
 
 	session := &scaci.Session{
 		ID:       123,
 		TenantID: 42,
 	}
 
-	// Should not panic even with error
-	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
-	mockRepo.waitForCompletion()
-
-	// Error is logged but method completes normally
+	require.ErrorIs(t, svc.PersistHeartbeat(testutil.TestContext(), session), assert.AnError)
 	assert.True(t, mockRepo.wasHeartbeatCalled(), "UpdateHeartbeat should still be called")
 }
-
-// TestPersistHeartbeatAsync_WarnContextFields validates that WarnContext is called
-// with the correct message and fields.
-// This test uses a logger spy to capture WarnContext calls.
-// Ref: session_persistence.go:285-288 (WarnContext call)
-func TestPersistHeartbeatAsync_WarnContextFields(t *testing.T) {
-	mockLogger := newMockLoggerForWarnContext()
-	mockRepo := newMockSessionRepoForPersistence()
-	mockRepo.heartbeatErr = assert.AnError // Simulate DB failure
-	svc := NewSessionPersistence(mockRepo, mockLogger)
-
-	expectedSessionID := int64(123)
-	expectedTenantID := int64(42)
-
-	session := &scaci.Session{
-		ID:       expectedSessionID,
-		TenantID: expectedTenantID,
-	}
-
-	svc.PersistHeartbeatAsync(testutil.TestContext(), session)
-	mockRepo.waitForCompletion()
-
-	// Wait for WarnContext call (deterministic)
-	mockLogger.waitForCompletion()
-
-	// Assert WarnContext was called
-	require.True(t, mockLogger.wasWarnContextCalled(), "WarnContext should be called on error")
-
-	// Assert correct message
-	assert.Equal(t, scaci.LogSCACIPersistHeartbeatFailed, mockLogger.getWarnContextMsg(),
-		"WarnContext should use LogSCACIPersistHeartbeatFailed message constant")
-
-	// Assert fields contain sessionID, tenantID, error
-	fields := mockLogger.getWarnContextFields()
-	assert.Equal(t, expectedSessionID, fields["sessionID"], "sessionID field should match")
-	assert.Equal(t, expectedTenantID, fields["tenantID"], "tenantID field should match")
-	assert.NotNil(t, fields["error"], "error field should be present")
-}
-
-// ============================================================================
-// Helper for Heartbeat Non-Blocking Test
-// ============================================================================
-
-type slowHeartbeatRepo struct {
-	mockSessionRepoForPersistence
-	delay           time.Duration
-	heartbeatCalled bool
-	mu              sync.Mutex
-	completionCh    chan struct{}
-}
-
-func newSlowHeartbeatRepo(delay time.Duration) *slowHeartbeatRepo {
-	return &slowHeartbeatRepo{
-		delay:        delay,
-		completionCh: make(chan struct{}),
-	}
-}
-
-func (s *slowHeartbeatRepo) UpdateHeartbeat(_ context.Context, _, _ int64) error {
-	time.Sleep(s.delay) // Intentional delay for non-blocking test
-	s.mu.Lock()
-	s.heartbeatCalled = true
-	s.mu.Unlock()
-	s.completionCh <- struct{}{} // Signal completion
-	return nil
-}
-
-func (s *slowHeartbeatRepo) wasHeartbeatCalled() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.heartbeatCalled
-}
-
-func (s *slowHeartbeatRepo) waitForCompletion() {
-	<-s.completionCh
-}
-
-// ============================================================================
-// Mock Logger for WarnContext Capture
-// ============================================================================
-
-// mockLoggerForWarnContext captures WarnContext calls for testing.
-// Implements logger.Logger interface with only WarnContext actually capturing data.
-type mockLoggerForWarnContext struct {
-	mu                sync.Mutex
-	warnContextCalled bool
-	warnContextMsg    string
-	warnContextFields map[string]interface{}
-	completionCh      chan struct{} // Completion signal for deterministic testing
-}
-
-func newMockLoggerForWarnContext() *mockLoggerForWarnContext {
-	return &mockLoggerForWarnContext{
-		warnContextFields: make(map[string]interface{}),
-		completionCh:      make(chan struct{}, 1), // Buffered to avoid blocking
-	}
-}
-
-// WarnContext captures the call for assertion
-func (m *mockLoggerForWarnContext) WarnContext(_ context.Context, msg string, fields ...interface{}) {
-	m.mu.Lock()
-	m.warnContextCalled = true
-	m.warnContextMsg = msg
-	// Convert fields to map (key-value pairs)
-	for i := 0; i+1 < len(fields); i += 2 {
-		if key, ok := fields[i].(string); ok {
-			m.warnContextFields[key] = fields[i+1]
-		}
-	}
-	m.mu.Unlock()
-	m.completionCh <- struct{}{} // Signal completion after capturing
-}
-
-func (m *mockLoggerForWarnContext) wasWarnContextCalled() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.warnContextCalled
-}
-
-func (m *mockLoggerForWarnContext) getWarnContextMsg() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.warnContextMsg
-}
-
-func (m *mockLoggerForWarnContext) getWarnContextFields() map[string]interface{} {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	result := make(map[string]interface{})
-	for k, v := range m.warnContextFields {
-		result[k] = v
-	}
-	return result
-}
-
-func (m *mockLoggerForWarnContext) waitForCompletion() {
-	<-m.completionCh
-}
-
-// Remaining Logger interface methods (no-op stubs)
-func (m *mockLoggerForWarnContext) Debug(_ string, _ ...interface{})                           {}
-func (m *mockLoggerForWarnContext) Info(_ string, _ ...interface{})                            {}
-func (m *mockLoggerForWarnContext) Warn(_ string, _ ...interface{})                            {}
-func (m *mockLoggerForWarnContext) Error(_ string, _ ...interface{})                           {}
-func (m *mockLoggerForWarnContext) Fatal(_ string, _ ...interface{})                           {}
-func (m *mockLoggerForWarnContext) DebugContext(_ context.Context, _ string, _ ...interface{}) {}
-func (m *mockLoggerForWarnContext) InfoContext(_ context.Context, _ string, _ ...interface{})  {}
-func (m *mockLoggerForWarnContext) ErrorContext(_ context.Context, _ string, _ ...interface{}) {}
-func (m *mockLoggerForWarnContext) FatalContext(_ context.Context, _ string, _ ...interface{}) {}
-func (m *mockLoggerForWarnContext) WithField(_ string, _ interface{}) logger.Logger            { return m }
-func (m *mockLoggerForWarnContext) WithFields(_ map[string]interface{}) logger.Logger          { return m }

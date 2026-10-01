@@ -35,10 +35,6 @@ type APIKeyRepository interface {
 	// Called on successful authentication to track key usage.
 	UpdateLastUsed(ctx context.Context, id uuid.UUID) error
 
-	// Deactivate marks a key as inactive without deleting it.
-	// Preserves audit trail while preventing further use.
-	Deactivate(ctx context.Context, id uuid.UUID) error
-
 	// GetByIDAndOrg retrieves an API key by UUID with organization ownership check.
 	// Returns ErrRecordNotFound if key doesn't exist or belongs to different org.
 	GetByIDAndOrg(ctx context.Context, id, orgID uuid.UUID) (*models.APIKey, error)

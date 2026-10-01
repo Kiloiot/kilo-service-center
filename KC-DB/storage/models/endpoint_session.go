@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// Endpoint uplink modes (BSSCI §5.2).
+const (
+	// UplinkModeStandard is the default uplink mode.
+	UplinkModeStandard = "standard"
+)
+
 // EndPointSession represents an endpoint attachment session
 type EndPointSession struct {
 	ID         int64 `db:"id" json:"id"`
@@ -31,7 +37,7 @@ type EndPointSession struct {
 	PacketCnt int32  `db:"last_packet_cnt" json:"packetCnt"` // Last known packet counter
 
 	// Uplink configuration
-	UplinkMode string `db:"uplink_mode" json:"uplink_mode"` // standard, low_latency, repeated
+	UplinkMode string `db:"uplink_mode" json:"uplink_mode"` // see UplinkMode* constants
 
 	// Downlink configuration
 	DlOpen     bool `db:"dl_open" json:"dlOpen"`        // Downlink open
@@ -50,15 +56,4 @@ type EndPointSession struct {
 	Metadata  json.RawMessage `db:"metadata" json:"metadata"`
 	CreatedAt time.Time       `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time       `db:"updated_at" json:"updated_at"`
-}
-
-// EndPointSessionStats represents session statistics
-type EndPointSessionStats struct {
-	EndPointID         string        `json:"endpoint_id"`
-	TotalSessions      int64         `json:"total_sessions"`
-	ActiveSessions     int64         `json:"active_sessions"`
-	AvgSessionTime     time.Duration `json:"avg_session_time"`
-	AvgSessionDuration time.Duration `json:"avg_session_duration"`
-	TotalUplinks       int64         `json:"total_uplinks"`
-	TotalDownlinks     int64         `json:"total_downlinks"`
 }

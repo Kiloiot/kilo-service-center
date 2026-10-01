@@ -1,18 +1,18 @@
 /**
- * Certificate section within the base station edit dialog.
- * Shows either regenerate button or post-regen download buttons.
+ * Certificate section within the base station edit dialog: the regenerate
+ * action, then the files of the new certificate.
  */
 
 import React from "react";
 
 import type { GenerateCertificateResponse } from "@api-types/api";
-import { Alert, Box, Button, Divider, Typography } from "@mui/material";
+import { Box, Button, Divider, Typography } from "@mui/material";
 
-import { apiService } from "@services/api";
 import { getMonoBody1 } from "@utils/typography";
 import { BASE_STATION_DETAILS } from "@constants/messages";
-import { DownloadIcon } from "@theme/icons";
 
+import { useCertificateBundleDownload } from "../hooks";
+import CertificateDownloadButtons from "./CertificateDownloadButtons";
 import ScUrlCopyField from "./ScUrlCopyField";
 
 interface BaseStationCertSectionProps {
@@ -34,35 +34,10 @@ const BaseStationCertSection: React.FC<BaseStationCertSectionProps> = ({
   onRegenerate,
   onError,
 }) => {
-  const handleDownloadCert = async (certType: "ca" | "client" | "key") => {
-    if (!regenCertData?.downloadUrls) return;
-
-    const certIdMap: Record<"ca" | "client" | "key", string | undefined> = {
-      ca: regenCertData.downloadUrls.caCert,
-      client: regenCertData.downloadUrls.clientCert,
-      key: regenCertData.downloadUrls.privateKey,
-    };
-
-    const certId = certIdMap[certType];
-    if (!certId) return;
-
-    try {
-      const { blob, filename } = await apiService.downloadCertificate(
-        certId,
-        certType,
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch {
-      onError(BASE_STATION_DETAILS.CERTIFICATE_DOWNLOAD_ERROR);
-    }
-  };
+  const handleDownload = useCertificateBundleDownload(
+    regenCertData?.downloadUrls.caCert,
+    onError,
+  );
 
   return (
     <>
@@ -73,9 +48,9 @@ const BaseStationCertSection: React.FC<BaseStationCertSectionProps> = ({
 
       {regenCertData ? (
         <Box>
-          <Alert severity="success" sx={{ mb: 2 }}>
-            {BASE_STATION_DETAILS.REGENERATE_CERTS_SUCCESS}
-          </Alert>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {BASE_STATION_DETAILS.REGENERATE_CERTS_INSTALL_HINT}
+          </Typography>
           {effectiveServiceCenterUrl && (
             <ScUrlCopyField
               value={effectiveServiceCenterUrl}
@@ -85,32 +60,7 @@ const BaseStationCertSection: React.FC<BaseStationCertSectionProps> = ({
               mb={2}
             />
           )}
-          <Box display="flex" gap={1} flexWrap="wrap">
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<DownloadIcon />}
-              onClick={() => handleDownloadCert("ca")}
-            >
-              {BASE_STATION_DETAILS.DOWNLOAD_CA}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<DownloadIcon />}
-              onClick={() => handleDownloadCert("client")}
-            >
-              {BASE_STATION_DETAILS.DOWNLOAD_CERT}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<DownloadIcon />}
-              onClick={() => handleDownloadCert("key")}
-            >
-              {BASE_STATION_DETAILS.DOWNLOAD_KEY}
-            </Button>
-          </Box>
+          <CertificateDownloadButtons onDownload={handleDownload} />
         </Box>
       ) : (
         <Box>

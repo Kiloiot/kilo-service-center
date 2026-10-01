@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -14,17 +15,18 @@ import (
 
 // UserRepository implements the UserRepository interface for PostgreSQL
 type UserRepository struct {
-	db *sqlx.DB
+	clock clock.Clock
+	db    *sqlx.DB
 }
 
 // NewUserRepository creates a new PostgreSQL User repository
-func NewUserRepository(db *sqlx.DB) interfaces.UserRepository {
-	return &UserRepository{db: db}
+func NewUserRepository(db *sqlx.DB, clk clock.Clock) *UserRepository {
+	return &UserRepository{clock: clk, db: db}
 }
 
 // Create inserts a new user
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
-	now := time.Now().UTC()
+	now := r.clock.Now().UTC()
 	user.CreatedAt = now
 	user.UpdatedAt = now
 
@@ -41,7 +43,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 
 	_, err := r.db.NamedExecContext(ctx, query, user)
 	if err != nil {
-		return fmt.Errorf("create user: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCreateUser, err)
 	}
 
 	return nil
@@ -60,9 +62,9 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Use
 	err := r.db.GetContext(ctx, &user, query, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("user %s: %w", id, interfaces.ErrRecordNotFound)
+			return nil, fmt.Errorf(errFmtUser, id, storage.ErrRecordNotFound)
 		}
-		return nil, fmt.Errorf("get user: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetUser, err)
 	}
 
 	return &user, nil
@@ -81,9 +83,9 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.
 	err := r.db.GetContext(ctx, &user, query, email)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("user with email %s: %w", email, interfaces.ErrRecordNotFound)
+			return nil, fmt.Errorf(errFmtUserWithEmail, email, storage.ErrRecordNotFound)
 		}
-		return nil, fmt.Errorf("get user by email: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetUserByEmail, err)
 	}
 
 	return &user, nil
@@ -102,9 +104,9 @@ func (r *UserRepository) GetByExternalID(ctx context.Context, externalID string)
 	err := r.db.GetContext(ctx, &user, query, externalID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("user with external_id %s: %w", externalID, interfaces.ErrRecordNotFound)
+			return nil, fmt.Errorf(errFmtUserWithExternalID, externalID, storage.ErrRecordNotFound)
 		}
-		return nil, fmt.Errorf("get user by external_id: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetUserByExternalID, err)
 	}
 
 	return &user, nil
@@ -131,16 +133,16 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 
 	result, err := r.db.NamedExecContext(ctx, query, user)
 	if err != nil {
-		return fmt.Errorf("update user: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateUser, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("user %s not found", user.ID)
+		return fmt.Errorf(errFmtUserNotFound, user.ID)
 	}
 
 	return nil
@@ -155,16 +157,16 @@ func (r *UserRepository) SetPasswordHash(ctx context.Context, id uuid.UUID, hash
 
 	result, err := r.db.ExecContext(ctx, query, id, hash)
 	if err != nil {
-		return fmt.Errorf("set password hash: %w", err)
+		return fmt.Errorf("%s: %w", errWrapSetPasswordHash, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("user %s not found", id)
+		return fmt.Errorf(errFmtUserNotFound, id)
 	}
 
 	return nil
@@ -176,16 +178,16 @@ func (r *UserRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("delete user: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteUser, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("user %s not found", id)
+		return fmt.Errorf(errFmtUserNotFound, id)
 	}
 
 	return nil
@@ -204,7 +206,7 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]*models
 
 	err := r.db.SelectContext(ctx, &users, query, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("list users: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapListUsers, err)
 	}
 
 	return users, nil
@@ -217,7 +219,7 @@ func (r *UserRepository) Count(ctx context.Context) (int64, error) {
 
 	err := r.db.GetContext(ctx, &count, query)
 	if err != nil {
-		return 0, fmt.Errorf("count users: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapCountUsers, err)
 	}
 
 	return count, nil

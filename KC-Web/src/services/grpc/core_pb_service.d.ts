@@ -194,6 +194,15 @@ type CoreServiceGetDownlinkResults = {
   readonly responseType: typeof core_pb.GetDownlinkResultsResponse;
 };
 
+type CoreServiceUpdatePendingDownlink = {
+  readonly methodName: string;
+  readonly service: typeof CoreService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.UpdatePendingDownlinkRequest;
+  readonly responseType: typeof core_pb.DownlinkMessage;
+};
+
 type CoreServiceSendULTransmit = {
   readonly methodName: string;
   readonly service: typeof CoreService;
@@ -275,6 +284,24 @@ type CoreServiceGetReleaseInfo = {
   readonly responseType: typeof core_pb.ReleaseInfo;
 };
 
+type CoreServiceListCapabilities = {
+  readonly methodName: string;
+  readonly service: typeof CoreService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof google_protobuf_empty_pb.Empty;
+  readonly responseType: typeof core_pb.ListCapabilitiesResponse;
+};
+
+type CoreServiceGetDiagnosticsBundle = {
+  readonly methodName: string;
+  readonly service: typeof CoreService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.GetDiagnosticsBundleRequest;
+  readonly responseType: typeof core_pb.GetDiagnosticsBundleResponse;
+};
+
 type CoreServiceCreateIntegration = {
   readonly methodName: string;
   readonly service: typeof CoreService;
@@ -354,6 +381,15 @@ type CoreServiceListEvents = {
   readonly responseStream: false;
   readonly requestType: typeof core_pb.ListEventsRequest;
   readonly responseType: typeof core_pb.ListEventsResponse;
+};
+
+type CoreServiceListErrorGroups = {
+  readonly methodName: string;
+  readonly service: typeof CoreService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.ListErrorGroupsRequest;
+  readonly responseType: typeof core_pb.ListErrorGroupsResponse;
 };
 
 type CoreServiceListBaseStationActivity = {
@@ -856,6 +892,7 @@ export class CoreService {
   static readonly RevokeDownlink: CoreServiceRevokeDownlink;
   static readonly ListDownlinkQueue: CoreServiceListDownlinkQueue;
   static readonly GetDownlinkResults: CoreServiceGetDownlinkResults;
+  static readonly UpdatePendingDownlink: CoreServiceUpdatePendingDownlink;
   static readonly SendULTransmit: CoreServiceSendULTransmit;
   static readonly RequestBaseStationStatus: CoreServiceRequestBaseStationStatus;
   static readonly InitiatePing: CoreServiceInitiatePing;
@@ -865,6 +902,8 @@ export class CoreService {
   static readonly GetSystemStatus: CoreServiceGetSystemStatus;
   static readonly GetStatistics: CoreServiceGetStatistics;
   static readonly GetReleaseInfo: CoreServiceGetReleaseInfo;
+  static readonly ListCapabilities: CoreServiceListCapabilities;
+  static readonly GetDiagnosticsBundle: CoreServiceGetDiagnosticsBundle;
   static readonly CreateIntegration: CoreServiceCreateIntegration;
   static readonly GetIntegration: CoreServiceGetIntegration;
   static readonly UpdateIntegration: CoreServiceUpdateIntegration;
@@ -874,6 +913,7 @@ export class CoreService {
   static readonly GetActivityAnalytics: CoreServiceGetActivityAnalytics;
   static readonly GetSignalQualityAnalytics: CoreServiceGetSignalQualityAnalytics;
   static readonly ListEvents: CoreServiceListEvents;
+  static readonly ListErrorGroups: CoreServiceListErrorGroups;
   static readonly ListBaseStationActivity: CoreServiceListBaseStationActivity;
   static readonly ListEndpointActivity: CoreServiceListEndpointActivity;
   static readonly StreamEvents: CoreServiceStreamEvents;
@@ -1150,6 +1190,15 @@ export class CoreServiceClient {
     requestMessage: core_pb.GetDownlinkResultsRequest,
     callback: (error: ServiceError|null, responseMessage: core_pb.GetDownlinkResultsResponse|null) => void
   ): UnaryResponse;
+  updatePendingDownlink(
+    requestMessage: core_pb.UpdatePendingDownlinkRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.DownlinkMessage|null) => void
+  ): UnaryResponse;
+  updatePendingDownlink(
+    requestMessage: core_pb.UpdatePendingDownlinkRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.DownlinkMessage|null) => void
+  ): UnaryResponse;
   sendULTransmit(
     requestMessage: core_pb.SendULTransmitRequest,
     metadata: grpc.Metadata,
@@ -1231,6 +1280,24 @@ export class CoreServiceClient {
     requestMessage: google_protobuf_empty_pb.Empty,
     callback: (error: ServiceError|null, responseMessage: core_pb.ReleaseInfo|null) => void
   ): UnaryResponse;
+  listCapabilities(
+    requestMessage: google_protobuf_empty_pb.Empty,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.ListCapabilitiesResponse|null) => void
+  ): UnaryResponse;
+  listCapabilities(
+    requestMessage: google_protobuf_empty_pb.Empty,
+    callback: (error: ServiceError|null, responseMessage: core_pb.ListCapabilitiesResponse|null) => void
+  ): UnaryResponse;
+  getDiagnosticsBundle(
+    requestMessage: core_pb.GetDiagnosticsBundleRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.GetDiagnosticsBundleResponse|null) => void
+  ): UnaryResponse;
+  getDiagnosticsBundle(
+    requestMessage: core_pb.GetDiagnosticsBundleRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.GetDiagnosticsBundleResponse|null) => void
+  ): UnaryResponse;
   createIntegration(
     requestMessage: core_pb.CreateIntegrationRequest,
     metadata: grpc.Metadata,
@@ -1311,6 +1378,15 @@ export class CoreServiceClient {
   listEvents(
     requestMessage: core_pb.ListEventsRequest,
     callback: (error: ServiceError|null, responseMessage: core_pb.ListEventsResponse|null) => void
+  ): UnaryResponse;
+  listErrorGroups(
+    requestMessage: core_pb.ListErrorGroupsRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.ListErrorGroupsResponse|null) => void
+  ): UnaryResponse;
+  listErrorGroups(
+    requestMessage: core_pb.ListErrorGroupsRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.ListErrorGroupsResponse|null) => void
   ): UnaryResponse;
   listBaseStationActivity(
     requestMessage: core_pb.ListBaseStationActivityRequest,

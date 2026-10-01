@@ -33,6 +33,20 @@ jobs:
         run: echo "registry=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
       - run: echo "Version ${{ steps.version.outputs.new_version }} / Registry ${{ steps.registry.outputs.registry }}" >> $GITHUB_STEP_SUMMARY
 
+  proto-breaking:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: bufbuild/buf-action@v1
+        with:
+          version: 1.72.0
+          setup_only: true
+      - name: Compare the protobuf contract with the latest release
+        run: KC-Core/api/proto/check-breaking.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -49,7 +63,7 @@ jobs:
             exit 1
           fi
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
       - name: Run golangci-lint
         run: |
           for mod in KC-Core KC-DB KC-Gateway KC-Identity KC-MQTT pkg; do
@@ -92,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17.5
+        image: postgres:18.1-alpine
         env:
           POSTGRES_PASSWORD: changeme
           POSTGRES_USER: kilocenter
@@ -117,7 +131,7 @@ jobs:
           go-version-file: go.work
       - name: Install golang-migrate
         run: |
-          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.1
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
       - name: Run database migrations
         run: |

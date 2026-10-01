@@ -25,17 +25,24 @@ import {
   TextField,
 } from "@mui/material";
 
+import { useFeedback } from "@contexts/feedback";
 import { useCapabilities } from "@hooks/useCapabilities";
 import { useAddOrgUser, useUpdateOrgUser } from "@hooks/useOrganizations";
 import { useUsersForLookup } from "@hooks/useUsers";
-import { ORG_ROLE, ORG_USER_PLACEHOLDER_EMAIL } from "@constants/app";
+import type { DialogMode } from "@constants/app";
+import {
+  DIALOG_MODE,
+  ORG_ROLE,
+  ORG_USER_PLACEHOLDER_EMAIL,
+} from "@constants/app";
 import { ORG_USER_FORM, ORG_USERS_PAGE } from "@constants/messages";
+import { componentSpacing } from "@theme/index";
 
 export interface OrganizationUserDialogProps {
   open: boolean;
   onClose: () => void;
   orgId: string;
-  mode: "add" | "edit";
+  mode: DialogMode;
   initialUser?: OrganizationUserUI;
 }
 
@@ -51,7 +58,7 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
   mode,
   initialUser,
 }) => {
-  const isEditMode = mode === "edit";
+  const isEditMode = mode === DIALOG_MODE.EDIT;
   const { isServerAdmin } = useCapabilities();
 
   // In add mode: server admin picks existing user via autocomplete,
@@ -73,6 +80,7 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
   const { mutate: addUser, isPending: isAddPending } = useAddOrgUser();
   const { mutate: updateUser, isPending: isUpdatePending } = useUpdateOrgUser();
   const isPending = isAddPending || isUpdatePending;
+  const feedback = useFeedback();
 
   // Fetch users for autocomplete (only in add mode for server admins)
   const { data: usersData, isLoading: isLoadingUsers } = useUsersForLookup({
@@ -166,6 +174,7 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
         {
           onSuccess: () => {
             handleClose();
+            feedback.success(ORG_USER_FORM.MSG_MEMBER_UPDATED);
           },
           onError: () => {
             setSubmitError(ORG_USER_FORM.ERR_UPDATE_FAILED);
@@ -189,6 +198,7 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
         {
           onSuccess: () => {
             handleClose();
+            feedback.success(ORG_USER_FORM.MSG_MEMBER_ADDED);
           },
           onError: () => {
             setSubmitError(ORG_USER_FORM.ERR_ADD_FAILED);
@@ -258,7 +268,10 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
                     endAdornment: (
                       <>
                         {isLoadingUsers ? (
-                          <CircularProgress color="inherit" size={20} />
+                          <CircularProgress
+                            color="inherit"
+                            size={componentSpacing.spinner.button}
+                          />
                         ) : null}
                         {params.InputProps.endAdornment}
                       </>
@@ -303,10 +316,15 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
                 onChange={(e) => handleOrgAdminChange(e.target.checked)}
               />
             }
-            label={ORG_USER_FORM.LABEL_IS_ORG_ADMIN}
+            label={ORG_USER_FORM.LABEL_TENANT_MANAGER}
           />
           <Box
-            sx={{ color: "text.secondary", fontSize: "0.75rem", ml: 4, mb: 1 }}
+            sx={{
+              color: "text.secondary",
+              fontSize: (theme) => theme.typography.caption.fontSize,
+              ml: 4,
+              mb: 1,
+            }}
           >
             {ORG_USER_FORM.HELPER_ORG_ADMIN}
           </Box>
@@ -321,12 +339,12 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
                   onChange={(e) => setIsBsAdmin(e.target.checked)}
                 />
               }
-              label={ORG_USER_FORM.LABEL_IS_BS_ADMIN}
+              label={ORG_USER_FORM.LABEL_BASE_STATION_MANAGER}
             />
             <Box
               sx={{
                 color: "text.secondary",
-                fontSize: "0.75rem",
+                fontSize: (theme) => theme.typography.caption.fontSize,
                 ml: 4,
                 mb: 1,
               }}
@@ -340,9 +358,15 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
                   onChange={(e) => setIsEpAdmin(e.target.checked)}
                 />
               }
-              label={ORG_USER_FORM.LABEL_IS_EP_ADMIN}
+              label={ORG_USER_FORM.LABEL_ENDPOINT_MANAGER}
             />
-            <Box sx={{ color: "text.secondary", fontSize: "0.75rem", ml: 4 }}>
+            <Box
+              sx={{
+                color: "text.secondary",
+                fontSize: (theme) => theme.typography.caption.fontSize,
+                ml: 4,
+              }}
+            >
               {ORG_USER_FORM.HELPER_EP_ADMIN}
             </Box>
           </>

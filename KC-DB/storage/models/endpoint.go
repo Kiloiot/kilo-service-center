@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
 	"github.com/google/uuid"
 )
 
@@ -17,14 +19,14 @@ type EUI [8]byte
 
 // String returns the EUI as a hex string
 func (e EUI) String() string {
-	return hex.EncodeToString(e[:])
+	return mioty.FormatEUIBytes(e[:])
 }
 
 // ToUint64 converts the EUI to a uint64 integer
 func (e EUI) ToUint64() uint64 {
 	var result uint64
-	for i := 0; i < 8; i++ {
-		result = (result << 8) | uint64(e[i])
+	for _, b := range e {
+		result = (result << 8) | uint64(b)
 	}
 	return result
 }
@@ -41,7 +43,7 @@ func (e *EUI) UnmarshalText(text []byte) error {
 		return err
 	}
 	if len(b) != 8 {
-		return fmt.Errorf("EUI must be 8 bytes, got %d", len(b))
+		return fmt.Errorf(errFmtEUIMustBe8BytesGot, len(b))
 	}
 	copy(e[:], b)
 	return nil
@@ -57,14 +59,14 @@ func (e *EUI) Scan(src interface{}) error {
 	switch v := src.(type) {
 	case []byte:
 		if len(v) != 8 {
-			return fmt.Errorf("EUI must be 8 bytes, got %d", len(v))
+			return fmt.Errorf(errFmtEUIMustBe8BytesGot, len(v))
 		}
 		copy(e[:], v)
 		return nil
 	case nil:
 		return nil
 	default:
-		return fmt.Errorf("cannot scan %T into EUI", src)
+		return fmt.Errorf(errFmtCannotScanIntoEUI, src)
 	}
 }
 
@@ -118,6 +120,8 @@ type EndPoint struct {
 	Propagated       bool       `db:"propagated" json:"propagated"`                // Propagation status (default false)
 	PropagatedAt     *time.Time `db:"propagated_at" json:"propagatedAt,omitempty"` // Last propagation timestamp (nullable)
 	PropagationCount int32      `db:"propagation_count" json:"propagationCount"`   // Number of propagations (default 0)
+	// When an edit last changed the attach propagate parameters (BSSCI §3.8.1); nil when none has
+	ProfileChangedAt *time.Time `db:"profile_changed_at" json:"profileChangedAt,omitempty"`
 
 	// MIOTY Configuration fields per BSSCI v1.0.0 (Attach and Attach Propagate operations)
 	DualChan    bool `db:"dual_chan" json:"dualChan"`        // True if End Point uses dual channel mode
@@ -129,7 +133,6 @@ type EndPoint struct {
 	AttachCnt            *uint32 `db:"attach_cnt" json:"attachCnt,omitempty"`                         // Attachment counter (uint32, 0-4294967295) per SCACI §3.6.1
 	Nonce                []byte  `db:"nonce" json:"nonce,omitempty"`                                  // 4 Byte End Point nonce
 	Sign                 []byte  `db:"sign" json:"sign,omitempty"`                                    // 4 Byte End Point signature
-	PresharedKey         []byte  `db:"preshared_key" json:"-"`                                        // MIOTY preshared key for detach CMAC validation (hidden in JSON, optional per BSSCI §5.7)
 	LastAttachRxTime     *int64  `db:"last_attach_rx_time" json:"lastAttachRxTime,omitempty"`         // Unix UTC time of last attach reception (ns)
 	LastAttachRxDuration *int64  `db:"last_attach_rx_duration" json:"lastAttachRxDuration,omitempty"` // Duration of last attach reception (ns)
 
@@ -170,7 +173,7 @@ type EndPoint struct {
 
 	// Compatibility fields
 	CryptoMode int16  `db:"crypto_mode" json:"cryptoMode"`
-	EPClass    string `db:"endpoint_class" json:"epClass"` // 'Z' or 'A'
+	EPClass    string `db:"endpoint_class" json:"epClass"` // 'Z' or 'A'; storage writes the class Bidi implies
 
 	// Status fields
 	EpStatus     string     `db:"ep_status" json:"epStatus"` // Attach status: attached, detached, attaching (per migration 003)
@@ -184,67 +187,13 @@ type EndPoint struct {
 	UpdatedAt time.Time         `db:"updated_at" json:"updatedAt"`
 }
 
-// DownlinkMessage represents a queued downlink message to an End Point
-type DownlinkMessage struct {
-	ID       int64 `db:"id" json:"id"`
-	EPEUI    EUI   `db:"ep_eui" json:"epEui"` // End Point EUI (maps to ep_eui in DB)
-	TenantID int64 `db:"tenant_id" json:"tenant_id"`
-
-	// Message content
-	Payload   []byte `db:"payload" json:"payload"`
-	Port      int32  `db:"port" json:"port"`
-	Confirmed bool   `db:"confirmed" json:"confirmed"`
-
-	// Scheduling
-	Priority   int32      `db:"priority" json:"priority"`
-	ValidUntil *time.Time `db:"valid_until" json:"valid_until,omitempty"`
-	EarliestAt time.Time  `db:"earliest_at" json:"earliest_at"`
-
-	// Status tracking
-	Status      string `db:"status" json:"status"` // pending, scheduled, transmitted, confirmed, failed, expired
-	Attempts    int32  `db:"attempts" json:"attempts"`
-	MaxAttempts int32  `db:"max_attempts" json:"max_attempts"`
-
-	// Transmission results
-	TransmittedAt  *time.Time `db:"transmitted_at" json:"transmitted_at,omitempty"`
-	AcknowledgedAt *time.Time `db:"acknowledged_at" json:"acknowledged_at,omitempty"`
-	GatewayEUI     *EUI       `db:"bs_eui" json:"bsEui,omitempty"`
-	FailureReason  *string    `db:"failure_reason" json:"failure_reason,omitempty"`
-
-	// Metadata
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
-}
-
-// RoamingAgreement represents a roaming agreement with another network
-type RoamingAgreement struct {
-	ID               int64  `db:"id" json:"id"`
-	TenantID         int64  `db:"tenant_id" json:"tenant_id"`
-	PartnerNetworkID string `db:"partner_network_id" json:"partner_network_id"`
-	PartnerName      string `db:"partner_name" json:"partner_name"`
-
-	// Agreement details
-	AgreementType string     `db:"agreement_type" json:"agreement_type"` // bilateral, unilateral_in, unilateral_out
-	IsActive      bool       `db:"is_active" json:"is_active"`
-	ValidFrom     time.Time  `db:"valid_from" json:"valid_from"`
-	ValidUntil    *time.Time `db:"valid_until" json:"valid_until,omitempty"`
-
-	// Technical details
-	PartnerEndpoint string `db:"partner_endpoint" json:"partner_endpoint"`
-	APIKeyHash      string `db:"api_key_hash" json:"-"` // Hidden in JSON
-
-	// Metadata
-	Metadata  map[string]interface{} `db:"metadata" json:"metadata,omitempty"`
-	CreatedAt time.Time              `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time              `db:"updated_at" json:"updated_at"`
-}
-
-// EndPointStats represents endpoint statistics
-type EndPointStats struct {
-	EndPointID     string     `json:"endpoint_id"`
-	TotalUplinks   int64      `json:"total_uplinks"`
-	TotalDownlinks int64      `json:"total_downlinks"`
-	AvgRSSI        float64    `json:"avg_rssi"`
-	AvgSNR         float64    `json:"avg_snr"`
-	LastSeenAt     *time.Time `json:"last_seen_at,omitempty"`
+// OverTheAirAttachCounter is the attach counter the endpoint's next
+// over-the-air attach must advance, nil before its first one: only an
+// over-the-air attach records a signature, and until then the counter
+// provisioning stored may be the device's first (radio protocol §3.6.5.3).
+func (e *EndPoint) OverTheAirAttachCounter() *uint32 {
+	if len(e.Sign) == 0 {
+		return nil
+	}
+	return e.AttachCnt
 }

@@ -1,13 +1,17 @@
 import React, {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
-  useState,
+  useMemo,
 } from "react";
 
-import { api } from "@services/api";
+import { useVersionInfo } from "@hooks";
+
+import { getErrorMessage } from "@utils/error-message";
 import { logger } from "@utils/logger";
+import { APP_ERRORS, LOG_MESSAGES, VERSION_INFO } from "@constants/messages";
 
 interface VersionInfo {
   version: string;
@@ -43,62 +47,50 @@ interface SystemContextValue {
 
 const SystemContext = createContext<SystemContextValue | undefined>(undefined);
 
+const fallbackVersionInfo = (): VersionInfo => ({
+  version: VERSION_INFO.UNKNOWN,
+  buildTime: new Date().toISOString(),
+  gitCommit: VERSION_INFO.UNKNOWN,
+  gitBranch: VERSION_INFO.UNKNOWN,
+  buildUser: VERSION_INFO.UNKNOWN,
+  goVersion: VERSION_INFO.UNKNOWN,
+  schemaVersion: 0,
+  artifacts: {},
+  isProduction: false,
+  edition: __APP_EDITION__,
+  licenseId: __LICENSE_ID__,
+  licenseUrl: __LICENSE_URL__,
+  sourceUrl: __SOURCE_URL__,
+  documentationUrl: __DOCS_URL__,
+  homepageUrl: __HOMEPAGE_URL__,
+  trademarkNotice: __TRADEMARK_NOTICE__,
+});
+
 export const SystemProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchVersion = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const version = await api.getVersion();
-      setVersionInfo(version);
-    } catch (err) {
-      logger.error("Failed to fetch version info:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to load version info",
-      );
-      // Set fallback version info using build-time disclosure constants
-      setVersionInfo({
-        version: "unknown",
-        buildTime: new Date().toISOString(),
-        gitCommit: "unknown",
-        gitBranch: "unknown",
-        buildUser: "unknown",
-        goVersion: "unknown",
-        schemaVersion: 0,
-        artifacts: {},
-        isProduction: false,
-        edition: __APP_EDITION__,
-        licenseId: __LICENSE_ID__,
-        licenseUrl: __LICENSE_URL__,
-        sourceUrl: __SOURCE_URL__,
-        documentationUrl: __DOCS_URL__,
-        homepageUrl: __HOMEPAGE_URL__,
-        trademarkNotice: __TRADEMARK_NOTICE__,
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data, isLoading, error, refetch } = useVersionInfo();
 
   useEffect(() => {
-    fetchVersion();
-  }, []);
+    if (error) logger.error(LOG_MESSAGES.VERSION_FETCH_FAILED, error);
+  }, [error]);
 
-  const refreshVersion = async () => {
-    await fetchVersion();
-  };
+  // Build-time disclosure constants stand in when the backend is unreachable.
+  const versionInfo = useMemo<VersionInfo | null>(
+    () => data ?? (error ? fallbackVersionInfo() : null),
+    [data, error],
+  );
+
+  const refreshVersion = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   return (
     <SystemContext.Provider
       value={{
         versionInfo,
-        loading,
-        error,
+        loading: isLoading,
+        error: error ? getErrorMessage(error, VERSION_INFO.LOAD_FAILED) : null,
         refreshVersion,
       }}
     >
@@ -112,7 +104,7 @@ export const useSystem = (): SystemContextValue => {
   const context = useContext(SystemContext);
 
   if (!context) {
-    throw new Error("useSystem must be used within SystemProvider");
+    throw new Error(APP_ERRORS.SYSTEM_CONTEXT_REQUIRED);
   }
 
   return context;

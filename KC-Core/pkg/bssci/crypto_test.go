@@ -1,107 +1,82 @@
 package bssci
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-// TestValidateDetachSignatureCMAC_MatchingSignatures verifies signature equality fallback
-func TestValidateDetachSignatureCMAC_MatchingSignatures(t *testing.T) {
-	detachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	attachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	nwkSnKey := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
-	presharedKey := []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20}
+// Known-answer vectors computed outside this code base with OpenSSL
+// (`openssl mac -cipher AES-128-CBC CMAC`, `openssl enc -aes-128-ecb -nopad`)
+// and Python `cryptography`, over the radio spec Fig. 3-15 IV
+// 70B3D56770111505 FF 00 00123456 FFFF and the Fig. 3-16 seed.
+const (
+	katPresharedKeyHex = "2b7e151628aed2a6abf7158809cf4f3c"
+	katEpEUI           = uint64(0x70B3D56770111505)
+	katAttachCnt       = uint32(0x123456)
+	katSignHex         = "d7173412"
+	katNonceHex        = "a1b2c3d4"
+	katSessionKeyHex   = "e77429f27a4d62080a8cef1447a42777"
+	// katLegacySignHex is the CMAC over the 15-byte IV with a 3-byte counter.
+	katLegacySignHex = "c31aeb23"
+)
 
-	err := ValidateDetachSignatureCMAC(detachSign, attachSign, nwkSnKey, presharedKey)
-	require.NoError(t, err, "Matching signatures should validate successfully")
+func katBytes(t *testing.T, s string) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(s)
+	require.NoError(t, err)
+	return b
 }
 
-// TestValidateDetachSignatureCMAC_MismatchedSignatures verifies signature mismatch detection
-func TestValidateDetachSignatureCMAC_MismatchedSignatures(t *testing.T) {
-	detachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	attachSign := []byte{0x11, 0x22, 0x33, 0x44} // Different signature
-	nwkSnKey := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
-	presharedKey := []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20}
+func TestValidateAttachSignature_KnownAnswer(t *testing.T) {
+	key := katBytes(t, katPresharedKeyHex)
 
-	err := ValidateDetachSignatureCMAC(detachSign, attachSign, nwkSnKey, presharedKey)
-	require.Error(t, err, "Mismatched signatures should fail validation")
-	assert.Contains(t, err.Error(), "signature mismatch", "Error should indicate signature mismatch")
+	require.NoError(t, ValidateAttachSignature(katEpEUI, katAttachCnt, katBytes(t, katSignHex), key),
+		"a signature over the 16-byte Fig. 3-15 IV must verify")
+	require.ErrorIs(t, ValidateAttachSignature(katEpEUI, katAttachCnt, katBytes(t, katLegacySignHex), key),
+		errCryptoSignatureMismatch, "a signature over a 15-byte IV must not verify")
 }
 
-// TestValidateDetachSignatureCMAC_InvalidDetachSignatureLength verifies detach signature length validation
-func TestValidateDetachSignatureCMAC_InvalidDetachSignatureLength(t *testing.T) {
-	detachSign := []byte{0xAA, 0xBB} // Too short (2 bytes instead of 4)
-	attachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	nwkSnKey := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
-	presharedKey := []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20}
-
-	err := ValidateDetachSignatureCMAC(detachSign, attachSign, nwkSnKey, presharedKey)
-	require.Error(t, err, "Invalid detach signature length should fail validation")
-	assert.Contains(t, err.Error(), "detach signature must be exactly 4 bytes", "Error should indicate invalid detach signature length")
+func TestDeriveSessionKey_KnownAnswer(t *testing.T) {
+	got, err := DeriveSessionKey(katEpEUI, katBytes(t, katNonceHex), katBytes(t, katSignHex), katBytes(t, katPresharedKeyHex))
+	require.NoError(t, err)
+	require.Equal(t, katSessionKeyHex, hex.EncodeToString(got))
 }
 
-// TestValidateDetachSignatureCMAC_InvalidAttachSignatureLength verifies attach signature length validation
-func TestValidateDetachSignatureCMAC_InvalidAttachSignatureLength(t *testing.T) {
-	detachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	attachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF} // Too long (6 bytes instead of 4)
-	nwkSnKey := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
-	presharedKey := []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20}
+func TestCurrentNetworkSessionKey(t *testing.T) {
+	presharedKey := katBytes(t, katPresharedKeyHex)
+	sessionKey := katBytes(t, katSessionKeyHex)
+	rotatedKey := katBytes(t, "000102030405060708090a0b0c0d0e0f")
 
-	err := ValidateDetachSignatureCMAC(detachSign, attachSign, nwkSnKey, presharedKey)
-	require.Error(t, err, "Invalid attach signature length should fail validation")
-	assert.Contains(t, err.Error(), "attach signature must be exactly 4 bytes", "Error should indicate invalid attach signature length")
-}
+	endpoint := func(key []byte, attachedOverTheAir bool) *models.EndPoint {
+		ep := &models.EndPoint{NwkSnKey: key}
+		binary.BigEndian.PutUint64(ep.EUI[:], katEpEUI)
+		if attachedOverTheAir {
+			ep.Nonce = katBytes(t, katNonceHex)
+			ep.Sign = katBytes(t, katSignHex)
+		}
+		return ep
+	}
 
-// TestValidateDetachSignatureCMAC_NilKeys verifies fallback works with nil keys
-func TestValidateDetachSignatureCMAC_NilKeys(t *testing.T) {
-	detachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	attachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-
-	// Test with both keys nil
-	err := ValidateDetachSignatureCMAC(detachSign, attachSign, nil, nil)
-	require.NoError(t, err, "Validation should succeed with nil keys when signatures match")
-
-	// Test with only nwkSnKey provided
-	nwkSnKey := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
-	err = ValidateDetachSignatureCMAC(detachSign, attachSign, nwkSnKey, nil)
-	require.NoError(t, err, "Validation should succeed with only nwkSnKey when signatures match")
-
-	// Test with only presharedKey provided
-	presharedKey := []byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20}
-	err = ValidateDetachSignatureCMAC(detachSign, attachSign, nil, presharedKey)
-	require.NoError(t, err, "Validation should succeed with only presharedKey when signatures match")
-}
-
-// TestValidateDetachSignatureCMAC_EmptyKeys verifies fallback works with empty byte slices
-func TestValidateDetachSignatureCMAC_EmptyKeys(t *testing.T) {
-	detachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	attachSign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	emptyKey := []byte{}
-
-	// Test with both keys empty
-	err := ValidateDetachSignatureCMAC(detachSign, attachSign, emptyKey, emptyKey)
-	require.NoError(t, err, "Validation should succeed with empty keys when signatures match")
-}
-
-// TestValidateDetachSignatureCMAC_ConstantTimeComparison verifies timing-safe comparison.
-// This test ensures we use constant-time comparison to prevent timing attacks.
-func TestValidateDetachSignatureCMAC_ConstantTimeComparison(t *testing.T) {
-	// Test case 1: First byte differs
-	detachSign1 := []byte{0xFF, 0xBB, 0xCC, 0xDD}
-	attachSign1 := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-
-	err1 := ValidateDetachSignatureCMAC(detachSign1, attachSign1, nil, nil)
-	require.Error(t, err1, "Should detect first byte mismatch")
-
-	// Test case 2: Last byte differs
-	detachSign2 := []byte{0xAA, 0xBB, 0xCC, 0xFF}
-	attachSign2 := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-
-	err2 := ValidateDetachSignatureCMAC(detachSign2, attachSign2, nil, nil)
-	require.Error(t, err2, "Should detect last byte mismatch")
-
-	// Both should return the same error message (constant-time comparison)
-	assert.Equal(t, err1.Error(), err2.Error(), "Error messages should be identical regardless of which byte differs")
+	tests := []struct {
+		name          string
+		endpoint      *models.EndPoint
+		activeSession []byte
+		want          []byte
+	}{
+		{"never attached", endpoint(presharedKey, false), nil, presharedKey},
+		{"pre-attached session", endpoint(presharedKey, false), presharedKey, presharedKey},
+		{"over-the-air session", endpoint(presharedKey, true), sessionKey, sessionKey},
+		{"pre-attached after an earlier over-the-air attach", endpoint(presharedKey, true), presharedKey, presharedKey},
+		{"pre-shared key re-provisioned after the session began", endpoint(rotatedKey, true), sessionKey, rotatedKey},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, CurrentNetworkSessionKey(tc.endpoint, tc.activeSession))
+		})
+	}
 }

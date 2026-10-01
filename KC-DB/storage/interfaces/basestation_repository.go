@@ -25,9 +25,6 @@ type BaseStationRepository interface {
 	// Update updates an existing Base Station
 	Update(ctx context.Context, tenantID, id int64, updates map[string]interface{}) error
 
-	// Delete deletes a Base Station
-	Delete(ctx context.Context, tenantID, id int64) error
-
 	// List retrieves Base Stations based on filter criteria
 	List(ctx context.Context, filter *models.BaseStationFilter) ([]*models.BaseStation, int64, error)
 
@@ -40,30 +37,17 @@ type BaseStationRepository interface {
 	// set it (callers reload and compare).
 	UpdateTLSFingerprintIfBlank(ctx context.Context, tenantID, id int64, fingerprint string) (bool, error)
 
-	// UpdateSessionInfo updates the session information of a Base Station
-	UpdateSessionInfo(ctx context.Context, tenantID int64, eui []byte, sessionUUID string) error
+	// UpdateTLSCertExpiryIfBlank persists the station certificate's expiry
+	// only while the stored tls_cert_expires_at is still NULL; an existing
+	// expiry is never overwritten. Returns whether a row was updated.
+	UpdateTLSCertExpiryIfBlank(ctx context.Context, tenantID, id int64, expiresAt time.Time) (bool, error)
 
 	// GetStatistics retrieves statistics for Base Stations
-	GetStatistics(ctx context.Context, tenantID int64) (*BaseStationStatistics, error)
+	GetStatistics(ctx context.Context, tenantID int64) (*models.BaseStationStatistics, error)
 
 	// UpdateEUI updates the Base Station EUI with transactional cascade to all dependent tables
 	UpdateEUI(ctx context.Context, tenantID int64, oldEui, newEui []byte) (*models.BaseStation, error)
 
 	// ListAllLocations retrieves all base stations with coordinates across all tenants
 	ListAllLocations(ctx context.Context) ([]*models.BaseStation, error)
-
-	// Propagation state management (single row per base station, no tenant scoping)
-	GetPropagationState(ctx context.Context, baseStationID int64) (*models.BaseStationPropagationState, error)
-	UpsertPropagationState(ctx context.Context, state *models.BaseStationPropagationState) error
-	UpdatePropagationStatus(ctx context.Context, baseStationID int64, status string, lastError *string) error
-	IncrementRetryCount(ctx context.Context, baseStationID int64, nextRetryAt time.Time) error
-}
-
-// BaseStationStatistics represents aggregated statistics for Base Stations
-type BaseStationStatistics struct {
-	TotalCount   int64 `db:"total_count" json:"total_count"`
-	OnlineCount  int64 `db:"online_count" json:"online_count"`
-	OfflineCount int64 `db:"offline_count" json:"offline_count"`
-	BSSCICount   int64 `db:"bssci_count" json:"bssci_count"`
-	MQTTCount    int64 `db:"mqtt_count" json:"mqtt_count"`
 }

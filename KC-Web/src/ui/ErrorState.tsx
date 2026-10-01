@@ -10,8 +10,9 @@ import React from "react";
 
 import { Box, Button, Typography } from "@mui/material";
 
-import { ERROR_BOUNDARY } from "@constants/messages";
+import { ERROR_BOUNDARY, ERROR_STATE } from "@constants/messages";
 import { isDevelopment } from "@config/env";
+import { componentSpacing } from "@theme/index";
 
 export interface ErrorStateProps {
   /** Main error title */
@@ -55,18 +56,18 @@ export interface ErrorStateProps {
  * />
  */
 export const ErrorState: React.FC<ErrorStateProps> = ({
-  title = "Something went wrong",
+  title = ERROR_STATE.TITLE,
   message,
   error,
   icon,
   onRetry,
-  retryLabel = "Try again",
+  retryLabel = ERROR_STATE.RETRY,
   secondaryAction,
-  minHeight = 300,
+  minHeight = componentSpacing.stateView.minHeight,
   showDetails,
 }) => {
   const displayMessage =
-    message || error?.message || "An unexpected error occurred";
+    message || error?.message || ERROR_STATE.FALLBACK_MESSAGE;
   const shouldShowDetails = showDetails ?? isDevelopment;
 
   return (
@@ -86,7 +87,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
           sx={{
             mb: 2,
             color: "error.main",
-            opacity: 0.8,
+            opacity: componentSpacing.stateView.errorIconOpacity,
           }}
         >
           {icon}
@@ -100,7 +101,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
       <Typography
         variant="body2"
         color="text.secondary"
-        sx={{ maxWidth: 400, mb: 2 }}
+        sx={{ maxWidth: componentSpacing.stateView.messageMaxWidth, mb: 2 }}
       >
         {displayMessage}
       </Typography>
@@ -122,10 +123,18 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
 
       {/* Show stack trace only in development */}
       {shouldShowDetails && error?.stack && (
-        <Box sx={{ mt: 4, textAlign: "left", maxWidth: 600, width: "100%" }}>
+        <Box
+          sx={{
+            mt: 4,
+            textAlign: "left",
+            maxWidth: componentSpacing.stateView.detailsMaxWidth,
+            width: "100%",
+          }}
+        >
           <details>
-            <summary
-              style={{ cursor: "pointer", marginBottom: 8, color: "inherit" }}
+            <Box
+              component="summary"
+              sx={{ cursor: "pointer", mb: 2, color: "inherit" }}
             >
               <Typography
                 variant="caption"
@@ -134,7 +143,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
               >
                 {ERROR_BOUNDARY.STACK_TRACE_SUMMARY}
               </Typography>
-            </summary>
+            </Box>
             <Box
               component="pre"
               sx={{
@@ -142,7 +151,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
                 bgcolor: "background.paper",
                 borderRadius: 1,
                 overflow: "auto",
-                fontSize: "0.75rem",
+                fontSize: (theme) => theme.typography.caption.fontSize,
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
                 border: 1,

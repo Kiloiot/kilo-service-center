@@ -38,25 +38,25 @@ func ParseSemanticVersion(v string) (major, minor, patch int, err error) {
 	parts := strings.Split(v, ".")
 
 	if len(parts) != 3 {
-		return 0, 0, 0, fmt.Errorf("version must be major.minor.patch, got: %s", v)
+		return 0, 0, 0, fmt.Errorf(errFmtInvalidVersionFormat, v)
 	}
 
 	// Parse major version with overflow protection
 	major, err = strconv.Atoi(strings.TrimSpace(parts[0]))
-	if err != nil || major < 0 || major > 999 {
-		return 0, 0, 0, fmt.Errorf("invalid major version: %s", parts[0])
+	if err != nil || major < 0 || major > maxVersionComponent {
+		return 0, 0, 0, fmt.Errorf(errFmtInvalidMajorVersion, parts[0])
 	}
 
 	// Parse minor version with overflow protection
 	minor, err = strconv.Atoi(strings.TrimSpace(parts[1]))
-	if err != nil || minor < 0 || minor > 999 {
-		return 0, 0, 0, fmt.Errorf("invalid minor version: %s", parts[1])
+	if err != nil || minor < 0 || minor > maxVersionComponent {
+		return 0, 0, 0, fmt.Errorf(errFmtInvalidMinorVersion, parts[1])
 	}
 
 	// Parse patch version with overflow protection
 	patch, err = strconv.Atoi(strings.TrimSpace(parts[2]))
-	if err != nil || patch < 0 || patch > 999 {
-		return 0, 0, 0, fmt.Errorf("invalid patch version: %s", parts[2])
+	if err != nil || patch < 0 || patch > maxVersionComponent {
+		return 0, 0, 0, fmt.Errorf(errFmtInvalidPatchVersion, parts[2])
 	}
 
 	return major, minor, patch, nil

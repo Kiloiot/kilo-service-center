@@ -1,13 +1,14 @@
 package bssci_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net"
 	"strings"
 	"testing"
 	"time"
+
+	bssciutil "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	bssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
@@ -17,6 +18,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+// Mock TCP address ports for the fake BSSCI connection.
+const (
+	mockConnLocalPort  = 5000
+	mockConnRemotePort = 12345
+)
+
+// orgEnforcementEnabled turns on per-organization tenant enforcement in fixtures.
+const orgEnforcementEnabled = true
 
 // mockConnectionService implements ConnectionService for testing error catalog behavior
 type mockConnectionService struct {
@@ -30,7 +40,7 @@ type mockConnectionService struct {
 func (m *mockConnectionService) GetBaseStationGlobal(_ context.Context, _ [8]byte) (*basestation.BaseStation, error) {
 	m.globalCalled = true
 	if m.shouldFail {
-		return nil, errors.New("base station not found in database")
+		return nil, errBaseStationNotFoundInDatabase
 	}
 	tid := m.tenantID
 	if tid == 0 {
@@ -71,13 +81,10 @@ type mockConnForConnect struct {
 func (m *mockConnForConnect) Read(_ []byte) (n int, err error) { return 0, nil }
 func (m *mockConnForConnect) Write(b []byte) (n int, err error) {
 	m.data = b
-	// Skip BSSCI headers by checking protocol identifier
-	if len(b) == 12 && bytes.HasPrefix(b, mioty.MIOTYFrameIdentifier[:]) {
-		return len(b), nil
-	}
+	payload := bssciutil.FramePayload(b)
 	// Decode msgpack payloads to detect error frames
 	var msg map[string]interface{}
-	if err := msgpack.Unmarshal(b, &msg); err == nil {
+	if err := msgpack.Unmarshal(payload, &msg); err == nil {
 		if cmd, ok := msg["command"].(string); ok && cmd == "error" {
 			m.errorSent = true
 			// Capture error code
@@ -120,10 +127,10 @@ func (m *mockConnForConnect) Write(b []byte) (n int, err error) {
 }
 func (m *mockConnForConnect) Close() error { return nil }
 func (m *mockConnForConnect) LocalAddr() net.Addr {
-	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 5000}
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: mockConnLocalPort}
 }
 func (m *mockConnForConnect) RemoteAddr() net.Addr {
-	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: mockConnRemotePort}
 }
 func (m *mockConnForConnect) SetDeadline(_ time.Time) error      { return nil }
 func (m *mockConnForConnect) SetReadDeadline(_ time.Time) error  { return nil }
@@ -199,8 +206,7 @@ func TestHandleConnectCompleteUnregisteredBaseStationUsesErrorCatalog(t *testing
 			BaseStationEUI: bsEUI,
 			SessionUUID:    make([]byte, 16), // Required for handleConnectComplete
 		},
-		UserProvidedName: "Unregistered BS",
-		Conn:             mockConn,
+		Conn: mockConn,
 	}
 
 	// Registration is validated during the connect request, before conRsp
@@ -273,8 +279,7 @@ func TestConnectAdoptsRegisteredTenantCommunityFallback(t *testing.T) {
 			// Starts with server default
 			IsResumed: true,
 		},
-		UserProvidedName: "External BS",
-		Conn:             mockConn,
+		Conn: mockConn,
 		// Skip PersistSession DbSessionID assignment (avoids nil storage in loadPendingOperations)
 	}
 
@@ -327,7 +332,7 @@ func TestConnectTenantMismatchRejected(t *testing.T) {
 		Model:                 "Test Model",
 		Name:                  "Test SC",
 		SoftwareVersion:       "1.0.0",
-		OrgEnforcementEnabled: true,
+		OrgEnforcementEnabled: orgEnforcementEnabled,
 	})
 	server.SetConnectionManager(nil)
 
@@ -403,8 +408,7 @@ func TestConnectCompleteDefaultTenantUnchanged(t *testing.T) {
 			ResolvedTenantID: 1,
 			IsResumed:        true,
 		},
-		UserProvidedName: "Local BS",
-		Conn:             mockConn,
+		Conn: mockConn,
 	}
 
 	connectData := map[string]interface{}{
@@ -454,8 +458,7 @@ func TestConnectHandler_ValidGeoLocation_PersistsToDB(t *testing.T) {
 			BaseStationEUI: bssci.TestBsEui01,
 			SessionUUID:    make([]byte, 16),
 		},
-		UserProvidedName: "GeoLocation BS",
-		Conn:             mockConn,
+		Conn: mockConn,
 	}
 
 	// handleConnect parses geoLocation from conRsp data into session.GeoLocation
@@ -528,8 +531,7 @@ func TestConnectHandler_InvalidGeoLocation_NoPersistence(t *testing.T) {
 			BaseStationEUI: bssci.TestBsEui01,
 			SessionUUID:    make([]byte, 16),
 		},
-		UserProvidedName: "Invalid Geo BS",
-		Conn:             mockConn,
+		Conn: mockConn,
 	}
 
 	// geoLocation as a string (wrong type — should be array)
@@ -589,8 +591,7 @@ func TestConnectHandler_OutOfRangeGeoLocation_NoPersistence(t *testing.T) {
 			BaseStationEUI: bssci.TestBsEui01,
 			SessionUUID:    make([]byte, 16),
 		},
-		UserProvidedName: "OutOfRange Geo BS",
-		Conn:             mockConn,
+		Conn: mockConn,
 	}
 
 	// Latitude = 200.0 exceeds LatitudeMax (90.0)
@@ -623,3 +624,12 @@ func TestConnectHandler_OutOfRangeGeoLocation_NoPersistence(t *testing.T) {
 func (m *geoLocationTrackingRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
 	return true, nil
 }
+
+func (m *geoLocationTrackingRepo) UpdateTLSCertExpiryIfBlank(_ context.Context, _, _ int64, _ time.Time) (bool, error) {
+	return true, nil
+}
+
+// Sentinel errors returned by this package; callers match them with errors.Is.
+var (
+	errBaseStationNotFoundInDatabase = errors.New("base station not found in database")
+)

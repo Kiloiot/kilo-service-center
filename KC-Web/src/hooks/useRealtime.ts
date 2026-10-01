@@ -1,294 +1,83 @@
 /**
  * Realtime Hooks
  *
- * React hooks for realtime connection management and cache invalidation.
+ * The app keeps its views current through the realtime streams: every event
+ * invalidates the queries it makes stale, a reconnected stream catches up on
+ * what it may have missed, and while the streams are not all connected the
+ * open views are re-read on a timer instead.
  */
 
 import { useEffect, useRef, useState } from "react";
 
-import type { QueryClient } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
+  catchUpKeys,
   type ConnectionState,
+  invalidatedKeys,
   type RealtimeEvent,
-  type RealtimeEventType,
-  realtimeService,
+  realtimeLifecycle,
+  type RealtimeStreamKind,
+  realtimeSubscriptions,
 } from "@services/realtime";
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import {
-  REALTIME_STREAM_KIND,
-  TIMING_REALTIME_EVENT_STREAM_CATCHUP_DEBOUNCE_MS,
-  TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS,
+  CONNECTION_STATE,
+  REALTIME_LIFECYCLE_EVENT,
+  TIMING_FALLBACK_POLL_MS,
+  TIMING_REALTIME_CATCHUP_DEBOUNCE_MS,
+  TIMING_REALTIME_CATCHUP_MIN_INTERVAL_MS,
+  TIMING_REALTIME_INVALIDATION_BATCH_MS,
   TIMING_REALTIME_INVALIDATION_WINDOW_MS,
 } from "@constants/app";
-import { queryKeys } from "@config/query-keys";
+
+import { useCapabilities } from "./useCapabilities";
 
 /**
- * Event type to query keys invalidation mapping.
- * When an event is received, these query keys are invalidated.
+ * Opens the streams the signed-in user's roles may hold in the current
+ * organization: the event stream for every role, the server narrowing its
+ * categories to the roles, and the uplink stream for endpoint managers.
  */
-const EVENT_INVALIDATION_MAP: Partial<
-  Record<RealtimeEventType, readonly (readonly unknown[])[]>
-> = {
-  "uplink.received": [
-    queryKeys.endpoints.all,
-    queryKeys.events.all,
-    queryKeys.dashboard.all,
-  ],
-  "endpoint.attached": [
-    queryKeys.endpoints.all,
-    queryKeys.events.all,
-    queryKeys.dashboard.all,
-  ],
-  "endpoint.detached": [
-    queryKeys.endpoints.all,
-    queryKeys.events.all,
-    queryKeys.dashboard.all,
-  ],
-  "basestation.online": [
-    queryKeys.baseStations.all,
-    queryKeys.dashboard.all,
-    queryKeys.events.all,
-  ],
-  "basestation.offline": [
-    queryKeys.baseStations.all,
-    queryKeys.dashboard.all,
-    queryKeys.events.all,
-  ],
-  "downlink.queued": [
-    queryKeys.endpoints.all,
-    queryKeys.events.all,
-    queryKeys.scaci.all,
-  ],
-  "downlink.sent": [
-    queryKeys.endpoints.all,
-    queryKeys.events.all,
-    queryKeys.scaci.all,
-  ],
-  "downlink.failed": [
-    queryKeys.endpoints.all,
-    queryKeys.events.all,
-    queryKeys.scaci.all,
-  ],
-  "downlink.revoked": [
-    queryKeys.endpoints.all,
-    queryKeys.events.all,
-    queryKeys.scaci.all,
-  ],
-  "scaci.session.opened": [queryKeys.scaci.all, queryKeys.events.all],
-  "scaci.session.closed": [queryKeys.scaci.all, queryKeys.events.all],
-  "scaci.error": [queryKeys.scaci.all, queryKeys.events.all],
-  "event.received": [queryKeys.events.all, queryKeys.dashboard.all],
-};
-
-/** Decode a `bytes`-or-string `event.data` field to a UTF-8 string. */
-function decodeEventDataField(value: unknown): string | undefined {
-  if (value instanceof Uint8Array) {
-    return new TextDecoder().decode(value);
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  return undefined;
-}
-
-/** JSON.parse without throwing — returns undefined on any parse error. */
-function safeJsonParse(text: string): Record<string, unknown> | undefined {
-  try {
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Reads `eventDataKey` (e.g. "bsEui", "epEui") from event.data, treating
- * event.data as JSON-encoded bytes or a JSON string. Returns undefined when
- * the field is absent or unparseable.
- */
-function readKeyFromEventData(
-  event: Record<string, unknown>,
-  eventDataKey: "bsEui" | "epEui",
-): string | undefined {
-  const dataStr = decodeEventDataField(event.data);
-  if (!dataStr) return undefined;
-  const parsed = safeJsonParse(dataStr);
-  if (parsed && typeof parsed[eventDataKey] === "string") {
-    return parsed[eventDataKey] as string;
-  }
-  return undefined;
-}
-
-/**
- * Extract bsEui from event payload for targeted invalidation.
- * Priority: sourceName → event.data (bytes/JSON) → details → sourceId.
- */
-function extractBsEuiFromPayload(
-  payload?: Record<string, unknown>,
-): string | undefined {
-  if (!payload?.event || typeof payload.event !== "object") return undefined;
-  const event = payload.event as Record<string, unknown>;
-
-  if (typeof event.sourceName === "string" && event.sourceName) {
-    return event.sourceName;
-  }
-
-  const fromData = readKeyFromEventData(event, "bsEui");
-  if (fromData) return fromData;
-
-  if (event.details) {
-    const details =
-      typeof event.details === "string"
-        ? safeJsonParse(event.details)
-        : (event.details as Record<string, unknown>);
-    if (details && typeof details.bsEui === "string") {
-      return details.bsEui;
-    }
-  }
-
-  if (typeof event.sourceId === "string" && event.sourceId) {
-    return event.sourceId;
-  }
-  return undefined;
-}
-
-/**
- * Extract epEui from event payload for targeted endpoint invalidation.
- * Priority: event.sourceName → event.data.epEui → message.epEui.
- */
-function extractEpEuiFromPayload(
-  payload?: Record<string, unknown>,
-): string | undefined {
-  if (!payload) return undefined;
-
-  if (payload.event && typeof payload.event === "object") {
-    const event = payload.event as Record<string, unknown>;
-    if (typeof event.sourceName === "string" && event.sourceName) {
-      return event.sourceName;
-    }
-    const fromData = readKeyFromEventData(event, "epEui");
-    if (fromData) return fromData;
-  }
-
-  if (payload.message && typeof payload.message === "object") {
-    const msg = payload.message as { epEui?: string };
-    if (typeof msg.epEui === "string") {
-      return msg.epEui;
-    }
-  }
-  return undefined;
-}
-
-function baseStationKeys(bsEui: string): (readonly unknown[])[] {
-  return [
-    queryKeys.baseStations.detail(bsEui),
-    queryKeys.baseStations.messages(bsEui),
-    queryKeys.baseStations.activity(bsEui),
-  ];
-}
-
-function endpointKeys(epEui: string): (readonly unknown[])[] {
-  return [
-    queryKeys.endpoints.detail(epEui),
-    queryKeys.endpoints.activity(epEui),
-  ];
-}
-
-// Backend audit events emit the EUI as uppercase hex (`%016X`), but React
-// Query keys built from the lowercase canonical form would not match without
-// normalization. Strip separators and lowercase to align both forms.
-function normalizeEuiForQueryKey(eui: string): string {
-  return eui.replace(/-/g, "").toLowerCase();
-}
-
-/** Per-event-type targeted query keys (device detail/activity/downlink). */
-function targetedInvalidationKeys(
-  event: RealtimeEvent,
-): (readonly unknown[])[] {
-  if (
-    event.type === "basestation.online" ||
-    event.type === "basestation.offline"
-  ) {
-    const bsEui = extractBsEuiFromPayload(event.payload);
-    return bsEui ? baseStationKeys(bsEui) : [];
-  }
-
-  if (event.type === "uplink.received" && event.payload?.message) {
-    const msg = event.payload.message as { bsEui?: string; epEui?: string };
-    const keys: (readonly unknown[])[] = [];
-    if (msg.bsEui) keys.push(...baseStationKeys(msg.bsEui));
-    if (msg.epEui) keys.push(...endpointKeys(msg.epEui));
-    return keys;
-  }
-
-  if (
-    event.type === "endpoint.attached" ||
-    event.type === "endpoint.detached"
-  ) {
-    const epEui = extractEpEuiFromPayload(event.payload);
-    return epEui ? endpointKeys(epEui) : [];
-  }
-
-  if (
-    event.type === "downlink.queued" ||
-    event.type === "downlink.sent" ||
-    event.type === "downlink.failed" ||
-    event.type === "downlink.revoked"
-  ) {
-    const rawEpEui = extractEpEuiFromPayload(event.payload);
-    if (!rawEpEui) return [];
-    const epEui = normalizeEuiForQueryKey(rawEpEui);
-    return [
-      queryKeys.endpoints.detail(epEui),
-      queryKeys.endpoints.downlinkQueuePrefix(epEui),
-      queryKeys.endpoints.downlinkResultsPrefix(epEui),
-    ];
-  }
-
-  return [];
-}
-
-/**
- * Trigger realtimeService.reconnectWithOrg whenever the supplied dependencies
- * become ready (session hydrated + authenticated, organization + user set).
- * The realtime singleton manages its own backoff/disconnect lifecycle.
- */
-function useReconnectBackoff(deps: {
-  organizationId: string | null | undefined;
-  userId: string | null | undefined;
-  isAuthenticated: boolean;
-  isHydrated: boolean;
-}): void {
-  const { organizationId, userId, isAuthenticated, isHydrated } = deps;
-  useEffect(() => {
-    if (!isHydrated || !isAuthenticated) return;
-    if (!organizationId || !userId) return;
-    realtimeService.reconnectWithOrg(organizationId, userId);
-    // Singleton persists across route changes — only disconnect via beforeunload.
-  }, [organizationId, userId, isAuthenticated, isHydrated]);
-}
-
-/**
- * Hook for managing realtime connection state
- * Reconnects when organization changes
- * Only connects when user is authenticated (realtime endpoint requires auth)
- *
- * @returns Current connection state and isConnected flag
- */
-export function useRealtimeConnection() {
-  const [state, setState] = useState<ConnectionState>("disconnected");
+function useStreamsForRoles(): void {
   const { organizationId, userId } = useOrganization();
   const { isAuthenticated, isHydrated } = useSession();
+  const { hasAnyRole, isEndpointManager, rolesLoaded } = useCapabilities();
 
-  useEffect(() => realtimeService.onStateChange(setState), []);
-  useReconnectBackoff({ organizationId, userId, isAuthenticated, isHydrated });
+  useEffect(() => {
+    if (!isHydrated || !isAuthenticated || !rolesLoaded) return;
+    if (!organizationId || !userId) return;
+    // A refused stream would only retry into the same refusal; a revoked role closes it.
+    if (!hasAnyRole) {
+      realtimeLifecycle.reset();
+      return;
+    }
+    realtimeLifecycle.reconnectWithOrg(organizationId, userId, {
+      uplinks: isEndpointManager,
+    });
+  }, [
+    organizationId,
+    userId,
+    isAuthenticated,
+    isHydrated,
+    rolesLoaded,
+    hasAnyRole,
+    isEndpointManager,
+  ]);
+}
+
+/** The combined state of the streams the user holds. */
+export function useRealtimeConnection() {
+  const [state, setState] = useState<ConnectionState>(() =>
+    realtimeLifecycle.getState(),
+  );
+  useEffect(() => realtimeLifecycle.onStateChange(setState), []);
+  useStreamsForRoles();
 
   return {
     state,
-    isConnected: state === "connected",
-    isReconnecting: state === "reconnecting",
+    isConnected: state === CONNECTION_STATE.CONNECTED,
+    isReconnecting: state === CONNECTION_STATE.RECONNECTING,
   };
 }
 
@@ -296,7 +85,9 @@ export function useRealtimeConnection() {
  * Hook for automatic query invalidation based on realtime events.
  *
  * Invalidations are coalesced: each event adds its target query keys to a
- * pending set, flushed at most once per TIMING_REALTIME_INVALIDATION_WINDOW_MS.
+ * pending set. The first event after a quiet window is flushed after
+ * TIMING_REALTIME_INVALIDATION_BATCH_MS; later ones wait for the window to end,
+ * so flushes happen at most once per TIMING_REALTIME_INVALIDATION_WINDOW_MS.
  * Otherwise a busy tenant's stream refetches the dashboard lists on every
  * event — a request storm.
  */
@@ -307,27 +98,33 @@ export function useRealtimeInvalidation() {
     // Serialized key -> query key; dedups repeated keys within the window.
     const pending = new Map<string, readonly unknown[]>();
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastFlushAt = Number.NEGATIVE_INFINITY;
 
     const flush = () => {
       flushTimer = null;
+      lastFlushAt = Date.now();
       const keys = [...pending.values()];
       pending.clear();
       keys.forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
     };
 
     const handler = (event: RealtimeEvent) => {
-      const keys = [
-        ...(EVENT_INVALIDATION_MAP[event.type] ?? []),
-        ...targetedInvalidationKeys(event),
-      ];
+      const keys = invalidatedKeys(event);
       if (keys.length === 0) return;
       keys.forEach((key) => pending.set(JSON.stringify(key), key));
       if (!flushTimer) {
-        flushTimer = setTimeout(flush, TIMING_REALTIME_INVALIDATION_WINDOW_MS);
+        const windowEnd = lastFlushAt + TIMING_REALTIME_INVALIDATION_WINDOW_MS;
+        flushTimer = setTimeout(
+          flush,
+          Math.max(
+            TIMING_REALTIME_INVALIDATION_BATCH_MS,
+            windowEnd - Date.now(),
+          ),
+        );
       }
     };
 
-    const unsubscribe = realtimeService.subscribeAll(handler);
+    const unsubscribe = realtimeSubscriptions.subscribeAll(handler);
     return () => {
       unsubscribe();
       if (flushTimer) clearTimeout(flushTimer);
@@ -335,89 +132,72 @@ export function useRealtimeInvalidation() {
   }, [queryClient]);
 }
 
-type EventStreamFlight = {
+type StreamFlight = {
   hasConnected: boolean;
   connected: boolean;
   pendingInvalidate: ReturnType<typeof setTimeout> | null;
   lastInvalidateAt: number;
 };
 
-/**
- * Invalidate the EVENT-stream-backed caches: anything that depends on
- * system_events. Includes endpoints (downlink lifecycle), base stations
- * (online/offline events), events feed, SCACI, and dashboard.
- */
-function invalidateForEventStream(qc: QueryClient): void {
-  qc.invalidateQueries({ queryKey: queryKeys.endpoints.all });
-  qc.invalidateQueries({ queryKey: queryKeys.baseStations.all });
-  qc.invalidateQueries({ queryKey: queryKeys.events.all });
-  qc.invalidateQueries({ queryKey: queryKeys.scaci.all });
-  qc.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-}
+const idleFlight = (): StreamFlight => ({
+  hasConnected: false,
+  connected: false,
+  pendingInvalidate: null,
+  lastInvalidateAt: 0,
+});
 
 /**
- * Catch-up invalidation when the EVENT stream reconnects after a drop. The
- * EVENT gRPC stream idle-times out every few minutes; events emitted during
- * the gap never reach the browser. Without this hook, the UI stays stale
- * until something else (window focus, manual refresh) refetches.
+ * Catch-up invalidation when a stream reconnects after a drop: events emitted
+ * during the gap never reach the browser, so the queries that stream's events
+ * refresh are re-read. A first connect (page load) catches up nothing.
  *
- * Scoped narrowly to the EVENT stream only — the MESSAGE stream's reconnect
- * cycles `connectEventStream()` (closing+reopening the event stream) every
- * time it itself reconnects, so handling MESSAGE here would double-count and
- * could cascade into a refetch storm. The EVENT stream's own
- * realtime_connected event captures every relevant reconnect anyway.
- *
- * Debounced + rate-limited so any cluster of rapid reconnect events
- * collapses into a single invalidation, and no more than one fires per
- * `TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS`. This prevents the kind of
- * cascade that would happen when the message stream reconnects and triggers
- * an event-stream close+reopen in quick succession.
+ * Debounced and rate-limited per stream, so a burst of reconnects collapses
+ * into a single invalidation and no more than one fires per
+ * TIMING_REALTIME_CATCHUP_MIN_INTERVAL_MS.
  */
 function useCatchUpOnStreamReconnect(): void {
   const queryClient = useQueryClient();
-  const flightRef = useRef<EventStreamFlight>({
-    hasConnected: false,
-    connected: false,
-    pendingInvalidate: null,
-    lastInvalidateAt: 0,
-  });
+  const flightsRef = useRef(new Map<RealtimeStreamKind, StreamFlight>());
 
   useEffect(() => {
-    // Snapshot the ref once: the flight state object is stable for the effect's
-    // lifetime, and the cleanup must not re-read the ref (react-hooks/exhaustive-deps).
-    const flight = flightRef.current;
+    const flights = flightsRef.current;
+    const flightOf = (kind: RealtimeStreamKind): StreamFlight => {
+      const flight = flights.get(kind) ?? idleFlight();
+      flights.set(kind, flight);
+      return flight;
+    };
 
-    const scheduleInvalidate = () => {
-      if (flight.pendingInvalidate) {
-        clearTimeout(flight.pendingInvalidate);
-      }
+    const scheduleCatchUp = (
+      kind: RealtimeStreamKind,
+      flight: StreamFlight,
+    ) => {
+      if (flight.pendingInvalidate) clearTimeout(flight.pendingInvalidate);
       flight.pendingInvalidate = setTimeout(() => {
         flight.pendingInvalidate = null;
         const now = Date.now();
         if (
           now - flight.lastInvalidateAt <
-          TIMING_REALTIME_EVENT_STREAM_CATCHUP_MIN_INTERVAL_MS
+          TIMING_REALTIME_CATCHUP_MIN_INTERVAL_MS
         ) {
           return;
         }
         flight.lastInvalidateAt = now;
-        invalidateForEventStream(queryClient);
-      }, TIMING_REALTIME_EVENT_STREAM_CATCHUP_DEBOUNCE_MS);
+        catchUpKeys(kind).forEach((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        );
+      }, TIMING_REALTIME_CATCHUP_DEBOUNCE_MS);
     };
 
-    const unsubscribe = realtimeService.onConnectionEvent((evt) => {
-      if (evt.streamKind !== REALTIME_STREAM_KIND.EVENT) return;
-
-      if (evt.type === "realtime_connected") {
+    const unsubscribe = realtimeLifecycle.onConnectionEvent((evt) => {
+      const flight = flightOf(evt.streamKind);
+      if (evt.type === REALTIME_LIFECYCLE_EVENT.CONNECTED) {
         const isReconnect = flight.hasConnected && !flight.connected;
         flight.hasConnected = true;
         flight.connected = true;
-        if (isReconnect) {
-          scheduleInvalidate();
-        }
+        if (isReconnect) scheduleCatchUp(evt.streamKind, flight);
       } else if (
-        evt.type === "realtime_disconnected" ||
-        evt.type === "realtime_error"
+        evt.type === REALTIME_LIFECYCLE_EVENT.DISCONNECTED ||
+        evt.type === REALTIME_LIFECYCLE_EVENT.ERROR
       ) {
         flight.connected = false;
       }
@@ -425,12 +205,31 @@ function useCatchUpOnStreamReconnect(): void {
 
     return () => {
       unsubscribe();
-      if (flight.pendingInvalidate) {
-        clearTimeout(flight.pendingInvalidate);
+      flights.forEach((flight) => {
+        if (flight.pendingInvalidate) clearTimeout(flight.pendingInvalidate);
         flight.pendingInvalidate = null;
-      }
+      });
     };
   }, [queryClient]);
+}
+
+/**
+ * Fallback polling: while the signed-in user's streams are not all connected,
+ * no event announces a change, so every open view is re-read at
+ * TIMING_FALLBACK_POLL_MS until they are.
+ */
+function useFallbackPolling(state: ConnectionState): void {
+  const queryClient = useQueryClient();
+  const { isAuthenticated } = useSession();
+
+  useEffect(() => {
+    if (!isAuthenticated || state === CONNECTION_STATE.CONNECTED) return;
+    const timer = setInterval(
+      () => queryClient.invalidateQueries(),
+      TIMING_FALLBACK_POLL_MS,
+    );
+    return () => clearInterval(timer);
+  }, [queryClient, isAuthenticated, state]);
 }
 
 /**
@@ -439,9 +238,10 @@ function useCatchUpOnStreamReconnect(): void {
  * Use this in App.tsx or at the top level to enable realtime updates
  */
 export function useRealtimeUpdates() {
-  const { state, isConnected, isReconnecting } = useRealtimeConnection();
+  const connection = useRealtimeConnection();
   useRealtimeInvalidation();
   useCatchUpOnStreamReconnect();
+  useFallbackPolling(connection.state);
 
-  return { state, isConnected, isReconnecting };
+  return connection;
 }

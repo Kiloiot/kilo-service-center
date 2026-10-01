@@ -93,7 +93,7 @@ type mockDLRXStatusRepoWithCounter struct {
 	returnError error
 }
 
-func (m *mockDLRXStatusRepoWithCounter) GetLatestDLRXStatusByBaseStations(
+func (m *mockDLRXStatusRepoWithCounter) GetDLRXStatusSinceLastHeard(
 	_ context.Context,
 	_ int64,
 	_ []byte,
@@ -128,7 +128,7 @@ func TestDLRXHydrationBatchQueryCallCount(t *testing.T) {
 	binary.BigEndian.PutUint64(epEui, bssci.TestEpEui01)
 
 	// Call mock
-	_, err := mock.GetLatestDLRXStatusByBaseStations(testutil.TestContext(), 1, epEui, bsEuis)
+	_, err := mock.GetDLRXStatusSinceLastHeard(testutil.TestContext(), 1, epEui, bsEuis)
 	require.NoError(t, err)
 
 	// Assert batch method called exactly once (not N times)

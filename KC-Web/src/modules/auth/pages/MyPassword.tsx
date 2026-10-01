@@ -1,12 +1,13 @@
 /**
  * MyPassword Page
  *
- * Self-service password change page for authenticated users.
+ * Self-service password change. The change revokes the user's refresh tokens,
+ * so a successful change signs the user out and asks for the new password.
  */
 
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 
+import { useChangeOwnPassword } from "@hooks";
 import {
   Alert,
   Box,
@@ -19,49 +20,43 @@ import {
   useTheme,
 } from "@mui/material";
 
-import { apiService } from "@services/api";
-import { ROUTES, UI_TIMING } from "@constants/app";
+import { NewPasswordFields } from "@components/common/NewPasswordFields";
+import { useFeedback } from "@contexts/feedback";
+import { useSignOut } from "@hooks/useSignOut";
+import { getErrorMessage } from "@utils/error-message";
+import { AUTH_LAYOUT } from "@constants/app";
 import { MY_PASSWORD } from "@constants/messages";
+import { componentSpacing } from "@theme/index";
 
 export default function MyPassword() {
   const theme = useTheme();
-  const navigate = useNavigate();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const changePassword = useChangeOwnPassword();
+  const signOut = useSignOut();
+  const feedback = useFeedback();
+  const isSubmitting = changePassword.isPending;
+  const canSubmit =
+    !!currentPassword && !!password && password === confirmPassword;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canSubmit) return;
     setError(null);
-    setSuccess(false);
-
-    // Validate passwords match (policy enforcement is server-side)
-    if (password !== confirmPassword) {
-      setError(MY_PASSWORD.ERR_MISMATCH);
+    try {
+      await changePassword.mutateAsync({
+        currentPassword,
+        newPassword: password,
+      });
+    } catch (err) {
+      setError(getErrorMessage(err, MY_PASSWORD.ERR_FAILED));
       return;
     }
-
-    setIsSubmitting(true);
-
-    try {
-      await apiService.changeOwnPassword(currentPassword, password);
-      setSuccess(true);
-      setCurrentPassword("");
-      setPassword("");
-      setConfirmPassword("");
-      // Redirect after success message shows
-      setTimeout(() => {
-        navigate(ROUTES.HOME);
-      }, UI_TIMING.NAVIGATION_DELAY_MS);
-    } catch {
-      setError(MY_PASSWORD.ERR_FAILED);
-    } finally {
-      setIsSubmitting(false);
-    }
+    await signOut();
+    feedback.success(MY_PASSWORD.SIGNED_OUT);
   };
 
   return (
@@ -74,7 +69,7 @@ export default function MyPassword() {
         p: theme.spacing(3),
       }}
     >
-      <Card sx={{ maxWidth: 400, width: "100%" }}>
+      <Card sx={{ maxWidth: AUTH_LAYOUT.CARD_MAX_WIDTH, width: "100%" }}>
         <CardContent sx={{ p: theme.spacing(3) }}>
           <Typography variant="h5" component="h1" gutterBottom>
             {MY_PASSWORD.TITLE}
@@ -91,55 +86,46 @@ export default function MyPassword() {
               </Alert>
             )}
 
-            {success && (
-              <Alert severity="success" sx={{ mb: theme.spacing(2) }}>
-                {MY_PASSWORD.SUCCESS}
-              </Alert>
-            )}
-
             <TextField
               fullWidth
               type="password"
               label={MY_PASSWORD.LABEL_CURRENT_PASSWORD}
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              disabled={isSubmitting || success}
+              disabled={isSubmitting}
               autoFocus
               sx={{ mb: theme.spacing(2) }}
             />
 
-            <TextField
-              fullWidth
-              type="password"
-              label={MY_PASSWORD.LABEL_NEW_PASSWORD}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isSubmitting || success}
-              sx={{ mb: theme.spacing(2) }}
-            />
-
-            <TextField
-              fullWidth
-              type="password"
-              label={MY_PASSWORD.LABEL_CONFIRM_PASSWORD}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={isSubmitting || success}
-              sx={{ mb: theme.spacing(3) }}
-            />
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: theme.spacing(2),
+                mb: theme.spacing(3),
+              }}
+            >
+              <NewPasswordFields
+                password={password}
+                confirmation={confirmPassword}
+                onPasswordChange={setPassword}
+                onConfirmationChange={setConfirmPassword}
+                passwordLabel={MY_PASSWORD.LABEL_NEW_PASSWORD}
+                confirmationLabel={MY_PASSWORD.LABEL_CONFIRM_PASSWORD}
+                disabled={isSubmitting}
+              />
+            </Box>
 
             <Button
               type="submit"
               variant="contained"
               fullWidth
-              disabled={
-                isSubmitting ||
-                success ||
-                !currentPassword ||
-                !password ||
-                !confirmPassword
+              disabled={isSubmitting || !canSubmit}
+              startIcon={
+                isSubmitting ? (
+                  <CircularProgress size={componentSpacing.spinner.button} />
+                ) : null
               }
-              startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
             >
               {MY_PASSWORD.ACTION_SAVE}
             </Button>

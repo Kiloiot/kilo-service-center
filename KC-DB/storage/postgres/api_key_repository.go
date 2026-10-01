@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -14,17 +15,18 @@ import (
 
 // APIKeyRepository implements the APIKeyRepository interface for PostgreSQL.
 type APIKeyRepository struct {
-	db *sqlx.DB
+	clock clock.Clock
+	db    *sqlx.DB
 }
 
 // NewAPIKeyRepository creates a new PostgreSQL API key repository
-func NewAPIKeyRepository(db *sqlx.DB) interfaces.APIKeyRepository {
-	return &APIKeyRepository{db: db}
+func NewAPIKeyRepository(db *sqlx.DB, clk clock.Clock) *APIKeyRepository {
+	return &APIKeyRepository{clock: clk, db: db}
 }
 
 // Create inserts a new API key
 func (r *APIKeyRepository) Create(ctx context.Context, key *models.APIKey) error {
-	now := time.Now().UTC()
+	now := r.clock.Now().UTC()
 	key.CreatedAt = now
 
 	query := `
@@ -38,7 +40,7 @@ func (r *APIKeyRepository) Create(ctx context.Context, key *models.APIKey) error
 
 	_, err := r.db.NamedExecContext(ctx, query, key)
 	if err != nil {
-		return fmt.Errorf("create api key: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCreateAPIKey, err)
 	}
 
 	return nil
@@ -56,9 +58,9 @@ func (r *APIKeyRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.A
 	err := r.db.GetContext(ctx, &key, query, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("api key %s: %w", id, interfaces.ErrRecordNotFound)
+			return nil, fmt.Errorf(errFmtAPIKey, id, storage.ErrRecordNotFound)
 		}
-		return nil, fmt.Errorf("get api key: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetAPIKey, err)
 	}
 
 	return &key, nil
@@ -76,9 +78,9 @@ func (r *APIKeyRepository) GetByHash(ctx context.Context, hash string) (*models.
 	err := r.db.GetContext(ctx, &key, query, hash)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("api key with hash: %w", interfaces.ErrRecordNotFound)
+			return nil, fmt.Errorf("%s: %w", errWrapAPIKeyWithHash, storage.ErrRecordNotFound)
 		}
-		return nil, fmt.Errorf("get api key by hash: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetAPIKeyByHash, err)
 	}
 
 	return &key, nil
@@ -90,16 +92,16 @@ func (r *APIKeyRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("delete api key: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteAPIKey, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("api key %s: %w", id, interfaces.ErrRecordNotFound)
+		return fmt.Errorf(errFmtAPIKey, id, storage.ErrRecordNotFound)
 	}
 
 	return nil
@@ -121,7 +123,7 @@ func (r *APIKeyRepository) List(ctx context.Context, tenantID int64, orgID uuid.
 
 		err := r.db.SelectContext(ctx, &keys, query, tenantID, orgID, *userID, limit, offset)
 		if err != nil {
-			return nil, fmt.Errorf("list api keys: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapListAPIKeys, err)
 		}
 	} else {
 		// Admin view: return all keys for tenant within the organization
@@ -135,7 +137,7 @@ func (r *APIKeyRepository) List(ctx context.Context, tenantID int64, orgID uuid.
 
 		err := r.db.SelectContext(ctx, &keys, query, tenantID, orgID, limit, offset)
 		if err != nil {
-			return nil, fmt.Errorf("list api keys: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapListAPIKeys, err)
 		}
 	}
 
@@ -150,13 +152,13 @@ func (r *APIKeyRepository) Count(ctx context.Context, tenantID int64, orgID uuid
 		query := `SELECT COUNT(*) FROM api_keys WHERE tenant_id = $1 AND org_id = $2 AND (user_id = $3 OR user_id IS NULL)`
 		err := r.db.GetContext(ctx, &count, query, tenantID, orgID, *userID)
 		if err != nil {
-			return 0, fmt.Errorf("count api keys: %w", err)
+			return 0, fmt.Errorf("%s: %w", errWrapCountAPIKeys, err)
 		}
 	} else {
 		query := `SELECT COUNT(*) FROM api_keys WHERE tenant_id = $1 AND org_id = $2`
 		err := r.db.GetContext(ctx, &count, query, tenantID, orgID)
 		if err != nil {
-			return 0, fmt.Errorf("count api keys: %w", err)
+			return 0, fmt.Errorf("%s: %w", errWrapCountAPIKeys, err)
 		}
 	}
 
@@ -169,37 +171,16 @@ func (r *APIKeyRepository) UpdateLastUsed(ctx context.Context, id uuid.UUID) err
 
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("update last used: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateLastUsed, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("api key %s: %w", id, interfaces.ErrRecordNotFound)
-	}
-
-	return nil
-}
-
-// Deactivate marks a key as inactive without deleting it
-func (r *APIKeyRepository) Deactivate(ctx context.Context, id uuid.UUID) error {
-	query := `UPDATE api_keys SET is_active = false WHERE id = $1`
-
-	result, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("deactivate api key: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("api key %s: %w", id, interfaces.ErrRecordNotFound)
+		return fmt.Errorf(errFmtAPIKey, id, storage.ErrRecordNotFound)
 	}
 
 	return nil
@@ -217,9 +198,9 @@ func (r *APIKeyRepository) GetByIDAndOrg(ctx context.Context, id, orgID uuid.UUI
 	err := r.db.GetContext(ctx, &key, query, id, orgID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("api key %s: %w", id, interfaces.ErrRecordNotFound)
+			return nil, fmt.Errorf(errFmtAPIKey, id, storage.ErrRecordNotFound)
 		}
-		return nil, fmt.Errorf("get api key: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetAPIKey, err)
 	}
 
 	return &key, nil
@@ -231,16 +212,16 @@ func (r *APIKeyRepository) DeleteByIDAndOrg(ctx context.Context, id, orgID uuid.
 
 	result, err := r.db.ExecContext(ctx, query, id, orgID)
 	if err != nil {
-		return fmt.Errorf("delete api key: %w", err)
+		return fmt.Errorf("%s: %w", errWrapDeleteAPIKey, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("api key %s: %w", id, interfaces.ErrRecordNotFound)
+		return fmt.Errorf(errFmtAPIKey, id, storage.ErrRecordNotFound)
 	}
 
 	return nil

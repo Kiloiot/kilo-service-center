@@ -262,6 +262,22 @@ func (s *KiloCenterServiceCompat) GetScaciStatus(ctx context.Context, req *pb.Ge
 	return s.core.GetScaciStatus(ctx, req)
 }
 
+func (s *KiloCenterServiceCompat) UpdatePendingDownlink(ctx context.Context, req *pb.UpdatePendingDownlinkRequest) (*pb.DownlinkMessage, error) {
+	return s.core.UpdatePendingDownlink(ctx, req)
+}
+
+func (s *KiloCenterServiceCompat) ListErrorGroups(ctx context.Context, req *pb.ListErrorGroupsRequest) (*pb.ListErrorGroupsResponse, error) {
+	return s.core.ListErrorGroups(ctx, req)
+}
+
+func (s *KiloCenterServiceCompat) ListCapabilities(ctx context.Context, req *emptypb.Empty) (*pb.ListCapabilitiesResponse, error) {
+	return s.core.ListCapabilities(ctx, req)
+}
+
+func (s *KiloCenterServiceCompat) GetDiagnosticsBundle(ctx context.Context, req *pb.GetDiagnosticsBundleRequest) (*pb.GetDiagnosticsBundleResponse, error) {
+	return s.core.GetDiagnosticsBundle(ctx, req)
+}
+
 // Certificates (6)
 
 func (s *KiloCenterServiceCompat) GenerateCertificate(ctx context.Context, req *pb.GenerateCertificateRequest) (*pb.GenerateCertificateResponse, error) {

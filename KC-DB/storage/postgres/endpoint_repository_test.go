@@ -5,16 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/testsupport"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 
@@ -60,7 +62,7 @@ func TestCountByTenant_ReturnsCorrectCount(t *testing.T) {
 	insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x0000000000000002, Name: "TestCount-EP2", TenantID: 100})
 	insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x0000000000000003, Name: "TestCount-EP3", TenantID: 999})
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Test: Count endpoints for tenant 100
@@ -123,7 +125,7 @@ func TestListByTenantPaginated_ReturnsCorrectPage(t *testing.T) {
 		CreatedAt: ptrTime(now),
 	})
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Test: First page (LIMIT 2, OFFSET 0)
@@ -174,7 +176,7 @@ func TestListByTenantPaginated_OnlyReturnsOwnTenant(t *testing.T) {
 	insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x0000000000000022, Name: "TestIsolation-T300-EP2", Description: "Tenant 300 endpoint 2", TenantID: 300})
 	insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x0000000000000023, Name: "TestIsolation-T400-EP1", Description: "Tenant 400 endpoint 1", TenantID: 400})
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Test: List endpoints for tenant 300 only
@@ -203,7 +205,7 @@ func TestCreate_BasicFields(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestCreate%")
 	defer cleanupEndpointTestData(t, db, "TestCreate%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create test endpoint
@@ -232,6 +234,70 @@ func TestCreate_BasicFields(t *testing.T) {
 	assert.NotZero(t, endpoint.UpdatedAt, "UpdatedAt should be set")
 }
 
+// TestUpdate_PreservesPropagationState verifies a general endpoint update
+// leaves the server-owned attachment-propagation columns untouched: they
+// change only through the dedicated propagation methods, and an API edit
+// loaded from a projection that omits them must not reset an attached
+// endpoint's propagation.
+func TestUpdate_PreservesPropagationState(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	db := setupEndpointTestDB(t)
+	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
+
+	createTestTenant(t, db, 510, "TestTenant510")
+	cleanupEndpointTestData(t, db, "TestPropPreserve%")
+	defer cleanupEndpointTestData(t, db, "TestPropPreserve%")
+
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
+	ctx := testutil.TestContext()
+
+	var eui models.EUI
+	copy(eui[:], []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x51})
+	endpoint := &models.EndPoint{
+		EUI:        eui,
+		Name:       "TestPropPreserve-EP1",
+		TenantID:   510,
+		EPClass:    "A",
+		NwkSnKey:   make([]byte, 16),
+		AppKey:     make([]byte, 16),
+		CryptoMode: 0,
+		Tags:       make(map[string]string),
+	}
+	require.NoError(t, repo.Create(ctx, endpoint))
+
+	// Mark the endpoint as propagated the way the propagation flow does.
+	_, err := db.Exec(`
+		UPDATE endpoints SET propagated = TRUE, propagated_at = NOW(), propagation_count = 3
+		WHERE id = $1`, endpoint.ID)
+	require.NoError(t, err)
+
+	// A general update mirrors the API flow: load through GetByEUI (whose
+	// projection omits the propagation columns, leaving them zero-valued),
+	// apply the edit, and write back.
+	loaded, err := repo.GetByEUI(ctx, 510, eui[:])
+	require.NoError(t, err)
+	loaded.Name = "TestPropPreserve-EP1-renamed"
+	require.NoError(t, repo.Update(ctx, loaded))
+
+	var propagated bool
+	var propagatedAt sql.NullTime
+	var propagationCount int
+	require.NoError(t, db.QueryRow(`
+		SELECT propagated, propagated_at, propagation_count FROM endpoints WHERE id = $1`,
+		endpoint.ID).Scan(&propagated, &propagatedAt, &propagationCount))
+	assert.True(t, propagated, "a general update must not reset propagated")
+	assert.True(t, propagatedAt.Valid, "a general update must not clear propagated_at")
+	assert.Equal(t, 3, propagationCount, "a general update must not reset propagation_count")
+
+	// The rename itself landed.
+	updated, err := repo.GetByEUI(ctx, 510, eui[:])
+	require.NoError(t, err)
+	assert.Equal(t, "TestPropPreserve-EP1-renamed", updated.Name)
+}
+
 // TestBlueprintSnapshot_RoundTrip verifies blueprint_snapshot round-trips and a nil Update preserves the existing snapshot (COALESCE).
 func TestBlueprintSnapshot_RoundTrip(t *testing.T) {
 	if testing.Short() {
@@ -243,7 +309,7 @@ func TestBlueprintSnapshot_RoundTrip(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestSnap%")
 	defer cleanupEndpointTestData(t, db, "TestSnap%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	var eui models.EUI
@@ -317,7 +383,7 @@ func TestGetByEUI_ReturnsCorrectEndpoint(t *testing.T) {
 		TenantID:    600,
 	})
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Test: Get by EUI and tenant
@@ -367,10 +433,10 @@ func seedEndpointWithMetrics(
 	t.Helper()
 
 	// Compute UTF-8 safe name (no binary data in text fields)
-	name := fmt.Sprintf("Test-%016x", eui.ToUint64())
+	name := fmt.Sprintf("Test-%s", mioty.FormatEUI64Lower(eui.ToUint64()))
 
 	// Fixed 16-byte zero keys
-	zeroKey := make([]byte, 16)
+	zeroKey := envelopeForTest(make([]byte, 16))
 
 	// Parameterized INSERT with placeholders (no string interpolation)
 	const insertSQL = `
@@ -392,7 +458,8 @@ func seedEndpointWithMetrics(
 
 	// Execute with parameters (no SQL injection risk)
 	ctx := testutil.TestContext()
-	_, err := db.ExecContext(ctx, insertSQL,
+	_, err := db.ExecContext(
+		ctx, insertSQL,
 		eui[:],             // $1: ep_eui (bytea)
 		name,               // $2: name (text, UTF-8 safe)
 		"",                 // $3: description (empty string, not NULL)
@@ -451,7 +518,8 @@ func querySubpacketsAndProfile(
 	var rxTimeNull, rxDurationNull sql.NullInt64
 
 	err := db.QueryRowContext(testutil.TestContext(), query, endpointID, tenantID).Scan(
-		&subpacketsNull, &profileNull, &rxTimeNull, &rxDurationNull)
+		&subpacketsNull, &profileNull, &rxTimeNull, &rxDurationNull,
+	)
 	require.NoError(t, err, "Failed to query subpackets/profile")
 
 	if subpacketsNull.Valid {
@@ -508,7 +576,7 @@ func TestUpdateRadioMetricsSelective_PreservesRxDuration(t *testing.T) {
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupEndpointTestData(t, db, "PreservesRxDuration%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0, 0, 0, 0, 0, 0, 0, 1}
 
 	// Seed with baseline metrics - captures initial last_seen_at
@@ -523,10 +591,10 @@ func TestUpdateRadioMetricsSelective_PreservesRxDuration(t *testing.T) {
 
 	// Update with RxDuration=nil (preserve), Profile updated
 	ctx := testutil.TestContext()
-	update := interfaces.RadioMetricsUpdate{
+	update := models.RadioMetricsUpdate{
 		SNR:        20.0,
 		RSSI:       -70.0,
-		EqSNR:      22.0,
+		EqSNR:      ptr(22.0),
 		RxTime:     9999999999,
 		RxDuration: nil, // PRESERVE
 		Profile:    ptr("Updated"),
@@ -573,7 +641,7 @@ func TestUpdateRadioMetricsSelective_PreservesProfile(t *testing.T) {
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupEndpointTestData(t, db, "PreservesProfile%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0, 0, 0, 0, 0, 0, 0, 2}
 
 	// Seed with baseline metrics
@@ -588,10 +656,10 @@ func TestUpdateRadioMetricsSelective_PreservesProfile(t *testing.T) {
 
 	// Update with Profile=nil (preserve), RxDuration updated
 	ctx := testutil.TestContext()
-	update := interfaces.RadioMetricsUpdate{
+	update := models.RadioMetricsUpdate{
 		SNR:        25.0,
 		RSSI:       -65.0,
-		EqSNR:      27.0,
+		EqSNR:      ptr(27.0),
 		RxTime:     8888888888,
 		RxDuration: ptr(int64(750)),
 		Profile:    nil, // PRESERVE
@@ -637,7 +705,7 @@ func TestUpdateRadioMetricsSelective_UpdatesAllOptionalFields(t *testing.T) {
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupEndpointTestData(t, db, "UpdatesAllOptional%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0, 0, 0, 0, 0, 0, 0, 3}
 
 	// Seed with baseline metrics
@@ -652,10 +720,10 @@ func TestUpdateRadioMetricsSelective_UpdatesAllOptionalFields(t *testing.T) {
 
 	// Update ALL fields (both optional and mandatory)
 	ctx := testutil.TestContext()
-	update := interfaces.RadioMetricsUpdate{
+	update := models.RadioMetricsUpdate{
 		SNR:        30.0,
 		RSSI:       -60.0,
-		EqSNR:      32.0,
+		EqSNR:      ptr(32.0),
 		RxTime:     7777777777,
 		RxDuration: ptr(int64(1000)),
 		Profile:    ptr("FullUpdate"),
@@ -689,7 +757,7 @@ func TestUpdateRadioMetricsSelective_UpdatesAllOptionalFields(t *testing.T) {
 }
 
 // TestUpdateRadioMetricsSelective_PreservesAllWhenNil verifies that
-// both optional pointers nil results in only mandatory fields updating.
+// every optional pointer nil results in only mandatory fields updating.
 // This proves we never zero-out absent fields per BSSCI telemetry guarantees.
 func TestUpdateRadioMetricsSelective_PreservesAllWhenNil(t *testing.T) {
 	if testing.Short() {
@@ -702,7 +770,7 @@ func TestUpdateRadioMetricsSelective_PreservesAllWhenNil(t *testing.T) {
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupEndpointTestData(t, db, "PreservesAllWhenNil%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0, 0, 0, 0, 0, 0, 0, 4}
 
 	// Seed with baseline metrics
@@ -715,12 +783,12 @@ func TestUpdateRadioMetricsSelective_PreservesAllWhenNil(t *testing.T) {
 		Profile:    "Baseline",
 	})
 
-	// Update ONLY mandatory fields (both optional nil)
+	// Update ONLY mandatory fields (every optional nil)
 	ctx := testutil.TestContext()
-	update := interfaces.RadioMetricsUpdate{
+	update := models.RadioMetricsUpdate{
 		SNR:        15.0,
 		RSSI:       -75.0,
-		EqSNR:      17.0,
+		EqSNR:      nil, // PRESERVE
 		RxTime:     6666666666,
 		RxDuration: nil, // PRESERVE
 		Profile:    nil, // PRESERVE
@@ -736,14 +804,14 @@ func TestUpdateRadioMetricsSelective_PreservesAllWhenNil(t *testing.T) {
 	assert.Equal(t, int64(500), *result.LastAttachRxDuration, "RxDuration should be preserved")
 	require.NotNil(t, result.LastProfile)
 	assert.Equal(t, "Baseline", *result.LastProfile, "Profile should be preserved")
+	require.NotNil(t, result.LastEqSNR)
+	assert.Equal(t, 12.3, *result.LastEqSNR, "EqSNR should be preserved")
 
 	// Assert mandatory fields UPDATED
 	require.NotNil(t, result.LastSNR)
 	assert.Equal(t, 15.0, *result.LastSNR)
 	require.NotNil(t, result.LastRSSI)
 	assert.Equal(t, -75.0, *result.LastRSSI)
-	require.NotNil(t, result.LastEqSNR)
-	assert.Equal(t, 17.0, *result.LastEqSNR)
 	require.NotNil(t, result.LastAttachRxTime)
 	assert.Equal(t, int64(6666666666), *result.LastAttachRxTime)
 
@@ -767,7 +835,7 @@ func TestUpdateRadioMetricsSelective_MultiUpdatePreservesPriorData(t *testing.T)
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupEndpointTestData(t, db, "MultiUpdate%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0, 0, 0, 0, 0, 0, 0, 5}
 
 	// Seed with baseline metrics
@@ -783,10 +851,10 @@ func TestUpdateRadioMetricsSelective_MultiUpdatePreservesPriorData(t *testing.T)
 	ctx := testutil.TestContext()
 
 	// Update 1: Attach telemetry (updates RxDuration, preserves Profile)
-	update1 := interfaces.RadioMetricsUpdate{
+	update1 := models.RadioMetricsUpdate{
 		SNR:        20.0,
 		RSSI:       -70.0,
-		EqSNR:      22.0,
+		EqSNR:      ptr(22.0),
 		RxTime:     2000000000,
 		RxDuration: ptr(int64(600)),
 		Profile:    nil, // PRESERVE
@@ -804,10 +872,10 @@ func TestUpdateRadioMetricsSelective_MultiUpdatePreservesPriorData(t *testing.T)
 	assert.Equal(t, 20.0, *intermediate.LastSNR)
 
 	// Update 2: Detach telemetry (updates Profile, preserves RxDuration from Update 1)
-	update2 := interfaces.RadioMetricsUpdate{
+	update2 := models.RadioMetricsUpdate{
 		SNR:        25.0,
 		RSSI:       -65.0,
-		EqSNR:      27.0,
+		EqSNR:      ptr(27.0),
 		RxTime:     3000000000,
 		RxDuration: nil, // PRESERVE (should keep 600 from Update 1)
 		Profile:    ptr("Detach"),
@@ -856,7 +924,7 @@ func TestUpdateRadioMetricsSelective_ConcurrentUpdates(t *testing.T) {
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupEndpointTestData(t, db, "ConcurrentUpdates%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0, 0, 0, 0, 0, 0, 0, 6}
 
 	// Seed with baseline metrics
@@ -878,17 +946,17 @@ func TestUpdateRadioMetricsSelective_ConcurrentUpdates(t *testing.T) {
 	go func() {
 		defer close(done1)
 		ctx := testutil.TestContext()
-		update := interfaces.RadioMetricsUpdate{
+		update := models.RadioMetricsUpdate{
 			SNR:        20.0,
 			RSSI:       -70.0,
-			EqSNR:      22.0,
+			EqSNR:      ptr(22.0),
 			RxTime:     2000000000,
 			RxDuration: ptr(int64(700)), // NON-NIL: update duration
 			Profile:    nil,             // NIL: preserve existing profile
 		}
 		err := repo.UpdateRadioMetricsSelective(ctx, 100, eui, update)
 		if err != nil {
-			errChan <- fmt.Errorf("goroutine 1 failed: %w", err)
+			errChan <- fmt.Errorf("%s: %w", errWrapGoroutine1Failed, err)
 			return
 		}
 		t.Log("Goroutine 1: Updated RxDuration to 700, preserved Profile")
@@ -901,17 +969,17 @@ func TestUpdateRadioMetricsSelective_ConcurrentUpdates(t *testing.T) {
 		<-done1 // Block until Goroutine 1 completes
 
 		ctx := testutil.TestContext()
-		update := interfaces.RadioMetricsUpdate{
+		update := models.RadioMetricsUpdate{
 			SNR:        25.0,
 			RSSI:       -65.0,
-			EqSNR:      27.0,
+			EqSNR:      ptr(27.0),
 			RxTime:     3000000000,
 			RxDuration: nil,               // NIL: preserve Goroutine 1's duration (700)
 			Profile:    ptr("Concurrent"), // NON-NIL: update profile
 		}
 		err := repo.UpdateRadioMetricsSelective(ctx, 100, eui, update)
 		if err != nil {
-			errChan <- fmt.Errorf("goroutine 2 failed: %w", err)
+			errChan <- fmt.Errorf("%s: %w", errWrapGoroutine2Failed, err)
 			return
 		}
 		t.Log("Goroutine 2: Updated Profile, preserved RxDuration from Goroutine 1")
@@ -963,7 +1031,7 @@ func TestUpdateRadioMetricsSelective_TenantIsolation(t *testing.T) {
 	createTestTenant(t, db, 999, "TestTenant999")
 	defer cleanupEndpointTestData(t, db, "TenantIsolation%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0, 0, 0, 0, 0, 0, 0, 7}
 
 	// Seed endpoint for tenant 100
@@ -978,10 +1046,10 @@ func TestUpdateRadioMetricsSelective_TenantIsolation(t *testing.T) {
 
 	// Attempt update using WRONG tenant (999 instead of 100)
 	ctx := testutil.TestContext()
-	update := interfaces.RadioMetricsUpdate{
+	update := models.RadioMetricsUpdate{
 		SNR:        99.0,
 		RSSI:       -99.0,
-		EqSNR:      99.0,
+		EqSNR:      ptr(99.0),
 		RxTime:     9999999999,
 		RxDuration: ptr(int64(9999)),
 		Profile:    ptr("BadTenant"),
@@ -1016,15 +1084,15 @@ func TestUpdateRadioMetricsSelective_NonexistentEndpoint(t *testing.T) {
 
 	createTestTenant(t, db, 100, "TestTenant100")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	nonExistentEUI := models.EUI{0x99, 0x99, 0x99, 0x99, 0x99, 0x99, 0x99, 0x99}
 
 	// Attempt update for non-existent endpoint
 	ctx := testutil.TestContext()
-	update := interfaces.RadioMetricsUpdate{
+	update := models.RadioMetricsUpdate{
 		SNR:    10.0,
 		RSSI:   -80.0,
-		EqSNR:  12.0,
+		EqSNR:  ptr(12.0),
 		RxTime: 1000000000,
 	}
 	err := repo.UpdateRadioMetricsSelective(ctx, 100, nonExistentEUI, update)
@@ -1034,9 +1102,9 @@ func TestUpdateRadioMetricsSelective_NonexistentEndpoint(t *testing.T) {
 	assert.ErrorIs(t, err, storage.ErrNotFound, "Should return sentinel not-found error")
 }
 
-// TestGetEndpointWithKeysForDetachValidation_ReturnsAllCryptoFields verifies that
-// the method returns endpoint with all crypto material needed for detach validation
-func TestGetEndpointWithKeysForDetachValidation_ReturnsAllCryptoFields(t *testing.T) {
+// TestGet_ReturnsDetachValidationCryptoFields verifies that Get returns the
+// decrypted key material (NwkSnKey, Sign) the detach signature validator relies on.
+func TestGet_ReturnsDetachValidationCryptoFields(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
@@ -1047,26 +1115,23 @@ func TestGetEndpointWithKeysForDetachValidation_ReturnsAllCryptoFields(t *testin
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupEndpointTestData(t, db, "DetachValidation%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}
 
-	// Insert test endpoint with all crypto fields using helper
 	nwkKey := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}
 	sign := []byte{0xAA, 0xBB, 0xCC, 0xDD}
-	presharedKey := []byte{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30}
 
 	insertEndpointWithDetachKeys(t, db, EndpointInsertParams{
-		EpEUI:     eui.ToUint64(),
-		Name:      "DetachValidation-EP1",
-		TenantID:  100,
-		NwkKey:    nwkKey,
-		Sign:      sign,
-		Preshared: presharedKey,
+		EpEUI:    eui.ToUint64(),
+		Name:     "DetachValidation-EP1",
+		TenantID: 100,
+		NwkKey:   nwkKey,
+		Sign:     sign,
 	})
 
-	// Test: Retrieve endpoint with all crypto fields
+	// Test: Retrieve endpoint via the general Get path
 	ctx := testutil.TestContext()
-	endpoint, err := repo.GetEndpointWithKeysForDetachValidation(ctx, eui)
+	endpoint, err := repo.Get(ctx, eui)
 	require.NoError(t, err, "Should retrieve endpoint successfully")
 	require.NotNil(t, endpoint, "Endpoint should not be nil")
 
@@ -1074,20 +1139,16 @@ func TestGetEndpointWithKeysForDetachValidation_ReturnsAllCryptoFields(t *testin
 	assert.Equal(t, eui, endpoint.EUI, "EUI should match")
 	assert.Equal(t, "DetachValidation-EP1", endpoint.Name, "Name should match")
 
-	// Verify crypto fields are populated
+	// Verify the key material the detach validator uses is decrypted and populated
 	assert.NotNil(t, endpoint.NwkSnKey, "NwkSnKey should not be nil")
-	assert.Equal(t, nwkKey, endpoint.NwkSnKey, "NwkSnKey should match inserted value")
+	assert.Equal(t, nwkKey, endpoint.NwkSnKey, "NwkSnKey should match inserted value (decrypted)")
 
 	assert.NotNil(t, endpoint.Sign, "Sign should not be nil")
 	assert.Equal(t, sign, endpoint.Sign, "Sign should match inserted value")
-
-	assert.NotNil(t, endpoint.PresharedKey, "PresharedKey should not be nil")
-	assert.Equal(t, presharedKey, endpoint.PresharedKey, "PresharedKey should match inserted value")
 }
 
-// TestGetEndpointWithKeysForDetachValidation_NonexistentEUI verifies that
-// the method returns ErrNotFound for non-existent endpoint
-func TestGetEndpointWithKeysForDetachValidation_NonexistentEUI(t *testing.T) {
+// TestGet_NonexistentEUI verifies that Get returns ErrNotFound for a missing endpoint.
+func TestGet_NonexistentEUI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
@@ -1097,12 +1158,12 @@ func TestGetEndpointWithKeysForDetachValidation_NonexistentEUI(t *testing.T) {
 
 	createTestTenant(t, db, 100, "TestTenant100")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	nonExistentEUI := models.EUI{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
 	// Test: Query for non-existent endpoint
 	ctx := testutil.TestContext()
-	endpoint, err := repo.GetEndpointWithKeysForDetachValidation(ctx, nonExistentEUI)
+	endpoint, err := repo.Get(ctx, nonExistentEUI)
 
 	// Assert ErrNotFound returned
 	assert.Error(t, err, "Should return error for non-existent EUI")
@@ -1132,7 +1193,7 @@ func TestEndpointRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) {
 
 	defer cleanupEndpointTestData(t, db, "TestCrossTenant%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Shared EUI for both tenants (hardware reality: globally unique)
@@ -1192,8 +1253,8 @@ func TestEndpointRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) {
 	assert.Contains(t, strings.ToLower(err.Error()), "unique", "Error message should indicate uniqueness violation")
 }
 
-// TestUpdateFields_PersistsAttachSubpackets verifies attach subpackets survive round-trip storage.
-func TestUpdateFields_PersistsAttachSubpackets(t *testing.T) {
+// TestEndpointAttachmentStateUpdate_PersistsAttachSubpackets verifies attach subpackets survive round-trip storage.
+func TestEndpointAttachmentStateUpdate_PersistsAttachSubpackets(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
@@ -1205,7 +1266,7 @@ func TestUpdateFields_PersistsAttachSubpackets(t *testing.T) {
 	createTestTenant(t, db, tenantID, "TestTenant100")
 	defer cleanupEndpointTestData(t, db, "TestSubpackets%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x00, 0x01}
 
 	// Seed baseline endpoint (subpackets nil)
@@ -1230,8 +1291,9 @@ func TestUpdateFields_PersistsAttachSubpackets(t *testing.T) {
 	require.NoError(t, err, "Failed to marshal subpackets payload")
 
 	ctx := testutil.TestContext()
-	err = repo.UpdateFields(ctx, tenantID, baseline.ID, map[string]interface{}{
-		"last_attach_subpackets": string(encoded),
+	subpacketsJSON := string(encoded)
+	err = repo.EndpointAttachmentStateUpdate(ctx, tenantID, baseline.ID, models.EndpointAttachmentStateParams{
+		LastAttachSubpackets: &subpacketsJSON,
 	})
 	require.NoError(t, err, "Failed to persist attach subpackets")
 
@@ -1247,8 +1309,8 @@ func TestUpdateFields_PersistsAttachSubpackets(t *testing.T) {
 	_ = ctx // silence unused warning
 }
 
-// TestUpdateFields_PreservesAttachSubpacketsWhenAbsent ensures we never invent subpackets when updates omit them.
-func TestUpdateFields_PreservesAttachSubpacketsWhenAbsent(t *testing.T) {
+// TestEndpointAttachmentStateUpdate_PreservesAttachSubpacketsWhenAbsent ensures we never invent subpackets when updates omit them.
+func TestEndpointAttachmentStateUpdate_PreservesAttachSubpacketsWhenAbsent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
@@ -1260,7 +1322,7 @@ func TestUpdateFields_PreservesAttachSubpacketsWhenAbsent(t *testing.T) {
 	createTestTenant(t, db, tenantID, "TestTenant200")
 	defer cleanupEndpointTestData(t, db, "TestSubpacketsAbsent%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x00, 0x02}
 
 	baseline := seedEndpointWithMetrics(t, db, repo, tenantID, eui, seedMetrics{
@@ -1274,18 +1336,19 @@ func TestUpdateFields_PreservesAttachSubpacketsWhenAbsent(t *testing.T) {
 	require.Nil(t, baseline.LastAttachSubpackets, "Baseline subpackets must start nil")
 
 	ctx := testutil.TestContext()
-	err := repo.UpdateFields(ctx, tenantID, baseline.ID, map[string]interface{}{
-		"last_profile":            "UpdNoSubPk", // VARCHAR(10) limit
-		"last_attach_rx_time":     int64(3333333),
-		"last_attach_rx_duration": int64(400),
+	rxTime := int64(3333333)
+	rxDuration := int64(400)
+	err := repo.EndpointAttachmentStateUpdate(ctx, tenantID, baseline.ID, models.EndpointAttachmentStateParams{
+		LastAttachRxTime:     &rxTime,
+		LastAttachRxDuration: &rxDuration,
 	})
-	require.NoError(t, err, "UpdateFields without subpackets must succeed")
+	require.NoError(t, err, "attachment state update without subpackets must succeed")
 
 	// Use direct SQL query (bypasses GetByID schema mismatch issue)
 	storedSubpackets, storedProfile, storedRxTime, storedRxDuration := querySubpacketsAndProfile(t, db, tenantID, baseline.ID)
 	assert.Nil(t, storedSubpackets, "Subpackets must remain nil when not provided")
-	require.NotNil(t, storedProfile, "Profile must be present after update")
-	assert.Equal(t, "UpdNoSubPk", *storedProfile, "Profile update should apply")
+	require.NotNil(t, storedProfile, "Profile must remain present")
+	assert.Equal(t, "BaseAbsnt", *storedProfile, "Profile must be untouched by the attachment state update")
 	require.NotNil(t, storedRxTime, "Attach RxTime must be present")
 	assert.Equal(t, int64(3333333), *storedRxTime, "Attach RxTime should update")
 	require.NotNil(t, storedRxDuration, "Attach RxDuration must be present")
@@ -1312,7 +1375,7 @@ func TestGetByEUI_ReturnsAttachSubpackets(t *testing.T) {
 	createTestTenant(t, db, tenantID, "TestTenant301")
 	defer cleanupEndpointTestData(t, db, "TestGetByEUI-Subpkt%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x03, 0x01}
 
 	// Seed endpoint with baseline metrics
@@ -1337,8 +1400,9 @@ func TestGetByEUI_ReturnsAttachSubpackets(t *testing.T) {
 	require.NoError(t, err, "Failed to marshal subpackets payload")
 
 	ctx := testutil.TestContext()
-	err = repo.UpdateFields(ctx, tenantID, baseline.ID, map[string]interface{}{
-		"last_attach_subpackets": string(encoded),
+	subpacketsJSON := string(encoded)
+	err = repo.EndpointAttachmentStateUpdate(ctx, tenantID, baseline.ID, models.EndpointAttachmentStateParams{
+		LastAttachSubpackets: &subpacketsJSON,
 	})
 	require.NoError(t, err, "Failed to persist attach subpackets")
 
@@ -1374,7 +1438,7 @@ func TestGetByEUI_SubpacketsNilWhenNull(t *testing.T) {
 	createTestTenant(t, db, tenantID, "TestTenant302")
 	defer cleanupEndpointTestData(t, db, "TestGetByEUI-NullSub%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x03, 0x02}
 
 	// Seed endpoint WITHOUT subpackets (will be NULL in DB)
@@ -1417,7 +1481,7 @@ func TestGetByEUI_TenantIsolation(t *testing.T) {
 	createTestTenant(t, db, tenantB, "TestTenant304")
 	defer cleanupEndpointTestData(t, db, "TestGetByEUI-TenIso%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	eui := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x03, 0x03}
 
 	// Seed endpoint for tenant A with subpackets
@@ -1439,8 +1503,9 @@ func TestGetByEUI_TenantIsolation(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := testutil.TestContext()
-	err = repo.UpdateFields(ctx, tenantA, baseline.ID, map[string]interface{}{
-		"last_attach_subpackets": string(encoded),
+	subpacketsJSON := string(encoded)
+	err = repo.EndpointAttachmentStateUpdate(ctx, tenantA, baseline.ID, models.EndpointAttachmentStateParams{
+		LastAttachSubpackets: &subpacketsJSON,
 	})
 	require.NoError(t, err)
 
@@ -1456,206 +1521,9 @@ func TestGetByEUI_TenantIsolation(t *testing.T) {
 		"Cross-tenant GetByEUI must return storage.ErrNotFound, got: %v", err)
 }
 
-// TestTxnGetByEUI_SubpacketsParity verifies that the transactional GetByEUI
-// returns the same subpackets data as the non-transactional version.
-// This validates the BSSCI-ATTACH-024 fix for transaction_endpoint.go.
-func TestTxnGetByEUI_SubpacketsParity(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := setupEndpointTestDB(t)
-	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
-
-	tenantID := int64(305)
-	createTestTenant(t, db, tenantID, "TestTenant305")
-	defer cleanupEndpointTestData(t, db, "TestTxnGetByEUI%")
-
-	repo := NewEndPointRepository(db)
-	eui := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00, 0x03, 0x05}
-
-	// Seed endpoint with subpackets
-	baseline := seedEndpointWithMetrics(t, db, repo, tenantID, eui, seedMetrics{
-		SNR:        2.0,
-		RSSI:       -98.0,
-		EqSNR:      3.0,
-		RxTime:     6666666,
-		RxDuration: 500,
-		Profile:    "TxnParity", // VARCHAR(10) limit
-	})
-
-	testSubpackets := mioty.Subpackets{
-		SNR:       []float64{0.5, 1.5, 2.5},
-		RSSI:      []float64{-85.0, -86.0, -87.0},
-		Frequency: []int64{868000000, 868200000},
-	}
-	encoded, err := json.Marshal(&testSubpackets)
-	require.NoError(t, err)
-
-	ctx := testutil.TestContext()
-	err = repo.UpdateFields(ctx, tenantID, baseline.ID, map[string]interface{}{
-		"last_attach_subpackets": string(encoded),
-	})
-	require.NoError(t, err)
-
-	// Get via non-transactional GetByEUI for reference
-	nonTxnEndpoint := reloadEndpoint(t, repo, tenantID, eui)
-	require.NotNil(t, nonTxnEndpoint.LastAttachSubpackets, "Non-txn GetByEUI should return subpackets")
-
-	// Get via transactional GetByEUI within a transaction
-	// Create raw sql.Tx from sqlx.DB for transactionalEndPointRepository
-	rawTx, err := db.BeginTx(ctx, nil)
-	require.NoError(t, err, "Failed to begin transaction")
-	defer func() { _ = rawTx.Rollback() }() // #nosec G307 -- Test cleanup
-
-	// Create transactional repo directly (mirrors Transaction.EndPoints() behavior)
-	txnRepo := &transactionalEndPointRepository{tx: rawTx, db: nil}
-	txnEndpoint, err := txnRepo.GetByEUI(ctx, tenantID, eui[:])
-	require.NoError(t, err, "Transactional GetByEUI should succeed")
-	require.NotNil(t, txnEndpoint, "Transactional endpoint should not be nil")
-
-	// Assert subpackets parity
-	require.NotNil(t, txnEndpoint.LastAttachSubpackets, "Transactional GetByEUI must return LastAttachSubpackets")
-	assert.JSONEq(t, *nonTxnEndpoint.LastAttachSubpackets, *txnEndpoint.LastAttachSubpackets,
-		"Transactional and non-transactional subpackets must match")
-
-	// Assert RxTime/RxDuration parity (added in same BSSCI-ATTACH-024 fix)
-	require.NotNil(t, txnEndpoint.LastAttachRxTime, "Transactional LastAttachRxTime must be present")
-	assert.Equal(t, *nonTxnEndpoint.LastAttachRxTime, *txnEndpoint.LastAttachRxTime)
-	require.NotNil(t, txnEndpoint.LastAttachRxDuration, "Transactional LastAttachRxDuration must be present")
-	assert.Equal(t, *nonTxnEndpoint.LastAttachRxDuration, *txnEndpoint.LastAttachRxDuration)
-
-	// Assert LastProfile parity
-	require.NotNil(t, txnEndpoint.LastProfile, "Transactional LastProfile must be present")
-	assert.Equal(t, *nonTxnEndpoint.LastProfile, *txnEndpoint.LastProfile)
-}
-
 // =============================================================================
 // SCACI §3.6 Register Audit: StreamAllForPropagation Column Name Regression Test
 // =============================================================================
-
-// TestStreamAllForPropagation_UsesCorrectColumnName verifies the SQL query
-// uses nwk_key (not nwk_sn_key) which matches the endpoints table schema.
-//
-// This is a sqlmock-based unit test that validates:
-//   - Positive: Query contains "nwk_key" column
-//   - Negative: Query does NOT contain "nwk_sn_key" (regression blocker)
-//
-// Spec: SCACI §3.6.1 - Register operation field persistence
-func TestStreamAllForPropagation_UsesCorrectColumnName(t *testing.T) {
-	// Create sqlmock DB
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("failed to create sqlmock: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	sqlxDB := sqlx.NewDb(db, "sqlmock")
-	repo := NewEndPointRepository(sqlxDB)
-
-	// Define expected SQL pattern - must contain nwk_key
-	// Note: The actual query from StreamAllForPropagation uses nwk_key
-	expectedQueryPattern := regexp.MustCompile(`SELECT.*nwk_key.*FROM\s+endpoints`)
-
-	// Create mock rows for SELECT result
-	rows := sqlmock.NewRows([]string{
-		"id", "ep_eui", "tenant_id", "nwk_key", "bidi", "sh_addr",
-		"dual_chan", "repetition", "wide_carr_off", "long_blk_dist", "propagated_at",
-	}).AddRow(
-		int64(1), // id
-		[]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, // ep_eui
-		int64(100), // tenant_id
-		[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10}, // nwk_key (16 bytes)
-		true,        // bidi
-		int32(1234), // sh_addr
-		false,       // dual_chan
-		true,        // repetition
-		false,       // wide_carr_off
-		false,       // long_blk_dist
-		time.Now(),  // propagated_at
-	)
-
-	// Set up expectation with query matcher
-	mock.ExpectQuery(expectedQueryPattern.String()).
-		WithArgs(int64(0), 100). // cursorID=0, limit=100
-		WillReturnRows(rows)
-
-	// Execute StreamAllForPropagation
-	ctx := testutil.TestContext()
-	endpoints, err := repo.StreamAllForPropagation(ctx, 0, 100)
-	require.NoError(t, err, "StreamAllForPropagation should succeed")
-	require.Len(t, endpoints, 1, "Should return 1 endpoint")
-
-	// Verify the returned endpoint has correct data
-	assert.Equal(t, int64(1), endpoints[0].ID)
-	assert.Equal(t, int64(100), endpoints[0].TenantID)
-	assert.True(t, endpoints[0].Bidi)
-
-	// Verify all SQL expectations were met
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("unmet SQL expectations: %v", err)
-	}
-
-	// CRITICAL NEGATIVE ASSERTION: Verify the actual query does NOT contain nwk_sn_key
-	// This is verified implicitly by the regexp pattern matching nwk_key
-	// If the code had nwk_sn_key, the ExpectQuery would not match and test would fail
-}
-
-// TestStreamAllForPropagation_QueryTextValidation directly inspects query text
-// to ensure nwk_sn_key is never present (defense-in-depth regression blocker).
-func TestStreamAllForPropagation_QueryTextValidation(t *testing.T) {
-	// This test validates the source code query text contains correct column name
-	// by creating a custom query matcher that captures and validates the actual SQL
-
-	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherFunc(
-		func(_, actualSQL string) error {
-			// CRITICAL: Assert nwk_sn_key is NOT in the query (regression blocker)
-			if strings.Contains(actualSQL, "nwk_sn_key") {
-				return fmt.Errorf("REGRESSION: query contains 'nwk_sn_key' which does not exist in endpoints table. Found: %s", actualSQL)
-			}
-			// Assert nwk_key IS in the query (positive assertion)
-			if !strings.Contains(actualSQL, "nwk_key") {
-				return fmt.Errorf("query missing 'nwk_key' column. Found: %s", actualSQL)
-			}
-			return nil
-		},
-	)))
-	if err != nil {
-		t.Fatalf("failed to create sqlmock: %v", err)
-	}
-	defer func() { _ = db.Close() }()
-
-	sqlxDB := sqlx.NewDb(db, "sqlmock")
-	repo := NewEndPointRepository(sqlxDB)
-
-	// Create mock rows
-	rows := sqlmock.NewRows([]string{
-		"id", "ep_eui", "tenant_id", "nwk_key", "bidi", "sh_addr",
-		"dual_chan", "repetition", "wide_carr_off", "long_blk_dist", "propagated_at",
-	}).AddRow(
-		int64(1),
-		[]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88},
-		int64(100),
-		[]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10},
-		true,
-		int32(1234),
-		false,
-		true,
-		false,
-		false,
-		time.Now(),
-	)
-
-	// The custom matcher validates the query text
-	mock.ExpectQuery("").WillReturnRows(rows)
-
-	// Execute - the custom matcher will verify column names
-	ctx := testutil.TestContext()
-	_, err = repo.StreamAllForPropagation(ctx, 0, 100)
-	require.NoError(t, err, "StreamAllForPropagation should succeed with correct column name")
-
-	// Expectations verified by custom matcher during query execution
-}
 
 // =============================================================================
 // DeviceModelID Persistence Round-Trip Tests
@@ -1669,10 +1537,12 @@ func createTestDeviceModel(t *testing.T, db *sqlx.DB, tenantID int64, code strin
 	var mfrID, modelID uuid.UUID
 	require.NoError(t, db.QueryRow(
 		`INSERT INTO manufacturers (tenant_id, name) VALUES ($1, $2) RETURNING id`,
-		tenantID, "TestMfr-"+code).Scan(&mfrID))
+		tenantID, "TestMfr-"+code,
+	).Scan(&mfrID))
 	require.NoError(t, db.QueryRow(
 		`INSERT INTO device_models (manufacturer_id, tenant_id, name, code) VALUES ($1, $2, $3, $4) RETURNING id`,
-		mfrID, tenantID, "TestModel-"+code, code).Scan(&modelID))
+		mfrID, tenantID, "TestModel-"+code, code,
+	).Scan(&modelID))
 	return modelID
 }
 
@@ -1690,7 +1560,7 @@ func TestCreate_WithDeviceModelID(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestDeviceModelID%")
 	defer cleanupEndpointTestData(t, db, "TestDeviceModelID%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create test endpoint with DeviceModelID
@@ -1742,7 +1612,7 @@ func TestGetByID_ReturnsDeviceModelID(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestGetByID-DevModel%")
 	defer cleanupEndpointTestData(t, db, "TestGetByID-DevModel%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create endpoint with DeviceModelID
@@ -1792,7 +1662,7 @@ func TestListByTenantPaginated_ReturnsDeviceModelID(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestList-DevModel%")
 	defer cleanupEndpointTestData(t, db, "TestList-DevModel%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create endpoint with DeviceModelID
@@ -1842,7 +1712,7 @@ func TestGetByEUI_ReturnsDeviceModelID(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestGetByEUI-DevModel%")
 	defer cleanupEndpointTestData(t, db, "TestGetByEUI-DevModel%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create endpoint with DeviceModelID
@@ -1917,7 +1787,7 @@ func TestUpdate_NilKeys_NoCheckViolation(t *testing.T) {
 	createTestTenant(t, db, 800, "TestTenant800")
 	defer cleanupEndpointTestData(t, db, "TestNilKeys%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	eui := models.EUI{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x01}
@@ -1970,7 +1840,7 @@ func TestUpdateWithEUI_NilKeys_NoCheckViolation(t *testing.T) {
 	createTestTenant(t, db, 801, "TestTenant801")
 	defer cleanupEndpointTestData(t, db, "TestNilKeysEUI%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	oldEui := models.EUI{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x02}
@@ -2024,7 +1894,7 @@ func TestListByTenantPaginated_ReturnsMIOTYConfigFields(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestList-MIOTYFields%")
 	defer cleanupEndpointTestData(t, db, "TestList-MIOTYFields%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	var eui models.EUI
@@ -2098,7 +1968,7 @@ func TestListByTenantPaginated_HandlesNullTypeEUI(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestList-NullTypeEUI%")
 	defer cleanupEndpointTestData(t, db, "TestList-NullTypeEUI%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	var eui models.EUI
@@ -2142,7 +2012,7 @@ func TestUpdate_PersistsTypeEUI(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestUpdate-TypeEUI%")
 	defer cleanupEndpointTestData(t, db, "TestUpdate-TypeEUI%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	var eui models.EUI
@@ -2193,7 +2063,7 @@ func TestUpdate_ClearsTypeEUI(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestUpdate-ClearTypeEUI%")
 	defer cleanupEndpointTestData(t, db, "TestUpdate-ClearTypeEUI%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	var eui models.EUI
@@ -2244,7 +2114,7 @@ func TestUpdateWithEUI_PersistsTypeEUI(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestUpdateWithEUI-TypeEUI%")
 	defer cleanupEndpointTestData(t, db, "TestUpdateWithEUI-TypeEUI%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	var oldEui models.EUI
@@ -2297,7 +2167,7 @@ func TestUpdateWithEUI_ClearsTypeEUI(t *testing.T) {
 	cleanupEndpointTestData(t, db, "TestUpdateWithEUI-ClearTypeEUI%")
 	defer cleanupEndpointTestData(t, db, "TestUpdateWithEUI-ClearTypeEUI%")
 
-	repo := NewEndPointRepository(db)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	var eui models.EUI
@@ -2334,89 +2204,4 @@ func TestUpdateWithEUI_ClearsTypeEUI(t *testing.T) {
 	retrieved, err := repo.GetByEUI(ctx, 815, eui[:])
 	require.NoError(t, err)
 	assert.Nil(t, retrieved.TypeEUI, "TypeEUI should be nil after clearing via UpdateWithEUI")
-}
-
-// TestGetEndpointWithKeysForDetachValidation_TypeEUIAndPropagatedAt verifies that
-// scanEndpointDetachValidationRow correctly round-trips the BYTEA type_eui column
-// (formerly mis-typed as sql.NullInt64) and the TIMESTAMP propagated_at column.
-// Both must survive a write → read cycle through the non-transactional repository.
-func TestGetEndpointWithKeysForDetachValidation_TypeEUIAndPropagatedAt(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := setupEndpointTestDB(t)
-	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
-
-	tenantID := int64(900)
-	createTestTenant(t, db, tenantID, "TestTenant900")
-	defer cleanupEndpointTestData(t, db, "DetachValTypeEUI%")
-
-	repo := NewEndPointRepository(db)
-	eui := models.EUI{0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x01, 0x02, 0x03}
-
-	insertEndpointWithDetachKeys(t, db, EndpointInsertParams{
-		EpEUI:    eui.ToUint64(),
-		Name:     "DetachValTypeEUI-EP1",
-		TenantID: tenantID,
-	})
-
-	typeEUIBytes := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22}
-	propagatedAt := time.Date(2026, 4, 1, 12, 30, 45, 0, time.UTC)
-	_, err := db.Exec(`UPDATE endpoints SET type_eui = $1, propagated_at = $2 WHERE ep_eui = $3`,
-		typeEUIBytes, propagatedAt, euiToBytes(eui.ToUint64()))
-	require.NoError(t, err, "failed to seed type_eui + propagated_at")
-
-	ctx := testutil.TestContext()
-	endpoint, err := repo.GetEndpointWithKeysForDetachValidation(ctx, eui)
-	require.NoError(t, err)
-	require.NotNil(t, endpoint)
-	require.NotNil(t, endpoint.TypeEUI, "TypeEUI must round-trip from BYTEA")
-	assert.Equal(t, typeEUIBytes, endpoint.TypeEUI[:], "TypeEUI bytes must match seeded value")
-	require.NotNil(t, endpoint.PropagatedAt, "PropagatedAt must round-trip from TIMESTAMP")
-	assert.True(t, endpoint.PropagatedAt.Equal(propagatedAt),
-		"PropagatedAt should equal seeded timestamp (got %v, want %v)", endpoint.PropagatedAt, propagatedAt)
-}
-
-// TestTxnGetEndpointWithKeysForDetachValidation_TypeEUIAndPropagatedAt validates the
-// transactional variant emits the same fields through scanEndpointDetachValidationRow.
-func TestTxnGetEndpointWithKeysForDetachValidation_TypeEUIAndPropagatedAt(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := setupEndpointTestDB(t)
-	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
-
-	tenantID := int64(901)
-	createTestTenant(t, db, tenantID, "TestTenant901")
-	defer cleanupEndpointTestData(t, db, "TxnDetachValTypeEUI%")
-
-	eui := models.EUI{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}
-	insertEndpointWithDetachKeys(t, db, EndpointInsertParams{
-		EpEUI:    eui.ToUint64(),
-		Name:     "TxnDetachValTypeEUI-EP1",
-		TenantID: tenantID,
-	})
-
-	typeEUIBytes := []byte{0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33}
-	propagatedAt := time.Date(2026, 5, 1, 9, 15, 0, 0, time.UTC)
-	_, err := db.Exec(`UPDATE endpoints SET type_eui = $1, propagated_at = $2 WHERE ep_eui = $3`,
-		typeEUIBytes, propagatedAt, euiToBytes(eui.ToUint64()))
-	require.NoError(t, err)
-
-	ctx := testutil.TestContext()
-	rawTx, err := db.BeginTx(ctx, nil)
-	require.NoError(t, err)
-	defer func() { _ = rawTx.Rollback() }() // #nosec G307 -- Test cleanup
-
-	txnRepo := &transactionalEndPointRepository{tx: rawTx, db: nil}
-	endpoint, err := txnRepo.GetEndpointWithKeysForDetachValidation(ctx, eui)
-	require.NoError(t, err)
-	require.NotNil(t, endpoint)
-	require.NotNil(t, endpoint.TypeEUI, "TypeEUI must round-trip via transactional path")
-	assert.Equal(t, typeEUIBytes, endpoint.TypeEUI[:])
-	require.NotNil(t, endpoint.PropagatedAt, "PropagatedAt must round-trip via transactional path")
-	assert.True(t, endpoint.PropagatedAt.Equal(propagatedAt),
-		"transactional PropagatedAt should equal seeded timestamp (got %v, want %v)", endpoint.PropagatedAt, propagatedAt)
 }

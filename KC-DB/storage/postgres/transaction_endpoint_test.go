@@ -2,12 +2,20 @@ package postgres
 
 import (
 	"testing"
+	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/testsupport"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// lockAttachCounterWaitProbe is how long the second lock is watched for not returning early.
+const lockAttachCounterWaitProbe = 300 * time.Millisecond
 
 // TestTransactionalCreate_DefaultsOwnerTenantID verifies that when OwnerTenantID
 // is zero during transactional Create, it defaults to TenantID (roaming support).
@@ -31,6 +39,7 @@ func TestTransactionalCreate_DefaultsOwnerTenantID(t *testing.T) {
 		NwkSnKey:      make([]byte, 16),
 		AppKey:        make([]byte, 16),
 		CryptoMode:    0,
+		EPClass:       "A",
 	}
 	// Set a unique EUI
 	copy(endpoint.EUI[:], []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08})
@@ -41,8 +50,11 @@ func TestTransactionalCreate_DefaultsOwnerTenantID(t *testing.T) {
 
 	// Create DB wrapper
 	storage := &DB{
-		conn: db.DB,
-		log:  log,
+		clock:  clock.SystemClock{},
+		conn:   db.DB,
+		sqlxDB: db,
+		log:    log,
+		cipher: testsupport.TestCipher(),
 	}
 
 	// Begin transaction
@@ -94,6 +106,7 @@ func TestTransactionalCreate_PreservesExplicitOwnerTenantID(t *testing.T) {
 		NwkSnKey:      make([]byte, 16),
 		AppKey:        make([]byte, 16),
 		CryptoMode:    0,
+		EPClass:       "A",
 	}
 	// Set a unique EUI
 	copy(endpoint.EUI[:], []byte{0x02, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08})
@@ -104,8 +117,11 @@ func TestTransactionalCreate_PreservesExplicitOwnerTenantID(t *testing.T) {
 
 	// Create DB wrapper
 	storage := &DB{
-		conn: db.DB,
-		log:  log,
+		clock:  clock.SystemClock{},
+		conn:   db.DB,
+		sqlxDB: db,
+		log:    log,
+		cipher: testsupport.TestCipher(),
 	}
 
 	// Begin transaction
@@ -166,8 +182,11 @@ func TestTransactionalGet_ReturnsOwnerTenantID(t *testing.T) {
 
 	// Create DB wrapper
 	storage := &DB{
-		conn: db.DB,
-		log:  log,
+		clock:  clock.SystemClock{},
+		conn:   db.DB,
+		sqlxDB: db,
+		log:    log,
+		cipher: testsupport.TestCipher(),
 	}
 
 	// Begin transaction and use Get
@@ -183,4 +202,108 @@ func TestTransactionalGet_ReturnsOwnerTenantID(t *testing.T) {
 	// Verify OwnerTenantID is returned correctly
 	assert.Equal(t, int64(300), ep.TenantID, "TenantID should be 300")
 	assert.Equal(t, int64(301), ep.OwnerTenantID, "OwnerTenantID should be 301")
+}
+
+// LockAttachCounter holds the endpoint row: a second transaction's lock waits
+// for the first to commit and then reads the counter it wrote.
+func TestLockAttachCounterSerializesTransactions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	const tenantID = int64(920)
+	db, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+	createTestTenant(t, db, tenantID, "LockAttachCounterTenant")
+	endpointID := insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x70B3D5677011150C, Name: "lock-attach-counter", TenantID: tenantID})
+	store := &DB{clock: clock.SystemClock{}, conn: db.DB, sqlxDB: db, log: logger.Get(), cipher: testsupport.TestCipher()}
+	ctx := t.Context()
+
+	first, err := store.BeginTx(ctx)
+	require.NoError(t, err)
+	defer func() { _ = first.Rollback() }()
+	_, err = first.EndPoints().LockAttachCounter(ctx, tenantID, endpointID)
+	require.NoError(t, err)
+	attachCnt := int64(7)
+	overTheAirAttach := models.EndpointAttachmentStateParams{AttachCnt: &attachCnt, Nonce: []byte{1, 2, 3, 4}, Sign: []byte{5, 6, 7, 8}}
+	require.NoError(t, first.EndPoints().EndpointAttachmentStateUpdate(ctx, tenantID, endpointID, overTheAirAttach))
+
+	secondRead := make(chan *uint32, 1)
+	go func() {
+		second, beginErr := store.BeginTx(ctx)
+		if beginErr != nil {
+			secondRead <- nil
+			return
+		}
+		defer func() { _ = second.Rollback() }()
+		stored, lockErr := second.EndPoints().LockAttachCounter(ctx, tenantID, endpointID)
+		if lockErr != nil {
+			stored = nil
+		}
+		secondRead <- stored
+	}()
+
+	select {
+	case <-secondRead:
+		t.Fatal("the second lock must wait while the first transaction holds the row")
+	case <-time.After(lockAttachCounterWaitProbe):
+	}
+	require.NoError(t, first.Commit())
+
+	stored := <-secondRead
+	require.NotNil(t, stored)
+	assert.Equal(t, uint32(attachCnt), *stored, "the second transaction reads the committed counter")
+}
+
+func TestLockAttachCounterOfUnknownEndpoint(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	db, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+	store := &DB{clock: clock.SystemClock{}, conn: db.DB, sqlxDB: db, log: logger.Get(), cipher: testsupport.TestCipher()}
+	tx, err := store.BeginTx(t.Context())
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.EndPoints().LockAttachCounter(t.Context(), 1, 999999)
+	require.ErrorIs(t, err, storage.ErrNotFound)
+}
+
+// ep_status values the endpoints CHECK constraint accepts (migration 003).
+const (
+	epStatusAttachedForTest = "attached"
+	epStatusDetachedForTest = "detached"
+)
+
+// TransitionEndpointStatus reports a change only to the call that made it, so
+// one attach or detach announcement follows however many stations confirm it.
+func TestTransitionEndpointStatusReportsOnlyTheChangingCall(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	const tenantID = int64(921)
+	db, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+	createTestTenant(t, db, tenantID, "TransitionEndpointStatusTenant")
+	endpointID := insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x70B3D5677011150E, Name: "transition-status", TenantID: tenantID})
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
+	ctx := t.Context()
+
+	for _, step := range []struct {
+		status  string
+		changed bool
+	}{
+		{epStatusAttachedForTest, true},
+		{epStatusAttachedForTest, false},
+		{epStatusDetachedForTest, true},
+		{epStatusDetachedForTest, false},
+	} {
+		changed, err := repo.TransitionEndpointStatus(ctx, tenantID, endpointID, step.status)
+		require.NoError(t, err)
+		assert.Equal(t, step.changed, changed, "transition to %s", step.status)
+	}
+
+	changed, err := repo.TransitionEndpointStatus(ctx, tenantID+1, endpointID, epStatusAttachedForTest)
+	require.NoError(t, err)
+	assert.False(t, changed, "another tenant cannot move the endpoint")
 }

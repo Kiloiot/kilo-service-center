@@ -39,7 +39,7 @@ func (r *TenantRepository) ListTenants(ctx context.Context, statusFilter string)
 	query += ` ORDER BY created_at DESC`
 
 	if err := r.db.SelectContext(ctx, &tenants, query, args...); err != nil {
-		return nil, fmt.Errorf("postgres: tenant: list: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapPostgresTenantList, err)
 	}
 
 	return tenants, nil
@@ -55,7 +55,7 @@ func (r *TenantRepository) CreateTenant(ctx context.Context, name string, descri
 
 	var tenant models.Tenant
 	if err := r.db.GetContext(ctx, &tenant, query, name, description, models.TenantStatusActive); err != nil {
-		return nil, fmt.Errorf("postgres: tenant: create: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapPostgresTenantCreate, err)
 	}
 
 	return &tenant, nil
@@ -72,9 +72,9 @@ func (r *TenantRepository) GetTenantByID(ctx context.Context, id int64) (*models
 	var tenant models.Tenant
 	if err := r.db.GetContext(ctx, &tenant, query, id); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("postgres: tenant: get: tenant not found (id=%d): %w", id, err)
+			return nil, fmt.Errorf(errFmtPostgresTenantGetTenantNotFoundID, id, err)
 		}
-		return nil, fmt.Errorf("postgres: tenant: get: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapPostgresTenantGet, err)
 	}
 
 	return &tenant, nil
@@ -83,7 +83,7 @@ func (r *TenantRepository) GetTenantByID(ctx context.Context, id int64) (*models
 // UpdateTenant updates tenant fields dynamically using a map of field updates
 func (r *TenantRepository) UpdateTenant(ctx context.Context, id int64, updates map[string]interface{}) (*models.Tenant, error) {
 	if len(updates) == 0 {
-		return nil, fmt.Errorf("postgres: tenant: update: no fields to update")
+		return nil, errTextPostgresTenantUpdateNoFieldsUpdate
 	}
 
 	// Build SET clause dynamically
@@ -117,9 +117,9 @@ func (r *TenantRepository) UpdateTenant(ctx context.Context, id int64, updates m
 	var tenant models.Tenant
 	if err := r.db.GetContext(ctx, &tenant, query, args...); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("postgres: tenant: update: tenant not found (id=%d): %w", id, err)
+			return nil, fmt.Errorf(errFmtPostgresTenantUpdateTenantNotFoundID, id, err)
 		}
-		return nil, fmt.Errorf("postgres: tenant: update: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapPostgresTenantUpdate, err)
 	}
 
 	return &tenant, nil
@@ -140,16 +140,16 @@ func (r *TenantRepository) SetStatus(ctx context.Context, id int64, active bool)
 
 	result, err := r.db.ExecContext(ctx, query, status, id)
 	if err != nil {
-		return fmt.Errorf("postgres: tenant: set_status: %w", err)
+		return fmt.Errorf("%s: %w", errWrapPostgresTenantSetStatus, err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("postgres: tenant: set_status: check rows: %w", err)
+		return fmt.Errorf("%s: %w", errWrapPostgresTenantSetStatusCheckRows, err)
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("postgres: tenant: set_status: tenant not found (id=%d)", id)
+		return fmt.Errorf(errFmtPostgresTenantSetStatusTenantNotFoundID, id)
 	}
 
 	return nil
@@ -161,16 +161,16 @@ func (r *TenantRepository) DeleteTenant(ctx context.Context, id int64) error {
 
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("postgres: tenant: delete: %w", err)
+		return fmt.Errorf("%s: %w", errWrapPostgresTenantDelete, err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("postgres: tenant: delete: check rows: %w", err)
+		return fmt.Errorf("%s: %w", errWrapPostgresTenantDeleteCheckRows, err)
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("postgres: tenant: delete: tenant not found (id=%d)", id)
+		return fmt.Errorf(errFmtPostgresTenantDeleteTenantNotFoundID, id)
 	}
 
 	return nil

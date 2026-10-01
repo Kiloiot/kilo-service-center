@@ -1,23 +1,19 @@
 import React from "react";
 
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-} from "@mui/material";
+import { ConfirmDialog } from "@ui";
 
-import { formatEUIWithDashes } from "@utils/formatters";
-import { ACTION_CANCEL, BASE_STATION_DETAILS } from "@constants/messages";
+import { formatEui } from "@utils/eui";
+import {
+  BASE_STATION_DETAILS,
+  ERR_DELETE_BASE_STATION,
+} from "@constants/messages";
 
 interface BaseStationDeleteDialogProps {
   open: boolean;
   onClose: () => void;
   baseStationName: string | undefined;
   eui: string;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void>;
   isPending: boolean;
 }
 
@@ -31,29 +27,23 @@ const BaseStationDeleteDialog: React.FC<BaseStationDeleteDialogProps> = ({
   isPending,
 }) => {
   return (
-    <Dialog open={open} onClose={onClose}>
-      <DialogTitle>{BASE_STATION_DETAILS.DIALOG_DELETE_TITLE}</DialogTitle>
-      <DialogContent>
-        <DialogContentText>
+    <ConfirmDialog
+      open={open}
+      onClose={onClose}
+      onConfirm={onConfirm}
+      pending={isPending}
+      title={BASE_STATION_DETAILS.DIALOG_DELETE_TITLE}
+      message={
+        <>
           {BASE_STATION_DETAILS.DIALOG_DELETE_CONFIRM_PREFIX} &quot;
-          {baseStationName || formatEUIWithDashes(eui)}&quot;?{" "}
+          {baseStationName || formatEui(eui)}&quot;?{" "}
           {BASE_STATION_DETAILS.DIALOG_DELETE_WARNING}
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{ACTION_CANCEL}</Button>
-        <Button
-          onClick={onConfirm}
-          color="error"
-          variant="contained"
-          disabled={isPending}
-        >
-          {isPending
-            ? BASE_STATION_DETAILS.DELETING
-            : BASE_STATION_DETAILS.DELETE}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        </>
+      }
+      confirmLabel={BASE_STATION_DETAILS.DELETE}
+      pendingLabel={BASE_STATION_DETAILS.DELETING}
+      errorFallback={ERR_DELETE_BASE_STATION}
+    />
   );
 };
 

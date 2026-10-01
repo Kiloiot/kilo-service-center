@@ -3,6 +3,7 @@ package grpcservices
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -14,13 +15,60 @@ import (
 // EndpointService handles endpoint CRUD for gRPC layer
 type EndpointService interface {
 	Create(ctx context.Context, endpoint *models.EndPoint) (*models.EndPoint, error)
+	// CreateWithStatus stores a new endpoint and its attachment status in one transaction.
+	CreateWithStatus(ctx context.Context, endpoint *models.EndPoint, status string) (*models.EndPoint, error)
 	GetByEUI(ctx context.Context, eui []byte, tenantID int64) (*models.EndPoint, error)
 	Update(ctx context.Context, endpoint *models.EndPoint) (*models.EndPoint, error)
 	UpdateWithEUI(ctx context.Context, tenantID int64, oldEui []byte, endpoint *models.EndPoint) (*models.EndPoint, error)
 	CheckEUIGloballyUnique(ctx context.Context, eui []byte) error
-	Delete(ctx context.Context, eui []byte, tenantID int64) error
+	Delete(ctx context.Context, eui []byte, tenantID int64) (int64, error)
 	List(ctx context.Context, tenantID int64, limit, offset int) ([]*models.EndPoint, error)
 	ListByModelWithSnapshot(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) ([]*models.EndPoint, error)
+}
+
+// EndpointStore is the endpoint persistence surface used by endpointService.
+// Named separately from EndpointService above: that is what this layer offers
+// to the gRPC handlers, this is what it consumes from storage.
+type EndpointStore interface {
+	Create(ctx context.Context, endpoint *models.EndPoint) error
+	CreateWithStatus(ctx context.Context, endpoint *models.EndPoint, status string) error
+	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.EndPoint, error)
+	Update(ctx context.Context, endpoint *models.EndPoint) error
+	UpdateWithEUI(ctx context.Context, tenantID int64, oldEui []byte, endpoint *models.EndPoint) (*models.EndPoint, error)
+	CheckEUIUnique(ctx context.Context, eui []byte) error
+	DeleteByTenant(ctx context.Context, tenantID int64, eui []byte) (int64, error)
+	ListByTenantPaginated(ctx context.Context, tenantID int64, limit, offset int) ([]*models.EndPoint, error)
+	ListByModelWithSnapshot(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) ([]*models.EndPoint, error)
+}
+
+// BaseStationStore is the base station persistence surface used by
+// basestationService.
+type BaseStationStore interface {
+	Create(ctx context.Context, baseStation *models.BaseStation) error
+	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.BaseStation, error)
+	UpdateProfile(ctx context.Context, baseStation *models.BaseStation) error
+	UpdateEUI(ctx context.Context, tenantID int64, oldEui, newEui []byte) (*models.BaseStation, error)
+	DeleteByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.BaseStation, error)
+	List(ctx context.Context, filter *models.BaseStationFilter) ([]*models.BaseStation, int64, error)
+	ListAllLocations(ctx context.Context) ([]*models.BaseStation, error)
+}
+
+// DownlinkResultsStore pages the finished downlinks for DownlinkListingService.
+type DownlinkResultsStore interface {
+	GetDownlinkResults(ctx context.Context, tenantID int64, orgID *uuid.UUID, filter storage.DownlinkResultFilter, limit, offset int) ([]*storage.DownlinkMessage, int, error)
+}
+
+// DownlinkQueueLister pages the in-flight downlink queue of a tenant.
+type DownlinkQueueLister interface {
+	ListTenantQueue(ctx context.Context, tenantID int64, filter storage.DownlinkQueueFilter, limit, offset int) ([]*storage.DownlinkMessage, error)
+	CountTenantQueue(ctx context.Context, tenantID int64, filter storage.DownlinkQueueFilter) (int64, error)
+}
+
+// RegistrationWindow tells where a view of an endpoint's history starts: the
+// requested start, or its registration when that is later; registered is
+// false for an EUI the tenant has not registered.
+type RegistrationWindow interface {
+	Start(ctx context.Context, tenantID int64, epEui []byte, requested *time.Time) (start *time.Time, registered bool, err error)
 }
 
 // EndpointAttachmentService handles endpoint attach/detach propagation operations
@@ -32,12 +80,19 @@ type EndpointAttachmentService interface {
 	// DetachEndPoint initiates detach propagation to all base stations
 	// Returns operation_id and status for fire-and-forget tracking
 	DetachEndPoint(ctx context.Context, epEui string, tenantID int64) (*EndpointOperationResult, error)
+
+	// CreateAttached stores a pre-attached endpoint attached, or nothing.
+	CreateAttached(ctx context.Context, endpoint *models.EndPoint) (*models.EndPoint, error)
 }
+
+// ErrEndpointNotAttachable refuses an attach of an endpoint whose network key
+// cannot be sent to the base stations.
+var ErrEndpointNotAttachable = errors.New("endpoint cannot be attached")
 
 // EndpointOperationResult contains the result of attach/detach operations
 type EndpointOperationResult struct {
 	OperationID string
-	Status      string // "initiated", "in_progress", "completed", "failed"
+	Status      string // initiated, in_progress, completed, failed
 }
 
 // BaseStationService handles base station CRUD for gRPC layer
@@ -46,28 +101,15 @@ type BaseStationService interface {
 	GetByEUI(ctx context.Context, eui []byte, tenantID int64) (*models.BaseStation, error)
 	Update(ctx context.Context, baseStation *models.BaseStation) (*models.BaseStation, error)
 	UpdateEUI(ctx context.Context, tenantID int64, oldEui, newEui []byte) (*models.BaseStation, error)
-	Delete(ctx context.Context, eui []byte, tenantID int64) error
+	Delete(ctx context.Context, eui []byte, tenantID int64) (*models.BaseStation, error)
 	List(ctx context.Context, tenantID int64, limit, offset int) ([]*models.BaseStation, error)
 	ListAllLocations(ctx context.Context) ([]*models.BaseStation, error)
-}
-
-// MessageService handles message operations for gRPC layer
-type MessageService interface {
-	GetDownlinkByQueueID(ctx context.Context, queId uint64, tenantID string) (*storage.DownlinkMessage, error)
-	GetDownlinkQueue(ctx context.Context, epEui, tenantID string) ([]*storage.DownlinkMessage, error)
-	GetDownlinkResults(ctx context.Context, epEui, tenantID string, orgID *uuid.UUID, statusFilter string,
-		timeFrom, timeTo *time.Time, limit, offset int) ([]*storage.DownlinkMessage, int, error)
-	GetDLRXStatusByEndpoint(ctx context.Context, tenantID int64, epEui []byte,
-		limit, offset int, startTime, endTime *time.Time) ([]*mioty.DLRXStatus, int, error)
-	GetAverageDLRXMetrics(ctx context.Context, tenantID int64, epEui []byte,
-		startTime, endTime *time.Time) (avgSnr, avgRssi float64, count int, err error)
-	GetEndpointBaseStation(ctx context.Context, epEui, tenantID string) (string, error)
 }
 
 // AnalyticsService handles analytics queries
 type AnalyticsService interface {
 	GetOverview(ctx context.Context, tenantID int64, startTime, endTime *time.Time) (*AnalyticsOverview, error)
-	GetActivity(ctx context.Context, tenantID int64, startTime, endTime *time.Time) (*ActivityAnalytics, error)
+	GetActivity(ctx context.Context, tenantID int64, startTime, endTime *time.Time, granularity string) (*ActivityAnalytics, error)
 	GetSignalQuality(ctx context.Context, tenantID int64, startTime, endTime *time.Time) (*SignalQualityAnalytics, error)
 }
 
@@ -78,8 +120,6 @@ type EventService interface {
 	ListByEndPoint(ctx context.Context, tenantID int64, epEui []byte, filters *EventFilters, limit, offset int) ([]*Event, int64, error)
 	// Streaming methods
 	Stream(ctx context.Context, tenantID int64, filters *EventFilters) (<-chan *Event, error)
-	StreamByBaseStation(ctx context.Context, tenantID int64, bsEui []byte, filters *EventFilters) (<-chan *Event, error)
-	StreamByEndPoint(ctx context.Context, tenantID int64, epEui []byte, filters *EventFilters) (<-chan *Event, error)
 }
 
 // AlertService handles alert queries
@@ -90,18 +130,31 @@ type AlertService interface {
 
 // ScaciMonitoringService handles SCACI session and statistics monitoring
 type ScaciMonitoringService interface {
-	ListSessions(ctx context.Context, tenantID int64, limit, offset int) ([]*ScaciSession, int64, error)
+	ListSessions(ctx context.Context, tenantID int64, filter ScaciSessionFilter, limit, offset int) ([]*ScaciSession, int64, error)
 	GetSession(ctx context.Context, tenantID int64, sessionID string) (*ScaciSession, error)
-	GetStatistics(ctx context.Context, tenantID int64) (*ScaciStatistics, error)
-	ListErrors(ctx context.Context, tenantID int64, limit, offset int) ([]*ScaciError, int64, error)
-	ListQueues(ctx context.Context, tenantID int64, limit, offset int) ([]*ScaciQueue, int64, error)
-	GetStatus(ctx context.Context, tenantID int64) (*ScaciStatus, error)
+	GetStatistics(ctx context.Context, tenantID int64, window ScaciWindow) (*ScaciStatistics, error)
+	ListErrors(ctx context.Context, tenantID int64, window ScaciWindow, limit, offset int) ([]*ScaciError, int64, error)
+	ListQueues(ctx context.Context, tenantID int64, orgID uuid.UUID, epEUI *[8]byte, limit, offset int) ([]*ScaciQueue, int64, error)
+	GetStatus(ctx context.Context, tenantID int64, orgID uuid.UUID, window ScaciWindow) (*ScaciStatus, error)
+}
+
+// ScaciSessionFilter narrows a session listing; nil fields are not applied.
+type ScaciSessionFilter struct {
+	Status    *string
+	CanResume *bool
+}
+
+// ScaciWindow is an optional time range; a nil bound takes the SCACI
+// default lookback relative to the other bound or to now.
+type ScaciWindow struct {
+	From *time.Time
+	To   *time.Time
 }
 
 // CertificateService handles certificate operations
 type CertificateService interface {
 	GenerateCertificate(ctx context.Context, req *CertificateRequest) (*CertificateResponse, error)
-	DownloadCertificateByID(ctx context.Context, certType, certID string) ([]byte, string, error)
+	DownloadCertificateByID(ctx context.Context, tenantID int64, certType, certID string) ([]byte, string, error)
 	GetStoredCertificate(ctx context.Context, tenantID int64, bsEui []byte, certType string) ([]byte, string, error)
 	GenerateServerCertificates(ctx context.Context) error
 	RenewServerCertificates(ctx context.Context) error
@@ -202,54 +255,67 @@ type ServiceStatusDTO struct {
 	CheckedAt time.Time
 }
 
+// EndpointIndex keeps the ingress disposition index synchronized with
+// endpoint CRUD. Implementations must be safe for concurrent use; a nil
+// index disables synchronization. The index is only touched after the
+// persistence operation succeeded.
+type EndpointIndex interface {
+	Add(ctx context.Context, eui models.EUI)
+	Remove(ctx context.Context, eui models.EUI)
+}
+
 // EventWriter writes system events to the event store.
-// Structurally identical to pkg/grpc.EventWriter; Go structural typing ensures compatibility.
+// Structurally identical to pkg/audit.EventWriter; Go structural typing ensures compatibility.
 type EventWriter interface {
 	CreateEvent(ctx context.Context, event *models.SystemEvent) error
 }
 
 // AnalyticsOverview contains analytics overview data
 type AnalyticsOverview struct {
-	TotalEndpoints     int64
 	ActiveEndpoints    int64
-	TotalBaseStations  int64
-	OnlineBaseStations int64
+	ActiveBaseStations int64
 	TotalMessages      int64
 	AverageRSSI        float64
 	AverageSNR         float64
 }
 
-// ActivityAnalytics contains activity analytics data
+// ActivityAnalytics is the message activity of a window: distinct totals over
+// the whole window plus one slot per bucket in ascending order.
 type ActivityAnalytics struct {
-	MessagesPerHour  map[string]int64
-	EndpointActivity map[string]int64
-	TopEndpoints     []EndpointActivity
-	TopBaseStations  []BaseStationActivity
+	StartTime          time.Time
+	EndTime            time.Time
+	TotalMessages      int64
+	UniqueEndpoints    int64
+	UniqueBaseStations int64
+	Slots              []ActivitySlot
 }
 
-// EndpointActivity represents endpoint activity metrics
-type EndpointActivity struct {
-	EPEUI        string
-	Name         string
-	MessageCount int64
-	LastSeen     *time.Time
-}
-
-// BaseStationActivity represents base station activity metrics
-type BaseStationActivity struct {
-	BSEUI        string
-	Name         string
-	MessageCount int64
-	LastSeen     *time.Time
+// ActivitySlot is one bucket of ActivityAnalytics.
+type ActivitySlot struct {
+	Slot          time.Time
+	MessageCount  int64
+	EndpointCount int64
 }
 
 // SignalQualityAnalytics contains signal quality metrics
 type SignalQualityAnalytics struct {
-	AverageRSSI float64
-	AverageSNR  float64
-	RSSIRange   [2]float64 // [min, max]
-	SNRRange    [2]float64 // [min, max]
-	Quality     string     // "excellent", "good", "fair", "poor"
+	StartTime     time.Time
+	EndTime       time.Time
+	AverageRSSI   float64
+	AverageSNR    float64
+	MedianRSSI    float64
+	MedianSNR     float64
+	RSSIRange     [2]float64 // [min, max]
+	SNRRange      [2]float64 // [min, max]
+	ByBaseStation []BaseStationSignalQuality
+}
+
+// BaseStationSignalQuality is the signal quality one base station received.
+type BaseStationSignalQuality struct {
+	EUI          string
+	AverageRSSI  float64
+	AverageSNR   float64
+	MessageCount int64
 }
 
 // EventFilters contains filters for event queries
@@ -259,7 +325,43 @@ type EventFilters struct {
 	EventTypes []string
 	StartTime  *time.Time
 	EndTime    *time.Time
+	OpID       *int64 // BSSCI/SCACI opId carried in the event details
+	EpEUI      string
+	BsEUI      string
+	Outcome    string // EventOutcomeSuccess or EventOutcomeFailure
+	Search     string
 }
+
+// ErrorGroupService groups failures per bucket.
+type ErrorGroupService interface {
+	List(ctx context.Context, tenantID int64, bucket string, window ScaciWindow, limit, offset int) ([]*ErrorGroup, int64, error)
+}
+
+// ErrorGroup is one grouped failure of a bucket.
+type ErrorGroup struct {
+	Bucket     string
+	EventType  string
+	Code       string
+	Message    string
+	SourceName string
+	FirstSeen  time.Time
+	LastSeen   time.Time
+	Count      int64
+	LastOpID   string
+}
+
+// Capability is a named, non-secret feature toggle of this service center.
+type Capability struct {
+	Name    string
+	Enabled bool
+}
+
+// Event outcomes group severities: success covers info and warning, failure
+// covers error and critical.
+const (
+	EventOutcomeSuccess = "success"
+	EventOutcomeFailure = "failure"
+)
 
 // Event represents a system event
 type Event struct {
@@ -271,16 +373,17 @@ type Event struct {
 	Title       string
 	Description string
 	SourceName  string
+	UserID      string // Acting user of an operator action; empty for service-raised events
+	UserEmail   string // Acting user's email, only when that user belongs to the event's tenant
 	Timestamp   time.Time
-	Data        []byte // JSON-encoded extra data (bs_eui, ep_eui, etc.)
+	Data        []byte    // JSON-encoded extra data (bs_eui, ep_eui, etc.)
+	StoredAt    time.Time // When the database stored the event, or last moved it forward
 }
 
 // AlertFilters contains filters for alert queries
 type AlertFilters struct {
-	Severity  []string
-	Status    []string
-	StartTime *time.Time
-	EndTime   *time.Time
+	Severity []string
+	Status   []string
 }
 
 // Alert represents a system alert
@@ -299,8 +402,8 @@ type Alert struct {
 // AlertSummary contains alert summary statistics
 type AlertSummary struct {
 	Critical int32
+	Error    int32
 	Warning  int32
-	Info     int32
 	Recent   []*Alert
 }
 
@@ -308,12 +411,17 @@ type AlertSummary struct {
 type ScaciSession struct {
 	ID              string
 	AcEUI           string // Application Center EUI (hex)
-	Status          string // active, closed
+	Status          string // active, resumed, disconnected, terminated
 	CanResume       bool
 	ProtocolVersion string
 	ConnectedAt     time.Time
-	LastActivityAt  *time.Time
+	LastActivityAt  *time.Time // Last heartbeat
+	DisconnectedAt  *time.Time
 	OperationsCount int64
+	SnAcUUID        string
+	SnScUUID        string
+	LastOpIDAc      int64
+	LastOpIDSc      int64
 }
 
 // ScaciStatistics contains SCACI operation statistics
@@ -328,13 +436,19 @@ type ScaciStatistics struct {
 }
 
 // ScaciError represents a SCACI error
+// ScaciError is one bucket of failed operations sharing operation type,
+// error code and token.
 type ScaciError struct {
 	ID            string
 	ErrorCode     string
+	ErrorToken    string
 	ErrorMessage  string
 	SessionID     string
 	OperationType string
-	OccurredAt    time.Time
+	OccurredAt    time.Time // Same as LastSeen
+	FirstSeen     time.Time
+	LastSeen      time.Time
+	Count         int64
 }
 
 // ScaciQueue represents a SCACI queue entry
@@ -342,10 +456,12 @@ type ScaciQueue struct {
 	ID            string
 	EpEUI         string
 	OperationType string
-	Status        string // pending, in_progress, completed, failed
+	Status        string // pending, scheduled, reserved, queued
 	Payload       []byte
 	QueuedAt      time.Time
 	ProcessedAt   *time.Time
+	QueID         int64
+	Priority      float32
 }
 
 // ScaciStatus represents overall SCACI status
@@ -355,6 +471,12 @@ type ScaciStatus struct {
 	PendingOperations int32
 	UptimeSince       *time.Time
 	ProtocolVersion   string
+	SCEui             string
+	LastPingAt        *time.Time
+	LastPingRTT       *time.Duration
+	MissedPings       int64
+	ReconnectAttempts int64
+	LastConnectResult string
 }
 
 // CertificateRequest contains certificate generation request
@@ -368,20 +490,28 @@ type CertificateRequest struct {
 // CertificateResponse contains generated certificate data
 type CertificateResponse struct {
 	BsEUI            string            // Base station EUI
+	BaseStationID    int64             // Id of the base station the certificate was issued for
 	ServiceCenterURL string            // Service center URL for BSSCI
 	DownloadURLs     map[string]string // URLs to download cert files (ca, client, key)
 	ExpiresAt        *time.Time        // Certificate expiration time
 }
 
-// CertificateStatus contains server certificate status
+// CertificateInfo describes one certificate KC-Core serves with, as of when it was read.
+type CertificateInfo struct {
+	Subject         string
+	Issuer          string
+	NotBefore       time.Time
+	NotAfter        time.Time
+	DaysUntilExpiry int32
+	Valid           bool
+}
+
+// CertificateStatus holds KC-Core's server and CA certificates; nil means none on disk.
 type CertificateStatus struct {
-	HasServerCert    bool
-	ServerCertExpiry *time.Time
-	HasCACert        bool
-	CACertExpiry     *time.Time
-	NeedsRenewal     bool
-	Subject          string
-	Issuer           string
+	Server *CertificateInfo
+	CA     *CertificateInfo
+	// RenewalNames are the names a server certificate issued now carries, subject first.
+	RenewalNames []string
 }
 
 // ManufacturerCreateRequest contains fields for creating a manufacturer
@@ -389,7 +519,6 @@ type ManufacturerCreateRequest struct {
 	Name        string
 	Description string
 	Website     string
-	LogoURL     string
 	IsSystem    bool // admin-only: create a System catalog row (tenant_id NULL)
 }
 
@@ -399,7 +528,6 @@ type ManufacturerUpdateRequest struct {
 	Description  *string
 	Website      *string
 	ContactEmail *string
-	LogoURL      *string
 }
 
 // DeviceModelCreateRequest contains fields for creating a device model
@@ -454,7 +582,6 @@ type RegistrySubmitResult struct {
 	PRUrl      string // URL to the submission request (e.g., pull request)
 	CommitSHA  string // SHA of the commit
 	BranchName string // Name of the created branch
-	RepoPath   string // Path to the blueprint in the repository
 }
 
 // DeviceModelWithBlueprintRequest contains fields for atomic model+blueprint creation.
@@ -478,8 +605,6 @@ type DecodePreviewResult struct {
 
 // Message direction constants
 const (
-	// DirectionUplink indicates uplink message direction
-	DirectionUplink = "uplink"
 	// DirectionDownlink indicates downlink message direction
 	DirectionDownlink = "downlink"
 )
@@ -490,9 +615,11 @@ type MessageFilters struct {
 	BsEui     []byte
 	StartTime *time.Time
 	EndTime   *time.Time
-	MinRSSI   *float64
-	MaxRSSI   *float64
 	Direction string // Filter by direction: DirectionUplink | DirectionDownlink | "" (all)
+	Duplicate *bool  // SCACI §3.8.1 multi-base-station reception flag
+	DlOpen    *bool  // SCACI §3.8.1 dlOpen
+	Profile   string // SCACI §3.8.1 profile
+	Mode      string // SCACI §3.8.1 mode
 }
 
 // IntegrationCreateRequest contains fields for creating an integration

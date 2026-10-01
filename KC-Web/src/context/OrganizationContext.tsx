@@ -1,11 +1,13 @@
 import React, {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useState,
 } from "react";
 
+import { sessionApi } from "@services/api";
 import {
   extractOrganizationId,
   extractOrganizationName,
@@ -13,6 +15,7 @@ import {
 } from "@utils/jwt";
 import { storageService } from "@utils/storage";
 import { DEFAULT_ORG_NAME, STORAGE_KEYS } from "@constants/app";
+import { APP_ERRORS } from "@constants/messages";
 
 import { useSession } from "./SessionContext";
 
@@ -52,70 +55,59 @@ export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({
   // Get session user for fallback org resolution
   const { user, isHydrated } = useSession();
 
+  // The transport is scoped before the context changes, so no descendant's
+  // request can start under an organization the transport does not send yet.
+  const applyOrganization = useCallback(
+    (orgId: string | null, orgName: string | null, uid: string | null) => {
+      sessionApi.setOrganization(orgId, uid);
+      setOrgId(orgId);
+      setOrgName(orgName);
+      setUserId(uid);
+    },
+    [],
+  );
+
   // Primary: Extract org from JWT token
   useEffect(() => {
     const token = storageService.getItem(STORAGE_KEYS.AUTH_TOKEN);
     if (!token) return;
 
     const orgId = extractOrganizationId(token);
-    const orgName = extractOrganizationName(token);
-    const uid = extractUserId(token);
-
-    if (orgId) {
-      setOrgId(orgId);
-      setOrgName(orgName || DEFAULT_ORG_NAME);
-    }
-
-    // NOTE: No tenantId extraction - tenant resolution is server-side only
-    // per AGENTS governance. Frontend only knows organization.
-
-    if (uid) {
-      setUserId(uid);
-    }
-  }, []);
+    applyOrganization(
+      orgId,
+      orgId ? extractOrganizationName(token) || DEFAULT_ORG_NAME : null,
+      extractUserId(token),
+    );
+  }, [applyOrganization]);
 
   // Fallback to session profile's defaultOrgId when JWT claim is missing
   useEffect(() => {
-    // Only attempt fallback after session is hydrated and if we don't have an org yet
-    if (!isHydrated || organizationId) return;
+    if (!isHydrated || organizationId || !user?.defaultOrgId) return;
 
-    // If we have a user with a defaultOrgId, use it as fallback
-    if (user?.defaultOrgId) {
-      setOrgId(user.defaultOrgId);
-
-      // Find the org name from memberships
-      const membership = user.memberships?.find(
-        (m) => m.orgId === user.defaultOrgId,
-      );
-      setOrgName(membership?.orgName || DEFAULT_ORG_NAME);
-
-      // Also set userId if not already set
-      if (!userId && user.id) {
-        setUserId(user.id);
-      }
-    }
-  }, [isHydrated, user, organizationId, userId]);
+    const membership = user.memberships?.find(
+      (m) => m.orgId === user.defaultOrgId,
+    );
+    applyOrganization(
+      user.defaultOrgId,
+      membership?.orgName || DEFAULT_ORG_NAME,
+      userId || user.id || null,
+    );
+  }, [isHydrated, user, organizationId, userId, applyOrganization]);
 
   // Clear org context when session is invalidated (auth failure, logout)
   useEffect(() => {
     if (!isHydrated) return;
     if (!user && !storageService.getItem(STORAGE_KEYS.AUTH_TOKEN)) {
-      setOrgId(null);
-      setOrgName(null);
-      setUserId(null);
+      applyOrganization(null, null, null);
     }
-  }, [isHydrated, user]);
+  }, [isHydrated, user, applyOrganization]);
 
   const setOrganization = (id: string, name: string, uid?: string) => {
-    setOrgId(id);
-    setOrgName(name);
-    if (uid) setUserId(uid);
+    applyOrganization(id, name, uid || userId);
   };
 
   const clearOrganization = () => {
-    setOrgId(null);
-    setOrgName(null);
-    setUserId(null);
+    applyOrganization(null, null, null);
   };
 
   return (
@@ -138,7 +130,7 @@ export const useOrganization = (): OrganizationContextValue => {
   const context = useContext(OrganizationContext);
 
   if (!context) {
-    throw new Error("useOrganization must be used within OrganizationProvider");
+    throw new Error(APP_ERRORS.ORGANIZATION_CONTEXT_REQUIRED);
   }
 
   return context;

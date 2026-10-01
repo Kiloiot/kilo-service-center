@@ -5,6 +5,9 @@ import (
 	"testing"
 )
 
+// testComponentSizeBits is the payload component width used by the marshal round-trip fixture.
+const testComponentSizeBits = 8
+
 func TestParseSpec_SpecFieldNamesBasic(t *testing.T) {
 	// Spec format uses "id" and "payload" with meta object
 	specJSON := `{
@@ -334,7 +337,7 @@ func TestPayloadFormat_MarshalRoundTrip(t *testing.T) {
 		Name:         "test",
 		LittleEndian: true,
 		Components: []PayloadComponent{
-			{Name: "a", Size: 8, Type: "uint"},
+			{Name: "a", Size: testComponentSizeBits, Type: "uint"},
 		},
 		Virtual: []VirtualValue{
 			{Name: "computed", Func: "$a * 2"},

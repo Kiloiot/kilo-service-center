@@ -2,7 +2,6 @@ package bssci
 
 import (
 	"context"
-	"crypto/aes"
 	"encoding/binary"
 	"testing"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
-	"github.com/aead/cmac"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,30 +20,9 @@ import (
 // testNwkSnKey is a deterministic 16-byte key for test signature computation
 var testNwkSnKey = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 
-// computeTestSignature generates a valid CMAC signature for test data.
-// Uses same algorithm as ValidateAttachSignature (crypto.go:13-54).
-// IV format: [EUI64 | 0xFF | 0x00 | attachCnt(24-bit) | 0xFF | 0xFF]
-func computeTestSignature(epEUI uint64, attachCnt uint32, nwkSnKey []byte) []byte {
-	iv := make([]byte, 15)
-	binary.BigEndian.PutUint64(iv[0:8], epEUI)
-	iv[8] = 0xFF
-	iv[9] = 0x00
-	maskedCnt := attachCnt & 0xFFFFFF
-	iv[10] = byte(maskedCnt >> 16)
-	iv[11] = byte(maskedCnt >> 8)
-	iv[12] = byte(maskedCnt)
-	iv[13] = 0xFF
-	iv[14] = 0xFF
-
-	block, _ := aes.NewCipher(nwkSnKey)
-	mac, _ := cmac.New(block)
-	mac.Write(iv)
-	return mac.Sum(nil)[:4]
-}
-
 // buildTestEndpointForValidation creates a minimal endpoint for validation tests.
 // Uses fixed values for determinism. Matches TestEpEui01 and tenant 1.
-// Uses testNwkSnKey for CMAC signature validation per crypto.go:13-54.
+// Uses testNwkSnKey for CMAC signature validation.
 func buildTestEndpointForValidation() *models.EndPoint {
 	var eui models.EUI
 	binary.BigEndian.PutUint64(eui[:], TestEpEui01)
@@ -55,7 +32,7 @@ func buildTestEndpointForValidation() *models.EndPoint {
 		EUI:       eui,
 		TenantID:  1,
 		AttachCnt: &storedCnt,
-		NwkSnKey:  testNwkSnKey, // Must match key used in computeTestSignature
+		NwkSnKey:  testNwkSnKey, // Must match key used in generateAttachSignature
 	}
 }
 
@@ -85,12 +62,12 @@ func findAttachResponse(messages []map[string]interface{}) map[string]interface{
 // Uses int64 for attachCnt to match server.go:1996-1998 parsing.
 // Uses []interface{} for nonce/sign to exercise validateByteArray branches.
 // Includes all mandatory fields per message_metadata.go:195-272.
-// Computes valid CMAC signature using testNwkSnKey per crypto.go:13-54.
+// Computes a valid CMAC signature using testNwkSnKey.
 func buildValidAttachData(overrideField string, overrideValue interface{}) map[string]interface{} {
 	attachCnt := int64(100) // Must be > storedCnt (50) to pass monotonic check
 
 	// Compute valid CMAC signature for this attachCnt using testNwkSnKey
-	validSign := computeTestSignature(TestEpEui01, uint32(attachCnt), testNwkSnKey)
+	validSign := generateAttachSignature(TestEpEui01, uint32(attachCnt), testNwkSnKey)
 
 	data := map[string]interface{}{
 		"epEui":       float64(TestEpEui01),
@@ -115,7 +92,7 @@ func buildValidAttachData(overrideField string, overrideValue interface{}) map[s
 // Used by TestAttachCounterRange where attachCnt is the variable under test.
 func buildAttachDataWithCnt(attachCnt int64) map[string]interface{} {
 	// Compute valid CMAC signature for THIS specific attachCnt
-	validSign := computeTestSignature(TestEpEui01, uint32(attachCnt)&0xFFFFFF, testNwkSnKey)
+	validSign := generateAttachSignature(TestEpEui01, uint32(attachCnt), testNwkSnKey)
 
 	return map[string]interface{}{
 		"epEui":       float64(TestEpEui01),
@@ -132,16 +109,14 @@ func buildAttachDataWithCnt(attachCnt int64) map[string]interface{} {
 	}
 }
 
-// attachTestStorage provides a transaction-capable storage stub so handleAttach can
-// persist attach metadata and emit attRsp without DisableAttachPersistence shortcuts.
+// attachTestStorage provides a transaction-capable storage stub so handleAttach
+// persists attach metadata and emits attRsp through the production path.
 type attachTestStorage struct {
-	pendingRepo interfaces.PendingOperationRepository
-	tx          *attachTestTx
+	tx *attachTestTx
 }
 
 func newAttachTestStorage() *attachTestStorage {
 	return &attachTestStorage{
-		pendingRepo: &stubPendingOperationRepo{},
 		tx: &attachTestTx{
 			epRepo:      &attachTestEndpointRepo{},
 			sessionRepo: &attachTestSessionRepo{},
@@ -149,29 +124,22 @@ func newAttachTestStorage() *attachTestStorage {
 	}
 }
 
-func (s *attachTestStorage) EndPoints() interfaces.EndpointRepository          { return nil }
-func (s *attachTestStorage) DownlinkQueue() interfaces.DownlinkQueueRepository { return nil }
-func (s *attachTestStorage) BaseStationReceptions() interfaces.BaseStationReceptionRepository {
-	return nil
-}
-func (s *attachTestStorage) EndPointSessions() interfaces.EndPointSessionRepository       { return nil }
-func (s *attachTestStorage) EndPointKeys() interfaces.EndPointKeyRepository               { return nil }
-func (s *attachTestStorage) RoamingAgreements() interfaces.RoamingAgreementRepository     { return nil }
-func (s *attachTestStorage) BaseStations() interfaces.BaseStationRepository               { return nil }
+func (s *attachTestStorage) EndPoints() interfaces.EndpointRepository { return nil }
+
+func (s *attachTestStorage) EndPointSessions() interfaces.EndPointSessionRepository { return nil }
+
+func (s *attachTestStorage) BaseStations() interfaces.BaseStationRepository { return nil }
+
 func (s *attachTestStorage) BaseStationSessions() interfaces.BaseStationSessionRepository { return nil }
-func (s *attachTestStorage) DLRXStatus() interfaces.DLRXStatusRepository                  { return nil }
-func (s *attachTestStorage) PendingOperations() interfaces.PendingOperationRepository {
-	return s.pendingRepo
-}
+
+func (s *attachTestStorage) DLRXStatus() interfaces.DLRXStatusRepository { return nil }
+
 func (s *attachTestStorage) MIOTYMessages() interfaces.MIOTYMessageRepository   { return nil }
 func (s *attachTestStorage) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository { return nil }
 func (s *attachTestStorage) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
 	return nil
 }
-func (s *attachTestStorage) Users() interfaces.UserRepository                 { return nil }
 func (s *attachTestStorage) APIKeys() interfaces.APIKeyRepository             { return nil }
-func (s *attachTestStorage) Integrations() interfaces.IntegrationRepository   { return nil }
-func (s *attachTestStorage) Manufacturers() interfaces.ManufacturerRepository { return nil }
 func (s *attachTestStorage) DeviceModels() interfaces.DeviceModelRepository   { return nil } // Blueprint catalog
 func (s *attachTestStorage) Blueprints() interfaces.BlueprintRepository       { return nil } // Blueprint catalog
 func (s *attachTestStorage) Organizations() interfaces.OrganizationRepository { return nil }
@@ -181,8 +149,8 @@ func (s *attachTestStorage) SCACISessions() interfaces.SCACISessionRepository { 
 func (s *attachTestStorage) SCACIOperations() interfaces.SCACIOperationRepository {
 	return nil
 }
-func (s *attachTestStorage) DownlinkQueueReader() interfaces.DownlinkQueueReader { return nil }
-func (s *attachTestStorage) BeginTx(context.Context) (interfaces.Transaction, error) {
+
+func (s *attachTestStorage) BeginTx(context.Context) (AttachTx, error) {
 	return s.tx, nil
 }
 func (s *attachTestStorage) Ping(context.Context) error { return nil }
@@ -194,66 +162,58 @@ type attachTestTx struct {
 	sessionRepo *attachTestSessionRepo
 }
 
-func (t *attachTestTx) EndPoints() interfaces.EndpointRepository                         { return t.epRepo }
-func (t *attachTestTx) DownlinkQueue() interfaces.DownlinkQueueRepository                { return nil }
-func (t *attachTestTx) BaseStationReceptions() interfaces.BaseStationReceptionRepository { return nil }
-func (t *attachTestTx) EndPointSessions() interfaces.EndPointSessionRepository           { return t.sessionRepo }
-func (t *attachTestTx) EndPointKeys() interfaces.EndPointKeyRepository                   { return nil }
-func (t *attachTestTx) RoamingAgreements() interfaces.RoamingAgreementRepository         { return nil }
-func (t *attachTestTx) BaseStations() interfaces.BaseStationRepository                   { return nil }
-func (t *attachTestTx) BaseStationSessions() interfaces.BaseStationSessionRepository     { return nil }
-func (t *attachTestTx) PendingOperations() interfaces.PendingOperationRepository         { return nil }
-func (t *attachTestTx) DLRXStatus() interfaces.DLRXStatusRepository                      { return nil }
-func (t *attachTestTx) MIOTYMessages() interfaces.MIOTYMessageRepository                 { return nil }
-func (t *attachTestTx) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository               { return nil }
-func (t *attachTestTx) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
-	return nil
-}
-func (t *attachTestTx) Users() interfaces.UserRepository                 { return nil }
-func (t *attachTestTx) APIKeys() interfaces.APIKeyRepository             { return nil }
-func (t *attachTestTx) Integrations() interfaces.IntegrationRepository   { return nil }
-func (t *attachTestTx) Manufacturers() interfaces.ManufacturerRepository { return nil }
-func (t *attachTestTx) DeviceModels() interfaces.DeviceModelRepository   { return nil } // Blueprint catalog
-func (t *attachTestTx) Blueprints() interfaces.BlueprintRepository       { return nil } // Blueprint catalog
-func (t *attachTestTx) Organizations() interfaces.OrganizationRepository { return nil }
-func (t *attachTestTx) GetSqlxDB() *sqlx.DB                              { return nil }
-func (t *attachTestTx) SystemEvents() interfaces.SystemEventStore        { return nil }
-func (t *attachTestTx) SCACISessions() interfaces.SCACISessionRepository { return nil }
-func (t *attachTestTx) SCACIOperations() interfaces.SCACIOperationRepository {
-	return nil
-}
-func (t *attachTestTx) DownlinkQueueReader() interfaces.DownlinkQueueReader { return nil }
-func (t *attachTestTx) Commit() error                                       { return nil }
-func (t *attachTestTx) Rollback() error                                     { return nil }
+func (t *attachTestTx) EndPoints() interfaces.EndpointRepository               { return t.epRepo }
+func (t *attachTestTx) EndPointSessions() interfaces.EndPointSessionRepository { return t.sessionRepo }
+func (t *attachTestTx) Commit() error                                          { return nil }
+func (t *attachTestTx) Rollback() error                                        { return nil }
 
-type attachTestEndpointRepo struct {
-	updates []map[string]interface{}
-}
+type attachTestEndpointRepo struct{}
 
-func (r *attachTestEndpointRepo) UpdateFields(_ context.Context, _ int64, _ int64, updates map[string]interface{}) error {
-	r.updates = append(r.updates, updates)
+func (r *attachTestEndpointRepo) EndpointRegistrationUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointRegistrationParams) error {
 	return nil
 }
 
-func (r *attachTestEndpointRepo) UpdateDetachMetrics(context.Context, int64, models.EUI, interfaces.DetachMetricsUpdate) error {
+func (r *attachTestEndpointRepo) EndpointAttachmentStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachmentStateParams) error {
 	return nil
+}
+
+func (r *attachTestEndpointRepo) EndpointAttachSessionUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointAttachSessionParams) error {
+	return nil
+}
+
+func (r *attachTestEndpointRepo) EndpointDetachStateUpdate(_ context.Context, _ int64, _ int64, _ models.EndpointDetachStateParams) error {
+	return nil
+}
+
+func (r *attachTestEndpointRepo) TransitionEndpointStatus(context.Context, int64, int64, string) (bool, error) {
+	return false, nil
+}
+
+func (r *attachTestEndpointRepo) RestateEndpointStatus(ctx context.Context, tenantID, endpointID int64, status string) (bool, error) {
+	return r.TransitionEndpointStatus(ctx, tenantID, endpointID, status)
 }
 
 // unused interface methods
 func (r *attachTestEndpointRepo) Create(context.Context, *models.EndPoint) error { return nil }
+
 func (r *attachTestEndpointRepo) GetByID(context.Context, int64, int64) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (r *attachTestEndpointRepo) GetByEUI(context.Context, int64, []byte) (*models.EndPoint, error) {
 	return nil, storage.ErrNotFound
 }
+
 func (r *attachTestEndpointRepo) Get(context.Context, models.EUI) (*models.EndPoint, error) {
 	return nil, storage.ErrNotFound
 }
+
 func (r *attachTestEndpointRepo) GetByTenant(context.Context, int64) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (r *attachTestEndpointRepo) CountByTenant(context.Context, int64) (int64, error) { return 0, nil }
+
 func (r *attachTestEndpointRepo) ListByTenantPaginated(context.Context, int64, int, int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -261,30 +221,40 @@ func (r *attachTestEndpointRepo) Update(context.Context, *models.EndPoint) error
 func (r *attachTestEndpointRepo) UpdateLastSeen(context.Context, int64, models.EUI, uint32) error {
 	return nil
 }
-func (r *attachTestEndpointRepo) UpdateRadioMetrics(context.Context, int64, models.EUI, float64, float64, float64, int64, int64, string) error {
+
+func (r *attachTestEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, models.RadioMetricsUpdate) error {
 	return nil
 }
-func (r *attachTestEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, interfaces.RadioMetricsUpdate) error {
-	return nil
-}
-func (r *attachTestEndpointRepo) StreamAllForPropagation(context.Context, int64, int) ([]*models.EndPoint, error) {
-	return nil, nil
-}
-func (r *attachTestEndpointRepo) HasEndpointsSince(context.Context, time.Time) (bool, error) {
-	return false, nil
-}
-func (r *attachTestEndpointRepo) GetEndpointWithKeysForDetachValidation(context.Context, models.EUI) (*models.EndPoint, error) {
-	return nil, storage.ErrNotFound
-}
+
 func (r *attachTestEndpointRepo) GetPreferredBsEui(context.Context, int64, []byte) (*uint64, bool, error) {
 	return nil, false, nil // No preference in tests
 }
-func (r *attachTestEndpointRepo) DeleteByTenant(context.Context, int64, []byte) error {
+
+func (r *attachTestEndpointRepo) RestartPacketCounter(context.Context, int64, int64) error {
 	return nil
 }
+
+func (r *attachTestEndpointRepo) LockAttachCounter(context.Context, int64, int64) (*uint32, error) {
+	return nil, nil
+}
+
+func (*attachTestEndpointRepo) GetByAttachmentChangedSince(context.Context, int64, string, *time.Time) ([]*models.EndPoint, error) {
+	return nil, nil
+}
+
+func (r *attachTestEndpointRepo) CreateWithStatus(ctx context.Context, ep *models.EndPoint, status string) error {
+	ep.EpStatus = status
+	return r.Create(ctx, ep)
+}
+
+func (r *attachTestEndpointRepo) DeleteByTenant(context.Context, int64, []byte) (int64, error) {
+	return 0, nil
+}
+
 func (r *attachTestEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	return ep, nil
 }
+
 func (r *attachTestEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 	return nil
 }
@@ -296,36 +266,31 @@ type attachTestSessionRepo struct {
 func (r *attachTestSessionRepo) GetActive(_ context.Context, _ string) (*models.EndPointSession, error) {
 	return nil, nil
 }
+
 func (r *attachTestSessionRepo) Create(_ context.Context, _ *models.EndPointSession) error {
 	return nil
 }
+
 func (r *attachTestSessionRepo) Update(_ context.Context, _ *models.EndPointSession) error {
 	return nil
 }
-func (r *attachTestSessionRepo) UpdateActivity(context.Context, string, bool) error { return nil }
-func (r *attachTestSessionRepo) Terminate(context.Context, string) error            { return nil }
-func (r *attachTestSessionRepo) Close(_ context.Context, _ string) error            { return nil }
+func (r *attachTestSessionRepo) Close(_ context.Context, _ string) error { return nil }
 func (r *attachTestSessionRepo) ListActive(context.Context, int64) ([]*models.EndPointSession, error) {
 	return nil, nil
 }
-func (r *attachTestSessionRepo) ExpireOldSessions(context.Context, time.Duration) (int64, error) {
-	return 0, nil
-}
+
 func (r *attachTestSessionRepo) GetByID(context.Context, string) (*models.EndPointSession, error) {
 	return nil, nil
 }
+
 func (r *attachTestSessionRepo) GetBySessionID(context.Context, string) (*models.EndPointSession, error) {
 	return nil, nil
 }
+
 func (r *attachTestSessionRepo) GetByEndpointID(context.Context, int64) (*models.EndPointSession, error) {
 	return nil, nil
 }
-func (r *attachTestSessionRepo) GetByEndPoint(context.Context, string, int, int) ([]*models.EndPointSession, error) {
-	return nil, nil
-}
-func (r *attachTestSessionRepo) GetStats(context.Context, string) (*models.EndPointSessionStats, error) {
-	return nil, nil
-}
+
 func (r *attachTestSessionRepo) UpdateSessionKey(context.Context, int64, string, []byte) error {
 	return nil
 }
@@ -378,8 +343,7 @@ func TestStatusMandatoryFields(t *testing.T) {
 			mockConn.Reset()
 
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, mockStorage :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
@@ -449,8 +413,7 @@ func TestConnectMandatoryFields(t *testing.T) {
 			mockConn.Reset()
 
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, mockStorage :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
@@ -509,8 +472,7 @@ func TestSendFailureConsumesOpIDAndPreservesOperation(t *testing.T) {
 	mockConn.Reset()
 
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-		queueSerializer, auditLogger, tenantResolver, mockStorage :=
-		CreateTestServices(testLogger, nil)
+		queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
 
 	server := NewTestServer(testLogger, mockStorage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
@@ -530,7 +492,7 @@ func TestSendFailureConsumesOpIDAndPreservesOperation(t *testing.T) {
 
 	server.RegisterSession(session)
 	initialOpId := session.LastScOpId
-	mockConn.FailWrites = true
+	mockConn.StalledWrites = true
 
 	_, err := server.SendStatusRequest(session)
 
@@ -687,8 +649,7 @@ func TestAttachMandatoryFields(t *testing.T) {
 			mockConn.Reset()
 
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, mockStorage :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
@@ -775,15 +736,11 @@ func TestULDataMandatoryFields(t *testing.T) {
 				mockConn.Reset()
 
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-					queueSerializer, auditLogger, tenantResolver, mockStorage :=
-					CreateTestServices(testLogger, nil)
+					queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
 
 				server := NewTestServer(testLogger, mockStorage, nil, 1,
 					sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 					queueSerializer, auditLogger, tenantResolver)
-
-				// Initialize deduplicator for ULData handler
-				server.SetDeduplicator(NewMessageDeduplicator(5 * time.Minute))
 
 				session := &Session{
 					ProtocolSessionState: ProtocolSessionState{
@@ -865,15 +822,11 @@ func TestULDataMandatoryFields(t *testing.T) {
 			mockConn.Reset()
 
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, mockStorage :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 				queueSerializer, auditLogger, tenantResolver)
-
-			// Initialize deduplicator for ULData handler
-			server.SetDeduplicator(NewMessageDeduplicator(5 * time.Minute))
 
 			session := &Session{
 				ProtocolSessionState: ProtocolSessionState{
@@ -1008,8 +961,7 @@ func TestDLDataResultMandatoryFields(t *testing.T) {
 			mockConn.Reset()
 
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, mockStorage :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
@@ -1173,16 +1125,14 @@ func TestDetachMandatoryFields(t *testing.T) {
 			mockConn.Reset()
 
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, mockStorage :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 				queueSerializer, auditLogger, tenantResolver)
 			server.SetConfig(&Config{
-				DetachSignatureValidationEnabled: false, // Disable to test mandatory fields only
+				DetachSignatureValidationEnabled: detachSigValidationOff, // Disable to test mandatory fields only
 			})
-			server.RegisterHandlers()
 
 			session := &Session{
 				ProtocolSessionState: ProtocolSessionState{
@@ -1190,8 +1140,6 @@ func TestDetachMandatoryFields(t *testing.T) {
 					BaseStationEUI:    TestBsEui01,
 					Encoding:          "msgpack",
 					HandshakeComplete: true,
-					BsOpId:            0,
-					ScOpId:            0,
 				},
 				Conn: mockConn,
 			}
@@ -1264,8 +1212,7 @@ func TestAttachNonceValidation(t *testing.T) {
 
 			storage := newAttachTestStorage()
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, _ :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, _ := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, storage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
@@ -1278,7 +1225,6 @@ func TestAttachNonceValidation(t *testing.T) {
 			// Seed endpoint so valid cases proceed past lookup and signature check
 			endpoint := buildTestEndpointForValidation()
 			server.endpointRepo = newFakeEndpointRepo(endpoint)
-			server.RegisterHandlers()
 
 			session := &Session{
 				ProtocolSessionState: ProtocolSessionState{
@@ -1357,8 +1303,7 @@ func TestAttachSignValidation(t *testing.T) {
 
 			storage := newAttachTestStorage()
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, _ :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, _ := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, storage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
@@ -1371,7 +1316,6 @@ func TestAttachSignValidation(t *testing.T) {
 			// Seed endpoint for lookup
 			endpoint := buildTestEndpointForValidation()
 			server.endpointRepo = newFakeEndpointRepo(endpoint)
-			server.RegisterHandlers()
 
 			session := &Session{
 				ProtocolSessionState: ProtocolSessionState{
@@ -1454,8 +1398,7 @@ func TestAttachCounterRange(t *testing.T) {
 
 			storage := newAttachTestStorage()
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
-				queueSerializer, auditLogger, tenantResolver, _ :=
-				CreateTestServices(testLogger, nil)
+				queueSerializer, auditLogger, tenantResolver, _ := CreateTestServices(testLogger, nil)
 
 			server := NewTestServer(testLogger, storage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
@@ -1468,7 +1411,6 @@ func TestAttachCounterRange(t *testing.T) {
 			// Seed endpoint for lookup
 			endpoint := buildTestEndpointForValidation()
 			server.endpointRepo = newFakeEndpointRepo(endpoint)
-			server.RegisterHandlers()
 
 			session := &Session{
 				ProtocolSessionState: ProtocolSessionState{

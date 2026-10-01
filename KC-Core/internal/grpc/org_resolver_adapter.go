@@ -13,35 +13,29 @@ import (
 // Bridges the repository layer (GetOrgByTenantID) to the auth interceptor (ResolveOrganization)
 // for tenant→organization UUID resolution.
 type orgResolverAdapter struct {
-	repo interfaces.OrganizationRepository
+	repo interfaces.OrgDirectoryRepository
 	log  logger.Logger
 }
 
 // NewOrgResolverAdapter creates an OrganizationResolver that wraps a repository
-func NewOrgResolverAdapter(repo interfaces.OrganizationRepository, log logger.Logger) OrganizationResolver {
+func NewOrgResolverAdapter(repo interfaces.OrgDirectoryRepository, log logger.Logger) OrganizationResolver {
 	return &orgResolverAdapter{
 		repo: repo,
 		log:  log,
 	}
 }
 
-// ResolveOrganization maps a tenant ID to its organization UUID
-//
-// This is called by the auth interceptor after extracting the tenant from the JWT.
-// If resolution fails, the error is logged but not fatal - organization context
-// is optional for tenant-scoped operations.
+// ResolveOrganization maps a tenant ID to its organization UUID. The auth
+// interceptor reports a failure; organization context is optional there.
 func (a *orgResolverAdapter) ResolveOrganization(ctx context.Context, tenantID int64) (uuid.UUID, error) {
 	org, err := a.repo.GetOrgByTenantID(ctx, tenantID)
 	if err != nil {
-		a.log.WarnContext(ctx, "Failed to resolve organization for tenant",
-			"tenant_id", tenantID,
-			"error", err)
 		return uuid.Nil, err
 	}
 
-	a.log.DebugContext(ctx, "Resolved organization for tenant",
-		"tenant_id", tenantID,
-		"org_id", org.OrgID)
+	a.log.DebugContext(ctx, LogResolvedOrganizationForTenant,
+		logger.FieldTenantIDSnake, tenantID,
+		logger.FieldOrgIDSnake, org.OrgID)
 
 	return org.OrgID, nil
 }
@@ -66,15 +60,15 @@ func NewTenantResolverAdapter(resolver org.Resolver, log logger.Logger) TenantRe
 func (a *tenantResolverAdapter) LookupTenant(ctx context.Context, orgID uuid.UUID) (int64, error) {
 	tenantID, err := a.resolver.LookupTenant(ctx, orgID)
 	if err != nil {
-		a.log.WarnContext(ctx, "Failed to resolve tenant for organization",
-			"org_id", orgID,
-			"error", err)
+		a.log.WarnContext(ctx, LogFailedToResolveTenantForOrganization,
+			logger.FieldOrgIDSnake, orgID,
+			logger.FieldError, err)
 		return 0, err
 	}
 
-	a.log.DebugContext(ctx, "Resolved tenant for organization",
-		"org_id", orgID,
-		"tenant_id", tenantID)
+	a.log.DebugContext(ctx, LogResolvedTenantForOrganization,
+		logger.FieldOrgIDSnake, orgID,
+		logger.FieldTenantIDSnake, tenantID)
 
 	return tenantID, nil
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"sort"
 	"testing"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -32,14 +31,14 @@ func captureSchemaSnapshot(db *sql.DB, m *migrate.Migrate) (schemaSnapshot, erro
 	// 1. Get migration version
 	version, _, err := m.Version()
 	if err != nil && err != migrate.ErrNilVersion {
-		return snap, fmt.Errorf("failed to get migration version: %w", err)
+		return snap, fmt.Errorf("%s: %w", errWrapGetMigrationVersion, err)
 	}
 	snap.version = version
 
 	// 2. Get all tables in public schema
 	tables, err := getTables(db)
 	if err != nil {
-		return snap, fmt.Errorf("failed to get tables: %w", err)
+		return snap, fmt.Errorf("%s: %w", errWrapGetTables, err)
 	}
 	snap.tables = tables
 
@@ -48,7 +47,7 @@ func captureSchemaSnapshot(db *sql.DB, m *migrate.Migrate) (schemaSnapshot, erro
 	for _, table := range tables {
 		columns, err := getTableColumns(db, table)
 		if err != nil {
-			return snap, fmt.Errorf("failed to get columns for table %s: %w", table, err)
+			return snap, fmt.Errorf(errFmtGetColumnsForTable, table, err)
 		}
 		snap.columns[table] = columns
 	}
@@ -58,7 +57,7 @@ func captureSchemaSnapshot(db *sql.DB, m *migrate.Migrate) (schemaSnapshot, erro
 	for _, table := range tables {
 		indexes, err := getTableIndexes(db, table)
 		if err != nil {
-			return snap, fmt.Errorf("failed to get indexes for table %s: %w", table, err)
+			return snap, fmt.Errorf(errFmtGetIndexesForTable, table, err)
 		}
 		snap.indexes[table] = indexes
 	}
@@ -68,7 +67,7 @@ func captureSchemaSnapshot(db *sql.DB, m *migrate.Migrate) (schemaSnapshot, erro
 	for _, table := range tables {
 		triggers, err := getTableTriggers(db, table)
 		if err != nil {
-			return snap, fmt.Errorf("failed to get triggers for table %s: %w", table, err)
+			return snap, fmt.Errorf(errFmtGetTriggersForTable, table, err)
 		}
 		snap.triggers[table] = triggers
 	}
@@ -322,26 +321,6 @@ func (expected schemaSnapshot) summary() string {
 
 	return fmt.Sprintf("Version %d: %d tables, %d columns, %d indexes, %d triggers",
 		expected.version, len(expected.tables), totalColumns, totalIndexes, totalTriggers)
-}
-
-// String returns a detailed string representation of the snapshot
-func (expected schemaSnapshot) String() string {
-	result := fmt.Sprintf("Schema Snapshot (version %d)\n", expected.version)
-	result += fmt.Sprintf("Tables (%d):\n", len(expected.tables))
-
-	// Sort tables for consistent output
-	tables := make([]string, len(expected.tables))
-	copy(tables, expected.tables)
-	sort.Strings(tables)
-
-	for _, table := range tables {
-		result += fmt.Sprintf("  %s:\n", table)
-		result += fmt.Sprintf("    Columns (%d): %v\n", len(expected.columns[table]), expected.columns[table])
-		result += fmt.Sprintf("    Indexes (%d): %v\n", len(expected.indexes[table]), expected.indexes[table])
-		result += fmt.Sprintf("    Triggers (%d): %v\n", len(expected.triggers[table]), expected.triggers[table])
-	}
-
-	return result
 }
 
 // TestSchemaSnapshotCapture validates that we can capture schema snapshots

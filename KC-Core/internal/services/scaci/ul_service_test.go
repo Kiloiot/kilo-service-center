@@ -3,7 +3,6 @@ package scaciservices
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"testing"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
@@ -217,7 +216,7 @@ func TestULService_PreferenceLookupError_FallsBack(t *testing.T) {
 	binary.BigEndian.PutUint64(epEuiBytes, epEui)
 
 	// Setup expectations: lookup returns error
-	lookupErr := errors.New("database connection failed")
+	lookupErr := errTestDBConnectionFailed
 	mockStatus.On("GetPreferredBaseStation", mock.Anything, tenantID, epEuiBytes).
 		Return(nil, false, lookupErr)
 

@@ -7,7 +7,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api } from "@services/api";
+import { apiKeysApi } from "@services/api";
 import { queryKeys } from "@config/query-keys";
 
 export function useApiKeys(params?: {
@@ -17,7 +17,7 @@ export function useApiKeys(params?: {
 }) {
   return useQuery({
     queryKey: queryKeys.apiKeys.list(params),
-    queryFn: () => api.listApiKeys(params),
+    queryFn: () => apiKeysApi.list(params),
   });
 }
 
@@ -25,7 +25,7 @@ export function useCreateApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (req: { name: string; keyType: string; expiresAt?: Date }) =>
-      api.createApiKey(req),
+      apiKeysApi.create(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.all });
     },
@@ -35,7 +35,7 @@ export function useCreateApiKey() {
 export function useDeleteApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.deleteApiKey(id),
+    mutationFn: (id: string) => apiKeysApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys.all });
     },

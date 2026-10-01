@@ -116,7 +116,7 @@ func (uls *ulService) ScheduleULTransmit(
 	// Nil check for scheduler (feature guard)
 	if uls.ulScheduler == nil {
 		uls.logger.WarnContext(ctx, scaci.LogSCACIULDataTxNotSupported,
-			"epEui", req.EpEui)
+			logger.FieldEpEui, req.EpEui)
 		return 0, 0, scaci.ErrULTransmitNotSupported
 	}
 
@@ -130,13 +130,13 @@ func (uls *ulService) ScheduleULTransmit(
 		if lookupErr != nil {
 			// Log warning but don't fail - proceed with fallback selection
 			uls.logger.WarnContext(ctx, scaci.LogSCACIPreferenceLookupFailed,
-				"epEui", req.EpEui,
-				"error", lookupErr)
+				logger.FieldEpEui, req.EpEui,
+				logger.FieldError, lookupErr)
 		} else if found && preferredBs != nil {
 			targetBsEui = preferredBs
 			uls.logger.DebugContext(ctx, scaci.LogSCACIUsingPreferredBS,
-				"epEui", req.EpEui,
-				"preferredBsEui", *preferredBs)
+				logger.FieldEpEui, req.EpEui,
+				logger.FieldPreferredBsEui, *preferredBs)
 		}
 		// If not found or NULL, targetBsEui remains nil → scheduler uses deterministic fallback
 	}
@@ -147,8 +147,8 @@ func (uls *ulService) ScheduleULTransmit(
 
 	if err != nil {
 		uls.logger.ErrorContext(ctx, scaci.LogSCACIScheduleULTxFailed,
-			"epEui", req.EpEui,
-			"error", err)
+			logger.FieldEpEui, req.EpEui,
+			logger.FieldError, err)
 
 		// Map scheduler errors to SCACI error tokens per §3.9
 		var errorToken string
@@ -178,9 +178,9 @@ func (uls *ulService) ScheduleULTransmit(
 
 	// Success
 	uls.logger.DebugContext(ctx, scaci.LogSCACIULDataTxScheduled,
-		"bssciOpID", bssciOpID,
-		"bsEui", actualBsEui,
-		"epEui", req.EpEui)
+		logger.FieldBssciOpID, bssciOpID,
+		logger.FieldBsEui, actualBsEui,
+		logger.FieldEpEui, req.EpEui)
 
 	return bssciOpID, actualBsEui, ""
 }

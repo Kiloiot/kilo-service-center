@@ -6,53 +6,25 @@ package bssci
 // Purpose: Centralized catalog of all BSSCI log messages for consistency and maintainability.
 //
 // Usage Pattern:
-//   s.logger.Info(LogBSSCIAttachHandshakeComplete, zap.String("epEui", FormatEUI64(eui)))
+//   s.logger.Info(LogBSSCINewConnection, zap.String("epEui", FormatEUI64(eui)))
 //
 // Naming Convention:
 //   - All constants use LogBSSCI* prefix for discoverability
 //   - Organized into subsystems matching BSSCI protocol operations
-//
-// Migration Stats:
-//   - 276 unique messages (273 base + 3 propagation pause/reset tokens)
-//   - Organized into 12 subsystems
-//
-// Subsystems:
-//   1. Server Lifecycle & Connection (32 constants)
-//   2. Attach Operations (18 constants)
-//   3. Detach Operations (13 constants)
-//   4. Uplink Data Operations (16 constants)
-//   5. Uplink Transmit Operations (15 constants)
-//   6. Downlink Queue Operations (50 constants)
-//   7. Downlink Result Operations (20 constants)
-//   8. Status Operations (14 constants)
-//   9. VM Handler Operations (35 constants)
-//  10. Error Handling & Persistence (49 constants)
-//  11. Type Conversion & Field Validation (5 constants)
-//  12. Propagation Reconciliation (13 constants)
 
 const (
 	// ========================================================================
-	// Server Lifecycle & Connection Messages (32 constants)
+	// Server Lifecycle & Connection Messages
 	// ========================================================================
 
-	// LogBSSCIServerListening indicates the BSSCI server has started and is listening for connections
-	LogBSSCIServerListening = "BSSCI server listening"
-	// LogBSSCIServerStopping indicates the BSSCI server is shutting down
-	LogBSSCIServerStopping = "Stopping BSSCI server"
 	// LogBSSCINewConnection indicates a new BSSCI client connection
 	LogBSSCINewConnection = "new connection"
-	// LogBSSCIConnectionEstablished indicates successful BSSCI connection establishment
-	LogBSSCIConnectionEstablished = "connection established"
-	// LogBSSCIConnectionClosed indicates a BSSCI connection has been closed
-	LogBSSCIConnectionClosed = "connection closed"
 	// LogBSSCIReceivedMessageDebug logs raw BSSCI message content for debugging
 	LogBSSCIReceivedMessageDebug = "received message debug"
-	// LogBSSCIHandshakeInitiated indicates BSSCI handshake has started
-	LogBSSCIHandshakeInitiated = "handshake initiated"
-	// LogBSSCIHandshakeComplete indicates BSSCI handshake has completed successfully
-	LogBSSCIHandshakeComplete = "handshake complete"
 	// LogBSSCIRejectingCommandBeforeHandshake logs when a command is rejected due to incomplete handshake
 	LogBSSCIRejectingCommandBeforeHandshake = "Rejecting command before handshake complete"
+	// LogBSSCIRejectingConnectMessageOnActiveSession logs a connect-operation message received after the handshake completed
+	LogBSSCIRejectingConnectMessageOnActiveSession = "Rejecting connect-operation message on an active session"
 	// LogBSSCIRejectingInboundServiceCenterCommand logs when a base station sends a service-center-initiated command
 	LogBSSCIRejectingInboundServiceCenterCommand = "Rejecting inbound service-center-initiated command from base station"
 	// LogBSSCIDLRXQueryExpirySweepFailed logs a failed dlRxStatQry expiry sweep
@@ -69,28 +41,26 @@ const (
 	LogBSSCIResumingPreviousSession = "Resuming previous session"
 	// LogBSSCIResumingSessionWithPendingOps indicates session resume with pending operations
 	LogBSSCIResumingSessionWithPendingOps = "Resuming session with pending operations"
-	// LogBSSCIReusingExistingActiveSession indicates reusing an active session
-	LogBSSCIReusingExistingActiveSession = "Reusing existing active session"
 	// LogBSSCITerminatedStaleSession indicates a stale session was terminated before creating new session
 	LogBSSCITerminatedStaleSession = "Terminated stale session"
 	// LogBSSCIFailedToTerminateStaleSession indicates failure to terminate stale session
 	LogBSSCIFailedToTerminateStaleSession = "Failed to terminate stale session"
 	// LogBSSCIFailedToTerminateResumableSessions indicates failure to retire the base station's leftover resumable sessions
 	LogBSSCIFailedToTerminateResumableSessions = "Failed to terminate leftover resumable sessions"
-	// LogBSSCIFailedToTerminateSession indicates failure to terminate session on disconnect
-	LogBSSCIFailedToTerminateSession = "Failed to terminate session"
-	// LogBSSCISessionTerminated indicates session was successfully terminated
-	LogBSSCISessionTerminated = "Session terminated"
-	// LogBSSCIFailedToDeletePendingOperations indicates failure to delete pending operations
-	LogBSSCIFailedToDeletePendingOperations = "Failed to delete pending operations"
-	// LogBSSCIDeletedPendingOperations indicates pending operations were successfully deleted
-	LogBSSCIDeletedPendingOperations = "Deleted pending operations"
-	// LogBSSCIStaleSessionDetectedDuringResume indicates a stale session was found during resume attempt
-	LogBSSCIStaleSessionDetectedDuringResume = "Stale session detected during resume"
 	// LogBSSCIDisplacedLiveSessionForBaseStation indicates a newly activated session displaced a live session of the same base station
 	LogBSSCIDisplacedLiveSessionForBaseStation = "Displaced live session for base station"
 	// LogBSSCIFailedToCloseDisplacedSessionConnection indicates failure to close the displaced session's connection
 	LogBSSCIFailedToCloseDisplacedSessionConnection = "Failed to close displaced session connection"
+	// LogBSSCIResumeAlreadyClaimed is logged when the resumable session was activated or retired by another connection before this one could claim it
+	LogBSSCIResumeAlreadyClaimed = "Resume rejected: session already claimed by another connection"
+	// LogBSSCIFailedToTerminateSession indicates failure to terminate session on disconnect
+	LogBSSCIFailedToTerminateSession = "Failed to terminate session"
+	// LogBSSCIFailedToMarkSessionDisconnected indicates a lost connection's session could not be handed back resumable
+	LogBSSCIFailedToMarkSessionDisconnected = "Failed to mark session disconnected"
+	// LogBSSCIFailedToDeletePendingOperations indicates failure to delete pending operations
+	LogBSSCIFailedToDeletePendingOperations = "Failed to delete pending operations"
+	// LogBSSCIDeletedPendingOperations indicates pending operations were successfully deleted
+	LogBSSCIDeletedPendingOperations = "Deleted pending operations"
 	// LogBSSCIInvalidEncodingInDatabase indicates invalid encoding value stored in database
 	LogBSSCIInvalidEncodingInDatabase = "Invalid encoding in database"
 	// LogBSSCINoPendingOperationsToResume indicates no pending operations during resume
@@ -105,8 +75,12 @@ const (
 	LogBSSCISendingPingToBaseStation = "Sending ping to base station"
 	// LogBSSCIReceivedPingResponse is a log message constant
 	LogBSSCIReceivedPingResponse = "Received ping response"
+	// LogBSSCIStationEventNotRecorded is logged when a protocol exchange could not be put in the station's activity
+	LogBSSCIStationEventNotRecorded = "Failed to record the base station activity event"
 	// LogBSSCIOperationIDBackwards is a log message constant
 	LogBSSCIOperationIDBackwards = "Operation ID backwards"
+	// LogBSSCIOperationNotOpen is logged when a completion names no open base station operation
+	LogBSSCIOperationNotOpen = "Completion does not name an open base station operation"
 	// LogBSSCIOperationIDNotPositive is a log message constant
 	LogBSSCIOperationIDNotPositive = "Operation ID not positive for BS-initiated operation"
 	// LogBSSCIOperationIDValidationFailed is a log message constant
@@ -129,8 +103,14 @@ const (
 	LogBSSCICertIdentityRejectedStrictMode = "Certificate identity resolution failed; closing connection (org enforcement enabled)"
 	// LogBSSCICertFingerprintMismatch is a log message constant
 	LogBSSCICertFingerprintMismatch = "Presented certificate does not match the registered fingerprint"
-	// LogBSSCICertFingerprintBackfilled is a log message constant
-	LogBSSCICertFingerprintBackfilled = "Backfilled certificate fingerprint from stored PEM"
+	// LogBSSCICertFingerprintPinned is logged when a registered station's blank fingerprint is pinned to its certificate
+	LogBSSCICertFingerprintPinned = "Pinned the registered base station's certificate fingerprint"
+	// LogBSSCICertExpiryRecorded is logged when a bound certificate's expiry is stored for its station
+	LogBSSCICertExpiryRecorded = "Recorded the base station certificate's expiry"
+	// LogBSSCICertExpiryBackfillFailed is logged when a bound certificate's expiry could not be stored
+	LogBSSCICertExpiryBackfillFailed = "Failed to record the base station certificate's expiry"
+	// LogBSSCIStationCertificateRefused is logged when a connecting station's client certificate does not belong to it
+	LogBSSCIStationCertificateRefused = "Base station refused: its client certificate does not belong to the station it claims"
 	// LogBSSCICertSubjectEUIMismatch is a log message constant
 	LogBSSCICertSubjectEUIMismatch = "Certificate subject EUI does not match the connect bsEui"
 	// LogBSSCIUnsolicitedErrorAck is a log message constant
@@ -141,29 +121,17 @@ const (
 	LogBSSCISendingBSSCIError = "Sending BSSCI error"
 	// LogBSSCIPersistedPendingOperation is a log message constant
 	LogBSSCIPersistedPendingOperation = "Persisted pending operation"
-	// LogBSSCIRemovedPendingOperation is a log message constant
-	LogBSSCIRemovedPendingOperation = "Removed pending operation"
 	// LogBSSCIUpdatedPendingOperationMetadata is a log message constant
 	LogBSSCIUpdatedPendingOperationMetadata = "Updated pending operation metadata"
 
 	// ========================================================================
-	// Attach Operations (18 constants)
+	// Attach Operations
 	// ========================================================================
 
-	// LogBSSCIAttachHandshakeInitiated is a log message constant
-	LogBSSCIAttachHandshakeInitiated = "Attach handshake initiated"
-	// LogBSSCIAttachHandshakeComplete is a log message constant
-	LogBSSCIAttachHandshakeComplete = "Attach handshake complete"
 	// LogBSSCIAttachOperationCompletedSuccessfully is a log message constant
 	LogBSSCIAttachOperationCompletedSuccessfully = "Attach operation completed successfully"
 	// LogBSSCIReceivedAttCmpWithoutPendingAttach is a log message constant
 	LogBSSCIReceivedAttCmpWithoutPendingAttach = "Received attCmp without pending attach operation" //nolint:gosec // G101: false positive - attCmp is BSSCI protocol command
-	// LogBSSCIAttachInitiated is a log message constant
-	LogBSSCIAttachInitiated = "attach initiated"
-	// LogBSSCIReceivedAttachResponse is a log message constant
-	LogBSSCIReceivedAttachResponse = "Received attach response"
-	// LogBSSCIReceivedAttachComplete is a log message constant
-	LogBSSCIReceivedAttachComplete = "Received attach complete"
 	// LogBSSCISendingAttachPropagate is a log message constant
 	LogBSSCISendingAttachPropagate = "Sending attach propagate"
 	// LogBSSCISendingAttachPropagateComplete is a log message constant
@@ -172,22 +140,8 @@ const (
 	LogBSSCINoConnectedBaseStationsForAttachPropagate = "No connected base stations available for attach propagate"
 	// LogBSSCIAttachCounterReplay is a log message constant for replay attack detection
 	LogBSSCIAttachCounterReplay = "Attach counter replay detected - incoming value not monotonic"
-	// LogBSSCIAttachPropagateQueued is a log message constant
-	LogBSSCIAttachPropagateQueued = "Attach propagate queued for sending"
-	// LogBSSCIAttachPropagateRspReceived is a log message constant
-	LogBSSCIAttachPropagateRspReceived = "Attach propagate response received"
-	// LogBSSCIAttachPropagateCmpReceived is a log message constant
-	LogBSSCIAttachPropagateCmpReceived = "Attach propagate complete received"
 	// LogBSSCIUpdatedEndpointWithAttachPropagateInfo is a log message constant
 	LogBSSCIUpdatedEndpointWithAttachPropagateInfo = "Updated endpoint with attach propagate info"
-	// LogBSSCIFailedToPersistAttachOperation is a log message constant
-	LogBSSCIFailedToPersistAttachOperation = "Failed to persist attach operation"
-	// LogBSSCIFailedToPersistAttachPropagateOperation is a log message constant
-	LogBSSCIFailedToPersistAttachPropagateOperation = "Failed to persist attach propagate operation"
-	// LogBSSCIFailedToRemovePendingAttachOperation is a log message constant
-	LogBSSCIFailedToRemovePendingAttachOperation = "Failed to remove pending attach operation"
-	// LogBSSCIFailedToRecordAttachEvent is a log message constant
-	LogBSSCIFailedToRecordAttachEvent = "Failed to record attach event"
 	// LogBSSCIFailedToSendAttachPropagateComplete is a log message constant
 	LogBSSCIFailedToSendAttachPropagateComplete = "Failed to send attach propagate complete"
 	// LogBSSCIFailedToSendDetachPropagateComplete is the symmetric token used
@@ -200,21 +154,11 @@ const (
 	LogBSSCIFailedToPersistAttachPropagateComplete = "Failed to persist attach propagate complete"
 
 	// ========================================================================
-	// Detach Operations (13 constants)
+	// Detach Operations
 	// ========================================================================
 
-	// LogBSSCIDetachHandshakeInitiated is a log message constant
-	LogBSSCIDetachHandshakeInitiated = "Detach handshake initiated"
-	// LogBSSCIDetachHandshakeComplete is a log message constant
-	LogBSSCIDetachHandshakeComplete = "Detach handshake complete"
-	// LogBSSCIDetachOperationCompleted is a log message constant
-	LogBSSCIDetachOperationCompleted = "detach operation completed"
 	// LogBSSCIReceivedDetCmpWithoutPendingDetach is a log message constant
 	LogBSSCIReceivedDetCmpWithoutPendingDetach = "Received detCmp without pending detach operation" //nolint:gosec // G101: false positive - detCmp is BSSCI protocol command
-	// LogBSSCIReceivedDetachResponse is a log message constant
-	LogBSSCIReceivedDetachResponse = "Received detach response"
-	// LogBSSCIReceivedDetachComplete is a log message constant
-	LogBSSCIReceivedDetachComplete = "Received detach complete"
 	// LogBSSCISendingDetachPropagate is a log message constant
 	LogBSSCISendingDetachPropagate = "Sending detach propagate"
 	// LogBSSCISendingDetachPropagateComplete is a log message constant
@@ -223,66 +167,26 @@ const (
 	LogBSSCINoConnectedBaseStationsForDetachPropagate = "No connected base stations available for detach propagate"
 	// LogBSSCIUpdatedEndpointWithDetachInfo is a log message constant
 	LogBSSCIUpdatedEndpointWithDetachInfo = "Updated endpoint with detach info"
-	// LogBSSCIFailedToPersistDetachOperation is a log message constant
-	LogBSSCIFailedToPersistDetachOperation = "Failed to persist detach operation"
-	// LogBSSCIFailedToRecordDetachEvent is a log message constant
-	LogBSSCIFailedToRecordDetachEvent = "Failed to record detach event"
 	// LogBSSCIFailedToPersistDetachMessage is a log message constant
 	LogBSSCIFailedToPersistDetachMessage = "Failed to persist detach message to mioty_messages table"
 
 	// ========================================================================
-	// Uplink Data Operations (19 constants)
+	// Uplink Data Operations
 	// ========================================================================
 
-	// LogBSSCIUplinkDataReceivedFirstReception is a log message constant
-	LogBSSCIUplinkDataReceivedFirstReception = "Uplink data received (first reception)"
-	// LogBSSCIUplinkDataDuplicate is a log message constant
-	LogBSSCIUplinkDataDuplicate = "Duplicate uplink data"
 	// LogBSSCIReceivedULDataCompletion is a log message constant
 	LogBSSCIReceivedULDataCompletion = "Received UL data completion"
-	// LogBSSCIULDataHandshakeComplete is a log message constant
-	LogBSSCIULDataHandshakeComplete = "UL data handshake complete"
 	// LogBSSCIReceivedStringUserData is a log message constant
 	LogBSSCIReceivedStringUserData = "Received string userData, skipping (expected byte array or Numeric[])"
 	// LogBSSCIUnknownUserDataType is a log message constant
 	LogBSSCIUnknownUserDataType = "Unknown userData type, using empty payload"
 	// LogBSSCIUnsupportedUserDataElementType is a log message constant
 	LogBSSCIUnsupportedUserDataElementType = "Unsupported userData element type, using zero"
-	// LogBSSCIStoringUplinkMessage is a log message constant
-	LogBSSCIStoringUplinkMessage = "Storing uplink message"
-	// LogBSSCIFailedToStoreUplinkMessage is a log message constant
-	LogBSSCIFailedToStoreUplinkMessage = "Failed to store uplink message"
-	// LogBSSCIFailedToPersistULDataOperation is a log message constant
-	LogBSSCIFailedToPersistULDataOperation = "Failed to persist UL data operation"
-	// LogBSSCIEndpointLookupReturnedNil is a log message constant
-	LogBSSCIEndpointLookupReturnedNil = "Endpoint lookup returned nil without error, using session tenant"
-	// LogBSSCIEndpointNotProvisionedForULData is a log message constant
-	LogBSSCIEndpointNotProvisionedForULData = "Endpoint not provisioned for UL data, using session tenant"
-	// LogBSSCIFailedToCheckUplinkDeduplication is a log message constant
-	LogBSSCIFailedToCheckUplinkDeduplication = "Failed to check uplink deduplication"
-	// LogBSSCIFailedToPublishUplinkToMQTT is a log message constant
-	LogBSSCIFailedToPublishUplinkToMQTT = "Failed to publish uplink to MQTT"
-	// LogBSSCIFailedToRecordUplinkEvent is a log message constant
-	LogBSSCIFailedToRecordUplinkEvent = "Failed to record uplink event"
-	// LogBSSCIFailedToRemovePendingULDataOperation is a log message constant
-	LogBSSCIFailedToRemovePendingULDataOperation = "Failed to remove pending UL data operation"
 	// LogBSSCIFailedToResolveEndpointTenant is a log message constant
 	LogBSSCIFailedToResolveEndpointTenant = "Failed to resolve endpoint tenant for UL data"
-	// LogBSSCIFailedToDecryptUserData is a log message constant
-	LogBSSCIFailedToDecryptUserData = "Failed to decrypt user data"
-	// LogBSSCIMessageStoreNotAvailable is a log message constant
-	LogBSSCIMessageStoreNotAvailable = "Message store not available"
-	// LogBSSCICreateULDataMessageFailed is logged when CreateULDataMessage fails for first reception
-	LogBSSCICreateULDataMessageFailed = "bssci.create_uldata_message_failed"
-	// LogBSSCIUpdateULDataBaseStationsFailed is logged when UpdateULDataBaseStations fails for duplicate
-	LogBSSCIUpdateULDataBaseStationsFailed = "bssci.update_uldata_basestations_failed"
-	// LogBSSCIGetDLRXStatusFailed is logged when batch DL RX status lookup fails per SCACI §3.8.1
-	LogBSSCIGetDLRXStatusFailed = "bssci.get_dlrx_status_failed"
-	// LogULDataTenantResolutionFailed is logged when tenant resolution fails and falls back to serving tenant
-	LogULDataTenantResolutionFailed = "UL data tenant resolution failed, using serving tenant"
 
 	// ========================================================================
-	// Uplink Transmit Operations (16 constants)
+	// Uplink Transmit Operations
 	// ========================================================================
 
 	// LogBSSCIBaseStationDoesNotSupportBidi is a log message constant
@@ -309,17 +213,13 @@ const (
 	LogBSSCIUserDataMissingFromMetadata = "userData missing from metadata, using PendingOperation.Data"
 	// LogBSSCIFailedToEncryptNetworkSessionKey is a log message constant
 	LogBSSCIFailedToEncryptNetworkSessionKey = "Failed to encrypt network session key"
-	// LogBSSCIDecryptionFailedTryingBase64Decode is a log message constant
-	LogBSSCIDecryptionFailedTryingBase64Decode = "Decryption failed for legacy key, trying base64 decode"
 	// LogBSSCIFailedToPersistULDataTxOperation is a log message constant
 	LogBSSCIFailedToPersistULDataTxOperation = "Failed to persist ulDataTx operation"
 	// LogBSSCIFailedToRemovePendingULTransmitOperation is a log message constant
 	LogBSSCIFailedToRemovePendingULTransmitOperation = "Failed to remove pending UL transmit operation from database"
-	// LogBSSCIFailedToCreateULTransmitEvent is a log message constant
-	LogBSSCIFailedToCreateULTransmitEvent = "Failed to create UL transmit event"
 
 	// ========================================================================
-	// Downlink Queue Operations (54 constants)
+	// Downlink Queue Operations
 	// ========================================================================
 
 	// LogBSSCIReceivedDLDataQueRspFromBaseStation is a log message constant
@@ -342,26 +242,16 @@ const (
 	LogBSSCISentDLDataRevToBaseStation = "Sent dlDataRev to base station"
 	// LogBSSCIInvalidQueueIDInRevokeResponse is a log message constant
 	LogBSSCIInvalidQueueIDInRevokeResponse = "Invalid queue ID in revoke response"
-	// LogBSSCINoQueueIDInRevokeComplete is a log message constant
-	LogBSSCINoQueueIDInRevokeComplete = "No queue ID in revoke complete"
 	// LogBSSCICannotResolveTenantForRevoke is a log message constant
 	LogBSSCICannotResolveTenantForRevoke = "Cannot resolve tenant for revoke"
-	// LogBSSCICannotResolveTenantForRevokeComplete is a log message constant
-	LogBSSCICannotResolveTenantForRevokeComplete = "Cannot resolve tenant for revoke complete"
 	// LogBSSCIInvalidTenantIDFormat is a log message constant
 	LogBSSCIInvalidTenantIDFormat = "Invalid tenant ID format"
 	// LogBSSCIUpdatedDownlinkResult is a log message constant
 	LogBSSCIUpdatedDownlinkResult = "Updated downlink result"
-	// LogBSSCIUpdatedDownlinkBaseStationOwnership is a log message constant
-	LogBSSCIUpdatedDownlinkBaseStationOwnership = "Updated downlink base station ownership"
 	// LogBSSCIFailedToUpdateDownlinkResult is a log message constant
 	LogBSSCIFailedToUpdateDownlinkResult = "Failed to update downlink result"
-	// LogBSSCIFailedToUpdateDownlinkBaseStationOwnership is a log message constant
-	LogBSSCIFailedToUpdateDownlinkBaseStationOwnership = "Failed to update downlink base station ownership"
 	// LogBSSCIFailedToUpdateDownlinkAsRevoked is a log message constant
 	LogBSSCIFailedToUpdateDownlinkAsRevoked = "Failed to update downlink as revoked"
-	// LogBSSCIFailedToClearDownlinkBaseStationOwnership is a log message constant
-	LogBSSCIFailedToClearDownlinkBaseStationOwnership = "Failed to clear downlink base station ownership"
 	// LogBSSCIFailedToPersistDLDataQueOperation is a log message constant
 	LogBSSCIFailedToPersistDLDataQueOperation = "Failed to persist dlDataQue operation"
 	// LogBSSCIFailedToPersistDLDataRevOperation is a log message constant
@@ -384,34 +274,12 @@ const (
 	LogBSSCIFailedToRecordDLRxStatusEvent = "Failed to record dl rx status event"
 	// LogBSSCIFailedToPersistDLRxStatQueryTracking is a log message constant (downlink_handlers.go:~1315)
 	LogBSSCIFailedToPersistDLRxStatQueryTracking = "Failed to persist DL RX status query tracking"
-	// LogBSSCIFailedToCheckDLRxStatQuery is a log message constant (downlink_handlers.go:~1186)
-	LogBSSCIFailedToCheckDLRxStatQuery = "Failed to check DL RX status query state"
-	// LogBSSCIUnsolicitedDLRxStatus is a log message constant (downlink_handlers.go:~1194)
-	LogBSSCIUnsolicitedDLRxStatus = "Received unsolicited dlRxStat (no pending query)"
-	// LogBSSCIFailedToMarkDLRxStatQueryComplete is a log message constant (downlink_handlers.go:~1432)
-	LogBSSCIFailedToMarkDLRxStatQueryComplete = "Failed to mark DL RX status query complete"
 	// LogBSSCIFailedToGetPendingOperation is a log message constant (BSSCI §§5.11-5.12.3 Gap 1)
 	LogBSSCIFailedToGetPendingOperation = "Failed to get pending operation from StatusService"
 	// LogBSSCIFailedToRemovePendingOperationFromDB is a log message constant
 	LogBSSCIFailedToRemovePendingOperationFromDB = "Failed to remove pending operation from database"
 	// LogBSSCIFailedToRemovePendingOperationAfterSendFailure is a log message constant
 	LogBSSCIFailedToRemovePendingOperationAfterSendFailure = "Failed to remove pending operation from database after send failure"
-	// LogBSSCIFailedToSendErrorFrameForMissingEpEui is a log message constant
-	LogBSSCIFailedToSendErrorFrameForMissingEpEui = "failed to send error frame for missing epEui"
-	// LogBSSCIFailedToSendErrorFrameForMissingQueID is a log message constant
-	LogBSSCIFailedToSendErrorFrameForMissingQueID = "failed to send error frame for missing queId"
-	// LogBSSCIFailedToSendErrorFrameForMissingResult is a log message constant
-	LogBSSCIFailedToSendErrorFrameForMissingResult = "failed to send error frame for missing result"
-	// LogBSSCIFailedToSendErrorFrameForInvalidResult is a log message constant
-	LogBSSCIFailedToSendErrorFrameForInvalidResult = "failed to send error frame for invalid result enum"
-	// LogBSSCIFailedToSendErrorFrameForUnknownQueueID is a log message constant
-	LogBSSCIFailedToSendErrorFrameForUnknownQueueID = "failed to send error frame for unknown queue ID"
-	// LogBSSCIFailedToSendErrorFrameForMissingConditionalFields is a log message constant
-	LogBSSCIFailedToSendErrorFrameForMissingConditionalFields = "failed to send error frame for missing conditional fields"
-	// LogBSSCIFailedToSendErrorFrameForInvalidConditionalFields is a log message constant
-	LogBSSCIFailedToSendErrorFrameForInvalidConditionalFields = "failed to send error frame for invalid conditional fields"
-	// LogBSSCIFailedToSendErrorFrameForDatabaseError is a log message constant
-	LogBSSCIFailedToSendErrorFrameForDatabaseError = "failed to send error frame for database error"
 	// LogBSSCIFailedToSendErrorFrame is a log message constant
 	LogBSSCIFailedToSendErrorFrame = "failed to send error frame"
 	// LogBSSCIFailedToBroadcastDLResultToSCACI is a log message constant
@@ -420,29 +288,15 @@ const (
 	LogBSSCICannotResolveTenantForDownlinkResult = "Cannot resolve tenant for downlink result"
 	// LogBSSCIQueueIDOutOfRange is a log message constant
 	LogBSSCIQueueIDOutOfRange = "Queue ID out of range for int64 conversion"
-	// LogBSSCINegativeQueueIDInMetadata is a log message constant
-	LogBSSCINegativeQueueIDInMetadata = "Negative queue ID found in operation metadata"
-	// LogBSSCIInvalidQueueIDForUpdate is a log message constant
-	LogBSSCIInvalidQueueIDForUpdate = "Invalid queue ID for base station ownership update"
 	// LogBSSCIUpdatedBaseStationBidiCapability is a log message constant
 	LogBSSCIUpdatedBaseStationBidiCapability = "Updated base station bidi capability"
 	// LogBSSCIFailedToUpdateBaseStationBidiCapability is a log message constant
 	LogBSSCIFailedToUpdateBaseStationBidiCapability = "Failed to update base station bidi capability"
-	// LogBSSCIFailedToQueryDownlinkQueue is a log message constant
-	LogBSSCIFailedToQueryDownlinkQueue = "Failed to query downlink queue"
-	// LogBSSCIFailedToMarkDownlinkAsSent is a log message constant
-	LogBSSCIFailedToMarkDownlinkAsSent = "Failed to mark downlink as sent"
-	// LogBSSCIFailedToEnqueueDownlink is logged when downlink enqueue operation fails
-	LogBSSCIFailedToEnqueueDownlink = "Failed to enqueue downlink"
-	// LogBSSCIEnqueuedDownlink is logged when downlink successfully enqueued
-	LogBSSCIEnqueuedDownlink = "Downlink enqueued"
 	// LogBSSCIProcessingRevokeResponse is logged when processing revoke response from base station
 	LogBSSCIProcessingRevokeResponse = "Processing DL Data Revoke Response from base station"
-	// LogBSSCIStorageUnavailableForRevoke is logged when storage unavailable for revoke persistence
-	LogBSSCIStorageUnavailableForRevoke = "Storage unavailable - cannot persist revoke operation"
 
 	// ========================================================================
-	// Downlink Result Operations (23 constants)
+	// Downlink Result Operations
 	// ========================================================================
 
 	// LogBSSCIReceivedDLDataResFromBaseStation is a log message constant
@@ -451,40 +305,6 @@ const (
 	LogBSSCIReceivedDLDataResRspFromBaseStation = "Received dlDataResRsp from base station"
 	// LogBSSCIDLDataResultOperationCompleted is a log message constant
 	LogBSSCIDLDataResultOperationCompleted = "DL data result operation completed"
-	// LogBSSCISendingDLDataResultResponse is a log message constant
-	LogBSSCISendingDLDataResultResponse = "Sending dlDataResRsp to base station"
-	// LogBSSCISendingDLDataResultComplete is a log message constant
-	LogBSSCISendingDLDataResultComplete = "Sending dlDataResCmp to base station"
-	// LogBSSCIProcessingDLDataResult is a log message constant
-	LogBSSCIProcessingDLDataResult = "Processing dlDataRes"
-	// LogBSSCIValidatedDLDataResultFields is a log message constant
-	LogBSSCIValidatedDLDataResultFields = "Validated dlDataRes fields"
-	// LogBSSCIFailedToValidateDLDataResultFields is a log message constant
-	LogBSSCIFailedToValidateDLDataResultFields = "Failed to validate dlDataRes fields"
-	// LogBSSCIFailedToPersistDLDataResOperation is a log message constant
-	LogBSSCIFailedToPersistDLDataResOperation = "Failed to persist dlDataRes operation"
-	// LogBSSCIFailedToRemovePendingDLResultOperation is a log message constant
-	LogBSSCIFailedToRemovePendingDLResultOperation = "Failed to remove pending DL result operation"
-	// LogBSSCIFailedToStoreDLResultInDatabase is a log message constant
-	LogBSSCIFailedToStoreDLResultInDatabase = "Failed to store DL result in database"
-	// LogBSSCIStoredDLResultInDatabase is a log message constant
-	LogBSSCIStoredDLResultInDatabase = "Stored DL result in database"
-	// LogBSSCIFailedToFindQueueEntryForResult is a log message constant
-	LogBSSCIFailedToFindQueueEntryForResult = "Failed to find queue entry for result"
-	// LogBSSCIQueueEntryNotFoundForResult is a log message constant
-	LogBSSCIQueueEntryNotFoundForResult = "Queue entry not found for result"
-	// LogBSSCIFailedToNotifySCACIOfDLResult is a log message constant
-	LogBSSCIFailedToNotifySCACIOfDLResult = "Failed to notify SCACI of DL result"
-	// LogBSSCINotifiedSCACIOfDLResult is a log message constant
-	LogBSSCINotifiedSCACIOfDLResult = "Notified SCACI of DL result"
-	// LogBSSCIDLResultCounterMismatch is a log message constant
-	LogBSSCIDLResultCounterMismatch = "DL result counter mismatch"
-	// LogBSSCIDLResultMissingRequiredField is a log message constant
-	LogBSSCIDLResultMissingRequiredField = "DL result missing required field"
-	// LogBSSCIDLResultInvalidEnumValue is a log message constant
-	LogBSSCIDLResultInvalidEnumValue = "DL result invalid enum value"
-	// LogBSSCIDLResultProcessingComplete is a log message constant
-	LogBSSCIDLResultProcessingComplete = "DL result processing complete"
 	// LogBSSCIUnexpectedFieldsInDLDataResRsp is logged when dlDataResRsp contains non-canonical fields
 	LogBSSCIUnexpectedFieldsInDLDataResRsp = "Unexpected fields in dlDataResRsp - spec violation"
 	// LogBSSCIMissingCommandFieldInResponse is logged when command field missing from response
@@ -500,7 +320,7 @@ const (
 	LogBSSCISessionNotBidirectional = "Base station session not bidirectional"
 
 	// ========================================================================
-	// Status Operations (14 constants)
+	// Status Operations
 	// ========================================================================
 
 	// LogBSSCISendingStatusRequestToBaseStation is a log message constant
@@ -531,13 +351,9 @@ const (
 	LogBSSCIFailedToCleanupPendingOpAfterSendFailure = "Failed to cleanup pending operation after send failure"
 
 	// ========================================================================
-	// VM Handler Operations (35 constants)
+	// VM Handler Operations
 	// ========================================================================
 
-	// LogBSSCIVMUplinkDataReceived is a log message constant
-	LogBSSCIVMUplinkDataReceived = "VM uplink data received"
-	// LogBSSCIStoringVMUplinkMessage is a log message constant
-	LogBSSCIStoringVMUplinkMessage = "Storing VM uplink message"
 	// LogBSSCIVMStatusReceived is a log message constant
 	LogBSSCIVMStatusReceived = "VM status received"
 	// LogBSSCIVMStatusResponseMissingMacTypesField is a log message constant
@@ -548,35 +364,25 @@ const (
 	LogBSSCIVMActivateFailed = "VM activate failed"
 
 	// ========================================================================
-	// Additional Server Lifecycle constants (21 constants)
+	// Additional Server Lifecycle constants
 	// ========================================================================
 
-	// LogBSSCIServerStarted is a log message constant
-	LogBSSCIServerStarted = "BSSCI server started"
-	// LogBSSCIFailedToAcceptConnection is a log message constant
-	LogBSSCIFailedToAcceptConnection = "failed to accept connection"
-	// LogBSSCIFailedToReadHeader is a log message constant
-	LogBSSCIFailedToReadHeader = "failed to read header"
+	// LogBSSCIFailedToReadFrame is logged when a frame cannot be read from the connection.
+	LogBSSCIFailedToReadFrame = "failed to read frame"
 	// LogBSSCIInvalidProtocolIdentifier is a log message constant
 	LogBSSCIInvalidProtocolIdentifier = "invalid protocol identifier"
-	// LogBSSCIFailedToReadPayload is a log message constant
-	LogBSSCIFailedToReadPayload = "failed to read payload"
 	// LogBSSCIFailedToDecodeMessagePack is a log message constant
 	LogBSSCIFailedToDecodeMessagePack = "failed to decode MessagePack"
 	// LogBSSCIMissingCommandField is a log message constant
 	LogBSSCIMissingCommandField = "missing command field"
 	// LogBSSCIInvalidOpIDType is a log message constant
 	LogBSSCIInvalidOpIDType = "Invalid opId type"
-	// LogBSSCIInvalidServerProtocolVersion is a log message constant
-	LogBSSCIInvalidServerProtocolVersion = "Invalid server protocol version"
 	// LogBSSCIMinorVersionMismatch is a log message constant
 	LogBSSCIMinorVersionMismatch = "Minor version mismatch"
 	// LogBSSCIMinorVersionNegotiatedDown is logged when a base station requests a newer minor version and the session continues at the service center's selected version (BSSCI §5.3.2)
 	LogBSSCIMinorVersionNegotiatedDown = "Minor version newer than service center, negotiating down"
 	// LogBSSCIBaseStationConnected is a log message constant
 	LogBSSCIBaseStationConnected = "Base Station connected"
-	// LogBSSCIBaseStationFoundInDatabase is a log message constant
-	LogBSSCIBaseStationFoundInDatabase = "Base Station found in database, updating status"
 	// LogBSSCIBaseStationNotFoundInDatabase is a log message constant
 	LogBSSCIBaseStationNotFoundInDatabase = "Base Station not found in database - rejecting connection"
 	// LogBSSCIBaseStationConnectionCompletedSuccessfully is a log message constant
@@ -585,19 +391,13 @@ const (
 	LogBSSCIBaseStationDisconnectedStatusOffline = "Base Station disconnected, status updated to offline"
 	// LogBSSCIFailedToUpdateOfflineStatus is a log message constant
 	LogBSSCIFailedToUpdateOfflineStatus = "Failed to update offline status"
-	// LogBSSCIFailedToInitializeKeyEncryptor is a log message constant
-	LogBSSCIFailedToInitializeKeyEncryptor = "Failed to initialize key encryptor, keys will be stored unencrypted"
 	// LogBSSCIFailedToHandleMessage is a log message constant
 	LogBSSCIFailedToHandleMessage = "failed to handle message"
 	// LogBSSCIInvalidConnectOperationID is a log message constant
 	LogBSSCIInvalidConnectOperationID = "Invalid connect operation ID"
 
-	// LogBSSCIDebuggingCheckingSessionsForAttachPropagate is a log message constant
-	LogBSSCIDebuggingCheckingSessionsForAttachPropagate = "DEBUGGING: Checking sessions for attach propagate"
-	// LogBSSCIDebuggingSessionStatus is a log message constant
-	LogBSSCIDebuggingSessionStatus = "DEBUGGING: Session status"
-	// LogBSSCIDebugFullAttachPropagateMessage is a log message constant
-	LogBSSCIDebugFullAttachPropagateMessage = "DEBUG: Full attach propagate message"
+	// LogBSSCIStationlessPropagationOwnerUnresolved is logged when a propagation no base station can receive names an endpoint whose owner cannot be resolved, so its failure event is recorded for no tenant.
+	LogBSSCIStationlessPropagationOwnerUnresolved = "Propagation without connected base stations: endpoint owner not resolved, failure event not recorded"
 	// LogBSSCIEndPointAttachRequestWithFullTelemetry is a log message constant
 	LogBSSCIEndPointAttachRequestWithFullTelemetry = "End Point attach request with full telemetry"
 	// LogBSSCIEndPointDetachRequestWithTelemetry is a log message constant
@@ -636,8 +436,6 @@ const (
 	LogBSSCIDetachPropagateCompleted = "Detach propagate completed"
 	// LogBSSCIFailedToPersistDetachPropagateComplete is logged when detPrpCmp persistence fails
 	LogBSSCIFailedToPersistDetachPropagateComplete = "Failed to persist detach propagate complete message"
-	// LogBSSCIDuplicateMessageReceived is a log message constant
-	LogBSSCIDuplicateMessageReceived = "Duplicate message received"
 	// LogBSSCIDownlinkWindowOpen is a log message constant
 	LogBSSCIDownlinkWindowOpen = "Downlink window open"
 	// LogBSSCIDownlinkDispatched is logged when auto-dispatch successfully sends a downlink
@@ -646,8 +444,29 @@ const (
 	LogBSSCIDownlinkDispatchError = "Downlink auto-dispatch error"
 	// LogDispatcherNoTenant is logged when dispatcher skips due to missing tenant context
 	LogDispatcherNoTenant = "Downlink dispatcher skipping: no tenant context"
-	// LogDispatcherTxBeginFailed is logged when transaction start fails
-	LogDispatcherTxBeginFailed = "Downlink dispatcher: transaction begin failed"
+	// LogBSSCIServingStationUnavailable is logged when the station serving an endpoint cannot take a downlink now
+	LogBSSCIServingStationUnavailable = "Downlink deferred: the base station serving the endpoint is not connected or not bidirectional"
+	// LogDispatcherDiscardedQueueReclaimed is logged when a fresh session returns the station's queued downlinks to pending
+	LogDispatcherDiscardedQueueReclaimed = "Downlinks queued at a base station returned to pending: its new session discarded them"
+	// LogDispatcherDiscardedRevocationsExpired is logged when a fresh session ends expired the overdue downlinks its station was asked to drop
+	LogDispatcherDiscardedRevocationsExpired = "Overdue downlinks a base station was asked to drop expired: its new session discarded them"
+	// LogDispatcherEndpointQueueReclaimed is logged when an attach propagate returns the endpoint's downlinks a station held to pending
+	LogDispatcherEndpointQueueReclaimed = "Endpoint downlinks queued at a base station returned to pending: its attach propagate discarded them"
+	// LogDispatcherWindowAlreadyClaimed is logged when another reception already holds the telegram's downlink window
+	LogDispatcherWindowAlreadyClaimed = "Downlink dispatcher skipping: another reception holds the telegram's downlink window"
+	// LogDispatcherWindowClaimFailed is logged when the telegram's downlink window could not be claimed
+	LogDispatcherWindowClaimFailed = "Downlink dispatcher could not claim the telegram's downlink window"
+	// LogDispatcherWindowReleaseFailed is logged when an unused downlink window could not be given back
+	LogDispatcherWindowReleaseFailed = "Downlink dispatcher could not release the telegram's unused downlink window"
+	// LogDispatcherStationNotBidirectional is logged when a downlink window arrives through a unidirectional base station
+	LogDispatcherStationNotBidirectional = "Downlink dispatcher skipping: the base station is not bidirectional"
+	// LogDispatcherNoOrganization is logged when dispatch is refused because the
+	// owner organization is unresolved; dispatch fails closed rather than
+	// selecting a queue row without an organization scope.
+	LogDispatcherNoOrganization = "Downlink dispatcher skipping: no organization context"
+	// LogDispatcherOrgMismatch is logged when a reserved row does not belong to
+	// the organization the dispatch ran for.
+	LogDispatcherOrgMismatch = "Downlink dispatcher aborting: reserved row not owned by requesting organization"
 	// LogDispatcherQueryFailed is logged when pending downlink query fails
 	LogDispatcherQueryFailed = "Downlink dispatcher: query failed"
 	// LogDispatcherNoPending is logged when no pending downlinks found (debug level)
@@ -660,19 +479,63 @@ const (
 	LogDispatcherReleaseFailed = "Downlink dispatcher: failed to release reservation to pending"
 	// LogBSSCIFailedToConfirmDownlinkQueued is a log message constant
 	LogBSSCIFailedToConfirmDownlinkQueued = "Failed to confirm downlink queue row as queued after dlDataQueRsp"
-	// LogDispatcherTxCommitFailed is logged when transaction commit fails
-	LogDispatcherTxCommitFailed = "Downlink dispatcher: commit failed"
+	// LogBSSCIFailedToRevokeRefusedDownlink is logged when a base station's refusal of a dlDataRev cannot be recorded
+	LogBSSCIFailedToRevokeRefusedDownlink = "Failed to record a base station's refusal of a dlDataRev"
+	// LogBSSCIRevokeRefusedByStation is logged when a base station answers a dlDataRev with error
+	LogBSSCIRevokeRefusedByStation = "Base station refused a dlDataRev"
+	// LogBSSCIRevokeRefusalKeepsDownlinkInFlight is logged when a refusal's code does not say the station lacks the downlink
+	LogBSSCIRevokeRefusalKeepsDownlinkInFlight = "dlDataRev refusal does not say the base station lacks the downlink; it stays in flight until a result or the station's next session"
+	// LogBSSCIFailedToListStationRevocations is logged when a connected station cannot be asked again to drop its overdue downlinks
+	LogBSSCIFailedToListStationRevocations = "Failed to list the overdue downlinks a connected base station is asked to drop"
+	// LogBSSCIFailedToResendRevocation is logged when an overdue downlink cannot be revoked again at its reconnected station
+	LogBSSCIFailedToResendRevocation = "Failed to ask a reconnected base station again to drop an overdue downlink"
+	// LogBSSCIRevokeAlreadyInFlight is logged when a downlink is not asked for again because its dlDataRev awaits the station's answer
+	LogBSSCIRevokeAlreadyInFlight = "dlDataRev not repeated: the base station has not answered the one in flight"
+	// LogBSSCIFailedToFailRejectedDownlink is logged when a downlink its base station rejected cannot be failed
+	LogBSSCIFailedToFailRejectedDownlink = "Failed to mark a downlink its base station rejected as failed"
+	// LogBSSCIQueueOwnerUnresolved is logged when no tenant owns the downlink a dlDataQue answer refers to
+	LogBSSCIQueueOwnerUnresolved = "Cannot resolve the tenant owning a queued downlink"
 	// LogDispatcherSuccess is logged when downlink successfully dispatched
 	LogDispatcherSuccess = "Downlink dispatcher: success"
+	// LogDispatcherReservationsReclaimed is logged when a base station's orphaned reservations return to pending
+	LogDispatcherReservationsReclaimed = "Downlink dispatcher: returned orphaned base station reservations to pending"
+	// LogBSSCIFailedToReclaimReservations is logged when a base station's orphaned reservations could not be released
+	LogBSSCIFailedToReclaimReservations = "Failed to return orphaned base station downlink reservations to pending"
+	// LogBSSCIFailedToRecordEndpointAck is logged when an uplink's dlAck could not be recorded on its downlink
+	LogBSSCIFailedToRecordEndpointAck = "Failed to record the endpoint acknowledgement of a downlink"
+	// LogBSSCIDownlinkAcknowledgedByEndpoint is logged when an uplink's dlAck acknowledges a transmitted downlink
+	LogBSSCIDownlinkAcknowledgedByEndpoint = "Downlink acknowledged by the endpoint"
+	// LogBSSCIEndpointAckWithoutDownlink is logged when an uplink's dlAck matches no unacknowledged transmitted downlink
+	LogBSSCIEndpointAckWithoutDownlink = "Endpoint acknowledgement matches no transmitted downlink"
+	// LogBSSCIFailedToRecordDownlinkAckEvent is logged when the event of a downlink its endpoint acknowledged could not be recorded
+	LogBSSCIFailedToRecordDownlinkAckEvent = "Failed to record the event of a downlink acknowledged by the endpoint"
+	// LogBSSCIServingStationUnknown is logged when a downlink waits because no base station heard or attached its endpoint yet
+	LogBSSCIServingStationUnknown = "No base station heard or attached the endpoint yet; the downlink waits for its next downlink window"
+	// LogBSSCIResultForFinishedDownlink is logged when a dlDataRes names a downlink that already ended, whose outcome stays
+	LogBSSCIResultForFinishedDownlink = "Result for a downlink that already ended leaves its outcome unchanged"
+	// LogBSSCISentResultForExpiredDownlink is logged when a station reports a downlink sent that was already reported expired
+	LogBSSCISentResultForExpiredDownlink = "Base station reported a downlink sent after it was reported expired; the expiry stands"
+	// LogBSSCIRevokeAnswerForDownlinkNotHeld is logged when a station answers a revoke of a downlink it no longer holds
+	LogBSSCIRevokeAnswerForDownlinkNotHeld = "Revoke answered for a downlink that already ended or another base station holds"
+	// LogBSSCIFailedToReclaimDiscardedQueue is logged when the downlinks a fresh session discarded could not be released
+	LogBSSCIFailedToReclaimDiscardedQueue = "Failed to return the downlinks a base station discarded to pending"
+	// LogBSSCIFailedToListPendingDownlinks is logged when a connected station cannot be sent the downlinks it serves
+	LogBSSCIFailedToListPendingDownlinks = "Failed to list the pending downlinks for a connected base station"
+	// LogBSSCIServingStationLookupFailedOnConnect is logged when a connected station's claim to serve an endpoint cannot be decided
+	LogBSSCIServingStationLookupFailedOnConnect = "Failed to decide whether the connected base station serves the endpoint of a pending downlink"
+	// LogBSSCIFailedToDispatchOnConnect is logged when a pending downlink could not be sent to the connected station that serves it
+	LogBSSCIFailedToDispatchOnConnect = "Failed to send a pending downlink to the connected base station that serves its endpoint"
+	// LogBSSCIFailedToReclaimEndpointQueue is logged when the downlinks an attach propagate discarded could not be released
+	LogBSSCIFailedToReclaimEndpointQueue = "Failed to return the endpoint's downlinks a base station discarded on attach propagate to pending"
 
-	// LogBSSCIDeduplicationError is a log message constant
-	LogBSSCIDeduplicationError = "Deduplication error"
-	// LogBSSCIErrorOperationHandshakeCompletedDatabaseNotUpdated is a log message constant
-	LogBSSCIErrorOperationHandshakeCompletedDatabaseNotUpdated = "Error operation handshake completed, database state NOT updated"
+	// LogBSSCIErrorFinalizedOperation is logged when a base station error finalizes a tracked service center operation
+	LogBSSCIErrorFinalizedOperation = "Base station error finalized the service center operation"
 	// LogBSSCIBaseStationReportedError is a log message constant
 	LogBSSCIBaseStationReportedError = "Base Station reported error"
 	// LogBSSCIDatabaseSessionCreated is a log message constant
 	LogBSSCIDatabaseSessionCreated = "Database session created"
+	// LogBSSCIReconciledAbandonedSessions logs sessions a previous process left active that were made resumable
+	LogBSSCIReconciledAbandonedSessions = "Sessions left active by a previous process are resumable again"
 	// LogBSSCIDatabaseSessionUpdated is a log message constant
 	LogBSSCIDatabaseSessionUpdated = "Database session updated"
 	// LogBSSCIDatabaseNotAvailableForPendingOpPersistence is a log message constant
@@ -683,30 +546,14 @@ const (
 	LogBSSCIDatabaseNotAvailableForPendingOpUpdate = "Database not available or no session ID for pending operation update"
 	// LogBSSCILoadedPendingOperationsFromDatabase is a log message constant
 	LogBSSCILoadedPendingOperationsFromDatabase = "Loaded pending operations from database"
-	// LogBSSCIErrorIteratingPendingOperationsRows is a log message constant
-	LogBSSCIErrorIteratingPendingOperationsRows = "Error iterating pending operations rows"
 	// LogBSSCILoadedUserDataFromMetadataForULDataTx is a log message constant
 	LogBSSCILoadedUserDataFromMetadataForULDataTx = "Loaded userData from metadata for ulDataTx operation"
-	// LogBSSCIFailedToCreateDatabaseSession is a log message constant
-	LogBSSCIFailedToCreateDatabaseSession = "Failed to create database session"
 	// LogBSSCIFailedToUpdateDatabaseSession is a log message constant
 	LogBSSCIFailedToUpdateDatabaseSession = "Failed to update database session"
-	// LogBSSCIFailedToFindExistingActiveSessionAfterConflict is a log message constant
-	LogBSSCIFailedToFindExistingActiveSessionAfterConflict = "Failed to find existing active session after conflict"
 	// LogBSSCIFailedToSendErrorMessageToBaseStation is a log message constant
 	LogBSSCIFailedToSendErrorMessageToBaseStation = "Failed to send error message to base station"
 	// LogBSSCIFailedToSendErrorAck is a log message constant
 	LogBSSCIFailedToSendErrorAck = "Failed to send errorAck"
-	// LogBSSCIErrorAckSent is a log message constant for successful errorAck transmission (BSSCI §5.17.2)
-	LogBSSCIErrorAckSent = "Sent errorAck to base station for failed operation"
-	// LogBSSCIAcknowledgingErrorForUnknownOperation is a log message constant per BSSCI §5.17
-	LogBSSCIAcknowledgingErrorForUnknownOperation = "Acknowledging error for unknown operation per BSSCI §5.17"
-	// LogBSSCIFailedToStoreMessage is a log message constant
-	LogBSSCIFailedToStoreMessage = "Failed to store message"
-	// LogBSSCIFailedToStoreULDataCompletionEvent is a log message constant
-	LogBSSCIFailedToStoreULDataCompletionEvent = "Failed to store UL data completion event"
-	// LogBSSCIFailedToStoreGeneratedShortAddress is a log message constant
-	LogBSSCIFailedToStoreGeneratedShortAddress = "Failed to store generated short address"
 	// LogBSSCIFailedToForwardULDataToSCACI is a log message constant
 	LogBSSCIFailedToForwardULDataToSCACI = "Failed to forward UL data to SCACI"
 	// LogBSSCIFailedToPersistPendingOperationMigrationNeeded is a log message constant
@@ -717,8 +564,6 @@ const (
 	LogBSSCIFailedToQueryPendingOperationsFromDatabase = "Failed to query pending operations from database"
 	// LogBSSCIFailedToLoadPendingOperationsForSessionResume is a log message constant
 	LogBSSCIFailedToLoadPendingOperationsForSessionResume = "Failed to load pending operations for session resume"
-	// LogBSSCIFailedToScanPendingOperationRow is a log message constant
-	LogBSSCIFailedToScanPendingOperationRow = "Failed to scan pending operation row"
 	// LogBSSCIFailedToUnmarshalOperationData is a log message constant
 	LogBSSCIFailedToUnmarshalOperationData = "Failed to unmarshal operation data"
 	// LogBSSCIFailedToUnmarshalMetadata is a log message constant
@@ -732,34 +577,24 @@ const (
 	LogBSSCIFailedToRemovePendingOperation = "Failed to remove pending operation"
 	// LogBSSCIFailedToRemovePendingOperationAfterErrorAck is a log message constant
 	LogBSSCIFailedToRemovePendingOperationAfterErrorAck = "Failed to remove pending operation after errorAck"
-	// LogBSSCIFailedToDeletePendingOperationFromDatabase is a log message constant
-	LogBSSCIFailedToDeletePendingOperationFromDatabase = "Failed to delete pending operation from database"
 	// LogBSSCIFailedToPersistFailureMetadata is a log message constant
 	LogBSSCIFailedToPersistFailureMetadata = "Failed to persist failure metadata"
-	// LogBSSCIFailedToUpdateEndpointStatus is a log message constant
-	LogBSSCIFailedToUpdateEndpointStatus = "Failed to update endpoint status"
-	// LogBSSCIFailedToUpdateEndpointWithAttachInfo is a log message constant
-	LogBSSCIFailedToUpdateEndpointWithAttachInfo = "Failed to update endpoint with attach info"
-	// LogBSSCIFailedToUpdateEndpointWithAttachPropagateInfo is a log message constant
-	LogBSSCIFailedToUpdateEndpointWithAttachPropagateInfo = "Failed to update endpoint with attach propagate info"
 	// LogBSSCIFailedToUpdateEndpointWithDetachInfo is a log message constant
 	LogBSSCIFailedToUpdateEndpointWithDetachInfo = "Failed to update endpoint with detach info"
 	// LogBSSCIFailedToUpdateEndpointAttachmentState is a log message constant
 	LogBSSCIFailedToUpdateEndpointAttachmentState = "Failed to update endpoint attachment state"
 	// LogBSSCIFailedToUpdateEndpointAttachMetadata is a log message constant
 	LogBSSCIFailedToUpdateEndpointAttachMetadata = "Failed to update endpoint attach metadata"
-	// LogBSSCIFailedToUpdateEndpointDetachmentState is a log message constant
-	LogBSSCIFailedToUpdateEndpointDetachmentState = "Failed to update endpoint detachment state"
+	// LogBSSCIFailedToRestartPacketCounter is logged when an over-the-air attach cannot restart the endpoint packet counter.
+	LogBSSCIFailedToRestartPacketCounter = "Failed to restart endpoint packet counter"
+	// LogBSSCIFailedToLockAttachCounter is logged when an over-the-air attach cannot lock the endpoint's attach counter.
+	LogBSSCIFailedToLockAttachCounter = "Failed to lock endpoint attach counter"
 	// LogBSSCIFailedToUpdateEndpointDetachState is a log message constant
 	LogBSSCIFailedToUpdateEndpointDetachState = "Failed to update endpoint detach state"
-	// LogBSSCIFailedToUpdateEndpointShortAddress is a log message constant
-	LogBSSCIFailedToUpdateEndpointShortAddress = "Failed to update endpoint short address"
 	// LogBSSCIFailedToUpdateConnectionStatus is a log message constant
 	LogBSSCIFailedToUpdateConnectionStatus = "Failed to update connection status"
 	// LogBSSCIFailedToUpdateLastSeen is a log message constant
 	LogBSSCIFailedToUpdateLastSeen = "Failed to update last seen"
-	// LogBSSCIFailedToEncryptNetworkKeyStoringUnencrypted is a log message constant
-	LogBSSCIFailedToEncryptNetworkKeyStoringUnencrypted = "Failed to encrypt network key, storing unencrypted"
 	// LogBSSCIFailedToExtractSnBsUUID is a log message constant
 	LogBSSCIFailedToExtractSnBsUUID = "Failed to extract snBsUuid"
 	// LogBSSCIFailedToCreateFailureEvent is a log message constant
@@ -770,34 +605,20 @@ const (
 	LogBSSCIFailedToCreateNonBidiAttachFailureEvent = "Failed to create non-bidirectional attach failure event"
 	// LogBSSCIFailedToCreateAttachEvent is a log message constant
 	LogBSSCIFailedToCreateAttachEvent = "Failed to create attach event"
-	// LogBSSCIFailedToCreateAttachInitiatedEvent is a log message constant
-	LogBSSCIFailedToCreateAttachInitiatedEvent = "Failed to create attach initiated event"
 	// LogBSSCIFailedToCreateAttachFailedEvent is a log message constant
 	LogBSSCIFailedToCreateAttachFailedEvent = "Failed to create attach failed event"
 	// LogBSSCIFailedToCreateAttachmentEvent is a log message constant
 	LogBSSCIFailedToCreateAttachmentEvent = "Failed to create attachment event"
-	// LogBSSCIFailedToCreateBaseStationAttachmentEvent is a log message constant
-	LogBSSCIFailedToCreateBaseStationAttachmentEvent = "Failed to create base station attachment event"
-	// LogBSSCIFailedToCreateBasestationAttachInitiatedEvent is a log message constant
-	LogBSSCIFailedToCreateBasestationAttachInitiatedEvent = "Failed to create basestation attach initiated event"
-	// LogBSSCIFailedToCreateBasestationDetachInitiatedEvent is a log message constant
-	LogBSSCIFailedToCreateBasestationDetachInitiatedEvent = "Failed to create basestation detach initiated event"
-	// LogBSSCIFailedToCreateBaseStationDetachmentEvent is a log message constant
-	LogBSSCIFailedToCreateBaseStationDetachmentEvent = "Failed to create base station detachment event"
 	// LogBSSCIFailedToCreateDetachEvent is a log message constant
 	LogBSSCIFailedToCreateDetachEvent = "Failed to create detach event"
-	// LogBSSCIFailedToCreateDetachInitiatedEvent is a log message constant
-	LogBSSCIFailedToCreateDetachInitiatedEvent = "Failed to create detach initiated event"
 	// LogBSSCIFailedToCreateDetachFailedEvent is a log message constant
 	LogBSSCIFailedToCreateDetachFailedEvent = "Failed to create detach failed event"
 	// LogBSSCIFailedToCreateDetachmentEvent is a log message constant
 	LogBSSCIFailedToCreateDetachmentEvent = "Failed to create detachment event"
-	// LogBSSCIFailedToCreateEvent is a log message constant
-	LogBSSCIFailedToCreateEvent = "Failed to create event"
-	// LogBSSCIFailedToCreateULDataEvent is a log message constant
-	LogBSSCIFailedToCreateULDataEvent = "Failed to create UL data event"
 	// LogBSSCIFailedToClearPersistedPendingOperation is a log message constant
 	LogBSSCIFailedToClearPersistedPendingOperation = "Failed to clear persisted pending operation"
+	// LogBSSCIFailedToRecordDroppedPendingOperation is a log message constant
+	LogBSSCIFailedToRecordDroppedPendingOperation = "Failed to record dropped pending operation event"
 	// LogBSSCIFailedToUpdateSessionCounters is a log message constant
 	LogBSSCIFailedToUpdateSessionCounters = "Failed to update session counters"
 
@@ -819,26 +640,14 @@ const (
 	LogBSSCIVMDeactivateFailed = "VM deactivate failed"
 	// LogBSSCIVMDeactivateOperationCompleted is a log message constant
 	LogBSSCIVMDeactivateOperationCompleted = "VM deactivate operation completed"
-	// LogBSSCIVMDownlinkDataAccepted is a log message constant
-	LogBSSCIVMDownlinkDataAccepted = "VM downlink data accepted"
-	// LogBSSCIVMDownlinkDataRejected is a log message constant
-	LogBSSCIVMDownlinkDataRejected = "VM downlink data rejected"
-	// LogBSSCIVMDownlinkDataOperationCompleted is a log message constant
-	LogBSSCIVMDownlinkDataOperationCompleted = "VM downlink data operation completed"
 	// LogBSSCIFailedToRecordVMDeactivateSuccessEvent is a log message constant
 	LogBSSCIFailedToRecordVMDeactivateSuccessEvent = "Failed to record VM deactivate success event"
-	// LogBSSCIFailedToRecordVMDownlinkAcceptedEvent is a log message constant
-	LogBSSCIFailedToRecordVMDownlinkAcceptedEvent = "Failed to record VM downlink accepted event"
 	// LogBSSCIFailedToRemovePendingVMOpAfterSendFailure is a log message constant
 	LogBSSCIFailedToRemovePendingVMOpAfterSendFailure = "Failed to remove pending operation from database after send failure"
 	// LogBSSCIFailedToUpdatePendingOperationMetadata is a log message constant
 	LogBSSCIFailedToUpdatePendingOperationMetadata = "Failed to update pending operation metadata"
 	// LogBSSCIFailedToRecordVMStatusEvent is a log message constant
 	LogBSSCIFailedToRecordVMStatusEvent = "Failed to record VM status event"
-	// LogBSSCIFailedToCheckVMUplinkDeduplication is a log message constant
-	LogBSSCIFailedToCheckVMUplinkDeduplication = "Failed to check VM uplink deduplication"
-	// LogBSSCIFailedToRecordVMUplinkDataEvent is a log message constant
-	LogBSSCIFailedToRecordVMUplinkDataEvent = "Failed to record VM uplink data event"
 	// LogBSSCIFailedToPersistVMActivateOperation is a log message constant
 	LogBSSCIFailedToPersistVMActivateOperation = "Failed to persist VM activate operation"
 	// LogBSSCISentVMActivateCommand is a log message constant
@@ -855,38 +664,22 @@ const (
 	LogBSSCIFailedToPersistVMDownlinkDataOperation = "Failed to persist VM downlink data operation"
 	// LogBSSCISentVMDownlinkData is a log message constant
 	LogBSSCISentVMDownlinkData = "Sent VM downlink data"
-	// LogBSSCIFailedToStoreVMUplinkMessage is a log message constant
-	LogBSSCIFailedToStoreVMUplinkMessage = "Failed to store VM uplink message"
-	// LogBSSCIFailedToValidateVMStatusResponse is a log message constant
-	LogBSSCIFailedToValidateVMStatusResponse = "Failed to validate VM status response"
-	// LogBSSCIFailedToProcessVMUplinkData is a log message constant
-	LogBSSCIFailedToProcessVMUplinkData = "Failed to process VM uplink data"
-	// LogBSSCIFailedToSendVMCommand is a log message constant
-	LogBSSCIFailedToSendVMCommand = "Failed to send VM command"
-	// LogBSSCIVMOperationTimeout is a log message constant
-	LogBSSCIVMOperationTimeout = "VM operation timeout"
 
 	// ========================================================================
-	// Type Conversion & Field Validation (5 constants)
+	// Type Conversion & Field Validation
 	// ========================================================================
 
-	// LogBSSCIIntegerOverflowInDeduplication is logged when an integer overflow occurs during deduplication field conversion
-	LogBSSCIIntegerOverflowInDeduplication = "Integer overflow in deduplication context"
 	// LogBSSCIIntegerOverflowInMacTypeParsing is logged when an integer overflow occurs during MAC type parsing
 	LogBSSCIIntegerOverflowInMacTypeParsing = "Integer overflow in macType parsing"
-	// LogBSSCIIntegerOverflowInLogging is logged when an integer overflow occurs during logging field conversion
-	LogBSSCIIntegerOverflowInLogging = "Integer overflow in logging field conversion"
-	// LogBSSCIIntegerOverflowInEventPayload is logged when an integer overflow occurs during event payload conversion
-	LogBSSCIIntegerOverflowInEventPayload = "Integer overflow in event payload conversion"
-	// LogBSSCIDebugGetNumericField is logged for debugging numeric field extraction from MessagePack data
-	LogBSSCIDebugGetNumericField = "Debug: getNumericField extraction"
 
 	// ========================================================================
-	// Multi-Tenant Roaming & Organization Resolution (3 constants)
+	// Multi-Tenant Roaming & Organization Resolution
 	// ========================================================================
 
 	// LogBSSCIMissingTenantInMetadata is logged when tenant ID is missing from pending operation metadata
 	LogBSSCIMissingTenantInMetadata = "Missing tenantId in pending operation metadata, falling back to session tenant"
+	// LogBSSCIInvalidAttachPropagateRecordField is logged when an attach propagate recovery record field is missing or out of range
+	LogBSSCIInvalidAttachPropagateRecordField = "Attach propagate recovery record field is missing or out of range"
 	// LogBSSCIEndpointNotFoundForPropagate is logged when endpoint cannot be found for attach propagate completion
 	LogBSSCIEndpointNotFoundForPropagate = "Endpoint not found for attach propagate completion - skipping DB updates"
 	// LogBSSCIOrgLookupFailed is logged when default organization lookup fails for a tenant during attach propagate
@@ -901,58 +694,28 @@ const (
 	LogBSSCINumericPrecisionLoss = "Numeric precision loss - value exceeds exact float integer range"
 
 	// ========================================================================
-	// Propagation Reconciliation (17 constants)
+	// Propagation Reconciliation
 	// ========================================================================
 
-	// LogBSSCIPropagationStarted is logged when automatic propagation reconciliation is initiated on base station connect
-	LogBSSCIPropagationStarted = "bssci.propagation.started"
-	// LogBSSCIPropagationSkippedNoChanges is logged when reconciliation skipped due to no new endpoints since last sync
-	LogBSSCIPropagationSkippedNoChanges = "bssci.propagation.skipped_no_changes"
-	// LogBSSCIPropagationSkippedRetryBackoff is logged when reconciliation skipped due to retry backoff window
-	LogBSSCIPropagationSkippedRetryBackoff = "bssci.propagation.skipped_retry_backoff"
-	// LogBSSCIPropagationCompleted is logged when automatic propagation reconciliation finishes successfully
-	LogBSSCIPropagationCompleted = "bssci.propagation.completed"
-	// LogBSSCIPropagationEndpointFailed is logged when a single endpoint fails during reconciliation batch
-	LogBSSCIPropagationEndpointFailed = "bssci.propagation.endpoint_failed"
-	// LogBSSCIPropagationFailed is logged when automatic propagation reconciliation encounters a fatal error
-	LogBSSCIPropagationFailed = "bssci.propagation.failed"
-	// LogBSSCIPropagationRetryScheduled is logged when exponential backoff is scheduled after propagation error
-	LogBSSCIPropagationRetryScheduled = "bssci.propagation.retry_scheduled"
-	// LogBSSCIPropagationLookupFailed is logged when base station propagation state lookup fails
-	LogBSSCIPropagationLookupFailed = "bssci.propagation.bs_lookup_failed"
-	// LogBSSCIPropagationBatchComplete is logged when a batch of endpoints completes propagation processing
-	LogBSSCIPropagationBatchComplete = "bssci.propagation.batch_complete"
-	// LogBSSCIPropagationPausedMaxRetries is logged when automatic propagation is paused after exceeding maximum retry attempts
-	LogBSSCIPropagationPausedMaxRetries = "bssci.propagation.paused_max_retries"
-	// LogBSSCIPropagationResetManually is logged when propagation reconciliation is manually reset by an administrator
-	LogBSSCIPropagationResetManually = "bssci.propagation.reset_manually"
-	// LogBSSCIPropagationCoolDownNotImplemented is logged when the auto cool-down feature is unavailable
-	LogBSSCIPropagationCoolDownNotImplemented = "bssci.propagation.cool_down_not_implemented"
-	// LogBSSCIResumeReconcileOps is logged when reconciliation operations are prioritized during session resume
-	LogBSSCIResumeReconcileOps = "bssci.resume.reconcile_ops"
 	// LogBSSCIFailedToPersistAttachPropagateMessage is logged when attach propagate message persistence fails
 	LogBSSCIFailedToPersistAttachPropagateMessage = "Failed to persist attach propagate message"
+	// LogBSSCIFailedToDecideOverTheAirAttach is logged when a completed over-the-air attach could not be recorded
+	LogBSSCIFailedToDecideOverTheAirAttach = "Failed to record the over-the-air attach of an endpoint"
 	// LogBSSCIAutomaticPropagationFailedAfterOTAAttach is logged when automatic propagation fails after OTA attach completion
 	LogBSSCIAutomaticPropagationFailedAfterOTAAttach = "Automatic propagation failed after OTA attach"
+	// LogBSSCIDetachPropagationFailedAfterOTADetach is logged when a station cannot be told to drop an endpoint that detached over the air elsewhere
+	LogBSSCIDetachPropagationFailedAfterOTADetach = "Detach propagation failed after OTA detach"
 	// LogBSSCIBaseStationReconciliationFailed is logged when base station reconciliation fails after handshake
 	LogBSSCIBaseStationReconciliationFailed = "Base station reconciliation failed after handshake"
-	// LogBSSCIEndpointNotFoundForAttachPropagation is logged when endpoint cannot be found for attach propagation
-	LogBSSCIEndpointNotFoundForAttachPropagation = "Endpoint not found for attach propagation"
 
 	// ========================================================================
-	// Outbound Message Validation (BSSCI §2.5) (5 constants)
+	// Outbound Message Validation (BSSCI §2.5)
 	// ========================================================================
 
 	// LogBSSCIOutboundValidationFailed is logged when outbound message validation fails
 	LogBSSCIOutboundValidationFailed = "bssci.outbound.validation.failed"
-	// LogBSSCIUnknownOutboundCommand is logged when outbound command is not in specification catalog
-	LogBSSCIUnknownOutboundCommand = "bssci.outbound.unknown_command"
-	// LogBSSCIExtraOutboundFields is logged when outbound message contains non-specification fields
-	LogBSSCIExtraOutboundFields = "bssci.outbound.extra_fields"
 	// LogBSSCIOutboundDisallowedField is logged when outbound message contains disallowed field
 	LogBSSCIOutboundDisallowedField = "bssci.outbound.disallowed_field"
-	// LogBSSCIMissingMandatoryField is logged when outbound message missing mandatory non-optional field
-	LogBSSCIMissingMandatoryField = "bssci.outbound.missing_mandatory_field"
 	// LogBSSCIOutboundMissingMandatoryFieldText is logged when outbound message missing mandatory field
 	LogBSSCIOutboundMissingMandatoryFieldText = "bssci.outbound.missing_mandatory"
 
@@ -967,39 +730,17 @@ const (
 	// Endpoint Attachment Service
 	// ========================================================================
 
-	// LogBSSCIUnsupportedOperationTypeStartEvent is logged when logStartEvent receives an unexpected operation type
-	LogBSSCIUnsupportedOperationTypeStartEvent = "unsupported operation type for start event"
-
 	// ========================================================================
-	// MQTT Event Publishing (8 constants)
+	// MQTT Event Publishing
 	// ========================================================================
 
-	// LogBSSCIFailedToPublishAttachEventToMQTT is logged when MQTT attach event publish fails
-	LogBSSCIFailedToPublishAttachEventToMQTT = "Failed to publish attach event to MQTT"
-	// LogBSSCIFailedToPublishDetachEventToMQTT is logged when MQTT detach event publish fails
-	LogBSSCIFailedToPublishDetachEventToMQTT = "Failed to publish detach event to MQTT"
 	// LogBSSCIFailedToPublishDLResultToMQTT is logged when MQTT downlink result event publish fails
 	LogBSSCIFailedToPublishDLResultToMQTT = "Failed to publish DL result event to MQTT"
 	// LogBSSCIMQTTPublishSkippedOrgUnresolved is logged when MQTT publish is skipped due to unresolved organization
 	LogBSSCIMQTTPublishSkippedOrgUnresolved = "MQTT publish skipped: organization unresolved"
 
-	// MQTTEventKeyUplink identifies uplink events in structured log fields
-	MQTTEventKeyUplink = "uplink"
-	// MQTTEventKeyAttach identifies attach events in structured log fields
-	MQTTEventKeyAttach = "attach"
-	// MQTTEventKeyDetach identifies detach events in structured log fields
-	MQTTEventKeyDetach = "detach"
 	// MQTTEventKeyDownlinkResult identifies downlink result events in structured log fields
 	MQTTEventKeyDownlinkResult = "downlink_result"
-
-	// LogBSSCICertsNotFound is logged when TLS certificates are not yet available at startup
-	LogBSSCICertsNotFound = "BSSCI certificates not found, listener deferred until certificates are generated"
-	// LogBSSCICertsDetected is logged when deferred certificate polling finds certificates
-	LogBSSCICertsDetected = "BSSCI certificates detected, starting TLS listener"
-	// LogBSSCIDeferredListenerFailed is logged when the deferred TLS listener fails to start
-	LogBSSCIDeferredListenerFailed = "Failed to start deferred BSSCI TLS listener"
-	// LogBSSCIDeferredListenerCancelled is logged when the deferred listener polling is cancelled
-	LogBSSCIDeferredListenerCancelled = "BSSCI deferred listener polling cancelled"
 
 	// Service-layer Propagation Operations live in internal/services/bssci/propagation_service.go.
 
@@ -1019,8 +760,8 @@ const (
 
 	// Service-layer Uplink Ingest Pipeline lives in internal/services/bssci/uplink_ingest_service.go.
 
-	// LogBSSCIUplinkDeduplicationError is logged when the deduplicator returns an error during ingest.
-	LogBSSCIUplinkDeduplicationError = "Uplink deduplication error"
+	// LogBSSCIUplinkPacketCounterCollision is logged when a packet counter repeats inside the window with different content.
+	LogBSSCIUplinkPacketCounterCollision = "Uplink packet counter collision"
 	// LogBSSCIDuplicateUplinkReceived is logged when dedup classifies an uplink as a duplicate.
 	LogBSSCIDuplicateUplinkReceived = "Duplicate uplink received"
 	// LogBSSCIUplinkFirstReception is logged on the first reception of a unique uplink.
@@ -1031,6 +772,15 @@ const (
 	LogBSSCIRoamingDetectionFailedDuringIngest = "Roaming detection failed during ingest"
 	// LogBSSCIRoamingEndpointUplink is logged when ingest classifies an uplink as a roaming reception.
 	LogBSSCIRoamingEndpointUplink = "Roaming endpoint uplink"
+	// LogBSSCIRoamingNotAllowed is logged when a detected roam is rejected because
+	// the owning and serving tenants have no roaming agreement.
+	LogBSSCIRoamingNotAllowed = "Roaming not allowed"
+	// LogBSSCIFailedToBeginAttachPropagateTransaction prefixes attach-propagate
+	// persistence failures that occur before any work is done.
+	LogBSSCIFailedToBeginAttachPropagateTransaction = "failed to begin attach propagate transaction"
+	// LogBSSCIFailedToCommitAttachPropagateTransaction prefixes attach-propagate
+	// persistence failures where the work succeeded but the commit did not.
+	LogBSSCIFailedToCommitAttachPropagateTransaction = "failed to commit attach propagate transaction"
 	// LogBSSCIFailedToResolveOrganizationForUplink is logged when org lookup fails for an uplink.
 	LogBSSCIFailedToResolveOrganizationForUplink = "Failed to resolve organization for uplink"
 	// LogBSSCIBlueprintResolutionFailed is logged when blueprint resolution fails during ingest.
@@ -1041,14 +791,8 @@ const (
 	LogBSSCIFailedToFetchEndpointForBlueprintDecode = "Failed to fetch endpoint for blueprint decode"
 	// LogBSSCIFailedToFetchDLRXStatus is logged when DL RX status fetch fails during ingest.
 	LogBSSCIFailedToFetchDLRXStatus = "Failed to fetch DL RX status"
-	// LogBSSCIFailedToPersistUplinkMessage is logged when CreateULDataMessage fails.
+	// LogBSSCIFailedToPersistUplinkMessage is logged when the uplink store rejects a persist.
 	LogBSSCIFailedToPersistUplinkMessage = "Failed to persist uplink message"
-	// LogBSSCIFailedToMarshalBaseStationsForDuplicateUpdate is logged when JSON-marshaling base_stations fails on the duplicate path.
-	LogBSSCIFailedToMarshalBaseStationsForDuplicateUpdate = "Failed to marshal base_stations for duplicate update"
-	// LogBSSCIFailedToUpdateBaseStationsForDuplicate is logged when UpdateULDataBaseStations fails on the duplicate path.
-	LogBSSCIFailedToUpdateBaseStationsForDuplicate = "Failed to update base_stations for duplicate"
-	// LogBSSCIFailedToBroadcastUplinkToSCACI is logged when the SCACI broadcaster returns an error during ingest.
-	LogBSSCIFailedToBroadcastUplinkToSCACI = "Failed to broadcast uplink to SCACI"
 	// LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved is logged when MQTT publish is skipped due to unresolved owner-org UUID.
 	LogBSSCIMQTTUplinkPublishSkippedOrgUnresolved = "MQTT uplink publish skipped: org unresolved"
 
@@ -1066,10 +810,16 @@ const (
 	LogBSSCISessionNoPeerCertUsingDefaults = "BSSCI session no peer cert, using defaults"
 	// LogBSSCISessionOrgTenantResolved is logged when BSSCI session org/tenant resolved.
 	LogBSSCISessionOrgTenantResolved = "BSSCI session org/tenant resolved"
-	// LogBSSCIClosingBSSCISessionDueToEUIChange is logged when closing BSSCI session due to EUI change.
-	LogBSSCIClosingBSSCISessionDueToEUIChange = "Closing BSSCI session due to EUI change"
+	// LogBSSCIClosingRetiredStationSession is logged when the session of a base station whose EUI changed or that was deleted is closed.
+	LogBSSCIClosingRetiredStationSession = "Closing the BSSCI session of a base station whose EUI changed or that was deleted"
 	// LogBSSCIDetachFromUnknownEndpoint is logged when detach from unknown endpoint.
 	LogBSSCIDetachFromUnknownEndpoint = "Detach from unknown endpoint"
+	// LogBSSCIDetachOwnerLookupFailed is logged when the endpoint owner lookup fails on a detach.
+	LogBSSCIDetachOwnerLookupFailed = "Detach owner lookup failed"
+	// LogBSSCIAttachOwnerLookupFailed is logged when the endpoint owner lookup fails on an attach.
+	LogBSSCIAttachOwnerLookupFailed = "Attach owner lookup failed"
+	// LogBSSCIPropagateOwnerLookupFailed is logged when the endpoint owner lookup fails before an attach or detach propagate.
+	LogBSSCIPropagateOwnerLookupFailed = "Propagate owner lookup failed"
 	// LogBSSCIDetachSignatureValidationFailed is logged when detach signature validation failed.
 	LogBSSCIDetachSignatureValidationFailed = "Detach signature validation failed"
 	// LogBSSCIDetachValidatorNotConfiguredUsingSessionTenantForUnknownEndpoint is logged when detach validator not configured - using session tenant for unknown endpoint.
@@ -1084,30 +834,22 @@ const (
 	LogBSSCIFailedToCheckSessionResume = "Failed to check session resume"
 	// LogBSSCIFailedToCloseConnection is logged when failed to close connection.
 	LogBSSCIFailedToCloseConnection = "Failed to close connection"
-	// LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup is logged when failed to close connection during EUI change cleanup.
-	LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup = "Failed to close connection during EUI change cleanup"
-	// LogBSSCIFailedToCloseListener is logged when failed to close listener.
-	LogBSSCIFailedToCloseListener = "Failed to close listener"
+	// LogBSSCIFailedToCloseRetiredStationConnection is logged when the connection of a retired station session cannot be closed.
+	LogBSSCIFailedToCloseRetiredStationConnection = "Failed to close the connection of a base station whose EUI changed or that was deleted"
 	// LogBSSCIFailedToCommitAttachTransaction is logged when failed to commit attach transaction.
 	LogBSSCIFailedToCommitAttachTransaction = "Failed to commit attach transaction"
 	// LogBSSCIFailedToCreateEndpointSession is logged when failed to create endpoint session.
 	LogBSSCIFailedToCreateEndpointSession = "Failed to create endpoint session"
 	// LogBSSCIFailedToDeriveSessionKey is logged when failed to derive session key.
 	LogBSSCIFailedToDeriveSessionKey = "Failed to derive session key"
-	// LogBSSCIFailedToEncryptSessionKey is logged when failed to encrypt session key.
-	LogBSSCIFailedToEncryptSessionKey = "Failed to encrypt session key"
 	// LogBSSCIFailedToEnqueueRelayUplink is logged when failed to enqueue relay uplink.
 	LogBSSCIFailedToEnqueueRelayUplink = "Failed to enqueue relay uplink"
 	// LogBSSCIFailedToLoadEndpointSession is logged when failed to load endpoint session.
 	LogBSSCIFailedToLoadEndpointSession = "Failed to load endpoint session"
 	// LogBSSCIFailedToMarshalConnectInfo is logged when failed to marshal connect info.
 	LogBSSCIFailedToMarshalConnectInfo = "Failed to marshal connect info"
-	// LogBSSCIFailedToNormalizeAttachSubpackets is logged when failed to normalize attach subpackets.
-	LogBSSCIFailedToNormalizeAttachSubpackets = "Failed to normalize attach subpackets"
 	// LogBSSCIFailedToNormalizeDetachMetadataOnResumeUsingRawData is logged when failed to normalize detach metadata on resume, using raw data.
 	LogBSSCIFailedToNormalizeDetachMetadataOnResumeUsingRawData = "Failed to normalize detach metadata on resume, using raw data"
-	// LogBSSCIFailedToNormalizeDetachSubpackets is logged when failed to normalize detach subpackets.
-	LogBSSCIFailedToNormalizeDetachSubpackets = "Failed to normalize detach subpackets"
 	// LogBSSCIFailedToPersistDetachPropagateMessage is logged when failed to persist detach propagate message.
 	LogBSSCIFailedToPersistDetachPropagateMessage = "Failed to persist detach propagate message"
 	// LogBSSCIFailedToPersistEncoding is logged when failed to persist encoding.
@@ -1116,8 +858,6 @@ const (
 	LogBSSCIFailedToPersistSession = "Failed to persist session"
 	// LogBSSCIFailedToRecordPendingAttachOperation is logged when failed to record pending attach operation.
 	LogBSSCIFailedToRecordPendingAttachOperation = "Failed to record pending attach operation"
-	// LogBSSCIFailedToRecordPendingOperation is logged when failed to record pending operation.
-	LogBSSCIFailedToRecordPendingOperation = "Failed to record pending operation"
 	// LogBSSCIFailedToRecordRoamingAttach is logged when failed to record roaming attach.
 	LogBSSCIFailedToRecordRoamingAttach = "Failed to record roaming attach"
 	// LogBSSCIFailedToRecordRoamingDetach is logged when failed to record roaming detach.
@@ -1126,16 +866,26 @@ const (
 	LogBSSCIFailedToResolveDefaultOrgForBSSCISession = "Failed to resolve default org for BSSCI session"
 	// LogBSSCIFailedToResolveOrganizationForEndpointOwner is logged when failed to resolve organization for endpoint owner.
 	LogBSSCIFailedToResolveOrganizationForEndpointOwner = "Failed to resolve organization for endpoint owner"
-	// LogBSSCIFailedToResolveOrganizationForUnknownEndpointOwner is logged when failed to resolve organization for unknown endpoint owner.
-	LogBSSCIFailedToResolveOrganizationForUnknownEndpointOwner = "Failed to resolve organization for unknown endpoint owner"
 	// LogBSSCIFailedToSendCatalogError is logged when failed to send catalog error.
 	LogBSSCIFailedToSendCatalogError = "Failed to send catalog error"
+
+	// LogBSSCIVMStatusCompleteNotSupported rejects a VM status complete in the community edition.
+	LogBSSCIVMStatusCompleteNotSupported = "VM status complete not supported in community edition"
+	// LogBSSCIVMDLDataNotSupported rejects VM downlink data in the community edition.
+	LogBSSCIVMDLDataNotSupported = "VM downlink data not supported in community edition"
+	// LogBSSCIVMDLDataResponseNotSupported rejects a VM downlink data response in the community edition.
+	LogBSSCIVMDLDataResponseNotSupported = "VM downlink data response not supported in community edition"
+	// LogBSSCIVMDLDataCompleteNotSupported rejects a VM downlink data complete in the community edition.
+	LogBSSCIVMDLDataCompleteNotSupported = "VM downlink data complete not supported in community edition"
+
+	// LogBSSCIUnknownFieldDropped notes a dropped unknown field per the BSSCI §2.4 forward-compatibility rule.
+	LogBSSCIUnknownFieldDropped = "Unknown field in message - dropping for forward compatibility"
 	// LogBSSCIFailedToSendErrorResponse is logged when failed to send error response.
 	LogBSSCIFailedToSendErrorResponse = "Failed to send error response"
 	// LogBSSCIFailedToSetReadDeadline is logged when failed to set read deadline.
 	LogBSSCIFailedToSetReadDeadline = "Failed to set read deadline"
-	// LogBSSCIFailedToTerminateDBSessionDuringEUIChange is logged when failed to terminate DB session during EUI change.
-	LogBSSCIFailedToTerminateDBSessionDuringEUIChange = "Failed to terminate DB session during EUI change"
+	// LogBSSCIFailedToTerminateRetiredStationSession is logged when the DB session of a retired station cannot be terminated.
+	LogBSSCIFailedToTerminateRetiredStationSession = "Failed to terminate the DB session of a base station whose EUI changed or that was deleted"
 	// LogBSSCIFailedToUpdateEndpointDetachTelemetry is logged when failed to update endpoint detach telemetry.
 	LogBSSCIFailedToUpdateEndpointDetachTelemetry = "Failed to update endpoint detach telemetry"
 	// LogBSSCIFailedToUpdateEndpointSession is logged when failed to update endpoint session.
@@ -1184,14 +934,14 @@ const (
 	LogBSSCIResumeRejectedScOpIDBeyondIssued = "Resume rejected: claimed SC operation ID beyond issued state"
 	// LogBSSCIResumeAcceptedStaleBsCounter is logged when a resume is accepted with a stale BS counter.
 	LogBSSCIResumeAcceptedStaleBsCounter = "Resume accepted with stale BS counter (SC is authoritative)"
-	// LogBSSCIResumeAlreadyClaimed is logged when the resumable session was activated or retired by another connection before this one could claim it.
-	LogBSSCIResumeAlreadyClaimed = "Resume rejected: session already claimed by another connection"
+	// LogBSSCIResumeRefusedByBaseStation is logged when a base station refuses the offered session resume and the session is retired.
+	LogBSSCIResumeRefusedByBaseStation = "Base station refused the offered session resume; retiring the session"
+	// LogBSSCIFailedToRecordRefusedResume is logged when the refused-resume system event cannot be stored.
+	LogBSSCIFailedToRecordRefusedResume = "Failed to record refused session resume event"
 	// LogBSSCIFailedToMarshalPendingOperation is logged when a pending operation cannot be marshaled for persistence.
 	LogBSSCIFailedToMarshalPendingOperation = "Failed to marshal pending operation"
 	// LogBSSCIFailedToMarshalPendingOperationMetadata is logged when pending operation metadata cannot be marshaled for persistence.
 	LogBSSCIFailedToMarshalPendingOperationMetadata = "Failed to marshal pending operation metadata"
-	// LogBSSCIUnexpectedRevokeResponseError is logged when ProcessRevokeResponse returns a non-catalog error.
-	LogBSSCIUnexpectedRevokeResponseError = "Unexpected non-catalog error from ProcessRevokeResponse"
 	// LogBSSCIDLRXStatusSNRValidationFailed is logged when the dlRxSnr value in a DL RX status report fails validation.
 	LogBSSCIDLRXStatusSNRValidationFailed = "DL RX status SNR validation failed"
 	// LogBSSCIDLRXStatusRSSIValidationFailed is logged when the dlRxRssi value in a DL RX status report fails validation.

@@ -3,14 +3,16 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
@@ -19,27 +21,41 @@ import (
 
 // SystemEventStore provides system event storage operations per MIOTY requirements
 type SystemEventStore struct {
-	db *sql.DB
+	log   logger.Logger
+	clock clock.Clock
+	db    *sql.DB
 }
 
 // Ensure SystemEventStore implements the interface
 var _ interfaces.SystemEventStore = (*SystemEventStore)(nil)
 
 // NewSystemEventStore creates a new system event store
-func NewSystemEventStore(db *sql.DB) *SystemEventStore {
-	return &SystemEventStore{db: db}
+func NewSystemEventStore(db *sql.DB, clk clock.Clock, log logger.Logger) *SystemEventStore {
+	return &SystemEventStore{
+		log: log, clock: clk, db: db}
 }
 
-// insertEvent is the unified insert helper that writes all 19 columns.
-// All event creation paths (CreateEvent, recordBSSCIEvent, etc.) delegate here.
+// eventExecer runs the event insert on the pool or inside a transaction.
+type eventExecer interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+// insertEvent is the unified insert helper that writes all 20 columns.
+// All event creation paths delegate here.
 func (s *SystemEventStore) insertEvent(ctx context.Context, event *models.SystemEvent) error {
+	return s.insertEventWith(ctx, s.db, event)
+}
+
+// insertEventWith inserts the event through exec, so a caller's transaction
+// can hold it.
+func (s *SystemEventStore) insertEventWith(ctx context.Context, exec eventExecer, event *models.SystemEvent) error {
 	// Generate UUID if not set
 	if event.ID == "" {
 		event.ID = uuid.New().String()
 	}
 
 	// Set timestamps if zero
-	now := time.Now()
+	now := s.clock.Now()
 	if event.CreatedAt.IsZero() {
 		event.CreatedAt = now
 	}
@@ -51,21 +67,20 @@ func (s *SystemEventStore) insertEvent(ctx context.Context, event *models.System
 	// so convert to *string for text format.
 	var dataJSON interface{}
 	if len(event.Details) > 0 {
-		str := string(event.Details)
+		str := string(canonicalEventDetails(event.Details))
 		dataJSON = &str
 	} else {
 		empty := "{}"
 		dataJSON = &empty
 	}
 
-	// Convert string TenantID to int64 for BIGINT column
-	var tenantIDInt int64
-	if event.TenantID != "" {
-		var err error
-		tenantIDInt, err = strconv.ParseInt(event.TenantID, 10, 64)
-		if err != nil {
-			return fmt.Errorf("invalid tenant ID format: %w", err)
-		}
+	// Every event is filed under an existing tenant; server-level events use the platform tenant.
+	if event.TenantID == "" {
+		return errTextTenantIDRequired
+	}
+	tenantIDInt, err := strconv.ParseInt(event.TenantID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapInvalidTenantIDFormat, err)
 	}
 
 	// Handle SourceID — pass nil if not set
@@ -80,17 +95,22 @@ func (s *SystemEventStore) insertEvent(ctx context.Context, event *models.System
 		tagsParam = pq.Array(event.Tags)
 	}
 
+	if event.Status == "" {
+		event.Status = models.EventStatusNew
+	}
+
 	query := `
 		INSERT INTO system_events (
 			id, tenant_id, event_type, event_category, severity,
 			source_type, source_id, source_name, event_code,
 			title, description, endpoint_id, basestation_id,
-			message_id, user_id, data, tags, occurred_at, recorded_at
+			message_id, user_id, data, tags, occurred_at, recorded_at, status
 		) VALUES (
-			$1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
+			$1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
 		)`
 
-	_, err := s.db.ExecContext(ctx, query,
+	_, err = exec.ExecContext(
+		ctx, query,
 		event.ID,
 		tenantIDInt,
 		event.EventType,
@@ -110,9 +130,10 @@ func (s *SystemEventStore) insertEvent(ctx context.Context, event *models.System
 		tagsParam,
 		event.CreatedAt,
 		event.UpdatedAt,
+		event.Status,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert system event: %w", err)
+		return fmt.Errorf("%s: %w", errWrapInsertSystemEvent, err)
 	}
 
 	return nil
@@ -129,159 +150,107 @@ func (s *SystemEventStore) CreateEvent(ctx context.Context, event *models.System
 	return s.insertEvent(ctx, event)
 }
 
-// recordBSSCIEvent records a BSSCI protocol event per MIOTY BS-SC Interface v1.0.0.
-// Accepts models.SystemEvent and a details map for JSONB data.
-func (s *SystemEventStore) recordBSSCIEvent(ctx context.Context, event *models.SystemEvent, details map[string]interface{}) error {
-	// Validate event category against centralized definitions
-	if !models.ValidEventCategories[event.Category] {
-		event.Category = models.EventCategoryProtocol
-	}
-
-	// Convert EUI from byte array to hex string if present in details
-	if euiBytes, ok := details["epEui"].([8]byte); ok {
-		details["epEui"] = hex.EncodeToString(euiBytes[:])
-	}
-	if euiBytes, ok := details["bsEui"].([8]byte); ok {
-		details["bsEui"] = hex.EncodeToString(euiBytes[:])
-	}
-
-	// Marshal details map to json.RawMessage
-	dataJSON, err := json.Marshal(details)
-	if err != nil {
-		return fmt.Errorf("failed to marshal event data: %w", err)
-	}
-	event.Details = json.RawMessage(dataJSON)
-
-	return s.insertEvent(ctx, event)
+// appendDeviceScope narrows the query to a base station / endpoint: an event
+// belongs to the device when its FK names it, when the device is its source,
+// or when its details name the device (a detach propagate is filed under the
+// endpoint and names the station). OR, not AND: most device events carry only
+// one of these.
+func appendDeviceScope(query string, args []interface{}, argNum int, filter models.SystemEventFilter) (string, []interface{}, int) {
+	query, args, argNum = appendOneDeviceScope(query, args, argNum,
+		deviceScope{idColumn: "basestation_id", id: filter.BaseStationID, eui: filter.BaseStationEUI, detailKey: models.EventDetailKeyBsEui})
+	return appendOneDeviceScope(query, args, argNum,
+		deviceScope{idColumn: "endpoint_id", id: filter.EndpointID, eui: filter.EndpointEUI, detailKey: models.EventDetailKeyEpEui})
 }
 
-// appendDeviceScope narrows the query to a base station / endpoint: match by the FK
-// when present, else fall back to the source_name EUI. OR, not AND — attach/detach and
-// similar events carry only source_name, not the FK, so an AND would drop them.
-func appendDeviceScope(query string, args []interface{}, argNum int, filter interfaces.SystemEventFilter) (string, []interface{}, int) {
-	if filter.BaseStationID != nil && filter.BaseStationEUI != "" {
-		query += fmt.Sprintf(" AND (basestation_id = $%d OR LOWER(source_name) = LOWER($%d))", argNum, argNum+1)
-		args = append(args, *filter.BaseStationID, filter.BaseStationEUI)
-		argNum += 2
-	} else if filter.BaseStationID != nil {
-		query += fmt.Sprintf(" AND basestation_id = $%d", argNum)
-		args = append(args, *filter.BaseStationID)
-		argNum++
-	} else if filter.BaseStationEUI != "" {
-		query += fmt.Sprintf(" AND LOWER(source_name) = LOWER($%d)", argNum)
-		args = append(args, filter.BaseStationEUI)
+// deviceScope is how events name one device.
+type deviceScope struct {
+	idColumn  string
+	id        *int64
+	eui       string
+	detailKey string
+}
+
+func appendOneDeviceScope(query string, args []interface{}, argNum int, scope deviceScope) (string, []interface{}, int) {
+	var matches []string
+	if scope.id != nil {
+		matches = append(matches, fmt.Sprintf("%s = $%d", scope.idColumn, argNum))
+		args = append(args, *scope.id)
 		argNum++
 	}
-	if filter.EndpointID != nil && filter.EndpointEUI != "" {
-		query += fmt.Sprintf(" AND (endpoint_id = $%d OR LOWER(source_name) = LOWER($%d))", argNum, argNum+1)
-		args = append(args, *filter.EndpointID, filter.EndpointEUI)
-		argNum += 2
-	} else if filter.EndpointID != nil {
-		query += fmt.Sprintf(" AND endpoint_id = $%d", argNum)
-		args = append(args, *filter.EndpointID)
+	if scope.eui != "" {
+		matches = append(matches, fmt.Sprintf("LOWER(source_name) = LOWER($%d)", argNum))
+		args = append(args, scope.eui)
 		argNum++
-	} else if filter.EndpointEUI != "" {
-		query += fmt.Sprintf(" AND LOWER(source_name) = LOWER($%d)", argNum)
-		args = append(args, filter.EndpointEUI)
+	}
+	if canonical, ok := canonicalEventEUI(scope.eui); ok {
+		matches = append(matches, fmt.Sprintf("data @> jsonb_build_object('%s', $%d::text)", scope.detailKey, argNum))
+		args = append(args, canonical)
+		argNum++
+	}
+	if len(matches) == 0 {
+		return query, args, argNum
+	}
+	return query + " AND (" + strings.Join(matches, " OR ") + ")", args, argNum
+}
+
+// appendEventSearch adds the free-text and opId predicates shared by the
+// listing and the count.
+func appendEventSearch(query string, args []interface{}, argNum int, filter models.SystemEventFilter) (string, []interface{}, int) {
+	if filter.SearchText != "" {
+		query += fmt.Sprintf(" AND searchable_text @@ plainto_tsquery($%d)", argNum)
+		args = append(args, filter.SearchText)
+		argNum++
+	}
+	if filter.OpID != nil {
+		query += fmt.Sprintf(" AND data @> jsonb_build_object('opId', $%d::bigint)", argNum)
+		args = append(args, *filter.OpID)
 		argNum++
 	}
 	return query, args, argNum
 }
 
-// GetEvents retrieves events with filters
-func (s *SystemEventStore) GetEvents(ctx context.Context, filter interfaces.SystemEventFilter) ([]*models.SystemEvent, error) {
-	if filter.TenantID == "" {
-		return nil, fmt.Errorf("tenant ID required")
-	}
+// sqlActorEmail resolves an event's acting user to an email only when that
+// user belongs or belonged to an organization of the event's own tenant, so a
+// listing never reveals the email of another tenant's user.
+const sqlActorEmail = `COALESCE((
+		SELECT u.email FROM users u
+		JOIN organization_members om ON om.user_id = u.id
+		JOIN organizations o ON o.org_id = om.org_id
+		WHERE u.id::text = system_events.user_id AND o.tenant_id = system_events.tenant_id
+		LIMIT 1), '')`
 
-	query := `SELECT id, tenant_id, event_type, event_category, severity,
-		source_type, source_id, source_name, title, description, data,
-		status, occurred_at, recorded_at
+// sqlSelectEvents is the event listing's projection; filters append to its WHERE.
+const sqlSelectEvents = `SELECT id, tenant_id, event_type, event_category, severity,
+		source_type, source_id, source_name, user_id, ` + sqlActorEmail + `, title, description, data,
+		status, occurred_at, recorded_at, stored_at
 		FROM system_events WHERE 1=1`
-	args := []interface{}{}
-	argNum := 1
 
-	// Convert string TenantID to int64 for BIGINT column
-	if filter.TenantID != "" {
-		tenantIDInt, err := strconv.ParseInt(filter.TenantID, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid tenant ID format: %w", err)
-		}
-		query += fmt.Sprintf(" AND tenant_id = $%d", argNum)
-		args = append(args, tenantIDInt)
-		argNum++
+// GetEvents retrieves events with filters
+func (s *SystemEventStore) GetEvents(ctx context.Context, filter models.SystemEventFilter) ([]*models.SystemEvent, error) {
+	where, args, err := eventFilterWhere(filter)
+	if err != nil {
+		return nil, err
 	}
-	if filter.Since != nil {
-		query += fmt.Sprintf(" AND occurred_at > $%d", argNum)
-		args = append(args, *filter.Since)
-		argNum++
+	column, direction, err := eventOrdering(filter)
+	if err != nil {
+		return nil, err
 	}
-	if filter.Until != nil {
-		query += fmt.Sprintf(" AND occurred_at < $%d", argNum)
-		args = append(args, *filter.Until)
-		argNum++
-	}
-	if len(filter.Categories) > 0 {
-		query += fmt.Sprintf(" AND event_category = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Categories))
-		argNum++
-	}
-	if len(filter.Severities) > 0 {
-		query += fmt.Sprintf(" AND severity = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Severities))
-		argNum++
-	}
-	if len(filter.EventTypes) > 0 {
-		query += fmt.Sprintf(" AND event_type = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.EventTypes))
-		argNum++
-	}
-	if len(filter.SourceTypes) > 0 {
-		query += fmt.Sprintf(" AND source_type = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.SourceTypes))
-		argNum++
-	}
-	if len(filter.Status) > 0 {
-		query += fmt.Sprintf(" AND status = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Status))
-		argNum++
-	}
-	if filter.SourceID != nil {
-		query += fmt.Sprintf(" AND source_id = $%d", argNum)
-		args = append(args, *filter.SourceID)
-		argNum++
-	}
-
-	query, args, argNum = appendDeviceScope(query, args, argNum, filter)
-
-	// Order by occurred_at DESC (most recent first) unless specified otherwise
-	orderBy := "occurred_at"
-	orderDir := "DESC"
-	if filter.OrderBy != "" {
-		orderBy = filter.OrderBy
-	}
-	if filter.OrderDirection != "" {
-		orderDir = filter.OrderDirection
-	}
-	query += fmt.Sprintf(" ORDER BY %s %s", orderBy, orderDir)
-
+	var limit interface{}
 	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argNum)
-		args = append(args, filter.Limit)
-		argNum++
+		limit = filter.Limit
 	}
-	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argNum) //nolint:gosec // G202: appends a parameter placeholder, values are bound
-		args = append(args, filter.Offset)
-	}
+	query := sqlSelectEvents
+	query += where
+	query += fmt.Sprintf(" ORDER BY %s LIMIT $%d OFFSET $%d", eventOrderClause(column, direction), len(args)+1, len(args)+2)
+	args = append(args, limit, max(filter.Offset, 0))
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query events: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapQueryEvents, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			log.Printf("failed to close rows in GetEvents: %v", err)
+			s.log.Warn(logMsgCloseRowsGetEvents, logger.FieldError, err)
 		}
 	}()
 
@@ -291,6 +260,7 @@ func (s *SystemEventStore) GetEvents(ctx context.Context, filter interfaces.Syst
 		var tenantID int64
 		var dataJSON []byte
 		var sourceID sql.NullString
+		var userID sql.NullString
 		var status sql.NullString
 
 		err := rows.Scan(
@@ -302,19 +272,23 @@ func (s *SystemEventStore) GetEvents(ctx context.Context, filter interfaces.Syst
 			&e.SourceType,
 			&sourceID,
 			&e.SourceName,
+			&userID,
+			&e.UserEmail,
 			&e.Title,
 			&e.Description,
 			&dataJSON,
 			&status,
 			&e.CreatedAt,
 			&e.UpdatedAt,
+			&e.StoredAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("scan event: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapScanEvent, err)
 		}
 
 		// Convert tenantID int64 to string for model
 		e.TenantID = strconv.FormatInt(tenantID, 10)
+		e.UserID = userID.String
 
 		// Handle nullable source_id (UUID column)
 		if sourceID.Valid {
@@ -337,102 +311,7 @@ func (s *SystemEventStore) GetEvents(ctx context.Context, filter interfaces.Syst
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
-	}
-
-	return events, nil
-}
-
-// GetActiveAlerts retrieves unresolved events with alert-level severity.
-func (s *SystemEventStore) GetActiveAlerts(ctx context.Context, filter interfaces.AlertFilter) ([]*models.SystemEvent, error) {
-	if filter.TenantID == "" {
-		return nil, fmt.Errorf("tenant ID required")
-	}
-
-	query := `SELECT id, tenant_id, event_type, event_category, severity,
-		source_type, source_id, source_name, title, description, data,
-		status, occurred_at, recorded_at
-		FROM system_events
-		WHERE (status IS NULL OR status != 'resolved')`
-	args := []interface{}{}
-	argNum := 1
-
-	tenantIDInt, err := strconv.ParseInt(filter.TenantID, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid tenant ID format: %w", err)
-	}
-	query += fmt.Sprintf(" AND tenant_id = $%d", argNum)
-	args = append(args, tenantIDInt)
-	argNum++
-
-	if len(filter.Severities) > 0 {
-		query += fmt.Sprintf(" AND severity = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Severities))
-		argNum++
-	} else {
-		query += " AND severity IN ('warning', 'error', 'critical')"
-	}
-	if len(filter.Categories) > 0 {
-		query += fmt.Sprintf(" AND event_category = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Categories))
-		argNum++
-	}
-	if filter.Acknowledged != nil {
-		if *filter.Acknowledged {
-			query += " AND status = 'acknowledged'"
-		} else {
-			query += " AND (status IS NULL OR status != 'acknowledged')"
-		}
-	}
-	if filter.Since != nil {
-		query += fmt.Sprintf(" AND occurred_at > $%d", argNum)
-		args = append(args, *filter.Since)
-		argNum++
-	}
-
-	query += " ORDER BY occurred_at DESC"
-
-	if filter.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", argNum)
-		args = append(args, filter.Limit)
-		argNum++
-	}
-	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argNum) //nolint:gosec // G202: appends a parameter placeholder, values are bound
-		args = append(args, filter.Offset)
-	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("get active alerts: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var events []*models.SystemEvent
-	for rows.Next() {
-		event := &models.SystemEvent{}
-		var tenantIDDB int64
-		var detailsJSON []byte
-		var sourceID uuid.NullUUID
-		if err := rows.Scan(
-			&event.ID, &tenantIDDB, &event.EventType, &event.Category,
-			&event.Severity, &event.SourceType, &sourceID, &event.SourceName,
-			&event.Title, &event.Description, &detailsJSON,
-			&event.Status, &event.CreatedAt, &event.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan active alert: %w", err)
-		}
-		if sourceID.Valid {
-			event.SourceID = &sourceID.UUID
-		}
-		event.TenantID = strconv.FormatInt(tenantIDDB, 10)
-		if len(detailsJSON) > 0 {
-			event.Details = json.RawMessage(detailsJSON)
-		}
-		events = append(events, event)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate active alerts: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapRowsIterationError, err)
 	}
 
 	return events, nil
@@ -441,12 +320,12 @@ func (s *SystemEventStore) GetActiveAlerts(ctx context.Context, filter interface
 // GetEventStats retrieves event statistics grouped by severity for a tenant.
 func (s *SystemEventStore) GetEventStats(ctx context.Context, tenantID string, since time.Time) (*models.SystemEventStats, error) {
 	if tenantID == "" {
-		return nil, fmt.Errorf("tenant ID required")
+		return nil, errTextTenantIDRequired
 	}
 
 	tenantIDInt, err := strconv.ParseInt(tenantID, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid tenant ID format: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapInvalidTenantIDFormat, err)
 	}
 
 	stats := &models.SystemEventStats{
@@ -462,49 +341,57 @@ func (s *SystemEventStore) GetEventStats(ctx context.Context, tenantID string, s
 		GROUP BY severity`
 	sevRows, err := s.db.QueryContext(ctx, sevQuery, tenantIDInt, since)
 	if err != nil {
-		return nil, fmt.Errorf("get event stats by severity: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetEventStatsBySeverity, err)
 	}
-	defer func() { _ = sevRows.Close() }()
+	defer func() {
+		if err := sevRows.Close(); err != nil {
+			s.log.Warn(logMsgCloseRowsEventStats, logger.FieldError, err)
+		}
+	}()
 	for sevRows.Next() {
 		var severity string
 		var count int64
 		if err := sevRows.Scan(&severity, &count); err != nil {
-			return nil, fmt.Errorf("scan severity stat: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapScanSeverityStat, err)
 		}
 		stats.EventsBySeverity[severity] = count
 		stats.TotalEvents += count
 	}
 	if err := sevRows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate severity stats: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapIterateSeverityStats, err)
 	}
 
 	// Aggregate by status
-	statusQuery := `SELECT COALESCE(status, 'new'), COUNT(*) FROM system_events
+	statusQuery := `SELECT status, COUNT(*) FROM system_events
 		WHERE tenant_id = $1 AND occurred_at > $2
-		GROUP BY COALESCE(status, 'new')`
+		GROUP BY status`
 	statusRows, err := s.db.QueryContext(ctx, statusQuery, tenantIDInt, since)
 	if err != nil {
-		return nil, fmt.Errorf("get event stats by status: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetEventStatsByStatus, err)
 	}
-	defer func() { _ = statusRows.Close() }()
+	defer func() {
+		if err := statusRows.Close(); err != nil {
+			s.log.Warn(logMsgCloseRowsEventStats, logger.FieldError, err)
+		}
+	}()
 	for statusRows.Next() {
 		var eventStatus string
 		var count int64
 		if err := statusRows.Scan(&eventStatus, &count); err != nil {
-			return nil, fmt.Errorf("scan status stat: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapScanStatusStat, err)
 		}
 		stats.EventsByStatus[eventStatus] = count
 		switch eventStatus {
-		case "new":
+		case models.EventStatusNew:
 			stats.NewEvents = count
-		case "acknowledged":
+		case models.EventStatusAcknowledged:
 			stats.AcknowledgedEvents = count
-		case "resolved":
+		case models.EventStatusResolved:
 			stats.ResolvedEvents = count
 		}
 	}
 	if err := statusRows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate status stats: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapIterateStatusStats, err)
 	}
 
 	return stats, nil
@@ -516,301 +403,101 @@ func (s *SystemEventStore) GetEventStats(ctx context.Context, tenantID string, s
 // These methods record events for the SCACI (Service Center to Application
 // Center Interface) protocol per MIOTY SCACI v1.0.0 specification.
 
-// RecordSCACIError records a SCACI protocol error event
-func (s *SystemEventStore) RecordSCACIError(ctx context.Context, tenantID int64, sessionID int64, command string, opId int64, errorCode int, errorMsg string) error {
-	event := &models.SystemEvent{
-		TenantID:    strconv.FormatInt(tenantID, 10),
-		EventType:   scaci.EventTypeSCACIError,
-		Category:    models.EventCategoryError,
-		Severity:    models.EventSeverityError,
-		SourceType:  models.SourceTypeServiceCenter,
-		EventCode:   fmt.Sprintf("%d", errorCode),
-		Title:       fmt.Sprintf(models.EventTitleSCACIError, command, opId),
-		Description: fmt.Sprintf(models.EventDescriptionSCACIError, command, errorCode, errorMsg),
+// CountEvents returns total count matching filter (for pagination)
+func (s *SystemEventStore) CountEvents(ctx context.Context, filter models.SystemEventFilter) (int64, error) {
+	where, args, err := eventFilterWhere(filter)
+	if err != nil {
+		return 0, err
 	}
-
-	details := map[string]interface{}{
-		"sessionID": sessionID,
-		"command":   command,
-		"opId":      opId,
-		"errorCode": errorCode,
-		"errorMsg":  errorMsg,
-		"time":      time.Now().UnixNano(),
+	var count int64
+	if err := s.db.QueryRowContext(ctx, sqlCountEvents+where, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("%s: %w", errWrapCountEvents, err)
 	}
-
-	return s.recordBSSCIEvent(ctx, event, details)
+	return count, nil
 }
 
-// ListSCACIEvents retrieves SCACI-category events with optional filters.
-// sessionID filtering uses bigint cast for index-friendly queries.
-func (s *SystemEventStore) ListSCACIEvents(ctx context.Context, tenantID int64, sessionID *int64, eventType string, limit, offset int) ([]*models.SystemEvent, error) {
-	if limit <= 0 {
-		limit = 50
+// The grouped branches are rendered once and wrapped by these templates.
+const (
+	errorGroupCountQueryFmt = "WITH failure_groups AS (%s) SELECT COUNT(*) FROM failure_groups"
+	errorGroupListQueryFmt  = "WITH failure_groups AS (%s) SELECT event_type, code, message, source_name, first_seen, last_seen, occurrences, last_op_id FROM failure_groups ORDER BY last_seen DESC LIMIT $%d OFFSET $%d"
+)
+
+// ListErrorGroups groups the failures of the filter by event type, code and
+// subject; SCACI operation failures join the result under their command.
+func (s *SystemEventStore) ListErrorGroups(ctx context.Context, filter models.ErrorGroupFilter) ([]*models.EventErrorGroup, int64, error) {
+	branches, args := errorGroupBranches(filter)
+	var total int64
+	// nolint:gosec // G201: branches is static SQL with bound parameter placeholders, not user input
+	countQuery := fmt.Sprintf(errorGroupCountQueryFmt, branches)
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountErrorGroups, err)
 	}
-	if limit > 100 {
-		limit = 100
-	}
-	if offset < 0 {
-		offset = 0
-	}
-
-	query := `
-		SELECT
-			id, tenant_id, event_type, event_category, severity,
-			source_type, source_name, title, description,
-			data, occurred_at, recorded_at
-		FROM system_events
-		WHERE event_category = 'scaci'
-		  AND tenant_id = $1`
-
-	args := []interface{}{tenantID}
-	argIndex := 2
-
-	if sessionID != nil {
-		query += fmt.Sprintf(" AND (data->>'sessionID')::bigint = $%d", argIndex)
-		args = append(args, *sessionID)
-		argIndex++
-	}
-
-	if eventType != "" {
-		query += fmt.Sprintf(" AND event_type = $%d", argIndex)
-		args = append(args, eventType)
-		argIndex++
-	}
-
-	query += fmt.Sprintf(" ORDER BY occurred_at DESC LIMIT $%d OFFSET $%d", argIndex, argIndex+1) //nolint:gosec // G202: appends parameter placeholders, values are bound
-	args = append(args, limit, offset)
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	// nolint:gosec // G201: branches is static SQL with bound parameter placeholders, not user input
+	listQuery := fmt.Sprintf(errorGroupListQueryFmt, branches, len(args)+1, len(args)+2)
+	args = append(args, filter.Limit, filter.Offset)
+	rows, err := s.db.QueryContext(ctx, listQuery, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query SCACI events: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapQueryErrorGroups, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			log.Printf("failed to close rows in SCACI events query: %v", err)
+			s.log.Warn(logMsgCloseRowsErrorGroups, logger.FieldError, err)
 		}
 	}()
-
-	var events []*models.SystemEvent
+	groups := []*models.EventErrorGroup{}
 	for rows.Next() {
-		var event models.SystemEvent
-		var tenantIDDB int64
-		var dataJSON []byte
-
-		err := rows.Scan(
-			&event.ID,
-			&tenantIDDB,
-			&event.EventType,
-			&event.Category,
-			&event.Severity,
-			&event.SourceType,
-			&event.SourceName,
-			&event.Title,
-			&event.Description,
-			&dataJSON,
-			&event.CreatedAt,
-			&event.UpdatedAt,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan SCACI event: %w", err)
+		var g models.EventErrorGroup
+		var code, message, sourceName, lastOpID sql.NullString
+		if err := rows.Scan(&g.EventType, &code, &message, &sourceName, &g.FirstSeen, &g.LastSeen, &g.Count, &lastOpID); err != nil {
+			return nil, 0, fmt.Errorf("%s: %w", errWrapScanErrorGroup, err)
 		}
-
-		event.TenantID = strconv.FormatInt(tenantIDDB, 10)
-
-		if len(dataJSON) > 0 && string(dataJSON) != "{}" {
-			event.Details = json.RawMessage(dataJSON)
-		}
-
-		events = append(events, &event)
+		g.Code, g.Message, g.SourceName, g.LastOpID = code.String, message.String, sourceName.String, lastOpID.String
+		groups = append(groups, &g)
 	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", errWrapRowsIterationError, err)
 	}
-
-	return events, nil
+	return groups, total, nil
 }
 
-// CountSCACIEvents counts SCACI events within a time window
-func (s *SystemEventStore) CountSCACIEvents(ctx context.Context, tenantID int64, eventType string, lookbackHours int) (int64, error) {
-	if lookbackHours <= 0 {
-		lookbackHours = 24
+// errorGroupBranches renders the grouped system_events branch and, when asked,
+// the grouped scaci_operation_log branch, sharing one argument list.
+func errorGroupBranches(filter models.ErrorGroupFilter) (string, []interface{}) {
+	args := []interface{}{filter.TenantID, filter.From, filter.To, pq.Array(filter.Categories), pq.Array(filter.Severities)}
+	eventsWhere := "tenant_id = $1 AND occurred_at >= $2 AND occurred_at <= $3 AND event_category = ANY($4) AND severity = ANY($5)"
+	if len(filter.EventTypePrefixes) > 0 {
+		args = append(args, pq.Array(filter.EventTypePrefixes))
+		eventsWhere += fmt.Sprintf(" AND EXISTS (SELECT 1 FROM unnest($%d::text[]) AS prefix WHERE event_type LIKE prefix || '%%')", len(args))
 	}
-
-	query := `
-		SELECT COUNT(*)
+	branches := `
+		SELECT
+			event_type,
+			COALESCE(event_code, '') AS code,
+			(array_agg(description ORDER BY occurred_at DESC))[1] AS message,
+			COALESCE(source_name, '') AS source_name,
+			MIN(occurred_at) AS first_seen,
+			MAX(occurred_at) AS last_seen,
+			COUNT(*) AS occurrences,
+			(array_agg(data->>'opId' ORDER BY occurred_at DESC))[1] AS last_op_id
 		FROM system_events
-		WHERE event_category = 'scaci'
-		  AND tenant_id = $1
-		  AND occurred_at >= NOW() - INTERVAL '1 hour' * $2`
-
-	args := []interface{}{tenantID, lookbackHours}
-
-	if eventType != "" {
-		query += " AND event_type = $3"
-		args = append(args, eventType)
+		WHERE ` + eventsWhere + `
+		GROUP BY event_type, event_code, source_name`
+	if filter.IncludeSCACIFailures {
+		args = append(args, models.OperationStateFailed)
+		branches += fmt.Sprintf(`
+		UNION ALL
+		SELECT
+			command AS event_type,
+			COALESCE(error_code::text, '') AS code,
+			(array_agg(error_message ORDER BY initiated_at DESC))[1] AS message,
+			'' AS source_name,
+			MIN(initiated_at) AS first_seen,
+			MAX(initiated_at) AS last_seen,
+			COUNT(*) AS occurrences,
+			(array_agg(op_id::text ORDER BY initiated_at DESC))[1] AS last_op_id
+		FROM scaci_operation_log
+		WHERE tenant_id = $1 AND initiated_at >= $2 AND initiated_at <= $3 AND state = $%d
+		GROUP BY command, error_code, error_token`, len(args))
 	}
-
-	var count int64
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to count SCACI events: %w", err)
-	}
-
-	return count, nil
-}
-
-// CountSCACIEventsByFilter counts SCACI events matching ListSCACIEvents filters.
-// Used for accurate pagination metadata.
-func (s *SystemEventStore) CountSCACIEventsByFilter(ctx context.Context, tenantID int64, sessionID *int64, eventType string) (int64, error) {
-	query := `
-		SELECT COUNT(*)
-		FROM system_events
-		WHERE event_category = 'scaci'
-		  AND tenant_id = $1`
-
-	args := []interface{}{tenantID}
-	argIndex := 2
-
-	if sessionID != nil {
-		query += fmt.Sprintf(" AND (data->>'sessionID')::bigint = $%d", argIndex)
-		args = append(args, *sessionID)
-		argIndex++
-	}
-
-	if eventType != "" {
-		query += fmt.Sprintf(" AND event_type = $%d", argIndex)
-		args = append(args, eventType)
-	}
-
-	var count int64
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to count SCACI events by filter: %w", err)
-	}
-
-	return count, nil
-}
-
-// CountEvents returns total count matching filter (for pagination)
-func (s *SystemEventStore) CountEvents(ctx context.Context, filter interfaces.SystemEventFilter) (int64, error) {
-	if filter.TenantID == "" {
-		return 0, fmt.Errorf("tenant ID required")
-	}
-
-	query := `SELECT COUNT(*) FROM system_events WHERE 1=1`
-	args := []interface{}{}
-	argNum := 1
-
-	// Convert string TenantID to int64 for BIGINT column
-	if filter.TenantID != "" {
-		tenantIDInt, err := strconv.ParseInt(filter.TenantID, 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("invalid tenant ID format: %w", err)
-		}
-		query += fmt.Sprintf(" AND tenant_id = $%d", argNum)
-		args = append(args, tenantIDInt)
-		argNum++
-	}
-	if filter.Since != nil {
-		query += fmt.Sprintf(" AND occurred_at > $%d", argNum)
-		args = append(args, *filter.Since)
-		argNum++
-	}
-	if filter.Until != nil {
-		query += fmt.Sprintf(" AND occurred_at < $%d", argNum)
-		args = append(args, *filter.Until)
-		argNum++
-	}
-	if len(filter.Categories) > 0 {
-		query += fmt.Sprintf(" AND event_category = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Categories))
-		argNum++
-	}
-	if len(filter.Severities) > 0 {
-		query += fmt.Sprintf(" AND severity = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Severities))
-		argNum++
-	}
-	if len(filter.EventTypes) > 0 {
-		query += fmt.Sprintf(" AND event_type = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.EventTypes))
-		argNum++
-	}
-	if len(filter.SourceTypes) > 0 {
-		query += fmt.Sprintf(" AND source_type = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.SourceTypes))
-		argNum++
-	}
-	if len(filter.Status) > 0 {
-		query += fmt.Sprintf(" AND status = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Status))
-		argNum++
-	}
-	if filter.SourceID != nil {
-		query += fmt.Sprintf(" AND source_id = $%d", argNum)
-		args = append(args, *filter.SourceID)
-		argNum++
-	}
-
-	query, args, _ = appendDeviceScope(query, args, argNum, filter)
-
-	var count int64
-	err := s.db.QueryRowContext(ctx, query, args...).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("count events: %w", err)
-	}
-
-	return count, nil
-}
-
-// CountActiveAlerts returns total count of active alerts (for pagination)
-func (s *SystemEventStore) CountActiveAlerts(ctx context.Context, filter interfaces.AlertFilter) (int64, error) {
-	if filter.TenantID == "" {
-		return 0, fmt.Errorf("tenant ID required")
-	}
-
-	query := `SELECT COUNT(*) FROM system_events
-		WHERE (status IS NULL OR status != 'resolved')`
-	args := []interface{}{}
-	argNum := 1
-
-	tenantIDInt, err := strconv.ParseInt(filter.TenantID, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid tenant ID format: %w", err)
-	}
-	query += fmt.Sprintf(" AND tenant_id = $%d", argNum)
-	args = append(args, tenantIDInt)
-	argNum++
-
-	if len(filter.Severities) > 0 {
-		query += fmt.Sprintf(" AND severity = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Severities))
-		argNum++
-	} else {
-		query += " AND severity IN ('warning', 'error', 'critical')"
-	}
-	if len(filter.Categories) > 0 {
-		query += fmt.Sprintf(" AND event_category = ANY($%d)", argNum)
-		args = append(args, pq.Array(filter.Categories))
-		argNum++
-	}
-	if filter.Acknowledged != nil {
-		if *filter.Acknowledged {
-			query += " AND status = 'acknowledged'"
-		} else {
-			query += " AND (status IS NULL OR status != 'acknowledged')"
-		}
-	}
-	if filter.Since != nil {
-		query += fmt.Sprintf(" AND occurred_at > $%d", argNum)
-		args = append(args, *filter.Since)
-	}
-
-	var count int64
-	if err = s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
-		return 0, fmt.Errorf("count active alerts: %w", err)
-	}
-
-	return count, nil
+	return branches, args
 }

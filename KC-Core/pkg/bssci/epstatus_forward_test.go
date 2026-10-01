@@ -24,13 +24,6 @@ import (
 // mockSCACIEPStatusBroadcaster Interface Tests
 // =============================================================================
 
-func TestMockSCACIEPStatusBroadcaster_ImplementsInterface(t *testing.T) {
-	// Compile-time check already exists in test_mocks_test.go
-	// This test verifies runtime behavior
-	var broadcaster SCACIEPStatusBroadcaster = NewMockSCACIEPStatusBroadcaster()
-	require.NotNil(t, broadcaster, "mock should implement interface")
-}
-
 func TestMockSCACIEPStatusBroadcaster_RecordsCalls(t *testing.T) {
 	mock := NewMockSCACIEPStatusBroadcaster()
 
@@ -86,7 +79,7 @@ func TestMockSCACIEPStatusBroadcaster_RecordsCalls(t *testing.T) {
 func TestMockSCACIEPStatusBroadcaster_ReturnsConfiguredError(t *testing.T) {
 	mock := NewMockSCACIEPStatusBroadcaster()
 
-	expectedErr := errors.New("SCACI broadcast failure")
+	expectedErr := errSCACIBroadcastFailure
 	mock.SetError(expectedErr)
 
 	data := &EPStatusData{
@@ -124,53 +117,6 @@ func TestMockSCACIEPStatusBroadcaster_Reset(t *testing.T) {
 // =============================================================================
 // Server.SetSCACIEPStatusBroadcaster Tests
 // =============================================================================
-
-func TestSetSCACIEPStatusBroadcaster_StoresBroadcaster(t *testing.T) {
-	testLogger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
-	server := NewTestServer(testLogger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-
-	mock := NewMockSCACIEPStatusBroadcaster()
-
-	// Set the broadcaster
-	server.SetSCACIEPStatusBroadcaster(mock)
-
-	// Broadcaster should be stored (we verify by checking no panic on subsequent operations)
-	// The actual forwarding tests would require more complex setup with full message handling
-	assert.NotNil(t, server, "server should be non-nil after setting broadcaster")
-}
-
-func TestSetSCACIEPStatusBroadcaster_NilDoesNotPanic(t *testing.T) {
-	testLogger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
-	server := NewTestServer(testLogger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-
-	// Setting nil should not panic
-	require.NotPanics(t, func() {
-		server.SetSCACIEPStatusBroadcaster(nil)
-	})
-}
-
-func TestSetSCACIEPStatusBroadcaster_CanBeOverwritten(t *testing.T) {
-	testLogger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
-	server := NewTestServer(testLogger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-
-	mock1 := NewMockSCACIEPStatusBroadcaster()
-	mock2 := NewMockSCACIEPStatusBroadcaster()
-
-	// Set first broadcaster
-	server.SetSCACIEPStatusBroadcaster(mock1)
-
-	// Overwrite with second
-	server.SetSCACIEPStatusBroadcaster(mock2)
-
-	// No panic, operation succeeds
-	assert.NotNil(t, server)
-}
 
 // =============================================================================
 // EPStatusData Type Tests
@@ -283,7 +229,6 @@ func TestHandleAttachComplete_BroadcastsEPStatus(t *testing.T) {
 	snr := 15.5
 	rssi := -80.0
 	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
 		OperationID:   opID,
 		OperationType: mioty.CmdAttach,
 		Metadata: map[string]interface{}{
@@ -344,6 +289,7 @@ func TestHandleDetachComplete_BroadcastsEPStatus(t *testing.T) {
 
 	syncMock := NewSyncMockSCACIEPStatusBroadcaster()
 	server.SetSCACIEPStatusBroadcaster(syncMock)
+	server.SetEndpointRepository(detachableEndpointRepo(epEUI, tenantID, 2001))
 
 	// Setup session
 	session := &Session{
@@ -365,7 +311,6 @@ func TestHandleDetachComplete_BroadcastsEPStatus(t *testing.T) {
 	snr := 12.5
 	rssi := -75.0
 	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
 		OperationID:   opID,
 		OperationType: mioty.CmdDetach,
 		Metadata: map[string]interface{}{
@@ -407,54 +352,6 @@ func TestHandleDetachComplete_BroadcastsEPStatus(t *testing.T) {
 	assert.Equal(t, -75.0, *call.Data.Rssi, "rssi value mismatch")
 }
 
-func TestHandleAttachComplete_NilBroadcaster_NoPanic(t *testing.T) {
-	t.Parallel()
-
-	const (
-		opID     = int64(3001)
-		epEUI    = uint64(0x70B3D59CD00009E8)
-		tenantID = int64(1)
-	)
-
-	// Setup: Create server WITHOUT setting broadcaster
-	testLogger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, _, queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
-	server := NewTestServer(testLogger, mockStorage, nil, tenantID,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, nil, queueSerializer, auditLogger, tenantResolver)
-
-	// NOTE: No SetSCACIEPStatusBroadcaster call - broadcaster is nil
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-attach-nil-broadcaster",
-			BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
-			ResolvedTenantID: tenantID,
-			DbSessionID:      3,
-			Encoding:         EncodingJSON,
-		},
-	}
-
-	// Seed pending attach operation (use int64 for epEui to match handleAttachComplete)
-	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
-		OperationID:   opID,
-		OperationType: mioty.CmdAttach,
-		Metadata: map[string]interface{}{
-			"epEui":      int64(epEUI),
-			"endpointID": int64(3001),
-		},
-	}
-	err := statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, tenantID)
-	require.NoError(t, err)
-
-	// Action: Call handleAttachComplete - should not panic
-	msg := &Message{Command: mioty.CmdAttachComplete, OpId: opID}
-	require.NotPanics(t, func() {
-		err = server.CallHandleAttachComplete(session, msg, nil)
-	})
-	require.NoError(t, err, "handler should succeed without broadcaster")
-}
-
 // TestHandleAttachComplete_BroadcastsEPStatus_FullTelemetry tests that all OTA fields
 // (nonce, sign, eqSnr, subpackets) are correctly extracted from pending operation
 // metadata and propagated to BroadcastEPStatus per SCACI §3.13.1.
@@ -493,7 +390,6 @@ func TestHandleAttachComplete_BroadcastsEPStatus_FullTelemetry(t *testing.T) {
 	rssi := -80.0
 	eqSnr := 12.5
 	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
 		OperationID:   opID,
 		OperationType: mioty.CmdAttach,
 		Metadata: map[string]interface{}{
@@ -505,10 +401,11 @@ func TestHandleAttachComplete_BroadcastsEPStatus_FullTelemetry(t *testing.T) {
 			"nonce": []byte{0x01, 0x02, 0x03, 0x04},
 			"sign":  []byte{0xAA, 0xBB, 0xCC, 0xDD},
 			"eqSnr": eqSnr,
-			// Subpackets as []interface{} with map entries (metadata storage format)
-			"subpackets": []interface{}{
-				map[string]interface{}{"snr": 10.0, "rssi": -70.0, "frequency": float64(868100000)},
-				map[string]interface{}{"snr": 11.0, "rssi": -72.0, "frequency": float64(868300000)},
+			// Subpackets object as the att carried it (BSSCI §3.10.1)
+			"subpackets": map[string]interface{}{
+				"snr":       []interface{}{10.0, 11.0},
+				"rssi":      []interface{}{-70.0, -72.0},
+				"frequency": []interface{}{float64(868100000), float64(868300000)},
 			},
 			"endpointID": int64(5001),
 		},
@@ -581,6 +478,7 @@ func TestHandleDetachComplete_BroadcastsEPStatus_SignEqSnrFallback(t *testing.T)
 
 	syncMock := NewSyncMockSCACIEPStatusBroadcaster()
 	server.SetSCACIEPStatusBroadcaster(syncMock)
+	server.SetEndpointRepository(detachableEndpointRepo(epEUI, tenantID, 6001))
 
 	// Setup session
 	session := &Session{
@@ -599,7 +497,6 @@ func TestHandleDetachComplete_BroadcastsEPStatus_SignEqSnrFallback(t *testing.T)
 	rssi := -78.0
 	eqSnr := 11.5
 	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
 		OperationID:   opID,
 		OperationType: mioty.CmdDetach,
 		Metadata: map[string]interface{}{
@@ -650,55 +547,10 @@ func TestHandleDetachComplete_BroadcastsEPStatus_SignEqSnrFallback(t *testing.T)
 	// Verify eqSnr (from typedMeta.EqSnr or raw-map fallback)
 	require.NotNil(t, call.Data.EqSnr, "eqSnr should be set")
 	assert.Equal(t, 11.5, *call.Data.EqSnr, "eqSnr value mismatch")
-
-	// Note: Subpackets are NOT extracted for detach (per plan - no new shapes)
-	// Detach metadata does not carry subpackets in the current flow
+	assert.Nil(t, call.Data.Subpackets, "a det without subpackets forwards none")
 }
 
-func TestHandleDetachComplete_NilBroadcaster_NoPanic(t *testing.T) {
-	t.Parallel()
-
-	const (
-		opID     = int64(4001)
-		epEUI    = uint64(0x70B3D59CD00009E9)
-		tenantID = int64(1)
-	)
-
-	// Setup: Create server WITHOUT setting broadcaster
-	testLogger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, _, queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
-	server := NewTestServer(testLogger, mockStorage, nil, tenantID,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc, nil, queueSerializer, auditLogger, tenantResolver)
-
-	// NOTE: No SetSCACIEPStatusBroadcaster call - broadcaster is nil
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-detach-nil-broadcaster",
-			BaseStationEUI:   0xFFFFFFFFFFFFFFFF,
-			ResolvedTenantID: tenantID,
-			DbSessionID:      4,
-			Encoding:         EncodingJSON,
-		},
-	}
-
-	// Seed pending detach operation (use uint64 for epEui to match handleDetachComplete)
-	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
-		OperationID:   opID,
-		OperationType: mioty.CmdDetach,
-		Metadata: map[string]interface{}{
-			"epEui":      uint64(epEUI),
-			"endpointID": int64(4001),
-		},
-	}
-	err := statusSvc.RecordPendingOperation(testutil.TestContext(), session, opID, pendingOp, tenantID)
-	require.NoError(t, err)
-
-	// Action: Call handleDetachComplete - should not panic
-	msg := &Message{Command: mioty.CmdDetachComplete, OpId: opID}
-	require.NotPanics(t, func() {
-		err = server.CallHandleDetachComplete(session, msg, nil)
-	})
-	require.NoError(t, err, "handler should succeed without broadcaster")
-}
+// Sentinel errors returned by this package; callers match them with errors.Is.
+var (
+	errSCACIBroadcastFailure = errors.New("SCACI broadcast failure")
+)

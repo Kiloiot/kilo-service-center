@@ -39,14 +39,14 @@ func (r *CommunityResolver) LookupTenant(_ context.Context, orgUUID uuid.UUID) (
 	if orgUUID == r.defaultOrgUUID {
 		return r.defaultTenantID, nil
 	}
-	return 0, fmt.Errorf("org %s not found: %w", orgUUID, storage.ErrNotFound)
+	return 0, fmt.Errorf(errFmtOrgNotFound, orgUUID, storage.ErrNotFound)
 }
 
 // ResolveCert returns the default org and tenant for any certificate.
 // CE certs are not org-scoped; all connections belong to the single tenant.
 func (r *CommunityResolver) ResolveCert(_ context.Context, cert *x509.Certificate) (uuid.UUID, int64, error) {
 	if cert == nil {
-		return uuid.Nil, 0, fmt.Errorf("certificate is nil")
+		return uuid.Nil, 0, errCertificateNil
 	}
 	return r.defaultOrgUUID, r.defaultTenantID, nil
 }
@@ -57,7 +57,7 @@ func (r *CommunityResolver) GetDefaultOrgForTenant(_ context.Context, tenantID i
 	if tenantID == r.defaultTenantID {
 		return r.defaultOrgUUID, nil
 	}
-	return uuid.Nil, fmt.Errorf("no default org for tenant %d: %w", tenantID, storage.ErrNotFound)
+	return uuid.Nil, fmt.Errorf(errFmtNoDefaultOrgForTenant, tenantID, storage.ErrNotFound)
 }
 
 // ResolveOrgByExternalID always returns ErrNotFound in CE.

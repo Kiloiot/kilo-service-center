@@ -53,8 +53,7 @@ func (q *queueSerializer) BuildDLDataQueueComplete(opId int64) map[string]interf
 //
 // This message acknowledges receipt of a downlink result notification from
 // the base station.
-func (q *queueSerializer) BuildDLDataResultResponse(opId int64, result *mioty.DLDataResult) map[string]interface{} {
-	_ = result // Unused per BSSCI §5.14.2 (queId/success not included in response)
+func (q *queueSerializer) BuildDLDataResultResponse(opId int64, _ *mioty.DLDataResult) map[string]interface{} {
 	// Spec §5.14.2: dlDataResRsp MUST contain only command/opId.
 	return map[string]interface{}{
 		wireKeyCommand: mioty.CmdDLDataResultResponse,

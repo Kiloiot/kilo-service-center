@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Gateway/internal/resilience"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,17 +19,33 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Test resilience policy values exercised by the health endpoints.
+const (
+	testDialTimeout        = 5 * time.Second
+	testRPCTimeout         = 30 * time.Second
+	testMaxRetries         = 3
+	testRetryBackoff       = 100 * time.Millisecond
+	testRetryMaxBackoff    = 1 * time.Second
+	testCBMaxRequests      = 1
+	testCBInterval         = 60 * time.Second
+	testCBTimeout          = 200 * time.Millisecond
+	testCBFailureThreshold = 3
+)
+
+// testErrConnRefused is the transport-failure status text used to trip breakers.
+const testErrConnRefused = "connection refused"
+
 func testResilienceConfig() config.GatewayResilienceConfig {
 	return config.GatewayResilienceConfig{
-		DialTimeout:        5 * time.Second,
-		RPCTimeout:         30 * time.Second,
-		MaxRetries:         3,
-		RetryBackoff:       100 * time.Millisecond,
-		RetryMaxBackoff:    1 * time.Second,
-		CBMaxRequests:      1,
-		CBInterval:         60 * time.Second,
-		CBTimeout:          200 * time.Millisecond,
-		CBFailureThreshold: 3,
+		DialTimeout:        testDialTimeout,
+		RPCTimeout:         testRPCTimeout,
+		MaxRetries:         testMaxRetries,
+		RetryBackoff:       testRetryBackoff,
+		RetryMaxBackoff:    testRetryMaxBackoff,
+		CBMaxRequests:      testCBMaxRequests,
+		CBInterval:         testCBInterval,
+		CBTimeout:          testCBTimeout,
+		CBFailureThreshold: testCBFailureThreshold,
 	}
 }
 
@@ -47,12 +65,12 @@ func TestHealthHandler_AllHealthy(t *testing.T) {
 	coreBreaker := resilience.NewUpstreamBreaker("core", cfg)
 	identityBreaker := resilience.NewUpstreamBreaker("identity", cfg)
 
-	h := NewHandler(core, identity, coreBreaker, identityBreaker)
+	h := newHandler(core, identity, coreBreaker, identityBreaker, logger.NewNop())
 	rr := httptest.NewRecorder()
-	h.ServeHealth(rr, httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.serveHealth(rr, httptest.NewRequest(http.MethodGet, "/health", nil))
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+	assert.Equal(t, grpcconst.ContentTypeJSON, rr.Header().Get(grpcconst.HeaderContentType))
 
 	var resp map[string]interface{}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
@@ -71,9 +89,9 @@ func TestHealthHandler_Degraded(t *testing.T) {
 	coreBreaker := resilience.NewUpstreamBreaker("core", cfg)
 	identityBreaker := resilience.NewUpstreamBreaker("identity", cfg)
 
-	h := NewHandler(core, nil, coreBreaker, identityBreaker)
+	h := newHandler(core, nil, coreBreaker, identityBreaker, logger.NewNop())
 	rr := httptest.NewRecorder()
-	h.ServeHealth(rr, httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.serveHealth(rr, httptest.NewRequest(http.MethodGet, "/health", nil))
 
 	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
 
@@ -87,12 +105,12 @@ func TestHealthReady_AllHealthy(t *testing.T) {
 	identity := newIdleConn(t)
 	cfg := testResilienceConfig()
 
-	h := NewHandler(core, identity,
+	h := newHandler(core, identity,
 		resilience.NewUpstreamBreaker("core", cfg),
-		resilience.NewUpstreamBreaker("identity", cfg))
+		resilience.NewUpstreamBreaker("identity", cfg), logger.NewNop())
 
 	rr := httptest.NewRecorder()
-	h.ServeReady(rr, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	h.serveReady(rr, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"healthy"`)
@@ -105,14 +123,14 @@ func TestHealthReady_BreakerOpen(t *testing.T) {
 
 	coreBreaker := resilience.NewUpstreamBreaker("core", cfg)
 	// Trip the core breaker
-	transportErr := status.Error(codes.Unavailable, "connection refused")
+	transportErr := status.Error(codes.Unavailable, testErrConnRefused)
 	for i := uint32(0); i < cfg.CBFailureThreshold; i++ {
 		_ = coreBreaker.Execute(func() error { return transportErr })
 	}
 
-	h := NewHandler(core, identity, coreBreaker, resilience.NewUpstreamBreaker("identity", cfg))
+	h := newHandler(core, identity, coreBreaker, resilience.NewUpstreamBreaker("identity", cfg), logger.NewNop())
 	rr := httptest.NewRecorder()
-	h.ServeReady(rr, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	h.serveReady(rr, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
 
 	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"unhealthy"`)
@@ -122,19 +140,19 @@ func TestHealthReady_ConnUnhealthy(t *testing.T) {
 	core := newIdleConn(t)
 	cfg := testResilienceConfig()
 
-	h := NewHandler(core, nil,
+	h := newHandler(core, nil,
 		resilience.NewUpstreamBreaker("core", cfg),
-		resilience.NewUpstreamBreaker("identity", cfg))
+		resilience.NewUpstreamBreaker("identity", cfg), logger.NewNop())
 
 	rr := httptest.NewRecorder()
-	h.ServeReady(rr, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	h.serveReady(rr, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
 
 	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
 }
 
 func TestHealthLive(t *testing.T) {
 	rr := httptest.NewRecorder()
-	ServeLive(rr, httptest.NewRequest(http.MethodGet, "/health/live", nil))
+	(&handler{log: logger.NewNop()}).serveLive(rr, httptest.NewRequest(http.MethodGet, "/health/live", nil))
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"alive"`)
@@ -142,7 +160,7 @@ func TestHealthLive(t *testing.T) {
 
 func TestHealthPing(t *testing.T) {
 	rr := httptest.NewRecorder()
-	ServePing(rr, httptest.NewRequest(http.MethodGet, "/health/ping", nil))
+	(&handler{log: logger.NewNop()}).servePing(rr, httptest.NewRequest(http.MethodGet, "/health/ping", nil))
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Contains(t, rr.Body.String(), `"healthy"`)

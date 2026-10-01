@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -18,7 +17,7 @@ import (
 //   - §3.4: Session resumption requires operation history
 //   - §3.9.2: Operation logging for audit trail
 type operationRecorder struct {
-	repo interfaces.SCACIOperationRepository
+	repo SCACIOperationStore
 }
 
 // NewOperationRecorder creates a new operation recorder service
@@ -27,7 +26,7 @@ type operationRecorder struct {
 //   - repo: SCACI operation repository for persisting operation records
 //
 // The repo dependency should be obtained via storage.SCACIOperations() or similar factory.
-func NewOperationRecorder(repo interfaces.SCACIOperationRepository) scaci.OperationRecorder {
+func NewOperationRecorder(repo SCACIOperationStore) scaci.OperationRecorder {
 	return &operationRecorder{
 		repo: repo,
 	}
@@ -55,7 +54,23 @@ func NewOperationRecorder(repo interfaces.SCACIOperationRepository) scaci.Operat
 func (r *operationRecorder) Record(ctx context.Context, session *scaci.Session, opId int64,
 	command string, direction models.OperationDirection, data map[string]interface{}) error {
 
-	req := &models.SCACIOperationRequest{
+	_, err := r.repo.RecordOperation(ctx, operationRequest(session, opId, command, direction, data))
+	return err
+}
+
+// EnsureUplinkOperation records the outbound ulData operation delivering the
+// stored uplink sourceMessageID to the session, unless the session has one
+// already, and reports whether it recorded it now (SCACI §3.2).
+func (r *operationRecorder) EnsureUplinkOperation(ctx context.Context, session *scaci.Session, opId int64,
+	sourceMessageID string, data map[string]interface{}) (*models.SCACIOperation, bool, error) {
+	return r.repo.EnsureUplinkOperation(ctx,
+		operationRequest(session, opId, scaci.CmdULData, models.OperationDirectionOutbound, data), sourceMessageID)
+}
+
+// operationRequest is the operation log row of one operation of the session.
+func operationRequest(session *scaci.Session, opId int64, command string,
+	direction models.OperationDirection, data map[string]interface{}) *models.SCACIOperationRequest {
+	return &models.SCACIOperationRequest{
 		SessionID:   session.ID,
 		TenantID:    session.TenantID,
 		OpId:        opId,
@@ -63,7 +78,4 @@ func (r *operationRecorder) Record(ctx context.Context, session *scaci.Session, 
 		Direction:   string(direction),
 		RequestData: data,
 	}
-
-	_, err := r.repo.RecordOperation(ctx, req)
-	return err
 }

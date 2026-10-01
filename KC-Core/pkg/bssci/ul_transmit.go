@@ -1,13 +1,14 @@
 package bssci
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler" // Import neutral scheduler contracts
+	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
@@ -32,13 +33,6 @@ var (
 	// SCACI mapping: POSIX_ENOENT (2)
 	// gRPC mapping: codes.NotFound or codes.FailedPrecondition
 	ErrBaseStationUnavailable = errors.New("base station not available")
-
-	// ErrQueueNotFound indicates the requested downlink queue entry does not exist or was already removed.
-	// This can occur when attempting to revoke a queue entry that was never created, already completed,
-	// or already revoked. This is a permanent error condition.
-	// SCACI mapping: POSIX_ENOENT (2)
-	// gRPC mapping: codes.NotFound
-	ErrQueueNotFound = errors.New("queue entry not found")
 
 	// ErrBaseStationTenantMismatch indicates the requested base station belongs to a different tenant.
 	// This is a security/tenant-isolation boundary violation. The operation should not be retried
@@ -70,8 +64,8 @@ var (
 // per MIOTY BSSCI v1.0.0 Section 3.11
 // Returns the operation ID and error
 func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []byte,
-	shAddr uint16, packetCnt uint32, userData []byte, profile string, format uint8) (int64, error) {
-
+	shAddr uint16, packetCnt uint32, userData []byte, profile string, format uint8,
+) (int64, error) {
 	session, err := s.validateULTransmitSession(sessionID, nwkSnKey)
 	if err != nil {
 		return 0, err
@@ -80,12 +74,12 @@ func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []b
 	// Durable order (BSSCI rev1 §5.2 / classic §3.2): allocate the ID, persist
 	// the counter, persist the pending record, then write the frame. The
 	// counter is never rolled back.
-	opId, err := s.beginScOperation(session)
+	opId, err := s.pendingOps.begin(s.sessionContext(session), session)
 	if err != nil {
 		return 0, err
 	}
 
-	encryptedKeyForStorage, isEncrypted, err := s.encryptULKeyForStorage(session, sessionID, nwkSnKey)
+	encryptedKeyForStorage, err := s.encryptULKeyForStorage(session, sessionID, nwkSnKey)
 	if err != nil {
 		return 0, err
 	}
@@ -97,27 +91,27 @@ func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []b
 	binary.BigEndian.PutUint64(euiBytes, epEui)
 
 	metadata := buildULDataTxMetadata(userData, shAddr, packetCnt, profile, format,
-		encryptedKeyForStorage, isEncrypted)
+		encryptedKeyForStorage)
 	sanitizedMsg := buildSanitizedULDataTxMessage(opId, epEui, shAddr, packetCnt, profile, format)
 
 	// The recovery record must be durable before the frame is written; a
 	// persistence failure aborts the send, leaving only a consumed-ID gap.
-	if err := s.persistPendingOperation(session, opId, mioty.CmdULDataTransmit,
+	if err := s.pendingOps.persist(s.safeCtx(), session, opId, mioty.CmdULDataTransmit,
 		sanitizedMsg, euiBytes, metadata); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToPersistULDataTxOperation,
-			"sessionID", sessionID,
-			"opId", opId,
-			"error", err)
+			logger.FieldSessionID, sessionID,
+			logger.FieldOpID, opId,
+			logger.FieldError, err)
 		return 0, err
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCISendingULDataTransmit,
-		"sessionID", sessionID,
-		"opId", opId,
-		"epEui", epEui,
-		"packetCnt", packetCnt,
-		"shAddr", shAddr,
-		"userDataLen", len(userData))
+		logger.FieldSessionID, sessionID,
+		logger.FieldOpID, opId,
+		logger.FieldEpEui, epEui,
+		logger.FieldPacketCnt, packetCnt,
+		logger.FieldShAddr, shAddr,
+		logger.FieldUserDataLen, len(userData))
 
 	// Send message with CLEAR key to base station
 	if err := s.sendMessage(session, msg); err != nil {
@@ -132,9 +126,7 @@ func (s *Server) SendULDataTransmit(sessionID string, epEui uint64, nwkSnKey []b
 // preconditions: handshake completion (BSSCI-3.3-03), bidirectional support,
 // and network session key length.
 func (s *Server) validateULTransmitSession(sessionID string, nwkSnKey []byte) (*Session, error) {
-	s.mu.RLock()
-	session, exists := s.sessions[sessionID]
-	s.mu.RUnlock()
+	session, exists := s.sessions.get(sessionID)
 
 	if !exists {
 		return nil, fmt.Errorf("%s: %s", ResolveErrorMessage(errSessionNotFound), sessionID)
@@ -142,44 +134,40 @@ func (s *Server) validateULTransmitSession(sessionID string, nwkSnKey []byte) (*
 
 	if !session.HandshakeComplete {
 		s.logger.WarnContext(s.sessionContext(session), LogBSSCIConnectHandshakeNotComplete,
-			"sessionID", sessionID,
-			"bsEui", session.BaseStationEUI)
-		return nil, fmt.Errorf("%s for session %s", ResolveErrorMessage(errHandshakeNotComplete), sessionID)
+			logger.FieldSessionID, sessionID,
+			logger.FieldBsEui, session.BaseStationEUI)
+		return nil, fmt.Errorf(errFmtTokenForSession, ResolveErrorMessage(errHandshakeNotComplete), sessionID)
 	}
 
 	if !session.Bidirectional {
 		s.logger.WarnContext(s.sessionContext(session), LogBSSCIBaseStationDoesNotSupportBidi,
-			"sessionID", sessionID,
-			"bsEui", session.BaseStationEUI)
-		return nil, fmt.Errorf("%s %016X", ResolveErrorMessage(errBaseStationNotBidirectional), session.BaseStationEUI)
+			logger.FieldSessionID, sessionID,
+			logger.FieldBsEui, session.BaseStationEUI)
+		return nil, fmt.Errorf("%s %s", ResolveErrorMessage(errBaseStationNotBidirectional), mioty.FormatEUI64(session.BaseStationEUI))
 	}
 
 	if len(nwkSnKey) != 16 {
-		return nil, fmt.Errorf("%s, got %d", ResolveErrorMessage(errNwkSnKeyInvalidLength), len(nwkSnKey))
+		return nil, fmt.Errorf(errFmtTokenGotValue, ResolveErrorMessage(errNwkSnKeyInvalidLength), len(nwkSnKey))
 	}
 
 	return session, nil
 }
 
-// encryptULKeyForStorage encrypts the network session key for persistence
-// ONLY (never for transmission). Without an encryptor the key is stored
-// base64-encoded, which is only allowed in dev mode with
-// KILOCENTER_ALLOW_PLAINTEXT_KEYS=true (NewServer returns nil if encryptor
-// init fails in production).
-func (s *Server) encryptULKeyForStorage(session *Session, sessionID string, nwkSnKey []byte) (string, bool, error) {
-	if s.keyEncryptor == nil {
-		return base64.StdEncoding.EncodeToString(nwkSnKey), false, nil
+// encryptULKeyForStorage encrypts the network session key for persistence in
+// the pending-operation recovery record ONLY (never for transmission). The key
+// is stored as a keycrypto envelope; there is no plaintext fallback.
+func (s *Server) encryptULKeyForStorage(session *Session, sessionID string, nwkSnKey []byte) (string, error) {
+	if s.cipher == nil {
+		return "", errCipherRequired
 	}
-
-	encrypted, err := s.keyEncryptor.EncryptKey(nwkSnKey)
+	envelope, err := s.cipher.EncryptString(nwkSnKey)
 	if err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToEncryptNetworkSessionKey,
-			"error", err,
-			"sessionID", sessionID)
-		// Production: fail operation if encryption fails (no plaintext fallback)
-		return "", false, fmt.Errorf("failed to encrypt network session key: %w", err)
+			logger.FieldError, err,
+			logger.FieldSessionID, sessionID)
+		return "", fmt.Errorf(errFmtEncryptNetworkSessionKey, err)
 	}
-	return encrypted, true, nil
+	return envelope, nil
 }
 
 // bytesToNumericArray converts raw bytes to the Numeric[n] array shape the
@@ -195,7 +183,8 @@ func bytesToNumericArray(data []byte) []interface{} {
 // buildULDataTxMessage assembles the ulDataTx wire message per MIOTY BSSCI
 // spec Section 3.11.1, carrying the CLEAR key as a Numeric[16] array.
 func buildULDataTxMessage(opId int64, epEui uint64, nwkSnKey, userData []byte,
-	shAddr uint16, packetCnt uint32, profile string, format uint8) map[string]interface{} {
+	shAddr uint16, packetCnt uint32, profile string, format uint8,
+) map[string]interface{} {
 	msg := map[string]interface{}{
 		"command":   mioty.CmdULDataTransmit,
 		"opId":      opId,
@@ -217,15 +206,15 @@ func buildULDataTxMessage(opId int64, epEui uint64, nwkSnKey, userData []byte,
 // buildULDataTxMetadata builds the pending-operation metadata carrying the
 // encrypted key and userData.
 func buildULDataTxMetadata(userData []byte, shAddr uint16, packetCnt uint32,
-	profile string, format uint8, encryptedKey string, isEncrypted bool) map[string]interface{} {
+	profile string, format uint8, encryptedKey string,
+) map[string]interface{} {
 	userDataB64 := base64.StdEncoding.EncodeToString(userData)
 	return map[string]interface{}{
 		"packetCnt":    packetCnt,
 		"shAddr":       shAddr,
 		"format":       format,
 		"profile":      profile,
-		"encryptedKey": encryptedKey, // Already base64 encoded
-		"isEncrypted":  isEncrypted,  // Track encryption status
+		"encryptedKey": encryptedKey, // keycrypto envelope (text form)
 		"userData":     userDataB64,
 		"data":         userDataB64, // Also store as "data" for PendingOperation.Data population
 	}
@@ -234,7 +223,8 @@ func buildULDataTxMetadata(userData []byte, shAddr uint16, packetCnt uint32,
 // buildSanitizedULDataTxMessage builds the persistence copy of the ulDataTx
 // message without the raw key, which lives only in encrypted metadata.
 func buildSanitizedULDataTxMessage(opId int64, epEui uint64, shAddr uint16,
-	packetCnt uint32, profile string, format uint8) map[string]interface{} {
+	packetCnt uint32, profile string, format uint8,
+) map[string]interface{} {
 	sanitizedMsg := map[string]interface{}{
 		"command":   mioty.CmdULDataTransmit,
 		"opId":      opId,
@@ -259,44 +249,30 @@ func (s *Server) handleULDataTxSendFailure(session *Session, opId int64, err err
 		s.closeTransportAfterWriteFailure(session, opId, err)
 		return
 	}
-	if cleanupErr := s.removePendingOperation(session, opId); cleanupErr != nil {
+	if cleanupErr := s.pendingOps.remove(s.sessionContext(session), session, opId); cleanupErr != nil {
 		// Nothing reached the wire; the recovery row is removed.
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingOperationAfterSendFailure,
-			"sessionID", session.DbSessionID,
-			"opId", opId,
-			"error", cleanupErr)
+			logger.FieldSessionID, session.DbSessionID,
+			logger.FieldOpID, opId,
+			logger.FieldError, cleanupErr)
 	}
 }
 
 // handleULDataTxResponse handles the base station's response to ulDataTx
 // per MIOTY BSSCI v1.0.0 Section 3.11.2
-func (s *Server) handleULDataTxResponse(srv *Server, session *Session, msg *Message, data map[string]interface{}) error {
+func (s *Server) handleULDataTxResponse(session *Session, msg *Message, data map[string]interface{}) error {
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCIReceivedULDataTransmitResponse,
-		"sessionID", session.ID,
-		"opId", msg.OpId)
+		logger.FieldSessionID, session.ID,
+		logger.FieldOpID, msg.OpId)
 
 	// Extract result code if present
 	var resultCode int
 	if result, ok := data["result"].(float64); ok {
 		resultCode = int(result)
 		s.logger.InfoContext(s.sessionContext(session), LogBSSCIULDataTransmitResponseResult,
-			"sessionID", session.ID,
-			"opId", msg.OpId,
-			"result", resultCode)
-	}
-
-	// Keep pending operation for completion step
-	// BSSCI §§5.11-5.12.3 Gap 1: Dual-path for test compatibility
-	var pendingOp *PendingOperation
-	// StatusService is the single path for pending operation persistence
-	pendingOp, err := s.statusSvc.GetPendingOperation(session, msg.OpId)
-	if err != nil {
-		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToGetPendingOperation,
-			"opId", msg.OpId, "error", err)
-	}
-
-	if pendingOp != nil {
-		_ = pendingOp // Operation acknowledged; no additional processing needed
+			logger.FieldSessionID, session.ID,
+			logger.FieldOpID, msg.OpId,
+			logger.FieldResult, resultCode)
 	}
 
 	// BSSCI three-way handshake: Service Center must send ulDataTxCmp after ulDataTxRsp
@@ -306,8 +282,8 @@ func (s *Server) handleULDataTxResponse(srv *Server, session *Session, msg *Mess
 	}
 
 	s.logger.DebugContext(s.sessionContext(session), LogBSSCISendingULDataTransmitComplete,
-		"sessionID", session.ID,
-		"opId", msg.OpId)
+		logger.FieldSessionID, session.ID,
+		logger.FieldOpID, msg.OpId)
 
 	// Send the completion message and bail out early on error
 	if err := s.sendMessage(session, completionMsg); err != nil {
@@ -315,40 +291,36 @@ func (s *Server) handleULDataTxResponse(srv *Server, session *Session, msg *Mess
 	}
 
 	// Now perform the cleanup that would happen in handleULDataTxComplete
-	return s.handleULDataTxComplete(srv, session, msg, data)
+	return s.handleULDataTxComplete(session, msg, data)
 }
 
 // handleULDataTxComplete handles the completion of the ulDataTx three-way handshake
 // per MIOTY BSSCI v1.0.0 Section 3.11.3
-func (s *Server) handleULDataTxComplete(_ *Server, session *Session, msg *Message, _ map[string]interface{}) error {
+func (s *Server) handleULDataTxComplete(session *Session, msg *Message, _ map[string]interface{}) error {
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCIReceivedULDataTransmitCompletion,
-		"sessionID", session.ID,
-		"opId", msg.OpId)
+		logger.FieldSessionID, session.ID,
+		logger.FieldOpID, msg.OpId)
 
-	// Remove from pending operations
-	// BSSCI §§5.11-5.12.3 Gap 1: Dual-path for test compatibility
-	var pendingOp *PendingOperation
-	// StatusService is the single path for pending operation persistence
 	pendingOp, err := s.statusSvc.GetPendingOperation(session, msg.OpId)
 	if err != nil {
 		s.logger.WarnContext(s.sessionContext(session), LogBSSCIFailedToGetPendingOperation,
-			"opId", msg.OpId, "error", err)
+			logger.FieldOpID, msg.OpId, logger.FieldError, err)
 	}
 
 	if pendingOp == nil {
 		s.logger.WarnContext(s.sessionContext(session), LogBSSCINoPendingOperationForULTransmitComplete,
-			"sessionID", session.ID,
-			"opId", msg.OpId)
+			logger.FieldSessionID, session.ID,
+			logger.FieldOpID, msg.OpId)
 		return nil
 	}
 
 	// Remove from database pending operations using canonical helper
 	// BSSCI §§5.11-5.12.3 Gap 1: StatusService handles both DB and memory cleanup
-	if err := s.removePendingOperation(session, msg.OpId); err != nil {
+	if err := s.pendingOps.remove(s.sessionContext(session), session, msg.OpId); err != nil {
 		s.logger.ErrorContext(s.sessionContext(session), LogBSSCIFailedToRemovePendingULTransmitOperation,
-			"sessionID", session.ID,
-			"opId", msg.OpId,
-			"error", err)
+			logger.FieldSessionID, session.ID,
+			logger.FieldOpID, msg.OpId,
+			logger.FieldError, err)
 	}
 
 	// Extract endpoint EUI for logging
@@ -358,9 +330,9 @@ func (s *Server) handleULDataTxComplete(_ *Server, session *Session, msg *Messag
 	}
 
 	s.logger.InfoContext(s.sessionContext(session), LogBSSCIULDataTransmitThreeWayHandshakeCompleted,
-		"sessionID", session.ID,
-		"opId", msg.OpId,
-		"epEui", epEui)
+		logger.FieldSessionID, session.ID,
+		logger.FieldOpID, msg.OpId,
+		logger.FieldEpEui, epEui)
 
 	return nil
 }
@@ -368,8 +340,9 @@ func (s *Server) handleULDataTxComplete(_ *Server, session *Session, msg *Messag
 // reconstitueULDataTxMessage reconstitutes a ulDataTx message from sanitized storage
 // This is used during session resume to rebuild the message with the decrypted key
 func (s *Server) reconstitueULDataTxMessage(sanitizedMsg map[string]interface{}, metadata map[string]interface{}, pendingOp *PendingOperation) (map[string]interface{}, error) {
-	// Create enriched context for logging
-	ctx := pkgcontext.WithTenantID(context.Background(), s.tenantID)
+	// Create enriched context for logging, rooted in the server lifecycle context
+	// so resume-time reconstruction stops when the server stops.
+	ctx := pkgcontext.WithTenantID(s.safeCtx(), s.tenantID)
 
 	// Start with the sanitized message
 	msg := make(map[string]interface{})
@@ -377,36 +350,26 @@ func (s *Server) reconstitueULDataTxMessage(sanitizedMsg map[string]interface{},
 		msg[k] = v
 	}
 
-	// Extract and decrypt the key from metadata
-	// Pending operations store keys in JSON metadata as strings (base64)
+	// Extract and decrypt the key from metadata. Pending operations store the
+	// key as a keycrypto envelope in JSON metadata. A record persisted before
+	// key sanitization carries no envelope and still holds the key in the
+	// message itself, so it passes through unchanged.
 	if encKeyStr, ok := metadata["encryptedKey"].(string); ok {
-		isEncryptedVal, _ := metadata["isEncrypted"].(bool)
-
-		var clearKey []byte
-		var err error
-
-		if isEncryptedVal && s.keyEncryptor != nil {
-			// Key is encrypted — decrypt with raw GCM
-			encKeyBytes := []byte(encKeyStr)
-			clearKey, err = s.keyEncryptor.DecryptKeyRaw(encKeyBytes)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToDecryptKey), err)
-			}
-		} else {
-			// Key is plain base64
-			clearKey, err = base64.StdEncoding.DecodeString(encKeyStr)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToDecode), err)
-			}
+		if s.cipher == nil {
+			return nil, errCipherRequired
+		}
+		clearKey, err := s.cipher.DecryptString(encKeyStr)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToDecryptKey), err)
 		}
 
 		// Convert to Numeric[16] array for wire protocol
-		nwkSnKeyArray := make([]interface{}, 16)
-		for i := 0; i < 16 && i < len(clearKey); i++ {
+		nwkSnKeyArray := make([]interface{}, dbconfig.SessionKeySize)
+		for i := 0; i < dbconfig.SessionKeySize && i < len(clearKey); i++ {
 			nwkSnKeyArray[i] = uint8(clearKey[i])
 		}
 		msg["nwkSnKey"] = nwkSnKeyArray
-	} else {
+	} else if _, hasKey := msg["nwkSnKey"]; !hasKey {
 		return nil, fmt.Errorf("%s", ResolveErrorMessage(errMissingEncryptedKey))
 	}
 
@@ -427,8 +390,8 @@ func (s *Server) reconstitueULDataTxMessage(sanitizedMsg map[string]interface{},
 		// Try to use PendingOperation.Data if available
 		if pendingOp != nil && len(pendingOp.Data) > 0 {
 			s.logger.InfoContext(ctx, LogBSSCIUserDataMissingFromMetadata,
-				"dataLen", len(pendingOp.Data),
-				"opId", pendingOp.OperationID)
+				logger.FieldDataLen, len(pendingOp.Data),
+				logger.FieldOpID, pendingOp.OperationID)
 			// Convert to Numeric[n] array for wire protocol (BSSCI-3.11.1)
 			userDataArray := make([]interface{}, len(pendingOp.Data))
 			for i := 0; i < len(pendingOp.Data); i++ {
@@ -441,145 +404,13 @@ func (s *Server) reconstitueULDataTxMessage(sanitizedMsg map[string]interface{},
 			opId, _ := parseOpID(sanitizedMsg["opId"])
 
 			s.logger.WarnContext(ctx, LogBSSCIUserDataMissingFromBothSources,
-				"opId", opId)
+				logger.FieldOpID, opId)
 			// Empty array is valid for control telegrams (BSSCI-3.11.1)
 			msg["userData"] = []interface{}{}
 		}
 	}
 
 	return msg, nil
-}
-
-// SelectBidirectionalSession finds a suitable bidirectional base station session for UL transmit
-//
-// This helper is used by both SCACI (via ScheduleULDataTransmit interface) and gRPC
-// to select an appropriate base station for uplink transmission.
-//
-// Tenant isolation: Only selects base stations that belong to the requesting tenant,
-// preventing cross-tenant UL transmit operations (BSSCI §5.11 multi-tenant isolation).
-//
-// Parameters:
-//   - tenantID: Tenant context for session selection (enforced via ResolvedTenantID comparison)
-//   - targetBsEui: Optional specific base station EUI (nil = SC chooses automatically)
-//
-// Returns:
-//   - sessionID: Internal session identifier
-//   - actualBsEui: EUI of selected base station
-//   - error: ErrBaseStationTenantMismatch if requested BS belongs to different tenant
-func (s *Server) SelectBidirectionalSession(tenantID int64, targetBsEui *uint64) (sessionID string, actualBsEui uint64, err error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// If specific BS requested, find it and validate tenant ownership
-	if targetBsEui != nil {
-		for sid, session := range s.sessions {
-			if session.BaseStationEUI == *targetBsEui &&
-				session.HandshakeComplete &&
-				session.Bidirectional {
-				// Enforce tenant isolation: check resolved tenant (supports roaming/resumed sessions)
-				if session.ResolvedTenantID != tenantID {
-					// Log tenant mismatch attempt for security auditing
-					ctx := s.sessionContext(session)
-					s.logger.WarnContext(ctx, LogBSSCIBaseStationTenantMismatch,
-						"sessionID", sid,
-						"tenantID", tenantID,
-						"resolvedTenantID", session.ResolvedTenantID,
-						"requestedBsEui", fmt.Sprintf("%016X", *targetBsEui),
-					)
-					return "", 0, ErrBaseStationTenantMismatch
-				}
-				return sid, session.BaseStationEUI, nil
-			}
-		}
-		// Specific BS not found or not suitable - wrap sentinel for errors.Is() detection
-		return "", 0, fmt.Errorf("%s %016X: %w", ResolveErrorMessage(errBaseStationNotRegistered), *targetBsEui, ErrBaseStationUnavailable)
-	}
-
-	// Otherwise, find all suitable sessions within the requesting tenant and select deterministically
-	// SCACI §3.9.1 Production Readiness: Go map iteration is non-deterministic.
-	// Collect candidates and select by lowest EUI for reproducible behavior.
-	var candidateSid string
-	var candidateBsEui uint64
-	for sid, session := range s.sessions {
-		if session.HandshakeComplete &&
-			session.Bidirectional &&
-			session.ResolvedTenantID == tenantID {
-			// First candidate or lower EUI wins (deterministic fallback selection)
-			if candidateSid == "" || session.BaseStationEUI < candidateBsEui {
-				candidateSid = sid
-				candidateBsEui = session.BaseStationEUI
-			}
-		}
-	}
-
-	if candidateSid != "" {
-		return candidateSid, candidateBsEui, nil
-	}
-
-	// No suitable sessions found for this tenant - return sentinel directly for errors.Is() detection
-	return "", 0, ErrNoBidirectionalBaseStations
-}
-
-// FindSessionForEndpointAttachment implements SessionDirectory.FindSessionForEndpointAttachment
-//
-// This method supports roaming scenarios by locating a base station session without
-// enforcing tenant ownership. The caller MUST validate endpoint ownership before calling.
-//
-// SECURITY: This method assumes the caller (e.g., QueryDLRXStatus via GetEndpointBaseStation)
-// has already validated that the requesting tenant owns the endpoint. It finds the base station
-// session regardless of which tenant owns the base station, enabling roaming support:
-// "All base stations on a server form a shared RF mesh. Any station accepts traffic from any endpoint."
-//
-// Thread-safety: Uses RLock for concurrent read access to session map.
-//
-// Validates:
-//   - HandshakeComplete (BSSCI §3.3 requirement)
-//   - Bidirectional capability (DL operation requirement)
-//   - Session exists
-//
-// Returns:
-//   - sessionID: Internal session identifier
-//   - error: ErrSessionNotFound, ErrSessionNotReady, ErrSessionNotBidirectional
-func (s *Server) FindSessionForEndpointAttachment(bsEui uint64) (sessionID string, err error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Search for session with matching BS EUI
-	for sid, session := range s.sessions {
-		if session.BaseStationEUI == bsEui {
-			// Validate session handshake is complete per BSSCI §3.3
-			if !session.HandshakeComplete {
-				ctx := s.sessionContext(session)
-				s.logger.WarnContext(ctx, LogBSSCISessionNotReady,
-					"sessionID", sid,
-					"bsEui", fmt.Sprintf("%016X", bsEui),
-					"reason", "handshake not complete")
-				return "", fmt.Errorf("%s %016X: %w",
-					ResolveErrorMessage(errSessionNotReady), bsEui, ErrSessionNotReady)
-			}
-
-			// Validate session supports bidirectional operations
-			if !session.Bidirectional {
-				ctx := s.sessionContext(session)
-				s.logger.WarnContext(ctx, LogBSSCISessionNotBidirectional,
-					"sessionID", sid,
-					"bsEui", fmt.Sprintf("%016X", bsEui),
-					"bidirectional", session.Bidirectional)
-				return "", fmt.Errorf("%s %016X: %w",
-					ResolveErrorMessage(errSessionNotBidirectional), bsEui, ErrSessionNotBidirectional)
-			}
-
-			// Session is suitable for DL operations
-			return sid, nil
-		}
-	}
-
-	// Base station not found in connected sessions
-	s.logger.DebugContext(s.ctx, LogBSSCISessionNotFound,
-		"bsEui", fmt.Sprintf("%016X", bsEui),
-		"reason", "not in connected sessions")
-	return "", fmt.Errorf("%s %016X: %w",
-		ResolveErrorMessage(errSessionNotFound), bsEui, ErrSessionNotFound)
 }
 
 // ScheduleULDataTransmit schedules an uplink transmission via SCACI interface
@@ -639,7 +470,6 @@ func (s *Server) ScheduleULDataTransmit(tenantID int64, req *mioty.ULDataTransmi
 		profile,
 		format,
 	)
-
 	if err != nil {
 		return 0, 0, fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendULTransmit), err)
 	}

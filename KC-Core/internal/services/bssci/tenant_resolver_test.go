@@ -2,11 +2,11 @@ package bssciservices
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +30,7 @@ func (m *mockDownlinkQueueStore) GetTenantIDByQueueID(_ context.Context, queueID
 	if tid, ok := m.tenants[queueID]; ok {
 		return tid, nil
 	}
-	return 0, fmt.Errorf("queue ID not found: %d", queueID)
+	return 0, storage.ErrNotFound
 }
 
 // TestResolveTenant_HotPath tests the hot-path cache hit scenario
@@ -87,7 +87,7 @@ func TestResolveTenant_DBNotFound(t *testing.T) {
 	// Verify: Returns error for not found
 	require.Error(t, err)
 	assert.Empty(t, tenantID)
-	assert.Contains(t, err.Error(), "queue ID not found: 999")
+	assert.ErrorIs(t, err, storage.ErrNotFound)
 }
 
 // TestResolveTenant_InvalidQueueID tests validation of queueID parameter
@@ -221,5 +221,5 @@ func TestTenantResolver_Lifecycle(t *testing.T) {
 	tenantID2, err2 := resolver.ResolveTenant(ctx, 42)
 	require.Error(t, err2)
 	assert.Empty(t, tenantID2)
-	assert.Contains(t, err2.Error(), "queue ID not found")
+	assert.ErrorIs(t, err2, storage.ErrNotFound)
 }

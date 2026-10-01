@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
@@ -69,7 +71,7 @@ func TestReconstituteDLDataQueUserDataShape(t *testing.T) {
 		},
 	}
 
-	server := &Server{config: &Config{}, logger: logger.NewNop()}
+	server := &Server{clock: clock.SystemClock{}, config: &Config{}, logger: logger.NewNop()}
 	sanitized := map[string]interface{}{
 		"command":   mioty.CmdDLDataQueue,
 		"opId":      int64(-1),

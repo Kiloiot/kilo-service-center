@@ -1,22 +1,18 @@
 /**
- * Realtime Service Barrel Export
- *
- * Realtime service for event streaming.
- * Uses gRPC streaming RPCs: StreamMessages, StreamBaseStationMessages from KC-Core gRPC service.
- * @see src/services/grpc/client.ts for gRPC implementation
+ * Realtime service barrel: the gRPC streams (StreamEvents, StreamMessages,
+ * StreamBaseStationMessages) one tab holds for every tab, behind three narrow
+ * views, and the cached queries each streamed event makes stale.
  */
 
-export { realtimeService } from "./RealtimeService";
+export { catchUpKeys, invalidatedKeys } from "./invalidation";
+export {
+  realtimeLifecycle,
+  realtimeStreams,
+  realtimeSubscriptions,
+} from "./RealtimeService";
 export type {
   ConnectionError,
-  ConnectionEvent,
-  ConnectionEventListener,
-  ConnectionEventType,
   ConnectionState,
-  ErrorListener,
-  EventHandler,
   RealtimeEvent,
-  RealtimeEventType,
   RealtimeStreamKind,
-  StateChangeListener,
 } from "./types";

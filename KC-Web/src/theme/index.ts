@@ -9,6 +9,18 @@
 import type { Theme, ThemeOptions } from "@mui/material/styles";
 import { alpha, createTheme } from "@mui/material/styles";
 
+import { createButtonOverrides } from "./buttons";
+import { foregroundOverrides } from "./foreground";
+import {
+  chipHighlight,
+  createHighlightOverrides,
+  type HighlightPalette,
+} from "./highlight";
+import { tabOverrides } from "./tabs";
+
+export { livePulseAnimation } from "./animations";
+export { componentSpacing } from "./componentSpacing";
+
 // =============================================================================
 // SEMANTIC TOKEN DEFINITIONS
 // =============================================================================
@@ -17,7 +29,7 @@ import { alpha, createTheme } from "@mui/material/styles";
  * Semantic spacing scale (base unit: 4px)
  * Use via theme.spacing() or semanticTokens.spacing.*
  */
-export const semanticSpacing = {
+const semanticSpacing = {
   xxs: 0.5, // 2px
   xs: 1, // 4px
   sm: 2, // 8px
@@ -28,23 +40,10 @@ export const semanticSpacing = {
 } as const;
 
 /**
- * Component-specific spacing tokens
- * Use via componentSpacing.{component}.{property}
- */
-export const componentSpacing = {
-  pagination: {
-    containerMt: 2, // Container top margin (theme.spacing units)
-    containerGap: 2, // Main flex gap (theme.spacing units)
-    controlGap: 1, // Inner control gap (theme.spacing units)
-    selectMinWidth: 80, // Page size select min width (px)
-  },
-} as const;
-
-/**
  * Semantic z-index scale
  * Use via semanticTokens.zIndex.* or theme.zIndex.*
  */
-export const semanticZIndex = {
+const semanticZIndex = {
   drawer: 1200,
   modal: 1300,
   snackbar: 1400,
@@ -55,7 +54,7 @@ export const semanticZIndex = {
  * Semantic elevation scale (MUI shadow indices)
  * Use via theme.shadows[semanticTokens.elevation.*]
  */
-export const semanticElevation = {
+const semanticElevation = {
   none: 0,
   low: 1,
   medium: 4,
@@ -67,7 +66,7 @@ export const semanticElevation = {
  * Typography configuration
  * Font families: Roboto (display), Roboto Mono (code)
  */
-export const semanticTypography = {
+const semanticTypography = {
   fontFamily: {
     display: '"Roboto", "Helvetica", "Arial", sans-serif',
     code: '"Roboto Mono", "Courier New", monospace',
@@ -91,7 +90,7 @@ export const semanticTypography = {
  * Neutral color scale (theme-independent)
  * Monotonic from light to dark - for backgrounds, borders, disabled states
  */
-export const neutralScale = {
+const neutralScale = {
   50: "#FDFDFF", // White
   100: "#F6F6F6", // Light Gray
   200: "#F2F9FF", // Background (slight blue tint)
@@ -113,7 +112,7 @@ export const neutralScale = {
  * IMPORTANT: Do not use these directly in components.
  * Use theme.palette.* semantic tokens instead.
  */
-export const kiloColors = {
+const kiloColors = {
   primary: {
     main: "#1E2E3E", // New primary
     accent: "#1E2E3E", // Same as main per spec
@@ -186,37 +185,6 @@ export const kiloColors = {
       dark: "#81D4FA", // Light info for dark mode
     },
   },
-  // Terminal colors - aligned with new neutrals
-  terminal: {
-    light: {
-      background: "#F6F6F6",
-      backgroundAlt: "#DFDFDF",
-      text: "#0C0C0C",
-      timestamp: "#1E2E3E", // Primary - good contrast on light
-      success: "#4CAF50",
-      warning: "#FFC107",
-      error: "#E53935",
-      info: "#0277BD", // Darker for light mode contrast
-      data: "#1565C0",
-      identifier: "#3162BD",
-      packet: "#1565C0",
-      header: "#4CAF50",
-    },
-    dark: {
-      background: "#0C0C0C",
-      backgroundAlt: "#2D2D2D",
-      text: "#F6F6F6",
-      timestamp: "#81D4FA", // Light info for dark mode
-      success: "#4CAF50",
-      warning: "#FFC107",
-      error: "#E53935",
-      info: "#81D4FA",
-      data: "#81D4FA",
-      identifier: "#3162BD",
-      packet: "#FFC107",
-      header: "#4CAF50",
-    },
-  },
   borders: {
     primary: "rgba(145, 145, 145, 0.1)", // Based on Medium Dark Gray
     secondary: "rgba(145, 145, 145, 0.3)",
@@ -274,6 +242,7 @@ interface SemanticPalette {
     secondary: string;
     disabled: string;
   };
+  highlight: HighlightPalette;
 }
 
 interface SemanticStatus {
@@ -303,7 +272,7 @@ interface SemanticStatus {
   };
 }
 
-export interface SemanticTokens {
+interface SemanticTokens {
   palette: SemanticPalette;
   status: SemanticStatus;
   neutral: typeof neutralScale;
@@ -312,6 +281,17 @@ export interface SemanticTokens {
   elevation: typeof semanticElevation;
   typography: typeof semanticTypography;
 }
+
+/**
+ * Hover, focus and selection surface; the same blue in both modes keeps it
+ * visible on the dark paper.
+ */
+const HIGHLIGHT_SECONDARY_TEXT_OPACITY = 0.9;
+const highlightPalette: HighlightPalette = {
+  main: kiloColors.additional.buttonHoverLight,
+  contrastText: neutralScale[50],
+  secondaryText: alpha(neutralScale[50], HIGHLIGHT_SECONDARY_TEXT_OPACITY),
+};
 
 /**
  * Light theme semantic tokens
@@ -351,6 +331,7 @@ const lightSemanticTokens: SemanticTokens = {
       secondary: kiloColors.lightMode.text.secondary,
       disabled: kiloColors.additional.disabled,
     },
+    highlight: highlightPalette,
   },
   status: {
     success: {
@@ -416,13 +397,15 @@ const darkSemanticTokens: SemanticTokens = {
       default: kiloColors.borders.primary,
       subtle: "rgba(145, 145, 145, 0.05)",
       strong: kiloColors.borders.secondary,
-      focus: kiloColors.primary.accent,
+      // Navy vanishes on the dark paper; a focused or hovered field uses the text color.
+      focus: kiloColors.darkMode.text.primary,
     },
     text: {
       primary: kiloColors.darkMode.text.primary,
       secondary: kiloColors.darkMode.text.secondary,
       disabled: kiloColors.additional.disabled,
     },
+    highlight: highlightPalette,
   },
   status: {
     success: {
@@ -464,7 +447,7 @@ const darkSemanticTokens: SemanticTokens = {
 /**
  * Get semantic tokens for the specified mode
  */
-export const getSemanticTokens = (mode: "light" | "dark"): SemanticTokens => {
+const getSemanticTokens = (mode: "light" | "dark"): SemanticTokens => {
   return mode === "light" ? lightSemanticTokens : darkSemanticTokens;
 };
 
@@ -525,7 +508,7 @@ const baseTypography = {
   },
   button: {
     fontFamily: semanticTypography.fontFamily.code,
-    fontSize: "16px",
+    fontSize: semanticTypography.fontSize.sm,
     lineHeight: "20px",
     fontWeight: semanticTypography.fontWeight.medium,
     textTransform: "none" as const,
@@ -572,51 +555,15 @@ const createComponentOverrides = (
   tokens: SemanticTokens,
   mode: "light" | "dark",
 ): ThemeOptions["components"] => ({
-  MuiButton: {
-    styleOverrides: {
-      root: {
-        borderRadius: 8,
-        padding: "12px 24px",
-        transition: "all 0.2s ease-in-out",
-        "&:hover": {
-          transform: "translateY(-1px)",
-          boxShadow:
-            mode === "light"
-              ? "0 4px 12px rgba(0, 0, 0, 0.1)"
-              : "0 4px 12px rgba(0, 0, 0, 0.3)",
-        },
-        "&.Mui-disabled": {
-          backgroundColor: alpha(kiloColors.additional.disabled, 0.3),
-          color: tokens.palette.text.disabled,
-        },
-      },
-      contained: {
-        backgroundColor: tokens.palette.primary.main,
-        color: tokens.palette.primary.contrastText,
-        "&:hover": {
-          // Use action.hover color for contained buttons
-          backgroundColor:
-            mode === "light"
-              ? kiloColors.additional.buttonHoverLight
-              : kiloColors.additional.buttonHoverDark,
-        },
-      },
-      outlined: {
-        borderColor: tokens.palette.border.strong,
-        color: tokens.palette.text.primary,
-        "&:hover": {
-          borderColor: tokens.palette.primary.main,
-          backgroundColor: alpha(tokens.palette.primary.main, 0.1),
-        },
-      },
-      text: {
-        color: tokens.palette.primary.main,
-        "&:hover": {
-          backgroundColor: alpha(tokens.palette.primary.main, 0.1),
-        },
-      },
-    },
-  },
+  ...createButtonOverrides({
+    containedHover:
+      mode === "light"
+        ? kiloColors.additional.buttonHoverLight
+        : kiloColors.additional.buttonHoverDark,
+    outlinedBorder: tokens.palette.border.strong,
+  }),
+  ...tabOverrides,
+  ...foregroundOverrides,
   MuiPaper: {
     styleOverrides: {
       root: {
@@ -657,7 +604,7 @@ const createComponentOverrides = (
             borderColor: tokens.palette.border.strong,
           },
           "&:hover fieldset": {
-            borderColor: tokens.palette.primary.light,
+            borderColor: tokens.palette.border.focus,
           },
           "&.Mui-focused fieldset": {
             borderColor: tokens.palette.border.focus,
@@ -672,9 +619,11 @@ const createComponentOverrides = (
         borderRadius: 6,
         fontFamily: semanticTypography.fontFamily.code,
         fontSize: "12px",
+        ...chipHighlight(tokens.palette.highlight),
       },
     },
   },
+  ...createHighlightOverrides(tokens.palette.highlight),
   MuiAlert: {
     styleOverrides: {
       root: {
@@ -779,12 +728,10 @@ export const createAppTheme = (mode: "light" | "dark"): Theme => {
         contrastText: tokens.status.info.contrastText,
       },
       divider: tokens.palette.border.default,
+      highlight: tokens.palette.highlight,
       // Action colors for global propagation
       action: {
-        hover:
-          mode === "light"
-            ? kiloColors.additional.buttonHoverLight
-            : kiloColors.additional.buttonHoverDark,
+        hover: tokens.palette.highlight.main,
         disabled: kiloColors.additional.disabled,
         disabledBackground: alpha(kiloColors.additional.disabled, 0.3),
       },
@@ -798,106 +745,4 @@ export const createAppTheme = (mode: "light" | "dark"): Theme => {
     zIndex: tokens.zIndex,
     components: createComponentOverrides(tokens, mode),
   });
-};
-
-// =============================================================================
-// BACKWARD COMPATIBILITY EXPORTS
-// =============================================================================
-
-/**
- * Pre-built light theme (for backward compatibility)
- * @deprecated Use createAppTheme('light') instead
- */
-export const lightTheme: Theme = createAppTheme("light");
-
-/**
- * Pre-built dark theme (for backward compatibility)
- * @deprecated Use createAppTheme('dark') instead
- */
-export const darkTheme: Theme = createAppTheme("dark");
-
-/**
- * Get theme by mode (for backward compatibility)
- * @deprecated Use createAppTheme(mode) instead
- */
-export const getTheme = (mode: "light" | "dark"): Theme => {
-  return createAppTheme(mode);
-};
-
-/**
- * Spacing helper (for backward compatibility)
- * @deprecated Use theme.spacing(units) instead
- */
-export const getSpacing = (units: number): number => units * spacing;
-
-// =============================================================================
-// TERMINAL STYLES (for CLI-like components)
-// =============================================================================
-
-/**
- * Terminal style helper for CLI-like components
- * Uses semantic tokens internally
- */
-export const getTerminalStyles = (mode: "light" | "dark") => {
-  const colors =
-    mode === "light" ? kiloColors.terminal.light : kiloColors.terminal.dark;
-
-  return {
-    container: {
-      bgcolor: colors.background,
-      border: "1px solid",
-      borderColor: kiloColors.borders.secondary,
-      borderRadius: 1,
-      p: 1,
-    },
-    line: {
-      py: 0.5,
-      px: 1,
-      fontFamily: semanticTypography.fontFamily.code,
-      fontSize: "0.875rem",
-      bgcolor: colors.background,
-      color: colors.text,
-      whiteSpace: "nowrap" as const,
-      overflow: "auto",
-      "&:hover": {
-        bgcolor: colors.backgroundAlt,
-      },
-    },
-    header: {
-      px: 1,
-      py: 0.5,
-      bgcolor: colors.backgroundAlt,
-      borderBottom: "1px solid",
-      borderColor: kiloColors.borders.secondary,
-      fontFamily: semanticTypography.fontFamily.code,
-      color: colors.header,
-      fontWeight: "bold",
-      textTransform: "uppercase" as const,
-    },
-    colors,
-  };
-};
-
-// =============================================================================
-// TIME FORMATTING HELPERS
-// =============================================================================
-
-/**
- * Format time in 24h format
- */
-export const formatTime24h = (date: Date | string): string => {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleTimeString("en-US", {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-};
-
-/**
- * Format time for terminal/log displays with brackets
- */
-export const formatTerminalTime = (date: Date | string): string => {
-  return `[${formatTime24h(date)}]`;
 };

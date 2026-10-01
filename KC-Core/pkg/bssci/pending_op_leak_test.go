@@ -25,7 +25,6 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 		server.config = &Config{MessageEncoding: EncodingJSON}
 		server.SetStorageForTest(storage)
-		server.RegisterHandlers()
 		session := &Session{
 			ProtocolSessionState: ProtocolSessionState{
 				ID:                "leak-test",
@@ -54,7 +53,7 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 			opType:  mioty.CmdStatus,
 			respCmd: mioty.CmdStatusResponse,
 			invoke: func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error {
-				return s.handleStatusResponse(s, sess, msg, data)
+				return s.handleStatusResponse(sess, msg, data)
 			},
 		},
 		{
@@ -64,7 +63,7 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 			endpoint: []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77},
 			metadata: map[string]interface{}{"queId": int64(42), "tenantID": "1"},
 			invoke: func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error {
-				return s.handleDLDataQueueResponse(s, sess, msg, data)
+				return s.handleDLDataQueueResponse(sess, msg, data)
 			},
 		},
 		{
@@ -77,7 +76,7 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 				s.downlinkSvc = &mqttTestDownlinkService{}
 			},
 			invoke: func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error {
-				return s.handleDLDataRevokeResponse(s, sess, msg, data)
+				return s.handleDLDataRevokeResponse(sess, msg, data)
 			},
 		},
 		{
@@ -85,7 +84,7 @@ func TestSCInitiatedOperationsFinalizeAfterCmp(t *testing.T) {
 			opType:  mioty.CmdDLRxStatusQuery,
 			respCmd: mioty.CmdDLRxStatusQueryResponse,
 			invoke: func(s *Server, sess *Session, msg *Message, data map[string]interface{}) error {
-				return s.handleDLRXStatusQueryResponse(s, sess, msg, data)
+				return s.handleDLRXStatusQueryResponse(sess, msg, data)
 			},
 		},
 	}

@@ -11,11 +11,11 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	grpcproxy "github.com/mwitkow/grpc-proxy/proxy"
 	"google.golang.org/grpc/metadata"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Gateway/internal/rpccatalog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -123,14 +123,14 @@ func startMatrixGateway(t *testing.T) string {
 		if selErr != nil {
 			return nil, nil, selErr
 		}
-		outMD := SanitizeAndInject(ctx)
+		outMD := SanitizeAndInject(ctx, testNoPeerSecret)
 		return metadata.NewOutgoingContext(ctx, outMD), upstream, nil
 	}
 
 	gatewayServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(authInterceptor.UnaryInterceptor()),
 		grpc.ChainStreamInterceptor(authInterceptor.StreamInterceptor()),
-		grpc.UnknownServiceHandler(grpcproxy.TransparentHandler(director)),
+		grpc.UnknownServiceHandler(TransparentHandler(director)),
 	)
 	gatewayLis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -164,55 +164,40 @@ var publicKiloCenterServiceMethods = []string{
 	"/kilocenter.api.v1.KiloCenterService/RegisterAccount",
 }
 
-// identityInternalServiceMethods should be blocked (Unimplemented) via gateway.
-var identityInternalServiceMethods = []string{
-	"/kilocenter.api.v1.IdentityInternalService/ResolveOrg",
-	"/kilocenter.api.v1.IdentityInternalService/GetDefaultOrgForTenant",
-	"/kilocenter.api.v1.IdentityInternalService/ValidateAPIKey",
-	"/kilocenter.api.v1.IdentityInternalService/UpdateAPIKeyLastUsed",
+// unaryNames and streamNames read the method sets from the generated
+// descriptors so the matrix can never drift from the proto.
+func unaryNames(desc grpc.ServiceDesc) []string {
+	names := make([]string, 0, len(desc.Methods))
+	for _, method := range desc.Methods {
+		names = append(names, method.MethodName)
+	}
+	return names
 }
 
-// coreServiceUnaryMethods lists all CoreService unary RPCs (extracted from _ServiceDesc).
-var coreServiceUnaryMethods = []string{
-	"CreateEndPoint", "GetEndPoint", "UpdateEndPoint", "DeleteEndPoint", "ListEndPoints",
-	"AttachEndPoint", "DetachEndPoint",
-	"CreateBaseStation", "GetBaseStation", "UpdateBaseStation", "DeleteBaseStation", "ListBaseStations",
-	"GetBaseStationStats", "UpdateBaseStationEui",
-	"GetMessage", "SendDownlink", "RevokeDownlink", "ListDownlinkQueue", "GetDownlinkResults",
-	"SendULTransmit", "RequestBaseStationStatus", "InitiatePing",
-	"GetDLRXStatus", "QueryDLRXStatus", "GetDLRXStatusQueries",
-	"GetSystemStatus", "GetStatistics", "GetReleaseInfo",
-	"CreateIntegration", "GetIntegration", "UpdateIntegration", "DeleteIntegration", "ListIntegrations",
-	"GetAnalyticsOverview", "GetActivityAnalytics", "GetSignalQualityAnalytics",
-	"ListEvents", "ListBaseStationActivity", "ListEndpointActivity",
-	"ListAlerts", "GetAlertSummary",
-	"ListScaciSessions", "GetScaciSession", "GetScaciStatistics", "ListScaciErrors", "ListScaciQueues", "GetScaciStatus",
-	"GenerateCertificate", "DownloadCertificate", "DownloadBaseStationCertificate",
-	"GenerateServerCertificates", "RenewServerCertificates", "GetServerCertificateStatus",
-	"CreateManufacturer", "GetManufacturer", "UpdateManufacturer", "DeleteManufacturer", "ListManufacturers",
-	"CreateDeviceModel", "GetDeviceModel", "UpdateDeviceModel", "DeleteDeviceModel", "ListDeviceModels",
-	"CreateBlueprint", "GetBlueprint", "UpdateBlueprint", "DeleteBlueprint", "ListBlueprints",
-	"SetDefaultBlueprint", "SubmitBlueprintToRegistry", "CreateDeviceModelWithBlueprint", "DecodePreview",
-	"ListMessages", "ListBaseStationMessages", "GetBaseStationMessage", "GetBaseStationMessageStats",
-	"SearchBaseStationMessages", "ExportBaseStationMessages",
-	"ListEndpointMessages", "GetEndPointStats", "GetEndPointOperations",
+func streamNames(desc grpc.ServiceDesc) []string {
+	names := make([]string, 0, len(desc.Streams))
+	for _, stream := range desc.Streams {
+		names = append(names, stream.StreamName)
+	}
+	return names
 }
 
-// coreServiceStreamMethods lists CoreService streaming RPCs.
-var coreServiceStreamMethods = []string{
-	"StreamEvents",
-	"StreamMessages", "StreamBaseStationMessages",
+func fullMethods(desc grpc.ServiceDesc) []string {
+	methods := make([]string, 0, len(desc.Methods)+len(desc.Streams))
+	for _, name := range append(unaryNames(desc), streamNames(desc)...) {
+		methods = append(methods, rpccatalog.FullMethod(desc, name))
+	}
+	return methods
 }
 
-// identityServiceUnaryMethods lists all IdentityService unary RPCs.
-var identityServiceUnaryMethods = []string{
-	"Login", "RefreshTokens", "GetProfile", "GetAuthSettings", "Logout", "ChangePassword",
-	"ExchangeOIDC", "ExchangeOAuth2", "RegisterAccount",
-	"CreateUser", "GetUser", "UpdateUser", "DeleteUser", "ListUsers", "UpdateUserPassword",
-	"CreateOrganization", "GetOrganization", "UpdateOrganization", "DeleteOrganization", "ListOrganizations",
-	"AddOrganizationUser", "GetOrganizationUser", "UpdateOrganizationUser", "RemoveOrganizationUser", "ListOrganizationUsers", "ListUserOrganizations",
-	"CreateApiKey", "GetApiKey", "DeleteApiKey", "ListApiKeys",
-}
+// identityInternalServiceMethods must all be blocked (Unimplemented) via gateway.
+var identityInternalServiceMethods = fullMethods(pb.IdentityInternalService_ServiceDesc)
+
+var (
+	coreServiceUnaryMethods     = unaryNames(pb.CoreService_ServiceDesc)
+	coreServiceStreamMethods    = streamNames(pb.CoreService_ServiceDesc)
+	identityServiceUnaryMethods = unaryNames(pb.IdentityService_ServiceDesc)
+)
 
 func TestVerificationMatrix(t *testing.T) {
 	runVerificationMatrix(t, startMatrixGateway(t))
@@ -282,7 +267,7 @@ func (c matrixClient) assertNotUnimplemented(t *testing.T, methods []string) {
 func (c matrixClient) assertUnauthenticatedUnary(t *testing.T, servicePrefix string, methods []string) {
 	for _, method := range methods {
 		fullMethod := servicePrefix + method
-		if grpcconst.PublicMethods[fullMethod] {
+		if grpcconst.IsPublicMethod(fullMethod) {
 			continue // Skip public methods
 		}
 		t.Run(method, func(t *testing.T) {

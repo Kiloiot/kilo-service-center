@@ -3,60 +3,47 @@ package proxy
 import (
 	"strings"
 
-	"google.golang.org/grpc"
+	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Gateway/internal/rpccatalog"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-const identityServicePrefix = "/kilocenter.api.v1.IdentityService/"
-const identityInternalServicePrefix = "/kilocenter.api.v1.IdentityInternalService/"
+var (
+	identityServicePrefix         = rpccatalog.ServicePrefix(pb.IdentityService_ServiceDesc)
+	identityInternalServicePrefix = rpccatalog.ServicePrefix(pb.IdentityInternalService_ServiceDesc)
+)
 
-// compatIdentityMethods maps KiloCenterService compat methods that belong to identity.
-var compatIdentityMethods = map[string]bool{
-	"/kilocenter.api.v1.KiloCenterService/Login":                  true,
-	"/kilocenter.api.v1.KiloCenterService/RefreshTokens":          true,
-	"/kilocenter.api.v1.KiloCenterService/GetAuthSettings":        true,
-	"/kilocenter.api.v1.KiloCenterService/ExchangeOIDC":           true,
-	"/kilocenter.api.v1.KiloCenterService/ExchangeOAuth2":         true,
-	"/kilocenter.api.v1.KiloCenterService/GetProfile":             true,
-	"/kilocenter.api.v1.KiloCenterService/Logout":                 true,
-	"/kilocenter.api.v1.KiloCenterService/ChangePassword":         true,
-	"/kilocenter.api.v1.KiloCenterService/CreateUser":             true,
-	"/kilocenter.api.v1.KiloCenterService/GetUser":                true,
-	"/kilocenter.api.v1.KiloCenterService/UpdateUser":             true,
-	"/kilocenter.api.v1.KiloCenterService/DeleteUser":             true,
-	"/kilocenter.api.v1.KiloCenterService/ListUsers":              true,
-	"/kilocenter.api.v1.KiloCenterService/UpdateUserPassword":     true,
-	"/kilocenter.api.v1.KiloCenterService/CreateOrganization":     true,
-	"/kilocenter.api.v1.KiloCenterService/GetOrganization":        true,
-	"/kilocenter.api.v1.KiloCenterService/UpdateOrganization":     true,
-	"/kilocenter.api.v1.KiloCenterService/DeleteOrganization":     true,
-	"/kilocenter.api.v1.KiloCenterService/ListOrganizations":      true,
-	"/kilocenter.api.v1.KiloCenterService/AddOrganizationUser":    true,
-	"/kilocenter.api.v1.KiloCenterService/GetOrganizationUser":    true,
-	"/kilocenter.api.v1.KiloCenterService/UpdateOrganizationUser": true,
-	"/kilocenter.api.v1.KiloCenterService/RemoveOrganizationUser": true,
-	"/kilocenter.api.v1.KiloCenterService/ListOrganizationUsers":  true,
-	"/kilocenter.api.v1.KiloCenterService/ListUserOrganizations":  true,
-	"/kilocenter.api.v1.KiloCenterService/CreateApiKey":           true,
-	"/kilocenter.api.v1.KiloCenterService/GetApiKey":              true,
-	"/kilocenter.api.v1.KiloCenterService/DeleteApiKey":           true,
-	"/kilocenter.api.v1.KiloCenterService/ListApiKeys":            true,
-	"/kilocenter.api.v1.KiloCenterService/RegisterAccount":        true,
-}
+// statusUnknownService is the status text returned for methods the gateway
+// refuses to route, matching gRPC's own unknown-service wording so
+// internal-only services stay indistinguishable from absent ones.
+const statusUnknownService = "unknown service"
 
-// IsCompatIdentityMethod returns true if the method belongs to the
-// KiloCenterService compat map and should route to KC-Identity.
-func IsCompatIdentityMethod(fullMethod string) bool {
-	return compatIdentityMethods[fullMethod]
-}
+// compatIdentityMethods is every KiloCenterService compat method whose name is
+// an IdentityService RPC; those calls route to KC-Identity.
+var compatIdentityMethods = func() map[string]bool {
+	compat := make(map[string]bool, len(pb.KiloCenterService_ServiceDesc.Methods))
+	for _, method := range pb.KiloCenterService_ServiceDesc.Methods {
+		compat[method.MethodName] = true
+	}
+	methods := make(map[string]bool)
+	for _, method := range pb.IdentityService_ServiceDesc.Methods {
+		if compat[method.MethodName] {
+			methods[rpccatalog.FullMethod(pb.KiloCenterService_ServiceDesc, method.MethodName)] = true
+		}
+	}
+	return methods
+}()
 
-// SelectUpstream routes external RPCs to the correct backend.
+// SelectUpstream routes an external RPC to the upstream serving it: the
+// connection it is proxied on, or the circuit breaker guarding that upstream.
 // IdentityInternalService methods are explicitly denied (internal-only).
-func SelectUpstream(fullMethod string, core, identity grpc.ClientConnInterface) (grpc.ClientConnInterface, error) {
+func SelectUpstream[U any](fullMethod string, core, identity U) (U, error) {
 	// Hard deny: internal-only service must never be externally reachable
 	if strings.HasPrefix(fullMethod, identityInternalServicePrefix) {
-		return nil, status.Error(codes.Unimplemented, "unknown service")
+		var none U
+		return none, status.Error(codes.Unimplemented, statusUnknownService)
 	}
 
 	// Route IdentityService RPCs to KC-Identity

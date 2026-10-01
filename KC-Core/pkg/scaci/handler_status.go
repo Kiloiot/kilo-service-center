@@ -4,8 +4,8 @@ package scaci
 import (
 	"context"
 	"net"
-	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
@@ -20,12 +20,13 @@ import (
 // Purpose: Query Service Center operational status and base station telemetry
 func (s *Server) handleStatus(conn net.Conn, session *Session, opId int64) error {
 	if session == nil {
-		return s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errNoActiveSession)
+		s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errNoActiveSession)
+		return nil
 	}
 
-	s.logger.DebugContext(s.sessionContext(session), LogSCACIProcessingStatus, "opId", opId)
+	s.logger.DebugContext(s.sessionContext(session), LogSCACIProcessingStatus, logger.FieldOpID, opId)
 
-	session.UpdateLastSeen()
+	session.UpdateLastSeen(s.clock.Now())
 
 	// Record AC-initiated Status for audit trail (§3.5) if configured
 	if s.config.LogStatusOperations && session.ID > 0 && s.operationRecorder != nil {
@@ -34,16 +35,16 @@ func (s *Server) handleStatus(conn net.Conn, session *Session, opId int64) error
 
 		requestData := map[string]interface{}{
 			"opId":      opId,
-			"initiator": "ac",
+			"initiator": initiatorAC,
 		}
 		if err := s.operationRecorder.Record(recCtx, session, opId, CmdStatus, models.OperationDirectionInbound, requestData); err != nil {
-			s.logger.WarnContext(s.sessionContext(session), LogSCACIRecordStatusOpFailed, "error", err)
+			s.logger.WarnContext(s.sessionContext(session), LogSCACIRecordStatusOpFailed, logger.FieldError, err)
 			// Continue - operation tracking is for audit, not critical path
 		}
 	}
 
 	// Calculate SC time and uptime (Unix UTC nanoseconds)
-	now := time.Now().UTC()
+	now := s.clock.Now().UTC()
 	scTime := now.UnixNano()
 
 	// Calculate Service Center uptime in seconds (delegated to StatusService)
@@ -60,8 +61,8 @@ func (s *Server) handleStatus(conn net.Conn, session *Session, opId int64) error
 	if err != nil {
 		// Log error and set degraded status (not silent failure)
 		s.logger.WarnContext(s.sessionContext(session), LogSCACIStatusDependencyFailed,
-			"tenantID", session.TenantID,
-			"error", err)
+			logger.FieldTenantID, session.TenantID,
+			logger.FieldError, err)
 		baseStations = nil
 		dependencyFailed = true
 	}
@@ -74,9 +75,9 @@ func (s *Server) handleStatus(conn net.Conn, session *Session, opId int64) error
 	}
 
 	s.logger.DebugContext(s.sessionContext(session), LogSCACIStatusResponsePrepared,
-		"baseStationCount", len(bsStatusArray),
-		"tenantID", session.TenantID,
-		"degraded", dependencyFailed)
+		logger.FieldBaseStationCount, len(bsStatusArray),
+		logger.FieldTenantID, session.TenantID,
+		logger.FieldDegraded, dependencyFailed)
 
 	// Determine status code and message based on dependency health
 	statusCode := POSIX_OK
@@ -111,12 +112,12 @@ func (s *Server) handleStatus(conn net.Conn, session *Session, opId int64) error
 
 		responseData := map[string]interface{}{
 			"opId":             opId,
-			"initiator":        "ac",
+			"initiator":        initiatorAC,
 			"baseStationCount": len(bsStatusArray),
 			"degraded":         dependencyFailed,
 		}
 		if err := s.operationRepo.UpdateOperationState(rspCtx, session.ID, opId, models.OperationStateAcknowledged, responseData); err != nil {
-			s.logger.WarnContext(s.sessionContext(session), LogSCACIRecordStatusRspOpFailed, "error", err)
+			s.logger.WarnContext(s.sessionContext(session), LogSCACIRecordStatusRspOpFailed, logger.FieldError, err)
 		}
 	}
 
@@ -131,12 +132,13 @@ func (s *Server) handleStatus(conn net.Conn, session *Session, opId int64) error
 // No response is sent per spec - handshake is complete.
 func (s *Server) handleStatusComplete(conn net.Conn, session *Session, opId int64) error {
 	if session == nil {
-		return s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errNoActiveSession)
+		s.sendErrorWithCatalog(conn, nil, opId, POSIX_EINVAL, errNoActiveSession)
+		return nil
 	}
 
-	s.logger.DebugContext(s.sessionContext(session), LogSCACIStatusHandshakeComplete, "opId", opId)
+	s.logger.DebugContext(s.sessionContext(session), LogSCACIStatusHandshakeComplete, logger.FieldOpID, opId)
 
-	session.UpdateLastSeen()
+	session.UpdateLastSeen(s.clock.Now())
 
 	// Update AC-initiated StatusComplete state for audit trail (§3.5) if configured
 	// State transition: acknowledged → completed (completes AC-initiated three-way handshake)
@@ -146,10 +148,10 @@ func (s *Server) handleStatusComplete(conn net.Conn, session *Session, opId int6
 
 		completeData := map[string]interface{}{
 			"opId":      opId,
-			"initiator": "ac",
+			"initiator": initiatorAC,
 		}
 		if err := s.operationRepo.UpdateOperationState(cmpCtx, session.ID, opId, models.OperationStateCompleted, completeData); err != nil {
-			s.logger.WarnContext(s.sessionContext(session), LogSCACIRecordStatusCmpOpFailed, "error", err)
+			s.logger.WarnContext(s.sessionContext(session), LogSCACIRecordStatusCmpOpFailed, logger.FieldError, err)
 			// Continue - operation tracking is for audit, not critical path
 		}
 	}

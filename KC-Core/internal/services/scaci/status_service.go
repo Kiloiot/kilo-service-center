@@ -7,7 +7,7 @@
 //   - Base station counting (from handler_status.go:48)
 //
 // Dependencies (injected):
-//   - interfaces.BaseStationRepository: BS state queries
+//   - BaseStationStore: BS state queries
 //   - time.Time: Service start timestamp
 //
 // Error Handling:
@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -39,8 +38,8 @@ import (
 // Encapsulates status fields in a service to improve separation of concerns
 // and allow status logic to evolve independently of the transport layer.
 type statusService struct {
-	baseStationRepo interfaces.BaseStationRepository
-	endpointRepo    interfaces.EndpointRepository
+	baseStationRepo BaseStationStore
+	endpointRepo    EndpointStore
 	serviceStart    time.Time
 }
 
@@ -54,8 +53,8 @@ type statusService struct {
 // Returns:
 //   - StatusService: Service instance implementing interface
 func NewStatusService(
-	baseStationRepo interfaces.BaseStationRepository,
-	endpointRepo interfaces.EndpointRepository,
+	baseStationRepo BaseStationStore,
+	endpointRepo EndpointStore,
 	serviceStart time.Time,
 ) scaci.StatusService {
 	return &statusService{
@@ -97,7 +96,7 @@ func (ss *statusService) GetUptime() int64 {
 func (ss *statusService) GetBaseStations(ctx context.Context, tenantID int64) ([]*models.BaseStation, error) {
 	filter := &models.BaseStationFilter{
 		TenantID: tenantID,
-		Limit:    0, // Fetch all base stations (no pagination)
+		Limit:    baseStationListAll,
 		Offset:   0,
 	}
 

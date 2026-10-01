@@ -81,7 +81,7 @@ func (m *mockOrgSvcIsolation) ListAll(_ context.Context, _, _ int) ([]*models.Or
 type mockAdminUserSvcIsolation struct{}
 
 func (m *mockAdminUserSvcIsolation) GetByID(_ context.Context, id uuid.UUID) (*models.User, error) {
-	return &models.User{ID: id, IsAdmin: true}, nil
+	return &models.User{ID: id, IsAdmin: true, IsActive: true}, nil
 }
 
 func (m *mockAdminUserSvcIsolation) GetByEmail(_ context.Context, _ string) (*models.User, error) {
@@ -159,6 +159,7 @@ type identityIsolationTestServices struct {
 func newIdentityIsolationTestService() *identityIsolationTestServices {
 	orgMock := &mockOrgSvcIsolation{}
 	svc := &IdentityService{
+		audit:        discardAudit{},
 		orgSvc:       orgMock,
 		adminUserSvc: &mockAdminUserSvcIsolation{},
 		log:          &mockLogger{},
@@ -178,13 +179,13 @@ func TestTenantIsolation_ListOrganizations_UsesListAll(t *testing.T) {
 
 	// Server admin from tenant 42 lists orgs
 	ctx42 := contextForTenant(42)
-	_, err := ts.svc.ListOrganizations(ctx42, &pb.ListOrganizationsRequest{PageSize: 10})
+	_, err := ts.svc.ListOrganizations(ctx42, &pb.ListOrganizationsRequest{PageSize: testPageSize})
 	require.NoError(t, err)
 	assert.Equal(t, 1, ts.orgMock.listAllCallCount)
 
 	// Server admin from tenant 99 lists orgs
 	ctx99 := contextForTenant(99)
-	_, err = ts.svc.ListOrganizations(ctx99, &pb.ListOrganizationsRequest{PageSize: 10})
+	_, err = ts.svc.ListOrganizations(ctx99, &pb.ListOrganizationsRequest{PageSize: testPageSize})
 	require.NoError(t, err)
 	assert.Equal(t, 2, ts.orgMock.listAllCallCount)
 }
@@ -218,7 +219,7 @@ func TestTenantIsolation_OrgCRUD_RequiresAdmin(t *testing.T) {
 		{
 			name: "ListOrganizations",
 			call: func() error {
-				_, err := ts.svc.ListOrganizations(ctx, &pb.ListOrganizationsRequest{PageSize: 10})
+				_, err := ts.svc.ListOrganizations(ctx, &pb.ListOrganizationsRequest{PageSize: testPageSize})
 				return err
 			},
 		},
@@ -311,18 +312,19 @@ func TestTenantIsolation_ListApiKeys_TenantPropagation(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:        discardAudit{},
 		apiKeySvc:    mockAPIKey,
 		adminUserSvc: &mockAdminUserSvcIsolation{},
 		log:          &mockLogger{},
 	}
 
 	ctx42 := contextForTenant(42)
-	_, err := svc.ListApiKeys(ctx42, &pb.ListApiKeysRequest{PageSize: 10})
+	_, err := svc.ListApiKeys(ctx42, &pb.ListApiKeysRequest{PageSize: testPageSize})
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), capturedTenantID)
 
 	ctx99 := contextForTenant(99)
-	_, err = svc.ListApiKeys(ctx99, &pb.ListApiKeysRequest{PageSize: 10})
+	_, err = svc.ListApiKeys(ctx99, &pb.ListApiKeysRequest{PageSize: testPageSize})
 	require.NoError(t, err)
 	assert.Equal(t, int64(99), capturedTenantID)
 }

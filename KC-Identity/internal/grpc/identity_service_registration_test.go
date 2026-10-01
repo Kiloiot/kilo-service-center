@@ -14,6 +14,15 @@ import (
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/registration"
+)
+
+// Wrapped validation errors shaped exactly as the registration service
+// returns them, so the handler's sentinel unwrapping is exercised.
+var (
+	errFixtureCompanyNameRequired = fmt.Errorf("%s: %w", "company_name", registration.ErrCompanyNameRequired)
+	errFixtureEmailExists         = fmt.Errorf("%s: %w", "email", registration.ErrEmailExists)
+	errFixtureWeakPassword        = fmt.Errorf("%s: %w", "password", registration.ErrWeakPassword)
 )
 
 // mockRegistrationService implements grpcservices.RegistrationService for testing.
@@ -70,6 +79,7 @@ func TestRegisterAccount_Handler_Success(t *testing.T) {
 	}
 
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: mockReg,
 		log:             &mockLogger{},
 	}
@@ -111,6 +121,7 @@ func TestRegisterAccount_Handler_Success(t *testing.T) {
 
 func TestRegisterAccount_Handler_MissingEmail(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: &mockRegistrationService{},
 		log:             &mockLogger{},
 	}
@@ -137,6 +148,7 @@ func TestRegisterAccount_Handler_MissingEmail(t *testing.T) {
 
 func TestRegisterAccount_Handler_MissingPassword(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: &mockRegistrationService{},
 		log:             &mockLogger{},
 	}
@@ -163,6 +175,7 @@ func TestRegisterAccount_Handler_MissingPassword(t *testing.T) {
 
 func TestRegisterAccount_Handler_MissingFirstName(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: &mockRegistrationService{},
 		log:             &mockLogger{},
 	}
@@ -189,6 +202,7 @@ func TestRegisterAccount_Handler_MissingFirstName(t *testing.T) {
 
 func TestRegisterAccount_Handler_MissingLastName(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: &mockRegistrationService{},
 		log:             &mockLogger{},
 	}
@@ -216,11 +230,12 @@ func TestRegisterAccount_Handler_MissingLastName(t *testing.T) {
 func TestRegisterAccount_Handler_MissingCompanyName(t *testing.T) {
 	mockReg := &mockRegistrationService{
 		registerAccountFunc: func(_ context.Context, _ *grpcservices.RegisterAccountRequest) (*grpcservices.AuthLoginResult, error) {
-			return nil, fmt.Errorf("company_name: %s", grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCompanyNameRequired))
+			return nil, errFixtureCompanyNameRequired
 		},
 	}
 
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: mockReg,
 		log:             &mockLogger{},
 	}
@@ -247,6 +262,7 @@ func TestRegisterAccount_Handler_MissingCompanyName(t *testing.T) {
 
 func TestRegisterAccount_Handler_ServiceNotConfigured(t *testing.T) {
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: nil,
 		log:             &mockLogger{},
 	}
@@ -274,11 +290,12 @@ func TestRegisterAccount_Handler_ServiceNotConfigured(t *testing.T) {
 func TestRegisterAccount_Handler_ServiceError_DuplicateEmail(t *testing.T) {
 	mockReg := &mockRegistrationService{
 		registerAccountFunc: func(_ context.Context, _ *grpcservices.RegisterAccountRequest) (*grpcservices.AuthLoginResult, error) {
-			return nil, fmt.Errorf("email: %s", grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenEmailAlreadyExists))
+			return nil, errFixtureEmailExists
 		},
 	}
 
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: mockReg,
 		log:             &mockLogger{},
 	}
@@ -307,11 +324,12 @@ func TestRegisterAccount_Handler_ServiceError_DuplicateEmail(t *testing.T) {
 func TestRegisterAccount_Handler_ServiceError_WeakPassword(t *testing.T) {
 	mockReg := &mockRegistrationService{
 		registerAccountFunc: func(_ context.Context, _ *grpcservices.RegisterAccountRequest) (*grpcservices.AuthLoginResult, error) {
-			return nil, fmt.Errorf("password: %s", grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenWeakPassword))
+			return nil, errFixtureWeakPassword
 		},
 	}
 
 	svc := &IdentityService{
+		audit:           discardAudit{},
 		registrationSvc: mockReg,
 		log:             &mockLogger{},
 	}

@@ -8,8 +8,8 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
@@ -106,24 +106,59 @@ type SessionService interface {
 	UpdatePingTimestamp(ctx context.Context, session *Session) error
 }
 
-// DownlinkService uses REAL postgres.DB methods (not storage.Storage)
-// Preserves: CreateULDataMessage, EnqueueDownlink with MIOTY types
+// DownlinkService owns downlink queue operations over the canonical MIOTY
+// types; implementations persist through the message store helpers.
 type DownlinkService interface {
-	// EnqueueDownlink enqueues a downlink message using storage interface
-	EnqueueDownlink(ctx context.Context, epEui uint64, userData []byte, priority float32, tenantID int64) (queId int64, err error)
-
-	// UpdateDownlinkStatus updates downlink message status via storage interface
-	UpdateDownlinkStatus(ctx context.Context, queId uint64, tenantIDStr string, status string) error
-
 	// ProcessDLDataResult handles complete downlink result processing (BSSCI §5.14)
 	// Orchestrates: tenant resolution, DB update, SCACI broadcast, audit logging, cleanup
 	// Returns response message for handler to send via sendMessage
 	ProcessDLDataResult(ctx context.Context, session *Session, result *mioty.DLDataResult) (responseMsg map[string]interface{}, err error)
 
-	// ProcessRevokeResponse handles downlink revoke response processing (BSSCI §5.13)
-	// Orchestrates: tenant resolution, DB update, event recording, cleanup
-	// Returns response message for handler to send via sendMessage
-	ProcessRevokeResponse(ctx context.Context, session *Session, opId int64, queueID int64, endpointEUI uint64) (responseMsg map[string]interface{}, err error)
+	// ProcessRevokeResponse records a base station's dlDataRevRsp (BSSCI
+	// §3.13) and returns the dlDataRevCmp to send; revoked is false for a
+	// downlink that expired, being revoked for its lifetime, and for one that
+	// had already ended, which keeps its outcome.
+	ProcessRevokeResponse(ctx context.Context, session *Session, opId int64, queueID int64, endpointEUI uint64) (responseMsg map[string]interface{}, revoked bool, err error)
+
+	// ProcessRevokeRefusal records a base station's error answer to a
+	// dlDataRev (BSSCI §3.17). A refusal saying the station does not hold the
+	// downlink ends it as a confirmed revoke would; any other refusal leaves
+	// it in flight. revoked reports whether it ended revoked.
+	ProcessRevokeRefusal(ctx context.Context, session *Session, refusal RevokeRefusal) (revoked bool, err error)
+
+	// ProcessQueueAck records the base station that answered a dlDataQue
+	// with dlDataQueRsp as the holder of the downlink (BSSCI §3.12).
+	ProcessQueueAck(ctx context.Context, session *Session, ack QueueAcknowledgement) error
+
+	// ProcessQueueError fails a downlink whose dlDataQue the base station
+	// answered with error (BSSCI §3.17) and reports it discarded (SCACI §3.12).
+	ProcessQueueError(ctx context.Context, session *Session, rejection QueueRejection) error
+}
+
+// QueueAcknowledgement is a base station's dlDataQueRsp: the downlink it
+// refers to, its owner, and the organization it was enqueued under.
+type QueueAcknowledgement struct {
+	QueueID        int64
+	OwnerTenant    string
+	OrganizationID *uuid.UUID
+}
+
+// QueueRejection is a base station's error answer to a dlDataQue: the
+// downlink it refers to, its owner, and the station's POSIX code and message.
+type QueueRejection struct {
+	QueueID     int64
+	EndpointEUI uint64
+	OwnerTenant string
+	Code        int
+	Message     string
+}
+
+// RevokeRefusal is a base station's error answer to a dlDataRev: the
+// downlink it names and the station's POSIX code.
+type RevokeRefusal struct {
+	QueueID     int64
+	EndpointEUI uint64
+	Code        int
 }
 
 // StatusService manages pendingOps map + DB persistence.
@@ -150,11 +185,12 @@ type StatusService interface {
 	// RemovePendingOperation cleans map + DB using SessionOpKey composite key
 	RemovePendingOperation(ctx context.Context, session *Session, opId int64) error
 
-	// ExtractQueueMetadata retrieves endpoint EUI, queue ID, and tenant ID from pending operation.
+	// ExtractQueueMetadata retrieves endpoint EUI, queue ID, tenant ID and owner
+	// organization from a pending operation.
 	// Used by downlink handlers to correlate responses with original requests.
 	// Returns tenantID for proper roaming tenant isolation (BSSCI §5.12).
 	// Session parameter required for SessionOpKey composite key lookup.
-	ExtractQueueMetadata(session *Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string)
+	ExtractQueueMetadata(session *Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string, organizationID *uuid.UUID)
 
 	// UpdatePendingOperationMetadata persists new metadata for an existing
 	// pending row (metadataJSON is the pre-marshaled form of metadata) and,
@@ -177,6 +213,9 @@ type StatusService interface {
 	// unreachable afterwards, while the DB rows remain the durable source for
 	// a later resume.
 	EvictCachedOperations(session *Session)
+
+	// SessionOperations lists the operations the session has in flight.
+	SessionOperations(ctx context.Context, session *Session) []*PendingOperation
 }
 
 // PersistedOperation is a raw persisted pending-operation row returned for
@@ -189,6 +228,14 @@ type PersistedOperation struct {
 	OperationData []byte
 	Metadata      []byte
 	CreatedAt     time.Time
+}
+
+// AbandonedSessionReconciler hands the sessions a previous process of this
+// service center left active back resumable, so a base station can resume
+// after a crash (BSSCI §3.3). It runs once when the server starts, before any
+// connection is accepted.
+type AbandonedSessionReconciler interface {
+	ReconcileAbandonedSessions(ctx context.Context) error
 }
 
 // BaseStationConnectionRegistry owns the live-connection operations the
@@ -242,11 +289,13 @@ type RegisteredBaseStation struct {
 	Name               string
 	TLSCertificate     string
 	TLSCertFingerprint string
+	// TLSCertExpiresAt is the bound certificate's expiry; nil until recorded.
+	TLSCertExpiresAt *time.Time
 }
 
 // RegisteredBaseStationDirectory reads registered station identity for
 // certificate enforcement during connect and backfills the certificate
-// fingerprint for rows issued before fingerprints were stored.
+// fingerprint and expiry for rows that do not store them yet.
 type RegisteredBaseStationDirectory interface {
 	// GetGlobal returns the registration for an EUI across all tenants
 	// (tenant is not yet authenticated at TLS accept).
@@ -256,6 +305,33 @@ type RegisteredBaseStationDirectory interface {
 	// stored value is still blank; reports whether a row was updated (false
 	// signals a concurrent writer - reload and compare).
 	BackfillFingerprintIfBlank(ctx context.Context, tenantID, id int64, fingerprint string) (bool, error)
+
+	// BackfillCertExpiryIfBlank persists the bound certificate's expiry only
+	// while none is stored; an existing expiry is never overwritten.
+	BackfillCertExpiryIfBlank(ctx context.Context, tenantID, id int64, expiresAt time.Time) (bool, error)
+}
+
+// StationEventRecorder records an event in a base station's activity feed,
+// the same seam its online and offline events are recorded through;
+// occurredAt is when the exchange happened on the wire.
+type StationEventRecorder interface {
+	RecordEvent(ctx context.Context, eui [8]byte, eventType string, occurredAt time.Time, data map[string]interface{}) error
+}
+
+// StationCertificateClaim is what a connecting base station asserts: the
+// station it claims to be, the client certificate it presented and the
+// station EUI that certificate names (nil for one naming no station, such as
+// an organization certificate).
+type StationCertificateClaim struct {
+	BaseStationEUI uint64
+	Certificate    *x509.Certificate
+	SubjectEUI     *uint64
+}
+
+// StationCertificateBinder refuses a connecting base station whose client
+// certificate does not belong to the registered station it claims to be.
+type StationCertificateBinder interface {
+	BindStationCertificate(ctx context.Context, claim StationCertificateClaim) error
 }
 
 // SCACIBroadcaster forwards via real scaciBroadcaster interface
@@ -263,43 +339,47 @@ type RegisteredBaseStationDirectory interface {
 type SCACIBroadcaster interface {
 	// BroadcastULData forwards uplink data to SCACI clients
 	BroadcastULData(ctx context.Context, tenantID int64, data *mioty.ULDataMessage) error
-
-	// BroadcastDLDataResult forwards downlink results to SCACI clients
-	BroadcastDLDataResult(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error
 }
 
 // MQTTEventPublisher publishes device events to MQTT (no KC-MQTT imports in pkg/bssci)
 type MQTTEventPublisher interface {
-	PublishUplink(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64,
-		rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, decodedPayload []byte) error
-	PublishAttach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error
-	PublishDetach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error
-	PublishDownlinkResult(ctx context.Context, orgUUID string, epEUI uint64, queID uint64, result string) error
+	PublishUplink(ctx context.Context, orgUUID string, msg *mioty.ULDataMessage) error
 }
 
-// SCACIEPStatusBroadcaster forwards endpoint attach/detach status to SCACI ACs (SCACI §3.13)
-//
-// This interface allows BSSCI to notify SCACI clients when endpoints attach or detach
-// without creating import cycles. Implemented by scaci.Server.BroadcastEPStatus().
-//
-// Spec References:
-//   - SCACI §3.13: EPStatus operation (SC-initiated)
-//   - BSSCI §5.6: Attach complete triggers EPStatus
-//   - BSSCI §5.7: Detach complete triggers EPStatus
-type SCACIEPStatusBroadcaster interface {
-	// BroadcastEPStatus forwards endpoint status to all active ACs for tenant
-	//
-	// Parameters:
-	//   - ctx: Context for operation
-	//   - tenantID: Tenant ID to filter sessions
-	//   - data: EPStatus data containing epEui, epStatus, and optional OTA fields
-	//
-	// Returns error if any sends fail. Returns nil if no active ACs (not an error).
-	BroadcastEPStatus(ctx context.Context, tenantID int64, data *EPStatusData) error
+// AttachmentDecision is the service center's decision that an endpoint is
+// attached or detached, taken for an operator, an application center, or a
+// base station that heard the endpoint attach or detach.
+type AttachmentDecision struct {
+	// TenantID owns the endpoint.
+	TenantID   int64
+	EndpointID int64
+	EpEUI      uint64
+	// Status is EndpointStatusAttached or EndpointStatusDetached.
+	Status string
+	// OverTheAir is the base station's report; nil for a decision taken in
+	// the service center.
+	OverTheAir *OverTheAirReport
+}
+
+// OverTheAirReport is what a base station reported of an attach or detach it
+// heard.
+type OverTheAirReport struct {
+	BaseStationEUI uint64
+	// Status carries the over-the-air epStat fields (SCACI §3.13.1).
+	Status *EPStatusData
+	// Telemetry is recorded with a detachment.
+	Telemetry *endpoint.DetachTelemetry
+}
+
+// AttachmentDecider records an attachment decision, tells the endpoint
+// owner's application centers and MQTT subscribers about it, and reports
+// whether it changed the endpoint's status.
+type AttachmentDecider interface {
+	Decide(ctx context.Context, decision AttachmentDecision) (bool, error)
 }
 
 // EPStatusData mirrors scaci.EPStatusData to avoid import cycle
-// BSSCI constructs this, SCACI receives via SCACIEPStatusBroadcaster interface
+// BSSCI constructs this, SCACI receives it through the attachment decider.
 type EPStatusData struct {
 	EpEui      uint64            // Endpoint EUI (required)
 	EpStatus   string            // "attached" or "detached" (required)
@@ -318,14 +398,6 @@ type EPStatusData struct {
 
 // DownlinkCommander sends downlink commands to base stations
 type DownlinkCommander interface {
-	// SendDLDataQueue queues downlink data; dlRxStatQry pairs a BSSCI
-	// dlRxStatQry operation (rev1 §5.16 / classic §3.16) ahead of the queue
-	// frame per the SCACI §3.10.1 hint.
-	SendDLDataQueue(sessionID string, epEui uint64, payloads [][]byte, queId int64,
-		prio float32, cntDepend bool, packetCnt []int64, format uint8,
-		responseExp bool, responsePrio bool, dlWindReq bool, expOnly bool, tenantID int64,
-		dlRxStatQry bool) error
-	SendDLDataRevoke(sessionID string, epEui uint64, queId uint64) error
 	SendDLRXStatusQuery(sessionID string, epEui uint64) error
 }
 
@@ -369,14 +441,14 @@ type QueueSerializer interface {
 	// BuildDLDataQueueComplete constructs dlDataQueCmp response per BSSCI §5.12
 	//
 	// Returns map with:
-	//   - command: "dlDataQueCmp"
+	//   - command: dlDataQueCmp
 	//   - opId: Operation ID from original dlDataQue request
 	BuildDLDataQueueComplete(opId int64) map[string]interface{}
 
 	// BuildDLDataResultResponse constructs dlDataResRsp response per BSSCI §5.13
 	//
 	// Returns map with:
-	//   - command: "dlDataResRsp"
+	//   - command: dlDataResRsp
 	//   - opId: Operation ID from original dlDataRes message
 	//   - queId: Queue ID that identifies the downlink
 	//   - success: Transmission success flag
@@ -385,14 +457,14 @@ type QueueSerializer interface {
 	// BuildDLDataResultComplete constructs dlDataResCmp response per BSSCI §5.14
 	//
 	// Returns map with:
-	//   - command: "dlDataResCmp"
+	//   - command: dlDataResCmp
 	//   - opId: Operation ID from original dlDataRes message
 	BuildDLDataResultComplete(opId int64) map[string]interface{}
 
 	// BuildDLDataRevokeComplete constructs dlDataRevCmp response per BSSCI §5.13
 	//
 	// Returns map with:
-	//   - command: "dlDataRevCmp"
+	//   - command: dlDataRevCmp
 	//   - opId: Operation ID from original dlDataRev request
 	BuildDLDataRevokeComplete(opID int64) map[string]interface{}
 }
@@ -424,20 +496,14 @@ type AuditLogger interface {
 	RecordQueueAck(ctx context.Context, tenant string, session *Session,
 		epEui uint64, queueID int64, opId int64) error
 
-	// RecordDLResult logs downlink transmission result (§5.14)
-	//
-	// Creates system event when downlink transmission completes (success or failure).
-	// Event captures transmission outcome and timing for reporting.
-	//
-	// Parameters:
-	//   - ctx: Request context
-	//   - tenant: Tenant ID string
-	//   - session: Active BSSCI session
-	//   - result: DL Data Result message from base station
-	//
-	// Returns error only on critical event store failures
-	RecordDLResult(ctx context.Context, tenant string, session *Session,
-		result *mioty.DLDataResult) error
+	// RecordDLRevokeResponse logs a base station's acknowledgment of a
+	// downlink revoke (§5.13).
+	RecordDLRevokeResponse(ctx context.Context, tenant string, session *Session,
+		epEui uint64, queueID int64, opId int64) error
+
+	// RecordQueueRevoked logs a downlink revoked in the service center queue
+	// before any base station held it (SCACI §3.11).
+	RecordQueueRevoked(ctx context.Context, downlink *storage.DownlinkMessage) error
 }
 
 // TenantResolver resolves tenant ownership for downlink queues (BSSCI §5.12-§5.14)
@@ -491,91 +557,6 @@ type TenantResolver interface {
 // MessageStore interface removed - replaced by interfaces.MIOTYDownlinkRepository
 // and interfaces.MIOTYMessageRepository.
 // See KC-DB/storage/interfaces/mioty_*_repository.go for interface definitions.
-
-// RoamingDetector resolves endpoint ownership and validates roaming agreements
-//
-// This interface supports multi-tenant roaming scenarios where an endpoint's owner tenant
-// (home network) differs from the serving tenant (visited network). In production roaming
-// deployments, all base stations on a server form a shared RF mesh, and any base station
-// can accept traffic from visiting endpoints.
-//
-// The stub implementation (internal/services/bssci/roaming_detector.go) returns
-// non-roaming defaults until full roaming behavior is implemented.
-//
-// Use Cases (Future):
-//   - BSSCI uplink handling: Resolve endpoint owner to route data/events correctly
-//   - SCACI broadcast: Send uplinks to owner tenant's clients (not session tenant)
-//   - Downlink queue: Track ownership via owner tenant (not serving tenant)
-//   - Billing/metrics: Attribute usage to owner tenant
-//
-// Spec References:
-//   - Multi-tenant isolation: see roaming architecture docs
-//   - Roaming design: ../docs/architecture/roaming/
-type RoamingDetector interface {
-	// IsRoaming checks if an endpoint is currently roaming.
-	// Returns true when endpoint's owner tenant differs from session tenant.
-	IsRoaming(ctx context.Context, endpointEUI uint64, sessionTenantID int64) (bool, error)
-
-	// ResolveOwnerTenant determines the home network tenant for an endpoint.
-	// Returns owner tenant ID regardless of which tenant's base station is serving.
-	// Community edition: returns 0 (callers fall back to session tenant).
-	ResolveOwnerTenant(ctx context.Context, endpointEUI uint64) (int64, error)
-
-	// ValidateAgreement checks if a roaming agreement exists between tenants.
-	// Community edition: always returns true (permit all).
-	ValidateAgreement(ctx context.Context, homeTenant, visitingTenant int64) (bool, error)
-}
-
-// AttachPropagateSender abstracts propagation message sending to avoid circular dependencies.
-//
-// This interface is implemented by Server and consumed by PropagationReconciler.
-// It provides a thin abstraction layer that allows the reconciler service to
-// send attach propagate messages without depending on the entire Server struct,
-// avoiding import cycles between reconciler and server packages.
-//
-// Spec References:
-//   - BSSCI §5.8: Attach Propagate three-way handshake
-//
-// Implementation Notes:
-//   - reconcileCtx contains reconcileJobID in Value("reconcileJobID") for metadata tracking
-//   - ownerCtx contains tenant/org for database operations (resolved by reconciler)
-//   - Dual context pattern avoids mixing concerns (job tracking vs tenant isolation)
-type AttachPropagateSender interface {
-	// SendAttachPropagateToSession sends attach propagate for a single endpoint to a session.
-	//
-	// Parameters:
-	//   - ownerCtx: Contains tenant/org context (first parameter per Go convention)
-	//   - session: Target base station session for propagation
-	//   - endpoint: Endpoint to propagate (includes owner tenant ID)
-	//
-	// The method handles:
-	//   - Operation ID generation (negative, monotonic per session)
-	//   - Message encoding (MessagePack per BSSCI spec)
-	//   - Pending operation persistence
-	//   - Wire transmission to base station
-	//
-	// Returns error if encoding, persistence, or transmission fails.
-	SendAttachPropagateToSession(
-		ownerCtx context.Context,
-		session *Session,
-		endpoint *models.EndPoint,
-	) error
-
-	// SendAttachPropagateBySessionID sends attach propagate using session ID lookup.
-	// Used by propagation service which only has BaseStationSession snapshots (no *Session).
-	//
-	// Parameters:
-	//   - ctx: Context with tenant/org values for database operations
-	//   - sessionID: Session identifier (string) from BaseStationSession.ID
-	//   - endpoint: Endpoint to propagate
-	//
-	// Returns error if session not found or propagation fails.
-	SendAttachPropagateBySessionID(
-		ctx context.Context,
-		sessionID string,
-		endpoint *models.EndPoint,
-	) error
-}
 
 // RoamingService manages endpoint roaming detection and event recording
 //
@@ -653,10 +634,6 @@ const (
 type UplinkIngestOptions struct {
 	// Source distinguishes direct BSSCI uplinks from CE-relayed federation uplinks.
 	Source UplinkSource
-	// FederationCEID is the CE instance identifier; set when Source == UplinkSourceFederation.
-	FederationCEID string
-	// FederationRelayID is the CE-generated relay UUID for idempotency; set when Source == UplinkSourceFederation.
-	FederationRelayID string
 	// ServingTenantID is the tenant resolved for the serving connection (BSSCI session or federation source).
 	// Zero falls back to the ingest service's instance tenant (single-tenant CE default).
 	ServingTenantID int64
@@ -666,6 +643,8 @@ type UplinkIngestOptions struct {
 // Fields are the parsed, validated values extracted from the BSSCI ulData frame
 // or the equivalent fields from a federation RelayedUplink.
 type UplinkPayload struct {
+	// OpID is the base station's ulData operation ID (BSSCI §3.2, §3.10.1).
+	OpID        int64
 	EpEUI       uint64
 	BsEUI       uint64
 	PacketCnt   uint32
@@ -687,13 +666,13 @@ type UplinkPayload struct {
 // IngestResult carries the outcome of a successful UplinkIngestService.Ingest call.
 // The BSSCI handler uses these values to drive downlink dispatch and response framing.
 type IngestResult struct {
+	// IsDuplicate reports whether this reception was merged into an existing message row.
+	IsDuplicate bool
 	// OwnerTenantID is the resolved tenant that owns this endpoint.
 	OwnerTenantID int64
 	// OwnerOrgUUID is the organization UUID of the owning tenant (uuid.Nil if unresolved).
 	OwnerOrgUUID uuid.UUID
-	// IsDuplicate reports whether this reception was merged into an existing message row.
-	IsDuplicate bool
-	// MessageID is the UUID assigned to the persisted message row (empty for duplicates).
+	// MessageID is the telegram's message row: this reception's own, or the first reception's for a merged duplicate.
 	MessageID string
 }
 
@@ -732,30 +711,23 @@ type RelayOutboxWriter interface {
 //   - Persists progress to survive server restarts
 //
 
-// DetachSignatureValidator validates detach signatures for unknown endpoints
+// DetachSignatureValidator validates detach signatures for known and unknown
+// endpoints when detach signature validation is enabled.
 //
-// This interface abstracts the detach signature validation via direct database lookup,
-// enabling proper layering and testability. The validator is called when an endpoint
-// is not found in the server's session cache during detach operations.
-//
-// KC-Core is self-contained - validation uses direct repository calls.
+// The MIOTY spec (BSSCI §5.7.1) says the detach signature is "analogous to
+// attach" but does not define its CMAC construction, so no authoritative
+// validator ships with the community edition: enabling the feature requires
+// injecting one, and startup refuses an enabled configuration without it.
+// With validation disabled (the default) a well-formed detach is accepted and
+// durably recorded as unverified.
 //
 // Spec References:
 //   - BSSCI §5.7: Detach operation signature validation
-//
-// Implementation: KC-Core/internal/services/bssci/detach_validator_adapter.go
 type DetachSignatureValidator interface {
-	// ValidateDetachSignature validates an unknown endpoint's detach signature
-	//
-	// This method is called when:
-	//   - Detach message received from base station
-	//   - Endpoint not found in active sessions (unknown endpoint)
-	//   - Need to validate cryptographic signature before rejecting
-	//
-	// The validator (direct repository mode):
-	//   1. Queries endpoint repository for crypto material (Sign, NwkSnKey, PresharedKey)
-	//   2. Validates signature using ValidateDetachSignatureCMAC
-	//   3. Returns validation result with tenant metadata
+	// ValidateDetachSignature validates a detach signature and resolves the
+	// endpoint owner. It is called for every detach while validation is
+	// enabled - for unknown endpoints the returned tenant metadata routes the
+	// record to its owner.
 	//
 	// Parameters:
 	//   - ctx: Request context (for cancellation and tracing)
@@ -777,14 +749,14 @@ type DetachValidationResult struct {
 	Valid            bool   // Overall validation result (true = signature valid)
 	TenantID         int64  // Endpoint owner tenant (for session tenant assignment)
 	OwnerTenantID    int64  // Original owner tenant (roaming support - may differ from TenantID)
-	ValidationStatus string // One of: bssci.ValidationStatusValidated | ValidationStatusInvalidSignature | ValidationStatusUnknownEndpoint
+	ValidationStatus string // One of: bssci.ValidationStatusValidated | ValidationStatusInvalidSignature | ValidationStatusUnverified
 }
 
 // DownlinkDispatcher handles auto-dispatch on dlOpen=true (BSSCI §5.10.2)
 //
 // This interface abstracts downlink auto-dispatch when an endpoint signals it's ready
 // to receive data (dlOpen=true in uplink). The dispatcher performs transactional
-// reserve→send→mark-queued operations using the interfaces.Transaction pattern.
+// reserve→send→mark-queued operations inside storage-owned transactions.
 //
 // Spec References:
 //   - BSSCI §5.10.2: Downlink window opportunity
@@ -796,11 +768,14 @@ type DownlinkDispatcher interface {
 	// Parameters:
 	//   - ownerCtx: Context with owner tenant/org metadata (NOT session tenant for roaming safety)
 	//   - ownerTenantID: Owner tenant ID (endpoint owner, may differ from session tenant)
-	//   - ownerOrgUUID: Owner organization UUID for audit logging
 	//   - session: Active BSSCI session to send downlink via
 	//   - epEUI: Endpoint EUI that signaled dlOpen=true
+	//   - messageID: The telegram's message row, whose downlink window one dispatch claims
 	//   - responseExp: Response expected flag from uplink
-	//   - dlAck: Downlink acknowledgment flag from uplink
+	//
+	// The delivery organization is the reserved queue row's organization_id:
+	// several organizations can share a tenant, and the row records which one
+	// enqueued the downlink, so no resolver-derived organization is passed in.
 	//
 	// Returns:
 	//   - dispatched: true if downlink was successfully dispatched, false otherwise
@@ -808,32 +783,56 @@ type DownlinkDispatcher interface {
 	//
 	// Thread Safety:
 	//   Uses FOR UPDATE SKIP LOCKED to prevent concurrent dispatchers from reserving
-	//   the same downlink. Multiple base stations seeing the same dlOpen will have
-	//   only ONE successfully dispatch due to transaction isolation.
+	//   the same downlink. Only the reception that created the uplink message
+	//   dispatches, so several base stations hearing one telegram fill its window once.
 	DispatchIfAvailable(
 		ownerCtx context.Context,
 		ownerTenantID int64,
-		ownerOrgUUID uuid.UUID,
 		session *Session,
 		epEUI uint64,
+		messageID string,
 		responseExp bool,
-		dlAck bool,
 	) (dispatched bool, err error)
 
 	// DispatchQueue reserves one exact pending queue row (by queue ID, tenant,
-	// and endpoint EUI) and dispatches it over the given session. Used for
-	// SCACI-initiated immediate delivery (SCACI §3.10.1) so both delivery
-	// paths share the dispatcher's pending→reserved→queued lifecycle.
+	// endpoint EUI, and the organization the downlink was enqueued under) and
+	// dispatches it over the given session. Used for SCACI-initiated immediate
+	// delivery (SCACI §3.10.1) so both delivery paths share the dispatcher's
+	// pending→reserved→queued lifecycle. enqueueOrgUUID must be the enqueuing
+	// caller's organization, never the base station session's organization.
 	// Returns dispatched=false with nil error when no matching pending row
 	// exists (already dispatched, revoked, or foreign).
 	DispatchQueue(
 		ownerCtx context.Context,
 		ownerTenantID int64,
-		ownerOrgUUID uuid.UUID,
+		enqueueOrgUUID uuid.UUID,
 		session *Session,
 		queueID uint64,
 		epEUI uint64,
 	) (dispatched bool, err error)
+}
+
+// DownlinkReclaimer returns to pending the downlinks a base station no longer
+// holds, so they are dispatched again, and reports how many it released. It
+// reports no result for them, as they are still to be sent; only an overdue
+// downlink the station was asked to drop and discarded ends expired.
+type DownlinkReclaimer interface {
+	// ReclaimReservations returns to pending every downlink the base station
+	// holds reserved except the rows behind the dlDataQue operations reissued
+	// on resume.
+	ReclaimReservations(ctx context.Context, bsEUI uint64, reissuedQueIDs []int64) (released int64, err error)
+
+	// ReclaimDiscardedQueue returns to pending every downlink queued at a
+	// base station whose new session is not resumed and so discarded them
+	// (BSSCI §1), and ends expired the overdue ones it was asked to drop; it
+	// counts those returned to pending.
+	ReclaimDiscardedQueue(ctx context.Context, bsEUI uint64) (released int64, err error)
+
+	// ReclaimEndpointQueue returns to pending the owner tenant's downlinks
+	// for the endpoint that were queued at the base station by the time an
+	// attach propagate for the endpoint was issued: the station discards them
+	// when it takes the attachment (BSSCI §3.8).
+	ReclaimEndpointQueue(ctx context.Context, ownerTenantID int64, epEUI, bsEUI uint64, propagatedAt time.Time) (released int64, err error)
 }
 
 // BlueprintDecoder decodes MIOTY payloads using blueprint definitions (MIOTY App Layer Spec)
@@ -947,14 +946,35 @@ type BaseStationStatusStore interface {
 	Create(ctx context.Context, status *mioty.BaseStationStatusRecord) error
 }
 
-// DownlinkQueueStore covers the queue-row operations the protocol handlers
-// perform outside the dispatcher's reservation flow. Satisfied structurally
-// by the MIOTY downlink repository so error identity (sql.ErrNoRows,
-// storage.ErrNotFound) is preserved - never wrap it in a delegating adapter.
+// DownlinkQueueStore reads the queue row a revocation targets, of the owner
+// the revocation names. Satisfied structurally by the MIOTY downlink
+// repository so error identity (sql.ErrNoRows) is preserved - never wrap it
+// in a delegating adapter.
 type DownlinkQueueStore interface {
-	UpdateDownlinkBaseStation(ctx context.Context, queId uint64, tenantID string, bsEUI uint64) error
-	MarkReservedAsQueued(ctx context.Context, queID uint64, tenantID int64, bsEUI uint64, txTime int64, packetCnt *uint32, orgID *uuid.UUID) error
-	GetDownlinkByQueueID(ctx context.Context, queId uint64, tenantID string) (*storage.DownlinkMessage, error)
+	GetDownlinkByRevocation(ctx context.Context, revocation storage.DownlinkRevocation) (*storage.DownlinkMessage, error)
+	// ListStationRevocations lists the downlinks the base station is asked to
+	// drop because their lifetime ended while it held them.
+	ListStationRevocations(ctx context.Context, bsEUI uint64) ([]*storage.DownlinkMessage, error)
+}
+
+// DownlinkRevocationStore revokes a downlink where it waits; a revocation
+// without a station ends a downlink no base station holds yet, reporting
+// false when the row is no longer pending.
+type DownlinkRevocationStore interface {
+	RevokeDownlink(ctx context.Context, revocation storage.DownlinkRevocation) (bool, error)
+}
+
+// PendingDownlinkLister lists the unexpired pending downlinks of every
+// tenant, grouped by endpoint in the order a downlink window takes them.
+type PendingDownlinkLister interface {
+	ListPendingDownlinks(ctx context.Context) ([]storage.PendingDownlink, error)
+}
+
+// ServingStationLocator decides the base station serving a tenant's
+// endpoint: known is false while no station heard or attached it, and
+// storage.ErrNotFound means the tenant has no such endpoint.
+type ServingStationLocator interface {
+	ServingStation(ctx context.Context, tenantID int64, epEUI uint64) (bsEUI uint64, known bool, err error)
 }
 
 // EndpointDirectory is the endpoint repository surface the protocol server
@@ -964,8 +984,24 @@ type EndpointDirectory interface {
 	Get(ctx context.Context, eui models.EUI) (*models.EndPoint, error)
 	GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.EndPoint, error)
 	GetByID(ctx context.Context, id int64, tenantID int64) (*models.EndPoint, error)
-	UpdateFields(ctx context.Context, tenantID int64, endpointID int64, updates map[string]interface{}) error
-	UpdateRadioMetricsSelective(ctx context.Context, tenantID int64, eui models.EUI, update interfaces.RadioMetricsUpdate) error
+	EndpointAttachmentStateUpdate(ctx context.Context, tenantID int64, endpointID int64, p models.EndpointAttachmentStateParams) error
+	EndpointDetachStateUpdate(ctx context.Context, tenantID int64, endpointID int64, p models.EndpointDetachStateParams) error
+	TransitionEndpointStatus(ctx context.Context, tenantID int64, endpointID int64, status string) (bool, error)
+	UpdateRadioMetricsSelective(ctx context.Context, tenantID int64, eui models.EUI, update models.RadioMetricsUpdate) error
+}
+
+// EndpointOwner is an endpoint and the tenant that owns it
+// (endpoints.owner_tenant_id): every station serves the endpoint for that
+// tenant, whichever tenant the station belongs to (BSSCI §5.8.3).
+type EndpointOwner struct {
+	TenantID int64
+	Endpoint *models.EndPoint
+}
+
+// EndpointOwnerResolver finds the owner of an endpoint by EUI;
+// storage.ErrNotFound when no tenant owns it.
+type EndpointOwnerResolver interface {
+	ResolveOwner(ctx context.Context, eui models.EUI) (EndpointOwner, error)
 }
 
 // BaseStationStore is the registered-station repository surface the protocol
@@ -980,14 +1016,6 @@ type BaseStationStore interface {
 type OrganizationDirectory interface {
 	ResolveCert(ctx context.Context, cert *x509.Certificate) (uuid.UUID, int64, error)
 	GetDefaultOrgForTenant(ctx context.Context, tenantID int64) (uuid.UUID, error)
-}
-
-// NetworkKeyProtector encrypts and decrypts endpoint network session keys.
-// Satisfied structurally by *crypto.KeyEncryptor.
-type NetworkKeyProtector interface {
-	EncryptKey(plaintext []byte) (string, error)
-	EncryptKeyRaw(plaintext []byte) ([]byte, error)
-	DecryptKeyRaw(ciphertext []byte) ([]byte, error)
 }
 
 // EventStore records system events emitted by the protocol server.
@@ -1006,7 +1034,7 @@ type AttachSessionRecord struct {
 	// TenantID when the uplink arrived through a roaming station).
 	BSLookupTenantID int64
 	EndpointID       int64
-	EndpointUpdates  map[string]interface{}
+	EndpointUpdates  models.EndpointAttachmentStateParams
 	EncryptedKey     []byte
 	// AttachCnt is handler-validated to fit 24 bits before persistence.
 	AttachCnt      uint32
@@ -1019,7 +1047,7 @@ type AttachSessionRecord struct {
 type AttachPropagateSessionRecord struct {
 	TenantID        int64
 	EndpointID      int64
-	EndpointUpdates map[string]interface{}
+	EndpointUpdates models.EndpointAttachSessionParams
 	EncryptedKey    []byte
 	ShAddr          uint16
 	BaseStationEUI  []byte
@@ -1032,4 +1060,11 @@ type AttachPropagateSessionRecord struct {
 type EndpointAttachmentPersistence interface {
 	PersistAttachSession(ctx context.Context, rec AttachSessionRecord) error
 	PersistAttachPropagateSession(ctx context.Context, rec AttachPropagateSessionRecord) error
+}
+
+// NetworkSessionKeySource yields the network session key an endpoint currently
+// operates on, the key an attach propagate hands to the base stations (radio
+// spec §3.7.1.2-§3.7.1.3).
+type NetworkSessionKeySource interface {
+	NetworkSessionKey(ctx context.Context, endpoint *models.EndPoint) ([]byte, error)
 }

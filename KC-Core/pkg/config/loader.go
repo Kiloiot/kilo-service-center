@@ -8,14 +8,39 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/spf13/viper"
 )
 
-// Load loads configuration from file and environment variables.
-// Exported for use by other modules.
+// keyGRPCWebEnabled is the configuration key whose default differs per binary.
+const keyGRPCWebEnabled = "grpc.web.enabled"
+
+// Load loads the KC-Core configuration from file and environment variables.
 func Load(configPath string) (*Config, error) {
+	return load(configPath, setDefaults, (*Config).validateCore)
+}
+
+// LoadIdentity loads the KC-Identity configuration: KC-Core's defaults and
+// the rules of KC-Identity's internal listener.
+func LoadIdentity(configPath string) (*Config, error) {
+	return load(configPath, setDefaults, (*Config).validateIdentity)
+}
+
+// LoadGateway loads the KC-Gateway configuration. The gateway is the browser
+// ingress, so gRPC-web defaults to on there while KC-Core leaves it off.
+func LoadGateway(configPath string) (*Config, error) {
+	return load(configPath, setGatewayDefaults, (*Config).validateGateway)
+}
+
+func setGatewayDefaults(v *viper.Viper) {
+	setDefaults(v)
+	v.SetDefault(keyGRPCWebEnabled, DefaultGatewayGRPCWebEnabled)
+}
+
+// load reads the file and environment over the defaults applyDefaults sets
+// and checks the result with the binary's validate.
+func load(configPath string, applyDefaults func(*viper.Viper), validate func(*Config) error) (*Config, error) {
 	v := viper.New()
 
 	// Set config name and paths
@@ -34,16 +59,9 @@ func Load(configPath string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
-	// Explicit binding for nested keys with underscores in parent names.
-	// Viper's AutomaticEnv cannot distinguish "registry_provider.token" from
-	// "registry.provider.token" when mapping to KILOCENTER_REGISTRY_PROVIDER_TOKEN.
-	_ = v.BindEnv("registry_provider.token", "KILOCENTER_REGISTRY_PROVIDER_TOKEN")
-	_ = v.BindEnv("registry_provider.owner", "KILOCENTER_REGISTRY_PROVIDER_OWNER")
-	_ = v.BindEnv("registry_provider.repo", "KILOCENTER_REGISTRY_PROVIDER_REPO")
-	_ = v.BindEnv("registry_provider.github_app_id", "KILOCENTER_REGISTRY_PROVIDER_GITHUB_APP_ID")
-	_ = v.BindEnv("registry_provider.github_app_installation_id", "KILOCENTER_REGISTRY_PROVIDER_GITHUB_APP_INSTALLATION_ID")
-	_ = v.BindEnv("registry_provider.github_app_private_key", "KILOCENTER_REGISTRY_PROVIDER_GITHUB_APP_PRIVATE_KEY")
-	_ = v.BindEnv("registry_provider.blueprint_path", "KILOCENTER_REGISTRY_PROVIDER_BLUEPRINT_PATH")
+	if err := bindRegistryProviderEnv(v); err != nil {
+		return nil, err
+	}
 
 	// Read config file
 	if err := v.ReadInConfig(); err != nil {
@@ -54,7 +72,7 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	// Set defaults
-	setDefaults(v)
+	applyDefaults(v)
 
 	// Unmarshal config
 	var cfg Config
@@ -77,7 +95,7 @@ func Load(configPath string) (*Config, error) {
 		return nil, err
 	}
 
-	if err := cfg.Validate(); err != nil {
+	if err := validate(&cfg); err != nil {
 		return nil, err
 	}
 
@@ -157,28 +175,42 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("protocol.bsci_tls.key_file", DefaultProtocolBSCITLSKeyFile)
 	v.SetDefault("protocol.bsci_tls.ca_file", DefaultProtocolBSCITLSCAFile)
 	v.SetDefault("protocol.bsci_tls.min_version", DefaultProtocolBSCITLSMinVersion)
+	v.SetDefault("protocol.management_port", DefaultProtocolManagementPort)
 	v.SetDefault("protocol.scaci_enabled", DefaultProtocolSCACIEnabled)
 	v.SetDefault("protocol.scaci_port", DefaultProtocolSCACIPort)
 	v.SetDefault("protocol.scaci_tls.min_version", DefaultProtocolSCACITLSMinVersion)
 	v.SetDefault("protocol.scaci_log_ping_operations", DefaultProtocolSCACILogPingOps)
 	v.SetDefault("protocol.scaci_log_status_operations", DefaultProtocolSCACILogStatusOps)
+	v.SetDefault("protocol.scaci_resume_max_pending_operations", DefaultProtocolSCACIResumeMaxPendingOperations)
 	// Service Center Identity
 	v.SetDefault("protocol.sc_vendor", DefaultProtocolSCVendor)
 	v.SetDefault("protocol.sc_model", DefaultProtocolSCModel)
-	v.SetDefault("protocol.max_retransmissions", DefaultProtocolMaxRetransmissions)
 	v.SetDefault("protocol.ack_timeout", DefaultProtocolAckTimeout)
 	v.SetDefault("protocol.connection_establishment_timeout", DefaultProtocolConnectionEstablishmentTimeout)
+	v.SetDefault("protocol.socket_write_timeout", DefaultProtocolSocketWriteTimeout)
 	v.SetDefault("protocol.status_request_interval", DefaultProtocolStatusRequestInterval)
 	v.SetDefault("protocol.status_request_initial_delay", DefaultProtocolStatusRequestInitialDelay)
 	v.SetDefault("protocol.dlrx_query_timeout", DefaultProtocolDLRXQueryTimeout)
 	v.SetDefault("protocol.dlrx_cleanup_interval", DefaultProtocolDLRXCleanupInterval)
 	v.SetDefault("protocol.duplicate_window", DefaultProtocolDuplicateWindow)
 	v.SetDefault("protocol.bsci_certificate_poll_interval", DefaultProtocolCertificatePollInterval)
+	v.SetDefault("protocol.delivery.poll_interval", DefaultProtocolDeliveryPollInterval)
+	v.SetDefault("protocol.delivery.batch_size", DefaultProtocolDeliveryBatchSize)
+	v.SetDefault("protocol.delivery.retry_backoff", DefaultProtocolDeliveryRetryBackoff)
+	v.SetDefault("protocol.delivery.max_backoff", DefaultProtocolDeliveryMaxBackoff)
+	v.SetDefault("protocol.delivery.reception_window", DefaultProtocolDeliveryReceptionWindow)
+	v.SetDefault("protocol.downlink_expiry.lifetime", DefaultProtocolDownlinkLifetime)
+	v.SetDefault("protocol.downlink_expiry.sweep_interval", DefaultProtocolDownlinkExpirySweepInterval)
+	v.SetDefault("protocol.downlink_expiry.batch_size", DefaultProtocolDownlinkExpiryBatchSize)
+	v.SetDefault("protocol.downlink_expiry.revoke_not_held_codes", DefaultProtocolDownlinkRevokeNotHeldCodes)
+	v.SetDefault("protocol.roaming.cache_enabled", DefaultProtocolRoamingCacheEnabled)
+	v.SetDefault("protocol.roaming.cache_ttl", DefaultProtocolRoamingCacheTTL)
+	v.SetDefault("protocol.roaming.cache_max_size", DefaultProtocolRoamingCacheMaxSize)
+	v.SetDefault("protocol.roaming.enable_audit_trail", DefaultProtocolRoamingEnableAuditTrail)
 
 	// Federation relay defaults
 	v.SetDefault("protocol.federation.enabled", DefaultFederationEnabled)
 	v.SetDefault("protocol.federation.heartbeat_interval", fmt.Sprintf("%ds", DefaultFederationHeartbeatIntervalSeconds))
-	v.SetDefault("protocol.federation.outbox_max_size", DefaultFederationOutboxMaxSize)
 	v.SetDefault("protocol.federation.reconnect_max_backoff", fmt.Sprintf("%ds", DefaultFederationReconnectMaxBackoffSeconds))
 	v.SetDefault("protocol.federation.ingress_grpc_port", DefaultFederationIngressGRPCPort)
 	v.SetDefault("protocol.federation.revocation_poll_interval", fmt.Sprintf("%ds", DefaultFederationRevocationPollIntervalSeconds))
@@ -186,11 +218,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("protocol.federation.tls.insecure_skip_verify", DefaultFederationTLSInsecureSkipVerify)
 
 	// Propagation reconciliation defaults (string format for time.Duration per Viper convention)
-	v.SetDefault("protocol.propagation.batch_size", DefaultProtocolPropBatchSize)
-	v.SetDefault("protocol.propagation.inter_batch_delay", DefaultProtocolPropInterBatchDelay)
-	v.SetDefault("protocol.propagation.max_retries", DefaultProtocolPropMaxRetries)
-	v.SetDefault("protocol.propagation.retry_backoff", DefaultProtocolPropRetryBackoff)
-	v.SetDefault("protocol.propagation.cool_down", DefaultProtocolPropCoolDown)
 
 	// Storage defaults
 	v.SetDefault("storage.type", DefaultStorageType)
@@ -219,12 +246,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mqtt.tls.enabled", DefaultMQTTTLSEnabled)
 	v.SetDefault("mqtt.tls.insecure_skip_verify", DefaultMQTTTLSInsecureSkipVerify)
 
-	// WebGUI defaults
-	v.SetDefault("web_gui.enabled", DefaultWebGUIEnabled)
-	v.SetDefault("web_gui.port", DefaultWebGUIPort)
-	v.SetDefault("web_gui.host", DefaultWebGUIHost)
-	v.SetDefault("web_gui.static_path", DefaultWebGUIStaticPath)
-
 	// Monitoring defaults
 	v.SetDefault("monitoring.metrics_enabled", DefaultMonitoringMetricsEnabled)
 	v.SetDefault("monitoring.metrics_port", DefaultMonitoringMetricsPort)
@@ -237,25 +258,22 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("grpc.port", DefaultGRPCPort)
 	v.SetDefault("grpc.host", DefaultGRPCHost)
 	v.SetDefault("grpc.internal_trust_enabled", DefaultGRPCInternalTrustEnabled)
-	v.SetDefault("grpc.tls_enabled", DefaultGRPCTLSEnabled)
-	v.SetDefault("grpc.max_recv_msg_size", DefaultGRPCMaxRecvMsgSize)
-	v.SetDefault("grpc.max_send_msg_size", DefaultGRPCMaxSendMsgSize)
 	v.SetDefault("grpc.stream_poll_interval", DefaultGRPCStreamPollInterval)
 	v.SetDefault("grpc.stream_batch_size", DefaultGRPCStreamBatchSize)
+	v.SetDefault("grpc.stream_overlap", DefaultGRPCStreamOverlap)
 	v.SetDefault("grpc.count_cache_ttl", DefaultGRPCCountCacheTTL)
 	v.SetDefault("grpc.rbac_role_cache_ttl_seconds", DefaultRBACRoleCacheTTLSeconds)
 
 	// gRPC-web defaults
 	v.SetDefault("grpc.enable_reflection", DefaultGRPCEnableReflection)
 	v.SetDefault("grpc.enable_health", DefaultGRPCEnableHealth)
-	v.SetDefault("grpc.web.enabled", DefaultGRPCWebEnabled)
+	v.SetDefault(keyGRPCWebEnabled, DefaultGRPCWebEnabled)
 	v.SetDefault("grpc.web.allowed_origins", DefaultGRPCWebAllowedOrigins)
 	v.SetDefault("grpc.web.allowed_headers", DefaultGRPCWebAllowedHeaders)
 	v.SetDefault("grpc.web.expose_headers", DefaultGRPCWebExposeHeaders)
 	v.SetDefault("grpc.web.allow_credentials", DefaultGRPCWebAllowCredentials)
 	v.SetDefault("grpc.web.max_age", GRPCWebDefaultMaxAgeSeconds)
 	v.SetDefault("grpc.web.allow_all_origins", DefaultGRPCWebAllowAllOrigins)
-	v.SetDefault("grpc.web.enable_websockets", DefaultGRPCWebEnableWebsockets)
 	v.SetDefault("grpc.web.allowed_methods", GRPCWebDefaultAllowedMethods)
 
 	// HTTP server timeout defaults
@@ -283,17 +301,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.login_redirect", DefaultAuthLoginRedirect)
 	v.SetDefault("auth.logout_url", DefaultAuthLogoutURL)
 
-	// Bootstrap defaults (no-op unless explicitly configured)
-	v.SetDefault("auth.bootstrap.enabled", DefaultAuthBootstrapEnabled)
-	v.SetDefault("auth.bootstrap.initial_admin_email", DefaultAuthBootstrapEmail)
-	v.SetDefault("auth.bootstrap.password_hash", DefaultAuthBootstrapPasswordHash)
-	v.SetDefault("auth.bootstrap.tenant_id", DefaultAuthBootstrapTenantID)
-	v.SetDefault("auth.bootstrap.organization_name", DefaultAuthBootstrapOrgName)
-	v.SetDefault("auth.bootstrap.create_org", DefaultAuthBootstrapCreateOrg)
-	v.SetDefault("auth.bootstrap.create_membership", DefaultAuthBootstrapCreateMembership)
-
 	// External authentication provider defaults
-	v.SetDefault("auth.ui_callback_url", DefaultAuthUICallbackURL)
 
 	// OIDC provider defaults
 	v.SetDefault("auth.oidc.enabled", DefaultAuthOIDCEnabled)
@@ -340,20 +348,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis.pool_size", DefaultRedisPoolSize)
 
 	// Alert service defaults
-	v.SetDefault("alerts.summary_lookback_hours", DefaultAlertsSummaryLookbackHours)
 	v.SetDefault("alerts.recent_alerts_limit", DefaultAlertsRecentAlertsLimit)
-
-	// Analytics service defaults
-	v.SetDefault("analytics.default_window_hours", DefaultAnalyticsWindowHours)
-	v.SetDefault("analytics.activity_window_days", DefaultAnalyticsActivityDays)
-	v.SetDefault("analytics.top_endpoints_limit", DefaultAnalyticsTopEndpointsLimit)
 
 	// Certificate service defaults
 	v.SetDefault("certificates.certgen_path", DefaultCertificatesCertGenPath)
 	v.SetDefault("certificates.certs_dir", DefaultCertificatesCertsDir)
 	v.SetDefault("certificates.temp_dir", DefaultCertificatesTempDir)
-	v.SetDefault("certificates.cleanup_interval_min", DefaultCertificatesCleanupIntervalMin)
 	v.SetDefault("certificates.server_validity_days", DefaultCertificatesServerValidityDays)
+	v.SetDefault("certificates.cleanup_interval_min", DefaultCertificatesCleanupIntervalMin)
 
 	// Registry provider defaults
 	v.SetDefault("registry_provider.enabled", DefaultRegistryProviderEnabled)
@@ -363,7 +365,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("registry_provider.blueprint_path", DefaultRegistryProviderBlueprintPath)
 	v.SetDefault("registry_provider.file_extension", DefaultRegistryProviderFileExtension)
 	v.SetDefault("registry_provider.http_timeout", DefaultRegistryProviderHTTPTimeout)
-	v.SetDefault("registry_provider.schema_url", DefaultRegistryProviderSchemaURL)
 	v.SetDefault("registry_provider.token", DefaultRegistryProviderToken)
 	v.SetDefault("registry_provider.auth_mode", DefaultRegistryProviderAuthMode)
 

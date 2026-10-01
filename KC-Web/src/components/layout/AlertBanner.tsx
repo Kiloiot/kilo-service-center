@@ -3,6 +3,7 @@ import React from "react";
 import { useConnectionStatus } from "@hooks";
 import { Alert, Collapse } from "@mui/material";
 
+import { UI_CONNECTION_STATUS } from "@constants/app";
 import { STATUS_OFFLINE, STATUS_RECONNECTING } from "@constants/messages";
 
 /**
@@ -28,21 +29,24 @@ const AlertBanner: React.FC<AlertBannerProps> = ({
 
   // Connection status banner (shown when disconnected/reconnecting)
   const showConnectionBanner = showConnectionStatus && !isConnected;
-  const connectionSeverity = status === "reconnecting" ? "warning" : "error";
+  const connectionSeverity =
+    status === UI_CONNECTION_STATUS.RECONNECTING ? "warning" : "error";
   const connectionMessage =
-    status === "reconnecting" ? STATUS_RECONNECTING : STATUS_OFFLINE;
+    status === UI_CONNECTION_STATUS.RECONNECTING
+      ? STATUS_RECONNECTING
+      : STATUS_OFFLINE;
 
   return (
     <>
       {/* Connection status banner */}
-      <Collapse in={showConnectionBanner}>
+      <Collapse in={showConnectionBanner} unmountOnExit>
         <Alert severity={connectionSeverity} sx={{ mb: 2 }}>
           {connectionMessage}
         </Alert>
       </Collapse>
 
       {/* Custom alert banner */}
-      <Collapse in={show && message.length > 0}>
+      <Collapse in={show && message.length > 0} unmountOnExit>
         <Alert severity={severity} sx={{ mb: 2 }}>
           {message}
         </Alert>

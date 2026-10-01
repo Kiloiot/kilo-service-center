@@ -1,427 +1,213 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { generatePath, useNavigate, useParams } from "react-router-dom";
+import React, { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
-import type { EndpointUI } from "@api-types/api";
-import { useEndpoint, useEndpointFilters, useEndpoints } from "@hooks";
+import { useEndpoint } from "@hooks";
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
-  Chip,
   CircularProgress,
-  Grid,
-  InputAdornment,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-  TextField,
   Typography,
 } from "@mui/material";
 
+import { BackButton } from "@components/common/BackButton";
+import { DetailNotFound } from "@components/common/DetailNotFound";
 import { PaginationControls } from "@components/common/PaginationControls";
-import { formatRelativeDuration, paginate } from "@utils/formatters";
-import { getMonoBody2 } from "@utils/typography";
-import { ROUTES } from "@constants/app";
+import { getErrorMessage } from "@utils/error-message";
+import { ROUTES, SORT_DIRECTION } from "@constants/app";
 import { ENDPOINTS_PAGE, ERR_LOAD_ENDPOINTS } from "@constants/messages";
-import {
-  AddIcon,
-  EndPointIcon,
-  ErrorIcon,
-  FilterListIcon,
-  SearchIcon,
-  SuccessIcon,
-} from "@theme/icons";
+import { endpointDetailPath } from "@router/paths";
+import { AddIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
 import AddEndPointDialog from "../components/AddEndPointDialog";
 import EndPointDetails from "../components/EndPointDetails";
+import { EndpointsFiltersBar } from "../components/EndpointsFiltersBar";
+import { EndpointsListScope } from "../components/EndpointsListScope";
+import { EndpointsStatsCards } from "../components/EndpointsStatsCards";
+import {
+  type EndpointsOrderBy,
+  EndpointsTable,
+} from "../components/EndpointsTable";
+import { useEndpointList } from "../hooks";
 
-type OrderBy = "name" | "epEui" | "status" | "lastSeen";
-type OrderDirection = "asc" | "desc";
-
-interface EndpointsHeaderProps {
-  onAddClick: () => void;
-}
-
-const EndpointsHeader: React.FC<EndpointsHeaderProps> = ({ onAddClick }) => (
-  <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-    <Typography variant="h4" component="h1">
-      {ENDPOINTS_PAGE.TITLE}
-    </Typography>
-    <Button variant="contained" startIcon={<AddIcon />} onClick={onAddClick}>
-      {ENDPOINTS_PAGE.ADD_ENDPOINT}
-    </Button>
+const Centered: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Box
+    sx={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      minHeight: componentSpacing.stateView.listMinHeight,
+    }}
+  >
+    {children}
   </Box>
 );
 
-interface EndpointsStatsCardsProps {
-  total: number;
-  activeCount: number;
-}
+const EndpointDetailView: React.FC<{
+  epEui: string;
+  onBack: () => void;
+}> = ({ epEui, onBack }) => {
+  const list = useEndpointList();
+  const { data: detail, isLoading } = useEndpoint(epEui);
+  const listed = list.all.find((ep) => ep.epEui === epEui);
+  if (isLoading || (!detail && list.isLoading)) {
+    return (
+      <Centered>
+        <CircularProgress />
+      </Centered>
+    );
+  }
+  const endpoint = detail || listed;
+  if (!endpoint) {
+    return (
+      <DetailNotFound
+        message={ENDPOINTS_PAGE.ERR_NOT_FOUND}
+        backLabel={ENDPOINTS_PAGE.BACK_TO_LIST}
+        onBack={onBack}
+      />
+    );
+  }
+  return (
+    <Box sx={{ pt: 4 }}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
+        <Typography variant="h4" component="h1">
+          {ENDPOINTS_PAGE.DETAILS_TITLE}
+        </Typography>
+        <BackButton label={ENDPOINTS_PAGE.BACK_TO_LIST} onClick={onBack} />
+      </Box>
+      <EndPointDetails endPoint={endpoint} onDelete={onBack} />
+    </Box>
+  );
+};
 
-const EndpointsStatsCards: React.FC<EndpointsStatsCardsProps> = ({
-  total,
-  activeCount,
-}) => (
-  <Grid container spacing={3} mb={3}>
-    <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-      <Card>
-        <CardContent>
-          <Box display="flex" alignItems="center">
-            <EndPointIcon sx={{ fontSize: 40, color: "primary.main", mr: 2 }} />
-            <Box>
-              <Typography color="text.secondary" variant="body2">
-                {ENDPOINTS_PAGE.TOTAL_ENDPOINTS}
-              </Typography>
-              <Typography variant="h4">{total}</Typography>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
-    </Grid>
-    <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-      <Card>
-        <CardContent>
-          <Box display="flex" alignItems="center">
-            <SuccessIcon sx={{ fontSize: 40, color: "success.main", mr: 2 }} />
-            <Box>
-              <Typography color="text.secondary" variant="body2">
-                {ENDPOINTS_PAGE.ACTIVE}
-              </Typography>
-              <Typography variant="h4">{activeCount}</Typography>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
-    </Grid>
-    <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-      <Card>
-        <CardContent>
-          <Box display="flex" alignItems="center">
-            <ErrorIcon sx={{ fontSize: 40, color: "error.main", mr: 2 }} />
-            <Box>
-              <Typography color="text.secondary" variant="body2">
-                {ENDPOINTS_PAGE.INACTIVE}
-              </Typography>
-              <Typography variant="h4">{total - activeCount}</Typography>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
-    </Grid>
-  </Grid>
-);
+const EndpointListView: React.FC<{ onOpen: (epEui: string) => void }> = ({
+  onOpen,
+}) => {
+  const list = useEndpointList();
+  const { filters } = list;
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-interface EndpointsFiltersBarProps {
-  search: string;
-  onSearchChange: (value: string) => void;
-}
+  const handleSort = (field: EndpointsOrderBy) => {
+    const isAsc =
+      filters.sort.field === field &&
+      filters.sort.direction === SORT_DIRECTION.ASC;
+    list.setSort({
+      field,
+      direction: isAsc ? SORT_DIRECTION.DESC : SORT_DIRECTION.ASC,
+    });
+  };
 
-const EndpointsFiltersBar: React.FC<EndpointsFiltersBarProps> = ({
-  search,
-  onSearchChange,
-}) => (
-  <Box display="flex" gap={2} mb={3}>
-    <TextField
-      placeholder={ENDPOINTS_PAGE.SEARCH_PLACEHOLDER}
-      value={search}
-      onChange={(e) => onSearchChange(e.target.value)}
-      sx={{ flexGrow: 1 }}
-      InputProps={{
-        startAdornment: (
-          <InputAdornment position="start">
-            <SearchIcon />
-          </InputAdornment>
-        ),
-      }}
-    />
-    <Button variant="outlined" startIcon={<FilterListIcon />}>
-      {ENDPOINTS_PAGE.FILTERS}
-    </Button>
-  </Box>
-);
+  const narrowed =
+    !!filters.search ||
+    filters.attachState.length > 0 ||
+    filters.activity.length > 0;
 
-interface EndpointsTableSectionProps {
-  endpoints: EndpointUI[];
-  emptyMessage: string;
-  orderBy: OrderBy;
-  orderDirection: OrderDirection;
-  onSort: (field: OrderBy) => void;
-  onRowClick: (epEui: string) => void;
-}
+  return (
+    <Box data-testid="endpoints-page" sx={{ p: 3, pt: 4 }}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+      >
+        <Typography variant="h4" component="h1">
+          {ENDPOINTS_PAGE.TITLE}
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setAddDialogOpen(true)}
+        >
+          {ENDPOINTS_PAGE.ADD_ENDPOINT}
+        </Button>
+      </Box>
 
-const EndpointsTableSection: React.FC<EndpointsTableSectionProps> = ({
-  endpoints,
-  emptyMessage,
-  orderBy,
-  orderDirection,
-  onSort,
-  onRowClick,
-}) => (
-  <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
-    <Table>
-      <TableHead>
-        <TableRow>
-          {(["name", "epEui", "status", "lastSeen"] as const).map((field) => (
-            <TableCell key={field}>
-              <TableSortLabel
-                active={orderBy === field}
-                direction={orderBy === field ? orderDirection : "asc"}
-                onClick={() => onSort(field)}
-              >
-                {
-                  {
-                    name: ENDPOINTS_PAGE.COL_NAME,
-                    epEui: ENDPOINTS_PAGE.COL_EUI,
-                    status: ENDPOINTS_PAGE.COL_STATUS,
-                    lastSeen: ENDPOINTS_PAGE.COL_LAST_SEEN,
-                  }[field]
-                }
-              </TableSortLabel>
-            </TableCell>
-          ))}
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {endpoints.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
-              <Typography color="text.secondary">{emptyMessage}</Typography>
-            </TableCell>
-          </TableRow>
-        ) : (
-          endpoints.map((endPoint) => (
-            <TableRow
-              key={endPoint.id}
-              hover
-              onClick={() => onRowClick(endPoint.epEui)}
-              sx={{ cursor: "pointer" }}
-            >
-              <TableCell>
-                <Typography variant="body2">
-                  {endPoint.name || ENDPOINTS_PAGE.UNNAMED_DEVICE}
-                </Typography>
-              </TableCell>
-              <TableCell>
-                <Typography variant="body2" sx={(theme) => getMonoBody2(theme)}>
-                  {endPoint.epEui}
-                </Typography>
-              </TableCell>
-              <TableCell>
-                <Chip
-                  label={endPoint.status}
-                  color={endPoint.status === "active" ? "success" : "default"}
-                  size="small"
-                />
-              </TableCell>
-              <TableCell>
-                <Typography
-                  variant="body2"
-                  color={endPoint.lastSeen ? "text.secondary" : "error"}
-                >
-                  {formatRelativeDuration(endPoint.lastSeen)}
-                </Typography>
-              </TableCell>
-            </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
-  </TableContainer>
-);
+      <EndpointsStatsCards
+        total={list.all.length}
+        activeCount={list.activeCount}
+      />
+
+      <EndpointsFiltersBar
+        search={filters.search}
+        attachState={filters.attachState}
+        activity={filters.activity}
+        onSearchChange={list.setSearch}
+        onAttachStateChange={(values) =>
+          list.updateFilter("attachState", values)
+        }
+        onActivityChange={(values) => list.updateFilter("activity", values)}
+      />
+
+      <EndpointsListScope
+        shown={list.shown.length}
+        total={list.all.length}
+        search={filters.search}
+        attachState={filters.attachState}
+        activity={filters.activity}
+        onClear={list.reset}
+      />
+
+      {list.isLoading && (
+        <Centered>
+          <CircularProgress />
+        </Centered>
+      )}
+
+      {list.isError && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {getErrorMessage(list.error, ERR_LOAD_ENDPOINTS)}
+        </Alert>
+      )}
+
+      {!list.isLoading && !list.isError && (
+        <>
+          <EndpointsTable
+            endpoints={list.page}
+            emptyMessage={
+              narrowed ? ENDPOINTS_PAGE.NO_MATCH : ENDPOINTS_PAGE.NO_ENDPOINTS
+            }
+            orderBy={filters.sort.field}
+            orderDirection={filters.sort.direction}
+            onSort={handleSort}
+            onRowClick={onOpen}
+          />
+          <PaginationControls
+            page={filters.pagination.page}
+            rowsPerPage={filters.pagination.pageSize}
+            totalCount={list.shown.length}
+            onPageChange={list.setPage}
+            onRowsPerPageChange={list.setPageSize}
+          />
+        </>
+      )}
+
+      <AddEndPointDialog
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+      />
+    </Box>
+  );
+};
 
 const EndPoints: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
 
-  const { filters, setSearch, setSort, pagination, setPage, setPageSize } =
-    useEndpointFilters();
-
-  const [selectedEndPoint, setSelectedEndPoint] = useState<string | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-
-  const apiFilters = {
-    ...filters,
-    bidirectional: filters.bidirectional ?? undefined,
-  };
-
-  const {
-    data: endPoints = [],
-    isLoading: loading,
-    isError,
-    error,
-  } = useEndpoints(apiFilters);
-
-  const { data: fullEndpointData, isLoading: detailsLoading } = useEndpoint(
-    selectedEndPoint || "",
-  );
-
-  useEffect(() => {
-    if (id && endPoints.length > 0) {
-      const endPoint = endPoints.find((ep) => ep.epEui === id);
-      if (endPoint) {
-        setSelectedEndPoint(endPoint.epEui);
-        setShowDetails(true);
-      }
-    } else if (!id) {
-      setShowDetails(false);
-      setSelectedEndPoint(null);
-    }
-  }, [id, endPoints]);
-
-  const filteredEndPoints = useMemo(() => {
-    const searchLower = filters.search.toLowerCase();
-    return endPoints.filter(
-      (ep) =>
-        ep.name?.toLowerCase().includes(searchLower) ||
-        ep.epEui.toLowerCase().includes(searchLower),
-    );
-  }, [endPoints, filters.search]);
-
-  const sortedEndPoints = useMemo(() => {
-    const orderBy = filters.sort.field as OrderBy;
-    const orderDirection = filters.sort.direction;
-    return [...filteredEndPoints].sort((a, b) => {
-      const aValue = a[orderBy] || "";
-      const bValue = b[orderBy] || "";
-      if (orderDirection === "asc") {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-      }
-      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-    });
-  }, [filteredEndPoints, filters.sort.field, filters.sort.direction]);
-
-  const paginatedEndpoints = useMemo(
-    () => paginate(sortedEndPoints, pagination.page, pagination.pageSize),
-    [sortedEndPoints, pagination.page, pagination.pageSize],
-  );
-
-  const handleSort = (property: OrderBy) => {
-    const isAsc =
-      filters.sort.field === property && filters.sort.direction === "asc";
-    setSort({ field: property, direction: isAsc ? "desc" : "asc" });
-  };
-
-  const handleAddDialogClose = () => {
-    setAddDialogOpen(false);
-  };
-
-  const handleEndPointClick = (epEui: string) => {
-    const endPoint = endPoints.find((ep) => ep.epEui === epEui);
-    if (endPoint) {
-      navigate(generatePath(ROUTES.ENDPOINT_DETAIL, { id: endPoint.epEui }));
-    }
-  };
-
-  const selectedEndPointData = endPoints.find(
-    (ep) => ep.epEui === selectedEndPoint,
-  );
-
-  const activeCount = endPoints.filter((ep) => ep.status === "active").length;
-
-  const handleBackToList = () => {
-    navigate(ROUTES.ENDPOINTS);
-  };
-
-  if (showDetails && selectedEndPointData) {
-    const endpointToDisplay = fullEndpointData || selectedEndPointData;
-    if (detailsLoading) {
-      return (
-        <Box
-          sx={{
-            pt: 4,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            minHeight: "400px",
-          }}
-        >
-          <CircularProgress />
-        </Box>
-      );
-    }
+  if (!id) {
     return (
-      <Box sx={{ pt: 4 }}>
-        <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          mb={3}
-        >
-          <Typography variant="h4" component="h1">
-            {ENDPOINTS_PAGE.DETAILS_TITLE}
-          </Typography>
-          <Button variant="outlined" onClick={handleBackToList}>
-            {ENDPOINTS_PAGE.BACK_TO_LIST}
-          </Button>
-        </Box>
-        <EndPointDetails
-          endPoint={endpointToDisplay}
-          onDelete={handleBackToList}
-        />
-      </Box>
+      <EndpointListView
+        onOpen={(epEui) => navigate(endpointDetailPath(epEui))}
+      />
     );
   }
-
   return (
-    <Box data-testid="endpoints-page" sx={{ p: 3, pt: 4 }}>
-      <EndpointsHeader onAddClick={() => setAddDialogOpen(true)} />
-
-      <EndpointsStatsCards total={endPoints.length} activeCount={activeCount} />
-
-      <EndpointsFiltersBar search={filters.search} onSearchChange={setSearch} />
-
-      {loading && (
-        <Box
-          display="flex"
-          justifyContent="center"
-          alignItems="center"
-          minHeight="200px"
-        >
-          <CircularProgress />
-        </Box>
-      )}
-
-      {isError && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error instanceof Error ? error.message : ERR_LOAD_ENDPOINTS}
-        </Alert>
-      )}
-
-      {!loading && !isError && (
-        <EndpointsTableSection
-          endpoints={paginatedEndpoints}
-          emptyMessage={
-            filters.search
-              ? ENDPOINTS_PAGE.NO_MATCH
-              : ENDPOINTS_PAGE.NO_ENDPOINTS
-          }
-          orderBy={filters.sort.field as OrderBy}
-          orderDirection={filters.sort.direction}
-          onSort={handleSort}
-          onRowClick={handleEndPointClick}
-        />
-      )}
-
-      {!loading && !isError && (
-        <PaginationControls
-          page={pagination.page}
-          rowsPerPage={pagination.pageSize}
-          totalCount={filteredEndPoints.length}
-          onPageChange={setPage}
-          onRowsPerPageChange={setPageSize}
-        />
-      )}
-
-      <AddEndPointDialog open={addDialogOpen} onClose={handleAddDialogClose} />
-    </Box>
+    <EndpointDetailView epEui={id} onBack={() => navigate(ROUTES.ENDPOINTS)} />
   );
 };
 

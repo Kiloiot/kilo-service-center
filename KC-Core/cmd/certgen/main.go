@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"log"
@@ -14,16 +13,91 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
+)
+
+// caMaxPathLen restricts the CA to signing leaf certificates only
+// (no intermediate CAs).
+const caMaxPathLen = 0
+
+// Error message constants for certificate generation failures.
+const (
+	errMsgCertPathContainsPathTraversal    = "cert path contains path traversal"
+	errMsgFailedToCloseFile                = "failed to close file"
+	errMsgFailedToCreateCACertificate      = "failed to create CA certificate"
+	errMsgFailedToCreateCertificateFile    = "failed to create certificate file"
+	errMsgFailedToCreateClientCertificate  = "failed to create client certificate"
+	errMsgFailedToCreatePrivateKeyFile     = "failed to create private key file"
+	errMsgFailedToCreateServerCertificate  = "failed to create server certificate"
+	errMsgFailedToGenerateCAPrivateKey     = "failed to generate CA private key"
+	errMsgFailedToGenerateClientPrivateKey = "failed to generate client private key"
+	errMsgFailedToGenerateServerPrivateKey = "failed to generate server private key"
+	errMsgFailedToParseCACertificate       = "failed to parse CA certificate"
+	errMsgFailedToParseCACertificatePEM    = "failed to parse CA certificate PEM"
+	errMsgFailedToParseCAPrivateKey        = "failed to parse CA private key"
+	errMsgFailedToParseCAPrivateKeyPEM     = "failed to parse CA private key PEM"
+	errMsgFailedToParseClientCertificate   = "failed to parse client certificate"
+	errMsgFailedToParseServerCertificate   = "failed to parse server certificate"
+	errMsgFailedToReadCACertificate        = "failed to read CA certificate"
+	errMsgFailedToReadCAPrivateKey         = "failed to read CA private key"
+	errMsgFailedToResolveCertPath          = "failed to resolve cert path"
+	errMsgFailedToResolveFilename          = "failed to resolve filename"
+	errMsgFailedToResolveKeyPath           = "failed to resolve key path"
+	errMsgFailedToSetPrivateKeyPermissions = "failed to set private key permissions"
+	errMsgFailedToWriteCertificate         = "failed to write certificate"
+	errMsgFailedToWritePrivateKey          = "failed to write private key"
+	errMsgFilenameContainsPathTraversal    = "filename contains path traversal"
+	errMsgKeyPathContainsPathTraversal     = "key path contains path traversal"
 )
 
 // Certificate subject identity shared by the CA and issued certificates.
 const (
 	certSubjectOrganization = "KiloCenter"
-	certSubjectProvince     = "California"
-	certSubjectLocality     = "San Francisco"
+
+	certSubjectOUCA  = "MIOTY Certificate Authority"
+	certSubjectOUBS  = "MIOTY Base Station"
+	certSubjectOUSC  = "MIOTY Service Center"
+	certCommonNameCA = "KiloCenter Root CA"
+	certLocalDNSName = "kilocenter.local"
 )
+
+// Certificate file names inside the output directory.
+const (
+	fileCACert     = "ca.crt"
+	fileCAKey      = "ca.key"
+	fileServerCert = "server.crt"
+	fileServerKey  = "server.key"
+	fileClientCert = "client.crt"
+	fileClientKey  = "client.key"
+)
+
+// PEM block types.
+const (
+	pemTypeCertificate   = "CERTIFICATE"
+	pemTypeRSAPrivateKey = "RSA PRIVATE KEY"
+)
+
+// rsaKeyBits sizes every generated RSA key.
+const rsaKeyBits = 4096
+
+// Serial numbers for the self-signed CA and the leaf certificates it issues.
+const (
+	serialCA   = 1
+	serialLeaf = 2
+)
+
+// Output directory and private-key file permissions.
+const (
+	certDirPerm        = 0o750
+	privateKeyFilePerm = 0o600
+)
+
+// altNameSeparator separates the names of the -san flag.
+const altNameSeparator = ","
+
+// loopbackIPv4 is always included in the server certificate SANs alongside
+// the unspecified address.
+var loopbackIPv4 = net.IPv4(127, 0, 0, 1)
 
 func main() {
 	var (
@@ -32,6 +106,7 @@ func main() {
 		serverOnly   = flag.Bool("server-only", false, "Generate only server certificate (CA must exist)")
 		clientOnly   = flag.Bool("client-only", false, "Generate only client certificate (CA must exist)")
 		serverName   = flag.String("server", "localhost", "Server name for certificate")
+		altNames     = flag.String("san", "", "Further server names and IP addresses, comma-separated")
 		clientName   = flag.String("client", "", "Client name for certificate (e.g., base station EUI)")
 		validDays    = flag.Int("days", 365, "Certificate validity in days (for server/client certs)")
 		caValidYears = flag.Int("ca-years", 20, "CA certificate validity in years")
@@ -39,12 +114,12 @@ func main() {
 	flag.Parse()
 
 	// Create certificate directory
-	if err := os.MkdirAll(*certDir, 0750); err != nil {
+	if err := os.MkdirAll(*certDir, certDirPerm); err != nil {
 		log.Fatalf("Failed to create certificate directory: %v", err)
 	}
 
-	caPath := filepath.Join(*certDir, "ca.crt")
-	caKeyPath := filepath.Join(*certDir, "ca.key")
+	caPath := filepath.Join(*certDir, fileCACert)
+	caKeyPath := filepath.Join(*certDir, fileCAKey)
 
 	var caCert *x509.Certificate
 	var caKey *rsa.PrivateKey
@@ -67,7 +142,7 @@ func main() {
 			log.Fatalf("Failed to save CA private key: %v", err)
 		}
 		fmt.Printf("CA certificate saved to %s\n", caPath)
-		fmt.Printf("CA certificate is valid until: %s\n", caCert.NotAfter.Format("2006-01-02"))
+		fmt.Printf("CA certificate is valid until: %s\n", caCert.NotAfter.Format(time.DateOnly))
 
 		if *caOnly {
 			fmt.Println("\nCA certificate generated successfully!")
@@ -83,7 +158,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to load CA certificate: %v", err)
 		}
-		fmt.Printf("Loaded CA certificate (valid until: %s)\n", caCert.NotAfter.Format("2006-01-02"))
+		fmt.Printf("Loaded CA certificate (valid until: %s)\n", caCert.NotAfter.Format(time.DateOnly))
 	}
 
 	// Generate client certificate if requested
@@ -98,21 +173,21 @@ func main() {
 		}
 
 		// Save client certificate and key
-		if err := saveCertificate(filepath.Join(*certDir, "client.crt"), clientCert); err != nil {
+		if err := saveCertificate(filepath.Join(*certDir, fileClientCert), clientCert); err != nil {
 			log.Fatalf("Failed to save client certificate: %v", err)
 		}
-		if err := savePrivateKey(filepath.Join(*certDir, "client.key"), clientKey); err != nil {
+		if err := savePrivateKey(filepath.Join(*certDir, fileClientKey), clientKey); err != nil {
 			log.Fatalf("Failed to save client private key: %v", err)
 		}
-		fmt.Printf("Client certificate saved to %s\n", filepath.Join(*certDir, "client.crt"))
-		fmt.Printf("Client certificate is valid until: %s\n", clientCert.NotAfter.Format("2006-01-02"))
+		fmt.Printf("Client certificate saved to %s\n", filepath.Join(*certDir, fileClientCert))
+		fmt.Printf("Client certificate is valid until: %s\n", clientCert.NotAfter.Format(time.DateOnly))
 
 		fmt.Println("\nClient certificate generated successfully!")
 		fmt.Println("\nDeployment instructions:")
 		fmt.Println("1. Deploy these files to the base station:")
 		fmt.Printf("   - CA Certificate: %s\n", caPath)
-		fmt.Printf("   - Client Certificate: %s\n", filepath.Join(*certDir, "client.crt"))
-		fmt.Printf("   - Client Private Key: %s\n", filepath.Join(*certDir, "client.key"))
+		fmt.Printf("   - Client Certificate: %s\n", filepath.Join(*certDir, fileClientCert))
+		fmt.Printf("   - Client Private Key: %s\n", filepath.Join(*certDir, fileClientKey))
 		fmt.Println("2. Configure the base station to:")
 		fmt.Println("   - Trust the CA certificate for server verification")
 		fmt.Println("   - Use the client certificate/key for mutual TLS authentication")
@@ -121,49 +196,46 @@ func main() {
 
 	// Generate server certificate
 	fmt.Printf("Generating server certificate (valid for %d days)...\n", *validDays)
-	serverCert, serverKey, err := generateServerCert(caCert, caKey, *serverName, *validDays)
+	serverCert, serverKey, err := generateServerCert(caCert, caKey, *serverName, splitAltNames(*altNames), *validDays)
 	if err != nil {
 		log.Fatalf("Failed to generate server certificate: %v", err)
 	}
 
 	// Save server certificate and key
-	if err := saveCertificate(filepath.Join(*certDir, "server.crt"), serverCert); err != nil {
+	if err := saveCertificate(filepath.Join(*certDir, fileServerCert), serverCert); err != nil {
 		log.Fatalf("Failed to save server certificate: %v", err)
 	}
-	if err := savePrivateKey(filepath.Join(*certDir, "server.key"), serverKey); err != nil {
+	if err := savePrivateKey(filepath.Join(*certDir, fileServerKey), serverKey); err != nil {
 		log.Fatalf("Failed to save server private key: %v", err)
 	}
-	fmt.Printf("Server certificate saved to %s\n", filepath.Join(*certDir, "server.crt"))
-	fmt.Printf("Server certificate is valid until: %s\n", serverCert.NotAfter.Format("2006-01-02"))
+	fmt.Printf("Server certificate saved to %s\n", filepath.Join(*certDir, fileServerCert))
+	fmt.Printf("Server certificate is valid until: %s\n", serverCert.NotAfter.Format(time.DateOnly))
 
 	fmt.Println("\nCertificates generated successfully!")
 	fmt.Println("\nDeployment instructions:")
 	fmt.Println("1. Distribute the CA certificate to all base stations:")
 	fmt.Printf("   - CA Certificate: %s\n", caPath)
 	fmt.Println("2. Configure the BSSCI server with:")
-	fmt.Printf("   - Server Certificate: %s\n", filepath.Join(*certDir, "server.crt"))
-	fmt.Printf("   - Server Private Key: %s\n", filepath.Join(*certDir, "server.key"))
+	fmt.Printf("   - Server Certificate: %s\n", filepath.Join(*certDir, fileServerCert))
+	fmt.Printf("   - Server Private Key: %s\n", filepath.Join(*certDir, fileServerKey))
 	fmt.Println("\nNote: Server certificates can be renewed without updating base stations,")
 	fmt.Println("      as long as they are signed by the same CA.")
 }
 
 func generateCA(validYears int) (*x509.Certificate, *rsa.PrivateKey, error) {
 	// Generate RSA private key
-	caKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	caKey, err := rsa.GenerateKey(rand.Reader, rsaKeyBits)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate CA private key: %w", err)
+		return nil, nil, fmt.Errorf("%s: %w", errMsgFailedToGenerateCAPrivateKey, err)
 	}
 
 	// Create CA certificate template with long validity
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
+		SerialNumber: big.NewInt(serialCA),
 		Subject: pkix.Name{
 			Organization:       []string{certSubjectOrganization},
-			OrganizationalUnit: []string{"MIOTY Certificate Authority"},
-			Country:            []string{"US"},
-			Province:           []string{certSubjectProvince},
-			Locality:           []string{certSubjectLocality},
-			CommonName:         "KiloCenter Root CA",
+			OrganizationalUnit: []string{certSubjectOUCA},
+			CommonName:         certCommonNameCA,
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().AddDate(validYears, 0, 0), // Long-lived CA
@@ -171,244 +243,21 @@ func generateCA(validYears int) (*x509.Certificate, *rsa.PrivateKey, error) {
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		MaxPathLen:            0,
+		MaxPathLen:            caMaxPathLen,
 		MaxPathLenZero:        true,
 	}
 
 	// Create the CA certificate
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &caKey.PublicKey, caKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create CA certificate: %w", err)
+		return nil, nil, fmt.Errorf("%s: %w", errMsgFailedToCreateCACertificate, err)
 	}
 
 	// Parse the certificate
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CA certificate: %w", err)
+		return nil, nil, fmt.Errorf("%s: %w", errMsgFailedToParseCACertificate, err)
 	}
 
 	return cert, caKey, nil
-}
-
-func generateClientCert(caCert *x509.Certificate, caKey *rsa.PrivateKey, clientName string, validDays int) (*x509.Certificate, *rsa.PrivateKey, error) {
-	// Generate RSA private key for client
-	clientKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate client private key: %w", err)
-	}
-
-	// Use incrementing serial numbers for client certificates
-	serialNumber := big.NewInt(time.Now().Unix())
-
-	// Create client certificate template
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization:       []string{certSubjectOrganization},
-			OrganizationalUnit: []string{"MIOTY Base Station"},
-			Country:            []string{"US"},
-			Province:           []string{certSubjectProvince},
-			Locality:           []string{certSubjectLocality},
-			CommonName:         clientName,
-		},
-		NotBefore:   time.Now(),
-		NotAfter:    time.Now().AddDate(0, 0, validDays),
-		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-	}
-
-	// Create the client certificate signed by CA
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &clientKey.PublicKey, caKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create client certificate: %w", err)
-	}
-
-	// Parse the certificate
-	cert, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse client certificate: %w", err)
-	}
-
-	return cert, clientKey, nil
-}
-
-func generateServerCert(caCert *x509.Certificate, caKey *rsa.PrivateKey, serverName string, validDays int) (*x509.Certificate, *rsa.PrivateKey, error) {
-	// Generate RSA private key for server
-	serverKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate server private key: %w", err)
-	}
-
-	// Create server certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(2),
-		Subject: pkix.Name{
-			Organization:       []string{certSubjectOrganization},
-			OrganizationalUnit: []string{"MIOTY Service Center"},
-			Country:            []string{"US"},
-			Province:           []string{certSubjectProvince},
-			Locality:           []string{certSubjectLocality},
-			CommonName:         serverName,
-		},
-		NotBefore:   time.Now(),
-		NotAfter:    time.Now().AddDate(0, 0, validDays),
-		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:    []string{serverName, "kilocenter.local"},
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1), net.IPv4(0, 0, 0, 0)},
-	}
-
-	// Add local network IP if possible
-	if ips, err := getLocalIPs(); err == nil {
-		template.IPAddresses = append(template.IPAddresses, ips...)
-	}
-
-	// Create the server certificate signed by CA
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, caCert, &serverKey.PublicKey, caKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create server certificate: %w", err)
-	}
-
-	// Parse the certificate
-	cert, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse server certificate: %w", err)
-	}
-
-	return cert, serverKey, nil
-}
-
-func getLocalIPs() ([]net.IP, error) {
-	var ips []net.IP
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return nil, err
-	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				ips = append(ips, ipnet.IP)
-			}
-		}
-	}
-	return ips, nil
-}
-
-func saveCertificate(filename string, cert *x509.Certificate) error {
-	// Sanitize and validate path to prevent directory traversal (gosec G304)
-	filename = filepath.Clean(filename)
-	absFilename, err := filepath.Abs(filename)
-	if err != nil {
-		return fmt.Errorf("failed to resolve filename: %w", err)
-	}
-	// Ensure path doesn't escape via absolute path or contain traversal
-	if strings.Contains(absFilename, "..") {
-		return fmt.Errorf("filename contains path traversal")
-	}
-
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("failed to create certificate file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	err = pem.Encode(file, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: cert.Raw,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to write certificate: %w", err)
-	}
-
-	return nil
-}
-
-func savePrivateKey(filename string, key *rsa.PrivateKey) error {
-	// Sanitize and validate path to prevent directory traversal (gosec G304)
-	filename = filepath.Clean(filename)
-	absFilename, err := filepath.Abs(filename)
-	if err != nil {
-		return fmt.Errorf("failed to resolve filename: %w", err)
-	}
-	// Ensure path doesn't escape via absolute path or contain traversal
-	if strings.Contains(absFilename, "..") {
-		return fmt.Errorf("filename contains path traversal")
-	}
-
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("failed to create private key file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	// Set restrictive permissions on private key file
-	if err := file.Chmod(0600); err != nil {
-		return fmt.Errorf("failed to set private key permissions: %w", err)
-	}
-
-	err = pem.Encode(file, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(key),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to write private key: %w", err)
-	}
-
-	return nil
-}
-
-func loadCA(certPath, keyPath string) (*x509.Certificate, *rsa.PrivateKey, error) {
-	// Sanitize and validate cert path (gosec G304)
-	certPath = filepath.Clean(certPath)
-	absCertPath, err := filepath.Abs(certPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to resolve cert path: %w", err)
-	}
-	if strings.Contains(absCertPath, "..") {
-		return nil, nil, fmt.Errorf("cert path contains path traversal")
-	}
-
-	// Sanitize and validate key path (gosec G304)
-	keyPath = filepath.Clean(keyPath)
-	absKeyPath, err := filepath.Abs(keyPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to resolve key path: %w", err)
-	}
-	if strings.Contains(absKeyPath, "..") {
-		return nil, nil, fmt.Errorf("key path contains path traversal")
-	}
-
-	// Load CA certificate
-	certPEM, err := os.ReadFile(certPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read CA certificate: %w", err)
-	}
-
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		return nil, nil, fmt.Errorf("failed to parse CA certificate PEM")
-	}
-
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CA certificate: %w", err)
-	}
-
-	// Load CA private key
-	keyPEM, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read CA private key: %w", err)
-	}
-
-	keyBlock, _ := pem.Decode(keyPEM)
-	if keyBlock == nil {
-		return nil, nil, fmt.Errorf("failed to parse CA private key PEM")
-	}
-
-	key, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CA private key: %w", err)
-	}
-
-	return cert, key, nil
 }

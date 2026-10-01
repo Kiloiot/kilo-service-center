@@ -4,25 +4,43 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/internal/sqlcleanup"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
 )
 
+// columnLastError names the base station column holding the most recent
+// connection error text.
+const columnLastError = "last_error"
+
 // BaseStationRepository implements the BaseStationRepository interface for PostgreSQL
 type BaseStationRepository struct {
-	db *sqlx.DB
+	log   logger.Logger
+	clock clock.Clock
+	db    *sqlx.DB
 }
 
+const updateFixedArgs = 2
+
+// resourceBaseStation names this repository's resource in duplicate errors.
+const resourceBaseStation = "base station"
+
 // NewBaseStationRepository creates a new PostgreSQL Base Station repository
-func NewBaseStationRepository(db *sqlx.DB) *BaseStationRepository {
-	return &BaseStationRepository{db: db}
+// updateFixedArgs counts the leading fixed parameters (tenant, id) of the
+// dynamic update statement.
+func NewBaseStationRepository(db *sqlx.DB, clk clock.Clock, log logger.Logger) *BaseStationRepository {
+	return &BaseStationRepository{
+		log: log, clock: clk, db: db}
 }
 
 // Create creates a new Base Station
@@ -52,18 +70,17 @@ func (r *BaseStationRepository) Create(ctx context.Context, bs *models.BaseStati
 
 	stmt, err := r.db.PrepareNamedContext(ctx, query)
 	if err != nil {
-		return fmt.Errorf("prepare statement: %w", err)
+		return fmt.Errorf("%s: %w", errWrapPrepareStatement, err)
 	}
 	defer func() {
 		if err := stmt.Close(); err != nil {
-			// TODO: Repository lacks logger field - add for proper error tracking
-			log.Printf("failed to close statement in basestation creation: %v", err)
+			r.log.Warn(logMsgCloseStmtBasestationCreate, logger.FieldError, err)
 		}
 	}()
 
 	err = stmt.QueryRowxContext(ctx, bs).Scan(&bs.ID, &bs.CreatedAt, &bs.UpdatedAt)
 	if err != nil {
-		return WrapDuplicateError(err, "base station")
+		return WrapDuplicateError(err, resourceBaseStation)
 	}
 
 	return nil
@@ -94,19 +111,16 @@ func (r *BaseStationRepository) GetByID(ctx context.Context, tenantID, id int64)
 	err := r.db.GetContext(ctx, &bs, query, tenantID, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("base station not found")
+			return nil, errTextBaseStationNotFound
 		}
-		return nil, fmt.Errorf("get base station: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetBaseStation, err)
 	}
 
 	return &bs, nil
 }
 
-// GetByEUI retrieves a Base Station by EUI
-func (r *BaseStationRepository) GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.BaseStation, error) {
-	var bs models.BaseStation
-	query := `
-		SELECT
+// baseStationColumns are the columns a whole base station row is read with.
+const baseStationColumns = `
 			id, tenant_id, bs_eui, name, description,
 			connection_type, service_center_url,
 			tls_ca_certificate, tls_certificate, tls_key,
@@ -122,16 +136,23 @@ func (r *BaseStationRepository) GetByEUI(ctx context.Context, tenantID int64, eu
 			connection_status, last_error, retry_count, next_retry_at,
 			system_time, duty_cycle, uptime_seconds, temperature_celsius,
 			cpu_load, memory_load, bs_config, last_status_at,
-			created_at, updated_at
-		FROM basestations
-		WHERE tenant_id = $1 AND bs_eui = $2`
+			created_at, updated_at`
 
-	err := r.db.GetContext(ctx, &bs, query, tenantID, eui)
+const (
+	sqlGetBaseStationByEUI       = `SELECT` + baseStationColumns + ` FROM basestations WHERE tenant_id = $1 AND bs_eui = $2`
+	sqlGetBaseStationByEUIGlobal = `SELECT` + baseStationColumns + ` FROM basestations WHERE bs_eui = $1`
+	sqlDeleteBaseStationByEUI    = `DELETE FROM basestations WHERE tenant_id = $1 AND bs_eui = $2 RETURNING` + baseStationColumns
+)
+
+// GetByEUI retrieves a Base Station by EUI
+func (r *BaseStationRepository) GetByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.BaseStation, error) {
+	var bs models.BaseStation
+	err := r.db.GetContext(ctx, &bs, sqlGetBaseStationByEUI, tenantID, eui)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("base station not found: %w", storage.ErrNotFound)
+			return nil, fmt.Errorf("%s: %w", errWrapBaseStationNotFound, storage.ErrNotFound)
 		}
-		return nil, fmt.Errorf("get base station: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetBaseStation, err)
 	}
 
 	return &bs, nil
@@ -141,33 +162,12 @@ func (r *BaseStationRepository) GetByEUI(ctx context.Context, tenantID int64, eu
 // Used during BSSCI connect handshake when tenant is not yet resolved.
 func (r *BaseStationRepository) GetByEUIGlobal(ctx context.Context, eui []byte) (*models.BaseStation, error) {
 	var bs models.BaseStation
-	query := `
-		SELECT
-			id, tenant_id, bs_eui, name, description,
-			connection_type, service_center_url,
-			tls_ca_certificate, tls_certificate, tls_key,
-			tls_auth_required, tls_hostname_verification,
-			tls_cert_fingerprint, tls_cert_expires_at,
-			mqtt_broker_url, mqtt_client_id, mqtt_username, mqtt_password_encrypted, mqtt_topic_prefix,
-			is_online, last_seen_at, session_uuid, session_started_at,
-			uptime, status_code, status_message,
-			tags, bidi, ul_load, dl_load, last_modified_by, last_modified_at,
-			vendor, model, sw_version,
-			latitude, longitude, altitude, location_source, location_updated_at,
-			config_file_content, config_file_uploaded_at,
-			connection_status, last_error, retry_count, next_retry_at,
-			system_time, duty_cycle, uptime_seconds, temperature_celsius,
-			cpu_load, memory_load, bs_config, last_status_at,
-			created_at, updated_at
-		FROM basestations
-		WHERE bs_eui = $1`
-
-	err := r.db.GetContext(ctx, &bs, query, eui)
+	err := r.db.GetContext(ctx, &bs, sqlGetBaseStationByEUIGlobal, eui)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("base station not found")
+			return nil, errTextBaseStationNotFound
 		}
-		return nil, fmt.Errorf("get base station: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetBaseStation, err)
 	}
 
 	return &bs, nil
@@ -184,7 +184,7 @@ func (r *BaseStationRepository) ListAllLocations(ctx context.Context) ([]*models
 
 	var stations []*models.BaseStation
 	if err := r.db.SelectContext(ctx, &stations, query); err != nil {
-		return nil, fmt.Errorf("list all locations: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapListAllLocations, err)
 	}
 	return stations, nil
 }
@@ -197,14 +197,14 @@ func (r *BaseStationRepository) Update(ctx context.Context, tenantID, id int64, 
 
 	// Build dynamic update query
 	setClauses := make([]string, 0, len(updates))
-	args := make([]interface{}, 0, len(updates)+3)
+	args := make([]interface{}, 0, len(updates)+updateFixedArgs+1)
 	args = append(args, tenantID, id)
 
-	i := 3
+	argIndex := len(args) + 1
 	for field, value := range updates {
-		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", field, i))
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", field, argIndex))
 		args = append(args, value)
-		i++
+		argIndex++
 	}
 
 	// Always update updated_at
@@ -218,37 +218,16 @@ func (r *BaseStationRepository) Update(ctx context.Context, tenantID, id int64, 
 
 	result, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		return fmt.Errorf("update base station: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateBaseStation, err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("base station not found")
-	}
-
-	return nil
-}
-
-// Delete deletes a Base Station
-func (r *BaseStationRepository) Delete(ctx context.Context, tenantID, id int64) error {
-	query := `DELETE FROM basestations WHERE tenant_id = $1 AND id = $2`
-
-	result, err := r.db.ExecContext(ctx, query, tenantID, id)
-	if err != nil {
-		return fmt.Errorf("delete base station: %w", err)
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
-	}
-
-	if rows == 0 {
-		return fmt.Errorf("base station not found")
+		return errTextBaseStationNotFound
 	}
 
 	return nil
@@ -259,7 +238,7 @@ func (r *BaseStationRepository) List(ctx context.Context, filter *models.BaseSta
 	// Build WHERE clauses
 	whereClauses := []string{"tenant_id = $1"}
 	args := []interface{}{filter.TenantID}
-	argCount := 2
+	argCount := len(args) + 1
 
 	if filter.ConnectionType != nil {
 		whereClauses = append(whereClauses, fmt.Sprintf("connection_type = $%d", argCount))
@@ -289,7 +268,7 @@ func (r *BaseStationRepository) List(ctx context.Context, filter *models.BaseSta
 	var total int64
 	err := r.db.GetContext(ctx, &total, countQuery, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("count base stations: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountBaseStations, err)
 	}
 
 	// Get paginated results
@@ -350,7 +329,7 @@ func (r *BaseStationRepository) List(ctx context.Context, filter *models.BaseSta
 	var baseStations []*models.BaseStation
 	err = r.db.SelectContext(ctx, &baseStations, query, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list base stations: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapListBaseStations, err)
 	}
 
 	return baseStations, total, nil
@@ -360,15 +339,15 @@ func (r *BaseStationRepository) List(ctx context.Context, filter *models.BaseSta
 func (r *BaseStationRepository) UpdateConnectionStatus(ctx context.Context, tenantID, id int64, isOnline bool, lastError *string) error {
 	updates := map[string]interface{}{
 		"is_online":    isOnline,
-		"last_seen_at": time.Now(),
+		"last_seen_at": r.clock.Now(),
 	}
 
 	if isOnline {
-		updates["last_error"] = nil
+		updates[columnLastError] = nil
 		updates["retry_count"] = 0
 		updates["next_retry_at"] = nil
 	} else if lastError != nil {
-		updates["last_error"] = *lastError
+		updates[columnLastError] = *lastError
 		// Increment retry count and calculate next retry with exponential backoff
 		var retryCount int
 		err := r.db.GetContext(ctx, &retryCount,
@@ -379,55 +358,30 @@ func (r *BaseStationRepository) UpdateConnectionStatus(ctx context.Context, tena
 			updates["retry_count"] = retryCount
 			// Exponential backoff: 2^retry_count seconds, max 1 hour
 			backoffSeconds := 1 << retryCount
-			if backoffSeconds > 3600 {
-				backoffSeconds = 3600
+			if backoffSeconds > maxConnectionRetryBackoffSeconds {
+				backoffSeconds = maxConnectionRetryBackoffSeconds
 			}
-			updates["next_retry_at"] = time.Now().Add(time.Duration(backoffSeconds) * time.Second)
+			updates["next_retry_at"] = r.clock.Now().Add(time.Duration(backoffSeconds) * time.Second)
 		}
 	}
 
 	// Update connection status JSON
-	statusJSON, _ := json.Marshal(map[string]interface{}{
+	statusJSON, err := json.Marshal(map[string]interface{}{
 		"is_online":  isOnline,
-		"last_seen":  time.Now(),
+		"last_seen":  r.clock.Now(),
 		"last_error": lastError,
 	})
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapMarshalConnectionStatus, err)
+	}
 	updates["connection_status"] = statusJSON
 
 	return r.Update(ctx, tenantID, id, updates)
 }
 
-// UpdateSessionInfo updates the session information of a Base Station
-func (r *BaseStationRepository) UpdateSessionInfo(ctx context.Context, tenantID int64, eui []byte, sessionUUID string) error {
-	query := `
-		UPDATE basestations 
-		SET session_uuid = $1, 
-		    session_started_at = NOW(),
-		    is_online = true,
-		    last_seen_at = NOW(),
-		    updated_at = NOW()
-		WHERE tenant_id = $2 AND bs_eui = $3`
-
-	result, err := r.db.ExecContext(ctx, query, sessionUUID, tenantID, eui)
-	if err != nil {
-		return fmt.Errorf("update session info: %w", err)
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("get rows affected: %w", err)
-	}
-
-	if rows == 0 {
-		return fmt.Errorf("base station not found")
-	}
-
-	return nil
-}
-
 // GetStatistics retrieves statistics for Base Stations
-func (r *BaseStationRepository) GetStatistics(ctx context.Context, tenantID int64) (*interfaces.BaseStationStatistics, error) {
-	var stats interfaces.BaseStationStatistics
+func (r *BaseStationRepository) GetStatistics(ctx context.Context, tenantID int64) (*models.BaseStationStatistics, error) {
+	var stats models.BaseStationStatistics
 
 	query := `
 		SELECT 
@@ -441,35 +395,31 @@ func (r *BaseStationRepository) GetStatistics(ctx context.Context, tenantID int6
 
 	err := r.db.GetContext(ctx, &stats, query, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("get statistics: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetStatistics, err)
 	}
 
 	return &stats, nil
 }
 
 // UpdateEUI updates the Base Station EUI with transactional cascade to all dependent tables
-func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, oldEui, newEui []byte) (*models.BaseStation, error) {
+func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, oldEui, newEui []byte) (_ *models.BaseStation, err error) {
 	// Validate EUI lengths
 	if len(oldEui) != 8 || len(newEui) != 8 {
-		return nil, fmt.Errorf("invalid EUI length: expected 8 bytes")
+		return nil, errTextInvalidEUILengthExpected8Bytes
 	}
 
-	// Start transaction
+	// Start transaction; rolling back after a successful commit is a no-op.
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("begin transaction: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapBeginTransaction, err)
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer sqlcleanup.RollbackUncommitted(tx, errWrapRollbackTransaction, &err)
 
 	// 1. Validate global uniqueness: reject if new_eui already exists (any tenant)
 	var existsCount int
 	err = tx.GetContext(ctx, &existsCount, "SELECT COUNT(*) FROM basestations WHERE bs_eui = $1", newEui)
 	if err != nil {
-		return nil, fmt.Errorf("check EUI uniqueness: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapCheckEUIUniqueness, err)
 	}
 	if existsCount > 0 {
 		return nil, storage.ErrAlreadyExists
@@ -482,7 +432,7 @@ func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, o
 		return nil, storage.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get base station: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetBaseStation, err)
 	}
 
 	// 3. Update all tables with bs_eui reference (transactional cascade)
@@ -491,75 +441,75 @@ func (r *BaseStationRepository) UpdateEUI(ctx context.Context, tenantID int64, o
 	// Reset online status and clear session - EUI change invalidates any active BSSCI session
 	_, err = tx.ExecContext(ctx, "UPDATE basestations SET bs_eui = $1, updated_at = NOW(), is_online = false, session_uuid = NULL WHERE bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update basestations: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateBasestations, err)
 	}
 
 	// BYTEA columns: downlink_queue.bs_eui, downlink_queue.tx_bs_eui
 	_, err = tx.ExecContext(ctx, "UPDATE downlink_queue SET bs_eui = $1 WHERE bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update downlink_queue.bs_eui: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateDownlinkQueueBsEui, err)
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE downlink_queue SET tx_bs_eui = $1 WHERE tx_bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update downlink_queue.tx_bs_eui: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateDownlinkQueueTxBsEui, err)
 	}
 
 	// BYTEA columns: dl_rx_status.bs_eui
 	_, err = tx.ExecContext(ctx, "UPDATE dl_rx_status SET bs_eui = $1 WHERE bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update dl_rx_status: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateDlRxStatus, err)
 	}
 
 	// BYTEA columns: dl_rx_status_queries.bs_eui_actual
 	_, err = tx.ExecContext(ctx, "UPDATE dl_rx_status_queries SET bs_eui_actual = $1 WHERE bs_eui_actual = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update dl_rx_status_queries: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateDlRxStatusQueries, err)
 	}
 
 	// BYTEA columns: roaming_events.from_bs_eui, roaming_events.to_bs_eui
 	_, err = tx.ExecContext(ctx, "UPDATE roaming_events SET from_bs_eui = $1 WHERE from_bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update roaming_events.from_bs_eui: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateRoamingEventsFromBsEui, err)
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE roaming_events SET to_bs_eui = $1 WHERE to_bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update roaming_events.to_bs_eui: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateRoamingEventsBsEui, err)
 	}
 
 	// BYTEA columns: mioty_basestation_status.basestation_eui
 	_, err = tx.ExecContext(ctx, "UPDATE mioty_basestation_status SET basestation_eui = $1 WHERE basestation_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update mioty_basestation_status: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateMiotyBasestationStatus, err)
 	}
 
 	// BYTEA columns: messages.bs_eui (8-byte big-endian per migration 000135)
 	_, err = tx.ExecContext(ctx, "UPDATE messages SET bs_eui = $1 WHERE bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update messages: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateMessages, err)
 	}
 
 	// BYTEA columns: messages_archive.bs_eui (rebuilt LIKE messages by migration 000139)
 	_, err = tx.ExecContext(ctx, "UPDATE messages_archive SET bs_eui = $1 WHERE bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update messages_archive: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateMessagesArchive, err)
 	}
 
 	// Preserved legacy archive (pre-000139) participates in identity
 	// maintenance so its rows never carry a stale EUI
 	if err := updateLegacyArchiveEUI(ctx, tx, legacyArchiveBsEUI, newEui, oldEui); err != nil {
-		return nil, fmt.Errorf("update messages_archive_pre000139: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateMessagesArchivePre000139, err)
 	}
 
 	// BYTEA columns: endpoints.last_attached_bs_eui
 	_, err = tx.ExecContext(ctx, "UPDATE endpoints SET last_attached_bs_eui = $1 WHERE last_attached_bs_eui = $2", newEui, oldEui)
 	if err != nil {
-		return nil, fmt.Errorf("update endpoints: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapUpdateEndpoints, err)
 	}
 
 	// 4. Commit transaction
 	err = tx.Commit()
 	if err != nil {
-		return nil, fmt.Errorf("commit transaction: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapCommitTransaction, err)
 	}
 
 	// 5. Return updated base station
@@ -609,7 +559,7 @@ func (r *BaseStationRepository) ListWithStats(ctx context.Context, tenantID int6
 	var results []*BaseStationWithStats
 	err := r.db.SelectContext(ctx, &results, query, tenantID, limit, offset)
 	if err != nil {
-		return nil, 0, fmt.Errorf("query base stations with stats: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapQueryBaseStationsWithStats, err)
 	}
 
 	// Get total count
@@ -617,69 +567,10 @@ func (r *BaseStationRepository) ListWithStats(ctx context.Context, tenantID int6
 	countQuery := "SELECT COUNT(*) FROM basestations WHERE tenant_id = $1"
 	err = r.db.GetContext(ctx, &totalCount, countQuery, tenantID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("count base stations: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountBaseStations, err)
 	}
 
 	return results, totalCount, nil
-}
-
-// GetPropagationState retrieves propagation state for a base station
-func (r *BaseStationRepository) GetPropagationState(ctx context.Context, baseStationID int64) (*models.BaseStationPropagationState, error) {
-	query := `SELECT * FROM basestation_propagation_state WHERE base_station_id = $1`
-	var state models.BaseStationPropagationState
-	err := r.db.GetContext(ctx, &state, query, baseStationID)
-	if err == sql.ErrNoRows {
-		return nil, nil // Not an error, just no state yet
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get propagation state: %w", err)
-	}
-	return &state, nil
-}
-
-// UpsertPropagationState inserts or updates propagation state for a base station
-func (r *BaseStationRepository) UpsertPropagationState(ctx context.Context, state *models.BaseStationPropagationState) error {
-	query := `
-		INSERT INTO basestation_propagation_state
-			(base_station_id, last_full_sync_at, last_endpoint_cursor, status, retry_count, next_retry_at, last_error, tenant_progress, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-		ON CONFLICT (base_station_id) DO UPDATE SET
-			last_full_sync_at = EXCLUDED.last_full_sync_at,
-			last_endpoint_cursor = EXCLUDED.last_endpoint_cursor,
-			status = EXCLUDED.status,
-			retry_count = EXCLUDED.retry_count,
-			next_retry_at = EXCLUDED.next_retry_at,
-			last_error = EXCLUDED.last_error,
-			tenant_progress = EXCLUDED.tenant_progress,
-			updated_at = NOW()
-	`
-	_, err := r.db.ExecContext(ctx, query,
-		state.BaseStationID, state.LastFullSyncAt, state.LastEndpointCursor,
-		state.Status, state.RetryCount, state.NextRetryAt, state.LastError, state.TenantProgress)
-	if err != nil {
-		return fmt.Errorf("upsert propagation state: %w", err)
-	}
-	return nil
-}
-
-// UpdatePropagationStatus updates only the status and error fields of propagation state
-func (r *BaseStationRepository) UpdatePropagationStatus(ctx context.Context, baseStationID int64, status string, lastError *string) error {
-	query := `UPDATE basestation_propagation_state SET status = $1, last_error = $2, updated_at = NOW() WHERE base_station_id = $3`
-	_, err := r.db.ExecContext(ctx, query, status, lastError, baseStationID)
-	if err != nil {
-		return fmt.Errorf("update propagation status: %w", err)
-	}
-	return nil
-}
-
-// IncrementRetryCount increments the retry count and sets next retry time
-func (r *BaseStationRepository) IncrementRetryCount(ctx context.Context, baseStationID int64, nextRetryAt time.Time) error {
-	query := `UPDATE basestation_propagation_state SET retry_count = retry_count + 1, next_retry_at = $1, updated_at = NOW() WHERE base_station_id = $2`
-	_, err := r.db.ExecContext(ctx, query, nextRetryAt, baseStationID)
-	if err != nil {
-		return fmt.Errorf("increment retry count: %w", err)
-	}
-	return nil
 }
 
 // BaseStationWithStats represents a base station with aggregated statistics
@@ -698,23 +589,35 @@ type BaseStationWithStats struct {
 	AvgSNR          float64        `db:"avg_snr"`
 }
 
-// UpdateTLSFingerprintIfBlank persists the certificate fingerprint only while
-// the stored tls_cert_fingerprint is still NULL or empty (see interface
-// contract). The conditional WHERE makes the backfill race-safe: a concurrent
-// writer wins and this call reports false so the caller reloads and compares.
-func (r *BaseStationRepository) UpdateTLSFingerprintIfBlank(ctx context.Context, tenantID, id int64, fingerprint string) (bool, error) {
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE basestations
-		SET tls_cert_fingerprint = $1, updated_at = NOW()
-		WHERE tenant_id = $2 AND id = $3
-		  AND (tls_cert_fingerprint IS NULL OR tls_cert_fingerprint = '')
-	`, fingerprint, tenantID, id)
-	if err != nil {
-		return false, fmt.Errorf("backfill tls fingerprint: %w", err)
+// UpdateProfile persists the operator-editable base station fields: name,
+// description, location and tags.
+func (r *BaseStationRepository) UpdateProfile(ctx context.Context, bs *models.BaseStation) error {
+	updates := map[string]interface{}{
+		"name":                bs.Name,
+		"description":         bs.Description,
+		"latitude":            bs.Latitude,
+		"longitude":           bs.Longitude,
+		"altitude":            bs.Altitude,
+		"location_source":     bs.LocationSource,
+		"location_updated_at": bs.LocationUpdatedAt,
+		"tags":                bs.Tags,
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("backfill tls fingerprint rows: %w", err)
+	if err := r.Update(ctx, bs.TenantID, bs.ID, updates); err != nil {
+		return fmt.Errorf("%s: %w", errWrapOpUpdateBaseStation, err)
 	}
-	return rows > 0, nil
+	return nil
+}
+
+// DeleteByEUI removes a tenant's base station addressed by EUI in one
+// statement and returns the row it removed.
+func (r *BaseStationRepository) DeleteByEUI(ctx context.Context, tenantID int64, eui []byte) (*models.BaseStation, error) {
+	var bs models.BaseStation
+	err := r.db.GetContext(ctx, &bs, sqlDeleteBaseStationByEUI, tenantID, eui)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%s: %w", errWrapBaseStationNotFound, storage.ErrNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", errWrapOpDeleteBaseStation, err)
+	}
+	return &bs, nil
 }

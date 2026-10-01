@@ -41,10 +41,10 @@ func NewIdentityRPCOrgAdapter(
 	maxSize int,
 ) *IdentityRPCOrgAdapter {
 	if maxSize <= 0 {
-		maxSize = 1000
+		maxSize = OrgCacheDefaultMaxEntries
 	}
 	if ttl <= 0 {
-		ttl = 5 * time.Minute
+		ttl = OrgCacheDefaultTTL
 	}
 	return &IdentityRPCOrgAdapter{
 		client:     client,
@@ -73,7 +73,7 @@ func (a *IdentityRPCOrgAdapter) LookupTenant(ctx context.Context, orgUUID uuid.U
 		OrgId: orgUUID.String(),
 	})
 	if err != nil {
-		return 0, fmt.Errorf("identity RPC ResolveOrg failed for org %s: %w", orgUUID, err)
+		return 0, fmt.Errorf(ErrFmtIdentityResolveOrgFailed, orgUUID, err)
 	}
 
 	tenantID := resp.GetTenantId()
@@ -99,7 +99,7 @@ func (a *IdentityRPCOrgAdapter) LookupTenant(ctx context.Context, orgUUID uuid.U
 
 // ResolveCert is not supported in the gateway (protocol-level cert auth is handled by KC-Core).
 func (a *IdentityRPCOrgAdapter) ResolveCert(_ context.Context, _ *x509.Certificate) (uuid.UUID, int64, error) {
-	return uuid.Nil, 0, fmt.Errorf("gateway does not support certificate-based org resolution")
+	return uuid.Nil, 0, ErrCertResolutionUnsupported
 }
 
 // GetDefaultOrgForTenant returns the default organization UUID for a tenant.
@@ -109,12 +109,12 @@ func (a *IdentityRPCOrgAdapter) GetDefaultOrgForTenant(ctx context.Context, tena
 		TenantId: tenantID,
 	})
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("identity RPC GetDefaultOrgForTenant failed for tenant %d: %w", tenantID, err)
+		return uuid.Nil, fmt.Errorf(ErrFmtIdentityGetDefaultOrgFailed, tenantID, err)
 	}
 
 	orgUUID, err := uuid.Parse(resp.GetOrgId())
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("invalid org UUID from identity service: %w", err)
+		return uuid.Nil, fmt.Errorf("%s: %w", ErrInvalidOrgUUID, err)
 	}
 
 	return orgUUID, nil

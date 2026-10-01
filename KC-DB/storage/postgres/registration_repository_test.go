@@ -3,9 +3,10 @@ package postgres
 import (
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +24,7 @@ func TestRegisterAccount_Success(t *testing.T) {
 		}
 	}()
 
-	repo := NewRegistrationRepository(db)
+	repo := NewRegistrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	userID := uuid.New()
@@ -48,7 +49,7 @@ func TestRegisterAccount_Success(t *testing.T) {
 		_, _ = db.Exec("DELETE FROM users WHERE id = $1", userID)
 	}()
 
-	result, err := repo.RegisterAccount(ctx, &interfaces.RegistrationParams{
+	result, err := repo.RegisterAccount(ctx, &models.RegistrationParams{
 		User:        user,
 		CompanyName: companyName,
 	})
@@ -102,7 +103,7 @@ func TestRegisterAccount_DuplicateEmail(t *testing.T) {
 		}
 	}()
 
-	repo := NewRegistrationRepository(db)
+	repo := NewRegistrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	email := "duplicate-reg@example.com"
@@ -124,7 +125,7 @@ func TestRegisterAccount_DuplicateEmail(t *testing.T) {
 		CompanyName:  &company,
 	}
 
-	result1, err := repo.RegisterAccount(ctx, &interfaces.RegistrationParams{
+	result1, err := repo.RegisterAccount(ctx, &models.RegistrationParams{
 		User:        user1,
 		CompanyName: company,
 	})
@@ -150,7 +151,7 @@ func TestRegisterAccount_DuplicateEmail(t *testing.T) {
 		CompanyName:  &company,
 	}
 
-	result2, err := repo.RegisterAccount(ctx, &interfaces.RegistrationParams{
+	result2, err := repo.RegisterAccount(ctx, &models.RegistrationParams{
 		User:        user2,
 		CompanyName: company,
 	})
@@ -177,7 +178,7 @@ func TestRegisterCEAccount_FirstUser_BecomesOwner(t *testing.T) {
 		}
 	}()
 
-	repo := NewRegistrationRepository(db)
+	repo := NewRegistrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create a fresh CE org for this test
@@ -210,7 +211,7 @@ func TestRegisterCEAccount_FirstUser_BecomesOwner(t *testing.T) {
 		LastName:     &lastName,
 	}
 
-	result, err := repo.RegisterCEAccount(ctx, &interfaces.CERegistrationParams{
+	result, err := repo.RegisterCEAccount(ctx, &models.CERegistrationParams{
 		User:     user,
 		OrgID:    orgID,
 		TenantID: tenantID,
@@ -244,7 +245,7 @@ func TestRegisterCEAccount_SecondUser_BecomesMember(t *testing.T) {
 		}
 	}()
 
-	repo := NewRegistrationRepository(db)
+	repo := NewRegistrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create a fresh CE org
@@ -277,7 +278,7 @@ func TestRegisterCEAccount_SecondUser_BecomesMember(t *testing.T) {
 		FirstName:    &firstName1,
 		LastName:     &lastName1,
 	}
-	_, err = repo.RegisterCEAccount(ctx, &interfaces.CERegistrationParams{
+	_, err = repo.RegisterCEAccount(ctx, &models.CERegistrationParams{
 		User: user1, OrgID: orgID, TenantID: tenantID,
 	})
 	require.NoError(t, err)
@@ -296,7 +297,7 @@ func TestRegisterCEAccount_SecondUser_BecomesMember(t *testing.T) {
 		FirstName:    &firstName2,
 		LastName:     &lastName2,
 	}
-	result, err := repo.RegisterCEAccount(ctx, &interfaces.CERegistrationParams{
+	result, err := repo.RegisterCEAccount(ctx, &models.CERegistrationParams{
 		User: user2, OrgID: orgID, TenantID: tenantID,
 	})
 	require.NoError(t, err)

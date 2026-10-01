@@ -1,8 +1,6 @@
 package bssci_test
 
 import (
-	"sort"
-	"strings"
 	"testing"
 
 	bssciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci"
@@ -63,7 +61,7 @@ func TestDLRXStatusHandlerValidation(t *testing.T) {
 				"dlRxRssi":  float64(-85.0),
 			},
 			expectErr: true,
-			errMsg:    "Missing epEui in dlRxStat",
+			errMsg:    "bssci.error.mandatory_field_missing: epEui",
 		},
 		{
 			name: "missing rxTime",
@@ -74,7 +72,7 @@ func TestDLRXStatusHandlerValidation(t *testing.T) {
 				"dlRxRssi":  float64(-85.0),
 			},
 			expectErr: true,
-			errMsg:    "Missing rxTime in dlRxStat",
+			errMsg:    "bssci.error.mandatory_field_missing: rxTime",
 		},
 		{
 			name: "missing packetCnt",
@@ -85,7 +83,7 @@ func TestDLRXStatusHandlerValidation(t *testing.T) {
 				"dlRxRssi": float64(-85.0),
 			},
 			expectErr: true,
-			errMsg:    "Missing packetCnt in dlRxStat",
+			errMsg:    "bssci.error.mandatory_field_missing: packetCnt",
 		},
 		{
 			name: "missing dlRxSnr - mandatory field",
@@ -96,7 +94,7 @@ func TestDLRXStatusHandlerValidation(t *testing.T) {
 				"dlRxRssi":  float64(-85.0),
 			},
 			expectErr: true,
-			errMsg:    "Missing dlRxSnr in dlRxStat",
+			errMsg:    "bssci.error.mandatory_field_missing: dlRxSnr",
 		},
 		{
 			name: "missing dlRxRssi - mandatory field",
@@ -107,7 +105,7 @@ func TestDLRXStatusHandlerValidation(t *testing.T) {
 				"dlRxSnr":   float64(-5.5),
 			},
 			expectErr: true,
-			errMsg:    "Missing dlRxRssi in dlRxStat",
+			errMsg:    "bssci.error.mandatory_field_missing: dlRxRssi",
 		},
 	}
 
@@ -147,17 +145,6 @@ func TestDLRXStatusHandlerValidation(t *testing.T) {
 	}
 }
 
-// TestDLRXStatusPersistence tests database persistence of DL RX status
-func TestDLRXStatusPersistence(t *testing.T) {
-	t.Skip("Requires database connection - implement in integration tests")
-
-	// This would test:
-	// 1. Successful persistence with all fields
-	// 2. Correct conversion of EUI to bytes
-	// 3. Proper tenant ID handling
-	// 4. Timestamp generation
-}
-
 // TestHandlerRegistration verifies all DL RX status handlers are registered
 func TestHandlerRegistration(t *testing.T) {
 	// Create real services for test
@@ -165,20 +152,21 @@ func TestHandlerRegistration(t *testing.T) {
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, _, queueSerializer, auditLogger, tenantResolver, _ := bssci.CreateTestServices(logger, nil)
 	versionNegotiator, err := bssciservices.NewVersionNegotiator([]string{mioty.MIOTYProtocolVersion}, logger)
 	require.NoError(t, err, "NewVersionNegotiator should build from the canonical version")
-	server, err := bssci.NewServer(&bssci.Config{}, logger, bssci.Dependencies{
-		SessionSvc:         sessionSvc,
-		VersionNegotiator:  versionNegotiator,
-		DownlinkSvc:        downlinkSvc,
-		StatusSvc:          statusSvc,
-		ConnectionRegistry: connectionSvc,
-		QueueSerializer:    queueSerializer,
-		AuditLogger:        auditLogger,
-		TenantResolver:     tenantResolver,
-		TenantID:           1,
-		DefaultTenantID:    1,
+	server, err := bssci.NewServer(&bssci.Config{SocketWriteTimeout: bssci.TestFrameWriteTimeout}, logger, bssci.Dependencies{
+		Protocol: bssci.ProtocolServices{
+			Session:            sessionSvc,
+			VersionNegotiator:  versionNegotiator,
+			Downlink:           downlinkSvc,
+			Status:             statusSvc,
+			ConnectionRegistry: connectionSvc,
+			QueueSerializer:    queueSerializer,
+			AuditLogger:        auditLogger,
+			TenantResolver:     tenantResolver,
+		},
+		TenantID:        1,
+		DefaultTenantID: 1,
 	})
 	require.NoError(t, err, "NewServer should not return error with valid StatusService")
-	server.RegisterHandlers()
 
 	expectedHandlers := []string{
 		"dlRxStat",
@@ -207,32 +195,12 @@ func TestValidationCommandList(t *testing.T) {
 		mioty.CmdDLRxStatusQueryComplete,
 	}
 
-	// Get actual DL RX commands from outbound catalog by enumerating catalog itself
-	var actual []string
-	for command := range mioty.OutboundFieldCatalog {
-		// Include SC→BS DL RX commands (dlRxStatQry*), exclude BS→SC (dlRxStat without Qry)
-		if strings.HasPrefix(command, "dlRxStat") &&
-			command != mioty.CmdDLRxStatus &&
-			command != mioty.CmdDLRxStatusResponse &&
-			command != mioty.CmdDLRxStatusComplete {
-			actual = append(actual, command)
-		}
+	for _, cmd := range expected {
+		_, ok := mioty.AllowedOutboundFields(cmd)
+		assert.True(t, ok, "SC->BS command %s must be in the outbound catalog", cmd)
 	}
 
-	// Sort both for stable comparison
-	sort.Strings(expected)
-	sort.Strings(actual)
-
-	// Verify all expected commands are in catalog
-	if len(actual) != len(expected) {
-		t.Errorf("Command count mismatch: expected %d commands, found %d in catalog", len(expected), len(actual))
-		t.Logf("Expected: %v", expected)
-		t.Logf("In catalog: %v", actual)
-	}
-
-	for i, cmd := range expected {
-		if i >= len(actual) || actual[i] != cmd {
-			t.Errorf("Command %s not found in outbound catalog", cmd)
-		}
-	}
+	// dlRxStat itself is BS-initiated and must stay out of the SC->BS catalog
+	_, ok := mioty.AllowedOutboundFields(mioty.CmdDLRxStatus)
+	assert.False(t, ok, "BS->SC command %s must not be in the outbound catalog", mioty.CmdDLRxStatus)
 }

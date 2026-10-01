@@ -3,15 +3,16 @@ package postgres
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 )
 
 // setupSCACIOperationTestDB creates a test database with testcontainers
@@ -34,8 +35,8 @@ func createSCACIOperationTestTenant(t *testing.T, db *sqlx.DB, id int64, name st
 func createSCACIOperationTestSession(t *testing.T, db *sqlx.DB, tenantID int64) int64 {
 	t.Helper()
 
-	sessionRepo := NewSCACISessionRepository(db)
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	sessionRepo := NewSCACISessionRepository(db, clock.SystemClock{}, logger.Get())
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	createReq := &models.SCACISessionCreateRequest{
@@ -89,8 +90,8 @@ func TestRecordOperation_DeregisterEpEui_Roundtrip(t *testing.T) {
 	testSessionID := createSCACIOperationTestSession(t, db, testTenantID)
 	defer cleanupSCACIOperationTestSession(t, db, testSessionID)
 
-	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"))
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"), clock.SystemClock{})
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Test case: numeric uint64 epEui for propagation lookup
@@ -127,14 +128,14 @@ func TestRecordOperation_DeregisterEpEui_Roundtrip(t *testing.T) {
 	assert.Equal(t, float64(epEuiNumeric), fetchedEpEui, "epEui should survive JSONB round-trip as numeric")
 }
 
-// TestRecordOperation_CleanupMetadata_Roundtrip verifies that all 4 cleanup
+// TestRecordOperation_CleanupMetadata_Roundtrip verifies that the cleanup
 // metadata keys survive JSONB round-trip when stored in ResponseData.
 //
 // This validates the cleanup metadata persistence for SCACI §3.7.3:
 // - epEui (string, uppercase hex)
-// - cleanupSource ("cache" or "db")
 // - revokedCount (integer)
 // - detachErrorCount (integer)
+// - cleanupStatus ("success" or "partial_failure")
 func TestRecordOperation_CleanupMetadata_Roundtrip(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test")
@@ -150,8 +151,8 @@ func TestRecordOperation_CleanupMetadata_Roundtrip(t *testing.T) {
 	testSessionID := createSCACIOperationTestSession(t, db, testTenantID)
 	defer cleanupSCACIOperationTestSession(t, db, testSessionID)
 
-	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"))
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"), clock.SystemClock{})
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Record initial operation
@@ -171,9 +172,9 @@ func TestRecordOperation_CleanupMetadata_Roundtrip(t *testing.T) {
 	// Update with cleanup metadata (simulating handleDeregisterComplete)
 	cleanupMetadata := map[string]interface{}{
 		"epEui":            "70B3D59CD000089B",
-		"cleanupSource":    "cache",
 		"revokedCount":     3,
 		"detachErrorCount": 2,
+		"cleanupStatus":    "partial_failure",
 	}
 
 	err = repo.UpdateOperationState(ctx, testSessionID, 43, models.OperationStateCompleted, cleanupMetadata)
@@ -185,9 +186,9 @@ func TestRecordOperation_CleanupMetadata_Roundtrip(t *testing.T) {
 	require.NotNil(t, fetched)
 	require.NotNil(t, fetched.ResponseData, "ResponseData should contain cleanup metadata")
 
-	// Verify all 4 keys
+	// Verify every key
 	assert.Equal(t, "70B3D59CD000089B", fetched.ResponseData["epEui"], "epEui should match")
-	assert.Equal(t, "cache", fetched.ResponseData["cleanupSource"], "cleanupSource should match")
+	assert.Equal(t, "partial_failure", fetched.ResponseData["cleanupStatus"], "cleanupStatus should match")
 
 	// JSON numbers may be float64 after unmarshal
 	revokedCount, ok := fetched.ResponseData["revokedCount"].(float64)
@@ -219,8 +220,8 @@ func TestUpdateOperationState_CompletedWithWarnings(t *testing.T) {
 	testSessionID := createSCACIOperationTestSession(t, db, testTenantID)
 	defer cleanupSCACIOperationTestSession(t, db, testSessionID)
 
-	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"))
-	ctx, cancel := context.WithTimeout(testutil.TestContext(), 5*time.Second)
+	repo := NewSCACIOperationRepository(db, logger.Get().WithField("component", "scaci_operation_repository_test"), clock.SystemClock{})
+	ctx, cancel := context.WithTimeout(testutil.TestContext(), testContextTimeout)
 	defer cancel()
 
 	// Record initial operation in pending state

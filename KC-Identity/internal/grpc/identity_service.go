@@ -2,6 +2,7 @@ package grpc
 
 import (
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 )
@@ -16,19 +17,30 @@ type IdentityService struct {
 	adminUserSvc     grpcservices.AdminUserService
 	orgSvc           grpcservices.OrganizationService
 	membershipSvc    grpcservices.MembershipService
+	roles            RoleResolver
 	apiKeySvc        grpcservices.APIKeyService
+	orgDirectory     grpcservices.OrganizationDirectory
 	registrationSvc  grpcservices.RegistrationService
 	eventWriter      grpcservices.EventWriter
-	audit            grpcservices.AuditEmitter
+	audit            grpcservices.AuditRecorder
+	disclosures      grpcservices.RequiredAuditRecorder
 	platformTenantID int64
 }
 
-// NewIdentityService creates a new IdentityService instance.
-// All service dependencies are optional and set via With* builders.
-func NewIdentityService() *IdentityService {
-	return &IdentityService{
-		log: logger.Get().WithField("component", "identity-service"),
+const componentIdentityService = "identity-service"
+
+// NewIdentityService creates a new IdentityService instance. The audit
+// recorders are required, disclosures for the events a secret is only handed
+// out with; every other service dependency is optional and set via With* builders.
+func NewIdentityService(log logger.Logger, recorder grpcservices.AuditRecorder, disclosures grpcservices.RequiredAuditRecorder) (*IdentityService, error) {
+	if recorder == nil || disclosures == nil {
+		return nil, audit.ErrNilRecorder
 	}
+	return &IdentityService{
+		log:         log.WithField(logger.FieldComponent, componentIdentityService),
+		audit:       recorder,
+		disclosures: disclosures,
+	}, nil
 }
 
 // WithAuthService sets the auth service for authentication operations.
@@ -46,6 +58,12 @@ func (s *IdentityService) WithExternalAuthService(svc grpcservices.ExternalAuthS
 // WithAdminUserService sets the admin user service for user management.
 func (s *IdentityService) WithAdminUserService(svc grpcservices.AdminUserService) *IdentityService {
 	s.adminUserSvc = svc
+	return s
+}
+
+// WithRoleResolver sets the resolver of the roles a caller holds in an organization.
+func (s *IdentityService) WithRoleResolver(r RoleResolver) *IdentityService {
+	s.roles = r
 	return s
 }
 
@@ -67,6 +85,12 @@ func (s *IdentityService) WithAPIKeyService(svc grpcservices.APIKeyService) *Ide
 	return s
 }
 
+// WithOrganizationDirectory sets the lookup that scopes an API key to its organization's tenant.
+func (s *IdentityService) WithOrganizationDirectory(dir grpcservices.OrganizationDirectory) *IdentityService {
+	s.orgDirectory = dir
+	return s
+}
+
 // WithRegistrationService sets the registration service for self-service signup.
 func (s *IdentityService) WithRegistrationService(svc grpcservices.RegistrationService) *IdentityService {
 	s.registrationSvc = svc
@@ -76,12 +100,6 @@ func (s *IdentityService) WithRegistrationService(svc grpcservices.RegistrationS
 // WithEventWriter sets the event writer for system events.
 func (s *IdentityService) WithEventWriter(w grpcservices.EventWriter) *IdentityService {
 	s.eventWriter = w
-	return s
-}
-
-// WithAuditEmitter sets the audit emitter for audit events.
-func (s *IdentityService) WithAuditEmitter(a grpcservices.AuditEmitter) *IdentityService {
-	s.audit = a
 	return s
 }
 

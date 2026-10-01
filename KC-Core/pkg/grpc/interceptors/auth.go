@@ -5,14 +5,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
+
+	audit "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
@@ -42,8 +43,9 @@ type AuthInterceptor struct {
 	orgResolver      OrganizationResolver
 	tenantResolver   TenantResolver
 	apiKeyAuth       APIKeyAuthenticator
-	eventWriter      grpcconst.EventWriter
+	eventWriter      audit.EventWriter
 	platformTenantID int64
+	log              logger.Logger
 }
 
 // NewAuthInterceptor creates a new authentication interceptor.
@@ -56,6 +58,10 @@ func NewAuthInterceptor(cfg AuthConfig) (*AuthInterceptor, error) {
 		userClaim:        cfg.UserClaim,
 		eventWriter:      cfg.EventWriter,
 		platformTenantID: cfg.PlatformTenantID,
+		log:              cfg.Logger,
+	}
+	if ai.log == nil {
+		ai.log = logger.Get()
 	}
 
 	if !cfg.Enabled {
@@ -63,9 +69,9 @@ func NewAuthInterceptor(cfg AuthConfig) (*AuthInterceptor, error) {
 	}
 
 	if cfg.JWKSEndpoint != "" {
-		keySet, err := jwk.Fetch(context.Background(), cfg.JWKSEndpoint)
+		keySet, err := jwk.Fetch(context.Background(), cfg.JWKSEndpoint) // context-root: jwks-init
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch JWKS from %s: %w", cfg.JWKSEndpoint, err)
+			return nil, fmt.Errorf(errFmtJWKSFetchFailed, cfg.JWKSEndpoint, err)
 		}
 		ai.keySet = keySet
 	} else if cfg.HMACSecret != "" {
@@ -129,7 +135,7 @@ func (ai *AuthInterceptor) StreamInterceptor() grpc.StreamServerInterceptor {
 			return err
 		}
 
-		wrappedStream := &authenticatedServerStream{
+		wrappedStream := &contextServerStream{
 			ServerStream: ss,
 			ctx:          newCtx,
 		}
@@ -146,21 +152,21 @@ func (ai *AuthInterceptor) authenticate(ctx context.Context, method string) (con
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "missing gRPC metadata")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailMissingGRPCMetadata)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenMissingMetadata),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenMissingMetadata))
 	}
 
 	authorization := md.Get(grpcconst.MetadataKeyAuthorization)
 	if len(authorization) == 0 {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "missing authorization header")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailMissingAuthorizationHeader)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenMissingAuthToken),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenMissingAuthToken))
 	}
 
 	tokenString := strings.TrimPrefix(authorization[0], grpcconst.BearerPrefix)
 	if tokenString == authorization[0] {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "invalid authorization format")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailInvalidAuthorizationFormat)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenInvalidAuthFormat),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenInvalidAuthFormat))
 	}
@@ -173,7 +179,7 @@ func (ai *AuthInterceptor) authenticate(ctx context.Context, method string) (con
 		return ai.authenticateAPIKey(ctx, tokenString, method)
 	}
 
-	ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "unrecognized token format")
+	ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailUnrecognizedTokenFormat)
 	return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenInvalidToken),
 		grpcconst.ResolveErrorMessage(grpcconst.ErrTokenInvalidToken))
 }
@@ -191,33 +197,34 @@ func (ai *AuthInterceptor) authenticateAPIKey(ctx context.Context, tokenString s
 
 	key, err := ai.apiKeyAuth.LookupByHash(ctx, keyHash)
 	if err != nil {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthAPIKeyRejected, models.EventTitleAuthAPIKeyRejected, "API key not found")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthAPIKeyRejected, models.EventTitleAuthAPIKeyRejected, detailAPIKeyNotFound)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenInvalidToken),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenInvalidToken))
 	}
 
 	if !key.IsActive {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthAPIKeyRejected, models.EventTitleAuthAPIKeyRejected, "API key inactive")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthAPIKeyRejected, models.EventTitleAuthAPIKeyRejected, detailAPIKeyInactive)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenApiKeyInactive),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenApiKeyInactive))
 	}
 
 	if key.IsExpired {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthAPIKeyRejected, models.EventTitleAuthAPIKeyRejected, "API key expired")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthAPIKeyRejected, models.EventTitleAuthAPIKeyRejected, detailAPIKeyExpired)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenApiKeyExpired),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenApiKeyExpired))
 	}
 
-	_ = ai.apiKeyAuth.UpdateLastUsed(ctx, key.ID)
+	if err := ai.apiKeyAuth.UpdateLastUsed(ctx, key.ID); err != nil {
+		ai.log.WarnContext(ctx, LogAuthAPIKeyLastUsedUpdateFailed, logger.FieldMethod, method, logger.FieldError, err)
+	}
 
 	ctx = pkgcontext.WithTenantID(ctx, key.TenantID)
 	ctx = pkgcontext.WithOrganizationID(ctx, key.OrganizationID)
 
 	if key.UserID != nil {
-		ctx = pkgcontext.WithUserID(ctx, key.UserID.String())
+		return pkgcontext.WithUserID(ctx, key.UserID.String()), nil
 	}
-
-	return ctx, nil
+	return pkgcontext.WithServiceAccountID(ctx, key.ID), nil
 }
 
 // authenticateJWT validates a JWT-shaped bearer token.
@@ -229,20 +236,20 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 	} else if ai.keySet != nil {
 		token, err = jwt.Parse([]byte(tokenString), jwt.WithKeySet(ai.keySet))
 	} else {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "no signing key configured")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailNoSigningKeyConfigured)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenInvalidToken),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenInvalidToken))
 	}
 	if err != nil {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "JWT validation failed")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailJWTValidationFailed)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenInvalidToken),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenInvalidToken))
 	}
 
 	// Validate issuer
 	if ai.issuer != "" {
-		if iss, ok := token.Get("iss"); !ok || iss != ai.issuer {
-			ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "invalid token issuer")
+		if iss, ok := token.Get(jwt.IssuerKey); !ok || iss != ai.issuer {
+			ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailInvalidTokenIssuer)
 			return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenInvalidTokenIssuer),
 				grpcconst.ResolveErrorMessage(grpcconst.ErrTokenInvalidTokenIssuer))
 		}
@@ -250,9 +257,9 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 
 	// Validate audience
 	if ai.audience != "" {
-		aud, ok := token.Get("aud")
+		aud, ok := token.Get(jwt.AudienceKey)
 		if !ok {
-			ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "missing audience claim")
+			ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailMissingAudienceClaim)
 			return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenMissingAudience),
 				grpcconst.ResolveErrorMessage(grpcconst.ErrTokenMissingAudience))
 		}
@@ -278,7 +285,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 		}
 
 		if !audValid {
-			ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "invalid audience")
+			ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailInvalidAudience)
 			return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenInvalidAudience),
 				grpcconst.ResolveErrorMessage(grpcconst.ErrTokenInvalidAudience))
 		}
@@ -287,7 +294,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 	// Extract tenant claim
 	claimValue, ok := token.Get(ai.tenantClaim)
 	if !ok {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "missing tenant claim")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailMissingTenantClaim)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenMissingTenantClaim),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenMissingTenantClaim))
 	}
@@ -298,14 +305,14 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 	if claimStr, ok := claimValue.(string); ok {
 		if parsedUUID, err := uuid.Parse(claimStr); err == nil {
 			if ai.tenantResolver == nil {
-				ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "tenant resolver not configured")
+				ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailTenantResolverNotConfigured)
 				return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenTenantResolverRequired),
 					grpcconst.ResolveErrorMessage(grpcconst.ErrTokenTenantResolverRequired))
 			}
 			orgID = parsedUUID
 			resolvedTenant, err := ai.tenantResolver.LookupTenant(ctx, orgID)
 			if err != nil {
-				ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "org resolution failed")
+				ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailOrgResolutionFailed)
 				return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenOrgResolutionFailed),
 					grpcconst.ResolveErrorMessage(grpcconst.ErrTokenOrgResolutionFailed))
 			}
@@ -318,7 +325,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 	}
 
 	if tenantID == 0 {
-		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, "tenant claim resolved to zero")
+		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailTenantClaimResolvedToZero)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenMissingTenantClaim),
 			grpcconst.ResolveErrorMessage(grpcconst.ErrTokenMissingTenantClaim))
 	}
@@ -329,7 +336,10 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 		ctx = pkgcontext.WithOrganizationID(ctx, orgID)
 	} else if ai.orgResolver != nil {
 		resolvedOrg, err := ai.orgResolver.ResolveOrganization(ctx, tenantID)
-		if err == nil && resolvedOrg != uuid.Nil {
+		if err != nil {
+			ai.log.WarnContext(ctx, LogAuthOrganizationResolutionFailed,
+				logger.FieldMethod, method, logger.FieldTenantIDSnake, tenantID, logger.FieldError, err)
+		} else if resolvedOrg != uuid.Nil {
 			ctx = pkgcontext.WithOrganizationID(ctx, resolvedOrg)
 		}
 	}
@@ -355,9 +365,7 @@ func extractTenantFromClaims(token jwt.Token, claimPath string) int64 {
 		case int64:
 			return v
 		case string:
-			var tenantID int64
-			_, _ = fmt.Sscanf(v, "%d", &tenantID)
-			return tenantID
+			return parseTenantClaim(v)
 		}
 	}
 
@@ -366,9 +374,7 @@ func extractTenantFromClaims(token jwt.Token, claimPath string) int64 {
 		if val, ok := token.Get(claimPath); ok {
 			switch v := val.(type) {
 			case string:
-				var tenantID int64
-				_, _ = fmt.Sscanf(v, "%d", &tenantID)
-				return tenantID
+				return parseTenantClaim(v)
 			case float64:
 				return int64(v)
 			}
@@ -384,9 +390,7 @@ func extractTenantFromClaims(token jwt.Token, claimPath string) int64 {
 			case int64:
 				return v
 			case string:
-				var tenantID int64
-				_, _ = fmt.Sscanf(v, "%d", &tenantID)
-				return tenantID
+				return parseTenantClaim(v)
 			}
 		}
 	}
@@ -394,40 +398,19 @@ func extractTenantFromClaims(token jwt.Token, claimPath string) int64 {
 	return 0
 }
 
-// authenticatedServerStream wraps a ServerStream with authenticated context.
-type authenticatedServerStream struct {
-	grpc.ServerStream
-	ctx context.Context
-}
-
-func (s *authenticatedServerStream) Context() context.Context {
-	return s.ctx
+// parseTenantClaim reads a decimal tenant claim; anything else yields zero,
+// which authentication refuses as a missing tenant.
+func parseTenantClaim(claim string) int64 {
+	tenantID, err := strconv.ParseInt(claim, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return tenantID
 }
 
 // emitSecurityEvent persists a security event when an event writer is configured.
 func (ai *AuthInterceptor) emitSecurityEvent(ctx context.Context, method, eventType, title, reason string) {
-	if ai.eventWriter == nil {
-		return
-	}
-	tenantID := ai.platformTenantID
-	if tid, err := pkgcontext.GetTenantID(ctx); err == nil {
-		tenantID = tid
-	}
-	details, _ := json.Marshal(map[string]interface{}{
-		auditKeyMethod: method,
-		auditKeyReason: reason,
-	})
-	_ = ai.eventWriter.CreateEvent(ctx, &models.SystemEvent{
-		TenantID:    strconv.FormatInt(tenantID, 10),
-		EventType:   eventType,
-		Category:    models.EventCategorySecurity,
-		Severity:    models.EventSeverityWarning,
-		Title:       title,
-		Description: reason,
-		SourceType:  models.SourceTypeAPI,
-		SourceName:  method,
-		Details:     details,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+	recordSecurityEvent(ctx, ai.eventWriter, ai.platformTenantID, ai.log, securityEvent{
+		method: method, eventType: eventType, title: title, reason: reason,
 	})
 }

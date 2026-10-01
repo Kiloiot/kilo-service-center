@@ -13,17 +13,45 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Test resilience policy values for breaker behavior.
+const (
+	testDialTimeout        = 5 * time.Second
+	testRPCTimeout         = 30 * time.Second
+	testMaxRetries         = 3
+	testRetryBackoff       = 100 * time.Millisecond
+	testRetryMaxBackoff    = 1 * time.Second
+	testCBMaxRequests      = 1
+	testCBInterval         = 60 * time.Second
+	testCBTimeout          = 200 * time.Millisecond
+	testCBFailureThreshold = 3
+
+	// testHalfOpenSlack pads the CBTimeout sleep so the breaker is reliably
+	// past its open window before the half-open assertion.
+	testHalfOpenSlack = 50 * time.Millisecond
+
+	// testAppErrorAttempts is how many application errors are replayed to
+	// prove they never trip the breaker.
+	testAppErrorAttempts = 100
+)
+
+// Status texts used as test failure fixtures.
+const (
+	testErrConnRefused     = "connection refused"
+	testErrResourceMissing = "resource not found"
+	testErrGeneric         = "test"
+)
+
 func testConfig() config.GatewayResilienceConfig {
 	return config.GatewayResilienceConfig{
-		DialTimeout:        5 * time.Second,
-		RPCTimeout:         30 * time.Second,
-		MaxRetries:         3,
-		RetryBackoff:       100 * time.Millisecond,
-		RetryMaxBackoff:    1 * time.Second,
-		CBMaxRequests:      1,
-		CBInterval:         60 * time.Second,
-		CBTimeout:          200 * time.Millisecond, // Short for testing
-		CBFailureThreshold: 3,
+		DialTimeout:        testDialTimeout,
+		RPCTimeout:         testRPCTimeout,
+		MaxRetries:         testMaxRetries,
+		RetryBackoff:       testRetryBackoff,
+		RetryMaxBackoff:    testRetryMaxBackoff,
+		CBMaxRequests:      testCBMaxRequests,
+		CBInterval:         testCBInterval,
+		CBTimeout:          testCBTimeout, // Short for testing
+		CBFailureThreshold: testCBFailureThreshold,
 	}
 }
 
@@ -45,7 +73,7 @@ func TestExecute_OpensAfterConsecutiveTransportFailures(t *testing.T) {
 	cfg := testConfig()
 	b := NewUpstreamBreaker("test-core", cfg)
 
-	transportErr := status.Error(codes.Unavailable, "connection refused")
+	transportErr := status.Error(codes.Unavailable, testErrConnRefused)
 
 	for i := uint32(0); i < cfg.CBFailureThreshold; i++ {
 		_ = b.Execute(func() error {
@@ -60,7 +88,7 @@ func TestExecute_OpenState_RejectsWithoutCallingFn(t *testing.T) {
 	cfg := testConfig()
 	b := NewUpstreamBreaker("test-core", cfg)
 
-	transportErr := status.Error(codes.Unavailable, "connection refused")
+	transportErr := status.Error(codes.Unavailable, testErrConnRefused)
 
 	// Trip the breaker
 	for i := uint32(0); i < cfg.CBFailureThreshold; i++ {
@@ -86,7 +114,7 @@ func TestExecute_HalfOpenRecovery(t *testing.T) {
 	cfg := testConfig()
 	b := NewUpstreamBreaker("test-core", cfg)
 
-	transportErr := status.Error(codes.Unavailable, "connection refused")
+	transportErr := status.Error(codes.Unavailable, testErrConnRefused)
 
 	// Trip the breaker
 	for i := uint32(0); i < cfg.CBFailureThreshold; i++ {
@@ -97,7 +125,7 @@ func TestExecute_HalfOpenRecovery(t *testing.T) {
 	require.Equal(t, BreakerOpen, b.State())
 
 	// Wait for open-to-half-open timeout
-	time.Sleep(cfg.CBTimeout + 50*time.Millisecond)
+	time.Sleep(cfg.CBTimeout + testHalfOpenSlack)
 
 	// Next successful request should transition to closed
 	err := b.Execute(func() error {
@@ -111,9 +139,9 @@ func TestExecute_ApplicationErrors_DoNotTrip(t *testing.T) {
 	cfg := testConfig()
 	b := NewUpstreamBreaker("test-core", cfg)
 
-	appErr := status.Error(codes.NotFound, "resource not found")
+	appErr := status.Error(codes.NotFound, testErrResourceMissing)
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < testAppErrorAttempts; i++ {
 		_ = b.Execute(func() error {
 			return appErr
 		})
@@ -159,7 +187,7 @@ func TestIsSuccessful_TransportErrors(t *testing.T) {
 			if tt.code == codes.OK {
 				err = nil
 			} else {
-				err = status.Error(tt.code, "test")
+				err = status.Error(tt.code, testErrGeneric)
 			}
 			assert.Equal(t, tt.expected, isSuccessful(err))
 		})
@@ -175,4 +203,30 @@ func TestBreakerState_String(t *testing.T) {
 	assert.Equal(t, "half-open", BreakerHalfOpen.String())
 	assert.Equal(t, "open", BreakerOpen.String())
 	assert.Equal(t, "unknown", BreakerState(-1).String())
+}
+
+// A panicking call counts as a failure and the panic still reaches the caller.
+func TestExecute_PanicCountsAsFailureAndPropagates(t *testing.T) {
+	cfg := testConfig()
+	b := NewUpstreamBreaker("test-core", cfg)
+
+	for i := uint32(0); i < cfg.CBFailureThreshold; i++ {
+		assert.PanicsWithValue(t, testErrGeneric, func() {
+			_ = b.Execute(func() error { panic(testErrGeneric) })
+		})
+	}
+
+	assert.Equal(t, BreakerOpen, b.State())
+}
+
+// A stream result recorded while closed feeds the failure counters.
+func TestRecordResult_TransportFailuresOpenTheBreaker(t *testing.T) {
+	cfg := testConfig()
+	b := NewUpstreamBreaker("test-core", cfg)
+
+	for i := uint32(0); i < cfg.CBFailureThreshold; i++ {
+		b.RecordResult(status.Error(codes.Unavailable, testErrConnRefused))
+	}
+
+	assert.Equal(t, BreakerOpen, b.State())
 }

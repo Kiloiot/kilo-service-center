@@ -11,10 +11,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
-
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 )
+
+// roamingEndpointInfo mirrors one entry of the basestation_sessions.roaming_endpoints JSON array.
+type roamingEndpointInfo struct {
+	EUI           string `json:"eui"`
+	OwnerTenantID int64  `json:"ownerTenantId"`
+	AttachedAt    string `json:"attachedAt"`
+}
 
 // setupRoamingTestDB creates a test database with minimal schema for roaming tests
 // This avoids migration ordering bugs (018 vs 071) by creating only what's needed
@@ -88,7 +93,8 @@ func createTestSessionWithNullRoaming(t *testing.T, db *sqlx.DB, tenantID int64,
 	snScUUID := uuid.MustParse("20000000-0000-0000-0000-000000000001")
 
 	var sessionID int64
-	err = db.QueryRow(query,
+	err = db.QueryRow(
+		query,
 		basestationID,
 		snBsUUID[:], // sn_bs_uuid (16 bytes)
 		snScUUID[:], // sn_sc_uuid (16 bytes)
@@ -99,7 +105,7 @@ func createTestSessionWithNullRoaming(t *testing.T, db *sqlx.DB, tenantID int64,
 }
 
 // Test helper to create a test session with existing roaming endpoints
-func createTestSessionWithRoaming(t *testing.T, db *sqlx.DB, tenantID int64, bsEui []byte, endpoints []models.RoamingEndpointInfo) int64 {
+func createTestSessionWithRoaming(t *testing.T, db *sqlx.DB, tenantID int64, bsEui []byte, endpoints []roamingEndpointInfo) int64 {
 	// First create a basestation row (required FK)
 	var basestationID int64
 	err := db.QueryRow(`
@@ -124,7 +130,8 @@ func createTestSessionWithRoaming(t *testing.T, db *sqlx.DB, tenantID int64, bsE
 	snScUUID := uuid.MustParse("20000000-0000-0000-0000-000000000002")
 
 	var sessionID int64
-	err = db.QueryRow(query,
+	err = db.QueryRow(
+		query,
 		basestationID,
 		snBsUUID[:], // sn_bs_uuid (16 bytes)
 		snScUUID[:], // sn_sc_uuid (16 bytes)
@@ -260,7 +267,7 @@ func TestRemoveRoamingEndpointFromSession_ElementExists(t *testing.T) {
 	repo := NewRoamingRepository(db)
 
 	// Create session with 2 roaming endpoints
-	endpoints := []models.RoamingEndpointInfo{
+	endpoints := []roamingEndpointInfo{
 		{EUI: "1111111111111111", OwnerTenantID: 10, AttachedAt: time.Now().Format(time.RFC3339)},
 		{EUI: "2222222222222222", OwnerTenantID: 20, AttachedAt: time.Now().Format(time.RFC3339)},
 	}
@@ -304,7 +311,7 @@ func TestRemoveRoamingEndpointFromSession_ElementNotExists(t *testing.T) {
 	repo := NewRoamingRepository(db)
 
 	// Create session with 2 roaming endpoints
-	endpoints := []models.RoamingEndpointInfo{
+	endpoints := []roamingEndpointInfo{
 		{EUI: "AAAAAAAAAAAAAAAA", OwnerTenantID: 30, AttachedAt: time.Now().Format(time.RFC3339)},
 		{EUI: "BBBBBBBBBBBBBBBB", OwnerTenantID: 40, AttachedAt: time.Now().Format(time.RFC3339)},
 	}
@@ -348,7 +355,7 @@ func TestRemoveRoamingEndpointFromSession_EmptyArray(t *testing.T) {
 	repo := NewRoamingRepository(db)
 
 	// Create session with empty roaming array
-	sessionID := createTestSessionWithRoaming(t, db, 1, []byte{0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE}, []models.RoamingEndpointInfo{})
+	sessionID := createTestSessionWithRoaming(t, db, 1, []byte{0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE}, []roamingEndpointInfo{})
 
 	// Verify initial state
 	count := getRoamingCount(t, db, sessionID)

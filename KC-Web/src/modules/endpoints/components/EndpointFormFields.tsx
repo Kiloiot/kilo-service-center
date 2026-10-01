@@ -1,24 +1,22 @@
 /**
- * Shared form field sections used by both AddEndPointDialog and EditEndPointDialog.
- * Eliminates duplication of checkbox groups, counter fields, and key fields.
+ * Field groups of the End Point form: the MIOTY flag checkboxes and the key
+ * fields, composed by EndpointFormSections.
  */
 
 import React from "react";
 
-import {
-  Box,
-  Button,
-  Checkbox,
-  FormControlLabel,
-  InputAdornment,
-  TextField,
-} from "@mui/material";
+import { useRevealEndpointKey } from "@hooks";
+import { Box, Checkbox, FormControlLabel } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import Tooltip from "@mui/material/Tooltip";
 
-import { MIOTY_UINT32_MAX } from "@constants/app";
+import { ENDPOINT_KEY } from "@constants/app";
 import { ENDPOINT_FORM } from "@constants/messages";
 import { InfoIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
+
+import type { EndpointFormState } from "../hooks";
+import { SecretKeyField } from "./SecretKeyField";
 
 interface CheckboxWithTooltipProps {
   checked: boolean;
@@ -36,7 +34,7 @@ const CheckboxWithTooltip: React.FC<CheckboxWithTooltipProps> = ({
   label,
   tooltip,
 }) => (
-  <Grid size={{ xs: 12, md: 6 }}>
+  <Grid size={componentSpacing.gridSpan.half}>
     <FormControlLabel
       control={
         <Checkbox checked={checked} onChange={onChange} color="primary" />
@@ -145,135 +143,75 @@ export const AdvancedMiotySettings: React.FC<AdvancedMiotySettingsProps> = ({
   </>
 );
 
-interface CounterFieldsProps {
-  lastPacketCnt: string;
-  attachCnt: string;
-  onLastPacketCntChange: (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => void;
-  onAttachCntChange: (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => void;
-  errors: Record<string, string>;
-  /** Whether the fields are required (true for Add, false for Edit). */
-  required?: boolean;
-}
-
-/** lastPacketCnt and attachCnt counter text fields. */
-export const CounterFields: React.FC<CounterFieldsProps> = ({
-  lastPacketCnt,
-  attachCnt,
-  onLastPacketCntChange,
-  onAttachCntChange,
-  errors,
-  required,
-}) => (
-  <>
-    <Grid size={{ xs: 12, md: 6 }}>
-      <TextField
-        fullWidth
-        label={
-          required
-            ? `${ENDPOINT_FORM.LABEL_LAST_PACKET_CNT} *`
-            : ENDPOINT_FORM.LABEL_LAST_PACKET_CNT
-        }
-        value={lastPacketCnt}
-        onChange={onLastPacketCntChange}
-        error={!!errors.lastPacketCnt}
-        helperText={
-          errors.lastPacketCnt || ENDPOINT_FORM.HELPER_LAST_PACKET_CNT
-        }
-        type="number"
-        required={required}
-        inputProps={{ min: 0, max: MIOTY_UINT32_MAX }}
-      />
-    </Grid>
-    <Grid size={{ xs: 12, md: 6 }}>
-      <TextField
-        fullWidth
-        label={
-          required
-            ? `${ENDPOINT_FORM.LABEL_ATTACH_CNT} *`
-            : ENDPOINT_FORM.LABEL_ATTACH_CNT
-        }
-        value={attachCnt}
-        onChange={onAttachCntChange}
-        error={!!errors.attachCnt}
-        helperText={errors.attachCnt || ENDPOINT_FORM.HELPER_ATTACH_CNT}
-        type="number"
-        required={required}
-        inputProps={{ min: 0, max: MIOTY_UINT32_MAX }}
-      />
-    </Grid>
-  </>
-);
-
 interface SecurityKeyFieldsProps {
-  networkKey: string;
-  applicationKey: string;
-  onNetworkKeyChange: (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => void;
-  onApplicationKeyChange: (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) => void;
-  onGenerateNetworkKey: () => void;
-  onGenerateApplicationKey: () => void;
-  errors: Record<string, string>;
-  /** Whether network key is required (true for Add). */
-  networkKeyRequired?: boolean;
+  form: EndpointFormState;
 }
 
-/** Network key and application key fields with generate buttons. */
+interface KeyRemoval {
+  removed: boolean;
+  remove: () => void;
+}
+
+const KEY_FIELDS = [
+  {
+    field: "networkKey",
+    key: ENDPOINT_KEY.NETWORK,
+    label: ENDPOINT_FORM.LABEL_NETWORK_KEY,
+    helper: ENDPOINT_FORM.HELPER_NETWORK_KEY,
+  },
+  {
+    field: "applicationKey",
+    key: ENDPOINT_KEY.APPLICATION,
+    label: ENDPOINT_FORM.LABEL_APP_KEY,
+    helper: ENDPOINT_FORM.HELPER_APP_KEY,
+  },
+] as const;
+
+/**
+ * Network key and application key fields, masked and generatable; a key the
+ * endpoint has stored is revealed on request and only then copyable.
+ */
 export const SecurityKeyFields: React.FC<SecurityKeyFieldsProps> = ({
-  networkKey,
-  applicationKey,
-  onNetworkKeyChange,
-  onApplicationKeyChange,
-  onGenerateNetworkKey,
-  onGenerateApplicationKey,
-  errors,
-  networkKeyRequired,
-}) => (
-  <>
-    <Grid size={12}>
-      <TextField
-        fullWidth
-        label={ENDPOINT_FORM.LABEL_NETWORK_KEY}
-        value={networkKey}
-        onChange={onNetworkKeyChange}
-        error={!!errors.networkKey}
-        helperText={errors.networkKey || ENDPOINT_FORM.HELPER_NETWORK_KEY}
-        required={networkKeyRequired}
-        InputProps={{
-          endAdornment: (
-            <InputAdornment position="end">
-              <Button size="small" onClick={onGenerateNetworkKey}>
-                {ENDPOINT_FORM.BUTTON_GENERATE}
-              </Button>
-            </InputAdornment>
-          ),
-        }}
-      />
-    </Grid>
-    <Grid size={12}>
-      <TextField
-        fullWidth
-        label={ENDPOINT_FORM.LABEL_APP_KEY}
-        value={applicationKey}
-        onChange={onApplicationKeyChange}
-        error={!!errors.applicationKey}
-        helperText={errors.applicationKey || ENDPOINT_FORM.HELPER_APP_KEY}
-        InputProps={{
-          endAdornment: (
-            <InputAdornment position="end">
-              <Button size="small" onClick={onGenerateApplicationKey}>
-                {ENDPOINT_FORM.BUTTON_GENERATE}
-              </Button>
-            </InputAdornment>
-          ),
-        }}
-      />
-    </Grid>
-  </>
-);
+  form,
+}) => {
+  const reveal = useRevealEndpointKey();
+  const generators = {
+    networkKey: form.generateNetworkKey,
+    applicationKey: form.generateApplicationKey,
+  };
+  // Only the application key can be removed: the network session key is mandatory.
+  const removals: Partial<
+    Record<(typeof KEY_FIELDS)[number]["field"], KeyRemoval>
+  > = {
+    applicationKey: {
+      removed: form.values.removeApplicationKey,
+      remove: form.removeApplicationKey,
+    },
+  };
+  const epEui = form.storedEpEui;
+  return (
+    <>
+      {KEY_FIELDS.map(({ field, key, label, helper }) => {
+        const removal = removals[field];
+        const stored = form.storedKeys.has(field) && !removal?.removed;
+        return (
+          <SecretKeyField
+            key={field}
+            form={form}
+            field={field}
+            label={label}
+            helper={helper}
+            onGenerate={generators[field]}
+            onReveal={
+              epEui && stored
+                ? () => reveal.mutateAsync({ epEui, key })
+                : undefined
+            }
+            onRemove={stored ? removal?.remove : undefined}
+            removed={removal?.removed}
+          />
+        );
+      })}
+    </>
+  );
+};

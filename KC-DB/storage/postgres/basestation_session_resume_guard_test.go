@@ -5,9 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,7 +43,7 @@ func TestMarkDisconnected_RetiredSessionStaysRetired(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestResumeGuard%")
 	defer cleanupSessionTestData(t, db, "TestResumeGuard%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	staleBsUUID := uuid.New()
@@ -56,7 +61,7 @@ func TestMarkDisconnected_RetiredSessionStaysRetired(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.110"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingMessagePack,
+		Encoding:       mioty.EncodingMessagePack,
 	})
 	require.NoError(t, err)
 
@@ -72,7 +77,7 @@ func TestMarkDisconnected_RetiredSessionStaysRetired(t *testing.T) {
 	assert.False(t, retired.CanResume, "terminated session must stay non-resumable")
 
 	orphan, err := repo.FindResumableSession(ctx, tenantID, bsEUIToBytes(baseStationEUI), staleBsBytes)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, storage.ErrNotFound)
 	assert.Nil(t, orphan, "terminated session must never be offered for resume")
 
 	freshBsUUID := uuid.New()
@@ -90,7 +95,7 @@ func TestMarkDisconnected_RetiredSessionStaysRetired(t *testing.T) {
 		RemoteAddr:     stringPtr("192.168.1.111"),
 		CanResume:      true,
 		OrganizationID: uuidPtr(orgID),
-		Encoding:       bssci.EncodingMessagePack,
+		Encoding:       mioty.EncodingMessagePack,
 	})
 	require.NoError(t, err)
 
@@ -127,7 +132,7 @@ func TestActivateSessionIfResumable_ClaimsOnlyDisconnectedResumableRow(t *testin
 	cleanupSessionTestData(t, db, "TestResumeClaim%")
 	defer cleanupSessionTestData(t, db, "TestResumeClaim%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	tests := []struct {
@@ -196,7 +201,7 @@ func TestActivateSessionIfResumable_ClaimsOnlyDisconnectedResumableRow(t *testin
 				RemoteAddr:     stringPtr("192.168.1.112"),
 				CanResume:      true,
 				OrganizationID: uuidPtr(orgID),
-				Encoding:       bssci.EncodingMessagePack,
+				Encoding:       mioty.EncodingMessagePack,
 			})
 			require.NoError(t, err)
 
@@ -216,7 +221,7 @@ func TestActivateSessionIfResumable_ClaimsOnlyDisconnectedResumableRow(t *testin
 				SnScOpId:        &scOpID,
 				ConnectionId:    stringPtr(claimConnID),
 				RemoteAddr:      stringPtr("192.168.1.113"),
-				Encoding:        stringPtr(bssci.EncodingMessagePack),
+				Encoding:        stringPtr(mioty.EncodingMessagePack),
 				ProtocolVersion: &protocolVersion,
 			})
 			require.NoError(t, err)
