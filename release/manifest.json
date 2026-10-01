@@ -1,7 +1,7 @@
 {
-  "version": "v2.0.0+b96660f7",
-  "buildTime": "2026-10-01T15:10:10Z",
-  "gitCommit": "b96660f7dbe83d311e2d707913bf28b71ebfff80",
+  "version": "v2.0.0+4f95349",
+  "buildTime": "2026-10-01T15:28:58Z",
+  "gitCommit": "4f95349dd26a34a7491ccfe4b689a1ec4145b794",
   "gitBranch": "CHIRP-3980-mioty-downlink-deadline",
   "buildUser": "timkrav",
   "goVersion": "go1.26.5",
