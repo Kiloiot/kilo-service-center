@@ -62,3 +62,14 @@ func TestVersionErrorDefinitions_HaveSpecSections(t *testing.T) {
 		})
 	}
 }
+
+// TestMQTTCommandErrorDefinitions_CiteTheMQTTCommandDocument: the MQTT
+// command conditions no SCACI section describes cite the document that
+// defines them, never a SCACI section.
+func TestMQTTCommandErrorDefinitions_CiteTheMQTTCommandDocument(t *testing.T) {
+	for _, token := range []string{ErrDownlinkCommandRefQueued, ErrDownlinkDeadlineElapsed} {
+		def := GetErrorDefinition(token)
+		assert.Equal(t, specMQTTCommandDown, def.SpecSection, token)
+		assert.NotContains(t, def.SpecSection, "§", token)
+	}
+}

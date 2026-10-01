@@ -355,6 +355,38 @@ func TestMQTTAdapter_PublishDownlinkAcknowledged_Payload(t *testing.T) {
 		string(mock.lastCall().Payload), "a downlink queued without a ref reports none")
 }
 
+// qosRecordingBroker records the QoS of every message published through it.
+type qosRecordingBroker struct {
+	mqtt.Publisher
+	mu  sync.Mutex
+	qos []byte
+}
+
+func (b *qosRecordingBroker) Publish(_ context.Context, _ string, qos byte, _ bool, _ interface{}) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.qos = append(b.qos, qos)
+	return nil
+}
+
+// TestMQTTAdapter_DownlinkResultsPublishAtLeastOnce covers both downlink_result
+// paths over the real topic publisher: the reporter's sent, expired and
+// invalid results and the delivery outbox's acknowledged result.
+func TestMQTTAdapter_DownlinkResultsPublishAtLeastOnce(t *testing.T) {
+	t.Parallel()
+	broker := &qosRecordingBroker{}
+	adapter := NewMQTTAdapter(mqtt.NewPublisher(broker, "mioty"))
+	ctx := testutil.TestContext()
+
+	for _, result := range []string{mioty.ResultSent, mioty.ResultExpired, mioty.ResultInvalid} {
+		require.NoError(t, adapter.PublishDownlinkResult(ctx, "org-uuid", "order-17",
+			&mioty.DLDataResult{EpEui: 0x70B3D59CD00009E6, QueId: 12345, Result: result}))
+	}
+	require.NoError(t, adapter.PublishDownlinkAcknowledged(ctx, "org-uuid", "order-17", 0x70B3D59CD00009E6, 12345, 44))
+
+	assert.Equal(t, []byte{mqtt.QoSAtLeastOnce, mqtt.QoSAtLeastOnce, mqtt.QoSAtLeastOnce, mqtt.QoSAtLeastOnce}, broker.qos)
+}
+
 func TestMQTTAdapter_PropagatesPublishError(t *testing.T) {
 	t.Parallel()
 	mock := &mockDeviceEventPublisher{returnErr: errTestBrokerDown}

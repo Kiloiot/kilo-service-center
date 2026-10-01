@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -18,6 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
@@ -31,12 +34,23 @@ const (
 
 var errCmdTestCore = errors.New("core unavailable")
 
-// mockDownlinkEnqueuer records EnqueueFromMQTT calls.
+// mockDownlinkEnqueuer records EnqueueFromMQTT calls and the ref lookups,
+// answering a lookup from queuedRefs.
 type mockDownlinkEnqueuer struct {
-	mu        sync.Mutex
-	calls     []enqueueCall
-	returnID  uint64
-	returnErr error
+	mu         sync.Mutex
+	calls      []enqueueCall
+	returnID   uint64
+	returnErr  error
+	queuedRefs map[string]bool
+	refErr     error
+	refLookups []storage.DownlinkCommandRef
+}
+
+func (m *mockDownlinkEnqueuer) CommandQueued(_ context.Context, command storage.DownlinkCommandRef) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.refLookups = append(m.refLookups, command)
+	return m.queuedRefs[command.Ref], m.refErr
 }
 
 type enqueueCall struct {
@@ -44,13 +58,13 @@ type enqueueCall struct {
 	TenantID int64
 	OrgID    *uuid.UUID
 	Request  *mioty.DLDataQueue
-	Ref      string
+	Command  storage.DownlinkCommand
 }
 
-func (m *mockDownlinkEnqueuer) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (uint64, error) {
+func (m *mockDownlinkEnqueuer) EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, command storage.DownlinkCommand) (uint64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.calls = append(m.calls, enqueueCall{Ctx: ctx, TenantID: tenantID, OrgID: orgID, Request: req, Ref: ref})
+	m.calls = append(m.calls, enqueueCall{Ctx: ctx, TenantID: tenantID, OrgID: orgID, Request: req, Command: command})
 	return m.returnID, m.returnErr
 }
 
@@ -210,7 +224,7 @@ func (f *commandFixture) outcome(t *testing.T, eventType string) map[string]inte
 	require.Len(t, messages, 1, "every command produces exactly one outcome event")
 	assert.Equal(t, DeviceEventTopic(cmdTestPrefix, f.org.String(), cmdTestEpEUIHex, eventType), messages[0].Topic,
 		"the outcome goes to the queuing organization's topic")
-	assert.Equal(t, byte(EventsQoS), messages[0].QoS)
+	assert.Equal(t, byte(DownlinkEventsQoS), messages[0].QoS)
 	var body map[string]interface{}
 	require.NoError(t, json.Unmarshal(messages[0].Payload, &body))
 	return body
@@ -272,7 +286,7 @@ func TestCommandHandler_LegacyCommandBehavesAsBefore(t *testing.T) {
 	assert.Equal(t, cmdTestEpEUIHex, body["epEui"])
 	assert.Equal(t, float64(cmdTestQueID), body["queId"], "the queue id is exact for a JavaScript consumer")
 	assert.NotContains(t, body, "ref", "no ref is echoed when the command carried none")
-	assert.Empty(t, f.enqueuer.lastCall().Ref, "a command without a ref queues a downlink without one")
+	assert.Empty(t, f.enqueuer.lastCall().Command.Ref, "a command without a ref queues a downlink without one")
 }
 
 func TestCommandHandler_ConfirmedFlagPropagated(t *testing.T) {
@@ -350,7 +364,7 @@ func TestCommandHandler_RefEchoedOnEveryOutcome(t *testing.T) {
 	queued := newCommandFixture()
 	queued.send(`{"data":"AQ==","ref":"order-17"}`)
 	assert.Equal(t, "order-17", queued.outcome(t, DeviceEventDownlinkQueued)["ref"])
-	assert.Equal(t, "order-17", queued.enqueuer.lastCall().Ref, "the ref is queued with the downlink for its results")
+	assert.Equal(t, "order-17", queued.enqueuer.lastCall().Command.Ref, "the ref is queued with the downlink for its results")
 
 	rejected := newCommandFixture()
 	rejected.send(`{"data":"not base64!","ref":"order-18"}`)
@@ -362,6 +376,135 @@ func TestCommandHandler_RefEchoedOnEveryOutcome(t *testing.T) {
 		"the ref survives a field of the wrong type")
 }
 
+// TestCommandHandler_DeadlineReachesTheQueue: an RFC 3339 expiresAt, with or
+// without fractional seconds and in any offset, is queued with the downlink
+// as the instant it names; a command without one queues no deadline.
+func TestCommandHandler_DeadlineReachesTheQueue(t *testing.T) {
+	t.Parallel()
+	for value, want := range map[string]time.Time{
+		"2026-10-01T12:00:00Z":                time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
+		"2026-10-01T12:00:00.123456789Z":      time.Date(2026, 10, 1, 12, 0, 0, 123456789, time.UTC),
+		"2026-10-01T14:00:00.000000001+02:00": time.Date(2026, 10, 1, 12, 0, 0, 1, time.UTC),
+	} {
+		f := newCommandFixture()
+		f.send(`{"data":"AQ==","ref":"order-17","expiresAt":"` + value + `"}`)
+		command := f.enqueuer.lastCall().Command
+		require.NotNil(t, command.ExpiresAt, value)
+		assert.True(t, want.Equal(*command.ExpiresAt), "%s queued as %v", value, *command.ExpiresAt)
+		assert.Equal(t, "order-17", command.Ref)
+		f.outcome(t, DeviceEventDownlinkQueued)
+	}
+
+	without := newCommandFixture()
+	without.send(`{"data":"AQ=="}`)
+	assert.Nil(t, without.enqueuer.lastCall().Command.ExpiresAt)
+}
+
+// TestCommandHandler_UnreadableDeadlineIsRefused: an expiresAt that is no RFC
+// 3339 time, or no string, refuses the command as an invalid field with its
+// ref echoed, and queues nothing.
+func TestCommandHandler_UnreadableDeadlineIsRefused(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{`"tomorrow"`, `"2026-10-01 12:00:00"`, `"2026-10-01"`, `1790794743`} {
+		f := newCommandFixture()
+		f.send(`{"data":"AQ==","ref":"order-20","expiresAt":` + value + `}`)
+		body := f.rejected(t, RejectCodeInvalidField)
+		assert.Equal(t, "order-20", body["ref"], value)
+		assert.Contains(t, body["message"], CommandFieldExpiresAt, value)
+	}
+}
+
+// TestCommandHandler_RepeatedRefIsNotAnsweredAgain: a command whose ref
+// already queued a downlink was answered when it was accepted, so its repeat
+// publishes neither downlink_queued nor downlink_rejected, also when the
+// queue recognizes it only while queueing, racing the first reception.
+func TestCommandHandler_RepeatedRefIsNotAnsweredAgain(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+	f.enqueuer.returnErr = fmt.Errorf("%w: core", ErrCommandAlreadyQueued)
+
+	f.send(`{"data":"AQ==","ref":"order-17","expiresAt":"2026-10-01T12:00:00Z"}`)
+
+	assert.Equal(t, 1, f.enqueuer.callCount(), "the repeat reaches the queue, which recognizes the ref")
+	assert.Empty(t, f.pub.messages(), "nothing is published for a repeat")
+}
+
+// TestCommandHandler_AKnownRefIsRecognizedBeforeAnyCheck: a repeat of an
+// accepted command publishes nothing and queues nothing, even when the
+// endpoint was deleted or lost its downlink capability since and the core
+// would refuse it, or its payload would now be refused; the ref is looked up
+// in the organization's endpoint under its tenant.
+func TestCommandHandler_AKnownRefIsRecognizedBeforeAnyCheck(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		payload string
+		coreErr error
+	}{
+		"endpoint deleted": {`{"data":"AQ==","ref":"order-30"}`,
+			fmt.Errorf("%w: %w", &DownlinkRefusal{Code: "scaci.error.endpoint_not_found", Message: "Endpoint not found"}, errCmdTestCore)},
+		"endpoint lost bidi": {`{"data":"AQ==","ref":"order-30"}`,
+			fmt.Errorf("%w: %w", &DownlinkRefusal{Code: "scaci.error.endpoint_not_bidirectional", Message: "not bidirectional"}, errCmdTestCore)},
+		"payload refused now": {`{"data":"not base64!","ref":"order-30","expiresAt":"tomorrow"}`, nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newCommandFixture()
+			f.enqueuer.queuedRefs = map[string]bool{"order-30": true}
+			f.enqueuer.returnErr = tc.coreErr
+
+			f.send(tc.payload)
+
+			assert.Empty(t, f.pub.messages(), "nothing is published for a repeat")
+			assert.Zero(t, f.enqueuer.callCount(), "nothing is queued")
+			require.Len(t, f.enqueuer.refLookups, 1)
+			assert.Equal(t, storage.DownlinkCommandRef{TenantID: cmdTestTenantID, OrganizationID: f.org, EpEUI: cmdTestEpEUI, Ref: "order-30"},
+				f.enqueuer.refLookups[0])
+		})
+	}
+}
+
+// TestCommandHandler_ARefThatCannotBeLookedUpIsNotAnswered: when the queue
+// cannot tell whether the ref was accepted, the command is neither queued nor
+// refused, so an earlier acceptance is never contradicted; a command without
+// a ref is not looked up.
+func TestCommandHandler_ARefThatCannotBeLookedUpIsNotAnswered(t *testing.T) {
+	t.Parallel()
+	f := newCommandFixture()
+	f.enqueuer.refErr = errCmdTestCore
+
+	f.send(`{"data":"AQ==","ref":"order-31"}`)
+
+	assert.Empty(t, f.pub.messages())
+	assert.Zero(t, f.enqueuer.callCount())
+
+	unnamed := newCommandFixture()
+	unnamed.enqueuer.refErr = errCmdTestCore
+	unnamed.send(`{"data":"AQ=="}`)
+	assert.Empty(t, unnamed.enqueuer.refLookups)
+	unnamed.outcome(t, DeviceEventDownlinkQueued)
+}
+
+// TestCommandHandler_LogsNoUnboundedPublisherText: an unreadable expiresAt is
+// logged cut to the length of an RFC 3339 time, quoted, without the parser's
+// error text that repeats it; a repeated ref is logged at most as long as
+// the queue stores one.
+func TestCommandHandler_LogsNoUnboundedPublisherText(t *testing.T) {
+	t.Parallel()
+	log := bsscitest.NewRecordingLogger()
+	f := newCommandFixture()
+	f.handler = NewCommandHandler(f.pub, f.enqueuer, f.lookup, log, cmdTestPrefix)
+	long := strings.Repeat("x", 4*len(time.RFC3339Nano))
+
+	f.send(`{"data":"AQ==","expiresAt":"` + long + `"}`)
+
+	entries := log.FilterMessage(LogCommandDownlinkRejected)
+	require.Len(t, entries, 1)
+	logged := fmt.Sprint(entries[0].FieldMap()[logger.FieldError])
+	assert.Contains(t, logged, logger.FieldExpiresAt+`="`+long[:len(time.RFC3339Nano)]+`"`)
+	assert.NotContains(t, logged, long[:len(time.RFC3339Nano)+1])
+	assert.NotContains(t, logged, "cannot parse", "the parser's error text repeats the input")
+	assert.Equal(t, "x", boundedLogValue("x", len(time.RFC3339Nano)))
+}
+
 // TestCommandHandler_RefIsBoundedLikeTheQueueStoresIt: a ref of
 // storage.MaxDownlinkRefBytes is queued with the downlink; a longer one is
 // refused before anything is queued, and still echoed for correlation.
@@ -370,7 +513,7 @@ func TestCommandHandler_RefIsBoundedLikeTheQueueStoresIt(t *testing.T) {
 	longest := strings.Repeat("r", storage.MaxDownlinkRefBytes)
 	queued := newCommandFixture()
 	queued.send(`{"data":"AQ==","ref":"` + longest + `"}`)
-	assert.Equal(t, longest, queued.enqueuer.lastCall().Ref)
+	assert.Equal(t, longest, queued.enqueuer.lastCall().Command.Ref)
 	queued.outcome(t, DeviceEventDownlinkQueued)
 
 	tooLong := longest + "r"

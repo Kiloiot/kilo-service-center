@@ -85,6 +85,22 @@ func (a *DownlinkAuditLog) RecordQueueAck(ctx context.Context, tenant string, se
 func (a *DownlinkAuditLog) RecordDLResult(ctx context.Context, tenant string, session *bssci.Session,
 	result *mioty.DLDataResult,
 ) error {
+	return a.recordResult(ctx, resultKind(result.Result), tenant, session, result)
+}
+
+// RecordSentAfterExpiry records a base station reporting it transmitted a
+// downlink that was already reported expired: the expiry stands, and the
+// event shows the contradiction.
+func (a *DownlinkAuditLog) RecordSentAfterExpiry(ctx context.Context, tenant string, session *bssci.Session,
+	result *mioty.DLDataResult,
+) error {
+	return a.recordResult(ctx, dlSentAfterExpiryKind, tenant, session, result)
+}
+
+// recordResult writes the event of a result a base station reported.
+func (a *DownlinkAuditLog) recordResult(ctx context.Context, kind downlinkEventKind, tenant string, session *bssci.Session,
+	result *mioty.DLDataResult,
+) error {
 	if result.QueId > math.MaxInt64 {
 		return fmt.Errorf(errFmtInvalidQueueID, result.QueId)
 	}
@@ -93,7 +109,7 @@ func (a *DownlinkAuditLog) RecordDLResult(ctx context.Context, tenant string, se
 		return err
 	}
 	station := session.BaseStationEUI
-	return a.record(ctx, resultKind(result.Result), downlinkFacts{
+	return a.record(ctx, kind, downlinkFacts{
 		tenantID: tenantID, queID: result.QueId, epEUI: mioty.FormatEUI64(result.EpEui), station: &station,
 		result: result.Result, txTime: result.TxTime, packetCnt: result.PacketCnt,
 	})
@@ -108,6 +124,19 @@ func (a *DownlinkAuditLog) RecordQueueExpiry(ctx context.Context, downlink *stor
 	}
 	return a.record(ctx, dlExpiredInQueueKind, downlinkFacts{
 		tenantID: tenantID, queID: queID, epEUI: downlink.EPEUI, result: mioty.ResultExpired,
+	})
+}
+
+// RecordStationExpiry records a downlink whose lifetime ended while a base
+// station held it, which that station dropped untransmitted.
+func (a *DownlinkAuditLog) RecordStationExpiry(ctx context.Context, downlink *storage.DownlinkMessage) error {
+	queID, tenantID, err := queueOwner(downlink.QueID, downlink.TenantID)
+	if err != nil {
+		return err
+	}
+	station := downlink.BsEui
+	return a.record(ctx, dlExpiredKind, downlinkFacts{
+		tenantID: tenantID, queID: queID, epEUI: downlink.EPEUI, station: &station, result: mioty.ResultExpired,
 	})
 }
 

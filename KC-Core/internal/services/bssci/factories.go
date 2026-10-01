@@ -33,6 +33,7 @@ type BSSCIServiceBundle struct {
 // endpoint locations the serving station policy decides on.
 type DownlinkQueueStores interface {
 	DownlinkOutcomeWriter
+	DownlinkRevocationWriter
 	DownlinkHolderWriter
 	EndpointLocator
 	DownlinkLookup
@@ -56,6 +57,7 @@ func NewBSSCIServices(
 	clk clock.Clock,
 	mqttResults DownlinkResultPublisher,
 	work BackgroundRunner,
+	revokeNotHeldCodes []int,
 ) (*BSSCIServiceBundle, error) {
 	// Create services in dependency order
 	versionNegotiator, err := NewVersionNegotiator(supportedProtocolVersions, log)
@@ -93,7 +95,7 @@ func NewBSSCIServices(
 	epStatusBroadcaster := NewSCACIEPStatusAdapter(log)
 
 	// The broadcaster reaches Application Centers once the SCACI server is wired.
-	resultReporter, err := NewDownlinkResultReporter(broadcaster, mqttResults, auditLogger, work, log)
+	resultReporter, err := NewDownlinkResultReporter(broadcaster, mqttResults, auditLogger, auditLogger, work, log)
 	if err != nil {
 		return nil, err
 	}
@@ -101,10 +103,17 @@ func NewBSSCIServices(
 	if err != nil {
 		return nil, err
 	}
+	revokeAnswers, err := NewRevokeAnswers(RevokeAnswerDeps{
+		Logger: log, Tenants: tenantResolver, Revocations: downlinkRepo, Expiries: resultReporter,
+		Serializer: queueSerializer, NotHeldCodes: revokeNotHeldCodes,
+	})
+	if err != nil {
+		return nil, err
+	}
 	downlinkSvc, err := NewDownlinkService(DownlinkServiceDeps{
 		Logger: log, Tenants: tenantResolver, Outcomes: downlinkRepo, Holders: downlinkRepo,
 		Results: resultReporter, Serializer: queueSerializer, Clock: clk,
-	})
+	}, revokeAnswers)
 	if err != nil {
 		return nil, err
 	}

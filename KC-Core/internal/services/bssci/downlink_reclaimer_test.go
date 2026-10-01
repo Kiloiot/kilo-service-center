@@ -47,9 +47,43 @@ func (r *requeueRecorder) RecordRequeued(_ context.Context, downlink storage.Pen
 	return r.err
 }
 
+// discardedRevocations hands out the overdue downlinks a station discarded.
+type discardedRevocations struct {
+	expired  []*storage.DownlinkMessage
+	err      error
+	stations []uint64
+}
+
+func (d *discardedRevocations) ExpireStationRevocations(_ context.Context, bsEUI uint64) ([]*storage.DownlinkMessage, error) {
+	d.stations = append(d.stations, bsEUI)
+	return d.expired, d.err
+}
+
+// stationExpiries records every downlink reported expired at its station.
+type stationExpiries struct{ reported []int64 }
+
+func (s *stationExpiries) ReportExpiredAtStation(_ context.Context, downlink *storage.DownlinkMessage) {
+	s.reported = append(s.reported, downlink.QueID)
+}
+
+// forgottenQueues records every queue id whose cached owner is forgotten.
+type forgottenQueues struct{ forgotten []int64 }
+
+func (f *forgottenQueues) UnregisterQueueTenant(queueID int64) {
+	f.forgotten = append(f.forgotten, queueID)
+}
+
+// reclaimerDeps are a reclaimer's collaborators around the store and the recorder.
+func reclaimerDeps(store ReservationReclaimer, events RequeueRecorder, log logger.Logger) DownlinkReclaimerDeps {
+	return DownlinkReclaimerDeps{
+		Store: store, Revocations: &discardedRevocations{}, Events: events, Expiries: &stationExpiries{},
+		Tenants: &forgottenQueues{}, Logger: log,
+	}
+}
+
 func mustReclaimer(t *testing.T, store ReservationReclaimer, events RequeueRecorder) bssci.DownlinkReclaimer {
 	t.Helper()
-	reclaimer, err := NewDownlinkReclaimer(store, events, &mockLoggerForDispatch{})
+	reclaimer, err := NewDownlinkReclaimer(reclaimerDeps(store, events, &mockLoggerForDispatch{}))
 	require.NoError(t, err)
 	return reclaimer
 }
@@ -64,20 +98,22 @@ func announcedAtStation(released []storage.PendingDownlink) []requeue {
 }
 
 func TestNewDownlinkReclaimer_RejectsMissingCollaborators(t *testing.T) {
-	store, events, log := &mockMIOTYDownlinksForDispatch{}, &requeueRecorder{}, logger.NewNop()
 	cases := map[string]struct {
-		store  ReservationReclaimer
-		events RequeueRecorder
-		log    logger.Logger
-		want   error
+		unset func(*DownlinkReclaimerDeps)
+		want  error
 	}{
-		"nil store":    {events: events, log: log, want: ErrNilReservationReclaimer},
-		"nil recorder": {store: store, log: log, want: ErrNilRequeueRecorder},
-		"nil logger":   {store: store, events: events, want: ErrNilReclaimerLogger},
+		"nil store":       {func(d *DownlinkReclaimerDeps) { d.Store = nil }, ErrNilReservationReclaimer},
+		"nil revocations": {func(d *DownlinkReclaimerDeps) { d.Revocations = nil }, ErrNilDiscardedRevocations},
+		"nil recorder":    {func(d *DownlinkReclaimerDeps) { d.Events = nil }, ErrNilRequeueRecorder},
+		"nil reporter":    {func(d *DownlinkReclaimerDeps) { d.Expiries = nil }, ErrNilDiscardedExpiryReporter},
+		"nil tenants":     {func(d *DownlinkReclaimerDeps) { d.Tenants = nil }, ErrNilReclaimerQueueTenants},
+		"nil logger":      {func(d *DownlinkReclaimerDeps) { d.Logger = nil }, ErrNilReclaimerLogger},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			reclaimer, err := NewDownlinkReclaimer(tc.store, tc.events, tc.log)
+			deps := reclaimerDeps(&mockMIOTYDownlinksForDispatch{}, &requeueRecorder{}, logger.NewNop())
+			tc.unset(&deps)
+			reclaimer, err := NewDownlinkReclaimer(deps)
 			require.ErrorIs(t, err, tc.want)
 			assert.Nil(t, reclaimer)
 		})
@@ -154,7 +190,7 @@ func TestReclaim_AnnouncesEveryDownlinkReturnedToTheQueue(t *testing.T) {
 func TestReclaim_AFailedAnnouncementLeavesTheReleaseInPlace(t *testing.T) {
 	store, events := &mockMIOTYDownlinksForDispatch{released: reclaimTestReleased}, &requeueRecorder{err: errTestRequeueEvent}
 	log := bsscitest.NewRecordingLogger()
-	reclaimer, err := NewDownlinkReclaimer(store, events, log)
+	reclaimer, err := NewDownlinkReclaimer(reclaimerDeps(store, events, log))
 	require.NoError(t, err)
 
 	released, err := reclaimer.ReclaimDiscardedQueue(testutil.TestContext(), reclaimTestStation)
@@ -177,4 +213,63 @@ func TestReclaim_NothingReleasedAnnouncesNothing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, released)
 	assert.Empty(t, events.requeued)
+}
+
+// A session that is not resumed discarded the overdue downlinks its station
+// was asked to drop (BSSCI §1): they end expired and each is reported, and
+// they are never counted as returned to the queue, and the owner cached for
+// each is forgotten; a failed expiry surfaces after the queued downlinks were
+// returned.
+func TestReclaimDiscardedQueue_ExpiresTheStationsRevocations(t *testing.T) {
+	store := &mockMIOTYDownlinksForDispatch{released: reclaimTestReleased}
+	revocations := &discardedRevocations{expired: []*storage.DownlinkMessage{{QueID: 900011}, {QueID: 900012}}}
+	expiries := &stationExpiries{}
+	tenants := &forgottenQueues{}
+	reclaimer, err := NewDownlinkReclaimer(DownlinkReclaimerDeps{
+		Store: store, Revocations: revocations, Events: &requeueRecorder{}, Expiries: expiries, Tenants: tenants, Logger: logger.NewNop(),
+	})
+	require.NoError(t, err)
+
+	released, err := reclaimer.ReclaimDiscardedQueue(testutil.TestContext(), reclaimTestStation)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(reclaimTestReleased)), released, "only queued downlinks return to the queue")
+	assert.Equal(t, []uint64{reclaimTestStation}, revocations.stations)
+	assert.Equal(t, []int64{900011, 900012}, expiries.reported)
+	assert.Equal(t, []int64{900011, 900012}, tenants.forgotten, "an ended downlink's cached owner is forgotten")
+
+	revocations.err, expiries.reported = errTestReserveDBDown, nil
+	_, err = reclaimer.ReclaimDiscardedQueue(testutil.TestContext(), reclaimTestStation)
+	assert.ErrorIs(t, err, errExpireDiscardedRevocations)
+	assert.Empty(t, expiries.reported)
+
+	_, err = reclaimer.ReclaimReservations(testutil.TestContext(), reclaimTestStation, nil)
+	require.NoError(t, err)
+	assert.Len(t, revocations.stations, 2, "a resumed session's reservations leave the revocations alone")
+}
+
+// A deleted station can never transmit what it held: its reservations and
+// queued downlinks return to the queue for another station, and the ones it
+// was asked to drop end expired and are reported; a failure is logged and the
+// rest is still settled.
+func TestReleaseDeletedStation_SettlesEverythingTheStationHeld(t *testing.T) {
+	store := &mockMIOTYDownlinksForDispatch{released: reclaimTestReleased}
+	revocations := &discardedRevocations{expired: []*storage.DownlinkMessage{{QueID: 900021}}}
+	expiries := &stationExpiries{}
+	events := &requeueRecorder{}
+	reclaimer, err := NewDownlinkReclaimer(DownlinkReclaimerDeps{
+		Store: store, Revocations: revocations, Events: events, Expiries: expiries, Tenants: &forgottenQueues{}, Logger: logger.NewNop(),
+	})
+	require.NoError(t, err)
+
+	reclaimer.ReleaseDeletedStation(testutil.TestContext(), reclaimTestStation)
+
+	assert.Equal(t, []uint64{reclaimTestStation}, store.releasedStations, "its reservations are released")
+	assert.Equal(t, []uint64{reclaimTestStation}, store.releasedQueues, "its queue is released")
+	assert.Equal(t, []uint64{reclaimTestStation}, revocations.stations)
+	assert.Equal(t, []int64{900021}, expiries.reported)
+
+	revocations.err, expiries.reported = errTestReserveDBDown, nil
+	reclaimer.ReleaseDeletedStation(testutil.TestContext(), reclaimTestStation)
+	assert.Empty(t, expiries.reported)
 }

@@ -238,6 +238,7 @@ export const DOWNLINK_QUEUE_STATUS = {
   SCHEDULED: "scheduled",
   RESERVED: "reserved",
   QUEUED: "queued",
+  REVOKING: "revoking",
   TRANSMITTED: "transmitted",
   DELIVERED: "delivered",
   FAILED: "failed",
@@ -273,6 +274,7 @@ export const REVOCABLE_QUEUE_STATUSES: Set<string> = new Set([
   DOWNLINK_QUEUE_STATUS.SCHEDULED,
   DOWNLINK_QUEUE_STATUS.RESERVED,
   DOWNLINK_QUEUE_STATUS.QUEUED,
+  DOWNLINK_QUEUE_STATUS.REVOKING,
 ]);
 
 /** Views of the Traffic section (NAV_STRUCTURE §4). */

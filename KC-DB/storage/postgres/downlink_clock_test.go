@@ -38,7 +38,7 @@ func TestDownlinkQueue_TakesItsTimeFromTheClock(t *testing.T) {
 	seedScheduledDownlink(t, sqlxDB, 321, orgs[321], 830102, mioty.DLQueueStatusPending, time.Hour, nil)
 	_, err = downlinks.ReservePendingDownlinkByQueueID(t.Context(), 321, orgs[321], 830102, mioty.EUI64Bytes(830102), releaseStation)
 	assert.ErrorIs(t, err, storage.ErrNotFound, "a row overdue by the clock is not reserved")
-	expired, err := downlinks.ExpireOverdueDownlinks(t.Context(), 10)
+	expired, err := downlinks.ExpireOverdueUnheld(t.Context(), 10)
 	require.NoError(t, err)
 	require.Len(t, expired, 1, "a row overdue by the clock is expired")
 	assert.Equal(t, int64(830102), expired[0].QueID)

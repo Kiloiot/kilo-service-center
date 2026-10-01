@@ -267,6 +267,19 @@ func (s *statusService) EvictCachedOperations(session *bssci.Session) {
 	s.mu.Unlock()
 }
 
+// SessionOperations lists the operations the session has in flight in the cache.
+func (s *statusService) SessionOperations(_ context.Context, session *bssci.Session) []*bssci.PendingOperation {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var ops []*bssci.PendingOperation
+	for key, op := range *s.pendingOps {
+		if key.SessionID == session.ID {
+			ops = append(ops, op)
+		}
+	}
+	return ops
+}
+
 func (s *statusService) ExtractQueueMetadata(session *bssci.Session, opId int64) (endpointEUI uint64, queueID int64, tenantID string, organizationID *uuid.UUID) {
 	key := bssci.SessionOpKey{
 		SessionID:   session.ID,

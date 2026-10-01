@@ -47,6 +47,28 @@ type stationQueue struct {
 }
 
 // newStationQueue holds pending downlinks for the test endpoint.
+// ExpireStationRevocations reports that the station was asked to drop no downlink.
+func (q *stationQueue) ExpireStationRevocations(context.Context, uint64) ([]*storage.DownlinkMessage, error) {
+	return nil, nil
+}
+
+// noStationExpiries reports no downlink expired at a station and caches no queue owner.
+type noStationExpiries struct{}
+
+func (noStationExpiries) ReportExpiredAtStation(context.Context, *storage.DownlinkMessage) {}
+
+func (noStationExpiries) UnregisterQueueTenant(int64) {}
+
+// stationQueueReclaimer is the reclaimer over the station queue fake.
+func stationQueueReclaimer(t *testing.T, queue *stationQueue, requeues *requeueLog, log logger.Logger) bssci.DownlinkReclaimer {
+	t.Helper()
+	reclaimer, err := bssciservices.NewDownlinkReclaimer(bssciservices.DownlinkReclaimerDeps{
+		Store: queue, Revocations: queue, Events: requeues, Expiries: noStationExpiries{}, Tenants: noStationExpiries{}, Logger: log,
+	})
+	require.NoError(t, err)
+	return reclaimer
+}
+
 func newStationQueue(queueIDs ...uint64) *stationQueue {
 	queue := &stationQueue{org: uuid.New()}
 	for _, queueID := range queueIDs {
@@ -204,8 +226,7 @@ func newHeldDownlinkStation(t *testing.T) heldDownlinkStation {
 		&ulWindowClaims{claimed: map[ulWindowKey]bool{}}, server.SendDLDataQueue, clock.SystemClock{})
 	require.NoError(t, err)
 	requeues := &requeueLog{}
-	reclaimer, err := bssciservices.NewDownlinkReclaimer(queue, requeues, logger.NewNop())
-	require.NoError(t, err)
+	reclaimer := stationQueueReclaimer(t, queue, requeues, logger.NewNop())
 	server.SetDownlinkDispatcher(dispatcher)
 	server.SetDownlinkReclaimer(reclaimer)
 	session, conn := openStation(server, ulTestBsEui2, "held-downlink-station", true)

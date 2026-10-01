@@ -31,6 +31,13 @@ type DownlinkResultPublisher interface {
 type DownlinkResultEvents interface {
 	RecordDLResult(ctx context.Context, tenant string, session *bssci.Session, result *mioty.DLDataResult) error
 	RecordQueueExpiry(ctx context.Context, downlink *storage.DownlinkMessage) error
+	RecordStationExpiry(ctx context.Context, downlink *storage.DownlinkMessage) error
+}
+
+// LateResultEvents records a "sent" a base station reported for a downlink
+// already reported expired.
+type LateResultEvents interface {
+	RecordSentAfterExpiry(ctx context.Context, tenant string, session *bssci.Session, result *mioty.DLDataResult) error
 }
 
 // BackgroundRunner runs work detached from the request that started it.
@@ -49,6 +56,7 @@ type DownlinkResultReporter struct {
 	applicationCenters ApplicationCenterResults
 	mqtt               DownlinkResultPublisher
 	events             DownlinkResultEvents
+	lateResults        LateResultEvents
 	work               BackgroundRunner
 	logger             logger.Logger
 }
@@ -58,6 +66,7 @@ func NewDownlinkResultReporter(
 	applicationCenters ApplicationCenterResults,
 	mqtt DownlinkResultPublisher,
 	events DownlinkResultEvents,
+	lateResults LateResultEvents,
 	work BackgroundRunner,
 	log logger.Logger,
 ) (*DownlinkResultReporter, error) {
@@ -68,6 +77,8 @@ func NewDownlinkResultReporter(
 		return nil, ErrNilDownlinkResultPublisher
 	case events == nil:
 		return nil, ErrNilDownlinkResultEvents
+	case lateResults == nil:
+		return nil, ErrNilLateResultEvents
 	case work == nil:
 		return nil, ErrNilReporterRunner
 	case log == nil:
@@ -77,6 +88,7 @@ func NewDownlinkResultReporter(
 		applicationCenters: applicationCenters,
 		mqtt:               mqtt,
 		events:             events,
+		lateResults:        lateResults,
 		work:               work,
 		logger:             log,
 	}, nil
@@ -95,9 +107,36 @@ func (r *DownlinkResultReporter) ReportStationResult(ctx context.Context, downli
 	}
 }
 
+// RecordSentAfterExpiry files in the owner tenant's events a "sent" the base
+// station reported for a downlink already reported expired; its originators
+// keep the expiry they were told and are told nothing again.
+func (r *DownlinkResultReporter) RecordSentAfterExpiry(ctx context.Context, ownerTenantID int64, result mioty.DLDataResult, station *bssci.Session) {
+	reported := bssci.ResultWithTransmitter(result, station.BaseStationEUI)
+	if err := r.lateResults.RecordSentAfterExpiry(ctx, strconv.FormatInt(ownerTenantID, 10), station, &reported); err != nil {
+		r.logger.ErrorContext(ctx, LogSentAfterExpiryEventFailed, logger.FieldQueID, result.QueId, logger.FieldError, err)
+	}
+}
+
 // ReportExpiredInQueue reports a downlink the service center expired before
-// any base station transmitted it.
+// any base station held it.
 func (r *DownlinkResultReporter) ReportExpiredInQueue(ctx context.Context, downlink *storage.DownlinkMessage) error {
+	return r.reportExpired(ctx, downlink, r.events.RecordQueueExpiry)
+}
+
+// ReportExpiredAtStation reports a downlink whose lifetime ended while a base
+// station held it, once that station dropped it untransmitted: it confirmed
+// the dlDataRev, answered it does not hold the downlink, or discarded it with
+// its previous session.
+func (r *DownlinkResultReporter) ReportExpiredAtStation(ctx context.Context, downlink *storage.DownlinkMessage) {
+	if err := r.reportExpired(ctx, downlink, r.events.RecordStationExpiry); err != nil {
+		r.logger.ErrorContext(ctx, LogExpiredDownlinkUnreported, logger.FieldQueID, downlink.QueID, logger.FieldError, err)
+	}
+}
+
+// reportExpired delivers the expired result of the downlink and files it with record.
+func (r *DownlinkResultReporter) reportExpired(ctx context.Context, downlink *storage.DownlinkMessage,
+	record func(context.Context, *storage.DownlinkMessage) error,
+) error {
 	epEUI, err := validation.ParseEUI(downlink.EPEUI)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errUnidentifiedDownlink, err)
@@ -107,7 +146,7 @@ func (r *DownlinkResultReporter) ReportExpiredInQueue(ctx context.Context, downl
 		return fmt.Errorf(errFmtInvalidQueueID, downlink.QueID)
 	}
 	r.deliver(ctx, downlink, mioty.DLDataResult{EpEui: epEUI, QueId: queID, Result: mioty.ResultExpired})
-	if err := r.events.RecordQueueExpiry(ctx, downlink); err != nil {
+	if err := record(ctx, downlink); err != nil {
 		r.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToRecordDLDataResultEvent, logger.FieldError, err)
 	}
 	return nil

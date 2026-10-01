@@ -20,6 +20,10 @@ type ownerLookup struct {
 	seen *storage.DownlinkRevocation
 }
 
+func (*ownerLookup) ListStationRevocations(context.Context, uint64) ([]*storage.DownlinkMessage, error) {
+	return nil, nil
+}
+
 func (f *ownerLookup) GetDownlinkByRevocation(_ context.Context, revocation storage.DownlinkRevocation) (*storage.DownlinkMessage, error) {
 	f.seen = &revocation
 	return f.row, nil

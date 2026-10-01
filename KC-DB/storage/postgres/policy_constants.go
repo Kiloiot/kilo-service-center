@@ -61,7 +61,6 @@ const (
 // Repository operation names recorded as the operation log field.
 const (
 	opGetDownlinkResults          = "GetDownlinkResults"
-	opExpireOverdueDownlinks      = "ExpireOverdueDownlinks"
 	opGetDownlinksByPacketCnt     = "GetDownlinksByPacketCnt"
 	opGetByTenant                 = "GetByTenant"
 	opListByTenantPaginated       = "ListByTenantPaginated"

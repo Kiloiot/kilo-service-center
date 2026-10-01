@@ -16,12 +16,13 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/testsupport/teststore"
 )
 
-// BSSCI §3.13, §3.17 over PostgreSQL: a station's error answer to a dlDataRev
-// means it does not hold the downlink. A downlink still queued there ends
-// revoked. One the expiry sweep already expired, or a late dlDataRes already
-// finished, keeps its outcome. None of them is reported to its originators
-// again.
-func TestProcessRevokeRefusal_EndsOnlyADownlinkStillInFlight(t *testing.T) {
+// BSSCI §3.13, §3.17 over PostgreSQL: only a refusal whose code says the
+// station does not hold the downlink ends it. A downlink still queued there
+// ends revoked; one the expiry sweep is revoking ends expired and is reported
+// once; one a dlDataRes already finished keeps its outcome. A refusal of any
+// other code, such as an unsupported operation, proves nothing and leaves
+// every downlink as it was.
+func TestProcessRevokeRefusal_EndsOnlyADownlinkTheStationDoesNotHold(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -30,17 +31,17 @@ func TestProcessRevokeRefusal_EndsOnlyADownlinkStillInFlight(t *testing.T) {
 	ctx := testutil.TestContext()
 	repos := postgres.NewRepositories(db)
 	f := newReporterFixture(t)
-	resolver := NewTenantResolver(nil)
+	resolver := NewTenantResolver(repos.DownlinkQueueReader)
 	svc, err := NewDownlinkService(DownlinkServiceDeps{
 		Logger: logger.NewNop(), Tenants: resolver, Outcomes: repos.Downlinks, Holders: repos.Downlinks,
 		Results: f.reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
-	})
+	}, newRevokeAnswers(t, logger.NewNop(), resolver, repos.Downlinks, f.reporter))
 	require.NoError(t, err)
 
 	const tenantID = int64(1)
 	held := map[int64]mioty.DLQueueStatus{
 		2000011: mioty.DLQueueStatusQueued,
-		2000012: mioty.DLQueueStatusExpired,
+		2000012: mioty.DLQueueStatusRevoking,
 		2000013: mioty.DLQueueStatusTransmitted,
 	}
 	for queID, status := range held {
@@ -59,7 +60,29 @@ func TestProcessRevokeRefusal_EndsOnlyADownlinkStillInFlight(t *testing.T) {
 		return mioty.DLQueueStatus(s)
 	}
 	station := &bssci.Session{ProtocolSessionState: bssci.ProtocolSessionState{BaseStationEUI: 0x70B3D59CD00009E6}}
+	refuse := func(queID int64, code int) bool {
+		revoked, err := svc.ProcessRevokeRefusal(ctx, station, bssci.RevokeRefusal{
+			QueueID: queID, EndpointEUI: 0x70B3D59CD0000341, Code: code,
+		})
+		require.NoError(t, err)
+		return revoked
+	}
 
+	for _, code := range []int{bssci.POSIX_ENOTSUP, bssci.POSIX_EIO} {
+		for queID, want := range held {
+			assert.False(t, refuse(queID, code), "code %d, queue id %d", code, queID)
+			assert.Equal(t, want, status(queID), "a refusal of code %d leaves queue id %d alone", code, queID)
+		}
+	}
+	f.stop(t)
+	assert.Empty(t, f.mqtt.published, "a refusal that proves nothing reports nothing")
+
+	f = newReporterFixture(t)
+	svc, err = NewDownlinkService(DownlinkServiceDeps{
+		Logger: logger.NewNop(), Tenants: resolver, Outcomes: repos.Downlinks, Holders: repos.Downlinks,
+		Results: f.reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
+	}, newRevokeAnswers(t, logger.NewNop(), resolver, repos.Downlinks, f.reporter))
+	require.NoError(t, err)
 	for queID, want := range map[int64]struct {
 		revoked bool
 		status  mioty.DLQueueStatus
@@ -68,17 +91,14 @@ func TestProcessRevokeRefusal_EndsOnlyADownlinkStillInFlight(t *testing.T) {
 		2000012: {status: mioty.DLQueueStatusExpired},
 		2000013: {status: mioty.DLQueueStatusTransmitted},
 	} {
-		revoked, err := svc.ProcessRevokeRefusal(ctx, station, bssci.RevokeRefusal{
-			QueueID: queID, EndpointEUI: 0x70B3D59CD0000341, Code: bssci.POSIX_ENOTSUP, Message: "no matching DL data found",
-		})
-		require.NoError(t, err)
-		assert.Equal(t, want.revoked, revoked, "queue id %d", queID)
+		assert.Equal(t, want.revoked, refuse(queID, bssci.POSIX_ENOENT), "queue id %d", queID)
 		assert.Equal(t, want.status, status(queID), "queue id %d", queID)
+		assert.False(t, refuse(queID, bssci.POSIX_ENOENT), "a repeated refusal of queue id %d changes nothing", queID)
 	}
 	f.stop(t)
-	assert.Empty(t, f.acs.delivered, "no Application Center is told a result again")
-	assert.Empty(t, f.mqtt.published, "no MQTT result is published again")
-	assert.Nil(t, f.events.lastEvent, "no result event is recorded again")
+	require.Len(t, f.mqtt.published, 1, "only the downlink being revoked is reported, once")
+	assert.Equal(t, mioty.ResultExpired, f.mqtt.published[0].result.Result)
+	assert.Equal(t, uint64(2000012), f.mqtt.published[0].result.QueId)
 }
 
 // BSSCI §3.13, §3.17 over PostgreSQL: a base station's answer to a dlDataRev
@@ -97,7 +117,7 @@ func TestRevokeAnswers_EndOnlyTheDownlinkTheStationHolds(t *testing.T) {
 	svc, err := NewDownlinkService(DownlinkServiceDeps{
 		Logger: logger.NewNop(), Tenants: resolver, Outcomes: repos.Downlinks, Holders: repos.Downlinks,
 		Results: newReporterFixture(t).reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
-	})
+	}, newRevokeAnswers(t, logger.NewNop(), resolver, repos.Downlinks, newReporterFixture(t).reporter))
 	require.NoError(t, err)
 
 	const tenantID = int64(1)
@@ -123,7 +143,7 @@ func TestRevokeAnswers_EndOnlyTheDownlinkTheStationHolds(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, revoked, "a late confirmation from the previous holder")
 	revoked, err = svc.ProcessRevokeRefusal(ctx, previous, bssci.RevokeRefusal{
-		QueueID: 2000022, EndpointEUI: 0x70B3D59CD0000341, Code: bssci.POSIX_ENOTSUP, Message: "no matching DL data found",
+		QueueID: 2000022, EndpointEUI: 0x70B3D59CD0000341, Code: bssci.POSIX_ENOENT,
 	})
 	require.NoError(t, err)
 	assert.False(t, revoked, "a late refusal from the previous holder")

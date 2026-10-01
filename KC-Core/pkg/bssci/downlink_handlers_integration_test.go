@@ -59,12 +59,17 @@ func newDownlinkIntegrationServer(t *testing.T, db *postgres.DB) (*bssci.Server,
 	})
 	require.NoError(t, err)
 	reporter, err := bssciservices.NewDownlinkResultReporter(bssciservices.NewSCACIForwarder(logger.NewNop()),
-		bssciservices.DownlinkResultsWithoutMQTT{}, auditLogger, bssciservices.NewBackgroundWork(), logger.NewNop())
+		bssciservices.DownlinkResultsWithoutMQTT{}, auditLogger, auditLogger, bssciservices.NewBackgroundWork(), logger.NewNop())
+	require.NoError(t, err)
+	revokeAnswers, err := bssciservices.NewRevokeAnswers(bssciservices.RevokeAnswerDeps{
+		Logger: logger.NewNop(), Tenants: tenantResolver, Revocations: downlinks, Expiries: reporter,
+		Serializer: bssciservices.NewQueueSerializer(), NotHeldCodes: []int{bssci.POSIX_ENOENT},
+	})
 	require.NoError(t, err)
 	downlinkSvc, err := bssciservices.NewDownlinkService(bssciservices.DownlinkServiceDeps{
 		Logger: logger.NewNop(), Tenants: tenantResolver, Outcomes: downlinks, Holders: downlinks,
 		Results: reporter, Serializer: bssciservices.NewQueueSerializer(), Clock: clock.SystemClock{},
-	})
+	}, revokeAnswers)
 	require.NoError(t, err)
 	server := bssci.NewTestServer(testLogger, bssci.RepositoryTestStore(db), nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)

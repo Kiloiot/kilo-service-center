@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -123,6 +124,15 @@ const (
 	// LogCommandDownlinkEnqueued is logged when a command/down message is successfully enqueued
 	LogCommandDownlinkEnqueued = "MQTT command/down enqueued"
 
+	// LogCommandAlreadyQueued is logged when a command/down repeats the ref of
+	// a downlink already queued; the repeat queues and publishes nothing
+	LogCommandAlreadyQueued = "MQTT command/down repeats a queued ref; nothing is queued or published"
+
+	// LogCommandRefLookupFailed is logged when the ref of a command/down cannot
+	// be looked up; the command is not answered rather than possibly refused
+	// after an earlier acceptance
+	LogCommandRefLookupFailed = "MQTT command/down ref could not be looked up; nothing is queued or published"
+
 	// ========================================================================
 	// Log Messages
 	// ========================================================================
@@ -189,7 +199,13 @@ const (
 	RejectMsgEnqueueFailed       = "the service center could not queue the downlink"
 	RejectCodeRefTooLong         = "mqtt.command.ref_too_long"
 	RejectMsgRefTooLongFmt       = "ref exceeds %d bytes"
-	errFmtDownlinkRefusal        = "%s: %s"
+	RejectCodeCommandExpired     = "mqtt.command.expired"
+	RejectMsgCommandExpired      = "expiresAt passed before the downlink could be queued"
+	// CommandFieldExpiresAt names the command's deadline in an invalid_field refusal.
+	CommandFieldExpiresAt = "expiresAt"
+	errFmtDownlinkRefusal = "%s: %s"
+	// errFmtInvalidExpiresAt names the unreadable deadline, cut to the length of an RFC 3339 time, by its log field.
+	errFmtInvalidExpiresAt = "%w: %s=%q"
 )
 
 // Refusals whose code and message never vary.
@@ -206,4 +222,14 @@ var (
 	refusalOrgUnresolved      = &DownlinkRefusal{Code: RejectCodeOrgUnresolved, Message: RejectMsgOrgUnresolved}
 	refusalEnqueueFailed      = &DownlinkRefusal{Code: RejectCodeEnqueueFailed, Message: RejectMsgEnqueueFailed}
 	refusalRefTooLong         = &DownlinkRefusal{Code: RejectCodeRefTooLong, Message: fmt.Sprintf(RejectMsgRefTooLongFmt, storage.MaxDownlinkRefBytes)}
+	refusalInvalidExpiresAt   = &DownlinkRefusal{Code: RejectCodeInvalidField, Message: fmt.Sprintf(RejectMsgInvalidFieldFmt, CommandFieldExpiresAt)}
 )
+
+// RefusalCommandExpired refuses a command whose expiresAt passed before its
+// downlink could be queued.
+var RefusalCommandExpired = &DownlinkRefusal{Code: RejectCodeCommandExpired, Message: RejectMsgCommandExpired}
+
+// ErrCommandAlreadyQueued reports a command whose ref names a downlink the
+// organization already queued for the endpoint: the command was accepted
+// before, so the repeat is not answered again.
+var ErrCommandAlreadyQueued = errors.New("downlink command already queued under its ref")

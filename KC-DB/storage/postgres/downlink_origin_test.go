@@ -72,7 +72,7 @@ func TestDownlinkOrigin_TravelsWithTheRow(t *testing.T) {
 
 	_, err = db.Exec(`UPDATE downlink_queue SET earliest_at = NOW() - INTERVAL '1 hour', latest_at = NOW() - INTERVAL '1 minute' WHERE que_id IN ($1, $2)`, expiredRow, internalRow)
 	require.NoError(t, err)
-	expired, err := downlinks.ExpireOverdueDownlinks(ctx, 10)
+	expired, err := downlinks.ExpireOverdueUnheld(ctx, 10)
 	require.NoError(t, err)
 	require.Len(t, expired, 2)
 	for _, downlink := range expired {

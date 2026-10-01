@@ -116,13 +116,14 @@ type DownlinkService interface {
 
 	// ProcessRevokeResponse records a base station's dlDataRevRsp (BSSCI
 	// §3.13) and returns the dlDataRevCmp to send; revoked is false for a
-	// downlink that had already ended, which keeps its outcome.
+	// downlink that expired, being revoked for its lifetime, and for one that
+	// had already ended, which keeps its outcome.
 	ProcessRevokeResponse(ctx context.Context, session *Session, opId int64, queueID int64, endpointEUI uint64) (responseMsg map[string]interface{}, revoked bool, err error)
 
 	// ProcessRevokeRefusal records a base station's error answer to a
-	// dlDataRev (BSSCI §3.17): the station does not hold the downlink, which
-	// ends revoked as a confirmed revoke would; revoked is false for a
-	// downlink that had already ended, which keeps its outcome.
+	// dlDataRev (BSSCI §3.17). A refusal saying the station does not hold the
+	// downlink ends it as a confirmed revoke would; any other refusal leaves
+	// it in flight. revoked reports whether it ended revoked.
 	ProcessRevokeRefusal(ctx context.Context, session *Session, refusal RevokeRefusal) (revoked bool, err error)
 
 	// ProcessQueueAck records the base station that answered a dlDataQue
@@ -153,12 +154,11 @@ type QueueRejection struct {
 }
 
 // RevokeRefusal is a base station's error answer to a dlDataRev: the
-// downlink it names and the station's POSIX code and message.
+// downlink it names and the station's POSIX code.
 type RevokeRefusal struct {
 	QueueID     int64
 	EndpointEUI uint64
 	Code        int
-	Message     string
 }
 
 // StatusService manages pendingOps map + DB persistence.
@@ -213,6 +213,9 @@ type StatusService interface {
 	// unreachable afterwards, while the DB rows remain the durable source for
 	// a later resume.
 	EvictCachedOperations(session *Session)
+
+	// SessionOperations lists the operations the session has in flight.
+	SessionOperations(ctx context.Context, session *Session) []*PendingOperation
 }
 
 // PersistedOperation is a raw persisted pending-operation row returned for
@@ -811,7 +814,8 @@ type DownlinkDispatcher interface {
 
 // DownlinkReclaimer returns to pending the downlinks a base station no longer
 // holds, so they are dispatched again, and reports how many it released. It
-// never reports a result for them: they are still to be sent.
+// reports no result for them, as they are still to be sent; only an overdue
+// downlink the station was asked to drop and discarded ends expired.
 type DownlinkReclaimer interface {
 	// ReclaimReservations returns to pending every downlink the base station
 	// holds reserved except the rows behind the dlDataQue operations reissued
@@ -820,7 +824,8 @@ type DownlinkReclaimer interface {
 
 	// ReclaimDiscardedQueue returns to pending every downlink queued at a
 	// base station whose new session is not resumed and so discarded them
-	// (BSSCI §1).
+	// (BSSCI §1), and ends expired the overdue ones it was asked to drop; it
+	// counts those returned to pending.
 	ReclaimDiscardedQueue(ctx context.Context, bsEUI uint64) (released int64, err error)
 
 	// ReclaimEndpointQueue returns to pending the owner tenant's downlinks
@@ -947,6 +952,9 @@ type BaseStationStatusStore interface {
 // in a delegating adapter.
 type DownlinkQueueStore interface {
 	GetDownlinkByRevocation(ctx context.Context, revocation storage.DownlinkRevocation) (*storage.DownlinkMessage, error)
+	// ListStationRevocations lists the downlinks the base station is asked to
+	// drop because their lifetime ended while it held them.
+	ListStationRevocations(ctx context.Context, bsEUI uint64) ([]*storage.DownlinkMessage, error)
 }
 
 // DownlinkRevocationStore revokes a downlink where it waits; a revocation

@@ -52,7 +52,7 @@ func TestProcessDLDataResult_ReportsCatalogErrors(t *testing.T) {
 			svc, err := NewDownlinkService(DownlinkServiceDeps{
 				Logger: logger.NewNop(), Tenants: resolver, Outcomes: &failingResultWriter{err: tc.writeErr}, Holders: &mockMIOTYDownlinksForDispatch{},
 				Results: newReporterFixture(t).reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
-			})
+			}, newRevokeAnswers(t, logger.NewNop(), resolver, &failingResultWriter{err: tc.writeErr}, newReporterFixture(t).reporter))
 			require.NoError(t, err)
 
 			_, err = svc.ProcessDLDataResult(testutil.TestContext(),
@@ -76,7 +76,7 @@ func TestProcessDLDataResult_RefusedResultReportsNothing(t *testing.T) {
 	svc, err := NewDownlinkService(DownlinkServiceDeps{
 		Logger: logger.NewNop(), Tenants: resolver, Outcomes: &failingResultWriter{err: storage.ErrDownlinkNotFound}, Holders: &mockMIOTYDownlinksForDispatch{},
 		Results: reports.reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
-	})
+	}, newRevokeAnswers(t, logger.NewNop(), resolver, &failingResultWriter{err: storage.ErrDownlinkNotFound}, reports.reporter))
 	require.NoError(t, err)
 
 	_, err = svc.ProcessDLDataResult(testutil.TestContext(),

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
@@ -13,6 +14,7 @@ import (
 	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
@@ -86,9 +88,9 @@ func (s *Server) revokeAtBaseStation(ctx context.Context, revocation storage.Dow
 	return downlink.BsEui, s.revokeAtHolder(downlink, revocation.TenantID)
 }
 
-// RevokeHeldDownlink asks the base station holding a downlink that already
-// ended, such as one that expired, to drop it (BSSCI §3.13); the station's
-// confirmation leaves the downlink's outcome as it is.
+// RevokeHeldDownlink asks the base station holding a downlink whose lifetime
+// ended to drop it (BSSCI §3.13); the downlink stays revoking until the
+// station answers or reports a result for it.
 //
 // Returns:
 //   - error: scheduler.ErrSchedulerResourceMissing if the holding base station
@@ -102,7 +104,8 @@ func (s *Server) RevokeHeldDownlink(_ context.Context, downlink *storage.Downlin
 }
 
 // revokeAtHolder sends dlDataRev for the owner tenant's downlink to the base
-// station holding it.
+// station holding it, unless a dlDataRev for it is already in flight on that
+// station's session, whose answer settles it.
 func (s *Server) revokeAtHolder(downlink *storage.DownlinkMessage, ownerTenantID int64) error {
 	epEUI, err := validation.ParseEUI(downlink.EPEUI)
 	if err != nil {
@@ -116,8 +119,33 @@ func (s *Server) revokeAtHolder(downlink *storage.DownlinkMessage, ownerTenantID
 	if session == nil {
 		return scheduler.ErrSchedulerResourceMissing
 	}
+	if slices.Contains(queueIDsOf(s.statusSvc.SessionOperations(s.sessionContext(session), session), mioty.CmdDLDataRevoke), downlink.QueID) {
+		s.logger.DebugContext(s.sessionContext(session), LogBSSCIRevokeAlreadyInFlight,
+			logger.FieldQueID, downlink.QueID, logger.FieldBsEui, session.BaseStationEUI)
+		return nil
+	}
 	if err := s.SendDLDataRevoke(session.ID, epEUI, queID, ownerTenantID); err != nil {
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendDlDataRev), err)
 	}
 	return nil
+}
+
+// askAgainToDrop asks the connected station again to drop each overdue
+// downlink it holds (BSSCI §3.13); one whose dlDataRev the resumed session
+// reissued is not asked twice. A station unreachable when the downlink's
+// lifetime ended was never asked, and a KC-Core restart left the question
+// open. A station whose session is not resumed holds none any more.
+func (s *Server) askAgainToDrop(ctx context.Context, session *Session) {
+	revoking, err := s.downlinkQueueStore.ListStationRevocations(ctx, session.BaseStationEUI)
+	if err != nil {
+		s.logger.ErrorContext(ctx, LogBSSCIFailedToListStationRevocations,
+			logger.FieldBsEui, session.BaseStationEUI, logger.FieldError, err)
+		return
+	}
+	for _, downlink := range revoking {
+		if err := s.RevokeHeldDownlink(ctx, downlink); err != nil {
+			s.logger.WarnContext(ctx, LogBSSCIFailedToResendRevocation,
+				logger.FieldQueID, downlink.QueID, logger.FieldBsEui, session.BaseStationEUI, logger.FieldError, err)
+		}
+	}
 }

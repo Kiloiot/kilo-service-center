@@ -46,6 +46,14 @@ func (noResultEvents) RecordDLResult(context.Context, string, *bssci.Session, *m
 
 func (noResultEvents) RecordQueueExpiry(context.Context, *storage.DownlinkMessage) error { return nil }
 
+func (noResultEvents) RecordStationExpiry(context.Context, *storage.DownlinkMessage) error {
+	return nil
+}
+
+func (noResultEvents) RecordSentAfterExpiry(context.Context, string, *bssci.Session, *mioty.DLDataResult) error {
+	return nil
+}
+
 func (noResultEvents) RecordDownlinkAcknowledged(context.Context, *storage.DownlinkMessage, uint32) error {
 	return nil
 }
@@ -96,7 +104,7 @@ func assertResultsReachOnlyTheirQueuer(t *testing.T, claimantAcEui uint64) {
 	h.downlinks.On("QueueDownlink", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(scaci.DownlinkQueueOutcome{Deferred: true}, "")
 	reporter, err := bssciservices.NewDownlinkResultReporter(h.server, bssciservices.DownlinkResultsWithoutMQTT{},
-		noResultEvents{}, synchronousWork{}, logger.NewNop())
+		noResultEvents{}, noResultEvents{}, synchronousWork{}, logger.NewNop())
 	require.NoError(t, err)
 	ctx := testutil.TestContext()
 	owner := h.dialAs(t, h.ownerCert, harnessAcEui)
@@ -148,7 +156,7 @@ func TestSCACIServer_DownlinkResultRoutedWhenTheQueueRecordFails(t *testing.T) {
 	})).Return(&storage.DownlinkMessage{QueID: routingOwnerFirst}, nil).Once()
 	h.refuseQueueRecords(t)
 	reporter, err := bssciservices.NewDownlinkResultReporter(h.server, bssciservices.DownlinkResultsWithoutMQTT{},
-		noResultEvents{}, synchronousWork{}, logger.NewNop())
+		noResultEvents{}, noResultEvents{}, synchronousWork{}, logger.NewNop())
 	require.NoError(t, err)
 	owner := h.dialAs(t, h.ownerCert, harnessAcEui)
 	owner.connect(harnessUUID(harnessUUIDFirst))

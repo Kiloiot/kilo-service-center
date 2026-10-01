@@ -202,6 +202,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("protocol.downlink_expiry.lifetime", DefaultProtocolDownlinkLifetime)
 	v.SetDefault("protocol.downlink_expiry.sweep_interval", DefaultProtocolDownlinkExpirySweepInterval)
 	v.SetDefault("protocol.downlink_expiry.batch_size", DefaultProtocolDownlinkExpiryBatchSize)
+	v.SetDefault("protocol.downlink_expiry.revoke_not_held_codes", DefaultProtocolDownlinkRevokeNotHeldCodes)
 	v.SetDefault("protocol.roaming.cache_enabled", DefaultProtocolRoamingCacheEnabled)
 	v.SetDefault("protocol.roaming.cache_ttl", DefaultProtocolRoamingCacheTTL)
 	v.SetDefault("protocol.roaming.cache_max_size", DefaultProtocolRoamingCacheMaxSize)

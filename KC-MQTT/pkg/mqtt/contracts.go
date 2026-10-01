@@ -54,7 +54,8 @@ type MessageHandler func(ctx context.Context, topic string, payload []byte)
 // This allows swapping MQTT with other messaging backends (e.g., Kafka, NATS).
 type DeviceEventPublisher interface {
 	// PublishDeviceEvent publishes a device event to the canonical topic.
-	// Uses UplinkQoS for "up" events, EventsQoS for all other event types.
+	// Uses UplinkQoS for "up", DownlinkEventsQoS for downlink_queued,
+	// downlink_rejected and downlink_result, and EventsQoS for attach and detach.
 	// Returns error if orgUUID or epEUIHex are empty (prevents malformed topics).
 	PublishDeviceEvent(ctx context.Context, orgUUID string, epEUIHex string, eventType string, payload []byte) error
 }

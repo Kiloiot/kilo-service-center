@@ -49,6 +49,10 @@ var (
 		func(d downlinkStory) string {
 			return fmt.Sprintf(descriptionDLDataSentFormat, d.queID, d.endpoint, d.station, d.packetCnt, d.payload)
 		}}
+	dlSentAfterExpiryKind = downlinkEventKind{models.EventTypeDLDataSent, models.EventTitleDLDataSentAfterExpiry, models.EventSeverityWarning,
+		func(d downlinkStory) string {
+			return fmt.Sprintf(descriptionDLDataSentAfterExpiryFormat, d.queID, d.endpoint, d.station, d.packetCnt, d.payload)
+		}}
 	dlExpiredKind = downlinkEventKind{models.EventTypeDLDataExpired, models.EventTitleDLDataExpired, models.EventSeverityWarning,
 		func(d downlinkStory) string {
 			return fmt.Sprintf(descriptionDLDataExpiredFormat, d.queID, d.endpoint, d.station, d.payload)

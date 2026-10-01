@@ -81,9 +81,16 @@ protocol:
     lifetime: "24h"        # how long a queued downlink waits for a window
     sweep_interval: "5s"   # how often overdue downlinks are expired
     batch_size: 100        # downlinks expired per statement
+    revoke_not_held_codes: [2]  # dlDataRev refusal codes meaning "not held"
 ```
 
-A downlink older than `lifetime` is never sent. It is marked expired and reported as `expired` to the Application Center that queued it (`dlDataRes`), on the MQTT `downlink_result` topic, and in the downlink results. In the Helm chart the keys are `kcCore.config.protocol.downlinkExpiry.lifetime`, `sweepInterval` and `batchSize`.
+A downlink still waiting in the service center queue when `lifetime` has passed, or when the `expiresAt` of the MQTT command that queued it has passed, is never sent. It is marked expired and reported as `expired` to the Application Center that queued it (`dlDataRes`), on the MQTT `downlink_result` topic, and in the downlink results.
+
+A downlink a base station already holds at that moment is not reported yet: only the station knows whether it transmitted it. KiloCenter asks the station to drop it (`dlDataRev`) and shows it as **Revoking**. It ends `expired` when the station confirms the revoke, answers that it does not hold the downlink, or reconnects with a new session that discarded it, or when the base station is deleted. When the station reports first that it transmitted the downlink, the result is `sent`. A connected station that has not settled the downlink is asked again once per `sweep_interval`, never while its previous `dlDataRev` still awaits an answer; a station that is offline is asked again when it reconnects. Time passing alone never ends a downlink a station holds.
+
+A station refuses the revoke of a downlink it does not hold with a BSSCI error, whose POSIX code the specification leaves to the manufacturer. `revoke_not_held_codes` lists the codes your stations use for that answer (default `[2]`, ENOENT). Any other refusal, such as an unsupported operation, proves nothing about the downlink, which stays **Revoking** until the station reports a result, answers with a "not held" code or reconnects; a station that keeps refusing with another code keeps it **Revoking** and is asked again each `sweep_interval`. If your stations answer "not held" with another code, add the codes they use; only add a code that your stations use for "not held" alone. The same rule applies to revokes an operator or Application Center requests.
+
+In the Helm chart the keys are `kcCore.config.protocol.downlinkExpiry.lifetime`, `sweepInterval`, `batchSize` and `revokeNotHeldCodes`.
 
 ## Application Center Session Resumption
 

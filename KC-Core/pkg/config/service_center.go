@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 )
@@ -81,6 +82,10 @@ func ValidateServiceCenterConfig(cfg *ProtocolConfig) error {
 
 	if cfg.DownlinkExpiry.Lifetime <= 0 || cfg.DownlinkExpiry.SweepInterval <= 0 || cfg.DownlinkExpiry.BatchSize <= 0 {
 		return fmt.Errorf(errFmtDownlinkExpiryConfigInvalid, cfg.DownlinkExpiry.Lifetime, cfg.DownlinkExpiry.SweepInterval, cfg.DownlinkExpiry.BatchSize)
+	}
+
+	if len(cfg.DownlinkExpiry.RevokeNotHeldCodes) == 0 || slices.ContainsFunc(cfg.DownlinkExpiry.RevokeNotHeldCodes, func(code int) bool { return code <= 0 }) {
+		return fmt.Errorf(errFmtRevokeNotHeldCodesInvalid, cfg.DownlinkExpiry.RevokeNotHeldCodes)
 	}
 
 	if cfg.SCACIResumeMaxPendingOperations <= 0 {

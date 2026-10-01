@@ -46,6 +46,8 @@ var (
 	ErrNilAuditLogger = errors.New("audit logger: logger is nil")
 	// ErrNilQueuer rejects an MQTT downlink adapter built without a queuer.
 	ErrNilQueuer = errors.New("mqtt downlink adapter: downlink queuer is nil")
+	// ErrNilCommandRefs rejects an MQTT downlink adapter built without the lookup of command refs.
+	ErrNilCommandRefs = errors.New("mqtt downlink adapter: command ref lookup is nil")
 	// ErrNilSCACIServer rejects a downlink queuer built without a SCACI server.
 	ErrNilSCACIServer = errors.New("scaci downlink queuer: server is nil")
 	// ErrNilDispatcherLogger rejects a downlink dispatcher built without a logger.
@@ -62,6 +64,14 @@ var (
 	ErrNilRequeueRecorder = errors.New("downlink reclaimer: requeue recorder is nil")
 	// ErrNilReclaimerLogger rejects a downlink reclaimer built without a logger.
 	ErrNilReclaimerLogger = errors.New("downlink reclaimer: logger is nil")
+	// ErrNilDiscardedRevocations rejects a downlink reclaimer built without the store that expires discarded revocations.
+	ErrNilDiscardedRevocations = errors.New("downlink reclaimer: discarded revocations store is nil")
+	// ErrNilDiscardedExpiryReporter rejects a downlink reclaimer built without the reporter of discarded downlinks.
+	ErrNilDiscardedExpiryReporter = errors.New("downlink reclaimer: expiry reporter is nil")
+	// ErrNilReclaimerQueueTenants rejects a downlink reclaimer built without the queue owner cache it clears.
+	ErrNilReclaimerQueueTenants = errors.New("downlink reclaimer: queue tenant cache is nil")
+	// errExpireDiscardedRevocations wraps a failed expiry of the overdue downlinks a fresh session discarded.
+	errExpireDiscardedRevocations = errors.New("expire the overdue downlinks a base station discarded")
 	// errReclaimReservations wraps a failed release of a base station's orphaned reservations.
 	errReclaimReservations = errors.New("reclaim base station downlink reservations")
 	// errReclaimDiscardedQueue wraps a failed release of the downlinks a fresh session discarded.
@@ -78,6 +88,12 @@ var (
 	ErrNilTenantResolver = errors.New("downlink service: tenant resolver is nil")
 	// ErrNilDownlinkWriter rejects a downlink service built without a queue writer.
 	ErrNilDownlinkWriter = errors.New("downlink service: downlink queue writer is nil")
+	// ErrNilDownlinkRevocationWriter rejects a downlink service built without the writer of revoke answers.
+	ErrNilDownlinkRevocationWriter = errors.New("downlink service: downlink revocation writer is nil")
+	// ErrNilRevokeAnswerer rejects a downlink service built without its revoke answers.
+	ErrNilRevokeAnswerer = errors.New("downlink service: revoke answers are nil")
+	// ErrNoRevokeNotHeldCodes rejects a downlink service that could never tell a station does not hold a downlink.
+	ErrNoRevokeNotHeldCodes = errors.New("downlink service: no dlDataRev refusal code says the station does not hold the downlink")
 	// ErrNilDownlinkHolderWriter rejects a downlink service built without its queue holder writer.
 	ErrNilDownlinkHolderWriter = errors.New("downlink service: downlink holder writer is nil")
 	// ErrNilDownlinkServiceClock rejects a downlink service built without a clock.
@@ -92,6 +108,8 @@ var (
 	ErrNilDownlinkResultPublisher = errors.New("downlink result reporter: mqtt publisher is nil")
 	// ErrNilDownlinkResultEvents rejects a result reporter built without its event recorder.
 	ErrNilDownlinkResultEvents = errors.New("downlink result reporter: event recorder is nil")
+	// ErrNilLateResultEvents rejects a result reporter built without the recorder of results that contradict an expiry.
+	ErrNilLateResultEvents = errors.New("downlink result reporter: late result recorder is nil")
 	// ErrNilReporterRunner rejects a result reporter built without its background runner.
 	ErrNilReporterRunner = errors.New("downlink result reporter: background runner is nil")
 	// ErrNilReporterLogger rejects a result reporter built without a logger.

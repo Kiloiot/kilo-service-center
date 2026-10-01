@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -187,9 +188,9 @@ func reservePendingDownlinkByQueueID(
 }
 
 // markReservedAsQueued transitions reserved → queued with transmission
-// metadata. Idempotent: a row already 'queued' succeeds unchanged; any other
-// state (pending, failed, completed, revoked) is an error because the caller's
-// reservation no longer holds.
+// metadata. Idempotent: a row already 'queued', or 'revoking' which only a
+// queued row becomes, succeeds unchanged; any other state (pending, failed,
+// completed, revoked) is an error because the caller's reservation no longer holds.
 func markReservedAsQueued(
 	ctx context.Context,
 	q sqlExecQuerier,
@@ -231,6 +232,9 @@ func markReservedAsQueued(
 	return queuedAlready(ctx, q, queID, tenantID, orgID)
 }
 
+// confirmedQueued are the states of a downlink whose send was confirmed queued.
+var confirmedQueued = []mioty.DLQueueStatus{mioty.DLQueueStatusQueued, mioty.DLQueueStatusRevoking}
+
 // queuedAlready is the idempotent success of a reserved-to-queued move that
 // changed no row because a repair path or crash-recovery retry already
 // confirmed the send; any other state means the reservation no longer holds.
@@ -247,7 +251,7 @@ func queuedAlready(ctx context.Context, q sqlExecQuerier, queID uint64, tenantID
 	if err != nil {
 		return fmt.Errorf("%s: %w", errWrapMarkDownlinkQueuedStatusCheck, err)
 	}
-	if status == mioty.DLQueueStatusQueued {
+	if slices.Contains(confirmedQueued, status) {
 		return nil
 	}
 	return ErrDownlinkAlreadyReserved

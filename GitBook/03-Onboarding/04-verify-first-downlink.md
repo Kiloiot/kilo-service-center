@@ -57,5 +57,6 @@ Look for `dlDataQue`, `dlDataQueRsp`, and `dlDataQueCmp` entries -- these repres
 | Downlink stays queued | The base station that last heard the endpoint is offline or not bidirectional; the downlink goes out in the endpoint's next downlink window |
 | Downlink refused as not bidirectional | The endpoint is registered without the `bidi` flag |
 | Downlink reported `expired` | No downlink window opened within `protocol.downlink_expiry.lifetime` (see [Configuration Basics](../02-GettingStarted/06-configuration-basics.md)) |
+| Downlink stays **Revoking** in the queue | A base station held it when its deadline passed; it ends when the station answers the revoke or reconnects. If the station refuses revokes with a code other than `protocol.downlink_expiry.revoke_not_held_codes`, see [Configuration Basics](../02-GettingStarted/06-configuration-basics.md) |
 | No result returned | Base station did not complete the downlink handshake |
 | Payload rejected | Data not valid base64 or exceeds maximum payload size |

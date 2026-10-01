@@ -171,21 +171,22 @@ func (s *Server) publishLiveSession(ctx context.Context, session *Session) {
 // CloseSessionByEUI closes the live session of the base station with the
 // given EUI and reports whether it held one. It terminates the DB session,
 // removes the session from the live maps and closes the connection, so a
-// station whose EUI changed keeps no session under its old identity.
+// station whose EUI changed keeps no session under its old identity and a
+// deleted station keeps none at all.
 func (s *Server) CloseSessionByEUI(ctx context.Context, eui uint64) bool {
 	targetSession := s.sessions.byEUI(eui, nil)
 	if targetSession == nil {
 		return false
 	}
 
-	s.logger.InfoContext(ctx, LogBSSCIClosingBSSCISessionDueToEUIChange,
+	s.logger.InfoContext(ctx, LogBSSCIClosingRetiredStationSession,
 		logger.FieldEui, eui,
 		logger.FieldSessionID, targetSession.ID)
 
 	// Terminate DB session record
 	if targetSession.DbSessionID != 0 && s.sessionSvc != nil {
 		if err := s.sessionSvc.TerminateSession(ctx, targetSession); err != nil {
-			s.logger.WarnContext(ctx, LogBSSCIFailedToTerminateDBSessionDuringEUIChange,
+			s.logger.WarnContext(ctx, LogBSSCIFailedToTerminateRetiredStationSession,
 				logger.FieldError, err,
 				logger.FieldSessionID, targetSession.DbSessionID)
 		}
@@ -201,13 +202,26 @@ func (s *Server) CloseSessionByEUI(ctx context.Context, eui uint64) bool {
 	// Close connection to trigger cleanup
 	if targetSession.Conn != nil {
 		if err := targetSession.Conn.Close(); err != nil {
-			s.logger.WarnContext(ctx, LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup,
+			s.logger.WarnContext(ctx, LogBSSCIFailedToCloseRetiredStationConnection,
 				logger.FieldError, err,
 				logger.FieldSessionID, targetSession.ID)
 		}
 	}
 
 	return true
+}
+
+// ConnectedStations lists the EUIs of the base stations with a completed
+// handshake on this service center.
+func (s *Server) ConnectedStations() []uint64 {
+	live := s.sessions.snapshot()
+	stations := make([]uint64, 0, len(live))
+	for _, session := range live {
+		if session.HandshakeComplete {
+			stations = append(stations, session.BaseStationEUI)
+		}
+	}
+	return stations
 }
 
 // ConnectedSessionsSnapshot returns lightweight snapshots of all connected base station sessions

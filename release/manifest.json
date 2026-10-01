@@ -1,14 +1,14 @@
 {
-  "version": "v2.0.0+9606db9",
-  "buildTime": "2026-09-30T11:08:36Z",
-  "gitCommit": "9606db9d2ac88b7c161bdea05b332a156e5975dc",
-  "gitBranch": "dev-deploy-2026-09-30",
+  "version": "v2.0.0+b96660f7",
+  "buildTime": "2026-10-01T15:10:10Z",
+  "gitCommit": "b96660f7dbe83d311e2d707913bf28b71ebfff80",
+  "gitBranch": "CHIRP-3980-mioty-downlink-deadline",
   "buildUser": "timkrav",
   "goVersion": "go1.26.5",
   "artifacts": {
     "kcCore": "KC-Core/bin/kilocenter"
   },
-  "schemaVersion": 188,
+  "schemaVersion": 190,
   "edition": "Community Edition",
   "editionCode": "ce",
   "licenseId": "AGPL-3.0-or-later",

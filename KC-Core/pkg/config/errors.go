@@ -22,6 +22,7 @@ const (
 	errFmtDeliveryReceptionWindowInvalid    = "protocol.delivery.reception_window must be at least 0 and shorter than protocol.duplicate_window, got %v and %ds"
 	errFmtDuplicateWindowNotPositive        = "protocol.duplicate_window must be positive seconds, got %d"
 	errFmtDownlinkExpiryConfigInvalid       = "protocol.downlink_expiry lifetime, sweep_interval and batch_size must be positive, got %v, %v, %d"
+	errFmtRevokeNotHeldCodesInvalid         = "protocol.downlink_expiry.revoke_not_held_codes must name at least one positive POSIX code, got %v"
 	errFmtRoamingCacheConfigInvalid         = "protocol.roaming cache_ttl and cache_max_size must be positive when cache_enabled, got %v, %d"
 	errFmtDLRXCleanupIntervalNotPositive    = "protocol.dlrx_cleanup_interval must be positive seconds, got %d"
 	errFmtDLRXQueryTimeoutNotPositive       = "protocol.dlrx_query_timeout must be positive seconds, got %d"

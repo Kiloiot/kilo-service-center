@@ -45,7 +45,7 @@ func TestProcessDLDataQueueCore_AcceptedWhenTheQueueRecordFails(t *testing.T) {
 			EpEui:    coreEpEUI,
 			QueId:    coreACQueID,
 			UserData: [][]byte{{0xAB}},
-		}, applicationQueueIDOf(coreACQueID), "")
+		}, applicationQueueIDOf(coreACQueID), storage.DownlinkCommand{})
 	require.Empty(t, errToken)
 	require.Zero(t, posixCode)
 	require.NotNil(t, result)

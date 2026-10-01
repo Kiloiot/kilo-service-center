@@ -486,9 +486,13 @@ func TestValidateServiceCenterConfig_TimingBounds(t *testing.T) {
 	}
 
 	for name, unset := range map[string]func(*DownlinkExpiryConfig){
-		"lifetime":       func(c *DownlinkExpiryConfig) { c.Lifetime = invalidTimingValue },
-		"sweep_interval": func(c *DownlinkExpiryConfig) { c.SweepInterval = invalidTimingValue },
-		"batch_size":     func(c *DownlinkExpiryConfig) { c.BatchSize = invalidTimingValue },
+		"lifetime":                             func(c *DownlinkExpiryConfig) { c.Lifetime = invalidTimingValue },
+		"sweep_interval":                       func(c *DownlinkExpiryConfig) { c.SweepInterval = invalidTimingValue },
+		"batch_size":                           func(c *DownlinkExpiryConfig) { c.BatchSize = invalidTimingValue },
+		"revoke_not_held_codes without a code": func(c *DownlinkExpiryConfig) { c.RevokeNotHeldCodes = nil },
+		"revoke_not_held_codes with no POSIX code": func(c *DownlinkExpiryConfig) {
+			c.RevokeNotHeldCodes = []int{invalidTimingValue}
+		},
 	} {
 		cfg := base()
 		unset(&cfg.DownlinkExpiry)
@@ -509,6 +513,8 @@ func defaultDownlinkExpiry() DownlinkExpiryConfig {
 		Lifetime:      DefaultProtocolDownlinkLifetime,
 		SweepInterval: DefaultProtocolDownlinkExpirySweepInterval,
 		BatchSize:     DefaultProtocolDownlinkExpiryBatchSize,
+
+		RevokeNotHeldCodes: DefaultProtocolDownlinkRevokeNotHeldCodes,
 	}
 }
 

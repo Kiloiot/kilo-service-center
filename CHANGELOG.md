@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> **Upgrade note:** migration 000189 clears the `ref` of every later downlink that repeated a
+> ref an organization had already used for the same endpoint; only the earliest keeps it. A
+> client still waiting for the result of such a repeated downlink receives that result without
+> `ref`, so it cannot match it to its command.
+
+### Added
+
+- **An MQTT downlink command can carry a deadline.** `command/down` accepts an optional `expiresAt`
+  (RFC 3339). The downlink waits for its endpoint's downlink window until
+  `protocol.downlink_expiry.lifetime` has passed or until `expiresAt`, whichever comes first. A
+  command whose `expiresAt` has already passed queues nothing and is refused on
+  `event/downlink_rejected` with `mqtt.command.expired`.
+- **An MQTT command's `ref` is accepted once.** A `command/down` whose `ref` already queued a
+  downlink for the same endpoint of the organization queues nothing and publishes nothing, also
+  after the first downlink ended and after the repeat's deadline passed. A client can republish a
+  command it is not sure arrived. The ref is compared before the payload and the endpoint are
+  checked, so a repeat is not refused when the endpoint was deleted or lost its downlink
+  capability since. Migration 000189 adds a unique index on the ref of an organization's
+  endpoint; refs repeated before the upgrade stay on their earliest downlink only.
+
+### Fixed
+
+- **A downlink a base station holds when its deadline passes is no longer reported expired before
+  the station answers.** Only the station knows whether it transmitted it, so the downlink now
+  becomes **Revoking** (migration 000190): KiloCenter asks the station to drop it and reports
+  `expired` only once the station confirms, says it does not hold it, or reconnects with a new
+  session that discarded it. A `sent` the station reports first is recorded and reported as
+  `sent`. A station that is offline at the deadline is asked again when it reconnects, also
+  after a KC-Core restart, and a reconnect never returns such a downlink to the queue. A
+  connected station that has not settled the downlink is asked again once per
+  `protocol.downlink_expiry.sweep_interval`. Deleting a base station closes its live session,
+  ends `expired` the downlinks it was asked to drop and returns the ones it held queued to the
+  queue. A `sent` reported for a downlink already reported `expired` keeps the expiry, is
+  logged as a warning and is recorded as an event.
+- **Two receptions of one MQTT command that race each other no longer refuse it as expired.**
+  The receptions of a command with a `ref` are queued one after the other, so the later one
+  sees the first and is not answered. A deadline less than a microsecond away is refused with
+  `mqtt.command.expired` instead of an internal error.
+- **A base station's refusal of a revoke counts as "not held" only for the codes you name.** The
+  BSSCI specification names no error code for it, so `protocol.downlink_expiry.revoke_not_held_codes`
+  (default `[2]`, ENOENT; Helm `revokeNotHeldCodes`) lists them. Any other refusal, such as an
+  unsupported operation or an I/O error, leaves the downlink in flight instead of ending it as
+  revoked.
+
 ## [2.0.0] - 2026-09-30
 
 KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, described in
@@ -365,6 +409,12 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   in KC-Web, through the API or by an Application Center; only an over-the-air
   one carries `bsEui`. An over-the-air attach is recorded when the base
   station completes it (`attCmp`).
+- MQTT `event/downlink_queued`, `event/downlink_rejected` and
+  `event/downlink_result` are published at QoS 1 (at least once) instead of
+  QoS 0, so a platform that settles its commands on them no longer loses an
+  outcome the broker dropped. An outcome can now arrive more than once; treat a
+  repeat for the same `queId` (or, for `downlink_rejected`, the same `ref`) as
+  the same outcome. `event/attach` and `event/detach` stay at QoS 0.
 - Every SCACI request without one of its mandatory fields is refused with
   `scaci.error.missing_mandatory_field` (code 22). This replaces the per-field
   checks, including `scaci.error.missing_packet_cnt`, which no longer exists:

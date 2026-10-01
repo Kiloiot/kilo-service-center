@@ -104,8 +104,10 @@ func newAuditFixture(t *testing.T, certSvc grpcservices.CertificateService) *aud
 	recorder, err := audit.NewRecorder(emitter, log, f.drops)
 	require.NoError(t, err)
 	f.svc = testCoreService(coreFields{
-		endpointSvc:      grpcservices.NewEndpointService(f.endpoints, nil),
-		basestationSvc:   grpcservices.NewBaseStationService(f.stations, nil),
+		endpointSvc: grpcservices.NewEndpointService(f.endpoints, nil),
+		basestationSvc: grpcservices.NewBaseStationService(grpcservices.BaseStationServiceDeps{
+			Store: f.stations, Sessions: noStationSessions{}, Downlinks: noStationSessions{},
+		}),
 		certSvc:          certSvc,
 		audit:            recorder,
 		platformTenantID: persistPlatformTenant,
@@ -186,6 +188,13 @@ func TestDeleteEndPoint_PersistsTheDeletionInTheDeletingTenantOnly(t *testing.T)
 	assert.True(t, f.tenantSees(t, persistTenantA, models.EventTypeEndpointDeleted))
 	assert.False(t, f.tenantSees(t, persistTenantB, models.EventTypeEndpointDeleted))
 }
+
+// noStationSessions holds no live session and no downlink of any station.
+type noStationSessions struct{}
+
+func (noStationSessions) CloseSessionByEUI(context.Context, uint64) bool { return false }
+
+func (noStationSessions) ReleaseDeletedStation(context.Context, uint64) {}
 
 func TestDeleteBaseStation_PersistsTheDeregistrationInTheDeletingTenantOnly(t *testing.T) {
 	f := newAuditFixture(t, nil)

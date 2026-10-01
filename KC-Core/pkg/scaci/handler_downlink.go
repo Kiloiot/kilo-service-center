@@ -7,6 +7,7 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger" // Shared MIOTY helpers (FormatEUI64, EPStatus)
 	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
@@ -32,7 +33,7 @@ func (s *Server) handleDLDataQueue(conn net.Conn, session *Session, opId int64, 
 	// SCACI §3.10.1: the Application Center assigns the queue id, any
 	// 64-bit value, zero included; it carries no MQTT command ref.
 	ctx := s.sessionContext(session)
-	result, errToken, posixCode := s.processDLDataQueueCore(ctx, session, opId, &req, &req.QueId, "")
+	result, errToken, posixCode := s.processDLDataQueueCore(ctx, session, opId, &req, &req.QueId, storage.DownlinkCommand{})
 	if errToken != "" {
 		s.sendErrorWithCatalog(conn, session, opId, posixCode, errToken)
 		return nil

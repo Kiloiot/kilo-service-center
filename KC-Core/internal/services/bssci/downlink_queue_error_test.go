@@ -53,7 +53,7 @@ func TestProcessQueueError_FailsTheDownlinkAndReportsItDiscarded(t *testing.T) {
 	svc, err := NewDownlinkService(DownlinkServiceDeps{
 		Logger: logger.NewNop(), Tenants: resolver, Outcomes: writer, Holders: &mockMIOTYDownlinksForDispatch{},
 		Results: f.reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
-	})
+	}, newRevokeAnswers(t, logger.NewNop(), resolver, writer, f.reporter))
 	require.NoError(t, err)
 
 	err = svc.ProcessQueueError(testutil.TestContext(), reporterStation(),
@@ -80,7 +80,7 @@ func TestProcessQueueError_RejectsAnInvalidQueueID(t *testing.T) {
 	svc, err := NewDownlinkService(DownlinkServiceDeps{
 		Logger: logger.NewNop(), Tenants: NewTenantResolver(nil), Outcomes: writer, Holders: &mockMIOTYDownlinksForDispatch{},
 		Results: newReporterFixture(t).reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
-	})
+	}, newRevokeAnswers(t, logger.NewNop(), NewTenantResolver(nil), writer, newReporterFixture(t).reporter))
 	require.NoError(t, err)
 
 	err = svc.ProcessQueueError(testutil.TestContext(), &bssci.Session{},

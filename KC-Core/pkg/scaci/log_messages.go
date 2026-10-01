@@ -209,6 +209,8 @@ const (
 	LogSCACINonCntDependMultiPayload         = "Non-counter-dependent downlink has multiple userData entries"
 	LogSCACIDuplicateQueIDDetected           = "Duplicate queue ID detected" // Alias
 	LogSCACIInvalidDownlinkPayload           = "Invalid downlink payload"
+	LogSCACIDownlinkCommandRefQueued         = "MQTT command ref already queued a downlink for the endpoint; nothing is queued"
+	LogSCACIDownlinkDeadlineElapsed          = "MQTT command deadline elapsed before its downlink could be queued"
 	LogSCACIDownlinkPayloadTooLarge          = "Downlink payload exceeds maximum size"
 	LogSCACIInvalidAcUUIDLength              = "Invalid AC UUID length"
 	LogSCACIInvalidQueueIDFromDB             = "Invalid negative queue ID from database"

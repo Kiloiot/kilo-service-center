@@ -11,9 +11,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
-// revokeRefusalMessage is how the AVA station refuses the revoke of a
-// downlink it does not hold.
-const revokeRefusalMessage = "no matching DL data found"
+// revokeRefusalMessage is the message of the stations' refusal in these tests.
+const revokeRefusalMessage = "downlink not held"
 
 // refusalRecorder records every revoke a base station refused and answers it
 // as the queue does: revoked, unless the downlink had already ended.
@@ -34,16 +33,15 @@ func refuseRevoke(t *testing.T, server *Server, session *Session, revoke func() 
 	t.Helper()
 	require.NoError(t, revoke())
 	opID := session.LastScOpId
-	refusal := map[string]interface{}{"command": mioty.CmdError, "opId": opID, "code": int64(POSIX_ENOTSUP), "message": revokeRefusalMessage}
+	refusal := map[string]interface{}{"command": mioty.CmdError, "opId": opID, "code": int64(POSIX_ENOENT), "message": revokeRefusalMessage}
 	require.NoError(t, server.handleError(session, &Message{Command: mioty.CmdError, OpId: opID, Data: refusal}, refusal))
 	_, err := server.statusSvc.GetPendingOperation(session, opID)
 	assert.Error(t, err, "the error finalizes the dlDataRev")
 }
 
-// BSSCI §3.13, §3.17: a station that answers a dlDataRev with error does not
-// hold the downlink, so it will never be transmitted. The downlink ends
-// revoked, as the revoke asked, and the revocation is recorded as a
-// confirmed one is.
+// BSSCI §3.13, §3.17: a station's error answer to a dlDataRev reaches the
+// downlink service with its code and message; when the service ends the
+// downlink revoked, the revocation is recorded as a confirmed one is.
 func TestRevokeRefusedByTheStationRevokesTheDownlink(t *testing.T) {
 	server, _ := newRevokeServer(t, queueRowStore{row: heldDownlink(mioty.DLQueueStatusQueued)}, &pendingRevocations{})
 	recorder := &refusalRecorder{}
@@ -57,7 +55,7 @@ func TestRevokeRefusedByTheStationRevokesTheDownlink(t *testing.T) {
 		return err
 	})
 
-	assert.Equal(t, []RevokeRefusal{{QueueID: int64(revokeQueueID), EndpointEUI: 0x70b3d59cd0000341, Code: POSIX_ENOTSUP, Message: revokeRefusalMessage}},
+	assert.Equal(t, []RevokeRefusal{{QueueID: int64(revokeQueueID), EndpointEUI: 0x70b3d59cd0000341, Code: POSIX_ENOENT}},
 		recorder.refusals)
 	assert.Equal(t, []int64{int64(revokeQueueID)}, audit.revoked)
 }

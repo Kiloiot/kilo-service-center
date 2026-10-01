@@ -74,7 +74,8 @@ func (r *EndpointAckRecorder) RecordEndpointAck(ctx context.Context, ownerTenant
 	r.logger.InfoContext(ctx, bssci.LogBSSCIDownlinkAcknowledgedByEndpoint,
 		logger.FieldEpEui, epEUI, logger.FieldPacketCnt, window, logger.FieldOwnerTenantID, ownerTenantID)
 	if err := r.events.RecordDownlinkAcknowledged(ctx, downlink, window); err != nil {
-		r.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToRecordDLDataResultEvent, logger.FieldError, err)
+		r.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToRecordDownlinkAckEvent, logger.FieldError, err,
+			logger.FieldEpEui, epEUI, logger.FieldQueID, downlink.QueID, logger.FieldPacketCnt, window)
 	}
 	return nil
 }

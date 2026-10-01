@@ -23,16 +23,16 @@ type DownlinkRevocations struct {
 // station holds yet, so a dispatcher that reserved it first wins. A base
 // station's answer ends only the in-flight downlink that station holds,
 // including one whose dlDataQue it had not confirmed yet; a downlink another
-// station holds since, or one that already finished, expired while the
-// station held it included, keeps its state. The result column holds the
-// dlDataRes outcome and is left alone.
+// station holds since, one it was asked to drop when its lifetime ended
+// (DownlinkRevoking ends that one) and one that already finished keep their
+// state. The result column holds the dlDataRes outcome and is left alone.
 func (r *DownlinkRevocations) RevokeDownlink(ctx context.Context, revocation storage.DownlinkRevocation) (bool, error) {
 	scope := newSQLScope(mioty.DLQueueStatusRevoked, r.clock.Now())
 	scopeRevocation(scope, revocation)
 	if revocation.Station == nil {
 		scope.equals(colStatus, mioty.DLQueueStatusPending)
 	} else {
-		scope.and(sqlDownlinkInFlight)
+		scope.anyOf(colStatus, statusArray(revocableAtStation))
 		scope.equals(colBsEUI, mioty.EUI64Bytes(*revocation.Station))
 	}
 	result, err := r.db.ExecContext(ctx,
@@ -46,6 +46,9 @@ func (r *DownlinkRevocations) RevokeDownlink(ctx context.Context, revocation sto
 	}
 	return revoked > 0, nil
 }
+
+// revocableAtStation are the held states a station's revoke answer ends revoked.
+var revocableAtStation = []mioty.DLQueueStatus{mioty.DLQueueStatusReserved, mioty.DLQueueStatusQueued}
 
 // scopeRevocation narrows a scope to the downlink a revocation names: the
 // tenant's queue id, of the organization and endpoint when it names them.

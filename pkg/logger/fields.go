@@ -34,6 +34,7 @@ const (
 	FieldBaseStation           = "baseStation"
 	FieldSpec                  = "spec"
 	FieldReason                = "reason"
+	FieldRef                   = "ref"
 	FieldOrgID                 = "orgID"
 	FieldOrgUUID               = "orgUUID"
 	FieldOperation             = "operation"

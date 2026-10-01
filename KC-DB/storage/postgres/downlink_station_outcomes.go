@@ -25,7 +25,9 @@ type DownlinkStationOutcomes struct {
 }
 
 // UpdateDownlinkResult records the result a base station reported for the
-// tenant's downlink it holds, reserved or queued (BSSCI §3.14), and returns
+// tenant's downlink it holds, reserved, queued or asked to drop (BSSCI
+// §3.14): only a result proves what became of a downlink being revoked, so a
+// "sent" it reports first is its outcome. It returns
 // the row for its originators. The endpoint, the tenant and the holding
 // station are part of the match, so a station cannot finish another
 // endpoint's, another tenant's or another station's downlink, nor one back
@@ -85,25 +87,30 @@ func resultTransition(result string, now time.Time) (status, transmittedAt inter
 
 // finishedOrMissing tells a result for a downlink that already finished from
 // one for a downlink the reporting station does not hold: one the tenant's
-// endpoint never had, one another station holds, or one back in the queue.
+// endpoint never had, one another station holds, or one back in the queue. A
+// downlink that finished expired is told apart, since a station's result for
+// it contradicts the expiry its originators were told.
 func (r *DownlinkStationOutcomes) finishedOrMissing(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error {
-	var finished bool
+	var status mioty.DLQueueStatus
 	err := r.db.QueryRowxContext(ctx, `
-		SELECT EXISTS (SELECT 1 FROM downlink_queue
-		               WHERE que_id = $1 AND ep_eui = $2 AND tenant_id = $3 AND status = ANY($4::text[]))`,
-		result.QueId, mioty.EUI64Bytes(result.EpEui), tenantID, statusArray(mioty.TerminalStatuses())).Scan(&finished)
-	if err != nil {
+		SELECT status FROM downlink_queue
+		WHERE que_id = $1 AND ep_eui = $2 AND tenant_id = $3 AND status = ANY($4::text[])`,
+		result.QueId, mioty.EUI64Bytes(result.EpEui), tenantID, statusArray(mioty.TerminalStatuses())).Scan(&status)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return storage.ErrDownlinkNotFound
+	case err != nil:
 		return fmt.Errorf("%s: %w", errWrapUpdateDownlinkResult, err)
-	}
-	if finished {
+	case status == mioty.DLQueueStatusExpired:
+		return storage.ErrDownlinkExpiredBeforeResult
+	default:
 		return storage.ErrDownlinkFinished
 	}
-	return storage.ErrDownlinkNotFound
 }
 
 // UpdateDownlinkBaseStation records the base station's acceptance of the
 // tenant's downlink (dlDataQueRsp, BSSCI §3.12) while that station still holds
-// it, reserved or queued; a late answer from a station that no longer holds
+// it, reserved, queued or asked to drop; a late answer from a station that no longer holds
 // the row, like one arriving after a reconnect released it, matches nothing.
 // storage.ErrDownlinkNotFound covers that, an unknown queue id and another
 // tenant's downlink alike.
@@ -115,8 +122,8 @@ func (r *DownlinkStationOutcomes) UpdateDownlinkBaseStation(ctx context.Context,
 		 WHERE que_id = $2
 		   AND tenant_id = $3
 		   AND bs_eui = $1
-		   AND status IN ($5, $6)`,
-		mioty.EUI64Bytes(bsEUI), queID, tenantID, r.clock.Now(), mioty.DLQueueStatusReserved, mioty.DLQueueStatusQueued)
+		   AND status = ANY($5::text[])`,
+		mioty.EUI64Bytes(bsEUI), queID, tenantID, r.clock.Now(), statusArray(heldStatuses))
 	if err != nil {
 		return fmt.Errorf("%s: %w", errWrapSetDownlinkOwner, err)
 	}
@@ -131,7 +138,7 @@ func (r *DownlinkStationOutcomes) UpdateDownlinkBaseStation(ctx context.Context,
 }
 
 // FailQueuedDownlink fails the tenant's downlink the base station holds
-// (reserved or queued) and answered with error, recording the station's
+// (reserved, queued or asked to drop) and answered with error, recording the station's
 // error as the failure reason, and returns the row for its originators;
 // storage.ErrDownlinkNotFound when no such row matched, another station's
 // downlink included.

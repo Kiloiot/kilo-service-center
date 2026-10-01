@@ -139,6 +139,10 @@ const (
 	DLQueueStatusReserved DLQueueStatus = "reserved"
 	// DLQueueStatusQueued was sent to the BS via dlDataQue, awaiting transmission
 	DLQueueStatusQueued DLQueueStatus = "queued"
+	// DLQueueStatusRevoking means its lifetime ended while a BS held it queued:
+	// the BS was asked to drop it (dlDataRev, BSSCI 3.13) and its outcome waits
+	// for that BS's answer, a result it reports first, or its new session
+	DLQueueStatusRevoking DLQueueStatus = "revoking"
 	// DLQueueStatusTransmitted means the BS reported successful transmission via dlDataRes (BSSCI 5.14)
 	DLQueueStatusTransmitted DLQueueStatus = "transmitted"
 	// DLQueueStatusDelivered means the endpoint acknowledged receipt (if ack requested)
@@ -168,7 +172,7 @@ func (s DLQueueStatus) Terminal() bool {
 // Known reports whether the value is one of the persisted queue states.
 func (s DLQueueStatus) Known() bool {
 	switch s {
-	case DLQueueStatusPending, DLQueueStatusScheduled, DLQueueStatusReserved, DLQueueStatusQueued:
+	case DLQueueStatusPending, DLQueueStatusScheduled, DLQueueStatusReserved, DLQueueStatusQueued, DLQueueStatusRevoking:
 		return true
 	default:
 		return s.Terminal()

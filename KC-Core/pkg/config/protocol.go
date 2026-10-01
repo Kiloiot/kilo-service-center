@@ -97,6 +97,11 @@ type DownlinkExpiryConfig struct {
 	Lifetime      time.Duration `mapstructure:"lifetime"`       // how long a queued downlink waits for a downlink window (default: 24h)
 	SweepInterval time.Duration `mapstructure:"sweep_interval"` // how often overdue downlinks are expired and reported (default: 5s)
 	BatchSize     int           `mapstructure:"batch_size"`     // downlinks expired per statement (default: 100)
+	// RevokeNotHeldCodes are the POSIX codes of a dlDataRev error answer that
+	// say the base station does not hold the downlink, so it ends as revoked
+	// or, when its lifetime ended, expired; any other refusal leaves it in
+	// flight (default: [2], ENOENT).
+	RevokeNotHeldCodes []int `mapstructure:"revoke_not_held_codes"`
 }
 
 // FederationTLSConfig holds TLS settings for the CE→ECE relay transport.

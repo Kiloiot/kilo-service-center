@@ -3,6 +3,7 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -29,10 +30,19 @@ var (
 	// ErrDownlinkFinished reports a downlink that already reached its final
 	// state, so a later answer about it changes nothing.
 	ErrDownlinkFinished = errors.New("downlink already finished")
+	// ErrDownlinkExpiredBeforeResult reports a result for a downlink the
+	// service center already ended expired; it is an ErrDownlinkFinished.
+	ErrDownlinkExpiredBeforeResult = fmt.Errorf("%w: it ended expired", ErrDownlinkFinished)
 	// ErrDownlinkQueueIDTaken reports that the service center's own queue id
 	// is already assigned to another downlink; a fresh id can be drawn.
 	ErrDownlinkQueueIDTaken = errors.New("downlink queue id already assigned")
-	ErrInvalidTenantID      = errors.New("tenant_id must be positive")
+	// ErrDownlinkRefTaken reports that the organization already queued a
+	// downlink for the endpoint under the MQTT command's ref.
+	ErrDownlinkRefTaken = errors.New("downlink command ref already queued")
+	// ErrDownlinkDeadlineElapsed reports an MQTT command whose deadline passed
+	// before its downlink could be queued.
+	ErrDownlinkDeadlineElapsed = errors.New("downlink command deadline elapsed")
+	ErrInvalidTenantID         = errors.New("tenant_id must be positive")
 	// ErrInstallationOnboarded reports an onboarding of a CE installation
 	// that has already completed onboarding.
 	ErrInstallationOnboarded = errors.New("installation already onboarded")
@@ -55,6 +65,23 @@ var (
 // downlink_queue.ref CHECK constraint (migration 000187) holds the same bound.
 const MaxDownlinkRefBytes = 128
 
+// DownlinkCommand is what an MQTT command/down adds to its downlink: the ref
+// the client correlates its results by, empty for none, and the deadline the
+// downlink must be transmitted by, nil for none.
+type DownlinkCommand struct {
+	Ref       string
+	ExpiresAt *time.Time
+}
+
+// DownlinkCommandRef names the downlinks an MQTT command's ref queued: the
+// ones of the organization's endpoint under its tenant that carry the ref.
+type DownlinkCommandRef struct {
+	TenantID       int64
+	OrganizationID uuid.UUID
+	EpEUI          uint64
+	Ref            string
+}
+
 // DownlinkMessage represents a downlink message
 type DownlinkMessage struct {
 	ID                    int64
@@ -69,22 +96,23 @@ type DownlinkMessage struct {
 	CreatedAt             time.Time
 	ScheduledAt           *time.Time
 	SentAt                *time.Time
-	QueID                 int64   // Service center queue ID, the one base stations see (BSSCI 3.12.1)
-	ACQueID               *uint64 // Queue ID the Application Center assigned (SCACI 3.10.1); nil when enqueued without one
-	ACEUI                 *uint64 // EUI of the Application Center that queued it, told its result (SCACI 3.12); nil when none did
-	Ref                   string  // Correlation ref of the MQTT command that queued it, echoed with its results; empty when none
-	CntDepend             bool    // True if userData is counter dependent
-	PacketCntArray        []int64 // End Point packet counters for which userData is valid
-	Format                uint8   // User data format identifier (8 bit)
-	ResponseExp           bool    // True to request End Point response
-	ResponsePrio          bool    // True to request priority End Point response
-	DlWindReq             bool    // True to request further End Point DL window
-	ExpOnly               bool    // True to send downlink only if End Point expects response
-	DlRxStatQry           bool    // SCACI §3.10.1: True to query DL RX status from endpoint
-	Result                string  // "sent", "expired", "invalid" per MIOTY spec
-	BsEui                 uint64  // Base Station holding the downlink or reporting its result; zero when none
-	TxTime                int64   // Unix UTC time of transmission (BSSCI §3.14.1)
-	TransmissionPacketCnt int64   // End Point packet counter when transmitted (BSSCI §3.14.1)
+	QueID                 int64      // Service center queue ID, the one base stations see (BSSCI 3.12.1)
+	ACQueID               *uint64    // Queue ID the Application Center assigned (SCACI 3.10.1); nil when enqueued without one
+	ACEUI                 *uint64    // EUI of the Application Center that queued it, told its result (SCACI 3.12); nil when none did
+	Ref                   string     // Correlation ref of the MQTT command that queued it, echoed with its results; empty when none
+	ExpiresAt             *time.Time // Deadline the MQTT command set for its transmission; nil when none
+	CntDepend             bool       // True if userData is counter dependent
+	PacketCntArray        []int64    // End Point packet counters for which userData is valid
+	Format                uint8      // User data format identifier (8 bit)
+	ResponseExp           bool       // True to request End Point response
+	ResponsePrio          bool       // True to request priority End Point response
+	DlWindReq             bool       // True to request further End Point DL window
+	ExpOnly               bool       // True to send downlink only if End Point expects response
+	DlRxStatQry           bool       // SCACI §3.10.1: True to query DL RX status from endpoint
+	Result                string     // "sent", "expired", "invalid" per MIOTY spec
+	BsEui                 uint64     // Base Station holding the downlink or reporting its result; zero when none
+	TxTime                int64      // Unix UTC time of transmission (BSSCI §3.14.1)
+	TransmissionPacketCnt int64      // End Point packet counter when transmitted (BSSCI §3.14.1)
 	UpdatedAt             time.Time
 	UserData              [][]byte // Canonical MIOTY DLDataQueue.UserData field for counter-dependent messages
 	// EndpointAckedAt is when an uplink with dlAck acknowledged the transmitted downlink (BSSCI §3.10.1).

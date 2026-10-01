@@ -438,6 +438,11 @@ func (m *Storage) RevokeDownlink(context.Context, storage.DownlinkRevocation) (b
 	return true, nil
 }
 
+// ExpireRevokedDownlink implements the revocation writer contract for the double: no downlink is being revoked.
+func (m *Storage) ExpireRevokedDownlink(context.Context, storage.DownlinkRevocation) (*storage.DownlinkMessage, bool, error) {
+	return nil, false, nil
+}
+
 // FailQueuedDownlink implements the DownlinkQueueWriter contract for the double.
 func (m *Storage) FailQueuedDownlink(_ context.Context, queID int64, tenantID int64, _ uint64, _ string) (*storage.DownlinkMessage, error) {
 	return reportedDownlink(tenantID, queID, 0), nil

@@ -56,6 +56,7 @@ const (
 	FieldBaseStation           = pkglogger.FieldBaseStation
 	FieldSpec                  = pkglogger.FieldSpec
 	FieldReason                = pkglogger.FieldReason
+	FieldRef                   = pkglogger.FieldRef
 	FieldOrgID                 = pkglogger.FieldOrgID
 	FieldOrgUUID               = pkglogger.FieldOrgUUID
 	FieldOperation             = pkglogger.FieldOperation

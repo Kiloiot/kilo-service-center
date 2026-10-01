@@ -60,6 +60,7 @@ type ProtocolServers struct {
 	AttachmentDecider   bssci.AttachmentDecider
 	StatusNotifier      bssciservices.EndpointStatusNotifier
 	Propagation         *bssciservices.AttachmentPropagation
+	DownlinkReclaimer   *bssciservices.DownlinkReclaimer
 }
 
 // BuildProtocolServers constructs and starts BSSCI and (optionally) SCACI servers.
@@ -159,6 +160,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		infra.Clock,
 		mqttResults,
 		backgroundWork,
+		cfg.Protocol.DownlinkExpiry.RevokeNotHeldCodes,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", errMsgFailedToBuildBSSCIServices, err)
@@ -374,7 +376,10 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	if err != nil {
 		return nil, err
 	}
-	downlinkReclaimer, err := bssciservices.NewDownlinkReclaimer(infra.Repos.Downlinks, bssciSvcBundle.AuditLogger, infra.LoggerIface)
+	downlinkReclaimer, err := bssciservices.NewDownlinkReclaimer(bssciservices.DownlinkReclaimerDeps{
+		Store: infra.Repos.Downlinks, Revocations: infra.Repos.Downlinks, Events: bssciSvcBundle.AuditLogger,
+		Expiries: bssciSvcBundle.ResultReporter, Tenants: bssciSvcBundle.TenantResolver, Logger: infra.LoggerIface,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -454,7 +459,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		if err != nil {
 			return nil, err
 		}
-		downlinkAdapter, err := bssciservices.NewMQTTDownlinkAdapter(downlinkQueuer)
+		downlinkAdapter, err := bssciservices.NewMQTTDownlinkAdapter(downlinkQueuer, infra.Repos.Downlinks)
 		if err != nil {
 			return nil, err
 		}
@@ -524,6 +529,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		AttachmentDecider:   attachments.decider,
 		StatusNotifier:      attachments.notifier,
 		Propagation:         attachmentPropagation,
+		DownlinkReclaimer:   downlinkReclaimer,
 	}, nil
 }
 

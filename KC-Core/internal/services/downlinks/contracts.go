@@ -16,7 +16,7 @@ import (
 // Queuer queues a downlink through the SCACI handler core, the path a
 // socket dlDataQue takes (SCACI §3.10).
 type Queuer interface {
-	QueueDownlinkInternal(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (*scaci.DLDataQueueResult, error)
+	QueueDownlinkInternal(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, command storage.DownlinkCommand) (*scaci.DLDataQueueResult, error)
 }
 
 // PendingEditor rewrites a downlink no base station holds yet;

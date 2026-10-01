@@ -91,8 +91,8 @@ func newReporterFixture(t *testing.T) *reporterFixture {
 		events: &mockEventStore{},
 		work:   NewBackgroundWork(),
 	}
-	reporter, err := NewDownlinkResultReporter(f.acs, f.mqtt,
-		mustAuditLogger(t, f.events, queuedDownlinks{}, ownersStation), f.work, logger.NewNop())
+	audit := mustAuditLogger(t, f.events, queuedDownlinks{}, ownersStation)
+	reporter, err := NewDownlinkResultReporter(f.acs, f.mqtt, audit, audit, f.work, logger.NewNop())
 	require.NoError(t, err)
 	f.reporter = reporter
 	return f
@@ -253,8 +253,8 @@ const shutdownSettleWindow = 50 * time.Millisecond
 func TestDownlinkResultReporter_StopWaitsForTheDelivery(t *testing.T) {
 	acs := &blockingApplicationCenters{started: make(chan struct{}), release: make(chan struct{})}
 	work := NewBackgroundWork()
-	reporter, err := NewDownlinkResultReporter(acs, DownlinkResultsWithoutMQTT{},
-		mustAuditLogger(t, &mockEventStore{}, queuedDownlinks{}, ownersStation), work, logger.NewNop())
+	audit := mustAuditLogger(t, &mockEventStore{}, queuedDownlinks{}, ownersStation)
+	reporter, err := NewDownlinkResultReporter(acs, DownlinkResultsWithoutMQTT{}, audit, audit, work, logger.NewNop())
 	require.NoError(t, err)
 	acQueID := reporterACQueueID
 
@@ -291,19 +291,21 @@ func TestNewDownlinkResultReporter_RejectsMissingCollaborators(t *testing.T) {
 		acs    ApplicationCenterResults
 		mqtt   DownlinkResultPublisher
 		events DownlinkResultEvents
+		late   LateResultEvents
 		work   BackgroundRunner
 		log    logger.Logger
 		want   error
 	}{
-		"nil application centers": {mqtt: mqtt, events: events, work: work, log: log, want: ErrNilApplicationCenterResults},
-		"nil mqtt publisher":      {acs: acs, events: events, work: work, log: log, want: ErrNilDownlinkResultPublisher},
-		"nil event recorder":      {acs: acs, mqtt: mqtt, work: work, log: log, want: ErrNilDownlinkResultEvents},
-		"nil runner":              {acs: acs, mqtt: mqtt, events: events, log: log, want: ErrNilReporterRunner},
-		"nil logger":              {acs: acs, mqtt: mqtt, events: events, work: work, want: ErrNilReporterLogger},
+		"nil application centers": {mqtt: mqtt, events: events, late: events, work: work, log: log, want: ErrNilApplicationCenterResults},
+		"nil mqtt publisher":      {acs: acs, events: events, late: events, work: work, log: log, want: ErrNilDownlinkResultPublisher},
+		"nil event recorder":      {acs: acs, mqtt: mqtt, late: events, work: work, log: log, want: ErrNilDownlinkResultEvents},
+		"nil late result events":  {acs: acs, mqtt: mqtt, events: events, work: work, log: log, want: ErrNilLateResultEvents},
+		"nil runner":              {acs: acs, mqtt: mqtt, events: events, late: events, log: log, want: ErrNilReporterRunner},
+		"nil logger":              {acs: acs, mqtt: mqtt, events: events, late: events, work: work, want: ErrNilReporterLogger},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			reporter, err := NewDownlinkResultReporter(tc.acs, tc.mqtt, tc.events, tc.work, tc.log)
+			reporter, err := NewDownlinkResultReporter(tc.acs, tc.mqtt, tc.events, tc.late, tc.work, tc.log)
 			require.ErrorIs(t, err, tc.want)
 			assert.Nil(t, reporter)
 		})

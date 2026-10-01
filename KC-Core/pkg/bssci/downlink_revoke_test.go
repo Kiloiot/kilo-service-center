@@ -31,6 +31,10 @@ type queueRowStore struct {
 	err error
 }
 
+func (queueRowStore) ListStationRevocations(context.Context, uint64) ([]*storage.DownlinkMessage, error) {
+	return nil, nil
+}
+
 func (f queueRowStore) GetDownlinkByRevocation(context.Context, storage.DownlinkRevocation) (*storage.DownlinkMessage, error) {
 	return f.row, f.err
 }

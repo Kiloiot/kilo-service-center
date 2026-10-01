@@ -12,7 +12,10 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
-// sqlReturningReleased names each downlink a release returned to pending.
+// sqlReturningReleased names each downlink a release returned to pending. The
+// releases take only reserved and queued rows: a downlink its station was
+// asked to drop stays revoking until it is settled, so a reconnect never
+// makes an overdue downlink dispatchable again.
 const sqlReturningReleased = ` RETURNING que_id, tenant_id, organization_id, ep_eui`
 
 // ReleaseStationReservations returns to pending every downlink the base

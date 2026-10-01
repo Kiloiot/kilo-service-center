@@ -14,6 +14,7 @@ type MIOTYDownlinkRepository struct {
 	*DownlinkQueueLookup
 	*DownlinkStationOutcomes
 	*DownlinkRevocations
+	*DownlinkRevoking
 	*DownlinkReservations
 	*DownlinkExpirySweep
 	*DownlinkResultsReader
@@ -22,14 +23,15 @@ type MIOTYDownlinkRepository struct {
 
 // NewMIOTYDownlinkRepository creates the downlink queue repository.
 // Every statement takes its time from the clock, never from the database.
-func NewMIOTYDownlinkRepository(db sqlx.ExtContext, queueReader *DownlinkQueueReader, clk clock.Clock, log logger.Logger) *MIOTYDownlinkRepository {
+func NewMIOTYDownlinkRepository(db *sqlx.DB, queueReader *DownlinkQueueReader, clk clock.Clock, log logger.Logger) *MIOTYDownlinkRepository {
 	return &MIOTYDownlinkRepository{
 		DownlinkQueueWriter:     &DownlinkQueueWriter{db: db, clock: clk},
 		DownlinkQueueLookup:     &DownlinkQueueLookup{db: db, queueReader: queueReader, log: log},
 		DownlinkStationOutcomes: &DownlinkStationOutcomes{db: db, clock: clk},
 		DownlinkRevocations:     &DownlinkRevocations{db: db, clock: clk},
+		DownlinkRevoking:        &DownlinkRevoking{db: db, clock: clk},
 		DownlinkReservations:    &DownlinkReservations{db: db, clock: clk},
-		DownlinkExpirySweep:     &DownlinkExpirySweep{db: db, clock: clk, log: log},
+		DownlinkExpirySweep:     &DownlinkExpirySweep{db: db, clock: clk},
 		DownlinkResultsReader:   &DownlinkResultsReader{db: db, log: log},
 		EndpointLocations:       &EndpointLocations{db: db},
 	}

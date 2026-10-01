@@ -234,6 +234,7 @@ Each attachment and detachment is published once. `bsEui` names the base station
 | `mqtt.command.org_unresolved` | The organization in the topic cannot be resolved |
 | `mqtt.command.enqueue_failed` | The service center could not queue the downlink |
 | `mqtt.command.ref_too_long` | `ref` exceeds 128 bytes |
+| `mqtt.command.expired` | `expiresAt` passed before the downlink could be queued |
 
 Refusals by the service center core carry its catalog token, for example `scaci.error.endpoint_not_found` for an endpoint that is not registered to you.
 
@@ -258,7 +259,7 @@ Possible `result` values:
 | `result` | When it is published |
 |----------|----------------------|
 | `sent` | A base station transmitted the downlink |
-| `expired` | The downlink expired before it was transmitted, in the service center queue or at the base station |
+| `expired` | The downlink reached its deadline before it was sent: still in the service center queue, or at a base station that then dropped it, said it does not hold it, started a new session or was deleted (see **Deadline** below) |
 | `invalid` | A base station refused the downlink |
 | `acknowledged` | The endpoint confirmed it received the transmitted downlink |
 
@@ -266,7 +267,7 @@ Possible `result` values:
 - `packetCnt` is the endpoint packet counter of the downlink window: the window the downlink was sent in for `sent`, and the window the endpoint acknowledged for `acknowledged`.
 - `ref` is the `ref` of the `command/down` that queued the downlink, on every result, and is omitted when the command had none. A downlink queued by an Application Center or through the API has no `ref`.
 
-`sent`, `expired` and `invalid` are final: each downlink reports exactly one of them. `acknowledged` follows a `sent` result when the endpoint's next uplink sets the downlink acknowledgement flag (`dlAck`, which also appears on `event/up`) for the window the downlink was sent in. It is published once per transmitted downlink: a repeated reception of that uplink, an uplink whose acknowledgement matches no transmitted downlink, and an uplink without the flag publish nothing. When the endpoint's packet counter restarted and reused a window, the downlink transmitted last in that window is the one acknowledged. A downlink the endpoint never acknowledges publishes no `acknowledged`, so absence after `sent` means the endpoint has not confirmed it.
+`sent`, `expired` and `invalid` are final: each downlink reports exactly one of them, which, like every downlink outcome, can arrive twice (see [QoS Behavior](#qos-behavior)). `acknowledged` follows a `sent` result when the endpoint's next uplink sets the downlink acknowledgement flag (`dlAck`, which also appears on `event/up`) for the window the downlink was sent in. It is published once per transmitted downlink: a repeated reception of that uplink, an uplink whose acknowledgement matches no transmitted downlink, and an uplink without the flag publish nothing. When the endpoint's packet counter restarted and reused a window, the downlink transmitted last in that window is the one acknowledged. A downlink the endpoint never acknowledges publishes no `acknowledged`, so absence after `sent` means the endpoint has not confirmed it.
 
 KiloCenter stores the acknowledgement together with its record and publishes it from its delivery outbox, the way it publishes uplinks: an acknowledgement recorded while your broker is unreachable, or carried by an uplink relayed from a federated Community Edition, is published once the broker accepts it. Like an uplink, it can arrive a second time when KiloCenter restarts between publishing it and recording that it did, so treat a repeated `acknowledged` for the same `queId` as the same confirmation.
 
@@ -303,7 +304,8 @@ Every other field is optional:
   "dlWindReq": false,
   "expOnly": false,
   "dlRxStatQry": false,
-  "ref": "order-17"
+  "ref": "order-17",
+  "expiresAt": "2026-10-01T12:00:00Z"
 }
 ```
 
@@ -337,14 +339,31 @@ An empty `data` queues a pure acknowledgement downlink:
 | `expOnly` | boolean | Send only when the endpoint expects a response |
 | `dlRxStatQry` | boolean | Ask the endpoint for its downlink reception status |
 | `ref` | string | Your correlation id of at most 128 bytes, echoed in `downlink_queued`, `downlink_rejected` and every `downlink_result` of the downlink |
+| `expiresAt` | RFC 3339 string | The latest time the downlink may be transmitted, for example `2026-10-01T12:00:00Z` or with fractional seconds and an offset |
 
 Validation rules:
 - Exactly one of `data` and `entries` is present.
 - Every `data` value is valid base64 and decodes to at most 200 bytes, the radio downlink payload limit.
 - Every entry has a `packetCnt` (0 to 4294967295), and no counter repeats.
 - `ref`, when present, is at most 128 bytes.
+- `expiresAt`, when present, is an RFC 3339 time; anything else is refused with `mqtt.command.invalid_field`.
 - Raw MQTT payload maximum: 1 MB.
 - A refused command is reported on `event/downlink_rejected`; nothing is queued.
+
+**Deadline.** A downlink waits for its endpoint's downlink window until `protocol.downlink_expiry.lifetime` has passed, or until `expiresAt` when that comes first. A downlink still in the service center queue at its deadline ends `expired` at once. A downlink a base station already holds may have been transmitted in the meantime, so KiloCenter asks the station to drop it and reports only what it has reason to believe: `sent` when the station reports the transmission, and `expired` in one of these cases:
+
+- the downlink was still in the service center queue when its deadline passed, so no station ever held it;
+- the holding station confirmed that it dropped the downlink, or answered that it does not hold it (`protocol.downlink_expiry.revoke_not_held_codes`);
+- the holding station opened a new session that is not a resumed one, which discards everything the previous session held, a pending result included (BSSCI §1);
+- the holding base station was deleted; its session is closed first, so it can no longer report anything.
+
+Until one of these happens nothing is published, also while the station is offline or keeps refusing the revoke with another code; a connected station is asked again once per `protocol.downlink_expiry.sweep_interval`, and an offline one when it reconnects. Time passing alone never ends a downlink a station holds. A station that reports `sent` for a downlink already reported `expired` contradicts the report: the result stays `expired`, nothing is published again, and the service center logs a warning and records an event for the endpoint.
+
+A revoke requested by an operator or an Application Center for a downlink whose deadline has passed while a station holds it ends `expired`, not revoked: the station's answer settles the expiry already under way.
+
+A command whose `expiresAt` has already passed when KiloCenter receives it queues nothing and is refused with `mqtt.command.expired`.
+
+**A `ref` is accepted once.** KiloCenter keeps every `ref` an organization used for an endpoint, so you can safely publish a command again when you are not sure it arrived, for example after your client restarted. A command whose `ref` already queued a downlink for the same endpoint queues nothing and publishes nothing: neither `downlink_queued` nor `downlink_rejected`. The `ref` is compared as soon as the organization is resolved, before the payload and the endpoint are checked, so this holds while the first downlink is waiting and after it ended, also when the repeat's `expiresAt` has passed by then, or the endpoint was deleted or lost its downlink capability since: a repeat is never refused for something the first command passed. If the service center cannot look the `ref` up, it does not answer the command at all rather than risk refusing one it accepted; publish it again later. The first command's `downlink_queued` and its `downlink_result` are the outcome. Use a new `ref` for every new downlink; commands without a `ref` are never compared.
 
 ## Copy-Paste Cookbook
 
@@ -417,11 +436,17 @@ mosquitto_pub -h "$MQTT_HOST" -p "$MQTT_PORT" \
 
 ## QoS Behavior
 
-- `event/up` uses QoS 1 (at least once delivery).
-- Lifecycle events (`attach`, `detach`, `downlink_queued`, `downlink_rejected`, `downlink_result`) use the configured events QoS.
-- `command/down` subscriptions use the configured downlink QoS.
+| Topic | QoS |
+|-------|-----|
+| `event/up` | 1 (at least once) |
+| `event/downlink_queued` | 1 (at least once) |
+| `event/downlink_rejected` | 1 (at least once) |
+| `event/downlink_result` | 1 (at least once) |
+| `event/attach` | 0 (at most once) |
+| `event/detach` | 0 (at most once) |
+| `command/down` subscription | 1 (at least once) |
 
-Your client should be idempotent because QoS 1 may deliver duplicate messages.
+The downlink outcomes are published at least once because a platform settles its commands on them: none is lost while the broker session holds, but any of them can arrive twice. Treat a repeated `downlink_queued` or `downlink_result` for the same `queId` and result, or a repeated `downlink_rejected` for the same `ref`, as the same outcome. Uplinks can arrive twice for the same reason, so make your client idempotent for every QoS 1 topic.
 
 ## Tenant Isolation
 

@@ -92,3 +92,72 @@ func TestDLDataRevokeResponse_OfAnEndedDownlinkRecordsNoRevocation(t *testing.T)
 	assert.True(t, conn.SeenCommand(mioty.CmdDLDataRevokeComplete), "the operation completes")
 	assert.Empty(t, audit.revoked, "an expired downlink is not also recorded as revoked")
 }
+
+// stationRevocations lists the overdue downlinks a station is asked to drop.
+type stationRevocations struct {
+	queueRowStore
+	revoking []*storage.DownlinkMessage
+}
+
+func (s stationRevocations) ListStationRevocations(context.Context, uint64) ([]*storage.DownlinkMessage, error) {
+	return s.revoking, nil
+}
+
+// revokingAt is an overdue downlink of tenant 3 the roaming station TestBsEui04 holds.
+func revokingAt(queID int64) *storage.DownlinkMessage {
+	row := heldDownlink(mioty.DLQueueStatusRevoking)
+	row.QueID = queID
+	row.TenantID = "3"
+	return row
+}
+
+// inFlightRevoke restores on the session a dlDataRev for queID that awaits
+// the station's answer, as a resumed session reissues it.
+func inFlightRevoke(server *Server, session *Session, queID uint64) {
+	server.statusSvc.RestorePendingOperation(session, inFlightRevokeOpID, &PendingOperation{
+		OperationID: inFlightRevokeOpID, OperationType: mioty.CmdDLDataRevoke,
+		Metadata: map[string]interface{}{models.EventDetailKeyQueID: queID, models.EventDetailKeyTenantID: "3"},
+	})
+}
+
+// inFlightRevokeOpID is the operation of the dlDataRev inFlightRevoke restores.
+const inFlightRevokeOpID int64 = -50
+
+// TestAskAgainToDrop_SendsOnlyTheRevokesNotInFlight pins BSSCI §3.13 across a
+// reconnect: every overdue downlink the station holds is asked for again,
+// under its owner tenant, except the one whose dlDataRev the resumed session
+// reissued.
+func TestAskAgainToDrop_SendsOnlyTheRevokesNotInFlight(t *testing.T) {
+	server, _ := newRevokeServer(t, queueRowStore{}, &pendingRevocations{})
+	server.downlinkQueueStore = stationRevocations{revoking: []*storage.DownlinkMessage{revokingAt(901), revokingAt(902)}}
+	session, conn := registerRoamingStation(server)
+	inFlightRevoke(server, session, 901)
+
+	server.askAgainToDrop(testutil.TestContext(), session)
+
+	assert.True(t, conn.errorSent, "a dlDataRev is written")
+	op, err := server.statusSvc.GetPendingOperation(session, session.LastScOpId)
+	require.NoError(t, err)
+	require.NotNil(t, op)
+	assert.Equal(t, mioty.CmdDLDataRevoke, op.OperationType)
+	assert.EqualValues(t, 902, op.Metadata[models.EventDetailKeyQueID], "only the revoke not in flight is sent")
+	assert.Equal(t, "3", op.Metadata[models.EventDetailKeyTenantID])
+	_, err = server.statusSvc.GetPendingOperation(session, session.LastScOpId+1)
+	assert.Error(t, err, "one dlDataRev is sent")
+}
+
+// TestRevokeHeldDownlink_ARevokeInFlightIsNotRepeated: a downlink whose
+// dlDataRev awaits the holder's answer is not asked for a second time; once
+// that operation ended without settling the downlink, it is asked again.
+func TestRevokeHeldDownlink_ARevokeInFlightIsNotRepeated(t *testing.T) {
+	server, _ := newRevokeServer(t, queueRowStore{err: storage.ErrNotFound}, &pendingRevocations{})
+	session, conn := registerRoamingStation(server)
+	inFlightRevoke(server, session, revokeQueueID)
+
+	require.NoError(t, server.RevokeHeldDownlink(testutil.TestContext(), expiredHeldDownlink()))
+	assert.False(t, conn.errorSent, "no second dlDataRev while the first awaits its answer")
+
+	require.NoError(t, server.statusSvc.RemovePendingOperation(testutil.TestContext(), session, inFlightRevokeOpID))
+	require.NoError(t, server.RevokeHeldDownlink(testutil.TestContext(), expiredHeldDownlink()))
+	assert.True(t, conn.errorSent, "the downlink is asked for again")
+}

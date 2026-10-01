@@ -59,6 +59,9 @@ protocol:
     lifetime: "24h"
     sweep_interval: "5s"
     batch_size: 100
+    # POSIX codes of a dlDataRev refusal that say the base station does not
+    # hold the downlink (BSSCI 3.17 names none; 2 is ENOENT).
+    revoke_not_held_codes: [2]
   message_encoding: "msgpack"
   bsci_certificate_poll_interval: "10s"
   # Service Center EUI. Empty defers to KILOCENTER_PROTOCOL_SC_EUI, the legacy

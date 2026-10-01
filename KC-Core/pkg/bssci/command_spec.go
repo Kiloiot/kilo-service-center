@@ -133,7 +133,7 @@ var commandTable = []CommandSpec{
 		Reconstitute: func(s *Server, msg, metadata map[string]interface{}, _ *PendingOperation) (map[string]interface{}, error) {
 			return s.reconstitueDLDataRevMessage(msg, metadata)
 		},
-		OnError: (*Server).revokeUnheldDownlink,
+		OnError: (*Server).recordRevokeRefusal,
 	},
 	{Command: mioty.CmdDLDataRevokeResponse, Role: roleResponds, Handler: (*Server).handleDLDataRevokeResponse},
 	{

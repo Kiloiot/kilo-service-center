@@ -26,7 +26,7 @@ func processLoggedResult(t *testing.T, result *mioty.DLDataResult) *bsscitest.Re
 	svc, err := NewDownlinkService(DownlinkServiceDeps{
 		Logger: log, Tenants: resolver, Outcomes: &mockMIOTYDownlinksForDispatch{}, Holders: &mockMIOTYDownlinksForDispatch{},
 		Results: newReporterFixture(t).reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
-	})
+	}, newRevokeAnswers(t, log, resolver, &mockMIOTYDownlinksForDispatch{}, newReporterFixture(t).reporter))
 	require.NoError(t, err)
 	session := &bssci.Session{ProtocolSessionState: bssci.ProtocolSessionState{BaseStationEUI: 0x70b3d59cd00009e6}}
 

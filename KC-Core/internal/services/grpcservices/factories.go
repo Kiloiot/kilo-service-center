@@ -1,9 +1,5 @@
 package grpcservices
 
-import (
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
-)
-
 // GRPCServiceBundle packages all gRPC service dependencies.
 // Note: SystemStatusService is wired directly in main.go alongside other
 // optional services (BlueprintService, IntegrationService) that have
@@ -17,16 +13,15 @@ type GRPCServiceBundle struct {
 // NewGRPCServices creates all gRPC services with explicit dependencies.
 func NewGRPCServices(
 	endpointStore EndpointStore,
-	baseStationStore BaseStationStore,
+	stations BaseStationServiceDeps,
 	results DownlinkResultsStore,
 	queue DownlinkQueueLister,
 	endpointIndex EndpointIndex,
 	window RegistrationWindow,
-	protocolCfg *config.ProtocolConfig,
 ) *GRPCServiceBundle {
 	return &GRPCServiceBundle{
 		EndpointSvc:      NewEndpointService(endpointStore, endpointIndex),
-		BaseStationSvc:   NewBaseStationService(baseStationStore, protocolCfg),
+		BaseStationSvc:   NewBaseStationService(stations),
 		DownlinkListings: NewDownlinkListingService(results, queue, window),
 	}
 }

@@ -6,8 +6,10 @@ import "errors"
 const (
 	LogDownlinkExpirySweepFailed   = "downlink expiry sweep failed"
 	LogDownlinksExpired            = "downlinks expired in the queue"
+	LogDownlinksRevoking           = "overdue downlinks held by base stations are being revoked"
+	LogRevocationsAskedAgain       = "connected base stations that left a revoke unanswered are asked again"
 	LogExpiredDownlinkUnidentified = "expired downlink not reported: its endpoint or queue id cannot be parsed"
-	LogExpiredDownlinkNotRevoked   = "expired downlink not revoked at the base station holding it"
+	LogOverdueDownlinkNotRevoked   = "overdue downlink stays revoking: the base station holding it is not reachable now"
 )
 
 // errFmtInvalidConfig reports an unusable sweep configuration.

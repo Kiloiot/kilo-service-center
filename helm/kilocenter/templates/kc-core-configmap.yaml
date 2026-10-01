@@ -45,6 +45,7 @@ data:
         lifetime: {{ .Values.kcCore.config.protocol.downlinkExpiry.lifetime | quote }}
         sweep_interval: {{ .Values.kcCore.config.protocol.downlinkExpiry.sweepInterval | quote }}
         batch_size: {{ .Values.kcCore.config.protocol.downlinkExpiry.batchSize }}
+        revoke_not_held_codes: {{ .Values.kcCore.config.protocol.downlinkExpiry.revokeNotHeldCodes | toJson }}
       connection_establishment_timeout: {{ .Values.kcCore.config.protocol.connectionEstablishmentTimeout }}
       socket_write_timeout: {{ .Values.kcCore.config.protocol.socketWriteTimeout }}
       status_request_interval: {{ .Values.kcCore.config.protocol.statusRequestInterval }}

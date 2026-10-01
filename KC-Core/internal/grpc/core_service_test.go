@@ -2241,7 +2241,7 @@ func TestGRPCCreateBaseStation_DefaultsBSSCI(t *testing.T) {
 	}
 
 	// Use real basestationService with mock storage
-	realBsSvc := grpcservices.NewBaseStationService(mockStorage, testProtocolCfg)
+	realBsSvc := grpcservices.NewBaseStationService(grpcservices.BaseStationServiceDeps{Store: mockStorage, Protocol: testProtocolCfg})
 
 	// Create gRPC service with real basestationService
 	service := testCoreService(coreFields{
@@ -2278,11 +2278,11 @@ func TestGRPCCreateBaseStation_DefaultsBSSCI(t *testing.T) {
 // station is not handed one.
 func TestGRPCCreateBaseStation_LoopbackExternalURLGivesNoServiceCenterURL(t *testing.T) {
 	mockStorage := &mockStorageForBaseStation{}
-	realBsSvc := grpcservices.NewBaseStationService(mockStorage, &config.ProtocolConfig{
+	realBsSvc := grpcservices.NewBaseStationService(grpcservices.BaseStationServiceDeps{Store: mockStorage, Protocol: &config.ProtocolConfig{
 		BSCIExternalURL: testLoopbackSCURL,
 		BSCIHost:        "0.0.0.0",
 		BSCIPort:        testBSCIPort,
-	})
+	}})
 	service := testCoreService(coreFields{basestationSvc: realBsSvc, log: &mockLogger{}})
 
 	resp, err := service.CreateBaseStation(testutil.TestContextWithTenant(123), &pb.CreateBaseStationRequest{
@@ -2305,7 +2305,7 @@ func TestGRPCCreateBaseStation_TagsPersisted(t *testing.T) {
 		BSCIPort: testBSCIPort,
 	}
 
-	realBsSvc := grpcservices.NewBaseStationService(mockStorage, testProtocolCfg)
+	realBsSvc := grpcservices.NewBaseStationService(grpcservices.BaseStationServiceDeps{Store: mockStorage, Protocol: testProtocolCfg})
 
 	service := testCoreService(coreFields{
 		basestationSvc: realBsSvc,

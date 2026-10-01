@@ -110,16 +110,23 @@ func CreateTestServices(log logger.Logger, eventStore interfaces.SystemEventStor
 	mockStore := repodoubles.NewStorage()
 
 	resultReporter, err := bssciservices.NewDownlinkResultReporter(broadcaster, bssciservices.DownlinkResultsWithoutMQTT{},
-		auditLogger, bssciservices.NewBackgroundWork(), log)
+		auditLogger, auditLogger, bssciservices.NewBackgroundWork(), log)
 	if err != nil {
 		panic(fmt.Sprintf(errFmtDownlinkServiceWiring, err))
 	}
 
 	// DownlinkService - with all dependencies, mock storage for tests
+	revokeAnswers, err := bssciservices.NewRevokeAnswers(bssciservices.RevokeAnswerDeps{
+		Logger: log, Tenants: tenantResolver, Revocations: mockStore, Expiries: resultReporter,
+		Serializer: queueSerializer, NotHeldCodes: []int{bssci.POSIX_ENOENT},
+	})
+	if err != nil {
+		panic(fmt.Sprintf(errFmtDownlinkServiceWiring, err))
+	}
 	downlinkSvc, err := bssciservices.NewDownlinkService(bssciservices.DownlinkServiceDeps{
 		Logger: log, Tenants: tenantResolver, Outcomes: mockStore, Holders: mockStore,
 		Results: resultReporter, Serializer: queueSerializer, Clock: clock.SystemClock{},
-	})
+	}, revokeAnswers)
 	if err != nil {
 		panic(fmt.Sprintf(errFmtDownlinkServiceWiring, err))
 	}

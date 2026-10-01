@@ -83,18 +83,18 @@ func (s *Server) recordRevocation(ctx context.Context, session *Session, target 
 	}
 }
 
-// revokeUnheldDownlink ends the downlink of a dlDataRev the base station
-// answered with error (BSSCI §3.17): the station does not hold it, so it will
-// never be transmitted, and it ends revoked as the revoke asked (§3.13), with
-// the revocation recorded as a confirmed one is. A downlink that already
-// ended, such as one the expiry sweep expired, keeps its outcome.
-func (s *Server) revokeUnheldDownlink(ctx context.Context, session *Session, opID int64, code int, message string) {
+// recordRevokeRefusal hands the base station's error answer to a dlDataRev
+// (BSSCI §3.17) to the downlink service, which decides by its code whether it
+// says the station does not hold the downlink; a revocation it ends is
+// recorded as a confirmed one is. The station's free-text message decides
+// nothing and is not passed on.
+func (s *Server) recordRevokeRefusal(ctx context.Context, session *Session, opID int64, code int, _ string) {
 	target := s.revokeOperationOf(session, opID)
 	if target.queueID <= 0 {
 		return
 	}
 	revoked, err := s.downlinkSvc.ProcessRevokeRefusal(ctx, session, RevokeRefusal{
-		QueueID: target.queueID, EndpointEUI: target.endpointEUI, Code: code, Message: message,
+		QueueID: target.queueID, EndpointEUI: target.endpointEUI, Code: code,
 	})
 	if err != nil {
 		s.logger.ErrorContext(ctx, LogBSSCIFailedToRevokeRefusedDownlink,

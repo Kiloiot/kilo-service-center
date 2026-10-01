@@ -49,8 +49,12 @@ const (
 	// DownlinkQoS for critical downlink control messages
 	DownlinkQoS = QoSAtLeastOnce
 
-	// EventsQoS for non-critical system events
+	// EventsQoS for attach and detach events, which a consumer can re-read from the endpoint state.
 	EventsQoS = QoSAtMostOnce
+
+	// DownlinkEventsQoS for downlink_queued, downlink_rejected and downlink_result:
+	// a platform settles its commands on these outcomes, so none may be lost.
+	DownlinkEventsQoS = QoSAtLeastOnce
 )
 
 // Connection Timeouts

@@ -478,6 +478,8 @@ const (
 	DefaultProtocolDownlinkExpirySweepInterval = 5 * time.Second
 	// DefaultProtocolDownlinkExpiryBatchSize is the number of downlinks one sweep statement expires.
 	DefaultProtocolDownlinkExpiryBatchSize = 100
+	// posixENOENT is the POSIX "no such entry" error number a BSSCI error carries (§3.17).
+	posixENOENT = 2
 
 	// DefaultProtocolRoamingCacheEnabled caches endpoint owners for roaming decisions.
 	DefaultProtocolRoamingCacheEnabled = true
@@ -680,6 +682,11 @@ var (
 
 	// DefaultGRPCWebAllowedOrigins is the default allowed origins (empty = use AllowAllOrigins).
 	DefaultGRPCWebAllowedOrigins = []string{}
+
+	// DefaultProtocolDownlinkRevokeNotHeldCodes are the POSIX codes of a
+	// dlDataRev error answer that say the base station does not hold the
+	// downlink (BSSCI §3.17 names no code; ENOENT is POSIX "no such entry").
+	DefaultProtocolDownlinkRevokeNotHeldCodes = []int{posixENOENT}
 
 	// DefaultGRPCWebAllowedHeaders is the default allowed headers (empty = use grpc constants).
 	DefaultGRPCWebAllowedHeaders = []string{}

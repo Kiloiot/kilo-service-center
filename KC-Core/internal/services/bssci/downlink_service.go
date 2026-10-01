@@ -15,18 +15,19 @@ import (
 )
 
 // DownlinkOutcomeWriter records how a downlink a base station held ended: the
-// result it reported, its refusal of the queue, or its revocation. The first
-// two return the row for the downlink's originators.
+// result it reported or its refusal of the queue, returning the row for the
+// downlink's originators.
 type DownlinkOutcomeWriter interface {
 	UpdateDownlinkResult(ctx context.Context, tenantID int64, bsEUI uint64, result *mioty.DLDataResult) (*storage.DownlinkMessage, error)
 	FailQueuedDownlink(ctx context.Context, queID int64, tenantID int64, bsEUI uint64, reason string) (*storage.DownlinkMessage, error)
-	RevokeDownlink(ctx context.Context, revocation storage.DownlinkRevocation) (bool, error)
 }
 
 // StationResultReporter tells a downlink's originators the result a base
-// station gave for it.
+// station gave for it, and files a "sent" a station reported for a downlink
+// already reported expired, which its originators are not told again.
 type StationResultReporter interface {
 	ReportStationResult(ctx context.Context, downlink *storage.DownlinkMessage, result mioty.DLDataResult, station *bssci.Session)
+	RecordSentAfterExpiry(ctx context.Context, ownerTenantID int64, result mioty.DLDataResult, station *bssci.Session)
 }
 
 // DownlinkServiceDeps are the downlink service's collaborators, all required.
@@ -40,6 +41,14 @@ type DownlinkServiceDeps struct {
 	Clock      clock.Clock
 }
 
+// downlinkAnswers answers every downlink operation a base station takes part
+// in: its results and queue answers, and, through the revoke answers, its
+// answers to a dlDataRev.
+type downlinkAnswers struct {
+	*downlinkService
+	RevokeAnswerer
+}
+
 type downlinkService struct {
 	logger          logger.Logger
 	tenantResolver  bssci.TenantResolver
@@ -50,10 +59,10 @@ type downlinkService struct {
 	clock           clock.Clock
 }
 
-// NewDownlinkService creates the downlink service; every collaborator is
-// mandatory, so a wiring fault surfaces at startup instead of on the first
-// downlink result.
-func NewDownlinkService(deps DownlinkServiceDeps) (bssci.DownlinkService, error) {
+// NewDownlinkService creates the downlink service over the revoke answers;
+// every collaborator is mandatory, so a wiring fault surfaces at startup
+// instead of on the first downlink result.
+func NewDownlinkService(deps DownlinkServiceDeps, revokes RevokeAnswerer) (bssci.DownlinkService, error) {
 	switch {
 	case deps.Logger == nil:
 		return nil, ErrNilDownlinkServiceLogger
@@ -69,23 +78,30 @@ func NewDownlinkService(deps DownlinkServiceDeps) (bssci.DownlinkService, error)
 		return nil, ErrNilQueueSerializer
 	case deps.Clock == nil:
 		return nil, ErrNilDownlinkServiceClock
+	case revokes == nil:
+		return nil, ErrNilRevokeAnswerer
 	}
-	return &downlinkService{
-		logger:          deps.Logger,
-		tenantResolver:  deps.Tenants,
-		downlinks:       deps.Outcomes,
-		holders:         deps.Holders,
-		results:         deps.Results,
-		queueSerializer: deps.Serializer,
-		clock:           deps.Clock,
+	return &downlinkAnswers{
+		downlinkService: &downlinkService{
+			logger:          deps.Logger,
+			tenantResolver:  deps.Tenants,
+			downlinks:       deps.Outcomes,
+			holders:         deps.Holders,
+			results:         deps.Results,
+			queueSerializer: deps.Serializer,
+			clock:           deps.Clock,
+		},
+		RevokeAnswerer: revokes,
 	}, nil
 }
 
 // ProcessDLDataResult records the result a base station reported for a
 // downlink (BSSCI §3.14) and reports it to the downlink's originators. A
 // result for a downlink that already ended, expired or revoked while the
-// station held it, leaves the outcome its originators were told; the
-// station's operation completes either way.
+// station held it, leaves the outcome its originators were told; a "sent"
+// for one already reported expired contradicts that report, so it is logged
+// as a warning and filed in the owner's events. The station's operation
+// completes either way.
 func (d *downlinkService) ProcessDLDataResult(ctx context.Context, session *bssci.Session, result *mioty.DLDataResult) (map[string]interface{}, error) {
 	queueID, ownerTenantID, err := d.resultOwner(ctx, result)
 	if err != nil {
@@ -102,6 +118,10 @@ func (d *downlinkService) ProcessDLDataResult(ctx context.Context, session *bssc
 	// The endpoint, the owner tenant and the holding station are part of the match (BSSCI §3.14).
 	downlink, err := d.downlinks.UpdateDownlinkResult(ctx, ownerTenantID, session.BaseStationEUI, result)
 	switch {
+	case errors.Is(err, storage.ErrDownlinkExpiredBeforeResult) && result.Result == mioty.ResultSent:
+		d.logger.WarnContext(ctx, bssci.LogBSSCISentResultForExpiredDownlink,
+			logger.FieldQueID, result.QueId, logger.FieldBsEui, session.BaseStationEUI, logger.FieldTenantIDCamel, ownerTenantID)
+		d.results.RecordSentAfterExpiry(ctx, ownerTenantID, *result, session)
 	case errors.Is(err, storage.ErrDownlinkFinished):
 		d.logger.InfoContext(ctx, bssci.LogBSSCIResultForFinishedDownlink,
 			logger.FieldQueID, result.QueId, logger.FieldResult, result.Result)
@@ -135,7 +155,7 @@ func (d *downlinkService) resultOwner(ctx context.Context, result *mioty.DLDataR
 			logger.FieldError, err)
 		return 0, 0, bssci.NewCatalogError(bssci.ErrCannotResolveTenantForQueue, bssci.POSIX_EPROTO)
 	}
-	ownerTenantID, err := d.parseOwner(ctx, owner)
+	ownerTenantID, err := parseOwner(ctx, d.logger, owner)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -143,10 +163,10 @@ func (d *downlinkService) resultOwner(ctx context.Context, result *mioty.DLDataR
 }
 
 // parseOwner reads the owner tenant the resolver names for a queue id.
-func (d *downlinkService) parseOwner(ctx context.Context, owner string) (int64, error) {
+func parseOwner(ctx context.Context, log logger.Logger, owner string) (int64, error) {
 	ownerTenantID, err := strconv.ParseInt(owner, 10, 64)
 	if err != nil {
-		d.logger.ErrorContext(ctx, bssci.LogBSSCIInvalidTenantIDFormat,
+		log.ErrorContext(ctx, bssci.LogBSSCIInvalidTenantIDFormat,
 			logger.FieldTenantStr, owner,
 			logger.FieldError, err)
 		return 0, bssci.NewCatalogError(bssci.ErrInvalidTenantIDFormat, bssci.POSIX_EINVAL)
@@ -177,74 +197,4 @@ func withTransmissionFields(fields []interface{}, result *mioty.DLDataResult) []
 		fields = append(fields, logger.FieldPacketCnt, *result.PacketCnt)
 	}
 	return fields
-}
-
-// ProcessRevokeResponse records a base station's confirmation of a dlDataRev
-// (BSSCI §3.13) and answers with dlDataRevCmp; revoked reports whether the
-// downlink became revoked. A downlink that already ended, such as one the
-// service center expired before asking its station to drop it, keeps its
-// outcome, so the confirmation reports nothing a second time.
-func (d *downlinkService) ProcessRevokeResponse(ctx context.Context, session *bssci.Session, opId int64, queueID int64, endpointEUI uint64) (map[string]interface{}, bool, error) {
-	if queueID <= 0 {
-		d.logger.ErrorContext(ctx, bssci.LogBSSCIInvalidQueueIDInRevokeResponse,
-			logger.FieldQueueID, queueID,
-			logger.FieldOpID, opId)
-		return nil, false, bssci.NewCatalogError(bssci.ErrInvalidQueueID, bssci.POSIX_EINVAL)
-	}
-	revoked, err := d.revoke(ctx, session, queueID, endpointEUI)
-	if err != nil {
-		return nil, false, err
-	}
-	return d.queueSerializer.BuildDLDataRevokeComplete(opId), revoked, nil
-}
-
-// ProcessRevokeRefusal records a base station's error answer to a dlDataRev
-// (BSSCI §3.17): the station does not hold the downlink, so it will never be
-// transmitted, and it ends revoked as a confirmed revoke would (§3.13). A
-// downlink that already ended, expired by the sweep or finished by a late
-// dlDataRes, keeps its outcome and is reported to nobody again.
-func (d *downlinkService) ProcessRevokeRefusal(ctx context.Context, session *bssci.Session, refusal bssci.RevokeRefusal) (bool, error) {
-	d.logger.WarnContext(ctx, bssci.LogBSSCIRevokeRefusedByStation,
-		logger.FieldBsEui, session.BaseStationEUI,
-		logger.FieldEpEui, refusal.EndpointEUI,
-		logger.FieldQueID, refusal.QueueID,
-		logger.FieldCode, refusal.Code,
-		logger.FieldMessage, refusal.Message)
-	return d.revoke(ctx, session, refusal.QueueID, refusal.EndpointEUI)
-}
-
-// revoke records the answering station's downlink revoked under its owner
-// tenant, persisted before the operation completes (BSSCI §3.13), and
-// reports whether the station still held it in flight.
-func (d *downlinkService) revoke(ctx context.Context, session *bssci.Session, queueID int64, endpointEUI uint64) (bool, error) {
-	owner, err := d.tenantResolver.ResolveTenant(ctx, queueID)
-	if err != nil {
-		d.logger.ErrorContext(ctx, bssci.LogBSSCICannotResolveTenantForRevoke,
-			logger.FieldQueueID, queueID,
-			logger.FieldError, err)
-		return false, bssci.NewCatalogError(bssci.ErrCannotResolveTenantForQueue, bssci.POSIX_EIO)
-	}
-	ownerTenantID, err := d.parseOwner(ctx, owner)
-	if err != nil {
-		return false, err
-	}
-	station := session.BaseStationEUI
-	d.logger.InfoContext(ctx, bssci.LogBSSCIProcessingRevokeResponse,
-		logger.FieldBsEui, station,
-		logger.FieldEpEui, endpointEUI,
-		logger.FieldQueID, queueID,
-		logger.FieldTenantIDCamel, ownerTenantID)
-	d.tenantResolver.UnregisterQueueTenant(queueID)
-
-	revoked, err := d.downlinks.RevokeDownlink(ctx, storage.DownlinkRevocation{QueID: queueID, TenantID: ownerTenantID, Station: &station})
-	if err != nil {
-		d.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDownlinkAsRevoked,
-			logger.FieldQueID, queueID,
-			logger.FieldError, err)
-		return false, bssci.NewCatalogError(bssci.ErrDatabaseUpdateFailed, bssci.POSIX_EIO)
-	}
-	if !revoked {
-		d.logger.InfoContext(ctx, bssci.LogBSSCIRevokeAnswerForDownlinkNotHeld, logger.FieldQueID, queueID, logger.FieldBsEui, station)
-	}
-	return revoked, nil
 }

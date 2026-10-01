@@ -29,6 +29,10 @@ const (
 // of downlink_queue (migration 028).
 const constraintDownlinkQueueID = "unique_queue_id"
 
+// constraintDownlinkCommandRef is the unique index that lets an MQTT command's
+// ref name one downlink of an organization's endpoint (migration 000189).
+const constraintDownlinkCommandRef = "uq_downlink_queue_command_ref"
+
 // IsUniqueViolation checks if error is PostgreSQL unique constraint violation (SQLSTATE 23505)
 // PostgreSQL error codes matched when translating driver errors.
 func IsUniqueViolation(err error) bool {

@@ -67,7 +67,9 @@ func (s *Server) handleConnectComplete(session *Session, msg *Message, _ map[str
 
 // startStationServices starts status polling only after the reissue sequence
 // completed, so the first status request cannot interleave with it, then
-// settles the station's downlinks without blocking the complete message.
+// settles the station's downlinks without blocking the complete message:
+// every overdue downlink it holds whose dlDataRev was not reissued is asked
+// for again.
 func (s *Server) startStationServices(ctx context.Context, session *Session) {
 	s.startStatusMechanism(session)
 	s.logger.InfoContext(ctx, LogBSSCIStartedStatusMechanismForBaseStation,
@@ -78,6 +80,7 @@ func (s *Server) startStationServices(ctx context.Context, session *Session) {
 	go func() {
 		defer s.wg.Done()
 		s.settleConnectedStation(ctx, session, served)
+		s.askAgainToDrop(ctx, session)
 	}()
 }
 

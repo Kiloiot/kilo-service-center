@@ -36,8 +36,8 @@ func TestReportStationResult_NamesTheQueuerOfTheDownlinksOrganization(t *testing
 func TestReportStationResult_RoutesWithoutTheOperationLog(t *testing.T) {
 	acs := &recordingApplicationCenters{}
 	work := NewBackgroundWork()
-	reporter, err := NewDownlinkResultReporter(acs, DownlinkResultsWithoutMQTT{},
-		mustAuditLogger(t, &mockEventStore{}, queuedDownlinks{}, ownersStation), work, logger.NewNop())
+	audit := mustAuditLogger(t, &mockEventStore{}, queuedDownlinks{}, ownersStation)
+	reporter, err := NewDownlinkResultReporter(acs, DownlinkResultsWithoutMQTT{}, audit, audit, work, logger.NewNop())
 	require.NoError(t, err)
 	acQueID := reporterACQueueID
 	row := reportedRow(reporterOrg, &acQueID)

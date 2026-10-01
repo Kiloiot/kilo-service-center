@@ -247,6 +247,7 @@ export const DOWNLINK_STATUS_LABELS: Record<string, string> = {
   scheduled: "Scheduled",
   reserved: "Reserved",
   queued: "Queued",
+  revoking: "Revoking",
   transmitted: "Transmitted",
   delivered: "Delivered",
   failed: "Failed",

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -188,12 +189,27 @@ func TestLoad_RoamingAndDeliveryDefaults(t *testing.T) {
 	}
 	if cfg.Protocol.DownlinkExpiry.Lifetime != DefaultProtocolDownlinkLifetime ||
 		cfg.Protocol.DownlinkExpiry.SweepInterval != DefaultProtocolDownlinkExpirySweepInterval ||
-		cfg.Protocol.DownlinkExpiry.BatchSize != DefaultProtocolDownlinkExpiryBatchSize {
+		cfg.Protocol.DownlinkExpiry.BatchSize != DefaultProtocolDownlinkExpiryBatchSize ||
+		!slices.Equal(cfg.Protocol.DownlinkExpiry.RevokeNotHeldCodes, DefaultProtocolDownlinkRevokeNotHeldCodes) {
 		t.Errorf("protocol.downlink_expiry = %+v, want the documented defaults", cfg.Protocol.DownlinkExpiry)
 	}
 	if cfg.Protocol.SCACIResumeMaxPendingOperations != DefaultProtocolSCACIResumeMaxPendingOperations {
 		t.Errorf("protocol.scaci_resume_max_pending_operations = %d, want %d",
 			cfg.Protocol.SCACIResumeMaxPendingOperations, DefaultProtocolSCACIResumeMaxPendingOperations)
+	}
+}
+
+// TestLoad_RevokeNotHeldCodesFromEnvironment: an operator names the codes of
+// its stations as a comma-separated environment variable.
+func TestLoad_RevokeNotHeldCodesFromEnvironment(t *testing.T) {
+	clearSCEUIEnv(t)
+	t.Setenv("KILOCENTER_PROTOCOL_DOWNLINK_EXPIRY_REVOKE_NOT_HELD_CODES", "2,3")
+	cfg, err := Load(writeSCEUIConfig(t, ""))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if want := []int{2, 3}; !slices.Equal(cfg.Protocol.DownlinkExpiry.RevokeNotHeldCodes, want) {
+		t.Errorf("revoke_not_held_codes = %v, want %v", cfg.Protocol.DownlinkExpiry.RevokeNotHeldCodes, want)
 	}
 }
 

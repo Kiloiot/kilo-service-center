@@ -351,6 +351,7 @@ export const formatDownlinkQueueStatus = (
     case DOWNLINK_QUEUE_STATUS.SCHEDULED:
     case DOWNLINK_QUEUE_STATUS.RESERVED:
     case DOWNLINK_QUEUE_STATUS.QUEUED:
+    case DOWNLINK_QUEUE_STATUS.REVOKING:
       return { label, color: "info" };
     case DOWNLINK_QUEUE_STATUS.TRANSMITTED:
     case DOWNLINK_QUEUE_STATUS.DELIVERED:

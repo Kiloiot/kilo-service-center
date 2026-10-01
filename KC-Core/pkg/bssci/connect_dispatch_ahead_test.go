@@ -74,8 +74,7 @@ func TestConnectedStationIsSentThePendingDownlinksItServes(t *testing.T) {
 	dispatcher, err := bssciservices.NewDownlinkDispatcher(log, queue, queue,
 		&ulWindowClaims{claimed: map[ulWindowKey]bool{}}, server.SendDLDataQueue, clock.SystemClock{})
 	require.NoError(t, err)
-	reclaimer, err := bssciservices.NewDownlinkReclaimer(queue, &requeueLog{}, log)
-	require.NoError(t, err)
+	reclaimer := stationQueueReclaimer(t, queue, &requeueLog{}, log)
 	server.SetDownlinkDispatcher(dispatcher)
 	server.SetDownlinkReclaimer(reclaimer)
 	server.SetPendingDownlinks(queue)

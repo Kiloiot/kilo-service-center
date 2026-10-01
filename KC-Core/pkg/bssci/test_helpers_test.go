@@ -206,6 +206,7 @@ func wireRequiredTestCollaborators(s *Server) {
 	s.protocolMessages = discardingProtocolMessages{}
 	s.propagationSvc = noopPropagationService{}
 	s.pendingDownlinks = noPendingDownlinks{}
+	s.downlinkQueueStore = noDownlinkRows{}
 	s.stationCertificates = anyStationCertificate{}
 	s.basestationRepo = unregisteredStations{}
 	s.stationEvents = discardingStationEvents{}
@@ -226,6 +227,17 @@ func (anyStationCertificate) BindStationCertificate(context.Context, StationCert
 type noPendingDownlinks struct{}
 
 func (noPendingDownlinks) ListPendingDownlinks(context.Context) ([]storage.PendingDownlink, error) {
+	return nil, nil
+}
+
+// noDownlinkRows is a downlink queue without a row a revoke could name.
+type noDownlinkRows struct{}
+
+func (noDownlinkRows) GetDownlinkByRevocation(context.Context, storage.DownlinkRevocation) (*storage.DownlinkMessage, error) {
+	return nil, storage.ErrNotFound
+}
+
+func (noDownlinkRows) ListStationRevocations(context.Context, uint64) ([]*storage.DownlinkMessage, error) {
 	return nil, nil
 }
 
@@ -514,6 +526,8 @@ func (s *Server) SetDownlinkDispatcher(d DownlinkDispatcher) { s.downlinkDispatc
 func (s *Server) SetDownlinkReclaimer(r DownlinkReclaimer) { s.downlinkReclaimer = r }
 
 func (s *Server) SetPendingDownlinks(l PendingDownlinkLister) { s.pendingDownlinks = l }
+
+func (s *Server) SetDownlinkQueueStore(q DownlinkQueueStore) { s.downlinkQueueStore = q }
 
 func (s *Server) SetServingStations(l ServingStationLocator) { s.servingStations = l }
 
@@ -1095,6 +1109,18 @@ func (m *memoryStatusService) EvictCachedOperations(session *Session) {
 			delete(*m.pendingOps, key)
 		}
 	}
+}
+
+func (m *memoryStatusService) SessionOperations(_ context.Context, session *Session) []*PendingOperation {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var ops []*PendingOperation
+	for key, op := range *m.pendingOps {
+		if key.SessionID == session.ID {
+			ops = append(ops, op)
+		}
+	}
+	return ops
 }
 
 func (m *memoryStatusService) ProcessOperationStatusUpdate(_ context.Context, _ *Session, _ int64, _ string) error {

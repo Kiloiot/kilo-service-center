@@ -309,6 +309,8 @@ const (
 	EventTitleDLDataQueued = "Downlink queued at base station"
 	// EventTitleDLDataSent is the title of a downlink a base station transmitted.
 	EventTitleDLDataSent = "Downlink sent"
+	// EventTitleDLDataSentAfterExpiry is the title of a "sent" a base station reported for a downlink already reported expired.
+	EventTitleDLDataSentAfterExpiry = "Downlink reported sent after it expired"
 	// EventTitleDLDataExpired is the title of a downlink that expired untransmitted.
 	EventTitleDLDataExpired = "Downlink expired"
 	// EventTitleDLDataInvalid is the title of a downlink a base station refused as invalid.

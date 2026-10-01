@@ -13,8 +13,12 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-// fixtureCommandRef is the ref of the MQTT command that queued the fixture downlinks.
+// fixtureCommandRef is the ref of the MQTT command that queued a fixture downlink.
 const fixtureCommandRef = "order-17"
+
+// fixtureCommandRefs are the refs of the MQTT commands that queued the
+// fixture downlinks, one per downlink as an endpoint's ref names one.
+var fixtureCommandRefs = map[int64]string{887001: fixtureCommandRef, 887002: "order-18", 887003: "order-19", 887004: ""}
 
 // TestDownlinkCommandRef_TravelsWithEveryResult: the ref of the MQTT command
 // that queued a downlink comes back from every change that reports the
@@ -27,9 +31,7 @@ func TestDownlinkCommandRef_TravelsWithEveryResult(t *testing.T) {
 	const sentRow, refusedRow, expiredRow, withoutRefRow = 887001, 887002, 887003, 887004
 	for _, queID := range []int64{sentRow, refusedRow, expiredRow, withoutRefRow} {
 		downlink := applicationDownlink(321, orgs[321], queID, nil)
-		if queID != withoutRefRow {
-			downlink.Ref = fixtureCommandRef
-		}
+		downlink.Ref = fixtureCommandRefs[queID]
 		_, err := downlinks.EnqueueDownlink(ctx, downlink, testDownlinkLifetime)
 		require.NoError(t, err)
 	}
@@ -50,7 +52,7 @@ func TestDownlinkCommandRef_TravelsWithEveryResult(t *testing.T) {
 	require.True(t, marked)
 	_, err = db.Exec(`UPDATE downlink_queue SET earliest_at = NOW() - INTERVAL '1 hour', latest_at = NOW() - INTERVAL '1 minute' WHERE que_id IN ($1, $2)`, expiredRow, withoutRefRow)
 	require.NoError(t, err)
-	expired, err := downlinks.ExpireOverdueDownlinks(ctx, 10)
+	expired, err := downlinks.ExpireOverdueUnheld(ctx, 10)
 	require.NoError(t, err)
 	require.Len(t, expired, 2)
 
@@ -59,11 +61,7 @@ func TestDownlinkCommandRef_TravelsWithEveryResult(t *testing.T) {
 		reported["expiry of "+strconv.FormatInt(downlink.QueID, 10)] = downlink
 	}
 	for name, downlink := range reported {
-		want := fixtureCommandRef
-		if downlink.QueID == withoutRefRow {
-			want = ""
-		}
-		assert.Equal(t, want, downlink.Ref, name)
+		assert.Equal(t, fixtureCommandRefs[downlink.QueID], downlink.Ref, name)
 	}
 	assert.Equal(t, int64(sentRow), acknowledged.QueID, "the acknowledgement names the downlink sent in the window")
 }

@@ -93,7 +93,7 @@ func (s *Server) enqueueOrganization(ctx context.Context, session *Session) uuid
 // queuedDownlink is the session's pending queue row of the request, with the
 // SCACI §3.10.1 defaults of its optional fields; the service center queue id
 // is assigned when the row is persisted.
-func queuedDownlink(req *DLDataQueue, session *Session, enqueueOrg uuid.UUID, acQueID *uint64, ref string) *storage.DownlinkMessage {
+func queuedDownlink(req *DLDataQueue, session *Session, enqueueOrg uuid.UUID, acQueID *uint64, command storage.DownlinkCommand) *storage.DownlinkMessage {
 	dlMsg := &storage.DownlinkMessage{
 		EPEUI:          mioty.FormatEUI64(req.EpEui),
 		TenantID:       strconv.FormatInt(session.TenantID, 10),
@@ -103,7 +103,8 @@ func queuedDownlink(req *DLDataQueue, session *Session, enqueueOrg uuid.UUID, ac
 		MaxAttempts:    dlQueueMaxAttempts,
 		ACQueID:        acQueID,
 		ACEUI:          queuingApplicationCenter(session, acQueID),
-		Ref:            ref,
+		Ref:            command.Ref,
+		ExpiresAt:      command.ExpiresAt,
 		CntDepend:      req.CntDepend,
 		Priority:       valueOr(req.Prio),
 		Format:         valueOr(req.Format),
@@ -158,6 +159,12 @@ func (s *Server) persistQueuedDownlink(ctx context.Context, dlMsg *storage.Downl
 			logger.FieldQueID, valueOr(dlMsg.ACQueID),
 			logger.FieldTenantIDCamel, dlMsg.TenantID)
 		return 0, errQueIDExists, POSIX_EEXIST
+	case errors.Is(err, storage.ErrDownlinkRefTaken):
+		s.logger.InfoContext(ctx, LogSCACIDownlinkCommandRefQueued, logger.FieldEpEui, dlMsg.EPEUI)
+		return 0, errDownlinkCommandRefQueued, POSIX_EEXIST
+	case errors.Is(err, storage.ErrDownlinkDeadlineElapsed):
+		s.logger.WarnContext(ctx, LogSCACIDownlinkDeadlineElapsed, logger.FieldEpEui, dlMsg.EPEUI)
+		return 0, errDownlinkDeadlineElapsed, POSIX_ETIMEDOUT
 	case errors.Is(err, storage.ErrInvalidInput):
 		s.logger.WarnContext(ctx, LogSCACIInvalidDownlinkPayload,
 			logger.FieldQueID, valueOr(dlMsg.ACQueID),

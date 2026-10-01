@@ -53,7 +53,7 @@ func newQueueAckService(t *testing.T, holders DownlinkHolderWriter) bssci.Downli
 	svc, err := NewDownlinkService(DownlinkServiceDeps{
 		Logger: logger.NewNop(), Tenants: NewTenantResolver(nil), Outcomes: &mockMIOTYDownlinksForDispatch{}, Holders: holders,
 		Results: newReporterFixture(t).reporter, Serializer: NewQueueSerializer(), Clock: testutil.NewFakeClock(dispatchTestNow),
-	})
+	}, newRevokeAnswers(t, logger.NewNop(), NewTenantResolver(nil), &mockMIOTYDownlinksForDispatch{}, newReporterFixture(t).reporter))
 	require.NoError(t, err)
 	return svc
 }

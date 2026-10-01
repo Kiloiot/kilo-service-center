@@ -119,7 +119,7 @@ func (t *Transaction) EndPointSessions() interfaces.EndPointSessionRepository {
 // to the FOR UPDATE SKIP LOCKED reservation queries.
 func (t *Transaction) MIOTYDownlinks() interfaces.MIOTYDownlinkTxRepository {
 	if t.miotyDownlinkRepo == nil {
-		t.miotyDownlinkRepo = NewMIOTYDownlinkRepository(t.tx, NewDownlinkQueueReader(t.db.sqlxDB, t.db.log), t.db.clock, t.db.log)
+		t.miotyDownlinkRepo = &DownlinkReservations{db: t.tx, clock: t.db.clock}
 	}
 	return t.miotyDownlinkRepo
 }

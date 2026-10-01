@@ -257,7 +257,7 @@ Queue ids are at most 2^53-1, so JSON clients read them exactly.
 
 ### QoS
 
-Uplinks: QoS 1 (at-least-once). Lifecycle events (attach, detach, downlink_queued, downlink_rejected, downlink_result) and downlink commands: configurable.
+Uplinks (event/up), downlink outcomes (downlink_queued, downlink_rejected, downlink_result) and the command/down subscription: QoS 1 (at-least-once). A downlink outcome can arrive twice; treat a repeat for the same queId (for downlink_rejected, the same ref) as the same outcome. attach and detach: QoS 0 (at-most-once).
 
 ---
 

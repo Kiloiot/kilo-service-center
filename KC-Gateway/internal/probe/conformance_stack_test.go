@@ -75,6 +75,8 @@ var (
 	stationA      = station{eui: 0x70B3D59CD000FF01, cert: "bs-ff01", tenant: tenantPrimary}
 	stationB      = station{eui: 0x70B3D59CD000FF02, cert: "bs-ff02", tenant: tenantPrimary}
 	stationRoamer = station{eui: 0x70B3D59CD000FF04, cert: "bs-ff04", tenant: tenantSecondary}
+	// stationDeleted is registered and deleted by J9 itself; the seed leaves it out.
+	stationDeleted = station{eui: 0x70B3D59CD000FF03, cert: "bs-ff03", tenant: tenantPrimary}
 )
 
 // TestSeedConformanceStack registers the simulated base stations. The stack

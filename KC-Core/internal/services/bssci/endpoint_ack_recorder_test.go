@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
@@ -124,15 +125,28 @@ func TestRecordEndpointAck_RecordsNothingTheStoreDidNotMark(t *testing.T) {
 
 // TestRecordEndpointAck_AnEventFailureKeepsTheAcknowledgement: the mark and
 // its queued publication commit before the event is recorded, so a failed
-// event neither fails the uplink nor withdraws the acknowledgement.
+// event neither fails the uplink nor withdraws the acknowledgement, and is
+// logged under its own entry naming the endpoint, queue and window.
 func TestRecordEndpointAck_AnEventFailureKeepsTheAcknowledgement(t *testing.T) {
 	store := &recordingAckStore{marked: true}
 	events := &recordingAckEvents{err: errAckEventsDown}
+	log := bsscitest.NewRecordingLogger()
+	recorder, err := NewEndpointAckRecorder(store, events, ackRecorderChannels, log)
+	require.NoError(t, err)
 
-	require.NoError(t, newAckRecorder(t, store, events).RecordEndpointAck(testutil.TestContext(), 3, ackRecorderEndpointEUI, 7, ackRecorderMessageID))
+	require.NoError(t, recorder.RecordEndpointAck(testutil.TestContext(), 3, ackRecorderEndpointEUI, 7, ackRecorderMessageID))
 
 	assert.Len(t, store.acks, 1)
 	assert.Len(t, events.recorded, 1)
+	entries := log.FilterMessage(bssci.LogBSSCIFailedToRecordDownlinkAckEvent)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "ERROR", entries[0].Level)
+	fields := entries[0].FieldMap()
+	assert.Equal(t, ackRecorderEndpointEUI, fields[logger.FieldEpEui])
+	assert.Equal(t, ackRecorderQueueID, fields[logger.FieldQueID])
+	assert.Equal(t, uint32(6), fields[logger.FieldPacketCnt])
+	assert.Equal(t, errAckEventsDown, fields[logger.FieldError])
+	assert.Empty(t, log.FilterMessage(bssci.LogBSSCIFailedToRecordDLDataResultEvent))
 }
 
 func TestNewEndpointAckRecorder_RejectsMissingCollaborators(t *testing.T) {

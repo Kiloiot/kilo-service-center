@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -30,10 +31,14 @@ func (r *DownlinkRefusal) Error() string {
 }
 
 // DownlinkEnqueuer abstracts SCACI downlink queueing for MQTT command handler;
-// ref is stored with the downlink and carried by its results. A refusal it
-// can name is returned wrapping a *DownlinkRefusal.
+// the command's ref is stored with the downlink and carried by its results,
+// and its deadline bounds the downlink's lifetime. A refusal it can name is
+// returned wrapping a *DownlinkRefusal, and a ref already queued wraps
+// ErrCommandAlreadyQueued. CommandQueued tells whether the organization
+// already queued a downlink for the endpoint under the ref.
 type DownlinkEnqueuer interface {
-	EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, ref string) (uint64, error)
+	EnqueueFromMQTT(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue, command storage.DownlinkCommand) (uint64, error)
+	CommandQueued(ctx context.Context, command storage.DownlinkCommandRef) (bool, error)
 }
 
 // TenantLookup resolves organization UUIDs to tenant IDs.
@@ -78,6 +83,7 @@ type commandPayload struct {
 	ExpOnly      *bool          `json:"expOnly"`
 	DlRxStatQry  *bool          `json:"dlRxStatQry"`
 	Ref          string         `json:"ref"`
+	ExpiresAt    *string        `json:"expiresAt"`
 }
 
 // commandEntry is the payload for one endpoint packet counter of a
@@ -133,6 +139,10 @@ func (h *CommandHandler) Start(ctx context.Context) {
 	}
 }
 
+// handleMessage answers a command/down. A ref the organization already
+// queued for the endpoint is recognized as soon as the tenant is known, before
+// the payload and the endpoint are checked, so a repeat of an accepted
+// command is never refused, whatever changed since.
 func (h *CommandHandler) handleMessage(ctx context.Context, topic string, rawPayload []byte) {
 	target, ok := h.parseTopic(ctx, topic)
 	if !ok {
@@ -143,20 +153,32 @@ func (h *CommandHandler) handleMessage(ctx context.Context, topic string, rawPay
 		h.reject(ctx, target, cmd.Ref, err)
 		return
 	}
-	req, err := cmd.downlink(target.epEUI)
-	if err != nil {
-		h.reject(ctx, target, cmd.Ref, err)
-		return
-	}
 	tenantID, err := h.lookup.LookupTenant(ctx, target.org)
 	if err != nil {
 		h.reject(ctx, target, cmd.Ref, fmt.Errorf("%w: %w", refusalOrgUnresolved, err))
 		return
 	}
+	if !h.firstReception(ctx, target, tenantID, cmd.Ref) {
+		return
+	}
+	req, err := cmd.downlink(target.epEUI)
+	if err != nil {
+		h.reject(ctx, target, cmd.Ref, err)
+		return
+	}
+	command, err := cmd.command()
+	if err != nil {
+		h.reject(ctx, target, cmd.Ref, err)
+		return
+	}
 
 	enrichedCtx := pkgcontext.WithTenantID(ctx, tenantID)
 	enrichedCtx = pkgcontext.WithOrganizationID(enrichedCtx, target.org)
-	queID, err := h.enqueuer.EnqueueFromMQTT(enrichedCtx, tenantID, &target.org, req, cmd.Ref)
+	queID, err := h.enqueuer.EnqueueFromMQTT(enrichedCtx, tenantID, &target.org, req, command)
+	if errors.Is(err, ErrCommandAlreadyQueued) {
+		h.logRepeat(ctx, target, cmd.Ref)
+		return
+	}
 	if err != nil {
 		h.reject(ctx, target, cmd.Ref, err)
 		return
@@ -166,6 +188,43 @@ func (h *CommandHandler) handleMessage(ctx context.Context, topic string, rawPay
 		logger.FieldQueID, queID,
 		logger.FieldConfirmed, cmd.Confirmed)
 	h.publish(ctx, target, DeviceEventDownlinkQueued, downlinkQueuedEvent{EpEui: target.epEUIHex, QueID: queID, Ref: cmd.Ref})
+}
+
+// firstReception tells whether a command may be answered: one without a ref,
+// or whose ref the organization has not queued for the endpoint yet. A ref
+// that cannot be looked up is not answered either, since a refusal could
+// contradict an earlier acceptance of the same command.
+func (h *CommandHandler) firstReception(ctx context.Context, target commandTarget, tenantID int64, ref string) bool {
+	if ref == "" {
+		return true
+	}
+	queued, err := h.enqueuer.CommandQueued(ctx, storage.DownlinkCommandRef{
+		TenantID: tenantID, OrganizationID: target.org, EpEUI: target.epEUI, Ref: ref,
+	})
+	if err != nil {
+		h.logger.WarnContext(ctx, LogCommandRefLookupFailed,
+			logger.FieldEpEui, target.epEUIHex, logger.FieldRef, boundedLogValue(ref, storage.MaxDownlinkRefBytes), logger.FieldError, err)
+		return false
+	}
+	if queued {
+		h.logRepeat(ctx, target, ref)
+	}
+	return !queued
+}
+
+// logRepeat logs a command that repeats a ref already queued; it is not answered.
+func (h *CommandHandler) logRepeat(ctx context.Context, target commandTarget, ref string) {
+	h.logger.InfoContext(ctx, LogCommandAlreadyQueued,
+		logger.FieldEpEui, target.epEUIHex, logger.FieldRef, boundedLogValue(ref, storage.MaxDownlinkRefBytes))
+}
+
+// boundedLogValue cuts a value the publisher chose to at most limit bytes
+// before it is logged.
+func boundedLogValue(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	return strings.ToValidUTF8(value[:limit], "")
 }
 
 // parseTopic reads {prefix}/{orgUUID}/device/{epEUIHex}/command/down; a topic
@@ -236,6 +295,21 @@ func (c commandPayload) downlink(epEUI uint64) (*mioty.DLDataQueue, error) {
 		ExpOnly:      c.ExpOnly,
 		DlRxStatQry:  c.DlRxStatQry,
 	}, nil
+}
+
+// command reads what the command adds to its downlink: its ref and its
+// optional RFC 3339 deadline.
+func (c commandPayload) command() (storage.DownlinkCommand, error) {
+	command := storage.DownlinkCommand{Ref: c.Ref}
+	if c.ExpiresAt == nil {
+		return command, nil
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, *c.ExpiresAt)
+	if err != nil {
+		return command, fmt.Errorf(errFmtInvalidExpiresAt, refusalInvalidExpiresAt, logger.FieldExpiresAt, boundedLogValue(*c.ExpiresAt, len(time.RFC3339Nano)))
+	}
+	command.ExpiresAt = &expiresAt
+	return command, nil
 }
 
 // payloads decodes the single data payload, or one payload per packet counter

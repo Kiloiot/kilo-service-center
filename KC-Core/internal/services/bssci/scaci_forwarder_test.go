@@ -335,6 +335,7 @@ func TestBSSCIToSCACIWiring(t *testing.T) {
 		clock.SystemClock{},
 		DownlinkResultsWithoutMQTT{},
 		NewBackgroundWork(),
+		[]int{bssci.POSIX_ENOENT},
 	)
 	if err != nil {
 		t.Fatalf("NewBSSCIServices: %v", err)

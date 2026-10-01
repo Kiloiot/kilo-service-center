@@ -96,6 +96,9 @@ kcCore:
         lifetime: "24h"
         sweepInterval: "5s"
         batchSize: 100
+        # POSIX codes of a dlDataRev refusal that say the base station does not
+        # hold the downlink (BSSCI 3.17 names none; 2 is ENOENT).
+        revokeNotHeldCodes: [2]
       connectionEstablishmentTimeout: 30000
       socketWriteTimeout: 10000
       statusRequestInterval: 30

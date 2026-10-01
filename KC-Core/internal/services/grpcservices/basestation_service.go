@@ -9,16 +9,39 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
+// StationSessions closes the live BSSCI session of a base station and
+// reports whether it held one.
+type StationSessions interface {
+	CloseSessionByEUI(ctx context.Context, eui uint64) bool
+}
+
+// StationDownlinks settles the downlinks a deleted base station held.
+type StationDownlinks interface {
+	ReleaseDeletedStation(ctx context.Context, bsEUI uint64)
+}
+
+// BaseStationServiceDeps are the base station service's collaborators.
+type BaseStationServiceDeps struct {
+	Store     BaseStationStore
+	Protocol  *config.ProtocolConfig
+	Sessions  StationSessions
+	Downlinks StationDownlinks
+}
+
 type basestationService struct {
 	storage        BaseStationStore
 	protocolConfig *config.ProtocolConfig
+	sessions       StationSessions
+	downlinks      StationDownlinks
 }
 
 // NewBaseStationService creates a new basestation service for gRPC layer
-func NewBaseStationService(storage BaseStationStore, protocolCfg *config.ProtocolConfig) BaseStationService {
+func NewBaseStationService(deps BaseStationServiceDeps) BaseStationService {
 	return &basestationService{
-		storage:        storage,
-		protocolConfig: protocolCfg,
+		storage:        deps.Store,
+		protocolConfig: deps.Protocol,
+		sessions:       deps.Sessions,
+		downlinks:      deps.Downlinks,
 	}
 }
 
@@ -68,9 +91,18 @@ func (s *basestationService) UpdateEUI(ctx context.Context, tenantID int64, oldE
 	return s.storage.UpdateEUI(ctx, tenantID, oldEui, newEui)
 }
 
-// Delete deletes a base station and returns the station it removed.
+// Delete deletes a base station and returns the station it removed. Its live
+// session is closed, so it can no longer transmit what it held, and only then
+// are the downlinks it held settled.
 func (s *basestationService) Delete(ctx context.Context, eui []byte, tenantID int64) (*models.BaseStation, error) {
-	return s.storage.DeleteByEUI(ctx, tenantID, eui)
+	removed, err := s.storage.DeleteByEUI(ctx, tenantID, eui)
+	if err != nil {
+		return nil, err
+	}
+	bsEUI := removed.EUI.ToUint64()
+	s.sessions.CloseSessionByEUI(ctx, bsEUI)
+	s.downlinks.ReleaseDeletedStation(ctx, bsEUI)
+	return removed, nil
 }
 
 // List lists base stations for a tenant

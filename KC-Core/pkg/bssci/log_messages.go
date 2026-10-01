@@ -448,6 +448,8 @@ const (
 	LogBSSCIServingStationUnavailable = "Downlink deferred: the base station serving the endpoint is not connected or not bidirectional"
 	// LogDispatcherDiscardedQueueReclaimed is logged when a fresh session returns the station's queued downlinks to pending
 	LogDispatcherDiscardedQueueReclaimed = "Downlinks queued at a base station returned to pending: its new session discarded them"
+	// LogDispatcherDiscardedRevocationsExpired is logged when a fresh session ends expired the overdue downlinks its station was asked to drop
+	LogDispatcherDiscardedRevocationsExpired = "Overdue downlinks a base station was asked to drop expired: its new session discarded them"
 	// LogDispatcherEndpointQueueReclaimed is logged when an attach propagate returns the endpoint's downlinks a station held to pending
 	LogDispatcherEndpointQueueReclaimed = "Endpoint downlinks queued at a base station returned to pending: its attach propagate discarded them"
 	// LogDispatcherWindowAlreadyClaimed is logged when another reception already holds the telegram's downlink window
@@ -477,10 +479,18 @@ const (
 	LogDispatcherReleaseFailed = "Downlink dispatcher: failed to release reservation to pending"
 	// LogBSSCIFailedToConfirmDownlinkQueued is a log message constant
 	LogBSSCIFailedToConfirmDownlinkQueued = "Failed to confirm downlink queue row as queued after dlDataQueRsp"
-	// LogBSSCIFailedToRevokeRefusedDownlink is logged when a downlink whose revoke its base station refused cannot be revoked
-	LogBSSCIFailedToRevokeRefusedDownlink = "Failed to revoke a downlink its base station does not hold"
-	// LogBSSCIRevokeRefusedByStation is logged when a base station answers a dlDataRev with error: it does not hold the downlink
-	LogBSSCIRevokeRefusedByStation = "Base station does not hold the downlink it was asked to revoke; revoking it"
+	// LogBSSCIFailedToRevokeRefusedDownlink is logged when a base station's refusal of a dlDataRev cannot be recorded
+	LogBSSCIFailedToRevokeRefusedDownlink = "Failed to record a base station's refusal of a dlDataRev"
+	// LogBSSCIRevokeRefusedByStation is logged when a base station answers a dlDataRev with error
+	LogBSSCIRevokeRefusedByStation = "Base station refused a dlDataRev"
+	// LogBSSCIRevokeRefusalKeepsDownlinkInFlight is logged when a refusal's code does not say the station lacks the downlink
+	LogBSSCIRevokeRefusalKeepsDownlinkInFlight = "dlDataRev refusal does not say the base station lacks the downlink; it stays in flight until a result or the station's next session"
+	// LogBSSCIFailedToListStationRevocations is logged when a connected station cannot be asked again to drop its overdue downlinks
+	LogBSSCIFailedToListStationRevocations = "Failed to list the overdue downlinks a connected base station is asked to drop"
+	// LogBSSCIFailedToResendRevocation is logged when an overdue downlink cannot be revoked again at its reconnected station
+	LogBSSCIFailedToResendRevocation = "Failed to ask a reconnected base station again to drop an overdue downlink"
+	// LogBSSCIRevokeAlreadyInFlight is logged when a downlink is not asked for again because its dlDataRev awaits the station's answer
+	LogBSSCIRevokeAlreadyInFlight = "dlDataRev not repeated: the base station has not answered the one in flight"
 	// LogBSSCIFailedToFailRejectedDownlink is logged when a downlink its base station rejected cannot be failed
 	LogBSSCIFailedToFailRejectedDownlink = "Failed to mark a downlink its base station rejected as failed"
 	// LogBSSCIQueueOwnerUnresolved is logged when no tenant owns the downlink a dlDataQue answer refers to
@@ -497,10 +507,14 @@ const (
 	LogBSSCIDownlinkAcknowledgedByEndpoint = "Downlink acknowledged by the endpoint"
 	// LogBSSCIEndpointAckWithoutDownlink is logged when an uplink's dlAck matches no unacknowledged transmitted downlink
 	LogBSSCIEndpointAckWithoutDownlink = "Endpoint acknowledgement matches no transmitted downlink"
+	// LogBSSCIFailedToRecordDownlinkAckEvent is logged when the event of a downlink its endpoint acknowledged could not be recorded
+	LogBSSCIFailedToRecordDownlinkAckEvent = "Failed to record the event of a downlink acknowledged by the endpoint"
 	// LogBSSCIServingStationUnknown is logged when a downlink waits because no base station heard or attached its endpoint yet
 	LogBSSCIServingStationUnknown = "No base station heard or attached the endpoint yet; the downlink waits for its next downlink window"
 	// LogBSSCIResultForFinishedDownlink is logged when a dlDataRes names a downlink that already ended, whose outcome stays
 	LogBSSCIResultForFinishedDownlink = "Result for a downlink that already ended leaves its outcome unchanged"
+	// LogBSSCISentResultForExpiredDownlink is logged when a station reports a downlink sent that was already reported expired
+	LogBSSCISentResultForExpiredDownlink = "Base station reported a downlink sent after it was reported expired; the expiry stands"
 	// LogBSSCIRevokeAnswerForDownlinkNotHeld is logged when a station answers a revoke of a downlink it no longer holds
 	LogBSSCIRevokeAnswerForDownlinkNotHeld = "Revoke answered for a downlink that already ended or another base station holds"
 	// LogBSSCIFailedToReclaimDiscardedQueue is logged when the downlinks a fresh session discarded could not be released
@@ -796,8 +810,8 @@ const (
 	LogBSSCISessionNoPeerCertUsingDefaults = "BSSCI session no peer cert, using defaults"
 	// LogBSSCISessionOrgTenantResolved is logged when BSSCI session org/tenant resolved.
 	LogBSSCISessionOrgTenantResolved = "BSSCI session org/tenant resolved"
-	// LogBSSCIClosingBSSCISessionDueToEUIChange is logged when closing BSSCI session due to EUI change.
-	LogBSSCIClosingBSSCISessionDueToEUIChange = "Closing BSSCI session due to EUI change"
+	// LogBSSCIClosingRetiredStationSession is logged when the session of a base station whose EUI changed or that was deleted is closed.
+	LogBSSCIClosingRetiredStationSession = "Closing the BSSCI session of a base station whose EUI changed or that was deleted"
 	// LogBSSCIDetachFromUnknownEndpoint is logged when detach from unknown endpoint.
 	LogBSSCIDetachFromUnknownEndpoint = "Detach from unknown endpoint"
 	// LogBSSCIDetachOwnerLookupFailed is logged when the endpoint owner lookup fails on a detach.
@@ -820,8 +834,8 @@ const (
 	LogBSSCIFailedToCheckSessionResume = "Failed to check session resume"
 	// LogBSSCIFailedToCloseConnection is logged when failed to close connection.
 	LogBSSCIFailedToCloseConnection = "Failed to close connection"
-	// LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup is logged when failed to close connection during EUI change cleanup.
-	LogBSSCIFailedToCloseConnectionDuringEUIChangeCleanup = "Failed to close connection during EUI change cleanup"
+	// LogBSSCIFailedToCloseRetiredStationConnection is logged when the connection of a retired station session cannot be closed.
+	LogBSSCIFailedToCloseRetiredStationConnection = "Failed to close the connection of a base station whose EUI changed or that was deleted"
 	// LogBSSCIFailedToCommitAttachTransaction is logged when failed to commit attach transaction.
 	LogBSSCIFailedToCommitAttachTransaction = "Failed to commit attach transaction"
 	// LogBSSCIFailedToCreateEndpointSession is logged when failed to create endpoint session.
@@ -870,8 +884,8 @@ const (
 	LogBSSCIFailedToSendErrorResponse = "Failed to send error response"
 	// LogBSSCIFailedToSetReadDeadline is logged when failed to set read deadline.
 	LogBSSCIFailedToSetReadDeadline = "Failed to set read deadline"
-	// LogBSSCIFailedToTerminateDBSessionDuringEUIChange is logged when failed to terminate DB session during EUI change.
-	LogBSSCIFailedToTerminateDBSessionDuringEUIChange = "Failed to terminate DB session during EUI change"
+	// LogBSSCIFailedToTerminateRetiredStationSession is logged when the DB session of a retired station cannot be terminated.
+	LogBSSCIFailedToTerminateRetiredStationSession = "Failed to terminate the DB session of a base station whose EUI changed or that was deleted"
 	// LogBSSCIFailedToUpdateEndpointDetachTelemetry is logged when failed to update endpoint detach telemetry.
 	LogBSSCIFailedToUpdateEndpointDetachTelemetry = "Failed to update endpoint detach telemetry"
 	// LogBSSCIFailedToUpdateEndpointSession is logged when failed to update endpoint session.

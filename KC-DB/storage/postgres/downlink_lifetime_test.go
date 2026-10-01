@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -86,10 +87,10 @@ func TestReservation_SkipsExpiredDownlinks(t *testing.T) {
 	assert.Equal(t, string(mioty.DLQueueStatusPending), status)
 }
 
-// TestExpireOverdueDownlinks_ExpiresOnlyOverduePendingRows: the sweep expires
+// TestExpireOverdueUnheld_ExpiresOnlyOverduePendingRows: the sweep expires
 // every tenant's pending downlink past its lifetime and nothing in time or
 // finished, and returns what the originators must be told.
-func TestExpireOverdueDownlinks_ExpiresOnlyOverduePendingRows(t *testing.T) {
+func TestExpireOverdueUnheld_ExpiresOnlyOverduePendingRows(t *testing.T) {
 	downlinks, db, orgs := applicationQueueIDFixture(t)
 	acQueID := uint64(77)
 	seedScheduledDownlink(t, db, 321, orgs[321], 830021, mioty.DLQueueStatusPending, -time.Hour, &acQueID)
@@ -98,7 +99,7 @@ func TestExpireOverdueDownlinks_ExpiresOnlyOverduePendingRows(t *testing.T) {
 	seedScheduledDownlink(t, db, 321, orgs[321], 830024, mioty.DLQueueStatusTransmitted, -time.Hour, nil)
 	seedScheduledDownlink(t, db, 321, orgs[321], 830025, mioty.DLQueueStatusPending, 0, nil)
 
-	expired, err := downlinks.ExpireOverdueDownlinks(t.Context(), 10)
+	expired, err := downlinks.ExpireOverdueUnheld(t.Context(), 10)
 
 	require.NoError(t, err)
 	byQueue := map[int64]*storage.DownlinkMessage{}
@@ -128,47 +129,70 @@ func TestExpireOverdueDownlinks_ExpiresOnlyOverduePendingRows(t *testing.T) {
 		assert.Equal(t, string(want), status, "queue id %d", queID)
 	}
 
-	again, err := downlinks.ExpireOverdueDownlinks(t.Context(), 10)
+	again, err := downlinks.ExpireOverdueUnheld(t.Context(), 10)
 	require.NoError(t, err)
 	assert.Empty(t, again, "an expired downlink is reported once")
 }
 
-func TestExpireOverdueDownlinks_HonorsTheBatchLimit(t *testing.T) {
+func TestExpireOverdueUnheld_HonorsTheBatchLimit(t *testing.T) {
 	downlinks, db, orgs := applicationQueueIDFixture(t)
 	for queID := int64(830031); queID <= 830033; queID++ {
 		seedScheduledDownlink(t, db, 321, orgs[321], queID, mioty.DLQueueStatusPending, -time.Hour, nil)
 	}
 
-	expired, err := downlinks.ExpireOverdueDownlinks(t.Context(), 2)
+	expired, err := downlinks.ExpireOverdueUnheld(t.Context(), 2)
 
 	require.NoError(t, err)
 	assert.Len(t, expired, 2)
 }
 
-// TestExpireOverdueDownlinks_ExpiresHeldRowsAndNamesTheirStation: a downlink
-// a base station holds past its lifetime expires too, naming the station so
-// it can be revoked there (BSSCI §3.13); a pending row names none, even with
-// the station of a released reservation still on it.
-func TestExpireOverdueDownlinks_ExpiresHeldRowsAndNamesTheirStation(t *testing.T) {
+// TestOverdueSweep_RevokesQueuedRowsAndLeavesReservedOnes: a downlink a base
+// station holds queued past its lifetime becomes revoking, keeps the station
+// as its holder and names it so it is asked to drop it (BSSCI §3.13); its
+// outcome is not decided yet. A reserved downlink, whose dlDataQue may not be
+// on the wire, is left to its dispatch. A pending row expires naming no
+// station, even with the station of a released reservation still on it.
+func TestOverdueSweep_RevokesQueuedRowsAndLeavesReservedOnes(t *testing.T) {
 	downlinks, db, orgs := applicationQueueIDFixture(t)
 	for queID, status := range map[int64]mioty.DLQueueStatus{
-		830031: mioty.DLQueueStatusQueued, 830032: mioty.DLQueueStatusReserved, 830033: mioty.DLQueueStatusPending,
+		830041: mioty.DLQueueStatusQueued, 830042: mioty.DLQueueStatusReserved, 830043: mioty.DLQueueStatusPending,
+		830044: mioty.DLQueueStatusRevoking,
 	} {
 		seedScheduledDownlink(t, db, 321, orgs[321], queID, status, -time.Hour, nil)
 		_, err := db.Exec(`UPDATE downlink_queue SET bs_eui = $1 WHERE que_id = $2`, mioty.EUI64Bytes(releaseStation), queID)
 		require.NoError(t, err)
 	}
 
-	expired, err := downlinks.ExpireOverdueDownlinks(t.Context(), 10)
-
+	revoking, err := downlinks.RevokeOverdueHeld(t.Context(), 10)
 	require.NoError(t, err)
-	holders := map[int64]uint64{}
-	for _, dl := range expired {
-		holders[dl.QueID] = dl.BsEui
+	require.Len(t, revoking, 1)
+	assert.Equal(t, int64(830041), revoking[0].QueID)
+	assert.Equal(t, releaseStation, revoking[0].BsEui)
+	assert.Equal(t, mioty.DLQueueStatusRevoking, revoking[0].Status)
+	assert.Empty(t, revoking[0].Result, "no outcome while the station is asked")
+	var askedAt, expiredAskedAt sql.NullTime
+	require.NoError(t, db.Get(&askedAt, `SELECT revoke_asked_at FROM downlink_queue WHERE que_id = 830041`))
+	assert.True(t, askedAt.Valid, "the ask is recorded so an unanswered one is repeated")
+
+	expired, err := downlinks.ExpireOverdueUnheld(t.Context(), 10)
+	require.NoError(t, err)
+	require.Len(t, expired, 1)
+	assert.Equal(t, int64(830043), expired[0].QueID)
+	assert.Zero(t, expired[0].BsEui, "a pending row is held by no station")
+	require.NoError(t, db.Get(&expiredAskedAt, `SELECT revoke_asked_at FROM downlink_queue WHERE que_id = 830043`))
+	assert.False(t, expiredAskedAt.Valid, "no station is asked about a row expired in the queue")
+
+	for queID, want := range map[int64]mioty.DLQueueStatus{
+		830041: mioty.DLQueueStatusRevoking, 830042: mioty.DLQueueStatusReserved,
+		830043: mioty.DLQueueStatusExpired, 830044: mioty.DLQueueStatusRevoking,
+	} {
+		status, result := downlinkStatusOf(t, db, queID)
+		assert.Equal(t, string(want), status, "queue id %d", queID)
+		if want != mioty.DLQueueStatusExpired {
+			assert.Nil(t, result, "queue id %d has no result", queID)
+		}
 	}
-	assert.Equal(t, map[int64]uint64{830031: releaseStation, 830032: releaseStation, 830033: 0}, holders)
-	for _, queID := range []int64{830031, 830032, 830033} {
-		status, _ := downlinkStatusOf(t, db, queID)
-		assert.Equal(t, string(mioty.DLQueueStatusExpired), status, "queue id %d", queID)
-	}
+	again, err := downlinks.RevokeOverdueHeld(t.Context(), 10)
+	require.NoError(t, err)
+	assert.Empty(t, again, "a station is asked once per sweep transition")
 }

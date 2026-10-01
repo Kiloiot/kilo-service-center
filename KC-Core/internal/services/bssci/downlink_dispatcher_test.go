@@ -225,6 +225,10 @@ func (m *mockMIOTYDownlinksForDispatch) RevokeDownlink(context.Context, storage.
 	return true, nil
 }
 
+func (m *mockMIOTYDownlinksForDispatch) ExpireRevokedDownlink(context.Context, storage.DownlinkRevocation) (*storage.DownlinkMessage, bool, error) {
+	return nil, false, nil
+}
+
 // mockSendFn tracks calls to SendDLDataQueue
 type mockSendFn struct {
 	calls       int

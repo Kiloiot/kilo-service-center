@@ -137,6 +137,8 @@ const (
 	errFailedPersistDownlink    = "scaci.error.failed_persist_downlink"
 	errDownlinkOrgUnresolved    = "scaci.error.downlink_org_unresolved"
 	errEndpointNotBidirectional = "scaci.error.endpoint_not_bidirectional"
+	errDownlinkCommandRefQueued = "scaci.error.downlink_command_ref_queued"
+	errDownlinkDeadlineElapsed  = "scaci.error.downlink_deadline_elapsed"
 
 	// ErrCntDependMismatch indicates a mismatch between cntDepend flag and packet count array (SCACI §3.10.2).
 	ErrCntDependMismatch = errCntDependMismatch
@@ -148,6 +150,10 @@ const (
 	ErrFailedPersistDownlink = errFailedPersistDownlink
 	// ErrEndpointNotBidirectional refuses a downlink for an endpoint that opens no downlink window.
 	ErrEndpointNotBidirectional = errEndpointNotBidirectional
+	// ErrDownlinkCommandRefQueued reports an MQTT command whose ref already queued a downlink.
+	ErrDownlinkCommandRefQueued = errDownlinkCommandRefQueued
+	// ErrDownlinkDeadlineElapsed refuses an MQTT command whose deadline passed before it could be queued.
+	ErrDownlinkDeadlineElapsed = errDownlinkDeadlineElapsed
 
 	// DL Data Revoke operation errors
 	errDownlinkNotFound = "scaci.error.downlink_not_found"
@@ -672,6 +678,20 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Severity:    "error",
 		POSIXCode:   POSIX_EINVAL,
 	},
+	errDownlinkCommandRefQueued: {
+		Token:       errDownlinkCommandRefQueued,
+		Message:     "The organization already queued a downlink for the endpoint under this command ref",
+		SpecSection: specMQTTCommandDown,
+		Severity:    "warning",
+		POSIXCode:   POSIX_EEXIST,
+	},
+	errDownlinkDeadlineElapsed: {
+		Token:       errDownlinkDeadlineElapsed,
+		Message:     "The command's deadline passed before its downlink could be queued",
+		SpecSection: specMQTTCommandDown,
+		Severity:    "warning",
+		POSIXCode:   POSIX_ETIMEDOUT,
+	},
 	errEndpointNotBidirectional: {
 		Token:       errEndpointNotBidirectional,
 		Message:     "Endpoint is not bidirectional and cannot receive downlinks",
@@ -918,6 +938,11 @@ var errorDefinitions = map[string]ErrorDefinition{
 		Severity:    "error",
 	},
 }
+
+// specMQTTCommandDown cites the document that defines the conditions of an
+// MQTT command/down, which no SCACI section describes: the ref accepted once
+// and the deadline.
+const specMQTTCommandDown = "KiloCenter MQTT command/down (GitBook 04-Integrations/03-mqtt-first-steps.md)"
 
 // Fallback error-definition fields for tokens missing from the catalog.
 const (

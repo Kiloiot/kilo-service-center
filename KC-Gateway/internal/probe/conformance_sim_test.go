@@ -29,9 +29,11 @@ const (
 	settleInterval = 700 * time.Millisecond
 )
 
-// simBS is a simulated base station (SIM-BS).
+// simBS is a simulated base station (SIM-BS); session is the snBsUuid of its
+// BSSCI session.
 type simBS struct {
 	*peer
+	session []byte
 }
 
 // connectStation opens a fresh BSSCI session for the station (a new
@@ -39,16 +41,31 @@ type simBS struct {
 // conRsp, conCmp (BSSCI §3.3).
 func connectStation(t *testing.T, st station) *simBS {
 	t.Helper()
+	return openStation(t, st, randomBytes(t, sessionKeyLen), 0)
+}
+
+// resumeStation reconnects the station under prev's snBsUuid, so the SC
+// resumes prev's session (BSSCI §1), with operation ids continuing from prev's.
+func resumeStation(t *testing.T, st station, prev *simBS) *simBS {
+	t.Helper()
+	return openStation(t, st, prev.session, prev.nextOp.Load())
+}
+
+// openStation connects the station under the session uuid, its own
+// operation ids continuing after lastOp.
+func openStation(t *testing.T, st station, session []byte, lastOp int64) *simBS {
+	t.Helper()
 	conn := dialTLS(t, envBSSCIAddr, st.cert, bssciTLSMin)
 	t.Cleanup(func() { time.Sleep(stationSettle) }) // runs after the peer's close
-	bs := &simBS{peer: newPeer(t, st.cert, conn, mioty.MIOTYFrameIdentifier)}
+	bs := &simBS{peer: newPeer(t, st.cert, conn, mioty.MIOTYFrameIdentifier), session: session}
+	bs.nextOp.Store(lastOp)
 	bs.replyFields[cmdStatus] = func() map[string]interface{} {
 		return map[string]interface{}{keyCode: 0, keyMessage: statusOK, keyTime: time.Now().UnixNano(), keyDutyCycle: 0.0}
 	}
 	bs.start()
 	con := map[string]interface{}{
 		keyCommand: cmdCon, keyOpID: 0, keyVersion: protocolVersion, keyBsEui: st.eui, keyVendor: simVendor,
-		keyModel: simModel, keyName: st.cert, keyBidi: true, keySnBsUUID: numeric(randomBytes(t, sessionKeyLen)),
+		keyModel: simModel, keyName: st.cert, keyBidi: true, keySnBsUUID: numeric(session),
 	}
 	from := bs.mark()
 	require.NoError(t, bs.write(con))

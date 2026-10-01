@@ -81,12 +81,14 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	registrationWindow := registrationscope.New(infra.Repos.Endpoints)
 	grpcSvcBundle := grpcservices.NewGRPCServices(
 		infra.Repos.Endpoints,
-		infra.Repos.BaseStations,
+		grpcservices.BaseStationServiceDeps{
+			Store: infra.Repos.BaseStations, Protocol: &cfg.Protocol,
+			Sessions: protocol.BSSCIServer, Downlinks: protocol.DownlinkReclaimer,
+		},
 		infra.Repos.Downlinks,
 		infra.Repos.DownlinkQueueReader,
 		protocol.EndpointIndex,
 		registrationWindow,
-		&cfg.Protocol,
 	)
 
 	// Extract Service Center identity for gRPC GetReleaseInfo

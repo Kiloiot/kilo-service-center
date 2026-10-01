@@ -16,7 +16,7 @@ import (
 // dlDataQue operations reissued on resume can still be confirmed by a
 // dlDataQueRsp.
 func (s *Server) reclaimStationReservations(ctx context.Context, session *Session, reissued []*PendingOperation) {
-	if _, err := s.downlinkReclaimer.ReclaimReservations(ctx, session.BaseStationEUI, reissuedQueueIDs(reissued)); err != nil {
+	if _, err := s.downlinkReclaimer.ReclaimReservations(ctx, session.BaseStationEUI, queueIDsOf(reissued, mioty.CmdDLDataQueue)); err != nil {
 		s.logger.ErrorContext(ctx, LogBSSCIFailedToReclaimReservations,
 			logger.FieldBsEui, session.BaseStationEUI,
 			logger.FieldError, err)
@@ -45,12 +45,12 @@ func (s *Server) reclaimEndpointQueue(ctx context.Context, session *Session, own
 	}
 }
 
-// reissuedQueueIDs lists the service center queue ids of the dlDataQue
-// operations among the reissued pending operations.
-func reissuedQueueIDs(ops []*PendingOperation) []int64 {
+// queueIDsOf lists the service center queue ids of the operations of the
+// command among the pending operations.
+func queueIDsOf(ops []*PendingOperation, command string) []int64 {
 	var queIDs []int64
 	for _, op := range ops {
-		if op.OperationType != mioty.CmdDLDataQueue || op.Metadata == nil {
+		if op.OperationType != command || op.Metadata == nil {
 			continue
 		}
 		if queID, err := coerceInt64(op.Metadata[models.EventDetailKeyQueID]); err == nil {

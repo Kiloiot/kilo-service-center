@@ -13,6 +13,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/internal/sqlcleanup"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
@@ -21,12 +22,21 @@ import (
 // DownlinkQueueWriter enqueues downlinks and changes them while no base
 // station holds them yet.
 type DownlinkQueueWriter struct {
-	db    sqlx.ExtContext
+	db    *sqlx.DB
 	clock clock.Clock
 }
 
+// storedTimePrecision is the resolution of a PostgreSQL timestamptz; times
+// are cut to it before they are compared, so the comparison sees what is stored.
+const storedTimePrecision = time.Microsecond
+
 // EnqueueDownlink adds a downlink to the queue; it waits for a downlink
-// window for lifetime from now and then expires.
+// window for lifetime from now, or until the deadline of the MQTT command
+// that queued it when that comes first, and then expires. A ref the
+// organization already queued for the endpoint queues nothing:
+// storage.ErrDownlinkRefTaken, whether or not the deadline passed since. A
+// deadline that is not after the moment the downlink is queued:
+// storage.ErrDownlinkDeadlineElapsed.
 func (r *DownlinkQueueWriter) EnqueueDownlink(ctx context.Context, downlink *storage.DownlinkMessage, lifetime time.Duration) (*storage.DownlinkMessage, error) {
 	// Every queue row must carry its owning organization: dispatch derives the
 	// delivery organization from the row, so an ownerless row is undeliverable.
@@ -45,6 +55,73 @@ func (r *DownlinkQueueWriter) EnqueueDownlink(ctx context.Context, downlink *sto
 	if err != nil {
 		return nil, err
 	}
+	command := storage.DownlinkCommandRef{
+		TenantID: tenantID, OrganizationID: *downlink.OrganizationID, EpEUI: mioty.EUI64FromBytes(epEuiBytes), Ref: downlink.Ref,
+	}
+	enqueuedAt := r.clock.Now().Truncate(storedTimePrecision)
+	err = r.inCommandTransaction(ctx, command, func(tx *sqlx.Tx) error {
+		if err := admitDeadline(ctx, tx, command, downlink.ExpiresAt, enqueuedAt); err != nil {
+			return err
+		}
+		return insertQueuedDownlink(ctx, tx, downlink, epEuiBytes, tenantID, userDataJSON, enqueuedAt, lifetime)
+	})
+	if err != nil {
+		return nil, err
+	}
+	downlink.UpdatedAt = downlink.CreatedAt
+	return downlink, nil
+}
+
+// inCommandTransaction runs enqueue in a transaction that, for a command with
+// a ref, first takes the lock of that ref, so a reception of the same command
+// waits until the first one committed or rolled back and then sees its row.
+func (r *DownlinkQueueWriter) inCommandTransaction(ctx context.Context, command storage.DownlinkCommandRef, enqueue func(*sqlx.Tx) error) (err error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapEnqueueDownlink, err)
+	}
+	defer sqlcleanup.RollbackUncommitted(tx, errWrapRollbackTransaction, &err)
+	if command.Ref != "" {
+		if _, err = tx.ExecContext(ctx, sqlLockCommandRef, command.TenantID, command.OrganizationID, mioty.EUI64Bytes(command.EpEUI), command.Ref); err != nil {
+			return fmt.Errorf("%s: %w", errWrapEnqueueDownlink, err)
+		}
+	}
+	if err = enqueue(tx); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("%s: %w", errWrapEnqueueDownlink, err)
+	}
+	return nil
+}
+
+// admitDeadline refuses a downlink whose command deadline, at the stored
+// precision, is not after enqueuedAt, unless the command's ref names a
+// downlink already queued, which reports the repeat instead of a refusal of
+// the first command.
+func admitDeadline(ctx context.Context, tx sqlx.QueryerContext, command storage.DownlinkCommandRef, expiresAt *time.Time, enqueuedAt time.Time) error {
+	if expiresAt == nil || expiresAt.Truncate(storedTimePrecision).After(enqueuedAt) {
+		return nil
+	}
+	if command.Ref == "" {
+		return storage.ErrDownlinkDeadlineElapsed
+	}
+	queued, err := commandQueued(ctx, tx, command)
+	switch {
+	case err != nil:
+		return fmt.Errorf("%s: %w", errWrapEnqueueDownlink, err)
+	case queued:
+		return storage.ErrDownlinkRefTaken
+	default:
+		return storage.ErrDownlinkDeadlineElapsed
+	}
+}
+
+// insertQueuedDownlink inserts the pending row, its deadline cut to the stored
+// precision so it is never stored at or before enqueuedAt once admitted.
+func insertQueuedDownlink(ctx context.Context, tx *sqlx.Tx, downlink *storage.DownlinkMessage, epEUI []byte, tenantID int64,
+	userDataJSON []byte, enqueuedAt time.Time, lifetime time.Duration,
+) error {
 	var packetCntArray interface{}
 	if len(downlink.PacketCntArray) > 0 {
 		packetCntArray = pq.Array(downlink.PacketCntArray)
@@ -53,25 +130,56 @@ func (r *DownlinkQueueWriter) EnqueueDownlink(ctx context.Context, downlink *sto
 	if maxAttempts == 0 {
 		maxAttempts = defaultDownlinkMaxAttempts
 	}
-
-	enqueuedAt := r.clock.Now()
-	err = r.db.QueryRowxContext(ctx, sqlEnqueueDownlink,
-		epEuiBytes, tenantID, downlink.OrganizationID, queuePayload(downlink.Payload),
+	var deadline *time.Time
+	if downlink.ExpiresAt != nil {
+		truncated := downlink.ExpiresAt.Truncate(storedTimePrecision)
+		deadline = &truncated
+	}
+	err := tx.QueryRowxContext(ctx, sqlEnqueueDownlink,
+		epEUI, tenantID, downlink.OrganizationID, queuePayload(downlink.Payload),
 		downlink.Priority, downlink.Status, downlink.Attempts, maxAttempts,
 		downlink.QueID, downlink.CntDepend, packetCntArray, int(downlink.Format),
 		downlink.ResponseExp, downlink.ResponsePrio, downlink.DlWindReq, downlink.ExpOnly,
 		downlink.DlRxStatQry, userDataJSON, applicationQueueIDParam(downlink.ACQueID),
-		enqueuedAt, enqueuedAt.Add(lifetime), optionalEUIParam(downlink.ACEUI), downlink.Ref,
+		enqueuedAt, enqueuedAt.Add(lifetime), optionalEUIParam(downlink.ACEUI), downlink.Ref, deadline,
 	).Scan(&downlink.ID, &downlink.CreatedAt)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", errWrapEnqueueDownlink, classifyEnqueueError(err))
+		return fmt.Errorf("%s: %w", errWrapEnqueueDownlink, classifyEnqueueError(err))
 	}
-	downlink.UpdatedAt = downlink.CreatedAt
-	return downlink, nil
+	return nil
 }
 
+// CommandQueued reports whether the organization already queued a downlink
+// for the endpoint under the MQTT command's ref, in flight or finished.
+func (r *DownlinkQueueWriter) CommandQueued(ctx context.Context, command storage.DownlinkCommandRef) (bool, error) {
+	queued, err := commandQueued(ctx, r.db, command)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", errWrapCommandQueued, err)
+	}
+	return queued, nil
+}
+
+// commandQueued runs sqlCommandRefQueued for the command.
+func commandQueued(ctx context.Context, db sqlx.QueryerContext, command storage.DownlinkCommandRef) (bool, error) {
+	var queued bool
+	err := db.QueryRowxContext(ctx, sqlCommandRefQueued,
+		command.TenantID, command.OrganizationID, mioty.EUI64Bytes(command.EpEUI), command.Ref).Scan(&queued)
+	return queued, err
+}
+
+// sqlLockCommandRef serializes the receptions of one MQTT command, named by
+// its tenant, organization, endpoint and ref, for the rest of the transaction.
+const sqlLockCommandRef = `SELECT pg_advisory_xact_lock(hashtextextended(concat_ws(chr(31), $1::text, $2::text, encode($3::bytea, 'hex'), $4::text), 0))`
+
+// sqlCommandRefQueued reports whether the organization queued a downlink for
+// the endpoint under the ref.
+const sqlCommandRefQueued = `
+	SELECT EXISTS (SELECT 1 FROM downlink_queue
+	               WHERE tenant_id = $1 AND organization_id = $2 AND ep_eui = $3 AND ref = $4)`
+
 // sqlEnqueueDownlink inserts a pending row whose window opens at $20 and
-// closes at $21; an empty ref ($23) is stored as NULL.
+// closes at $21 or the command's deadline $24, whichever comes first (LEAST
+// ignores a NULL deadline); an empty ref ($23) is stored as NULL.
 const sqlEnqueueDownlink = `
 	INSERT INTO downlink_queue (
 		ep_eui, tenant_id, organization_id, payload,
@@ -85,7 +193,7 @@ const sqlEnqueueDownlink = `
 		$5, $6, $7, $8,
 		$9, $10, $11, $12,
 		$13, $14, $15, $16,
-		$17, $18, $19, $20, $20, $21,
+		$17, $18, $19, $20, $20, LEAST($21::timestamptz, $24::timestamptz),
 		$22, NULLIF($23::text, '')
 	) RETURNING id, created_at`
 
@@ -97,18 +205,23 @@ func optionalEUIParam(eui *uint64) interface{} {
 	return mioty.EUI64Bytes(*eui)
 }
 
-// classifyEnqueueError separates the two queue id collisions an insert can
-// hit: the service center's own que_id, which a fresh id resolves, and the
+// classifyEnqueueError separates the collisions an insert can hit: the
+// service center's own que_id, which a fresh id resolves, the MQTT command's
+// ref, which the organization already queued for the endpoint, and the
 // Application Center's id, which its organization already has in flight.
 func classifyEnqueueError(err error) error {
 	var pqErr *pq.Error
 	if !errors.As(err, &pqErr) || pqErr.Code != pqCodeUniqueViolation {
 		return err
 	}
-	if pqErr.Constraint == constraintDownlinkQueueID {
+	switch pqErr.Constraint {
+	case constraintDownlinkQueueID:
 		return storage.ErrDownlinkQueueIDTaken
+	case constraintDownlinkCommandRef:
+		return storage.ErrDownlinkRefTaken
+	default:
+		return storage.ErrDuplicateKey
 	}
-	return storage.ErrDuplicateKey
 }
 
 // queuePayload renders a downlink payload for the NOT NULL payload column: a

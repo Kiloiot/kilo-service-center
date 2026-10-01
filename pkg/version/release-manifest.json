@@ -8,7 +8,7 @@
   "artifacts": {
     "kcCore": "KC-Core/bin/kilocenter"
   },
-  "schemaVersion": 188,
+  "schemaVersion": 190,
   "edition": "Community Edition",
   "editionCode": "ce",
   "licenseId": "AGPL-3.0-or-later",
