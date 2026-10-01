@@ -27,13 +27,14 @@ type DownlinkStationOutcomes struct {
 // UpdateDownlinkResult records the result a base station reported for the
 // tenant's downlink it holds, reserved, queued or asked to drop (BSSCI
 // §3.14): only a result proves what became of a downlink being revoked, so a
-// "sent" it reports first is its outcome. It returns
-// the row for its originators. The endpoint, the tenant and the holding
-// station are part of the match, so a station cannot finish another
-// endpoint's, another tenant's or another station's downlink, nor one back
-// in the queue: storage.ErrDownlinkNotFound for each, as for an unknown queue
-// id. A downlink that already finished, expired or revoked included, keeps
-// its outcome: storage.ErrDownlinkFinished.
+// "sent" it reports first is its outcome. It returns the row for its
+// originators. The endpoint, the tenant and the holding station are part of
+// the match, so a station cannot finish another endpoint's, another tenant's
+// or another station's downlink, nor one back in the queue:
+// storage.ErrDownlinkNotFound for each, as for an unknown queue id. A
+// downlink that already finished, expired or revoked included, keeps its
+// outcome: storage.ErrDownlinkFinished, or storage.ErrDownlinkSentAfterExpiry
+// for the first "sent" its holder reports after it ended expired.
 func (r *DownlinkStationOutcomes) UpdateDownlinkResult(ctx context.Context, tenantID int64, bsEUI uint64, result *mioty.DLDataResult) (*storage.DownlinkMessage, error) {
 	var transmissionPacketCnt *int64
 	if result.PacketCnt != nil {
@@ -64,7 +65,7 @@ func (r *DownlinkStationOutcomes) UpdateDownlinkResult(ctx context.Context, tena
 		statusArray(heldStatuses))
 	downlink, err := scanDownlinkOutcome(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, r.finishedOrMissing(ctx, tenantID, result)
+		return nil, r.finishedOrMissing(ctx, tenantID, bsEUI, result)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", errWrapUpdateDownlinkResult, err)
@@ -88,25 +89,45 @@ func resultTransition(result string, now time.Time) (status, transmittedAt inter
 // finishedOrMissing tells a result for a downlink that already finished from
 // one for a downlink the reporting station does not hold: one the tenant's
 // endpoint never had, one another station holds, or one back in the queue. A
-// downlink that finished expired is told apart, since a station's result for
-// it contradicts the expiry its originators were told.
-func (r *DownlinkStationOutcomes) finishedOrMissing(ctx context.Context, tenantID int64, result *mioty.DLDataResult) error {
+// "sent" from the station that held a downlink which then ended expired
+// contradicts the expiry its originators were told; only the first such
+// report is told apart, so a station repeating it cannot multiply it.
+func (r *DownlinkStationOutcomes) finishedOrMissing(ctx context.Context, tenantID int64, bsEUI uint64, result *mioty.DLDataResult) error {
 	var status mioty.DLQueueStatus
-	err := r.db.QueryRowxContext(ctx, `
-		SELECT status FROM downlink_queue
-		WHERE que_id = $1 AND ep_eui = $2 AND tenant_id = $3 AND status = ANY($4::text[])`,
-		result.QueId, mioty.EUI64Bytes(result.EpEui), tenantID, statusArray(mioty.TerminalStatuses())).Scan(&status)
+	var sentAfterExpiry bool
+	err := r.db.QueryRowxContext(ctx, sqlFinishedDownlink,
+		result.QueId, mioty.EUI64Bytes(result.EpEui), tenantID, statusArray(mioty.TerminalStatuses()),
+		mioty.EUI64Bytes(bsEUI), r.clock.Now(), mioty.DLQueueStatusExpired, result.Result == mioty.ResultSent).Scan(&status, &sentAfterExpiry)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return storage.ErrDownlinkNotFound
 	case err != nil:
 		return fmt.Errorf("%s: %w", errWrapUpdateDownlinkResult, err)
-	case status == mioty.DLQueueStatusExpired:
-		return storage.ErrDownlinkExpiredBeforeResult
+	case sentAfterExpiry:
+		return storage.ErrDownlinkSentAfterExpiry
 	default:
 		return storage.ErrDownlinkFinished
 	}
 }
+
+// sqlFinishedDownlink reads the newest finished row of the queue id and, for
+// a "sent" ($8) from the station ($5) that held it when it ended expired
+// ($7), records at $6 that this station reported it sent unless already
+// recorded, telling whether this report recorded it.
+const sqlFinishedDownlink = `
+	WITH finished AS (
+		SELECT id, status, bs_eui FROM downlink_queue
+		WHERE que_id = $1 AND ep_eui = $2 AND tenant_id = $3 AND status = ANY($4::text[])
+		ORDER BY id DESC
+		LIMIT 1
+	), reported AS (
+		UPDATE downlink_queue AS d SET sent_after_expiry_at = $6
+		FROM finished
+		WHERE d.id = finished.id AND $8::boolean AND finished.status = $7 AND finished.bs_eui = $5
+		  AND d.sent_after_expiry_at IS NULL
+		RETURNING d.id
+	)
+	SELECT status, EXISTS (SELECT 1 FROM reported) FROM finished`
 
 // UpdateDownlinkBaseStation records the base station's acceptance of the
 // tenant's downlink (dlDataQueRsp, BSSCI §3.12) while that station still holds

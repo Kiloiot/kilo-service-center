@@ -592,6 +592,9 @@ func (s *sessionService) UpdateSessionCounters(ctx context.Context, session *bss
 	lastBsOpID, lastScOpID := session.OperationCounters()
 	err := s.bsSessionRepo.UpdateOperationIDs(ctx, s.resolvedTenantID(session), session.DbSessionID,
 		lastBsOpID, lastScOpID)
+	if s.sessionRowGone(ctx, session, err) {
+		return nil
+	}
 	if err != nil {
 		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToUpdateDatabaseSession,
 			logger.FieldError, err,
@@ -635,6 +638,9 @@ func (s *sessionService) TerminateSession(ctx context.Context, session *bssci.Se
 	}
 
 	err := s.bsSessionRepo.TerminateSession(ctx, s.resolvedTenantID(session), session.DbSessionID)
+	if s.sessionRowGone(ctx, session, err) {
+		return nil
+	}
 	if err != nil {
 		s.logger.ErrorContext(ctx, bssci.LogBSSCIFailedToTerminateSession,
 			logger.FieldError, err,
@@ -644,4 +650,17 @@ func (s *sessionService) TerminateSession(ctx context.Context, session *bssci.Se
 	}
 
 	return nil
+}
+
+// sessionRowGone tells whether a write found no row for the session: deleting
+// its base station removed the row with the station, so the session has
+// nothing left to persist and its retirement is complete.
+func (s *sessionService) sessionRowGone(ctx context.Context, session *bssci.Session, err error) bool {
+	if !errors.Is(err, storage.ErrNotFound) {
+		return false
+	}
+	s.logger.DebugContext(ctx, LogSessionRowRemovedWithStation,
+		logger.FieldSessionID, session.DbSessionID,
+		logger.FieldEui, session.BaseStationEUI)
+	return true
 }

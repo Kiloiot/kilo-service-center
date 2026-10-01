@@ -189,6 +189,7 @@ var detailProjection = map[string][]string{
 	models.EventTypeDLDataRevoked:              downlinkOpKeys,
 	models.EventTypeDLDataQueueAcknowledged:    downlinkOpKeys,
 	models.EventTypeDLDataSent:                 downlinkOpKeys,
+	models.EventTypeDLDataSentAfterExpiry:      downlinkOpKeys,
 	models.EventTypeDLDataExpired:              downlinkOpKeys,
 	models.EventTypeDLDataInvalid:              downlinkOpKeys,
 	models.EventTypeDLDataUnknownResult:        downlinkOpKeys,

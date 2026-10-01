@@ -55,15 +55,15 @@ type revokeAnswers struct {
 func NewRevokeAnswers(deps RevokeAnswerDeps) (RevokeAnswerer, error) {
 	switch {
 	case deps.Logger == nil:
-		return nil, ErrNilDownlinkServiceLogger
+		return nil, ErrNilRevokeAnswersLogger
 	case deps.Tenants == nil:
-		return nil, ErrNilTenantResolver
+		return nil, ErrNilRevokeAnswersTenants
 	case deps.Revocations == nil:
-		return nil, ErrNilDownlinkRevocationWriter
+		return nil, ErrNilRevokeAnswersRevocations
 	case deps.Expiries == nil:
-		return nil, ErrNilStationResultReporter
+		return nil, ErrNilRevokeAnswersExpiries
 	case deps.Serializer == nil:
-		return nil, ErrNilQueueSerializer
+		return nil, ErrNilRevokeAnswersSerializer
 	case len(deps.NotHeldCodes) == 0:
 		return nil, ErrNoRevokeNotHeldCodes
 	}

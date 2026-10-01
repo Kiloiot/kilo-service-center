@@ -2,6 +2,8 @@ package bssci
 
 import (
 	"context"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,4 +67,24 @@ func TestHandleError_OtherOperationsFailNoDownlink(t *testing.T) {
 
 	assert.Empty(t, recorder.rejections)
 	assert.True(t, conn.SeenCommand(mioty.CmdErrorAck))
+}
+
+// TestHandleError_StationMessageIsLoggedBoundedAndQuoted: the free text a
+// base station puts in an error frame is logged quoted and cut, so it can
+// neither forge a log line nor flood the log.
+func TestHandleError_StationMessageIsLoggedBoundedAndQuoted(t *testing.T) {
+	recorded := bsscitest.NewRecordingLogger()
+	server := NewTestServerWithMemoryStatusService(recorded, nil, nil, 1)
+	session := &Session{
+		ProtocolSessionState: ProtocolSessionState{ID: "chatty-station", BaseStationEUI: TestBsEui04, Encoding: EncodingJSON, DbSessionID: 1},
+		Conn:                 &bsscitest.TestConn{Encoding: "json"},
+	}
+	forged := "busy\nlevel=error msg=forged " + strings.Repeat("x", 2*maxLoggedErrorMessageBytes)
+
+	require.NoError(t, server.handleError(session, &Message{Command: mioty.CmdError, OpId: queueErrorOpID},
+		map[string]interface{}{"code": int64(POSIX_EAGAIN), "message": forged}))
+
+	entries := recorded.FilterMessage(LogBSSCIBaseStationReportedError)
+	require.Len(t, entries, 1)
+	assert.Equal(t, strconv.Quote(forged[:maxLoggedErrorMessageBytes]), entries[0].FieldMap()[logger.FieldMessage])
 }

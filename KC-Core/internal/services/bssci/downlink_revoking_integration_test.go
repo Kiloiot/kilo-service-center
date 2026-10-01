@@ -23,7 +23,9 @@ const (
 	revokingTenant   = int64(1)
 	revokingEndpoint = uint64(0x70B3D59CD0000341)
 	revokingStation  = uint64(0x70B3D59CD00009E6)
-	revokingBatch    = 10
+	// revokingRemovedStation has no registration, as after a deletion that left downlinks held.
+	revokingRemovedStation = uint64(0x70B3D59CD00009E7)
+	revokingBatch          = 10
 	// revokingSweepInterval never elapses in a test, which sweeps by hand.
 	revokingSweepInterval = time.Hour
 )
@@ -66,11 +68,12 @@ func newRevokingStack(t *testing.T, repos *postgres.Repositories) *revokingStack
 	require.NoError(t, err)
 	asked := &askedStations{}
 	sweep, err := downlinkexpiry.NewWorker(downlinkexpiry.Dependencies{
-		Queue: repos.Downlinks, Reporter: f.reporter, Revoker: asked, QueueTenants: resolver, Logger: logger.NewNop(),
+		Queue: repos.Downlinks, Removed: repos.Downlinks, Reporter: f.reporter, Revoker: asked, QueueTenants: resolver, Logger: logger.NewNop(),
 	}, downlinkexpiry.Config{Interval: revokingSweepInterval, BatchSize: revokingBatch})
 	require.NoError(t, err)
 	reclaimer, err := NewDownlinkReclaimer(DownlinkReclaimerDeps{
-		Store: repos.Downlinks, Revocations: repos.Downlinks, Events: &requeueRecorder{}, Expiries: f.reporter, Tenants: resolver, Logger: logger.NewNop(),
+		Store: repos.Downlinks, Revocations: repos.Downlinks, Removed: repos.Downlinks, Events: &requeueRecorder{}, Expiries: f.reporter,
+		Tenants: resolver, Logger: logger.NewNop(),
 	})
 	require.NoError(t, err)
 	return &revokingStack{reporter: f, svc: svc, sweep: sweep, asked: asked, reclaimer: reclaimer}
@@ -91,6 +94,11 @@ func (s *revokingStack) published(t *testing.T) []mioty.DLDataResult {
 func seedOverdueQueued(t *testing.T, db *postgres.DB, queIDs ...int64) {
 	t.Helper()
 	ctx := testutil.TestContext()
+	_, err := db.Exec(ctx, `
+		INSERT INTO basestations (bs_eui, name, tenant_id, is_online, connection_type, service_center_url, created_at, updated_at)
+		VALUES ($1, 'revoking-station', $2, true, 'bssci', 'tls://localhost:5000', NOW(), NOW())
+		ON CONFLICT (bs_eui) DO NOTHING`, mioty.EUI64Bytes(revokingStation), revokingTenant)
+	require.NoError(t, err, "register the holding station")
 	for _, queID := range queIDs {
 		_, err := db.Exec(ctx, `
 			INSERT INTO downlink_queue (que_id, ep_eui, tenant_id, payload, status, priority, organization_id, bs_eui,
@@ -128,10 +136,10 @@ func TestRevokingDownlink_ExpiresOnlyWhenTheStationConfirms(t *testing.T) {
 	seedOverdueQueued(t, db, 3100001)
 	ctx := testutil.TestContext()
 
-	stack.sweep.SweepOnce(ctx)
+	stack.sweep.SweepOnce(ctx, time.Now())
 	assert.Equal(t, []int64{3100001}, stack.asked.asked, "the holding station is asked to drop it")
 	assert.Equal(t, mioty.DLQueueStatusRevoking, revokingStatus(t, db, 3100001))
-	stack.sweep.SweepOnce(ctx)
+	stack.sweep.SweepOnce(ctx, time.Now())
 	assert.Len(t, stack.asked.asked, 1, "a downlink being revoked is not asked again by the sweep")
 
 	_, revoked, err := stack.svc.ProcessRevokeResponse(ctx, revokingSession(), -31, 3100001, revokingEndpoint)
@@ -160,7 +168,7 @@ func TestRevokingDownlink_ASentResultRacingTheRevokeIsReportedSent(t *testing.T)
 	stack := newRevokingStack(t, repos)
 	seedOverdueQueued(t, db, 3100011)
 	ctx := testutil.TestContext()
-	stack.sweep.SweepOnce(ctx)
+	stack.sweep.SweepOnce(ctx, time.Now())
 	packetCnt := uint32(12)
 	txTime := dispatchTestNow.UnixNano()
 	sent := &mioty.DLDataResult{EpEui: revokingEndpoint, QueId: 3100011, Result: mioty.ResultSent, PacketCnt: &packetCnt, TxTime: &txTime}
@@ -197,7 +205,7 @@ func TestRevokingDownlink_SurvivesARestart(t *testing.T) {
 	repos := postgres.NewRepositories(db)
 	seedOverdueQueued(t, db, 3100021)
 	before := newRevokingStack(t, repos)
-	before.sweep.SweepOnce(testutil.TestContext())
+	before.sweep.SweepOnce(testutil.TestContext(), time.Now())
 	assert.Empty(t, before.published(t))
 
 	after := newRevokingStack(t, postgres.NewRepositories(db))
@@ -224,7 +232,7 @@ func TestRevokingDownlink_AFreshSessionOfTheHolderExpiresIt(t *testing.T) {
 	stack := newRevokingStack(t, repos)
 	seedOverdueQueued(t, db, 3100031)
 	ctx := testutil.TestContext()
-	stack.sweep.SweepOnce(ctx)
+	stack.sweep.SweepOnce(ctx, time.Now())
 
 	_, err := stack.reclaimer.ReclaimReservations(ctx, revokingStation, nil)
 	require.NoError(t, err)
@@ -253,28 +261,30 @@ func TestRevokingDownlink_AnUnansweredRevokeIsAskedAgainOncePerInterval(t *testi
 	seedOverdueQueued(t, db, 3100041)
 	ctx := testutil.TestContext()
 
-	stack.sweep.SweepOnce(ctx)
+	stack.sweep.SweepOnce(ctx, time.Now())
 	revoked, err := stack.svc.ProcessRevokeRefusal(ctx, revokingSession(), bssci.RevokeRefusal{
 		QueueID: 3100041, EndpointEUI: revokingEndpoint, Code: bssci.POSIX_EIO,
 	})
 	require.NoError(t, err)
 	assert.False(t, revoked)
-	stack.sweep.SweepOnce(ctx)
+	stack.sweep.SweepOnce(ctx, time.Now())
 	assert.Equal(t, []int64{3100041}, stack.asked.asked, "not asked again inside the interval")
 
 	_, err = db.Exec(ctx, `UPDATE downlink_queue SET revoke_asked_at = NOW() - INTERVAL '2 hours' WHERE que_id = 3100041`)
 	require.NoError(t, err)
-	stack.sweep.SweepOnce(ctx)
-	stack.sweep.SweepOnce(ctx)
+	stack.sweep.SweepOnce(ctx, time.Now())
+	stack.sweep.SweepOnce(ctx, time.Now())
 
 	assert.Equal(t, []int64{3100041, 3100041}, stack.asked.asked, "asked again once the interval passed, once")
 	assert.Equal(t, mioty.DLQueueStatusRevoking, revokingStatus(t, db, 3100041), "time passing ends nothing")
 	assert.Empty(t, stack.published(t))
 }
 
-// Over PostgreSQL: a deleted base station can never transmit what it held.
-// The downlink it was asked to drop ends expired and is reported, and the
-// downlink it held queued returns to pending for another station.
+// Over PostgreSQL: a deleted base station never reports again, and one still
+// powered may transmit what it held. The downlink it was asked to drop and the
+// one it held queued both end expired and are reported; neither returns to the
+// queue, where the endpoint could receive it twice. A downlink its deletion
+// could not end is ended by the next sweep.
 func TestRevokingDownlink_ADeletedHolderExpiresIt(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -282,19 +292,28 @@ func TestRevokingDownlink_ADeletedHolderExpiresIt(t *testing.T) {
 	db, cleanup := teststore.Setup(t)
 	defer cleanup()
 	stack := newRevokingStack(t, postgres.NewRepositories(db))
-	seedOverdueQueued(t, db, 3100051, 3100052)
+	seedOverdueQueued(t, db, 3100051, 3100052, 3100053)
 	ctx := testutil.TestContext()
-	stack.sweep.SweepOnce(ctx)
-	_, err := db.Exec(ctx, `UPDATE downlink_queue SET status = $1, latest_at = NOW() + INTERVAL '1 hour' WHERE que_id = 3100052`,
+	stack.sweep.SweepOnce(ctx, time.Now())
+	_, err := db.Exec(ctx, `UPDATE downlink_queue SET status = $1, latest_at = NOW() + INTERVAL '1 hour' WHERE que_id IN (3100052, 3100053)`,
 		mioty.DLQueueStatusQueued)
 	require.NoError(t, err)
+	_, err = db.Exec(ctx, `UPDATE downlink_queue SET bs_eui = $1 WHERE que_id = 3100053`, mioty.EUI64Bytes(revokingRemovedStation))
+	require.NoError(t, err)
 
-	stack.reclaimer.ReleaseDeletedStation(ctx, revokingStation)
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	stack.reclaimer.EndDeletedStationDownlinks(cancelled, revokingStation)
 
 	assert.Equal(t, mioty.DLQueueStatusExpired, revokingStatus(t, db, 3100051))
-	assert.Equal(t, mioty.DLQueueStatusPending, revokingStatus(t, db, 3100052))
+	assert.Equal(t, mioty.DLQueueStatusExpired, revokingStatus(t, db, 3100052), "a queued downlink does not return to the queue")
+	assert.Equal(t, mioty.DLQueueStatusQueued, revokingStatus(t, db, 3100053), "another station's downlink stays")
+
+	stack.sweep.SweepOnce(ctx, time.Now())
+	assert.Equal(t, mioty.DLQueueStatusExpired, revokingStatus(t, db, 3100053), "the sweep ends what a station without a registration held")
 	published := stack.published(t)
-	require.Len(t, published, 1)
-	assert.Equal(t, uint64(3100051), published[0].QueId)
-	assert.Equal(t, mioty.ResultExpired, published[0].Result)
+	require.Len(t, published, 3)
+	for _, result := range published {
+		assert.Equal(t, mioty.ResultExpired, result.Result, "queue id %d", result.QueId)
+	}
 }

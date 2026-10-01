@@ -24,6 +24,9 @@ const (
 
 const workerTestStation uint64 = 0x70B3D59CD00009E6
 
+// workerTestStart is when the swept sweep started.
+var workerTestStart = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+
 var (
 	errWorkerTestQueue   = errors.New("queue down")
 	errWorkerTestUnknown = errors.New("unidentified downlink")
@@ -49,6 +52,7 @@ func (b *fakeBatches) next(limit int) []*storage.DownlinkMessage {
 // unansweredClaim is one claim of the revocations connected stations left unanswered.
 type unansweredClaim struct {
 	connected     []uint64
+	askedAt       time.Time
 	unansweredFor time.Duration
 }
 
@@ -60,6 +64,7 @@ type fakeQueue struct {
 	held       fakeBatches
 	unanswered fakeBatches
 	claims     []unansweredClaim
+	revokedAt  []time.Time
 	err        error
 	calls      int
 	entered    chan struct{}
@@ -74,15 +79,38 @@ func (q *fakeQueue) ExpireOverdueUnheld(_ context.Context, limit int) ([]*storag
 	return q.take(&q.unheld, limit)
 }
 
-func (q *fakeQueue) RevokeOverdueHeld(_ context.Context, limit int) ([]*storage.DownlinkMessage, error) {
+func (q *fakeQueue) RevokeOverdueHeld(_ context.Context, askedAt time.Time, limit int) ([]*storage.DownlinkMessage, error) {
+	q.mu.Lock()
+	q.revokedAt = append(q.revokedAt, askedAt)
+	q.mu.Unlock()
 	return q.take(&q.held, limit)
 }
 
-func (q *fakeQueue) ClaimUnansweredRevocations(_ context.Context, connected []uint64, unansweredFor time.Duration, limit int) ([]*storage.DownlinkMessage, error) {
+func (q *fakeQueue) ClaimUnansweredRevocations(_ context.Context, connected []uint64, askedAt time.Time, unansweredFor time.Duration, limit int) ([]*storage.DownlinkMessage, error) {
 	q.mu.Lock()
-	q.claims = append(q.claims, unansweredClaim{connected: connected, unansweredFor: unansweredFor})
+	q.claims = append(q.claims, unansweredClaim{connected: connected, askedAt: askedAt, unansweredFor: unansweredFor})
 	q.mu.Unlock()
 	return q.take(&q.unanswered, limit)
+}
+
+// askTimes lists the ask times the sweeps recorded on overdue held downlinks.
+func (q *fakeQueue) askTimes() []time.Time {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return append([]time.Time(nil), q.revokedAt...)
+}
+
+// fakeRemovedStations hands out the downlinks held by deleted stations.
+type fakeRemovedStations struct {
+	orphaned fakeBatches
+	err      error
+}
+
+func (r *fakeRemovedStations) ExpireHeldAtRemovedStations(_ context.Context, limit int) ([]*storage.DownlinkMessage, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.orphaned.next(limit), nil
 }
 
 func (q *fakeQueue) take(from *fakeBatches, limit int) ([]*storage.DownlinkMessage, error) {
@@ -95,11 +123,19 @@ func (q *fakeQueue) take(from *fakeBatches, limit int) ([]*storage.DownlinkMessa
 	return from.next(limit), nil
 }
 
-// fakeReporter records every expired downlink it is asked to report.
+// fakeReporter records every expired downlink it is asked to report, in the
+// queue or at the station that held it.
 type fakeReporter struct {
-	mu       sync.Mutex
-	reported []int64
-	err      error
+	mu        sync.Mutex
+	reported  []int64
+	atStation []int64
+	err       error
+}
+
+func (r *fakeReporter) ReportExpiredAtStation(_ context.Context, downlink *storage.DownlinkMessage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.atStation = append(r.atStation, downlink.QueID)
 }
 
 func (r *fakeReporter) ReportExpiredInQueue(_ context.Context, downlink *storage.DownlinkMessage) error {
@@ -137,6 +173,7 @@ func (f *fakeQueueTenants) UnregisterQueueTenant(queueID int64) {
 
 type workerFixture struct {
 	queue    *fakeQueue
+	removed  *fakeRemovedStations
 	reporter *fakeReporter
 	revoker  *fakeRevoker
 	tenants  *fakeQueueTenants
@@ -145,6 +182,7 @@ type workerFixture struct {
 func (f *workerFixture) deps() Dependencies {
 	return Dependencies{
 		Queue:        f.queue,
+		Removed:      f.removed,
 		Reporter:     f.reporter,
 		Revoker:      f.revoker,
 		QueueTenants: f.tenants,
@@ -155,6 +193,7 @@ func (f *workerFixture) deps() Dependencies {
 func newWorkerFixture(batches ...[]*storage.DownlinkMessage) *workerFixture {
 	return &workerFixture{
 		queue:    &fakeQueue{unheld: fakeBatches{batches: batches}},
+		removed:  &fakeRemovedStations{},
 		reporter: &fakeReporter{},
 		revoker:  &fakeRevoker{},
 		tenants:  &fakeQueueTenants{},
@@ -183,7 +222,7 @@ func revokingRow(queID int64) *storage.DownlinkMessage {
 func TestSweepOnce_ReportsEachExpiredDownlink(t *testing.T) {
 	f := newWorkerFixture([]*storage.DownlinkMessage{expiredRow(501), expiredRow(502)}, nil)
 
-	f.worker(t).SweepOnce(testutil.TestContext())
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
 
 	assert.Equal(t, []int64{501, 502}, f.reporter.reported)
 	assert.Equal(t, []int64{501, 502}, f.tenants.forgotten)
@@ -197,7 +236,7 @@ func TestSweepOnce_AReportFailureDoesNotStopTheSweep(t *testing.T) {
 	f := newWorkerFixture([]*storage.DownlinkMessage{expiredRow(503)})
 	f.reporter.err = errWorkerTestUnknown
 
-	f.worker(t).SweepOnce(testutil.TestContext())
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
 
 	assert.Equal(t, []int64{503}, f.reporter.reported)
 	assert.Equal(t, 2, f.queue.calls, "both sweeps run")
@@ -211,7 +250,7 @@ func TestSweepOnce_AsksTheHoldingStationAndReportsNothing(t *testing.T) {
 	f := newWorkerFixture()
 	f.queue.held.batches = [][]*storage.DownlinkMessage{{revokingRow(505), revokingRow(506)}, {revokingRow(507)}}
 
-	f.worker(t).SweepOnce(testutil.TestContext())
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
 
 	assert.Equal(t, []int64{505, 506, 507}, f.revoker.revoked)
 	assert.Empty(t, f.reporter.reported, "no outcome is reported before the station answers")
@@ -227,7 +266,7 @@ func TestSweepOnce_AnUnreachableStationDoesNotStopTheSweep(t *testing.T) {
 	f.queue.held.batches = [][]*storage.DownlinkMessage{{revokingRow(508), revokingRow(509)}}
 	f.revoker.err = errWorkerTestStation
 
-	f.worker(t).SweepOnce(testutil.TestContext())
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
 
 	assert.Equal(t, []int64{508, 509}, f.revoker.revoked)
 	assert.Empty(t, f.reporter.reported)
@@ -242,12 +281,12 @@ func TestSweepOnce_AsksAConnectedHolderThatLeftARevokeUnansweredAgain(t *testing
 	f.revoker.connected = []uint64{workerTestStation}
 	f.queue.unanswered.batches = [][]*storage.DownlinkMessage{{revokingRow(510), revokingRow(511)}, {revokingRow(512)}}
 
-	f.worker(t).SweepOnce(testutil.TestContext())
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
 
 	assert.Equal(t, []int64{510, 511, 512}, f.revoker.revoked)
 	require.NotEmpty(t, f.queue.claims)
-	assert.Equal(t, unansweredClaim{connected: []uint64{workerTestStation}, unansweredFor: workerTestInterval}, f.queue.claims[0],
-		"only the connected stations, once per sweep interval")
+	assert.Equal(t, unansweredClaim{connected: []uint64{workerTestStation}, askedAt: workerTestStart, unansweredFor: workerTestInterval}, f.queue.claims[0],
+		"only the connected stations, once per sweep interval, asked at the sweep's start")
 	assert.Empty(t, f.reporter.reported, "time passing reports nothing")
 	assert.Empty(t, f.tenants.forgotten)
 }
@@ -258,7 +297,7 @@ func TestSweepOnce_NoConnectedStationIsAskedNothing(t *testing.T) {
 	f := newWorkerFixture()
 	f.queue.unanswered.batches = [][]*storage.DownlinkMessage{{revokingRow(513)}}
 
-	f.worker(t).SweepOnce(testutil.TestContext())
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
 
 	assert.Empty(t, f.queue.claims)
 	assert.Empty(t, f.revoker.revoked)
@@ -268,7 +307,7 @@ func TestSweepOnce_StopsOnAQueueFailure(t *testing.T) {
 	f := newWorkerFixture()
 	f.queue.err = errWorkerTestQueue
 
-	f.worker(t).SweepOnce(testutil.TestContext())
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
 
 	assert.Equal(t, 2, f.queue.calls, "each sweep stops at its first failure")
 	assert.Empty(t, f.reporter.reported)
@@ -305,6 +344,7 @@ func TestNewWorker_RejectsMissingCollaboratorsAndBadConfig(t *testing.T) {
 	valid := Config{Interval: workerTestInterval, BatchSize: workerTestBatch}
 	missing := map[string]func(*Dependencies){
 		"queue":         func(d *Dependencies) { d.Queue = nil },
+		"removed":       func(d *Dependencies) { d.Removed = nil },
 		"reporter":      func(d *Dependencies) { d.Reporter = nil },
 		"revoker":       func(d *Dependencies) { d.Revoker = nil },
 		"queue tenants": func(d *Dependencies) { d.QueueTenants = nil },
@@ -326,5 +366,54 @@ func TestNewWorker_RejectsMissingCollaboratorsAndBadConfig(t *testing.T) {
 			_, err := NewWorker(f.deps(), cfg)
 			assert.ErrorIs(t, err, errInvalidConfig)
 		})
+	}
+}
+
+// TestSweepOnce_EndsWhatADeletedStationLeftHeld: a downlink held by a station
+// that no longer exists ends expired, is reported as expired at that station
+// and its cached owner is forgotten, batch by batch.
+func TestSweepOnce_EndsWhatADeletedStationLeftHeld(t *testing.T) {
+	f := newWorkerFixture()
+	f.removed.orphaned.batches = [][]*storage.DownlinkMessage{{revokingRow(520), revokingRow(521)}, {revokingRow(522)}}
+
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
+
+	assert.Equal(t, []int64{520, 521, 522}, f.reporter.atStation)
+	assert.Equal(t, []int64{520, 521, 522}, f.tenants.forgotten)
+	assert.Empty(t, f.reporter.reported, "they ended at a station, not in the queue")
+	assert.Equal(t, []int{workerTestBatch, workerTestBatch}, f.removed.orphaned.limits)
+
+	failing := newWorkerFixture()
+	failing.removed.err = errWorkerTestQueue
+	failing.queue.held.batches = [][]*storage.DownlinkMessage{{revokingRow(523)}}
+	failing.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
+	assert.Equal(t, []int64{523}, failing.revoker.revoked, "a failure there leaves the other sweeps running")
+}
+
+// TestSweepOnce_RecordsTheSweepStartAsTheAsk: the overdue downlinks a sweep
+// moves to revoking are asked at its start, so the next sweep, one interval
+// later, finds an unanswered one due.
+func TestSweepOnce_RecordsTheSweepStartAsTheAsk(t *testing.T) {
+	f := newWorkerFixture()
+
+	f.worker(t).SweepOnce(testutil.TestContext(), workerTestStart)
+
+	assert.Equal(t, []time.Time{workerTestStart}, f.queue.askTimes())
+}
+
+// TestStart_AsksAtTheScheduledTicks: the running worker starts each sweep on
+// the grid of whole intervals, so consecutive asks lie whole intervals apart
+// however late a tick fires.
+func TestStart_AsksAtTheScheduledTicks(t *testing.T) {
+	f := newWorkerFixture()
+	stop := f.worker(t).Start(testutil.TestContext())
+	require.Eventually(t, func() bool { return len(f.queue.askTimes()) >= 3 }, workerTestSettle*10, workerTestInterval)
+	stop()
+
+	asks := f.queue.askTimes()
+	for i := 1; i < len(asks); i++ {
+		gap := asks[i].Sub(asks[i-1])
+		assert.Positive(t, gap)
+		assert.Zero(t, gap%workerTestInterval, "sweep %d asked %v after the one before", i, gap)
 	}
 }

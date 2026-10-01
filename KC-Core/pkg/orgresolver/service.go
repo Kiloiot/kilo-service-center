@@ -19,7 +19,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// OrgDirectory resolves organization identity to and from tenant ids.
+// OrgDirectory resolves organization identity to and from tenant ids; a
+// lookup that finds no organization fails with storage.ErrNotFound.
 type OrgDirectory interface {
 	GetTenantByOrgID(ctx context.Context, orgID uuid.UUID) (int64, error)
 	GetOrgByTenantID(ctx context.Context, tenantID int64) (*models.Organization, error)
@@ -103,10 +104,17 @@ func (s *service) LookupTenant(ctx context.Context, orgUUID uuid.UUID) (int64, e
 }
 
 // readTenant resolves an organization UUID to its tenant from the directory.
+// Only an organization the directory does not know is ErrOrgNotFound, and it
+// keeps storage.ErrNotFound in its chain; a directory that cannot answer is
+// ErrOrgLookupFailed, so a caller never takes a transient failure for a
+// missing organization.
 func (s *service) readTenant(ctx context.Context, orgUUID uuid.UUID) (int64, error) {
 	tenantID, err := s.orgRepo.GetTenantByOrgID(ctx, orgUUID)
-	if err != nil {
+	if errors.Is(err, storage.ErrNotFound) {
 		return 0, fmt.Errorf("%w: %s: %w", ErrOrgNotFound, orgUUID, err)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s: %w", ErrOrgLookupFailed, orgUUID, err)
 	}
 	return tenantID, nil
 }

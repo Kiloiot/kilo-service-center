@@ -3,6 +3,7 @@ package orgresolver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -43,10 +44,14 @@ type countingDirectory struct {
 	defaultQueries int
 	defaultOrg     uuid.UUID
 	defaultErr     error
+	tenantErr      error
 }
 
 func (d *countingDirectory) GetTenantByOrgID(context.Context, uuid.UUID) (int64, error) {
 	d.tenantQueries++
+	if d.tenantErr != nil {
+		return 0, d.tenantErr
+	}
 	return testTenant, nil
 }
 
@@ -146,4 +151,29 @@ func TestLookupTenant_FullCacheIsClearedBeforeTheNextEntry(t *testing.T) {
 		assert.Equal(t, testTenant, tenantID)
 	}
 	assert.Equal(t, 3, dir.tenantQueries, "storing the second organization dropped the first")
+}
+
+// Only an organization the directory does not know is "not found"; a
+// directory that cannot answer must never read as a missing organization.
+func TestLookupTenant_TellsMissingOrganizationFromLookupFailure(t *testing.T) {
+	tests := map[string]struct {
+		directoryErr error
+		want         error
+		notWant      error
+		missing      bool
+	}{
+		"unknown organization": {directoryErr: fmt.Errorf("organization: %w", storage.ErrNotFound), want: ErrOrgNotFound, notWant: ErrOrgLookupFailed, missing: true},
+		"directory down":       {directoryErr: errTestDirectory, want: ErrOrgLookupFailed, notWant: ErrOrgNotFound},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			resolver := newTestResolver(t, &countingDirectory{tenantErr: tt.directoryErr}, testMaxEntries, &steppingClock{now: testStart})
+
+			_, err := resolver.LookupTenant(testutil.TestContext(), uuid.New())
+
+			require.ErrorIs(t, err, tt.want)
+			assert.NotErrorIs(t, err, tt.notWant)
+			assert.Equal(t, tt.missing, errors.Is(err, storage.ErrNotFound))
+		})
+	}
 }

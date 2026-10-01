@@ -194,7 +194,7 @@ type noStationSessions struct{}
 
 func (noStationSessions) CloseSessionByEUI(context.Context, uint64) bool { return false }
 
-func (noStationSessions) ReleaseDeletedStation(context.Context, uint64) {}
+func (noStationSessions) EndDeletedStationDownlinks(context.Context, uint64) {}
 
 func TestDeleteBaseStation_PersistsTheDeregistrationInTheDeletingTenantOnly(t *testing.T) {
 	f := newAuditFixture(t, nil)

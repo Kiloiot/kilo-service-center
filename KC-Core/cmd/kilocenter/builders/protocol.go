@@ -377,7 +377,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		return nil, err
 	}
 	downlinkReclaimer, err := bssciservices.NewDownlinkReclaimer(bssciservices.DownlinkReclaimerDeps{
-		Store: infra.Repos.Downlinks, Revocations: infra.Repos.Downlinks, Events: bssciSvcBundle.AuditLogger,
+		Store: infra.Repos.Downlinks, Revocations: infra.Repos.Downlinks, Removed: infra.Repos.Downlinks, Events: bssciSvcBundle.AuditLogger,
 		Expiries: bssciSvcBundle.ResultReporter, Tenants: bssciSvcBundle.TenantResolver, Logger: infra.LoggerIface,
 	})
 	if err != nil {
@@ -938,6 +938,7 @@ func buildDownlinkExpiryWorker(infra *Infrastructure, bundle *bssciservices.BSSC
 	cfg := infra.Config.Protocol.DownlinkExpiry
 	deps := downlinkexpiry.Dependencies{
 		Queue:        infra.Repos.Downlinks,
+		Removed:      infra.Repos.Downlinks,
 		Reporter:     bundle.ResultReporter,
 		Revoker:      revoker,
 		QueueTenants: bundle.TenantResolver,

@@ -68,8 +68,11 @@ type expiredDownlinkOutcomes struct {
 	mockMIOTYDownlinksForDispatch
 }
 
-func (expiredDownlinkOutcomes) UpdateDownlinkResult(context.Context, int64, uint64, *mioty.DLDataResult) (*storage.DownlinkMessage, error) {
-	return nil, storage.ErrDownlinkExpiredBeforeResult
+func (expiredDownlinkOutcomes) UpdateDownlinkResult(_ context.Context, _ int64, _ uint64, result *mioty.DLDataResult) (*storage.DownlinkMessage, error) {
+	if result.Result == mioty.ResultSent {
+		return nil, storage.ErrDownlinkSentAfterExpiry
+	}
+	return nil, storage.ErrDownlinkFinished
 }
 
 // TestProcessDLDataResult_ASentContradictingAnExpiryIsMadeVisible: a station
@@ -107,6 +110,7 @@ func TestProcessDLDataResult_ASentContradictingAnExpiryIsMadeVisible(t *testing.
 			require.Len(t, warned, 1)
 			assert.Equal(t, "WARN", warned[0].Level)
 			require.NotNil(t, f.events.lastEvent, "the contradiction is filed in the events")
+			assert.Equal(t, models.EventTypeDLDataSentAfterExpiry, f.events.lastEvent.EventType, "a filter on sent downlinks does not count it")
 			assert.Equal(t, models.EventTitleDLDataSentAfterExpiry, f.events.lastEvent.Title)
 			assert.Equal(t, models.EventSeverityWarning, f.events.lastEvent.Severity)
 			assert.Equal(t, "3", f.events.lastEvent.TenantID)

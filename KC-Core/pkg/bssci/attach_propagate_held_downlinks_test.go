@@ -52,8 +52,13 @@ func (q *stationQueue) ExpireStationRevocations(context.Context, uint64) ([]*sto
 	return nil, nil
 }
 
-// noStationExpiries reports no downlink expired at a station and caches no queue owner.
+// noStationExpiries reports no downlink expired at a station, ends none for a
+// deleted station and caches no queue owner.
 type noStationExpiries struct{}
+
+func (noStationExpiries) ExpireRemovedStationDownlinks(context.Context, uint64) ([]*storage.DownlinkMessage, error) {
+	return nil, nil
+}
 
 func (noStationExpiries) ReportExpiredAtStation(context.Context, *storage.DownlinkMessage) {}
 
@@ -63,7 +68,8 @@ func (noStationExpiries) UnregisterQueueTenant(int64) {}
 func stationQueueReclaimer(t *testing.T, queue *stationQueue, requeues *requeueLog, log logger.Logger) bssci.DownlinkReclaimer {
 	t.Helper()
 	reclaimer, err := bssciservices.NewDownlinkReclaimer(bssciservices.DownlinkReclaimerDeps{
-		Store: queue, Revocations: queue, Events: requeues, Expiries: noStationExpiries{}, Tenants: noStationExpiries{}, Logger: log,
+		Store: queue, Revocations: queue, Removed: noStationExpiries{}, Events: requeues, Expiries: noStationExpiries{},
+		Tenants: noStationExpiries{}, Logger: log,
 	})
 	require.NoError(t, err)
 	return reclaimer

@@ -119,15 +119,26 @@ func (s *Server) revokeAtHolder(downlink *storage.DownlinkMessage, ownerTenantID
 	if session == nil {
 		return scheduler.ErrSchedulerResourceMissing
 	}
+	if !session.revokeClaims.claim(downlink.QueID) {
+		s.logRevokeInFlight(session, downlink.QueID)
+		return nil
+	}
+	defer session.revokeClaims.release(downlink.QueID)
 	if slices.Contains(queueIDsOf(s.statusSvc.SessionOperations(s.sessionContext(session), session), mioty.CmdDLDataRevoke), downlink.QueID) {
-		s.logger.DebugContext(s.sessionContext(session), LogBSSCIRevokeAlreadyInFlight,
-			logger.FieldQueID, downlink.QueID, logger.FieldBsEui, session.BaseStationEUI)
+		s.logRevokeInFlight(session, downlink.QueID)
 		return nil
 	}
 	if err := s.SendDLDataRevoke(session.ID, epEUI, queID, ownerTenantID); err != nil {
 		return fmt.Errorf("%s: %w", ResolveErrorMessage(errFailedToSendDlDataRev), err)
 	}
 	return nil
+}
+
+// logRevokeInFlight logs a dlDataRev not sent because one for the queue id is
+// already on its way to the station or awaits its answer.
+func (s *Server) logRevokeInFlight(session *Session, queID int64) {
+	s.logger.DebugContext(s.sessionContext(session), LogBSSCIRevokeAlreadyInFlight,
+		logger.FieldQueID, queID, logger.FieldBsEui, session.BaseStationEUI)
 }
 
 // askAgainToDrop asks the connected station again to drop each overdue

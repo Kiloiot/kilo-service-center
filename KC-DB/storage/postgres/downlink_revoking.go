@@ -78,10 +78,11 @@ func (r *DownlinkRevoking) ListStationRevocations(ctx context.Context, bsEUI uin
 
 // ClaimUnansweredRevocations returns up to limit downlinks of any tenant that
 // stay revoking at one of the connected stations although that station was
-// last asked to drop them at least unansweredFor ago, oldest ask first, and
-// records that it is asked again now. Rows another sweep holds locked are
-// skipped.
-func (r *DownlinkRevoking) ClaimUnansweredRevocations(ctx context.Context, connected []uint64, unansweredFor time.Duration, limit int) (claimed []*storage.DownlinkMessage, err error) {
+// last asked to drop them at least unansweredFor before askedAt, oldest ask
+// first, and records askedAt as their ask. askedAt is the start of the sweep
+// that asks, so the sweep one interval later finds them due again. Rows
+// another sweep holds locked are skipped.
+func (r *DownlinkRevoking) ClaimUnansweredRevocations(ctx context.Context, connected []uint64, askedAt time.Time, unansweredFor time.Duration, limit int) (claimed []*storage.DownlinkMessage, err error) {
 	if limit <= 0 || unansweredFor <= 0 {
 		return nil, fmt.Errorf("%s: %w", errWrapClaimUnansweredRevocations, storage.ErrInvalidInput)
 	}
@@ -89,26 +90,14 @@ func (r *DownlinkRevoking) ClaimUnansweredRevocations(ctx context.Context, conne
 	for i, bsEUI := range connected {
 		stations[i] = mioty.EUI64Bytes(bsEUI)
 	}
-	now := r.clock.Now()
+	asked := askedAt.Truncate(storedTimePrecision)
 	rows, err := r.db.QueryxContext(ctx, sqlClaimUnansweredRevocations,
-		mioty.DLQueueStatusRevoking, pq.ByteaArray(stations), now.Add(-unansweredFor), limit, now)
+		mioty.DLQueueStatusRevoking, pq.ByteaArray(stations), asked.Add(-unansweredFor), limit, asked)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", errWrapClaimUnansweredRevocations, err)
 	}
 	defer sqlcleanup.CloseRows(rows, errWrapClaimUnansweredRevocations, &err)
-	for rows.Next() {
-		var holder []byte
-		downlink, scanErr := scanDownlinkOutcome(rows, &holder)
-		if scanErr != nil {
-			return nil, fmt.Errorf("%s: %w", errWrapClaimUnansweredRevocations, scanErr)
-		}
-		downlink.BsEui = mioty.EUI64FromBytes(holder)
-		claimed = append(claimed, revokingOutcome(downlink))
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("%s: %w", errWrapClaimUnansweredRevocations, err)
-	}
-	return claimed, nil
+	return scanOutcomesWithHolder(rows, errWrapClaimUnansweredRevocations, revokingOutcome)
 }
 
 // sqlClaimUnansweredRevocations moves the ask time ($5) of the oldest revoking
@@ -141,6 +130,25 @@ func scanHeldOutcomes(rows *sqlx.Rows, bsEUI uint64, wrap string, mark func(*sto
 			return nil, fmt.Errorf("%s: %w", wrap, err)
 		}
 		downlink.BsEui = bsEUI
+		downlinks = append(downlinks, mark(downlink))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", wrap, err)
+	}
+	return downlinks, nil
+}
+
+// scanOutcomesWithHolder reads outcome rows each followed by its holder, as
+// sqlReturningHeldOutcome returns them, each marked by mark.
+func scanOutcomesWithHolder(rows *sqlx.Rows, wrap string, mark func(*storage.DownlinkMessage) *storage.DownlinkMessage) ([]*storage.DownlinkMessage, error) {
+	var downlinks []*storage.DownlinkMessage
+	for rows.Next() {
+		var holder []byte
+		downlink, err := scanDownlinkOutcome(rows, &holder)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", wrap, err)
+		}
+		downlink.BsEui = mioty.EUI64FromBytes(holder)
 		downlinks = append(downlinks, mark(downlink))
 	}
 	if err := rows.Err(); err != nil {

@@ -30,9 +30,10 @@ var (
 	// ErrDownlinkFinished reports a downlink that already reached its final
 	// state, so a later answer about it changes nothing.
 	ErrDownlinkFinished = errors.New("downlink already finished")
-	// ErrDownlinkExpiredBeforeResult reports a result for a downlink the
-	// service center already ended expired; it is an ErrDownlinkFinished.
-	ErrDownlinkExpiredBeforeResult = fmt.Errorf("%w: it ended expired", ErrDownlinkFinished)
+	// ErrDownlinkSentAfterExpiry reports the first "sent" the station that
+	// held a downlink reported after the service center ended it expired; it
+	// is an ErrDownlinkFinished.
+	ErrDownlinkSentAfterExpiry = fmt.Errorf("%w: it ended expired", ErrDownlinkFinished)
 	// ErrDownlinkQueueIDTaken reports that the service center's own queue id
 	// is already assigned to another downlink; a fresh id can be drawn.
 	ErrDownlinkQueueIDTaken = errors.New("downlink queue id already assigned")

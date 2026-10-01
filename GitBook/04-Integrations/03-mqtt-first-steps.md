@@ -231,7 +231,7 @@ Each attachment and detachment is published once. `bsEui` names the base station
 | `mqtt.command.duplicate_packet_cnt` | Two entries name the same `packetCnt` |
 | `mqtt.command.invalid_base64` | A `data` value is not valid base64 |
 | `mqtt.command.payload_too_large` | A decoded payload exceeds 200 bytes |
-| `mqtt.command.org_unresolved` | The organization in the topic cannot be resolved |
+| `mqtt.command.org_unresolved` | The organization in the topic does not exist; a command with a `ref` whose organization could not be looked up at all is not answered (see **A `ref` is accepted once** below) |
 | `mqtt.command.enqueue_failed` | The service center could not queue the downlink |
 | `mqtt.command.ref_too_long` | `ref` exceeds 128 bytes |
 | `mqtt.command.expired` | `expiresAt` passed before the downlink could be queued |
@@ -259,7 +259,7 @@ Possible `result` values:
 | `result` | When it is published |
 |----------|----------------------|
 | `sent` | A base station transmitted the downlink |
-| `expired` | The downlink reached its deadline before it was sent: still in the service center queue, or at a base station that then dropped it, said it does not hold it, started a new session or was deleted (see **Deadline** below) |
+| `expired` | The downlink reached its deadline before it was sent: still in the service center queue, or at a base station that then dropped it, said it does not hold it or started a new session; or the base station holding it was deleted (see **Deadline** below) |
 | `invalid` | A base station refused the downlink |
 | `acknowledged` | The endpoint confirmed it received the transmitted downlink |
 
@@ -355,15 +355,15 @@ Validation rules:
 - the downlink was still in the service center queue when its deadline passed, so no station ever held it;
 - the holding station confirmed that it dropped the downlink, or answered that it does not hold it (`protocol.downlink_expiry.revoke_not_held_codes`);
 - the holding station opened a new session that is not a resumed one, which discards everything the previous session held, a pending result included (BSSCI §1);
-- the holding base station was deleted; its session is closed first, so it can no longer report anything.
+Until one of these happens nothing is published, also while the station is offline or keeps refusing the revoke with another code; a connected station is asked again once per `protocol.downlink_expiry.sweep_interval`, and an offline one when it reconnects. Time passing alone never ends a downlink a connected station holds. When the station that held a downlink reports `sent` after it was reported `expired`, it contradicts the report: the result stays `expired`, nothing is published again, and the service center logs a warning and records one `dl_data_sent_after_expiry` event for the endpoint, however often the station repeats it.
 
-Until one of these happens nothing is published, also while the station is offline or keeps refusing the revoke with another code; a connected station is asked again once per `protocol.downlink_expiry.sweep_interval`, and an offline one when it reconnects. Time passing alone never ends a downlink a station holds. A station that reports `sent` for a downlink already reported `expired` contradicts the report: the result stays `expired`, nothing is published again, and the service center logs a warning and records an event for the endpoint.
+**Deleting a base station ends every downlink it held as `expired`**, before or after its deadline: the ones it holds queued, the ones reserved for it and the ones it is asked to drop. Its session is closed first, and a deleted station never connects again, so it can no longer report what became of them, and none is returned to the queue, where the endpoint could receive it a second time from another station. A station that is still powered may nevertheless transmit what it held after it was deleted, so the endpoint may receive a downlink reported `expired`. To avoid that, power the station off, or wait until no downlink is queued at it, before you delete it.
 
 A revoke requested by an operator or an Application Center for a downlink whose deadline has passed while a station holds it ends `expired`, not revoked: the station's answer settles the expiry already under way.
 
 A command whose `expiresAt` has already passed when KiloCenter receives it queues nothing and is refused with `mqtt.command.expired`.
 
-**A `ref` is accepted once.** KiloCenter keeps every `ref` an organization used for an endpoint, so you can safely publish a command again when you are not sure it arrived, for example after your client restarted. A command whose `ref` already queued a downlink for the same endpoint queues nothing and publishes nothing: neither `downlink_queued` nor `downlink_rejected`. The `ref` is compared as soon as the organization is resolved, before the payload and the endpoint are checked, so this holds while the first downlink is waiting and after it ended, also when the repeat's `expiresAt` has passed by then, or the endpoint was deleted or lost its downlink capability since: a repeat is never refused for something the first command passed. If the service center cannot look the `ref` up, it does not answer the command at all rather than risk refusing one it accepted; publish it again later. The first command's `downlink_queued` and its `downlink_result` are the outcome. Use a new `ref` for every new downlink; commands without a `ref` are never compared.
+**A `ref` is accepted once.** KiloCenter keeps every `ref` an organization used for an endpoint, so you can safely publish a command again when you are not sure it arrived, for example after your client restarted. A command whose `ref` already queued a downlink for the same endpoint queues nothing and publishes nothing: neither `downlink_queued` nor `downlink_rejected`. The `ref` is compared as soon as the organization is resolved, before the payload and the endpoint are checked, so this holds while the first downlink is waiting and after it ended, also when the repeat's `expiresAt` has passed by then, or the endpoint was deleted or lost its downlink capability since: a repeat is never refused for something the first command passed. A field of the wrong type in a repeat does not get it refused either, as long as the `ref` itself is readable. If the service center cannot look the `ref` up, or cannot look up the organization of a command with a `ref`, it does not answer the command at all rather than risk refusing one it accepted; publish it again later. The first command's `downlink_queued` and its `downlink_result` are the outcome. Use a new `ref` for every new downlink; commands without a `ref` are never compared.
 
 ## Copy-Paste Cookbook
 

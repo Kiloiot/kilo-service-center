@@ -141,11 +141,13 @@ const (
 const (
 	EventTypeDLDataQueueAcknowledged = "dl_data_queue_acknowledged"
 	EventTypeDLDataSent              = "dl_data_sent"
-	EventTypeDLDataExpired           = "dl_data_expired"
-	EventTypeDLDataInvalid           = "dl_data_invalid"
-	EventTypeDLDataUnknownResult     = "dl_data_unknown_result"
-	EventTypeDLDataRevokeInitiated   = "dl_data_revoke_initiated"
-	EventTypeDLDataRevoked           = "dl_data_revoked"
+	// EventTypeDLDataSentAfterExpiry records the station holding a downlink reporting it sent after it was reported expired.
+	EventTypeDLDataSentAfterExpiry = "dl_data_sent_after_expiry"
+	EventTypeDLDataExpired         = "dl_data_expired"
+	EventTypeDLDataInvalid         = "dl_data_invalid"
+	EventTypeDLDataUnknownResult   = "dl_data_unknown_result"
+	EventTypeDLDataRevokeInitiated = "dl_data_revoke_initiated"
+	EventTypeDLDataRevoked         = "dl_data_revoked"
 	// EventTypeDLDataAcknowledged records an uplink's dlAck for a transmitted downlink (BSSCI §3.10.1).
 	EventTypeDLDataAcknowledged = "dl_data_acknowledged"
 	// EventTypeDLDataEnqueued records a downlink entering the service center queue (SCACI §3.10).

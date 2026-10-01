@@ -15,6 +15,7 @@ type MIOTYDownlinkRepository struct {
 	*DownlinkStationOutcomes
 	*DownlinkRevocations
 	*DownlinkRevoking
+	*DownlinkStationRemoval
 	*DownlinkReservations
 	*DownlinkExpirySweep
 	*DownlinkResultsReader
@@ -30,6 +31,7 @@ func NewMIOTYDownlinkRepository(db *sqlx.DB, queueReader *DownlinkQueueReader, c
 		DownlinkStationOutcomes: &DownlinkStationOutcomes{db: db, clock: clk},
 		DownlinkRevocations:     &DownlinkRevocations{db: db, clock: clk},
 		DownlinkRevoking:        &DownlinkRevoking{db: db, clock: clk},
+		DownlinkStationRemoval:  &DownlinkStationRemoval{db: db, clock: clk},
 		DownlinkReservations:    &DownlinkReservations{db: db, clock: clk},
 		DownlinkExpirySweep:     &DownlinkExpirySweep{db: db, clock: clk},
 		DownlinkResultsReader:   &DownlinkResultsReader{db: db, log: log},

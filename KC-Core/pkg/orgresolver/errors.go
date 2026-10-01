@@ -10,6 +10,8 @@ var (
 	ErrEmptyCertCN = errors.New("certificate CN is empty")
 	// ErrOrgNotFound reports an organization UUID with no tenant mapping.
 	ErrOrgNotFound = errors.New("org not found")
+	// ErrOrgLookupFailed reports an organization directory that could not answer a tenant lookup.
+	ErrOrgLookupFailed = errors.New("org lookup failed")
 	// ErrInvalidOrgUUIDInCN reports a certificate CN that does not parse as an org UUID.
 	ErrInvalidOrgUUIDInCN = errors.New("invalid org UUID in cert CN")
 	// ErrTenantResolveFailed reports a tenant lookup failure for an organization.

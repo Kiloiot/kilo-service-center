@@ -15,9 +15,9 @@ type StationSessions interface {
 	CloseSessionByEUI(ctx context.Context, eui uint64) bool
 }
 
-// StationDownlinks settles the downlinks a deleted base station held.
+// StationDownlinks ends the downlinks a deleted base station held.
 type StationDownlinks interface {
-	ReleaseDeletedStation(ctx context.Context, bsEUI uint64)
+	EndDeletedStationDownlinks(ctx context.Context, bsEUI uint64)
 }
 
 // BaseStationServiceDeps are the base station service's collaborators.
@@ -92,8 +92,8 @@ func (s *basestationService) UpdateEUI(ctx context.Context, tenantID int64, oldE
 }
 
 // Delete deletes a base station and returns the station it removed. Its live
-// session is closed, so it can no longer transmit what it held, and only then
-// are the downlinks it held settled.
+// session is closed first, so it can no longer report anything, and only then
+// do the downlinks it held end.
 func (s *basestationService) Delete(ctx context.Context, eui []byte, tenantID int64) (*models.BaseStation, error) {
 	removed, err := s.storage.DeleteByEUI(ctx, tenantID, eui)
 	if err != nil {
@@ -101,7 +101,7 @@ func (s *basestationService) Delete(ctx context.Context, eui []byte, tenantID in
 	}
 	bsEUI := removed.EUI.ToUint64()
 	s.sessions.CloseSessionByEUI(ctx, bsEUI)
-	s.downlinks.ReleaseDeletedStation(ctx, bsEUI)
+	s.downlinks.EndDeletedStationDownlinks(ctx, bsEUI)
 	return removed, nil
 }
 

@@ -67,3 +67,7 @@ Look for entries containing `versionNeg` and `attach` with no error messages.
 | TLS handshake error | CA certificate not imported or certificate mismatch |
 | Connection drops immediately | Base station EUI not registered in KC-Web |
 | Version negotiation fails | Firmware version incompatible with KC-Core BSSCI implementation |
+
+## How do I delete a base station that still holds downlinks?
+
+Deleting a base station closes its session and ends every downlink it held, queued at it, reserved for it or being revoked, as `expired`; the downlinks are not sent again through another station. A deleted station never connects again, so it cannot report what it did with them, but a station that is still powered may transmit them after it was deleted. Power the station off, or wait until no downlink is queued at it, before you delete it.

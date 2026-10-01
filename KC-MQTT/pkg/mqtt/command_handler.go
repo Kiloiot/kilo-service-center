@@ -2,19 +2,16 @@ package mqtt
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
 )
@@ -68,29 +65,6 @@ func NewCommandHandler(client Publisher, enqueuer DownlinkEnqueuer, lookup Tenan
 		logger:   log,
 		prefix:   prefix,
 	}
-}
-
-// commandPayload is the JSON payload for command/down messages; data and
-// entries are mutually exclusive.
-type commandPayload struct {
-	Data         *string        `json:"data"`
-	Entries      []commandEntry `json:"entries"`
-	Confirmed    bool           `json:"confirmed"`
-	Format       *uint8         `json:"format"`
-	Prio         *float32       `json:"prio"`
-	ResponsePrio *bool          `json:"responsePrio"`
-	DlWindReq    *bool          `json:"dlWindReq"`
-	ExpOnly      *bool          `json:"expOnly"`
-	DlRxStatQry  *bool          `json:"dlRxStatQry"`
-	Ref          string         `json:"ref"`
-	ExpiresAt    *string        `json:"expiresAt"`
-}
-
-// commandEntry is the payload for one endpoint packet counter of a
-// counter-dependent downlink (BSSCI §3.12.1).
-type commandEntry struct {
-	PacketCnt *uint32 `json:"packetCnt"`
-	Data      string  `json:"data"`
 }
 
 // downlinkQueuedEvent is the event/downlink_queued body.
@@ -148,17 +122,13 @@ func (h *CommandHandler) handleMessage(ctx context.Context, topic string, rawPay
 	if !ok {
 		return
 	}
-	cmd, err := decodeCommand(rawPayload)
-	if err != nil {
-		h.reject(ctx, target, cmd.Ref, err)
+	cmd, refReadable, decodeErr := decodeCommand(rawPayload)
+	if decodeErr != nil && !refReadable {
+		h.reject(ctx, target, cmd.Ref, decodeErr)
 		return
 	}
-	tenantID, err := h.lookup.LookupTenant(ctx, target.org)
-	if err != nil {
-		h.reject(ctx, target, cmd.Ref, fmt.Errorf("%w: %w", refusalOrgUnresolved, err))
-		return
-	}
-	if !h.firstReception(ctx, target, tenantID, cmd.Ref) {
+	tenantID, ok := h.admit(ctx, target, cmd.Ref, decodeErr)
+	if !ok {
 		return
 	}
 	req, err := cmd.downlink(target.epEUI)
@@ -190,43 +160,6 @@ func (h *CommandHandler) handleMessage(ctx context.Context, topic string, rawPay
 	h.publish(ctx, target, DeviceEventDownlinkQueued, downlinkQueuedEvent{EpEui: target.epEUIHex, QueID: queID, Ref: cmd.Ref})
 }
 
-// firstReception tells whether a command may be answered: one without a ref,
-// or whose ref the organization has not queued for the endpoint yet. A ref
-// that cannot be looked up is not answered either, since a refusal could
-// contradict an earlier acceptance of the same command.
-func (h *CommandHandler) firstReception(ctx context.Context, target commandTarget, tenantID int64, ref string) bool {
-	if ref == "" {
-		return true
-	}
-	queued, err := h.enqueuer.CommandQueued(ctx, storage.DownlinkCommandRef{
-		TenantID: tenantID, OrganizationID: target.org, EpEUI: target.epEUI, Ref: ref,
-	})
-	if err != nil {
-		h.logger.WarnContext(ctx, LogCommandRefLookupFailed,
-			logger.FieldEpEui, target.epEUIHex, logger.FieldRef, boundedLogValue(ref, storage.MaxDownlinkRefBytes), logger.FieldError, err)
-		return false
-	}
-	if queued {
-		h.logRepeat(ctx, target, ref)
-	}
-	return !queued
-}
-
-// logRepeat logs a command that repeats a ref already queued; it is not answered.
-func (h *CommandHandler) logRepeat(ctx context.Context, target commandTarget, ref string) {
-	h.logger.InfoContext(ctx, LogCommandAlreadyQueued,
-		logger.FieldEpEui, target.epEUIHex, logger.FieldRef, boundedLogValue(ref, storage.MaxDownlinkRefBytes))
-}
-
-// boundedLogValue cuts a value the publisher chose to at most limit bytes
-// before it is logged.
-func boundedLogValue(value string, limit int) string {
-	if len(value) <= limit {
-		return value
-	}
-	return strings.ToValidUTF8(value[:limit], "")
-}
-
 // parseTopic reads {prefix}/{orgUUID}/device/{epEUIHex}/command/down; a topic
 // without both identities has no event topic to answer on.
 func (h *CommandHandler) parseTopic(ctx context.Context, topic string) (commandTarget, bool) {
@@ -248,119 +181,6 @@ func (h *CommandHandler) parseTopic(ctx context.Context, topic string) (commandT
 		return commandTarget{}, false
 	}
 	return commandTarget{org: org, epEUI: epEUI, epEUIHex: mioty.FormatEUI64Lower(epEUI)}, true
-}
-
-// decodeCommand parses the message; a field of the wrong type, and a ref
-// beyond the length the queue stores, still yield the rest of the command so
-// its ref can be echoed.
-func decodeCommand(rawPayload []byte) (commandPayload, error) {
-	var cmd commandPayload
-	switch {
-	case len(rawPayload) == 0:
-		return cmd, refusalEmptyPayload
-	case len(rawPayload) > config.MaxMessageSize:
-		return cmd, &DownlinkRefusal{Code: RejectCodeMessageTooLarge, Message: fmt.Sprintf(RejectMsgMessageTooLargeFmt, config.MaxMessageSize)}
-	}
-	err := json.Unmarshal(rawPayload, &cmd)
-	var typeErr *json.UnmarshalTypeError
-	switch {
-	case err == nil && len(cmd.Ref) > storage.MaxDownlinkRefBytes:
-		return cmd, refusalRefTooLong
-	case err == nil:
-		return cmd, nil
-	case errors.As(err, &typeErr) && typeErr.Field != "":
-		return cmd, fmt.Errorf("%w: %w", &DownlinkRefusal{Code: RejectCodeInvalidField, Message: fmt.Sprintf(RejectMsgInvalidFieldFmt, typeErr.Field)}, err)
-	default:
-		return commandPayload{}, fmt.Errorf("%w: %w", refusalInvalidJSON, err)
-	}
-}
-
-// downlink maps the command onto the canonical dlDataQue request (BSSCI §3.12.1).
-func (c commandPayload) downlink(epEUI uint64) (*mioty.DLDataQueue, error) {
-	userData, packetCnts, err := c.payloads()
-	if err != nil {
-		return nil, err
-	}
-	responseExp := c.Confirmed
-	return &mioty.DLDataQueue{
-		EpEui:        epEUI,
-		CntDepend:    packetCnts != nil,
-		PacketCnt:    packetCnts,
-		UserData:     userData,
-		Format:       c.Format,
-		Prio:         c.Prio,
-		ResponseExp:  &responseExp,
-		ResponsePrio: c.ResponsePrio,
-		DlWindReq:    c.DlWindReq,
-		ExpOnly:      c.ExpOnly,
-		DlRxStatQry:  c.DlRxStatQry,
-	}, nil
-}
-
-// command reads what the command adds to its downlink: its ref and its
-// optional RFC 3339 deadline.
-func (c commandPayload) command() (storage.DownlinkCommand, error) {
-	command := storage.DownlinkCommand{Ref: c.Ref}
-	if c.ExpiresAt == nil {
-		return command, nil
-	}
-	expiresAt, err := time.Parse(time.RFC3339Nano, *c.ExpiresAt)
-	if err != nil {
-		return command, fmt.Errorf(errFmtInvalidExpiresAt, refusalInvalidExpiresAt, logger.FieldExpiresAt, boundedLogValue(*c.ExpiresAt, len(time.RFC3339Nano)))
-	}
-	command.ExpiresAt = &expiresAt
-	return command, nil
-}
-
-// payloads decodes the single data payload, or one payload per packet counter
-// for counter-dependent entries; empty data is a pure acknowledgement.
-func (c commandPayload) payloads() (mioty.DownlinkUserData, []uint32, error) {
-	switch {
-	case c.Data != nil && c.Entries != nil:
-		return nil, nil, refusalDataWithEntries
-	case c.Data != nil:
-		payload, err := decodeDownlinkPayload(*c.Data)
-		if err != nil {
-			return nil, nil, err
-		}
-		return mioty.DownlinkUserData{payload}, nil, nil
-	case c.Entries == nil:
-		return nil, nil, refusalMissingData
-	case len(c.Entries) == 0:
-		return nil, nil, refusalEmptyEntries
-	}
-	userData := make(mioty.DownlinkUserData, 0, len(c.Entries))
-	packetCnts := make([]uint32, 0, len(c.Entries))
-	seen := make(map[uint32]bool, len(c.Entries))
-	for _, entry := range c.Entries {
-		if entry.PacketCnt == nil {
-			return nil, nil, refusalMissingPacketCnt
-		}
-		if seen[*entry.PacketCnt] {
-			return nil, nil, refusalDuplicatePacketCnt
-		}
-		seen[*entry.PacketCnt] = true
-		payload, err := decodeDownlinkPayload(entry.Data)
-		if err != nil {
-			return nil, nil, err
-		}
-		userData = append(userData, payload)
-		packetCnts = append(packetCnts, *entry.PacketCnt)
-	}
-	return userData, packetCnts, nil
-}
-
-// decodeDownlinkPayload decodes one base64 payload within the radio downlink
-// limit (radio protocol §3.6.6.3).
-func decodeDownlinkPayload(encoded string) ([]byte, error) {
-	payload, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", refusalInvalidBase64, err)
-	}
-	if len(payload) > mioty.MaxDLUserDataBytes {
-		return nil, refusalPayloadTooLarge
-	}
-	return payload, nil
 }
 
 // reject reports a refused command to its organization; an error that names

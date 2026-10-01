@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -30,7 +32,11 @@ func uncommittedFirstReception(t *testing.T, db *sqlx.DB, downlink *storage.Down
 	t.Helper()
 	tx, err := db.BeginTxx(t.Context(), nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = tx.Rollback() })
+	t.Cleanup(func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			t.Errorf("roll back the first reception: %v", err)
+		}
+	})
 	command := storage.DownlinkCommandRef{
 		TenantID: 321, OrganizationID: *downlink.OrganizationID, EpEUI: 0x70B3D59CD0000321, Ref: downlink.Ref,
 	}

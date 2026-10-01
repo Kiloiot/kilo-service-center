@@ -173,7 +173,7 @@ const (
 
 	// basestation_session_repository.go
 	errFmtInvalidEncodingMustBeOrGot = "invalid encoding: must be '%s' or '%s', got '%s'"
-	errFmtSessionNotFoundIDTenant    = "session not found: id=%d tenant=%d"
+	errFmtSessionNotFoundIDTenant    = "session not found: id=%d tenant=%d: %w"
 	errWrapCreateBaseStationSession  = "failed to create Base Station session"
 	errWrapFindResumableSession      = "failed to find resumable session"
 	errWrapListSessions              = "failed to list sessions"
@@ -635,6 +635,8 @@ const (
 	errWrapExpireStationRevocations      = "expire the downlinks a base station discarded"
 	errWrapListStationRevocations        = "list the downlinks a base station is asked to drop"
 	errWrapClaimUnansweredRevocations    = "claim the revoking downlinks to ask their holders again"
+	errWrapExpireRemovedStationDownlinks = "expire the downlinks a deleted base station held"
+	errWrapExpireHeldAtRemovedStations   = "expire the downlinks held by base stations that no longer exist"
 	errWrapMarkEndpointAcknowledged      = "mark downlink acknowledged by the endpoint"
 	errWrapGetAcknowledgedDownlink       = "read downlink acknowledged by the endpoint"
 	errWrapMarkDownlinkQueuedStatusCheck = "mark downlink queued status check"

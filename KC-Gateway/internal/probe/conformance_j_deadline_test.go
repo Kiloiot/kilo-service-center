@@ -125,14 +125,22 @@ const (
 	sqlDownlinkStatusOf = `SELECT status FROM downlink_queue WHERE que_id = $1`
 )
 
-// heldOverdue queues a downlink at the station serving the endpoint, has the
-// station confirm it, and ages it past its lifetime.
-func heldOverdue(t *testing.T, bs *simBS, ep testEndpoint) int64 {
+// heldQueued queues a downlink at the station serving the endpoint and has
+// the station confirm it.
+func heldQueued(t *testing.T, bs *simBS, ep testEndpoint) int64 {
 	t.Helper()
 	from := bs.mark()
 	queID := queueDownlink(t, ep, dlRequest([]byte{0x01}))
 	bs.dlDataQueFor(t, from, ep, queID)
 	bs.awaitCommand(t, from, cmdDLDataQueCmp, nil)
+	return queID
+}
+
+// heldOverdue queues a downlink at the station serving the endpoint, has the
+// station confirm it, and ages it past its lifetime.
+func heldOverdue(t *testing.T, bs *simBS, ep testEndpoint) int64 {
+	t.Helper()
+	queID := heldQueued(t, bs, ep)
 	_, err := stackDB(t).Exec(sqlExpireDownlink, queID)
 	require.NoError(t, err, "age the downlink past its lifetime")
 	return queID
@@ -277,23 +285,27 @@ func TestConformanceJ8_UnansweredRevokeIsAskedAgain(t *testing.T) {
 	require.Nil(t, downlinkResult(t, ep, queID))
 }
 
-// J9 BSSCI §1, §3.13: deleting the base station that holds a downlink being
-// revoked closes its session, and the downlink, which it can no longer
-// transmit, ends expired.
-func TestConformanceJ9_DeletedHolderEndsTheRevokeExpired(t *testing.T) {
+// J9 BSSCI §1, §3.13: deleting a base station closes its session, and every
+// downlink it held, the one it is asked to drop and the one it holds queued
+// within its lifetime alike, ends expired: the station never reports again
+// and may still transmit what it held, so neither returns to the queue.
+func TestConformanceJ9_DeletedHolderEndsWhatItHeldExpired(t *testing.T) {
 	_, err := coreClient(t).CreateBaseStation(apiCtx(t, stationDeleted.tenant), &pb.CreateBaseStationRequest{
 		Basestation: &pb.BaseStation{BsEui: euiHex(stationDeleted.eui), Name: fmt.Sprintf("conformance-%s", stationDeleted.cert)},
 	})
 	if status.Code(err) != codes.AlreadyExists {
 		require.NoError(t, err, "register station %s", stationDeleted.cert)
 	}
-	ep := newEndpoint(t, tenantPrimary, preAttached)
-	bs := connectServing(t, stationDeleted, ep)
-	bs.onRequest(cmdDLDataRev, replyRule{action: replySilently, match: forEndpoint(ep.eui)})
+	overdue := newEndpoint(t, tenantPrimary, preAttached)
+	waiting := newEndpoint(t, tenantPrimary, preAttached)
+	bs := connectServing(t, stationDeleted, overdue, waiting)
+	bs.onRequest(cmdDLDataRev, replyRule{action: replySilently, match: forEndpoint(overdue.eui)})
 	from := bs.mark()
-	queID := heldOverdue(t, bs, ep)
-	bs.awaitCommand(t, from, cmdDLDataRev, forQueue(ep.eui, queID))
-	require.Equal(t, revokingStatus, queueStatus(t, queID))
+	revoking := heldOverdue(t, bs, overdue)
+	bs.awaitCommand(t, from, cmdDLDataRev, forQueue(overdue.eui, revoking))
+	require.Equal(t, revokingStatus, queueStatus(t, revoking))
+	queued := heldQueued(t, bs, waiting)
+	require.Equal(t, queuedStatus, queueStatus(t, queued))
 
 	_, err = coreClient(t).DeleteBaseStation(apiCtx(t, stationDeleted.tenant), &pb.DeleteBaseStationRequest{BsEui: euiHex(stationDeleted.eui)})
 	require.NoError(t, err)
@@ -303,8 +315,14 @@ func TestConformanceJ9_DeletedHolderEndsTheRevokeExpired(t *testing.T) {
 	case <-time.After(frameWait):
 		t.Fatal("the deleted station's session is still open")
 	}
-	res := awaitDownlinkResult(t, ep, queID)
-	require.True(t, res != nil && res.GetResult() == resultExpired, "the deleted holder's downlink is not reported expired: %v", res)
+	for _, held := range []struct {
+		ep    testEndpoint
+		queID int64
+	}{{overdue, revoking}, {waiting, queued}} {
+		res := awaitDownlinkResult(t, held.ep, held.queID)
+		require.True(t, res != nil && res.GetResult() == resultExpired, "the deleted holder's downlink %d is not reported expired: %v", held.queID, res)
+		require.Equal(t, string(mioty.DLQueueStatusExpired), queueStatus(t, held.queID), "downlink %d returned to the queue", held.queID)
+	}
 }
 
 // sqlEndpointBidi sets whether an endpoint opens downlink windows.

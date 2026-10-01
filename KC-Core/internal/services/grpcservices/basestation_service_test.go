@@ -53,7 +53,7 @@ func (s *deletedStations) DeleteByEUI(context.Context, int64, []byte) (*models.B
 }
 
 // retiredStation records, in order, the closing of a station's session and
-// the settling of the downlinks it held.
+// the end of the downlinks it held.
 type retiredStation struct {
 	steps    *[]string
 	stations []uint64
@@ -65,22 +65,22 @@ func (r *retiredStation) CloseSessionByEUI(_ context.Context, eui uint64) bool {
 	return true
 }
 
-func (r *retiredStation) ReleaseDeletedStation(_ context.Context, bsEUI uint64) {
-	*r.steps = append(*r.steps, stepDownlinksSettled)
+func (r *retiredStation) EndDeletedStationDownlinks(_ context.Context, bsEUI uint64) {
+	*r.steps = append(*r.steps, stepDownlinksEnded)
 	r.stations = append(r.stations, bsEUI)
 }
 
 const (
-	stepDeleted          = "deleted"
-	stepSessionClosed    = "session closed"
-	stepDownlinksSettled = "downlinks settled"
-	deletedStationEUI    = "70B3D59CD000FF03"
+	stepDeleted        = "deleted"
+	stepSessionClosed  = "session closed"
+	stepDownlinksEnded = "downlinks ended"
+	deletedStationEUI  = "70B3D59CD000FF03"
 )
 
-// A deleted base station can never transmit what it held: its live session
-// is closed before its downlinks are settled; a station that does not exist
-// closes and settles nothing.
-func TestDelete_ClosesTheSessionBeforeSettlingTheDownlinks(t *testing.T) {
+// A deleted base station never reports again: its live session is closed
+// before the downlinks it held end; a station that does not exist closes and
+// ends nothing.
+func TestDelete_ClosesTheSessionBeforeEndingTheDownlinks(t *testing.T) {
 	var steps []string
 	eui := models.EUIFromString(deletedStationEUI)
 	retired := &retiredStation{steps: &steps}
@@ -92,7 +92,7 @@ func TestDelete_ClosesTheSessionBeforeSettlingTheDownlinks(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, eui, removed.EUI)
-	assert.Equal(t, []string{stepDeleted, stepSessionClosed, stepDownlinksSettled}, steps)
+	assert.Equal(t, []string{stepDeleted, stepSessionClosed, stepDownlinksEnded}, steps)
 	assert.Equal(t, []uint64{eui.ToUint64(), eui.ToUint64()}, retired.stations)
 
 	steps = nil

@@ -434,6 +434,7 @@ export const EVENT_OPERATION_TYPES = {
   ],
   dlDataRes: [
     "dl_data_sent",
+    "dl_data_sent_after_expiry",
     "dl_data_expired",
     "dl_data_invalid",
     "dl_data_unknown_result",

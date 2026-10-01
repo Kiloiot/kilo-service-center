@@ -228,15 +228,26 @@ func TestStream_ContextCancellation(t *testing.T) {
 	}
 }
 
-// awaitPoll waits until the stream has read the store once.
-func awaitPoll(ctx context.Context, t *testing.T, store *mockEventStore) {
+// awaitReads waits until the stream has read the store reads times; a read
+// takes the store's lock before it signals, so a row added afterwards is not
+// part of it.
+func awaitReads(ctx context.Context, t *testing.T, store *mockEventStore, reads int) {
 	t.Helper()
-	select {
-	case <-store.listCalled:
-	case <-ctx.Done():
-		t.Fatal("timed out waiting for the stream to read the store")
+	for range reads {
+		select {
+		case <-store.listCalled:
+		case <-ctx.Done():
+			t.Fatal("timed out waiting for the stream to read the store")
+		}
 	}
 }
+
+// Reads a stream's baseline takes: an empty store answers the read of the
+// newest row; with history, the rows within the overlap of it are read next.
+const (
+	baselineReadsEmpty       = 1
+	baselineReadsWithHistory = 2
+)
 
 // collectIDs counts the IDs a stream emits over the collection window.
 func collectIDs(ch <-chan *grpcservices.Event) map[string]int {
@@ -268,7 +279,7 @@ func TestStream_EmitsOnlyEventsStoredAfterOpen(t *testing.T) {
 
 	ch, err := svc.Stream(ctx, 1, nil)
 	require.NoError(t, err)
-	awaitPoll(ctx, t, store)
+	awaitReads(ctx, t, store, baselineReadsWithHistory)
 	store.add(&models.SystemEvent{ID: "new", TenantID: "1", EventType: testEventType, CreatedAt: now})
 
 	assert.Equal(t, map[string]int{"new": 1}, collectIDs(ch))
@@ -338,7 +349,7 @@ func TestStream_DeliversABurstLargerThanABatch(t *testing.T) {
 
 	ch, err := svc.Stream(ctx, 1, nil)
 	require.NoError(t, err)
-	awaitPoll(ctx, t, store)
+	awaitReads(ctx, t, store, baselineReadsEmpty)
 	now := time.Now()
 	want := map[string]int{}
 	events := make([]*models.SystemEvent, burst)
@@ -361,7 +372,7 @@ func TestStream_NoDuplicatesOnSameTimestamp(t *testing.T) {
 
 	ch, err := svc.Stream(ctx, 1, nil)
 	require.NoError(t, err)
-	awaitPoll(ctx, t, store)
+	awaitReads(ctx, t, store, baselineReadsEmpty)
 	now := time.Now()
 	store.add(
 		&models.SystemEvent{ID: "1", TenantID: "1", EventType: testEventType, CreatedAt: now},

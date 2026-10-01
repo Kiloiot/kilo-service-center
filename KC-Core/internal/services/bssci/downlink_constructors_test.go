@@ -103,11 +103,11 @@ func TestNewRevokeAnswers_RejectsMissingCollaborators(t *testing.T) {
 		unset func(*RevokeAnswerDeps)
 		want  error
 	}{
-		"nil logger":            {func(d *RevokeAnswerDeps) { d.Logger = nil }, ErrNilDownlinkServiceLogger},
-		"nil tenant resolver":   {func(d *RevokeAnswerDeps) { d.Tenants = nil }, ErrNilTenantResolver},
-		"nil revocation writer": {func(d *RevokeAnswerDeps) { d.Revocations = nil }, ErrNilDownlinkRevocationWriter},
-		"nil expiry reporter":   {func(d *RevokeAnswerDeps) { d.Expiries = nil }, ErrNilStationResultReporter},
-		"nil serializer":        {func(d *RevokeAnswerDeps) { d.Serializer = nil }, ErrNilQueueSerializer},
+		"nil logger":            {func(d *RevokeAnswerDeps) { d.Logger = nil }, ErrNilRevokeAnswersLogger},
+		"nil tenant resolver":   {func(d *RevokeAnswerDeps) { d.Tenants = nil }, ErrNilRevokeAnswersTenants},
+		"nil revocation writer": {func(d *RevokeAnswerDeps) { d.Revocations = nil }, ErrNilRevokeAnswersRevocations},
+		"nil expiry reporter":   {func(d *RevokeAnswerDeps) { d.Expiries = nil }, ErrNilRevokeAnswersExpiries},
+		"nil serializer":        {func(d *RevokeAnswerDeps) { d.Serializer = nil }, ErrNilRevokeAnswersSerializer},
 		"no not-held code":      {func(d *RevokeAnswerDeps) { d.NotHeldCodes = nil }, ErrNoRevokeNotHeldCodes},
 	}
 	for name, tc := range cases {
@@ -116,6 +116,7 @@ func TestNewRevokeAnswers_RejectsMissingCollaborators(t *testing.T) {
 			tc.unset(&deps)
 			answers, err := NewRevokeAnswers(deps)
 			require.ErrorIs(t, err, tc.want)
+			assert.NotContains(t, err.Error(), "downlink service", "the failure names the revoke answer service")
 			assert.Nil(t, answers)
 		})
 	}

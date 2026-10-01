@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
@@ -50,11 +51,11 @@ func (r *DownlinkExpirySweep) ExpireOverdueUnheld(ctx context.Context, limit int
 
 // RevokeOverdueHeld moves to revoking up to limit downlinks of any tenant
 // whose lifetime elapsed while a base station held them queued, keeping that
-// station as their holder and recording that it is asked now, and returns
-// them so it is asked to drop them (BSSCI §3.13); their outcome waits for its
-// answer.
-func (r *DownlinkExpirySweep) RevokeOverdueHeld(ctx context.Context, limit int) ([]*storage.DownlinkMessage, error) {
-	move := overdueMove{status: mioty.DLQueueStatusRevoking, askedAt: sql.NullTime{Time: r.clock.Now(), Valid: true}}
+// station as their holder and recording askedAt, the start of the sweep that
+// asks it, and returns them so it is asked to drop them (BSSCI §3.13); their
+// outcome waits for its answer.
+func (r *DownlinkExpirySweep) RevokeOverdueHeld(ctx context.Context, askedAt time.Time, limit int) ([]*storage.DownlinkMessage, error) {
+	move := overdueMove{status: mioty.DLQueueStatusRevoking, askedAt: sql.NullTime{Time: askedAt.Truncate(storedTimePrecision), Valid: true}}
 	return r.sweep(ctx, errWrapRevokeOverdueDownlinks, limit, revocableStatuses, move, revokingOutcome)
 }
 
@@ -81,19 +82,7 @@ func (r *DownlinkExpirySweep) sweep(ctx context.Context, wrap string, limit int,
 		return nil, fmt.Errorf("%s: %w", wrap, err)
 	}
 	defer sqlcleanup.CloseRows(rows, wrap, &err)
-	for rows.Next() {
-		var holder []byte
-		downlink, scanErr := scanDownlinkOutcome(rows, &holder)
-		if scanErr != nil {
-			return nil, fmt.Errorf("%s: %w", wrap, scanErr)
-		}
-		downlink.BsEui = mioty.EUI64FromBytes(holder)
-		moved = append(moved, mark(downlink))
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("%s: %w", wrap, err)
-	}
-	return moved, nil
+	return scanOutcomesWithHolder(rows, wrap, mark)
 }
 
 // sqlSweepOverdueDownlinks moves the oldest overdue rows in one of the states

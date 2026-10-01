@@ -10,6 +10,7 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -202,7 +203,7 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID)
+		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID, storage.ErrNotFound)
 	}
 
 	return nil
@@ -282,7 +283,7 @@ func (r *BaseStationSessionRepository) UpdateOperationIDs(ctx context.Context, t
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID)
+		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID, storage.ErrNotFound)
 	}
 
 	return nil
@@ -313,7 +314,7 @@ func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, tenan
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID)
+		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID, storage.ErrNotFound)
 	}
 
 	return nil
@@ -341,7 +342,7 @@ func (r *BaseStationSessionRepository) TerminateSession(ctx context.Context, ten
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID)
+		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID, storage.ErrNotFound)
 	}
 
 	return nil

@@ -133,6 +133,11 @@ const (
 	// after an earlier acceptance
 	LogCommandRefLookupFailed = "MQTT command/down ref could not be looked up; nothing is queued or published"
 
+	// LogCommandOrgLookupFailed is logged when the organization of a command/down
+	// with a ref cannot be looked up; the command is not answered rather than
+	// possibly refused after an earlier acceptance
+	LogCommandOrgLookupFailed = "MQTT command/down organization could not be looked up; nothing is queued or published"
+
 	// ========================================================================
 	// Log Messages
 	// ========================================================================
@@ -203,9 +208,11 @@ const (
 	RejectMsgCommandExpired      = "expiresAt passed before the downlink could be queued"
 	// CommandFieldExpiresAt names the command's deadline in an invalid_field refusal.
 	CommandFieldExpiresAt = "expiresAt"
+	// CommandFieldRef names the command's ref, whose own decode failure leaves no ref to recognize.
+	CommandFieldRef       = "ref"
 	errFmtDownlinkRefusal = "%s: %s"
 	// errFmtInvalidExpiresAt names the unreadable deadline, cut to the length of an RFC 3339 time, by its log field.
-	errFmtInvalidExpiresAt = "%w: %s=%q"
+	errFmtInvalidExpiresAt = "%w: %s=%s"
 )
 
 // Refusals whose code and message never vary.

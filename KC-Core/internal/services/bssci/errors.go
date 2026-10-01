@@ -66,6 +66,8 @@ var (
 	ErrNilReclaimerLogger = errors.New("downlink reclaimer: logger is nil")
 	// ErrNilDiscardedRevocations rejects a downlink reclaimer built without the store that expires discarded revocations.
 	ErrNilDiscardedRevocations = errors.New("downlink reclaimer: discarded revocations store is nil")
+	// ErrNilRemovedStationHolds rejects a downlink reclaimer built without the store that ends a deleted station's downlinks.
+	ErrNilRemovedStationHolds = errors.New("downlink reclaimer: removed station store is nil")
 	// ErrNilDiscardedExpiryReporter rejects a downlink reclaimer built without the reporter of discarded downlinks.
 	ErrNilDiscardedExpiryReporter = errors.New("downlink reclaimer: expiry reporter is nil")
 	// ErrNilReclaimerQueueTenants rejects a downlink reclaimer built without the queue owner cache it clears.
@@ -88,12 +90,8 @@ var (
 	ErrNilTenantResolver = errors.New("downlink service: tenant resolver is nil")
 	// ErrNilDownlinkWriter rejects a downlink service built without a queue writer.
 	ErrNilDownlinkWriter = errors.New("downlink service: downlink queue writer is nil")
-	// ErrNilDownlinkRevocationWriter rejects a downlink service built without the writer of revoke answers.
-	ErrNilDownlinkRevocationWriter = errors.New("downlink service: downlink revocation writer is nil")
 	// ErrNilRevokeAnswerer rejects a downlink service built without its revoke answers.
 	ErrNilRevokeAnswerer = errors.New("downlink service: revoke answers are nil")
-	// ErrNoRevokeNotHeldCodes rejects a downlink service that could never tell a station does not hold a downlink.
-	ErrNoRevokeNotHeldCodes = errors.New("downlink service: no dlDataRev refusal code says the station does not hold the downlink")
 	// ErrNilDownlinkHolderWriter rejects a downlink service built without its queue holder writer.
 	ErrNilDownlinkHolderWriter = errors.New("downlink service: downlink holder writer is nil")
 	// ErrNilDownlinkServiceClock rejects a downlink service built without a clock.
@@ -102,6 +100,18 @@ var (
 	ErrNilQueueSerializer = errors.New("downlink service: queue serializer is nil")
 	// ErrNilStationResultReporter rejects a downlink service built without its result reporter.
 	ErrNilStationResultReporter = errors.New("downlink service: result reporter is nil")
+	// ErrNilRevokeAnswersLogger rejects revoke answers built without a logger.
+	ErrNilRevokeAnswersLogger = errors.New("revoke answer service: logger is nil")
+	// ErrNilRevokeAnswersTenants rejects revoke answers built without a queue tenant resolver.
+	ErrNilRevokeAnswersTenants = errors.New("revoke answer service: tenant resolver is nil")
+	// ErrNilRevokeAnswersRevocations rejects revoke answers built without the writer of revoke answers.
+	ErrNilRevokeAnswersRevocations = errors.New("revoke answer service: downlink revocation writer is nil")
+	// ErrNilRevokeAnswersExpiries rejects revoke answers built without the reporter of downlinks expired at their station.
+	ErrNilRevokeAnswersExpiries = errors.New("revoke answer service: expiry reporter is nil")
+	// ErrNilRevokeAnswersSerializer rejects revoke answers built without a queue serializer.
+	ErrNilRevokeAnswersSerializer = errors.New("revoke answer service: queue serializer is nil")
+	// ErrNoRevokeNotHeldCodes rejects revoke answers that could never tell a station does not hold a downlink.
+	ErrNoRevokeNotHeldCodes = errors.New("revoke answer service: no dlDataRev refusal code says the station does not hold the downlink")
 	// ErrNilApplicationCenterResults rejects a result reporter built without its Application Center delivery.
 	ErrNilApplicationCenterResults = errors.New("downlink result reporter: application center delivery is nil")
 	// ErrNilDownlinkResultPublisher rejects a result reporter built without its MQTT publisher.

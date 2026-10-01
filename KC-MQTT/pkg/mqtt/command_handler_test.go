@@ -502,7 +502,46 @@ func TestCommandHandler_LogsNoUnboundedPublisherText(t *testing.T) {
 	assert.Contains(t, logged, logger.FieldExpiresAt+`="`+long[:len(time.RFC3339Nano)]+`"`)
 	assert.NotContains(t, logged, long[:len(time.RFC3339Nano)+1])
 	assert.NotContains(t, logged, "cannot parse", "the parser's error text repeats the input")
-	assert.Equal(t, "x", boundedLogValue("x", len(time.RFC3339Nano)))
+}
+
+// TestCommandHandler_LoggedRefCannotForgeALine: a repeated ref carrying a
+// line break and terminal escapes is logged quoted, so it stays one field of
+// one line.
+func TestCommandHandler_LoggedRefCannotForgeALine(t *testing.T) {
+	t.Parallel()
+	log := bsscitest.NewRecordingLogger()
+	f := newCommandFixture()
+	f.handler = NewCommandHandler(f.pub, f.enqueuer, f.lookup, log, cmdTestPrefix)
+	f.enqueuer.queuedRefs = map[string]bool{"order-40\nlevel=error msg=forged\x1b[31m": true}
+
+	f.send(`{"data":"AQ==","ref":"order-40\nlevel=error msg=forged\u001b[31m"}`)
+
+	entries := log.FilterMessage(LogCommandAlreadyQueued)
+	require.Len(t, entries, 1)
+	assert.Equal(t, `"order-40\nlevel=error msg=forged\x1b[31m"`, entries[0].FieldMap()[logger.FieldRef])
+}
+
+// TestCommandHandler_KnownRefWinsOverAFieldOfTheWrongType: a repeat whose
+// ref decoded is recognized although another field no longer decodes; a new
+// ref with such a field is refused once the lookup proved it new, and a ref
+// that is itself of the wrong type is refused without a lookup.
+func TestCommandHandler_KnownRefWinsOverAFieldOfTheWrongType(t *testing.T) {
+	t.Parallel()
+	known := newCommandFixture()
+	known.enqueuer.queuedRefs = map[string]bool{"order-41": true}
+	known.send(`{"data":"AQ==","ref":"order-41","prio":"high"}`)
+	assert.Empty(t, known.pub.messages(), "a repeat is never refused")
+	assert.Len(t, known.enqueuer.refLookups, 1)
+
+	fresh := newCommandFixture()
+	fresh.send(`{"data":"AQ==","ref":"order-42","prio":"high"}`)
+	assert.Equal(t, "order-42", fresh.rejected(t, RejectCodeInvalidField)["ref"])
+	assert.Len(t, fresh.enqueuer.refLookups, 1)
+
+	badRef := newCommandFixture()
+	badRef.send(`{"data":"AQ==","ref":42}`)
+	badRef.rejected(t, RejectCodeInvalidField)
+	assert.Empty(t, badRef.enqueuer.refLookups, "a ref that did not decode is never looked up")
 }
 
 // TestCommandHandler_RefIsBoundedLikeTheQueueStoresIt: a ref of
@@ -569,14 +608,37 @@ func TestCommandHandler_OversizedMessageIsReported(t *testing.T) {
 	f.rejected(t, RejectCodeMessageTooLarge)
 }
 
+// TestCommandHandler_UnresolvedOrganizationIsReported: an organization that
+// does not exist is reported; one that could not be looked up is reported
+// only for a command without a ref, since a ref may name an accepted command.
 func TestCommandHandler_UnresolvedOrganizationIsReported(t *testing.T) {
 	t.Parallel()
+	missing := newCommandFixture()
+	missing.lookup.returnErr = fmt.Errorf("organization: %w", storage.ErrNotFound)
+	missing.send(`{"data":"AQ==","ref":"order-20"}`)
+	assert.Equal(t, "order-20", missing.rejected(t, RejectCodeOrgUnresolved)["ref"])
+
+	unnamed := newCommandFixture()
+	unnamed.lookup.returnErr = errCmdTestCore
+	unnamed.send(`{"data":"AQ=="}`)
+	unnamed.rejected(t, RejectCodeOrgUnresolved)
+}
+
+// TestCommandHandler_OrganizationLookupFailureNeverRefusesARef: a lookup
+// that failed for another reason than a missing organization publishes
+// nothing for a command with a ref; it may repeat an accepted command.
+func TestCommandHandler_OrganizationLookupFailureNeverRefusesARef(t *testing.T) {
+	t.Parallel()
+	log := bsscitest.NewRecordingLogger()
 	f := newCommandFixture()
+	f.handler = NewCommandHandler(f.pub, f.enqueuer, f.lookup, log, cmdTestPrefix)
 	f.lookup.returnErr = errCmdTestCore
 
-	f.send(`{"data":"AQ==","ref":"order-20"}`)
+	f.send(`{"data":"AQ==","ref":"order-21"}`)
 
-	assert.Equal(t, "order-20", f.rejected(t, RejectCodeOrgUnresolved)["ref"])
+	assert.Empty(t, f.pub.messages())
+	assert.Zero(t, f.enqueuer.callCount())
+	assert.Len(t, log.FilterMessage(LogCommandOrgLookupFailed), 1)
 }
 
 func TestCommandHandler_CoreRefusalIsReportedWithItsCode(t *testing.T) {

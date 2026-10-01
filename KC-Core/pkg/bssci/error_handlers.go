@@ -15,7 +15,7 @@ func (s *Server) handleError(session *Session, msg *Message, data map[string]int
 
 	s.logger.ErrorContext(s.safeCtx(), LogBSSCIBaseStationReportedError,
 		logger.FieldCode, code,
-		logger.FieldMessage, message,
+		logger.FieldMessage, logger.UntrustedValue(message, maxLoggedErrorMessageBytes),
 		logger.FieldBaseStation, session.BaseStationEUI)
 
 	// Handshake error routing (BSSCI §5.17): an error with opId 0 while
@@ -42,7 +42,7 @@ func (s *Server) handleConnectRefusal(session *Session, code int, message string
 	ackErr := s.sendErrorAck(session, 0)
 	session.ConnectState = ConnectStateTerminal
 	s.retireRefusedResume(s.sessionContext(session), session, code, message)
-	return errors.Join(fmt.Errorf(errFmtStationRejectedConnect, code, message), ackErr)
+	return errors.Join(fmt.Errorf(errFmtStationRejectedConnect, code, logger.UntrustedValue(message, maxLoggedErrorMessageBytes)), ackErr)
 }
 
 // sendErrorAck answers an inbound error frame (BSSCI §5.17).

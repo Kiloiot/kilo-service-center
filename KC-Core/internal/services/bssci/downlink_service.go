@@ -98,10 +98,10 @@ func NewDownlinkService(deps DownlinkServiceDeps, revokes RevokeAnswerer) (bssci
 // ProcessDLDataResult records the result a base station reported for a
 // downlink (BSSCI §3.14) and reports it to the downlink's originators. A
 // result for a downlink that already ended, expired or revoked while the
-// station held it, leaves the outcome its originators were told; a "sent"
-// for one already reported expired contradicts that report, so it is logged
-// as a warning and filed in the owner's events. The station's operation
-// completes either way.
+// station held it, leaves the outcome its originators were told; the first
+// "sent" its holder reports for one already reported expired contradicts that
+// report, so it is logged as a warning and filed in the owner's events. The
+// station's operation completes either way.
 func (d *downlinkService) ProcessDLDataResult(ctx context.Context, session *bssci.Session, result *mioty.DLDataResult) (map[string]interface{}, error) {
 	queueID, ownerTenantID, err := d.resultOwner(ctx, result)
 	if err != nil {
@@ -118,7 +118,7 @@ func (d *downlinkService) ProcessDLDataResult(ctx context.Context, session *bssc
 	// The endpoint, the owner tenant and the holding station are part of the match (BSSCI §3.14).
 	downlink, err := d.downlinks.UpdateDownlinkResult(ctx, ownerTenantID, session.BaseStationEUI, result)
 	switch {
-	case errors.Is(err, storage.ErrDownlinkExpiredBeforeResult) && result.Result == mioty.ResultSent:
+	case errors.Is(err, storage.ErrDownlinkSentAfterExpiry):
 		d.logger.WarnContext(ctx, bssci.LogBSSCISentResultForExpiredDownlink,
 			logger.FieldQueID, result.QueId, logger.FieldBsEui, session.BaseStationEUI, logger.FieldTenantIDCamel, ownerTenantID)
 		d.results.RecordSentAfterExpiry(ctx, ownerTenantID, *result, session)

@@ -123,10 +123,10 @@ func (r *DownlinkResultReporter) ReportExpiredInQueue(ctx context.Context, downl
 	return r.reportExpired(ctx, downlink, r.events.RecordQueueExpiry)
 }
 
-// ReportExpiredAtStation reports a downlink whose lifetime ended while a base
-// station held it, once that station dropped it untransmitted: it confirmed
-// the dlDataRev, answered it does not hold the downlink, or discarded it with
-// its previous session.
+// ReportExpiredAtStation reports a downlink that ended expired while a base
+// station held it: the station dropped it untransmitted once its lifetime
+// ended, confirming the dlDataRev, answering it does not hold the downlink or
+// discarding it with its previous session, or the station was deleted.
 func (r *DownlinkResultReporter) ReportExpiredAtStation(ctx context.Context, downlink *storage.DownlinkMessage) {
 	if err := r.reportExpired(ctx, downlink, r.events.RecordStationExpiry); err != nil {
 		r.logger.ErrorContext(ctx, LogExpiredDownlinkUnreported, logger.FieldQueID, downlink.QueID, logger.FieldError, err)

@@ -3,6 +3,7 @@ package bssci
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -161,3 +162,62 @@ func TestRevokeHeldDownlink_ARevokeInFlightIsNotRepeated(t *testing.T) {
 	require.NoError(t, server.RevokeHeldDownlink(testutil.TestContext(), expiredHeldDownlink()))
 	assert.True(t, conn.errorSent, "the downlink is asked for again")
 }
+
+// pausedOperations holds every caller of SessionOperations until released,
+// announcing each arrival, so two revokes can be lined up inside the
+// in-flight check.
+type pausedOperations struct {
+	StatusService
+	arrived chan struct{}
+	resume  chan struct{}
+}
+
+func (p *pausedOperations) SessionOperations(ctx context.Context, session *Session) []*PendingOperation {
+	p.arrived <- struct{}{}
+	<-p.resume
+	return p.StatusService.SessionOperations(ctx, session)
+}
+
+// revokesSentFor counts the dlDataRev operations tracked on the session for queID.
+func revokesSentFor(server *Server, session *Session, queID int64) int {
+	sent := 0
+	for _, id := range queueIDsOf(server.statusSvc.SessionOperations(testutil.TestContext(), session), mioty.CmdDLDataRevoke) {
+		if id == queID {
+			sent++
+		}
+	}
+	return sent
+}
+
+// TestRevokeHeldDownlink_ConcurrentAsksSendOneRevoke pins BSSCI §3.13 under
+// a race: the expiry sweep and a reconnect asking the station again for the
+// same downlink at once send one dlDataRev; the second sender does not wait
+// for the first, and finds the downlink in flight.
+func TestRevokeHeldDownlink_ConcurrentAsksSendOneRevoke(t *testing.T) {
+	server, _ := newRevokeServer(t, queueRowStore{err: storage.ErrNotFound}, &pendingRevocations{})
+	session, _ := registerRoamingStation(server)
+	paused := &pausedOperations{StatusService: server.statusSvc, arrived: make(chan struct{}, 2), resume: make(chan struct{})}
+	server.statusSvc = paused
+
+	first := make(chan error, 1)
+	go func() { first <- server.RevokeHeldDownlink(testutil.TestContext(), expiredHeldDownlink()) }()
+	<-paused.arrived
+	second := make(chan error, 1)
+	go func() { second <- server.RevokeHeldDownlink(testutil.TestContext(), expiredHeldDownlink()) }()
+	select {
+	case err := <-second:
+		require.NoError(t, err, "the second sender finds the revoke in flight")
+	case <-paused.arrived:
+		t.Error("the second sender reached the in-flight check while the first was sending")
+	case <-time.After(revokeRaceWait):
+		t.Fatal("the second sender neither returned nor reached the in-flight check")
+	}
+	close(paused.resume)
+	require.NoError(t, <-first)
+
+	server.statusSvc = paused.StatusService
+	assert.Equal(t, 1, revokesSentFor(server, session, int64(revokeQueueID)), "one dlDataRev is sent")
+}
+
+// revokeRaceWait bounds how long the race test waits for the second sender.
+const revokeRaceWait = 2 * time.Second

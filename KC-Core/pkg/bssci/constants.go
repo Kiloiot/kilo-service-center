@@ -350,6 +350,10 @@ const (
 // inbound error payload omits the message field.
 const fallbackErrorMessage = "unknown error"
 
+// maxLoggedErrorMessageBytes bounds the free-text message of a base-station
+// error where it is logged; the station chooses its length.
+const maxLoggedErrorMessageBytes = 256
+
 // Sublayer command prefixes (BSSCI-4-02): remote control and virtual machine.
 const (
 	sublayerPrefixRC = "rc."

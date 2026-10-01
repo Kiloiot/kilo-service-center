@@ -198,6 +198,8 @@ type Session struct {
 	resume *resumeOffer
 	// counterFlush coalesces the counter writes the session's frames request.
 	counterFlush counterFlush
+	// revokeClaims keeps two senders from asking the station twice to drop one downlink.
+	revokeClaims revokeClaims
 }
 
 // resumeOffer is the previous session a resuming conRsp offered and its

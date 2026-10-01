@@ -27,6 +27,12 @@ type DiscardedRevocations interface {
 	ExpireStationRevocations(ctx context.Context, bsEUI uint64) ([]*storage.DownlinkMessage, error)
 }
 
+// RemovedStationHolds ends expired every downlink a deleted base station
+// held, of every tenant, and returns them for their originators.
+type RemovedStationHolds interface {
+	ExpireRemovedStationDownlinks(ctx context.Context, bsEUI uint64) ([]*storage.DownlinkMessage, error)
+}
+
 // StationExpiryReporter tells a downlink's originators it expired at the
 // station that dropped it.
 type StationExpiryReporter interface {
@@ -44,13 +50,15 @@ type RequeueRecorder interface {
 	RecordRequeued(ctx context.Context, downlink storage.PendingDownlink, bsEUI uint64) error
 }
 
-// DownlinkReclaimer implements bssci.DownlinkReclaimer: it returns to pending
-// the downlinks a base station let go and records each one's return, so every
-// open view of the downlink queue shows it pending again, and reports expired
-// the overdue downlinks the station discarded.
+// DownlinkReclaimer implements bssci.DownlinkReclaimer: it settles the
+// downlinks a base station let go. It returns to pending the ones the station
+// can no longer transmit and records each one's return, so every open view of
+// the downlink queue shows it pending again, and reports expired the overdue
+// downlinks the station discarded and every downlink a deleted station held.
 type DownlinkReclaimer struct {
 	store       ReservationReclaimer
 	revocations DiscardedRevocations
+	removed     RemovedStationHolds
 	events      RequeueRecorder
 	expiries    StationExpiryReporter
 	tenants     QueueTenantCache
@@ -61,6 +69,7 @@ type DownlinkReclaimer struct {
 type DownlinkReclaimerDeps struct {
 	Store       ReservationReclaimer
 	Revocations DiscardedRevocations
+	Removed     RemovedStationHolds
 	Events      RequeueRecorder
 	Expiries    StationExpiryReporter
 	Tenants     QueueTenantCache
@@ -77,6 +86,8 @@ func NewDownlinkReclaimer(deps DownlinkReclaimerDeps) (*DownlinkReclaimer, error
 		return nil, ErrNilReservationReclaimer
 	case deps.Revocations == nil:
 		return nil, ErrNilDiscardedRevocations
+	case deps.Removed == nil:
+		return nil, ErrNilRemovedStationHolds
 	case deps.Events == nil:
 		return nil, ErrNilRequeueRecorder
 	case deps.Expiries == nil:
@@ -87,8 +98,8 @@ func NewDownlinkReclaimer(deps DownlinkReclaimerDeps) (*DownlinkReclaimer, error
 		return nil, ErrNilReclaimerLogger
 	}
 	return &DownlinkReclaimer{
-		store: deps.Store, revocations: deps.Revocations, events: deps.Events, expiries: deps.Expiries,
-		tenants: deps.Tenants, logger: deps.Logger,
+		store: deps.Store, revocations: deps.Revocations, removed: deps.Removed, events: deps.Events,
+		expiries: deps.Expiries, tenants: deps.Tenants, logger: deps.Logger,
 	}, nil
 }
 
@@ -120,27 +131,35 @@ func (d *DownlinkReclaimer) ReclaimDiscardedQueue(ctx context.Context, bsEUI uin
 	if err != nil {
 		return requeued, fmt.Errorf("%w: %w", errExpireDiscardedRevocations, err)
 	}
+	d.endedAtStation(ctx, bsEUI, expired, bssci.LogDispatcherDiscardedRevocationsExpired)
+	return requeued, nil
+}
+
+// EndDeletedStationDownlinks ends expired every downlink a deleted base
+// station held, reserved, queued or asked to drop, once its session is closed,
+// and reports each to its originators. The station never reports again, and
+// one still powered may transmit what it held, so none returns to the queue
+// where the endpoint could receive it twice. The work outlives the caller's
+// cancellation; a failure is logged and the expiry sweep ends what is left.
+func (d *DownlinkReclaimer) EndDeletedStationDownlinks(ctx context.Context, bsEUI uint64) {
+	ctx = context.WithoutCancel(ctx)
+	expired, err := d.removed.ExpireRemovedStationDownlinks(ctx, bsEUI)
+	if err != nil {
+		d.logger.ErrorContext(ctx, LogDeletedStationDownlinksUnsettled, logger.FieldBsEui, bsEUI, logger.FieldError, err)
+		return
+	}
+	d.endedAtStation(ctx, bsEUI, expired, LogDeletedStationDownlinksExpired)
+}
+
+// endedAtStation forgets the cached owner of each downlink that ended expired
+// at the station, reports it to its originators and logs the count under msg.
+func (d *DownlinkReclaimer) endedAtStation(ctx context.Context, bsEUI uint64, expired []*storage.DownlinkMessage, msg string) {
 	for _, downlink := range expired {
 		d.tenants.UnregisterQueueTenant(downlink.QueID)
 		d.expiries.ReportExpiredAtStation(ctx, downlink)
 	}
 	if len(expired) > 0 {
-		d.logger.InfoContext(ctx, bssci.LogDispatcherDiscardedRevocationsExpired, logger.FieldBsEui, bsEUI, logger.FieldCount, len(expired))
-	}
-	return requeued, nil
-}
-
-// ReleaseDeletedStation settles every downlink a deleted base station held,
-// once its session is closed: it can never transmit them, so its reservations
-// and queued downlinks return to pending for another station, and the ones it
-// was asked to drop end expired and are reported so. A failure is logged; the
-// station stays deleted.
-func (d *DownlinkReclaimer) ReleaseDeletedStation(ctx context.Context, bsEUI uint64) {
-	if _, err := d.ReclaimReservations(ctx, bsEUI, nil); err != nil {
-		d.logger.ErrorContext(ctx, LogDeletedStationDownlinksUnsettled, logger.FieldBsEui, bsEUI, logger.FieldError, err)
-	}
-	if _, err := d.ReclaimDiscardedQueue(ctx, bsEUI); err != nil {
-		d.logger.ErrorContext(ctx, LogDeletedStationDownlinksUnsettled, logger.FieldBsEui, bsEUI, logger.FieldError, err)
+		d.logger.InfoContext(ctx, msg, logger.FieldBsEui, bsEUI, logger.FieldCount, len(expired))
 	}
 }
 

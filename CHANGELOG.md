@@ -37,10 +37,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sent`. A station that is offline at the deadline is asked again when it reconnects, also
   after a KC-Core restart, and a reconnect never returns such a downlink to the queue. A
   connected station that has not settled the downlink is asked again once per
-  `protocol.downlink_expiry.sweep_interval`. Deleting a base station closes its live session,
-  ends `expired` the downlinks it was asked to drop and returns the ones it held queued to the
-  queue. A `sent` reported for a downlink already reported `expired` keeps the expiry, is
-  logged as a warning and is recorded as an event.
+  `protocol.downlink_expiry.sweep_interval`, never while its previous revoke awaits an answer.
+  A `sent` the station that held a downlink reports after it was reported `expired` keeps the
+  expiry, is logged as a warning and is recorded once, as a `dl_data_sent_after_expiry` event
+  (migration 000191), so filters on `dl_data_sent` do not count it.
+- **Deleting a base station ends every downlink it held as `expired`.** Its live session is
+  closed, and the downlinks it held queued, reserved or **Revoking** end `expired` and are
+  reported; none returns to the queue, where the endpoint could receive it twice. A deleted
+  station that is still powered may still transmit them, so power it off or let its queue empty
+  first. The work no longer depends on the request that deleted the station, and the expiry
+  sweep ends anything a deletion left held by a station that no longer exists.
+- **An MQTT command with a `ref` is never refused because of a transient failure.** When the
+  organization of such a command cannot be looked up, KiloCenter publishes nothing instead of
+  `mqtt.command.org_unresolved`, which now means only an organization that does not exist; a
+  repeat whose `ref` is readable is recognized even when another field has the wrong type.
+- **Values a client or a base station chose are logged quoted and bounded.** An MQTT `ref` or
+  `expiresAt` and a base station's error message can no longer break a log line.
+- **Closing the session of a deleted base station no longer logs errors** for its session record,
+  which the deletion already removed.
 - **Two receptions of one MQTT command that race each other no longer refuse it as expired.**
   The receptions of a command with a `ref` are queued one after the other, so the later one
   sees the first and is not answered. A deadline less than a microsecond away is refused with

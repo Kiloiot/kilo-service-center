@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 	"github.com/Kiloiot/kilo-service-center/pkg/logger"
@@ -55,7 +56,38 @@ func TestUpdateOperationIDsNeverMovesCountersBackwards(t *testing.T) {
 	assert.Equal(t, int64(12), row.SnBsOpId)
 	assert.Equal(t, int64(-11), row.SnScOpId)
 
-	require.Error(t, repo.UpdateOperationIDs(ctx, tenantID, session.ID+1000, 1, -1), "a missing row is still reported")
+	require.ErrorIs(t, repo.UpdateOperationIDs(ctx, tenantID, session.ID+1000, 1, -1), storage.ErrNotFound, "a missing row is still reported")
+}
+
+// A session row its base station's deletion removed reads as not found to
+// every write a closing connection makes, so the caller can tell it from a
+// failure.
+func TestSessionWritesAfterTheStationsDeletionAreNotFound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	checkDockerAvailable(t)
+
+	db := setupSessionEncodingTestDB(t)
+	defer func() { _ = db.Close() }() // #nosec G307 -- Test cleanup
+
+	const tenantID = int64(142)
+	orgID := uuid.New()
+	createTestTenant(t, db, tenantID, "TestTenant142")
+	createTestOrganization(t, db, orgID, tenantID, "TestOrg142")
+	createTestBaseStation(t, db, 45, 0x0102030405060745, tenantID, "TestBS-Deleted")
+	cleanupSessionTestData(t, db, "TestDeleted%")
+	defer cleanupSessionTestData(t, db, "TestDeleted%")
+
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
+	f := sessionOwnershipFixture{repo: repo, tenantID: tenantID, orgID: orgID}
+	ctx := testutil.TestContext()
+	session := f.create(t, 45, "TestDeleted-Conn", models.EUI{0x4B, 0x44})
+	_, err := db.Exec(`DELETE FROM basestations WHERE id = $1`, 45)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, repo.TerminateSession(ctx, tenantID, session.ID), storage.ErrNotFound)
+	require.ErrorIs(t, repo.UpdateOperationIDs(ctx, tenantID, session.ID, 1, -1), storage.ErrNotFound)
 }
 
 // Concurrent counter writes of one session land in any order, yet no reader

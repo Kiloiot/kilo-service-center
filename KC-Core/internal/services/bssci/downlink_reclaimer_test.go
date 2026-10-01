@@ -59,6 +59,21 @@ func (d *discardedRevocations) ExpireStationRevocations(_ context.Context, bsEUI
 	return d.expired, d.err
 }
 
+// removedHolds hands out the downlinks a deleted station held and records
+// whether the context it was handed was already cancelled.
+type removedHolds struct {
+	expired   []*storage.DownlinkMessage
+	err       error
+	stations  []uint64
+	cancelled []bool
+}
+
+func (r *removedHolds) ExpireRemovedStationDownlinks(ctx context.Context, bsEUI uint64) ([]*storage.DownlinkMessage, error) {
+	r.stations = append(r.stations, bsEUI)
+	r.cancelled = append(r.cancelled, ctx.Err() != nil)
+	return r.expired, r.err
+}
+
 // stationExpiries records every downlink reported expired at its station.
 type stationExpiries struct{ reported []int64 }
 
@@ -76,7 +91,7 @@ func (f *forgottenQueues) UnregisterQueueTenant(queueID int64) {
 // reclaimerDeps are a reclaimer's collaborators around the store and the recorder.
 func reclaimerDeps(store ReservationReclaimer, events RequeueRecorder, log logger.Logger) DownlinkReclaimerDeps {
 	return DownlinkReclaimerDeps{
-		Store: store, Revocations: &discardedRevocations{}, Events: events, Expiries: &stationExpiries{},
+		Store: store, Revocations: &discardedRevocations{}, Removed: &removedHolds{}, Events: events, Expiries: &stationExpiries{},
 		Tenants: &forgottenQueues{}, Logger: log,
 	}
 }
@@ -104,6 +119,7 @@ func TestNewDownlinkReclaimer_RejectsMissingCollaborators(t *testing.T) {
 	}{
 		"nil store":       {func(d *DownlinkReclaimerDeps) { d.Store = nil }, ErrNilReservationReclaimer},
 		"nil revocations": {func(d *DownlinkReclaimerDeps) { d.Revocations = nil }, ErrNilDiscardedRevocations},
+		"nil removed":     {func(d *DownlinkReclaimerDeps) { d.Removed = nil }, ErrNilRemovedStationHolds},
 		"nil recorder":    {func(d *DownlinkReclaimerDeps) { d.Events = nil }, ErrNilRequeueRecorder},
 		"nil reporter":    {func(d *DownlinkReclaimerDeps) { d.Expiries = nil }, ErrNilDiscardedExpiryReporter},
 		"nil tenants":     {func(d *DownlinkReclaimerDeps) { d.Tenants = nil }, ErrNilReclaimerQueueTenants},
@@ -226,7 +242,8 @@ func TestReclaimDiscardedQueue_ExpiresTheStationsRevocations(t *testing.T) {
 	expiries := &stationExpiries{}
 	tenants := &forgottenQueues{}
 	reclaimer, err := NewDownlinkReclaimer(DownlinkReclaimerDeps{
-		Store: store, Revocations: revocations, Events: &requeueRecorder{}, Expiries: expiries, Tenants: tenants, Logger: logger.NewNop(),
+		Store: store, Revocations: revocations, Removed: &removedHolds{}, Events: &requeueRecorder{}, Expiries: expiries, Tenants: tenants,
+		Logger: logger.NewNop(),
 	})
 	require.NoError(t, err)
 
@@ -248,28 +265,36 @@ func TestReclaimDiscardedQueue_ExpiresTheStationsRevocations(t *testing.T) {
 	assert.Len(t, revocations.stations, 2, "a resumed session's reservations leave the revocations alone")
 }
 
-// A deleted station can never transmit what it held: its reservations and
-// queued downlinks return to the queue for another station, and the ones it
-// was asked to drop end expired and are reported; a failure is logged and the
-// rest is still settled.
-func TestReleaseDeletedStation_SettlesEverythingTheStationHeld(t *testing.T) {
+// A deleted station never reports again and one still powered may transmit
+// what it held, so every downlink it held ends expired and is reported, its
+// cached owner forgotten, and none returns to the queue; the work outlives a
+// cancelled request, and a failure is logged and reports nothing.
+func TestEndDeletedStationDownlinks_EndsEverythingTheStationHeldExpired(t *testing.T) {
 	store := &mockMIOTYDownlinksForDispatch{released: reclaimTestReleased}
-	revocations := &discardedRevocations{expired: []*storage.DownlinkMessage{{QueID: 900021}}}
+	removed := &removedHolds{expired: []*storage.DownlinkMessage{{QueID: 900021}, {QueID: 900022}}}
 	expiries := &stationExpiries{}
+	tenants := &forgottenQueues{}
 	events := &requeueRecorder{}
+	log := bsscitest.NewRecordingLogger()
 	reclaimer, err := NewDownlinkReclaimer(DownlinkReclaimerDeps{
-		Store: store, Revocations: revocations, Events: events, Expiries: expiries, Tenants: &forgottenQueues{}, Logger: logger.NewNop(),
+		Store: store, Revocations: &discardedRevocations{}, Removed: removed, Events: events, Expiries: expiries, Tenants: tenants, Logger: log,
 	})
 	require.NoError(t, err)
+	request, cancel := context.WithCancel(testutil.TestContext())
+	cancel()
 
-	reclaimer.ReleaseDeletedStation(testutil.TestContext(), reclaimTestStation)
+	reclaimer.EndDeletedStationDownlinks(request, reclaimTestStation)
 
-	assert.Equal(t, []uint64{reclaimTestStation}, store.releasedStations, "its reservations are released")
-	assert.Equal(t, []uint64{reclaimTestStation}, store.releasedQueues, "its queue is released")
-	assert.Equal(t, []uint64{reclaimTestStation}, revocations.stations)
-	assert.Equal(t, []int64{900021}, expiries.reported)
+	assert.Equal(t, []uint64{reclaimTestStation}, removed.stations)
+	assert.Equal(t, []bool{false}, removed.cancelled, "a cancelled request does not stop the settle")
+	assert.Equal(t, []int64{900021, 900022}, expiries.reported)
+	assert.Equal(t, []int64{900021, 900022}, tenants.forgotten)
+	assert.Empty(t, store.releasedStations, "no reservation returns to the queue")
+	assert.Empty(t, store.releasedQueues, "no queued downlink returns to the queue")
+	assert.Empty(t, events.requeued)
 
-	revocations.err, expiries.reported = errTestReserveDBDown, nil
-	reclaimer.ReleaseDeletedStation(testutil.TestContext(), reclaimTestStation)
+	removed.err, expiries.reported = errTestReserveDBDown, nil
+	reclaimer.EndDeletedStationDownlinks(testutil.TestContext(), reclaimTestStation)
 	assert.Empty(t, expiries.reported)
+	assert.Len(t, log.FilterMessage(LogDeletedStationDownlinksUnsettled), 1)
 }

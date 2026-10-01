@@ -127,8 +127,8 @@ func (a *DownlinkAuditLog) RecordQueueExpiry(ctx context.Context, downlink *stor
 	})
 }
 
-// RecordStationExpiry records a downlink whose lifetime ended while a base
-// station held it, which that station dropped untransmitted.
+// RecordStationExpiry records a downlink that ended expired while a base
+// station held it: the station dropped it untransmitted, or was deleted.
 func (a *DownlinkAuditLog) RecordStationExpiry(ctx context.Context, downlink *storage.DownlinkMessage) error {
 	queID, tenantID, err := queueOwner(downlink.QueID, downlink.TenantID)
 	if err != nil {

@@ -25,6 +25,9 @@ func Err(err error) Field { return pkglogger.Err(err) }
 // NewNop returns a logger that silently discards all output.
 func NewNop() Logger { return pkglogger.NewNop() }
 
+// UntrustedValue bounds and quotes a value a remote peer chose before it is logged.
+func UntrustedValue(value string, limit int) string { return pkglogger.UntrustedValue(value, limit) }
+
 // Structured logging field keys re-exported from the shared package.
 const (
 	FieldError                 = pkglogger.FieldError

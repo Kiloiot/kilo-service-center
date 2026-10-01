@@ -152,46 +152,61 @@ func TestRevokingDownlink_LateQueueAnswersAreAccepted(t *testing.T) {
 	assert.Equal(t, string(mioty.DLQueueStatusRevoking), heldDownlink(t, db, 850041).Status)
 }
 
-// TestUpdateDownlinkResult_ASentResultContradictingAnExpiryIsTold: a "sent"
-// for a downlink that already ended expired keeps the expiry and is told
-// apart from a result for a downlink that ended otherwise.
+// TestUpdateDownlinkResult_ASentResultContradictingAnExpiryIsTold: the first
+// "sent" the holding station reports for a downlink that already ended expired
+// keeps the expiry and is told apart, once; a repeat of it, another station's
+// "sent", another result and a result for a downlink that ended otherwise are
+// plain results for a finished downlink.
 func TestUpdateDownlinkResult_ASentResultContradictingAnExpiryIsTold(t *testing.T) {
 	downlinks, db, orgs := applicationQueueIDFixture(t)
 	ctx := t.Context()
 	seedHeldDownlink(t, db, 321, orgs[321], 850051, mioty.DLQueueStatusExpired, releaseStation)
 	seedHeldDownlink(t, db, 321, orgs[321], 850052, mioty.DLQueueStatusTransmitted, releaseStation)
 	packetCnt := uint32(9)
+	report := func(queID int64, station uint64, result string) error {
+		_, err := downlinks.UpdateDownlinkResult(ctx, 321, station,
+			&mioty.DLDataResult{EpEui: uint64(queID), QueId: uint64(queID), Result: result, PacketCnt: &packetCnt})
+		return err
+	}
 
-	_, err := downlinks.UpdateDownlinkResult(ctx, 321, releaseStation,
-		&mioty.DLDataResult{EpEui: 850051, QueId: 850051, Result: mioty.DLDataResultSent, PacketCnt: &packetCnt})
-	assert.ErrorIs(t, err, storage.ErrDownlinkExpiredBeforeResult)
+	require.ErrorIs(t, report(850051, neighborStation, mioty.DLDataResultSent), storage.ErrDownlinkFinished)
+	assert.NotErrorIs(t, report(850051, neighborStation, mioty.DLDataResultSent), storage.ErrDownlinkSentAfterExpiry, "a station that never held it")
+	assert.NotErrorIs(t, report(850051, releaseStation, mioty.ResultExpired), storage.ErrDownlinkSentAfterExpiry, "a result that agrees")
+
+	err := report(850051, releaseStation, mioty.DLDataResultSent)
+	assert.ErrorIs(t, err, storage.ErrDownlinkSentAfterExpiry)
 	assert.ErrorIs(t, err, storage.ErrDownlinkFinished)
 	assert.Equal(t, string(mioty.DLQueueStatusExpired), heldDownlink(t, db, 850051).Status, "the expiry stands")
+	repeat := report(850051, releaseStation, mioty.DLDataResultSent)
+	assert.ErrorIs(t, repeat, storage.ErrDownlinkFinished)
+	assert.NotErrorIs(t, repeat, storage.ErrDownlinkSentAfterExpiry, "the contradiction is told once")
 
-	_, err = downlinks.UpdateDownlinkResult(ctx, 321, releaseStation,
-		&mioty.DLDataResult{EpEui: 850052, QueId: 850052, Result: mioty.DLDataResultSent, PacketCnt: &packetCnt})
+	err = report(850052, releaseStation, mioty.DLDataResultSent)
 	assert.ErrorIs(t, err, storage.ErrDownlinkFinished)
-	assert.NotErrorIs(t, err, storage.ErrDownlinkExpiredBeforeResult)
+	assert.NotErrorIs(t, err, storage.ErrDownlinkSentAfterExpiry)
 }
 
 // TestClaimUnansweredRevocations_AsksAConnectedHolderAgainOncePerInterval: a
-// revoking downlink whose connected holder was asked at least the interval ago
-// is claimed once and its ask time moves on; one asked more recently, one held
-// by a station that is not connected and one that is not revoking are not.
+// revoking downlink whose connected holder was asked at least the interval
+// before the sweep started is claimed once, its ask becoming the sweep's
+// start, and is due again for the sweep one interval later; one asked more
+// recently, one held by a station that is not connected and one that is not
+// revoking are not.
 func TestClaimUnansweredRevocations_AsksAConnectedHolderAgainOncePerInterval(t *testing.T) {
 	downlinks, db, orgs := applicationQueueIDFixture(t)
 	ctx := t.Context()
 	const interval = time.Minute
+	sweepStart := time.Now()
 	seedHeldDownlink(t, db, 322, orgs[322], 850061, mioty.DLQueueStatusRevoking, releaseStation)
 	seedHeldDownlink(t, db, 321, orgs[321], 850062, mioty.DLQueueStatusRevoking, releaseStation)
 	seedHeldDownlink(t, db, 321, orgs[321], 850063, mioty.DLQueueStatusRevoking, neighborStation)
 	seedHeldDownlink(t, db, 321, orgs[321], 850064, mioty.DLQueueStatusQueued, releaseStation)
-	_, err := db.Exec(`UPDATE downlink_queue SET revoke_asked_at = now() - interval '1 hour' WHERE que_id IN (850061, 850063, 850064)`)
+	_, err := db.Exec(`UPDATE downlink_queue SET revoke_asked_at = $1 WHERE que_id IN (850061, 850063, 850064)`, sweepStart.Add(-time.Hour))
 	require.NoError(t, err)
-	_, err = db.Exec(`UPDATE downlink_queue SET revoke_asked_at = now() WHERE que_id = 850062`)
+	_, err = db.Exec(`UPDATE downlink_queue SET revoke_asked_at = $1 WHERE que_id = 850062`, sweepStart.Add(interval/2))
 	require.NoError(t, err)
 
-	claimed, err := downlinks.ClaimUnansweredRevocations(ctx, []uint64{releaseStation}, interval, 10)
+	claimed, err := downlinks.ClaimUnansweredRevocations(ctx, []uint64{releaseStation}, sweepStart, interval, 10)
 	require.NoError(t, err)
 	require.Len(t, claimed, 1)
 	assert.Equal(t, int64(850061), claimed[0].QueID)
@@ -199,13 +214,18 @@ func TestClaimUnansweredRevocations_AsksAConnectedHolderAgainOncePerInterval(t *
 	assert.Equal(t, releaseStation, claimed[0].BsEui)
 	assert.Equal(t, mioty.DLQueueStatusRevoking, claimed[0].Status)
 
-	again, err := downlinks.ClaimUnansweredRevocations(ctx, []uint64{releaseStation, neighborStation}, interval, 10)
+	again, err := downlinks.ClaimUnansweredRevocations(ctx, []uint64{releaseStation, neighborStation}, sweepStart, interval, 10)
 	require.NoError(t, err)
 	require.Len(t, again, 1, "the claimed one waits another interval")
 	assert.Equal(t, int64(850063), again[0].QueID)
 	assert.Equal(t, string(mioty.DLQueueStatusRevoking), heldDownlink(t, db, 850061).Status, "a claim changes no state")
 
-	none, err := downlinks.ClaimUnansweredRevocations(ctx, nil, interval, 10)
+	next, err := downlinks.ClaimUnansweredRevocations(ctx, []uint64{releaseStation}, sweepStart.Add(interval), interval, 10)
+	require.NoError(t, err)
+	require.Len(t, next, 1, "the sweep one interval later asks again")
+	assert.Equal(t, int64(850061), next[0].QueID)
+
+	none, err := downlinks.ClaimUnansweredRevocations(ctx, nil, sweepStart, interval, 10)
 	require.NoError(t, err)
 	assert.Empty(t, none, "no connected station")
 }

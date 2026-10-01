@@ -163,7 +163,8 @@ func TestOverdueSweep_RevokesQueuedRowsAndLeavesReservedOnes(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	revoking, err := downlinks.RevokeOverdueHeld(t.Context(), 10)
+	sweepStart := time.Now().Add(-time.Second)
+	revoking, err := downlinks.RevokeOverdueHeld(t.Context(), sweepStart, 10)
 	require.NoError(t, err)
 	require.Len(t, revoking, 1)
 	assert.Equal(t, int64(830041), revoking[0].QueID)
@@ -173,6 +174,7 @@ func TestOverdueSweep_RevokesQueuedRowsAndLeavesReservedOnes(t *testing.T) {
 	var askedAt, expiredAskedAt sql.NullTime
 	require.NoError(t, db.Get(&askedAt, `SELECT revoke_asked_at FROM downlink_queue WHERE que_id = 830041`))
 	assert.True(t, askedAt.Valid, "the ask is recorded so an unanswered one is repeated")
+	assert.True(t, askedAt.Time.Equal(sweepStart.Truncate(storedTimePrecision)), "the ask is the sweep's start, so the next sweep finds it due")
 
 	expired, err := downlinks.ExpireOverdueUnheld(t.Context(), 10)
 	require.NoError(t, err)
@@ -192,7 +194,7 @@ func TestOverdueSweep_RevokesQueuedRowsAndLeavesReservedOnes(t *testing.T) {
 			assert.Nil(t, result, "queue id %d has no result", queID)
 		}
 	}
-	again, err := downlinks.RevokeOverdueHeld(t.Context(), 10)
+	again, err := downlinks.RevokeOverdueHeld(t.Context(), time.Now(), 10)
 	require.NoError(t, err)
 	assert.Empty(t, again, "a station is asked once per sweep transition")
 }

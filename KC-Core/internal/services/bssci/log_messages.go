@@ -18,8 +18,12 @@ const (
 	LogDownlinkRequeueEventFailed = "downlink returned to the queue without its event: the event could not be recorded"
 	// LogExpiredDownlinkUnreported is logged when a downlink its station dropped is expired but cannot be identified to its originators.
 	LogExpiredDownlinkUnreported = "downlink expired at its base station but not reported: its endpoint or queue id cannot be parsed"
-	// LogDeletedStationDownlinksUnsettled is logged when the downlinks a deleted base station held cannot all be settled.
-	LogDeletedStationDownlinksUnsettled = "downlinks of a deleted base station not settled: they stay held by it"
+	// LogDeletedStationDownlinksUnsettled is logged when the downlinks a deleted base station held cannot be ended at its deletion.
+	LogDeletedStationDownlinksUnsettled = "downlinks of a deleted base station not ended at its deletion: the expiry sweep ends them"
+	// LogDeletedStationDownlinksExpired is logged when the downlinks a deleted base station held end expired.
+	LogDeletedStationDownlinksExpired = "downlinks a deleted base station held ended expired"
+	// LogSessionRowRemovedWithStation is logged when a closing session finds its row deleted with its base station.
+	LogSessionRowRemovedWithStation = "session row already removed with its base station: nothing to persist"
 	// LogSentAfterExpiryEventFailed is logged when a "sent" contradicting a reported expiry cannot be filed in the events.
 	LogSentAfterExpiryEventFailed = "sent result for an expired downlink not filed in the events"
 )
