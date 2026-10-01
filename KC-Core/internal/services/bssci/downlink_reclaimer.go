@@ -7,6 +7,7 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 )
 
@@ -140,9 +141,11 @@ func (d *DownlinkReclaimer) ReclaimDiscardedQueue(ctx context.Context, bsEUI uin
 // and reports each to its originators. The station never reports again, and
 // one still powered may transmit what it held, so none returns to the queue
 // where the endpoint could receive it twice. The work outlives the caller's
-// cancellation; a failure is logged and the expiry sweep ends what is left.
+// cancellation but not a stalled database; whatever it leaves, the expiry
+// sweep ends.
 func (d *DownlinkReclaimer) EndDeletedStationDownlinks(ctx context.Context, bsEUI uint64) {
-	ctx = context.WithoutCancel(ctx)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dbconfig.DefaultQueryTimeout)
+	defer cancel()
 	expired, err := d.removed.ExpireRemovedStationDownlinks(ctx, bsEUI)
 	if err != nil {
 		d.logger.ErrorContext(ctx, LogDeletedStationDownlinksUnsettled, logger.FieldBsEui, bsEUI, logger.FieldError, err)

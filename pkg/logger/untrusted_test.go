@@ -16,13 +16,14 @@ func TestUntrustedValue(t *testing.T) {
 		limit int
 		want  string
 	}{
-		"short value is quoted":             {value: "abc", limit: untrustedRoomyLimit, want: `"abc"`},
-		"line break cannot forge a line":    {value: "a\nlevel=error msg=forged", limit: untrustedRoomyLimit, want: `"a\nlevel=error msg=forged"`},
-		"control characters are escaped":    {value: "a\x1b[31m\r", limit: untrustedRoomyLimit, want: `"a\x1b[31m\r"`},
-		"long value is cut to the limit":    {value: "abcdefgh", limit: untrustedCutLimit, want: `"abc"`},
-		"cut never splits a UTF-8 rune":     {value: "aé", limit: untrustedInRuneLimit, want: `"a"`},
-		"quote in the value stays inside":   {value: `x"y`, limit: untrustedRoomyLimit, want: `"x\"y"`},
-		"empty value is an empty quotation": {value: "", limit: untrustedRoomyLimit, want: `""`},
+		"short value is quoted":              {value: "abc", limit: untrustedRoomyLimit, want: `"abc"`},
+		"line break cannot forge a line":     {value: "a\nlevel=error msg=forged", limit: untrustedRoomyLimit, want: `"a\nlevel=error msg=forged"`},
+		"control characters are escaped":     {value: "a\x1b[31m\r", limit: untrustedRoomyLimit, want: `"a\x1b[31m\r"`},
+		"long value is cut to the limit":     {value: "abcdefgh", limit: untrustedCutLimit, want: `"abc"`},
+		"cut never splits a UTF-8 rune":      {value: "aé", limit: untrustedInRuneLimit, want: `"a"`},
+		"quote in the value stays inside":    {value: `x"y`, limit: untrustedRoomyLimit, want: `"x\"y"`},
+		"empty value is an empty quotation":  {value: "", limit: untrustedRoomyLimit, want: `""`},
+		"cut keeps invalid bytes as escapes": {value: "a\xffbcdef", limit: untrustedCutLimit, want: `"a\xffb"`},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
