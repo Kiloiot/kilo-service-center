@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (default `[2]`, ENOENT; Helm `revokeNotHeldCodes`) lists them. Any other refusal, such as an
   unsupported operation or an I/O error, leaves the downlink in flight instead of ending it as
   revoked.
+- **The Helm chart and `docker-compose.prod.yml` pull the published images.** Their defaults named
+  `ghcr.io/kiloiot/kiloservicecenter/<image>`, where no release publishes; they now name
+  `ghcr.io/kiloiot/kc-core`, `kc-gateway`, `kc-identity` and `kc-web`, including the certificate
+  generator and the `rekey` upgrade hook. An installation that overrides the repository keeps its
+  override.
 
 ## [2.0.0] - 2026-09-30
 

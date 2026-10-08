@@ -217,7 +217,7 @@ rekey:
   enabled: true
   mode: apply
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-core
+    repository: ghcr.io/kiloiot/kc-core
     tag: ""                      # same image as kc-core; contains the rekey and migrate binaries
   # Schema version the hook migrates to before rekeying: the first version
   # whose endpoint key checks accept envelopes. Never migrates down.

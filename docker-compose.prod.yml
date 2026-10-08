@@ -83,7 +83,7 @@ services:
 
   # TLS Certificate Generator (runs once, then exits)
   certgen:
-    image: ghcr.io/kiloiot/kiloservicecenter/kc-core:${KILOCENTER_VERSION:-latest}
+    image: ghcr.io/kiloiot/kc-core:${KILOCENTER_VERSION:-latest}
     container_name: kilocenter-certgen
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -101,7 +101,7 @@ services:
 
   # KC-Identity (authentication and user management)
   kc-identity:
-    image: ghcr.io/kiloiot/kiloservicecenter/kc-identity:${KILOCENTER_VERSION:-latest}
+    image: ghcr.io/kiloiot/kc-identity:${KILOCENTER_VERSION:-latest}
     container_name: kilocenter-identity
     depends_on:
       postgres:
@@ -150,7 +150,7 @@ services:
 
   # KiloCenter Core (BSSCI/SCACI protocol engine)
   kilocenter:
-    image: ghcr.io/kiloiot/kiloservicecenter/kc-core:${KILOCENTER_VERSION:-latest}
+    image: ghcr.io/kiloiot/kc-core:${KILOCENTER_VERSION:-latest}
     container_name: kilocenter-app
     depends_on:
       certgen:
@@ -210,7 +210,7 @@ services:
 
   # KC-Gateway (external gRPC-web ingress)
   kc-gateway:
-    image: ghcr.io/kiloiot/kiloservicecenter/kc-gateway:${KILOCENTER_VERSION:-latest}
+    image: ghcr.io/kiloiot/kc-gateway:${KILOCENTER_VERSION:-latest}
     container_name: kilocenter-gateway
     depends_on:
       kilocenter:
@@ -244,7 +244,7 @@ services:
 
   # KC-Web (browser interface)
   kc-web:
-    image: ghcr.io/kiloiot/kiloservicecenter/kc-web:${KILOCENTER_VERSION:-latest}
+    image: ghcr.io/kiloiot/kc-web:${KILOCENTER_VERSION:-latest}
     container_name: kilocenter-web
     depends_on:
       kc-gateway:

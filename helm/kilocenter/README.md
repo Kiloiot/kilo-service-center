@@ -100,7 +100,7 @@ helm install kilocenter ./helm/kilocenter -f my-values.yaml
 
 | Parameter | Description | Default |
 |---|---|---|
-| `kcCore.image.repository` | Image repository | `ghcr.io/kiloiot/kiloservicecenter/kc-core` |
+| `kcCore.image.repository` | Image repository | `ghcr.io/kiloiot/kc-core` |
 | `kcCore.image.tag` | Image tag (falls back to `global.imageTag`) | `""` |
 | `kcCore.resources` | CPU/memory requests and limits | 10m/128Mi req, 256Mi limit |
 | `kcCore.config.logLevel` | Log level | `info` |
@@ -123,7 +123,7 @@ helm install kilocenter ./helm/kilocenter -f my-values.yaml
 
 | Parameter | Description | Default |
 |---|---|---|
-| `kcGateway.image.repository` | Image repository | `ghcr.io/kiloiot/kiloservicecenter/kc-gateway` |
+| `kcGateway.image.repository` | Image repository | `ghcr.io/kiloiot/kc-gateway` |
 | `kcGateway.config.grpc.port` | gRPC-web port | `9090` |
 | `kcGateway.config.health.port` | Health endpoint port | `8087` |
 | `kcGateway.config.auth.enabled` | Enable authentication | `true` |
@@ -135,7 +135,7 @@ helm install kilocenter ./helm/kilocenter -f my-values.yaml
 
 | Parameter | Description | Default |
 |---|---|---|
-| `kcIdentity.image.repository` | Image repository | `ghcr.io/kiloiot/kiloservicecenter/kc-identity` |
+| `kcIdentity.image.repository` | Image repository | `ghcr.io/kiloiot/kc-identity` |
 | `kcIdentity.config.grpc.port` | gRPC port | `50052` |
 | `kcIdentity.config.health.port` | Health endpoint port | `8088` |
 
@@ -143,7 +143,7 @@ helm install kilocenter ./helm/kilocenter -f my-values.yaml
 
 | Parameter | Description | Default |
 |---|---|---|
-| `kcWeb.image.repository` | Image repository | `ghcr.io/kiloiot/kiloservicecenter/kc-web` |
+| `kcWeb.image.repository` | Image repository | `ghcr.io/kiloiot/kc-web` |
 | `kcWeb.resources` | CPU/memory requests and limits | 5m/32Mi req, 64Mi limit |
 
 ### Mosquitto
