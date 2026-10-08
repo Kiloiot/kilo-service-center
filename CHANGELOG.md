@@ -7,70 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Upgrade note:** migration 000189 clears the `ref` of every later downlink that repeated a
-> ref an organization had already used for the same endpoint; only the earliest keeps it. A
-> client still waiting for the result of such a repeated downlink receives that result without
-> `ref`, so it cannot match it to its command.
-
-### Added
-
-- **An MQTT downlink command can carry a deadline.** `command/down` accepts an optional `expiresAt`
-  (RFC 3339). The downlink waits for its endpoint's downlink window until
-  `protocol.downlink_expiry.lifetime` has passed or until `expiresAt`, whichever comes first. A
-  command whose `expiresAt` has already passed queues nothing and is refused on
-  `event/downlink_rejected` with `mqtt.command.expired`.
-- **An MQTT command's `ref` is accepted once.** A `command/down` whose `ref` already queued a
-  downlink for the same endpoint of the organization queues nothing and publishes nothing, also
-  after the first downlink ended and after the repeat's deadline passed. A client can republish a
-  command it is not sure arrived. The ref is compared before the payload and the endpoint are
-  checked, so a repeat is not refused when the endpoint was deleted or lost its downlink
-  capability since. Migration 000189 adds a unique index on the ref of an organization's
-  endpoint; refs repeated before the upgrade stay on their earliest downlink only.
-
-### Fixed
-
-- **A downlink a base station holds when its deadline passes is no longer reported expired before
-  the station answers.** Only the station knows whether it transmitted it, so the downlink now
-  becomes **Revoking** (migration 000190): KiloCenter asks the station to drop it and reports
-  `expired` only once the station confirms, says it does not hold it, or reconnects with a new
-  session that discarded it. A `sent` the station reports first is recorded and reported as
-  `sent`. A station that is offline at the deadline is asked again when it reconnects, also
-  after a KC-Core restart, and a reconnect never returns such a downlink to the queue. A
-  connected station that has not settled the downlink is asked again once per
-  `protocol.downlink_expiry.sweep_interval`, never while its previous revoke awaits an answer.
-  A `sent` the station that held a downlink reports after it was reported `expired` keeps the
-  expiry, is logged as a warning and is recorded once, as a `dl_data_sent_after_expiry` event
-  (migration 000191), so filters on `dl_data_sent` do not count it.
-- **Deleting a base station ends every downlink it held as `expired`.** Its live session is
-  closed, and the downlinks it held queued, reserved or **Revoking** end `expired` and are
-  reported; none returns to the queue, where the endpoint could receive it twice. A deleted
-  station that is still powered may still transmit them, so power it off or let its queue empty
-  first. The work no longer depends on the request that deleted the station, and the expiry
-  sweep ends anything a deletion left held by a station that no longer exists.
-- **An MQTT command with a `ref` is never refused because of a transient failure.** When the
-  organization of such a command cannot be looked up, KiloCenter publishes nothing instead of
-  `mqtt.command.org_unresolved`, which now means only an organization that does not exist; a
-  repeat whose `ref` is readable is recognized even when another field has the wrong type.
-- **Values a client or a base station chose are logged quoted and bounded.** An MQTT `ref` or
-  `expiresAt` and a base station's error message can no longer break a log line.
-- **Closing the session of a deleted base station no longer logs errors** for its session record,
-  which the deletion already removed.
-- **Two receptions of one MQTT command that race each other no longer refuse it as expired.**
-  The receptions of a command with a `ref` are queued one after the other, so the later one
-  sees the first and is not answered. A deadline less than a microsecond away is refused with
-  `mqtt.command.expired` instead of an internal error.
-- **A base station's refusal of a revoke counts as "not held" only for the codes you name.** The
-  BSSCI specification names no error code for it, so `protocol.downlink_expiry.revoke_not_held_codes`
-  (default `[2]`, ENOENT; Helm `revokeNotHeldCodes`) lists them. Any other refusal, such as an
-  unsupported operation or an I/O error, leaves the downlink in flight instead of ending it as
-  revoked.
-- **The Helm chart and `docker-compose.prod.yml` pull the published images.** Their defaults named
-  `ghcr.io/kiloiot/kiloservicecenter/<image>`, where no release publishes; they now name
-  `ghcr.io/kiloiot/kc-core`, `kc-gateway`, `kc-identity` and `kc-web`, including the certificate
-  generator and the `rekey` upgrade hook. An installation that overrides the repository keeps its
-  override.
-
-## [2.0.0] - 2026-09-30
+## [2.0.0] - 2026-10-08
 
 KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, described in
 [Key material migration](GitBook/06-Operations/02-key-material-migration.md).
@@ -134,6 +71,11 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   and acknowledge times, the base station certificate expiry, and a password policy.
 - **New MQTT fields and events.** `dlOpen`, `responseExp` and `dlAck` on uplinks, delivery details
   on downlink results, more `command/down` options, and `event/downlink_queued`.
+
+> **Upgrade note:** migration 000189 clears the `ref` of every later downlink that repeated a
+> ref an organization had already used for the same endpoint; only the earliest keeps it. A
+> client still waiting for the result of such a repeated downlink receives that result without
+> `ref`, so it cannot match it to its command.
 
 > **Breaking:** organization quotas are gone. `can_have_base_stations`,
 > `max_base_station_count` and `max_endpoint_count` no longer exist on
@@ -469,6 +411,18 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   database on every request; both binaries share one organization resolver.
 
 ### Added
+- **An MQTT downlink command can carry a deadline.** `command/down` accepts an optional `expiresAt`
+  (RFC 3339). The downlink waits for its endpoint's downlink window until
+  `protocol.downlink_expiry.lifetime` has passed or until `expiresAt`, whichever comes first. A
+  command whose `expiresAt` has already passed queues nothing and is refused on
+  `event/downlink_rejected` with `mqtt.command.expired`.
+- **An MQTT command's `ref` is accepted once.** A `command/down` whose `ref` already queued a
+  downlink for the same endpoint of the organization queues nothing and publishes nothing, also
+  after the first downlink ended and after the repeat's deadline passed. A client can republish a
+  command it is not sure arrived. The ref is compared before the payload and the endpoint are
+  checked, so a repeat is not refused when the endpoint was deleted or lost its downlink
+  capability since. Migration 000189 adds a unique index on the ref of an organization's
+  endpoint; refs repeated before the upgrade stay on their earliest downlink only.
 - MQTT `event/up` carries the whole uplink: `epEui`, `eqSnr`, `rxDuration`,
   `format`, `profile`, `mode`, `subpackets`, every receiving base station in
   `baseStations` (with `dlRxSnr`/`dlRxRssi` when reported), `duplicate` and
@@ -708,6 +662,46 @@ KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, 
   single-host install on `localhost` needs nothing.
 
 ### Fixed
+- **A downlink a base station holds when its deadline passes is no longer reported expired before
+  the station answers.** Only the station knows whether it transmitted it, so the downlink now
+  becomes **Revoking** (migration 000190): KiloCenter asks the station to drop it and reports
+  `expired` only once the station confirms, says it does not hold it, or reconnects with a new
+  session that discarded it. A `sent` the station reports first is recorded and reported as
+  `sent`. A station that is offline at the deadline is asked again when it reconnects, also
+  after a KC-Core restart, and a reconnect never returns such a downlink to the queue. A
+  connected station that has not settled the downlink is asked again once per
+  `protocol.downlink_expiry.sweep_interval`, never while its previous revoke awaits an answer.
+  A `sent` the station that held a downlink reports after it was reported `expired` keeps the
+  expiry, is logged as a warning and is recorded once, as a `dl_data_sent_after_expiry` event
+  (migration 000191), so filters on `dl_data_sent` do not count it.
+- **Deleting a base station ends every downlink it held as `expired`.** Its live session is
+  closed, and the downlinks it held queued, reserved or **Revoking** end `expired` and are
+  reported; none returns to the queue, where the endpoint could receive it twice. A deleted
+  station that is still powered may still transmit them, so power it off or let its queue empty
+  first. The work no longer depends on the request that deleted the station, and the expiry
+  sweep ends anything a deletion left held by a station that no longer exists.
+- **An MQTT command with a `ref` is never refused because of a transient failure.** When the
+  organization of such a command cannot be looked up, KiloCenter publishes nothing instead of
+  `mqtt.command.org_unresolved`, which now means only an organization that does not exist; a
+  repeat whose `ref` is readable is recognized even when another field has the wrong type.
+- **Values a client or a base station chose are logged quoted and bounded.** An MQTT `ref` or
+  `expiresAt` and a base station's error message can no longer break a log line.
+- **Closing the session of a deleted base station no longer logs errors** for its session record,
+  which the deletion already removed.
+- **Two receptions of one MQTT command that race each other no longer refuse it as expired.**
+  The receptions of a command with a `ref` are queued one after the other, so the later one
+  sees the first and is not answered. A deadline less than a microsecond away is refused with
+  `mqtt.command.expired` instead of an internal error.
+- **A base station's refusal of a revoke counts as "not held" only for the codes you name.** The
+  BSSCI specification names no error code for it, so `protocol.downlink_expiry.revoke_not_held_codes`
+  (default `[2]`, ENOENT; Helm `revokeNotHeldCodes`) lists them. Any other refusal, such as an
+  unsupported operation or an I/O error, leaves the downlink in flight instead of ending it as
+  revoked.
+- **The Helm chart and `docker-compose.prod.yml` pull the published images.** Their defaults named
+  `ghcr.io/kiloiot/kiloservicecenter/<image>`, where no release publishes; they now name
+  `ghcr.io/kiloiot/kc-core`, `kc-gateway`, `kc-identity` and `kc-web`, including the certificate
+  generator and the `rekey` upgrade hook. An installation that overrides the repository keeps its
+  override.
 - Creating or updating an endpoint with an all-zero network session key is
   refused with `INVALID_ARGUMENT` (`KC-GRPC-ERR-282`). Such a key can never be
   sent to a base station, and the endpoint used to be stored and then fail
