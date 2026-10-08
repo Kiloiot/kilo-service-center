@@ -31,6 +31,18 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-w -s" \
     -o certgen ./cmd/certgen
 
+WORKDIR /build/KC-DB
+
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-w -s" \
+    -o rekey ./cmd/rekey
+
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-w -s" \
+    -o migrate ./cmd/migrate
+
+WORKDIR /build/KC-Core
+
 # Stage 2: Runtime
 FROM alpine:3.23
 ARG SOURCE_URL=https://github.com/Kiloiot/kilo-service-center
@@ -54,6 +66,8 @@ RUN mkdir -p /app/certificates /app/migrations /app/logs && \
 
 COPY --from=builder /build/KC-Core/kilocenter /usr/local/bin/kilocenter
 COPY --from=builder /build/KC-Core/certgen /usr/local/bin/certgen
+COPY --from=builder /build/KC-DB/rekey /usr/local/bin/rekey
+COPY --from=builder /build/KC-DB/migrate /usr/local/bin/migrate
 COPY --from=builder /build/KC-DB/migrations /app/migrations
 
 USER kilocenter

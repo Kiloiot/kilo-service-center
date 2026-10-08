@@ -6,8 +6,8 @@ KiloCenter is an open-source MIOTY Service Center which can be used to set up an
 
 | Edition | Status | Description |
 |---------|--------|-------------|
-| **Community** | Available | Full service center engine, open source, self-hosted. Includes KC-Core, KC-Gateway, KC-Web, gRPC API, API key management, and MQTT integration. |
-| **Enterprise** | Planned | Adds user authentication, organization management, multi-tenancy, tenant isolation, and extended MIOTY endpoint profile fields. |
+| **Community** | Available | Full service center engine, open source, self-hosted. Includes KC-Core, KC-Gateway, KC-Web, gRPC API, sign-in with user roles, API key management, and MQTT integration. |
+| **Enterprise** | Planned | Adds organization management with per-organization roles, multi-tenancy, tenant isolation, and extended MIOTY endpoint profile fields. |
 | **Cloud** | Planned | Fully managed hosting with SLA-backed operations. |
 
 Community Edition is licensed under [AGPL-3.0-or-later](https://www.gnu.org/licenses/agpl-3.0.html). Source at [github.com/Kiloiot/kilo-service-center](https://github.com/Kiloiot/kilo-service-center).

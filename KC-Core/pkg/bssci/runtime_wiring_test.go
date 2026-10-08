@@ -3,6 +3,7 @@ package bssci
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -23,7 +24,7 @@ func (noopPropagationService) ReconcileBaseStation(_ context.Context, _ propagat
 
 type noopDownlinkDispatcher struct{}
 
-func (noopDownlinkDispatcher) DispatchIfAvailable(_ context.Context, _ int64, _ uuid.UUID, _ *Session, _ uint64, _, _ bool) (bool, error) {
+func (noopDownlinkDispatcher) DispatchIfAvailable(_ context.Context, _ int64, _ *Session, _ uint64, _ string, _ bool) (bool, error) {
 	return false, nil
 }
 
@@ -31,10 +32,46 @@ func (noopDownlinkDispatcher) DispatchQueue(_ context.Context, _ int64, _ uuid.U
 	return false, nil
 }
 
+// noopDownlinkReclaimer releases nothing.
+type noopDownlinkReclaimer struct{}
+
+func (noopDownlinkReclaimer) ReclaimReservations(_ context.Context, _ uint64, _ []int64) (int64, error) {
+	return 0, nil
+}
+
+func (noopDownlinkReclaimer) ReclaimDiscardedQueue(_ context.Context, _ uint64) (int64, error) {
+	return 0, nil
+}
+
+func (noopDownlinkReclaimer) ReclaimEndpointQueue(_ context.Context, _ int64, _, _ uint64, _ time.Time) (int64, error) {
+	return 0, nil
+}
+
 func newRuntimeDeps() RuntimeDependencies {
 	return RuntimeDependencies{
 		Propagation:        noopPropagationService{},
 		DownlinkDispatcher: noopDownlinkDispatcher{},
+		DownlinkReclaimer:  noopDownlinkReclaimer{},
+	}
+}
+
+// TestConfigureRuntimeRefusesAMissingCollaborator: every circular
+// collaborator is required, so a wiring fault surfaces at startup.
+func TestConfigureRuntimeRefusesAMissingCollaborator(t *testing.T) {
+	for name, tc := range map[string]struct {
+		drop func(*RuntimeDependencies)
+		want error
+	}{
+		"propagation": {func(d *RuntimeDependencies) { d.Propagation = nil }, errPropagationServiceRequired},
+		"dispatcher":  {func(d *RuntimeDependencies) { d.DownlinkDispatcher = nil }, errDownlinkDispatcherRequired},
+		"reclaimer":   {func(d *RuntimeDependencies) { d.DownlinkReclaimer = nil }, errDownlinkReclaimerRequired},
+	} {
+		t.Run(name, func(t *testing.T) {
+			deps := newRuntimeDeps()
+			tc.drop(&deps)
+
+			require.ErrorIs(t, newResumeReissueServer(t).ConfigureRuntime(deps), tc.want)
+		})
 	}
 }
 

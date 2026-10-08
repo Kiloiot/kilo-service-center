@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -11,8 +14,9 @@ import (
 
 // mockOperationRepo implements interfaces.SCACIOperationRepository for testing
 type mockOperationRepo struct {
-	lastRequest *models.SCACIOperationRequest
-	err         error
+	lastRequest         *models.SCACIOperationRequest
+	lastSourceMessageID string
+	err                 error
 }
 
 func (m *mockOperationRepo) RecordOperation(_ context.Context, req *models.SCACIOperationRequest) (*models.SCACIOperation, error) {
@@ -32,6 +36,15 @@ func (m *mockOperationRepo) RecordOperation(_ context.Context, req *models.SCACI
 	}, nil
 }
 
+func (m *mockOperationRepo) EnsureUplinkOperation(_ context.Context, req *models.SCACIOperationRequest, sourceMessageID string) (*models.SCACIOperation, bool, error) {
+	m.lastRequest = req
+	m.lastSourceMessageID = sourceMessageID
+	if m.err != nil {
+		return nil, false, m.err
+	}
+	return &models.SCACIOperation{ID: 1, SessionID: req.SessionID, OpId: req.OpId, Command: req.Command}, true, nil
+}
+
 func (m *mockOperationRepo) UpdateOperationState(_ context.Context, _ int64, _ int64, _ models.OperationState, _ map[string]interface{}) error {
 	return nil
 }
@@ -41,18 +54,6 @@ func (m *mockOperationRepo) GetOperationByOpID(_ context.Context, _ int64, _ int
 }
 
 func (m *mockOperationRepo) GetPendingOperations(_ context.Context, _ int64) ([]*models.SCACIOperation, error) {
-	return nil, nil
-}
-
-func (m *mockOperationRepo) GetRecentOperations(_ context.Context, _ int64, _ int) ([]*models.SCACIOperation, error) {
-	return nil, nil
-}
-
-func (m *mockOperationRepo) CleanupCompletedOperations(_ context.Context, _ int64) (int64, error) {
-	return 0, nil
-}
-
-func (m *mockOperationRepo) GetTenantOperationSummary(_ context.Context, _ int64, _ int) (*models.SCACIOperationSummary, error) {
 	return nil, nil
 }
 
@@ -207,4 +208,23 @@ func TestRecordOperationWithEmptyData(t *testing.T) {
 	if len(repo.lastRequest.RequestData) > 0 {
 		t.Errorf("expected empty/nil data, got %v", repo.lastRequest.RequestData)
 	}
+}
+
+// The uplink delivery of a session is recorded as its outbound ulData, keyed
+// by the stored uplink it delivers (SCACI §3.2, §3.8).
+func TestEnsureUplinkOperationDelegatesTheDeliveryIdentity(t *testing.T) {
+	repo := &mockOperationRepo{}
+	recorder := NewOperationRecorder(repo)
+	session := &scaci.Session{ID: 300, TenantID: 7}
+	const sourceMessageID = "0f8e7d6c-5b4a-4938-8271-605f4e3d2c1b"
+	data := map[string]interface{}{"packetCnt": 1}
+
+	op, recorded, err := recorder.EnsureUplinkOperation(testutil.TestContext(), session, -9, sourceMessageID, data)
+
+	require.NoError(t, err)
+	assert.True(t, recorded)
+	assert.Equal(t, int64(-9), op.OpId)
+	assert.Equal(t, sourceMessageID, repo.lastSourceMessageID)
+	assert.Equal(t, &models.SCACIOperationRequest{SessionID: 300, TenantID: 7, OpId: -9, Command: scaci.CmdULData,
+		Direction: string(models.OperationDirectionOutbound), RequestData: data}, repo.lastRequest)
 }

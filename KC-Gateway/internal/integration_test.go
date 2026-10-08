@@ -19,7 +19,6 @@ import (
 	gatewayproxy "github.com/Kiloiot/kilo-service-center/KC-Gateway/internal/proxy"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	grpcproxy "github.com/mwitkow/grpc-proxy/proxy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -41,6 +40,16 @@ var (
 	expectedHash string
 )
 
+// Stub identity-service status texts and gateway wiring fixtures.
+const (
+	testErrOrgNotFound    = "org not found"
+	testErrTenantNotFound = "tenant not found"
+	testErrAPIKeyNotFound = "api key not found"
+	testOrgCacheTTL       = 5 * time.Minute
+	testOrgCacheMax       = 1000
+	testAuthEnabled       = true
+)
+
 func init() {
 	hash := sha256.Sum256([]byte(rawAPIKey))
 	expectedHash = hex.EncodeToString(hash[:])
@@ -55,19 +64,19 @@ func (s *stubIdentityInternalService) ResolveOrg(_ context.Context, req *kilocen
 	if req.GetOrgId() == testOrgUUID.String() {
 		return &kilocenterv1.ResolveOrgResponse{TenantId: testTenantID}, nil
 	}
-	return nil, status.Errorf(codes.NotFound, "org not found")
+	return nil, status.Errorf(codes.NotFound, testErrOrgNotFound)
 }
 
 func (s *stubIdentityInternalService) GetDefaultOrgForTenant(_ context.Context, req *kilocenterv1.GetDefaultOrgForTenantRequest) (*kilocenterv1.GetDefaultOrgForTenantResponse, error) {
 	if req.GetTenantId() == testTenantID {
 		return &kilocenterv1.GetDefaultOrgForTenantResponse{OrgId: testOrgUUID.String()}, nil
 	}
-	return nil, status.Errorf(codes.NotFound, "tenant not found")
+	return nil, status.Errorf(codes.NotFound, testErrTenantNotFound)
 }
 
 func (s *stubIdentityInternalService) ValidateAPIKey(_ context.Context, req *kilocenterv1.ValidateAPIKeyRequest) (*kilocenterv1.ValidateAPIKeyResponse, error) {
 	if req.GetKeyHash() != expectedHash {
-		return nil, status.Errorf(codes.NotFound, "api key not found")
+		return nil, status.Errorf(codes.NotFound, testErrAPIKeyNotFound)
 	}
 	return &kilocenterv1.ValidateAPIKeyResponse{
 		Id:             uuid.New().String(),
@@ -176,20 +185,17 @@ func newTwoHopSetup(t *testing.T) *twoHopSetup {
 
 	// --- Gateway (hop 1): auth → org resolver → proxy ---
 	apiKeyAdapter := adapter.NewIdentityRPCAPIKeyAdapter(internalClient, "")
-	orgAdapter := adapter.NewIdentityRPCOrgAdapter(internalClient, "", l, 5*time.Minute, 1000)
+	orgAdapter := adapter.NewIdentityRPCOrgAdapter(internalClient, "", l, testOrgCacheTTL, testOrgCacheMax)
 
 	authInterceptor, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{
-		Enabled: true,
+		Enabled: testAuthEnabled,
 	})
 	require.NoError(t, err, "auth interceptor")
 	authInterceptor.WithAPIKeyAuthenticator(apiKeyAdapter)
 	authInterceptor.WithOrganizationResolver(orgAdapter)
 	authInterceptor.WithTenantResolver(orgAdapter)
 
-	skipMethods := make([]string, 0, len(grpcconst.OrgExemptMethods))
-	for m := range grpcconst.OrgExemptMethods {
-		skipMethods = append(skipMethods, m)
-	}
+	skipMethods := grpcconst.OrgExemptMethodList()
 	orgInterceptor, err := interceptors.NewOrgResolverInterceptor(interceptors.OrgResolverInterceptorConfig{
 		Resolver:    orgAdapter,
 		Logger:      l,
@@ -198,7 +204,7 @@ func newTwoHopSetup(t *testing.T) *twoHopSetup {
 	require.NoError(t, err, "org interceptor")
 
 	director := func(ctx context.Context, _ string) (context.Context, grpc.ClientConnInterface, error) {
-		outMD := gatewayproxy.SanitizeAndInject(ctx)
+		outMD := gatewayproxy.SanitizeAndInject(ctx, "")
 		outCtx := metadata.NewOutgoingContext(ctx, outMD)
 		return outCtx, upstreamConn, nil
 	}
@@ -212,7 +218,7 @@ func newTwoHopSetup(t *testing.T) *twoHopSetup {
 			authInterceptor.StreamInterceptor(),
 			orgInterceptor.StreamInterceptor(),
 		),
-		grpc.UnknownServiceHandler(grpcproxy.TransparentHandler(director)),
+		grpc.UnknownServiceHandler(gatewayproxy.TransparentHandler(director)),
 	)
 
 	gatewayLis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -391,10 +397,10 @@ func newCommunityModeSetup(t *testing.T, communityDefaultTenant int64) *communit
 
 	// --- Auth interceptor (no org resolver — community mode) ---
 	apiKeyAdapter := adapter.NewIdentityRPCAPIKeyAdapter(internalClient, "")
-	orgAdapter := adapter.NewIdentityRPCOrgAdapter(internalClient, "", l, 5*time.Minute, 1000)
+	orgAdapter := adapter.NewIdentityRPCOrgAdapter(internalClient, "", l, testOrgCacheTTL, testOrgCacheMax)
 
 	authInterceptor, err := interceptors.NewAuthInterceptor(interceptors.AuthConfig{
-		Enabled: true,
+		Enabled: testAuthEnabled,
 	})
 	require.NoError(t, err, "auth interceptor")
 	authInterceptor.WithAPIKeyAuthenticator(apiKeyAdapter)
@@ -408,7 +414,7 @@ func newCommunityModeSetup(t *testing.T, communityDefaultTenant int64) *communit
 				ctx = pkgcontext.WithTenantID(ctx, communityDefaultTenant)
 			}
 		}
-		outMD := gatewayproxy.SanitizeAndInject(ctx)
+		outMD := gatewayproxy.SanitizeAndInject(ctx, "")
 		outCtx := metadata.NewOutgoingContext(ctx, outMD)
 		return outCtx, upstreamConn, nil
 	}
@@ -420,7 +426,7 @@ func newCommunityModeSetup(t *testing.T, communityDefaultTenant int64) *communit
 		grpc.ChainStreamInterceptor(
 			authInterceptor.StreamInterceptor(),
 		),
-		grpc.UnknownServiceHandler(grpcproxy.TransparentHandler(director)),
+		grpc.UnknownServiceHandler(gatewayproxy.TransparentHandler(director)),
 	)
 
 	gatewayLis, err := net.Listen("tcp", "127.0.0.1:0")

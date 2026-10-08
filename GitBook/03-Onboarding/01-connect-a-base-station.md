@@ -42,7 +42,9 @@ The base station must trust KiloCenter's CA certificate for TLS to succeed.
 
 ### In KC-Web
 
-Navigate to **Base Stations**. The connected base station should show an **Online** status.
+Navigate to **Base Stations**. The connected base station should show an **Online** status. Open it: its **Activity** tab lists the station's events (it coming online, going offline) and the uplinks it hears, in the same columns as the Events Log. Administrators also see warnings and errors on the dashboard's **Alerts** card, which links to the full history in **Logs** > **Events Log**.
+
+If the base station has a location, entered when you added it or reported by its GPS, administrators also see it as a pin on the map at the top of the **Base Stations** page, above the search field. The pin turns from the error color to the success color when the station comes online, without a page reload. Click the pin to open the base station.
 
 ### In Logs
 
@@ -65,3 +67,7 @@ Look for entries containing `versionNeg` and `attach` with no error messages.
 | TLS handshake error | CA certificate not imported or certificate mismatch |
 | Connection drops immediately | Base station EUI not registered in KC-Web |
 | Version negotiation fails | Firmware version incompatible with KC-Core BSSCI implementation |
+
+## How do I delete a base station that still holds downlinks?
+
+Deleting a base station closes its session and ends every downlink it held, queued at it, reserved for it or being revoked, as `expired`; the downlinks are not sent again through another station. A deleted station never connects again, so it cannot report what it did with them, but a station that is still powered may transmit them after it was deleted. Power the station off, or wait until no downlink is queued at it, before you delete it.

@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,8 +24,7 @@ func TestIdentitySchemaOwnership(t *testing.T) {
 		t.Skip("Skipping identity schema test in short mode (requires database)")
 	}
 
-	requireDB := os.Getenv("CI") == "true"
-	db := SetupEnvDBOrSkip(t, requireDB)
+	db := SetupTestDB(t)
 
 	for _, table := range identityTables {
 		table := table

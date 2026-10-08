@@ -3,47 +3,34 @@ package config
 
 import (
 	"fmt"
-	"net"
-	"strconv"
 	"time"
 )
 
-// GetPostgreSQLDSN returns the PostgreSQL connection string.
-func GetPostgreSQLDSN(cfg StorageConfig) string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.Database, cfg.SSLMode)
-}
-
 // GetMQTTBrokerURL returns the MQTT broker URL.
 func GetMQTTBrokerURL(cfg MQTTConfig) string {
-	protocol := "tcp"
+	protocol := MQTTSchemeTCP
 	if cfg.TLS.Enabled {
-		protocol = "ssl"
+		protocol = MQTTSchemeSSL
 	}
 	return fmt.Sprintf("%s://%s:%d", protocol, cfg.Host, cfg.Port)
 }
 
 // StorageConfig contains database configuration settings
 type StorageConfig struct {
-	Type                          string `mapstructure:"type"` // postgres, mysql, etc.
-	Host                          string `mapstructure:"host"`
-	Port                          int    `mapstructure:"port"`
-	Database                      string `mapstructure:"database"`
-	Username                      string `mapstructure:"username"`
-	Password                      string `mapstructure:"password"`
-	SSLMode                       string `mapstructure:"ssl_mode"`
-	MaxConnections                int    `mapstructure:"max_connections"`
-	MaxIdleConns                  int    `mapstructure:"max_idle_conns"`
-	ConnMaxLifetime               int    `mapstructure:"conn_max_lifetime"`  // seconds
-	ConnMaxIdleTime               int    `mapstructure:"conn_max_idle_time"` // seconds
-	MigrationsPath                string `mapstructure:"migrations_path"`
-	EnableMigrations              bool   `mapstructure:"enable_migrations"`
-	MessageRetentionDays          int    `mapstructure:"message_retention_days"`
-	GatewayReceptionRetentionDays int    `mapstructure:"gateway_reception_retention_days"`
-	DeviceSessionRetentionDays    int    `mapstructure:"device_session_retention_days"`
-	DeviceKeyRetentionDays        int    `mapstructure:"device_key_retention_days"`
-	ArchivalEnabled               *bool  `mapstructure:"archival_enabled"`
-	ArchivalCheckInterval         int    `mapstructure:"archival_check_interval"`
+	Type                 string `mapstructure:"type"` // postgres, mysql, etc.
+	Host                 string `mapstructure:"host"`
+	Port                 int    `mapstructure:"port"`
+	Database             string `mapstructure:"database"`
+	Username             string `mapstructure:"username"`
+	Password             string `mapstructure:"password"`
+	SSLMode              string `mapstructure:"ssl_mode"`
+	MaxConnections       int    `mapstructure:"max_connections"`
+	MaxIdleConns         int    `mapstructure:"max_idle_conns"`
+	ConnMaxLifetime      int    `mapstructure:"conn_max_lifetime"`  // seconds
+	ConnMaxIdleTime      int    `mapstructure:"conn_max_idle_time"` // seconds
+	EnableMigrations     bool   `mapstructure:"enable_migrations"`
+	MessageRetentionDays int    `mapstructure:"message_retention_days"`
+	ArchivalEnabled      *bool  `mapstructure:"archival_enabled"`
 }
 
 // GeneralConfig contains general server settings
@@ -89,21 +76,11 @@ type MQTTConfig struct {
 	Username                   string    `mapstructure:"username"`
 	Password                   string    `mapstructure:"password"`
 	TLS                        TLSConfig `mapstructure:"tls"`
-	QoS                        int       `mapstructure:"qos"`
 	CleanSession               bool      `mapstructure:"clean_session"`
 	KeepAlive                  int       `mapstructure:"keep_alive"`             // seconds
-	ConnectTimeout             int       `mapstructure:"connect_timeout"`        // seconds
 	MaxReconnectInterval       int       `mapstructure:"max_reconnect_interval"` // seconds
 	TopicPrefix                string    `mapstructure:"topic_prefix"`
 	EnableCommandSubscriptions bool      `mapstructure:"enable_command_subscriptions"`
-}
-
-// WebGUIConfig contains web interface settings
-type WebGUIConfig struct {
-	Enabled    bool   `mapstructure:"enabled"`
-	Port       int    `mapstructure:"port"`
-	Host       string `mapstructure:"host"`
-	StaticPath string `mapstructure:"static_path"`
 }
 
 // MonitoringConfig contains monitoring and metrics settings
@@ -118,15 +95,7 @@ type MonitoringConfig struct {
 
 // AlertConfig contains alert service configuration
 type AlertConfig struct {
-	SummaryLookbackHours int `mapstructure:"summary_lookback_hours"` // Lookback period for alert summary counts (hours)
-	RecentAlertsLimit    int `mapstructure:"recent_alerts_limit"`    // Max recent alerts in summary (default: 5)
-}
-
-// AnalyticsConfig contains analytics service configuration
-type AnalyticsConfig struct {
-	DefaultWindowHours int `mapstructure:"default_window_hours"` // Default window for analytics queries (hours)
-	ActivityWindowDays int `mapstructure:"activity_window_days"` // Recent activity window (days)
-	TopEndpointsLimit  int `mapstructure:"top_endpoints_limit"`  // Max endpoints in top-N queries
+	RecentAlertsLimit int `mapstructure:"recent_alerts_limit"` // Max recent alerts in summary (default: 5)
 }
 
 // CertificateConfig contains certificate generation settings.
@@ -134,8 +103,10 @@ type CertificateConfig struct {
 	CertGenPath        string `mapstructure:"certgen_path"`         // Path to certgen binary
 	CertsDir           string `mapstructure:"certs_dir"`            // Directory for permanent certificates
 	TempDir            string `mapstructure:"temp_dir"`             // Directory for temporary certificate downloads
-	CleanupIntervalMin int    `mapstructure:"cleanup_interval_min"` // Cleanup interval for expired temp certs (minutes, default: 15)
 	ServerValidityDays int    `mapstructure:"server_validity_days"` // Validity period for generated server certificates (days, default: 365)
+	// ServerNames are further DNS names and IP addresses the server certificate carries.
+	ServerNames        []string `mapstructure:"server_names"`
+	CleanupIntervalMin int      `mapstructure:"cleanup_interval_min"` // How often expired certificate bundles are removed (minutes, default: 15)
 }
 
 // GRPCConfig holds gRPC server configuration
@@ -144,16 +115,12 @@ type GRPCConfig struct {
 	Port                    int              `mapstructure:"port"`
 	Host                    string           `mapstructure:"host"`                   // Bind address (empty = all interfaces, "127.0.0.1" = loopback only)
 	InternalTrustEnabled    bool             `mapstructure:"internal_trust_enabled"` // Trust gateway identity headers (disable auth + gRPC-web in KC-Core)
-	TLSEnabled              bool             `mapstructure:"tls_enabled"`
-	EnableTLS               bool             `mapstructure:"enable_tls"` // Alias for TLSEnabled
-	CertFile                string           `mapstructure:"cert_file"`
-	KeyFile                 string           `mapstructure:"key_file"`
-	TLSCert                 string           `mapstructure:"tls_cert"` // Alias for CertFile
-	TLSKey                  string           `mapstructure:"tls_key"`  // Alias for KeyFile
-	MaxRecvMsgSize          int              `mapstructure:"max_recv_msg_size"`
-	MaxSendMsgSize          int              `mapstructure:"max_send_msg_size"`
-	StreamPollInterval      time.Duration    `mapstructure:"stream_poll_interval"`        // Polling interval for streaming RPCs
+	EnableTLS               bool             `mapstructure:"enable_tls"`
+	TLSCert                 string           `mapstructure:"tls_cert"`
+	TLSKey                  string           `mapstructure:"tls_key"`
+	StreamPollInterval      time.Duration    `mapstructure:"stream_poll_interval"`        // Fallback read of the streaming RPCs
 	StreamBatchSize         int              `mapstructure:"stream_batch_size"`           // Batch size for streaming message responses
+	StreamOverlap           time.Duration    `mapstructure:"stream_overlap"`              // How far each stream read reaches back in storage order
 	CountCacheTTL           time.Duration    `mapstructure:"count_cache_ttl"`             // TTL for cached event COUNT(*) results
 	Web                     GRPCWebConfig    `mapstructure:"web"`                         // gRPC-web config
 	HTTP                    HTTPServerConfig `mapstructure:"http"`                        // HTTP server timeouts
@@ -171,7 +138,6 @@ type GRPCWebConfig struct {
 	AllowCredentials bool     `mapstructure:"allow_credentials"`
 	MaxAge           int      `mapstructure:"max_age"`           // Preflight cache seconds
 	AllowAllOrigins  bool     `mapstructure:"allow_all_origins"` // Dev only - MUST be false when AllowCredentials is true in production
-	EnableWebsockets bool     `mapstructure:"enable_websockets"` // gRPC-web over WS
 	AllowedMethods   []string `mapstructure:"allowed_methods"`   // CORS allowed methods
 }
 
@@ -180,20 +146,6 @@ type HTTPServerConfig struct {
 	ReadTimeout  time.Duration `mapstructure:"read_timeout"`
 	WriteTimeout time.Duration `mapstructure:"write_timeout"`
 	IdleTimeout  time.Duration `mapstructure:"idle_timeout"`
-}
-
-// PostgreSQLConfig contains PostgreSQL database configuration
-type PostgreSQLConfig struct {
-	Host            string        `mapstructure:"host"`
-	Port            int           `mapstructure:"port"`
-	Database        string        `mapstructure:"database"`
-	Username        string        `mapstructure:"username"`
-	Password        string        `mapstructure:"password"`
-	SSLMode         string        `mapstructure:"ssl_mode"`
-	MaxOpenConns    int           `mapstructure:"max_open_conns"`
-	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
-	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
-	ConnMaxIdleTime time.Duration `mapstructure:"conn_max_idle_time"`
 }
 
 // RedisConfig contains Redis settings
@@ -207,13 +159,12 @@ type RedisConfig struct {
 
 // AuthConfig contains authentication and authorization settings
 type AuthConfig struct {
-	Enabled      bool                 `mapstructure:"enabled"`       // Enable JWT authentication
-	JWKSEndpoint string               `mapstructure:"jwks_endpoint"` // External JWKS URL for key discovery (mutually exclusive with LocalLoginEnabled)
-	Issuer       string               `mapstructure:"issuer"`        // Expected token issuer (reused for local login if JWKSEndpoint empty)
-	Audience     string               `mapstructure:"audience"`      // Expected audience claim (reused for local login if JWKSEndpoint empty)
-	TenantClaim  string               `mapstructure:"tenant_claim"`  // JWT claim containing tenant_id
-	Algorithm    string               `mapstructure:"algorithm"`     // JWT signing algorithm (default: RS256 for JWKS, HS256 for local)
-	Bootstrap    AdminBootstrapConfig `mapstructure:"bootstrap"`     // Initial admin user bootstrap settings
+	Enabled      bool   `mapstructure:"enabled"`       // Enable JWT authentication
+	JWKSEndpoint string `mapstructure:"jwks_endpoint"` // External JWKS URL for key discovery (mutually exclusive with LocalLoginEnabled)
+	Issuer       string `mapstructure:"issuer"`        // Expected token issuer (reused for local login if JWKSEndpoint empty)
+	Audience     string `mapstructure:"audience"`      // Expected audience claim (reused for local login if JWKSEndpoint empty)
+	TenantClaim  string `mapstructure:"tenant_claim"`  // JWT claim containing tenant_id
+	Algorithm    string `mapstructure:"algorithm"`     // JWT signing algorithm (default: RS256 for JWKS, HS256 for local)
 
 	// Local authentication settings
 	RegistrationEnabled bool          `mapstructure:"registration_enabled"`  // Enable self-service account registration (requires LocalLoginEnabled)
@@ -228,9 +179,8 @@ type AuthConfig struct {
 	LogoutURL           string        `mapstructure:"logout_url"`            // Post-logout redirect URL
 
 	// External authentication provider settings
-	UICallbackURL string               `mapstructure:"ui_callback_url"` // UI callback URL for external auth redirects (e.g., http://localhost:5173/#/login)
-	OIDC          OIDCProviderConfig   `mapstructure:"oidc"`            // OIDC provider configuration
-	OAuth2        OAuth2ProviderConfig `mapstructure:"oauth2"`          // OAuth2 PKCE provider configuration
+	OIDC   OIDCProviderConfig   `mapstructure:"oidc"`   // OIDC provider configuration
+	OAuth2 OAuth2ProviderConfig `mapstructure:"oauth2"` // OAuth2 PKCE provider configuration
 }
 
 // OIDCProviderConfig contains OIDC (OpenID Connect) provider settings.
@@ -275,17 +225,6 @@ type OAuth2ProviderConfig struct {
 	EmailClaim              string        `mapstructure:"email_claim"`               // Claim containing email (default: email)
 }
 
-// AdminBootstrapConfig contains initial admin user bootstrap settings.
-type AdminBootstrapConfig struct {
-	Enabled           bool   `mapstructure:"enabled"`             // Enable bootstrap on startup
-	InitialAdminEmail string `mapstructure:"initial_admin_email"` // Admin email address
-	PasswordHash      string `mapstructure:"password_hash"`       // PHC format password hash
-	TenantID          int64  `mapstructure:"tenant_id"`           // Tenant ID for org
-	OrganizationName  string `mapstructure:"organization_name"`   // Org name (if create_org)
-	CreateOrg         bool   `mapstructure:"create_org"`          // Create org if not exists
-	CreateMembership  bool   `mapstructure:"create_membership"`   // Add user to org as owner
-}
-
 // RegistryProviderConfig contains settings for blueprint registry submission.
 type RegistryProviderConfig struct {
 	Enabled       bool   `mapstructure:"enabled"`        // Enable registry submission
@@ -299,7 +238,6 @@ type RegistryProviderConfig struct {
 	BlueprintPath string `mapstructure:"blueprint_path"` // Directory for blueprint files
 	FileExtension string `mapstructure:"file_extension"` // Blueprint file extension
 	HTTPTimeout   int    `mapstructure:"http_timeout"`   // HTTP client timeout in seconds
-	SchemaURL     string `mapstructure:"schema_url"`     // Optional: JSON schema URL for validation
 
 	// GitHub App authentication (auth_mode=github-app)
 	GitHubAppID             int64  `mapstructure:"github_app_id"`              // GitHub App ID
@@ -307,25 +245,9 @@ type RegistryProviderConfig struct {
 	GitHubAppPrivateKey     string `mapstructure:"github_app_private_key"`     // PEM-encoded private key
 }
 
-// StatusEndpointConfig holds individual endpoint check configuration.
-// Supports URL for http/db types and Host/Port for tcp type.
-type StatusEndpointConfig struct {
-	Name string `mapstructure:"name"`
-	URL  string `mapstructure:"url"`  // For http/db types
-	Host string `mapstructure:"host"` // For tcp type
-	Port int    `mapstructure:"port"` // For tcp type
-	Type string `mapstructure:"type"` // http, tcp, db
-}
-
-// GetAddress returns the TCP address (host:port) for tcp type endpoints.
-func (c StatusEndpointConfig) GetAddress() string {
-	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
-}
-
-// StatusConfig holds service health check configuration.
+// StatusConfig holds the timeout shared by the service-status probes.
 type StatusConfig struct {
-	Timeout   time.Duration          `mapstructure:"timeout"`
-	Endpoints []StatusEndpointConfig `mapstructure:"endpoints"`
+	Timeout time.Duration `mapstructure:"timeout"`
 }
 
 // Config represents the complete configuration structure
@@ -334,14 +256,11 @@ type Config struct {
 	Protocol         ProtocolConfig         `mapstructure:"protocol"`
 	Storage          StorageConfig          `mapstructure:"storage"`
 	MQTT             MQTTConfig             `mapstructure:"mqtt"`
-	WebGUI           WebGUIConfig           `mapstructure:"web_gui"`
 	Monitoring       MonitoringConfig       `mapstructure:"monitoring"`
 	GRPC             GRPCConfig             `mapstructure:"grpc"`
 	Auth             AuthConfig             `mapstructure:"auth"`
-	PostgreSQL       PostgreSQLConfig       `mapstructure:"postgresql"`
 	Redis            RedisConfig            `mapstructure:"redis"`
 	Alerts           AlertConfig            `mapstructure:"alerts"`
-	Analytics        AnalyticsConfig        `mapstructure:"analytics"`
 	Certificates     CertificateConfig      `mapstructure:"certificates"`
 	RegistryProvider RegistryProviderConfig `mapstructure:"registry_provider"` // Blueprint registry submission
 	Status           StatusConfig           `mapstructure:"status"`            // Service health check configuration
@@ -352,7 +271,7 @@ type Config struct {
 
 // InternalAuthConfig holds shared-secret peer authentication for internal gRPC services.
 type InternalAuthConfig struct {
-	PeerSecret string `mapstructure:"peer_secret"` // Shared secret for peer-to-peer gRPC auth (empty = disabled in dev mode)
+	PeerSecret string `mapstructure:"peer_secret"` // Shared secret for peer-to-peer gRPC auth; required unless every internal hop is on a loopback address
 }
 
 // IdentityConfig holds KC-Identity service connection settings.

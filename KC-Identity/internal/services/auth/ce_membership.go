@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 )
@@ -13,12 +12,12 @@ import (
 // CE has a single hidden default org; users are assigned membership based on their
 // server admin status rather than explicit org membership records.
 type CEDefaultOrgProvider struct {
-	orgDirectory    interfaces.OrganizationRepository
+	orgDirectory    OrgDirectory
 	defaultTenantID int64
 }
 
 // NewCEDefaultOrgProvider creates a CE membership synthesizer.
-func NewCEDefaultOrgProvider(orgDirectory interfaces.OrganizationRepository, defaultTenantID int64) *CEDefaultOrgProvider {
+func NewCEDefaultOrgProvider(orgDirectory OrgDirectory, defaultTenantID int64) *CEDefaultOrgProvider {
 	return &CEDefaultOrgProvider{
 		orgDirectory:    orgDirectory,
 		defaultTenantID: defaultTenantID,
@@ -30,7 +29,7 @@ func NewCEDefaultOrgProvider(orgDirectory interfaces.OrganizationRepository, def
 func (p *CEDefaultOrgProvider) SynthesizeMembership(ctx context.Context, user *models.User) (*grpcservices.OrganizationMembership, error) {
 	defaultOrg, err := p.orgDirectory.GetOrgByTenantID(ctx, p.defaultTenantID)
 	if err != nil {
-		return nil, fmt.Errorf("CE default org lookup failed for tenant %d: %w", p.defaultTenantID, err)
+		return nil, fmt.Errorf("%s %d: %w", errPrefixCEDefaultOrgLookup, p.defaultTenantID, err)
 	}
 	return &grpcservices.OrganizationMembership{
 		OrgID:              defaultOrg.OrgID,

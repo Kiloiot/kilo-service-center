@@ -11,7 +11,6 @@
 import { type MouseEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useAuthSettings } from "@hooks";
 import {
   Box,
   Button,
@@ -25,14 +24,12 @@ import {
   useTheme,
 } from "@mui/material";
 
-import { apiService } from "@services/api";
-import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { useSystem } from "@contexts/SystemContext";
-import { storageService } from "@utils/storage";
-import { ROUTES, STORAGE_KEYS } from "@constants/app";
-import { ARIA, BRAND, USER_MENU } from "@constants/messages";
-import { resetQueryClient } from "@config/query-client";
+import { useSignOut } from "@hooks/useSignOut";
+import { formatDateTime } from "@utils/date-format";
+import { ROUTES, SHORT_COMMIT_SHA_LENGTH, THEME_MODE } from "@constants/app";
+import { ARIA, BRAND, USER_MENU, VERSION_INFO } from "@constants/messages";
 import {
   AccountIcon,
   DarkModeIcon,
@@ -42,6 +39,8 @@ import {
   LogoutIcon,
   OpenInNewIcon,
 } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
+import { userMenuTriggerStyle } from "@theme/navigation";
 import { useThemeMode } from "@theme/ThemeContext";
 
 export function UserMenu() {
@@ -49,11 +48,10 @@ export function UserMenu() {
   const navigate = useNavigate();
 
   // Context hooks
-  const { user, clearSession } = useSession();
-  const { clearOrganization } = useOrganization();
+  const { user } = useSession();
   const { versionInfo } = useSystem();
   const { mode, toggleTheme } = useThemeMode();
-  const { data: authSettings } = useAuthSettings();
+  const signOut = useSignOut();
 
   // Menu state
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -79,44 +77,16 @@ export function UserMenu() {
 
   const handleLogout = async () => {
     handleClose();
-
-    const refreshToken = storageService.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-
-    // Only call logout API if BOTH conditions are true:
-    // 1. authSettings.refresh_token_enabled === true
-    // 2. refreshToken exists in storage
-    // Otherwise the backend returns 501 Not Implemented
-    if (authSettings?.refresh_token_enabled === true && refreshToken) {
-      try {
-        await apiService.logout(refreshToken);
-      } catch {
-        // Ignore errors - still proceed with local cleanup
-      }
-    }
-
-    // Clear all state regardless of API call
-    clearSession();
-    clearOrganization();
-    storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-    resetQueryClient();
-
-    // Redirect to provider logout URL if configured, otherwise login page
-    const logoutUrl =
-      authSettings?.oidc?.logout_url || authSettings?.oauth2?.logout_url;
-    if (logoutUrl) {
-      window.location.href = logoutUrl;
-    } else {
-      navigate(ROUTES.LOGIN);
-    }
+    await signOut();
   };
 
   // Build version tooltip content
   const versionTooltip = versionInfo
     ? [
-        `${USER_MENU.VERSION_TOOLTIP_BUILD}: ${new Date(versionInfo.buildTime).toLocaleString()}`,
-        `${USER_MENU.VERSION_TOOLTIP_COMMIT}: ${versionInfo.gitCommit?.substring(0, 8) || "unknown"}`,
-        `${USER_MENU.VERSION_TOOLTIP_BRANCH}: ${versionInfo.gitBranch || "unknown"}`,
-        `${USER_MENU.VERSION_TOOLTIP_SCHEMA}: ${versionInfo.schemaVersion || "unknown"}`,
+        `${USER_MENU.VERSION_TOOLTIP_BUILD}: ${formatDateTime(versionInfo.buildTime)}`,
+        `${USER_MENU.VERSION_TOOLTIP_COMMIT}: ${versionInfo.gitCommit?.substring(0, SHORT_COMMIT_SHA_LENGTH) || VERSION_INFO.UNKNOWN}`,
+        `${USER_MENU.VERSION_TOOLTIP_BRANCH}: ${versionInfo.gitBranch || VERSION_INFO.UNKNOWN}`,
+        `${USER_MENU.VERSION_TOOLTIP_SCHEMA}: ${versionInfo.schemaVersion || VERSION_INFO.UNKNOWN}`,
       ].join("\n")
     : "";
 
@@ -134,17 +104,8 @@ export function UserMenu() {
         aria-label={ARIA.USER_MENU_TOGGLE}
         onClick={handleClick}
         startIcon={<AccountIcon />}
-        sx={{
-          width: "100%",
-          justifyContent: "flex-start",
-          textTransform: "none",
-          color: theme.palette.text.primary,
-          px: 1.5,
-          py: 1,
-          "&:hover": {
-            backgroundColor: theme.palette.action.hover,
-          },
-        }}
+        disableRipple={false}
+        sx={userMenuTriggerStyle(theme)}
       >
         <Typography
           variant="body2"
@@ -152,7 +113,7 @@ export function UserMenu() {
           sx={{
             overflow: "hidden",
             textOverflow: "ellipsis",
-            maxWidth: 160,
+            maxWidth: componentSpacing.userMenu.labelMaxWidth,
           }}
         >
           {user.email}
@@ -179,7 +140,7 @@ export function UserMenu() {
         slotProps={{
           paper: {
             sx: {
-              minWidth: 200,
+              minWidth: componentSpacing.userMenu.menuMinWidth,
             },
           },
         }}
@@ -198,7 +159,7 @@ export function UserMenu() {
           >
             <Typography variant="caption" color="text.secondary">
               {versionInfo.version}
-              {!versionInfo.isProduction && " (dev)"}
+              {!versionInfo.isProduction && USER_MENU.DEVELOPMENT_BUILD_SUFFIX}
             </Typography>
             <Tooltip
               title={
@@ -257,7 +218,7 @@ export function UserMenu() {
 
         {/* Theme toggle */}
         <MenuItem onClick={handleThemeToggle}>
-          {mode === "dark" ? (
+          {mode === THEME_MODE.DARK ? (
             <>
               <LightModeIcon sx={{ mr: 1.5 }} fontSize="small" />
               {USER_MENU.THEME_LIGHT}

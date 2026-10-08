@@ -7,14 +7,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
-	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/cmd/kilocenter/builders"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/pkg/observability"
 )
 
@@ -54,39 +51,39 @@ func main() {
 	// Load version info
 	versionInfo := getVersionInfo()
 
-	log.Info("Starting KiloCenter MIOTY Server",
-		"version", versionInfo.Version,
-		"build_time", versionInfo.BuildTime,
-		"git_commit", versionInfo.GitCommit,
-		"git_branch", versionInfo.GitBranch,
-		"schema_version", versionInfo.SchemaVersion,
+	log.Info(LogStartingKiloCenterMIOTYServer,
+		logger.FieldVersion, versionInfo.Version,
+		logger.FieldBuildTime, versionInfo.BuildTime,
+		logger.FieldGitCommit, versionInfo.GitCommit,
+		logger.FieldGitBranch, versionInfo.GitBranch,
+		logger.FieldSchemaVersion, versionInfo.SchemaVersion,
 	)
 
 	// Initialize observability (tracing + metrics)
-	tracingShutdown, err := observability.InitTracing(context.Background(), observability.TracingConfig{
+	tracingShutdown, err := observability.InitTracing(context.Background(), observability.TracingConfig{ // context-root: process
 		Enabled:    cfg.Monitoring.TracingEnabled,
 		Endpoint:   cfg.Monitoring.TracingEndpoint,
 		SampleRate: cfg.Monitoring.TracingSampleRate,
-	}, "kc-core")
+	}, builders.CoreServiceSourceName)
 	if err != nil {
-		log.Error(LogFailedInitTracing, "error", err)
+		log.Error(LogFailedInitTracing, logger.FieldError, err)
 	} else {
-		defer func() { _ = tracingShutdown(context.Background()) }()
+		defer shutdownObservability(log, tracingShutdown, LogFailedShutdownTracing)
 	}
 
-	metricsShutdown, err := observability.InitMetrics(context.Background(), observability.MetricsConfig{
+	metricsShutdown, err := observability.InitMetrics(context.Background(), observability.MetricsConfig{ // context-root: process
 		Enabled: cfg.Monitoring.MetricsEnabled,
 		Port:    cfg.Monitoring.MetricsPort,
 		Path:    cfg.Monitoring.MetricsPath,
-	}, "kc-core")
+	}, builders.CoreServiceSourceName)
 	if err != nil {
-		log.Error(LogFailedInitMetrics, "error", err)
+		log.Error(LogFailedInitMetrics, logger.FieldError, err)
 	} else {
-		defer func() { _ = metricsShutdown(context.Background()) }()
+		defer shutdownObservability(log, metricsShutdown, LogFailedShutdownMetrics)
 	}
 
 	// Create application context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) // context-root: process
 	defer cancel()
 
 	// Setup signal handling
@@ -100,14 +97,14 @@ func main() {
 	}
 	defer runCleanups(infra.Cleanups)
 
-	// Start health check endpoint
-	go startHealthCheck(cfg.General.HealthCheckPort, infra.HealthService)
-
 	// 2. gRPC server (needs org resolver from infra)
 	grpcServer, grpcConfig, err := builders.BuildGRPCServer(infra)
 	if err != nil {
 		log.Fatal(LogFailedBuildGRPCServer, logger.Err(err))
 	}
+
+	// Readiness includes the gRPC server, so the endpoint starts once it exists.
+	go startHealthCheck(log, cfg.General.HealthCheckPort, infra.HealthService, infra.ReadinessService)
 
 	// 3. Protocol servers (BSSCI + SCACI)
 	protocol, err := builders.BuildProtocolServers(ctx, infra)
@@ -118,6 +115,7 @@ func main() {
 
 	// 4. Core service (device management, protocol operations, analytics)
 	coreResult := builders.BuildCoreService(ctx, infra, protocol, nil)
+	defer runCleanups(coreResult.Cleanups)
 
 	// 5. Register services + start gRPC and management HTTP servers
 	builders.RegisterAndServe(grpcServer, grpcConfig, coreResult.Service, protocol, infra, cancel)
@@ -125,37 +123,24 @@ func main() {
 	// Wait for shutdown signal
 	select {
 	case sig := <-sigChan:
-		log.Info("Received shutdown signal", "signal", sig)
+		log.Info(LogReceivedShutdownSignal, logger.FieldSignal, sig)
 	case <-ctx.Done():
-		log.Info("Context cancelled")
+		log.Info(LogContextCancelled)
 	}
 
 	// Graceful shutdown
-	log.Info("Shutting down gracefully...")
+	log.Info(LogShuttingDownGracefully)
 
 	// Emit service stopped event before shutdown
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownEventTimeout) // context-root: shutdown
 	defer shutdownCancel()
-	hostname, _ := os.Hostname()
-	_ = coreResult.SystemEventAdapter.CreateEvent(shutdownCtx, &models.SystemEvent{
-		TenantID:    strconv.FormatInt(infra.TenantID, 10),
-		EventType:   models.EventTypeServiceStopped,
-		Category:    models.EventCategorySystem,
-		Severity:    models.EventSeverityInfo,
-		Title:       fmt.Sprintf(models.EventTitleServiceStoppedFmt, "KC-Core", hostname),
-		Description: fmt.Sprintf(models.EventDescriptionServiceStoppedFmt, "KC-Core", versionInfo.Version),
-		SourceType:  models.SourceTypeSystem,
-		SourceName:  "kc-core",
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-	})
-	log.Info("Service stopped event emitted")
+	emitServiceStopped(shutdownCtx, log, coreResult.SystemEventAdapter, infra.TenantID, versionInfo.Version)
 
 	// Stop gRPC server first (stops accepting new requests)
 	grpcServer.Stop()
 
 	// Protocol + infrastructure cleanups run via deferred runCleanups
-	log.Info("Shutdown complete")
+	log.Info(LogShutdownComplete)
 }
 
 // runCleanups executes cleanup functions in reverse order (LIFO).

@@ -22,9 +22,9 @@ with the person responsible for your installation. Do not delete the database as
 ## Choose the software deliberately
 
 A release tag such as `v1.3.0` names a release; `latest` can change without identifying the same bytes.
-The July 26 release workflow published images at `ghcr.io/kiloiot/kc-core`, `kc-gateway`, `kc-identity`
-and `kc-web`. Current chart defaults use a different nested repository path. Check every application
-image and the certificate-generator image before installation. Registry access also needs verification;
+The release workflow publishes images at `ghcr.io/kiloiot/kc-core`, `kc-gateway`, `kc-identity` and
+`kc-web`; the Helm chart and `docker-compose.prod.yml` use these repositories by default. Check every
+application image and the certificate-generator image before installation. Registry access also needs verification;
 a repository-name correction alone does not grant access or complete release security checks.
 
 The existing release records do not yet provide a fully verified installation package, complete

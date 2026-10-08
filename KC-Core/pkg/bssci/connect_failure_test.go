@@ -20,7 +20,7 @@ func (failingRegistrationConnSvc) GetBaseStationGlobal(_ context.Context, eui [8
 }
 
 func (failingRegistrationConnSvc) RegisterConnection(_ context.Context, _ *Session, _ *basestation.BaseStation) error {
-	return errors.New("registration failed")
+	return errRegistrationFailed
 }
 
 func (failingRegistrationConnSvc) DisconnectBaseStationIfCurrent(_ context.Context, _ [8]byte, _ string) error {
@@ -29,8 +29,7 @@ func (failingRegistrationConnSvc) DisconnectBaseStationIfCurrent(_ context.Conte
 
 func (failingRegistrationConnSvc) UpdateLastSeen(_ context.Context, _ [8]byte) error { return nil }
 
-// terminateSpySessionSvc records TerminateSession calls to prove the
-// activation compensation runs.
+// terminateSpySessionSvc records TerminateSession calls.
 type terminateSpySessionSvc struct {
 	SessionService
 	terminated int
@@ -52,7 +51,6 @@ func TestConnectResponseWriteFailureNoActivation(t *testing.T) {
 		queueSerializer, auditLogger, tenantResolver)
 	server.config = &Config{MessageEncoding: EncodingJSON, ServiceCenterEUI: TestBsEui02,
 		Vendor: "v", Model: "m", Name: "n", SoftwareVersion: "1.0.0"}
-	server.RegisterHandlers()
 
 	conn := &bsscitest.TestConn{Encoding: EncodingJSON, FailWrites: true}
 	session := &Session{
@@ -76,11 +74,12 @@ func TestConnectResponseWriteFailureNoActivation(t *testing.T) {
 		"a session whose conRsp never went out must not be published to the live registry")
 }
 
-// TestActivationCompensationOnRegistrationFailure: when the live connection
-// registration fails after the session row was persisted, the persisted
-// session is compensated (terminated) and nothing is published to the live
-// registries.
-func TestActivationCompensationOnRegistrationFailure(t *testing.T) {
+// TestActivationRegistrationFailureKeepsRowForTeardown: when the live
+// connection registration fails after the session row was persisted, nothing
+// is published to the live registries and the row is not retired: the base
+// station completed the connect, so the teardown hands the owned row back
+// resumable.
+func TestActivationRegistrationFailureKeepsRowForTeardown(t *testing.T) {
 	log := newRecordingLogger()
 	sessionSvc, downlinkSvc, statusSvc, _, broadcaster, queueSerializer, auditLogger, tenantResolver, storage := CreateTestServices(log, nil)
 	spy := &terminateSpySessionSvc{SessionService: sessionSvc}
@@ -88,7 +87,6 @@ func TestActivationCompensationOnRegistrationFailure(t *testing.T) {
 		spy, downlinkSvc, statusSvc, failingRegistrationConnSvc{}, broadcaster,
 		queueSerializer, auditLogger, tenantResolver)
 	server.config = &Config{MessageEncoding: EncodingJSON}
-	server.RegisterHandlers()
 
 	conn := &bsscitest.TestConn{Encoding: EncodingJSON}
 	session := &Session{
@@ -111,9 +109,14 @@ func TestActivationCompensationOnRegistrationFailure(t *testing.T) {
 	err := server.CallHandleConnectComplete(session, msg, data)
 
 	require.Error(t, err, "a registration failure after conCmp must close the connection")
-	assert.Equal(t, 1, spy.terminated,
-		"the just-persisted session must be compensated via TerminateSession")
+	assert.Zero(t, spy.terminated, "the persisted session is not retired")
+	assert.NotZero(t, session.DbSessionID, "the connection still owns its row for the teardown")
 	assert.Equal(t, ConnectStateTerminal, session.ConnectState)
 	assert.Nil(t, server.GetSession(session.ID),
 		"a session whose activation failed must not be published to the live registry")
 }
+
+// Sentinel errors returned by this package; callers match them with errors.Is.
+var (
+	errRegistrationFailed = errors.New("registration failed")
+)

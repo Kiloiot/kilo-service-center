@@ -37,3 +37,9 @@ const (
 	// membership fetch fails (the registration itself succeeded).
 	LogRegistrationMembershipLoadFailed = "failed to load memberships after registration"
 )
+
+const (
+	// LogRegistrationAccountRegistered is logged when an account registration
+	// completes and the first session tokens have been issued.
+	LogRegistrationAccountRegistered = "account registered successfully"
+)

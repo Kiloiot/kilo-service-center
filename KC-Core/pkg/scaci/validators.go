@@ -1,7 +1,12 @@
 // Package scaci implements the MIOTY Service Center Application Center Interface (SCACI) v1.0.0
 package scaci
 
-import "math"
+import (
+	"errors"
+	"math"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+)
 
 // ============================================================================
 // Assembly Validation (SCACI §§2.5, 3.12.1, 3.13.1)
@@ -21,7 +26,7 @@ import "math"
 //
 // Required fields (always):
 //   - epEui: must be non-zero (reuses errEpEuiZero)
-//   - queId: must be non-zero (reuses errQueIDZero)
+//   - queId: any 64-bit value, zero included (§3.10.1)
 //   - result: must be valid enum value
 //   - opId: must be negative (SC-originated per §3.2)
 //
@@ -41,16 +46,11 @@ func ValidateDLDataResult(msg *DLDataResult) string {
 		return errEpEuiZero
 	}
 
-	// Mandatory: queId non-zero
-	if msg.QueID == 0 {
-		return errQueIDZero
-	}
-
 	// Mandatory: result must be present and valid enum
 	if msg.Result == "" {
 		return errDLDataResultMissingResult
 	}
-	if !ValidDLDataResults[msg.Result] {
+	if !validDLDataResults[msg.Result] {
 		return errDLDataResultInvalidResultEnum
 	}
 
@@ -90,7 +90,7 @@ func ValidateDLDataResult(msg *DLDataResult) string {
 //   - epEui: must be non-zero (reuses errEpEuiZero)
 //   - epStatus: must be valid enum value (EPStatusAttached/EPStatusDetached)
 //
-// OTA field requirements per §3.13.1:
+// OTA field requirements per §3.13.1, for a status that carries any OTA field:
 //   - attached: attachCnt, nonce, sign required
 //   - detached: sign required
 //   - eqSnr, subpackets: optional (not validated)
@@ -115,14 +115,16 @@ func ValidateEPStatus(msg *EPStatus, opId int64) string {
 	if msg.EpStatus == "" {
 		return errEPStatusMissingStatus
 	}
-	if !ValidEPStatuses[msg.EpStatus] {
+	if !validEPStatuses[msg.EpStatus] {
 		return errEPStatusInvalidStatusEnum
 	}
 
-	// OTA field requirements per §3.13.1
+	// OTA field requirements per §3.13.1 apply only to an over-the-air status
+	if !isOverTheAirStatus(msg) {
+		return ""
+	}
 	switch msg.EpStatus {
 	case EPStatusAttached:
-		// attached: attachCnt, nonce, sign required
 		if msg.AttachCnt == nil {
 			return errEPStatusMissingAttachCnt
 		}
@@ -133,13 +135,18 @@ func ValidateEPStatus(msg *EPStatus, opId int64) string {
 			return errEPStatusMissingSign
 		}
 	case EPStatusDetached:
-		// detached: sign required
 		if msg.Sign == nil {
 			return errEPStatusMissingSign
 		}
 	}
 
 	return ""
+}
+
+// isOverTheAirStatus reports whether the status carries any field §3.13.1 defines for over-the-air attach or detach only.
+func isOverTheAirStatus(msg *EPStatus) bool {
+	return msg.AttachCnt != nil || msg.Nonce != nil || msg.Sign != nil ||
+		msg.Snr != nil || msg.Rssi != nil || msg.EqSnr != nil || msg.Subpackets != nil
 }
 
 // ValidateConnectResponse validates a ConnectResponse message per SCACI §3.3.2
@@ -302,10 +309,6 @@ func ValidateULData(msg *ULData) string {
 //
 // Required fields (always):
 //   - epEui: must be non-zero (reuses errEpEuiZero)
-//   - nwkSnKey: must be exactly 16 bytes (enforced at compile time via [16]byte)
-//   - shAddr: value type, zero IS valid per spec (presence mandated, not value)
-//   - packetCnt: value type, zero IS valid per spec (presence mandated, not value)
-//   - userData: must not be nil (empty slice IS valid per spec)
 //
 // Optional fields (no validation needed):
 //   - bsEui: optional target base station
@@ -323,15 +326,8 @@ func ValidateULDataTransmit(msg *ULDataTransmit) string {
 		return errEpEuiZero
 	}
 
-	// Mandatory: userData must not be nil (empty slice IS valid per spec)
-	if msg.UserData == nil {
-		return errUserDataEmpty
-	}
-
-	// Note: nwkSnKey is [16]byte - type system enforces length at compile time
-	// Note: shAddr and packetCnt are value types; spec only mandates presence,
-	// not non-zero values. Zero is valid per current spec.
-
+	// The decoder already refused an absent mandatory field; zero shAddr and
+	// packetCnt and an empty userData are valid (SCACI §3.9.1).
 	return ""
 }
 
@@ -376,12 +372,7 @@ func ValidateError(msg *Error) string {
 // On failure, caller MUST send POSIX_EINVAL with returned token and skip opId persistence.
 //
 // Returns error token if validation fails, empty string on success.
-func ValidateOpIDSign(command string, opId int64) string {
-	initiator, exists := CommandInitiatorMap[command]
-	if !exists {
-		return "" // Unknown command handled via unsupported command error
-	}
-
+func ValidateOpIDSign(initiator CommandInitiator, opId int64) string {
 	switch initiator {
 	case InitiatorConnect:
 		// opId=0 validation done separately in routeMessage
@@ -399,4 +390,31 @@ func ValidateOpIDSign(command string, opId int64) string {
 		}
 	}
 	return ""
+}
+
+// validateCommandOpIDSign applies ValidateOpIDSign to a routed command; an
+// unknown command passes here and is answered as unsupported by the router.
+func validateCommandOpIDSign(spec *CommandSpec, known bool, opId int64) string {
+	if !known {
+		return ""
+	}
+	return ValidateOpIDSign(spec.Initiator, opId)
+}
+
+// decodeFailureToken names the catalog token for a payload that failed to
+// decode (SCACI §2.4): a missing mandatory field and a value outside its
+// field's range have their own tokens, a fixed Numeric array of another length
+// the command's wrongLength token, and anything else the command's
+// malformed-payload token.
+func decodeFailureToken(err error, malformed, wrongLength string) string {
+	switch {
+	case errors.Is(err, mioty.ErrMissingMandatoryField):
+		return errMissingMandatoryField
+	case errors.Is(err, mioty.ErrNumericOutOfRange):
+		return errFieldOutOfRange
+	case errors.Is(err, mioty.ErrNumericLength):
+		return wrongLength
+	default:
+		return malformed
+	}
 }

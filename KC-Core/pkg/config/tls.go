@@ -17,11 +17,11 @@ import (
 // Returns error for unsupported versions.
 func ParseTLSMinVersion(version string) (uint16, error) {
 	switch version {
-	case "", "1.2":
+	case "", TLSVersionValue12:
 		return tls.VersionTLS12, nil
-	case "1.3":
+	case TLSVersionValue13:
 		return tls.VersionTLS13, nil
 	default:
-		return 0, fmt.Errorf("unsupported TLS version: %s (supported: 1.2, 1.3, or blank for default)", version)
+		return 0, fmt.Errorf(errFmtUnsupportedTLSVersion, version)
 	}
 }

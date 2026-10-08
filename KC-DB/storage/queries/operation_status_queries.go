@@ -1,12 +1,14 @@
 // Package queries provides SQL query templates for operation status tracking
 package queries
 
+import "github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+
 // SQL query templates for operation status repository
 
 const (
 	// SQLOperationEventsByID retrieves events for a specific operation ID
 	// Supports optional event type filtering via fmt.Sprintf format specifier
-	// Parameters: $1=categories array, $2=interval, $3=operation_id, $4=limit
+	// Parameters: $1=categories array, $2=earliest occurred_at, $3=operation_id, $4=limit
 	// Usage: fmt.Sprintf(SQLOperationEventsByID, eventTypeFilter)
 	SQLOperationEventsByID = `
 		SELECT
@@ -16,8 +18,8 @@ const (
 			se.data
 		FROM system_events se
 		WHERE se.event_category = ANY($1::text[])
-		AND se.occurred_at > NOW() - $2::interval
-		AND se.data ->> 'operation_id' = $3
+		AND se.occurred_at > $2
+		AND se.data ->> '` + models.EventDetailKeyOperationID + `' = $3
 		%s
 		ORDER BY se.occurred_at DESC
 		LIMIT $4
@@ -25,7 +27,7 @@ const (
 
 	// SQLEndpointOperationEvents retrieves events for a specific endpoint EUI
 	// Searches across multiple fields (data, title, description) for endpoint reference
-	// Parameters: $1=categories array, $2=interval, $3=endpoint_eui, $4=limit, $5=offset
+	// Parameters: $1=categories array, $2=earliest occurred_at, $3=endpoint_eui, $4=limit, $5=offset
 	// Supports OFFSET for pagination
 	SQLEndpointOperationEvents = `
 		SELECT
@@ -36,7 +38,7 @@ const (
 			se.data
 		FROM system_events se
 		WHERE se.event_category = ANY($1::text[])
-		AND se.occurred_at > NOW() - $2::interval
+		AND se.occurred_at > $2
 		AND (
 			se.data::text LIKE '%' || $3 || '%'
 			OR se.title LIKE '%' || $3 || '%'
@@ -49,7 +51,7 @@ const (
 
 	// SQLBSSCIStatusSummary retrieves base station status with recent event counts and session metadata
 	// Joins base stations with event counts and most recent session for operational monitoring
-	// Parameters: $1=tenant_id, $2=categories array, $3=interval (24h)
+	// Parameters: $1=tenant_id, $2=categories array, $3=earliest occurred_at
 	// Session metadata LEFT JOIN shows ALL stations regardless of connection state
 	SQLBSSCIStatusSummary = `
 		SELECT
@@ -66,7 +68,7 @@ const (
 				FROM system_events se
 				WHERE se.event_category = ANY($2::text[])
 				AND se.data::text LIKE '%' || encode(bs.bs_eui, 'hex') || '%'
-				AND se.occurred_at > NOW() - $3::interval
+				AND se.occurred_at > $3
 			) as recent_events,
 			sess.sn_sc_uuid,
 			sess.sn_bs_uuid,
@@ -95,14 +97,14 @@ const (
 	`
 
 	// SQLEventSummary aggregates event types within time window
-	// Parameters: $1=categories array, $2=interval
+	// Parameters: $1=categories array, $2=earliest occurred_at
 	SQLEventSummary = `
 		SELECT
 			se.event_type,
 			COUNT(*) AS event_count
 		FROM system_events se
 		WHERE se.event_category = ANY($1::text[])
-			AND se.occurred_at > NOW() - $2::interval
+			AND se.occurred_at > $2
 		GROUP BY se.event_type
 		ORDER BY event_count DESC
 	`

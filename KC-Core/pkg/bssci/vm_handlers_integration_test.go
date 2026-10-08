@@ -22,7 +22,6 @@ func setupVMTestServer(_ *testing.T) (*Server, *Session, *bsscitest.TestConn) {
 	server := NewTestServerWithMemoryStatusService(log, nil, nil, 123)
 
 	// Register all BSSCI handlers (including VM handlers)
-	server.RegisterHandlers()
 
 	// Create test connection
 	conn := &bsscitest.TestConn{Encoding: "msgpack"}
@@ -40,7 +39,7 @@ func setupVMTestServer(_ *testing.T) (*Server, *Session, *bsscitest.TestConn) {
 	}
 
 	// Add session to server (sessions map uses session.ID, not BaseStationEUI)
-	server.sessions[session.ID] = session
+	server.sessions.add(session)
 
 	return server, session, conn
 }
@@ -78,7 +77,7 @@ func TestVMActivateFullFlow(t *testing.T) {
 	vmActivateRsp["opId"] = opId       // Use the same operation ID
 	vmActivateRsp["status"] = uint8(0) // Success
 
-	err = server.handlers[mioty.CmdVMActivateResponse](server, session, &Message{OpId: opId}, vmActivateRsp)
+	err = server.CallCommand(mioty.CmdVMActivateResponse, session, &Message{OpId: opId}, vmActivateRsp)
 	assert.NoError(t, err, "VM activate response handler should not return error")
 
 	// Handlers process inbound messages (BS→SC) and don't generate responses
@@ -96,7 +95,7 @@ func TestVMActivateFullFlow(t *testing.T) {
 	vmActivateCmp["cmd"] = mioty.CmdVMActivateComplete
 	vmActivateCmp["opId"] = opId
 
-	err = server.handlers[mioty.CmdVMActivateComplete](server, session, &Message{OpId: opId}, vmActivateCmp)
+	err = server.CallCommand(mioty.CmdVMActivateComplete, session, &Message{OpId: opId}, vmActivateCmp)
 	assert.NoError(t, err, "VM activate complete handler should not return error")
 
 	// Complete handler processes inbound message and doesn't send response
@@ -139,7 +138,7 @@ func TestVMDeactivateFullFlow(t *testing.T) {
 	vmDeactivateRsp["opId"] = opId // Use the same operation ID
 	vmDeactivateRsp["status"] = uint8(0)
 
-	err = server.handlers[mioty.CmdVMDeactivateResponse](server, session, &Message{OpId: opId}, vmDeactivateRsp)
+	err = server.CallCommand(mioty.CmdVMDeactivateResponse, session, &Message{OpId: opId}, vmDeactivateRsp)
 	assert.NoError(t, err, "VM deactivate response handler should not return error")
 
 	// Step 3: Send VM deactivate complete (BS → SC)
@@ -148,7 +147,7 @@ func TestVMDeactivateFullFlow(t *testing.T) {
 	vmDeactivateCmp["cmd"] = mioty.CmdVMDeactivateComplete
 	vmDeactivateCmp["opId"] = opId // Use the same operation ID
 
-	err = server.handlers[mioty.CmdVMDeactivateComplete](server, session, &Message{OpId: opId}, vmDeactivateCmp)
+	err = server.CallCommand(mioty.CmdVMDeactivateComplete, session, &Message{OpId: opId}, vmDeactivateCmp)
 	assert.NoError(t, err, "VM deactivate complete handler should not return error")
 
 	// Pending operation should be removed
@@ -188,7 +187,7 @@ func TestVMStatusFullFlow(t *testing.T) {
 	vmStatusRsp["status"] = uint8(0)
 	vmStatusRsp["vmActive"] = true
 
-	err = server.handlers[mioty.CmdVMStatusResponse](server, session, &Message{OpId: opId}, vmStatusRsp)
+	err = server.CallCommand(mioty.CmdVMStatusResponse, session, &Message{OpId: opId}, vmStatusRsp)
 	assert.NoError(t, err, "VM status response handler should not return error")
 
 	// Step 3: Send VM status complete (BS → SC)
@@ -206,7 +205,7 @@ func TestVMStatusFullFlow(t *testing.T) {
 	err = server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, opId, pendingOpBeforeComplete, session.DbSessionID)
 	require.NoError(t, err, "Failed to record pending operation before stub handler")
 
-	err = server.handlers[mioty.CmdVMStatusComplete](server, session, &Message{OpId: opId}, vmStatusCmp)
+	err = server.CallCommand(mioty.CmdVMStatusComplete, session, &Message{OpId: opId}, vmStatusCmp)
 	assert.Error(t, err, "VM status complete should return unsupported error in community edition")
 	assert.Contains(t, strings.ToLower(err.Error()), "unsupported", "Error should indicate unsupported command")
 
@@ -263,7 +262,7 @@ func TestVMDLDataFullFlow(t *testing.T) {
 	err = server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, opId, pendingOpBeforeResponse, session.DbSessionID)
 	require.NoError(t, err, "Failed to record pending operation before response handler")
 
-	err = server.handlers[mioty.CmdVMDLDataResponse](server, session, &Message{OpId: opId}, vmDLDataRsp)
+	err = server.CallCommand(mioty.CmdVMDLDataResponse, session, &Message{OpId: opId}, vmDLDataRsp)
 	assert.Error(t, err, "VM DL data response should return unsupported error in community edition")
 	assert.Contains(t, strings.ToLower(err.Error()), "unsupported", "Error should indicate unsupported command")
 
@@ -287,7 +286,7 @@ func TestVMDLDataFullFlow(t *testing.T) {
 	err = server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, opId, pendingOpBeforeComplete, session.DbSessionID)
 	require.NoError(t, err, "Failed to record pending operation before complete handler")
 
-	err = server.handlers[mioty.CmdVMDLDataComplete](server, session, &Message{OpId: opId}, vmDLDataCmp)
+	err = server.CallCommand(mioty.CmdVMDLDataComplete, session, &Message{OpId: opId}, vmDLDataCmp)
 	assert.Error(t, err, "VM DL data complete should return unsupported error in community edition")
 	assert.Contains(t, strings.ToLower(err.Error()), "unsupported", "Error should indicate unsupported command")
 
@@ -355,7 +354,7 @@ func TestVMBidirectionalRequirement(t *testing.T) {
 	}
 
 	for _, cmd := range vmCommands {
-		handler, exists := server.handlers[cmd]
+		handler, exists := server.commandHandler(cmd)
 		assert.True(t, exists, "Handler for %s should be registered", cmd)
 		assert.NotNil(t, handler, "Handler for %s should not be nil", cmd)
 	}

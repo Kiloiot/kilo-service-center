@@ -3,12 +3,18 @@ import React, { useEffect, useRef, useState } from "react";
 import type { DeviceModelUI, ManufacturerUI } from "@api-types/api";
 import { Autocomplete, TextField, Typography } from "@mui/material";
 import Grid from "@mui/material/Grid";
-import { useQuery } from "@tanstack/react-query";
 
-import { useDeviceModels, useManufacturers } from "@modules/blueprints/hooks";
-import { api } from "@services/api";
+import {
+  useCatalogManufacturers,
+  useDeviceModel,
+  useDeviceModels,
+} from "@modules/blueprints/hooks";
+import {
+  catalogEntryLabel,
+  catalogScopeOf,
+} from "@modules/blueprints/utils/scope";
 import { ENDPOINT_DETAILS, ENDPOINT_FORM } from "@constants/messages";
-import { queryKeys } from "@config/query-keys";
+import { componentSpacing } from "@theme/index";
 
 // Discriminated union option types for clear sentinel safety
 type MfgOption = { kind: "real"; data: ManufacturerUI } | { kind: "clear" };
@@ -21,7 +27,8 @@ interface DeviceModelSelectorProps {
 }
 
 /**
- * Cascading manufacturer -> device model selector for blueprint association.
+ * Cascading manufacturer -> device model selector for blueprint association,
+ * over both the System and the Custom catalog.
  * Optional field — clearing either dropdown returns undefined.
  *
  * Uses query-driven bootstrap: when `value` (existing deviceModelId) is provided,
@@ -33,22 +40,19 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
   onChange,
   disabled,
 }) => {
-  const { data: manufacturers = [], isLoading: loadingMfg } =
-    useManufacturers();
+  const { data: manufacturers, isLoading: loadingMfg } =
+    useCatalogManufacturers();
   const [selectedMfg, setSelectedMfg] = useState<ManufacturerUI | null>(null);
   const { data: deviceModels = [], isLoading: loadingModels } = useDeviceModels(
     selectedMfg?.id,
+    selectedMfg ? catalogScopeOf(selectedMfg) : undefined,
   );
   const [selectedModel, setSelectedModel] = useState<DeviceModelUI | null>(
     null,
   );
 
   // Query-driven bootstrap: fetch the model by ID to get its manufacturerId
-  const { data: resolvedModel } = useQuery({
-    queryKey: queryKeys.blueprints.deviceModelDetail(value ?? ""),
-    queryFn: () => api.getDeviceModel(value!),
-    enabled: !!value,
-  });
+  const { data: resolvedModel } = useDeviceModel(value);
 
   // Effect 1 — Value transition reset: clear stale local state only when value prop changes
   const prevValueRef = useRef(value);
@@ -123,7 +127,7 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
 
   return (
     <>
-      <Grid size={12}>
+      <Grid size={componentSpacing.gridSpan.full}>
         <Typography variant="subtitle2" fontWeight="bold" mb={1} mt={1}>
           {ENDPOINT_FORM.SECTION_BLUEPRINT}
         </Typography>
@@ -132,13 +136,13 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
         </Typography>
       </Grid>
 
-      <Grid size={{ xs: 12, md: 6 }}>
+      <Grid size={componentSpacing.gridSpan.half}>
         <Autocomplete
           options={mfgOptions}
           getOptionLabel={(opt) =>
             opt.kind === "clear"
               ? ENDPOINT_FORM.OPTION_NONE_MANUFACTURER
-              : opt.data.name
+              : catalogEntryLabel(opt.data)
           }
           isOptionEqualToValue={(opt, val) => {
             if (opt.kind === "clear" && val.kind === "clear") return true;
@@ -164,7 +168,7 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
         />
       </Grid>
 
-      <Grid size={{ xs: 12, md: 6 }}>
+      <Grid size={componentSpacing.gridSpan.half}>
         <Autocomplete
           options={modelOptions}
           getOptionLabel={(opt) =>

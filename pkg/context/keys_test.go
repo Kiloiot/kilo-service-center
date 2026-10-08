@@ -8,6 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// errAnyFormatError marks table cases where any parse error is acceptable;
+// the assertion only requires that an error is returned.
+var errAnyFormatError = errors.New("any error")
+
 func TestGetTenantID(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -27,7 +31,7 @@ func TestGetTenantID(t *testing.T) {
 			name: "string value present and parseable",
 			setup: func(ctx context.Context) context.Context {
 				// WithTenantID sets both int64 and string, so test string-only path
-				return context.WithValue(ctx, TenantIDKey, "123")
+				return context.WithValue(ctx, tenantIDKey, "123")
 			},
 			want:    123,
 			wantErr: nil,
@@ -35,7 +39,7 @@ func TestGetTenantID(t *testing.T) {
 		{
 			name: "only string value (manual insertion)",
 			setup: func(ctx context.Context) context.Context {
-				return context.WithValue(ctx, TenantIDKey, "456")
+				return context.WithValue(ctx, tenantIDKey, "456")
 			},
 			want:    456,
 			wantErr: nil,
@@ -46,23 +50,23 @@ func TestGetTenantID(t *testing.T) {
 				return ctx
 			},
 			want:    0,
-			wantErr: ErrNoTenantInContext,
+			wantErr: errNoTenantInContext,
 		},
 		{
 			name: "invalid string format returns error",
 			setup: func(ctx context.Context) context.Context {
-				return context.WithValue(ctx, TenantIDKey, "not-a-number")
+				return context.WithValue(ctx, tenantIDKey, "not-a-number")
 			},
 			want:    0,
-			wantErr: errors.New("any error"), // Expect any error for invalid format
+			wantErr: errAnyFormatError, // Expect any error for invalid format
 		},
 		{
 			name: "empty string",
 			setup: func(ctx context.Context) context.Context {
-				return context.WithValue(ctx, TenantIDKey, "")
+				return context.WithValue(ctx, tenantIDKey, "")
 			},
 			want:    0,
-			wantErr: ErrNoTenantInContext,
+			wantErr: errNoTenantInContext,
 		},
 	}
 
@@ -116,7 +120,7 @@ func TestGetOrganizationID(t *testing.T) {
 				return ctx
 			},
 			want:    uuid.Nil,
-			wantErr: ErrNoOrganizationInContext,
+			wantErr: errNoOrganizationInContext,
 		},
 	}
 
@@ -162,7 +166,7 @@ func TestGetUserID(t *testing.T) {
 				return ctx
 			},
 			want:    "",
-			wantErr: ErrNoUserInContext,
+			wantErr: errNoUserInContext,
 		},
 		{
 			name: "empty user ID",
@@ -170,7 +174,7 @@ func TestGetUserID(t *testing.T) {
 				return WithUserID(ctx, "")
 			},
 			want:    "",
-			wantErr: ErrNoUserInContext,
+			wantErr: errNoUserInContext,
 		},
 	}
 
@@ -199,12 +203,12 @@ func TestWithTenantID(t *testing.T) {
 	ctx := WithTenantID(context.Background(), 42)
 
 	// Should set int64 value
-	if val, ok := ctx.Value(TenantIDIntKey).(int64); !ok || val != 42 {
+	if val, ok := ctx.Value(tenantIDIntKey).(int64); !ok || val != 42 {
 		t.Errorf("WithTenantID() int64 value = %v, want 42", val)
 	}
 
 	// Should also set string value
-	if val, ok := ctx.Value(TenantIDKey).(string); !ok || val != "42" {
+	if val, ok := ctx.Value(tenantIDKey).(string); !ok || val != "42" {
 		t.Errorf("WithTenantID() string value = %v, want \"42\"", val)
 	}
 }
@@ -213,7 +217,7 @@ func TestWithOrganizationID(t *testing.T) {
 	testUUID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
 	ctx := WithOrganizationID(context.Background(), testUUID)
 
-	if val, ok := ctx.Value(OrganizationIDKey).(uuid.UUID); !ok || val != testUUID {
+	if val, ok := ctx.Value(organizationIDKey).(uuid.UUID); !ok || val != testUUID {
 		t.Errorf("WithOrganizationID() = %v, want %v", val, testUUID)
 	}
 }
@@ -221,7 +225,7 @@ func TestWithOrganizationID(t *testing.T) {
 func TestWithUserID(t *testing.T) {
 	ctx := WithUserID(context.Background(), "user456")
 
-	if val, ok := ctx.Value(UserIDKey).(string); !ok || val != "user456" {
+	if val, ok := ctx.Value(userIDKey).(string); !ok || val != "user456" {
 		t.Errorf("WithUserID() = %v, want \"user456\"", val)
 	}
 }
@@ -246,5 +250,20 @@ func TestContextChaining(t *testing.T) {
 
 	if userID, err := GetUserID(ctx); err != nil || userID != "user123" {
 		t.Errorf("chained context: GetUserID() = %v, %v; want \"user123\", nil", userID, err)
+	}
+}
+
+func TestRequireOrganizationID(t *testing.T) {
+	testUUID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
+
+	got, err := RequireOrganizationID(WithOrganizationID(context.Background(), testUUID))
+	if err != nil || got != testUUID {
+		t.Fatalf("RequireOrganizationID() = %v, %v; want %v, nil", got, err, testUUID)
+	}
+	if _, err := RequireOrganizationID(context.Background()); err != errNoOrganizationInContext {
+		t.Fatalf("RequireOrganizationID() without organization = %v; want %v", err, errNoOrganizationInContext)
+	}
+	if _, err := RequireOrganizationID(WithOrganizationID(context.Background(), uuid.Nil)); err != errNoOrganizationInContext {
+		t.Fatalf("RequireOrganizationID() with the zero organization = %v; want %v", err, errNoOrganizationInContext)
 	}
 }

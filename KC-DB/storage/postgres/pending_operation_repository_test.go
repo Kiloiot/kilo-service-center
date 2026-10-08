@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +41,7 @@ func TestGetBySession_NullMetadataScans(t *testing.T) {
 		bsID, tenantID, make([]byte, 16), make([]byte, 16)).Scan(&sessionID))
 
 	repo := NewPendingOperationRepository(db, logger.NewNop())
-	require.NoError(t, repo.Create(ctx, &interfaces.PendingOperationRequest{
+	require.NoError(t, repo.Create(ctx, &models.PendingOperationRequest{
 		SessionID:     sessionID,
 		OperationID:   -1,
 		OperationType: "status",

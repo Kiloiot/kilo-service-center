@@ -10,9 +10,9 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	dbconfig "github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 )
 
 // DLRXStatusRepository handles DL RX status persistence per BSSCI §3.15
@@ -21,7 +21,14 @@ type DLRXStatusRepository struct {
 	logger logger.Logger
 }
 
+const (
+	dlRxStatusPending  = "pending"
+	dlRxStatusReceived = "received"
+	dlRxStatusTimeout  = "timeout"
+)
+
 // NewDLRXStatusRepository creates a new DL RX status repository
+// DL RX status lifecycle values persisted in dl_rx_status.status.
 func NewDLRXStatusRepository(db *sqlx.DB, logger logger.Logger) *DLRXStatusRepository {
 	return &DLRXStatusRepository{
 		db:     db,
@@ -75,23 +82,23 @@ func (r *DLRXStatusRepository) CreateDLRXStatus(ctx context.Context, status *mio
 
 	rows, err := r.db.NamedQueryContext(ctx, query, params)
 	if err != nil {
-		return fmt.Errorf("failed to insert DL RX status: %w", err)
+		return fmt.Errorf("%s: %w", errWrapInsertDLRXStatus, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			r.logger.Warn("dlrx rows close failed", "error", err)
+			r.logger.Warn(logMsgDlrxRowsClose, logger.FieldError, err)
 		}
 	}()
 
 	if rows.Next() {
 		if err := rows.Scan(&status.ID, &status.CreatedAt, &status.UpdatedAt); err != nil {
-			return fmt.Errorf("failed to scan returning values: %w", err)
+			return fmt.Errorf("%s: %w", errWrapScanReturningValues, err)
 		}
 	}
 
-	r.logger.Debug("Created DL RX status record",
-		"id", status.ID,
-		"tenantId", status.TenantID)
+	r.logger.Debug(logMsgCreatedDLRXStatusRecord,
+		logger.FieldID, status.ID,
+		logger.FieldTenantIDCamel, status.TenantID)
 
 	return nil
 }
@@ -104,7 +111,7 @@ func (r *DLRXStatusRepository) GetDLRXStatusByEndpoint(ctx context.Context, tena
 	// Build WHERE clause for count query using rx_time (nanoseconds)
 	whereClauses := []string{"tenant_id = $1", "ep_eui = $2"}
 	args := []interface{}{tenantID, epEui}
-	argCount := 2
+	argCount := len(args)
 
 	if startTime != nil {
 		startNs := startTime.UnixNano()
@@ -126,7 +133,7 @@ func (r *DLRXStatusRepository) GetDLRXStatusByEndpoint(ctx context.Context, tena
 
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM dl_rx_status %s", whereClause)
 	if err := r.db.GetContext(ctx, &totalCount, countQuery, args...); err != nil {
-		return nil, 0, fmt.Errorf("failed to count DL RX status records: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountDLRXStatusRecords, err)
 	}
 
 	// Get paginated results using rx_time per BSSCI §5.15.1
@@ -142,76 +149,10 @@ func (r *DLRXStatusRepository) GetDLRXStatusByEndpoint(ctx context.Context, tena
 
 	var statuses []*mioty.DLRXStatus
 	if err := r.db.SelectContext(ctx, &statuses, query, args...); err != nil {
-		return nil, 0, fmt.Errorf("failed to query DL RX status: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapQueryDLRXStatus, err)
 	}
 
 	return statuses, totalCount, nil
-}
-
-// GetLatestDLRXStatus retrieves the most recent DL RX status for an endpoint
-func (r *DLRXStatusRepository) GetLatestDLRXStatus(ctx context.Context, tenantID int64, epEui []byte) (*mioty.DLRXStatus, error) {
-	query := `
-		SELECT id, tenant_id, ep_eui, bs_eui, rx_time, packet_cnt,
-		       dl_rx_snr, dl_rx_rssi, created_at, updated_at
-		FROM dl_rx_status
-		WHERE tenant_id = $1 AND ep_eui = $2
-		ORDER BY rx_time DESC
-		LIMIT 1`
-
-	var status mioty.DLRXStatus
-	if err := r.db.GetContext(ctx, &status, query, tenantID, epEui); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get latest DL RX status: %w", err)
-	}
-
-	return &status, nil
-}
-
-// GetLatestDLRXStatusPerEndpoint retrieves the latest status for all endpoints (aggregate)
-func (r *DLRXStatusRepository) GetLatestDLRXStatusPerEndpoint(ctx context.Context, tenantID int64) ([]*mioty.DLRXStatus, error) {
-	query := `
-		WITH latest_status AS (
-			SELECT DISTINCT ON (ep_eui)
-				id, tenant_id, ep_eui, bs_eui, rx_time, packet_cnt,
-				dl_rx_snr, dl_rx_rssi, created_at, updated_at
-			FROM dl_rx_status
-			WHERE tenant_id = $1
-			ORDER BY ep_eui, rx_time DESC
-		)
-		SELECT * FROM latest_status
-		ORDER BY rx_time DESC`
-
-	var statuses []*mioty.DLRXStatus
-	if err := r.db.SelectContext(ctx, &statuses, query, tenantID); err != nil {
-		return nil, fmt.Errorf("failed to get latest DL RX status per endpoint: %w", err)
-	}
-
-	return statuses, nil
-}
-
-// GetDLRXStatusByTimeRange retrieves DL RX status records within a time window
-func (r *DLRXStatusRepository) GetDLRXStatusByTimeRange(ctx context.Context, tenantID int64, startTime, endTime time.Time) ([]*mioty.DLRXStatus, error) {
-	// Convert times to nanoseconds for BSSCI §5.15.1 rx_time format
-	startNs := startTime.UnixNano()
-	endNs := endTime.UnixNano()
-
-	query := `
-		SELECT id, tenant_id, ep_eui, bs_eui, rx_time, packet_cnt,
-		       dl_rx_snr, dl_rx_rssi, created_at, updated_at
-		FROM dl_rx_status
-		WHERE tenant_id = $1
-		  AND rx_time >= $2
-		  AND rx_time <= $3
-		ORDER BY rx_time DESC`
-
-	var statuses []*mioty.DLRXStatus
-	if err := r.db.SelectContext(ctx, &statuses, query, tenantID, startNs, endNs); err != nil {
-		return nil, fmt.Errorf("failed to query DL RX status by time range: %w", err)
-	}
-
-	return statuses, nil
 }
 
 // GetAverageDLRXMetrics calculates average SNR and RSSI for an endpoint over a time period
@@ -244,7 +185,7 @@ func (r *DLRXStatusRepository) GetAverageDLRXMetrics(ctx context.Context, tenant
 	var avgSnrNull, avgRssiNull sql.NullFloat64
 	err = row.Scan(&avgSnrNull, &avgRssiNull, &count)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to calculate average metrics: %w", err)
+		return 0, 0, 0, fmt.Errorf("%s: %w", errWrapCalculateAverageMetrics, err)
 	}
 
 	if avgSnrNull.Valid {
@@ -255,33 +196,6 @@ func (r *DLRXStatusRepository) GetAverageDLRXMetrics(ctx context.Context, tenant
 	}
 
 	return avgSnr, avgRssi, count, nil
-}
-
-// DeleteOldDLRXStatus removes DL RX status records older than the retention period
-func (r *DLRXStatusRepository) DeleteOldDLRXStatus(ctx context.Context, tenantID int64, retentionDays int) (int64, error) {
-	query := `
-		DELETE FROM dl_rx_status
-		WHERE tenant_id = $1
-		  AND created_at < NOW() - INTERVAL '%d days'`
-
-	result, err := r.db.ExecContext(ctx, fmt.Sprintf(query, retentionDays), tenantID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to delete old DL RX status records: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected > 0 {
-		r.logger.Info("Deleted old DL RX status records",
-			"tenantId", tenantID,
-			"retentionDays", retentionDays,
-			"rowsDeleted", rowsAffected)
-	}
-
-	return rowsAffected, nil
 }
 
 // CreateDLRXStatusQuery tracks a dlRxStatQry request for correlation (BSSCI §5.15 audit trail)
@@ -299,7 +213,7 @@ func (r *DLRXStatusRepository) CreateDLRXStatusQuery(ctx context.Context, tenant
 
 	_, err := r.db.ExecContext(ctx, query, tenantID, orgUUID, epEui, bsEui, opId)
 	if err != nil {
-		return fmt.Errorf("failed to create DL RX status query: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCreateDLRXStatusQuery, err)
 	}
 
 	return nil
@@ -342,7 +256,7 @@ func (r *DLRXStatusRepository) MarkDLRXStatusReceived(ctx context.Context, tenan
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("failed to mark DL RX status query received: %w", err)
+		return false, fmt.Errorf("%s: %w", errWrapMarkDLRXStatusQueryReceived, err)
 	}
 
 	return true, nil
@@ -363,18 +277,18 @@ func (r *DLRXStatusRepository) ExpireDLRXStatusQuery(ctx context.Context, cutoff
 
 	result, err := r.db.ExecContext(ctx, query, cutoff)
 	if err != nil {
-		return 0, fmt.Errorf("failed to expire DL RX status queries: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapExpireDLRXStatusQueries, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 
 	if rowsAffected > 0 {
-		r.logger.Info("Expired DL RX status queries",
-			"cutoff", cutoff,
-			"rowsExpired", rowsAffected)
+		r.logger.Info(logMsgExpiredDLRXStatusQueries,
+			logger.FieldCutoff, cutoff,
+			logger.FieldRowsExpired, rowsAffected)
 	}
 
 	return rowsAffected, nil
@@ -388,7 +302,7 @@ func (r *DLRXStatusRepository) GetDLRXStatusQueryHistory(ctx context.Context, te
 	// Build WHERE clause with filters
 	whereClauses := []string{"tenant_id = $1", "ep_eui = $2"}
 	args := []interface{}{tenantID, epEui}
-	argCount := 2
+	argCount := len(args)
 
 	if startTime != nil {
 		argCount++
@@ -410,7 +324,7 @@ func (r *DLRXStatusRepository) GetDLRXStatusQueryHistory(ctx context.Context, te
 	var totalCount int
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM dl_rx_status_queries %s", whereClause)
 	if err := r.db.GetContext(ctx, &totalCount, countQuery, args...); err != nil {
-		return nil, 0, fmt.Errorf("failed to count DL RX status queries: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountDLRXStatusQueries, err)
 	}
 
 	// Get paginated results ordered by requested_at DESC (most recent first)
@@ -425,7 +339,7 @@ func (r *DLRXStatusRepository) GetDLRXStatusQueryHistory(ctx context.Context, te
 
 	var queries []*mioty.DLRXStatusQuery
 	if err := r.db.SelectContext(ctx, &queries, query, args...); err != nil {
-		return nil, 0, fmt.Errorf("failed to query DL RX status query history: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapQueryDLRXStatusQueryHistory, err)
 	}
 
 	return queries, totalCount, nil
@@ -439,7 +353,7 @@ func (r *DLRXStatusRepository) GetDLRXStatusQueryStats(ctx context.Context, tena
 	// Build WHERE clause with filters
 	whereClauses := []string{"tenant_id = $1", "ep_eui = $2"}
 	args := []interface{}{tenantID, epEui}
-	argCount := 2
+	argCount := len(args)
 
 	if startTime != nil {
 		argCount++
@@ -471,17 +385,17 @@ func (r *DLRXStatusRepository) GetDLRXStatusQueryStats(ctx context.Context, tena
 
 	var results []statusCount
 	if err := r.db.SelectContext(ctx, &results, query, args...); err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to query DL RX status query stats: %w", err)
+		return 0, 0, 0, fmt.Errorf("%s: %w", errWrapQueryDLRXStatusQueryStats, err)
 	}
 
 	// Map results to return values
 	for _, result := range results {
 		switch result.Status {
-		case "pending":
+		case dlRxStatusPending:
 			pending = result.Count
-		case "received":
+		case dlRxStatusReceived:
 			received = result.Count
-		case "timeout":
+		case dlRxStatusTimeout:
 			timeout = result.Count
 		}
 	}
@@ -489,11 +403,10 @@ func (r *DLRXStatusRepository) GetDLRXStatusQueryStats(ctx context.Context, tena
 	return pending, received, timeout, nil
 }
 
-// GetLatestDLRXStatusByBaseStations returns latest DL RX status for each bs_eui in a single query (SCACI §3.8.1)
-// Used for batch hydration of dlRxSnr/dlRxRssi in multi-BS UL data without N+1 queries
-// Uses DISTINCT ON (Postgres-specific) to get one row per base station
-// Signature uses []byte for consistency with other DL RX methods (caller does uint64→bytes conversion)
-func (r *DLRXStatusRepository) GetLatestDLRXStatusByBaseStations(
+// GetDLRXStatusSinceLastHeard returns, per base station, the latest DL RX status
+// reported after the endpoint was last heard, so each report is attached to the
+// first uplink after it (SCACI §3.8.1 "previous DL reception") in a single query.
+func (r *DLRXStatusRepository) GetDLRXStatusSinceLastHeard(
 	ctx context.Context,
 	tenantID int64,
 	epEui []byte,
@@ -506,21 +419,27 @@ func (r *DLRXStatusRepository) GetLatestDLRXStatusByBaseStations(
 	ctx, cancel := context.WithTimeout(ctx, dbconfig.DefaultQueryTimeout)
 	defer cancel()
 
-	// DISTINCT ON is Postgres-specific - gets latest per bs_eui in single query
-	// This avoids N+1 queries when hydrating DL RX metrics for multi-BS receptions
+	// Arrival order bounds the report: a base station may send dlRxStat before or after the ulData it rode in.
 	query := `
-		SELECT DISTINCT ON (bs_eui)
-			id, tenant_id, ep_eui, bs_eui, dl_rx_snr, dl_rx_rssi, rx_time, packet_cnt, created_at, updated_at
-		FROM dl_rx_status
-		WHERE tenant_id = $1 AND ep_eui = $2 AND bs_eui = ANY($3)
-		ORDER BY bs_eui, rx_time DESC
+		SELECT DISTINCT ON (d.bs_eui)
+			d.id, d.tenant_id, d.ep_eui, d.bs_eui, d.dl_rx_snr, d.dl_rx_rssi, d.rx_time, d.packet_cnt, d.created_at, d.updated_at
+		FROM dl_rx_status d
+		WHERE d.tenant_id = $1 AND d.ep_eui = $2 AND d.bs_eui = ANY($3)
+		  AND d.created_at > COALESCE(
+		      (SELECT e.last_seen_at FROM endpoints e WHERE e.ep_eui = $2 AND e.owner_tenant_id = $1),
+		      '-infinity'::timestamptz)
+		ORDER BY d.bs_eui, d.rx_time DESC
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, tenantID, epEui, pq.Array(bsEuis))
 	if err != nil {
-		return nil, fmt.Errorf("batch dl_rx_status query: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapBatchDlRxStatusQuery, err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			r.logger.Warn(logMsgDlrxRowsClose, logger.FieldError, err)
+		}
+	}()
 
 	var results []*mioty.DLRXStatus
 	for rows.Next() {
@@ -530,7 +449,7 @@ func (r *DLRXStatusRepository) GetLatestDLRXStatusByBaseStations(
 			&status.DlRxSnr, &status.DlRxRssi, &status.RxTime, &status.PacketCnt,
 			&status.CreatedAt, &status.UpdatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("scan dl_rx_status: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapScanDlRxStatus, err)
 		}
 		results = append(results, &status)
 	}

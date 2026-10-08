@@ -8,7 +8,14 @@
 
 import type { EndpointAPI, EndpointUI } from "@api-types/api";
 
-import { ENDPOINT_ACTIVITY_WINDOW_HOURS } from "@constants/app";
+import {
+  ENDPOINT_ACTIVITY,
+  ENDPOINT_ACTIVITY_WINDOW_HOURS,
+  ENDPOINT_ATTACH_STATUS,
+  type EndpointActivity,
+  type EndpointAttachStatus,
+  MS_PER_HOUR,
+} from "@constants/app";
 
 /**
  * Calculate endpoint activity status based on lastSeen timestamp.
@@ -16,35 +23,33 @@ import { ENDPOINT_ACTIVITY_WINDOW_HOURS } from "@constants/app";
  */
 export function deriveActivityStatus(
   lastSeen: string | undefined,
-): "active" | "inactive" {
-  if (!lastSeen) return "inactive";
+): EndpointActivity {
+  if (!lastSeen) return ENDPOINT_ACTIVITY.INACTIVE;
 
   const lastSeenDate = new Date(lastSeen);
-  if (isNaN(lastSeenDate.getTime())) return "inactive";
+  if (isNaN(lastSeenDate.getTime())) return ENDPOINT_ACTIVITY.INACTIVE;
 
   const now = new Date();
   const hoursSinceLastSeen =
-    (now.getTime() - lastSeenDate.getTime()) / (1000 * 60 * 60);
+    (now.getTime() - lastSeenDate.getTime()) / MS_PER_HOUR;
   return hoursSinceLastSeen <= ENDPOINT_ACTIVITY_WINDOW_HOURS
-    ? "active"
-    : "inactive";
+    ? ENDPOINT_ACTIVITY.ACTIVE
+    : ENDPOINT_ACTIVITY.INACTIVE;
 }
 
 /**
  * Derive attach state from endpoint properties
  * Used for filtering and display purposes when attachStatus is not available from backend
  */
-export function deriveAttachState(
-  endpoint: EndpointAPI,
-): "attached" | "detached" | "attaching" | "pending" | "unknown" {
+export function deriveAttachState(endpoint: EndpointAPI): EndpointAttachStatus {
   // If attachStatus is provided, use it directly
   if (endpoint.attachStatus) return endpoint.attachStatus;
 
   // If shAddr is assigned, endpoint is likely attached or pending
-  if (endpoint.shAddr !== undefined && endpoint.shAddr > 0) return "pending";
+  if (endpoint.shAddr !== undefined && endpoint.shAddr > 0)
+    return ENDPOINT_ATTACH_STATUS.PENDING;
 
-  // Default to detached
-  return "detached";
+  return ENDPOINT_ATTACH_STATUS.DETACHED;
 }
 
 /**
@@ -57,7 +62,8 @@ export function mapEndpoint(api: EndpointAPI): EndpointUI {
     epEui: api.epEui,
     name: api.name,
     status:
-      api.status === "active" || api.status === "inactive"
+      api.status === ENDPOINT_ACTIVITY.ACTIVE ||
+      api.status === ENDPOINT_ACTIVITY.INACTIVE
         ? api.status
         : deriveActivityStatus(api.lastSeen),
     batteryLevel: api.batteryLevel,
@@ -68,18 +74,23 @@ export function mapEndpoint(api: EndpointAPI): EndpointUI {
     lastPacketCnt: api.lastPacketCnt,
     // Attach status - use API value with fallback to derived state
     attachStatus: api.attachStatus ?? deriveAttachState(api),
+    reattachPending: api.reattachPending,
     // MIOTY configuration fields per BSSCI v1.0.0 §3.8.1
     shAddr: api.shAddr,
     bidi: api.bidi,
     preAttach: api.preAttach,
     carrierOffset: api.carrierOffset,
-    nwkSnKey: api.nwkSnKey,
-    appKey: api.appKey,
+    nwkSnKeySet: api.nwkSnKeySet,
+    appKeySet: api.appKeySet,
     dualChan: api.dualChan,
     repetition: api.repetition,
     wideCarrOff: api.wideCarrOff,
     longBlkDist: api.longBlkDist,
     typeEui: api.typeEui,
     deviceModelId: api.deviceModelId,
+    lastRssi: api.lastRssi,
+    lastSnr: api.lastSnr,
+    lastEqSnr: api.lastEqSnr,
+    servingBsEui: api.servingBsEui,
   };
 }

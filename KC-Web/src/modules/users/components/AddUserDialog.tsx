@@ -1,34 +1,30 @@
 /**
  * AddUserDialog Component
  *
- * Dialog for creating a new system user.
- * Optionally adds the user to selected organizations after creation.
- * Supports a multi-org picker when no explicit orgId is provided.
+ * Dialog for creating a new system user and adding it to organizations:
+ * the given orgId, or the ones picked (enterprise edition).
  */
 
-import React, { useState } from "react";
+import React from "react";
 
-import type { CreateUserRequest, OrganizationUI } from "@api-types/api";
-import { useCreateUser } from "@hooks";
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
-  Switch,
   TextField,
 } from "@mui/material";
 
-import { useOrganization as useOrganizationContext } from "@contexts/OrganizationContext";
-import { useAddOrgUser, useOrganizations } from "@hooks/useOrganizations";
-import { ORG_ROLE } from "@constants/app";
+import { NewPasswordFields } from "@components/common/NewPasswordFields";
 import { USER_FORM } from "@constants/messages";
+import { componentSpacing } from "@theme/index";
+
+import { useAddUserForm } from "../hooks";
+import NewUserFlags from "./NewUserFlags";
+import NewUserOrganizations from "./NewUserOrganizations";
 
 interface AddUserDialogProps {
   open: boolean;
@@ -37,317 +33,85 @@ interface AddUserDialogProps {
   orgId?: string;
 }
 
+type AddUserForm = ReturnType<typeof useAddUserForm>;
+
+const CredentialFields: React.FC<{ state: AddUserForm }> = ({ state }) => (
+  <>
+    <TextField
+      label={USER_FORM.LABEL_EMAIL}
+      type="email"
+      value={state.form.email}
+      onChange={(e) => state.update("email", e.target.value)}
+      error={!!state.errors.email}
+      helperText={state.errors.email}
+      fullWidth
+      required
+      autoFocus
+    />
+    <NewPasswordFields
+      password={state.form.password}
+      confirmation={state.form.confirmPassword}
+      onPasswordChange={(value) => state.update("password", value)}
+      onConfirmationChange={(value) => state.update("confirmPassword", value)}
+      passwordLabel={USER_FORM.LABEL_PASSWORD}
+      confirmationLabel={USER_FORM.LABEL_CONFIRM_PASSWORD}
+      passwordError={state.errors.password}
+      confirmationError={state.errors.confirmPassword}
+      required
+    />
+    <TextField
+      label={USER_FORM.LABEL_NOTE}
+      value={state.form.note}
+      onChange={(e) => state.update("note", e.target.value)}
+      multiline
+      rows={componentSpacing.textArea.compactRows}
+      fullWidth
+    />
+  </>
+);
+
 const AddUserDialog: React.FC<AddUserDialogProps> = ({
   open,
   onClose,
   orgId,
 }) => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [note, setNote] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isActive, setIsActive] = useState(true);
-  const [isTenantManager, setIsTenantManager] = useState(false);
-  const [isBaseStationManager, setIsBaseStationManager] = useState(false);
-  const [isEndpointManager, setIsEndpointManager] = useState(false);
-  const [selectedOrgs, setSelectedOrgs] = useState<OrganizationUI[]>([]);
-  const [partialError, setPartialError] = useState("");
-
-  const [emailError, setEmailError] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [confirmPasswordError, setConfirmPasswordError] = useState("");
-
-  const createUser = useCreateUser();
-  const addOrgUser = useAddOrgUser();
-  const { organizationId } = useOrganizationContext();
-
-  // Fetch organizations for the multi-select picker (only when dialog is open and no fixed orgId)
-  const { data: orgsData } = useOrganizations(200, 0, undefined, {
-    enabled: open && !orgId,
-  });
-  const organizations = orgsData?.organizations ?? [];
-
-  // Pre-select current org context if available and no explicit orgId
-  const handleOpen = () => {
-    if (
-      !orgId &&
-      organizationId &&
-      organizations.length > 0 &&
-      selectedOrgs.length === 0
-    ) {
-      const currentOrg = organizations.find((o) => o.id === organizationId);
-      if (currentOrg) {
-        setSelectedOrgs([currentOrg]);
-      }
-    }
-  };
-
-  const resetForm = () => {
-    setEmail("");
-    setPassword("");
-    setConfirmPassword("");
-    setNote("");
-    setIsAdmin(false);
-    setIsActive(true);
-    setIsTenantManager(false);
-    setIsBaseStationManager(false);
-    setIsEndpointManager(false);
-    setSelectedOrgs([]);
-    setPartialError("");
-    setEmailError("");
-    setPasswordError("");
-    setConfirmPasswordError("");
-  };
+  const state = useAddUserForm(orgId, onClose);
 
   const handleClose = () => {
-    resetForm();
+    state.reset();
     onClose();
   };
-
-  const validate = (): boolean => {
-    let isValid = true;
-
-    if (!email.trim()) {
-      setEmailError(USER_FORM.ERR_EMAIL_REQUIRED);
-      isValid = false;
-    } else {
-      setEmailError("");
-    }
-
-    if (!password) {
-      setPasswordError(USER_FORM.ERR_PASSWORD_REQUIRED);
-      isValid = false;
-    } else {
-      setPasswordError("");
-    }
-
-    if (password !== confirmPassword) {
-      setConfirmPasswordError(USER_FORM.ERR_PASSWORD_MISMATCH);
-      isValid = false;
-    } else {
-      setConfirmPasswordError("");
-    }
-
-    return isValid;
-  };
-
-  const handleSubmit = async () => {
-    if (!validate()) {
-      return;
-    }
-
-    const request: CreateUserRequest = {
-      email: email.trim(),
-      password,
-      is_admin: isAdmin,
-      is_active: isActive,
-      is_tenant_manager: isTenantManager,
-      is_base_station_manager: isBaseStationManager,
-      is_endpoint_manager: isEndpointManager,
-      ...(note.trim() && { note: note.trim() }),
-    };
-
-    try {
-      const newUser = await createUser.mutateAsync(request);
-
-      if (!newUser?.id) {
-        handleClose();
-        return;
-      }
-
-      // Determine which orgs to add the user to
-      const orgsToAdd: string[] = [];
-      if (orgId) {
-        // Explicit single org
-        orgsToAdd.push(orgId);
-      } else {
-        // Multi-select orgs
-        orgsToAdd.push(...selectedOrgs.map((o) => o.id));
-      }
-
-      // Add user to each selected organization
-      const failures: string[] = [];
-      for (const targetOrgId of orgsToAdd) {
-        try {
-          await addOrgUser.mutateAsync({
-            orgId: targetOrgId,
-            data: {
-              user_id: newUser.id,
-              role: ORG_ROLE.MEMBER,
-              is_org_admin: false,
-              is_base_station_admin: isBaseStationManager,
-              is_endpoint_admin: isEndpointManager,
-            },
-          });
-        } catch {
-          failures.push(targetOrgId);
-        }
-      }
-
-      if (failures.length > 0) {
-        setPartialError(USER_FORM.ERR_ADD_TO_ORG_PARTIAL);
-      } else {
-        handleClose();
-      }
-    } catch {
-      // Error handled by mutation hook
-    }
-  };
-
-  // Effect-like: auto-select current org when organizations load
-  React.useEffect(() => {
-    handleOpen();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizations.length, organizationId]);
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>{USER_FORM.DIALOG_TITLE_ADD}</DialogTitle>
       <DialogContent>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
-          {createUser.isError && (
-            <Alert severity="error">
-              {createUser.error instanceof Error
-                ? createUser.error.message
-                : USER_FORM.ERR_CREATE_FAILED}
-            </Alert>
+          {state.createError && (
+            <Alert severity="error">{state.createError}</Alert>
           )}
-
-          {partialError && <Alert severity="warning">{partialError}</Alert>}
-
-          <TextField
-            label={USER_FORM.LABEL_EMAIL}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            error={!!emailError}
-            helperText={emailError}
-            fullWidth
-            required
-            autoFocus
-          />
-
-          <TextField
-            label={USER_FORM.LABEL_PASSWORD}
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            error={!!passwordError}
-            helperText={passwordError}
-            fullWidth
-            required
-          />
-
-          <TextField
-            label={USER_FORM.LABEL_CONFIRM_PASSWORD}
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            error={!!confirmPasswordError}
-            helperText={confirmPasswordError}
-            fullWidth
-            required
-          />
-
-          <TextField
-            label={USER_FORM.LABEL_NOTE}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            multiline
-            rows={2}
-            fullWidth
-          />
-
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                />
-              }
-              label={USER_FORM.LABEL_IS_ACTIVE}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isAdmin}
-                  onChange={(e) => setIsAdmin(e.target.checked)}
-                />
-              }
-              label={USER_FORM.LABEL_IS_ADMIN}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isTenantManager}
-                  onChange={(e) => setIsTenantManager(e.target.checked)}
-                />
-              }
-              label={USER_FORM.LABEL_IS_TENANT_MGR}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isBaseStationManager}
-                  onChange={(e) => setIsBaseStationManager(e.target.checked)}
-                />
-              }
-              label={USER_FORM.LABEL_IS_BS_MGR}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isEndpointManager}
-                  onChange={(e) => setIsEndpointManager(e.target.checked)}
-                />
-              }
-              label={USER_FORM.LABEL_IS_EP_MGR}
-            />
-          </Box>
-
-          {/* Multi-org picker: shown when no explicit orgId is provided */}
+          {state.partialError && (
+            <Alert severity="warning">{state.partialError}</Alert>
+          )}
+          <CredentialFields state={state} />
+          <NewUserFlags form={state.form} onChange={state.update} />
           {!orgId && (
-            <Autocomplete
-              multiple
-              options={organizations}
-              getOptionLabel={(option) => option.name}
-              value={selectedOrgs}
-              onChange={(_, newValue) => setSelectedOrgs(newValue)}
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              renderTags={(value, getTagProps) =>
-                value.map((option, index) => {
-                  const { key, ...chipProps } = getTagProps({ index });
-                  return (
-                    <Chip
-                      key={key}
-                      label={option.name}
-                      size="small"
-                      {...chipProps}
-                    />
-                  );
-                })
-              }
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={USER_FORM.LABEL_ORGANIZATIONS}
-                  helperText={USER_FORM.HELPER_ORGANIZATIONS}
-                />
-              )}
+            <NewUserOrganizations
+              open={open}
+              value={state.form.organizations}
+              onChange={(orgs) => state.update("organizations", orgs)}
             />
           )}
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClose} disabled={createUser.isPending}>
+        <Button onClick={handleClose} disabled={state.pending}>
           {USER_FORM.ACTION_CANCEL}
         </Button>
         <Button
           variant="contained"
-          onClick={handleSubmit}
-          disabled={createUser.isPending}
+          onClick={state.submit}
+          disabled={state.pending}
         >
           {USER_FORM.ACTION_SUBMIT}
         </Button>

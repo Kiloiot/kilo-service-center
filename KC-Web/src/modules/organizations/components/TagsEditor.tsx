@@ -8,8 +8,10 @@ import React, { useState } from "react";
 
 import { Box, Chip, IconButton, Stack, TextField } from "@mui/material";
 
+import { KEYBOARD_KEY } from "@constants/app";
 import { TAGS_EDITOR } from "@constants/messages";
 import { AddIcon, DeleteIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
 interface TagsEditorProps {
   tags: Record<string, string>;
@@ -36,7 +38,7 @@ const TagsEditor: React.FC<TagsEditorProps> = ({ tags, onChange }) => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && newKey && !tags[newKey]) {
+    if (e.key === KEYBOARD_KEY.ENTER && newKey && !tags[newKey]) {
       e.preventDefault();
       handleAdd();
     }
@@ -51,7 +53,7 @@ const TagsEditor: React.FC<TagsEditorProps> = ({ tags, onChange }) => {
           value={newKey}
           onChange={(e) => setNewKey(e.target.value)}
           onKeyDown={handleKeyDown}
-          sx={{ width: 120 }}
+          sx={{ width: componentSpacing.compactInput.width }}
         />
         <TextField
           size="small"
@@ -80,7 +82,12 @@ const TagsEditor: React.FC<TagsEditorProps> = ({ tags, onChange }) => {
           />
         ))}
         {Object.keys(tags).length === 0 && (
-          <Box sx={{ color: "text.secondary", fontSize: "0.875rem" }}>
+          <Box
+            sx={{
+              color: "text.secondary",
+              fontSize: (theme) => theme.typography.body2.fontSize,
+            }}
+          >
             {TAGS_EDITOR.LABEL_NO_TAGS}
           </Box>
         )}

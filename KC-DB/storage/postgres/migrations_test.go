@@ -1,7 +1,9 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -12,14 +14,44 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 )
+
+// runMigrationsFromPath runs migrations from a file system path so the suite
+// can exercise the on-disk migrations directory against a fresh container.
+func runMigrationsFromPath(db *sql.DB, config *Config, path string) error {
+	driver, err := migratepostgres.WithInstance(db, &migratepostgres.Config{
+		DatabaseName: config.Database,
+	})
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapFailedToCreatePostgresDriver, err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		fmt.Sprintf("file://%s", path),
+		config.Database,
+		driver,
+	)
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapFailedToCreateMigrateInstance, err)
+	}
+	// Note: Do NOT defer m.Close() here because it closes the *sql.DB which is owned by the caller
+	// The migrate instance will be garbage collected after this function returns
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("%s: %w", errWrapRunMigrations, err)
+	}
+
+	return nil
+}
 
 func setupMigrationTestDB(t *testing.T) (*sql.DB, *Config, func()) {
 	// Use testcontainers for isolated database (without running migrations)
 	db, containerConfig, cleanup := SetupPostgresContainerWithoutMigrations(t)
 
 	// Convert containerConfig.Port (string) to int
-	port := 5432 // Default fallback
+	port := testDefaultPostgresPort // Fallback when the container port cannot be parsed
 	if containerConfig.Port != "" {
 		var parsedPort int
 		if _, err := fmt.Sscanf(containerConfig.Port, "%d", &parsedPort); err == nil {
@@ -51,7 +83,7 @@ func TestMigrations(t *testing.T) {
 		db, config, cleanup := setupMigrationTestDB(t)
 		defer cleanup()
 
-		err := RunMigrationsFromPath(db, config, "../../migrations")
+		err := runMigrationsFromPath(db, config, "../../migrations")
 		assert.NoError(t, err)
 
 		// Verify tables exist (updated names: gateway→basestation, device→endpoint)
@@ -66,7 +98,6 @@ func TestMigrations(t *testing.T) {
 			"roaming_agreements",
 			"basestation_receptions",
 			"endpoint_sessions",
-			"endpoint_keys",
 			"basestation_sessions",
 			"system_events",
 		}
@@ -91,7 +122,7 @@ func TestMigrations(t *testing.T) {
 		defer cleanup()
 
 		// Run migrations first
-		err := RunMigrationsFromPath(db, config, "../../migrations")
+		err := runMigrationsFromPath(db, config, "../../migrations")
 		require.NoError(t, err)
 
 		// Check endpoints table has MIOTY-specific columns
@@ -135,7 +166,7 @@ func TestMigrations(t *testing.T) {
 		// Check downlink_queue has MIOTY enhancements
 		downlinkColumns := []string{
 			"dl_open", "res_exp", "dl_ack", "repetition",
-			"earliest_at", "latest_at", "correlation_id",
+			"earliest_at", "latest_at",
 		}
 
 		for _, col := range downlinkColumns {
@@ -158,7 +189,7 @@ func TestMigrations(t *testing.T) {
 		defer cleanup()
 
 		// Run migrations first
-		err := RunMigrationsFromPath(db, config, "../../migrations")
+		err := runMigrationsFromPath(db, config, "../../migrations")
 		require.NoError(t, err)
 
 		// Verify representative indexes that survive all migrations
@@ -191,7 +222,7 @@ func TestMigrations(t *testing.T) {
 		defer cleanup()
 
 		// Run migrations first
-		err := RunMigrationsFromPath(db, config, "../../migrations")
+		err := runMigrationsFromPath(db, config, "../../migrations")
 		require.NoError(t, err)
 
 		// Test unique constraint on active endpoint sessions
@@ -229,13 +260,12 @@ func TestMigrations(t *testing.T) {
 		defer cleanup()
 
 		// Run migrations first
-		err := RunMigrationsFromPath(db, config, "../../migrations")
+		err := runMigrationsFromPath(db, config, "../../migrations")
 		require.NoError(t, err)
 
 		// Verify representative functions created by migrations
 		functions := []string{
 			"update_endpoint_session_activity", // From migration 005
-			"ensure_single_active_key",         // From migration 006
 			"expire_old_system_events",         // From migration 008
 		}
 
@@ -262,10 +292,11 @@ func TestMigrationRunner(t *testing.T) {
 		_, config, cleanup := setupMigrationTestDB(t)
 		defer cleanup()
 
-		runner := NewMigrationRunner(config)
+		runner, err := NewMigrationRunner(config, UpgradeGates())
+		require.NoError(t, err)
 
 		// Initially no version
-		version, dirty, err := runner.Version()
+		version, dirty, err := runner.Version(testutil.TestContext())
 		assert.NoError(t, err)
 		assert.Equal(t, uint(0), version)
 		assert.False(t, dirty)
@@ -279,7 +310,7 @@ func TestMigrationRunner(t *testing.T) {
 		defer cleanup()
 
 		// Use container config instead of hardcoded testConfig
-		err := RunMigrationsFromPath(db, config, "../../migrations")
+		err := runMigrationsFromPath(db, config, "../../migrations")
 		assert.NoError(t, err)
 
 		// Check final version against the highest discovered migration number
@@ -301,7 +332,7 @@ func migrateToVersion(db *sql.DB, config *Config, version uint) error {
 		DatabaseName: config.Database,
 	})
 	if err != nil {
-		return fmt.Errorf("create postgres driver: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCreatePostgresDriver, err)
 	}
 
 	m, err := migrate.NewWithDatabaseInstance(
@@ -310,11 +341,11 @@ func migrateToVersion(db *sql.DB, config *Config, version uint) error {
 		driver,
 	)
 	if err != nil {
-		return fmt.Errorf("create migrate instance: %w", err)
+		return fmt.Errorf("%s: %w", errWrapCreateMigrateInstance, err)
 	}
 
 	if err := m.Migrate(version); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("migrate to version %d: %w", version, err)
+		return fmt.Errorf(errFmtMigrateVersion, version, err)
 	}
 	return nil
 }
@@ -350,8 +381,8 @@ func TestMigration110_OrphanRename(t *testing.T) {
 
 	orgID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	_, err = db.Exec(`
-		INSERT INTO organizations (org_id, tenant_id, name, can_have_base_stations, created_at, updated_at)
-		VALUES ($1, $2, 'Migration Test Org', true, NOW(), NOW())
+		INSERT INTO organizations (org_id, tenant_id, name, created_at, updated_at)
+		VALUES ($1, $2, 'Migration Test Org', NOW(), NOW())
 		ON CONFLICT (org_id) DO NOTHING
 	`, orgID, tenantID)
 	require.NoError(t, err)
@@ -453,4 +484,60 @@ func TestMigration110_OrphanRename(t *testing.T) {
 	err = db.QueryRow(`SELECT name FROM api_keys WHERE id = $1`, saKeyID).Scan(&saName)
 	require.NoError(t, err)
 	require.Equal(t, "my-key", saName, "original SA key should retain name 'my-key'")
+}
+
+// An early schema version a fake gate holds an upgrade at, and the version
+// that follows it.
+const (
+	testGateVersion     uint = 29
+	testPostGateVersion uint = 30
+)
+
+var errTestGateRefused = errors.New("test gate refused")
+
+// refusingGate holds every upgrade at testGateVersion.
+type refusingGate struct{ checked *int }
+
+func (refusingGate) Version() uint { return testGateVersion }
+
+func (g refusingGate) Check(context.Context, *sql.DB) error {
+	*g.checked++
+	return errTestGateRefused
+}
+
+func TestNewMigrationRunner_RefusesMissingCollaborators(t *testing.T) {
+	_, err := NewMigrationRunner(nil, UpgradeGates())
+	assert.ErrorIs(t, err, ErrNilMigrationConfig)
+
+	_, err = NewMigrationRunner(&Config{}, []SchemaGate{nil})
+	assert.ErrorIs(t, err, ErrNilSchemaGate)
+}
+
+// TestMigrationRunner_InjectedGateHoldsTheUpgrade proves the runner applies
+// the gates its composition root passes: the upgrade stops clean at the
+// gate's version with the gate's error, and a runner given no gate crosses it.
+func TestMigrationRunner_InjectedGateHoldsTheUpgrade(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping migration runner tests in short mode")
+	}
+	_, config, cleanup := setupMigrationTestDB(t)
+	defer cleanup()
+	ctx := testutil.TestContext()
+
+	checked := 0
+	held, err := NewMigrationRunner(config, []SchemaGate{refusingGate{checked: &checked}})
+	require.NoError(t, err)
+	_, err = held.Run(ctx)
+	require.ErrorIs(t, err, errTestGateRefused)
+	assert.Equal(t, 1, checked)
+	version, dirty, err := held.Version(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, testGateVersion, version)
+	assert.False(t, dirty)
+
+	free, err := NewMigrationRunner(config, nil)
+	require.NoError(t, err)
+	version, err = free.RunTo(ctx, testPostGateVersion)
+	require.NoError(t, err)
+	assert.Equal(t, testPostGateVersion, version)
 }

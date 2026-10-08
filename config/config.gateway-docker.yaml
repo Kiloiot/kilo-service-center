@@ -23,7 +23,6 @@ grpc:
       - "http://localhost:80"
       - "http://localhost:5173"
     allow_credentials: true
-    enable_websockets: true
 
 auth:
   enabled: true

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
-	"github.com/google/uuid"
 )
 
 // SystemEventStore defines the interface for system event operations
@@ -14,53 +13,26 @@ type SystemEventStore interface {
 	CreateEvent(ctx context.Context, event *models.SystemEvent) error
 
 	// GetEvents retrieves events with filters
-	GetEvents(ctx context.Context, filter SystemEventFilter) ([]*models.SystemEvent, error)
+	GetEvents(ctx context.Context, filter models.SystemEventFilter) ([]*models.SystemEvent, error)
 
 	// GetActiveAlerts retrieves unacknowledged events with severity warning or higher
-	GetActiveAlerts(ctx context.Context, filter AlertFilter) ([]*models.SystemEvent, error)
+	GetActiveAlerts(ctx context.Context, filter models.AlertFilter) ([]*models.SystemEvent, error)
 
 	// GetEventStats retrieves event statistics
 	GetEventStats(ctx context.Context, tenantID string, since time.Time) (*models.SystemEventStats, error)
 
-	// RecordSCACIError records a SCACI protocol error event per SCACI §3.14
-	RecordSCACIError(ctx context.Context, tenantID int64, sessionID int64, command string, opId int64, errorCode int, errorMsg string) error
-
 	// CountEvents returns total count matching filter (for pagination)
-	CountEvents(ctx context.Context, filter SystemEventFilter) (int64, error)
+	CountEvents(ctx context.Context, filter models.SystemEventFilter) (int64, error)
 
 	// CountActiveAlerts returns total count of active alerts (for pagination)
-	CountActiveAlerts(ctx context.Context, filter AlertFilter) (int64, error)
+	CountActiveAlerts(ctx context.Context, filter models.AlertFilter) (int64, error)
 }
 
-// SystemEventFilter defines filters for querying events
-type SystemEventFilter struct {
-	TenantID       string
-	EventTypes     []string
-	Categories     []string
-	Severities     []string
-	SourceTypes    []string
-	SourceID       *uuid.UUID
-	BaseStationID  *int64
-	EndpointID     *int64
-	BaseStationEUI string // Fallback: filter by source_name ILIKE for BS events
-	EndpointEUI    string // Fallback: filter by source_name ILIKE for EP events
-	Status         []string
-	Since          *time.Time
-	Until          *time.Time
-	SearchText     string
-	Limit          int
-	Offset         int
-	OrderBy        string // "occurred_at", "severity", etc.
-	OrderDirection string // "asc" or "desc"
-}
-
-// AlertFilter defines filters specifically for alerts
-type AlertFilter struct {
-	TenantID     string
-	Severities   []string // only warning, error, critical
-	Categories   []string
-	Acknowledged *bool
-	Since        *time.Time
-	Limit        int
-	Offset       int
+// SCACIEventStore records and reads the SCACI protocol events kept in the
+// system event log.
+type SCACIEventStore interface {
+	RecordSCACIError(ctx context.Context, tenantID int64, sessionID int64, command string, opId int64, errorCode int, errorMsg string) error
+	RecordSessionEvent(ctx context.Context, event *models.SCACISessionEvent) error
+	ListSCACIEvents(ctx context.Context, tenantID int64, sessionID *int64, eventType string, limit, offset int) ([]*models.SystemEvent, error)
+	CountSCACIEventsByFilter(ctx context.Context, tenantID int64, sessionID *int64, eventType string) (int64, error)
 }

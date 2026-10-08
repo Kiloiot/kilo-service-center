@@ -97,9 +97,9 @@ func createTestIntegration() *models.Integration {
 
 func createTestIntegrationService() *CoreService {
 	// Create minimal service with mocks for required dependencies
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		log: testLogger{},
-	}
+	})
 	return svc
 }
 

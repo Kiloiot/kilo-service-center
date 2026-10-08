@@ -1,13 +1,13 @@
 /**
  * System Status Hook
  *
- * React Query hook for fetching system health status.
- * Auto-refreshes at TIMING_STATUS_REFRESH interval.
+ * React Query hook for fetching system health status. It re-reads at
+ * TIMING_STATUS_REFRESH because no realtime event announces a service's health.
  */
 
 import { useQuery } from "@tanstack/react-query";
 
-import { apiService } from "@services/api";
+import { systemApi } from "@services/api";
 import { TIMING_STATUS_REFRESH } from "@constants/app";
 import { queryKeys } from "@config/query-keys";
 
@@ -30,7 +30,7 @@ export function useSystemStatus(options?: UseSystemStatusOptions) {
 
   return useQuery({
     queryKey: queryKeys.system.status(),
-    queryFn: () => apiService.getSystemStatus(),
+    queryFn: () => systemApi.getSystemStatus(),
     refetchInterval,
     enabled,
   });

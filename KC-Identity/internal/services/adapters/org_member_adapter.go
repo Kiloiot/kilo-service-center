@@ -14,11 +14,11 @@ import (
 
 // OrganizationMemberStoreAdapter wraps OrganizationRepository to implement admin.OrganizationMemberStore.
 type OrganizationMemberStoreAdapter struct {
-	repo interfaces.OrganizationRepository
+	repo interfaces.OrganizationMembershipRepository
 }
 
 // NewOrganizationMemberStoreAdapter creates a new adapter.
-func NewOrganizationMemberStoreAdapter(repo interfaces.OrganizationRepository) *OrganizationMemberStoreAdapter {
+func NewOrganizationMemberStoreAdapter(repo interfaces.OrganizationMembershipRepository) *OrganizationMemberStoreAdapter {
 	return &OrganizationMemberStoreAdapter{repo: repo}
 }
 
@@ -71,11 +71,11 @@ func (a *OrganizationMemberStoreAdapter) ListUserMembershipsByTenant(ctx context
 	return a.repo.ListUserMembershipsByTenant(ctx, userID, tenantID)
 }
 
-// translateNotFound converts storage.ErrNotFound to interfaces.ErrRecordNotFound
-// so callers using errors.Is(err, interfaces.ErrRecordNotFound) see a consistent sentinel.
+// translateNotFound converts storage.ErrNotFound to storage.ErrRecordNotFound
+// so callers using errors.Is(err, storage.ErrRecordNotFound) see a consistent sentinel.
 func translateNotFound(err error) error {
 	if err != nil && errors.Is(err, storage.ErrNotFound) {
-		return interfaces.ErrRecordNotFound
+		return storage.ErrRecordNotFound
 	}
 	return err
 }

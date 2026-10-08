@@ -11,12 +11,20 @@ import (
 	"math/big"
 	"testing"
 
+	repodoubles "github.com/Kiloiot/kilo-service-center/KC-Core/internal/testsupport/repodoubles"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+)
+
+// Fixture errors returned by the certificate identity test doubles.
+var (
+	errTestBSRepoNotFound = errors.New("not found")
+	errTestUnknownOrg     = errors.New("unknown org")
 )
 
 // makeTestCert creates a real self-signed x509 certificate with the given CN.
@@ -38,7 +46,7 @@ func makeTestCert(t *testing.T, cn string) *x509.Certificate {
 // certIdentityBSRepo overrides the global lookup of the fieldless base
 // mock with configurable results.
 type certIdentityBSRepo struct {
-	mockBaseStationRepo
+	repodoubles.BaseStationRepo
 	baseStation *models.BaseStation
 	getErr      error
 }
@@ -94,7 +102,7 @@ func TestCertIdentity_EUICN_ResolvesRegisteredStation(t *testing.T) {
 // TestCertIdentity_EUICN_UnregisteredStationRejected: an EUI CN with no
 // registered station cannot resolve.
 func TestCertIdentity_EUICN_UnregisteredStationRejected(t *testing.T) {
-	repo := &certIdentityBSRepo{getErr: errors.New("not found")}
+	repo := &certIdentityBSRepo{getErr: errTestBSRepoNotFound}
 	resolver := NewCertificateIdentityResolver(repo, &certIdentityOrgResolver{}, &mockLoggerForDispatch{})
 
 	_, err := resolver.ResolveCertificateIdentity(testutil.TestContext(), makeTestCert(t, "CA-FE-CA-FE-CA-FE-CA-FE"))
@@ -108,7 +116,7 @@ func TestCertIdentity_EUICN_UnregisteredStationRejected(t *testing.T) {
 func TestCertIdentity_OrgCN_DelegatesToOrgResolver(t *testing.T) {
 	orgID := uuid.New()
 	orgResolver := &certIdentityOrgResolver{resolveCertOrg: orgID, resolveCertTenant: 9}
-	resolver := NewCertificateIdentityResolver(&mockBaseStationRepo{}, orgResolver, &mockLoggerForDispatch{})
+	resolver := NewCertificateIdentityResolver(&repodoubles.BaseStationRepo{}, orgResolver, &mockLoggerForDispatch{})
 
 	identity, err := resolver.ResolveCertificateIdentity(testutil.TestContext(), makeTestCert(t, "org-"+orgID.String()))
 
@@ -122,8 +130,8 @@ func TestCertIdentity_OrgCN_DelegatesToOrgResolver(t *testing.T) {
 // TestCertIdentity_OrgCN_DelegateFailurePropagates: a delegated resolution
 // failure surfaces (strict mode closes the connection on it).
 func TestCertIdentity_OrgCN_DelegateFailurePropagates(t *testing.T) {
-	orgResolver := &certIdentityOrgResolver{resolveCertErr: errors.New("unknown org")}
-	resolver := NewCertificateIdentityResolver(&mockBaseStationRepo{}, orgResolver, &mockLoggerForDispatch{})
+	orgResolver := &certIdentityOrgResolver{resolveCertErr: errTestUnknownOrg}
+	resolver := NewCertificateIdentityResolver(&repodoubles.BaseStationRepo{}, orgResolver, &mockLoggerForDispatch{})
 
 	_, err := resolver.ResolveCertificateIdentity(testutil.TestContext(), makeTestCert(t, "org-unknown"))
 

@@ -251,3 +251,104 @@ func TestMigration014RollbackSpecific(t *testing.T) {
 	t.Log("PASS: All triggers dropped before function")
 	t.Log("PASS: Clean rollback achieved")
 }
+
+// TestMigration145DropEndpointKeys validates that migration 145 removes the
+// endpoint_keys subsystem at HEAD and that its down script restores the
+// structure. It applies the whole chain up to 144 (where the tables and archive
+// trigger still exist), then 145 (where they are gone), then rolls back to 144.
+func TestMigration145DropEndpointKeys(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping migration 145 specific test in short mode")
+	}
+
+	db, _, cleanup := SetupPostgresContainerWithoutMigrations(t)
+	defer cleanup()
+
+	migrationsDir, err := filepath.Abs("../../migrations")
+	require.NoError(t, err)
+
+	driver, err := postgres.WithInstance(db.DB, &postgres.Config{})
+	require.NoError(t, err)
+
+	m, err := migrate.NewWithDatabaseInstance(
+		fmt.Sprintf("file://%s", filepath.ToSlash(migrationsDir)),
+		"postgres",
+		driver,
+	)
+	require.NoError(t, err)
+
+	tableExistsAt := func(table string) bool {
+		var exists bool
+		qerr := db.DB.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.tables
+				WHERE table_schema = 'public' AND table_name = $1
+			)
+		`, table).Scan(&exists)
+		require.NoError(t, qerr)
+		return exists
+	}
+	funcExistsAt := func(name string) bool {
+		var exists bool
+		qerr := db.DB.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM pg_proc p
+				JOIN pg_namespace n ON p.pronamespace = n.oid
+				WHERE n.nspname = 'public' AND p.proname = $1
+			)
+		`, name).Scan(&exists)
+		require.NoError(t, qerr)
+		return exists
+	}
+	triggerExistsAt := func(name string) bool {
+		var exists bool
+		qerr := db.DB.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM pg_trigger WHERE tgname = $1 AND NOT tgisinternal
+			)
+		`, name).Scan(&exists)
+		require.NoError(t, qerr)
+		return exists
+	}
+
+	// Apply migrations up to 144: the endpoint_keys subsystem is still present.
+	err = m.Migrate(144)
+	require.NoError(t, err, "Failed to migrate to version 144")
+
+	assert.True(t, tableExistsAt("endpoint_keys"),
+		"endpoint_keys should exist before migration 145")
+	assert.True(t, tableExistsAt("endpoint_keys_archive"),
+		"endpoint_keys_archive should exist before migration 145")
+	assert.True(t, triggerExistsAt("set_endpoint_keys_archive_timestamp"),
+		"archive trigger should exist before migration 145")
+
+	// Apply 145: the subsystem is gone, shared functions survive.
+	err = m.Migrate(145)
+	require.NoError(t, err, "Failed to migrate to version 145")
+
+	assert.False(t, tableExistsAt("endpoint_keys"),
+		"endpoint_keys should be dropped after migration 145")
+	assert.False(t, tableExistsAt("endpoint_keys_archive"),
+		"endpoint_keys_archive should be dropped after migration 145")
+	assert.False(t, triggerExistsAt("set_endpoint_keys_archive_timestamp"),
+		"archive trigger should be dropped after migration 145")
+	assert.False(t, funcExistsAt("validate_key_format"),
+		"validate_key_format() should be dropped after migration 145")
+	assert.False(t, funcExistsAt("ensure_single_active_key"),
+		"ensure_single_active_key() should be dropped after migration 145")
+	assert.True(t, funcExistsAt("set_archived_at"),
+		"shared set_archived_at() must survive migration 145")
+	assert.True(t, funcExistsAt("update_audit_fields"),
+		"shared update_audit_fields() must survive migration 145")
+
+	// Roll back 145: the structure is restored.
+	err = m.Migrate(144)
+	require.NoError(t, err, "Migration 145 rollback failed")
+
+	assert.True(t, tableExistsAt("endpoint_keys"),
+		"endpoint_keys should be restored after rolling back migration 145")
+	assert.True(t, tableExistsAt("endpoint_keys_archive"),
+		"endpoint_keys_archive should be restored after rolling back migration 145")
+	assert.True(t, triggerExistsAt("set_endpoint_keys_archive_timestamp"),
+		"archive trigger should be restored after rolling back migration 145")
+}

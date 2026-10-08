@@ -11,9 +11,11 @@ This section covers baseline security practices for KiloCenter deployments, incl
 ## Use This Section For
 
 - Credential rotation and hygiene
+- Who may see and change what: user roles and self-registration
 - TLS certificate management for base station connections
 - Network exposure and port hardening
 - Understanding Enterprise Edition security features
 
 - [Before you install](02-installation-safety.md)
 - [Renew a server certificate without deleting data](03-certificate-renewal.md)
+- [User roles and permissions](04-users-and-roles.md)

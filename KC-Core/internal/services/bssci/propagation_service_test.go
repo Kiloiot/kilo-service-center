@@ -6,16 +6,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
+
 	pkgbssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+)
+
+// Fixture broadcast errors aggregated by the propagation tests.
+var (
+	errTestBroadcastNetworkTimeout  = errors.New("session A: network timeout")
+	errTestBroadcastInvalidEndpoint = errors.New("session B: invalid endpoint")
+	errTestBroadcastDatabaseError   = errors.New("session C: database error")
 )
 
 // TestTenantFilteringInTriggerEndpointPropagate verifies ATT-02: endpoint propagation
@@ -62,61 +70,29 @@ func TestTenantFilteringInTriggerEndpointPropagate(t *testing.T) {
 	assert.Equal(t, "session-1", env.sender.calls[0].sessionID, "same-tenant session should receive")
 }
 
-// TestPropagateStatusFilteringInReconcile verifies BSSCI §3.8: reconciliation propagates
-// ALL endpoints to every base station. attPrp is idempotent, so endpoints with any
-// PropagateStatus (including "attached") are still propagated to support multi-BS deployments.
-// Both bidirectional AND unidirectional endpoints need attPrp per spec.
-func TestPropagateStatusFilteringInReconcile(t *testing.T) {
+// A reconnecting base station is sent attPrp for the endpoints the service
+// center holds attached only, unidirectional ones included (BSSCI §3.8); one
+// deregistered, detached or never attached stays off the station.
+func TestReconcileResendsOnlyAttachedEndpoints(t *testing.T) {
 	t.Parallel()
 
 	const tenantID = int64(100)
-
-	// Endpoints with different propagate statuses
-	attachedStatus := pkgbssci.PropagateStatusAttached
-	receivedStatus := pkgbssci.PropagateStatusAttachReceived
-
 	endpoints := []*models.EndPoint{
-		{
-			ID:              1001,
-			TenantID:        tenantID,
-			Bidi:            true,
-			PropagateStatus: nil, // New endpoint - should be propagated
-		},
-		{
-			ID:              1002,
-			TenantID:        tenantID,
-			Bidi:            true,
-			PropagateStatus: &receivedStatus, // In progress - should be propagated
-		},
-		{
-			ID:              1003,
-			TenantID:        tenantID,
-			Bidi:            true,
-			PropagateStatus: &attachedStatus, // Already attached - STILL propagated (idempotent attPrp)
-		},
-		{
-			ID:       1004,
-			TenantID: tenantID,
-			Bidi:     false, // Unidirectional - SHOULD be propagated per BSSCI §3.8
-		},
+		{ID: 1001, TenantID: tenantID, Bidi: true, EpStatus: pkgbssci.EndpointStatusAttached},
+		{ID: 1002, TenantID: tenantID, Bidi: false, EpStatus: pkgbssci.EndpointStatusAttached},
+		{ID: 1003, TenantID: tenantID, Bidi: true, EpStatus: endpoint.EndpointStatusDetached},
+		{ID: 1004, TenantID: tenantID, Bidi: false, EpStatus: endpoint.EndpointStatusDetached},
 	}
-
 	env := newPropagationTestEnv(t, endpoints...)
+	session := propagation.BaseStationSession{ID: "session-1", BaseStationEUI: 0x0011223344556677, TenantID: tenantID}
 
-	session := propagation.BaseStationSession{
-		ID:             "session-1",
-		BaseStationEUI: 0x0011223344556677,
-		TenantID:       tenantID,
+	require.NoError(t, env.service.ReconcileBaseStation(testutil.TestContext(), session, nil))
+
+	var resent []int64
+	for _, call := range env.sender.calls {
+		resent = append(resent, call.endpoint.ID)
 	}
-
-	ctx := testutil.TestContext()
-	err := env.service.ReconcileBaseStation(ctx, session, nil)
-
-	require.NoError(t, err, "reconciliation should succeed")
-
-	// BSSCI §3.8: ALL endpoints propagated (attPrp is idempotent for multi-BS deployments)
-	// No endpoints are skipped - each BS needs to receive attPrp for every endpoint
-	require.Len(t, env.sender.calls, 4, "all endpoints (including attached) should receive propagate")
+	assert.ElementsMatch(t, []int64{1001, 1002}, resent, "only the attached endpoints are propagated again")
 }
 
 // TestRoamingPolicyEnforcement verifies ATT-03: shouldPropagate blocks cross-tenant
@@ -167,6 +143,7 @@ func TestUnidirectionalEndpointPropagated(t *testing.T) {
 		ID:       1001,
 		TenantID: tenantID,
 		Bidi:     false, // Class Z unidirectional
+		EpStatus: pkgbssci.EndpointStatusAttached,
 	}
 
 	env := newPropagationTestEnv(t, endpoint)
@@ -188,9 +165,8 @@ func TestUnidirectionalEndpointPropagated(t *testing.T) {
 	assert.False(t, env.sender.calls[0].endpoint.Bidi, "bidi should be false in attPrp")
 }
 
-// TestMultiBSPropagation verifies BSSCI §3.8: endpoints with PropagateStatus="attached"
-// are STILL propagated to a NEW base station. The global status doesn't prevent
-// propagation to different BSs. attPrp is idempotent by design.
+// TestMultiBSPropagation verifies BSSCI §3.8: an attached endpoint another base
+// station already confirmed is still propagated to a NEW base station.
 func TestMultiBSPropagation(t *testing.T) {
 	t.Parallel()
 
@@ -198,11 +174,11 @@ func TestMultiBSPropagation(t *testing.T) {
 
 	attachedStatus := pkgbssci.PropagateStatusAttached
 
-	// Endpoint already marked "attached" from previous BS-A reconciliation
 	endpoint := &models.EndPoint{
 		ID:              1001,
 		TenantID:        tenantID,
 		Bidi:            true,
+		EpStatus:        pkgbssci.EndpointStatusAttached,
 		PropagateStatus: &attachedStatus, // Already propagated to BS-A
 	}
 
@@ -250,9 +226,15 @@ func newPropagationTestEnv(t *testing.T, endpoints ...*models.EndPoint) *propaga
 	}
 }
 
-// mockAttachPropagateSender captures SendAttachPropagateBySessionID calls for verification.
+// mockAttachPropagateSender captures the attPrp and detPrp each session is sent.
 type mockAttachPropagateSender struct {
-	calls []propagateCall
+	calls    []propagateCall
+	detaches []detachCall
+}
+
+type detachCall struct {
+	sessionID   string
+	endpointEUI uint64
 }
 
 type propagateCall struct {
@@ -272,19 +254,34 @@ func (m *mockAttachPropagateSender) SendAttachPropagateBySessionID(
 	return nil
 }
 
-func (m *mockAttachPropagateSender) SendAttachPropagateToSession(
-	_ context.Context,
-	_ *pkgbssci.Session,
-	_ *models.EndPoint,
-) error {
-	// Not used in propagation service tests (service uses BySessionID variant)
+func (m *mockAttachPropagateSender) SendDetachPropagate(sessionID string, endpointEUI uint64) error {
+	m.detaches = append(m.detaches, detachCall{sessionID: sessionID, endpointEUI: endpointEUI})
 	return nil
 }
 
 // fakeEndpointRepo provides endpoints for testing without database.
 type fakeEndpointRepo struct {
-	endpointsByID     map[int64]*models.EndPoint
-	endpointsByTenant map[int64][]*models.EndPoint
+	endpointsByID       map[int64]*models.EndPoint
+	endpointsByTenant   map[int64][]*models.EndPoint
+	attachmentChangedAt map[int64]time.Time
+}
+
+// attachmentChanged records when the service center last changed an endpoint's attachment.
+func (f *fakeEndpointRepo) attachmentChanged(endpointID int64, at time.Time) {
+	f.attachmentChangedAt[endpointID] = at
+}
+
+func (f *fakeEndpointRepo) GetByAttachmentChangedSince(_ context.Context, tenantID int64, status string, since *time.Time) ([]*models.EndPoint, error) {
+	var changed []*models.EndPoint
+	for _, ep := range f.endpointsByTenant[tenantID] {
+		at, recorded := f.attachmentChangedAt[ep.ID]
+		if ep.EpStatus != status || !recorded || (since != nil && !at.After(*since)) {
+			continue
+		}
+		clone := *ep
+		changed = append(changed, &clone)
+	}
+	return changed, nil
 }
 
 func newFakeEndpointRepo(endpoints ...*models.EndPoint) *fakeEndpointRepo {
@@ -297,8 +294,9 @@ func newFakeEndpointRepo(endpoints ...*models.EndPoint) *fakeEndpointRepo {
 	}
 
 	return &fakeEndpointRepo{
-		endpointsByID:     byID,
-		endpointsByTenant: byTenant,
+		endpointsByID:       byID,
+		endpointsByTenant:   byTenant,
+		attachmentChangedAt: make(map[int64]time.Time),
 	}
 }
 
@@ -323,9 +321,11 @@ func (f *fakeEndpointRepo) GetByTenant(_ context.Context, tenantID int64) ([]*mo
 
 // Remaining interface methods not used in these tests
 func (f *fakeEndpointRepo) Create(context.Context, *models.EndPoint) error { return nil }
+
 func (f *fakeEndpointRepo) GetByEUI(context.Context, int64, []byte) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (f *fakeEndpointRepo) Get(context.Context, models.EUI) (*models.EndPoint, error) {
 	return nil, nil
 }
@@ -337,36 +337,39 @@ func (f *fakeEndpointRepo) Update(context.Context, *models.EndPoint) error { ret
 func (f *fakeEndpointRepo) UpdateLastSeen(context.Context, int64, models.EUI, uint32) error {
 	return nil
 }
-func (f *fakeEndpointRepo) UpdateRadioMetrics(context.Context, int64, models.EUI, float64, float64, float64, int64, int64, string) error {
+
+func (f *fakeEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, models.RadioMetricsUpdate) error {
 	return nil
 }
-func (f *fakeEndpointRepo) UpdateRadioMetricsSelective(context.Context, int64, models.EUI, interfaces.RadioMetricsUpdate) error {
+
+func (f *fakeEndpointRepo) EndpointRegistrationUpdate(context.Context, int64, int64, models.EndpointRegistrationParams) error {
 	return nil
 }
-func (f *fakeEndpointRepo) UpdateFields(context.Context, int64, int64, map[string]interface{}) error {
+
+func (f *fakeEndpointRepo) EndpointAttachmentStateUpdate(context.Context, int64, int64, models.EndpointAttachmentStateParams) error {
 	return nil
 }
-func (f *fakeEndpointRepo) UpdateDetachMetrics(context.Context, int64, models.EUI, interfaces.DetachMetricsUpdate) error {
+
+func (f *fakeEndpointRepo) EndpointAttachSessionUpdate(context.Context, int64, int64, models.EndpointAttachSessionParams) error {
 	return nil
 }
-func (f *fakeEndpointRepo) StreamAllForPropagation(context.Context, int64, int) ([]*models.EndPoint, error) {
-	return nil, nil
+
+func (f *fakeEndpointRepo) EndpointDetachStateUpdate(context.Context, int64, int64, models.EndpointDetachStateParams) error {
+	return nil
 }
-func (f *fakeEndpointRepo) HasEndpointsSince(context.Context, time.Time) (bool, error) {
-	return false, nil
-}
-func (f *fakeEndpointRepo) GetEndpointWithKeysForDetachValidation(context.Context, models.EUI) (*models.EndPoint, error) {
-	return nil, nil
-}
+
 func (f *fakeEndpointRepo) GetPreferredBsEui(context.Context, int64, []byte) (*uint64, bool, error) {
 	return nil, false, nil
 }
-func (f *fakeEndpointRepo) DeleteByTenant(context.Context, int64, []byte) error {
-	return nil
+
+func (f *fakeEndpointRepo) DeleteByTenant(context.Context, int64, []byte) (int64, error) {
+	return 0, nil
 }
+
 func (f *fakeEndpointRepo) UpdateWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	return ep, nil
 }
+
 func (f *fakeEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 	return nil
 }
@@ -378,11 +381,11 @@ func (f *fakeEndpointRepo) CheckEUIUnique(_ context.Context, _ []byte) error {
 // Test_SendAttachPropagateBySessionID_BroadcastErrorAggregation regression,
 // which targeted a session-specific method that does not aggregate.
 func TestAggregateErrors_BroadcastErrorAggregation(t *testing.T) {
-	first := errors.New("session A: network timeout")
+	first := errTestBroadcastNetworkTimeout
 	errs := []error{
 		first,
-		errors.New("session B: invalid endpoint"),
-		errors.New("session C: database error"),
+		errTestBroadcastInvalidEndpoint,
+		errTestBroadcastDatabaseError,
 	}
 
 	err := aggregateErrors(errs)

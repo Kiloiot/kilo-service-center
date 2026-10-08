@@ -4,50 +4,36 @@
  * React Query hooks for base station data fetching and mutations.
  */
 
+import type { ActivityFilter, BaseStationUI } from "@api-types/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiService } from "@services/api";
-import { formatEUIWithDashes } from "@utils/formatters";
-import { CERT_VALIDITY_DAYS } from "@constants/app";
-import type { BaseStationFilters } from "@config/query-keys";
+import { baseStationsApi, certificatesApi } from "@services/api";
+import type { CommissionResultStatus } from "@constants/app";
+import {
+  CERT_VALIDITY_DAYS,
+  COMMISSION_RESULT_STATUS,
+  TIMING_BASE_STATION_STATUS_REFRESH_MS,
+} from "@constants/app";
 import { queryKeys } from "@config/query-keys";
 
-/**
- * Fetch all base stations. The optional `filters` arg is kept for callers
- * that already build a filters object — it currently scopes the React Query
- * cache key only; the gRPC list call is unfiltered server-side.
- */
-export function useBaseStations(filters?: BaseStationFilters) {
+/** Fetch all base stations; search and sort narrow the loaded list client-side. */
+export function useBaseStations() {
   return useQuery({
-    queryKey: queryKeys.baseStations.list(filters),
-    queryFn: () => apiService.getBaseStations(),
+    queryKey: queryKeys.baseStations.list(),
+    queryFn: () => baseStationsApi.getBaseStations(),
   });
 }
 
 /**
- * Fetch a single base station by EUI
+ * Fetch a single base station by EUI. It is re-read at the status request
+ * interval because the periodic statusRsp updates its metrics without an event.
  */
 export function useBaseStation(eui: string) {
   return useQuery({
     queryKey: queryKeys.baseStations.detail(eui),
-    queryFn: () => apiService.getBaseStationDetails(eui),
+    queryFn: () => baseStationsApi.getBaseStationDetails(eui),
     enabled: !!eui,
-  });
-}
-
-/**
- * Commission (create) a new base station
- */
-export function useCommissionBaseStation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: Parameters<typeof apiService.createBaseStation>[0]) =>
-      apiService.createBaseStation(data),
-    onSuccess: () => {
-      // Invalidate base station list to refetch
-      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all });
-    },
+    refetchInterval: TIMING_BASE_STATION_STATUS_REFRESH_MS,
   });
 }
 
@@ -56,7 +42,7 @@ export function useCommissionBaseStation() {
  * Uses BS-first flow: creates base station before generating certificates.
  */
 export interface CommissionResult {
-  status: "complete" | "partial";
+  status: CommissionResultStatus;
   bsEui: string;
   certData?: {
     serviceCenterUrl: string;
@@ -68,6 +54,31 @@ export interface CommissionResult {
     expiryDate?: string;
   };
   retryToken?: string; // EUI for cert retry if BS succeeded but certs failed
+}
+
+type IssuedCertificate = NonNullable<CommissionResult["certData"]>;
+
+/** Issues a base station's certificate, valid for three years unless told otherwise. */
+async function issueCertificate(
+  bsEui: string,
+  validityDays?: number,
+): Promise<{ bsEui: string; certData: IssuedCertificate }> {
+  const response = await certificatesApi.generateCertificate({
+    bsEui,
+    validityDays: validityDays || CERT_VALIDITY_DAYS.THREE_YEARS,
+  });
+  return {
+    bsEui: response.bsEui,
+    certData: {
+      serviceCenterUrl: response.serviceCenterUrl,
+      downloadUrls: {
+        caCert: response.downloadUrls.caCert,
+        clientCert: response.downloadUrls.clientCert,
+        privateKey: response.downloadUrls.privateKey,
+      },
+      expiryDate: response.expiresAt,
+    },
+  };
 }
 
 /**
@@ -92,13 +103,11 @@ export function useCommissionBaseStationWithCerts() {
       altitude?: number;
     }): Promise<CommissionResult> => {
       const euiClean = data.eui.replace(/-/g, "");
-      const euiDashed = formatEUIWithDashes(euiClean);
 
       // STEP 1: Create base station FIRST (must exist before cert generation)
-      await apiService.createBaseStation({
+      await baseStationsApi.createBaseStation({
         eui: euiClean,
         name: data.name,
-        connection_type: "bssci",
         latitude: data.latitude,
         longitude: data.longitude,
         altitude: data.altitude,
@@ -107,32 +116,15 @@ export function useCommissionBaseStationWithCerts() {
       // STEP 2: Generate certificates AFTER BS exists
       // Certs are persisted to BS record server-side
       try {
-        const certResponse = await apiService.generateCertificate({
-          bsEui: euiDashed,
-          validityDays: data.validityDays || CERT_VALIDITY_DAYS.THREE_YEARS,
-        });
-
-        // Complete success - BS created and certs generated
-        return {
-          status: "complete",
-          bsEui: certResponse.bsEui,
-          certData: {
-            serviceCenterUrl: certResponse.serviceCenterUrl,
-            downloadUrls: {
-              caCert: certResponse.downloadUrls.caCert,
-              clientCert: certResponse.downloadUrls.clientCert,
-              privateKey: certResponse.downloadUrls.privateKey,
-            },
-            expiryDate: certResponse.expiresAt,
-          },
-        };
+        const issued = await issueCertificate(euiClean, data.validityDays);
+        return { status: COMMISSION_RESULT_STATUS.COMPLETE, ...issued };
       } catch {
         // Partial success - BS created but cert generation failed
         // Return retryToken so user can retry cert generation
         return {
-          status: "partial",
-          bsEui: euiDashed,
-          retryToken: euiDashed, // EUI for retry
+          status: COMMISSION_RESULT_STATUS.PARTIAL,
+          bsEui: euiClean,
+          retryToken: euiClean,
         };
       }
     },
@@ -144,26 +136,20 @@ export function useCommissionBaseStationWithCerts() {
 }
 
 /**
- * Retry certificate generation for an existing base station
+ * Retry certificate generation for an existing base station; the station and
+ * the certificate views re-read its new certificate.
  */
 export function useRetryCertificateGeneration() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (data: { bsEui: string; validityDays?: number }) => {
-      const certResponse = await apiService.generateCertificate({
-        bsEui: data.bsEui,
-        validityDays: data.validityDays || CERT_VALIDITY_DAYS.THREE_YEARS,
-      });
-
-      return {
-        bsEui: certResponse.bsEui,
-        serviceCenterUrl: certResponse.serviceCenterUrl,
-        downloadUrls: {
-          caCert: certResponse.downloadUrls.caCert,
-          clientCert: certResponse.downloadUrls.clientCert,
-          privateKey: certResponse.downloadUrls.privateKey,
-        },
-        expiryDate: certResponse.expiresAt,
-      };
+      const issued = await issueCertificate(data.bsEui, data.validityDays);
+      return { bsEui: issued.bsEui, ...issued.certData };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.certificates.all });
     },
   });
 }
@@ -175,7 +161,7 @@ export function useDeleteBaseStation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (eui: string) => apiService.deleteBaseStation(eui),
+    mutationFn: (eui: string) => baseStationsApi.deleteBaseStation(eui),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all });
     },
@@ -200,35 +186,46 @@ export function useUpdateBaseStation() {
         longitude?: number | null;
         altitude?: number | null;
       };
-    }) => apiService.updateBaseStation(eui, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.baseStations.detail(variables.eui),
-      });
-    },
+    }) => baseStationsApi.updateBaseStation(eui, data),
+    // Every station view, its detail included, sits under baseStations.all.
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all }),
   });
 }
 
-/**
- * Update base station EUI with cascade to all dependent tables.
- */
+type BaseStationChanges = Parameters<
+  typeof baseStationsApi.updateBaseStation
+>[1];
+
+/** Moves a base station to a new EUI, then saves its other edits there; a failed save keeps the move. */
 export function useUpdateBaseStationEui() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ eui, newEui }: { eui: string; newEui: string }) =>
-      apiService.updateBaseStationEui(eui, newEui),
-    onSuccess: (_, variables) => {
-      // Invalidate both old and new EUI queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.baseStations.detail(variables.eui),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.baseStations.detail(variables.newEui),
-      });
+    mutationFn: async ({
+      eui,
+      newEui,
+      changes,
+    }: {
+      eui: string;
+      newEui: string;
+      changes?: BaseStationChanges;
+    }): Promise<{ baseStation: BaseStationUI; changesSaved: boolean }> => {
+      const moved = await baseStationsApi.updateBaseStationEui(eui, newEui);
+      if (!changes) return { baseStation: moved, changesSaved: true };
+      try {
+        const updated = await baseStationsApi.updateBaseStation(
+          newEui,
+          changes,
+        );
+        return { baseStation: updated, changesSaved: true };
+      } catch {
+        return { baseStation: moved, changesSaved: false };
+      }
     },
+    // Both EUIs' details sit under baseStations.all.
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all }),
   });
 }
 
@@ -237,17 +234,51 @@ export function useUpdateBaseStationEui() {
  */
 export function useBaseStationActivity(
   eui: string,
-  filter?: {
-    startTime?: string;
-    endTime?: string;
-  },
-  pageToken?: string,
-  pageSize = 50,
+  filter: ActivityFilter,
+  pageToken: string,
+  pageSize: number,
 ) {
   return useQuery({
     queryKey: queryKeys.baseStations.activity(eui, filter, pageToken, pageSize),
     queryFn: () =>
-      apiService.getBaseStationActivity(eui, filter, pageToken, pageSize),
+      baseStationsApi.getBaseStationActivity(eui, filter, pageToken, pageSize),
     enabled: !!eui,
+  });
+}
+
+export function useGenerateCertificate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      request: Parameters<typeof certificatesApi.generateCertificate>[0],
+    ) => certificatesApi.generateCertificate(request),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.baseStations.all }),
+  });
+}
+
+export function useDownloadCertificate() {
+  return useMutation({
+    mutationFn: ({
+      certId,
+      certType,
+    }: {
+      certId: string;
+      certType: Parameters<typeof certificatesApi.downloadCertificate>[1];
+    }) => certificatesApi.downloadCertificate(certId, certType),
+  });
+}
+
+export function useExportBaseStationMessages() {
+  return useMutation({
+    mutationFn: ({
+      bsEui,
+      filter,
+      format,
+    }: {
+      bsEui: string;
+      filter: Parameters<typeof baseStationsApi.exportBaseStationMessages>[1];
+      format: Parameters<typeof baseStationsApi.exportBaseStationMessages>[2];
+    }) => baseStationsApi.exportBaseStationMessages(bsEui, filter, format),
   });
 }

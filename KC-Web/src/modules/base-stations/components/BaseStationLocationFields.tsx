@@ -7,6 +7,7 @@ import React, { useState } from "react";
 
 import { Alert, Box, Button, TextField, Typography } from "@mui/material";
 
+import { FRACTION_DIGITS } from "@constants/app";
 import {
   ACTION_PICK_ON_MAP,
   HELPER_ALTITUDE,
@@ -110,8 +111,8 @@ const BaseStationLocationFields: React.FC<BaseStationLocationFieldsProps> = ({
         open={mapPickerOpen}
         onClose={() => setMapPickerOpen(false)}
         onConfirm={(lat, lng) => {
-          onChange("latitude", lat.toFixed(6));
-          onChange("longitude", lng.toFixed(6));
+          onChange("latitude", lat.toFixed(FRACTION_DIGITS.COORDINATE));
+          onChange("longitude", lng.toFixed(FRACTION_DIGITS.COORDINATE));
           setMapPickerOpen(false);
         }}
         initialLat={values.latitude ? parseFloat(values.latitude) : undefined}

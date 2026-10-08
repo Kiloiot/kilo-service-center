@@ -14,8 +14,19 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+// Sublayer prefix-guard fixtures: a seeded AC opId and dotted commands with no
+// registered handler.
+const (
+	testLastSeenAcOpID = 5
+	testCmdDottedRC    = "rc.dir"
+	testCmdDottedVM    = "vm.foo"
+	testCmdMultiDotRC  = "rc.sub.cmd"
 )
 
 // ============================================================================
@@ -33,8 +44,12 @@ import (
 // with no handler registered (community edition default).
 func TestSublayerPrefixGuard_RcDirRejected(t *testing.T) {
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           testLogger(),
-		sublayerHandlers: make(map[string]func(net.Conn, *Session, int64, []byte) error),
+		sublayerHandlers: make(map[string]SublayerHandler),
 	}
 	conn := &mockConn{}
 	session := &Session{AcEui: 0x0102030405060708}
@@ -63,8 +78,12 @@ func TestSublayerPrefixGuard_RcDirRejected(t *testing.T) {
 // unknown prefixes (not in spec allowlist).
 func TestSublayerPrefixGuard_UnknownPrefixRejected(t *testing.T) {
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           testLogger(),
-		sublayerHandlers: make(map[string]func(net.Conn, *Session, int64, []byte) error),
+		sublayerHandlers: make(map[string]SublayerHandler),
 	}
 	conn := &mockConn{}
 	session := &Session{AcEui: 0x0102030405060708}
@@ -83,8 +102,12 @@ func TestSublayerPrefixGuard_UnknownPrefixRejected(t *testing.T) {
 // prefix is allowed (rc) but no handler is registered.
 func TestSublayerPrefixGuard_AllowedPrefixNoHandler(t *testing.T) {
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           testLogger(),
-		sublayerHandlers: make(map[string]func(net.Conn, *Session, int64, []byte) error),
+		sublayerHandlers: make(map[string]SublayerHandler),
 	}
 	conn := &mockConn{}
 	session := &Session{AcEui: 0x0102030405060708}
@@ -108,17 +131,21 @@ func TestSublayerPrefixGuard_AllowedPrefixWithHandler(t *testing.T) {
 	var receivedPayload []byte
 
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           testLogger(),
-		sublayerHandlers: make(map[string]func(net.Conn, *Session, int64, []byte) error),
+		sublayerHandlers: make(map[string]SublayerHandler),
 	}
 
 	// Register stub handler
-	s.sublayerHandlers["rc.dir"] = func(_ net.Conn, _ *Session, opId int64, payload []byte) error {
+	require.NoError(t, s.RegisterSublayerHandler("rc.dir", func(_ net.Conn, _ *Session, opId int64, payload []byte) error {
 		atomic.AddInt32(&handlerCalled, 1)
 		receivedOpId = opId
 		receivedPayload = payload
 		return nil
-	}
+	}))
 
 	conn := &mockConn{}
 	session := &Session{AcEui: 0x0102030405060708}
@@ -183,8 +210,12 @@ func TestSublayerPrefixGuard_NonDottedCommandsUnaffected(t *testing.T) {
 // Dotted commands sent before connect handshake must not panic.
 func TestSublayerPrefixGuard_NilSessionDoesNotPanic(t *testing.T) {
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           testLogger(),
-		sublayerHandlers: make(map[string]func(net.Conn, *Session, int64, []byte) error),
+		sublayerHandlers: make(map[string]SublayerHandler),
 	}
 	conn := &mockConn{}
 
@@ -208,15 +239,18 @@ func TestSublayerPrefixGuard_NilSessionDoesNotPanic(t *testing.T) {
 // still enforced after sublayer rejection per §3.2.
 func TestSublayerPrefixGuard_OpIdMonotonicity(t *testing.T) {
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           testLogger(),
-		sublayerHandlers: make(map[string]func(net.Conn, *Session, int64, []byte) error),
+		sublayerHandlers: make(map[string]SublayerHandler),
 	}
 	conn := &mockConn{}
-	session := &Session{
-		AcEui:         0x0102030405060708,
-		State:         StateActive,
-		AcOpIdCounter: 5, // Last seen opId
-	}
+	session := withOpIDs(&Session{
+		AcEui: 0x0102030405060708,
+		State: StateActive,
+	}, OpIDPair{AC: testLastSeenAcOpID})
 
 	// First: sublayer rejection with opId=6
 	err := s.routeMessage(conn, &session, nil, "rc.dir", 6, nil)
@@ -234,8 +268,12 @@ func TestSublayerPrefixGuard_OpIdMonotonicity(t *testing.T) {
 // usable after sublayer rejection error.
 func TestSublayerPrefixGuard_PostErrorUsability(t *testing.T) {
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           testLogger(),
-		sublayerHandlers: make(map[string]func(net.Conn, *Session, int64, []byte) error),
+		sublayerHandlers: make(map[string]SublayerHandler),
 	}
 	conn := &mockConn{}
 	session := &Session{
@@ -263,8 +301,12 @@ func TestSublayerPrefixGuard_PostErrorUsability(t *testing.T) {
 // Only tests commands that should trigger the sublayer guard (to avoid nil service panics).
 func TestSublayerPrefixGuard_PrefixBoundaryCheck(t *testing.T) {
 	s := &Server{
+		registry:         newTestRegistry(nil, nil),
+		codec:            testFrameCodec,
+		commands:         mustTestCommandRegistry(),
+		clock:            clock.SystemClock{},
 		logger:           testLogger(),
-		sublayerHandlers: make(map[string]func(net.Conn, *Session, int64, []byte) error),
+		sublayerHandlers: make(map[string]SublayerHandler),
 	}
 
 	tests := []struct {
@@ -274,12 +316,12 @@ func TestSublayerPrefixGuard_PrefixBoundaryCheck(t *testing.T) {
 	}{
 		{
 			name:           "dotted_rc_prefix",
-			command:        "rc.dir",
+			command:        testCmdDottedRC,
 			expectRejected: true, // No handler registered
 		},
 		{
 			name:           "dotted_unknown_prefix",
-			command:        "vm.foo",
+			command:        testCmdDottedVM,
 			expectRejected: true,
 		},
 		{
@@ -289,7 +331,7 @@ func TestSublayerPrefixGuard_PrefixBoundaryCheck(t *testing.T) {
 		},
 		{
 			name:           "multiple_dots",
-			command:        "rc.sub.cmd",
+			command:        testCmdMultiDotRC,
 			expectRejected: true, // rc prefix but no handler for rc.sub.cmd
 		},
 	}

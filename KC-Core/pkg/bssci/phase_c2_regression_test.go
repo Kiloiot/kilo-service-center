@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -133,6 +135,7 @@ func (r *recordingLogger) getEntriesByLevel(level string) []logEntry {
 func Test_wrapOutboundMessage_TypedStruct(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -221,6 +224,7 @@ func Test_wrapOutboundMessage_TypedStruct(t *testing.T) {
 func Test_wrapOutboundMessage_AlreadyMessage(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -250,6 +254,7 @@ func Test_wrapOutboundMessage_AlreadyMessage(t *testing.T) {
 func Test_wrapOutboundMessage_Map(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -287,9 +292,11 @@ func Test_wrapOutboundMessage_Map(t *testing.T) {
 func Test_SendAttachPropagateBySessionID_SessionValidation(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
-		config:   &Config{},
-		logger:   logger,
-		sessions: make(map[string]*Session),
+		clock:       clock.SystemClock{},
+		config:      &Config{},
+		logger:      logger,
+		sessionKeys: presharedSessionKeys{},
+		sessions:    newSessionRegistry(),
 	}
 	endpoint := &models.EndPoint{
 		ID:            1,
@@ -430,17 +437,19 @@ func Test_SendAttachPropagateBySessionID_SessionSpecific(t *testing.T) {
 
 	t.Run("ValidSession", func(t *testing.T) {
 		server := &Server{
-			config: &Config{},
-			logger: newRecordingLogger(),
-			sessions: map[string]*Session{
-				"valid-session": {
+			clock:       clock.SystemClock{},
+			config:      &Config{},
+			logger:      newRecordingLogger(),
+			sessionKeys: presharedSessionKeys{},
+			sessions: sessionRegistryWith(
+				&Session{
 					ProtocolSessionState: ProtocolSessionState{
 						ID:             "valid-session",
 						BaseStationEUI: TestBsEui02,
 					},
 					Bidirectional: true,
 				},
-			},
+			),
 		}
 
 		// Call with valid session ID - should attempt session-specific propagation
@@ -454,9 +463,10 @@ func Test_SendAttachPropagateBySessionID_SessionSpecific(t *testing.T) {
 
 	t.Run("MissingSession", func(t *testing.T) {
 		server := &Server{
+			clock:    clock.SystemClock{},
 			config:   &Config{},
 			logger:   newRecordingLogger(),
-			sessions: make(map[string]*Session),
+			sessions: newSessionRegistry(),
 		}
 
 		err := server.SendAttachPropagateBySessionID(testutil.TestContext(), "nonexistent-session", endpoint)
@@ -475,6 +485,7 @@ func Test_SendAttachPropagateBySessionID_SessionSpecific(t *testing.T) {
 func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 	logger := newRecordingLogger()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -508,6 +519,7 @@ func Test_validateOutboundMessage_CatalogTokens(t *testing.T) {
 	// Test 2: Valid message should not log validation failure
 	logger2 := newRecordingLogger()
 	server2 := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger2,
 	}

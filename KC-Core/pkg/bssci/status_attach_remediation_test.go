@@ -38,7 +38,6 @@ func TestSubpacketsNormalization(t *testing.T) {
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssci.CreateTestServices(testLogger, nil)
 	server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	mockConn := &remedTestConn{}
 	session := &bssci.Session{
@@ -47,8 +46,6 @@ func TestSubpacketsNormalization(t *testing.T) {
 			BaseStationEUI:    bssci.TestBsEui04,
 			Encoding:          "msgpack",
 			HandshakeComplete: true,
-			BsOpId:            0,
-			ScOpId:            0,
 		},
 		Conn: mockConn,
 	}
@@ -136,7 +133,6 @@ func TestEqSnrOptionalHandling(t *testing.T) {
 			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssci.CreateTestServices(testLogger, nil)
 			server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-			server.RegisterHandlers()
 
 			mockConn := &remedTestConn{}
 			session := &bssci.Session{
@@ -145,8 +141,6 @@ func TestEqSnrOptionalHandling(t *testing.T) {
 					BaseStationEUI:    bssci.TestBsEui04,
 					Encoding:          "msgpack",
 					HandshakeComplete: true,
-					BsOpId:            0,
-					ScOpId:            0,
 				},
 				Conn: mockConn,
 			}
@@ -196,7 +190,6 @@ func TestAttachMessagePersistence(t *testing.T) {
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssci.CreateTestServices(testLogger, nil)
 	server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	mockConn := &remedTestConn{}
 	session := &bssci.Session{
@@ -205,8 +198,6 @@ func TestAttachMessagePersistence(t *testing.T) {
 			BaseStationEUI:    bssci.TestBsEui04,
 			Encoding:          "msgpack",
 			HandshakeComplete: true,
-			BsOpId:            0,
-			ScOpId:            0,
 		},
 		Conn: mockConn,
 	}
@@ -246,7 +237,6 @@ func TestStatusHistoryPersistence(t *testing.T) {
 	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssci.CreateTestServices(testLogger, nil)
 	server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	mockConn := &remedTestConn{}
 	session := &bssci.Session{
@@ -256,8 +246,6 @@ func TestStatusHistoryPersistence(t *testing.T) {
 			DbSessionID:       123,
 			Encoding:          "msgpack",
 			HandshakeComplete: true,
-			BsOpId:            0,
-			ScOpId:            0,
 		},
 		Conn: mockConn,
 	}

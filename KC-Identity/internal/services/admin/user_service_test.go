@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	"github.com/stretchr/testify/assert"
@@ -60,7 +60,7 @@ func TestCreateUser_WithManagerFields(t *testing.T) {
 
 	store := &mockUserStore{
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 		createFn: func(_ context.Context, user *models.User) error {
 			createdUser = user
@@ -68,7 +68,7 @@ func TestCreateUser_WithManagerFields(t *testing.T) {
 		},
 	}
 
-	svc := NewUserAdminService(store, newTestLogger())
+	svc := NewUserAdminService(store, nil, newTestLogger())
 
 	req := &grpcservices.UserCreateRequest{
 		Email:                "admin@example.com",
@@ -128,7 +128,7 @@ func TestUpdateUser_FieldMask_ToggleAdminOff(t *testing.T) {
 				u := *existingUser
 				return &u, nil
 			}
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 		updateFn: func(_ context.Context, user *models.User) error {
 			updatedUser = user
@@ -136,7 +136,7 @@ func TestUpdateUser_FieldMask_ToggleAdminOff(t *testing.T) {
 		},
 	}
 
-	svc := NewUserAdminService(store, newTestLogger())
+	svc := NewUserAdminService(store, nil, newTestLogger())
 
 	isAdminFalse := false
 	req := &grpcservices.UserUpdateRequest{
@@ -174,7 +174,7 @@ func TestUpdateUser_FieldMask_ManagerFields(t *testing.T) {
 				u := *existingUser
 				return &u, nil
 			}
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 		updateFn: func(_ context.Context, user *models.User) error {
 			updatedUser = user
@@ -182,7 +182,7 @@ func TestUpdateUser_FieldMask_ManagerFields(t *testing.T) {
 		},
 	}
 
-	svc := NewUserAdminService(store, newTestLogger())
+	svc := NewUserAdminService(store, nil, newTestLogger())
 
 	trueVal := true
 	req := &grpcservices.UserUpdateRequest{
@@ -218,7 +218,7 @@ func TestUpdateUser_MixedCaseEmailSelfUpdate(t *testing.T) {
 			if id == userID {
 				return &models.User{ID: userID, Email: "User@Example.Com", IsActive: true}, nil
 			}
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
 			return &models.User{ID: userID, Email: "user@example.com"}, nil
@@ -228,7 +228,7 @@ func TestUpdateUser_MixedCaseEmailSelfUpdate(t *testing.T) {
 		},
 	}
 
-	svc := NewUserAdminService(store, newTestLogger())
+	svc := NewUserAdminService(store, nil, newTestLogger())
 
 	normalized := "user@example.com"
 	_, err := svc.Update(testutil.TestContext(), userID, &grpcservices.UserUpdateRequest{Email: &normalized})
@@ -252,7 +252,7 @@ func TestUpdateUser_GetByEmailReturnsNilNil(t *testing.T) {
 		},
 	}
 
-	svc := NewUserAdminService(store, newTestLogger())
+	svc := NewUserAdminService(store, nil, newTestLogger())
 
 	newEmail := "new@example.com"
 	_, err := svc.Update(testutil.TestContext(), userID, &grpcservices.UserUpdateRequest{Email: &newEmail})
@@ -279,10 +279,10 @@ func TestUpdateUser_FieldMask_OmittedFieldsUnchanged(t *testing.T) {
 				u := *existingUser
 				return &u, nil
 			}
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 		getByEmailFn: func(_ context.Context, _ string) (*models.User, error) {
-			return nil, interfaces.ErrRecordNotFound
+			return nil, storage.ErrRecordNotFound
 		},
 		updateFn: func(_ context.Context, user *models.User) error {
 			updatedUser = user
@@ -290,7 +290,7 @@ func TestUpdateUser_FieldMask_OmittedFieldsUnchanged(t *testing.T) {
 		},
 	}
 
-	svc := NewUserAdminService(store, newTestLogger())
+	svc := NewUserAdminService(store, nil, newTestLogger())
 
 	// Only update email — all bool fields should remain unchanged
 	newEmail := "newemail@example.com"

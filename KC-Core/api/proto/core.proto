@@ -45,6 +45,8 @@ service CoreService {
   rpc RevokeDownlink(RevokeDownlinkRequest) returns (RevokeDownlinkResponse);
   rpc ListDownlinkQueue(ListDownlinkQueueRequest) returns (ListDownlinkQueueResponse);
   rpc GetDownlinkResults(GetDownlinkResultsRequest) returns (GetDownlinkResultsResponse);
+  // Rewrites a downlink that is still pending in the queue (SCACI §3.10.1 fields).
+  rpc UpdatePendingDownlink(UpdatePendingDownlinkRequest) returns (DownlinkMessage);
 
   // UL Data Transmit operations (BSSCI 3.11)
   rpc SendULTransmit(SendULTransmitRequest) returns (SendULTransmitResponse);
@@ -64,6 +66,10 @@ service CoreService {
   rpc GetSystemStatus(google.protobuf.Empty) returns (SystemStatus);
   rpc GetStatistics(GetStatisticsRequest) returns (Statistics);
   rpc GetReleaseInfo(google.protobuf.Empty) returns (ReleaseInfo);
+  // Non-secret capabilities of this service center (edition and feature toggles).
+  rpc ListCapabilities(google.protobuf.Empty) returns (ListCapabilitiesResponse);
+  // Server administrators only: a zip of projected, non-secret service state.
+  rpc GetDiagnosticsBundle(GetDiagnosticsBundleRequest) returns (GetDiagnosticsBundleResponse);
 
   // Integrations
   rpc CreateIntegration(CreateIntegrationRequest) returns (Integration);
@@ -79,6 +85,8 @@ service CoreService {
 
   // Events & Alerts
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+  // Failed operations and error events grouped per bucket.
+  rpc ListErrorGroups(ListErrorGroupsRequest) returns (ListErrorGroupsResponse);
 
   // Unified Activity Feed (Events + Messages with pagination)
   rpc ListBaseStationActivity(ListBaseStationActivityRequest) returns (ListBaseStationActivityResponse);
@@ -176,9 +184,9 @@ message EndPoint {
   string name = 3;
   string description = 4;
   string ep_class = 5; // 'Z' for zero-power (unidirectional), 'A' for active (bidirectional)
-  bytes nwk_sn_key = 6; // Network Session Key per MIOTY BSSCI v1.0.0
-  bytes app_key = 7;
-  string status = 8; // active, inactive, suspended
+  bytes nwk_sn_key = 6; // Network Session Key per MIOTY BSSCI v1.0.0; empty on every read unless GetEndPoint reveals it
+  bytes app_key = 7;    // Empty on every read unless GetEndPoint reveals it
+  string status = 8; // attached, detached, attaching
   map<string, string> tags = 9;
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp updated_at = 11;
@@ -198,6 +206,20 @@ message EndPoint {
   string device_model_id = 24; // UUID reference to device_models.id for blueprint decoding
   string blueprint_id = 25; // Input selector (not a stored FK); materialized into blueprint_snapshot, echoed on read.
   bytes blueprint_snapshot = 26; // Read-only materialized snapshot; empty = follows catalog default.
+  bool reattach_pending = 27; // Read-only: an edit changed the attach propagate parameters (BSSCI §3.8.1) after the last completed attach propagate.
+  google.protobuf.DoubleValue last_rssi = 28;   // Read-only: RSSI (dBm) of the latest reception (uplink or attach, BSSCI §3.6.1/§3.10.1); absent until heard
+  google.protobuf.DoubleValue last_snr = 29;    // Read-only: SNR (dB) of the latest reception; absent until heard
+  google.protobuf.DoubleValue last_eq_snr = 30; // Read-only: AWGN equivalent SNR (dB) of the latest reception; absent until heard
+  string serving_bs_eui = 31;                   // Read-only, GetEndPoint only: the base station a downlink queued now would go to; empty when none serves the endpoint
+  bool nwk_sn_key_set = 32; // Read-only: a network session key is stored
+  bool app_key_set = 33;    // Read-only: an application key is stored
+}
+
+// An endpoint key GetEndPoint can reveal.
+enum EndpointKey {
+  ENDPOINT_KEY_UNSPECIFIED = 0;
+  ENDPOINT_KEY_NWK_SN_KEY = 1;
+  ENDPOINT_KEY_APP_KEY = 2;
 }
 
 // BaseStation represents a MIOTY Base Station (BS)
@@ -226,6 +248,9 @@ message BaseStation {
   string service_center_url = 21;                        // BSSCI Service Center URL (tls://host:port)
   string location_source = 22;                           // "gps" or "manual"
   google.protobuf.Timestamp location_updated_at = 23;    // When location was last updated
+  google.protobuf.Timestamp certificate_expires_at = 24; // Expiry of the certificate the service center issued; unset when none
+  string tls_cert_fingerprint = 25;                      // SHA-256 fingerprint of the issued client certificate
+  google.protobuf.Timestamp session_started_at = 26;     // Last completed BSSCI connect handshake (conCmp)
 }
 
 // Subpacket-level radio metrics per BSSCI spec
@@ -239,7 +264,7 @@ message SubpacketInfo {
 // Per-base-station reception data per SCACI §3.8.1
 message BaseStationReceptionInfo {
   string bs_eui = 1;
-  int64 rx_time = 2;                              // mandatory (Unix UTC ns)
+  int64 rx_time = 2 [jstype = JS_STRING];         // mandatory (Unix UTC ns)
   double snr = 3;                                  // mandatory
   double rssi = 4;                                 // mandatory
   google.protobuf.DoubleValue eq_snr = 5;          // optional (*float64)
@@ -276,6 +301,8 @@ message Message {
   string blueprint_version_id = 21; // UUID of the blueprint version used
   repeated BaseStationReceptionInfo base_stations = 22; // Multi-BS reception data per SCACI §3.8.1
   bool duplicate = 23;              // True when message received by multiple base stations
+  int64 op_id = 24 [jstype = JS_STRING]; // BSSCI ulData operation id of the first reception
+  optional uint32 format = 25;      // SCACI §3.8.1 userData format identifier (8 bit); unset when the endpoint sent none
 }
 
 // End Point management requests/responses
@@ -286,6 +313,9 @@ message CreateEndPointRequest {
 message GetEndPointRequest {
   string epEui = 1;
   string tenant_id = 2;
+  // Keys to return in clear; every other read returns them masked. Each
+  // reveal of a stored key is recorded as an audit event.
+  repeated EndpointKey reveal_keys = 3;
 }
 
 message UpdateEndPointRequest {
@@ -294,7 +324,7 @@ message UpdateEndPointRequest {
   // Supported mask paths: "name", "description", "ep_class", "status",
   //   "sh_addr", "attach_cnt", "dual_chan", "repetition", "wide_carr_off",
   //   "long_blk_dist", "pre_attach", "last_packet_cnt", "carrier_offset",
-  //   "nwk_sn_key", "app_key", "device_model_id", "type_eui", "blueprint_id"
+  //   "nwk_sn_key", "app_key", "tags", "device_model_id", "type_eui", "blueprint_id"
   google.protobuf.FieldMask update_mask = 2;
   // New EUI (16-char hex). If set, endpoint.ep_eui identifies the current endpoint
   // and this field specifies the replacement EUI. Cascades to all dependent tables.
@@ -476,6 +506,23 @@ message SendDownlinkResponse {
   string status = 2;
 }
 
+// Replaces the SCACI §3.10.1 fields of a downlink that is still pending;
+// a downlink already handed to a base station is rejected.
+message UpdatePendingDownlinkRequest {
+  string epEui = 1;
+  int64 que_id = 2 [jstype = JS_STRING];
+  repeated bytes payloads = 3;
+  float priority = 4;
+  bool cnt_depend = 5;
+  repeated int64 packet_cnt = 6;
+  uint32 format = 7;
+  bool response_exp = 8;
+  bool response_prio = 9;
+  bool dl_wind_req = 10;
+  bool exp_only = 11;
+  bool dl_rx_stat_qry = 12;
+}
+
 message RevokeDownlinkRequest {
   string epEui = 1;
   string queue_id = 2;
@@ -492,6 +539,10 @@ message ListDownlinkQueueRequest {
   string epEui = 2; // optional
   int32 page_size = 3;
   string page_token = 4;
+  string status = 5;            // Optional: one queue state (pending, scheduled, reserved, queued, ...); default = every in-flight state
+  optional float priority = 6;  // Optional: SCACI §3.10.1 prio, exact match
+  optional int64 que_id = 7 [jstype = JS_STRING];    // Optional: SCACI §3.10.1 queId
+  string bs_eui = 8;            // Optional: the base station holding the downlink
 }
 
 message ListDownlinkQueueResponse {
@@ -512,7 +563,7 @@ message DownlinkMessage {
   google.protobuf.Timestamp scheduled_at = 9;
   google.protobuf.Timestamp transmitted_at = 10;
   string result = 11;  // "sent", "expired", "invalid" per BSSCI §3.14
-  int64 tx_time = 12;  // Unix nanoseconds when transmitted
+  int64 tx_time = 12 [jstype = JS_STRING];  // Unix nanoseconds when transmitted
   string bs_eui = 13;  // Base Station EUI that transmitted
 
   // MIOTY fields from BSSCI §3.12.1
@@ -524,12 +575,14 @@ message DownlinkMessage {
   bool dl_wind_req = 19;
   bool exp_only = 20;
   reserved 21;  // Removed: confirmed (non-MIOTY)
-  int64 que_id = 22 [jstype = JS_STRING]; // Queue ID per BSSCI §3.14.1. JS_STRING avoids JavaScript Number precision loss on 64-bit IDs (Number safe range ends at 2^53 ~ 9e15; queIds are ~1.78e18 and round to the nearest hundred without this annotation, breaking revoke).
+  int64 que_id = 22 [jstype = JS_STRING]; // Queue ID per BSSCI §3.14.1 for operator traceability
   int32 attempts = 23;                 // Internal queue management
   int32 max_attempts = 24;             // Internal queue management
   int64 transmission_packet_cnt = 25;  // End Point packet counter when transmitted per BSSCI §3.14.1
   repeated bytes payloads = 26;        // Full payload array (mirrors SendDownlinkRequest.payloads)
   bool dl_rx_stat_qry = 27;            // SCACI §3.10.1: True to query DL RX status from endpoint
+  google.protobuf.Timestamp endpoint_acked_at = 28; // BSSCI §3.10.1 dlAck: when the endpoint acknowledged the transmitted downlink; unset until acknowledged
+  google.protobuf.Timestamp accepted_at = 29; // BSSCI §3.12 dlDataQueRsp: when bs_eui accepted the downlink; unset until a station accepts it
 }
 
 // Request downlink results - includes transmitted, expired, failed entries
@@ -541,6 +594,8 @@ message GetDownlinkResultsRequest {
   string page_token = 5;
   google.protobuf.Timestamp time_from = 6; // optional: filter results from this time
   google.protobuf.Timestamp time_to = 7;   // optional: filter results to this time
+  string bs_eui = 8;                       // optional: transmitting base station
+  optional int64 que_id = 9 [jstype = JS_STRING];               // optional: SCACI §3.10.1 queId
 }
 
 message GetDownlinkResultsResponse {
@@ -581,7 +636,7 @@ message BaseStationStatusRequest {
 message BaseStationStatusResponse {
   bool success = 1;           // Whether the request was sent successfully
   string message = 2;         // Status or error message
-  int64 op_id = 3 [jstype = JS_STRING]; // Operation ID. JS_STRING for int64 precision (same rationale as DownlinkMessage.que_id).
+  int64 op_id = 3 [jstype = JS_STRING];  // Operation ID of the status request
 }
 
 // Ping Request (BSSCI §5.4)
@@ -594,7 +649,7 @@ message InitiatePingRequest {
 message InitiatePingResponse {
   bool success = 1;      // Whether ping was sent successfully
   string message = 2;    // Status or error message
-  int64 op_id = 3 [jstype = JS_STRING]; // Operation ID. JS_STRING for int64 precision.
+  int64 op_id = 3 [jstype = JS_STRING];  // Operation ID of the ping request
 }
 
 // ============================================================================
@@ -634,7 +689,7 @@ message ReleaseInfo {
   map<string, string> artifacts = 8;  // Binary artifact paths
 
   // Service Center identity (BSSCI §5.3.2 / SCACI §3.3.2)
-  uint64 sc_eui = 9;         // Service Center EUI-64
+  uint64 sc_eui = 9 [jstype = JS_STRING];  // Service Center EUI-64
   string sc_vendor = 10;     // Vendor name (e.g., "KiloCenter")
   string sc_model = 11;      // Model (e.g., "Enterprise")
   string sc_name = 12;       // Instance name (from general.server_name)
@@ -679,7 +734,7 @@ message TimeSeriesData {
 message DLRXStatus {
   string ep_eui = 1;
   string bs_eui = 2;
-  int64 rx_time = 3;       // Unix UTC ns
+  int64 rx_time = 3 [jstype = JS_STRING];  // Unix UTC ns
   uint32 packet_cnt = 4;
   double dl_rx_snr = 5;    // dB
   double dl_rx_rssi = 6;   // dBm
@@ -715,7 +770,7 @@ message QueryDLRXStatusResponse {
 message DLRXStatusQuery {
   string ep_eui = 1;           // Hex string (16 chars)
   string bs_eui = 2;           // Hex string (16 chars)
-  int64 op_id = 3 [jstype = JS_STRING]; // SC operation ID (negative). JS_STRING for int64 precision.
+  int64 op_id = 3 [jstype = JS_STRING];  // SC operation ID (negative)
   string status = 4;           // "pending"|"received"|"timeout"
   google.protobuf.Timestamp requested_at = 5;
   google.protobuf.Timestamp received_at = 6;  // Optional (null if not received)
@@ -899,6 +954,39 @@ message ListEventsRequest {
   google.protobuf.Timestamp start_time = 5;
   google.protobuf.Timestamp end_time = 6;
   repeated string event_types = 7; // Optional: filter by event type (e.g. service.started, user.created)
+  optional int64 op_id = 8 [jstype = JS_STRING];  // Optional: BSSCI/SCACI opId carried in the event details
+  string ep_eui = 9;               // Optional: endpoint the event is about
+  string bs_eui = 10;              // Optional: base station the event is about
+  string outcome = 11;             // Optional: success (info, warning) or failure (error, critical)
+  string search = 12;              // Optional: full-text search over title, description and source
+}
+
+// Failure buckets: control_plane, base_station, endpoint, downlink.
+message ListErrorGroupsRequest {
+  string bucket = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  int32 page_size = 4;
+  string page_token = 5;
+}
+
+message ListErrorGroupsResponse {
+  repeated ErrorGroup groups = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+// One failure bucket: the same event type, code and subject seen count times.
+message ErrorGroup {
+  string bucket = 1;
+  string event_type = 2;    // system_events.event_type or the SCACI command
+  string code = 3;          // Event code or POSIX error code, empty when none was recorded
+  string message = 4;       // Latest description
+  string source_name = 5;   // Affected base station, endpoint or session
+  google.protobuf.Timestamp first_seen = 6;
+  google.protobuf.Timestamp last_seen = 7;
+  int64 count = 8;
+  string last_op_id = 9;    // opId of the latest failure when the event carried one
 }
 
 message ListEventsResponse {
@@ -967,7 +1055,7 @@ message ListAlertsRequest {
   int32 page_size = 1;
   string page_token = 2;
   string status = 3;      // Optional: new, acknowledged, resolved
-  string severity = 4;    // Optional: critical, warning
+  string severity = 4;    // Optional: warning, error, critical
 }
 
 message ListAlertsResponse {
@@ -994,6 +1082,8 @@ message Event {
   string source_name = 7;
   google.protobuf.Timestamp timestamp = 8;
   bytes data = 9;  // JSON-encoded extra data
+  string user_id = 10; // Acting user of an operator action (audit trail); empty when the service raised the event
+  string user_email = 11; // Email of the acting user; set only when that user belongs or belonged to an organization of the event's tenant
 }
 
 message Alert {
@@ -1007,11 +1097,14 @@ message Alert {
   string status = 8;  // new, acknowledged, resolved
 }
 
+// AlertSummary counts the open alerts per severity; each count is the
+// total_count ListAlerts returns for that severity.
 message AlertSummary {
   int32 critical = 1;
   int32 warning = 2;
-  int32 info = 3;
+  int32 info = 3;  // Deprecated: info events are not alerts, so this is always 0.
   repeated Alert recent = 4;
+  int32 error = 5;
 }
 
 // ============================================================================
@@ -1021,8 +1114,10 @@ message AlertSummary {
 message ListScaciSessionsRequest {
   int32 page_size = 1;
   string page_token = 2;
-  string status = 3;      // Optional: active, closed
-  bool can_resume = 4;    // Optional filter
+  string status = 3;             // Optional: active, resumed, disconnected, terminated
+  // Deprecated: implicit presence cannot express "only non-resumable"; use can_resume_filter.
+  bool can_resume = 4 [deprecated = true];
+  optional bool can_resume_filter = 5;  // Optional: only sessions with this resumability
 }
 
 message ListScaciSessionsResponse {
@@ -1032,7 +1127,7 @@ message ListScaciSessionsResponse {
 }
 
 message GetScaciSessionRequest {
-  string id = 1;  // UUID
+  string id = 1;  // Decimal session id as returned in ScaciSession.id
 }
 
 message GetScaciSessionResponse {
@@ -1073,8 +1168,30 @@ message ListScaciQueuesResponse {
   int32 total_count = 3;
 }
 
+message ListCapabilitiesResponse {
+  repeated Capability capabilities = 1;
+}
+
+// A named, non-secret feature toggle of this service center.
+message Capability {
+  string name = 1;
+  bool enabled = 2;
+}
+
+message GetDiagnosticsBundleRequest {}
+
+message GetDiagnosticsBundleResponse {
+  bytes archive = 1;
+  string filename = 2;
+  string content_type = 3;
+  int64 size_bytes = 4;
+  google.protobuf.Timestamp generated_at = 5;
+}
+
 message GetScaciStatusRequest {
-  // Tenant context from headers
+  // Window for the ping and reconnect counters; defaults to the SCACI statistics lookback.
+  google.protobuf.Timestamp start_time = 1;
+  google.protobuf.Timestamp end_time = 2;
 }
 
 message GetScaciStatusResponse {
@@ -1082,14 +1199,19 @@ message GetScaciStatusResponse {
 }
 
 message ScaciSession {
-  string id = 1;           // UUID
+  string id = 1;           // Decimal session id
   string ac_eui = 2;       // Application Center EUI (hex)
-  string status = 3;       // active, closed
+  string status = 3;       // active, resumed, disconnected, terminated
   bool can_resume = 4;
   string protocol_version = 5;
   google.protobuf.Timestamp connected_at = 6;
-  google.protobuf.Timestamp last_activity_at = 7;
-  int64 operations_count = 8;
+  google.protobuf.Timestamp last_activity_at = 7;  // Last heartbeat (SCACI §3.4 ping)
+  int64 operations_count = 8;                      // Operations logged for the session
+  string sn_ac_uuid = 9;                           // SCACI §3.3.1 snAcUuid
+  string sn_sc_uuid = 10;                          // SCACI §3.3.2 snScUuid
+  int64 last_op_id_ac = 11 [jstype = JS_STRING];   // Highest AC-issued opId (positive)
+  int64 last_op_id_sc = 12 [jstype = JS_STRING];   // Lowest SC-issued opId (negative)
+  google.protobuf.Timestamp disconnected_at = 13;
 }
 
 message ScaciStatistics {
@@ -1102,31 +1224,44 @@ message ScaciStatistics {
   google.protobuf.Timestamp uptime_since = 7;
 }
 
+// One bucket of failed operations sharing operation_type, error_code and error_token.
 message ScaciError {
-  string id = 1;
-  string error_code = 2;
-  string error_message = 3;
-  string session_id = 4;
-  string operation_type = 5;
-  google.protobuf.Timestamp occurred_at = 6;
+  string id = 1;                                // operation_type:error_code:error_token
+  string error_code = 2;                        // POSIX code per SCACI §3.14.1, empty when none was sent
+  string error_message = 3;                     // Latest message in the bucket
+  string session_id = 4;                        // Session of the latest failure
+  string operation_type = 5;                    // SCACI command
+  google.protobuf.Timestamp occurred_at = 6;    // Latest failure (same as last_seen)
+  google.protobuf.Timestamp first_seen = 7;
+  google.protobuf.Timestamp last_seen = 8;
+  int64 count = 9;
+  string error_token = 10;                      // Internal catalog token
 }
 
 message ScaciQueueEntry {
-  string id = 1;
+  string id = 1;           // Decimal queue row id
   string ep_eui = 2;
-  string operation_type = 3;
-  string status = 4;       // pending, in_progress, completed, failed
+  string operation_type = 3;  // dlDataQue
+  string status = 4;       // pending, scheduled, reserved, queued
   bytes payload = 5;
   google.protobuf.Timestamp queued_at = 6;
-  google.protobuf.Timestamp processed_at = 7;
+  google.protobuf.Timestamp processed_at = 7;  // Transmission time when already sent
+  int64 que_id = 8 [jstype = JS_STRING];  // SCACI §3.10.1 queId
+  float priority = 9;      // SCACI §3.10.1 prio
 }
 
 message ScaciStatus {
-  bool service_online = 1;
+  bool service_online = 1;                        // SCACI listener is bound
   int32 active_sessions = 2;
   int32 pending_operations = 3;
-  google.protobuf.Timestamp uptime_since = 4;
+  google.protobuf.Timestamp uptime_since = 4;     // Service start time
   string protocol_version = 5;
+  string sc_eui = 6;                              // Configured Service Center EUI (hex)
+  google.protobuf.Timestamp last_ping_at = 7;     // Latest completed ping
+  int64 last_ping_rtt_ms = 8;
+  int64 missed_pings = 9;                         // Failed or stale pings in the window
+  int64 reconnect_attempts = 10;                  // Sessions opened in the window
+  string last_connect_result = 11;                // State of the latest con operation
 }
 
 // ============================================================================
@@ -1189,6 +1324,11 @@ message GetServerCertificateStatusRequest {
 message GetServerCertificateStatusResponse {
   CertificateStatus server_cert = 1;
   CertificateStatus ca_cert = 2;
+  // Names a server certificate issued now carries, its subject first: the
+  // external URL's host or the current subject, the current certificate's
+  // names and certificates.server_names. Issuance also adds the local name
+  // and loopback.
+  repeated string renewal_names = 3;
 }
 
 message CertificateStatus {
@@ -1504,6 +1644,10 @@ message ListMessagesRequest {
   string bs_eui = 4;          // Optional: filter by base station
   google.protobuf.Timestamp start_time = 5;
   google.protobuf.Timestamp end_time = 6;
+  optional bool duplicate = 7; // Optional: only (or only non-) multi-base-station receptions
+  optional bool dl_open = 8;   // Optional: SCACI §3.8.1 dlOpen
+  string profile = 9;          // Optional: SCACI §3.8.1 profile
+  string mode = 10;            // Optional: SCACI §3.8.1 mode
 }
 
 message ListMessagesResponse {
@@ -1540,6 +1684,10 @@ message ListBaseStationMessagesRequest {
   google.protobuf.Timestamp end_time = 5;
   string direction = 6;     // Filter: "uplink" | "downlink" | "" (all)
   string ep_eui = 7;        // Optional: filter by endpoint EUI
+  optional bool duplicate = 8; // Optional: only (or only non-) multi-base-station receptions
+  optional bool dl_open = 9;   // Optional: SCACI §3.8.1 dlOpen
+  string profile = 10;         // Optional: SCACI §3.8.1 profile
+  string mode = 11;            // Optional: SCACI §3.8.1 mode
 }
 
 message ListBaseStationMessagesResponse {
@@ -1624,6 +1772,11 @@ message BaseStationMessage {
   bytes decoded_payload = 20;       // JSON-encoded decoded payload from blueprint
   string decode_status = 21;        // Decode status (success/failed/skipped/pending)
   string decode_error_code = 22;    // Blueprint decoder error token (empty on success)
+  bool dl_open = 23;                // SCACI §3.8.1 dlOpen: the endpoint opens a downlink window
+  bool dl_ack = 24;                 // SCACI §3.8.1 dlAck: the endpoint acknowledges the previous downlink
+  bool res_exp = 25;                // SCACI §3.8.1 responseExp: the endpoint expects a response
+  int64 op_id = 26 [jstype = JS_STRING]; // BSSCI ulData operation id of the first reception
+  optional uint32 format = 27;      // SCACI §3.8.1 userData format identifier (8 bit); unset when the endpoint sent none
 }
 
 message BaseStationMessageStats {

@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
+
+	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
-	"golang.org/x/crypto/pbkdf2"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/passwordpolicy"
 )
 
 // PHC format: $pbkdf2-sha512$v=1$i=<rounds>$<salt>$<hash>
@@ -21,13 +21,22 @@ const (
 	phcPrefix = "$pbkdf2-sha512$"
 )
 
+const (
+	phcVersionPrefix    = "v="
+	phcIterationsPrefix = "i="
+	phcHashFmt          = "$pbkdf2-sha512$v=1$i=%d$%s$%s"
+	phcMinParts         = 3
+)
+
 // VerifyPassword verifies a password against a PHC-format hash.
 // Returns nil if the password matches, or an error if it doesn't.
+// PHC string components: version and iteration field prefixes, the rendered
+// hash format, and the minimum field count (iterations, salt, hash).
 func VerifyPassword(password, phcHash string) error {
 	// Parse PHC format
 	salt, storedHash, iterations, err := parsePHCHash(phcHash)
 	if err != nil {
-		return fmt.Errorf("verify password: %w", err)
+		return fmt.Errorf("%s: %w", errPrefixVerifyPassword, err)
 	}
 
 	// Compute PBKDF2-SHA512 hash
@@ -49,29 +58,29 @@ func parsePHCHash(phcHash string) (salt, hash []byte, iterations int, err error)
 	}
 
 	// Remove prefix and split by $
-	remainder := strings.TrimPrefix(phcHash, "$pbkdf2-sha512$")
+	remainder := strings.TrimPrefix(phcHash, phcPrefix)
 	parts := strings.Split(remainder, "$")
 
-	if len(parts) < 3 {
+	if len(parts) < phcMinParts {
 		return nil, nil, 0, ErrInvalidPHCFormat
 	}
 
 	// Parse version (optional, skip if present)
 	idx := 0
-	if strings.HasPrefix(parts[idx], "v=") {
+	if strings.HasPrefix(parts[idx], phcVersionPrefix) {
 		idx++
 	}
 
 	// Check remaining parts
-	if len(parts)-idx < 3 {
+	if len(parts)-idx < phcMinParts {
 		return nil, nil, 0, ErrInvalidPHCFormat
 	}
 
 	// Parse iterations (i=<rounds>)
-	if !strings.HasPrefix(parts[idx], "i=") {
+	if !strings.HasPrefix(parts[idx], phcIterationsPrefix) {
 		return nil, nil, 0, ErrInvalidPHCFormat
 	}
-	iterations, err = strconv.Atoi(strings.TrimPrefix(parts[idx], "i="))
+	iterations, err = strconv.Atoi(strings.TrimPrefix(parts[idx], phcIterationsPrefix))
 	if err != nil {
 		return nil, nil, 0, ErrInvalidPHCFormat
 	}
@@ -108,33 +117,14 @@ func HashPassword(password string, salt []byte, iterations int) string {
 	saltB64 := base64.RawStdEncoding.EncodeToString(salt)
 	hashB64 := base64.RawStdEncoding.EncodeToString(hash)
 
-	return fmt.Sprintf("$pbkdf2-sha512$v=1$i=%d$%s$%s", iterations, saltB64, hashB64)
+	return fmt.Sprintf(phcHashFmt, iterations, saltB64, hashB64)
 }
 
-// ValidatePassword checks if password meets length and complexity requirements.
-// Requires at least one letter and one digit. Uses rune counting for Unicode support.
-// Returns nil if valid, ErrUserPasswordWeak if invalid.
+// ValidatePassword checks the password against passwordpolicy.Rules;
+// ErrUserPasswordWeak when it falls short.
 func ValidatePassword(password string) error {
-	length := utf8.RuneCountInString(password)
-	if length < config.AuthPasswordMinLength || length > config.AuthPasswordMaxLength {
+	if !passwordpolicy.Rules.Accepts(password) {
 		return ErrUserPasswordWeak
 	}
-
-	var hasLetter, hasDigit bool
-	for _, r := range password {
-		switch {
-		case unicode.IsLetter(r):
-			hasLetter = true
-		case unicode.IsDigit(r):
-			hasDigit = true
-		}
-		if hasLetter && hasDigit {
-			break
-		}
-	}
-	if !hasLetter || !hasDigit {
-		return ErrUserPasswordWeak
-	}
-
 	return nil
 }

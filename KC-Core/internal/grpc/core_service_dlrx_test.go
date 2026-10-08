@@ -16,6 +16,20 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// DL RX status query test fixtures.
+const (
+	// testDLRXLimit is a valid in-range query limit.
+	testDLRXLimit = 10
+
+	// testDLRXQueryCount is the number of stored queries in the fake.
+	testDLRXQueryCount = 1
+
+	// Limit boundary cases for defaults-and-bounds coverage.
+	testDLRXLimitUnset   = 0
+	testDLRXLimitOverMax = 200
+	testDLRXLimitValid   = 50
+)
+
 // fakeDLRXStorage is a minimal test fake that implements only DLRXStatusQueryStorage interface.
 // Avoids 50+ panic stubs from the full storage.Storage interface.
 type fakeDLRXStorage struct {
@@ -73,7 +87,7 @@ func TestGetDLRXStatusQueries_ValidationRejections(t *testing.T) {
 			name: "negative offset rejected",
 			req: &pb.GetDLRXStatusQueriesRequest{
 				EpEui:  "0102030405060708",
-				Limit:  10,
+				Limit:  testDLRXLimit,
 				Offset: -5,
 			},
 			wantCode:    codes.InvalidArgument,
@@ -83,7 +97,7 @@ func TestGetDLRXStatusQueries_ValidationRejections(t *testing.T) {
 			name: "inverted time range rejected",
 			req: &pb.GetDLRXStatusQueriesRequest{
 				EpEui:     "0102030405060708",
-				Limit:     10,
+				Limit:     testDLRXLimit,
 				Offset:    0,
 				StartTime: timestamppb.New(time.Now()),
 				EndTime:   timestamppb.New(time.Now().Add(-1 * time.Hour)),
@@ -95,7 +109,7 @@ func TestGetDLRXStatusQueries_ValidationRejections(t *testing.T) {
 			name: "empty EUI rejected",
 			req: &pb.GetDLRXStatusQueriesRequest{
 				EpEui:  "",
-				Limit:  10,
+				Limit:  testDLRXLimit,
 				Offset: 0,
 			},
 			wantCode:    codes.InvalidArgument,
@@ -105,7 +119,7 @@ func TestGetDLRXStatusQueries_ValidationRejections(t *testing.T) {
 			name: "invalid EUI length rejected",
 			req: &pb.GetDLRXStatusQueriesRequest{
 				EpEui:  "0102",
-				Limit:  10,
+				Limit:  testDLRXLimit,
 				Offset: 0,
 			},
 			wantCode:    codes.InvalidArgument,
@@ -117,10 +131,10 @@ func TestGetDLRXStatusQueries_ValidationRejections(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create service with fake storage
 			fake := &fakeDLRXStorage{}
-			svc := &CoreService{
+			svc := testCoreService(coreFields{
 				log:         logger.Get(),
 				dlrxStorage: fake,
-			}
+			})
 
 			// Create context with tenant
 			ctx := testutil.TestContextWithTenant(1)
@@ -177,16 +191,15 @@ func TestGetDLRXStatusQueries_ValidRequest(t *testing.T) {
 	// Create fake storage with test data
 	fake := &fakeDLRXStorage{
 		queries:    []*mioty.DLRXStatusQuery{testQuery},
-		totalCount: 1,
+		totalCount: testDLRXQueryCount,
 		pending:    0,
 		received:   1,
-		timeout:    0,
 	}
 
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		log:         logger.Get(),
 		dlrxStorage: fake,
-	}
+	})
 
 	// Create context with tenant
 	ctx := testutil.TestContextWithTenant(1)
@@ -194,7 +207,7 @@ func TestGetDLRXStatusQueries_ValidRequest(t *testing.T) {
 	// Create valid request
 	req := &pb.GetDLRXStatusQueriesRequest{
 		EpEui:  "0102030405060708",
-		Limit:  10,
+		Limit:  testDLRXLimit,
 		Offset: 0,
 	}
 
@@ -257,19 +270,19 @@ func TestGetDLRXStatusQueries_DefaultsAndBounds(t *testing.T) {
 	}{
 		{
 			name:        "zero limit defaults to 20",
-			inputLimit:  0,
+			inputLimit:  testDLRXLimitUnset,
 			inputOffset: 0,
 			wantValid:   true,
 		},
 		{
 			name:        "limit clamped to max 100",
-			inputLimit:  200,
+			inputLimit:  testDLRXLimitOverMax,
 			inputOffset: 0,
 			wantValid:   true,
 		},
 		{
 			name:        "valid limit accepted",
-			inputLimit:  50,
+			inputLimit:  testDLRXLimitValid,
 			inputOffset: 10,
 			wantValid:   true,
 		},
@@ -278,14 +291,13 @@ func TestGetDLRXStatusQueries_DefaultsAndBounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fake := &fakeDLRXStorage{
-				queries:    []*mioty.DLRXStatusQuery{},
-				totalCount: 0,
+				queries: []*mioty.DLRXStatusQuery{},
 			}
 
-			svc := &CoreService{
+			svc := testCoreService(coreFields{
 				log:         logger.Get(),
 				dlrxStorage: fake,
-			}
+			})
 
 			ctx := testutil.TestContextWithTenant(1)
 

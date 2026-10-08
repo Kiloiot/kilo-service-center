@@ -8,6 +8,8 @@ import React from "react";
 import type { Theme } from "@mui/material";
 import { Box, IconButton, Paper, Tooltip, Typography } from "@mui/material";
 
+import { formatEui } from "@utils/eui";
+import { BS_COPY_FIELDS } from "@constants/app";
 import {
   ACTION_COPIED,
   ACTION_COPY,
@@ -66,11 +68,18 @@ const BsConfigSummary: React.FC<BsConfigSummaryProps> = ({
         </Typography>
         <Box display="flex" alignItems="center" gap={1}>
           <Typography variant="body2" sx={(theme) => monoSxGetter(theme)}>
-            {eui}
+            {formatEui(eui)}
           </Typography>
-          <Tooltip title={copiedField === "eui" ? ACTION_COPIED : ACTION_COPY}>
-            <IconButton size="small" onClick={() => onCopy(eui, "eui")}>
-              {copiedField === "eui" ? (
+          <Tooltip
+            title={
+              copiedField === BS_COPY_FIELDS.EUI ? ACTION_COPIED : ACTION_COPY
+            }
+          >
+            <IconButton
+              size="small"
+              onClick={() => onCopy(eui, BS_COPY_FIELDS.EUI)}
+            >
+              {copiedField === BS_COPY_FIELDS.EUI ? (
                 <CheckCircleIcon fontSize="small" color="success" />
               ) : (
                 <ContentCopyIcon fontSize="small" />

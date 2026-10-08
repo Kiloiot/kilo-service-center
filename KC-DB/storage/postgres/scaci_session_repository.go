@@ -4,38 +4,73 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
-	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
 )
 
-// SCACISessionRepository implements the SCACISessionRepository interface for PostgreSQL
+// SCACISessionRepository implements the SCACISessionRepository interface for
+// PostgreSQL, over the database or over one transaction
+// (Transaction.SCACISessions). Its writes take their time from the injected
+// clock, except updated_at, which the table's update trigger stamps.
 type SCACISessionRepository struct {
-	db *sqlx.DB
+	log   logger.Logger
+	clock clock.Clock
+	db    sqlx.ExtContext
 }
 
 // Ensure SCACISessionRepository implements the interface
 var _ interfaces.SCACISessionRepository = (*SCACISessionRepository)(nil)
 
-// NewSCACISessionRepository creates a new PostgreSQL SCACI session repository
-func NewSCACISessionRepository(db *sqlx.DB) *SCACISessionRepository {
-	return &SCACISessionRepository{db: db}
+// Error-wrap prefix of the retirement of earlier sessions.
+const errWrapRetirePriorSessions = "failed to retire prior SCACI sessions"
+
+// Reasons a SCACI session cannot be resumed.
+const (
+	scaciReasonSessionNotFound = "session not found"
+	scaciReasonNotResumable    = "session marked as not resumable"
+	scaciReasonTerminated      = "session already terminated"
+)
+
+// NewSCACISessionRepository creates a new PostgreSQL SCACI session repository.
+func NewSCACISessionRepository(db *sqlx.DB, clk clock.Clock, log logger.Logger) *SCACISessionRepository {
+	return &SCACISessionRepository{
+		log: log, clock: clk, db: db}
 }
 
-// CreateSession creates a new SCACI session
+// Retirement is serialized per Application Center - tenant, organization and
+// acEui, the key of the one-active-session index - for the rest of the
+// transaction it runs in, so two fresh connects of one Application Center
+// cannot both pass it and collide on that index.
+const (
+	sqlLockApplicationCenterSessions = `SELECT pg_advisory_xact_lock(hashtextextended(
+		$1::text || '/' || COALESCE($2::uuid::text, '') || '/' || encode($3::bytea, 'hex'), 0))`
+	sqlRetirePriorSessions = `
+		UPDATE scaci_sessions
+		SET status = $1, can_resume = false, disconnected_at = COALESCE(disconnected_at, $2)
+		WHERE tenant_id = $3 AND organization_id IS NOT DISTINCT FROM $4 AND ac_eui = $5 AND status <> $1`
+)
+
+// CreateSession inserts a new SCACI session. It retires nothing: the earlier
+// sessions of the application center are retired by RetirePriorSessions, in
+// the transaction that creates the new one.
 func (r *SCACISessionRepository) CreateSession(ctx context.Context, req *models.SCACISessionCreateRequest) (*models.SCACISession, error) {
 	if req == nil {
-		return nil, fmt.Errorf("create request cannot be nil")
+		return nil, errTextCreateRequestCannotBeNil
 	}
 
 	// Serialize metadata to JSONB
 	metadataJSON, err := json.Marshal(req.Metadata)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapMarshalMetadata, err)
 	}
 
 	query := `
@@ -44,39 +79,23 @@ func (r *SCACISessionRepository) CreateSession(ctx context.Context, req *models.
 			last_op_id_ac, last_op_id_sc, status,
 			certificate_fingerprint, client_cert_subject, remote_addr,
 			tls_version, cipher_suite, negotiated_version,
-			can_resume, metadata, organization_id,
+			can_resume, metadata, organization_id, sc_eui,
 			connected_at, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW(), NOW()
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18, $18
 		)
 		RETURNING id, connected_at, created_at, updated_at`
 
-	session := &models.SCACISession{
-		TenantID:               req.TenantID,
-		AcEUI:                  req.AcEUI,
-		SnAcUUID:               req.SnAcUUID,
-		SnScUUID:               req.SnScUUID,
-		LastOpIDAc:             0,
-		LastOpIDSc:             0,
-		Status:                 "active",
-		CertificateFingerprint: req.CertificateFingerprint,
-		ClientCertSubject:      req.ClientCertSubject,
-		RemoteAddr:             req.RemoteAddr,
-		TLSVersion:             req.TLSVersion,
-		CipherSuite:            req.CipherSuite,
-		NegotiatedVersion:      req.NegotiatedVersion,
-		CanResume:              req.CanResume,
-		Metadata:               req.Metadata,
-	}
-
-	err = r.db.QueryRowContext(ctx, query,
+	session := newSessionFromRequest(req)
+	err = r.db.QueryRowxContext(
+		ctx, query,
 		req.TenantID,
 		req.AcEUI[:],
 		req.SnAcUUID[:],
 		req.SnScUUID[:],
 		0, // last_op_id_ac
 		0, // last_op_id_sc
-		"active",
+		models.SCACISessionStatusActive,
 		req.CertificateFingerprint,
 		req.ClientCertSubject,
 		req.RemoteAddr,
@@ -86,13 +105,50 @@ func (r *SCACISessionRepository) CreateSession(ctx context.Context, req *models.
 		req.CanResume,
 		metadataJSON,
 		req.OrganizationID,
+		req.ScEui[:],
+		r.clock.Now(),
 	).Scan(&session.ID, &session.ConnectedAt, &session.CreatedAt, &session.UpdatedAt)
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to create SCACI session: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapCreateSCACISession, err)
 	}
-
 	return session, nil
+}
+
+// newSessionFromRequest is the session row a create request inserts, before
+// the database assigns its ID and timestamps.
+func newSessionFromRequest(req *models.SCACISessionCreateRequest) *models.SCACISession {
+	return &models.SCACISession{
+		TenantID:               req.TenantID,
+		AcEUI:                  req.AcEUI,
+		SnAcUUID:               req.SnAcUUID,
+		SnScUUID:               req.SnScUUID,
+		Status:                 models.SCACISessionStatusActive,
+		CertificateFingerprint: req.CertificateFingerprint,
+		ClientCertSubject:      req.ClientCertSubject,
+		RemoteAddr:             req.RemoteAddr,
+		TLSVersion:             req.TLSVersion,
+		CipherSuite:            req.CipherSuite,
+		NegotiatedVersion:      req.NegotiatedVersion,
+		CanResume:              req.CanResume,
+		Metadata:               req.Metadata,
+	}
+}
+
+// RetirePriorSessions terminates every session of the application center, so
+// the session created next in the same transaction starts from discarded
+// state (SCACI §1: a new session discards the state of the previous one, also
+// of a connection that was never torn down). Another organization's sessions
+// of the same acEui are left alone. It holds the application center's lock
+// until the transaction ends.
+func (r *SCACISessionRepository) RetirePriorSessions(ctx context.Context, ac models.SCACIApplicationCenter) error {
+	if _, err := r.db.ExecContext(ctx, sqlLockApplicationCenterSessions, ac.TenantID, ac.OrganizationID, ac.AcEUI[:]); err != nil {
+		return fmt.Errorf("%s: %w", errWrapRetirePriorSessions, err)
+	}
+	if _, err := r.db.ExecContext(ctx, sqlRetirePriorSessions, models.SCACISessionStatusTerminated, r.clock.Now(),
+		ac.TenantID, ac.OrganizationID, ac.AcEUI[:]); err != nil {
+		return fmt.Errorf("%s: %w", errWrapRetirePriorSessions, err)
+	}
+	return nil
 }
 
 // GetSessionByID retrieves a session by ID
@@ -109,11 +165,17 @@ func (r *SCACISessionRepository) GetSessionByID(ctx context.Context, tenantID, s
 		FROM scaci_sessions
 		WHERE id = $1 AND tenant_id = $2`
 
-	return r.scanSession(r.db.QueryRowContext(ctx, query, sessionID, tenantID))
+	return r.scanSession(r.db.QueryRowxContext(ctx, query, sessionID, tenantID))
 }
 
-// GetActiveSessionByAcEUI retrieves the active session for an Application Center
-func (r *SCACISessionRepository) GetActiveSessionByAcEUI(ctx context.Context, tenantID int64, acEui [8]byte) (*models.SCACISession, error) {
+// sqlApplicationCenterSession is the predicate of the application center's
+// session of an snAcUuid: another application center's session of the same
+// snAcUuid is never it.
+const sqlApplicationCenterSession = `tenant_id = $1 AND organization_id IS NOT DISTINCT FROM $2 AND ac_eui = $3 AND sn_ac_uuid = $4`
+
+// GetSessionByAcUUID retrieves the application center's latest session of
+// its session UUID snAcUUID.
+func (r *SCACISessionRepository) GetSessionByAcUUID(ctx context.Context, ac models.SCACIApplicationCenter, snAcUUID [16]byte) (*models.SCACISession, error) {
 	query := `
 		SELECT
 			id, tenant_id, ac_eui, sn_ac_uuid, sn_sc_uuid,
@@ -124,30 +186,11 @@ func (r *SCACISessionRepository) GetActiveSessionByAcEUI(ctx context.Context, te
 			can_resume, metadata, organization_id,
 			created_at, updated_at
 		FROM scaci_sessions
-		WHERE tenant_id = $1 AND ac_eui = $2 AND status = 'active'
+		WHERE ` + sqlApplicationCenterSession + `
 		ORDER BY connected_at DESC
 		LIMIT 1`
 
-	return r.scanSession(r.db.QueryRowContext(ctx, query, tenantID, acEui[:]))
-}
-
-// GetSessionByAcUUID retrieves a session by Application Center session UUID
-func (r *SCACISessionRepository) GetSessionByAcUUID(ctx context.Context, tenantID int64, snAcUUID [16]byte) (*models.SCACISession, error) {
-	query := `
-		SELECT
-			id, tenant_id, ac_eui, sn_ac_uuid, sn_sc_uuid,
-			last_op_id_ac, last_op_id_sc, status,
-			certificate_fingerprint, client_cert_subject, remote_addr,
-			tls_version, cipher_suite, negotiated_version,
-			connected_at, last_heartbeat, disconnected_at,
-			can_resume, metadata, organization_id,
-			created_at, updated_at
-		FROM scaci_sessions
-		WHERE tenant_id = $1 AND sn_ac_uuid = $2
-		ORDER BY connected_at DESC
-		LIMIT 1`
-
-	return r.scanSession(r.db.QueryRowContext(ctx, query, tenantID, snAcUUID[:]))
+	return r.scanSession(r.db.QueryRowxContext(ctx, query, ac.TenantID, ac.OrganizationID, ac.AcEUI[:], snAcUUID[:]))
 }
 
 // GetSessionByScUUID retrieves a session by Service Center session UUID
@@ -166,116 +209,60 @@ func (r *SCACISessionRepository) GetSessionByScUUID(ctx context.Context, tenantI
 		ORDER BY connected_at DESC
 		LIMIT 1`
 
-	return r.scanSession(r.db.QueryRowContext(ctx, query, tenantID, snScUUID[:]))
+	return r.scanSession(r.db.QueryRowxContext(ctx, query, tenantID, snScUUID[:]))
 }
 
-// UpdateSession updates session fields
-func (r *SCACISessionRepository) UpdateSession(ctx context.Context, tenantID, sessionID int64, req *models.SCACISessionUpdateRequest) error {
-	if req == nil {
-		return fmt.Errorf("update request cannot be nil")
-	}
-
-	// Build dynamic update query with deterministic field order
-	type updatePair struct {
-		field string
-		value interface{}
-	}
-	updates := []updatePair{}
-
-	// Add fields in consistent order to ensure deterministic SQL generation
-	if req.Status != nil {
-		updates = append(updates, updatePair{"status", *req.Status})
-	}
-	if req.LastOpIDAc != nil {
-		updates = append(updates, updatePair{"last_op_id_ac", *req.LastOpIDAc})
-	}
-	if req.LastOpIDSc != nil {
-		updates = append(updates, updatePair{"last_op_id_sc", *req.LastOpIDSc})
-	}
-	if req.LastHeartbeat != nil {
-		updates = append(updates, updatePair{"last_heartbeat", *req.LastHeartbeat})
-	}
-	if req.DisconnectedAt != nil {
-		updates = append(updates, updatePair{"disconnected_at", *req.DisconnectedAt})
-	}
-	if req.CanResume != nil {
-		updates = append(updates, updatePair{"can_resume", *req.CanResume})
-	}
-	// TLS evidence fields for session resume per SCACI §1
-	if req.TLSVersion != nil {
-		updates = append(updates, updatePair{"tls_version", *req.TLSVersion})
-	}
-	if req.CipherSuite != nil {
-		updates = append(updates, updatePair{"cipher_suite", *req.CipherSuite})
-	}
-	if req.Metadata != nil {
-		metadataJSON, err := json.Marshal(req.Metadata)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metadata: %w", err)
-		}
-		updates = append(updates, updatePair{"metadata", metadataJSON})
-	}
-	if req.OrganizationID != nil {
-		updates = append(updates, updatePair{"organization_id", *req.OrganizationID})
-	}
-
-	if len(updates) == 0 {
-		return fmt.Errorf("no fields to update")
-	}
-
-	// Always update updated_at as the last field
-	updates = append(updates, updatePair{"updated_at", time.Now()})
-
-	query := `UPDATE scaci_sessions SET `
-	args := []interface{}{}
-	argPos := 1
-
-	for i, pair := range updates {
-		if i > 0 {
-			query += ", "
-		}
-		query += fmt.Sprintf("%s = $%d", pair.field, argPos)
-		args = append(args, pair.value)
-		argPos++
-	}
-
-	query += fmt.Sprintf(" WHERE id = $%d AND tenant_id = $%d", argPos, argPos+1)
-	args = append(args, sessionID, tenantID)
-
-	result, err := r.db.ExecContext(ctx, query, args...)
+// ResumeSession records the connection a resume moved the session to (SCACI
+// §1): active again and owned by the resuming service center, with its
+// heartbeat, TLS evidence and metadata. A session
+// that is no longer resumable is left as it is and reported as
+// storage.ErrNotFound.
+func (r *SCACISessionRepository) ResumeSession(ctx context.Context, tenantID, sessionID int64, req *models.SCACISessionResume) error {
+	metadataJSON, err := json.Marshal(req.Metadata)
 	if err != nil {
-		return fmt.Errorf("failed to update session: %w", err)
+		return fmt.Errorf("%s: %w", errWrapMarshalMetadata, err)
 	}
+	query := `
+		UPDATE scaci_sessions
+		SET status = $1, last_heartbeat = $2,
+			tls_version = COALESCE($3, tls_version), cipher_suite = COALESCE($4, cipher_suite), metadata = $5, sc_eui = $9
+		WHERE id = $6 AND tenant_id = $7 AND can_resume AND status <> $8`
 
+	result, err := r.db.ExecContext(ctx, query, models.SCACISessionStatusActive, r.clock.Now(),
+		req.TLSVersion, req.CipherSuite, metadataJSON, sessionID, tenantID, models.SCACISessionStatusTerminated, req.ScEui[:])
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapUpdateSession, err)
+	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 	if rows == 0 {
-		return fmt.Errorf("session not found: id=%d, tenant=%d", sessionID, tenantID)
+		return fmt.Errorf(errFmtSCACISessionNotResumable, storage.ErrNotFound, sessionID, tenantID)
 	}
-
 	return nil
 }
 
-// UpdateOperationIDs updates both AC and SC operation IDs atomically
+// UpdateOperationIDs advances both operation ID counters atomically. Writers
+// race, so a stale pair never moves a counter back: the AC counter only grows
+// and the SC counter only shrinks (SCACI §3.2).
 func (r *SCACISessionRepository) UpdateOperationIDs(ctx context.Context, tenantID, sessionID int64, acOpId, scOpId int64) error {
 	query := `
 		UPDATE scaci_sessions
-		SET last_op_id_ac = $1, last_op_id_sc = $2, updated_at = NOW()
+		SET last_op_id_ac = GREATEST(last_op_id_ac, $1), last_op_id_sc = LEAST(last_op_id_sc, $2)
 		WHERE id = $3 AND tenant_id = $4`
 
 	result, err := r.db.ExecContext(ctx, query, acOpId, scOpId, sessionID, tenantID)
 	if err != nil {
-		return fmt.Errorf("failed to update operation IDs: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateOperationIDs, err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 	if rows == 0 {
-		return fmt.Errorf("session not found: id=%d, tenant=%d", sessionID, tenantID)
+		return fmt.Errorf(errFmtSCACISessionNotFoundIDTenant, sessionID, tenantID)
 	}
 
 	return nil
@@ -285,45 +272,40 @@ func (r *SCACISessionRepository) UpdateOperationIDs(ctx context.Context, tenantI
 func (r *SCACISessionRepository) UpdateHeartbeat(ctx context.Context, tenantID, sessionID int64) error {
 	query := `
 		UPDATE scaci_sessions
-		SET last_heartbeat = NOW(), updated_at = NOW()
+		SET last_heartbeat = $3
 		WHERE id = $1 AND tenant_id = $2`
 
-	result, err := r.db.ExecContext(ctx, query, sessionID, tenantID)
+	result, err := r.db.ExecContext(ctx, query, sessionID, tenantID, r.clock.Now())
 	if err != nil {
-		return fmt.Errorf("failed to update heartbeat: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateHeartbeat, err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 	if rows == 0 {
-		return fmt.Errorf("session not found: id=%d, tenant=%d", sessionID, tenantID)
+		return fmt.Errorf(errFmtSCACISessionNotFoundIDTenant, sessionID, tenantID)
 	}
 
 	return nil
 }
 
-// DisconnectSession marks a session as disconnected
-func (r *SCACISessionRepository) DisconnectSession(ctx context.Context, tenantID, sessionID int64) error {
+// MarkSessionDisconnected records the loss of a session's connection. The
+// session stays resumable (SCACI §1); a session a newer one already replaced
+// stays terminated.
+func (r *SCACISessionRepository) MarkSessionDisconnected(ctx context.Context, tenantID, sessionID int64) error {
 	query := `
 		UPDATE scaci_sessions
-		SET status = 'disconnected', disconnected_at = NOW(), updated_at = NOW()
-		WHERE id = $1 AND tenant_id = $2`
+		SET status = $1, disconnected_at = $6
+		WHERE id = $2 AND tenant_id = $3 AND status IN ($4, $5)`
 
-	result, err := r.db.ExecContext(ctx, query, sessionID, tenantID)
-	if err != nil {
-		return fmt.Errorf("failed to disconnect session: %w", err)
+	if _, err := r.db.ExecContext(ctx, query,
+		models.SCACISessionStatusDisconnected, sessionID, tenantID,
+		models.SCACISessionStatusActive, models.SCACISessionStatusResumed, r.clock.Now(),
+	); err != nil {
+		return fmt.Errorf("%s: %w", errWrapMarkSessionDisconnected, err)
 	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-	if rows == 0 {
-		return fmt.Errorf("session not found: id=%d, tenant=%d", sessionID, tenantID)
-	}
-
 	return nil
 }
 
@@ -331,35 +313,20 @@ func (r *SCACISessionRepository) DisconnectSession(ctx context.Context, tenantID
 func (r *SCACISessionRepository) TerminateSession(ctx context.Context, tenantID, sessionID int64) error {
 	query := `
 		UPDATE scaci_sessions
-		SET status = 'terminated', can_resume = false, disconnected_at = NOW(), updated_at = NOW()
+		SET status = $3, can_resume = false, disconnected_at = $4
 		WHERE id = $1 AND tenant_id = $2`
 
-	result, err := r.db.ExecContext(ctx, query, sessionID, tenantID)
+	result, err := r.db.ExecContext(ctx, query, sessionID, tenantID, models.SCACISessionStatusTerminated, r.clock.Now())
 	if err != nil {
-		return fmt.Errorf("failed to terminate session: %w", err)
+		return fmt.Errorf("%s: %w", errWrapTerminateSession, err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 	if rows == 0 {
-		return fmt.Errorf("session not found: id=%d, tenant=%d", sessionID, tenantID)
-	}
-
-	return nil
-}
-
-// TerminateAllSessions terminates all active sessions for an Application Center
-func (r *SCACISessionRepository) TerminateAllSessions(ctx context.Context, tenantID int64, acEui [8]byte) error {
-	query := `
-		UPDATE scaci_sessions
-		SET status = 'terminated', can_resume = false, disconnected_at = NOW(), updated_at = NOW()
-		WHERE tenant_id = $1 AND ac_eui = $2 AND status IN ('active', 'resumed')`
-
-	_, err := r.db.ExecContext(ctx, query, tenantID, acEui[:])
-	if err != nil {
-		return fmt.Errorf("failed to terminate all sessions: %w", err)
+		return fmt.Errorf(errFmtSCACISessionNotFoundIDTenant, sessionID, tenantID)
 	}
 
 	return nil
@@ -372,7 +339,7 @@ func (r *SCACISessionRepository) ListSessions(ctx context.Context, filter *model
 	}
 
 	if filter.TenantID == nil {
-		return nil, 0, fmt.Errorf("tenant ID required")
+		return nil, 0, errTextTenantIDRequired
 	}
 
 	// Build WHERE clause dynamically
@@ -418,9 +385,9 @@ func (r *SCACISessionRepository) ListSessions(ctx context.Context, filter *model
 	// Count total
 	countQuery := "SELECT COUNT(*) FROM scaci_sessions " + where
 	var total int64
-	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	err := r.db.QueryRowxContext(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to count sessions: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountSessions, err)
 	}
 
 	// Query sessions
@@ -445,12 +412,11 @@ func (r *SCACISessionRepository) ListSessions(ctx context.Context, filter *model
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to query sessions: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapQuerySessions, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			// TODO: Repository lacks logger field - add for proper error tracking
-			log.Printf("failed to close rows in SCACI session query: %v", err)
+			r.log.Warn(logMsgCloseRowsSCACISessions, logger.FieldError, err)
 		}
 	}()
 
@@ -458,16 +424,57 @@ func (r *SCACISessionRepository) ListSessions(ctx context.Context, filter *model
 	for rows.Next() {
 		session, err := r.scanSessionFromRows(rows)
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to scan session: %w", err)
+			return nil, 0, fmt.Errorf("%s: %w", errWrapScanSession, err)
 		}
 		sessions = append(sessions, session)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("rows iteration error: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapRowsIterationError, err)
 	}
 
 	return sessions, total, nil
+}
+
+// ListResumableSessions returns the sessions of every tenant an Application
+// Center may still resume (SCACI §1), under the conditions
+// CheckSessionResumable applies.
+func (r *SCACISessionRepository) ListResumableSessions(ctx context.Context) ([]*models.SCACISession, error) {
+	query := `
+		SELECT
+			id, tenant_id, ac_eui, sn_ac_uuid, sn_sc_uuid,
+			last_op_id_ac, last_op_id_sc, status,
+			certificate_fingerprint, client_cert_subject, remote_addr,
+			tls_version, cipher_suite, negotiated_version,
+			connected_at, last_heartbeat, disconnected_at,
+			can_resume, metadata, organization_id,
+			created_at, updated_at
+		FROM scaci_sessions
+		WHERE can_resume AND status <> $1
+		ORDER BY id`
+
+	rows, err := r.db.QueryContext(ctx, query, models.SCACISessionStatusTerminated)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", errWrapQuerySessions, err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			r.log.Warn(logMsgCloseRowsSCACISessions, logger.FieldError, err)
+		}
+	}()
+
+	var sessions []*models.SCACISession
+	for rows.Next() {
+		session, err := r.scanSessionFromRows(rows)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", errWrapScanSession, err)
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", errWrapRowsIterationError, err)
+	}
+	return sessions, nil
 }
 
 // GetSessionStatistics retrieves aggregated session statistics
@@ -480,13 +487,13 @@ func (r *SCACISessionRepository) GetSessionStatistics(ctx context.Context, tenan
 			COUNT(*) FILTER (WHERE status = 'disconnected') as disconnected_sessions,
 			COUNT(*) FILTER (WHERE status = 'terminated') as terminated_sessions,
 			COUNT(*) FILTER (WHERE can_resume = true AND status IN ('active', 'disconnected')) as resumable_sessions,
-			COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(disconnected_at, NOW()) - connected_at)) / 3600), 0) as avg_duration_hours,
-			COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(disconnected_at, NOW()) - connected_at)) / 3600), 0) as total_time_hours
+			COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(disconnected_at, $2::timestamptz) - connected_at)) / 3600), 0) as avg_duration_hours,
+			COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(disconnected_at, $2::timestamptz) - connected_at)) / 3600), 0) as total_time_hours
 		FROM scaci_sessions
 		WHERE tenant_id = $1`
 
 	stats := &models.SCACISessionStatistics{TenantID: tenantID}
-	err := r.db.QueryRowContext(ctx, query, tenantID).Scan(
+	err := r.db.QueryRowxContext(ctx, query, tenantID, r.clock.Now()).Scan(
 		&stats.TotalSessions,
 		&stats.ActiveSessions,
 		&stats.ResumedSessions,
@@ -496,24 +503,25 @@ func (r *SCACISessionRepository) GetSessionStatistics(ctx context.Context, tenan
 		&stats.AverageSessionDuration,
 		&stats.TotalSessionTime,
 	)
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to get session statistics: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetSessionStatistics, err)
 	}
 
 	return stats, nil
 }
 
-// CheckSessionResumable determines if a session can be resumed per SCACI §1 and §§2.1-2.3
-// Validates both AC and SC operation ID progression per SCACI-S.1-05/3.2-03
-// Returns NegotiatedVersion for version mismatch validation at service layer
-func (r *SCACISessionRepository) CheckSessionResumable(ctx context.Context, tenantID int64, snAcUUID [16]byte, acOpId int64, scOpId int64) (*models.SCACISessionResumptionInfo, error) {
+// CheckSessionResumable reports whether the application center's latest
+// session of snAcUUID can still be resumed (SCACI §1) and returns the
+// operation ID counters and the negotiated version (§§2.1-2.3) it stored.
+// Whether the application center's view of the counters agrees with them is
+// the SCACI rule's to decide (scaci.ResumeOpIDConflict, §3.3.1).
+func (r *SCACISessionRepository) CheckSessionResumable(ctx context.Context, ac models.SCACIApplicationCenter, snAcUUID [16]byte) (*models.SCACISessionResumptionInfo, error) {
 	query := `
 		SELECT
 			id, last_op_id_ac, last_op_id_sc, can_resume, status, negotiated_version,
-			EXTRACT(EPOCH FROM (NOW() - connected_at)) / 3600 as session_age_hours
+			EXTRACT(EPOCH FROM ($5::timestamptz - connected_at)) / 3600 as session_age_hours
 		FROM scaci_sessions
-		WHERE tenant_id = $1 AND sn_ac_uuid = $2
+		WHERE ` + sqlApplicationCenterSession + `
 		ORDER BY connected_at DESC
 		LIMIT 1`
 
@@ -523,18 +531,18 @@ func (r *SCACISessionRepository) CheckSessionResumable(ctx context.Context, tena
 	var negotiatedVersion string
 	var sessionAgeHours float64
 
-	err := r.db.QueryRowContext(ctx, query, tenantID, snAcUUID[:]).Scan(
+	err := r.db.QueryRowxContext(ctx, query, ac.TenantID, ac.OrganizationID, ac.AcEUI[:], snAcUUID[:], r.clock.Now()).Scan(
 		&sessionID, &lastOpIDAc, &lastOpIDSc, &canResume, &status, &negotiatedVersion, &sessionAgeHours,
 	)
 
 	if err == sql.ErrNoRows {
 		return &models.SCACISessionResumptionInfo{
 			CanResume:            false,
-			ReasonIfNotResumable: "session not found",
+			ReasonIfNotResumable: scaciReasonSessionNotFound,
 		}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to check session resumability: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapCheckSessionResumability, err)
 	}
 
 	info := &models.SCACISessionResumptionInfo{
@@ -545,60 +553,25 @@ func (r *SCACISessionRepository) CheckSessionResumable(ctx context.Context, tena
 		SessionAgeHours:   sessionAgeHours,
 	}
 
-	// Check resumability conditions per SCACI §1
-	if !canResume {
-		info.CanResume = false
-		info.ReasonIfNotResumable = "session marked as not resumable"
-		return info, nil
-	}
-
-	if status == "terminated" {
-		info.CanResume = false
-		info.ReasonIfNotResumable = "session already terminated"
-		return info, nil
-	}
-
-	// Validate AC operation ID progression (AC opId should be >= last known)
-	if acOpId < lastOpIDAc {
-		info.CanResume = false
-		info.ReasonIfNotResumable = fmt.Sprintf("AC opId regression: provided=%d, expected>=%d", acOpId, lastOpIDAc)
-		return info, nil
-	}
-
-	// Validate SC operation ID progression per SCACI-S.1-05/3.2-03
-	// SC opIds are negative and decrement, so provided scOpId should be <= last known
-	if scOpId > lastOpIDSc {
-		info.CanResume = false
-		info.ReasonIfNotResumable = fmt.Sprintf("SC opId regression: provided=%d, expected<=%d", scOpId, lastOpIDSc)
-		return info, nil
-	}
-
-	info.CanResume = true
+	info.ReasonIfNotResumable = resumptionRefusal(canResume, status)
+	info.CanResume = info.ReasonIfNotResumable == ""
 	return info, nil
 }
 
-// CleanupExpiredSessions removes old terminated sessions
-func (r *SCACISessionRepository) CleanupExpiredSessions(ctx context.Context, olderThan int64) (int64, error) {
-	query := `
-		DELETE FROM scaci_sessions
-		WHERE status = 'terminated'
-		  AND disconnected_at < NOW() - INTERVAL '1 hour' * $1`
-
-	result, err := r.db.ExecContext(ctx, query, olderThan)
-	if err != nil {
-		return 0, fmt.Errorf("failed to cleanup expired sessions: %w", err)
+// resumptionRefusal is why a stored session can no longer be resumed (SCACI
+// §1), or "" when it can.
+func resumptionRefusal(canResume bool, status string) string {
+	if !canResume {
+		return scaciReasonNotResumable
 	}
-
-	deleted, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	if status == models.SCACISessionStatusTerminated {
+		return scaciReasonTerminated
 	}
-
-	return deleted, nil
+	return ""
 }
 
 // scanSession is a helper to scan a single session from a query row
-func (r *SCACISessionRepository) scanSession(row *sql.Row) (*models.SCACISession, error) {
+func (r *SCACISessionRepository) scanSession(row rowScanner) (*models.SCACISession, error) {
 	var session models.SCACISession
 	var acEuiBytes, snAcUUIDBytes, snScUUIDBytes []byte
 	var metadataJSON []byte
@@ -628,11 +601,11 @@ func (r *SCACISessionRepository) scanSession(row *sql.Row) (*models.SCACISession
 		&session.UpdatedAt,
 	)
 
-	if err == sql.ErrNoRows {
-		return nil, nil
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, storage.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan session: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapScanSession, err)
 	}
 
 	// Convert byte arrays to fixed-size arrays
@@ -643,7 +616,7 @@ func (r *SCACISessionRepository) scanSession(row *sql.Row) (*models.SCACISession
 	// Unmarshal metadata
 	if len(metadataJSON) > 0 {
 		if err := json.Unmarshal(metadataJSON, &session.Metadata); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapUnmarshalMetadata, err)
 		}
 	}
 
@@ -680,9 +653,8 @@ func (r *SCACISessionRepository) scanSessionFromRows(rows *sql.Rows) (*models.SC
 		&session.CreatedAt,
 		&session.UpdatedAt,
 	)
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan session: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapScanSession, err)
 	}
 
 	// Convert byte arrays to fixed-size arrays
@@ -693,7 +665,7 @@ func (r *SCACISessionRepository) scanSessionFromRows(rows *sql.Rows) (*models.SC
 	// Unmarshal metadata
 	if len(metadataJSON) > 0 {
 		if err := json.Unmarshal(metadataJSON, &session.Metadata); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapUnmarshalMetadata, err)
 		}
 	}
 

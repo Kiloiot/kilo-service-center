@@ -4,6 +4,7 @@ package propagation
 
 import (
 	"context"
+	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
@@ -16,15 +17,12 @@ type BaseStationSession struct {
 	TenantID          int64
 	OrganizationID    *string // UUID as string
 	HandshakeComplete bool
-}
-
-// SessionSnapshotProvider provides access to connected BSSCI session snapshots
-// Used by SCACI to trigger propagation without importing bssci package (avoids circular dependency)
-// The BSSCI Server implements this interface via ConnectedSessionsSnapshot() method
-//
-// BSSCI §5.8-5.8.3: Cross-module integration pattern
-type SessionSnapshotProvider interface {
-	ConnectedSessionsSnapshot() []BaseStationSession
+	// Resumed is true when the station resumed its previous session and so
+	// kept the endpoints it held (BSSCI §1).
+	Resumed bool
+	// DisconnectedAt is when the connection a resumed session continues was
+	// lost; nil when it is unknown.
+	DisconnectedAt *time.Time
 }
 
 // Service orchestrates automatic attach/detach propagation across base stations

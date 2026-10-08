@@ -2,7 +2,7 @@ package mqtt
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"testing"
 
@@ -13,6 +13,9 @@ import (
 )
 
 // mockPublisher records Publish calls for verification.
+// testErrBrokerUnavailable is the publish-failure fixture text.
+const testErrBrokerUnavailable = "broker unavailable"
+
 type mockPublisher struct {
 	mu        sync.Mutex
 	calls     []publishCall
@@ -67,67 +70,44 @@ func TestPublishDeviceEvent_RejectsEmptyEUIHex(t *testing.T) {
 	assert.Contains(t, err.Error(), ErrDeviceEventEmptyEUIHex)
 }
 
-func TestPublishDeviceEvent_UplinkUsesUplinkQoS(t *testing.T) {
+func TestPublishDeviceEvent_QoSPerEventType(t *testing.T) {
 	t.Parallel()
-	mock := &mockPublisher{}
-	pub := &TopicPublisher{client: mock, prefix: "mioty"}
+	tests := []struct {
+		eventType string
+		qos       byte
+	}{
+		{DeviceEventUp, QoSAtLeastOnce},
+		{DeviceEventAttach, QoSAtMostOnce},
+		{DeviceEventDetach, QoSAtMostOnce},
+		{DeviceEventDownlinkQueued, QoSAtLeastOnce},
+		{DeviceEventDownlinkRejected, QoSAtLeastOnce},
+		{DeviceEventDownlinkResult, QoSAtLeastOnce},
+	}
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			t.Parallel()
+			mock := &mockPublisher{}
+			pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
-	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
+			err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", tt.eventType, []byte("test"))
 
-	require.NoError(t, err)
-	call := mock.lastCall()
-	assert.Equal(t, byte(UplinkQoS), call.QoS)
-	assert.Equal(t, "mioty/org-uuid/device/0123456789abcdef/event/up", call.Topic)
-}
-
-func TestPublishDeviceEvent_AttachUsesEventsQoS(t *testing.T) {
-	t.Parallel()
-	mock := &mockPublisher{}
-	pub := &TopicPublisher{client: mock, prefix: "mioty"}
-
-	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventAttach, []byte("test"))
-
-	require.NoError(t, err)
-	call := mock.lastCall()
-	assert.Equal(t, byte(EventsQoS), call.QoS)
-	assert.Equal(t, "mioty/org-uuid/device/0123456789abcdef/event/attach", call.Topic)
-}
-
-func TestPublishDeviceEvent_DetachUsesEventsQoS(t *testing.T) {
-	t.Parallel()
-	mock := &mockPublisher{}
-	pub := &TopicPublisher{client: mock, prefix: "mioty"}
-
-	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventDetach, []byte("test"))
-
-	require.NoError(t, err)
-	call := mock.lastCall()
-	assert.Equal(t, byte(EventsQoS), call.QoS)
-	assert.Contains(t, call.Topic, "/event/detach")
-}
-
-func TestPublishDeviceEvent_DownlinkResultUsesEventsQoS(t *testing.T) {
-	t.Parallel()
-	mock := &mockPublisher{}
-	pub := &TopicPublisher{client: mock, prefix: "mioty"}
-
-	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventDownlinkResult, []byte("test"))
-
-	require.NoError(t, err)
-	call := mock.lastCall()
-	assert.Equal(t, byte(EventsQoS), call.QoS)
-	assert.Contains(t, call.Topic, "/event/downlink_result")
+			require.NoError(t, err)
+			call := mock.lastCall()
+			assert.Equal(t, tt.qos, call.QoS)
+			assert.Equal(t, "mioty/org-uuid/device/0123456789abcdef/event/"+tt.eventType, call.Topic)
+		})
+	}
 }
 
 func TestPublishDeviceEvent_PropagatesPublishError(t *testing.T) {
 	t.Parallel()
-	mock := &mockPublisher{returnErr: fmt.Errorf("broker unavailable")}
+	mock := &mockPublisher{returnErr: errors.New(testErrBrokerUnavailable)}
 	pub := &TopicPublisher{client: mock, prefix: "mioty"}
 
 	err := pub.PublishDeviceEvent(testutil.TestContext(), "org-uuid", "0123456789abcdef", DeviceEventUp, []byte("test"))
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "broker unavailable")
+	assert.Contains(t, err.Error(), testErrBrokerUnavailable)
 }
 
 func TestPublishDeviceEvent_NotRetained(t *testing.T) {

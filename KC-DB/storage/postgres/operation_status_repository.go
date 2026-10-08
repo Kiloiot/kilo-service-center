@@ -3,39 +3,47 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/internal/sqlcleanup"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/errors"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/queries"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 )
 
-// OperationStatusRepository handles operation status queries for BSSCI/SCACI monitoring
+// OperationStatusRepository measures lookback windows from the clock that stamps events, never NOW().
 type OperationStatusRepository struct {
-	db *sqlx.DB
+	db    *sqlx.DB
+	clock clock.Clock
 }
 
-// NewOperationStatusRepository creates a new operation status repository
-func NewOperationStatusRepository(db *sqlx.DB) *OperationStatusRepository {
-	return &OperationStatusRepository{db: db}
+// Operation types accepted by the status queries.
+const (
+	operationTypeAttach = "attach"
+	operationTypeDetach = "detach"
+)
+
+// NewOperationStatusRepository creates a new operation status repository.
+func NewOperationStatusRepository(db *sqlx.DB, clk clock.Clock) *OperationStatusRepository {
+	return &OperationStatusRepository{db: db, clock: clk}
 }
 
-// durationToInterval converts time.Duration to PostgreSQL interval string
-// Example: 24*time.Hour → "86400 seconds"
-func durationToInterval(d time.Duration) string {
-	return fmt.Sprintf("%f seconds", d.Seconds())
+// cutoff is the earliest event time inside a lookback window.
+func (r *OperationStatusRepository) cutoff(lookback time.Duration) time.Time {
+	return r.clock.Now().Add(-lookback)
 }
 
 // GetOperationEventsByID retrieves events for a specific operation ID
 // Parameters:
 //   - operationID: The operation identifier to search for
 //   - categories: Event categories to include (e.g., ["bssci", "scaci"])
-//   - since: Lookback window (e.g., 24*time.Hour)
+//   - since: Lookback window (e.g., 24 hours)
 //   - operationType: Optional filter - "attach", "detach", or "" for all
 //   - limit: Maximum number of results
 func (r *OperationStatusRepository) GetOperationEventsByID(
@@ -49,14 +57,14 @@ func (r *OperationStatusRepository) GetOperationEventsByID(
 	// Select appropriate event type filter
 	var eventFilter string
 	switch operationType {
-	case "attach":
+	case operationTypeAttach:
 		eventFilter = queries.EventFilterAttachOps
-	case "detach":
+	case operationTypeDetach:
 		eventFilter = queries.EventFilterDetachOps
 	case "":
 		eventFilter = queries.EventFilterAllOps
 	default:
-		return nil, fmt.Errorf("%w: invalid operation type %q", errors.ErrInvalidInput, operationType)
+		return nil, fmt.Errorf(errFmtInvalidOperationType, errors.ErrInvalidInput, operationType)
 	}
 
 	// Build query with event type filter
@@ -69,7 +77,7 @@ func (r *OperationStatusRepository) GetOperationEventsByID(
 		&events,
 		query,
 		pq.Array(categories),
-		durationToInterval(since),
+		r.cutoff(since),
 		operationID,
 		limit,
 	)
@@ -106,22 +114,18 @@ func (r *OperationStatusRepository) GetEndpointOperationsByID(
 	err := r.db.GetContext(ctx, &euiBytes,
 		`SELECT ep_eui FROM endpoints WHERE id = $1 AND tenant_id = $2`,
 		endpointID, tenantID)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("%w: endpoint not found for tenant", errors.ErrNotFound)
+			return nil, fmt.Errorf(errFmtEndpointNotFoundForTenant, errors.ErrNotFound)
 		}
 		return nil, fmt.Errorf("%w: %w", errors.ErrDatabase, err)
 	}
 
-	// Guard against unexpected lengths
-	if len(euiBytes) != 8 {
-		return nil, fmt.Errorf("postgres: operation_status: get endpoint operations: invalid EUI length: %w", errors.ErrNotFound)
+	eui := mioty.OptionalEUI64FromBytes(euiBytes)
+	if eui == nil {
+		return nil, fmt.Errorf("%s: %w", errWrapPostgresOperationStatusGetEndpointOperationsInvalidEUI, errors.ErrNotFound)
 	}
-
-	// Convert bytea to uint64, then format as hex string
-	euiUint := binary.BigEndian.Uint64(euiBytes)
-	euiHex := validation.FormatEUI(euiUint)
+	euiHex := mioty.FormatEUI64(*eui)
 
 	// Search events by hex EUI (matches original handler behavior)
 	var events []models.SystemEvent
@@ -130,7 +134,7 @@ func (r *OperationStatusRepository) GetEndpointOperationsByID(
 		&events,
 		queries.SQLEndpointOperationEvents,
 		pq.Array(categories),
-		durationToInterval(since),
+		r.cutoff(since),
 		euiHex,
 		limit,
 		offset,
@@ -172,7 +176,7 @@ type BaseStationStatus struct {
 // Parameters:
 //   - tenantID: Tenant ID for filtering
 //   - categories: Event categories to include
-//   - eventWindow: Event count lookback (e.g., 24*time.Hour)
+//   - eventWindow: Event count lookback (e.g., 24 hours)
 func (r *OperationStatusRepository) GetBSSCIStatusSummary(
 	ctx context.Context,
 	tenantID int64,
@@ -186,7 +190,7 @@ func (r *OperationStatusRepository) GetBSSCIStatusSummary(
 		queries.SQLBSSCIStatusSummary,
 		tenantID,
 		pq.Array(categories),
-		durationToInterval(eventWindow),
+		r.cutoff(eventWindow),
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -201,20 +205,20 @@ func (r *OperationStatusRepository) GetBSSCIStatusSummary(
 // GetEventSummary retrieves event type counts within time window
 // Parameters:
 //   - categories: Event categories to include
-//   - since: Lookback window (e.g., 5*time.Minute)
+//   - since: Lookback window (e.g., 5 minutes)
 func (r *OperationStatusRepository) GetEventSummary(
 	ctx context.Context,
 	categories []string,
 	since time.Duration,
-) (map[string]int, error) {
+) (summary map[string]int, err error) {
 	rows, err := r.db.QueryContext(ctx, queries.SQLEventSummary,
-		pq.Array(categories), durationToInterval(since))
+		pq.Array(categories), r.cutoff(since))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errors.ErrDatabase, err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer sqlcleanup.CloseRows(rows, errWrapIterateEventSummary, &err)
 
-	summary := make(map[string]int)
+	summary = make(map[string]int)
 	for rows.Next() {
 		var eventType string
 		var count int

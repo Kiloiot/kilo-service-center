@@ -3,38 +3,42 @@ package scaciservices
 import (
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 )
 
 // SCACIServiceBundle packages all SCACI service dependencies
 type SCACIServiceBundle struct {
-	HandshakeSvc       scaci.HandshakeService
-	EndpointSvc        scaci.EndpointService
-	ULSvc              scaci.ULService
-	DLSvc              scaci.DLService
-	StatusSvc          scaci.StatusService
-	SessionValidator   scaci.SessionValidator
-	OperationRecorder  scaci.OperationRecorder
-	SessionPersistence scaci.SessionPersistence
-	ErrorRecorder      scaci.ErrorRecorder // §3.14 error persistence
+	HandshakeSvc      scaci.HandshakeService
+	EndpointSvc       scaci.EndpointService
+	ULSvc             scaci.ULService
+	DLSvc             scaci.DLService
+	StatusSvc         scaci.StatusService
+	SessionValidator  scaci.SessionValidator
+	OperationRecorder scaci.OperationRecorder
+	ErrorRecorder     scaci.ErrorRecorder // §3.14 error persistence
 }
 
 // NewSCACIServices creates all SCACI services with explicit dependencies
 func NewSCACIServices(
-	sessionRepo interfaces.SCACISessionRepository,
-	operationRepo interfaces.SCACIOperationRepository,
-	endpointRepo interfaces.EndpointRepository,
-	baseStationRepo interfaces.BaseStationRepository,
-	storage interfaces.Storage,
-	eventStore interfaces.SystemEventStore,
+	sessionRepo SessionResumeReader,
+	operationRepo SCACIOperationStore,
+	endpointRepo EndpointStore,
+	baseStationRepo BaseStationStore,
+	downlinks DownlinkStore,
+	downlinkEvents EnqueueRecorder,
+	eventStore scaci.ErrorEventStore,
 	bssciServer interface {
 		scaci.ULTransmitScheduler
 		scaci.DownlinkScheduler
 		scaci.DetachPropagator
 	},
+	decider AttachmentDecider,
+	queueIDs QueueIDAllocator,
+	downlinkLifetime time.Duration,
 	log logger.Logger,
 	orgResolver org.Resolver,
 	defaultTenantID int64,
@@ -42,7 +46,8 @@ func NewSCACIServices(
 	scEui uint64,
 	scVendor, scModel, scName, scSwVersion string,
 	serviceStart time.Time,
-) *SCACIServiceBundle {
+	clk clock.Clock,
+) (*SCACIServiceBundle, error) {
 	// Create certificate verifier
 	certVerifier := NewCertificateVerifier(log)
 
@@ -59,14 +64,19 @@ func NewSCACIServices(
 		scModel,
 		scName,
 		scSwVersion,
+		scaci.NewSessionFactory(clk),
 	)
 
 	// Create endpoint service
-	endpointSvc := NewEndpointService(
+	endpointSvc, err := NewEndpointService(
 		endpointRepo,
 		bssciServer, // DetachPropagator
+		decider,
 		log,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create status service (must be created before UL service for preference lookup)
 	statusSvc := NewStatusService(
@@ -83,11 +93,17 @@ func NewSCACIServices(
 	)
 
 	// Create DL service (delegates to BSSCI scheduler)
-	dlSvc := NewDLService(
+	dlSvc, err := NewDLService(
 		bssciServer, // DownlinkScheduler
-		storage,
+		downlinks,
+		queueIDs,
+		downlinkLifetime,
+		downlinkEvents,
 		log,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create session validator
 	sessionValidator := NewSessionValidator()
@@ -95,21 +111,17 @@ func NewSCACIServices(
 	// Create operation recorder
 	operationRecorder := NewOperationRecorder(operationRepo)
 
-	// Create session persistence
-	sessionPersistence := NewSessionPersistence(sessionRepo, log)
-
 	// Create error recorder (§3.14 error persistence and event emission)
 	errorRecorder := scaci.NewErrorRecorder(operationRepo, eventStore, log)
 
 	return &SCACIServiceBundle{
-		HandshakeSvc:       handshakeSvc,
-		EndpointSvc:        endpointSvc,
-		ULSvc:              ulSvc,
-		DLSvc:              dlSvc,
-		StatusSvc:          statusSvc,
-		SessionValidator:   sessionValidator,
-		OperationRecorder:  operationRecorder,
-		SessionPersistence: sessionPersistence,
-		ErrorRecorder:      errorRecorder,
-	}
+		HandshakeSvc:      handshakeSvc,
+		EndpointSvc:       endpointSvc,
+		ULSvc:             ulSvc,
+		DLSvc:             dlSvc,
+		StatusSvc:         statusSvc,
+		SessionValidator:  sessionValidator,
+		OperationRecorder: operationRecorder,
+		ErrorRecorder:     errorRecorder,
+	}, nil
 }

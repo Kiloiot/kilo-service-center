@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
@@ -61,7 +63,7 @@ func TestIntegrationRepository_Create_Success(t *testing.T) {
 		_, _ = db.Exec("DELETE FROM organizations WHERE org_id = $1", orgID)
 	}()
 
-	repo := NewIntegrationRepository(db)
+	repo := NewIntegrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create integration
@@ -104,7 +106,7 @@ func TestIntegrationRepository_GetByID_Success(t *testing.T) {
 		_, _ = db.Exec("DELETE FROM organizations WHERE org_id = $1", orgID)
 	}()
 
-	repo := NewIntegrationRepository(db)
+	repo := NewIntegrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create integration first
@@ -147,7 +149,7 @@ func TestIntegrationRepository_GetByID_NotFound(t *testing.T) {
 
 	_, _ = setupIntegrationTestData(t, db)
 
-	repo := NewIntegrationRepository(db)
+	repo := NewIntegrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Test retrieval of non-existent ID
@@ -174,7 +176,7 @@ func TestIntegrationRepository_ListByTenant_Success(t *testing.T) {
 		_, _ = db.Exec("DELETE FROM organizations WHERE org_id = $1", orgID)
 	}()
 
-	repo := NewIntegrationRepository(db)
+	repo := NewIntegrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create multiple integrations
@@ -218,7 +220,7 @@ func TestIntegrationRepository_Update_Success(t *testing.T) {
 		_, _ = db.Exec("DELETE FROM organizations WHERE org_id = $1", orgID)
 	}()
 
-	repo := NewIntegrationRepository(db)
+	repo := NewIntegrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create integration first
@@ -265,7 +267,7 @@ func TestIntegrationRepository_Delete_Success(t *testing.T) {
 		_, _ = db.Exec("DELETE FROM organizations WHERE org_id = $1", orgID)
 	}()
 
-	repo := NewIntegrationRepository(db)
+	repo := NewIntegrationRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
 	// Create integration first

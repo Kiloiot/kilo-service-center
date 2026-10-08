@@ -4,10 +4,11 @@
  * Organization detail view with configuration tabs and runtime admin guard.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import type { OrganizationUI } from "@api-types/api";
+import { isApiError } from "@api-types/api";
 import {
   Alert,
   Box,
@@ -17,17 +18,24 @@ import {
   Chip,
   CircularProgress,
   Grid,
-  Tab,
-  Tabs,
   Typography,
 } from "@mui/material";
 
-import { ApiError } from "@services/api";
+import { BackButton } from "@components/common/BackButton";
+import { ViewTabs } from "@components/common/ViewTabs";
 import { useOrganization as useOrganizationContext } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
+import { useCapabilities } from "@hooks/useCapabilities";
 import { useOrganization as useOrganizationQuery } from "@hooks/useOrganizations";
-import { formatRelativeDuration } from "@utils/formatters";
-import { ORG_STATE, ROUTES } from "@constants/app";
+import { organizationStateChip } from "@utils/chipMappings";
+import { formatRelativeDuration } from "@utils/date-format";
+import { getErrorMessage } from "@utils/error-message";
+import {
+  ORGANIZATION_VIEW,
+  ORGANIZATION_VIEWS,
+  type OrganizationView,
+  ROUTES,
+} from "@constants/app";
 import {
   ORG_USERS_PAGE,
   ORGANIZATION_FORM,
@@ -35,53 +43,17 @@ import {
   SECTION_CONFIG,
   UI_COMMON,
 } from "@constants/messages";
-import { ArrowBackIcon, BusinessIcon, PeopleIcon } from "@theme/icons";
+import { organizationUsersPath } from "@router/paths";
+import { accentTextColor } from "@theme/controls";
+import { BusinessIcon, PeopleIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
 import OrganizationForm from "../components/OrganizationForm";
 
-type ChipColor = "success" | "warning" | "error" | "default";
-
-function getOrganizationStateColor(state: string): ChipColor {
-  switch (state) {
-    case ORG_STATE.ACTIVE:
-      return "success";
-    case ORG_STATE.SUSPENDED:
-      return "warning";
-    case ORG_STATE.ARCHIVED:
-      return "error";
-    default:
-      return "default";
-  }
-}
-
-function getOrganizationStateLabel(state: string): string {
-  switch (state) {
-    case ORG_STATE.ACTIVE:
-      return ORGANIZATIONS_PAGE.STATE_ACTIVE;
-    case ORG_STATE.SUSPENDED:
-      return ORGANIZATIONS_PAGE.STATE_SUSPENDED;
-    case ORG_STATE.ARCHIVED:
-      return ORGANIZATIONS_PAGE.STATE_ARCHIVED;
-    default:
-      return state;
-  }
-}
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
-  <div
-    role="tabpanel"
-    hidden={value !== index}
-    id={`organization-tabpanel-${index}`}
-  >
-    {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-  </div>
-);
+const VIEW_LABELS: Record<OrganizationView, string> = {
+  [ORGANIZATION_VIEW.OVERVIEW]: UI_COMMON.TITLE_DASHBOARD,
+  [ORGANIZATION_VIEW.CONFIGURATION]: SECTION_CONFIG,
+};
 
 interface OrganizationDetailHeaderProps {
   org: OrganizationUI;
@@ -101,27 +73,23 @@ const OrganizationDetailHeader: React.FC<OrganizationDetailHeaderProps> = ({
       mb={3}
     >
       <Box display="flex" alignItems="center" gap={2}>
-        <Button
-          startIcon={<ArrowBackIcon />}
+        <BackButton
+          label={ORGANIZATIONS_PAGE.BACK_TO_LIST}
           onClick={() => navigate(ROUTES.ORGANIZATIONS)}
-        >
-          {ORGANIZATIONS_PAGE.BACK_TO_LIST}
-        </Button>
+        />
         <Typography variant="h4" component="h1">
           {org.name}
         </Typography>
         <Chip
-          label={getOrganizationStateLabel(org.state)}
-          color={getOrganizationStateColor(org.state)}
+          label={organizationStateChip(org.state).label}
+          color={organizationStateChip(org.state).color}
           size="small"
         />
       </Box>
       <Button
         variant="outlined"
         startIcon={<PeopleIcon />}
-        onClick={() =>
-          navigate(ROUTES.ORGANIZATION_USERS.replace(":id", orgId))
-        }
+        onClick={() => navigate(organizationUsersPath(orgId))}
       >
         {ORG_USERS_PAGE.VIEW_MEMBERS}
       </Button>
@@ -133,67 +101,41 @@ const OrganizationInfoCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
   <Card>
     <CardContent>
       <Box display="flex" alignItems="center" gap={2} mb={3}>
-        <BusinessIcon sx={{ fontSize: 40, color: "primary.main" }} />
+        <BusinessIcon
+          sx={{
+            fontSize: componentSpacing.headerIcon.size,
+            color: accentTextColor,
+          }}
+        />
         <Typography variant="h6">{ORGANIZATIONS_PAGE.DETAILS_TITLE}</Typography>
       </Box>
 
       <Grid container spacing={2}>
-        <Grid size={{ xs: 12, sm: 6 }}>
+        <Grid size={componentSpacing.gridSpan.halfFromSm}>
           <Typography variant="body2" color="text.secondary">
             {ORGANIZATION_FORM.LABEL_NAME}
           </Typography>
           <Typography variant="body1">{org.name}</Typography>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
+        <Grid size={componentSpacing.gridSpan.halfFromSm}>
           <Typography variant="body2" color="text.secondary">
             {ORGANIZATION_FORM.LABEL_STATE}
           </Typography>
           <Typography variant="body1">
-            {getOrganizationStateLabel(org.state)}
+            {organizationStateChip(org.state).label}
           </Typography>
         </Grid>
-        <Grid size={{ xs: 12 }}>
+        <Grid size={componentSpacing.gridSpan.full}>
           <Typography variant="body2" color="text.secondary">
             {ORGANIZATION_FORM.LABEL_DESCRIPTION}
           </Typography>
           <Typography variant="body1">{org.description || "-"}</Typography>
         </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Typography variant="body2" color="text.secondary">
-            {ORGANIZATION_FORM.LABEL_CAN_HAVE_BS}
-          </Typography>
-          <Chip
-            label={
-              org.canHaveBaseStations
-                ? ORGANIZATIONS_PAGE.QUOTA_ALLOWED
-                : ORGANIZATIONS_PAGE.QUOTA_NOT_ALLOWED
-            }
-            color={org.canHaveBaseStations ? "success" : "default"}
-            size="small"
-            variant="outlined"
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
+        <Grid size={componentSpacing.gridSpan.halfFromSm}>
           <Typography variant="body2" color="text.secondary">
             {ORGANIZATION_FORM.INFO_TENANT_ID}
           </Typography>
           <Typography variant="body1">{org.tenantId}</Typography>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Typography variant="body2" color="text.secondary">
-            {ORGANIZATION_FORM.LABEL_MAX_BS_COUNT}
-          </Typography>
-          <Typography variant="body1">
-            {org.maxBaseStationCount ?? ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}
-          </Typography>
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6 }}>
-          <Typography variant="body2" color="text.secondary">
-            {ORGANIZATION_FORM.LABEL_MAX_EP_COUNT}
-          </Typography>
-          <Typography variant="body1">
-            {org.maxEndpointCount ?? ORGANIZATIONS_PAGE.QUOTA_UNLIMITED}
-          </Typography>
         </Grid>
       </Grid>
     </CardContent>
@@ -253,8 +195,8 @@ const OrganizationDetail: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { setOrganization } = useOrganizationContext();
-  const { isAdmin, isHydrated } = useSession();
-  const [activeTab, setActiveTab] = useState(0);
+  const { isHydrated } = useSession();
+  const { isServerAdmin: isAdmin } = useCapabilities();
 
   const canQuery = isHydrated && isAdmin && Boolean(id);
   const {
@@ -285,7 +227,7 @@ const OrganizationDetail: React.FC = () => {
         display="flex"
         justifyContent="center"
         alignItems="center"
-        minHeight="400px"
+        minHeight={componentSpacing.stateView.pageMinHeight}
       >
         <CircularProgress />
       </Box>
@@ -293,23 +235,19 @@ const OrganizationDetail: React.FC = () => {
   }
 
   if (isError) {
-    const isForbidden = error instanceof ApiError && error.isForbidden();
+    const isForbidden = isApiError(error) && error.isForbidden();
     return (
       <Box sx={{ p: 3, pt: 4 }}>
         <Alert severity={isForbidden ? "warning" : "error"}>
           {isForbidden
             ? ORGANIZATIONS_PAGE.ERR_NOT_MEMBER
-            : error instanceof Error
-              ? error.message
-              : ORGANIZATIONS_PAGE.ERR_NOT_FOUND}
+            : getErrorMessage(error, ORGANIZATIONS_PAGE.ERR_NOT_FOUND)}
         </Alert>
-        <Button
-          sx={{ mt: 2 }}
-          startIcon={<ArrowBackIcon />}
+        <BackButton
+          label={ORGANIZATIONS_PAGE.BACK_TO_LIST}
           onClick={() => navigate(ROUTES.ORGANIZATIONS)}
-        >
-          {ORGANIZATIONS_PAGE.BACK_TO_LIST}
-        </Button>
+          sx={{ mt: 2 }}
+        />
       </Box>
     );
   }
@@ -322,51 +260,34 @@ const OrganizationDetail: React.FC = () => {
     );
   }
 
-  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue);
-  };
-
   return (
     <Box data-testid="organization-detail-page" sx={{ p: 3, pt: 4 }}>
       <OrganizationDetailHeader org={org} orgId={id ?? ""} />
 
-      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          aria-label={ORGANIZATIONS_PAGE.ARIA_TABS}
-        >
-          <Tab
-            label={UI_COMMON.TITLE_DASHBOARD}
-            id="organization-tab-0"
-            aria-controls="organization-tabpanel-0"
-          />
-          <Tab
-            label={SECTION_CONFIG}
-            id="organization-tab-1"
-            aria-controls="organization-tabpanel-1"
-          />
-        </Tabs>
-      </Box>
-
-      <TabPanel value={activeTab} index={0}>
-        <Grid container spacing={3}>
-          <Grid size={{ xs: 12, md: 8 }}>
-            <OrganizationInfoCard org={org} />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <OrganizationMetaCard org={org} />
-            <OrganizationTagsCard org={org} />
-          </Grid>
-        </Grid>
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={1}>
-        <OrganizationForm
-          organization={org}
-          onDeleted={() => navigate(ROUTES.ORGANIZATIONS)}
-        />
-      </TabPanel>
+      <ViewTabs
+        views={ORGANIZATION_VIEWS}
+        labels={VIEW_LABELS}
+        ariaLabel={ORGANIZATIONS_PAGE.ARIA_TABS}
+      >
+        {(view) =>
+          view === ORGANIZATION_VIEW.OVERVIEW ? (
+            <Grid container spacing={3}>
+              <Grid size={componentSpacing.gridSpan.twoThirds}>
+                <OrganizationInfoCard org={org} />
+              </Grid>
+              <Grid size={componentSpacing.gridSpan.third}>
+                <OrganizationMetaCard org={org} />
+                <OrganizationTagsCard org={org} />
+              </Grid>
+            </Grid>
+          ) : (
+            <OrganizationForm
+              organization={org}
+              onDeleted={() => navigate(ROUTES.ORGANIZATIONS)}
+            />
+          )
+        }
+      </ViewTabs>
     </Box>
   );
 };

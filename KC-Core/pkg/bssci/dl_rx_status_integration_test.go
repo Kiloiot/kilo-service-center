@@ -11,6 +11,12 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+// DL RX status fixtures: page size for queries and how many messages each scenario stores.
+const (
+	testDLRXQueryLimit   = 10
+	testDLRXMessageCount = 2
+)
+
 // MockStorage implements the storage interface for testing
 type MockStorage struct {
 	mock.Mock
@@ -32,21 +38,6 @@ func (m *MockStorage) GetDLRXStatusByEndpoint(ctx context.Context, tenantID int6
 func (m *MockStorage) GetAverageDLRXMetrics(ctx context.Context, tenantID int64, epEui []byte, startTime, endTime *time.Time) (float64, float64, int, error) {
 	args := m.Called(ctx, tenantID, epEui, startTime, endTime)
 	return args.Get(0).(float64), args.Get(1).(float64), args.Int(2), args.Error(3)
-}
-
-func (m *MockStorage) GetEndpointBaseStation(ctx context.Context, epEui string, tenantID string) (string, error) {
-	args := m.Called(ctx, epEui, tenantID)
-	return args.String(0), args.Error(1)
-}
-
-func (m *MockStorage) GetDLRXStatusQueryHistory(_ context.Context, _ int64, _ []byte, _, _ int, _, _ *time.Time) ([]*mioty.DLRXStatusQuery, int, error) {
-	// No-op stub to satisfy interface
-	return nil, 0, nil
-}
-
-func (m *MockStorage) GetDLRXStatusQueryStats(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (pending, received, timeout int64, err error) {
-	// No-op stub to satisfy interface
-	return 0, 0, 0, nil
 }
 
 func TestDLRXStatusCreation(t *testing.T) {
@@ -84,7 +75,7 @@ func TestDLRXStatusRetrieval(t *testing.T) {
 	ctx := testutil.TestContext()
 	tenantID := int64(1)
 	epEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	limit := 10
+	limit := testDLRXQueryLimit
 	offset := 0
 
 	// Test data
@@ -110,7 +101,7 @@ func TestDLRXStatusRetrieval(t *testing.T) {
 			DlRxRssi:  -80.5,
 		},
 	}
-	totalCount := 2
+	totalCount := testDLRXMessageCount
 
 	// Set expectations
 	mockStorage.On("GetDLRXStatusByEndpoint", ctx, tenantID, epEui, limit, offset, (*time.Time)(nil), (*time.Time)(nil)).
@@ -137,7 +128,7 @@ func TestDLRXStatusAverageMetrics(t *testing.T) {
 	// Expected values
 	expectedAvgSnr := 9.35
 	expectedAvgRssi := -77.75
-	expectedCount := 2
+	expectedCount := testDLRXMessageCount
 
 	// Set expectations
 	mockStorage.On("GetAverageDLRXMetrics", ctx, tenantID, epEui, (*time.Time)(nil), (*time.Time)(nil)).
@@ -161,7 +152,7 @@ func TestDLRXStatusTenantIsolation(t *testing.T) {
 	tenant1ID := int64(1)
 	tenant2ID := int64(2)
 	epEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	limit := 10
+	limit := testDLRXQueryLimit
 	offset := 0
 
 	// Test data for tenant 1
@@ -202,7 +193,7 @@ func TestDLRXStatusTimeFiltering(t *testing.T) {
 	ctx := testutil.TestContext()
 	tenantID := int64(1)
 	epEui := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
-	limit := 10
+	limit := testDLRXQueryLimit
 	offset := 0
 
 	// Time range
@@ -232,26 +223,5 @@ func TestDLRXStatusTimeFiltering(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, count)
 	assert.Len(t, statuses, 1)
-	mockStorage.AssertExpectations(t)
-}
-
-func TestGetEndpointBaseStation(t *testing.T) {
-	// Setup
-	mockStorage := new(MockStorage)
-	ctx := testutil.TestContext()
-	epEui := "0102030405060708"
-	tenantID := "1"
-	expectedBsEui := "0807060504030201"
-
-	// Set expectations
-	mockStorage.On("GetEndpointBaseStation", ctx, epEui, tenantID).
-		Return(expectedBsEui, nil)
-
-	// Execute
-	bsEui, err := mockStorage.GetEndpointBaseStation(ctx, epEui, tenantID)
-
-	// Assert
-	assert.NoError(t, err)
-	assert.Equal(t, expectedBsEui, bsEui)
 	mockStorage.AssertExpectations(t)
 }

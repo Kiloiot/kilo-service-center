@@ -2,17 +2,18 @@ package builders
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/grpc"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/health"
 	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/interceptors"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/management"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
 // BuildGRPCServer constructs the gRPC server with interceptor chain (auth, org resolver).
@@ -20,7 +21,7 @@ func BuildGRPCServer(infra *Infrastructure) (*grpc.Server, grpc.Config, error) {
 	log := logger.Get()
 
 	// Create gRPC organization resolver adapter (tenantID → orgUUID)
-	grpcOrgResolver := grpc.NewOrgResolverAdapter(infra.Storage.Organizations(), infra.LoggerIface)
+	grpcOrgResolver := grpc.NewOrgResolverAdapter(infra.Repos.Organizations, infra.LoggerIface)
 
 	// Create tenant resolver adapter (orgUUID → tenantID)
 	grpcTenantResolver := grpc.NewTenantResolverAdapter(infra.OrgResolverSvc, infra.LoggerIface)
@@ -30,44 +31,29 @@ func BuildGRPCServer(infra *Infrastructure) (*grpc.Server, grpc.Config, error) {
 	var failClosedResolver org.Resolver
 	if cfg.General.OrgEnforcementEnabled {
 		failClosedResolver = infra.OrgResolverSvc
-		log.Info("Initializing gRPC server with organization enforcement enabled")
+		log.Info(LogInitializingGRPCServerWithOrganizationEnforcementEnabled)
 	} else {
-		log.Info("Initializing gRPC server in community mode (org enforcement disabled)")
+		log.Info(LogInitializingGRPCServerCommunityMode)
 	}
 
-	// RBAC policies are always defined (fail-closed when identity unavailable)
-	rbacPolicies := map[string][]string{
-		pb.KiloCenterService_GenerateServerCertificates_FullMethodName: {models.OrganizationRoleOwner, models.OrganizationRoleAdmin},
-		pb.KiloCenterService_RenewServerCertificates_FullMethodName:    {models.OrganizationRoleOwner, models.OrganizationRoleAdmin},
-		pb.CoreService_GenerateServerCertificates_FullMethodName:       {models.OrganizationRoleOwner, models.OrganizationRoleAdmin},
-		pb.CoreService_RenewServerCertificates_FullMethodName:          {models.OrganizationRoleOwner, models.OrganizationRoleAdmin},
-	}
-
-	// Role resolver requires KC-Identity connection
-	var roleResolver interceptors.RoleResolver
-	if infra.IdentityInternalClient != nil {
-		roleResolver = grpc.NewRoleResolver(infra.IdentityInternalClient, cfg.InternalAuth.PeerSecret)
-		log.Info("RBAC policies configured for certificate management RPCs")
+	roleSource, err := buildRoleSource(infra)
+	if err != nil {
+		return nil, grpc.Config{}, err
 	}
 
 	// Admin checker lets the fail-closed org resolver exempt server admins from the org-mismatch check.
 	var adminChecker interceptors.AdminChecker
 	if infra.IdentityInternalClient != nil {
 		adminChecker = grpc.NewAdminOrgAdapter(infra.IdentityInternalClient, cfg.InternalAuth.PeerSecret)
-		log.Info("AdminChecker wired into org resolver interceptor")
-	}
-
-	// Resolve RBAC cache TTL from config with bounds check
-	rbacCacheTTL := time.Duration(cfg.GRPC.RBACRoleCacheTTLSeconds) * time.Second
-	if cfg.GRPC.RBACRoleCacheTTLSeconds <= 0 {
-		rbacCacheTTL = time.Duration(pkgconfig.DefaultRBACRoleCacheTTLSeconds) * time.Second
-		log.Warn("Invalid rbac_role_cache_ttl_seconds, using default", "default", pkgconfig.DefaultRBACRoleCacheTTLSeconds)
+		log.Info(LogAdminCheckerWiredIntoOrgResolverInterceptor)
 	}
 
 	grpcConfig := grpc.Config{
+		Log:                  infra.LoggerIface,
 		Port:                 cfg.GRPC.Port,
 		Host:                 cfg.GRPC.Host,
 		InternalTrustEnabled: cfg.GRPC.InternalTrustEnabled,
+		PeerSecret:           cfg.InternalAuth.PeerSecret,
 		TLSCert:              cfg.GRPC.TLSCert,
 		TLSKey:               cfg.GRPC.TLSKey,
 		EnableTLS:            cfg.GRPC.EnableTLS,
@@ -80,20 +66,20 @@ func BuildGRPCServer(infra *Infrastructure) (*grpc.Server, grpc.Config, error) {
 			Algorithm:        cfg.Auth.Algorithm,
 			UserClaim:        cfg.Auth.OAuth2.UserIDClaim,
 			HMACSecret:       cfg.Auth.HMACSecret,
-			EventWriter:      infra.Storage.SystemEvents(),
+			EventWriter:      infra.Repos.SystemEvents,
 			PlatformTenantID: cfg.General.TenantID,
+			Logger:           infra.LoggerIface,
 		},
-		EventWriter:           infra.Storage.SystemEvents(),
+		EventWriter:           infra.Repos.SystemEvents,
 		PlatformTenantID:      cfg.General.TenantID,
 		AdminChecker:          adminChecker,
 		OrgResolver:           grpcOrgResolver,
 		TenantResolver:        grpcTenantResolver,
 		FailClosedOrgResolver: failClosedResolver,
 		DefaultTenantID:       cfg.General.TenantID,
-		APIKeyAuth:            grpc.NewCoreAPIKeyAdapter(infra.Storage.APIKeys()),
-		RoleResolver:          roleResolver,
-		RBACPolicies:          rbacPolicies,
-		RBACRoleCacheTTL:      rbacCacheTTL,
+		DefaultOrgResolver:    infra.OrgResolverSvc,
+		APIKeyAuth:            grpc.NewCoreAPIKeyAdapter(infra.Repos.APIKeys),
+		RoleSource:            roleSource,
 		EnableReflection:      cfg.GRPC.EnableReflection,
 		EnableHealth:          cfg.GRPC.EnableHealth,
 		HTTPConfig: grpc.HTTPServerConfig{
@@ -101,25 +87,37 @@ func BuildGRPCServer(infra *Infrastructure) (*grpc.Server, grpc.Config, error) {
 			WriteTimeout: cfg.GRPC.HTTP.WriteTimeout,
 			IdleTimeout:  cfg.GRPC.HTTP.IdleTimeout,
 		},
-		GRPCWeb: grpc.WebConfig{
-			Enabled:          cfg.GRPC.Web.Enabled,
-			AllowedOrigins:   cfg.GRPC.Web.AllowedOrigins,
-			AllowedHeaders:   cfg.GRPC.Web.AllowedHeaders,
-			ExposeHeaders:    cfg.GRPC.Web.ExposeHeaders,
-			AllowCredentials: cfg.GRPC.Web.AllowCredentials,
-			MaxAge:           cfg.GRPC.Web.MaxAge,
-			AllowAllOrigins:  cfg.GRPC.Web.AllowAllOrigins,
-			EnableWebsockets: cfg.GRPC.Web.EnableWebsockets,
-			AllowedMethods:   cfg.GRPC.Web.AllowedMethods,
-		},
+		GRPCWeb: cfg.GRPC.Web,
 	}
 
 	grpcServer, err := grpc.NewServer(grpcConfig)
 	if err != nil {
-		return nil, grpc.Config{}, fmt.Errorf("failed to create gRPC server: %w", err)
+		return nil, grpc.Config{}, fmt.Errorf("%s: %w", errMsgFailedToCreateGRPCServer, err)
 	}
+	infra.statusBoard.require(statusNameGRPC, pkgconfig.ListenerProbeAddress(cfg.GRPC.Host, cfg.GRPC.Port),
+		health.NewListenerChecker(grpcServer))
 
 	return grpcServer, grpcConfig, nil
+}
+
+// buildRoleSource resolves every caller's roles through KC-Identity; without
+// it no request could be authorized, so the service refuses to start.
+func buildRoleSource(infra *Infrastructure) (interceptors.RoleSource, error) {
+	log := logger.Get()
+	cfg := infra.Config
+	if infra.IdentityInternalClient == nil {
+		if cfg.Identity.Address == "" {
+			return nil, errors.New(errMsgRoleSourceNeedsIdentityAddress)
+		}
+		return nil, fmt.Errorf(errFmtRoleSourceIdentityClientMissing, cfg.Identity.Address)
+	}
+	cacheTTL := time.Duration(cfg.GRPC.RBACRoleCacheTTLSeconds) * time.Second
+	if cfg.GRPC.RBACRoleCacheTTLSeconds <= 0 {
+		cacheTTL = time.Duration(pkgconfig.DefaultRBACRoleCacheTTLSeconds) * time.Second
+		log.Warn(LogInvalidRbacRoleCacheTTLSecondsUsingDefault, logger.FieldDefault, pkgconfig.DefaultRBACRoleCacheTTLSeconds)
+	}
+	log.Info(LogRoleEnforcementWired, logger.FieldCacheTTL, cacheTTL)
+	return grpc.NewIdentityRoleSource(infra.IdentityInternalClient, cfg.InternalAuth.PeerSecret, cacheTTL), nil
 }
 
 // RegisterAndServe registers gRPC services and starts the gRPC + management HTTP servers.
@@ -136,11 +134,11 @@ func RegisterAndServe(
 	compatService := grpc.NewKiloCenterServiceCompat(core)
 	pb.RegisterCoreServiceServer(grpcServer.GetServer(), core)
 	pb.RegisterKiloCenterServiceServer(grpcServer.GetServer(), compatService)
-	log.Info("gRPC services registered (Core + KiloCenterCompat)")
+	log.Info(LogGRPCServicesRegisteredCoreKiloCenterCompat)
 
 	// Start gRPC server in a goroutine AFTER service registration
 	go func() {
-		log.Info("Starting gRPC server", "port", grpcConfig.Port)
+		log.Info(LogStartingGRPCServer, logger.FieldPort, grpcConfig.Port)
 		if err := grpcServer.Start(); err != nil {
 			log.Error(LogGRPCServerFailed, logger.Err(err))
 			cancel()
@@ -148,12 +146,12 @@ func RegisterAndServe(
 	}()
 
 	// Create BSSCI manager for API access
-	bssciManager := management.NewBSSCIManager(protocol.BSSCIServer, infra.Storage, infra.TenantID, infra.LoggerIface)
-	log.Info("BSSCI manager initialized")
+	bssciManager := management.NewBSSCIManager(protocol.BSSCIServer, infra.LoggerIface)
+	log.Info(LogBSSCIManagerInitialized)
 
 	// Start internal HTTP server for BSSCI management
 	go func() {
-		if err := bssciManager.StartHTTPServer(8081); err != nil {
+		if err := bssciManager.StartHTTPServer(infra.Config.Protocol.ManagementPort); err != nil {
 			log.Error(LogFailedBSSCIMgmtServer, logger.Err(err))
 		}
 	}()

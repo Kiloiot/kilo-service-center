@@ -26,18 +26,32 @@ func (m *mockServerStream) Context() context.Context {
 	return m.ctx
 }
 
+// Test rate-limit policy values and fixtures.
+const (
+	testPeerPort              = 12345
+	testRateLimitEnabled      = true
+	testRequestsPerMin        = 60
+	testBurst                 = 3
+	testCleanupInterval       = 5 * time.Minute
+	testSingleRequestPerMin   = 1
+	testSingleBurst           = 1
+	testMethodListEndpoints   = "/kilocenter.api.v1.KiloCenterService/ListEndpoints"
+	testMethodRegisterAccount = "/kilocenter.api.v1.IdentityService/RegisterAccount"
+	testMethodCompatRegister  = "/kilocenter.api.v1.KiloCenterService/RegisterAccount"
+)
+
 func newPeerContext(ip string) context.Context {
 	return peer.NewContext(testutil.TestContext(), &peer.Peer{
-		Addr: &net.TCPAddr{IP: net.ParseIP(ip), Port: 12345},
+		Addr: &net.TCPAddr{IP: net.ParseIP(ip), Port: testPeerPort},
 	})
 }
 
 func defaultConfig() config.GatewayRateLimitConfig {
 	return config.GatewayRateLimitConfig{
-		Enabled:         true,
-		RequestsPerMin:  60,
-		Burst:           3,
-		CleanupInterval: 5 * time.Minute,
+		Enabled:         testRateLimitEnabled,
+		RequestsPerMin:  testRequestsPerMin,
+		Burst:           testBurst,
+		CleanupInterval: testCleanupInterval,
 	}
 }
 
@@ -52,7 +66,7 @@ func TestRateLimiter_AllowsNonLimitedMethods(t *testing.T) {
 	interceptor := rl.StreamInterceptor()
 
 	stream := &mockServerStream{ctx: newPeerContext("192.168.1.1")}
-	info := &grpc.StreamServerInfo{FullMethod: "/kilocenter.api.v1.KiloCenterService/ListEndpoints"}
+	info := &grpc.StreamServerInfo{FullMethod: testMethodListEndpoints}
 
 	handlerCalled := false
 	handler := func(_ interface{}, _ grpc.ServerStream) error {
@@ -68,8 +82,8 @@ func TestRateLimiter_AllowsNonLimitedMethods(t *testing.T) {
 
 func TestRateLimiter_AllowsBurstThenRejects(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.Burst = 3
-	cfg.RequestsPerMin = 1 // very low rate so token refill is negligible during the test
+	cfg.Burst = testBurst
+	cfg.RequestsPerMin = testSingleRequestPerMin // very low rate so token refill is negligible during the test
 
 	rl := NewRegistrationRateLimiter(cfg)
 	defer rl.Close()
@@ -77,7 +91,7 @@ func TestRateLimiter_AllowsBurstThenRejects(t *testing.T) {
 	interceptor := rl.StreamInterceptor()
 
 	stream := &mockServerStream{ctx: newPeerContext("10.0.0.1")}
-	info := &grpc.StreamServerInfo{FullMethod: "/kilocenter.api.v1.IdentityService/RegisterAccount"}
+	info := &grpc.StreamServerInfo{FullMethod: testMethodRegisterAccount}
 
 	// First `burst` requests should succeed
 	for i := 0; i < cfg.Burst; i++ {
@@ -94,7 +108,7 @@ func TestRateLimiter_AllowsBurstThenRejects(t *testing.T) {
 	assert.Equal(t, codes.ResourceExhausted, st.Code())
 
 	// Verify the second rate-limited method is also enforced
-	info2 := &grpc.StreamServerInfo{FullMethod: "/kilocenter.api.v1.KiloCenterService/RegisterAccount"}
+	info2 := &grpc.StreamServerInfo{FullMethod: testMethodCompatRegister}
 	err = interceptor(nil, stream, info2, passHandler)
 	require.Error(t, err)
 
@@ -105,15 +119,15 @@ func TestRateLimiter_AllowsBurstThenRejects(t *testing.T) {
 
 func TestRateLimiter_DifferentIPsIndependent(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.Burst = 1
-	cfg.RequestsPerMin = 1
+	cfg.Burst = testSingleBurst
+	cfg.RequestsPerMin = testSingleRequestPerMin
 
 	rl := NewRegistrationRateLimiter(cfg)
 	defer rl.Close()
 
 	interceptor := rl.StreamInterceptor()
 
-	info := &grpc.StreamServerInfo{FullMethod: "/kilocenter.api.v1.IdentityService/RegisterAccount"}
+	info := &grpc.StreamServerInfo{FullMethod: testMethodRegisterAccount}
 
 	streamA := &mockServerStream{ctx: newPeerContext("172.16.0.1")}
 	streamB := &mockServerStream{ctx: newPeerContext("172.16.0.2")}

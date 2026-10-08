@@ -2,16 +2,18 @@ package bssciservices
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/roaming"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -19,6 +21,63 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
+
+// Fixture policies for the roaming integration tests.
+const (
+	testRoamingAuditTrailEnabled = true
+	testRoamingEnabled           = true
+	testRoamingCacheTTL          = 100 * time.Millisecond
+	testRoamingCacheExpiryWait   = 150 * time.Millisecond
+	testVisitingRoamingIn        = 10
+	testOwnedRoamingOut          = 5
+	testRoamingCacheEnabled      = true
+	testRoamingCacheLifetime     = 5 * time.Minute
+	testRoamingCacheMaxSize      = 100
+)
+
+// testRoamingDetectorConfig is a cached, audited detector configuration.
+func testRoamingDetectorConfig() roaming.DetectorConfig {
+	return roaming.DetectorConfig{
+		CacheEnabled:     testRoamingCacheEnabled,
+		CacheTTL:         testRoamingCacheLifetime,
+		CacheMaxSize:     testRoamingCacheMaxSize,
+		EnableAuditTrail: testRoamingAuditTrailEnabled,
+	}
+}
+
+func newTestRoamingDetector(t *testing.T, config roaming.DetectorConfig, resolver roaming.EndpointOwnershipResolver,
+	recorder roaming.EventRecorder, clk clock.Clock,
+) *roaming.Detector {
+	t.Helper()
+	detector, err := roaming.NewDetector(config, resolver, recorder, clk)
+	require.NoError(t, err)
+	return detector
+}
+
+// NewRoamingDetector applies the configured settings: with the cache off,
+// every reception resolves ownership, and with the audit trail off no
+// roaming event is written.
+func TestNewRoamingDetector_AppliesTheConfiguredSettings(t *testing.T) {
+	ctx := testutil.TestContext()
+	epEui := []byte{0x70, 0xB3, 0xD5, 0x67, 0x70, 0x11, 0x15, 0x07}
+	var lookups int
+	mockStorage := &MockStorageWithRoaming{
+		endpoints: map[string]*models.EndPoint{
+			"70B3D56770111507": {ID: 458, TenantID: 3, OwnerTenantID: 3},
+		},
+		lookupCallback: func() { lookups++ },
+	}
+	detector, err := NewRoamingDetector(roaming.DetectorConfig{}, mockStorage, mockStorage, clock.SystemClock{})
+	require.NoError(t, err)
+
+	for range 2 {
+		_, _, err = detector.DetectRoaming(ctx, epEui, 3)
+		require.NoError(t, err)
+	}
+	assert.Equal(t, 2, lookups, "a disabled cache resolves ownership on every reception")
+	require.NoError(t, detector.RecordAttachEvent(ctx, epEui, 3, 4, []byte{0x01}))
+	assert.Empty(t, mockStorage.roamingEvents, "a disabled audit trail records no roaming event")
+}
 
 // Integration test for complete roaming flow
 func TestRoamingIntegration_AttachDetachFlow(t *testing.T) {
@@ -54,22 +113,15 @@ func TestRoamingIntegration_AttachDetachFlow(t *testing.T) {
 			"2-1": true,
 		},
 		roamingEvents:  []models.RoamingEvent{},
-		sessionRoaming: make(map[int64][]models.RoamingEndpointInfo),
+		sessionRoaming: make(map[int64][]roamingEndpointInfo),
 	}
 
 	// Create roaming configuration using production defaults
-	roamingConfig := roaming.DefaultDetectorConfig()
+	roamingConfig := testRoamingDetectorConfig()
 
 	// Create roaming service
-	adapter := &RoamingAdapter{
-		storage: mockStorage,
-	}
-	detector := roaming.NewDetector(roamingConfig, adapter, adapter)
-	roamingSvc := &RoamingService{
-		detector: detector,
-		storage:  mockStorage,
-		enabled:  true,
-	}
+	detector := newTestRoamingDetector(t, roamingConfig, mockStorage, mockStorage, clock.SystemClock{})
+	roamingSvc := NewRoamingService(detector, mockStorage, logger.NewNop())
 
 	// Test 1: Attach operation with roaming detection
 	t.Run("AttachWithRoaming", func(t *testing.T) {
@@ -97,7 +149,7 @@ func TestRoamingIntegration_AttachDetachFlow(t *testing.T) {
 		// Verify session tracking
 		endpoints := mockStorage.sessionRoaming[sessionID]
 		assert.Len(t, endpoints, 1)
-		assert.Equal(t, hex.EncodeToString(epEui), endpoints[0].EUI)
+		assert.Equal(t, mioty.FormatEUIBytes(epEui), endpoints[0].EUI)
 		assert.Equal(t, ownerTenantID, endpoints[0].OwnerTenantID)
 	})
 
@@ -107,10 +159,6 @@ func TestRoamingIntegration_AttachDetachFlow(t *testing.T) {
 		_, resolvedOwner, err := roamingSvc.DetectAndValidateRoaming(ctx, epEui, servingTenantID)
 		require.NoError(t, err)
 		assert.Equal(t, ownerTenantID, resolvedOwner)
-
-		// Verify cache hit (should be cached from attach)
-		metrics := detector.GetMetrics()
-		assert.Greater(t, metrics.GetCacheHits(), uint64(0))
 	})
 
 	// Test 3: Detach operation with cleanup
@@ -155,19 +203,12 @@ func TestRoamingIntegration_InvalidPartnership(t *testing.T) {
 		roamingEvents: []models.RoamingEvent{},
 	}
 
-	roamingConfig := &roaming.DetectorConfig{
-		EnableAuditTrail: true,
+	roamingConfig := roaming.DetectorConfig{
+		EnableAuditTrail: testRoamingAuditTrailEnabled,
 	}
 
-	adapter := &RoamingAdapter{
-		storage: mockStorage,
-	}
-	detector := roaming.NewDetector(roamingConfig, adapter, adapter)
-	roamingSvc := &RoamingService{
-		detector: detector,
-		storage:  mockStorage,
-		enabled:  true,
-	}
+	detector := newTestRoamingDetector(t, roamingConfig, mockStorage, mockStorage, clock.SystemClock{})
+	roamingSvc := NewRoamingService(detector, mockStorage, logger.NewNop())
 
 	// Attempt to validate roaming without partnership
 	isRoaming, _, err := roamingSvc.DetectAndValidateRoaming(ctx, epEui, servingTenantID)
@@ -181,6 +222,31 @@ func TestRoamingIntegration_InvalidPartnership(t *testing.T) {
 	assert.Len(t, mockStorage.roamingEvents, 0)
 }
 
+// A reception through the owner's station caches the owner; a later
+// reception through a station without a roaming agreement is still refused.
+func TestRoamingIntegration_NonPartnerStationRefusedAfterOwnerReception(t *testing.T) {
+	ctx := testutil.TestContext()
+	epEui := []byte{0x70, 0xB3, 0xD5, 0x67, 0x70, 0x11, 0x15, 0x06}
+	const ownerTenantID, strangerTenantID = int64(5), int64(9)
+	mockStorage := &MockStorageWithRoaming{
+		endpoints: map[string]*models.EndPoint{
+			"70B3D56770111506": {ID: 457, TenantID: ownerTenantID, OwnerTenantID: ownerTenantID},
+		},
+		tenantPartners: map[string]bool{},
+	}
+	detector := newTestRoamingDetector(t, testRoamingDetectorConfig(), mockStorage, mockStorage, clock.SystemClock{})
+	roamingSvc := NewRoamingService(detector, mockStorage, logger.NewNop())
+
+	isRoaming, owner, err := roamingSvc.DetectAndValidateRoaming(ctx, epEui, ownerTenantID)
+	require.NoError(t, err)
+	assert.False(t, isRoaming)
+	assert.Equal(t, ownerTenantID, owner)
+
+	_, _, err = roamingSvc.DetectAndValidateRoaming(ctx, epEui, strangerTenantID)
+	require.Error(t, err, "a station without a roaming agreement must not take the owner's uplinks")
+	assert.ErrorIs(t, err, errRoamingNotAllowed)
+}
+
 // Test cache expiration and refresh
 func TestRoamingIntegration_CacheExpiration(t *testing.T) {
 	ctx := testutil.TestContext()
@@ -189,7 +255,7 @@ func TestRoamingIntegration_CacheExpiration(t *testing.T) {
 	ownerTenantID := int64(3)
 	servingTenantID := int64(4)
 
-	lookupCount := 0
+	var lookupCount int
 	mockStorage := &MockStorageWithRoaming{
 		endpoints: map[string]*models.EndPoint{
 			"1122334455667788": {
@@ -205,13 +271,10 @@ func TestRoamingIntegration_CacheExpiration(t *testing.T) {
 
 	// Short TTL for testing cache expiration
 	// Use production defaults with custom TTL for expiration test
-	roamingConfig := roaming.DefaultDetectorConfig()
-	roamingConfig.CacheTTL = 100 * time.Millisecond // Short TTL for testing expiration
+	roamingConfig := testRoamingDetectorConfig()
+	roamingConfig.CacheTTL = testRoamingCacheTTL
 
-	adapter := &RoamingAdapter{
-		storage: mockStorage,
-	}
-	detector := roaming.NewDetector(roamingConfig, adapter, adapter)
+	detector := newTestRoamingDetector(t, roamingConfig, mockStorage, mockStorage, clock.SystemClock{})
 
 	// First lookup - should hit database
 	isRoaming1, owner1, err := detector.DetectRoaming(ctx, epEui, servingTenantID)
@@ -228,7 +291,7 @@ func TestRoamingIntegration_CacheExpiration(t *testing.T) {
 	assert.Equal(t, 1, lookupCount) // No additional lookup
 
 	// Wait for cache to expire
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(testRoamingCacheExpiryWait)
 
 	// Third lookup - cache expired, should hit database
 	isRoaming3, owner3, err := detector.DetectRoaming(ctx, epEui, servingTenantID)
@@ -260,17 +323,10 @@ func TestRoamingIntegration_Metrics(t *testing.T) {
 	}
 
 	// Use production defaults for metrics test
-	roamingConfig := roaming.DefaultDetectorConfig()
+	roamingConfig := testRoamingDetectorConfig()
 
-	adapter := &RoamingAdapter{
-		storage: mockStorage,
-	}
-	detector := roaming.NewDetector(roamingConfig, adapter, adapter)
-	roamingSvc := &RoamingService{
-		detector: detector,
-		storage:  mockStorage,
-		enabled:  true,
-	}
+	detector := newTestRoamingDetector(t, roamingConfig, mockStorage, mockStorage, clock.SystemClock{})
+	roamingSvc := NewRoamingService(detector, mockStorage, logger.NewNop())
 
 	// Perform multiple detections
 	testCases := []struct {
@@ -290,15 +346,6 @@ func TestRoamingIntegration_Metrics(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectRoaming, isRoaming)
 	}
-
-	// Check metrics
-	metrics := detector.GetMetrics()
-	// Only cache misses increment roaming/local counters
-	totalDetections := metrics.GetRoamingDetected() + metrics.GetLocalDetected()
-	assert.Equal(t, uint64(2), totalDetections)              // Only first 2 calls (cache misses)
-	assert.Equal(t, uint64(1), metrics.GetRoamingDetected()) // Only line 290
-	assert.Equal(t, uint64(2), metrics.GetCacheHits())
-	assert.Equal(t, uint64(2), metrics.GetCacheMisses())
 }
 
 // Helper function to convert hex string to bytes
@@ -321,12 +368,19 @@ func hexToBytes(hex string) []byte {
 	return bytes
 }
 
+// roamingEndpointInfo mirrors one entry of the basestation_sessions.roaming_endpoints JSON array.
+type roamingEndpointInfo struct {
+	EUI           string `json:"eui"`
+	OwnerTenantID int64  `json:"ownerTenantId"`
+	AttachedAt    string `json:"attachedAt"`
+}
+
 // MockStorageWithRoaming implements full roaming storage interface for testing
 type MockStorageWithRoaming struct {
 	endpoints      map[string]*models.EndPoint
 	tenantPartners map[string]bool
 	roamingEvents  []models.RoamingEvent
-	sessionRoaming map[int64][]models.RoamingEndpointInfo
+	sessionRoaming map[int64][]roamingEndpointInfo
 	lookupCallback func()
 }
 
@@ -336,7 +390,7 @@ func (m *MockStorageWithRoaming) GetEndpointOwner(_ context.Context, epEui []byt
 	}
 
 	// Normalize to uppercase hex for consistent map lookups
-	epEuiHex := strings.ToUpper(hex.EncodeToString(epEui))
+	epEuiHex := mioty.FormatEUIBytes(epEui)
 
 	if ep, ok := m.endpoints[epEuiHex]; ok {
 		return ep.OwnerTenantID, nil
@@ -358,7 +412,7 @@ func (m *MockStorageWithRoaming) RecordRoamingEvent(_ context.Context, event *mo
 func (m *MockStorageWithRoaming) AddRoamingEndpointToSession(_ context.Context, sessionID int64, epEui string, ownerTenantID int64) error {
 	// Normalize to uppercase hex for consistent storage
 	epEuiUpper := strings.ToUpper(epEui)
-	m.sessionRoaming[sessionID] = append(m.sessionRoaming[sessionID], models.RoamingEndpointInfo{
+	m.sessionRoaming[sessionID] = append(m.sessionRoaming[sessionID], roamingEndpointInfo{
 		EUI:           epEuiUpper,
 		OwnerTenantID: ownerTenantID,
 		AttachedAt:    time.Now().Format(time.RFC3339),
@@ -370,25 +424,14 @@ func (m *MockStorageWithRoaming) Close() error {
 	return nil
 }
 
-func (m *MockStorageWithRoaming) GetSessionRoamingEndpoints(_ context.Context, sessionID int64) ([]models.RoamingEndpointInfo, error) {
+func (m *MockStorageWithRoaming) GetSessionRoamingEndpoints(_ context.Context, sessionID int64) ([]roamingEndpointInfo, error) {
 	return m.sessionRoaming[sessionID], nil
-}
-
-func (m *MockStorageWithRoaming) UpdateEndpointRoamingStatus(_ context.Context, epEui []byte, servingTenantID int64) error {
-	// Normalize to uppercase hex for consistent map lookups
-	epEuiHex := strings.ToUpper(hex.EncodeToString(epEui))
-
-	if ep, ok := m.endpoints[epEuiHex]; ok {
-		ep.TenantID = servingTenantID
-		// In real implementation, would update serving_bs_eui field
-	}
-	return nil
 }
 
 // Additional stubs for complete interface
 func (m *MockStorageWithRoaming) GetEndpointWithOwnership(_ context.Context, epEui []byte, _ int64) (*models.EndPoint, error) {
 	// Normalize to uppercase hex for consistent map lookups
-	epEuiHex := strings.ToUpper(hex.EncodeToString(epEui))
+	epEuiHex := mioty.FormatEUIBytes(epEui)
 	return m.endpoints[epEuiHex], nil
 }
 
@@ -396,39 +439,27 @@ func (m *MockStorageWithRoaming) IsRoamingEnabled(_ context.Context, _ int64) (b
 	return true, nil
 }
 
-func (m *MockStorageWithRoaming) GetRoamingStatistics(_ context.Context, _ int64) (*models.RoamingStatistics, error) {
-	return &models.RoamingStatistics{
-		VisitingRoamingIn: 10,
-		OwnedRoamingOut:   5,
-	}, nil
-}
-
-func (m *MockStorageWithRoaming) GetTenantRoamingConfig(_ context.Context, _ int64) (*models.TenantRoamingConfig, error) {
-	return &models.TenantRoamingConfig{
-		RoamingEnabled: true,
-	}, nil
-}
-
-func (m *MockStorageWithRoaming) UpdateTenantRoamingConfig(_ context.Context, _ int64, _ *models.TenantRoamingConfig) error {
-	return nil
-}
-
 // Additional stubs to satisfy storage.Storage interface
-func (m *MockStorageWithRoaming) EnqueueDownlink(_ context.Context, _ *storage.DownlinkMessage) (*storage.DownlinkMessage, error) {
+func (m *MockStorageWithRoaming) EnqueueDownlink(_ context.Context, _ *storage.DownlinkMessage, _ time.Duration) (*storage.DownlinkMessage, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) CreateEndPoint(_ context.Context, _ *models.EndPoint) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) GetEndPoint(_ context.Context, _ []byte, _ int64) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) UpdateEndPoint(_ context.Context, _ *models.EndPoint) (*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) DeleteEndPoint(_ context.Context, _ []byte, _ int64) error {
 	return nil
 }
+
 func (m *MockStorageWithRoaming) ListEndPointsByModelWithSnapshot(_ context.Context, _ int64, _ uuid.UUID) ([]*models.EndPoint, error) {
 	return nil, nil
 }
@@ -436,78 +467,95 @@ func (m *MockStorageWithRoaming) ListEndPointsByModelWithSnapshot(_ context.Cont
 func (m *MockStorageWithRoaming) ListEndPoints(_ context.Context, _ int64, _, _ int) ([]*models.EndPoint, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) CreateBaseStation(_ context.Context, _ *models.BaseStation) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) GetBaseStation(_ context.Context, _ []byte, _ int64) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) UpdateBaseStation(_ context.Context, _ *models.BaseStation) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) DeleteBaseStation(_ context.Context, _ []byte, _ int64) error {
 	return nil
 }
+
 func (m *MockStorageWithRoaming) ListBaseStations(_ context.Context, _ int64, _, _ int) ([]*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) GetDownlinkQueue(_ context.Context, _, _ string) ([]*storage.DownlinkMessage, error) {
 	return nil, nil
 }
-func (m *MockStorageWithRoaming) GetDownlinkResults(_ context.Context, _, _ string, _ *uuid.UUID, _ string, _, _ *time.Time, _, _ int) ([]*storage.DownlinkMessage, int, error) {
+
+func (m *MockStorageWithRoaming) UpdatePendingDownlink(_ context.Context, _ int64, _ *uuid.UUID, _ []byte, _ int64, _ storage.DownlinkPatch) (*storage.DownlinkMessage, error) {
+	return nil, nil
+}
+
+func (m *MockStorageWithRoaming) GetDownlinkResults(_ context.Context, _ int64, _ *uuid.UUID, _ storage.DownlinkResultFilter, _, _ int) ([]*storage.DownlinkMessage, int, error) {
 	return nil, 0, nil
 }
-func (m *MockStorageWithRoaming) UpdateDownlinkStatus(_ context.Context, _, _ string, _ *uuid.UUID) error {
+
+func (m *MockStorageWithRoaming) UpdateDownlinkStatus(_ context.Context, _ string, _ mioty.DLQueueStatus, _ *uuid.UUID) error {
 	return nil
 }
-func (m *MockStorageWithRoaming) UpdateDownlinkBaseStation(_ context.Context, _ uint64, _ string, _ uint64) error {
-	return nil
-}
+
 func (m *MockStorageWithRoaming) GetDownlinkByQueueID(_ context.Context, _ uint64, _ string) (*storage.DownlinkMessage, error) {
 	return nil, nil
 }
-func (m *MockStorageWithRoaming) GetDownlinkByPacketCnt(_ context.Context, _, _ string, _ uint32) (*storage.DownlinkMessage, error) {
-	return nil, nil
+
+func (m *MockStorageWithRoaming) RevokeDownlink(context.Context, storage.DownlinkRevocation) (bool, error) {
+	return true, nil
 }
-func (m *MockStorageWithRoaming) RevokeDownlink(_ context.Context, _ int64, _ string) error {
-	return nil
-}
+
 func (m *MockStorageWithRoaming) UpdateDownlinkResult(_ context.Context, _ int64, _ string, _ *int64, _ *uint32, _, _ []byte, _ string, _ *uuid.UUID) error {
 	return nil
 }
+
 func (m *MockStorageWithRoaming) CreateDLRXStatus(_ context.Context, _ *mioty.DLRXStatus) error {
 	return nil
 }
+
 func (m *MockStorageWithRoaming) GetDLRXStatusByEndpoint(_ context.Context, _ int64, _ []byte, _, _ int, _, _ *time.Time) ([]*mioty.DLRXStatus, int, error) {
 	return nil, 0, nil
 }
+
 func (m *MockStorageWithRoaming) GetAverageDLRXMetrics(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (float64, float64, int, error) {
 	return 0, 0, 0, nil
 }
+
 func (m *MockStorageWithRoaming) CreateDLRXStatusQuery(_ context.Context, _ int64, _ *uuid.UUID, _, _ []byte, _ int64) error {
 	return nil
 }
+
 func (m *MockStorageWithRoaming) MarkDLRXStatusReceived(_ context.Context, _ int64, _ []byte, _ []byte, _ int64) (bool, error) {
 	return false, nil
 }
+
 func (m *MockStorageWithRoaming) ExpireDLRXStatusQuery(_ context.Context, _ time.Time) (int64, error) {
 	return 0, nil
 }
+
 func (m *MockStorageWithRoaming) GetDLRXStatusQueryHistory(_ context.Context, _ int64, _ []byte, _, _ int, _, _ *time.Time) ([]*mioty.DLRXStatusQuery, int, error) {
 	return nil, 0, nil
 }
+
 func (m *MockStorageWithRoaming) GetDLRXStatusQueryStats(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (int64, int64, int64, error) {
 	return 0, 0, 0, nil
 }
-func (m *MockStorageWithRoaming) GetEndpointBaseStation(_ context.Context, _, _ string) (string, error) {
-	return "", nil
-}
+
 func (m *MockStorageWithRoaming) GetBaseStationMessageStats(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (*mioty.BaseStationMessageStats, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) GetBaseStationEndpointCounts(_ context.Context, _ int64, _ []byte, _, _ *time.Time) (map[string]int64, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) GetBaseStationLastSeen(_ context.Context, _ int64, _ []byte) (*time.Time, error) {
 	return nil, nil
 }
@@ -517,7 +565,7 @@ func (m *MockStorageWithRoaming) RemoveRoamingEndpointFromSession(_ context.Cont
 	epEuiHexUpper := strings.ToUpper(epEuiHex)
 
 	endpoints := m.sessionRoaming[sessionID]
-	filtered := []models.RoamingEndpointInfo{}
+	filtered := []roamingEndpointInfo{}
 	for _, ep := range endpoints {
 		if strings.ToUpper(ep.EUI) != epEuiHexUpper {
 			filtered = append(filtered, ep)
@@ -526,23 +574,19 @@ func (m *MockStorageWithRoaming) RemoveRoamingEndpointFromSession(_ context.Cont
 	m.sessionRoaming[sessionID] = filtered
 	return nil
 }
-func (m *MockStorageWithRoaming) GetRoamingEndpointsInSession(_ context.Context, sessionID int64) ([]models.RoamingEndpointInfo, error) {
-	// Return actual data from sessionRoaming map
-	if endpoints, ok := m.sessionRoaming[sessionID]; ok {
-		return endpoints, nil
-	}
-	return []models.RoamingEndpointInfo{}, nil
-}
 
 func (m *MockStorageWithRoaming) UpdateBaseStationEUI(_ context.Context, _ int64, _, _ []byte) (*models.BaseStation, error) {
 	return nil, nil
 }
+
 func (m *MockStorageWithRoaming) UpdateEndPointWithEUI(_ context.Context, _ int64, _ []byte, ep *models.EndPoint) (*models.EndPoint, error) {
 	return ep, nil
 }
+
 func (m *MockStorageWithRoaming) CheckEndPointEUIUnique(_ context.Context, _ []byte) error {
 	return nil
 }
+
 func (m *MockStorageWithRoaming) ListAllBaseStationLocations(_ context.Context) ([]*models.BaseStation, error) {
 	return nil, nil
 }

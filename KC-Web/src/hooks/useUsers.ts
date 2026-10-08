@@ -5,23 +5,42 @@
  */
 
 import type { CreateUserRequest, UpdateUserRequest } from "@api-types/api";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
-import { apiService } from "@services/api";
-import { TIMING, USER_LOOKUP_LIMIT } from "@constants/app";
+import { usersApi } from "@services/api";
+import {
+  MS_PER_SECOND,
+  PAGINATION,
+  TIMING,
+  USER_LOOKUP_LIMIT,
+} from "@constants/app";
 import { queryKeys } from "@config/query-keys";
+
+/** What a user change makes stale: the users, and the member lists and memberships that name them. */
+function invalidateUserViews(queryClient: QueryClient): void {
+  [
+    queryKeys.users.all,
+    queryKeys.organizations.usersAll(),
+    queryKeys.userOrganizations.all,
+  ].forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
+}
 
 /**
  * Fetch all users with pagination
  */
 export function useUsers(
-  limit = 50,
+  limit: number = PAGINATION.ADMIN_LIST_PAGE_SIZE,
   offset = 0,
   options?: { enabled?: boolean },
 ) {
   return useQuery({
     queryKey: queryKeys.users.list({ limit, offset }),
-    queryFn: () => apiService.getUsers(limit),
+    queryFn: () => usersApi.getUsers(limit),
     enabled: options?.enabled ?? true,
   });
 }
@@ -32,7 +51,7 @@ export function useUsers(
 export function useUser(id: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.users.detail(id),
-    queryFn: () => apiService.getUser(id),
+    queryFn: () => usersApi.getUser(id),
     enabled: Boolean(id) && (options?.enabled ?? true),
   });
 }
@@ -44,7 +63,7 @@ export function useCreateUser() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateUserRequest) => apiService.createUser(data),
+    mutationFn: (data: CreateUserRequest) => usersApi.createUser(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
     },
@@ -59,11 +78,8 @@ export function useUpdateUser() {
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateUserRequest }) =>
-      apiService.updateUser(id, data),
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.users.detail(id) });
-    },
+      usersApi.updateUser(id, data),
+    onSuccess: () => invalidateUserViews(queryClient),
   });
 }
 
@@ -74,10 +90,8 @@ export function useDeleteUser() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => apiService.deleteUser(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
-    },
+    mutationFn: (id: string) => usersApi.deleteUser(id),
+    onSuccess: () => invalidateUserViews(queryClient),
   });
 }
 
@@ -87,7 +101,7 @@ export function useDeleteUser() {
 export function useChangePassword() {
   return useMutation({
     mutationFn: ({ id, password }: { id: string; password: string }) =>
-      apiService.changeUserPassword(id, password),
+      usersApi.changeUserPassword(id, password),
   });
 }
 
@@ -98,9 +112,9 @@ export function useChangePassword() {
 export function useUsersForLookup(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.users.list({ limit: USER_LOOKUP_LIMIT, offset: 0 }),
-    queryFn: () => apiService.getUsers(USER_LOOKUP_LIMIT),
+    queryFn: () => usersApi.getUsers(USER_LOOKUP_LIMIT),
     enabled: options?.enabled ?? true,
-    staleTime: TIMING.LIST_REFRESH * 1000, // Use centralized timing constant (30s)
+    staleTime: TIMING.LIST_REFRESH * MS_PER_SECOND,
   });
 }
 
@@ -112,8 +126,8 @@ export function useUserOrganizations(
   options?: { enabled?: boolean },
 ) {
   return useQuery({
-    queryKey: queryKeys.userOrganizations(userId),
-    queryFn: () => apiService.listUserOrganizations(userId),
+    queryKey: queryKeys.userOrganizations.list(userId),
+    queryFn: () => usersApi.listUserOrganizations(userId),
     enabled: options?.enabled !== false && Boolean(userId),
   });
 }

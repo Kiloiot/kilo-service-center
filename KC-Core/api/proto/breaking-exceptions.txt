@@ -1,0 +1,25 @@
+# Breaking changes against the latest release tag that a CHANGELOG entry sanctions.
+# One buf finding per line, as "<file>:<finding>" without its line:column
+# position; delete the lines once the release that
+# carries the change is tagged. Sanctioned by CHANGELOG.md "Unreleased":
+# organization quotas removed (field numbers and names reserved, migration 000154).
+identity.proto:Previously present field "3" with name "can_have_base_stations" on message "CreateOrganizationRequest" was deleted.
+identity.proto:Previously present field "4" with name "max_base_station_count" on message "CreateOrganizationRequest" was deleted.
+identity.proto:Previously present field "5" with name "max_endpoint_count" on message "CreateOrganizationRequest" was deleted.
+identity.proto:Previously present field "4" with name "can_have_base_stations" on message "UpdateOrganizationRequest" was deleted.
+identity.proto:Previously present field "5" with name "max_base_station_count" on message "UpdateOrganizationRequest" was deleted.
+identity.proto:Previously present field "6" with name "max_endpoint_count" on message "UpdateOrganizationRequest" was deleted.
+identity.proto:Previously present field "7" with name "can_have_base_stations" on message "Organization" was deleted.
+identity.proto:Previously present field "8" with name "max_base_station_count" on message "Organization" was deleted.
+identity.proto:Previously present field "9" with name "max_endpoint_count" on message "Organization" was deleted.
+# Sanctioned by CHANGELOG.md "Unreleased": 64-bit ids, EUIs and nanosecond
+# timestamps reach JavaScript clients as strings (jstype = JS_STRING).
+core.proto:Field "2" with name "rx_time" on message "BaseStationReceptionInfo" changed option "jstype" from "JS_NORMAL" to "JS_STRING".
+core.proto:Field "12" with name "tx_time" on message "DownlinkMessage" changed option "jstype" from "JS_NORMAL" to "JS_STRING".
+core.proto:Field "9" with name "sc_eui" on message "ReleaseInfo" changed option "jstype" from "JS_NORMAL" to "JS_STRING".
+core.proto:Field "3" with name "rx_time" on message "DLRXStatus" changed option "jstype" from "JS_NORMAL" to "JS_STRING".
+# Sanctioned by CHANGELOG.md "Unreleased": the internal role lookup returns the
+# composed roles (GetUserRoles) instead of a membership (GetUserMembership).
+identity_internal.proto:Previously present message "GetUserMembershipRequest" was deleted from package "kilocenter.api.v1".
+identity_internal.proto:Previously present message "GetUserMembershipResponse" was deleted from package "kilocenter.api.v1".
+identity_internal.proto:Previously present RPC "GetUserMembership" on service "IdentityInternalService" was deleted.

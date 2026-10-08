@@ -7,6 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testUncataloguedToken is deliberately absent from the catalog to exercise defaults.
+const testUncataloguedToken = "unknown.token.that.does.not.exist"
+
 // TestErrVersionMismatchOnResume_HasCorrectPOSIXCode validates that version mismatch
 // errors map to POSIX_ENOTSUP (95) per SCACI §§2.1-2.3 wire protocol requirements.
 func TestErrVersionMismatchOnResume_HasCorrectPOSIXCode(t *testing.T) {
@@ -31,7 +34,7 @@ func TestErrMinorVersionUnsupported_HasCorrectPOSIXCode(t *testing.T) {
 
 // TestGetErrorDefinition_UnknownToken returns default definition with echoed token.
 func TestGetErrorDefinition_UnknownToken(t *testing.T) {
-	unknownToken := "unknown.token.that.does.not.exist"
+	unknownToken := testUncataloguedToken
 	def := GetErrorDefinition(unknownToken)
 	// Unknown tokens get echoed back with default values
 	assert.Equal(t, unknownToken, def.Token, "unknown token should be echoed back")
@@ -57,5 +60,16 @@ func TestVersionErrorDefinitions_HaveSpecSections(t *testing.T) {
 			assert.Contains(t, def.SpecSection, tt.specSection,
 				"token %s should reference spec section %s", tt.token, tt.specSection)
 		})
+	}
+}
+
+// TestMQTTCommandErrorDefinitions_CiteTheMQTTCommandDocument: the MQTT
+// command conditions no SCACI section describes cite the document that
+// defines them, never a SCACI section.
+func TestMQTTCommandErrorDefinitions_CiteTheMQTTCommandDocument(t *testing.T) {
+	for _, token := range []string{ErrDownlinkCommandRefQueued, ErrDownlinkDeadlineElapsed} {
+		def := GetErrorDefinition(token)
+		assert.Equal(t, specMQTTCommandDown, def.SpecSection, token)
+		assert.NotContains(t, def.SpecSection, "§", token)
 	}
 }

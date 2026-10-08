@@ -7,12 +7,11 @@
 package kilocenterv1
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -406,28 +405,32 @@ func (*UpdateAPIKeyLastUsedResponse) Descriptor() ([]byte, []int) {
 	return file_identity_internal_proto_rawDescGZIP(), []int{7}
 }
 
-type GetUserMembershipRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OrgId         string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+// Names the caller by exactly one of user_id or service_account_id, the API
+// key id of an organization service-account key. Without org_id the answer is
+// the caller's organization-independent roles.
+type GetUserRolesRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	OrgId            string                 `protobuf:"bytes,1,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`
+	UserId           string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	ServiceAccountId string                 `protobuf:"bytes,3,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
-func (x *GetUserMembershipRequest) Reset() {
-	*x = GetUserMembershipRequest{}
+func (x *GetUserRolesRequest) Reset() {
+	*x = GetUserRolesRequest{}
 	mi := &file_identity_internal_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetUserMembershipRequest) String() string {
+func (x *GetUserRolesRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetUserMembershipRequest) ProtoMessage() {}
+func (*GetUserRolesRequest) ProtoMessage() {}
 
-func (x *GetUserMembershipRequest) ProtoReflect() protoreflect.Message {
+func (x *GetUserRolesRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_identity_internal_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -439,47 +442,53 @@ func (x *GetUserMembershipRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetUserMembershipRequest.ProtoReflect.Descriptor instead.
-func (*GetUserMembershipRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetUserRolesRequest.ProtoReflect.Descriptor instead.
+func (*GetUserRolesRequest) Descriptor() ([]byte, []int) {
 	return file_identity_internal_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *GetUserMembershipRequest) GetOrgId() string {
+func (x *GetUserRolesRequest) GetOrgId() string {
 	if x != nil {
 		return x.OrgId
 	}
 	return ""
 }
 
-func (x *GetUserMembershipRequest) GetUserId() string {
+func (x *GetUserRolesRequest) GetUserId() string {
 	if x != nil {
 		return x.UserId
 	}
 	return ""
 }
 
-type GetUserMembershipResponse struct {
+func (x *GetUserRolesRequest) GetServiceAccountId() string {
+	if x != nil {
+		return x.ServiceAccountId
+	}
+	return ""
+}
+
+type GetUserRolesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Role          string                 `protobuf:"bytes,1,opt,name=role,proto3" json:"role,omitempty"`
-	IsActive      bool                   `protobuf:"varint,2,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	Roles         *UserRoles             `protobuf:"bytes,1,opt,name=roles,proto3" json:"roles,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *GetUserMembershipResponse) Reset() {
-	*x = GetUserMembershipResponse{}
+func (x *GetUserRolesResponse) Reset() {
+	*x = GetUserRolesResponse{}
 	mi := &file_identity_internal_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *GetUserMembershipResponse) String() string {
+func (x *GetUserRolesResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*GetUserMembershipResponse) ProtoMessage() {}
+func (*GetUserRolesResponse) ProtoMessage() {}
 
-func (x *GetUserMembershipResponse) ProtoReflect() protoreflect.Message {
+func (x *GetUserRolesResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_identity_internal_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -491,23 +500,16 @@ func (x *GetUserMembershipResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use GetUserMembershipResponse.ProtoReflect.Descriptor instead.
-func (*GetUserMembershipResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use GetUserRolesResponse.ProtoReflect.Descriptor instead.
+func (*GetUserRolesResponse) Descriptor() ([]byte, []int) {
 	return file_identity_internal_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *GetUserMembershipResponse) GetRole() string {
+func (x *GetUserRolesResponse) GetRoles() *UserRoles {
 	if x != nil {
-		return x.Role
+		return x.Roles
 	}
-	return ""
-}
-
-func (x *GetUserMembershipResponse) GetIsActive() bool {
-	if x != nil {
-		return x.IsActive
-	}
-	return false
+	return nil
 }
 
 type CheckServerAdminRequest struct {
@@ -755,7 +757,7 @@ var File_identity_internal_proto protoreflect.FileDescriptor
 
 const file_identity_internal_proto_rawDesc = "" +
 	"\n" +
-	"\x17identity_internal.proto\x12\x11kilocenter.api.v1\"*\n" +
+	"\x17identity_internal.proto\x12\x11kilocenter.api.v1\x1a\x0eidentity.proto\"*\n" +
 	"\x11ResolveOrgRequest\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\"1\n" +
 	"\x12ResolveOrgResponse\x12\x1b\n" +
@@ -776,13 +778,13 @@ const file_identity_internal_proto_rawDesc = "" +
 	"is_expired\x18\x06 \x01(\bR\tisExpired\"-\n" +
 	"\x1bUpdateAPIKeyLastUsedRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x1e\n" +
-	"\x1cUpdateAPIKeyLastUsedResponse\"J\n" +
-	"\x18GetUserMembershipRequest\x12\x15\n" +
+	"\x1cUpdateAPIKeyLastUsedResponse\"s\n" +
+	"\x13GetUserRolesRequest\x12\x15\n" +
 	"\x06org_id\x18\x01 \x01(\tR\x05orgId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\tR\x06userId\"L\n" +
-	"\x19GetUserMembershipResponse\x12\x12\n" +
-	"\x04role\x18\x01 \x01(\tR\x04role\x12\x1b\n" +
-	"\tis_active\x18\x02 \x01(\bR\bisActive\"2\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12,\n" +
+	"\x12service_account_id\x18\x03 \x01(\tR\x10serviceAccountId\"J\n" +
+	"\x14GetUserRolesResponse\x122\n" +
+	"\x05roles\x18\x01 \x01(\v2\x1c.kilocenter.api.v1.UserRolesR\x05roles\"2\n" +
 	"\x17CheckServerAdminRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"5\n" +
 	"\x18CheckServerAdminResponse\x12\x19\n" +
@@ -802,14 +804,14 @@ const file_identity_internal_proto_rawDesc = "" +
 	"\vdescription\x18\t \x01(\tR\vdescription\x12\x12\n" +
 	"\x04data\x18\n" +
 	" \x01(\fR\x04data\"\x1d\n" +
-	"\x1bRecordPlatformEventResponse2\xa6\x06\n" +
+	"\x1bRecordPlatformEventResponse2\x97\x06\n" +
 	"\x17IdentityInternalService\x12Y\n" +
 	"\n" +
 	"ResolveOrg\x12$.kilocenter.api.v1.ResolveOrgRequest\x1a%.kilocenter.api.v1.ResolveOrgResponse\x12}\n" +
 	"\x16GetDefaultOrgForTenant\x120.kilocenter.api.v1.GetDefaultOrgForTenantRequest\x1a1.kilocenter.api.v1.GetDefaultOrgForTenantResponse\x12e\n" +
 	"\x0eValidateAPIKey\x12(.kilocenter.api.v1.ValidateAPIKeyRequest\x1a).kilocenter.api.v1.ValidateAPIKeyResponse\x12w\n" +
-	"\x14UpdateAPIKeyLastUsed\x12..kilocenter.api.v1.UpdateAPIKeyLastUsedRequest\x1a/.kilocenter.api.v1.UpdateAPIKeyLastUsedResponse\x12n\n" +
-	"\x11GetUserMembership\x12+.kilocenter.api.v1.GetUserMembershipRequest\x1a,.kilocenter.api.v1.GetUserMembershipResponse\x12k\n" +
+	"\x14UpdateAPIKeyLastUsed\x12..kilocenter.api.v1.UpdateAPIKeyLastUsedRequest\x1a/.kilocenter.api.v1.UpdateAPIKeyLastUsedResponse\x12_\n" +
+	"\fGetUserRoles\x12&.kilocenter.api.v1.GetUserRolesRequest\x1a'.kilocenter.api.v1.GetUserRolesResponse\x12k\n" +
 	"\x10CheckServerAdmin\x12*.kilocenter.api.v1.CheckServerAdminRequest\x1a+.kilocenter.api.v1.CheckServerAdminResponse\x12t\n" +
 	"\x13RecordPlatformEvent\x12-.kilocenter.api.v1.RecordPlatformEventRequest\x1a..kilocenter.api.v1.RecordPlatformEventResponseBSZQgithub.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1;kilocenterv1b\x06proto3"
 
@@ -835,33 +837,35 @@ var file_identity_internal_proto_goTypes = []any{
 	(*ValidateAPIKeyResponse)(nil),         // 5: kilocenter.api.v1.ValidateAPIKeyResponse
 	(*UpdateAPIKeyLastUsedRequest)(nil),    // 6: kilocenter.api.v1.UpdateAPIKeyLastUsedRequest
 	(*UpdateAPIKeyLastUsedResponse)(nil),   // 7: kilocenter.api.v1.UpdateAPIKeyLastUsedResponse
-	(*GetUserMembershipRequest)(nil),       // 8: kilocenter.api.v1.GetUserMembershipRequest
-	(*GetUserMembershipResponse)(nil),      // 9: kilocenter.api.v1.GetUserMembershipResponse
+	(*GetUserRolesRequest)(nil),            // 8: kilocenter.api.v1.GetUserRolesRequest
+	(*GetUserRolesResponse)(nil),           // 9: kilocenter.api.v1.GetUserRolesResponse
 	(*CheckServerAdminRequest)(nil),        // 10: kilocenter.api.v1.CheckServerAdminRequest
 	(*CheckServerAdminResponse)(nil),       // 11: kilocenter.api.v1.CheckServerAdminResponse
 	(*RecordPlatformEventRequest)(nil),     // 12: kilocenter.api.v1.RecordPlatformEventRequest
 	(*RecordPlatformEventResponse)(nil),    // 13: kilocenter.api.v1.RecordPlatformEventResponse
+	(*UserRoles)(nil),                      // 14: kilocenter.api.v1.UserRoles
 }
 var file_identity_internal_proto_depIdxs = []int32{
-	0,  // 0: kilocenter.api.v1.IdentityInternalService.ResolveOrg:input_type -> kilocenter.api.v1.ResolveOrgRequest
-	2,  // 1: kilocenter.api.v1.IdentityInternalService.GetDefaultOrgForTenant:input_type -> kilocenter.api.v1.GetDefaultOrgForTenantRequest
-	4,  // 2: kilocenter.api.v1.IdentityInternalService.ValidateAPIKey:input_type -> kilocenter.api.v1.ValidateAPIKeyRequest
-	6,  // 3: kilocenter.api.v1.IdentityInternalService.UpdateAPIKeyLastUsed:input_type -> kilocenter.api.v1.UpdateAPIKeyLastUsedRequest
-	8,  // 4: kilocenter.api.v1.IdentityInternalService.GetUserMembership:input_type -> kilocenter.api.v1.GetUserMembershipRequest
-	10, // 5: kilocenter.api.v1.IdentityInternalService.CheckServerAdmin:input_type -> kilocenter.api.v1.CheckServerAdminRequest
-	12, // 6: kilocenter.api.v1.IdentityInternalService.RecordPlatformEvent:input_type -> kilocenter.api.v1.RecordPlatformEventRequest
-	1,  // 7: kilocenter.api.v1.IdentityInternalService.ResolveOrg:output_type -> kilocenter.api.v1.ResolveOrgResponse
-	3,  // 8: kilocenter.api.v1.IdentityInternalService.GetDefaultOrgForTenant:output_type -> kilocenter.api.v1.GetDefaultOrgForTenantResponse
-	5,  // 9: kilocenter.api.v1.IdentityInternalService.ValidateAPIKey:output_type -> kilocenter.api.v1.ValidateAPIKeyResponse
-	7,  // 10: kilocenter.api.v1.IdentityInternalService.UpdateAPIKeyLastUsed:output_type -> kilocenter.api.v1.UpdateAPIKeyLastUsedResponse
-	9,  // 11: kilocenter.api.v1.IdentityInternalService.GetUserMembership:output_type -> kilocenter.api.v1.GetUserMembershipResponse
-	11, // 12: kilocenter.api.v1.IdentityInternalService.CheckServerAdmin:output_type -> kilocenter.api.v1.CheckServerAdminResponse
-	13, // 13: kilocenter.api.v1.IdentityInternalService.RecordPlatformEvent:output_type -> kilocenter.api.v1.RecordPlatformEventResponse
-	7,  // [7:14] is the sub-list for method output_type
-	0,  // [0:7] is the sub-list for method input_type
-	0,  // [0:0] is the sub-list for extension type_name
-	0,  // [0:0] is the sub-list for extension extendee
-	0,  // [0:0] is the sub-list for field type_name
+	14, // 0: kilocenter.api.v1.GetUserRolesResponse.roles:type_name -> kilocenter.api.v1.UserRoles
+	0,  // 1: kilocenter.api.v1.IdentityInternalService.ResolveOrg:input_type -> kilocenter.api.v1.ResolveOrgRequest
+	2,  // 2: kilocenter.api.v1.IdentityInternalService.GetDefaultOrgForTenant:input_type -> kilocenter.api.v1.GetDefaultOrgForTenantRequest
+	4,  // 3: kilocenter.api.v1.IdentityInternalService.ValidateAPIKey:input_type -> kilocenter.api.v1.ValidateAPIKeyRequest
+	6,  // 4: kilocenter.api.v1.IdentityInternalService.UpdateAPIKeyLastUsed:input_type -> kilocenter.api.v1.UpdateAPIKeyLastUsedRequest
+	8,  // 5: kilocenter.api.v1.IdentityInternalService.GetUserRoles:input_type -> kilocenter.api.v1.GetUserRolesRequest
+	10, // 6: kilocenter.api.v1.IdentityInternalService.CheckServerAdmin:input_type -> kilocenter.api.v1.CheckServerAdminRequest
+	12, // 7: kilocenter.api.v1.IdentityInternalService.RecordPlatformEvent:input_type -> kilocenter.api.v1.RecordPlatformEventRequest
+	1,  // 8: kilocenter.api.v1.IdentityInternalService.ResolveOrg:output_type -> kilocenter.api.v1.ResolveOrgResponse
+	3,  // 9: kilocenter.api.v1.IdentityInternalService.GetDefaultOrgForTenant:output_type -> kilocenter.api.v1.GetDefaultOrgForTenantResponse
+	5,  // 10: kilocenter.api.v1.IdentityInternalService.ValidateAPIKey:output_type -> kilocenter.api.v1.ValidateAPIKeyResponse
+	7,  // 11: kilocenter.api.v1.IdentityInternalService.UpdateAPIKeyLastUsed:output_type -> kilocenter.api.v1.UpdateAPIKeyLastUsedResponse
+	9,  // 12: kilocenter.api.v1.IdentityInternalService.GetUserRoles:output_type -> kilocenter.api.v1.GetUserRolesResponse
+	11, // 13: kilocenter.api.v1.IdentityInternalService.CheckServerAdmin:output_type -> kilocenter.api.v1.CheckServerAdminResponse
+	13, // 14: kilocenter.api.v1.IdentityInternalService.RecordPlatformEvent:output_type -> kilocenter.api.v1.RecordPlatformEventResponse
+	8,  // [8:15] is the sub-list for method output_type
+	1,  // [1:8] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_identity_internal_proto_init() }
@@ -869,6 +873,7 @@ func file_identity_internal_proto_init() {
 	if File_identity_internal_proto != nil {
 		return
 	}
+	file_identity_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

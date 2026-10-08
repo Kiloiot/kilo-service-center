@@ -25,6 +25,7 @@ Licensed under AGPL-3.0-or-later. See [Licensing and Trademarks](03-licensing-an
 - KC-Gateway for external gRPC-web API access
 - KC-Web operator interface
 - gRPC API for programmatic access
+- Sign-in with user roles (Admin, Tenant Manager, Base Station Manager, Endpoint Manager); see [User Roles and Permissions](../05-Security/04-users-and-roles.md)
 - API key management
 - MQTT integration for real-time data streaming
 - PostgreSQL-backed persistence with Redis caching
@@ -34,7 +35,7 @@ Licensed under AGPL-3.0-or-later. See [Licensing and Trademarks](03-licensing-an
 The Enterprise Edition extends the Community Edition with:
 
 - Organization management and multi-tenancy
-- User authentication and role-based access
+- Per-organization roles granted through organization memberships
 - Tenant isolation for base stations and endpoints
 - Extended MIOTY endpoint profile fields (dual channel mode, DL repetition, wide carrier offset, long interblock distance)
 

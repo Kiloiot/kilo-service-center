@@ -5,24 +5,24 @@ import (
 	"fmt"
 
 	pkgbssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
+	pkgendpoint "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/endpoint"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/propagation"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
 
 // propagationService implements propagation.Service interface
 type propagationService struct {
-	endpointRepo interfaces.EndpointRepository
-	sender       pkgbssci.AttachPropagateSender
+	endpointRepo EndpointDirectory
+	sender       StationPropagator
 	logger       logger.Logger
 }
 
 // NewPropagationService creates a new propagation service instance
 func NewPropagationService(
-	endpointRepo interfaces.EndpointRepository,
-	sender pkgbssci.AttachPropagateSender,
+	endpointRepo EndpointDirectory,
+	sender StationPropagator,
 	logger logger.Logger,
 ) propagation.Service {
 	return &propagationService{
@@ -40,25 +40,28 @@ func (s *propagationService) TriggerEndpointPropagate(
 	activeSessions []propagation.BaseStationSession,
 ) error {
 	// Extract tenantID from context (required for GetByID tenant isolation)
-	tenantID, _ := pkgcontext.GetTenantID(ctx)
+	tenantID, err := pkgcontext.GetTenantID(ctx)
+	if err != nil {
+		return fmt.Errorf(errFmtPropagationTenant, endpointID, err)
+	}
 
 	// Fetch endpoint by ID
 	endpoint, err := s.endpointRepo.GetByID(ctx, endpointID, tenantID)
 	if err != nil {
-		return fmt.Errorf("failed to fetch endpoint %d: %w", endpointID, err)
+		return fmt.Errorf(errFmtFetchEndpoint, endpointID, err)
 	}
 
 	// ATT-03: Filter sessions by tenant and propagate to each with telemetry
 	var errs []error
-	propagatedCount := 0
+	var propagatedCount int
 	skippedByTenant := 0
 
 	for _, sess := range activeSessions {
 		if !s.shouldPropagate(endpoint.TenantID, sess.TenantID) {
 			s.logger.InfoContext(ctx, pkgbssci.LogBSSCISkippingPropagationDueToTenantMismatch,
-				"endpoint_tenant", endpoint.TenantID,
-				"session_tenant", sess.TenantID,
-				"bs_eui", sess.BaseStationEUI)
+				logger.FieldEndpointTenant, endpoint.TenantID,
+				logger.FieldSessionTenant, sess.TenantID,
+				logger.FieldBsEuiSnake, sess.BaseStationEUI)
 			skippedByTenant++
 			continue
 		}
@@ -66,10 +69,10 @@ func (s *propagationService) TriggerEndpointPropagate(
 		// Send propagate message using context enriched by caller
 		if err := s.sender.SendAttachPropagateBySessionID(ctx, sess.ID, endpoint); err != nil {
 			s.logger.WarnContext(ctx, pkgbssci.LogBSSCIFailedToPropagateToSession,
-				"endpoint_id", endpoint.ID,
-				"session_id", sess.ID,
-				"bs_eui", sess.BaseStationEUI,
-				"error", err.Error())
+				logger.FieldEndpointID, endpoint.ID,
+				logger.FieldSessionIDSnake, sess.ID,
+				logger.FieldBsEuiSnake, sess.BaseStationEUI,
+				logger.FieldError, err.Error())
 			errs = append(errs, err)
 		} else {
 			propagatedCount++
@@ -77,64 +80,127 @@ func (s *propagationService) TriggerEndpointPropagate(
 	}
 
 	s.logger.InfoContext(ctx, pkgbssci.LogBSSCIEndpointPropagationCompleted,
-		"endpoint_id", endpoint.ID,
-		"propagated_count", propagatedCount,
-		"total_sessions", len(activeSessions),
-		"skipped_by_tenant", skippedByTenant,
-		"errors", len(errs))
+		logger.FieldEndpointID, endpoint.ID,
+		logger.FieldPropagatedCount, propagatedCount,
+		logger.FieldTotalSessions, len(activeSessions),
+		logger.FieldSkippedByTenant, skippedByTenant,
+		logger.FieldErrors, len(errs))
 
 	return aggregateErrors(errs)
 }
 
-// ReconcileBaseStation replays all endpoints to newly connected base station
-// Per BSSCI §3.8: Both bidirectional AND unidirectional endpoints need attPrp
+// ReconcileBaseStation sends a connecting base station attPrp for the
+// endpoints of its tenant the service center holds attached, bidirectional and
+// unidirectional alike (BSSCI §3.8). A station that resumed its session kept
+// the endpoints it held (BSSCI §1): it is sent attPrp only for the
+// attachments it missed and detPrp for every endpoint detached while it was
+// away (BSSCI §3.9).
 // Context must already contain tenant/org values (enriched by caller)
 func (s *propagationService) ReconcileBaseStation(
 	ctx context.Context,
 	session propagation.BaseStationSession,
 	_ *models.BaseStation,
 ) error {
-	// Use existing GetByTenant method
-	endpoints, err := s.endpointRepo.GetByTenant(ctx, session.TenantID)
+	attached, err := s.attachmentsToSend(ctx, session)
 	if err != nil {
-		return fmt.Errorf("failed to fetch endpoints for tenant %d: %w", session.TenantID, err)
+		return err
 	}
+	missed, err := s.detachedWhileAway(ctx, session)
+	if err != nil {
+		return err
+	}
+	total := len(attached) + len(missed)
 
-	// BSSCI §3.8: Propagate ALL endpoints to this BS
-	// attPrp is idempotent - safe to send even if endpoint was propagated to another BS
-	// This ensures multi-BS deployments work correctly (each BS needs attPrp)
 	s.logger.InfoContext(ctx, pkgbssci.LogBSSCIStartingBaseStationReconciliation,
-		"session_id", session.ID,
-		"bs_eui", session.BaseStationEUI,
-		"tenant_id", session.TenantID,
-		"total_endpoints", len(endpoints))
+		logger.FieldSessionIDSnake, session.ID,
+		logger.FieldBsEuiSnake, session.BaseStationEUI,
+		logger.FieldTenantIDSnake, session.TenantID,
+		logger.FieldTotalEndpoints, total)
 
-	// BSSCI §3.8: Propagate each endpoint to this session (both bidi and unidirectional)
-	var errs []error
-	reconciledCount := 0
-
-	for _, endpoint := range endpoints {
-		// Use context as-is (already enriched by caller)
-		if err := s.sender.SendAttachPropagateBySessionID(ctx, session.ID, endpoint); err != nil {
-			s.logger.WarnContext(ctx, pkgbssci.LogBSSCIReconciliationPropagateFailed,
-				"endpoint_id", endpoint.ID,
-				"session_id", session.ID,
-				"bs_eui", session.BaseStationEUI,
-				"error", err.Error())
-			errs = append(errs, err)
-		} else {
-			reconciledCount++
-		}
-	}
+	attachedSent, attachErrs := s.sendEach(ctx, session, attached, func(endpoint *models.EndPoint) error {
+		return s.sender.SendAttachPropagateBySessionID(ctx, session.ID, endpoint)
+	})
+	detachedSent, detachErrs := s.sendEach(ctx, session, missed, func(endpoint *models.EndPoint) error {
+		return s.sender.SendDetachPropagate(session.ID, endpoint.EUI.ToUint64())
+	})
+	errs := append(attachErrs, detachErrs...)
 
 	s.logger.InfoContext(ctx, pkgbssci.LogBSSCIBaseStationReconciliationCompleted,
-		"session_id", session.ID,
-		"bs_eui", session.BaseStationEUI,
-		"reconciled_count", reconciledCount,
-		"total_endpoints", len(endpoints),
-		"errors", len(errs))
+		logger.FieldSessionIDSnake, session.ID,
+		logger.FieldBsEuiSnake, session.BaseStationEUI,
+		logger.FieldReconciledCount, attachedSent+detachedSent,
+		logger.FieldTotalEndpoints, total,
+		logger.FieldErrors, len(errs))
 
 	return aggregateErrors(errs)
+}
+
+// sendEach sends the station every endpoint through send and returns how many
+// were sent and the failures, each of which it logs.
+func (s *propagationService) sendEach(
+	ctx context.Context,
+	session propagation.BaseStationSession,
+	endpoints []*models.EndPoint,
+	send func(*models.EndPoint) error,
+) (int, []error) {
+	var errs []error
+	for _, endpoint := range endpoints {
+		if err := send(endpoint); err != nil {
+			s.logger.WarnContext(ctx, pkgbssci.LogBSSCIReconciliationPropagateFailed,
+				logger.FieldEndpointID, endpoint.ID,
+				logger.FieldSessionIDSnake, session.ID,
+				logger.FieldBsEuiSnake, session.BaseStationEUI,
+				logger.FieldError, err.Error())
+			errs = append(errs, err)
+		}
+	}
+	return len(endpoints) - len(errs), errs
+}
+
+// attachmentsToSend returns the attached endpoints the station is sent
+// attPrp for. A resumed station kept the attachments it held and the
+// downlinks it queued for them, which an attPrp for a held endpoint makes it
+// discard: it is sent only the endpoints attached after its connection was
+// lost, or all of them when that time is unknown. A new session holds none.
+func (s *propagationService) attachmentsToSend(ctx context.Context, station propagation.BaseStationSession) ([]*models.EndPoint, error) {
+	if station.Resumed && station.DisconnectedAt != nil {
+		missed, err := s.endpointRepo.GetByAttachmentChangedSince(ctx, station.TenantID, pkgbssci.EndpointStatusAttached, station.DisconnectedAt)
+		if err != nil {
+			return nil, fmt.Errorf(errFmtFetchAttachedEndpoints, station.TenantID, err)
+		}
+		return missed, nil
+	}
+	tenantEndpoints, err := s.endpointRepo.GetByTenant(ctx, station.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf(errFmtFetchEndpointsForTenant, station.TenantID, err)
+	}
+	return attachedEndpoints(tenantEndpoints), nil
+}
+
+// detachedWhileAway returns the endpoints a resumed station may still hold
+// although the service center detached them: those whose detachment was
+// decided after its connection was lost, or every recorded detachment when
+// that time is unknown. A new session holds none.
+func (s *propagationService) detachedWhileAway(ctx context.Context, station propagation.BaseStationSession) ([]*models.EndPoint, error) {
+	if !station.Resumed {
+		return nil, nil
+	}
+	missed, err := s.endpointRepo.GetByAttachmentChangedSince(ctx, station.TenantID, pkgendpoint.EndpointStatusDetached, station.DisconnectedAt)
+	if err != nil {
+		return nil, fmt.Errorf(errFmtFetchDetachedEndpoints, station.TenantID, err)
+	}
+	return missed, nil
+}
+
+// attachedEndpoints keeps the endpoints the service center holds attached.
+func attachedEndpoints(endpoints []*models.EndPoint) []*models.EndPoint {
+	attached := make([]*models.EndPoint, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		if endpoint.EpStatus == pkgbssci.EndpointStatusAttached {
+			attached = append(attached, endpoint)
+		}
+	}
+	return attached
 }
 
 // shouldPropagate determines if propagation should occur based on tenant ownership and roaming policies
@@ -157,7 +223,7 @@ func aggregateErrors(errs []error) error {
 	if len(errs) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%s: %d failures, first: %w",
+	return fmt.Errorf(errFmtAggregateFailures,
 		pkgbssci.ResolveErrorMessage(pkgbssci.ErrPropagationBroadcastFailure),
 		len(errs), errs[0])
 }

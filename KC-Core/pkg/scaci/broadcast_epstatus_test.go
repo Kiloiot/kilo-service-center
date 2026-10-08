@@ -15,8 +15,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty" // Shared MIOTY helpers (FormatEUI64, EPStatus)
+	// Shared MIOTY helpers (FormatEUI64, EPStatus)
 	"github.com/Kiloiot/kilo-service-center/KC-DB/common/encoding"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,7 +56,7 @@ func TestBroadcastEPStatus_RequestData_Format(t *testing.T) {
 
 		// Build RequestData as BroadcastEPStatus does
 		requestData := map[string]interface{}{
-			"epEui":    pkgmioty.FormatEUI64(data.EpEui),
+			"epEui":    mioty.FormatEUI64(data.EpEui),
 			"epStatus": data.EpStatus,
 		}
 
@@ -73,7 +74,7 @@ func TestBroadcastEPStatus_RequestData_Format(t *testing.T) {
 		}
 
 		requestData := map[string]interface{}{
-			"epEui":    pkgmioty.FormatEUI64(data.EpEui),
+			"epEui":    mioty.FormatEUI64(data.EpEui),
 			"epStatus": data.EpStatus,
 		}
 		if data.AttachCnt != nil {
@@ -96,7 +97,7 @@ func TestBroadcastEPStatus_RequestData_Format(t *testing.T) {
 		}
 
 		requestData := map[string]interface{}{
-			"epEui":    pkgmioty.FormatEUI64(data.EpEui),
+			"epEui":    mioty.FormatEUI64(data.EpEui),
 			"epStatus": data.EpStatus,
 		}
 		if data.Nonce != nil {
@@ -136,7 +137,7 @@ func TestBroadcastEPStatus_RequestData_Format(t *testing.T) {
 		}
 
 		requestData := map[string]interface{}{
-			"epEui":    pkgmioty.FormatEUI64(data.EpEui),
+			"epEui":    mioty.FormatEUI64(data.EpEui),
 			"epStatus": data.EpStatus,
 		}
 		if data.Snr != nil {
@@ -170,7 +171,7 @@ func TestBroadcastEPStatus_RequestData_Format(t *testing.T) {
 		}
 
 		requestData := map[string]interface{}{
-			"epEui":    pkgmioty.FormatEUI64(data.EpEui),
+			"epEui":    mioty.FormatEUI64(data.EpEui),
 			"epStatus": data.EpStatus,
 		}
 		if data.Subpackets != nil {
@@ -261,7 +262,7 @@ func TestBroadcastEPStatus_UsesSCOperationId(t *testing.T) {
 	assert.Equal(t, int64(-2), opId2, "Second SC opId should be -2")
 
 	// All SC-originated opIds are negative
-	for i := 0; i < 100; i++ {
+	for i := 0; i < scOpIDSampleCount; i++ {
 		opId := getNextScOpId()
 		assert.True(t, opId < 0, "SC opId must be negative")
 	}
@@ -293,10 +294,10 @@ func TestFormatEUI64_Roundtrip(t *testing.T) {
 	// Verify FormatEUI64 and ParseEUI64 roundtrip
 	original := uint64(0x70B3D59CD00009E6)
 
-	formatted := pkgmioty.FormatEUI64(original)
+	formatted := mioty.FormatEUI64(original)
 	assert.Equal(t, "70B3D59CD00009E6", formatted, "should be uppercase hex")
 
-	parsed, err := ParseEUI64(formatted)
+	parsed, err := validation.ParseEUI(formatted)
 	require.NoError(t, err)
 	assert.Equal(t, original, parsed, "roundtrip should preserve value")
 }
@@ -323,7 +324,7 @@ func TestBroadcastEPStatus_SubpacketsStoredAsStruct_JSONRoundtrip(t *testing.T) 
 
 	// Build RequestData as BroadcastEPStatus does (line 1425-1451)
 	requestData := map[string]interface{}{
-		"epEui":      pkgmioty.FormatEUI64(data.EpEui),
+		"epEui":      mioty.FormatEUI64(data.EpEui),
 		"epStatus":   data.EpStatus,
 		"subpackets": data.Subpackets, // Stored as struct
 	}
@@ -380,7 +381,7 @@ func TestBroadcastEPStatus_AllOptionalFieldsJSONRoundtrip(t *testing.T) {
 
 	// Build RequestData exactly as BroadcastEPStatus does
 	requestData := map[string]interface{}{
-		"epEui":      pkgmioty.FormatEUI64(0x70B3D59CD00009E6),
+		"epEui":      mioty.FormatEUI64(0x70B3D59CD00009E6),
 		"epStatus":   EPStatusAttached,
 		"attachCnt":  attachCnt,
 		"nonce":      encoding.EncodeUserData(nonce[:]), // Base64
@@ -402,7 +403,7 @@ func TestBroadcastEPStatus_AllOptionalFieldsJSONRoundtrip(t *testing.T) {
 	// Verify epEui
 	epEuiStr, ok := restored["epEui"].(string)
 	require.True(t, ok)
-	epEui, err := ParseEUI64(epEuiStr)
+	epEui, err := validation.ParseEUI(epEuiStr)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0x70B3D59CD00009E6), epEui)
 

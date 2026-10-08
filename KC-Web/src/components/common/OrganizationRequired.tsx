@@ -14,13 +14,16 @@ import { EmptyState } from "@ui/EmptyState";
 import { ROUTES } from "@constants/app";
 import { USERS_AND_ROLES } from "@constants/messages";
 import { BusinessIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
 const OrganizationRequired: React.FC = () => {
   const navigate = useNavigate();
 
   return (
     <EmptyState
-      icon={<BusinessIcon sx={{ fontSize: 64 }} />}
+      icon={
+        <BusinessIcon sx={{ fontSize: componentSpacing.stateView.iconSize }} />
+      }
       title={USERS_AND_ROLES.ORG_REQUIRED.TITLE}
       description={USERS_AND_ROLES.ORG_REQUIRED.DESCRIPTION}
       action={{

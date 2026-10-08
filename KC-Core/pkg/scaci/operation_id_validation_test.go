@@ -15,6 +15,9 @@ package scaci
 import (
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -26,7 +29,7 @@ import (
 // TestOpIdZeroRejectedForPing verifies ping with opId=0 is rejected per §3.3.2.
 func TestOpIdZeroRejectedForPing(t *testing.T) {
 	conn := &captureConn{}
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry(), codec: testFrameCodec}
 	session := &Session{State: StateActive, TenantID: 1}
 
 	err := s.routeMessage(conn, &session, nil, CmdPing, 0, nil)
@@ -38,7 +41,7 @@ func TestOpIdZeroRejectedForPing(t *testing.T) {
 // TestOpIdZeroRejectedForStatus verifies status with opId=0 is rejected per §3.3.2.
 func TestOpIdZeroRejectedForStatus(t *testing.T) {
 	conn := &captureConn{}
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry(), codec: testFrameCodec}
 	session := &Session{State: StateActive, TenantID: 1}
 
 	err := s.routeMessage(conn, &session, nil, CmdStatus, 0, nil)
@@ -50,7 +53,7 @@ func TestOpIdZeroRejectedForStatus(t *testing.T) {
 // TestOpIdZeroRejectedForULData verifies ulData with opId=0 is rejected per §3.3.2.
 func TestOpIdZeroRejectedForULData(t *testing.T) {
 	conn := &captureConn{}
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry(), codec: testFrameCodec}
 	session := &Session{State: StateActive, TenantID: 1}
 
 	// Note: CmdULDataResponse is AC-to-SC, but with opId=0 should still be rejected
@@ -64,7 +67,7 @@ func TestOpIdZeroRejectedForULData(t *testing.T) {
 // CmdConnectResponse is SC→AC only per §3.3.2, so inbound conRsp is rejected.
 func TestOpIdZeroRejectedForConnectResponse(t *testing.T) {
 	conn := &captureConn{}
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry(), codec: testFrameCodec}
 	session := &Session{State: StateActive, TenantID: 1}
 
 	err := s.routeMessage(conn, &session, nil, CmdConnectResponse, 0, nil)
@@ -107,7 +110,7 @@ func TestOpIdZeroAllowedForConnectComplete(t *testing.T) {
 // ErrorAck echoes the opId from the original error message per §3.14.2.
 func TestOpIdZeroAllowedForErrorAck(t *testing.T) {
 	conn := &captureConn{}
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry(), codec: testFrameCodec}
 	session := &Session{State: StateActive, TenantID: 1}
 
 	err := s.routeMessage(conn, &session, nil, CmdErrorAck, 0, nil)
@@ -172,12 +175,12 @@ func assertOpIDZeroError(t *testing.T, conn *captureConn, cmdName string) {
 // parseErrorFromFrame extracts the MessagePack error message from a SCACI frame.
 // Frame format: 12-byte header (MIOTYA01 + 4-byte size) + payload
 func parseErrorFromFrame(data []byte, result *map[string]interface{}) error {
-	if len(data) < MinFrameSize {
+	if len(data) < mioty.FrameHeaderSize {
 		return nil // Too short
 	}
 
 	// Skip 12-byte header
-	payload := data[MinFrameSize:]
+	payload := data[mioty.FrameHeaderSize:]
 	return msgpack.Unmarshal(payload, result)
 }
 
@@ -204,13 +207,13 @@ func TestValidateOpIDSign_ACCommands_InvalidNegative(t *testing.T) {
 
 	for _, cmd := range acCommands {
 		t.Run(cmd+"_negative", func(t *testing.T) {
-			errToken := ValidateOpIDSign(cmd, -1)
+			errToken := ValidateOpIDSign(testInitiator(t, cmd), -1)
 			assert.Equal(t, errOpIDSignMismatch, errToken,
 				"%s with negative opId should return errOpIDSignMismatch", cmd)
 		})
 
 		t.Run(cmd+"_zero", func(t *testing.T) {
-			errToken := ValidateOpIDSign(cmd, 0)
+			errToken := ValidateOpIDSign(testInitiator(t, cmd), 0)
 			assert.Equal(t, errOpIDSignMismatch, errToken,
 				"%s with opId=0 should return errOpIDSignMismatch", cmd)
 		})
@@ -230,13 +233,13 @@ func TestValidateOpIDSign_ACCommands_ValidPositive(t *testing.T) {
 
 	for _, cmd := range acCommands {
 		t.Run(cmd+"_positive", func(t *testing.T) {
-			errToken := ValidateOpIDSign(cmd, 1)
+			errToken := ValidateOpIDSign(testInitiator(t, cmd), 1)
 			assert.Empty(t, errToken,
 				"%s with positive opId should pass validation", cmd)
 		})
 
 		t.Run(cmd+"_large_positive", func(t *testing.T) {
-			errToken := ValidateOpIDSign(cmd, 999999)
+			errToken := ValidateOpIDSign(testInitiator(t, cmd), 999999)
 			assert.Empty(t, errToken,
 				"%s with large positive opId should pass validation", cmd)
 		})
@@ -253,13 +256,13 @@ func TestValidateOpIDSign_SCCommands_InvalidPositive(t *testing.T) {
 
 	for _, cmd := range scCommands {
 		t.Run(cmd+"_positive", func(t *testing.T) {
-			errToken := ValidateOpIDSign(cmd, 1)
+			errToken := ValidateOpIDSign(testInitiator(t, cmd), 1)
 			assert.Equal(t, errOpIDSignMismatch, errToken,
 				"%s with positive opId should return errOpIDSignMismatch", cmd)
 		})
 
 		t.Run(cmd+"_zero", func(t *testing.T) {
-			errToken := ValidateOpIDSign(cmd, 0)
+			errToken := ValidateOpIDSign(testInitiator(t, cmd), 0)
 			assert.Equal(t, errOpIDSignMismatch, errToken,
 				"%s with opId=0 should return errOpIDSignMismatch", cmd)
 		})
@@ -276,13 +279,13 @@ func TestValidateOpIDSign_SCCommands_ValidNegative(t *testing.T) {
 
 	for _, cmd := range scCommands {
 		t.Run(cmd+"_negative", func(t *testing.T) {
-			errToken := ValidateOpIDSign(cmd, -1)
+			errToken := ValidateOpIDSign(testInitiator(t, cmd), -1)
 			assert.Empty(t, errToken,
 				"%s with negative opId should pass validation", cmd)
 		})
 
 		t.Run(cmd+"_large_negative", func(t *testing.T) {
-			errToken := ValidateOpIDSign(cmd, -999999)
+			errToken := ValidateOpIDSign(testInitiator(t, cmd), -999999)
 			assert.Empty(t, errToken,
 				"%s with large negative opId should pass validation", cmd)
 		})
@@ -310,7 +313,7 @@ func TestValidateOpIDSign_EitherPartyCommands(t *testing.T) {
 	for _, cmd := range eitherCommands {
 		for _, tc := range testCases {
 			t.Run(cmd+"_"+tc.name, func(t *testing.T) {
-				errToken := ValidateOpIDSign(cmd, tc.opId)
+				errToken := ValidateOpIDSign(testInitiator(t, cmd), tc.opId)
 				assert.Empty(t, errToken,
 					"%s with opId=%d should pass validation (either party)", cmd, tc.opId)
 			})
@@ -337,7 +340,7 @@ func TestValidateOpIDSign_ConnectCommands(t *testing.T) {
 	for _, cmd := range connectCommands {
 		for _, tc := range testCases {
 			t.Run(cmd+"_"+tc.name, func(t *testing.T) {
-				errToken := ValidateOpIDSign(cmd, tc.opId)
+				errToken := ValidateOpIDSign(testInitiator(t, cmd), tc.opId)
 				assert.Empty(t, errToken,
 					"%s with opId=%d should pass sign validation (validated separately)", cmd, tc.opId)
 			})
@@ -361,7 +364,7 @@ func TestValidateOpIDSign_UnknownCommand(t *testing.T) {
 // triggers POSIX_EINVAL + errOpIDSignMismatch via routeMessage.
 func TestOpIDSignMismatch_ACCommandNegative_IntegrationTest(t *testing.T) {
 	conn := &captureConn{}
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry(), codec: testFrameCodec}
 	session := &Session{State: StateActive, TenantID: 1}
 
 	// CmdStatus is AC-initiated, requires positive opId
@@ -375,7 +378,7 @@ func TestOpIDSignMismatch_ACCommandNegative_IntegrationTest(t *testing.T) {
 // triggers POSIX_EINVAL + errOpIDSignMismatch via routeMessage.
 func TestOpIDSignMismatch_SCCommandPositive_IntegrationTest(t *testing.T) {
 	conn := &captureConn{}
-	s := &Server{logger: testLogger()}
+	s := &Server{clock: clock.SystemClock{}, logger: testLogger(), commands: mustTestCommandRegistry(), codec: testFrameCodec}
 	session := &Session{State: StateActive, TenantID: 1}
 
 	// CmdULData is SC-initiated, requires negative opId
@@ -417,4 +420,88 @@ func assertOpIDSignMismatchError(t *testing.T, conn *captureConn, testName strin
 	assert.True(t, ok, "%s: error response missing message field", testName)
 	expectedMsg := GetErrorDefinition(errOpIDSignMismatch).Message
 	assert.Equal(t, expectedMsg, msg, "%s: expected opId sign mismatch message", testName)
+}
+
+// ============================================================================
+// SCACI §3.2 AC opId acceptance and the resume reissue window (§1, §3.3.1)
+// ============================================================================
+
+const (
+	reissueKnownAcOpID = int64(10)
+	reissueSnAcOpID    = int64(7)
+)
+
+type acOpIDStep struct {
+	opID     int64
+	accepted bool
+}
+
+func runAcOpIDSteps(t *testing.T, session *Session, steps []acOpIDStep) {
+	t.Helper()
+	for _, step := range steps {
+		err := session.AcceptAcOpId(step.opID)
+		if step.accepted {
+			assert.NoError(t, err, "opId %d", step.opID)
+			continue
+		}
+		assert.Error(t, err, "opId %d", step.opID)
+	}
+}
+
+func TestAcceptAcOpId_FreshSessionIsStrictlyIncrementing(t *testing.T) {
+	runAcOpIDSteps(t, &Session{}, []acOpIDStep{
+		{opID: OpIDConnect, accepted: false},
+		{opID: -1, accepted: false},
+		{opID: 1, accepted: true},
+		{opID: 1, accepted: false},
+		{opID: 5, accepted: true},
+		{opID: 4, accepted: false},
+	})
+}
+
+// After a resume the application center reissues its uncompleted operations
+// with their original IDs, in order, before it starts new ones.
+func TestAcceptAcOpId_ResumeAcceptsReissuedOperationsOnce(t *testing.T) {
+	session := withOpIDs(&Session{}, OpIDPair{AC: reissueKnownAcOpID})
+	session.OpenReissueWindow(reissueSnAcOpID)
+
+	runAcOpIDSteps(t, session, []acOpIDStep{
+		{opID: reissueSnAcOpID, accepted: false},
+		{opID: reissueSnAcOpID + 1, accepted: true},
+		{opID: reissueSnAcOpID + 1, accepted: false},
+		{opID: reissueKnownAcOpID, accepted: true},
+		{opID: reissueKnownAcOpID + 1, accepted: true},
+	})
+	assert.Equal(t, reissueKnownAcOpID+1, session.OpIDs().AC)
+}
+
+func TestAcceptAcOpId_NewOperationClosesTheReissueWindow(t *testing.T) {
+	session := withOpIDs(&Session{}, OpIDPair{AC: reissueKnownAcOpID})
+	session.OpenReissueWindow(reissueSnAcOpID)
+
+	runAcOpIDSteps(t, session, []acOpIDStep{
+		{opID: reissueKnownAcOpID + 1, accepted: true},
+		{opID: reissueSnAcOpID + 1, accepted: false},
+	})
+}
+
+func TestOpenReissueWindow_NothingToReissueWhenTheCountersAgree(t *testing.T) {
+	session := withOpIDs(&Session{}, OpIDPair{AC: reissueKnownAcOpID})
+	session.OpenReissueWindow(reissueKnownAcOpID)
+
+	runAcOpIDSteps(t, session, []acOpIDStep{
+		{opID: reissueKnownAcOpID, accepted: false},
+		{opID: reissueKnownAcOpID + 1, accepted: true},
+	})
+}
+
+func TestOpenReissueWindow_NegativeFloorAdmitsOnlyPositiveIDs(t *testing.T) {
+	const firstAcOpID, invalidSnAcOpID = int64(1), int64(-1)
+	session := withOpIDs(&Session{}, OpIDPair{AC: firstAcOpID})
+	session.OpenReissueWindow(invalidSnAcOpID)
+
+	runAcOpIDSteps(t, session, []acOpIDStep{
+		{opID: OpIDConnect, accepted: false},
+		{opID: firstAcOpID, accepted: true},
+	})
 }

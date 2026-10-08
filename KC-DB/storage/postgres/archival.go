@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/lib/pq"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 )
 
 // archivedMessageColumns enumerates the messages columns copied into
@@ -20,17 +22,31 @@ const archivedMessageColumns = `id, tenant_id, command_type, op_id, ep_eui, bs_e
 		snr, rssi, user_data, dl_open, response_exp, dl_ack, rx_duration, eq_snr, profile, mode, format,
 		subpackets, received_at, processed_at, created_at, updated_at, org_uuid, owner_tenant_id,
 		base_stations, duplicate, decoded_payload, blueprint_type_eui, blueprint_version_id,
-		decode_status, decode_error_code, nwk_sn_key, archived, archived_at`
+		decode_status, decode_error_code, nwk_sn_key, archived, archived_at, packet_cnt_reused, dl_window_claimed`
 
 // ArchivalService handles message archiving operations
 type ArchivalService struct {
+	clock  clock.Clock
 	db     *sql.DB
 	logger logger.Logger
 }
 
+const (
+	bytesPerUnit = 1024
+	bytesFmt     = "%d bytes"
+)
+
+var byteUnits = []string{"kB", "MB", "GB", "TB", "PB"}
+
+// partitionNameFmt names the monthly message partitions.
+const partitionNameFmt = "messages_%d_%02d"
+
 // NewArchivalService creates a new archival service
-func NewArchivalService(db *sql.DB, logger logger.Logger) *ArchivalService {
+// pg_size_pretty style byte formatting: the 1024 unit step, the plain-bytes
+// format, and the unit ladder.
+func NewArchivalService(db *sql.DB, logger logger.Logger, clk clock.Clock) *ArchivalService {
 	return &ArchivalService{
+		clock:  clk,
 		db:     db,
 		logger: logger,
 	}
@@ -38,20 +54,20 @@ func NewArchivalService(db *sql.DB, logger logger.Logger) *ArchivalService {
 
 // ArchiveOldMessages archives messages older than the specified duration
 func (s *ArchivalService) ArchiveOldMessages(ctx context.Context, olderThan time.Duration) (int64, error) {
-	cutoffTime := time.Now().Add(-olderThan)
+	cutoffTime := s.clock.Now().Add(-olderThan)
 
-	s.logger.Info("Starting message archival",
-		"cutoff_time", cutoffTime,
-		"older_than", olderThan)
+	s.logger.Info(logMsgStartingMessageArchival,
+		logger.FieldCutoffTime, cutoffTime,
+		logger.FieldOlderThan, olderThan)
 
 	// Start transaction
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("begin transaction: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapBeginTransaction, err)
 	}
 	defer func() {
 		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			s.logger.Warn("archival rollback failed", "error", err)
+			s.logger.Warn(logMsgArchivalRollback, logger.FieldError, err)
 		}
 	}()
 
@@ -68,12 +84,12 @@ func (s *ArchivalService) ArchiveOldMessages(ctx context.Context, olderThan time
 
 	result, err := tx.ExecContext(ctx, query, cutoffTime)
 	if err != nil {
-		return 0, fmt.Errorf("copy to archive: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapCopyArchive, err)
 	}
 
 	copiedCount, err := result.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("get copied count: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapGetCopiedCount, err)
 	}
 
 	// Mark messages as archived in main table
@@ -86,232 +102,31 @@ func (s *ArchivalService) ArchiveOldMessages(ctx context.Context, olderThan time
 
 	_, err = tx.ExecContext(ctx, updateQuery, cutoffTime)
 	if err != nil {
-		return 0, fmt.Errorf("mark as archived: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapMarkAsArchived, err)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit transaction: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapCommitTransaction, err)
 	}
 
-	s.logger.Info("Message archival completed",
-		"messages_archived", copiedCount)
-
-	return copiedCount, nil
-}
-
-// ArchiveOldGatewayReceptions archives gateway receptions older than the specified duration
-func (s *ArchivalService) ArchiveOldGatewayReceptions(ctx context.Context, olderThan time.Duration) (int64, error) {
-	cutoffTime := time.Now().Add(-olderThan)
-
-	s.logger.Info("Starting gateway reception archival",
-		"cutoff_time", cutoffTime,
-		"older_than", olderThan)
-
-	// Start transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			s.logger.Warn("archival rollback failed (partitions)", "error", err)
-		}
-	}()
-
-	// First, copy gateway receptions to archive table
-	query := `
-		INSERT INTO gateway_receptions_archive 
-		SELECT * FROM gateway_receptions 
-		WHERE created_at < $1 
-		  AND NOT EXISTS (
-		    SELECT 1 FROM gateway_receptions_archive 
-		    WHERE gateway_receptions_archive.id = gateway_receptions.id
-		  )`
-
-	result, err := tx.ExecContext(ctx, query, cutoffTime)
-	if err != nil {
-		return 0, fmt.Errorf("copy to archive: %w", err)
-	}
-
-	copiedCount, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("get copied count: %w", err)
-	}
-
-	// Delete from main table (gateway_receptions don't have an archived flag)
-	deleteQuery := `
-		DELETE FROM gateway_receptions 
-		WHERE created_at < $1 
-		  AND EXISTS (
-		    SELECT 1 FROM gateway_receptions_archive 
-		    WHERE gateway_receptions_archive.id = gateway_receptions.id
-		  )`
-
-	_, err = tx.ExecContext(ctx, deleteQuery, cutoffTime)
-	if err != nil {
-		return 0, fmt.Errorf("delete from main table: %w", err)
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit transaction: %w", err)
-	}
-
-	s.logger.Info("Gateway reception archival completed",
-		"receptions_archived", copiedCount)
-
-	return copiedCount, nil
-}
-
-// ArchiveOldDeviceSessions archives device sessions older than the specified duration
-func (s *ArchivalService) ArchiveOldDeviceSessions(ctx context.Context, olderThan time.Duration) (int64, error) {
-	cutoffTime := time.Now().Add(-olderThan)
-
-	s.logger.Info("Starting device session archival",
-		"cutoff_time", cutoffTime,
-		"older_than", olderThan)
-
-	// Start transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			s.logger.Warn("archival rollback failed (retention)", "error", err)
-		}
-	}()
-
-	// First, copy terminated/expired sessions to archive table
-	query := `
-		INSERT INTO device_sessions_archive 
-		SELECT * FROM device_sessions 
-		WHERE (status IN ('terminated', 'expired') AND ended_at < $1)
-		  AND NOT EXISTS (
-		    SELECT 1 FROM device_sessions_archive 
-		    WHERE device_sessions_archive.id = device_sessions.id
-		  )`
-
-	result, err := tx.ExecContext(ctx, query, cutoffTime)
-	if err != nil {
-		return 0, fmt.Errorf("copy to archive: %w", err)
-	}
-
-	copiedCount, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("get copied count: %w", err)
-	}
-
-	// Delete from main table
-	deleteQuery := `
-		DELETE FROM device_sessions 
-		WHERE (status IN ('terminated', 'expired') AND ended_at < $1)
-		  AND EXISTS (
-		    SELECT 1 FROM device_sessions_archive 
-		    WHERE device_sessions_archive.id = device_sessions.id
-		  )`
-
-	_, err = tx.ExecContext(ctx, deleteQuery, cutoffTime)
-	if err != nil {
-		return 0, fmt.Errorf("delete from main table: %w", err)
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit transaction: %w", err)
-	}
-
-	s.logger.Info("Device session archival completed",
-		"sessions_archived", copiedCount)
-
-	return copiedCount, nil
-}
-
-// ArchiveOldDeviceKeys archives device keys older than the specified duration
-func (s *ArchivalService) ArchiveOldDeviceKeys(ctx context.Context, olderThan time.Duration) (int64, error) {
-	cutoffTime := time.Now().Add(-olderThan)
-
-	s.logger.Info("Starting device key archival",
-		"cutoff_time", cutoffTime,
-		"older_than", olderThan)
-
-	// Start transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			s.logger.Warn("retention rollback failed", "error", err)
-		}
-	}()
-
-	// First, copy inactive/expired keys to archive table
-	query := `
-		INSERT INTO device_keys_archive 
-		SELECT * FROM device_keys 
-		WHERE (is_active = false OR (valid_until IS NOT NULL AND valid_until < $1))
-		  AND updated_at < $1
-		  AND NOT EXISTS (
-		    SELECT 1 FROM device_keys_archive 
-		    WHERE device_keys_archive.id = device_keys.id
-		  )`
-
-	result, err := tx.ExecContext(ctx, query, cutoffTime)
-	if err != nil {
-		return 0, fmt.Errorf("copy to archive: %w", err)
-	}
-
-	copiedCount, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("get copied count: %w", err)
-	}
-
-	// Delete from main table (keep at least one inactive key per device for history)
-	deleteQuery := `
-		DELETE FROM device_keys dk1
-		WHERE (is_active = false OR (valid_until IS NOT NULL AND valid_until < $1))
-		  AND updated_at < $1
-		  AND EXISTS (
-		    SELECT 1 FROM device_keys_archive 
-		    WHERE device_keys_archive.id = dk1.id
-		  )
-		  AND EXISTS (
-		    SELECT 1 FROM device_keys dk2
-		    WHERE dk2.device_id = dk1.device_id
-		      AND dk2.key_type = dk1.key_type
-		      AND dk2.id != dk1.id
-		      AND (dk2.key_version > dk1.key_version OR dk2.is_active = true)
-		  )`
-
-	_, err = tx.ExecContext(ctx, deleteQuery, cutoffTime)
-	if err != nil {
-		return 0, fmt.Errorf("delete from main table: %w", err)
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit transaction: %w", err)
-	}
-
-	s.logger.Info("Device key archival completed",
-		"keys_archived", copiedCount)
+	s.logger.Info(logMsgMessageArchivalCompleted,
+		logger.FieldMessagesArchived, copiedCount)
 
 	return copiedCount, nil
 }
 
 // CreateMonthlyPartitions ensures partitions exist for the next N months
 func (s *ArchivalService) CreateMonthlyPartitions(ctx context.Context, monthsAhead int) error {
-	s.logger.Info("Creating monthly partitions", "months_ahead", monthsAhead)
+	s.logger.Info(logMsgCreatingMonthlyPartitions, logger.FieldMonthsAhead, monthsAhead)
 
-	now := time.Now()
+	now := s.clock.Now()
 	for i := 0; i <= monthsAhead; i++ {
 		targetDate := now.AddDate(0, i, 0)
 		year := targetDate.Year()
 		month := int(targetDate.Month())
 
-		partitionName := fmt.Sprintf("messages_%d_%02d", year, month)
+		partitionName := fmt.Sprintf(partitionNameFmt, year, month)
 
 		// Check if partition already exists
 		var exists bool
@@ -324,11 +139,11 @@ func (s *ArchivalService) CreateMonthlyPartitions(ctx context.Context, monthsAhe
 
 		err := s.db.QueryRowContext(ctx, checkQuery, partitionName).Scan(&exists)
 		if err != nil {
-			return fmt.Errorf("check partition %s: %w", partitionName, err)
+			return fmt.Errorf(errFmtCheckPartition, partitionName, err)
 		}
 
 		if exists {
-			s.logger.Debug("Partition already exists", "partition", partitionName)
+			s.logger.Debug(logMsgPartitionAlreadyExists, logger.FieldPartition, partitionName)
 			continue
 		}
 
@@ -341,15 +156,15 @@ func (s *ArchivalService) CreateMonthlyPartitions(ctx context.Context, monthsAhe
 			CREATE TABLE IF NOT EXISTS %s PARTITION OF messages
 			FOR VALUES FROM ('%s') TO ('%s')`,
 			pq.QuoteIdentifier(partitionName),
-			startDate.Format("2006-01-02"),
-			endDate.Format("2006-01-02"))
+			startDate.Format(time.DateOnly),
+			endDate.Format(time.DateOnly))
 
 		_, err = s.db.ExecContext(ctx, createQuery)
 		if err != nil {
-			return fmt.Errorf("create partition %s: %w", partitionName, err)
+			return fmt.Errorf(errFmtCreatePartition, partitionName, err)
 		}
 
-		s.logger.Info("Created partition", "partition", partitionName)
+		s.logger.Info(logMsgCreatedPartition, logger.FieldPartition, partitionName)
 	}
 
 	return nil
@@ -358,8 +173,8 @@ func (s *ArchivalService) CreateMonthlyPartitions(ctx context.Context, monthsAhe
 // PurgeArchivedMessages removes messages from the main table that have been archived
 // This should only be run after verifying the archive is complete and backed up
 func (s *ArchivalService) PurgeArchivedMessages(ctx context.Context, archivedBefore time.Time) (int64, error) {
-	s.logger.Warn("Starting archived message purge",
-		"archived_before", archivedBefore)
+	s.logger.Warn(logMsgStartingArchivedMessagePurge,
+		logger.FieldArchivedBefore, archivedBefore)
 
 	// Only delete messages that have been archived for at least the specified duration
 	query := `
@@ -369,16 +184,16 @@ func (s *ArchivalService) PurgeArchivedMessages(ctx context.Context, archivedBef
 
 	result, err := s.db.ExecContext(ctx, query, archivedBefore)
 	if err != nil {
-		return 0, fmt.Errorf("delete archived messages: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapDeleteArchivedMessages, err)
 	}
 
 	count, err := result.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("get deleted count: %w", err)
+		return 0, fmt.Errorf("%s: %w", errWrapGetDeletedCount, err)
 	}
 
-	s.logger.Info("Archived message purge completed",
-		"messages_deleted", count)
+	s.logger.Info(logMsgArchivedMessagePurgeCompleted,
+		logger.FieldMessagesDeleted, count)
 
 	return count, nil
 }
@@ -438,7 +253,7 @@ func (s *ArchivalService) queryMainTableStats(ctx context.Context, stats *Archiv
 		&stats.MainTableSize,
 	)
 	if err != nil {
-		return fmt.Errorf("get main table stats: %w", err)
+		return fmt.Errorf("%s: %w", errWrapGetMainTableStats, err)
 	}
 
 	if oldestMain.Valid {
@@ -469,7 +284,7 @@ func (s *ArchivalService) queryCanonicalArchiveStats(ctx context.Context, stats 
 		&tableBytes,
 	)
 	if err != nil && err != sql.ErrNoRows {
-		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("get archive table stats: %w", err)
+		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("%s: %w", errWrapGetArchiveTableStats, err)
 	}
 	return tableBytes, oldest, newest, nil
 }
@@ -480,7 +295,7 @@ func (s *ArchivalService) queryCanonicalArchiveStats(ctx context.Context, stats 
 func (s *ArchivalService) queryLegacyArchiveStats(ctx context.Context, stats *ArchivalStats) (tableBytes int64, oldest, newest sql.NullTime, err error) {
 	var legacyExists *string
 	if err := s.db.QueryRowContext(ctx, `SELECT to_regclass('messages_archive_pre000139')::text`).Scan(&legacyExists); err != nil {
-		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("check legacy archive presence: %w", err)
+		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("%s: %w", errWrapCheckLegacyArchivePresence, err)
 	}
 	if legacyExists == nil {
 		return 0, sql.NullTime{}, sql.NullTime{}, nil
@@ -500,7 +315,7 @@ func (s *ArchivalService) queryLegacyArchiveStats(ctx context.Context, stats *Ar
 		&tableBytes,
 	)
 	if err != nil && err != sql.ErrNoRows {
-		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("get legacy archive stats: %w", err)
+		return 0, sql.NullTime{}, sql.NullTime{}, fmt.Errorf("%s: %w", errWrapGetLegacyArchiveStats, err)
 	}
 	return tableBytes, oldest, newest, nil
 }
@@ -519,11 +334,11 @@ func (s *ArchivalService) queryPartitionInfo(ctx context.Context) ([]PartitionIn
 
 	rows, err := s.db.QueryContext(ctx, partitionQuery)
 	if err != nil {
-		return nil, fmt.Errorf("get partition info: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetPartitionInfo, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			s.logger.Warn("rows close failed", "error", err)
+			s.logger.Warn(logMsgRowsClose, logger.FieldError, err)
 		}
 	}()
 
@@ -531,7 +346,7 @@ func (s *ArchivalService) queryPartitionInfo(ctx context.Context) ([]PartitionIn
 	for rows.Next() {
 		var info PartitionInfo
 		if err := rows.Scan(&info.Name, &info.Size); err != nil {
-			return nil, fmt.Errorf("scan partition info: %w", err)
+			return nil, fmt.Errorf("%s: %w", errWrapScanPartitionInfo, err)
 		}
 		partitions = append(partitions, info)
 	}
@@ -587,18 +402,16 @@ type ArchivalStats struct {
 // prettyBytes renders a byte count in the pg_size_pretty style used by the
 // other size fields, computed client-side so combined totals stay numeric.
 func prettyBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d bytes", n)
+	if n < bytesPerUnit {
+		return fmt.Sprintf(bytesFmt, n)
 	}
-	units := []string{"kB", "MB", "GB", "TB", "PB"}
 	value := float64(n)
 	idx := -1
-	for value >= unit && idx < len(units)-1 {
-		value /= unit
+	for value >= bytesPerUnit && idx < len(byteUnits)-1 {
+		value /= bytesPerUnit
 		idx++
 	}
-	return fmt.Sprintf("%.0f %s", value, units[idx])
+	return fmt.Sprintf("%.0f %s", value, byteUnits[idx])
 }
 
 // PartitionInfo contains information about a message partition

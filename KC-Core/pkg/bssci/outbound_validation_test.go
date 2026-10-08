@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
@@ -99,7 +101,7 @@ func buildMinimalValidPayload(command string) map[string]interface{} {
 	return payload
 }
 
-// TestValidateAllCatalogCommands iterates all 52 OutboundFieldCatalog entries with minimal payloads
+// TestValidateAllCatalogCommands iterates every outbound field catalog entry with minimal payloads
 func TestValidateAllCatalogCommands(t *testing.T) {
 	// Get all commands from catalog
 	commands := []string{
@@ -125,6 +127,7 @@ func TestValidateAllCatalogCommands(t *testing.T) {
 
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -153,6 +156,7 @@ func TestValidateAllCatalogCommands(t *testing.T) {
 func TestValidationMissingCommand(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -187,6 +191,7 @@ func TestValidationMissingCommand(t *testing.T) {
 func TestValidationMissingOpId(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -272,6 +277,7 @@ func TestValidationMissingOpId(t *testing.T) {
 func TestValidationExtraField(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -307,6 +313,7 @@ func TestValidationExtraField(t *testing.T) {
 func TestValidationUnknownCommand(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -341,6 +348,7 @@ func TestValidationUnknownCommand(t *testing.T) {
 func TestValidationMarshalFailure(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}
@@ -376,6 +384,7 @@ func TestValidationMarshalFailure(t *testing.T) {
 func TestValidationStructMessages(t *testing.T) {
 	logger := logger.NewNop()
 	server := &Server{
+		clock:  clock.SystemClock{},
 		config: &Config{},
 		logger: logger,
 	}

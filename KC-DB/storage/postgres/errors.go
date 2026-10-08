@@ -13,24 +13,32 @@ var (
 	// ErrDownlinkAlreadyReserved indicates downlink was reserved by concurrent dispatcher
 	// This occurs when FOR UPDATE SKIP LOCKED finds no available rows due to concurrent reservation
 	ErrDownlinkAlreadyReserved = errors.New("downlink already reserved for dispatch")
-
-	// ErrNotImplemented indicates method only available within transaction context
-	// Returned by non-transactional *DB stubs for tx-only methods
-	ErrNotImplemented = errors.New("method not implemented outside transaction context")
 )
 
 // Message repository errors
-var (
-	// ErrNoMatchingMessage indicates no message matched UPDATE criteria (dedup window edge case)
-	// Caller should log with context - repo layer returns sentinel only (no logging)
-	ErrNoMatchingMessage = errors.New("no matching message found")
+var ()
+
+const (
+	pqCodeUniqueViolation     = "23505"
+	pqCodeForeignKeyViolation = "23503"
+	pqCodeCheckViolation      = "23514"
+	pqCodeInvalidTextRep      = "22P02"
 )
 
+// constraintDownlinkQueueID is the installation-wide UNIQUE(que_id) constraint
+// of downlink_queue (migration 028).
+const constraintDownlinkQueueID = "unique_queue_id"
+
+// constraintDownlinkCommandRef is the unique index that lets an MQTT command's
+// ref name one downlink of an organization's endpoint (migration 000189).
+const constraintDownlinkCommandRef = "uq_downlink_queue_command_ref"
+
 // IsUniqueViolation checks if error is PostgreSQL unique constraint violation (SQLSTATE 23505)
+// PostgreSQL error codes matched when translating driver errors.
 func IsUniqueViolation(err error) bool {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) {
-		return pqErr.Code == "23505"
+		return pqErr.Code == pqCodeUniqueViolation
 	}
 	return false
 }
@@ -50,7 +58,7 @@ func WrapDuplicateError(err error, resource string) error {
 
 		// **CRITICAL**: ErrDuplicate must be FIRST %w for errors.Is(wrapped, ErrDuplicate) to succeed
 		// Second %w preserves original pq.Error for errors.As(wrapped, &pqErr)
-		return fmt.Errorf("%s already exists (constraint: %s, table: %s): %w: %w",
+		return fmt.Errorf(errFmtAlreadyExistsConstraintTable,
 			resource,
 			pqErr.Constraint,
 			pqErr.Table,

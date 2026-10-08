@@ -6,6 +6,48 @@ import tseslint from 'typescript-eslint';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import importPlugin from 'eslint-plugin-import';
 
+// Import restrictions shared by every layer block below; flat-config blocks
+// replace a rule's options instead of merging them.
+const restrictedImportPatterns = [
+    {
+      group: ['../../*', '../../../*'],
+      message: 'Deep relative imports banned. Use @aliases.',
+    },
+    {
+      group: ['@mui/icons-material/*', '@mui/icons-material'],
+      message: 'Import icons from @theme/icons only.',
+    },
+    // Block deep relative imports to constants - use @constants/* aliases
+    {
+      group: ['../constants/*', '../../constants/*', '../../../constants/*'],
+      message: 'Use @constants/app or @constants/messages aliases for constants.',
+    },
+];
+
+// Data access lives in hooks: components render what hooks return.
+const reactQueryHookImports = {
+  name: '@tanstack/react-query',
+  importNames: [
+    'useQuery',
+    'useMutation',
+    'useInfiniteQuery',
+    'useQueries',
+    'useSuspenseQuery',
+    'useSuspenseInfiniteQuery',
+    'useSuspenseQueries',
+  ],
+  message: 'React Query hooks belong in src/hooks or src/modules/*/hooks.',
+};
+const apiFacadeImports = {
+  name: '@services/api',
+  message: 'Components import hooks, not the api facade.',
+};
+const grpcLayerImports = {
+  group: ['@services/grpc', '@services/grpc/*', '@services/grpc/**'],
+  message: 'Only src/services may reach the gRPC layer.',
+};
+const testFiles = ['**/*.test.{ts,tsx}', '**/__tests__/**', '**/test/**'];
+
 export default tseslint.config(
   // Global ignores
   {
@@ -23,10 +65,6 @@ export default tseslint.config(
       // "file not found in any of the provided project(s)".
       'src/test/**',
       // Generated gRPC-web stubs - auto-generated code
-      'src/services/grpc/kilocenter_pb.js',
-      'src/services/grpc/kilocenter_pb.d.ts',
-      'src/services/grpc/kilocenter_pb_service.js',
-      'src/services/grpc/kilocenter_pb_service.d.ts',
       'src/services/grpc/identity_pb.js',
       'src/services/grpc/identity_pb.d.ts',
       'src/services/grpc/identity_pb_service.js',
@@ -106,26 +144,7 @@ export default tseslint.config(
       'simple-import-sort/exports': 'error',
 
       // MANDATORY: Block restricted imports (error, not warn)
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['../../*', '../../../*'],
-              message: 'Deep relative imports banned. Use @aliases.',
-            },
-            {
-              group: ['@mui/icons-material/*', '@mui/icons-material'],
-              message: 'Import icons from @theme/icons only.',
-            },
-            // Block deep relative imports to constants - use @constants/* aliases
-            {
-              group: ['../constants/*', '../../constants/*', '../../../constants/*'],
-              message: 'Use @constants/app or @constants/messages aliases for constants.',
-            },
-          ],
-        },
-      ],
+      'no-restricted-imports': ['error', { patterns: restrictedImportPatterns }],
 
       // MANDATORY: Force barrel exports for modules - enforce barrels for feature modules
       // NOTE: This rule is configured to allow relative imports within modules
@@ -175,6 +194,65 @@ export default tseslint.config(
           selector: 'Literal[value=/^rgb\\(|^rgba\\(/]',
           message: 'RGB colors banned. Use theme.palette.* tokens.',
         },
+      ],
+    },
+  },
+  // Layer boundaries. Each block lists the full option set for its files
+  // because a later block replaces, not merges, the rule's options.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      ...testFiles,
+      'src/hooks/**',
+      'src/modules/*/hooks/**',
+      'src/services/**',
+      'src/context/SessionContext.tsx',
+      'src/context/OrganizationContext.tsx',
+      'src/utils/tokenRefresh.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [...restrictedImportPatterns, grpcLayerImports],
+          paths: [reactQueryHookImports, apiFacadeImports],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/hooks/**/*.{ts,tsx}', 'src/modules/*/hooks/**/*.{ts,tsx}'],
+    ignores: testFiles,
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: [...restrictedImportPatterns, grpcLayerImports] },
+      ],
+    },
+  },
+  {
+    files: [
+      'src/context/SessionContext.tsx',
+      'src/context/OrganizationContext.tsx',
+      'src/utils/tokenRefresh.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [...restrictedImportPatterns, grpcLayerImports],
+          paths: [reactQueryHookImports],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/services/**/*.{ts,tsx}'],
+    ignores: testFiles,
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { patterns: restrictedImportPatterns, paths: [reactQueryHookImports] },
       ],
     },
   },
@@ -250,6 +328,11 @@ export default tseslint.config(
           selector:
             'JSXAttribute[name.name=/^(title|label|placeholder|helperText|message|alt|aria-label)$/] > Literal',
           message: 'UI attribute text must come from @constants/messages.',
+        },
+        // Block raw fetch - every call goes through the gRPC transport
+        {
+          selector: "CallExpression[callee.name='fetch']",
+          message: 'Raw fetch banned. Use the gRPC transport via hooks.',
         },
         // Block import.meta.env access - must use @config/env
         {

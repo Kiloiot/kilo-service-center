@@ -50,14 +50,12 @@ func TestPendingOpsCompositeKey(t *testing.T) {
 
 	// Test 1: Store operations with same opID in different sessions
 	op1 := &PendingOperation{
-		SessionSlug:   session1.ID,
 		OperationID:   sharedOpID,
 		OperationType: mioty.CmdAttach,
 		CreatedAt:     time.Now(),
 	}
 
 	op2 := &PendingOperation{
-		SessionSlug:   session2.ID,
 		OperationID:   sharedOpID,
 		OperationType: mioty.CmdDetach,
 		CreatedAt:     time.Now(),
@@ -78,8 +76,6 @@ func TestPendingOpsCompositeKey(t *testing.T) {
 
 	assert.Equal(t, mioty.CmdAttach, retrieved1.OperationType, "Session 1 should have attach operation")
 	assert.Equal(t, mioty.CmdDetach, retrieved2.OperationType, "Session 2 should have detach operation")
-	assert.Equal(t, session1ID, retrieved1.SessionSlug, "Operation 1 should have correct session ID")
-	assert.Equal(t, session2ID, retrieved2.SessionSlug, "Operation 2 should have correct session ID")
 
 	// Test 3: Delete from one session doesn't affect the other
 	err = server.statusSvc.RemovePendingOperation(ctx, session1, sharedOpID)
@@ -131,7 +127,6 @@ func TestPendingOpsSessionIsolation(t *testing.T) {
 		for opIdx, opType := range operationTypes {
 			opID := int64(opIdx + 1)
 			op := &PendingOperation{
-				SessionSlug:   session.ID,
 				OperationID:   opID,
 				OperationType: opType,
 				CreatedAt:     time.Now().Add(time.Duration(sessionIdx*100) * time.Millisecond),
@@ -144,9 +139,8 @@ func TestPendingOpsSessionIsolation(t *testing.T) {
 	// Test retrieval: Each session should have its own set of operations
 	for _, session := range sessions {
 		for opID := int64(1); opID <= 5; opID++ {
-			op, err := server.statusSvc.GetPendingOperation(session, opID)
+			_, err := server.statusSvc.GetPendingOperation(session, opID)
 			require.NoError(t, err, "Operation %d should exist for session %s", opID, session.ID)
-			assert.Equal(t, session.ID, op.SessionSlug, "Operation should belong to correct session")
 		}
 	}
 
@@ -215,58 +209,6 @@ func TestMakeSessionOpKey(t *testing.T) {
 	t.Logf("PASS: Issue #3: makeSessionOpKey produces consistent, unique composite keys")
 }
 
-// TestPendingOperationSessionSlug verifies that PendingOperation struct
-// correctly stores and maintains the SessionSlug field.
-func TestPendingOperationSessionSlug(t *testing.T) {
-	t.Parallel()
-
-	const (
-		sessionID = "bs-production-001"
-		opID      = int64(12345)
-	)
-
-	// Create pending operation with SessionSlug
-	op := &PendingOperation{
-		SessionSlug:   sessionID,
-		OperationID:   opID,
-		OperationType: mioty.CmdAttach,
-		Endpoint:      []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88},
-		CreatedAt:     time.Now(),
-		Metadata: map[string]interface{}{
-			"tenantId": int64(100),
-		},
-	}
-
-	// Verify SessionSlug is correctly stored
-	assert.Equal(t, sessionID, op.SessionSlug, "SessionSlug should be correctly stored")
-	assert.Equal(t, opID, op.OperationID, "OperationID should be correctly stored")
-	assert.Equal(t, mioty.CmdAttach, op.OperationType, "OperationType should be correctly stored")
-
-	// Verify operation can be stored and retrieved with StatusService
-	testLogger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(testLogger, nil)
-	server := NewTestServer(testLogger, mockStorage, nil, 1,
-		sessionSvc, downlinkSvc, statusSvc, connectionSvc,
-		broadcaster, queueSerializer, auditLogger, tenantResolver)
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:          sessionID,
-			DbSessionID: 1,
-		},
-	}
-	ctx := testutil.TestContext()
-	err := server.statusSvc.RecordPendingOperation(ctx, session, opID, op, session.DbSessionID)
-	require.NoError(t, err, "Should record pending operation")
-
-	// Retrieve and verify
-	retrieved, err := server.statusSvc.GetPendingOperation(session, opID)
-	require.NoError(t, err, "Operation should be retrievable")
-	assert.Equal(t, sessionID, retrieved.SessionSlug, "Retrieved operation should have correct SessionSlug")
-
-	t.Logf("PASS: Issue #3: PendingOperation.SessionSlug field works correctly")
-}
-
 // TestPendingOpsRaceCondition verifies that concurrent operations on different
 // sessions don't interfere with each other (smoke test for race detector).
 func TestPendingOpsRaceCondition(t *testing.T) {
@@ -294,7 +236,6 @@ func TestPendingOpsRaceCondition(t *testing.T) {
 		opID := int64(i + 1)
 
 		op := &PendingOperation{
-			SessionSlug:   session.ID,
 			OperationID:   opID,
 			OperationType: mioty.CmdAttach,
 			CreatedAt:     time.Now(),

@@ -2,11 +2,10 @@ package builders
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"os"
-	"strconv"
 	"time"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/adapters/keymaterial"
+	"github.com/Kiloiot/kilo-service-center/pkg/version"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/activity"
@@ -16,26 +15,59 @@ import (
 	blueprintsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/blueprints"
 	bssciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci"
 	blueprintresolver "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci/blueprint"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/capabilities"
 	certificatesservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/certificates"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/diagnostics"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/downlinks"
+	errorgroupsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/errorgroups"
 	eventsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/events"
 	grpcservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	integrationsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/integrations"
 	messagesservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/messages"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/registrationscope"
 	scacimonitoringservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/scaci_monitoring"
 	statisticsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/statistics"
 	systemstatusservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/systemstatus"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/workers/certcleanup"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/adapters"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
 )
 
-// coreServiceSourceName identifies KC-Core as the source of system events.
-const coreServiceSourceName = "kc-core"
+// CoreServiceSourceName identifies KC-Core as the source of system events.
+const CoreServiceSourceName = "kc-core"
 
-// CoreResult holds the fully wired CoreService and shared system event adapter.
+// CoreServiceDisplayName labels KC-Core in event titles.
+const CoreServiceDisplayName = "KC-Core"
+
+// listenInfoFmt summarizes the listening ports for the started event.
+const listenInfoFmt = "gRPC=%d, BSSCI=%d, SCACI=%d"
+
+// CoreResult holds the fully wired CoreService, the shared system event
+// adapter and the stops of the background work the core services started.
 type CoreResult struct {
 	Service            *grpc.CoreService
 	SystemEventAdapter grpcservices.EventWriter
+	Cleanups           []func()
 }
+
+// The gRPC service layer consumes narrow ports; *postgres.DB satisfies each of
+// them. Asserting that here keeps the services package free of any dependency on
+// the concrete store.
+var (
+	_ grpcservices.EndpointStore        = (*postgres.EndPointRepository)(nil)
+	_ grpcservices.BaseStationStore     = (*postgres.BaseStationRepository)(nil)
+	_ grpcservices.DownlinkResultsStore = (*postgres.MIOTYDownlinkRepository)(nil)
+	_ downlinks.PendingEditor           = (*postgres.MIOTYDownlinkRepository)(nil)
+
+	_ grpc.DLRXStatusQueryStorage = (*postgres.DLRXStatusRepository)(nil)
+	_ grpc.DLRXStatusReader       = (*postgres.DLRXStatusRepository)(nil)
+	_ grpc.MessageStore           = (*postgres.MessageRepository)(nil)
+
+	_ grpc.BaseStationAvailabilityReader  = (*postgres.BaseStationMetricsRepository)(nil)
+	_ grpc.BaseStationMessageBucketReader = (*postgres.BaseStationMetricsRepository)(nil)
+)
 
 // BuildCoreService constructs the CoreService with all domain services wired via With* methods.
 // Pass opts to override edition-specific federation wiring (nil uses CE defaults).
@@ -43,256 +75,199 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	log := logger.Get()
 	cfg := infra.Config
 
-	log.Info("Initializing gRPC service layer...")
+	log.Info(LogInitializingGRPCServiceLayer)
 
 	// Create grpcservices bundle for gRPC service integration
+	registrationWindow := registrationscope.New(infra.Repos.Endpoints)
 	grpcSvcBundle := grpcservices.NewGRPCServices(
-		infra.Storage,
-		infra.Storage,
-		infra.LoggerIface,
-		&cfg.Protocol,
+		infra.Repos.Endpoints,
+		grpcservices.BaseStationServiceDeps{
+			Store: infra.Repos.BaseStations, Protocol: &cfg.Protocol,
+			Sessions: protocol.BSSCIServer, Downlinks: protocol.DownlinkReclaimer,
+		},
+		infra.Repos.Downlinks,
+		infra.Repos.DownlinkQueueReader,
+		protocol.EndpointIndex,
+		registrationWindow,
 	)
 
 	// Extract Service Center identity for gRPC GetReleaseInfo
 	scVendor := cfg.Protocol.SCVendor
 	scModel := cfg.Protocol.SCModel
+	hostname := ServiceHostname(ctx, log)
 	scName := cfg.General.ServerName
 	if scName == "" {
-		hostname, _ := os.Hostname()
 		scName = hostname
 	}
 
-	coreService, err := grpc.NewCoreService(grpc.CoreServiceDeps{
-		EndpointSvc:       grpcSvcBundle.EndpointSvc,
-		BasestationSvc:    grpcSvcBundle.BaseStationSvc,
-		MessageSvc:        grpcSvcBundle.MessageSvc,
-		DownlinkSvc:       protocol.BSSCIServices.DownlinkSvc,
-		StatusSvc:         protocol.BSSCIServices.StatusSvc,
-		DownlinkCmd:       protocol.BSSCIServer,
-		DownlinkScheduler: protocol.BSSCIServer,
-		SessionDir:        protocol.BSSCIServer,
-		ULTransmit:        protocol.BSSCIServer,
-		StatusReq:         protocol.BSSCIServer,
-		PingCmd:           protocol.BSSCIServer,
-		StatsStore:        infra.Storage,
-		DownlinkStore:     infra.Storage,
-		DLRXStorage:       infra.Storage,
-		SCEui:             protocol.ServiceCenterEUI,
-		SCVendor:          scVendor,
-		SCModel:           scModel,
-		SCName:            scName,
-		SCSwVersion:       protocol.SoftwareVersion,
-		Edition:           cfg.General.Edition,
-	})
-	if err != nil {
-		log.Fatal(LogFailedCreateCoreService, logger.Err(err))
-	}
-
-	// Optional: Wire SCACI queuer when SCACI is configured
-	if protocol.SCACIServer != nil {
-		coreService = coreService.WithSCACIQueuer(protocol.SCACIServer)
-	}
-
 	// Wire BSSCI session closer for EUI change handling
-	coreService = coreService.WithBSSCISessionCloser(protocol.BSSCIServer)
 
 	// Wire base station event recorder for EUI change events
-	coreService = coreService.WithBSEventRecorder(infra.EventRecorder)
 
 	// Wire base station time-series metrics readers (availability + received messages)
-	coreService = coreService.WithBaseStationMetricsReaders(infra.Storage, infra.Storage)
 
 	// Wire system event recorder for CRUD event emissions
-	systemEventAdapter := coreAdapters.NewSystemEventStoreAdapter(infra.Storage.SystemEvents())
-	coreService = coreService.WithEventWriter(systemEventAdapter)
-	log.Info("EventWriter wired")
+	systemEventAdapter := coreAdapters.NewSystemEventStoreAdapter(infra.Repos.SystemEvents)
+	log.Info(LogEventWriterWired)
 
-	// Emit service started event
-	hostname, _ := os.Hostname()
-	listenInfo := fmt.Sprintf("gRPC=%d, BSSCI=%d, SCACI=%d",
-		cfg.GRPC.Port, cfg.Protocol.BSCIPort, cfg.Protocol.SCACIPort)
-	startDetails, _ := json.Marshal(map[string]interface{}{
-		"service":   coreServiceSourceName,
-		"version":   infra.VersionInfo.Version,
-		"gitCommit": infra.VersionInfo.GitCommit,
-		"host":      hostname,
-		"ports": map[string]int{
-			"grpc":  cfg.GRPC.Port,
-			"bssci": cfg.Protocol.BSCIPort,
-			"scaci": cfg.Protocol.SCACIPort,
-		},
-	})
-	_ = systemEventAdapter.CreateEvent(ctx, &models.SystemEvent{
-		TenantID:    strconv.FormatInt(infra.TenantID, 10),
-		EventType:   models.EventTypeServiceStarted,
-		Category:    models.EventCategorySystem,
-		Severity:    models.EventSeverityInfo,
-		Title:       fmt.Sprintf(models.EventTitleServiceStartedFmt, "KC-Core", hostname),
-		Description: fmt.Sprintf(models.EventDescriptionServiceStartedFmt, "KC-Core", infra.VersionInfo.Version, listenInfo),
-		SourceType:  models.SourceTypeSystem,
-		SourceName:  coreServiceSourceName,
-		Details:     json.RawMessage(startDetails),
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-	})
-	log.Info("Service started event emitted")
+	emitServiceStarted(ctx, log, systemEventAdapter, cfg, infra, hostname)
 
 	// ScaciMonitoringService
-	scaciMonitoringSvc := scacimonitoringservice.New(
-		infra.Storage.SCACISessions(),
-		infra.Storage.SCACIOperations(),
-		infra.QueueStore,
-		infra.LoggerIface,
-	)
-	coreService = coreService.WithScaciMonitoringService(scaciMonitoringSvc)
-	log.Info("ScaciMonitoringService wired")
+	scaciMonitoringDeps := scacimonitoringservice.Deps{
+		Sessions:     infra.Repos.SCACISessions,
+		Operations:   infra.Repos.SCACIOperations,
+		Queue:        infra.Repos.DownlinkQueueReader,
+		Listener:     protocol.SCACIServer,
+		ServiceStart: infra.ServiceStart,
+		SCEui:        protocol.ServiceCenterEUI,
+		Clock:        infra.Clock,
+		Log:          infra.LoggerIface,
+	}
+	scaciMonitoringSvc := scacimonitoringservice.New(scaciMonitoringDeps)
+	log.Info(LogScaciMonitoringServiceWired)
+
+	auditRecorder := buildAuditRecorder(infra, log)
 
 	// CertificateService: repository and encryptor are mandatory constructor
 	// inputs (ownership verification and persistence are part of issuance)
-	certificateSvc, certErr := certificatesservice.New(cfg, infra.LoggerIface, infra.Storage.BaseStations(), infra.KeyEncryptor, nil)
+	certificateSvc, certErr := certificatesservice.New(ctx, cfg, infra.LoggerIface, infra.Repos.BaseStations,
+		keymaterial.NewCipherKeyEncryptor(infra.Cipher), certificatesservice.ExecCertGen, infra.Clock, auditRecorder)
 	if certErr != nil {
 		log.Fatal(LogFailedCreateCoreService, logger.Err(certErr))
 	}
-	coreService = coreService.WithCertificateService(certificateSvc)
-	log.Info("CertificateService wired")
+	certificateCleanup, certErr := certcleanup.NewWorker(certificateSvc, infra.Clock,
+		time.Duration(cfg.Certificates.CleanupIntervalMin)*time.Minute)
+	if certErr != nil {
+		log.Fatal(LogFailedCreateCoreService, logger.Err(certErr))
+	}
+	stopCertificateCleanup := certificateCleanup.Start(ctx)
+	log.Info(LogCertificateServiceWired)
 
 	// BlueprintService
 	blueprintSvc := blueprintsservice.New(
-		infra.Storage.Manufacturers(),
-		infra.Storage.DeviceModels(),
-		infra.Storage.Blueprints(),
+		infra.Repos.Manufacturers,
+		infra.Repos.DeviceModels,
+		infra.Repos.Blueprints,
 		infra.TenantID,
 		&cfg.RegistryProvider,
 		infra.LoggerIface,
-	).WithTxStarter(infra.Storage).WithDecoder(blueprintresolver.NewDecoderService(infra.LoggerIface))
-	coreService = coreService.WithBlueprintService(blueprintSvc)
-	log.Info("BlueprintService wired")
+		blueprintTxBridge{run: adapters.NewBlueprintTransactionAdapter(infra.Storage).Run},
+		blueprintresolver.NewDecoderService(infra.LoggerIface),
+	)
+	log.Info(LogBlueprintServiceWired)
 
 	// IntegrationService
 	integrationSvc := integrationsservice.New(
-		infra.Storage.Integrations(),
+		infra.Repos.Integrations,
 		infra.LoggerIface,
 	)
-	coreService = coreService.WithIntegrationService(integrationSvc)
-	log.Info("IntegrationService wired")
+	log.Info(LogIntegrationServiceWired)
 
 	// EndpointStatsStore
-	coreService = coreService.WithEndpointStatsStore(infra.Storage.MIOTYMessages())
-	log.Info("EndpointStatsStore wired")
+	log.Info(LogEndpointStatsStoreWired)
 
 	// OperationStatusAdapter
-	opStatusAdapter := coreAdapters.NewOperationStatusAdapter(infra.Storage.OperationStatus())
-	coreService = coreService.WithOperationStatusAdapter(opStatusAdapter)
-	log.Info("OperationStatusAdapter wired")
+	opStatusAdapter := coreAdapters.NewOperationStatusAdapter(infra.Repos.OperationStatus)
+	log.Info(LogOperationStatusAdapterWired)
 
 	// SystemStatusService
-	systemStatusSvc := systemstatusservice.New(
-		infra.Storage.BaseStations(),
-		infra.Storage.EndPoints(),
-		infra.Storage.MIOTYMessages(),
-		infra.LoggerIface,
-	)
-
-	var endpointURLs []systemstatusservice.EndpointURL
-	for _, ep := range cfg.Status.Endpoints {
-		url := ep.URL
-		if url == "" && ep.Host != "" && ep.Port > 0 {
-			url = ep.GetAddress()
-		}
-		endpointURLs = append(endpointURLs, systemstatusservice.EndpointURL{
-			Name: ep.Name,
-			URL:  url,
-		})
+	endpointURLs := make([]systemstatusservice.EndpointURL, 0, len(infra.statusBoard.rows))
+	for _, row := range infra.statusBoard.rows {
+		endpointURLs = append(endpointURLs, systemstatusservice.EndpointURL{Name: row.Name, URL: row.URL})
 	}
-	systemStatusSvc = systemStatusSvc.WithHealthService(infra.HealthService, endpointURLs)
-	coreService = coreService.WithSystemStatusService(systemStatusSvc)
-	log.Info("SystemStatusService wired")
+	systemStatusSvc := systemstatusservice.New(
+		infra.Repos.BaseStations,
+		infra.Repos.Endpoints,
+		infra.Repos.MessageAnalytics,
+		infra.LoggerIface,
+		infra.HealthService,
+		endpointURLs,
+	)
+	log.Info(LogSystemStatusServiceWired)
 
 	// Cache the heavy COUNT(*) so dashboard polling stays off Postgres.
-	eventStoreAdapter := coreAdapters.NewSystemEventStoreAdapter(infra.Storage.SystemEvents())
-	eventStore := coreAdapters.NewCachedSystemEventStore(eventStoreAdapter, cfg.GRPC.CountCacheTTL)
-	euiResolver := coreAdapters.NewEUIResolver(infra.Storage.BaseStations(), infra.Storage.EndPoints())
+	eventStoreAdapter := coreAdapters.NewSystemEventStoreAdapter(infra.Repos.SystemEvents)
+	eventStore, countCacheErr := coreAdapters.NewCachedSystemEventStore(eventStoreAdapter, cfg.GRPC.CountCacheTTL, config.CountCacheComputeTimeout, infra.Clock)
+	if countCacheErr != nil {
+		log.Fatal(LogFailedCreateCoreService, logger.Err(countCacheErr))
+	}
+	euiResolver := coreAdapters.NewEUIResolver(infra.Repos.BaseStations, infra.Repos.Endpoints)
+	wakes, stopStreamWakes := startStreamWakes(ctx, cfg.Storage, infra.LoggerIface)
 
 	eventsSvc := eventsservice.New(
 		eventStore,
 		euiResolver,
+		registrationWindow,
 		cfg.GRPC.StreamPollInterval,
+		cfg.GRPC.StreamOverlap,
+		wakes.events,
 		cfg.GRPC.StreamBatchSize,
 		infra.LoggerIface,
 	)
-	coreService = coreService.WithEventService(eventsSvc)
-	log.Info("EventService wired")
+	log.Info(LogEventServiceWired)
 
 	// AlertService
 	alertsSvc := alertsservice.New(
 		coreAdapters.NewAlertStoreAdapter(
-			infra.Storage.SystemEvents(),
-			cfg.Alerts.SummaryLookbackHours,
+			infra.Repos.SystemEvents,
 			cfg.Alerts.RecentAlertsLimit,
 		),
 		infra.LoggerIface,
 	)
-	coreService = coreService.WithAlertService(alertsSvc)
-	log.Info("AlertService wired")
+	log.Info(LogAlertServiceWired)
 
 	// AnalyticsService
 	analyticsSvc := analyticsservice.New(
-		coreAdapters.NewAnalyticsMessageStoreAdapter(infra.Storage.MIOTYMessages()),
+		coreAdapters.NewAnalyticsMessageStoreAdapter(infra.Repos.MessageAnalytics),
 		infra.LoggerIface,
+		infra.Clock,
 	)
-	coreService = coreService.WithAnalyticsService(analyticsSvc)
-	log.Info("AnalyticsService wired")
+	log.Info(LogAnalyticsServiceWired)
 
 	// MessageListingService
 	messagesSvc := messagesservice.New(
-		coreAdapters.NewMessageListingStoreAdapter(infra.Storage.MIOTYMessages()),
+		coreAdapters.NewMessageListingStoreAdapter(infra.Repos.Messages),
+		registrationWindow,
 		cfg.GRPC.StreamPollInterval,
+		cfg.GRPC.StreamOverlap,
+		wakes.uplinks,
 		cfg.GRPC.StreamBatchSize,
 		infra.LoggerIface,
 	)
-	coreService = coreService.WithMessageListingService(messagesSvc)
-	log.Info("MessageListingService wired")
+	log.Info(LogMessageListingServiceWired)
 
 	// StatisticsService
 	statisticsSvc := statisticsservice.New(
-		infra.Storage.EndPoints(),
-		infra.Storage.BaseStations(),
-		infra.Storage.MIOTYMessages(),
+		infra.Repos.Endpoints,
+		infra.Repos.BaseStations,
+		infra.Repos.MessageAnalytics,
 		infra.LoggerIface,
 	)
-	coreService = coreService.WithStatisticsService(statisticsSvc)
-	log.Info("StatisticsService wired")
+	log.Info(LogStatisticsServiceWired)
 
 	// ActivityService
 	activitySvc := activity.New(eventsSvc, messagesSvc, infra.LoggerIface)
-	coreService = coreService.WithActivityService(activitySvc)
-	log.Info("ActivityService wired")
+	log.Info(LogActivityServiceWired)
 
-	// StreamPollInterval
-	coreService = coreService.WithStreamPollInterval(cfg.GRPC.StreamPollInterval)
-	log.Info("StreamPollInterval configured", "interval", cfg.GRPC.StreamPollInterval)
-
-	// Endpoint activity window
-	coreService = coreService.WithEndpointActivityWindow(
-		time.Duration(cfg.General.ActivityWindowHours) * time.Hour,
-	)
-
-	// AdminChecker and OrgMapper for cross-tenant location API
+	// OrgMapper names each station's organization in the cross-tenant location API
+	var orgMapper grpc.OrgMapper
 	if infra.IdentityInternalClient != nil {
-		adminOrgAdapter := grpc.NewAdminOrgAdapter(infra.IdentityInternalClient, cfg.InternalAuth.PeerSecret)
-		coreService = coreService.WithAdminChecker(adminOrgAdapter).WithOrgMapper(adminOrgAdapter)
-		log.Info("AdminChecker and OrgMapper wired")
+		orgMapper = grpc.NewAdminOrgAdapter(infra.IdentityInternalClient, cfg.InternalAuth.PeerSecret)
+		log.Info(LogOrgMapperWired)
 	}
 
 	// EndpointAttachmentService
-	endpointAttachmentSvc := bssciservices.NewEndpointAttachmentService(
-		infra.Storage.EndPoints(),
-		infra.Storage.SystemEvents(),
-		protocol.BSSCIServer,
-		infra.LoggerIface,
+	endpointAttachmentSvc, err := bssciservices.NewEndpointAttachmentService(
+		infra.Repos.Endpoints,
+		grpcSvcBundle.EndpointSvc,
+		protocol.AttachmentDecider,
+		protocol.StatusNotifier,
+		protocol.Propagation,
 	)
-	coreService = coreService.WithEndpointAttachmentService(endpointAttachmentSvc)
-	log.Info("EndpointAttachmentService wired")
+	if err != nil {
+		log.Fatal(LogEndpointAttachmentServiceCreateFailed, logger.Err(err))
+	}
+	log.Info(LogEndpointAttachmentServiceWired)
 
 	// Federation services (edition-specific wiring)
 	federationFn := defaultFederationWirer
@@ -300,9 +275,11 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 		federationFn = opts.FederationWirer
 	}
 	fctx := &FederationContext{
-		SqlxDB:      infra.SqlxDB,
-		LoggerIface: infra.LoggerIface,
-		Edition:     cfg.General.Edition,
+		Storage:         infra.Storage,
+		CEInstallations: infra.Repos.CEInstallations,
+		LoggerIface:     infra.LoggerIface,
+		Clock:           infra.Clock,
+		Edition:         cfg.General.Edition,
 	}
 	if protocol.RelayClient != nil {
 		fctx.RelayClient = protocol.RelayClient
@@ -310,22 +287,111 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	if protocol.DispositionResolver != nil {
 		fctx.DispositionResolver = protocol.DispositionResolver
 	}
+	var federation grpc.FederationHandlerDeps
 	fedResult, fedErr := federationFn(fctx)
 	if fedErr != nil {
-		log.Error("Failed to wire federation services", logger.Err(fedErr))
+		log.Error(LogFailedToWireFederationServices, logger.Err(fedErr))
 	} else {
-		if fedResult.BootstrapHandler != nil {
-			coreService = coreService.WithCEBootstrapHandler(fedResult.BootstrapHandler)
-		}
-		if fedResult.RegistryHandler != nil {
-			coreService = coreService.WithCERegistryHandler(fedResult.RegistryHandler)
-		}
+		federation.Bootstrap = fedResult.BootstrapHandler
+		federation.Registry = fedResult.RegistryHandler
 	}
 
-	log.Info("gRPC services wiring complete")
+	downlinkCommands, err := downlinks.NewService(downlinks.Deps{
+		Queuer:    protocol.SCACIServer,
+		Editor:    infra.Repos.Downlinks,
+		Revoker:   protocol.BSSCIServer,
+		Endpoints: grpcSvcBundle.EndpointSvc,
+		Events:    protocol.BSSCIServices.AuditLogger,
+		Audit:     auditRecorder,
+		Log:       infra.LoggerIface,
+	})
+	if err != nil {
+		log.Fatal(LogDownlinkServiceCreateFailed, logger.Err(err))
+	}
+	coreService, err := grpc.NewCoreService(grpc.CoreServiceDeps{
+		Log:   infra.LoggerIface,
+		Audit: auditRecorder,
+		Endpoints: grpc.EndpointHandlerDeps{
+			KeyReveals:      auditRecorder,
+			Endpoints:       grpcSvcBundle.EndpointSvc,
+			Blueprints:      blueprintSvc,
+			Attachment:      endpointAttachmentSvc,
+			Stats:           infra.Repos.MessageAnalytics,
+			Registrations:   registrationWindow,
+			Operations:      opStatusAdapter,
+			ActivityWindow:  time.Duration(cfg.General.ActivityWindowHours) * time.Hour,
+			Clock:           infra.Clock,
+			ServingStations: protocol.BSSCIServices.ServingStations,
+		},
+		BaseStations: grpc.BaseStationHandlerDeps{
+			BaseStations:   grpcSvcBundle.BaseStationSvc,
+			Stats:          infra.Repos.Messages,
+			StatusReq:      protocol.BSSCIServer,
+			Ping:           protocol.BSSCIServer,
+			Sessions:       protocol.BSSCIServer,
+			SessionCloser:  protocol.BSSCIServer,
+			EventRecorder:  infra.EventRecorder,
+			Availability:   infra.Repos.BaseStationMetrics,
+			MessageBuckets: infra.Repos.BaseStationMetrics,
+			Orgs:           orgMapper,
+		},
+		Downlinks: grpc.DownlinkHandlerDeps{
+			Commands: downlinkCommands,
+			Queue:    grpcSvcBundle.DownlinkListings,
+			Results:  grpcSvcBundle.DownlinkListings,
+		},
+		ULTransmit: grpc.ULTransmitHandlerDeps{
+			Sessions:     protocol.BSSCIServer,
+			Transmitter:  protocol.BSSCIServer,
+			BaseStations: grpcSvcBundle.BaseStationSvc,
+		},
+		DLRX: grpc.DLRXHandlerDeps{
+			Queries:   infra.Repos.DLRXStatus,
+			Statuses:  infra.Repos.DLRXStatus,
+			Stations:  protocol.BSSCIServices.ServingStations,
+			Commander: protocol.BSSCIServer,
+			Sessions:  protocol.BSSCIServer,
+		},
+		Messages:     grpc.MessageHandlerDeps{Listing: messagesSvc, Activity: activitySvc},
+		Analytics:    grpc.AnalyticsHandlerDeps{Analytics: analyticsSvc, Events: eventsSvc, Alerts: alertsSvc, ErrorGroups: errorgroupsservice.New(infra.Repos.SystemEvents, infra.Clock, infra.LoggerIface)},
+		Certificates: grpc.CertificateHandlerDeps{Certificates: certificateSvc, PlatformTenantID: infra.TenantID},
+		Blueprints:   grpc.BlueprintHandlerDeps{Blueprints: blueprintSvc, Endpoints: grpcSvcBundle.EndpointSvc},
+		Integrations: grpc.IntegrationHandlerDeps{Integrations: integrationSvc},
+		Scaci:        grpc.ScaciHandlerDeps{Monitoring: scaciMonitoringSvc},
+		Federation:   federation,
+		System: grpc.SystemHandlerDeps{
+			StartedAt:    infra.ServiceStart,
+			Statistics:   statisticsSvc,
+			SystemStatus: systemStatusSvc,
+			SCEui:        protocol.ServiceCenterEUI,
+			SCVendor:     scVendor,
+			SCModel:      scModel,
+			SCName:       scName,
+			SCSwVersion:  protocol.SoftwareVersion,
+			Edition:      cfg.General.Edition,
+			Capabilities: capabilities.FromConfig(cfg),
+			Diagnostics: diagnostics.New(diagnostics.Deps{
+				Release:    version.Get,
+				Config:     cfg,
+				Events:     eventsSvc,
+				SCACI:      infra.Repos.SCACISessions,
+				BSSCI:      protocol.BSSCIServer,
+				Limits:     diagnostics.Limits{MaxBundleBytes: config.DiagnosticsMaxBundleBytes, MaxEvents: config.DiagnosticsMaxEvents, MaxSessions: config.DiagnosticsMaxSessions, Timeout: config.DiagnosticsGenerationTimeout},
+				Clock:      infra.Clock,
+				Log:        infra.LoggerIface,
+				ServerName: cfg.General.ServerName,
+			}),
+		},
+	})
+	if err != nil {
+		log.Fatal(LogFailedCreateCoreService, logger.Err(err))
+	}
+
+	log.Info(LogGRPCServicesWiringComplete)
 
 	return &CoreResult{
 		Service:            coreService,
 		SystemEventAdapter: systemEventAdapter,
+		Cleanups:           []func(){stopCertificateCleanup, stopStreamWakes},
 	}
 }

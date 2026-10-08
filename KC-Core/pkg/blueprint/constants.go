@@ -3,6 +3,8 @@
 // Frontend (KC-Web) mirrors these constants in app.ts; display strings go in messages.ts.
 package blueprint
 
+import "time"
+
 // Decode status constants - used in DB (decode_status column) and API responses.
 // These are the canonical values; KC-Web mirrors them in src/constants/app.ts.
 // IMPORTANT: Never use inline strings for decode status - always reference these constants.
@@ -52,12 +54,6 @@ const (
 	FieldTypeBinary = "binary"
 )
 
-// Blueprint specification version constants
-const (
-	// BlueprintSpecVersionV1 is the current blueprint spec version
-	BlueprintSpecVersionV1 = "1.0"
-)
-
 // Type EUI length constant
 const (
 	// TypeEUILength is the required length of a MIOTY Type EUI in bytes
@@ -92,4 +88,39 @@ const (
 
 	// RegistryVersionPrefix is the canonical version prefix for registry paths
 	RegistryVersionPrefix = "v"
+)
+
+// Registry client log messages, centralized so registry logging stays
+// consistent across adapters.
+const (
+	// LogRegistryTokenResolveFailed reports a failure obtaining a registry token.
+	LogRegistryTokenResolveFailed = "failed to resolve registry token" //nolint:gosec // log message, not a credential
+	// LogRegistryAuthFailed reports an invalid or expired registry token.
+	LogRegistryAuthFailed = "registry auth failed: invalid or expired token" //nolint:gosec // log message, not a credential
+	// LogRegistryAPIError reports a generic registry API failure.
+	LogRegistryAPIError = "registry API error"
+	// LogRegistryAPIUnprocessable reports a 422 response from the registry.
+	LogRegistryAPIUnprocessable = "registry API error (422)"
+)
+
+// HTTP header names and values the registry adapters use.
+const (
+	// HeaderContentType is the standard content-type header name.
+	HeaderContentType = "Content-Type"
+	// HeaderAuthorization is the standard authorization header name.
+	HeaderAuthorization = "Authorization"
+	// MediaTypeJSON is the JSON media type.
+	MediaTypeJSON = "application/json"
+	// BearerPrefix prefixes bearer-token authorization values.
+	BearerPrefix = "Bearer "
+)
+
+// GitHub App token timing (GitHub caps App JWT lifetime at ten minutes).
+const (
+	// GitHubTokenRefreshSkew renews the installation token this long before expiry.
+	GitHubTokenRefreshSkew = 5 * time.Minute
+	// GitHubJWTIssuedAtSkew backdates the App JWT to absorb clock drift.
+	GitHubJWTIssuedAtSkew = 60 * time.Second
+	// GitHubJWTLifetime is the App JWT validity window.
+	GitHubJWTLifetime = 10 * time.Minute
 )

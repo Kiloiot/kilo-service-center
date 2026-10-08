@@ -87,12 +87,6 @@ func TestValidateDLDataResult(t *testing.T) {
 			specSection: "§3.12.1",
 		},
 		{
-			name:        "missing_queId",
-			msg:         &DLDataResult{BaseMessage: BaseMessage{OpId: -1}, EpEui: 123, Result: ResultSent},
-			wantErr:     errQueIDZero, // Reuse existing token per §3.12.1
-			specSection: "§3.12.1",
-		},
-		{
 			name:        "missing_result",
 			msg:         &DLDataResult{BaseMessage: BaseMessage{OpId: -1}, EpEui: 123, QueID: 1},
 			wantErr:     errDLDataResultMissingResult,
@@ -209,7 +203,7 @@ func TestValidateDLDataResult(t *testing.T) {
 
 func TestValidateEPStatus(t *testing.T) {
 	// Per SCACI §3.2: SC-originated messages require negative opId
-	// Per SCACI §3.13.1: OTA field requirements:
+	// Per SCACI §3.13.1: OTA field requirements, applying only to an over-the-air status:
 	// - attached: attachCnt, nonce, sign required
 	// - detached: sign required
 
@@ -333,13 +327,39 @@ func TestValidateEPStatus(t *testing.T) {
 
 		// OTA field requirements for detached (§3.13.1)
 		{
-			name: "detached_missing_sign",
+			name: "detached_over_the_air_missing_sign",
+			msg: func() *EPStatus {
+				snr := 12.5
+				return &EPStatus{
+					EpEui:    0x0102030405060708,
+					EpStatus: EPStatusDetached,
+					Snr:      &snr,
+				}
+			}(),
+			opId:        -1,
+			wantErr:     errEPStatusMissingSign,
+			specSection: "§3.13.1",
+		},
+
+		// A status that did not come over the air carries none of the OTA fields
+		{
+			name: "attached_not_over_the_air_valid",
+			msg: &EPStatus{
+				EpEui:    0x0102030405060708,
+				EpStatus: EPStatusAttached,
+			},
+			opId:        -1,
+			wantErr:     "",
+			specSection: "§3.13.1",
+		},
+		{
+			name: "detached_not_over_the_air_valid",
 			msg: &EPStatus{
 				EpEui:    0x0102030405060708,
 				EpStatus: EPStatusDetached,
 			},
 			opId:        -1,
-			wantErr:     errEPStatusMissingSign,
+			wantErr:     "",
 			specSection: "§3.13.1",
 		},
 
@@ -710,17 +730,6 @@ func TestValidateULDataTransmit(t *testing.T) {
 				return m
 			}(),
 			wantErr:     errEpEuiZero,
-			specSection: "§3.9.1",
-		},
-		// Mandatory field: userData
-		{
-			name: "missing_userData_nil",
-			msg: func() *ULDataTransmit {
-				m := validULDataTx()
-				m.UserData = nil
-				return m
-			}(),
-			wantErr:     errUserDataEmpty,
 			specSection: "§3.9.1",
 		},
 		// Empty userData slice IS valid (non-nil)

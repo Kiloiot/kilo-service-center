@@ -78,6 +78,16 @@ type payloadFormatJSON struct {
 // parseCryptoValue accepts either a numeric or string "crypto" field.
 // Manufacturer blueprints commonly use numeric codes (e.g. 0), while legacy
 // payloads may use string values.
+// Validation and decode error detail fragments.
+const (
+	componentDetailOpen  = " (component: "
+	componentDetailClose = "): "
+
+	detailFmtDuplicateUplinkFormatID = "duplicate uplink format ID: %d"
+	detailDuplicateDownlinkFormatID  = "duplicate downlink format ID"
+	detailFmtComponentRefUndefined   = "component %q references undefined key %q"
+)
+
 func parseCryptoValue(raw json.RawMessage) (string, error) {
 	if len(raw) == 0 {
 		return "", nil
@@ -199,20 +209,6 @@ type DecodeResult struct {
 	BlueprintVersion string `json:"blueprintVersion,omitempty"`
 }
 
-// DecodeRequest contains the inputs for a decode operation.
-type DecodeRequest struct {
-	// UserData is the raw payload bytes to decode.
-	UserData []byte `json:"userData"`
-
-	// FormatID is the format identifier from the MIOTY message.
-	// If nil, the decoder will attempt to use format ID 0.
-	FormatID *uint8 `json:"formatId,omitempty"`
-
-	// CalibrationData contains per-device calibration overrides.
-	// Keys match $calibration.key references in blueprint func expressions.
-	CalibrationData map[string]interface{} `json:"calibrationData,omitempty"`
-}
-
 // ResolveComponents merges ComponentDef properties into payload components that
 // reference them via the Component field. Per MIOTY Application Layer Spec section 2.2.7.2,
 // component-level values (Size, Type, Unit, Func, Hidden) are inherited from the definition
@@ -233,7 +229,7 @@ func (s *Spec) ResolveComponents() error {
 				if !ok {
 					return &ValidationError{
 						Token:  ErrComponentRefNotFound,
-						Detail: fmt.Sprintf("component %q references undefined key %q", comp.Name, comp.Component),
+						Detail: fmt.Sprintf(detailFmtComponentRefUndefined, comp.Name, comp.Component),
 					}
 				}
 				// Merge: component-level overrides definition
@@ -311,7 +307,7 @@ type DecodeError struct {
 
 func (e *DecodeError) Error() string {
 	if e.Component != "" {
-		return ResolveErrorMessage(e.Token) + " (component: " + e.Component + "): " + e.Detail
+		return ResolveErrorMessage(e.Token) + componentDetailOpen + e.Component + componentDetailClose + e.Detail
 	}
 	return ResolveErrorMessage(e.Token) + ": " + e.Detail
 }
@@ -376,7 +372,7 @@ func (s *Spec) Validate() error {
 		if seenUplink[format.FormatID] {
 			return &ValidationError{
 				Token:  ErrDuplicateFormatID,
-				Detail: "duplicate uplink format ID: " + string(rune(format.FormatID)),
+				Detail: fmt.Sprintf(detailFmtDuplicateUplinkFormatID, format.FormatID),
 			}
 		}
 		seenUplink[format.FormatID] = true
@@ -388,7 +384,7 @@ func (s *Spec) Validate() error {
 		if seenDownlink[format.FormatID] {
 			return &ValidationError{
 				Token:  ErrDuplicateFormatID,
-				Detail: "duplicate downlink format ID",
+				Detail: detailDuplicateDownlinkFormatID,
 			}
 		}
 		seenDownlink[format.FormatID] = true

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	"github.com/google/uuid"
@@ -33,16 +33,16 @@ func (s *MembershipAdminService) AddUser(ctx context.Context, orgID, userID uuid
 	// Verify user exists
 	_, err := s.userStore.GetByID(ctx, userID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return ErrUserNotFound
 		}
-		return fmt.Errorf("get user: %w", err)
+		return fmt.Errorf("%s: %w", errOpGetUser, err)
 	}
 
 	// Check if already a member
 	existing, err := s.memberStore.GetMember(ctx, orgID, userID)
-	if err != nil && !errors.Is(err, interfaces.ErrRecordNotFound) {
-		return fmt.Errorf("check membership: %w", err)
+	if err != nil && !errors.Is(err, storage.ErrRecordNotFound) {
+		return fmt.Errorf("%s: %w", errOpCheckMembership, err)
 	}
 	if existing != nil {
 		return ErrMemberAlreadyExists
@@ -56,11 +56,11 @@ func (s *MembershipAdminService) AddUser(ctx context.Context, orgID, userID uuid
 	}
 
 	if err := s.memberStore.AddMember(ctx, member); err != nil {
-		s.logger.ErrorContext(ctx, "failed to add member", "orgId", orgID, "userId", userID, "error", err)
-		return fmt.Errorf("add member: %w", err)
+		s.logger.ErrorContext(ctx, LogMemberAddFailed, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID, logger.FieldError, err)
+		return fmt.Errorf("%s: %w", errOpAddMember, err)
 	}
 
-	s.logger.InfoContext(ctx, "member added", "orgId", orgID, "userId", userID, "role", role)
+	s.logger.InfoContext(ctx, LogMemberAdded, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID, logger.FieldRole, role)
 	return nil
 }
 
@@ -68,11 +68,11 @@ func (s *MembershipAdminService) AddUser(ctx context.Context, orgID, userID uuid
 func (s *MembershipAdminService) GetMembership(ctx context.Context, orgID, userID uuid.UUID) (*grpcservices.OrganizationMember, error) {
 	member, err := s.memberStore.GetMember(ctx, orgID, userID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return nil, ErrMemberNotFound
 		}
-		s.logger.ErrorContext(ctx, "failed to get membership", "orgId", orgID, "userId", userID, "error", err)
-		return nil, fmt.Errorf("get membership: %w", err)
+		s.logger.ErrorContext(ctx, LogMembershipGetFailed, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID, logger.FieldError, err)
+		return nil, fmt.Errorf("%s: %w", errOpGetMembership, err)
 	}
 
 	return &grpcservices.OrganizationMember{
@@ -93,18 +93,18 @@ func (s *MembershipAdminService) GetMembership(ctx context.Context, orgID, userI
 func (s *MembershipAdminService) UpdateRole(ctx context.Context, orgID, userID uuid.UUID, role string) error {
 	_, err := s.memberStore.GetMember(ctx, orgID, userID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return ErrMemberNotFound
 		}
-		return fmt.Errorf("get membership: %w", err)
+		return fmt.Errorf("%s: %w", errOpGetMembership, err)
 	}
 
 	if err := s.memberStore.UpdateMemberRole(ctx, orgID, userID, role); err != nil {
-		s.logger.ErrorContext(ctx, "failed to update member role", "orgId", orgID, "userId", userID, "error", err)
-		return fmt.Errorf("update role: %w", err)
+		s.logger.ErrorContext(ctx, LogMemberRoleUpdateFailed, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID, logger.FieldError, err)
+		return fmt.Errorf("%s: %w", errOpUpdateRole, err)
 	}
 
-	s.logger.InfoContext(ctx, "member role updated", "orgId", orgID, "userId", userID, "role", role)
+	s.logger.InfoContext(ctx, LogMemberRoleUpdated, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID, logger.FieldRole, role)
 	return nil
 }
 
@@ -112,18 +112,18 @@ func (s *MembershipAdminService) UpdateRole(ctx context.Context, orgID, userID u
 func (s *MembershipAdminService) UpdatePermissions(ctx context.Context, orgID, userID uuid.UUID, isOrgAdmin, isBaseStationAdmin, isEndpointAdmin bool) error {
 	_, err := s.memberStore.GetMember(ctx, orgID, userID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return ErrMemberNotFound
 		}
-		return fmt.Errorf("get membership: %w", err)
+		return fmt.Errorf("%s: %w", errOpGetMembership, err)
 	}
 
 	if err := s.memberStore.UpdateMemberPermissions(ctx, orgID, userID, isOrgAdmin, isBaseStationAdmin, isEndpointAdmin); err != nil {
-		s.logger.ErrorContext(ctx, "failed to update member permissions", "orgId", orgID, "userId", userID, "error", err)
-		return fmt.Errorf("update permissions: %w", err)
+		s.logger.ErrorContext(ctx, LogMemberPermissionsUpdateFailed, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID, logger.FieldError, err)
+		return fmt.Errorf("%s: %w", errOpUpdatePermissions, err)
 	}
 
-	s.logger.InfoContext(ctx, "member permissions updated", "orgId", orgID, "userId", userID)
+	s.logger.InfoContext(ctx, LogMemberPermissionsUpdated, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID)
 	return nil
 }
 
@@ -132,18 +132,18 @@ func (s *MembershipAdminService) UpdatePermissions(ctx context.Context, orgID, u
 func (s *MembershipAdminService) RemoveUser(ctx context.Context, orgID, userID uuid.UUID) error {
 	member, err := s.memberStore.GetMember(ctx, orgID, userID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return ErrMemberNotFound
 		}
-		return fmt.Errorf("get membership: %w", err)
+		return fmt.Errorf("%s: %w", errOpGetMembership, err)
 	}
 
 	// Last-owner protection: prevent removing the last active owner
 	if member.Role == models.OrganizationRoleOwner && member.Status == models.OrganizationMemberStatusActive {
 		count, err := s.memberStore.CountMembersByRole(ctx, orgID, models.OrganizationRoleOwner)
 		if err != nil {
-			s.logger.ErrorContext(ctx, "failed to count owners", "orgId", orgID, "error", err)
-			return fmt.Errorf("count owners: %w", err)
+			s.logger.ErrorContext(ctx, LogMemberOwnerCountFailed, logger.FieldOrgIDCamel, orgID, logger.FieldError, err)
+			return fmt.Errorf("%s: %w", errOpCountOwners, err)
 		}
 		if count <= 1 {
 			return ErrCannotRemoveLastOwner
@@ -151,11 +151,11 @@ func (s *MembershipAdminService) RemoveUser(ctx context.Context, orgID, userID u
 	}
 
 	if err := s.memberStore.RemoveMember(ctx, orgID, userID); err != nil {
-		s.logger.ErrorContext(ctx, "failed to remove member", "orgId", orgID, "userId", userID, "error", err)
-		return fmt.Errorf("remove member: %w", err)
+		s.logger.ErrorContext(ctx, LogMemberRemoveFailed, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID, logger.FieldError, err)
+		return fmt.Errorf("%s: %w", errOpRemoveMember, err)
 	}
 
-	s.logger.InfoContext(ctx, "member removed", "orgId", orgID, "userId", userID)
+	s.logger.InfoContext(ctx, LogMemberRemoved, logger.FieldOrgIDCamel, orgID, logger.FieldUserIDCamel, userID)
 	return nil
 }
 
@@ -164,8 +164,8 @@ func (s *MembershipAdminService) RemoveUser(ctx context.Context, orgID, userID u
 func (s *MembershipAdminService) ListMembers(ctx context.Context, orgID uuid.UUID, status string, limit, offset int) ([]*grpcservices.OrganizationMember, int64, error) {
 	members, total, err := s.memberStore.ListMembers(ctx, orgID, status, limit, offset)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to list members", "orgId", orgID, "error", err)
-		return nil, 0, fmt.Errorf("list members: %w", err)
+		s.logger.ErrorContext(ctx, LogMemberListFailed, logger.FieldOrgIDCamel, orgID, logger.FieldError, err)
+		return nil, 0, fmt.Errorf("%s: %w", errOpListMembers, err)
 	}
 
 	result := make([]*grpcservices.OrganizationMember, len(members))
@@ -191,8 +191,8 @@ func (s *MembershipAdminService) ListMembers(ctx context.Context, orgID uuid.UUI
 func (s *MembershipAdminService) ListUserOrganizations(ctx context.Context, userID uuid.UUID, tenantID int64) ([]grpcservices.OrganizationMembership, error) {
 	memberships, err := s.memberStore.ListUserMembershipsByTenant(ctx, userID, tenantID)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to list user organizations", "userId", userID, "error", err)
-		return nil, fmt.Errorf("list user organizations: %w", err)
+		s.logger.ErrorContext(ctx, LogMemberUserOrgListFailed, logger.FieldUserIDCamel, userID, logger.FieldError, err)
+		return nil, fmt.Errorf("%s: %w", errOpListUserOrganizations, err)
 	}
 
 	result := make([]grpcservices.OrganizationMembership, len(memberships))

@@ -5,15 +5,4 @@
  */
 
 export { FiltersProvider, useFilters } from "./FiltersContext";
-export type {
-  BaseStationFiltersState,
-  DateRange,
-  EndpointFiltersState,
-  FiltersAction,
-  FiltersContextValue,
-  FilterScope,
-  FiltersState,
-  PaginationState,
-  SavedView,
-  SortState,
-} from "./types";
+export type { FilterScope, FiltersState, SortState } from "./types";

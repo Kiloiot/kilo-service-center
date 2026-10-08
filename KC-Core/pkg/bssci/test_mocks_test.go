@@ -7,8 +7,17 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/google/uuid"
 )
+
+// presharedSessionKeys serves every endpoint as one without an over-the-air
+// session, whose network session key is its pre-shared key.
+type presharedSessionKeys struct{}
+
+func (presharedSessionKeys) NetworkSessionKey(_ context.Context, endpoint *models.EndPoint) ([]byte, error) {
+	return endpoint.NwkSnKey, nil
+}
 
 // Compile-time interface assertions ensure mocks implement their contracts
 var _ TenantResolver = (*mockTenantResolver)(nil)
@@ -50,7 +59,7 @@ func (m *mockTenantResolver) ResolveTenant(_ context.Context, queueID int64) (st
 	if tenantID, ok := m.queues[queueID]; ok {
 		return tenantID, nil
 	}
-	return "", fmt.Errorf("queue %d not found", queueID)
+	return "", fmt.Errorf(errFmtQueueNotFound, queueID)
 }
 
 // UnregisterQueueTenant removes a queue-to-tenant mapping
@@ -131,10 +140,7 @@ func (m *mockDetachSignatureValidator) ValidateDetachSignature(ctx context.Conte
 	}, nil
 }
 
-// Compile-time interface assertion for SCACIEPStatusBroadcaster mock
-var _ SCACIEPStatusBroadcaster = (*mockSCACIEPStatusBroadcaster)(nil)
-
-// mockSCACIEPStatusBroadcaster implements SCACIEPStatusBroadcaster for testing
+// mockSCACIEPStatusBroadcaster records the epStat of each announced decision
 // Captures BroadcastEPStatus calls for verification in tests
 // Thread-safe for concurrent access from goroutines
 type mockSCACIEPStatusBroadcaster struct {
@@ -248,9 +254,9 @@ type mockUplinkIngestSvc struct{}
 
 func (m *mockUplinkIngestSvc) Ingest(_ context.Context, _ *UplinkPayload, _ UplinkIngestOptions) (*IngestResult, error) {
 	return &IngestResult{
+		IsDuplicate:   false,
 		OwnerTenantID: 0,
 		OwnerOrgUUID:  uuid.Nil,
-		IsDuplicate:   false,
 		MessageID:     "test-msg-id",
 	}, nil
 }
@@ -259,3 +265,8 @@ func (m *mockUplinkIngestSvc) Ingest(_ context.Context, _ *UplinkPayload, _ Upli
 func NewMockUplinkIngestSvc() UplinkIngestService {
 	return &mockUplinkIngestSvc{}
 }
+
+// Error format strings shared by this package's failure paths; verbs are filled at the point of failure.
+const (
+	errFmtQueueNotFound = "queue %d not found"
+)

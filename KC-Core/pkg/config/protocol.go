@@ -8,8 +8,12 @@ type ProtocolConfig struct {
 	// Base Station Service Center Interface (BSSCI)
 	BSCIHost        string    `mapstructure:"bsci_host"`
 	BSCIPort        int       `mapstructure:"bsci_port"`
-	BSCIExternalURL string    `mapstructure:"bsci_external_url"` // Client-facing URL (e.g., tls://bssci.example.com:5000); if empty, falls back to tls://bsci_host:bsci_port
+	BSCIExternalURL string    `mapstructure:"bsci_external_url"` // Client-facing URL (e.g., tls://bssci.example.com:<port>); if empty, tls://bsci_host:bsci_port; a wildcard or loopback host gives stations no URL
 	BSCITLS         TLSConfig `mapstructure:"bsci_tls"`
+	// ManagementPort is the loopback port of the internal BSSCI management API
+	// (attach/detach propagation endpoints). Each instance on a shared host
+	// needs its own value.
+	ManagementPort int `mapstructure:"management_port"`
 
 	// BSSCI Security Settings
 	DetachSignatureValidationEnabled bool `mapstructure:"detach_signature_validation_enabled"` // Enable cryptographic validation of detach signatures (default: true)
@@ -24,11 +28,14 @@ type ProtocolConfig struct {
 	StrictOrgResolution    bool      `mapstructure:"strict_org_resolution"`       // Fail-closed on org resolution failure (default: false for community builds)
 	SCALogPingOperations   bool      `mapstructure:"scaci_log_ping_operations"`   // Log Ping operations to audit trail (default: true)
 	SCALogStatusOperations bool      `mapstructure:"scaci_log_status_operations"` // Log Status operations to audit trail (default: true)
+	// SCACIResumeMaxPendingOperations bounds the service center operations a
+	// disconnected Application Center session holds for its resume (SCACI §1).
+	SCACIResumeMaxPendingOperations int `mapstructure:"scaci_resume_max_pending_operations"`
 
 	// Protocol Parameters
-	MaxRetransmissions             int    `mapstructure:"max_retransmissions"`
 	AckTimeout                     int    `mapstructure:"ack_timeout"`                      // milliseconds
 	ConnectionEstablishmentTimeout int    `mapstructure:"connection_establishment_timeout"` // milliseconds
+	SocketWriteTimeout             int    `mapstructure:"socket_write_timeout"`             // milliseconds; bounds every BSSCI and SCACI frame write
 	DuplicateWindow                int    `mapstructure:"duplicate_window"`                 // seconds
 	MessageEncoding                string `mapstructure:"message_encoding"`                 // json, msgpack
 	StatusRequestInterval          int    `mapstructure:"status_request_interval"`          // seconds
@@ -39,10 +46,13 @@ type ProtocolConfig struct {
 	// BSCICertificatePollInterval is the base station certificate change poll interval
 	BSCICertificatePollInterval time.Duration `mapstructure:"bsci_certificate_poll_interval"`
 
-	// Automatic Propagation Reconciliation
-	Propagation PropagationConfig `mapstructure:"propagation"`
-
 	Roaming RoamingConfig `mapstructure:"roaming"`
+
+	// Delivery bounds the outbox worker that fans stored uplinks out to SCACI and MQTT.
+	Delivery DeliveryConfig `mapstructure:"delivery"`
+
+	// DownlinkExpiry bounds how long a downlink waits in the queue and how its expiry is swept.
+	DownlinkExpiry DownlinkExpiryConfig `mapstructure:"downlink_expiry"`
 
 	// Federation controls CE↔ECE cooperative roaming relay
 	Federation FederationConfig `mapstructure:"federation"`
@@ -62,15 +72,6 @@ type ProtocolConfig struct {
 	SCEUILegacyEnvUsed bool `mapstructure:"-" yaml:"-"`
 }
 
-// PropagationConfig contains automatic endpoint propagation settings
-type PropagationConfig struct {
-	BatchSize       int           `mapstructure:"batch_size"`        // Endpoints per batch (default: 500)
-	InterBatchDelay time.Duration `mapstructure:"inter_batch_delay"` // Delay between batches (default: 100ms)
-	MaxRetries      int           `mapstructure:"max_retries"`       // Max retry attempts before pause (default: 3)
-	RetryBackoff    time.Duration `mapstructure:"retry_backoff"`     // Initial backoff duration (default: 30s)
-	CoolDown        time.Duration `mapstructure:"cool_down"`         // Auto-reset after pause (default: 2h, 0=disabled)
-}
-
 // RoamingConfig contains multi-tenant roaming settings
 type RoamingConfig struct {
 	Enabled          bool          `mapstructure:"enabled"`            // Enable roaming support (default: false)
@@ -78,7 +79,29 @@ type RoamingConfig struct {
 	CacheTTL         time.Duration `mapstructure:"cache_ttl"`          // Cache TTL (default: 5m)
 	CacheMaxSize     int           `mapstructure:"cache_max_size"`     // Max cache entries (default: 10000)
 	EnableAuditTrail bool          `mapstructure:"enable_audit_trail"` // Record roaming events (default: true)
-	EnableMetrics    bool          `mapstructure:"enable_metrics"`     // Track roaming metrics (default: true)
+}
+
+// DeliveryConfig tunes the message delivery outbox worker.
+type DeliveryConfig struct {
+	PollInterval time.Duration `mapstructure:"poll_interval"` // how often due rows are claimed (default: 1s)
+	BatchSize    int           `mapstructure:"batch_size"`    // rows claimed per poll (default: 50)
+	RetryBackoff time.Duration `mapstructure:"retry_backoff"` // base of the exponential backoff (default: 2s)
+	MaxBackoff   time.Duration `mapstructure:"max_backoff"`   // cap of the backoff between retries (default: 5m)
+	// ReceptionWindow is how long a new uplink waits for the receptions of the
+	// other base stations before it is delivered (default: 500ms).
+	ReceptionWindow time.Duration `mapstructure:"reception_window"`
+}
+
+// DownlinkExpiryConfig tunes the downlink lifetime and the sweep that expires overdue downlinks.
+type DownlinkExpiryConfig struct {
+	Lifetime      time.Duration `mapstructure:"lifetime"`       // how long a queued downlink waits for a downlink window (default: 24h)
+	SweepInterval time.Duration `mapstructure:"sweep_interval"` // how often overdue downlinks are expired and reported (default: 5s)
+	BatchSize     int           `mapstructure:"batch_size"`     // downlinks expired per statement (default: 100)
+	// RevokeNotHeldCodes are the POSIX codes of a dlDataRev error answer that
+	// say the base station does not hold the downlink, so it ends as revoked
+	// or, when its lifetime ended, expired; any other refusal leaves it in
+	// flight (default: [2], ENOENT).
+	RevokeNotHeldCodes []int `mapstructure:"revoke_not_held_codes"`
 }
 
 // FederationTLSConfig holds TLS settings for the CE→ECE relay transport.
@@ -105,8 +128,6 @@ type FederationConfig struct {
 	ECEEndpoint string `mapstructure:"ece_endpoint"`
 	// HeartbeatInterval controls how often CE sends heartbeats on the Connect stream.
 	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`
-	// OutboxMaxSize caps the number of unacknowledged relay records in the durable outbox.
-	OutboxMaxSize int `mapstructure:"outbox_max_size"`
 	// ReconnectMaxBackoff limits the exponential reconnect delay.
 	ReconnectMaxBackoff time.Duration `mapstructure:"reconnect_max_backoff"`
 	// SyntheticBsEUI is the reserved BS EUI written into tenant-visible message records for

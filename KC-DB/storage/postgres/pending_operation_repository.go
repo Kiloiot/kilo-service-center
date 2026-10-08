@@ -4,27 +4,28 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/internal/sqlcleanup"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 	"github.com/jmoiron/sqlx"
 )
 
-// pendingOperationRepository implements interfaces.PendingOperationRepository
-type pendingOperationRepository struct {
+// PendingOperationRepository persists BSSCI pending operations.
+type PendingOperationRepository struct {
 	db     *sqlx.DB
 	logger logger.Logger
 }
 
 // NewPendingOperationRepository creates a new pending operation repository
-func NewPendingOperationRepository(db *sqlx.DB, log logger.Logger) interfaces.PendingOperationRepository {
-	return &pendingOperationRepository{
+func NewPendingOperationRepository(db *sqlx.DB, log logger.Logger) *PendingOperationRepository {
+	return &PendingOperationRepository{
 		db:     db,
 		logger: log,
 	}
 }
 
 // Create inserts or updates a pending operation (UPSERT pattern)
-func (r *pendingOperationRepository) Create(ctx context.Context, req *interfaces.PendingOperationRequest) error {
+func (r *PendingOperationRepository) Create(ctx context.Context, req *models.PendingOperationRequest) error {
 	var metadataArg interface{}
 	if req.Metadata != nil {
 		metadataArg = req.Metadata
@@ -49,7 +50,7 @@ func (r *pendingOperationRepository) Create(ctx context.Context, req *interfaces
 // CreateBatch inserts or updates several pending operations in one local
 // transaction so a multi-frame sequence is recorded all-or-nothing. Requests
 // are inserted in slice order so the id column preserves reissue order.
-func (r *pendingOperationRepository) CreateBatch(ctx context.Context, reqs []*interfaces.PendingOperationRequest) error {
+func (r *PendingOperationRepository) CreateBatch(ctx context.Context, reqs []*models.PendingOperationRequest) (err error) {
 	if len(reqs) == 0 {
 		return nil
 	}
@@ -58,9 +59,7 @@ func (r *pendingOperationRepository) CreateBatch(ctx context.Context, reqs []*in
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
+	defer sqlcleanup.RollbackUncommitted(tx, errWrapRollbackTransaction, &err)
 
 	for _, req := range reqs {
 		var metadataArg interface{}
@@ -87,7 +86,7 @@ func (r *pendingOperationRepository) CreateBatch(ctx context.Context, reqs []*in
 }
 
 // UpdateMetadata updates only the metadata field
-func (r *pendingOperationRepository) UpdateMetadata(ctx context.Context, sessionID int64, operationID int64, metadata json.RawMessage) error {
+func (r *PendingOperationRepository) UpdateMetadata(ctx context.Context, sessionID int64, operationID int64, metadata json.RawMessage) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE bssci_pending_operations
 		SET metadata = $3, updated_at = NOW()
@@ -98,7 +97,7 @@ func (r *pendingOperationRepository) UpdateMetadata(ctx context.Context, session
 }
 
 // DeleteBySessionAndOperation removes by compound key
-func (r *pendingOperationRepository) DeleteBySessionAndOperation(ctx context.Context, sessionID int64, operationID int64) error {
+func (r *PendingOperationRepository) DeleteBySessionAndOperation(ctx context.Context, sessionID int64, operationID int64) error {
 	_, err := r.db.ExecContext(ctx, `
 		DELETE FROM bssci_pending_operations
 		WHERE basestation_session_id = $1 AND operation_id = $2
@@ -107,24 +106,13 @@ func (r *pendingOperationRepository) DeleteBySessionAndOperation(ctx context.Con
 	return err
 }
 
-// DeleteByOperation removes by operation ID only
-func (r *pendingOperationRepository) DeleteByOperation(ctx context.Context, operationID int64) error {
-	_, err := r.db.ExecContext(ctx, `
-		DELETE FROM bssci_pending_operations
-		WHERE operation_id = $1
-	`, operationID)
-
-	return err
-}
-
 // DeleteBySession removes all pending operations for a session
 // Used during session termination per BSSCI §3 "discarding state" requirement
-func (r *pendingOperationRepository) DeleteBySession(ctx context.Context, sessionID int64) (int64, error) {
+func (r *PendingOperationRepository) DeleteBySession(ctx context.Context, sessionID int64) (int64, error) {
 	result, err := r.db.ExecContext(ctx, `
 		DELETE FROM bssci_pending_operations
 		WHERE basestation_session_id = $1
 	`, sessionID)
-
 	if err != nil {
 		return 0, err
 	}
@@ -138,8 +126,8 @@ func (r *pendingOperationRepository) DeleteBySession(ctx context.Context, sessio
 }
 
 // GetBySession retrieves all pending operations for a session
-func (r *pendingOperationRepository) GetBySession(ctx context.Context, sessionID int64) ([]*interfaces.PendingOperation, error) {
-	var ops []*interfaces.PendingOperation
+func (r *PendingOperationRepository) GetBySession(ctx context.Context, sessionID int64) ([]*models.PendingOperation, error) {
+	var ops []*models.PendingOperation
 
 	err := r.db.SelectContext(ctx, &ops, `
 		SELECT id, basestation_session_id, operation_id, operation_type, endpoint_eui,

@@ -13,9 +13,6 @@ const (
 	// ExportFormatCSV indicates CSV export format
 	ExportFormatCSV = messages.ExportFormatCSV
 	// NOTE: xlsx is NOT supported - do not add without implementation
-
-	// ExportMaxLimit is the maximum number of records for export operations
-	ExportMaxLimit = messages.ExportMaxLimit
 )
 
 // Content type constants for export responses - transport-specific (not in domain).
@@ -33,35 +30,29 @@ func IsValidExportFormat(format string) bool {
 
 // Response status constants for gRPC response status fields and operation tracking.
 const (
-	// StatusRevokeInitiated indicates a revoke operation has started
-	StatusRevokeInitiated = "revoke_initiated"
-
 	// StatusQueued indicates an operation has been queued for processing
 	StatusQueued = "queued"
-
-	// StatusSuccess indicates an operation completed successfully
-	StatusSuccess = "success"
 )
 
 // Base station status constants.
 const (
 	// StatusOffline indicates a base station is offline
 	StatusOffline = "offline"
-)
-
-// Certificate type constants.
-const (
-	// CertTypeCA is the CA certificate type
-	CertTypeCA = "ca"
-	// CertTypeClient is the client certificate type
-	CertTypeClient = "client"
-	// CertTypeKey is the private key type
-	CertTypeKey = "key"
+	// StatusOnline indicates a base station is online
+	StatusOnline = "online"
 )
 
 // Response message constants.
 const (
 	MsgRevokeInitiated            = "Revoke initiated for downlink message %s"
+	MsgRevoked                    = "Downlink message %s revoked"
+	MsgEndpointNotAttached        = "Endpoint not currently attached to any base station"
+	MsgFmtBSNotConnected          = "Base station %s is not currently connected"
+	MsgFmtBSHandshakeIncomplete   = "Base station %s handshake not complete"
+	MsgFmtBSNotBidirectional      = "Base station %s does not support bidirectional operations"
+	MsgNoSuitableBSSession        = "No suitable base station session available"
+	MsgFmtDLRXQuerySendFailed     = "Failed to send query: %v"
+	MsgDLRXQuerySent              = "DL RX status query sent to base station"
 	MsgULTransmitQueued           = "UL data transmit operation queued for transmission"
 	MsgStatusRequestFailed        = "Failed to send status request: %v"
 	MsgStatusRequestSent          = "Status request sent successfully"
@@ -73,23 +64,20 @@ const (
 
 // Log message constants for gRPC operations.
 const (
+	LogBaseStationNotConnected   = "Base station not connected"
 	LogStatusRequestFailed       = "Failed to send status request"
 	LogPingInitiateFailed        = "Failed to initiate ping"
 	LogGenerateServerCertsFailed = "generate server certificates failed"
 	LogRenewServerCertsFailed    = "renew server certificates failed"
 	LogReleaseManifestLoadFailed = "Failed to load release manifest"
+	// LogStreamDeadlineNotCleared warns that a streaming RPC keeps the HTTP
+	// server's deadlines and will be cut when they pass.
+	LogStreamDeadlineNotCleared = "Streaming RPC keeps the HTTP server deadlines"
 )
 
-// Log message constants for SystemStatus service.
-const (
-	LogSystemStatusBSStatsFailed      = "Failed to fetch base station stats"
-	LogSystemStatusEPCountFailed      = "Failed to fetch endpoint count"
-	LogSystemStatusMsgStatsFailed     = "Failed to fetch message stats"
-	LogSystemStatusMetricsFetchFailed = "Failed to fetch system status metrics"
-	LogSystemStatusCalled             = "GetSystemStatus called"
-	LogSystemStatusManifestLoadFailed = "Failed to load release manifest for system status"
-	LogSystemStatusHealthCheckFailed  = "Failed to fetch service health statuses"
-)
+// fullMethodSeparator joins a service name and a method name into the
+// "/package.Service/Method" path a gRPC call is served on.
+const fullMethodSeparator = "/"
 
 // Log message constants for BaseStation operations.
 const (
@@ -105,83 +93,18 @@ const (
 
 // Log message constants for RBAC authorization interceptor.
 const (
-	LogRBACMissingContext     = "RBAC denied: missing org or user context"
 	LogRBACResolutionFailed   = "RBAC role resolution failed"
 	LogRBACInsufficientRole   = "RBAC denied: insufficient role"
-	LogRBACInactiveMembership = "RBAC denied: inactive membership"
+	LogRBACUnknownMethod      = "RBAC denied: method has no role requirement"
+	LogRBACStreamRolesChanged = "RBAC stream ended: roles changed since it opened"
 )
 
 // Log message constants for Certificate service.
 const (
-	LogDownloadCertFailed            = "download certificate failed"
-	LogCertTempDirCreateFailed       = "Failed to create temp directory"
-	LogCertInvalidEUI                = "Invalid EUI format"
-	LogCertInvalidValidityDays       = "Invalid validity days"
-	LogCertDirectoryInfo             = "Certificate directory"
-	LogCertGeneratorNotFound         = "Certificate generator not found"
-	LogCertGeneratorPathInfo         = "Certificate generator path"
-	LogCertGenerationRequested       = "certificate generation requested"
-	LogCertGenerationFailed          = "Certificate generation failed"
-	LogCertParseFailed               = "Failed to parse certificate"
-	LogCertExpiryUpdateFailed        = "Failed to update certificate expiry"
-	LogCertCleanupFailed             = "Failed to cleanup temp directory"
-	LogCertConfigMissingPath         = "Certificate generator path not configured and default not found"
-	LogCertDirectoryNotFound         = "Certificate directory not found"
-	LogCertInvalidServerValidityDays = "Invalid server_validity_days, using default"
-	LogCertIssuanceRequiresTenant    = "certificate issuance requires tenant context"
-	LogGenerateCertificateFailed     = "generate certificate failed"
-	LogGetServerCertStatusFailed     = "get server certificate status failed"
-
-	// Directory operations
-	LogCertDirCreateFailed  = "Failed to create certificate directory"
-	LogCertDirRemoveFailed  = "Failed to remove certificate directory"
-	LogCertsDirCreateFailed = "Failed to create certificates directory"
-
-	// CA certificate operations
-	LogCertCACertReadFailed = "Failed to read existing CA certificate"
-	LogCertCACertCopyFailed = "Failed to copy CA certificate"
-	LogCertCACertCopied     = "Copied existing CA certificate"
-	LogCertCAKeyReadFailed  = "Failed to read existing CA key"
-	LogCertCAKeyCopyFailed  = "Failed to copy CA key"
-
-	// Certificate generation execution
-	LogCertGenerationExecuting = "Executing certificate generation"
-	LogCertGenerationStdout    = "Certificate generation stdout"
-	LogCertGenerationStderr    = "Certificate generation stderr"
-	LogCertGenerationSuccess   = "Certificate generation successful"
-	LogCertGeneratedWithExpiry = "Certificate generated with expiry"
-	LogCertInfoWriteFailed     = "Failed to write certificate info"
-	LogCertPersistenceSkipped  = "Certificate persistence skipped"
-
-	// Certificate reading/parsing
-	LogCertReadFailed          = "failed to read certificate"
-	LogCertUnmarshalFailed     = "Failed to unmarshal certificate info"
-	LogCertFileReadFailed      = "Failed to read certificate file"
-	LogCertPEMBlockParseFailed = "Failed to parse PEM block"
-	LogCertCertsPathInfo       = "KC-Core certificates path"
-
-	// Server certificate operations
-	LogServerCertGenRequested     = "server certificate generation requested"
-	LogServerCertGenExecuting     = "Executing server certificate generation"
-	LogServerCertGenFailed        = "Server certificate generation failed"
-	LogServerCertGenSuccess       = "Server certificate generation successful"
-	LogServerCertRenewalRequested = "server certificate renewal requested"
-
-	// Cleanup operations
-	LogCertTempDirRemoveFailed    = "Failed to remove temp certificate directory"
-	LogCertExpiredDirRemoveFailed = "Failed to remove expired certificate directory"
-
-	// Stored certificate retrieval
-	LogCertBSNotFound = "Base station not found for certificate retrieval"
-
-	// Startup hints
-	LogCertConfigMissingPathHint = "ensure service is started from kilocenter-modules/ directory or set certificates.certgen_path in config"
-)
-
-// File extension constants.
-const (
-	// ExtPEM is the standard PEM certificate file extension
-	ExtPEM = ".pem"
+	LogDownloadCertFailed         = "download certificate failed"
+	LogCertIssuanceRequiresTenant = "certificate issuance requires tenant context"
+	LogGenerateCertificateFailed  = "generate certificate failed"
+	LogGetServerCertStatusFailed  = "get server certificate status failed"
 )
 
 // Content type constants for certificate files.
@@ -225,6 +148,10 @@ const (
 	// MetadataKeyInternalUserID carries the gateway-validated user UUID.
 	MetadataKeyInternalUserID = "x-kc-internal-user-id"
 
+	// MetadataKeyInternalServiceAccountID carries the gateway-validated API key
+	// UUID of a caller that authenticated with a service-account key.
+	MetadataKeyInternalServiceAccountID = "x-kc-internal-service-account-id"
+
 	// MetadataKeyInternalPeerSecret carries the shared secret for peer-to-peer internal gRPC auth.
 	MetadataKeyInternalPeerSecret = "x-kc-internal-peer-secret" //nolint:gosec // metadata key name, not a credential
 )
@@ -254,29 +181,12 @@ var GRPCWebExposeHeaders = []string{
 // =========================================================================
 
 const (
-	// ContentTypeGRPCWebPrefix is the gRPC-web Content-Type prefix for routing detection.
-	ContentTypeGRPCWebPrefix = "application/grpc-web"
-
-	// ContentTypeGRPCWeb is the gRPC-web binary protobuf content type.
-	ContentTypeGRPCWeb = "application/grpc-web+proto"
-
-	// ContentTypeGRPCWebText is the gRPC-web text (base64) content type.
-	ContentTypeGRPCWebText = "application/grpc-web-text+proto"
 
 	// ContentTypeGRPC is the native gRPC content type prefix.
 	ContentTypeGRPC = "application/grpc"
 
-	// ContentTypePlainText is the plain text content type (used by http.NotFound).
-	ContentTypePlainText = "text/plain; charset=utf-8"
-
 	// HeaderContentType is the Content-Type header name.
 	HeaderContentType = "Content-Type"
-
-	// HeaderGRPCWeb is the gRPC-web marker header name.
-	HeaderGRPCWeb = "x-grpc-web"
-
-	// HeaderGRPCStatus is the gRPC status response header.
-	HeaderGRPCStatus = "grpc-status"
 
 	// HeaderOrigin is the CORS origin header name.
 	HeaderOrigin = "Origin"
@@ -287,6 +197,22 @@ const (
 	// HeaderAccessControlAllowOrigin is the CORS allow origin response header.
 	HeaderAccessControlAllowOrigin = "Access-Control-Allow-Origin"
 
-	// HeaderAccessControlRequestMethod is the CORS preflight request method header.
-	HeaderAccessControlRequestMethod = "Access-Control-Request-Method"
+	// HeaderAccessControlAllowMethods is the CORS allowed methods response header.
+	HeaderAccessControlAllowMethods = "Access-Control-Allow-Methods"
+
+	// HeaderAccessControlAllowHeaders is the CORS allowed request headers response header.
+	HeaderAccessControlAllowHeaders = "Access-Control-Allow-Headers"
+
+	// HeaderAccessControlExposeHeaders is the CORS exposed response headers header.
+	HeaderAccessControlExposeHeaders = "Access-Control-Expose-Headers"
+
+	// HeaderAccessControlAllowCredentials is the CORS credentials response header.
+	HeaderAccessControlAllowCredentials = "Access-Control-Allow-Credentials"
+
+	// HeaderAccessControlMaxAge is the CORS preflight cache lifetime response header.
+	HeaderAccessControlMaxAge = "Access-Control-Max-Age"
+
+	// HeaderValueTrue is the literal value for boolean-valued headers such as
+	// Access-Control-Allow-Credentials.
+	HeaderValueTrue = "true"
 )

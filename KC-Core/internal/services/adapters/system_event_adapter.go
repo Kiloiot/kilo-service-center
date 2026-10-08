@@ -4,7 +4,6 @@ package adapters
 import (
 	"context"
 	"strconv"
-	"time"
 
 	eventsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/events"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
@@ -41,8 +40,8 @@ func (a *SystemEventStoreAdapter) CreateEvent(ctx context.Context, event *models
 }
 
 // convertEventFilter converts service filter to DB filter.
-func convertEventFilter(tenantID int64, filter *eventsservice.EventFilter) interfaces.SystemEventFilter {
-	dbFilter := interfaces.SystemEventFilter{
+func convertEventFilter(tenantID int64, filter *eventsservice.EventFilter) models.SystemEventFilter {
+	dbFilter := models.SystemEventFilter{
 		TenantID: strconv.FormatInt(tenantID, 10),
 	}
 
@@ -54,14 +53,12 @@ func convertEventFilter(tenantID int64, filter *eventsservice.EventFilter) inter
 		dbFilter.EndpointID = filter.EndpointID
 		dbFilter.BaseStationEUI = filter.BaseStationEUI
 		dbFilter.EndpointEUI = filter.EndpointEUI
-		if filter.StartTime != nil {
-			t := time.Unix(*filter.StartTime, 0)
-			dbFilter.Since = &t
-		}
-		if filter.EndTime != nil {
-			t := time.Unix(*filter.EndTime, 0)
-			dbFilter.Until = &t
-		}
+		dbFilter.OpID = filter.OpID
+		dbFilter.SearchText = filter.Search
+		dbFilter.Since = filter.StartTime
+		dbFilter.Until = filter.EndTime
+		dbFilter.StoredSince = filter.StoredSince
+		dbFilter.OrderBy = filter.OrderBy
 	}
 
 	return dbFilter

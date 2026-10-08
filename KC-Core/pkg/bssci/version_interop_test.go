@@ -21,6 +21,14 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
+// Interop harness timing: socket I/O deadlines, a deliberately short server
+// timeout, and how long to wait for that timeout to fire.
+const (
+	interopIODeadline   = 2 * time.Second
+	interopShortTimeout = 150 * time.Millisecond
+	interopTimeoutWait  = 500 * time.Millisecond
+)
+
 // interopSCEui exercises exact outbound encoding: the high bit is set and the
 // value exceeds float64 exact-integer range, so any lossy projection corrupts it.
 const interopSCEui = uint64(0xFFFFFFFFFFFFFFFF)
@@ -62,6 +70,25 @@ func startInteropServer(t *testing.T, encoding string) *interopHarness {
 // mutation hook so timeout tests can shrink the handshake deadlines.
 func startInteropServerWithConfig(t *testing.T, encoding string, mutate func(*Config)) *interopHarness {
 	t.Helper()
+	return startInteropServerWithRegistry(t, encoding, interopConnectionService{}, mutate)
+}
+
+// startInteropServerWithRegistry starts the framed harness against a
+// caller-supplied base station connection registry.
+func startInteropServerWithRegistry(t *testing.T, encoding string, registry BaseStationConnectionRegistry, mutate func(*Config)) *interopHarness {
+	t.Helper()
+	return startInteropServerWithSetup(t, encoding, func(server *Server) {
+		server.connectionRegistry = registry
+		if mutate != nil {
+			mutate(server.config)
+		}
+	})
+}
+
+// startInteropServerWithSetup starts the framed harness after setup adjusted
+// the server's collaborators and configuration.
+func startInteropServerWithSetup(t *testing.T, encoding string, setup func(*Server)) *interopHarness {
+	t.Helper()
 
 	log := logger.NewNop()
 	sessionSvc, downlinkSvc, statusSvc, _, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := CreateTestServices(log, nil)
@@ -76,12 +103,11 @@ func startInteropServerWithConfig(t *testing.T, encoding string, mutate func(*Co
 		Name:                "test-sc",
 		SoftwareVersion:     "1.0.0",
 		MessageEncoding:     encoding,
-		OperationAckTimeout: 2 * time.Second,
+		OperationAckTimeout: testAckTimeout,
 	}
-	if mutate != nil {
-		mutate(server.config)
+	if setup != nil {
+		setup(server)
 	}
-	server.RegisterHandlers()
 	ctx, cancel := context.WithCancel(testutil.TestContext())
 	server.ctx = ctx
 	server.cancel = cancel
@@ -107,11 +133,11 @@ func (h *interopHarness) writeFrame(payload map[string]interface{}) {
 	raw, err := encodeMessage(payload, h.encoding)
 	require.NoError(h.t, err)
 
-	header := make([]byte, HeaderSize)
+	header := make([]byte, mioty.FrameHeaderSize)
 	copy(header[:8], mioty.MIOTYFrameIdentifier[:])
 	binary.LittleEndian.PutUint32(header[8:], uint32(len(raw)))
 
-	require.NoError(h.t, h.conn.SetWriteDeadline(time.Now().Add(2*time.Second)))
+	require.NoError(h.t, h.conn.SetWriteDeadline(time.Now().Add(interopIODeadline)))
 	_, err = h.conn.Write(append(header, raw...))
 	require.NoError(h.t, err)
 }
@@ -128,8 +154,8 @@ func (h *interopHarness) readFrame() map[string]interface{} {
 
 func (h *interopHarness) readFrameRaw() []byte {
 	h.t.Helper()
-	require.NoError(h.t, h.conn.SetReadDeadline(time.Now().Add(2*time.Second)))
-	header := make([]byte, HeaderSize)
+	require.NoError(h.t, h.conn.SetReadDeadline(time.Now().Add(interopIODeadline)))
+	header := make([]byte, mioty.FrameHeaderSize)
 	_, err := io.ReadFull(h.conn, header)
 	require.NoError(h.t, err)
 	require.True(h.t, bytes.Equal(header[:8], mioty.MIOTYFrameIdentifier[:]), "frame identifier")
@@ -145,7 +171,7 @@ func (h *interopHarness) expectClosed() {
 	h.t.Helper()
 	// A closed pipe can already fail the deadline call - that is the
 	// expected outcome
-	if err := h.conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+	if err := h.conn.SetReadDeadline(time.Now().Add(interopIODeadline)); err != nil {
 		require.ErrorIs(h.t, err, io.ErrClosedPipe)
 		return
 	}
@@ -316,7 +342,7 @@ func TestBSSCIVersionInterop_EUI64Matrix(t *testing.T) {
 	}
 	for _, encoding := range []string{EncodingJSON, EncodingMessagePack} {
 		for _, eui := range euis {
-			t.Run(fmt.Sprintf("%s_%016X", encoding, eui), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s_%s", encoding, mioty.FormatEUI64(eui)), func(t *testing.T) {
 				h := startInteropServer(t, encoding)
 
 				var bsEui interface{} = eui
@@ -329,7 +355,7 @@ func TestBSSCIVersionInterop_EUI64Matrix(t *testing.T) {
 
 				conRsp := h.readFrame()
 				require.Equal(t, mioty.CmdConnectResponse, frameCommand(conRsp),
-					"bsEui %016X must be accepted", eui)
+					"bsEui %s must be accepted", mioty.FormatEUI64(eui))
 
 				// Outbound scEui must be bit-exact in the emitted frame
 				assert.Equal(t, interopSCEui, frameUint64(t, conRsp, "scEui"),
@@ -344,17 +370,17 @@ func TestBSSCIVersionInterop_EUI64Matrix(t *testing.T) {
 	}
 }
 
-// TestBSSCIVersionInterop_OliverScenario replays the exact field report:
-// an AVA base station (BSSCI 1.1, EUI CA-FE-CA-FE-CA-FE-CA-FE) connects over
-// MessagePack, negotiates down to 1.0.0, and activates.
-func TestBSSCIVersionInterop_OliverScenario(t *testing.T) {
+// TestBSSCIVersionInterop_FieldReportScenario replays a field report: a
+// base station announcing BSSCI 1.1 (EUI CA-FE-CA-FE-CA-FE-CA-FE) connects
+// over MessagePack, negotiates down to 1.0.0, and activates.
+func TestBSSCIVersionInterop_FieldReportScenario(t *testing.T) {
 	h := startInteropServer(t, EncodingMessagePack)
 
 	payload := connectPayload("1.1.0", uint64(0xCAFECAFECAFECAFE))
 	payload["bsClass"] = int64(1)
 	payload["subchan"] = int64(3)
-	payload["vendor"] = "DIEHL Metering"
-	payload["model"] = "AVA"
+	payload["vendor"] = "vendor-a"
+	payload["model"] = "model-1"
 	h.writeFrame(payload)
 
 	conRsp := h.readFrame()
@@ -493,8 +519,8 @@ func TestBSSCIVersionInterop_InboundServiceCenterCommandRejected(t *testing.T) {
 // peer that timed out, and activation clears the deadline entirely.
 func TestBSSCIConnectTimeouts(t *testing.T) {
 	shortTimeouts := func(cfg *Config) {
-		cfg.ConnectionEstablishmentTimeout = 150 * time.Millisecond
-		cfg.OperationAckTimeout = 150 * time.Millisecond
+		cfg.ConnectionEstablishmentTimeout = interopShortTimeout
+		cfg.OperationAckTimeout = interopShortTimeout
 	}
 
 	t.Run("EstablishmentTimeout", func(t *testing.T) {
@@ -531,7 +557,7 @@ func TestBSSCIConnectTimeouts(t *testing.T) {
 		require.Equal(t, mioty.CmdConnectResponse, frameCommand(h.readFrame()))
 		h.writeFrame(map[string]interface{}{"command": mioty.CmdConnectComplete, "opId": int64(0)})
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(interopTimeoutWait)
 
 		h.writeFrame(map[string]interface{}{"command": mioty.CmdPing, "opId": int64(1)})
 		require.Equal(t, mioty.CmdPingResponse, frameCommand(h.readFrame()),

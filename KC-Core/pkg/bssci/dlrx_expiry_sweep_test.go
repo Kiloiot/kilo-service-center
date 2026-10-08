@@ -6,10 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// expiryFixtureTTL is the DLRX query lifetime used by the sweep arithmetic test.
+const expiryFixtureTTL = 5 * time.Minute
 
 // expiryDLRXRepo captures the cutoff passed to the expiry sweep.
 type expiryDLRXRepo struct {
@@ -49,10 +53,10 @@ func newExpiryFixture(t *testing.T, queryTimeout time.Duration) (*Server, *expir
 // TestSweepExpiredDLRXQueries_CutoffArithmetic: the sweep expires queries
 // older than the configured timeout relative to the supplied clock.
 func TestSweepExpiredDLRXQueries_CutoffArithmetic(t *testing.T) {
-	server, dlrx := newExpiryFixture(t, 5*time.Minute)
+	server, dlrx := newExpiryFixture(t, expiryFixtureTTL)
 
 	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
-	server.sweepExpiredDLRXQueries(now)
+	server.newDLRXExpiryWorker().sweep(testutil.TestContext(), now)
 
 	require.Equal(t, 1, dlrx.calls)
 	assert.Equal(t, now.Add(-5*time.Minute), dlrx.cutoff,
@@ -65,7 +69,7 @@ func TestSweepExpiredDLRXQueries_DefaultTimeout(t *testing.T) {
 	server, dlrx := newExpiryFixture(t, 0)
 
 	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
-	server.sweepExpiredDLRXQueries(now)
+	server.newDLRXExpiryWorker().sweep(testutil.TestContext(), now)
 
 	require.Equal(t, 1, dlrx.calls)
 	assert.Equal(t, now.Add(-defaultDLRXQueryTimeout), dlrx.cutoff)
@@ -76,9 +80,14 @@ func TestSweepExpiredDLRXQueries_DefaultTimeout(t *testing.T) {
 // retry.
 func TestSweepExpiredDLRXQueries_StoreFailureIsNonFatal(t *testing.T) {
 	server, dlrx := newExpiryFixture(t, time.Minute)
-	dlrx.expireErr = errors.New("db down")
+	dlrx.expireErr = errDbDown2
 
-	server.sweepExpiredDLRXQueries(time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC))
+	server.newDLRXExpiryWorker().sweep(testutil.TestContext(), time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC))
 
 	require.Equal(t, 1, dlrx.calls)
 }
+
+// Sentinel errors returned by this package; callers match them with errors.Is.
+var (
+	errDbDown2 = errors.New("db down")
+)

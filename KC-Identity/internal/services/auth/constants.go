@@ -29,12 +29,6 @@ const (
 	// ParamCode is the OAuth2 authorization code parameter name.
 	ParamCode = "code"
 
-	// ParamError is the OAuth2 error parameter name.
-	ParamError = "error"
-
-	// ParamErrorDescription is the OAuth2 error description parameter name.
-	ParamErrorDescription = "error_description"
-
 	// ParamCodeChallenge is the PKCE code_challenge parameter name.
 	ParamCodeChallenge = "code_challenge"
 
@@ -80,36 +74,16 @@ const (
 const (
 	// OIDCWellKnownPath is the OIDC discovery endpoint path.
 	OIDCWellKnownPath = "/.well-known/openid-configuration"
-
-	// OIDCClaimSub is the standard subject claim.
-	OIDCClaimSub = "sub"
-
-	// OIDCClaimEmail is the email claim.
-	OIDCClaimEmail = "email"
-
-	// OIDCClaimEmailVerified is the email_verified claim.
-	OIDCClaimEmailVerified = "email_verified"
-
-	// OIDCClaimName is the name claim.
-	OIDCClaimName = "name"
-
-	// OIDCClaimNonce is the nonce claim in ID token.
-	OIDCClaimNonce = "nonce"
-
-	// OIDCClaimAud is the audience claim.
-	OIDCClaimAud = "aud"
-
-	// OIDCClaimIss is the issuer claim.
-	OIDCClaimIss = "iss"
-
-	// OIDCClaimExp is the expiration claim.
-	OIDCClaimExp = "exp"
-
-	// OIDCClaimIat is the issued-at claim.
-	OIDCClaimIat = "iat"
 )
 
 // ============================================================================
 // State Token Constants
 // Note: StateTokenLength, NonceLength are defined in external_service.go
 // ============================================================================
+
+// Auth settings reported by GetAuthSettings. Local auth is always on in this
+// build; OIDC settings exposure is not implemented in KC-Core yet.
+const (
+	authSettingsEnabled     = true
+	authSettingsOIDCEnabled = false
+)

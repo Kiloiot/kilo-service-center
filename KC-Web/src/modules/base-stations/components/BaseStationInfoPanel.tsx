@@ -1,31 +1,29 @@
 import React from "react";
 
 import type { BaseStationUI } from "@api-types/api";
-import { Alert, Box, Chip, CircularProgress, Typography } from "@mui/material";
+import { Alert, Box, CircularProgress, Typography } from "@mui/material";
 
-import {
-  formatDate,
-  formatDateTime,
-  formatEUIWithDashes,
-  truncateWithEllipsis,
-} from "@utils/formatters";
+import { formatDateTime, formatDurationSeconds } from "@utils/date-format";
+import { getErrorMessage } from "@utils/error-message";
+import { formatEui } from "@utils/eui";
+import { formatFraction, truncateWithEllipsis } from "@utils/formatters";
 import { getMonoBody1 } from "@utils/typography";
-import { TRUNCATION } from "@constants/app";
+import type { BaseStationStatus } from "@constants/app";
+import {
+  FRACTION_DIGITS,
+  JSON_PREVIEW,
+  NANOSECONDS_PER_MILLISECOND,
+  TRUNCATION,
+} from "@constants/app";
 import {
   BASE_STATION_DETAILS,
   ERR_LOAD_BS_DETAILS,
   LOADER,
+  VALUE_FORMAT,
 } from "@constants/messages";
+import { componentSpacing } from "@theme/index";
 
-/** Formats uptime seconds, including days when greater than 24h. */
-function formatUptime(seconds: number): string {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (days > 0) return `${days}d ${hours}h ${minutes}m ${secs}s`;
-  return `${hours}h ${minutes}m ${secs}s`;
-}
+import { BaseStationStatusChip } from "./BaseStationStatusChip";
 
 /** Renders a label/value info row. */
 function InfoRow({
@@ -61,7 +59,7 @@ function DetailColumnContent({
   if (loading)
     return (
       <Box display="flex" alignItems="center" gap={1}>
-        <CircularProgress size={16} />
+        <CircularProgress size={componentSpacing.spinner.inline} />
         <Typography variant="body2" color="text.secondary">
           {LOADER.LOADING}
         </Typography>
@@ -70,16 +68,19 @@ function DetailColumnContent({
   if (error)
     return (
       <Alert severity="error" variant="outlined">
-        {error instanceof Error ? error.message : ERR_LOAD_BS_DETAILS}
+        {getErrorMessage(error, ERR_LOAD_BS_DETAILS)}
       </Alert>
     );
   return null;
 }
 
-/** Formats a nullable percentage value. */
-function fmtPercent(value: number | undefined | null, decimals = 1): string {
+/** Formats a nullable 0..1 load as a percentage. */
+function fmtPercent(
+  value: number | undefined | null,
+  decimals: number = FRACTION_DIGITS.PERCENT,
+): string {
   return value != null
-    ? `${(value * 100).toFixed(decimals)}%`
+    ? formatFraction(value, decimals)
     : BASE_STATION_DETAILS.NOT_AVAILABLE;
 }
 
@@ -87,14 +88,11 @@ interface BaseStationInfoPanelProps {
   baseStation: {
     eui: string;
     name?: string;
-    status: "online" | "offline";
-    certificateExpiryDate?: string;
+    status: BaseStationStatus;
   };
   baseStationDetails: BaseStationUI | null | undefined;
   loadingDetails: boolean;
   detailsError: Error | null;
-  isExpiringSoon: boolean;
-  isExpired: boolean;
 }
 
 /** Three-column info display: Basic Information, Performance Metrics, System Information. */
@@ -103,8 +101,6 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
   baseStationDetails,
   loadingDetails,
   detailsError,
-  isExpiringSoon,
-  isExpired,
 }) => {
   const hasDetails = !!baseStationDetails;
 
@@ -133,15 +129,11 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
         </InfoRow>
         <InfoRow label={BASE_STATION_DETAILS.BASE_STATION_EUI}>
           <Typography variant="body1" sx={(theme) => getMonoBody1(theme)}>
-            {formatEUIWithDashes(baseStation.eui)}
+            {formatEui(baseStation.eui)}
           </Typography>
         </InfoRow>
         <InfoRow label={BASE_STATION_DETAILS.STATUS}>
-          <Chip
-            label={baseStation.status}
-            color={baseStation.status === "online" ? "success" : "default"}
-            size="small"
-          />
+          <BaseStationStatusChip status={baseStation.status} />
         </InfoRow>
       </Box>
 
@@ -163,7 +155,7 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
           <InfoRow label={BASE_STATION_DETAILS.TEMPERATURE}>
             <Typography variant="body1">
               {baseStationDetails?.temperatureCelsius != null
-                ? `${baseStationDetails.temperatureCelsius.toFixed(1)}°C`
+                ? `${baseStationDetails.temperatureCelsius.toFixed(FRACTION_DIGITS.TEMPERATURE)}${VALUE_FORMAT.CELSIUS_SUFFIX}`
                 : BASE_STATION_DETAILS.NOT_AVAILABLE}
             </Typography>
           </InfoRow>
@@ -179,14 +171,21 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
           </InfoRow>
           <InfoRow label={BASE_STATION_DETAILS.DUTY_CYCLE}>
             <Typography variant="body1">
-              {fmtPercent(baseStationDetails?.dutyCycle, 2)}
+              {fmtPercent(
+                baseStationDetails?.dutyCycle,
+                FRACTION_DIGITS.DUTY_CYCLE_PERCENT,
+              )}
             </Typography>
           </InfoRow>
           <InfoRow label={BASE_STATION_DETAILS.BS_CONFIG}>
             <Typography variant="body1" sx={(theme) => getMonoBody1(theme)}>
               {baseStationDetails?.bsConfig
                 ? truncateWithEllipsis(
-                    JSON.stringify(baseStationDetails.bsConfig, null, 2),
+                    JSON.stringify(
+                      baseStationDetails.bsConfig,
+                      null,
+                      JSON_PREVIEW.INDENT,
+                    ),
                     TRUNCATION.CONFIG_PREVIEW_LENGTH,
                     TRUNCATION.ELLIPSIS,
                   )
@@ -214,14 +213,16 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
           <InfoRow label={BASE_STATION_DETAILS.SYSTEM_TIME}>
             <Typography variant="body1">
               {baseStationDetails?.systemTime
-                ? formatDateTime(baseStationDetails.systemTime / 1000000)
+                ? formatDateTime(
+                    baseStationDetails.systemTime / NANOSECONDS_PER_MILLISECOND,
+                  )
                 : BASE_STATION_DETAILS.NOT_AVAILABLE}
             </Typography>
           </InfoRow>
           <InfoRow label={BASE_STATION_DETAILS.UPTIME}>
             <Typography variant="body1">
               {baseStationDetails?.uptimeSeconds
-                ? formatUptime(baseStationDetails.uptimeSeconds)
+                ? formatDurationSeconds(baseStationDetails.uptimeSeconds)
                 : BASE_STATION_DETAILS.NOT_AVAILABLE}
             </Typography>
           </InfoRow>
@@ -232,22 +233,6 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
                 : BASE_STATION_DETAILS.NOT_AVAILABLE}
             </Typography>
           </InfoRow>
-          {baseStation.certificateExpiryDate && (
-            <InfoRow label={BASE_STATION_DETAILS.CERTIFICATE_EXPIRY}>
-              <Typography
-                variant="body1"
-                color={
-                  isExpired
-                    ? "error.main"
-                    : isExpiringSoon
-                      ? "warning.main"
-                      : "text.primary"
-                }
-              >
-                {formatDate(baseStation.certificateExpiryDate)}
-              </Typography>
-            </InfoRow>
-          )}
         </DetailColumnContent>
       </Box>
     </Box>

@@ -3,6 +3,23 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
+)
+
+// Shared fixture values for the configuration validation tests in this package.
+const (
+	flagEnabled  = true
+	flagDisabled = false
+
+	testSCACIHost = "scaci.mioty.local"
+	testBSSCIHost = "bssci.mioty.local"
+	testCertFile  = "/path/to/cert.pem"
+	testKeyFile   = "/path/to/key.pem"
+	testCAFile    = "/path/to/ca.pem"
+
+	invalidPortZero    = 0
+	invalidPortTooHigh = 65536
+	invalidTimingValue = 0
 )
 
 // =============================================================================
@@ -12,11 +29,11 @@ import (
 func TestValidateSCACIConfig_Disabled_NoValidation(t *testing.T) {
 	// When SCACI is disabled, no validation should occur
 	cfg := &ProtocolConfig{
-		SCACIEnabled: false,
+		SCACIEnabled: flagDisabled,
 		// All other fields intentionally invalid/empty
 		SCACIHost: "",
-		SCACIPort: 0,
-		SCACITLS:  TLSConfig{Enabled: false},
+		SCACIPort: invalidPortZero,
+		SCACITLS:  TLSConfig{Enabled: flagDisabled},
 	}
 
 	err := ValidateSCACIConfig(cfg)
@@ -27,14 +44,14 @@ func TestValidateSCACIConfig_Disabled_NoValidation(t *testing.T) {
 
 func TestValidateSCACIConfig_EmptyHost(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
+		SCACIEnabled: flagEnabled,
 		SCACIHost:    "",
-		SCACIPort:    5001,
+		SCACIPort:    DefaultProtocolSCACIPort,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
-			CertFile: "/path/to/cert.pem",
-			KeyFile:  "/path/to/key.pem",
-			CAFile:   "/path/to/ca.pem",
+			Enabled:  flagEnabled,
+			CertFile: testCertFile,
+			KeyFile:  testKeyFile,
+			CAFile:   testCAFile,
 		},
 	}
 
@@ -52,14 +69,14 @@ func TestValidateSCACIConfig_EmptyHost(t *testing.T) {
 
 func TestValidateSCACIConfig_InvalidPort_Zero(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
-		SCACIHost:    "scaci.mioty.local",
-		SCACIPort:    0,
+		SCACIEnabled: flagEnabled,
+		SCACIHost:    testSCACIHost,
+		SCACIPort:    invalidPortZero,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
-			CertFile: "/path/to/cert.pem",
-			KeyFile:  "/path/to/key.pem",
-			CAFile:   "/path/to/ca.pem",
+			Enabled:  flagEnabled,
+			CertFile: testCertFile,
+			KeyFile:  testKeyFile,
+			CAFile:   testCAFile,
 		},
 	}
 
@@ -74,14 +91,14 @@ func TestValidateSCACIConfig_InvalidPort_Zero(t *testing.T) {
 
 func TestValidateSCACIConfig_InvalidPort_Negative(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
-		SCACIHost:    "scaci.mioty.local",
+		SCACIEnabled: flagEnabled,
+		SCACIHost:    testSCACIHost,
 		SCACIPort:    -1,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
-			CertFile: "/path/to/cert.pem",
-			KeyFile:  "/path/to/key.pem",
-			CAFile:   "/path/to/ca.pem",
+			Enabled:  flagEnabled,
+			CertFile: testCertFile,
+			KeyFile:  testKeyFile,
+			CAFile:   testCAFile,
 		},
 	}
 
@@ -96,14 +113,14 @@ func TestValidateSCACIConfig_InvalidPort_Negative(t *testing.T) {
 
 func TestValidateSCACIConfig_InvalidPort_TooHigh(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
-		SCACIHost:    "scaci.mioty.local",
-		SCACIPort:    65536,
+		SCACIEnabled: flagEnabled,
+		SCACIHost:    testSCACIHost,
+		SCACIPort:    invalidPortTooHigh,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
-			CertFile: "/path/to/cert.pem",
-			KeyFile:  "/path/to/key.pem",
-			CAFile:   "/path/to/ca.pem",
+			Enabled:  flagEnabled,
+			CertFile: testCertFile,
+			KeyFile:  testKeyFile,
+			CAFile:   testCAFile,
 		},
 	}
 
@@ -121,11 +138,11 @@ func TestValidateSCACIConfig_InvalidPort_TooHigh(t *testing.T) {
 
 func TestValidateSCACIConfig_TLSDisabled(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
-		SCACIHost:    "scaci.mioty.local",
-		SCACIPort:    5001,
+		SCACIEnabled: flagEnabled,
+		SCACIHost:    testSCACIHost,
+		SCACIPort:    DefaultProtocolSCACIPort,
 		SCACITLS: TLSConfig{
-			Enabled: false,
+			Enabled: flagDisabled,
 		},
 	}
 
@@ -143,14 +160,14 @@ func TestValidateSCACIConfig_TLSDisabled(t *testing.T) {
 
 func TestValidateSCACIConfig_MissingCertFile(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
-		SCACIHost:    "scaci.mioty.local",
-		SCACIPort:    5001,
+		SCACIEnabled: flagEnabled,
+		SCACIHost:    testSCACIHost,
+		SCACIPort:    DefaultProtocolSCACIPort,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
+			Enabled:  flagEnabled,
 			CertFile: "",
-			KeyFile:  "/path/to/key.pem",
-			CAFile:   "/path/to/ca.pem",
+			KeyFile:  testKeyFile,
+			CAFile:   testCAFile,
 		},
 	}
 
@@ -165,14 +182,14 @@ func TestValidateSCACIConfig_MissingCertFile(t *testing.T) {
 
 func TestValidateSCACIConfig_MissingKeyFile(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
-		SCACIHost:    "scaci.mioty.local",
-		SCACIPort:    5001,
+		SCACIEnabled: flagEnabled,
+		SCACIHost:    testSCACIHost,
+		SCACIPort:    DefaultProtocolSCACIPort,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
-			CertFile: "/path/to/cert.pem",
+			Enabled:  flagEnabled,
+			CertFile: testCertFile,
 			KeyFile:  "",
-			CAFile:   "/path/to/ca.pem",
+			CAFile:   testCAFile,
 		},
 	}
 
@@ -187,13 +204,13 @@ func TestValidateSCACIConfig_MissingKeyFile(t *testing.T) {
 
 func TestValidateSCACIConfig_MissingCAFile(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
-		SCACIHost:    "scaci.mioty.local",
-		SCACIPort:    5001,
+		SCACIEnabled: flagEnabled,
+		SCACIHost:    testSCACIHost,
+		SCACIPort:    DefaultProtocolSCACIPort,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
-			CertFile: "/path/to/cert.pem",
-			KeyFile:  "/path/to/key.pem",
+			Enabled:  flagEnabled,
+			CertFile: testCertFile,
+			KeyFile:  testKeyFile,
 			CAFile:   "",
 		},
 	}
@@ -212,14 +229,14 @@ func TestValidateSCACIConfig_MissingCAFile(t *testing.T) {
 
 func TestValidateSCACIConfig_Valid(t *testing.T) {
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
-		SCACIHost:    "scaci.mioty.local",
-		SCACIPort:    5001,
+		SCACIEnabled: flagEnabled,
+		SCACIHost:    testSCACIHost,
+		SCACIPort:    DefaultProtocolSCACIPort,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
-			CertFile: "/path/to/cert.pem",
-			KeyFile:  "/path/to/key.pem",
-			CAFile:   "/path/to/ca.pem",
+			Enabled:  flagEnabled,
+			CertFile: testCertFile,
+			KeyFile:  testKeyFile,
+			CAFile:   testCAFile,
 		},
 	}
 
@@ -232,14 +249,14 @@ func TestValidateSCACIConfig_Valid(t *testing.T) {
 func TestValidateSCACIConfig_Valid_IPAddress(t *testing.T) {
 	// SCACI §1 allows both DNS names and IP addresses
 	cfg := &ProtocolConfig{
-		SCACIEnabled: true,
+		SCACIEnabled: flagEnabled,
 		SCACIHost:    "192.168.1.100",
-		SCACIPort:    5001,
+		SCACIPort:    DefaultProtocolSCACIPort,
 		SCACITLS: TLSConfig{
-			Enabled:  true,
-			CertFile: "/path/to/cert.pem",
-			KeyFile:  "/path/to/key.pem",
-			CAFile:   "/path/to/ca.pem",
+			Enabled:  flagEnabled,
+			CertFile: testCertFile,
+			KeyFile:  testKeyFile,
+			CAFile:   testCAFile,
 		},
 	}
 
@@ -263,14 +280,14 @@ func TestValidateSCACIConfig_Valid_BoundaryPorts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &ProtocolConfig{
-				SCACIEnabled: true,
-				SCACIHost:    "scaci.mioty.local",
+				SCACIEnabled: flagEnabled,
+				SCACIHost:    testSCACIHost,
 				SCACIPort:    tt.port,
 				SCACITLS: TLSConfig{
-					Enabled:  true,
-					CertFile: "/path/to/cert.pem",
-					KeyFile:  "/path/to/key.pem",
-					CAFile:   "/path/to/ca.pem",
+					Enabled:  flagEnabled,
+					CertFile: testCertFile,
+					KeyFile:  testKeyFile,
+					CAFile:   testCAFile,
 				},
 			}
 
@@ -289,8 +306,8 @@ func TestValidateSCACIConfig_Valid_BoundaryPorts(t *testing.T) {
 func TestValidateServiceCenterConfig_EmptyHost(t *testing.T) {
 	cfg := &ProtocolConfig{
 		BSCIHost: "",
-		BSCIPort: 5000,
-		BSCITLS:  TLSConfig{Enabled: true},
+		BSCIPort: DefaultProtocolBSCIPort,
+		BSCITLS:  TLSConfig{Enabled: flagEnabled},
 	}
 
 	err := ValidateServiceCenterConfig(cfg)
@@ -304,9 +321,9 @@ func TestValidateServiceCenterConfig_EmptyHost(t *testing.T) {
 
 func TestValidateServiceCenterConfig_InvalidPort(t *testing.T) {
 	cfg := &ProtocolConfig{
-		BSCIHost: "bssci.mioty.local",
-		BSCIPort: 0,
-		BSCITLS:  TLSConfig{Enabled: true},
+		BSCIHost: testBSSCIHost,
+		BSCIPort: invalidPortZero,
+		BSCITLS:  TLSConfig{Enabled: flagEnabled},
 	}
 
 	err := ValidateServiceCenterConfig(cfg)
@@ -320,9 +337,10 @@ func TestValidateServiceCenterConfig_InvalidPort(t *testing.T) {
 
 func TestValidateServiceCenterConfig_TLSDisabled(t *testing.T) {
 	cfg := &ProtocolConfig{
-		BSCIHost: "bssci.mioty.local",
-		BSCIPort: 5000,
-		BSCITLS:  TLSConfig{Enabled: false},
+		BSCIHost:       testBSSCIHost,
+		BSCIPort:       DefaultProtocolBSCIPort,
+		ManagementPort: DefaultProtocolManagementPort,
+		BSCITLS:        TLSConfig{Enabled: flagDisabled},
 	}
 
 	err := ValidateServiceCenterConfig(cfg)
@@ -336,17 +354,27 @@ func TestValidateServiceCenterConfig_TLSDisabled(t *testing.T) {
 
 func TestValidateServiceCenterConfig_Valid(t *testing.T) {
 	cfg := &ProtocolConfig{
-		BSCIHost:                       "bssci.mioty.local",
-		BSCIPort:                       5000,
-		BSCITLS:                        TLSConfig{Enabled: true},
+		BSCIHost:                       testBSSCIHost,
+		BSCIPort:                       DefaultProtocolBSCIPort,
+		ManagementPort:                 DefaultProtocolManagementPort,
+		BSCITLS:                        TLSConfig{Enabled: flagEnabled},
 		AckTimeout:                     DefaultProtocolAckTimeout,
 		ConnectionEstablishmentTimeout: DefaultProtocolConnectionEstablishmentTimeout,
+		SocketWriteTimeout:             DefaultProtocolSocketWriteTimeout,
 		StatusRequestInterval:          DefaultProtocolStatusRequestInterval,
 		StatusRequestInitialDelay:      DefaultProtocolStatusRequestInitialDelay,
 		DLRXQueryTimeout:               DefaultProtocolDLRXQueryTimeout,
 		DLRXCleanupInterval:            DefaultProtocolDLRXCleanupInterval,
 		DuplicateWindow:                DefaultProtocolDuplicateWindow,
-		BSCICertificatePollInterval:    DefaultProtocolCertificatePollInterval,
+		Delivery: DeliveryConfig{
+			PollInterval: DefaultProtocolDeliveryPollInterval,
+			BatchSize:    DefaultProtocolDeliveryBatchSize,
+			MaxBackoff:   DefaultProtocolDeliveryMaxBackoff,
+			RetryBackoff: DefaultProtocolDeliveryRetryBackoff,
+		},
+		DownlinkExpiry:                  defaultDownlinkExpiry(),
+		BSCICertificatePollInterval:     DefaultProtocolCertificatePollInterval,
+		SCACIResumeMaxPendingOperations: DefaultProtocolSCACIResumeMaxPendingOperations,
 	}
 
 	err := ValidateServiceCenterConfig(cfg)
@@ -358,46 +386,66 @@ func TestValidateServiceCenterConfig_Valid(t *testing.T) {
 func TestValidateServiceCenterConfig_TimingBounds(t *testing.T) {
 	base := func() *ProtocolConfig {
 		return &ProtocolConfig{
-			BSCIHost:                       "bssci.mioty.local",
-			BSCIPort:                       5000,
-			BSCITLS:                        TLSConfig{Enabled: true},
+			BSCIHost:                       testBSSCIHost,
+			BSCIPort:                       DefaultProtocolBSCIPort,
+			ManagementPort:                 DefaultProtocolManagementPort,
+			BSCITLS:                        TLSConfig{Enabled: flagEnabled},
 			AckTimeout:                     DefaultProtocolAckTimeout,
 			ConnectionEstablishmentTimeout: DefaultProtocolConnectionEstablishmentTimeout,
+			SocketWriteTimeout:             DefaultProtocolSocketWriteTimeout,
 			StatusRequestInterval:          DefaultProtocolStatusRequestInterval,
 			StatusRequestInitialDelay:      DefaultProtocolStatusRequestInitialDelay,
 			DLRXQueryTimeout:               DefaultProtocolDLRXQueryTimeout,
 			DLRXCleanupInterval:            DefaultProtocolDLRXCleanupInterval,
 			DuplicateWindow:                DefaultProtocolDuplicateWindow,
-			BSCICertificatePollInterval:    DefaultProtocolCertificatePollInterval,
+			Delivery: DeliveryConfig{
+				PollInterval: DefaultProtocolDeliveryPollInterval,
+				BatchSize:    DefaultProtocolDeliveryBatchSize,
+				MaxBackoff:   DefaultProtocolDeliveryMaxBackoff,
+				RetryBackoff: DefaultProtocolDeliveryRetryBackoff,
+			},
+			DownlinkExpiry:                  defaultDownlinkExpiry(),
+			BSCICertificatePollInterval:     DefaultProtocolCertificatePollInterval,
+			SCACIResumeMaxPendingOperations: DefaultProtocolSCACIResumeMaxPendingOperations,
 		}
 	}
 
+	if err := ValidateServiceCenterConfig(base()); err != nil {
+		t.Fatalf("the unmodified base config must validate, got: %v", err)
+	}
+
 	zeroAck := base()
-	zeroAck.AckTimeout = 0
+	zeroAck.AckTimeout = invalidTimingValue
 	if err := ValidateServiceCenterConfig(zeroAck); err == nil {
 		t.Error("zero ack_timeout must fail validation")
 	}
 
 	zeroEstablish := base()
-	zeroEstablish.ConnectionEstablishmentTimeout = 0
+	zeroEstablish.ConnectionEstablishmentTimeout = invalidTimingValue
 	if err := ValidateServiceCenterConfig(zeroEstablish); err == nil {
 		t.Error("zero connection_establishment_timeout must fail validation")
 	}
 
+	zeroWrite := base()
+	zeroWrite.SocketWriteTimeout = invalidTimingValue
+	if err := ValidateServiceCenterConfig(zeroWrite); err == nil {
+		t.Error("zero socket_write_timeout must fail validation")
+	}
+
 	zeroStatusInterval := base()
-	zeroStatusInterval.StatusRequestInterval = 0
+	zeroStatusInterval.StatusRequestInterval = invalidTimingValue
 	if err := ValidateServiceCenterConfig(zeroStatusInterval); err == nil {
 		t.Error("zero status_request_interval must fail validation")
 	}
 
 	zeroDLRXTimeout := base()
-	zeroDLRXTimeout.DLRXQueryTimeout = 0
+	zeroDLRXTimeout.DLRXQueryTimeout = invalidTimingValue
 	if err := ValidateServiceCenterConfig(zeroDLRXTimeout); err == nil {
 		t.Error("zero dlrx_query_timeout must fail validation")
 	}
 
 	zeroDLRXCleanup := base()
-	zeroDLRXCleanup.DLRXCleanupInterval = 0
+	zeroDLRXCleanup.DLRXCleanupInterval = invalidTimingValue
 	if err := ValidateServiceCenterConfig(zeroDLRXCleanup); err == nil {
 		t.Error("zero dlrx_cleanup_interval must fail validation")
 	}
@@ -409,9 +457,64 @@ func TestValidateServiceCenterConfig_TimingBounds(t *testing.T) {
 	}
 
 	zeroPoll := base()
-	zeroPoll.BSCICertificatePollInterval = 0
+	zeroPoll.BSCICertificatePollInterval = invalidTimingValue
 	if err := ValidateServiceCenterConfig(zeroPoll); err == nil {
 		t.Error("zero bsci_certificate_poll_interval must fail validation")
+	}
+
+	capBelowBase := base()
+	capBelowBase.Delivery.MaxBackoff = capBelowBase.Delivery.RetryBackoff / 2
+	if err := ValidateServiceCenterConfig(capBelowBase); err == nil {
+		t.Error("a delivery max_backoff below retry_backoff must fail validation")
+	}
+
+	for name, window := range map[string]time.Duration{
+		"negative":                   -time.Millisecond,
+		"the whole duplicate window": time.Duration(DefaultProtocolDuplicateWindow) * time.Second,
+	} {
+		cfg := base()
+		cfg.Delivery.ReceptionWindow = window
+		if err := ValidateServiceCenterConfig(cfg); err == nil {
+			t.Errorf("a %s delivery reception_window must fail validation", name)
+		}
+	}
+
+	cacheWithoutTTL := base()
+	cacheWithoutTTL.Roaming = RoamingConfig{CacheEnabled: flagEnabled, CacheMaxSize: DefaultProtocolRoamingCacheMaxSize}
+	if err := ValidateServiceCenterConfig(cacheWithoutTTL); err == nil {
+		t.Error("an enabled roaming cache without a TTL must fail validation")
+	}
+
+	for name, unset := range map[string]func(*DownlinkExpiryConfig){
+		"lifetime":                             func(c *DownlinkExpiryConfig) { c.Lifetime = invalidTimingValue },
+		"sweep_interval":                       func(c *DownlinkExpiryConfig) { c.SweepInterval = invalidTimingValue },
+		"batch_size":                           func(c *DownlinkExpiryConfig) { c.BatchSize = invalidTimingValue },
+		"revoke_not_held_codes without a code": func(c *DownlinkExpiryConfig) { c.RevokeNotHeldCodes = nil },
+		"revoke_not_held_codes with no POSIX code": func(c *DownlinkExpiryConfig) {
+			c.RevokeNotHeldCodes = []int{invalidTimingValue}
+		},
+	} {
+		cfg := base()
+		unset(&cfg.DownlinkExpiry)
+		if err := ValidateServiceCenterConfig(cfg); err == nil {
+			t.Errorf("zero downlink_expiry.%s must fail validation", name)
+		}
+	}
+
+	unboundedResume := base()
+	unboundedResume.SCACIResumeMaxPendingOperations = invalidTimingValue
+	if err := ValidateServiceCenterConfig(unboundedResume); err == nil {
+		t.Error("a zero scaci_resume_max_pending_operations must fail validation")
+	}
+}
+
+func defaultDownlinkExpiry() DownlinkExpiryConfig {
+	return DownlinkExpiryConfig{
+		Lifetime:      DefaultProtocolDownlinkLifetime,
+		SweepInterval: DefaultProtocolDownlinkExpirySweepInterval,
+		BatchSize:     DefaultProtocolDownlinkExpiryBatchSize,
+
+		RevokeNotHeldCodes: DefaultProtocolDownlinkRevokeNotHeldCodes,
 	}
 }
 
@@ -428,14 +531,14 @@ func TestGetServiceCenterURL(t *testing.T) {
 	}{
 		{
 			name:     "DNS name",
-			host:     "bssci.mioty.local",
-			port:     5000,
+			host:     testBSSCIHost,
+			port:     DefaultProtocolBSCIPort,
 			expected: "tls://bssci.mioty.local:5000",
 		},
 		{
 			name:     "IP address",
 			host:     "10.0.0.1",
-			port:     5000,
+			port:     DefaultProtocolBSCIPort,
 			expected: "tls://10.0.0.1:5000",
 		},
 	}

@@ -3,7 +3,6 @@ package bssci
 import (
 	"context"
 	"crypto/x509"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -14,17 +13,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
+
+// noPublishWait is how long assertNoPublish listens before declaring silence.
+const noPublishWait = 200 * time.Millisecond
 
 // mockMQTTEventPublisher records calls to MQTTEventPublisher methods.
 type mockMQTTEventPublisher struct {
 	mu        sync.Mutex
 	uplinks   []mockUplinkCall
-	attaches  []mockAttachCall
-	detaches  []mockDetachCall
-	dlResults []mockDLResultCall
 	returnErr error
 	published chan struct{}
 }
@@ -48,7 +45,7 @@ func (m *mockMQTTEventPublisher) assertNoPublish(t *testing.T) {
 	select {
 	case <-m.published:
 		t.Fatal("unexpected MQTT publish for unresolved organization")
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(noPublishWait):
 	}
 }
 
@@ -68,57 +65,13 @@ type mockUplinkCall struct {
 	UserData  []byte
 }
 
-type mockAttachCall struct {
-	OrgUUID string
-	EpEUI   uint64
-	BsEUI   uint64
-}
-
-type mockDetachCall struct {
-	OrgUUID string
-	EpEUI   uint64
-	BsEUI   uint64
-}
-
-type mockDLResultCall struct {
-	OrgUUID string
-	EpEUI   uint64
-	QueID   uint64
-	Result  string
-}
-
-func (m *mockMQTTEventPublisher) PublishUplink(_ context.Context, orgUUID string, epEUI uint64, bsEUI uint64,
-	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, _ []byte) error {
+func (m *mockMQTTEventPublisher) PublishUplink(_ context.Context, orgUUID string, msg *mioty.ULDataMessage) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.uplinks = append(m.uplinks, mockUplinkCall{
-		OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI,
-		Rssi: rssi, Snr: snr, RxTime: rxTime, PacketCnt: packetCnt, UserData: userData,
+		OrgUUID: orgUUID, EpEUI: msg.EpEui, BsEUI: msg.BsEui,
+		Rssi: msg.RSSI, Snr: msg.SNR, RxTime: msg.RxTime, PacketCnt: msg.PacketCnt, UserData: msg.UserData,
 	})
-	m.signalPublish()
-	return m.returnErr
-}
-
-func (m *mockMQTTEventPublisher) PublishAttach(_ context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.attaches = append(m.attaches, mockAttachCall{OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI})
-	m.signalPublish()
-	return m.returnErr
-}
-
-func (m *mockMQTTEventPublisher) PublishDetach(_ context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.detaches = append(m.detaches, mockDetachCall{OrgUUID: orgUUID, EpEUI: epEUI, BsEUI: bsEUI})
-	m.signalPublish()
-	return m.returnErr
-}
-
-func (m *mockMQTTEventPublisher) PublishDownlinkResult(_ context.Context, orgUUID string, epEUI uint64, queID uint64, result string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.dlResults = append(m.dlResults, mockDLResultCall{OrgUUID: orgUUID, EpEUI: epEUI, QueID: queID, Result: result})
 	m.signalPublish()
 	return m.returnErr
 }
@@ -127,24 +80,6 @@ func (m *mockMQTTEventPublisher) uplinkCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.uplinks)
-}
-
-func (m *mockMQTTEventPublisher) attachCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.attaches)
-}
-
-func (m *mockMQTTEventPublisher) detachCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.detaches)
-}
-
-func (m *mockMQTTEventPublisher) dlResultCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.dlResults)
 }
 
 // syncMockMQTTEventPublisher wraps the basic mock with WaitGroup for goroutine tests.
@@ -159,25 +94,9 @@ func newSyncMockMQTTEventPublisher() *syncMockMQTTEventPublisher {
 	}
 }
 
-func (m *syncMockMQTTEventPublisher) PublishUplink(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64,
-	rssi float64, snr float64, rxTime int64, packetCnt uint32, userData []byte, decodedPayload []byte) error {
+func (m *syncMockMQTTEventPublisher) PublishUplink(ctx context.Context, orgUUID string, msg *mioty.ULDataMessage) error {
 	defer m.wg.Done()
-	return m.mockMQTTEventPublisher.PublishUplink(ctx, orgUUID, epEUI, bsEUI, rssi, snr, rxTime, packetCnt, userData, decodedPayload)
-}
-
-func (m *syncMockMQTTEventPublisher) PublishAttach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
-	defer m.wg.Done()
-	return m.mockMQTTEventPublisher.PublishAttach(ctx, orgUUID, epEUI, bsEUI)
-}
-
-func (m *syncMockMQTTEventPublisher) PublishDetach(ctx context.Context, orgUUID string, epEUI uint64, bsEUI uint64) error {
-	defer m.wg.Done()
-	return m.mockMQTTEventPublisher.PublishDetach(ctx, orgUUID, epEUI, bsEUI)
-}
-
-func (m *syncMockMQTTEventPublisher) PublishDownlinkResult(ctx context.Context, orgUUID string, epEUI uint64, queID uint64, result string) error {
-	defer m.wg.Done()
-	return m.mockMQTTEventPublisher.PublishDownlinkResult(ctx, orgUUID, epEUI, queID, result)
+	return m.mockMQTTEventPublisher.PublishUplink(ctx, orgUUID, msg)
 }
 
 func (m *syncMockMQTTEventPublisher) ExpectCall(n int) {
@@ -219,14 +138,6 @@ func (f *mqttTestOrgResolver) ResolveCert(_ context.Context, _ *x509.Certificate
 // mqttTestDownlinkService implements DownlinkService for MQTT publish tests.
 type mqttTestDownlinkService struct{}
 
-func (d *mqttTestDownlinkService) EnqueueDownlink(_ context.Context, _ uint64, _ []byte, _ float32, _ int64) (int64, error) {
-	return 0, nil
-}
-
-func (d *mqttTestDownlinkService) UpdateDownlinkStatus(_ context.Context, _ uint64, _ string, _ string) error {
-	return nil
-}
-
 func (d *mqttTestDownlinkService) ProcessDLDataResult(_ context.Context, _ *Session, result *mioty.DLDataResult) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"command": mioty.CmdDLDataResultResponse,
@@ -234,11 +145,23 @@ func (d *mqttTestDownlinkService) ProcessDLDataResult(_ context.Context, _ *Sess
 	}, nil
 }
 
-func (d *mqttTestDownlinkService) ProcessRevokeResponse(_ context.Context, _ *Session, opId int64, _ int64, _ uint64) (map[string]interface{}, error) {
+func (d *mqttTestDownlinkService) ProcessRevokeResponse(_ context.Context, _ *Session, opId int64, _ int64, _ uint64) (map[string]interface{}, bool, error) {
 	return map[string]interface{}{
 		"command": "dlDataRevRsp",
 		"opId":    opId,
-	}, nil
+	}, true, nil
+}
+
+func (d *mqttTestDownlinkService) ProcessQueueAck(context.Context, *Session, QueueAcknowledgement) error {
+	return nil
+}
+
+func (d *mqttTestDownlinkService) ProcessQueueError(context.Context, *Session, QueueRejection) error {
+	return nil
+}
+
+func (d *mqttTestDownlinkService) ProcessRevokeRefusal(context.Context, *Session, RevokeRefusal) (bool, error) {
+	return true, nil
 }
 
 // --- SetMQTTPublisher Tests ---
@@ -266,253 +189,9 @@ func TestSetMQTTPublisher_NilDoesNotPanic(t *testing.T) {
 
 // --- Nil Guard Tests ---
 
-func TestHandleAttachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
-	t.Parallel()
-	testLogger := logger.NewNop()
-	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
-
-	// mqttPublisher is nil (default)
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-nil-mqtt-attach",
-			BaseStationEUI:   0xABCD,
-			ResolvedTenantID: 42,
-			DbSessionID:      1,
-			Encoding:         EncodingJSON,
-		},
-	}
-
-	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
-		OperationID:   1001,
-		OperationType: mioty.CmdAttach,
-		Metadata: map[string]interface{}{
-			"epEui": int64(0x70B3D59CD00009E6),
-		},
-	}
-	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1001, pendingOp, 42)
-	require.NoError(t, err)
-
-	msg := &Message{Command: mioty.CmdAttachComplete, OpId: 1001}
-	assert.NotPanics(t, func() {
-		_ = server.CallHandleAttachComplete(session, msg, nil)
-	})
-}
-
-func TestHandleDetachComplete_NilMQTTPublisher_NoPanic(t *testing.T) {
-	t.Parallel()
-	testLogger := logger.NewNop()
-	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-nil-mqtt-detach",
-			BaseStationEUI:   0xABCD,
-			ResolvedTenantID: 42,
-			DbSessionID:      1,
-			Encoding:         EncodingJSON,
-		},
-	}
-
-	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
-		OperationID:   2001,
-		OperationType: mioty.CmdDetach,
-		Metadata: map[string]interface{}{
-			"epEui": int64(0x70B3D59CD00009E6),
-		},
-	}
-	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2001, pendingOp, 42)
-	require.NoError(t, err)
-
-	msg := &Message{Command: mioty.CmdDetachComplete, OpId: 2001}
-	assert.NotPanics(t, func() {
-		_ = server.CallHandleDetachComplete(session, msg, nil)
-	})
-}
-
 // --- Attach Publish Tests ---
 
-func TestHandleAttachComplete_PublishesMQTTWithOwnerOrg(t *testing.T) {
-	t.Parallel()
-	testLogger := logger.NewNop()
-	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
-
-	epOwnerOrg := uuid.New()
-	syncMock := newSyncMockMQTTEventPublisher()
-	server.SetMQTTPublisher(syncMock)
-	server.orgResolver = &mqttTestOrgResolver{
-		tenantToOrg: map[int64]uuid.UUID{99: epOwnerOrg},
-	}
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-attach-mqtt",
-			BaseStationEUI:   0xABCDEF1234567890,
-			ResolvedTenantID: 42,
-			DbSessionID:      1,
-			Encoding:         EncodingJSON,
-		},
-	}
-
-	epEUI := int64(0x70B3D59CD00009E6)
-	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
-		OperationID:   1001,
-		OperationType: mioty.CmdAttach,
-		Metadata: map[string]interface{}{
-			"epEui":            epEUI,
-			"endpointTenantID": int64(99),
-		},
-	}
-	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1001, pendingOp, 42)
-	require.NoError(t, err)
-
-	syncMock.ExpectCall(1)
-
-	msg := &Message{Command: mioty.CmdAttachComplete, OpId: 1001}
-	err = server.CallHandleAttachComplete(session, msg, nil)
-	require.NoError(t, err)
-
-	syncMock.Wait()
-
-	assert.Equal(t, 1, syncMock.attachCount())
-	syncMock.mu.Lock()
-	call := syncMock.attaches[0]
-	syncMock.mu.Unlock()
-	assert.Equal(t, epOwnerOrg.String(), call.OrgUUID)
-	assert.Equal(t, uint64(epEUI), call.EpEUI)
-	assert.Equal(t, uint64(0xABCDEF1234567890), call.BsEUI)
-}
-
-func TestHandleAttachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
-	t.Parallel()
-	testLogger := logger.NewNop()
-	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
-
-	mock := newSilentMockMQTTEventPublisher()
-	server.SetMQTTPublisher(mock)
-	// orgResolver returns uuid.Nil for unknown tenants
-	server.orgResolver = &mqttTestOrgResolver{
-		tenantToOrg: map[int64]uuid.UUID{},
-	}
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-attach-no-org",
-			BaseStationEUI:   0xABCD,
-			ResolvedTenantID: 42,
-			DbSessionID:      1,
-			Encoding:         EncodingJSON,
-		},
-	}
-
-	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
-		OperationID:   1002,
-		OperationType: mioty.CmdAttach,
-		Metadata: map[string]interface{}{
-			"epEui":            int64(0x1234),
-			"endpointTenantID": int64(999), // no mapping for this tenant
-		},
-	}
-	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 1002, pendingOp, 42)
-	require.NoError(t, err)
-
-	msg := &Message{Command: mioty.CmdAttachComplete, OpId: 1002}
-	_ = server.CallHandleAttachComplete(session, msg, nil)
-
-	// Publish must be skipped (org unresolved → uuid.Nil)
-	mock.assertNoPublish(t)
-	assert.Equal(t, 0, mock.attachCount())
-}
-
 // --- Detach Publish Tests ---
-
-func TestHandleDetachComplete_PublishesMQTTWithTypedMetaOrg(t *testing.T) {
-	t.Parallel()
-	testLogger := logger.NewNop()
-	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
-
-	ownerOrg := uuid.New()
-	syncMock := newSyncMockMQTTEventPublisher()
-	server.SetMQTTPublisher(syncMock)
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-detach-mqtt",
-			BaseStationEUI:   0xABCDEF1234567890,
-			ResolvedTenantID: 42,
-			DbSessionID:      1,
-			Encoding:         EncodingJSON,
-		},
-	}
-
-	epEUI := uint64(0x70B3D59CD00009E6)
-	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
-		OperationID:   2001,
-		OperationType: mioty.CmdDetach,
-		Metadata: map[string]interface{}{
-			"epEui":   int64(epEUI),
-			"orgUuid": ownerOrg.String(),
-		},
-	}
-	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2001, pendingOp, 42)
-	require.NoError(t, err)
-
-	syncMock.ExpectCall(1)
-
-	msg := &Message{Command: mioty.CmdDetachComplete, OpId: 2001}
-	err = server.CallHandleDetachComplete(session, msg, nil)
-	require.NoError(t, err)
-
-	syncMock.Wait()
-
-	assert.Equal(t, 1, syncMock.detachCount())
-	syncMock.mu.Lock()
-	call := syncMock.detaches[0]
-	syncMock.mu.Unlock()
-	assert.Equal(t, ownerOrg.String(), call.OrgUUID)
-	assert.Equal(t, epEUI, call.EpEUI)
-}
-
-func TestHandleDetachComplete_OrgUnresolved_SkipsPublish(t *testing.T) {
-	t.Parallel()
-	testLogger := logger.NewNop()
-	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, 42)
-
-	mock := newSilentMockMQTTEventPublisher()
-	server.SetMQTTPublisher(mock)
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-detach-no-org",
-			BaseStationEUI:   0xABCD,
-			ResolvedTenantID: 42,
-			DbSessionID:      1,
-			Encoding:         EncodingJSON,
-		},
-	}
-
-	pendingOp := &PendingOperation{
-		SessionSlug:   session.ID,
-		OperationID:   2002,
-		OperationType: mioty.CmdDetach,
-		Metadata: map[string]interface{}{
-			"epEui": int64(0x1234),
-			// No orgUuid in metadata
-		},
-	}
-	err := server.statusSvc.RecordPendingOperation(testutil.TestContext(), session, 2002, pendingOp, 42)
-	require.NoError(t, err)
-
-	msg := &Message{Command: mioty.CmdDetachComplete, OpId: 2002}
-	_ = server.CallHandleDetachComplete(session, msg, nil)
-
-	mock.assertNoPublish(t)
-	assert.Equal(t, 0, mock.detachCount())
-}
 
 // --- Uplink MQTT Publish Tests ---
 
@@ -530,9 +209,10 @@ func (s *mqttPublishingIngestService) Ingest(ctx context.Context, payload *Uplin
 		ownerOrgUUID, _ = s.server.orgResolver.GetDefaultOrgForTenant(ctx, s.server.tenantID)
 	}
 	if s.server.mqttPublisher != nil && ownerOrgUUID != uuid.Nil {
-		_ = s.server.mqttPublisher.PublishUplink(ctx, ownerOrgUUID.String(),
-			payload.EpEUI, payload.BsEUI, payload.RSSI, payload.SNR,
-			payload.RxTime, payload.PacketCnt, payload.UserData, nil)
+		_ = s.server.mqttPublisher.PublishUplink(ctx, ownerOrgUUID.String(), &mioty.ULDataMessage{
+			EpEui: payload.EpEUI, BsEui: payload.BsEUI, RSSI: payload.RSSI, SNR: payload.SNR,
+			RxTime: payload.RxTime, PacketCnt: payload.PacketCnt, UserData: payload.UserData,
+		})
 	}
 	return &IngestResult{OwnerTenantID: s.server.tenantID, OwnerOrgUUID: ownerOrgUUID}, nil
 }
@@ -544,9 +224,6 @@ func TestHandleULData_PublishesMQTTUplink(t *testing.T) {
 	testLogger := logger.NewNop()
 	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, tenantID)
 
-	// Wire deduplicator (required by handleULData)
-	dedup := NewMessageDeduplicator(5 * time.Minute)
-	defer dedup.Stop()
 	server.uplinkIngestSvc = &mqttPublishingIngestService{server: server}
 
 	// Wire org resolver to map server tenant → known org UUID
@@ -611,9 +288,6 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 	testLogger := logger.NewNop()
 	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, tenantID)
 
-	// Wire deduplicator
-	dedup := NewMessageDeduplicator(5 * time.Minute)
-	defer dedup.Stop()
 	server.uplinkIngestSvc = &mqttPublishingIngestService{server: server}
 
 	// orgResolver returns uuid.Nil for server tenant (no org mapping)
@@ -650,109 +324,4 @@ func TestHandleULData_OrgUnresolved_SkipsPublish(t *testing.T) {
 	// Publish must be skipped (org unresolved → uuid.Nil)
 	mock.assertNoPublish(t)
 	assert.Equal(t, 0, mock.uplinkCount())
-}
-
-// --- DL Result MQTT Publish Tests ---
-
-func TestHandleDLDataResult_PublishesMQTTDLResult(t *testing.T) {
-	t.Parallel()
-
-	const tenantID int64 = 42
-	testLogger := logger.NewNop()
-	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, tenantID)
-
-	// Wire mock DownlinkService (required by handleDLDataResult)
-	server.downlinkSvc = &mqttTestDownlinkService{}
-
-	// Wire tenantResolver to return known tenant for queId
-	server.tenantResolver.RegisterQueueTenant(int64(999), strconv.FormatInt(tenantID, 10))
-
-	// Wire orgResolver to map tenant → org
-	ownerOrg := uuid.New()
-	server.orgResolver = &mqttTestOrgResolver{
-		tenantToOrg: map[int64]uuid.UUID{tenantID: ownerOrg},
-	}
-
-	// Wire sync MQTT publisher
-	syncMock := newSyncMockMQTTEventPublisher()
-	server.SetMQTTPublisher(syncMock)
-	syncMock.ExpectCall(1)
-
-	// Session with TestConn for sendMessage
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-dlresult-mqtt",
-			BaseStationEUI:   0xABCDEF1234567890,
-			ResolvedTenantID: tenantID,
-			DbSessionID:      1,
-			Encoding:         EncodingJSON,
-		},
-		Conn: &bsscitest.TestConn{Encoding: "json"},
-	}
-
-	// Build DL result data map (handleDLDataResult uses type assertions directly)
-	data := map[string]interface{}{
-		"epEui":  uint64(0x70B3D59CD00009E6),
-		"queId":  uint64(999),
-		"result": "sent",
-	}
-
-	msg := &Message{Command: mioty.CmdDLDataResult, OpId: 6001}
-	err := server.CallHandleDLDataResult(session, msg, data)
-	require.NoError(t, err)
-
-	syncMock.Wait()
-
-	assert.Equal(t, 1, syncMock.dlResultCount())
-	syncMock.mu.Lock()
-	call := syncMock.dlResults[0]
-	syncMock.mu.Unlock()
-	assert.Equal(t, ownerOrg.String(), call.OrgUUID)
-	assert.Equal(t, uint64(0x70B3D59CD00009E6), call.EpEUI)
-	assert.Equal(t, uint64(999), call.QueID)
-	assert.Equal(t, "sent", call.Result)
-}
-
-func TestHandleDLDataResult_OrgUnresolved_SkipsPublish(t *testing.T) {
-	t.Parallel()
-
-	const tenantID int64 = 42
-	testLogger := logger.NewNop()
-	server := NewTestServerWithMemoryStatusService(testLogger, nil, nil, tenantID)
-
-	// Wire mock DownlinkService
-	server.downlinkSvc = &mqttTestDownlinkService{}
-
-	// tenantResolver wired but orgResolver returns uuid.Nil
-	server.tenantResolver.RegisterQueueTenant(int64(888), strconv.FormatInt(tenantID, 10))
-	server.orgResolver = &mqttTestOrgResolver{
-		tenantToOrg: map[int64]uuid.UUID{}, // no mapping → uuid.Nil
-	}
-
-	// Wire non-sync mock (publish should be skipped)
-	mock := &mockMQTTEventPublisher{}
-	server.SetMQTTPublisher(mock)
-
-	session := &Session{
-		ProtocolSessionState: ProtocolSessionState{
-			ID:               "test-dlresult-no-org",
-			BaseStationEUI:   0xABCD,
-			ResolvedTenantID: tenantID,
-			DbSessionID:      1,
-			Encoding:         EncodingJSON,
-		},
-		Conn: &bsscitest.TestConn{Encoding: "json"},
-	}
-
-	data := map[string]interface{}{
-		"epEui":  uint64(0x1234),
-		"queId":  uint64(888),
-		"result": "expired",
-	}
-
-	msg := &Message{Command: mioty.CmdDLDataResult, OpId: 6002}
-	_ = server.CallHandleDLDataResult(session, msg, data)
-
-	// Publish should be skipped (org unresolved → empty mqttOrgStr)
-	assert.Equal(t, 0, mock.dlResultCount())
 }

@@ -6,8 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/lib/pq"
 
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -38,8 +42,7 @@ func cleanupBaseStationTestData(t *testing.T, db *sqlx.DB, namePattern string) {
 // TestBaseStationRepository_Create_RejectsCrossTenantDuplicate verifies that
 // migration 000080 enforces global EUI uniqueness across all tenants for base stations
 // **CRITICAL**: Requires testcontainer with migration 000080 applied (constraint verified in testcontainer.go)
-// testServiceCenterURLPtr satisfies the check_bssci_config constraint for
-// bssci-type fixtures (service_center_url must be present).
+// testServiceCenterURLPtr gives bssci fixtures the URL a registered station carries.
 func testServiceCenterURLPtr() *string {
 	url := "tls://kilocenter.local:5000"
 	return &url
@@ -59,7 +62,7 @@ func TestBaseStationRepository_Create_RejectsCrossTenantDuplicate(t *testing.T) 
 
 	defer cleanupBaseStationTestData(t, db, "TestCrossTenant%")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Shared EUI for both tenants (hardware reality: globally unique)
@@ -121,7 +124,7 @@ func TestBaseStationRepository_Create_AllowsSameTenantDifferentEUI(t *testing.T)
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupBaseStationTestData(t, db, "TestSameTenant%")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	// Create first base station
@@ -168,7 +171,7 @@ func TestBaseStationRepository_UpdateEUI_Success(t *testing.T) {
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupBaseStationTestData(t, db, "TestUpdateEUI%")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	oldEui := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22}
@@ -186,6 +189,7 @@ func TestBaseStationRepository_UpdateEUI_Success(t *testing.T) {
 	err := repo.Create(ctx, bs)
 	require.NoError(t, err, "Base station creation should succeed")
 	originalID := bs.ID
+	require.NoError(t, repo.UpdateConnectionStatus(ctx, 100, originalID, true, nil), "the station is connected under its old EUI")
 
 	// Update EUI
 	updatedBS, err := repo.UpdateEUI(ctx, 100, oldEui[:], newEui[:])
@@ -196,6 +200,11 @@ func TestBaseStationRepository_UpdateEUI_Success(t *testing.T) {
 	assert.Equal(t, originalID, updatedBS.ID, "ID should remain the same")
 	assert.Equal(t, newEui, updatedBS.EUI, "EUI should be updated")
 	assert.Equal(t, "TestUpdateEUI-BS1", updatedBS.Name, "Name should be unchanged")
+
+	stored, err := repo.GetByEUI(ctx, 100, newEui[:])
+	require.NoError(t, err)
+	assert.False(t, stored.IsOnline, "the session of the old EUI is gone, so the station reads offline under its new EUI")
+	assert.Nil(t, stored.SessionUUID)
 }
 
 // TestBaseStationRepository_UpdateEUI_ErrAlreadyExists verifies uniqueness enforcement
@@ -210,7 +219,7 @@ func TestBaseStationRepository_UpdateEUI_ErrAlreadyExists(t *testing.T) {
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupBaseStationTestData(t, db, "TestUpdateEUIExists%")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	eui1 := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x44}
@@ -256,7 +265,7 @@ func TestBaseStationRepository_UpdateEUI_ErrNotFound(t *testing.T) {
 	createTestTenant(t, db, 200, "TestTenant200")
 	defer cleanupBaseStationTestData(t, db, "TestUpdateEUINotFound%")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	oldEui := models.EUI{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x66}
@@ -290,7 +299,7 @@ func TestBaseStationRepository_UpdateEUI_NonexistentEUI(t *testing.T) {
 
 	createTestTenant(t, db, 100, "TestTenant100")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	nonexistentEui := models.EUI{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
@@ -318,7 +327,7 @@ func TestBaseStation_CreateWithLocation(t *testing.T) {
 	createTestTenant(t, db, 100, "TestTenant100")
 	defer cleanupBaseStationTestData(t, db, "TestCreateWithLoc%")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	lat := 48.856600
@@ -375,7 +384,7 @@ func TestBaseStation_UpdatePreservesUnmodifiedLocation(t *testing.T) {
 	createTestTenant(t, sqlxDB, 100, "TestTenant100")
 	defer cleanupBaseStationTestData(t, sqlxDB, "TestUpdatePreserve%")
 
-	repo := NewBaseStationRepository(sqlxDB)
+	repo := NewBaseStationRepository(sqlxDB, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	lat := 52.520008
@@ -408,10 +417,8 @@ func TestBaseStation_UpdatePreservesUnmodifiedLocation(t *testing.T) {
 	// Build update model with only name changed (all other fields from stored)
 	stored.Name = "TestUpdatePreserve-Renamed"
 
-	// Use the DB wrapper's UpdateBaseStation which builds the update map
-	wrapper := &DB{sqlxDB: sqlxDB}
-	_, err = wrapper.UpdateBaseStation(ctx, stored)
-	require.NoError(t, err, "UpdateBaseStation should succeed")
+	err = repo.UpdateProfile(ctx, stored)
+	require.NoError(t, err, "UpdateProfile should succeed")
 
 	// Re-read and assert location fields are unchanged
 	updated, err := repo.GetByID(ctx, 100, bs.ID)
@@ -450,7 +457,7 @@ func TestBaseStationRepository_ListAllLocations(t *testing.T) {
 	createTestTenant(t, db, 200, "TestTenant200")
 	defer cleanupBaseStationTestData(t, db, "TestListAllLoc%")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	lat1 := 48.1351

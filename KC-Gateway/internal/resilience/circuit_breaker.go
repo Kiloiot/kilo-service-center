@@ -2,6 +2,8 @@
 package resilience
 
 import (
+	"fmt"
+
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/sony/gobreaker/v2"
 	"google.golang.org/grpc/codes"
@@ -21,22 +23,32 @@ const (
 )
 
 // String returns the breaker state name.
+// Breaker state display names.
+const (
+	breakerNameClosed   = "closed"
+	breakerNameHalfOpen = "half-open"
+	breakerNameOpen     = "open"
+	breakerNameUnknown  = "unknown"
+)
+
 func (s BreakerState) String() string {
 	switch s {
 	case BreakerClosed:
-		return "closed"
+		return breakerNameClosed
 	case BreakerHalfOpen:
-		return "half-open"
+		return breakerNameHalfOpen
 	case BreakerOpen:
-		return "open"
+		return breakerNameOpen
 	default:
-		return "unknown"
+		return breakerNameUnknown
 	}
 }
 
-// UpstreamBreaker wraps a gobreaker circuit breaker for an upstream gRPC connection.
+// UpstreamBreaker wraps a two-step gobreaker circuit breaker for an upstream
+// gRPC connection; the two-step form lets a stream's outcome be recorded
+// after the stream ends.
 type UpstreamBreaker struct {
-	cb *gobreaker.CircuitBreaker[any]
+	cb *gobreaker.TwoStepCircuitBreaker[any]
 }
 
 // NewUpstreamBreaker creates a circuit breaker for the named upstream.
@@ -53,16 +65,26 @@ func NewUpstreamBreaker(name string, cfg config.GatewayResilienceConfig) *Upstre
 	}
 
 	return &UpstreamBreaker{
-		cb: gobreaker.NewCircuitBreaker[any](settings),
+		cb: gobreaker.NewTwoStepCircuitBreaker[any](settings),
 	}
 }
 
 // Execute runs fn inside the circuit breaker. If the circuit is open,
-// fn is never called and gobreaker.ErrOpenState is returned.
+// fn is never called and gobreaker.ErrOpenState is returned. A panic in fn
+// counts as a failure and is re-raised.
 func (b *UpstreamBreaker) Execute(fn func() error) error {
-	_, err := b.cb.Execute(func() (any, error) {
-		return nil, fn()
-	})
+	done, err := b.cb.Allow()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			done(fmt.Errorf(errFmtPanic, recovered))
+			panic(recovered)
+		}
+	}()
+	err = fn()
+	done(err)
 	return err
 }
 
@@ -77,9 +99,12 @@ func (b *UpstreamBreaker) RecordResult(err error) {
 	if b.cb.State() != gobreaker.StateClosed {
 		return
 	}
-	_, _ = b.cb.Execute(func() (any, error) {
-		return nil, err
-	})
+	done, allowErr := b.cb.Allow()
+	if allowErr != nil {
+		// The breaker left the closed state after the check; there is nothing to record.
+		return
+	}
+	done(err)
 }
 
 // State returns the current breaker state.

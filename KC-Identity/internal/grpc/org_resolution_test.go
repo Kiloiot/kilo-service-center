@@ -2,13 +2,17 @@ package grpc
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
+
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/authz"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/admin"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/roles"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -16,233 +20,110 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
-// mockMembershipLookup implements MembershipLookup for testing.
-type mockMembershipLookup struct {
-	role     string
-	isActive bool
+// testEventTypeServiceStarted is the platform event type used by the
+// RecordPlatformEvent fixtures.
+const testEventTypeServiceStarted = "service.started"
+
+// errFixtureDBConnectionLost simulates a repository outage.
+var errFixtureDBConnectionLost = errors.New("database connection lost")
+
+// stubRoleResolver answers GetUserRoles lookups with fixed results.
+type stubRoleResolver struct {
+	roles    authz.Roles
 	err      error
+	gotUser  uuid.UUID
+	gotKey   uuid.UUID
+	gotOrgID uuid.UUID
 }
 
-func (m *mockMembershipLookup) GetMembership(_ context.Context, _, _ string) (string, bool, error) {
-	return m.role, m.isActive, m.err
+func (s *stubRoleResolver) Resolve(_ context.Context, userID, orgID uuid.UUID) (authz.Roles, error) {
+	s.gotUser, s.gotOrgID = userID, orgID
+	return s.roles, s.err
 }
 
-func TestGetUserMembership_ValidRequest(t *testing.T) {
-	mock := &mockMembershipLookup{role: "admin", isActive: true}
-	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
+func (s *stubRoleResolver) ResolveServiceAccount(_ context.Context, keyID, orgID uuid.UUID) (authz.Roles, error) {
+	s.gotKey, s.gotOrgID = keyID, orgID
+	return s.roles, s.err
+}
 
-	resp, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
-		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
-	})
+const (
+	testRolesOrgID  = "fe7fe002-6880-4ea6-84ed-a69911dbdf8c"
+	testRolesUserID = "be8a02c9-1470-4314-8a86-48712761aca9"
+	testRolesKeyID  = "5b1f0c1e-3f4e-4d1a-9f2b-7c0d6e8a9b10"
+)
+
+func TestGetUserRoles_ResolvesAServiceAccountKeyThroughTheSameResolver(t *testing.T) {
+	resolver := &stubRoleResolver{roles: authz.ServiceAccountRoles}
+	svc := NewIdentityInternalService(nil, nil, resolver, nil, nil, logger.NewNop())
+
+	resp, err := svc.GetUserRoles(testutil.TestContext(), &pb.GetUserRolesRequest{OrgId: testRolesOrgID, ServiceAccountId: testRolesKeyID})
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("GetUserRoles: %v", err)
 	}
-	if resp.Role != "admin" {
-		t.Errorf("expected role 'admin', got %q", resp.Role)
+	got := resp.GetRoles()
+	if !got.GetBaseStationManager() || !got.GetEndpointManager() || got.GetAdmin() || got.GetTenantManager() {
+		t.Fatalf("roles = %+v, want base station and endpoint manager only", got)
 	}
-	if !resp.IsActive {
-		t.Error("expected is_active to be true")
+	if resolver.gotKey.String() != testRolesKeyID || resolver.gotOrgID.String() != testRolesOrgID || resolver.gotUser != uuid.Nil {
+		t.Fatalf("resolved key %s user %s in %s", resolver.gotKey, resolver.gotUser, resolver.gotOrgID)
 	}
 }
 
-func TestGetUserMembership_InactiveUser(t *testing.T) {
-	mock := &mockMembershipLookup{role: "viewer", isActive: false}
-	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
+func TestGetUserRoles_ReturnsTheResolvedRoles(t *testing.T) {
+	resolver := &stubRoleResolver{roles: authz.Roles{BaseStationManager: true}}
+	svc := NewIdentityInternalService(nil, nil, resolver, nil, nil, logger.NewNop())
 
-	resp, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
-		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
-	})
+	resp, err := svc.GetUserRoles(testutil.TestContext(), &pb.GetUserRolesRequest{OrgId: testRolesOrgID, UserId: testRolesUserID})
 	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("GetUserRoles: %v", err)
 	}
-	if resp.Role != "viewer" {
-		t.Errorf("expected role 'viewer', got %q", resp.Role)
+	if !resp.GetRoles().GetBaseStationManager() || resp.GetRoles().GetEndpointManager() || resp.GetRoles().GetAdmin() {
+		t.Fatalf("roles = %+v, want base station manager only", resp.GetRoles())
 	}
-	if resp.IsActive {
-		t.Error("expected is_active to be false")
-	}
-}
-
-func TestGetUserMembership_EmptyOrgID(t *testing.T) {
-	mock := &mockMembershipLookup{role: "admin", isActive: true}
-	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
-
-	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "",
-		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
-	})
-	if err == nil {
-		t.Fatal("expected error for empty org_id")
-	}
-
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	expectedCode := grpcerrors.GetGRPCCode(grpcerrors.ErrTokenOrgIDRequired)
-	if st.Code() != expectedCode {
-		t.Errorf("expected code %v, got %v", expectedCode, st.Code())
-	}
-	expectedMsg := grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenOrgIDRequired)
-	if st.Message() != expectedMsg {
-		t.Errorf("expected message %q, got %q", expectedMsg, st.Message())
+	if resolver.gotOrgID.String() != testRolesOrgID || resolver.gotUser.String() != testRolesUserID {
+		t.Fatalf("resolved for %s in %s", resolver.gotUser, resolver.gotOrgID)
 	}
 }
 
-func TestGetUserMembership_EmptyUserID(t *testing.T) {
-	mock := &mockMembershipLookup{role: "admin", isActive: true}
-	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
+func TestGetUserRoles_WithoutAnOrganizationResolvesTheOrganizationIndependentRoles(t *testing.T) {
+	resolver := &stubRoleResolver{roles: authz.AllRoles, gotOrgID: uuid.New()}
+	svc := NewIdentityInternalService(nil, nil, resolver, nil, nil, logger.NewNop())
 
-	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
-		UserId: "",
-	})
-	if err == nil {
-		t.Fatal("expected error for empty user_id")
+	resp, err := svc.GetUserRoles(testutil.TestContext(), &pb.GetUserRolesRequest{UserId: testRolesUserID})
+	if err != nil {
+		t.Fatalf("GetUserRoles: %v", err)
 	}
-
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	expectedCode := grpcerrors.GetGRPCCode(grpcerrors.ErrTokenUserIDRequired)
-	if st.Code() != expectedCode {
-		t.Errorf("expected code %v, got %v", expectedCode, st.Code())
-	}
-	expectedMsg := grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenUserIDRequired)
-	if st.Message() != expectedMsg {
-		t.Errorf("expected message %q, got %q", expectedMsg, st.Message())
+	if !resp.GetRoles().GetAdmin() || resolver.gotOrgID != uuid.Nil {
+		t.Fatalf("roles %+v resolved in %s, want the organization-independent roles", resp.GetRoles(), resolver.gotOrgID)
 	}
 }
 
-func TestGetUserMembership_InvalidOrgIDFormat(t *testing.T) {
-	mock := &mockMembershipLookup{role: "admin", isActive: true}
-	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
-
-	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "not-a-uuid",
-		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
-	})
-	if err == nil {
-		t.Fatal("expected error for invalid org UUID format")
+func TestGetUserRoles_RejectsAndMapsFailures(t *testing.T) {
+	cases := []struct {
+		name     string
+		req      *pb.GetUserRolesRequest
+		resolver PrincipalRoleResolver
+		token    string
+	}{
+		{name: "missing user", req: &pb.GetUserRolesRequest{OrgId: testRolesOrgID}, resolver: &stubRoleResolver{}, token: grpcerrors.ErrTokenUserIDRequired},
+		{name: "malformed org", req: &pb.GetUserRolesRequest{OrgId: "not-a-uuid", UserId: testRolesUserID}, resolver: &stubRoleResolver{}, token: grpcerrors.ErrTokenInvalidOrgIDFormat},
+		{name: "malformed user", req: &pb.GetUserRolesRequest{OrgId: testRolesOrgID, UserId: "not-a-uuid"}, resolver: &stubRoleResolver{}, token: grpcerrors.ErrTokenInvalidUserIDFormat},
+		{name: "user and service account together", req: &pb.GetUserRolesRequest{OrgId: testRolesOrgID, UserId: testRolesUserID, ServiceAccountId: testRolesKeyID}, resolver: &stubRoleResolver{}, token: grpcerrors.ErrTokenInvalidRequest},
+		{name: "malformed service account", req: &pb.GetUserRolesRequest{OrgId: testRolesOrgID, ServiceAccountId: "not-a-uuid"}, resolver: &stubRoleResolver{}, token: grpcerrors.ErrTokenInvalidAPIKeyIDFormat},
+		{name: "unknown service account", req: &pb.GetUserRolesRequest{OrgId: testRolesOrgID, ServiceAccountId: testRolesKeyID}, resolver: &stubRoleResolver{err: roles.ErrAPIKeyNotFound}, token: grpcerrors.ErrTokenApiKeyNotFound},
+		{name: "no resolver", req: &pb.GetUserRolesRequest{OrgId: testRolesOrgID, UserId: testRolesUserID}, resolver: nil, token: grpcerrors.ErrTokenServiceNotConfigured},
+		{name: "unknown user", req: &pb.GetUserRolesRequest{OrgId: testRolesOrgID, UserId: testRolesUserID}, resolver: &stubRoleResolver{err: roles.ErrUserNotFound}, token: grpcerrors.ErrTokenUserNotFound},
+		{name: "store failure", req: &pb.GetUserRolesRequest{OrgId: testRolesOrgID, UserId: testRolesUserID}, resolver: &stubRoleResolver{err: errFixtureDBConnectionLost}, token: grpcerrors.ErrTokenInternalError},
 	}
-
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	expectedCode := grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidOrgIDFormat)
-	if st.Code() != expectedCode {
-		t.Errorf("expected code %v, got %v", expectedCode, st.Code())
-	}
-	expectedMsg := grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidOrgIDFormat)
-	if st.Message() != expectedMsg {
-		t.Errorf("expected message %q, got %q", expectedMsg, st.Message())
-	}
-}
-
-func TestGetUserMembership_InvalidUserIDFormat(t *testing.T) {
-	mock := &mockMembershipLookup{role: "admin", isActive: true}
-	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
-
-	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
-		UserId: "not-a-uuid",
-	})
-	if err == nil {
-		t.Fatal("expected error for invalid user UUID format")
-	}
-
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	expectedCode := grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidUserIDFormat)
-	if st.Code() != expectedCode {
-		t.Errorf("expected code %v, got %v", expectedCode, st.Code())
-	}
-	expectedMsg := grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidUserIDFormat)
-	if st.Message() != expectedMsg {
-		t.Errorf("expected message %q, got %q", expectedMsg, st.Message())
-	}
-}
-
-func TestGetUserMembership_NotFound(t *testing.T) {
-	mock := &mockMembershipLookup{err: storage.ErrNotFound}
-	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
-
-	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
-		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
-	})
-	if err == nil {
-		t.Fatal("expected error for non-existent membership")
-	}
-
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	expectedCode := grpcerrors.GetGRPCCode(grpcerrors.ErrTokenMembershipNotFound)
-	if st.Code() != expectedCode {
-		t.Errorf("expected code %v (%s), got %v (%s)", expectedCode, codes.NotFound, st.Code(), st.Code())
-	}
-	expectedMsg := grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenMembershipNotFound)
-	if st.Message() != expectedMsg {
-		t.Errorf("expected message %q, got %q", expectedMsg, st.Message())
-	}
-}
-
-func TestGetUserMembership_RepoFailure(t *testing.T) {
-	mock := &mockMembershipLookup{err: fmt.Errorf("database connection lost")}
-	svc := NewIdentityInternalService(nil, nil, mock, nil, nil)
-
-	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
-		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
-	})
-	if err == nil {
-		t.Fatal("expected error for repo failure")
-	}
-
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	expectedCode := grpcerrors.GetGRPCCode(grpcerrors.ErrTokenGetMemberFailed)
-	if st.Code() != expectedCode {
-		t.Errorf("expected code %v (%s), got %v (%s)", expectedCode, codes.Internal, st.Code(), st.Code())
-	}
-	expectedMsg := grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenGetMemberFailed)
-	if st.Message() != expectedMsg {
-		t.Errorf("expected message %q, got %q", expectedMsg, st.Message())
-	}
-}
-
-func TestGetUserMembership_NilMembershipService(t *testing.T) {
-	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
-
-	_, err := svc.GetUserMembership(testutil.TestContext(), &pb.GetUserMembershipRequest{
-		OrgId:  "fe7fe002-6880-4ea6-84ed-a69911dbdf8c",
-		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
-	})
-	if err == nil {
-		t.Fatal("expected error when membershipSvc is nil")
-	}
-
-	st, ok := status.FromError(err)
-	if !ok {
-		t.Fatalf("expected gRPC status error, got %v", err)
-	}
-	expectedCode := grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured)
-	if st.Code() != expectedCode {
-		t.Errorf("expected code %v (%s), got %v (%s)", expectedCode, codes.Unimplemented, st.Code(), st.Code())
-	}
-	expectedMsg := grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured)
-	if st.Message() != expectedMsg {
-		t.Errorf("expected message %q, got %q", expectedMsg, st.Message())
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewIdentityInternalService(nil, nil, tc.resolver, nil, nil, logger.NewNop())
+			_, err := svc.GetUserRoles(testutil.TestContext(), tc.req)
+			st, ok := status.FromError(err)
+			if !ok || st.Code() != grpcerrors.GetGRPCCode(tc.token) || st.Message() != grpcerrors.ResolveErrorMessage(tc.token) {
+				t.Fatalf("err = %v, want catalog token %s", err, tc.token)
+			}
+		})
 	}
 }
 
@@ -257,8 +138,8 @@ func (m *mockUserLookup) GetByID(_ context.Context, _ uuid.UUID) (*models.User, 
 }
 
 func TestCheckServerAdmin_AdminUser(t *testing.T) {
-	mock := &mockUserLookup{user: &models.User{IsAdmin: true}}
-	svc := NewIdentityInternalService(nil, nil, nil, mock, nil)
+	mock := &mockUserLookup{user: &models.User{IsAdmin: true, IsActive: true}}
+	svc := NewIdentityInternalService(nil, nil, nil, mock, nil, logger.NewNop())
 
 	resp, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
@@ -271,9 +152,22 @@ func TestCheckServerAdmin_AdminUser(t *testing.T) {
 	}
 }
 
+func TestCheckServerAdmin_InactiveAdminIsNotAnAdmin(t *testing.T) {
+	mock := &mockUserLookup{user: &models.User{IsAdmin: true, IsActive: false}}
+	svc := NewIdentityInternalService(nil, nil, nil, mock, nil, logger.NewNop())
+
+	resp, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{UserId: testRolesUserID})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.IsAdmin {
+		t.Error("a deactivated administrator must not pass the admin check")
+	}
+}
+
 func TestCheckServerAdmin_NonAdminUser(t *testing.T) {
 	mock := &mockUserLookup{user: &models.User{IsAdmin: false}}
-	svc := NewIdentityInternalService(nil, nil, nil, mock, nil)
+	svc := NewIdentityInternalService(nil, nil, nil, mock, nil, logger.NewNop())
 
 	resp, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
@@ -287,7 +181,7 @@ func TestCheckServerAdmin_NonAdminUser(t *testing.T) {
 }
 
 func TestCheckServerAdmin_InvalidUUID(t *testing.T) {
-	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
+	svc := NewIdentityInternalService(nil, nil, nil, nil, nil, logger.NewNop())
 
 	_, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "not-a-uuid",
@@ -303,7 +197,7 @@ func TestCheckServerAdmin_InvalidUUID(t *testing.T) {
 }
 
 func TestCheckServerAdmin_EmptyUserID(t *testing.T) {
-	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
+	svc := NewIdentityInternalService(nil, nil, nil, nil, nil, logger.NewNop())
 
 	_, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "",
@@ -314,8 +208,8 @@ func TestCheckServerAdmin_EmptyUserID(t *testing.T) {
 }
 
 func TestCheckServerAdmin_UserNotFound(t *testing.T) {
-	mock := &mockUserLookup{err: storage.ErrNotFound}
-	svc := NewIdentityInternalService(nil, nil, nil, mock, nil)
+	mock := &mockUserLookup{err: admin.ErrUserNotFound}
+	svc := NewIdentityInternalService(nil, nil, nil, mock, nil, logger.NewNop())
 
 	_, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
@@ -330,7 +224,7 @@ func TestCheckServerAdmin_UserNotFound(t *testing.T) {
 }
 
 func TestCheckServerAdmin_NilUserSvc(t *testing.T) {
-	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
+	svc := NewIdentityInternalService(nil, nil, nil, nil, nil, logger.NewNop())
 
 	_, err := svc.CheckServerAdmin(testutil.TestContext(), &pb.CheckServerAdminRequest{
 		UserId: "be8a02c9-1470-4314-8a86-48712761aca9",
@@ -345,7 +239,7 @@ func TestCheckServerAdmin_NilUserSvc(t *testing.T) {
 	}
 }
 
-// mockEventWriter implements grpcerrors.EventWriter for testing.
+// mockEventWriter implements audit.EventWriter for testing.
 type mockEventWriter struct {
 	events []*models.SystemEvent
 }
@@ -357,11 +251,11 @@ func (m *mockEventWriter) CreateEvent(_ context.Context, event *models.SystemEve
 
 func TestRecordPlatformEvent_WithEventWriter(t *testing.T) {
 	writer := &mockEventWriter{}
-	svc := NewIdentityInternalService(nil, nil, nil, nil, writer)
+	svc := NewIdentityInternalService(nil, nil, nil, nil, writer, logger.NewNop())
 
 	resp, err := svc.RecordPlatformEvent(testutil.TestContext(), &pb.RecordPlatformEventRequest{
 		TenantId:    1,
-		EventType:   "service.started",
+		EventType:   testEventTypeServiceStarted,
 		Category:    "system",
 		Severity:    "info",
 		SourceType:  "system",
@@ -399,11 +293,11 @@ func TestRecordPlatformEvent_WithEventWriter(t *testing.T) {
 }
 
 func TestRecordPlatformEvent_NilEventWriter(t *testing.T) {
-	svc := NewIdentityInternalService(nil, nil, nil, nil, nil)
+	svc := NewIdentityInternalService(nil, nil, nil, nil, nil, logger.NewNop())
 
 	resp, err := svc.RecordPlatformEvent(testutil.TestContext(), &pb.RecordPlatformEventRequest{
 		TenantId:    1,
-		EventType:   "service.started",
+		EventType:   testEventTypeServiceStarted,
 		Category:    "system",
 		Severity:    "info",
 		SourceType:  "system",

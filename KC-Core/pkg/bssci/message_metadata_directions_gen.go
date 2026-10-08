@@ -4,9 +4,9 @@ package bssci
 
 import mioty "github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 
-// CommandDirectionMap maps all 58 BSSCI v1.0.0 commands to their protocol direction
+// commandDirectionMap maps all 58 BSSCI v1.0.0 commands to their protocol direction
 // Derived from KC-DB/storage/mioty/types.go annotations (// Direction: ...)
-var CommandDirectionMap = map[string]CommandDirection{
+var commandDirectionMap = map[string]CommandDirection{
 	// Connection operations.
 	mioty.CmdConnect:         DirectionBStoSC,
 	mioty.CmdConnectResponse: DirectionSCtoBS,

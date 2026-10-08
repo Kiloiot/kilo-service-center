@@ -1,16 +1,23 @@
 package builders
 
 import (
+	"context"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	audit "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
 	pkgconfig "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
-	grpcpkg "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/org"
 	dbadapters "github.com/Kiloiot/kilo-service-center/KC-DB/storage/adapters"
+	authadapters "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/adapters/auth"
 	identitygrpc "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/grpc"
 	identityAdapters "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/adapters"
 	adminservice "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/admin"
 	authservice "github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/auth"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/registration"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/roles"
 )
 
 // IdentityResult holds the fully wired identity services and cleanup functions.
@@ -21,53 +28,70 @@ type IdentityResult struct {
 	Cleanups                []func()
 }
 
-// BuildIdentityService constructs the IdentityService with admin, auth, and external auth wired.
-func BuildIdentityService(infra *Infrastructure) *IdentityResult {
+// BuildIdentityService constructs the IdentityService with admin, auth, and
+// external auth wired. ctx is the process lifecycle context and bounds the
+// startup connectivity checks of the external auth clients.
+func BuildIdentityService(ctx context.Context, infra *Infrastructure) *IdentityResult {
 	log := logger.Get()
 	cfg := infra.Config
 	var cleanups []func()
 
-	identityService := identitygrpc.NewIdentityService()
-	identityService = identityService.WithEventWriter(infra.Storage.SystemEvents()).
-		WithAuditEmitter(grpcpkg.NewAuditEmitter(infra.Storage.SystemEvents())).
+	auditEmitter, err := audit.NewEmitter(infra.Repos.SystemEvents, infra.Clock)
+	if err != nil {
+		log.Fatal(LogAuditEmitterCreateFailed, logger.FieldError, err)
+	}
+	auditDrops, err := audit.NewPrometheusDropCounter(prometheus.DefaultRegisterer)
+	if err != nil {
+		log.Fatal(LogAuditRecorderCreateFailed, logger.FieldError, err)
+	}
+	auditRecorder, err := audit.NewRecorder(auditEmitter, infra.Log, auditDrops)
+	if err != nil {
+		log.Fatal(LogAuditRecorderCreateFailed, logger.FieldError, err)
+	}
+	identityService, err := identitygrpc.NewIdentityService(log, auditRecorder, auditRecorder)
+	if err != nil {
+		log.Fatal(LogAuditRecorderCreateFailed, logger.FieldError, err)
+	}
+	identityService = identityService.WithEventWriter(infra.Repos.SystemEvents).
 		WithPlatformTenantID(infra.TenantID)
 
-	log.Info("Wiring Auth and Admin services...")
+	log.Info(LogWiringAuthAdminServices)
 
 	// UserAdminService
-	userStore := dbadapters.NewUserStoreAdapter(infra.SqlxDB)
-	userAdminSvc := adminservice.NewUserAdminService(userStore, infra.Log)
+	userStore := dbadapters.NewUserStoreAdapter(infra.Repos.Users)
+	refreshTokenStore := dbadapters.NewRefreshTokenStoreAdapter(infra.Repos.RefreshTokens)
+	userAdminSvc := adminservice.NewUserAdminService(userStore, refreshTokenStore, infra.Log)
 	identityService = identityService.WithAdminUserService(userAdminSvc)
-	log.Info("UserAdminService wired")
+	log.Info(LogUserAdminServiceWired)
+
+	roleResolver := roles.New(userStore, identityAdapters.NewOrganizationMemberStoreAdapter(infra.Repos.Organizations), infra.Repos.APIKeys)
+	identityService = identityService.WithRoleResolver(roleResolver)
 
 	// OrganizationAdminService and MembershipAdminService: enterprise-only.
 	// In CE, these remain nil; handlers return ErrTokenServiceNotConfigured.
 	if !pkgconfig.IsCommunityEdition(cfg.General.Edition) {
-		orgStore := dbadapters.NewOrganizationAdminAdapter(infra.SqlxDB)
-		tenantStoreWrapper := identityAdapters.NewTenantStoreAdapterWrapper(dbadapters.NewTenantStoreAdapter(infra.SqlxDB))
+		orgStore := infra.Repos.Organizations
+		tenantStoreWrapper := identityAdapters.NewTenantStoreAdapterWrapper(dbadapters.NewTenantStoreAdapter(infra.Repos.Tenants))
 		orgAdminSvc := adminservice.NewOrganizationAdminService(orgStore, tenantStoreWrapper, infra.Log)
 		identityService = identityService.WithOrganizationService(orgAdminSvc)
-		log.Info("OrganizationAdminService wired")
+		log.Info(LogOrgAdminServiceWired)
 
-		memberStore := identityAdapters.NewOrganizationMemberStoreAdapter(infra.Storage.Organizations())
+		memberStore := identityAdapters.NewOrganizationMemberStoreAdapter(infra.Repos.Organizations)
 		membershipSvc := adminservice.NewMembershipAdminService(memberStore, userStore, infra.Log)
 		identityService = identityService.WithMembershipService(membershipSvc)
-		log.Info("MembershipAdminService wired")
+		log.Info(LogMembershipAdminWired)
 	} else {
-		log.Info("Community Edition: OrganizationAdminService and MembershipAdminService skipped")
+		log.Info(LogCEAdminServicesSkipped)
 	}
 
-	// APIKeyAdminService
-	apiKeySvc := adminservice.NewAPIKeyAdminService(infra.Storage.APIKeys(), infra.Log)
-	identityService = identityService.WithAPIKeyService(apiKeySvc)
-	log.Info("APIKeyAdminService wired")
+	identityService = withAPIKeyAdministration(identityService, infra.Repos.APIKeys, infra.Repos.Organizations, infra.Log)
+	log.Info(LogAPIKeyAdminServiceWired)
 
 	// AuthService
-	authMembershipStore := dbadapters.NewOrgMembershipStoreAdapter(infra.SqlxDB)
-	refreshTokenStore := dbadapters.NewRefreshTokenStoreAdapter(infra.SqlxDB)
-	var tokenIssuer *authservice.TokenIssuer
+	authMembershipStore := infra.Repos.Organizations
+	var tokenIssuer authservice.TokenIssuer
 	if cfg.Auth.LocalLoginEnabled || cfg.Auth.OIDC.Enabled || cfg.Auth.OAuth2.Enabled {
-		tokenIssuer = authservice.NewTokenIssuer(
+		tokenIssuer = authservice.NewJWTTokenIssuer(
 			[]byte(cfg.Auth.HMACSecret),
 			cfg.Auth.TenantClaim,
 			cfg.Auth.Issuer,
@@ -89,17 +113,17 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 	// CE: wire default-org membership synthesizer
 	var ceProvider *authservice.CEDefaultOrgProvider
 	if pkgconfig.IsCommunityEdition(cfg.General.Edition) {
-		ceProvider = authservice.NewCEDefaultOrgProvider(infra.Storage.Organizations(), cfg.General.TenantID)
+		ceProvider = authservice.NewCEDefaultOrgProvider(infra.Repos.Organizations, cfg.General.TenantID)
 		authSvc.WithCEProvider(ceProvider)
-		log.Info("CE default-org provider wired for AuthService")
+		log.Info(LogCEDefaultOrgProviderWired)
 	}
 
 	identityService = identityService.WithAuthService(authSvc)
-	log.Info("AuthService wired", "localLoginEnabled", cfg.Auth.LocalLoginEnabled)
+	log.Info(LogAuthServiceWired, logger.FieldLocalLoginEnabled, cfg.Auth.LocalLoginEnabled)
 
 	// RegistrationService (self-service signup, only when explicitly enabled)
 	if cfg.Auth.RegistrationEnabled && cfg.Auth.LocalLoginEnabled {
-		registrationAdapter := dbadapters.NewRegistrationAdapter(infra.SqlxDB)
+		registrationAdapter := dbadapters.NewRegistrationAdapter(infra.Repos.Registrations)
 		registrationSvc := registration.NewService(
 			registrationAdapter,
 			userStore,
@@ -112,23 +136,23 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 			infra.Log,
 		)
 		if pkgconfig.IsCommunityEdition(cfg.General.Edition) {
-			registrationSvc.WithCEMode(cfg.General.TenantID, infra.Storage.Organizations())
+			registrationSvc.WithCEMode(cfg.General.TenantID, infra.Repos.Organizations)
 		}
 		identityService = identityService.WithRegistrationService(registrationSvc)
-		log.Info("RegistrationService wired")
+		log.Info(LogRegistrationServiceWired)
 	} else {
-		log.Info("RegistrationService skipped", "registrationEnabled", cfg.Auth.RegistrationEnabled, "localLoginEnabled", cfg.Auth.LocalLoginEnabled)
+		log.Info(LogRegistrationServiceSkipped, logger.FieldRegistrationEnabled, cfg.Auth.RegistrationEnabled, logger.FieldLocalLoginEnabled, cfg.Auth.LocalLoginEnabled)
 	}
 
 	// ExternalAuthService (OIDC/OAuth2)
 	if cfg.Auth.OIDC.Enabled || cfg.Auth.OAuth2.Enabled {
-		redisClient, err := authservice.NewRedisClient(&cfg.Redis, infra.Log)
+		redisClient, err := authadapters.NewRedisClient(ctx, &cfg.Redis, infra.Log)
 		if err != nil {
-			log.Fatal("failed to create Redis client for external auth", "error", err)
+			log.Fatal(LogRedisClientCreateFailed, logger.FieldError, err)
 		}
 		cleanups = append(cleanups, func() {
 			if err := redisClient.Close(); err != nil {
-				log.Error("failed to close Redis client", "error", err)
+				log.Error(LogRedisClientCloseFailed, logger.FieldError, err)
 			}
 		})
 
@@ -137,7 +161,7 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 
 		var oidcClient authservice.OIDCClient
 		if cfg.Auth.OIDC.Enabled {
-			oidcClient, err = authservice.NewOIDCClient(authservice.OIDCClientConfig{
+			oidcClient, err = authadapters.NewOIDCClient(ctx, authadapters.OIDCClientConfig{
 				ProviderURL:  cfg.Auth.OIDC.ProviderURL,
 				ClientID:     cfg.Auth.OIDC.ClientID,
 				ClientSecret: cfg.Auth.OIDC.ClientSecret,
@@ -145,13 +169,14 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 				Scopes:       cfg.Auth.OIDC.Scopes,
 			}, infra.Log)
 			if err != nil {
-				log.Fatal("failed to create OIDC client", "error", err)
+				log.Fatal(LogOIDCClientCreateFailed, logger.FieldError, err)
 			}
 		}
 
 		var oauth2Client authservice.OAuth2Client
 		if cfg.Auth.OAuth2.Enabled {
-			oauth2Client = authservice.NewOAuth2Client(authservice.OAuth2ClientConfig{
+			var oauth2Err error
+			oauth2Client, oauth2Err = authadapters.NewOAuth2Client(authadapters.OAuth2ClientConfig{
 				AuthorizeURL: cfg.Auth.OAuth2.AuthorizeURL,
 				TokenURL:     cfg.Auth.OAuth2.TokenURL,
 				UserInfoURL:  cfg.Auth.OAuth2.UserInfoURL,
@@ -164,6 +189,9 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 				UserIDClaim:  cfg.Auth.OAuth2.UserIDClaim,
 				EmailClaim:   cfg.Auth.OAuth2.EmailClaim,
 			}, infra.Log)
+			if oauth2Err != nil {
+				log.Fatal(LogOAuth2ClientCreateFailed, logger.FieldError, oauth2Err)
+			}
 		}
 
 		externalAuthCfg := authservice.ExternalAuthServiceConfig{
@@ -188,7 +216,7 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 		// Type assert orgResolverSvc to org.OrganizationResolver
 		orgResolver, ok := infra.OrgResolverSvc.(org.OrganizationResolver)
 		if !ok {
-			log.Fatal("orgResolverSvc does not implement org.OrganizationResolver")
+			log.Fatal(LogOrgResolverTypeMismatch)
 		}
 		externalAuthSvc := authservice.NewExternalAuthService(
 			oidcClient,
@@ -199,6 +227,7 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 			authMembershipStore,
 			tokenIssuer,
 			orgResolver,
+			authadapters.NewRegistrationCallbackClient(infra.Log),
 			externalAuthCfg,
 			infra.Log,
 		)
@@ -206,20 +235,19 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 			externalAuthSvc.WithCEProvider(ceProvider)
 		}
 		identityService = identityService.WithExternalAuthService(externalAuthSvc)
-		log.Info("ExternalAuthService wired",
-			"oidcEnabled", cfg.Auth.OIDC.Enabled,
-			"oauth2Enabled", cfg.Auth.OAuth2.Enabled)
+		log.Info(LogExternalAuthServiceWired,
+			logger.FieldOidcEnabled, cfg.Auth.OIDC.Enabled,
+			logger.FieldOauth2Enabled, cfg.Auth.OAuth2.Enabled)
 	}
 
 	// Build IdentityInternalService for peer-to-peer RPCs
-	apiKeyLookup := newAPIKeyLookupAdapter(infra.Storage.APIKeys())
-	membershipLookup := identitygrpc.NewMembershipLookup(infra.Storage.Organizations())
-	internalService := identitygrpc.NewIdentityInternalService(infra.OrgResolverSvc, apiKeyLookup, membershipLookup, userAdminSvc, infra.Storage.SystemEvents())
-	log.Info("IdentityInternalService wired")
+	apiKeyLookup := newAPIKeyLookupAdapter(infra.Repos.APIKeys)
+	internalService := identitygrpc.NewIdentityInternalService(infra.OrgResolverSvc, apiKeyLookup, roleResolver, userAdminSvc, infra.Repos.SystemEvents, log)
+	log.Info(LogIdentityInternalWired)
 
 	// Build compat shim (28 identity RPCs on KiloCenterService)
 	compatService := identitygrpc.NewKiloCenterServiceCompatIdentity(identityService)
-	log.Info("KiloCenterServiceCompatIdentity wired")
+	log.Info(LogCompatIdentityWired)
 
 	return &IdentityResult{
 		IdentityService:         identityService,
@@ -227,4 +255,10 @@ func BuildIdentityService(infra *Infrastructure) *IdentityResult {
 		CompatService:           compatService,
 		Cleanups:                cleanups,
 	}
+}
+
+// withAPIKeyAdministration wires API key management in every edition: the key
+// store and the organization directory that scopes each key to its tenant.
+func withAPIKeyAdministration(svc *identitygrpc.IdentityService, keys adminservice.APIKeyStore, orgs grpcservices.OrganizationDirectory, log logger.Logger) *identitygrpc.IdentityService {
+	return svc.WithAPIKeyService(adminservice.NewAPIKeyAdminService(keys, log)).WithOrganizationDirectory(orgs)
 }

@@ -9,20 +9,18 @@
 package scaci
 
 import (
-	"context"
 	"errors"
-	"sync"
 	"testing"
-	"time"
 
 	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 
-	pkgmioty "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 )
+
+// scOpIDSampleCount is how many SC operation IDs the monotonicity tests draw.
+const scOpIDSampleCount = 100
 
 // =============================================================================
 // BroadcastDLDataResult Multi-AC Delivery Tests
@@ -48,10 +46,10 @@ func TestBroadcastDLDataResult_MultiACDelivery_ContinuesOnPartialFailure(t *test
 	}
 
 	acs := []mockAC{
-		{sessionID: 1, tenantID: 42, acEui: 0x0102030405060701, state: StateActive, sendError: errors.New("connection reset")}, // Fails
-		{sessionID: 2, tenantID: 42, acEui: 0x0102030405060702, state: StateActive, sendError: nil},                            // Succeeds
-		{sessionID: 3, tenantID: 42, acEui: 0x0102030405060703, state: StateActive, sendError: nil},                            // Succeeds
-		{sessionID: 4, tenantID: 99, acEui: 0x0102030405060704, state: StateActive, sendError: nil},                            // Wrong tenant - should be filtered
+		{sessionID: 1, tenantID: 42, acEui: 0x0102030405060701, state: StateActive, sendError: errConnectionReset}, // Fails
+		{sessionID: 2, tenantID: 42, acEui: 0x0102030405060702, state: StateActive, sendError: nil},                // Succeeds
+		{sessionID: 3, tenantID: 42, acEui: 0x0102030405060703, state: StateActive, sendError: nil},                // Succeeds
+		{sessionID: 4, tenantID: 99, acEui: 0x0102030405060704, state: StateActive, sendError: nil},                // Wrong tenant - should be filtered
 	}
 
 	// Simulate broadcast logic with tracking
@@ -63,8 +61,8 @@ func TestBroadcastDLDataResult_MultiACDelivery_ContinuesOnPartialFailure(t *test
 	var operationsLogged []int64 // Track which sessions had operations logged
 
 	targetTenant := int64(42)
-	scOpIdCounter := int64(0)
-	errorCount := 0
+	scOpIdCounter := int64(initialOpIDCounter)
+	var errorCount int
 
 	// Filter targets by tenant and state
 	var targets []mockAC
@@ -181,7 +179,7 @@ func TestBroadcastDLDataResult_MultipleSessionsSameTenant_EachGetsUniqueOpId(t *
 	assert.Len(t, targets, 3, "3 ACs for tenant 42")
 
 	// Each target gets unique SC opId (negative, decrementing)
-	scOpIdCounter := int64(0)
+	scOpIdCounter := int64(initialOpIDCounter)
 	opIDs := make([]int64, 0, len(targets))
 	for range targets {
 		scOpIdCounter--
@@ -199,145 +197,6 @@ func TestBroadcastDLDataResult_MultipleSessionsSameTenant_EachGetsUniqueOpId(t *
 }
 
 // =============================================================================
-// Server Integration Test with Mock Repository
-// =============================================================================
-
-// mockBroadcastOperationRepo implements interfaces.SCACIOperationRepository for broadcast tests
-type mockBroadcastOperationRepo struct {
-	mu              sync.Mutex
-	recordedOps     []*models.SCACIOperationRequest
-	recordError     error
-	recordCallCount int
-}
-
-func (m *mockBroadcastOperationRepo) RecordOperation(_ context.Context, req *models.SCACIOperationRequest) (*models.SCACIOperation, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.recordCallCount++
-	if m.recordError != nil {
-		return nil, m.recordError
-	}
-	m.recordedOps = append(m.recordedOps, req)
-	return &models.SCACIOperation{
-		ID:          int64(m.recordCallCount),
-		SessionID:   req.SessionID,
-		TenantID:    req.TenantID,
-		OpId:        req.OpId,
-		Command:     req.Command,
-		Direction:   req.Direction,
-		RequestData: req.RequestData,
-	}, nil
-}
-
-func (m *mockBroadcastOperationRepo) UpdateOperationState(_ context.Context, _ int64, _ int64, _ models.OperationState, _ map[string]interface{}) error {
-	return nil
-}
-
-func (m *mockBroadcastOperationRepo) GetOperationByOpID(_ context.Context, _ int64, _ int64) (*models.SCACIOperation, error) {
-	return nil, nil
-}
-
-func (m *mockBroadcastOperationRepo) GetPendingOperations(_ context.Context, _ int64) ([]*models.SCACIOperation, error) {
-	return nil, nil
-}
-
-func (m *mockBroadcastOperationRepo) GetRecentOperations(_ context.Context, _ int64, _ int) ([]*models.SCACIOperation, error) {
-	return nil, nil
-}
-
-func (m *mockBroadcastOperationRepo) CleanupCompletedOperations(_ context.Context, _ int64) (int64, error) {
-	return 0, nil
-}
-
-func (m *mockBroadcastOperationRepo) GetTenantOperationSummary(_ context.Context, _ int64, _ int) (*models.SCACIOperationSummary, error) {
-	return nil, nil
-}
-
-func (m *mockBroadcastOperationRepo) UpdateOperationStateWithError(_ context.Context, _ int64, _ int64, _ models.OperationState, _ int, _ string, _ string, _ map[string]interface{}) error {
-	return nil
-}
-
-func (m *mockBroadcastOperationRepo) CompleteFailedOperation(_ context.Context, _ int64, _ int64, _ map[string]interface{}) error {
-	return nil
-}
-
-// Compile-time interface check
-var _ interfaces.SCACIOperationRepository = (*mockBroadcastOperationRepo)(nil)
-
-// mockBroadcastSessionRepo implements interfaces.SCACISessionRepository for broadcast tests
-type mockBroadcastSessionRepo struct {
-	mu            sync.Mutex
-	updateCalls   []opIDsBroadcastUpdate
-	updateError   error
-	updateDelayMs int
-}
-
-type opIDsBroadcastUpdate struct {
-	TenantID  int64
-	SessionID int64
-	AcOpID    int64
-	ScOpID    int64
-}
-
-func (m *mockBroadcastSessionRepo) UpdateOperationIDs(_ context.Context, tenantID, sessionID, acOpId, scOpId int64) error {
-	if m.updateDelayMs > 0 {
-		time.Sleep(time.Duration(m.updateDelayMs) * time.Millisecond)
-	}
-	m.mu.Lock()
-	m.updateCalls = append(m.updateCalls, opIDsBroadcastUpdate{
-		TenantID:  tenantID,
-		SessionID: sessionID,
-		AcOpID:    acOpId,
-		ScOpID:    scOpId,
-	})
-	m.mu.Unlock()
-	return m.updateError
-}
-
-// Implement remaining interface methods with no-op stubs
-func (m *mockBroadcastSessionRepo) CreateSession(_ context.Context, _ *models.SCACISessionCreateRequest) (*models.SCACISession, error) {
-	return nil, nil
-}
-func (m *mockBroadcastSessionRepo) GetSessionByID(_ context.Context, _, _ int64) (*models.SCACISession, error) {
-	return nil, nil
-}
-func (m *mockBroadcastSessionRepo) GetActiveSessionByAcEUI(_ context.Context, _ int64, _ [8]byte) (*models.SCACISession, error) {
-	return nil, nil
-}
-func (m *mockBroadcastSessionRepo) GetSessionByAcUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
-	return nil, nil
-}
-func (m *mockBroadcastSessionRepo) GetSessionByScUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
-	return nil, nil
-}
-func (m *mockBroadcastSessionRepo) UpdateSession(_ context.Context, _, _ int64, _ *models.SCACISessionUpdateRequest) error {
-	return nil
-}
-func (m *mockBroadcastSessionRepo) UpdateHeartbeat(_ context.Context, _, _ int64) error { return nil }
-func (m *mockBroadcastSessionRepo) DisconnectSession(_ context.Context, _, _ int64) error {
-	return nil
-}
-func (m *mockBroadcastSessionRepo) TerminateSession(_ context.Context, _, _ int64) error { return nil }
-func (m *mockBroadcastSessionRepo) TerminateAllSessions(_ context.Context, _ int64, _ [8]byte) error {
-	return nil
-}
-func (m *mockBroadcastSessionRepo) ListSessions(_ context.Context, _ *models.SCACISessionFilter) ([]*models.SCACISession, int64, error) {
-	return nil, 0, nil
-}
-func (m *mockBroadcastSessionRepo) GetSessionStatistics(_ context.Context, _ int64) (*models.SCACISessionStatistics, error) {
-	return nil, nil
-}
-func (m *mockBroadcastSessionRepo) CheckSessionResumable(_ context.Context, _ int64, _ [16]byte, _, _ int64) (*models.SCACISessionResumptionInfo, error) {
-	return nil, nil
-}
-func (m *mockBroadcastSessionRepo) CleanupExpiredSessions(_ context.Context, _ int64) (int64, error) {
-	return 0, nil
-}
-
-// Compile-time interface check
-var _ interfaces.SCACISessionRepository = (*mockBroadcastSessionRepo)(nil)
-
-// =============================================================================
 // DLDataResult Data Validation Tests
 // =============================================================================
 
@@ -352,7 +211,7 @@ func TestDLDataResult_RequestData_Format(t *testing.T) {
 
 		// Build RequestData as BroadcastDLDataResult does
 		requestData := map[string]interface{}{
-			"epEui":  pkgmioty.FormatEUI64(epEui),
+			"epEui":  mioty.FormatEUI64(epEui),
 			"queId":  queId,
 			"result": result,
 		}
@@ -372,12 +231,12 @@ func TestDLDataResult_RequestData_Format(t *testing.T) {
 		bsEui := uint64(0x0102030405060708)
 
 		requestData := map[string]interface{}{
-			"epEui":     pkgmioty.FormatEUI64(epEui),
+			"epEui":     mioty.FormatEUI64(epEui),
 			"queId":     queId,
 			"result":    result,
 			"txTime":    txTime,
 			"packetCnt": packetCnt,
-			"bsEui":     pkgmioty.FormatEUI64(bsEui),
+			"bsEui":     mioty.FormatEUI64(bsEui),
 		}
 
 		// Verify all fields
@@ -390,20 +249,20 @@ func TestDLDataResult_RequestData_Format(t *testing.T) {
 	})
 
 	t.Run("ValidResultEnum_Sent", func(t *testing.T) {
-		assert.True(t, ValidDLDataResults[ResultSent], "sent should be valid")
+		assert.True(t, validDLDataResults[ResultSent], "sent should be valid")
 	})
 
 	t.Run("ValidResultEnum_Expired", func(t *testing.T) {
-		assert.True(t, ValidDLDataResults[ResultExpired], "expired should be valid")
+		assert.True(t, validDLDataResults[ResultExpired], "expired should be valid")
 	})
 
 	t.Run("ValidResultEnum_Invalid", func(t *testing.T) {
-		assert.True(t, ValidDLDataResults[ResultInvalid], "invalid should be valid")
+		assert.True(t, validDLDataResults[ResultInvalid], "invalid should be valid")
 	})
 
 	t.Run("InvalidResultEnum_Revoked", func(t *testing.T) {
 		// Per SCACI §3.12.1: "revoked" is NOT a valid wire enum - internal only
-		assert.False(t, ValidDLDataResults[ResultRevoked], "revoked should NOT be valid per §3.12.1")
+		assert.False(t, validDLDataResults[ResultRevoked], "revoked should NOT be valid per §3.12.1")
 	})
 }
 
@@ -451,12 +310,12 @@ func TestBroadcastDLDataResult_ErrorLogging_UsesSessionContext(t *testing.T) {
 		State:    StateActive,
 	}
 
-	sendErr := errors.New("connection reset by peer")
+	sendErr := errConnectionResetByPeer
 
 	// Log as BroadcastDLDataResult does (with sessionContext)
 	testLogger.Error(LogSCACISendDLResultToACFailed,
-		"acEui", pkgmioty.FormatEUI64(session.AcEui),
-		"error", sendErr)
+		logger.FieldAcEui, mioty.FormatEUI64(session.AcEui),
+		logger.FieldError, sendErr)
 
 	// Verify log entry
 	logs := observedLogs.AllAtLeast("ERROR")
@@ -482,7 +341,7 @@ func TestBroadcastDLDataResult_UsesSCOperationId(t *testing.T) {
 	// BroadcastDLDataResult at server.go:1304 calls NextScOpId()
 
 	// Simulate SC opId sequence (negative, decrementing)
-	scOpIdCounter := int64(0)
+	scOpIdCounter := int64(initialOpIDCounter)
 
 	// NextScOpId decrements and returns
 	getNextScOpId := func() int64 {
@@ -499,7 +358,7 @@ func TestBroadcastDLDataResult_UsesSCOperationId(t *testing.T) {
 	assert.Equal(t, int64(-2), opId2, "Second SC opId should be -2")
 
 	// All SC-originated opIds are negative
-	for i := 0; i < 100; i++ {
+	for i := 0; i < scOpIDSampleCount; i++ {
 		opId := getNextScOpId()
 		assert.True(t, opId < 0, "SC opId must be negative")
 	}
@@ -570,3 +429,9 @@ func TestBroadcastDLDataResult_CallSiteDocumentation(t *testing.T) {
 
 	assert.GreaterOrEqual(t, len(integrationPoints), 1, "should have at least 1 integration point")
 }
+
+// Sentinel errors returned by this package; callers match them with errors.Is.
+var (
+	errConnectionResetByPeer = errors.New("connection reset by peer")
+	errConnectionReset       = errors.New("connection reset")
+)

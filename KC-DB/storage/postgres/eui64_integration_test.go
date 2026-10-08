@@ -5,8 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +47,7 @@ func TestEUI64BaseStationPersistence(t *testing.T) {
 	const tenantID = int64(400)
 	createTestTenant(t, db, tenantID, "TestTenantEUI64")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	for _, eui := range eui64MatrixValues {
@@ -55,18 +61,20 @@ func TestEUI64BaseStationPersistence(t *testing.T) {
 			ConnectionType:   models.ConnectionTypeBSSCI,
 			ServiceCenterURL: testServiceCenterURLPtr(),
 		}
-		require.NoError(t, repo.Create(ctx, bs), "EUI %016X must persist", eui)
+		require.NoError(t, repo.Create(ctx, bs), "EUI %s must persist", mioty.FormatEUI64(eui))
 
 		stored, err := repo.GetByEUI(ctx, tenantID, euiArr[:])
-		require.NoError(t, err, "EUI %016X must read back tenant-scoped", eui)
-		assert.Equal(t, euiArr, stored.EUI, "EUI %016X must be bit-exact", eui)
+		require.NoError(t, err, "EUI %s must read back tenant-scoped", mioty.FormatEUI64(eui))
+		assert.Equal(t, euiArr, stored.EUI, "EUI %s must be bit-exact", mioty.FormatEUI64(eui))
 
 		global, err := repo.GetByEUIGlobal(ctx, euiArr[:])
-		require.NoError(t, err, "EUI %016X must resolve via connect-time global lookup", eui)
+		require.NoError(t, err, "EUI %s must resolve via connect-time global lookup", mioty.FormatEUI64(eui))
 		assert.Equal(t, euiArr, global.EUI)
 		assert.Equal(t, tenantID, global.TenantID)
 
-		require.NoError(t, repo.Delete(ctx, tenantID, stored.ID))
+		removed, err := repo.DeleteByEUI(ctx, tenantID, euiArr[:])
+		require.NoError(t, err)
+		assert.Equal(t, stored.ID, removed.ID, "the delete returns the row it removed")
 	}
 }
 
@@ -84,7 +92,7 @@ func TestEUI64BaseStationListWithStats(t *testing.T) {
 	const tenantID = int64(403)
 	createTestTenant(t, db, tenantID, "TestTenantEUI64Stats")
 
-	repo := NewBaseStationRepository(db)
+	repo := NewBaseStationRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	const bsEUI = uint64(0xCAFECAFECAFECAFE)
@@ -152,10 +160,10 @@ func TestEUI64MessagePersistence(t *testing.T) {
 			`SELECT ep_eui, bs_eui FROM messages WHERE id = $1`, id,
 		).Scan(&epStored, &bsStored))
 
-		assert.Equal(t, eui64Bytes(eui), epStored, "ep_eui %016X must be bit-exact", eui)
-		assert.Equal(t, eui64Bytes(eui), bsStored, "bs_eui %016X must be bit-exact", eui)
+		assert.Equal(t, eui64Bytes(eui), epStored, "ep_eui %s must be bit-exact", mioty.FormatEUI64(eui))
+		assert.Equal(t, eui64Bytes(eui), bsStored, "bs_eui %s must be bit-exact", mioty.FormatEUI64(eui))
 		assert.Equal(t, eui, binary.BigEndian.Uint64(epStored),
-			"ep_eui %016X must recover the exact uint64", eui)
+			"ep_eui %s must recover the exact uint64", mioty.FormatEUI64(eui))
 	}
 }
 
@@ -174,15 +182,16 @@ func TestEUI64EndpointPersistence(t *testing.T) {
 
 	for _, eui := range eui64MatrixValues {
 		var stored []byte
-		require.NoError(t, db.QueryRow(`
+		require.NoError(t, db.QueryRow(
+			`
 			INSERT INTO endpoints (tenant_id, owner_tenant_id, ep_eui, name, sh_addr, nwk_key, bidi)
 			VALUES ($1, $1, $2, $3, $4, $5, true)
 			RETURNING ep_eui`,
 			tenantID, eui64Bytes(eui), "TestEUI64-EP", 0x1234,
-			make([]byte, 16),
-		).Scan(&stored), "endpoint EUI %016X must persist", eui)
+			envelopeForTest(make([]byte, 16)),
+		).Scan(&stored), "endpoint EUI %s must persist", mioty.FormatEUI64(eui))
 
 		assert.Equal(t, eui, binary.BigEndian.Uint64(stored),
-			"endpoint EUI %016X must be bit-exact", eui)
+			"endpoint EUI %s must be bit-exact", mioty.FormatEUI64(eui))
 	}
 }

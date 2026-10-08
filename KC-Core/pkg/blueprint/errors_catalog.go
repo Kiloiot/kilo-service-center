@@ -3,7 +3,10 @@
 // and error tracking. Frontend display strings are in KC-Web messages.ts.
 package blueprint
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Error tokens for blueprint operations (centralized, no inline strings)
 // These tokens map to human-readable messages via ResolveErrorMessage().
@@ -13,6 +16,7 @@ const (
 	ErrMissingVersion       = "blueprint.error.missing_version"
 	ErrMissingTypeEUI       = "blueprint.error.missing_type_eui"
 	ErrInvalidTypeEUILength = "blueprint.error.invalid_type_eui_length"
+	ErrInvalidTypeEUIFormat = "blueprint.error.invalid_type_eui_format"
 	ErrMissingUplinkDefs    = "blueprint.error.missing_uplink_definitions"
 	ErrInvalidSpecVersion   = "blueprint.error.invalid_spec_version"
 	ErrDuplicateFormatID    = "blueprint.error.duplicate_format_id"
@@ -34,16 +38,14 @@ const (
 	// Component resolution errors
 	ErrComponentRefNotFound = "blueprint.error.component_ref_not_found"
 
-	// Resolution errors
-	ErrBlueprintNotFound      = "blueprint.error.not_found"
-	ErrNoDefaultBlueprint     = "blueprint.error.no_default_blueprint"
-	ErrEndpointNoDeviceModel  = "blueprint.error.endpoint_no_device_model"
-	ErrDeviceModelNoBlueprint = "blueprint.error.device_model_no_blueprint"
-
 	// Internal errors
 	ErrInternalDecodePanic    = "blueprint.error.internal_decode_panic"
 	ErrInternalParseError     = "blueprint.error.internal_parse_error"
 	ErrInvalidCryptoFieldType = "blueprint.error.invalid_crypto_field_type"
+
+	// Naming and registry-path validation.
+	ErrInvalidRegistryPathSegment = "blueprint.error.invalid_registry_path_segment"
+	ErrInvalidModelCode           = "blueprint.error.invalid_model_code"
 )
 
 // errorMessages maps error tokens to human-readable messages.
@@ -55,6 +57,7 @@ var errorMessages = map[string]string{
 	ErrMissingVersion:       "Blueprint is missing required 'version' field",
 	ErrMissingTypeEUI:       "Blueprint is missing required 'typeEui' field",
 	ErrInvalidTypeEUILength: "Type EUI must be exactly 8 bytes",
+	ErrInvalidTypeEUIFormat: "Type EUI must be 16 hexadecimal characters",
 	ErrMissingUplinkDefs:    "Blueprint must have at least one uplink definition",
 	ErrInvalidSpecVersion:   "Blueprint specification version is not supported",
 	ErrDuplicateFormatID:    "Duplicate format ID found in blueprint definitions",
@@ -77,44 +80,26 @@ var errorMessages = map[string]string{
 	ErrComponentRefNotFound: "Component reference key not found in component definitions",
 
 	// Resolution errors
-	ErrBlueprintNotFound:      "No blueprint found for the given Type EUI",
-	ErrNoDefaultBlueprint:     "Device model has no default blueprint set",
-	ErrEndpointNoDeviceModel:  "Endpoint has no device model assigned",
-	ErrDeviceModelNoBlueprint: "Device model has no blueprints defined",
 
 	// Internal errors
-	ErrInternalDecodePanic:    "Internal error: decoder panic recovered",
-	ErrInternalParseError:     "Internal error: failed to parse blueprint specification",
-	ErrInvalidCryptoFieldType: "Crypto field must be a string or integer",
+	ErrInternalDecodePanic:        "Internal error: decoder panic recovered",
+	ErrInternalParseError:         "Internal error: failed to parse blueprint specification",
+	ErrInvalidCryptoFieldType:     "Crypto field must be a string or integer",
+	ErrInvalidRegistryPathSegment: "Registry path segment is empty or invalid",
+	ErrInvalidModelCode:           "Model code must contain only lowercase alphanumeric characters and hyphens",
 }
+
+const unknownBlueprintErrorFmt = "Unknown blueprint error: %s"
 
 // ResolveErrorMessage returns the human-readable message for an error token.
 // Returns a formatted message if the token is unknown.
+// unknownBlueprintErrorFmt labels tokens missing from the catalog.
 func ResolveErrorMessage(token string) string {
 	if msg, ok := errorMessages[token]; ok {
 		return msg
 	}
-	return fmt.Sprintf("Unknown blueprint error: %s", token)
+	return fmt.Sprintf(unknownBlueprintErrorFmt, token)
 }
 
-// ErrorDefinition contains metadata about a blueprint error for diagnostics and tracking.
-type ErrorDefinition struct {
-	Token   string
-	Message string
-	// SpecSection could be added for MIOTY Application Layer spec references
-}
-
-// GetErrorDefinition returns the full error definition for a token.
-func GetErrorDefinition(token string) *ErrorDefinition {
-	msg, ok := errorMessages[token]
-	if !ok {
-		return &ErrorDefinition{
-			Token:   ErrInternalParseError,
-			Message: errorMessages[ErrInternalParseError],
-		}
-	}
-	return &ErrorDefinition{
-		Token:   token,
-		Message: msg,
-	}
-}
+// ErrGitHubAppKeyPEM reports a GitHub App private key that is not valid PEM.
+var ErrGitHubAppKeyPEM = errors.New("failed to decode PEM block from github_app_private_key")

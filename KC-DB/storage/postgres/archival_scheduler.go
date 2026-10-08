@@ -2,25 +2,39 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
 )
 
-// ArchivalScheduler manages scheduled archival operations
+// messageArchiver is the archival work the scheduler runs.
+type messageArchiver interface {
+	ArchiveOldMessages(ctx context.Context, olderThan time.Duration) (int64, error)
+	CreateMonthlyPartitions(ctx context.Context, monthsAhead int) error
+	PurgeArchivedMessages(ctx context.Context, archivedBefore time.Time) (int64, error)
+}
+
+// ArchivalScheduler manages scheduled archival operations. A single loop
+// goroutine runs every archival itself, so runs never overlap and Stop,
+// which cancels the loop and waits for it, returns only after the run in
+// flight has ended.
 type ArchivalScheduler struct {
-	service *ArchivalService
-	logger  logger.Logger
-	config  ArchivalConfig
+	clock    clock.Clock
+	archiver messageArchiver
+	logger   logger.Logger
+	config   ArchivalConfig
 
-	// Control channels
-	stopCh chan struct{}
-	doneCh chan struct{}
-	mu     sync.Mutex
+	// lifecycle serializes Start and Stop; the loop never takes it, so Stop
+	// can hold it while waiting for the loop to end.
+	lifecycle sync.Mutex
+	cancel    context.CancelFunc
+	done      chan struct{}
 
-	// Status tracking
+	// mu guards the status the loop and GetStatus share.
+	mu      sync.Mutex
 	running bool
 	lastRun map[string]time.Time
 }
@@ -31,138 +45,129 @@ type ArchivalConfig struct {
 	MessageRetentionDays int
 	MessageArchivalHour  int // Hour of day to run (0-23)
 
-	// Gateway reception archival settings
-	GatewayReceptionRetentionDays int
-	GatewayReceptionArchivalHour  int
-
-	// Device session archival settings
-	DeviceSessionRetentionDays int
-	DeviceSessionArchivalHour  int
-
-	// Device key archival settings
-	DeviceKeyRetentionDays int
-	DeviceKeyArchivalHour  int
-
 	// General settings
 	ArchivalEnabled bool
 	CheckInterval   time.Duration // How often to check if archival should run
 }
 
+const (
+	archivalJobMessages = "messages"
+)
+
+// Default archival retention and run-hour policy (hours are local
+// off-peak slots).
+const (
+	defaultMessageRetentionDays = 90
+	defaultMessageArchivalHour  = 2
+)
+
+// monthlyPartitionsAhead creates message partitions this many months ahead.
+const monthlyPartitionsAhead = 3
+
+// purgeRetentionFactor keeps archived messages this multiple of the live
+// retention before purging.
+const purgeRetentionFactor = 2
+
 // DefaultArchivalConfig returns default archival configuration
+// Archival job names used for last-run bookkeeping.
 func DefaultArchivalConfig() ArchivalConfig {
 	return ArchivalConfig{
-		MessageRetentionDays:          90,
-		MessageArchivalHour:           2, // 2 AM
-		GatewayReceptionRetentionDays: 30,
-		GatewayReceptionArchivalHour:  3, // 3 AM
-		DeviceSessionRetentionDays:    180,
-		DeviceSessionArchivalHour:     4, // 4 AM
-		DeviceKeyRetentionDays:        365,
-		DeviceKeyArchivalHour:         5, // 5 AM
-		ArchivalEnabled:               true,
-		CheckInterval:                 15 * time.Minute,
+		MessageRetentionDays: defaultMessageRetentionDays,
+		MessageArchivalHour:  defaultMessageArchivalHour,
+		ArchivalEnabled:      defaultArchivalEnabled,
+		CheckInterval:        defaultArchivalCheckInterval,
 	}
 }
 
 // NewArchivalScheduler creates a new archival scheduler
-func NewArchivalScheduler(service *ArchivalService, logger logger.Logger, config ArchivalConfig) *ArchivalScheduler {
+func NewArchivalScheduler(archiver messageArchiver, logger logger.Logger, config ArchivalConfig, clk clock.Clock) *ArchivalScheduler {
 	return &ArchivalScheduler{
-		service: service,
-		logger:  logger,
-		config:  config,
-		stopCh:  make(chan struct{}),
-		doneCh:  make(chan struct{}),
-		lastRun: make(map[string]time.Time),
+		clock:    clk,
+		archiver: archiver,
+		logger:   logger,
+		config:   config,
+		lastRun:  make(map[string]time.Time),
 	}
 }
 
-// Start begins the archival scheduler
-func (s *ArchivalScheduler) Start() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// Start begins the archival scheduler. ctx is the process lifecycle context;
+// the running archival aborts when it or Stop cancels the loop.
+func (s *ArchivalScheduler) Start(ctx context.Context) error {
+	s.lifecycle.Lock()
+	defer s.lifecycle.Unlock()
 
-	if s.running {
-		return fmt.Errorf("archival scheduler already running")
+	if s.cancel != nil {
+		return errTextArchivalSchedulerAlreadyRunning
 	}
 
 	if !s.config.ArchivalEnabled {
-		s.logger.Info("Archival scheduler disabled by configuration")
+		s.logger.Info(logMsgArchivalSchedulerDisabledByConfiguration)
 		return nil
 	}
 
-	s.running = true
-	go s.run()
+	loopCtx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
+	s.done = make(chan struct{})
+	s.setRunning(true)
+	go s.run(loopCtx, s.done)
 
-	s.logger.Info("Archival scheduler started",
-		"check_interval", s.config.CheckInterval,
-		"message_retention_days", s.config.MessageRetentionDays,
-		"gateway_reception_retention_days", s.config.GatewayReceptionRetentionDays,
-		"device_session_retention_days", s.config.DeviceSessionRetentionDays,
-		"device_key_retention_days", s.config.DeviceKeyRetentionDays)
+	s.logger.Info(logMsgArchivalSchedulerStarted,
+		logger.FieldCheckInterval, s.config.CheckInterval,
+		logger.FieldMessageRetentionDays, s.config.MessageRetentionDays)
 
 	return nil
 }
 
-// Stop halts the archival scheduler
+// Stop cancels the scheduler loop and waits until it, and the archival it
+// may be running, has ended.
 func (s *ArchivalScheduler) Stop() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.lifecycle.Lock()
+	defer s.lifecycle.Unlock()
 
-	if !s.running {
+	if s.cancel == nil {
 		return nil
 	}
 
-	close(s.stopCh)
-	<-s.doneCh
+	s.cancel()
+	<-s.done
+	s.cancel, s.done = nil, nil
 
-	s.running = false
-	s.logger.Info("Archival scheduler stopped")
+	s.setRunning(false)
+	s.logger.Info(logMsgArchivalSchedulerStopped)
 
 	return nil
+}
+
+func (s *ArchivalScheduler) setRunning(running bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.running = running
 }
 
 // run is the main scheduler loop
-func (s *ArchivalScheduler) run() {
-	defer close(s.doneCh)
+func (s *ArchivalScheduler) run(ctx context.Context, done chan<- struct{}) {
+	defer close(done)
 
 	// Run initial check immediately
-	s.checkAndRunArchival()
+	s.checkAndRunArchival(ctx)
 
 	ticker := time.NewTicker(s.config.CheckInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-s.stopCh:
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.checkAndRunArchival()
+			s.checkAndRunArchival(ctx)
 		}
 	}
 }
 
-// checkAndRunArchival checks if any archival operations should run
-func (s *ArchivalScheduler) checkAndRunArchival() {
-	now := time.Now()
-
-	// Check messages archival
-	if s.shouldRunArchival("messages", now, s.config.MessageArchivalHour) {
-		go s.runMessageArchival()
-	}
-
-	// Check gateway receptions archival
-	if s.shouldRunArchival("gateway_receptions", now, s.config.GatewayReceptionArchivalHour) {
-		go s.runGatewayReceptionArchival()
-	}
-
-	// Check device sessions archival
-	if s.shouldRunArchival("device_sessions", now, s.config.DeviceSessionArchivalHour) {
-		go s.runDeviceSessionArchival()
-	}
-
-	// Check device keys archival
-	if s.shouldRunArchival("device_keys", now, s.config.DeviceKeyArchivalHour) {
-		go s.runDeviceKeyArchival()
+// checkAndRunArchival runs the message archival when it is due
+func (s *ArchivalScheduler) checkAndRunArchival(ctx context.Context) {
+	if s.shouldRunArchival(archivalJobMessages, s.clock.Now(), s.config.MessageArchivalHour) {
+		s.runMessageArchival(ctx)
 	}
 }
 
@@ -185,114 +190,44 @@ func (s *ArchivalScheduler) shouldRunArchival(name string, now time.Time, target
 func (s *ArchivalScheduler) markArchivalRun(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.lastRun[name] = time.Now()
+	s.lastRun[name] = s.clock.Now()
 }
 
 // runMessageArchival runs the message archival operation
-func (s *ArchivalScheduler) runMessageArchival() {
-	ctx := context.Background()
-	startTime := time.Now()
+func (s *ArchivalScheduler) runMessageArchival(ctx context.Context) {
+	startTime := s.clock.Now()
 
-	s.logger.Info("Starting scheduled message archival",
-		"retention_days", s.config.MessageRetentionDays)
+	s.logger.Info(logMsgStartingScheduledMessageArchival,
+		logger.FieldRetentionDays, s.config.MessageRetentionDays)
 
 	// Archive old messages
-	retention := time.Duration(s.config.MessageRetentionDays) * 24 * time.Hour
-	count, err := s.service.ArchiveOldMessages(ctx, retention)
+	retention := time.Duration(s.config.MessageRetentionDays) * dayDuration
+	count, err := s.archiver.ArchiveOldMessages(ctx, retention)
 	if err != nil {
-		s.logger.Error("Message archival failed", "error", err)
+		s.logger.Error(logMsgMessageArchival, logger.FieldError, err)
 		return
 	}
 
 	// Create monthly partitions
-	if err := s.service.CreateMonthlyPartitions(ctx, 3); err != nil {
-		s.logger.Error("Failed to create message partitions", "error", err)
+	if err := s.archiver.CreateMonthlyPartitions(ctx, monthlyPartitionsAhead); err != nil {
+		s.logger.Error(logMsgCreateMessagePartitions, logger.FieldError, err)
 	}
 
 	// Purge very old archived messages (optional, could be configurable)
-	purgeRetention := time.Duration(s.config.MessageRetentionDays*2) * 24 * time.Hour
-	purgeTime := time.Now().Add(-purgeRetention)
-	purgeCount, err := s.service.PurgeArchivedMessages(ctx, purgeTime)
+	purgeRetention := time.Duration(s.config.MessageRetentionDays*purgeRetentionFactor) * dayDuration
+	purgeTime := s.clock.Now().Add(-purgeRetention)
+	purgeCount, err := s.archiver.PurgeArchivedMessages(ctx, purgeTime)
 	if err != nil {
-		s.logger.Error("Failed to purge old archived messages", "error", err)
+		s.logger.Error(logMsgPurgeOldArchivedMessages, logger.FieldError, err)
 	}
 
-	duration := time.Since(startTime)
-	s.logger.Info("Message archival completed",
-		"archived_count", count,
-		"purged_count", purgeCount,
-		"duration", duration)
+	duration := s.clock.Now().Sub(startTime)
+	s.logger.Info(logMsgMessageArchivalCompleted,
+		logger.FieldArchivedCount, count,
+		logger.FieldPurgedCount, purgeCount,
+		logger.FieldDuration, duration)
 
-	s.markArchivalRun("messages")
-}
-
-// runGatewayReceptionArchival runs the gateway reception archival operation
-func (s *ArchivalScheduler) runGatewayReceptionArchival() {
-	ctx := context.Background()
-	startTime := time.Now()
-
-	s.logger.Info("Starting scheduled gateway reception archival",
-		"retention_days", s.config.GatewayReceptionRetentionDays)
-
-	retention := time.Duration(s.config.GatewayReceptionRetentionDays) * 24 * time.Hour
-	count, err := s.service.ArchiveOldGatewayReceptions(ctx, retention)
-	if err != nil {
-		s.logger.Error("Gateway reception archival failed", "error", err)
-		return
-	}
-
-	duration := time.Since(startTime)
-	s.logger.Info("Gateway reception archival completed",
-		"archived_count", count,
-		"duration", duration)
-
-	s.markArchivalRun("gateway_receptions")
-}
-
-// runDeviceSessionArchival runs the device session archival operation
-func (s *ArchivalScheduler) runDeviceSessionArchival() {
-	ctx := context.Background()
-	startTime := time.Now()
-
-	s.logger.Info("Starting scheduled device session archival",
-		"retention_days", s.config.DeviceSessionRetentionDays)
-
-	retention := time.Duration(s.config.DeviceSessionRetentionDays) * 24 * time.Hour
-	count, err := s.service.ArchiveOldDeviceSessions(ctx, retention)
-	if err != nil {
-		s.logger.Error("Device session archival failed", "error", err)
-		return
-	}
-
-	duration := time.Since(startTime)
-	s.logger.Info("Device session archival completed",
-		"archived_count", count,
-		"duration", duration)
-
-	s.markArchivalRun("device_sessions")
-}
-
-// runDeviceKeyArchival runs the device key archival operation
-func (s *ArchivalScheduler) runDeviceKeyArchival() {
-	ctx := context.Background()
-	startTime := time.Now()
-
-	s.logger.Info("Starting scheduled device key archival",
-		"retention_days", s.config.DeviceKeyRetentionDays)
-
-	retention := time.Duration(s.config.DeviceKeyRetentionDays) * 24 * time.Hour
-	count, err := s.service.ArchiveOldDeviceKeys(ctx, retention)
-	if err != nil {
-		s.logger.Error("Device key archival failed", "error", err)
-		return
-	}
-
-	duration := time.Since(startTime)
-	s.logger.Info("Device key archival completed",
-		"archived_count", count,
-		"duration", duration)
-
-	s.markArchivalRun("device_keys")
+	s.markArchivalRun(archivalJobMessages)
 }
 
 // GetStatus returns the current status of the archival scheduler
@@ -313,20 +248,17 @@ func (s *ArchivalScheduler) GetStatus() map[string]interface{} {
 	status["last_runs"] = lastRuns
 
 	// Calculate next run times
-	now := time.Now()
+	now := s.clock.Now()
 	nextRuns := make(map[string]string)
 
 	// Messages
 	nextRuns["messages"] = s.calculateNextRun(now, s.config.MessageArchivalHour, s.lastRun["messages"])
 
 	// Gateway receptions
-	nextRuns["gateway_receptions"] = s.calculateNextRun(now, s.config.GatewayReceptionArchivalHour, s.lastRun["gateway_receptions"])
 
 	// Device sessions
-	nextRuns["device_sessions"] = s.calculateNextRun(now, s.config.DeviceSessionArchivalHour, s.lastRun["device_sessions"])
 
 	// Device keys
-	nextRuns["device_keys"] = s.calculateNextRun(now, s.config.DeviceKeyArchivalHour, s.lastRun["device_keys"])
 
 	status["next_runs"] = nextRuns
 
@@ -351,3 +283,6 @@ func (s *ArchivalScheduler) calculateNextRun(now time.Time, targetHour int, last
 	nextRun := time.Date(now.Year(), now.Month(), now.Day()+1, targetHour, 0, 0, 0, now.Location())
 	return nextRun.Format(time.RFC3339)
 }
+
+// dayDuration converts configured retention day counts into durations.
+const dayDuration = 24 * time.Hour

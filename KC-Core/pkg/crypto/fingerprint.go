@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
-	"errors"
 	"fmt"
 )
 
@@ -22,11 +21,11 @@ func CertFingerprintSHA256(der []byte) string {
 func CertFingerprintFromPEM(pemData []byte) (string, error) {
 	block, _ := pem.Decode(pemData)
 	if block == nil {
-		return "", errors.New("no PEM block in certificate data")
+		return "", errNoPEMBlock
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return "", fmt.Errorf("parse certificate: %w", err)
+		return "", fmt.Errorf(errFmtParseCertificate, err)
 	}
 	return CertFingerprintSHA256(cert.Raw), nil
 }

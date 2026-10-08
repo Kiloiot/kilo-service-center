@@ -16,18 +16,22 @@ import React, {
 import { useOrganization } from "@contexts/OrganizationContext";
 import { logger } from "@utils/logger";
 import { storageService } from "@utils/storage";
-import { PAGINATION, STORAGE_KEYS } from "@constants/app";
+import {
+  FILTERS_STORAGE_DEFAULT_SCOPE,
+  PAGINATION,
+  SORT_DIRECTION,
+  STORAGE_KEYS,
+} from "@constants/app";
+import { APP_ERRORS, LOG_MESSAGES } from "@constants/messages";
 
 import type {
   BaseStationFiltersState,
-  DateRange,
   EndpointFiltersState,
   FiltersAction,
   FiltersContextValue,
   FilterScope,
   FiltersState,
   PaginationState,
-  SavedView,
   SortState,
 } from "./types";
 
@@ -35,15 +39,15 @@ import type {
 const defaultBaseStationFilters: BaseStationFiltersState = {
   search: "",
   status: [],
-  sort: { field: "lastSeen", direction: "desc" },
+  sort: { field: "lastSeen", direction: SORT_DIRECTION.DESC },
   pagination: { page: 0, pageSize: PAGINATION.DEFAULT_PAGE_SIZE },
 };
 
 const defaultEndpointFilters: EndpointFiltersState = {
   search: "",
   attachState: [],
-  bidirectional: null,
-  sort: { field: "lastSeen", direction: "desc" },
+  activity: [],
+  sort: { field: "lastSeen", direction: SORT_DIRECTION.DESC },
   pagination: { page: 0, pageSize: PAGINATION.DEFAULT_PAGE_SIZE },
 };
 
@@ -52,13 +56,7 @@ function createInitialState(): FiltersState {
   return {
     baseStations: { ...defaultBaseStationFilters },
     endpoints: { ...defaultEndpointFilters },
-    savedViews: [],
   };
-}
-
-// Generate unique ID for saved views
-function generateViewId(): string {
-  return `view_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
 // Reducer function
@@ -109,15 +107,6 @@ function filtersReducer(
         },
       };
 
-    case "SET_DATE_RANGE":
-      return {
-        ...state,
-        [action.scope]: {
-          ...state[action.scope],
-          dateRange: action.dateRange,
-        },
-      };
-
     case "RESET_SCOPE": {
       const defaults: Record<FilterScope, object> = {
         baseStations: defaultBaseStationFilters,
@@ -132,36 +121,6 @@ function filtersReducer(
     case "RESET_ALL":
       return {
         ...createInitialState(),
-        savedViews: state.savedViews, // Preserve saved views
-      };
-
-    case "SAVE_VIEW": {
-      const view: SavedView = {
-        id: generateViewId(),
-        name: action.name,
-        scope: action.scope,
-        filters: state[action.scope],
-        createdAt: new Date().toISOString(),
-      };
-      return {
-        ...state,
-        savedViews: [...state.savedViews, view],
-      };
-    }
-
-    case "LOAD_VIEW": {
-      const view = state.savedViews.find((v) => v.id === action.viewId);
-      if (!view) return state;
-      return {
-        ...state,
-        [view.scope]: view.filters as FiltersState[FilterScope],
-      };
-    }
-
-    case "DELETE_VIEW":
-      return {
-        ...state,
-        savedViews: state.savedViews.filter((v) => v.id !== action.viewId),
       };
 
     case "LOAD_STATE":
@@ -179,7 +138,7 @@ const FiltersContext = createContext<FiltersContextValue | undefined>(
 
 // Storage key builder with org scope
 function buildStorageKey(orgId: string | null): string {
-  const namespace = orgId || "default";
+  const namespace = orgId || FILTERS_STORAGE_DEFAULT_SCOPE;
   return `${STORAGE_KEYS.FILTERS}-${namespace}`;
 }
 
@@ -203,11 +162,10 @@ function loadFromStorage(storageKey: string): FiltersState | null {
           pagination:
             parsed.endpoints?.pagination ?? defaultEndpointFilters.pagination,
         },
-        savedViews: Array.isArray(parsed.savedViews) ? parsed.savedViews : [],
       };
     }
   } catch (error) {
-    logger.error("Failed to load filters from storage:", error);
+    logger.error(LOG_MESSAGES.FILTERS_LOAD_FAILED, error);
   }
   return null;
 }
@@ -217,7 +175,7 @@ function saveToStorage(storageKey: string, state: FiltersState): void {
   try {
     storageService.setItem(storageKey, JSON.stringify(state));
   } catch (error) {
-    logger.error("Failed to save filters to storage:", error);
+    logger.error(LOG_MESSAGES.FILTERS_SAVE_FAILED, error);
   }
 }
 
@@ -266,7 +224,6 @@ export function FiltersProvider({ children }: FiltersProviderProps) {
   const contextValue = useMemo<FiltersContextValue>(
     () => ({
       state,
-      dispatch,
       setFilter: (scope: FilterScope, key: string, value: unknown) =>
         dispatch({ type: "SET_FILTER", scope, key, value }),
       setSearch: (scope: FilterScope, search: string) =>
@@ -275,15 +232,8 @@ export function FiltersProvider({ children }: FiltersProviderProps) {
         dispatch({ type: "SET_PAGINATION", scope, pagination }),
       setSort: (scope: FilterScope, sort: SortState) =>
         dispatch({ type: "SET_SORT", scope, sort }),
-      setDateRange: (scope: FilterScope, dateRange: DateRange) =>
-        dispatch({ type: "SET_DATE_RANGE", scope, dateRange }),
       resetScope: (scope: FilterScope) =>
         dispatch({ type: "RESET_SCOPE", scope }),
-      resetAll: () => dispatch({ type: "RESET_ALL" }),
-      saveView: (name: string, scope: FilterScope) =>
-        dispatch({ type: "SAVE_VIEW", name, scope }),
-      loadView: (viewId: string) => dispatch({ type: "LOAD_VIEW", viewId }),
-      deleteView: (viewId: string) => dispatch({ type: "DELETE_VIEW", viewId }),
     }),
     [state],
   );
@@ -302,7 +252,7 @@ export function FiltersProvider({ children }: FiltersProviderProps) {
 export function useFilters(): FiltersContextValue {
   const context = useContext(FiltersContext);
   if (!context) {
-    throw new Error("useFilters must be used within a FiltersProvider");
+    throw new Error(APP_ERRORS.FILTERS_CONTEXT_REQUIRED);
   }
   return context;
 }

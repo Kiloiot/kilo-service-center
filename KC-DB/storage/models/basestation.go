@@ -40,45 +40,6 @@ func (n NullJSON) Value() (driver.Value, error) {
 	return []byte(n.Data), nil
 }
 
-// TenantProgressMap handles JSONB tenant_progress column as a native Go map
-// Implements sql.Scanner and driver.Valuer for automatic PostgreSQL JSONB marshaling
-//
-// Structure: {"tenant_<id>": {"endpoints_processed": N, "last_updated": "timestamp", "errors": [...]}}
-type TenantProgressMap map[string]interface{}
-
-// Scan implements sql.Scanner for database retrieval
-func (tp *TenantProgressMap) Scan(value interface{}) error {
-	if value == nil {
-		*tp = make(map[string]interface{})
-		return nil
-	}
-
-	var data []byte
-	switch v := value.(type) {
-	case []byte:
-		data = v
-	case string:
-		data = []byte(v)
-	default:
-		return json.Unmarshal(nil, tp) // Will return appropriate error
-	}
-
-	if len(data) == 0 {
-		*tp = make(map[string]interface{})
-		return nil
-	}
-
-	return json.Unmarshal(data, tp)
-}
-
-// Value implements driver.Valuer for database storage
-func (tp TenantProgressMap) Value() (driver.Value, error) {
-	if len(tp) == 0 {
-		return []byte("{}"), nil
-	}
-	return json.Marshal(tp)
-}
-
 // ConnectionType represents the type of connection for a Base Station
 type ConnectionType string
 
@@ -86,8 +47,6 @@ type ConnectionType string
 const (
 	// ConnectionTypeBSSCI indicates BSSCI (TCP) connection.
 	ConnectionTypeBSSCI ConnectionType = "bssci"
-	// ConnectionTypeMQTT indicates MQTT connection.
-	ConnectionTypeMQTT ConnectionType = "mqtt"
 )
 
 // Location source constants indicate how coordinates were obtained.
@@ -103,6 +62,12 @@ const (
 	LongitudeMin = -180.0
 	LongitudeMax = 180.0
 )
+
+// CoordinatesInRange reports whether a latitude and longitude lie on the globe.
+func CoordinatesInRange(latitude, longitude float64) bool {
+	return latitude >= LatitudeMin && latitude <= LatitudeMax &&
+		longitude >= LongitudeMin && longitude <= LongitudeMax
+}
 
 // BaseStation represents a MIOTY Base Station (Gateway)
 type BaseStation struct {
@@ -183,74 +148,6 @@ type BaseStation struct {
 	// Timestamps
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
-}
-
-// BaseStationCreateRequest represents the request to create a new Base Station
-type BaseStationCreateRequest struct {
-	EUI         string `json:"eui" validate:"required,len=16"` // Hex string
-	Name        string `json:"name" validate:"required,min=1,max=255"`
-	Description string `json:"description,omitempty"`
-
-	// Connection Configuration
-	ConnectionType          ConnectionType `json:"connection_type" validate:"required,oneof=bssci mqtt"`
-	ServiceCenterURL        string         `json:"service_center_url,omitempty"`
-	TLSCACertificate        string         `json:"tls_ca_certificate,omitempty"`
-	TLSCertificate          string         `json:"tls_certificate,omitempty"`
-	TLSKey                  string         `json:"tls_key,omitempty"`
-	TLSAuthRequired         bool           `json:"tls_auth_required"`
-	TLSHostnameVerification bool           `json:"tls_hostname_verification"`
-
-	// MQTT Configuration
-	MQTTBrokerURL string                 `json:"mqtt_broker_url,omitempty"`
-	MQTTUsername  string                 `json:"mqtt_username,omitempty"`
-	MQTTPassword  string                 `json:"mqtt_password,omitempty"`
-	MQTTTopics    map[string]interface{} `json:"mqtt_topics,omitempty"`
-
-	// Location
-	Latitude  *float64 `json:"latitude,omitempty" validate:"omitempty,min=-90,max=90"`
-	Longitude *float64 `json:"longitude,omitempty" validate:"omitempty,min=-180,max=180"`
-	Altitude  *float64 `json:"altitude,omitempty"`
-
-	// Configuration File Upload
-	ConfigFileContent string `json:"config_file_content,omitempty"`
-}
-
-// BaseStationUpdateRequest represents the request to update a Base Station
-type BaseStationUpdateRequest struct {
-	Name        *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	Description *string `json:"description,omitempty"`
-
-	// Connection Configuration
-	ServiceCenterURL        *string `json:"service_center_url,omitempty"`
-	TLSCACertificate        *string `json:"tls_ca_certificate,omitempty"`
-	TLSCertificate          *string `json:"tls_certificate,omitempty"`
-	TLSKey                  *string `json:"tls_key,omitempty"`
-	TLSAuthRequired         *bool   `json:"tls_auth_required,omitempty"`
-	TLSHostnameVerification *bool   `json:"tls_hostname_verification,omitempty"`
-
-	// MQTT Configuration
-	MQTTBrokerURL *string                 `json:"mqtt_broker_url,omitempty"`
-	MQTTUsername  *string                 `json:"mqtt_username,omitempty"`
-	MQTTPassword  *string                 `json:"mqtt_password,omitempty"`
-	MQTTTopics    *map[string]interface{} `json:"mqtt_topics,omitempty"`
-
-	// Location
-	Latitude  *float64 `json:"latitude,omitempty" validate:"omitempty,min=-90,max=90"`
-	Longitude *float64 `json:"longitude,omitempty" validate:"omitempty,min=-180,max=180"`
-	Altitude  *float64 `json:"altitude,omitempty"`
-}
-
-// BaseStationPropagationState tracks automatic propagation reconciliation per base station
-type BaseStationPropagationState struct {
-	BaseStationID      int64             `db:"base_station_id" json:"baseStationId"`
-	LastFullSyncAt     *time.Time        `db:"last_full_sync_at" json:"lastFullSyncAt"`
-	LastEndpointCursor int64             `db:"last_endpoint_cursor" json:"lastEndpointCursor"`
-	Status             string            `db:"status" json:"status"`
-	RetryCount         int               `db:"retry_count" json:"retryCount"`
-	NextRetryAt        *time.Time        `db:"next_retry_at" json:"nextRetryAt"`
-	LastError          *string           `db:"last_error" json:"lastError"`
-	TenantProgress     TenantProgressMap `db:"tenant_progress" json:"tenantProgress"` // JSONB with Scanner/Valuer
-	UpdatedAt          time.Time         `db:"updated_at" json:"updatedAt"`
 }
 
 // BaseStationFilter represents filter criteria for listing Base Stations

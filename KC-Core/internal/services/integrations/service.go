@@ -8,25 +8,27 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-// Sentinel errors for integration operations
-var (
-	ErrIntegrationNotFound = errors.New("integration not found")
-	ErrInvalidType         = errors.New("invalid integration type")
-	ErrInvalidStatus       = errors.New("invalid integration status")
-)
+// IntegrationStore persists integrations for a tenant.
+type IntegrationStore interface {
+	Create(ctx context.Context, integration *models.Integration) error
+	GetByID(ctx context.Context, id int64, tenantID int64) (*models.Integration, error)
+	ListByTenant(ctx context.Context, tenantID int64, limit, offset int) ([]*models.Integration, int64, error)
+	Update(ctx context.Context, integration *models.Integration) error
+	Delete(ctx context.Context, id int64, tenantID int64) error
+}
 
 // Service implements grpcservices.IntegrationService.
 type Service struct {
-	repo   interfaces.IntegrationRepository
+	repo   IntegrationStore
 	logger logger.Logger
 }
 
 // New creates a new integration service
-func New(repo interfaces.IntegrationRepository, log logger.Logger) *Service {
+func New(repo IntegrationStore, log logger.Logger) *Service {
 	return &Service{
 		repo:   repo,
 		logger: log,
@@ -68,11 +70,11 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *grpcservices.
 
 	// Create integration
 	if err := s.repo.Create(ctx, integration); err != nil {
-		s.logger.ErrorContext(ctx, "failed to create integration", "name", req.Name, "error", err)
-		return nil, fmt.Errorf("create integration: %w", err)
+		s.logger.ErrorContext(ctx, LogIntegrationCreateFailed, logger.FieldName, req.Name, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", ErrCreateIntegration, err)
 	}
 
-	s.logger.InfoContext(ctx, "integration created", "id", integration.ID, "name", integration.Name)
+	s.logger.InfoContext(ctx, LogIntegrationCreated, logger.FieldID, integration.ID, logger.FieldName, integration.Name)
 	return integration, nil
 }
 
@@ -80,11 +82,11 @@ func (s *Service) Create(ctx context.Context, tenantID int64, req *grpcservices.
 func (s *Service) GetByID(ctx context.Context, tenantID int64, id int64) (*models.Integration, error) {
 	integration, err := s.repo.GetByID(ctx, id, tenantID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return nil, ErrIntegrationNotFound
 		}
-		s.logger.ErrorContext(ctx, "failed to get integration", "id", id, "error", err)
-		return nil, fmt.Errorf("get integration: %w", err)
+		s.logger.ErrorContext(ctx, LogIntegrationGetFailed, logger.FieldID, id, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", ErrGetIntegration, err)
 	}
 	return integration, nil
 }
@@ -94,10 +96,10 @@ func (s *Service) Update(ctx context.Context, tenantID int64, id int64, req *grp
 	// Get existing integration
 	integration, err := s.repo.GetByID(ctx, id, tenantID)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return nil, ErrIntegrationNotFound
 		}
-		return nil, fmt.Errorf("get integration: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrGetIntegration, err)
 	}
 
 	// Apply updates
@@ -125,25 +127,25 @@ func (s *Service) Update(ctx context.Context, tenantID int64, id int64, req *grp
 
 	// Update integration
 	if err := s.repo.Update(ctx, integration); err != nil {
-		s.logger.ErrorContext(ctx, "failed to update integration", "id", id, "error", err)
-		return nil, fmt.Errorf("update integration: %w", err)
+		s.logger.ErrorContext(ctx, LogIntegrationUpdateFailed, logger.FieldID, id, logger.FieldError, err)
+		return nil, fmt.Errorf("%w: %w", ErrUpdateIntegration, err)
 	}
 
-	s.logger.InfoContext(ctx, "integration updated", "id", integration.ID, "name", integration.Name)
+	s.logger.InfoContext(ctx, LogIntegrationUpdated, logger.FieldID, integration.ID, logger.FieldName, integration.Name)
 	return integration, nil
 }
 
 // Delete deletes an integration
 func (s *Service) Delete(ctx context.Context, tenantID int64, id int64) error {
 	if err := s.repo.Delete(ctx, id, tenantID); err != nil {
-		if errors.Is(err, interfaces.ErrRecordNotFound) {
+		if errors.Is(err, storage.ErrRecordNotFound) {
 			return ErrIntegrationNotFound
 		}
-		s.logger.ErrorContext(ctx, "failed to delete integration", "id", id, "error", err)
-		return fmt.Errorf("delete integration: %w", err)
+		s.logger.ErrorContext(ctx, LogIntegrationDeleteFailed, logger.FieldID, id, logger.FieldError, err)
+		return fmt.Errorf("%w: %w", ErrDeleteIntegration, err)
 	}
 
-	s.logger.InfoContext(ctx, "integration deleted", "id", id)
+	s.logger.InfoContext(ctx, LogIntegrationDeleted, logger.FieldID, id)
 	return nil
 }
 
@@ -151,8 +153,8 @@ func (s *Service) Delete(ctx context.Context, tenantID int64, id int64) error {
 func (s *Service) List(ctx context.Context, tenantID int64, limit, offset int) ([]*models.Integration, int64, error) {
 	integrations, count, err := s.repo.ListByTenant(ctx, tenantID, limit, offset)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "failed to list integrations", "tenant_id", tenantID, "error", err)
-		return nil, 0, fmt.Errorf("list integrations: %w", err)
+		s.logger.ErrorContext(ctx, LogIntegrationListFailed, logger.FieldTenantIDSnake, tenantID, logger.FieldError, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrListIntegrations, err)
 	}
 	return integrations, count, nil
 }

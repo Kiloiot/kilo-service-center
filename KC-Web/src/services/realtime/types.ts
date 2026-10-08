@@ -2,10 +2,14 @@
  * Realtime Service Types
  *
  * Type definitions for real-time gRPC streaming communication.
- * Step 0A.3 will implement gRPC streaming using StreamMessages RPC.
  */
 
-import type { REALTIME_STREAM_KIND } from "@constants/app";
+import type {
+  CONNECTION_STATE,
+  REALTIME_EVENT_TYPE,
+  REALTIME_LIFECYCLE_EVENT,
+  REALTIME_STREAM_KIND,
+} from "@constants/app";
 
 export type RealtimeStreamKind =
   (typeof REALTIME_STREAM_KIND)[keyof typeof REALTIME_STREAM_KIND];
@@ -14,35 +18,11 @@ export type RealtimeStreamKind =
  * Connection state for realtime streaming
  */
 export type ConnectionState =
-  | "disconnected"
-  | "connecting"
-  | "connected"
-  | "reconnecting";
+  (typeof CONNECTION_STATE)[keyof typeof CONNECTION_STATE];
 
-/**
- * Realtime event types matching backend events
- */
+/** Every realtime event type, derived from the REALTIME_EVENT_TYPE catalog. */
 export type RealtimeEventType =
-  // Uplink events
-  | "uplink.received"
-  // Downlink events
-  | "downlink.queued"
-  | "downlink.sent"
-  | "downlink.acknowledged"
-  | "downlink.failed"
-  | "downlink.revoked"
-  // Endpoint events
-  | "endpoint.attached"
-  | "endpoint.detached"
-  // Base station events
-  | "basestation.online"
-  | "basestation.offline"
-  // SCACI events
-  | "scaci.session.opened"
-  | "scaci.session.closed"
-  | "scaci.error"
-  // Generic event
-  | "event.received";
+  (typeof REALTIME_EVENT_TYPE)[keyof typeof REALTIME_EVENT_TYPE];
 
 /**
  * Base realtime event structure
@@ -89,12 +69,7 @@ export type ErrorListener = (error: ConnectionError | null) => void;
  * Connection event types for activity feed
  */
 export type ConnectionEventType =
-  | "realtime_connect"
-  | "realtime_connected"
-  | "realtime_error"
-  | "realtime_reconnect"
-  | "realtime_disconnected"
-  | "realtime_info";
+  (typeof REALTIME_LIFECYCLE_EVENT)[keyof typeof REALTIME_LIFECYCLE_EVENT];
 
 /**
  * Connection event for activity timeline
@@ -114,14 +89,44 @@ export interface ConnectionEvent {
   attempt?: number;
   /** Delay until next reconnect (ms) */
   delayMs?: number;
-  /** Which underlying stream emitted this event. Absent for service-wide
-   * events that don't belong to a single stream. The catch-up hook in
-   * useRealtime.ts branches on this to invalidate the right caches when a
-   * particular stream reconnects after a drop. */
-  streamKind?: RealtimeStreamKind;
+  /** The stream that emitted the event; the catch-up hook in useRealtime.ts
+   * refreshes after the event stream reconnects. */
+  streamKind: RealtimeStreamKind;
 }
 
 /**
  * Connection event listener
  */
 export type ConnectionEventListener = (event: ConnectionEvent) => void;
+
+/** The streams a user's roles open besides the event stream every role opens. */
+export interface RealtimeStreamSet {
+  /** The uplink stream, for roles that may read uplinks. */
+  uplinks: boolean;
+}
+
+/** Connection lifecycle and state observation of the realtime singleton. */
+export interface RealtimeLifecycle {
+  reconnectWithOrg(
+    organizationId: string,
+    userId: string,
+    streams: RealtimeStreamSet,
+  ): void;
+  reset(): void;
+  getState(): ConnectionState;
+  getLastError(): ConnectionError | null;
+  onStateChange(listener: StateChangeListener): () => void;
+  onErrorChange(listener: ErrorListener): () => void;
+  onConnectionEvent(listener: ConnectionEventListener): () => void;
+}
+
+/** Event fan-out to application handlers. */
+export interface RealtimeSubscriptions {
+  subscribeAll(handler: EventHandler): () => void;
+}
+
+/** The live updates of the base station pages open. */
+export interface RealtimeStreams {
+  /** Keeps the station's uplinks live until the returned stop is called. */
+  watchBaseStation(bsEui: string): () => void;
+}

@@ -1,0 +1,35 @@
+package main
+
+// Gateway log message catalog. Every structured log emitted by the gateway
+// entrypoint references these constants so message text stays centralized.
+const (
+	LogGatewayTracingInitFailed                = "Failed to init tracing"
+	LogGatewayMetricsInitFailed                = "Failed to init metrics"
+	LogGatewayStarting                         = "KC-Gateway starting"
+	LogGatewayBreakersInitialized              = "Circuit breakers initialized"
+	LogGatewayIdentityConnectFailed            = "Failed to connect to KC-Identity"
+	LogGatewayIdentityConnected                = "KC-Identity connection established"
+	LogGatewayAuthInterceptorCreateFailed      = "Failed to create auth interceptor"
+	LogGatewayAuthInterceptorConfigured        = "Auth interceptor configured"
+	LogGatewayOrgInterceptorCreateFailed       = "Failed to create org resolver interceptor"
+	LogGatewayOrgInterceptorConfigured         = "Org resolver interceptor configured (enforcement enabled)"
+	LogGatewayOrgInterceptorSkipped            = "Org resolver interceptor skipped (community mode)"
+	LogGatewayUpstreamConnCreateFailed         = "Failed to create upstream connection"
+	LogGatewayIdentityUpstreamConnCreateFailed = "Failed to create identity upstream connection"
+	LogGatewayUpstreamsEstablished             = "Upstream connections established"
+	LogGatewayDirectorDefaultTenantInjected    = "director: injecting default community tenant (auth did not set tenant)"
+	LogGatewayRateLimiterEnabled               = "Registration rate limiter enabled"
+	LogGatewayGRPCWebEnabled                   = "gRPC-web enabled"
+	LogGatewayListenFailed                     = "Failed to listen"
+	LogGatewayHealthServerStarting             = "Starting health server"
+	LogGatewayHealthServerFailed               = "Health server failed"
+	LogGatewayListening                        = "KC-Gateway listening"
+	LogGatewayServerFailed                     = "Gateway server failed"
+	LogGatewayShutdownSignal                   = "Shutdown signal received, stopping gateway..."
+	LogGatewayShutdownError                    = "Gateway shutdown error"
+	LogGatewayStopped                          = "KC-Gateway stopped"
+	LogGatewayObservabilityShutdownFailed      = "Failed to shut down tracing or metrics"
+	LogGatewayHostnameUnavailable              = "Failed to resolve hostname for lifecycle events"
+	LogGatewayLifecycleEventFailed             = "Failed to record lifecycle event"
+	LogGatewayUpstreamCloseFailed              = "Failed to close upstream connections"
+)

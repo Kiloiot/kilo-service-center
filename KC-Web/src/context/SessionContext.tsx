@@ -8,8 +8,8 @@ import React, {
 
 import type { UserProfileAPI } from "@api-types/api";
 
-import { apiService } from "@services/api";
-import { realtimeService } from "@services/realtime";
+import { sessionApi } from "@services/api";
+import { realtimeLifecycle } from "@services/realtime";
 import { logger } from "@utils/logger";
 import { storageService } from "@utils/storage";
 import { scheduleRefresh, stopRefresh } from "@utils/tokenRefresh";
@@ -19,17 +19,13 @@ import { SESSION_ERRORS } from "@constants/messages";
 /**
  * Session Context
  *
- * Provides authenticated user profile and admin status.
- * Used for navigation gating and admin-only page guards.
- *
- * Profile is persisted to localStorage and hydrated on app load.
- * Until a backend profile-refresh endpoint exists, the stored profile
- * from login/callback is the sole source of truth for isAdmin.
+ * Provides the authenticated user's profile, persisted to localStorage and
+ * hydrated on app load. Roles are not taken from the stored profile: they are
+ * read from the service through useCapabilities.
  */
 
 interface SessionContextValue {
   user: UserProfileAPI | null;
-  isAdmin: boolean;
   isAuthenticated: boolean;
   isHydrated: boolean; // true once initial storage load completes
   setUser: (user: UserProfileAPI) => void;
@@ -69,16 +65,17 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({
     storageService.removeItem(STORAGE_KEYS.USER_PROFILE);
     storageService.removeItem(STORAGE_KEYS.AUTH_TOKEN);
     storageService.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-    realtimeService.reset();
+    realtimeLifecycle.reset();
+    sessionApi.clearOrganization();
     setUserState(null);
   };
 
   // Register auth failure callback with API service to clear session on 401
   useEffect(() => {
-    apiService.setAuthFailureCallback(performCleanup);
+    sessionApi.setAuthFailureCallback(performCleanup);
 
     return () => {
-      apiService.setAuthFailureCallback(undefined);
+      sessionApi.setAuthFailureCallback(undefined);
     };
   }, []);
 
@@ -103,7 +100,6 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({
     performCleanup();
   };
 
-  const isAdmin = user?.isAdmin ?? false;
   // Check both user profile AND token existence for proper auth state
   const hasToken = !!storageService.getItem(STORAGE_KEYS.AUTH_TOKEN);
   const isAuthenticated = user !== null && hasToken;
@@ -112,7 +108,6 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({
     <SessionContext.Provider
       value={{
         user,
-        isAdmin,
         isAuthenticated,
         isHydrated,
         setUser,

@@ -3,21 +3,36 @@ package adapters
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	analyticsservice "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/analytics"
 	miotyformat "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/mioty"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
-// AnalyticsMessageStoreAdapter adapts interfaces.MIOTYMessageRepository to analyticsservice.MessageStore.
+// errParseActivityDay wraps a daily activity row whose day does not parse.
+var errParseActivityDay = errors.New("parse daily activity day")
+
+// analyticsMessageStore covers the aggregate queries the analytics adapter
+// reads from the message repository. Satisfied structurally by the KC-DB
+// MIOTY message repository.
+type analyticsMessageStore interface {
+	GetAnalyticsOverview(ctx context.Context, tenantID int64, startTime, endTime time.Time) (*mioty.AnalyticsOverviewStats, error)
+	GetDailyActivity(ctx context.Context, tenantID int64, startTime, endTime time.Time) ([]mioty.DailyActivity, error)
+	GetSignalQualityStats(ctx context.Context, tenantID int64, startTime, endTime time.Time) (*mioty.SignalQualityStats, error)
+	GetSignalQualityByBaseStation(ctx context.Context, tenantID int64, startTime, endTime time.Time) ([]mioty.BaseStationSignalQuality, error)
+}
+
+// AnalyticsMessageStoreAdapter adapts the KC-DB message repository to analyticsservice.MessageStore.
 // Uses canonical formatters for EUI display.
 type AnalyticsMessageStoreAdapter struct {
-	repo interfaces.MIOTYMessageRepository
+	repo analyticsMessageStore
 }
 
 // NewAnalyticsMessageStoreAdapter creates a new adapter for analytics.
-func NewAnalyticsMessageStoreAdapter(repo interfaces.MIOTYMessageRepository) *AnalyticsMessageStoreAdapter {
+func NewAnalyticsMessageStoreAdapter(repo analyticsMessageStore) *AnalyticsMessageStoreAdapter {
 	return &AnalyticsMessageStoreAdapter{repo: repo}
 }
 
@@ -48,7 +63,10 @@ func (a *AnalyticsMessageStoreAdapter) GetDailyActivity(ctx context.Context, ten
 
 	result := make([]analyticsservice.DailyActivity, len(activities))
 	for i, act := range activities {
-		day, _ := time.Parse(miotyformat.DateFormat, act.Day)
+		day, err := time.Parse(miotyformat.DateFormat, act.Day)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", errParseActivityDay, err)
+		}
 		result[i] = analyticsservice.DailyActivity{
 			Day:                day,
 			MessageCount:       int64(act.MessageCount),
@@ -80,20 +98,20 @@ func (a *AnalyticsMessageStoreAdapter) GetSignalQualityStats(ctx context.Context
 	}, nil
 }
 
-// GetTopEndpointsByActivity returns top endpoints by message count.
-func (a *AnalyticsMessageStoreAdapter) GetTopEndpointsByActivity(ctx context.Context, tenantID int64, startTime, endTime time.Time, limit int) ([]analyticsservice.EndpointActivityStats, error) {
-	activities, err := a.repo.GetTopEndpointsByActivity(ctx, tenantID, startTime, endTime, limit)
+// GetSignalQualityByBaseStation returns the signal quality per receiving base station.
+func (a *AnalyticsMessageStoreAdapter) GetSignalQualityByBaseStation(ctx context.Context, tenantID int64, startTime, endTime time.Time) ([]analyticsservice.BaseStationSignalStats, error) {
+	stations, err := a.repo.GetSignalQualityByBaseStation(ctx, tenantID, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]analyticsservice.EndpointActivityStats, len(activities))
-	for i, act := range activities {
-		result[i] = analyticsservice.EndpointActivityStats{
-			EUI:          act.EUI,
-			EUIFormatted: miotyformat.FormatEUI64(act.EUI), // Use canonical formatter
-			MessageCount: int64(act.MessageCount),
-			LastSeen:     &act.LastSeen,
+	result := make([]analyticsservice.BaseStationSignalStats, len(stations))
+	for i, station := range stations {
+		result[i] = analyticsservice.BaseStationSignalStats{
+			EUI:          mioty.FormatEUI64(station.BsEui),
+			AvgRSSI:      station.AvgRSSI,
+			AvgSNR:       station.AvgSNR,
+			MessageCount: station.MessageCount,
 		}
 	}
 

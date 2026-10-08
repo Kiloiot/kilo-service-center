@@ -8,8 +8,8 @@
 import type { AuthSettingsAPI } from "@api-types/api";
 import { useQuery } from "@tanstack/react-query";
 
-import { apiService } from "@services/api";
-import { TIMING } from "@constants/app";
+import { authApi } from "@services/api";
+import { MS_PER_SECOND, TIMING } from "@constants/app";
 import { queryKeys } from "@config/query-keys";
 
 /**
@@ -19,7 +19,7 @@ import { queryKeys } from "@config/query-keys";
 export function useAuthSettings() {
   return useQuery<AuthSettingsAPI>({
     queryKey: queryKeys.auth.settings(),
-    queryFn: () => apiService.getAuthSettings(),
-    staleTime: TIMING.LIST_REFRESH * 1000, // 30 seconds
+    queryFn: () => authApi.getAuthSettings(),
+    staleTime: TIMING.LIST_REFRESH * MS_PER_SECOND,
   });
 }

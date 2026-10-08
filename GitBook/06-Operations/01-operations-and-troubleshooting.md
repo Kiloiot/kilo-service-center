@@ -95,11 +95,16 @@ docker compose down
 **Source dev mode:**
 
 ```bash
-./stop-all-services.sh
+# Stop KC-Web, KC-Gateway, KC-Identity and KC-Core, in that order
+./dev-services.sh stop
 
-# Also stop infrastructure containers
-docker compose stop postgres redis mosquitto
+# Stop them and take down the infrastructure containers
+./stop-all-services.sh
 ```
+
+`start-dev.sh` records each service's PID under `../logs/pids/`; `dev-services.sh stop`
+stops exactly those processes and whatever they started, and waits for each to exit before
+stopping the next, so KC-Gateway is gone before KC-Identity and KC-Core shut down.
 
 ## Common Issues
 
@@ -126,7 +131,7 @@ docker compose stop postgres redis mosquitto
 
 **Source dev mode:**
 
-1. Stop all services: `./stop-all-services.sh`
+1. Stop the services: `./dev-services.sh stop`
 2. Restart infrastructure: `docker compose restart postgres redis mosquitto`
 3. Start services: `./start-dev.sh`
 4. Run health checks (see above)

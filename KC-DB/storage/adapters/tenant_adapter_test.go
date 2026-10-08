@@ -3,20 +3,23 @@ package adapters
 import (
 	"testing"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/testsupport"
+
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// setupAdapterTestDB connects to the test database
+// setupAdapterTestDB provides a migrated per-test database from the shared
+// container harness; any setup failure fails the test.
 func setupAdapterTestDB(t *testing.T) *sqlx.DB {
-	db, err := sqlx.Connect("postgres", "postgres://kilocenter:changeme@localhost:5433/kilocenter_test?sslmode=disable")
-	if err != nil {
-		t.Skipf("Cannot connect to test database: %v", err)
-	}
+	db, cleanup := testsupport.SetupPostgresContainer(t)
+	t.Cleanup(cleanup)
 	return db
 }
 
@@ -49,7 +52,7 @@ func TestTenantStoreAdapter_ListTenants_AllStatuses(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	adapter := NewTenantStoreAdapter(db)
+	adapter := NewTenantStoreAdapter(postgres.NewTenantRepository(db))
 	ctx := testutil.TestContext()
 
 	// Test: List all tenants (empty filter)
@@ -89,7 +92,7 @@ func TestTenantStoreAdapter_ListTenants_StatusFilter(t *testing.T) {
 	`)
 	require.NoError(t, err)
 
-	adapter := NewTenantStoreAdapter(db)
+	adapter := NewTenantStoreAdapter(postgres.NewTenantRepository(db))
 	ctx := testutil.TestContext()
 
 	// Test: Filter by active
@@ -113,7 +116,7 @@ func TestTenantStoreAdapter_CreateTenant_Success(t *testing.T) {
 	cleanupAdapterTestData(t, db, "AdapterTestCreate%")
 	defer cleanupAdapterTestData(t, db, "AdapterTestCreate%")
 
-	adapter := NewTenantStoreAdapter(db)
+	adapter := NewTenantStoreAdapter(postgres.NewTenantRepository(db))
 	ctx := testutil.TestContext()
 
 	description := "Adapter test tenant"
@@ -140,7 +143,7 @@ func TestTenantStoreAdapter_GetTenantByID_Success(t *testing.T) {
 	cleanupAdapterTestData(t, db, "AdapterTestGet%")
 	defer cleanupAdapterTestData(t, db, "AdapterTestGet%")
 
-	adapter := NewTenantStoreAdapter(db)
+	adapter := NewTenantStoreAdapter(postgres.NewTenantRepository(db))
 	ctx := testutil.TestContext()
 
 	// Create test tenant
@@ -163,7 +166,7 @@ func TestTenantStoreAdapter_GetTenantByID_NotFound(t *testing.T) {
 	db := setupAdapterTestDB(t)
 	defer db.Close() //nolint:errcheck // test cleanup
 
-	adapter := NewTenantStoreAdapter(db)
+	adapter := NewTenantStoreAdapter(postgres.NewTenantRepository(db))
 	ctx := testutil.TestContext()
 
 	// Test: Non-existent ID should return error
@@ -184,7 +187,7 @@ func TestTenantStoreAdapter_UpdateTenant_Success(t *testing.T) {
 	cleanupAdapterTestData(t, db, "AdapterTestUpdate%")
 	defer cleanupAdapterTestData(t, db, "AdapterTestUpdate%")
 
-	adapter := NewTenantStoreAdapter(db)
+	adapter := NewTenantStoreAdapter(postgres.NewTenantRepository(db))
 	ctx := testutil.TestContext()
 
 	// Create test tenant
@@ -213,7 +216,7 @@ func TestTenantStoreAdapter_UpdateTenant_NoFields(t *testing.T) {
 	cleanupAdapterTestData(t, db, "AdapterTestEmpty%")
 	defer cleanupAdapterTestData(t, db, "AdapterTestEmpty%")
 
-	adapter := NewTenantStoreAdapter(db)
+	adapter := NewTenantStoreAdapter(postgres.NewTenantRepository(db))
 	ctx := testutil.TestContext()
 
 	// Create test tenant
@@ -226,66 +229,6 @@ func TestTenantStoreAdapter_UpdateTenant_NoFields(t *testing.T) {
 	assert.Contains(t, err.Error(), "no fields to update")
 }
 
-// TestTenantStoreAdapter_SetTenantStatus_Activate verifies activation
-func TestTenantStoreAdapter_SetTenantStatus_Activate(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := setupAdapterTestDB(t)
-	defer db.Close() //nolint:errcheck // test cleanup
-
-	cleanupAdapterTestData(t, db, "AdapterTestActivate%")
-	defer cleanupAdapterTestData(t, db, "AdapterTestActivate%")
-
-	adapter := NewTenantStoreAdapter(db)
-	ctx := testutil.TestContext()
-
-	// Create and deactivate tenant
-	tenant, err := adapter.CreateTenant(ctx, "AdapterTestActivate-Tenant", nil)
-	require.NoError(t, err)
-	err = adapter.SetTenantStatus(ctx, tenant.ID, false)
-	require.NoError(t, err)
-
-	// Test: Activate via adapter
-	err = adapter.SetTenantStatus(ctx, tenant.ID, true)
-	require.NoError(t, err)
-
-	// Verify status changed
-	updated, err := adapter.GetTenantByID(ctx, tenant.ID)
-	require.NoError(t, err)
-	assert.Equal(t, "active", updated.Status)
-}
-
-// TestTenantStoreAdapter_SetTenantStatus_Deactivate verifies deactivation
-func TestTenantStoreAdapter_SetTenantStatus_Deactivate(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := setupAdapterTestDB(t)
-	defer db.Close() //nolint:errcheck // test cleanup
-
-	cleanupAdapterTestData(t, db, "AdapterTestDeactivate%")
-	defer cleanupAdapterTestData(t, db, "AdapterTestDeactivate%")
-
-	adapter := NewTenantStoreAdapter(db)
-	ctx := testutil.TestContext()
-
-	// Create tenant (defaults to active)
-	tenant, err := adapter.CreateTenant(ctx, "AdapterTestDeactivate-Tenant", nil)
-	require.NoError(t, err)
-
-	// Test: Deactivate via adapter
-	err = adapter.SetTenantStatus(ctx, tenant.ID, false)
-	require.NoError(t, err)
-
-	// Verify status changed
-	updated, err := adapter.GetTenantByID(ctx, tenant.ID)
-	require.NoError(t, err)
-	assert.Equal(t, models.TenantStatusInactive, updated.Status)
-}
-
 // TestTenantStoreAdapter_ErrorWrapping verifies error messages are wrapped
 func TestTenantStoreAdapter_ErrorWrapping(t *testing.T) {
 	if testing.Short() {
@@ -295,7 +238,7 @@ func TestTenantStoreAdapter_ErrorWrapping(t *testing.T) {
 	db := setupAdapterTestDB(t)
 	defer db.Close() //nolint:errcheck // test cleanup
 
-	adapter := NewTenantStoreAdapter(db)
+	adapter := NewTenantStoreAdapter(postgres.NewTenantRepository(db))
 	ctx := testutil.TestContext()
 
 	// Test: Error should contain adapter prefix

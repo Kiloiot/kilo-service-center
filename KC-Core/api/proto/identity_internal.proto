@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package kilocenter.api.v1;
 
+import "identity.proto";
+
 option go_package = "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1;kilocenterv1";
 
 // IdentityInternalService provides peer-to-peer RPCs for cross-service
@@ -11,7 +13,8 @@ service IdentityInternalService {
   rpc GetDefaultOrgForTenant(GetDefaultOrgForTenantRequest) returns (GetDefaultOrgForTenantResponse);
   rpc ValidateAPIKey(ValidateAPIKeyRequest) returns (ValidateAPIKeyResponse);
   rpc UpdateAPIKeyLastUsed(UpdateAPIKeyLastUsedRequest) returns (UpdateAPIKeyLastUsedResponse);
-  rpc GetUserMembership(GetUserMembershipRequest) returns (GetUserMembershipResponse);
+  // GetUserRoles returns the roles a user holds while acting in an organization.
+  rpc GetUserRoles(GetUserRolesRequest) returns (GetUserRolesResponse);
   rpc CheckServerAdmin(CheckServerAdminRequest) returns (CheckServerAdminResponse);
   // RecordPlatformEvent persists a platform-level event from stateless services (e.g., KC-Gateway).
   rpc RecordPlatformEvent(RecordPlatformEventRequest) returns (RecordPlatformEventResponse);
@@ -36,14 +39,17 @@ message ValidateAPIKeyResponse {
 message UpdateAPIKeyLastUsedRequest { string id = 1; }
 message UpdateAPIKeyLastUsedResponse {}
 
-message GetUserMembershipRequest {
+// Names the caller by exactly one of user_id or service_account_id, the API
+// key id of an organization service-account key. Without org_id the answer is
+// the caller's organization-independent roles.
+message GetUserRolesRequest {
   string org_id = 1;
   string user_id = 2;
+  string service_account_id = 3;
 }
 
-message GetUserMembershipResponse {
-  string role = 1;
-  bool is_active = 2;
+message GetUserRolesResponse {
+  UserRoles roles = 1;
 }
 
 message CheckServerAdminRequest { string user_id = 1; }

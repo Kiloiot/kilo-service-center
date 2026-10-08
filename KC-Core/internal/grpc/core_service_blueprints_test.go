@@ -18,7 +18,7 @@ import (
 // TestMapRegistryError_AllCases verifies all registry error mappings from service to gRPC tokens.
 func TestMapRegistryError_AllCases(t *testing.T) {
 	// Create a minimal CoreService just for testing mapRegistryError
-	svc := &CoreService{}
+	svc := testCoreService(coreFields{})
 
 	tests := []struct {
 		name         string
@@ -139,7 +139,7 @@ func TestMapRegistryError_AllCases(t *testing.T) {
 
 // TestMapRegistryError_WrappedError tests that wrapped errors are correctly mapped.
 func TestMapRegistryError_WrappedError(t *testing.T) {
-	svc := &CoreService{}
+	svc := testCoreService(coreFields{})
 
 	// Test with a wrapped error (as happens in actual service code)
 	wrappedErr := blueprints.ErrRegistryAuthFailed
@@ -158,9 +158,9 @@ func TestMapRegistryError_WrappedError(t *testing.T) {
 
 func TestSubmitBlueprintToRegistry_MissingContributorName(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		blueprintSvc: &blueprints.Service{},
-	}
+	})
 
 	req := &pb.SubmitBlueprintToRegistryRequest{
 		Id:               uuid.New().String(),
@@ -189,9 +189,9 @@ func TestSubmitBlueprintToRegistry_MissingContributorName(t *testing.T) {
 
 func TestSubmitBlueprintToRegistry_MissingContributorEmail(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		blueprintSvc: &blueprints.Service{},
-	}
+	})
 
 	req := &pb.SubmitBlueprintToRegistryRequest{
 		Id:               uuid.New().String(),
@@ -220,9 +220,9 @@ func TestSubmitBlueprintToRegistry_MissingContributorEmail(t *testing.T) {
 
 func TestCreateDeviceModelWithBlueprint_MissingName(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		blueprintSvc: &blueprints.Service{},
-	}
+	})
 
 	req := &pb.CreateDeviceModelWithBlueprintRequest{
 		ManufacturerId: uuid.New().String(),
@@ -249,9 +249,9 @@ func TestCreateDeviceModelWithBlueprint_MissingName(t *testing.T) {
 
 func TestCreateDeviceModelWithBlueprint_InvalidJSON(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		blueprintSvc: &blueprints.Service{},
-	}
+	})
 
 	req := &pb.CreateDeviceModelWithBlueprintRequest{
 		ManufacturerId: uuid.New().String(),
@@ -278,9 +278,9 @@ func TestCreateDeviceModelWithBlueprint_InvalidJSON(t *testing.T) {
 
 func TestDecodePreview_MissingPayload(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		blueprintSvc: &blueprints.Service{},
-	}
+	})
 
 	req := &pb.DecodePreviewRequest{
 		Source:   &pb.DecodePreviewRequest_BlueprintId{BlueprintId: uuid.New().String()},
@@ -306,9 +306,9 @@ func TestDecodePreview_MissingPayload(t *testing.T) {
 
 func TestDecodePreview_InvalidFormatID(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		blueprintSvc: &blueprints.Service{},
-	}
+	})
 
 	req := &pb.DecodePreviewRequest{
 		Source:   &pb.DecodePreviewRequest_BlueprintId{BlueprintId: uuid.New().String()},
@@ -334,7 +334,7 @@ func TestDecodePreview_InvalidFormatID(t *testing.T) {
 
 func TestDecodePreview_NoSource(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{blueprintSvc: &blueprints.Service{}}
+	svc := testCoreService(coreFields{blueprintSvc: &blueprints.Service{}})
 
 	req := &pb.DecodePreviewRequest{Payload: []byte{0x01}}
 
@@ -353,7 +353,7 @@ func TestDecodePreview_NoSource(t *testing.T) {
 
 func TestDecodePreview_EmptyInlineSpec(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{blueprintSvc: &blueprints.Service{}}
+	svc := testCoreService(coreFields{blueprintSvc: &blueprints.Service{}})
 
 	req := &pb.DecodePreviewRequest{
 		Source:  &pb.DecodePreviewRequest_SpecJson{SpecJson: nil},
@@ -386,10 +386,10 @@ func (m *mockBlueprintSvcForCreate) CreateDeviceModel(_ context.Context, _ *grpc
 
 func TestCreateDeviceModel_InvalidModelCode(t *testing.T) {
 	ctx := testutil.TestContext()
-	svc := &CoreService{
+	svc := testCoreService(coreFields{
 		blueprintSvc: &mockBlueprintSvcForCreate{err: blueprints.ErrInvalidModelCode},
 		log:          &mockLogger{},
-	}
+	})
 
 	req := &pb.CreateDeviceModelRequest{
 		ManufacturerId: uuid.New().String(),

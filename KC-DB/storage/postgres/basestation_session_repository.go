@@ -3,42 +3,59 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"log"
 	"strings"
-	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/common/config"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
 )
 
 // BaseStationSessionRepository implements the BaseStationSessionRepository interface for PostgreSQL
 type BaseStationSessionRepository struct {
-	db *sqlx.DB
+	log   logger.Logger
+	clock clock.Clock
+	db    *sqlx.DB
 }
 
 // Ensure BaseStationSessionRepository implements the interface
 var _ interfaces.BaseStationSessionRepository = (*BaseStationSessionRepository)(nil)
 
+const setNullClauseFmt = "%s = NULL"
+
+// Reasons a BSSCI session cannot be resumed.
+const (
+	reasonNoExistingSession    = "No existing session found"
+	reasonSessionNonResumable  = "Session marked as non-resumable"
+	reasonSessionTerminated    = "Session already terminated"
+	reasonFmtOpIDOutOfSequence = "Operation ID out of sequence: provided=%d, last=%d"
+	reasonFmtSessionTooOld     = "Session too old: %.1f hours (limit %.0f)"
+)
+
 // NewBaseStationSessionRepository creates a new PostgreSQL Base Station session repository
-func NewBaseStationSessionRepository(db *sqlx.DB) *BaseStationSessionRepository {
-	return &BaseStationSessionRepository{db: db}
+// setNullClauseFmt renders a column-to-NULL assignment in the update
+// builder.
+func NewBaseStationSessionRepository(db *sqlx.DB, clk clock.Clock, log logger.Logger) *BaseStationSessionRepository {
+	return &BaseStationSessionRepository{
+		log: log, clock: clk, db: db}
 }
 
 // CreateSession creates a new Base Station session per MIOTY BSSCI 3.3
 func (r *BaseStationSessionRepository) CreateSession(ctx context.Context, req *models.BaseStationSessionCreateRequest) (*models.BaseStationSession, error) {
 	if req == nil {
-		return nil, fmt.Errorf("create request cannot be nil")
+		return nil, errTextCreateRequestCannotBeNil
 	}
 
 	// Default encoding to msgpack if not specified (BSSCI Section 1)
 	encoding := req.Encoding
 	if encoding == "" {
-		encoding = bssci.EncodingMessagePack
+		encoding = mioty.EncodingMessagePack
 	}
 
 	query := `
@@ -46,9 +63,9 @@ func (r *BaseStationSessionRepository) CreateSession(ctx context.Context, req *m
 			basestation_id, tenant_id, sn_bs_uuid, sn_sc_uuid,
 			sn_bs_op_id, sn_sc_op_id, status,
 			connection_id, remote_addr, can_resume,
-			organization_id, encoding, protocol_version, connect_info, started_at, created_at, updated_at
+			organization_id, encoding, protocol_version, connect_info, sc_eui, started_at, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, COALESCE($14, '{}'::jsonb), NOW(), NOW(), NOW()
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, COALESCE($14, '{}'::jsonb), $15, NOW(), NOW(), NOW()
 		)
 		RETURNING id, started_at, created_at, updated_at`
 
@@ -68,7 +85,8 @@ func (r *BaseStationSessionRepository) CreateSession(ctx context.Context, req *m
 		ConnectInfo:     req.ConnectInfo,
 	}
 
-	err := r.db.QueryRowContext(ctx, query,
+	err := r.db.QueryRowContext(
+		ctx, query,
 		req.BaseStationID,
 		req.TenantID,
 		req.SnBsUuid[:],
@@ -83,10 +101,10 @@ func (r *BaseStationSessionRepository) CreateSession(ctx context.Context, req *m
 		encoding,
 		req.ProtocolVersion,
 		req.ConnectInfo,
+		req.ScEui,
 	).Scan(&session.ID, &session.StartedAt, &session.CreatedAt, &session.UpdatedAt)
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Base Station session: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapCreateBaseStationSession, err)
 	}
 
 	return session, nil
@@ -130,26 +148,6 @@ func (r *BaseStationSessionRepository) GetActiveSessionByBaseStation(ctx context
 	return r.scanSession(r.db.QueryRowContext(ctx, query, baseStationID, tenantID))
 }
 
-// GetSessionByBsUUID retrieves a session by Base Station session UUID (for resumption)
-func (r *BaseStationSessionRepository) GetSessionByBsUUID(ctx context.Context, tenantID int64, snBsUUID [16]byte) (*models.BaseStationSession, error) {
-	query := `
-		SELECT
-			id, basestation_id, tenant_id,
-			sn_bs_uuid, sn_sc_uuid,
-			sn_bs_op_id, sn_sc_op_id,
-			status, connection_id, remote_addr,
-			started_at, last_ping_at, ended_at,
-			can_resume, organization_id,
-			encoding, protocol_version, connect_info,
-			created_at, updated_at
-		FROM basestation_sessions
-		WHERE sn_bs_uuid = $1 AND tenant_id = $2
-		ORDER BY started_at DESC
-		LIMIT 1`
-
-	return r.scanSession(r.db.QueryRowContext(ctx, query, snBsUUID[:], tenantID))
-}
-
 // GetSessionByScUUID retrieves a session by Service Center session UUID
 func (r *BaseStationSessionRepository) GetSessionByScUUID(ctx context.Context, tenantID int64, snScUUID [16]byte) (*models.BaseStationSession, error) {
 	query := `
@@ -173,7 +171,7 @@ func (r *BaseStationSessionRepository) GetSessionByScUUID(ctx context.Context, t
 // UpdateSession updates session fields (operation IDs, status, timing)
 func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenantID, sessionID int64, req *models.BaseStationSessionUpdateRequest) error {
 	if req == nil {
-		return fmt.Errorf("update request cannot be nil")
+		return errTextUpdateRequestCannotBeNil
 	}
 
 	builder, err := buildSessionUpdateClauses(req)
@@ -181,10 +179,10 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 		return err
 	}
 	if len(builder.clauses) == 0 {
-		return fmt.Errorf("no fields to update")
+		return errTextNoFieldsUpdate
 	}
 
-	builder.set("updated_at", time.Now())
+	builder.set("updated_at", r.clock.Now())
 	builder.args = append(builder.args, sessionID, tenantID)
 
 	query := fmt.Sprintf(`
@@ -196,60 +194,19 @@ func (r *BaseStationSessionRepository) UpdateSession(ctx context.Context, tenant
 
 	result, err := r.db.ExecContext(ctx, query, builder.args...)
 	if err != nil {
-		return fmt.Errorf("failed to update Base Station session: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateBaseStationSession, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("session not found: id=%d tenant=%d", sessionID, tenantID)
+		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID, storage.ErrNotFound)
 	}
 
 	return nil
-}
-
-// ActivateSessionIfResumable applies the resume activation only while the row
-// is still disconnected and resumable. Two connections that both found the same
-// row through FindResumableSession reach this update, and only the first one
-// matches: the loser gets false and must abandon the resume.
-func (r *BaseStationSessionRepository) ActivateSessionIfResumable(ctx context.Context, tenantID, sessionID int64, req *models.BaseStationSessionUpdateRequest) (bool, error) {
-	if req == nil {
-		return false, fmt.Errorf("update request cannot be nil")
-	}
-
-	builder, err := buildSessionUpdateClauses(req)
-	if err != nil {
-		return false, err
-	}
-	if len(builder.clauses) == 0 {
-		return false, fmt.Errorf("no fields to update")
-	}
-
-	builder.set("updated_at", time.Now())
-	builder.args = append(builder.args, sessionID, tenantID, models.SessionStatusDisconnected)
-
-	query := fmt.Sprintf(`
-		UPDATE basestation_sessions
-		SET %s
-		WHERE id = $%d AND tenant_id = $%d
-		  AND status = $%d AND can_resume = true`,
-		strings.Join(builder.clauses, ", "),
-		len(builder.args)-2, len(builder.args)-1, len(builder.args))
-
-	result, err := r.db.ExecContext(ctx, query, builder.args...)
-	if err != nil {
-		return false, fmt.Errorf("failed to activate resumable Base Station session: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	return rowsAffected > 0, nil
 }
 
 // updateSetBuilder accumulates SET clauses with positional placeholders for a
@@ -267,7 +224,7 @@ func (b *updateSetBuilder) set(column string, value interface{}) {
 
 // setNull appends a literal NULL assignment for a column.
 func (b *updateSetBuilder) setNull(column string) {
-	b.clauses = append(b.clauses, fmt.Sprintf("%s = NULL", column))
+	b.clauses = append(b.clauses, fmt.Sprintf(setNullClauseFmt, column))
 }
 
 // setIfPresent appends a column assignment when the optional value is set.
@@ -281,7 +238,7 @@ func setIfPresent[T any](b *updateSetBuilder, column string, value *T) {
 // rejecting a request that both sets and clears ended_at.
 func buildSessionUpdateClauses(req *models.BaseStationSessionUpdateRequest) (*updateSetBuilder, error) {
 	if req.EndedAt != nil && req.ClearEndedAt {
-		return nil, fmt.Errorf("update request cannot set and clear ended_at at once")
+		return nil, errTextUpdateRequestCannotSetAndClearEndedAt
 	}
 
 	b := &updateSetBuilder{}
@@ -299,56 +256,34 @@ func buildSessionUpdateClauses(req *models.BaseStationSessionUpdateRequest) (*up
 	setIfPresent(b, "organization_id", req.OrganizationID)
 	setIfPresent(b, "encoding", req.Encoding)
 	setIfPresent(b, "protocol_version", req.ProtocolVersion)
+	setIfPresent(b, "sc_eui", req.ScEui)
 	return b, nil
 }
 
-// UpdateOperationIDs updates both Base Station and Service Center operation IDs atomically
+// UpdateOperationIDs advances both Base Station and Service Center operation
+// IDs atomically. Counters only move forward (BSSCI §3.2: base station IDs
+// rise, service center IDs fall), so a snapshot written out of order never
+// lowers what a later one stored.
 func (r *BaseStationSessionRepository) UpdateOperationIDs(ctx context.Context, tenantID, sessionID int64, bsOpId, scOpId int64) error {
 	query := `
 		UPDATE basestation_sessions
-		SET sn_bs_op_id = $1,
-		    sn_sc_op_id = $2,
+		SET sn_bs_op_id = GREATEST(sn_bs_op_id, $1),
+		    sn_sc_op_id = LEAST(sn_sc_op_id, $2),
 		    updated_at = $3
 		WHERE id = $4 AND tenant_id = $5`
 
-	result, err := r.db.ExecContext(ctx, query, bsOpId, scOpId, time.Now(), sessionID, tenantID)
+	result, err := r.db.ExecContext(ctx, query, bsOpId, scOpId, r.clock.Now(), sessionID, tenantID)
 	if err != nil {
-		return fmt.Errorf("failed to update operation IDs: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateOperationIDs, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("session not found: id=%d tenant=%d", sessionID, tenantID)
-	}
-
-	return nil
-}
-
-// UpdatePing updates the last ping timestamp
-func (r *BaseStationSessionRepository) UpdatePing(ctx context.Context, tenantID, sessionID int64) error {
-	query := `
-		UPDATE basestation_sessions
-		SET last_ping_at = $1,
-		    updated_at = $1
-		WHERE id = $2 AND tenant_id = $3`
-
-	now := time.Now()
-	result, err := r.db.ExecContext(ctx, query, now, sessionID, tenantID)
-	if err != nil {
-		return fmt.Errorf("failed to update ping: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("session not found: id=%d tenant=%d", sessionID, tenantID)
+		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID, storage.ErrNotFound)
 	}
 
 	return nil
@@ -358,8 +293,8 @@ func (r *BaseStationSessionRepository) UpdatePing(ctx context.Context, tenantID,
 // This is called when encoding is negotiated on first message per BSSCI Section 1
 func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, tenantID, sessionID int64, encoding string) error {
 	// Validate encoding value
-	if encoding != bssci.EncodingJSON && encoding != bssci.EncodingMessagePack {
-		return fmt.Errorf("invalid encoding: must be '%s' or '%s', got '%s'", bssci.EncodingJSON, bssci.EncodingMessagePack, encoding)
+	if encoding != mioty.EncodingJSON && encoding != mioty.EncodingMessagePack {
+		return fmt.Errorf(errFmtInvalidEncodingMustBeOrGot, mioty.EncodingJSON, mioty.EncodingMessagePack, encoding)
 	}
 
 	query := `
@@ -370,16 +305,16 @@ func (r *BaseStationSessionRepository) UpdateEncoding(ctx context.Context, tenan
 
 	result, err := r.db.ExecContext(ctx, query, encoding, sessionID, tenantID)
 	if err != nil {
-		return fmt.Errorf("failed to update encoding: %w", err)
+		return fmt.Errorf("%s: %w", errWrapUpdateEncoding, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("session not found: id=%d tenant=%d", sessionID, tenantID)
+		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID, storage.ErrNotFound)
 	}
 
 	return nil
@@ -395,39 +330,19 @@ func (r *BaseStationSessionRepository) TerminateSession(ctx context.Context, ten
 		    updated_at = $2
 		WHERE id = $3 AND tenant_id = $4`
 
-	now := time.Now()
+	now := r.clock.Now()
 	result, err := r.db.ExecContext(ctx, query, models.SessionStatusTerminated, now, sessionID, tenantID)
 	if err != nil {
-		return fmt.Errorf("failed to terminate session: %w", err)
+		return fmt.Errorf("%s: %w", errWrapTerminateSession, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
+		return fmt.Errorf("%s: %w", errWrapFailedToGetRowsAffected, err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("session not found: id=%d tenant=%d", sessionID, tenantID)
-	}
-
-	return nil
-}
-
-// TerminateAllSessions terminates all active sessions for a Base Station (for cleanup)
-func (r *BaseStationSessionRepository) TerminateAllSessions(ctx context.Context, tenantID, baseStationID int64) error {
-	query := `
-		UPDATE basestation_sessions
-		SET status = $1,
-		    ended_at = $2,
-		    updated_at = $2
-		WHERE basestation_id = $3
-		  AND tenant_id = $4
-		  AND status = 'active'`
-
-	now := time.Now()
-	_, err := r.db.ExecContext(ctx, query, models.SessionStatusTerminated, now, baseStationID, tenantID)
-	if err != nil {
-		return fmt.Errorf("failed to terminate all sessions: %w", err)
+		return fmt.Errorf(errFmtSessionNotFoundIDTenant, sessionID, tenantID, storage.ErrNotFound)
 	}
 
 	return nil
@@ -436,7 +351,7 @@ func (r *BaseStationSessionRepository) TerminateAllSessions(ctx context.Context,
 // ListSessions retrieves sessions based on filter criteria
 func (r *BaseStationSessionRepository) ListSessions(ctx context.Context, filter *models.BaseStationSessionFilter) ([]*models.BaseStationSession, int64, error) {
 	if filter == nil {
-		return nil, 0, fmt.Errorf("filter cannot be nil")
+		return nil, 0, errTextFilterCannotBeNil
 	}
 
 	whereClauses := []string{"tenant_id = $1"}
@@ -493,7 +408,7 @@ func (r *BaseStationSessionRepository) ListSessions(ctx context.Context, filter 
 	var totalCount int64
 	err := r.db.GetContext(ctx, &totalCount, countQuery, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to count sessions: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapCountSessions, err)
 	}
 
 	query := fmt.Sprintf(`
@@ -516,12 +431,11 @@ func (r *BaseStationSessionRepository) ListSessions(ctx context.Context, filter 
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list sessions: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapListSessions, err)
 	}
 	defer func() {
 		if err := rows.Close(); err != nil {
-			// TODO: Repository lacks logger field - add for proper error tracking
-			log.Printf("failed to close rows in basestation session listing: %v", err)
+			r.log.Warn(logMsgCloseRowsBasestationSessions, logger.FieldError, err)
 		}
 	}()
 
@@ -529,20 +443,20 @@ func (r *BaseStationSessionRepository) ListSessions(ctx context.Context, filter 
 	for rows.Next() {
 		session, err := r.scanSessionFromRows(rows)
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to scan session: %w", err)
+			return nil, 0, fmt.Errorf("%s: %w", errWrapScanSession, err)
 		}
 		sessions = append(sessions, session)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("error iterating sessions: %w", err)
+		return nil, 0, fmt.Errorf("%s: %w", errWrapErrorIteratingSessions, err)
 	}
 
 	return sessions, totalCount, nil
 }
 
 // GetSessionStatistics retrieves session statistics
-func (r *BaseStationSessionRepository) GetSessionStatistics(ctx context.Context, tenantID int64) (*interfaces.SessionStatistics, error) {
+func (r *BaseStationSessionRepository) GetSessionStatistics(ctx context.Context, tenantID int64) (*models.SessionStatistics, error) {
 	query := `
 		SELECT
 			COUNT(*) as total_sessions,
@@ -560,7 +474,7 @@ func (r *BaseStationSessionRepository) GetSessionStatistics(ctx context.Context,
 		FROM basestation_sessions
 		WHERE tenant_id = $1`
 
-	stats := &interfaces.SessionStatistics{}
+	stats := &models.SessionStatistics{}
 	err := r.db.QueryRowContext(ctx, query, tenantID).Scan(
 		&stats.TotalSessions,
 		&stats.ActiveSessions,
@@ -570,110 +484,10 @@ func (r *BaseStationSessionRepository) GetSessionStatistics(ctx context.Context,
 		&stats.TotalSessionTime,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get session statistics: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapGetSessionStatistics, err)
 	}
 
 	return stats, nil
-}
-
-// CheckSessionResumable determines if a session can be resumed per MIOTY spec
-func (r *BaseStationSessionRepository) CheckSessionResumable(ctx context.Context, tenantID int64, snBsUUID [16]byte, bsOpId int64) (*interfaces.SessionResumptionInfo, error) {
-	query := `
-		SELECT
-			id,
-			sn_bs_op_id,
-			sn_sc_op_id,
-			status,
-			can_resume,
-			EXTRACT(EPOCH FROM (NOW() - started_at)) / 3600 as session_age_hours
-		FROM basestation_sessions
-		WHERE sn_bs_uuid = $1 AND tenant_id = $2
-		ORDER BY started_at DESC
-		LIMIT 1`
-
-	var (
-		sessionID  int64
-		lastBsOpId int64
-		lastScOpId int64
-		status     string
-		canResume  bool
-		sessionAge float64
-	)
-
-	err := r.db.QueryRowContext(ctx, query, snBsUUID[:], tenantID).Scan(
-		&sessionID,
-		&lastBsOpId,
-		&lastScOpId,
-		&status,
-		&canResume,
-		&sessionAge,
-	)
-
-	if err == sql.ErrNoRows {
-		return &interfaces.SessionResumptionInfo{
-			CanResume:            false,
-			ReasonIfNotResumable: "No existing session found",
-		}, nil
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to check session resumability: %w", err)
-	}
-
-	info := &interfaces.SessionResumptionInfo{
-		SessionID:       sessionID,
-		LastKnownBsOpId: lastBsOpId,
-		LastKnownScOpId: lastScOpId,
-		SessionAge:      int64(sessionAge),
-	}
-
-	if !canResume {
-		info.CanResume = false
-		info.ReasonIfNotResumable = "Session marked as non-resumable"
-		return info, nil
-	}
-
-	if status == string(models.SessionStatusTerminated) {
-		info.CanResume = false
-		info.ReasonIfNotResumable = "Session already terminated"
-		return info, nil
-	}
-
-	if bsOpId <= lastBsOpId {
-		info.CanResume = false
-		info.ReasonIfNotResumable = fmt.Sprintf("Operation ID out of sequence: provided=%d, last=%d", bsOpId, lastBsOpId)
-		return info, nil
-	}
-
-	maxAgeHours := config.MaxSessionResumptionAge.Hours()
-	if sessionAge > maxAgeHours {
-		info.CanResume = false
-		info.ReasonIfNotResumable = fmt.Sprintf("Session too old: %.1f hours (limit %.0f)", sessionAge, maxAgeHours)
-		return info, nil
-	}
-
-	info.CanResume = true
-	return info, nil
-}
-
-// CleanupExpiredSessions removes old terminated sessions (housekeeping)
-func (r *BaseStationSessionRepository) CleanupExpiredSessions(ctx context.Context, olderThan int64) (int64, error) {
-	query := `
-		DELETE FROM basestation_sessions
-		WHERE status = 'terminated'
-		  AND ended_at < NOW() - ($1 || ' hours')::INTERVAL`
-
-	result, err := r.db.ExecContext(ctx, query, olderThan)
-	if err != nil {
-		return 0, fmt.Errorf("failed to cleanup expired sessions: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	return rowsAffected, nil
 }
 
 // scanSession scans a single session from a query row
@@ -714,10 +528,10 @@ func (r *BaseStationSessionRepository) scanSession(row *sql.Row) (*models.BaseSt
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("session not found")
+		return nil, errTextSessionNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan session: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapScanSession, err)
 	}
 
 	copy(session.SnBsUuid[:], snBsUUIDBytes)
@@ -778,9 +592,8 @@ func (r *BaseStationSessionRepository) scanSessionFromRows(rows *sql.Rows) (*mod
 		&session.CreatedAt,
 		&session.UpdatedAt,
 	)
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to scan session: %w", err)
+		return nil, fmt.Errorf("%s: %w", errWrapScanSession, err)
 	}
 
 	copy(session.SnBsUuid[:], snBsUUIDBytes)
@@ -803,105 +616,4 @@ func (r *BaseStationSessionRepository) scanSessionFromRows(rows *sql.Rows) (*mod
 	}
 
 	return session, nil
-}
-
-// MarkDisconnected marks an active session disconnected and resumable, guarded
-// by the stored connection ID and by the active status: a reconnect that
-// already replaced this connection, or a session already retired, matches zero
-// rows and stays untouched (not an error).
-func (r *BaseStationSessionRepository) MarkDisconnected(ctx context.Context, tenantID, sessionID int64, connectionID string, endedAt time.Time) error {
-	query := `
-		UPDATE basestation_sessions
-		SET status = $1,
-		    can_resume = true,
-		    ended_at = $2,
-		    updated_at = $2
-		WHERE id = $3 AND tenant_id = $4 AND connection_id = $5 AND status = $6`
-
-	if _, err := r.db.ExecContext(ctx, query, models.SessionStatusDisconnected, endedAt, sessionID, tenantID, connectionID, models.SessionStatusActive); err != nil {
-		return fmt.Errorf("failed to mark session disconnected: %w", err)
-	}
-	return nil
-}
-
-// FindResumableSession finds the resumable session for a base station,
-// scoped by tenant, base station EUI, and snBsUuid, requiring
-// status=disconnected and can_resume=true (BSSCI §5.3.1)
-func (r *BaseStationSessionRepository) FindResumableSession(ctx context.Context, tenantID int64, bsEUI []byte, snBsUUID [16]byte) (*models.BaseStationSession, error) {
-	query := `
-		SELECT s.id, s.basestation_id, s.tenant_id, s.sn_bs_uuid, s.sn_sc_uuid,
-		       s.sn_bs_op_id, s.sn_sc_op_id, s.status, s.connection_id, s.remote_addr,
-		       s.started_at, s.last_ping_at, s.ended_at, s.can_resume, s.encoding,
-		       s.protocol_version, s.connect_info, s.organization_id, s.created_at, s.updated_at
-		FROM basestation_sessions s
-		JOIN basestations b ON b.id = s.basestation_id
-		WHERE s.tenant_id = $1
-		  AND b.bs_eui = $2
-		  AND s.sn_bs_uuid = $3
-		  AND s.status = $4
-		  AND s.can_resume = true
-		ORDER BY s.started_at DESC
-		LIMIT 1`
-
-	session := &models.BaseStationSession{}
-	var snBsUUIDBytes, snScUUIDBytes []byte
-	err := r.db.QueryRowContext(ctx, query, tenantID, bsEUI, snBsUUID[:], models.SessionStatusDisconnected).Scan(
-		&session.ID, &session.BaseStationID, &session.TenantID, &snBsUUIDBytes, &snScUUIDBytes,
-		&session.SnBsOpId, &session.SnScOpId, &session.Status, &session.ConnectionId, &session.RemoteAddr,
-		&session.StartedAt, &session.LastPingAt, &session.EndedAt, &session.CanResume, &session.Encoding,
-		&session.ProtocolVersion, &session.ConnectInfo, &session.OrganizationID, &session.CreatedAt, &session.UpdatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to find resumable session: %w", err)
-	}
-	copy(session.SnBsUuid[:], snBsUUIDBytes)
-	copy(session.SnScUuid[:], snScUUIDBytes)
-	return session, nil
-}
-
-// TerminateResumableSessions retires the leftover resumable sessions of a base
-// station so a fresh session starts from discarded state (BSSCI §3), returning
-// the retired session ids for pending-operation cleanup. Zero matches is not an
-// error.
-func (r *BaseStationSessionRepository) TerminateResumableSessions(ctx context.Context, tenantID, baseStationID int64) ([]int64, error) {
-	query := `
-		UPDATE basestation_sessions
-		SET status = $1,
-		    can_resume = false,
-		    ended_at = COALESCE(ended_at, $2),
-		    updated_at = $2
-		WHERE basestation_id = $3
-		  AND tenant_id = $4
-		  AND status = $5
-		  AND can_resume = true
-		RETURNING id`
-
-	now := time.Now()
-	rows, err := r.db.QueryContext(ctx, query, models.SessionStatusTerminated, now, baseStationID, tenantID, models.SessionStatusDisconnected)
-	if err != nil {
-		return nil, fmt.Errorf("failed to terminate resumable sessions: %w", err)
-	}
-	defer func() {
-		if err := rows.Close(); err != nil {
-			log.Printf("failed to close rows in resumable session retirement: %v", err)
-		}
-	}()
-
-	var sessionIDs []int64
-	for rows.Next() {
-		var sessionID int64
-		if err := rows.Scan(&sessionID); err != nil {
-			return nil, fmt.Errorf("failed to scan retired session id: %w", err)
-		}
-		sessionIDs = append(sessionIDs, sessionID)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating retired session ids: %w", err)
-	}
-
-	return sessionIDs, nil
 }

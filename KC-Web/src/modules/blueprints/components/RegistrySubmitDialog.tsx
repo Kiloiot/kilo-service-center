@@ -21,11 +21,14 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useMutation } from "@tanstack/react-query";
 
-import { api } from "@services/api";
+import { getErrorMessage } from "@utils/error-message";
+import { SHORT_COMMIT_SHA_LENGTH } from "@constants/app";
 import { BLUEPRINT_LABELS } from "@constants/messages";
 import { CheckCircleIcon, OpenInNewIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
+
+import { useSubmitToRegistry } from "../hooks";
 
 interface RegistrySubmitDialogProps {
   open: boolean;
@@ -45,37 +48,36 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
   const [description, setDescription] = useState("");
   const [result, setResult] = useState<RegistrySubmitResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (!blueprintId)
-        throw new Error(BLUEPRINT_LABELS.ERR_BLUEPRINT_ID_REQUIRED);
-      return api.submitToRegistry(blueprintId, {
+  const mutation = useSubmitToRegistry(blueprintId);
+
+  const handleSubmit = () => {
+    const missingName = contributorName.trim()
+      ? null
+      : BLUEPRINT_LABELS.ERR_CONTRIBUTOR_NAME_REQUIRED;
+    const missingEmail = contributorEmail.trim()
+      ? null
+      : BLUEPRINT_LABELS.ERR_CONTRIBUTOR_EMAIL_REQUIRED;
+    setNameError(missingName);
+    setEmailError(missingEmail);
+    if (missingName || missingEmail) return;
+    setError(null);
+    mutation.mutate(
+      {
         contributorName: contributorName || undefined,
         contributorEmail: contributorEmail || undefined,
         description: description || undefined,
-      });
-    },
-    onSuccess: (data) => {
-      setResult(data);
-      setError(null);
-    },
-    onError: (err: Error) => {
-      setError(err.message);
-    },
-  });
-
-  const handleSubmit = () => {
-    if (!contributorName.trim()) {
-      setError(BLUEPRINT_LABELS.ERR_CONTRIBUTOR_NAME_REQUIRED);
-      return;
-    }
-    if (!contributorEmail.trim()) {
-      setError(BLUEPRINT_LABELS.ERR_CONTRIBUTOR_EMAIL_REQUIRED);
-      return;
-    }
-    setError(null);
-    mutation.mutate();
+      },
+      {
+        onSuccess: (data) => {
+          setResult(data);
+          setError(null);
+        },
+        onError: (err: Error) => setError(getErrorMessage(err)),
+      },
+    );
   };
 
   const handleClose = () => {
@@ -89,6 +91,8 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
     setDescription("");
     setResult(null);
     setError(null);
+    setNameError(null);
+    setEmailError(null);
     onClose();
   };
 
@@ -105,7 +109,10 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
         {result ? (
           // Success state
           <Box sx={{ textAlign: "center", py: 2 }}>
-            <CheckCircleIcon color="success" sx={{ fontSize: 48, mb: 2 }} />
+            <CheckCircleIcon
+              color="success"
+              sx={{ fontSize: componentSpacing.resultIcon.size, mb: 2 }}
+            />
             <Typography variant="h6" gutterBottom>
               {BLUEPRINT_LABELS.REGISTRY_SUBMIT_SUCCESS}
             </Typography>
@@ -135,7 +142,7 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
               color="text.secondary"
             >
               {BLUEPRINT_LABELS.REGISTRY_COMMIT}{" "}
-              {result.commitSha.substring(0, 7)}
+              {result.commitSha.substring(0, SHORT_COMMIT_SHA_LENGTH)}
             </Typography>
           </Box>
         ) : (
@@ -143,20 +150,32 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
           <>
             <TextField
               autoFocus
+              required
               margin="dense"
               label={BLUEPRINT_LABELS.LABEL_CONTRIBUTOR_NAME}
               fullWidth
               value={contributorName}
-              onChange={(e) => setContributorName(e.target.value)}
+              onChange={(e) => {
+                setContributorName(e.target.value);
+                setNameError(null);
+              }}
+              error={!!nameError}
+              helperText={nameError}
               sx={{ mb: 1 }}
             />
             <TextField
+              required
               margin="dense"
               label={BLUEPRINT_LABELS.LABEL_CONTRIBUTOR_EMAIL}
               type="email"
               fullWidth
               value={contributorEmail}
-              onChange={(e) => setContributorEmail(e.target.value)}
+              onChange={(e) => {
+                setContributorEmail(e.target.value);
+                setEmailError(null);
+              }}
+              error={!!emailError}
+              helperText={emailError}
               sx={{ mb: 1 }}
             />
             <TextField
@@ -164,7 +183,7 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
               label={BLUEPRINT_LABELS.LABEL_DESCRIPTION}
               fullWidth
               multiline
-              rows={4}
+              rows={componentSpacing.textArea.tallRows}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={BLUEPRINT_LABELS.REGISTRY_DESCRIPTION_PLACEHOLDER}
@@ -188,7 +207,7 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
               disabled={mutation.isPending}
             >
               {mutation.isPending ? (
-                <CircularProgress size={20} />
+                <CircularProgress size={componentSpacing.spinner.button} />
               ) : (
                 BLUEPRINT_LABELS.SUBMIT_TO_REGISTRY
               )}
@@ -199,5 +218,3 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
     </Dialog>
   );
 };
-
-export default RegistrySubmitDialog;

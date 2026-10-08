@@ -19,28 +19,19 @@
 //   - Log messages are static strings
 //   - Dynamic context passed via zap fields (zap.String, zap.Int64, zap.Error, etc.)
 //   - NEVER embed data in the message constant itself
-//
-// Deduplication:
-//   - 127 unique messages extracted from 136 total log occurrences
-//   - Shared messages (e.g., "Failed to mark operation completed") reused across operations
 package scaci
 
 // SCACI log message constants for structured logging
 const (
 	// ========================================================================
-	// Server Lifecycle Messages (3 constants)
+	// Server Lifecycle Messages
 	// ========================================================================
 
-	LogSCACIServerListening           = "SCACI server listening"
-	LogSCACIServerStopping            = "Stopping SCACI server..."
-	LogSCACIServerStopped             = "SCACI server stopped"
-	LogSCACICertsNotFound             = "SCACI certificates not found, listener deferred until certificates are generated"
-	LogSCACICertsDetected             = "SCACI certificates detected, starting TLS listener"
-	LogSCACIDeferredListenerFailed    = "Failed to start deferred SCACI TLS listener"
-	LogSCACIDeferredListenerCancelled = "SCACI deferred listener polling cancelled"
+	LogSCACIServerStopping = "Stopping SCACI server..."
+	LogSCACIServerStopped  = "SCACI server stopped"
 
 	// ========================================================================
-	// TLS & Connection Messages (7 constants)
+	// TLS & Connection Messages
 	// ========================================================================
 
 	LogSCACIConnectionNotTLS         = "Connection is not TLS (should never happen)"
@@ -49,23 +40,24 @@ const (
 	LogSCACICertificateMappingFailed = "Failed to map certificate to tenant"
 	LogSCACIConnectionEstablished    = "SCACI connection established"
 	LogSCACIConnectionClosed         = "SCACI connection closed"
-	LogSCACIAcceptConnectionFailed   = "Failed to accept connection"
+	LogSCACICloseAfterWriteFailed    = "Closing SCACI connection after a failed frame write reported an error"
+	LogSCACICloseConnectionFailed    = "Failed to close SCACI connection"
+
+	LogSCACIConnectEstablishmentTimedOut  = "SCACI connection closed: the connect operation did not complete in time"
+	LogSCACISupersededConnectionClosed    = "SCACI connection closed: a newer connection took over its application center session"
+	LogSCACIMarkSessionDisconnectedFailed = "Failed to mark SCACI session disconnected"
+	LogSCACIReconciledAbandonedSessions   = "SCACI sessions left live by a previous process are disconnected and resumable again"
 
 	// ========================================================================
-	// Tenant Mapping Messages (7 constants)
+	// Tenant Mapping Messages
 	// ========================================================================
 
-	LogSCACITenantMappedFromCN        = "Tenant mapped from CN"
-	LogSCACITenantMappedFromNumericCN = "Tenant mapped from numeric CN"
-	LogSCACITenantMappedFromSAN       = "Tenant mapped from SAN"
-	LogSCACICertMappingFailedStrict   = "Certificate tenant mapping failed (strict mode)"
-	LogSCACIUsingFallbackTenantUnsafe = "Using fallback tenant ID - UNSAFE FOR PRODUCTION"
 	LogSCACIOrgResolverNotInjected    = "SCACI: org resolver not injected into handshake service"
 	LogSCACICrossTenantResumeRejected = "SCACI: resume rejected due to certificate tenant mismatch"
 	LogSCACIOrgEnforcementNilUUID     = "Organization enforcement enabled but session has nil org UUID"
 
 	// ========================================================================
-	// Certificate Validation Messages (5 constants)
+	// Certificate Validation Messages
 	// ========================================================================
 
 	LogSCACICertNotYetValid       = "Certificate not yet valid (NotBefore is in the future)"
@@ -75,12 +67,12 @@ const (
 	LogSCACICertValidationPassed  = "Certificate validation passed"
 
 	// ========================================================================
-	// Message Framing & Dispatch (9 constants)
+	// Message Framing & Dispatch
 	// ========================================================================
 
 	LogSCACIReceivedMessage           = "Received SCACI message"
 	LogSCACIReadFrameFailed           = "Failed to read frame"
-	LogSCACIDecodeMessagePackFailed   = "Failed to decode MessagePack"
+	LogSCACIDecodeFrameFailed         = "Failed to decode frame payload"
 	LogSCACIMissingCommandField       = "Missing or invalid 'command' field"
 	LogSCACIMissingOpIDField          = "Missing or invalid 'opId' field"
 	LogSCACIFirstMessageMustBeConnect = "First message must be Connect"
@@ -89,10 +81,9 @@ const (
 	LogSCACIUnsupportedSublayerPrefix = "SCACI sublayer prefix not supported" // §4 sublayer guard
 
 	// ========================================================================
-	// Error Response Handling (10 constants) - SCACI §3.14
+	// Error Response Handling - SCACI §3.14
 	// ========================================================================
 
-	LogSCACIMarshalErrorFailed           = "Failed to marshal error message"
 	LogSCACISendErrorFailed              = "Failed to send error message"
 	LogSCACIErrorMessageSent             = "Sent error message"
 	LogSCACIResponseSent                 = "Sent SCACI response"
@@ -104,7 +95,7 @@ const (
 	LogSCACIPersistOutboundErrorFailed   = "Failed to persist outbound error"
 
 	// ========================================================================
-	// Connect Operation (14 constants)
+	// Connect Operation
 	// ========================================================================
 
 	LogSCACIProcessingConnect       = "Processing Connect message"
@@ -121,13 +112,19 @@ const (
 	LogSCACIVersionMismatchOnResume = "Version mismatch on session resume"
 	LogSCACINoResumableSession      = "No resumable session found"
 	LogSCACINewSessionCreated       = "New session created"
+	LogSCACISessionCreateFailed     = "Session creation failed"
 	LogSCACIConnectComplete         = "Connect complete - session active"
 	LogSCACIUpdateSessionFailed     = "Failed to update session"
 	LogSCACIPersistSessionFailed    = "Failed to persist session"
 	LogSCACIConnectCmpNonZeroOpID   = "ConnectComplete with non-zero opId, terminating"
 
+	// Reasons ResumeOpIDConflict gives for a resume whose operation IDs
+	// contradict the stored counters (SCACI §3.3.1).
+	resumeReasonFmtACOpIDUnknown     = "AC opId not known to the service center: required=%d, known=%d"
+	resumeReasonFmtSCOpIDNeverIssued = "SC opId not issued by the service center: provided=%d, issued down to %d"
+
 	// ========================================================================
-	// Register Operation (9 constants)
+	// Register Operation
 	// ========================================================================
 
 	LogSCACIDecodeRegisterFailed      = "Failed to decode register payload"
@@ -141,7 +138,7 @@ const (
 	LogSCACILoadRegisterOpFailed      = "Failed to load register operation"
 
 	// ========================================================================
-	// BSSCI Attach Propagation Integration (2 constants)
+	// BSSCI Attach Propagation Integration
 	// BSSCI §5.8-5.8.3: Automatic attach propagation for preAttach endpoints
 	// ========================================================================
 
@@ -149,136 +146,123 @@ const (
 	LogSCACIAttachPropagationErrors     = "Attach propagation encountered errors"
 
 	// ========================================================================
-	// Deregister Operation (11 constants)
+	// Deregister Operation
 	// ========================================================================
 
-	LogSCACIDecodeDeregisterFailed      = "Failed to decode deregister payload"
-	LogSCACIEndpointNotFoundDeregister  = "Endpoint not found for deregister"
-	LogSCACIDatabaseErrorDeregister     = "Database error during deregister"
-	LogSCACIRecordDeregisterOpFailed    = "Failed to record deregister operation"
-	LogSCACIDetachEndpointFailed        = "Failed to detach endpoint"
-	LogSCACIEndpointDeregistered        = "Endpoint deregistered"
-	LogSCACIDeregisterHandshakeComplete = "Deregister handshake complete"
-	LogSCACILoadDeregisterOpFailed      = "Failed to load deregister operation"
-	LogSCACIDetachPropagationErrors     = "Detach propagation had errors"
-	// LogSCACIDetachPropagatorUnavailable is logged when detach propagation is skipped because no propagator is wired.
-	LogSCACIDetachPropagatorUnavailable = "DetachPropagator not available, skipping propagation"
-	LogSCACIDetachPropagationSent       = "Detach propagation sent to all base stations"
-	LogSCACIRevokeDownlinksFailed       = "Failed to revoke downlinks"
-	LogSCACIDeregisterCleanupStart      = "Starting deregister cleanup"
-	LogSCACIDeregisterCleanupSkipped    = "Deregister cleanup skipped"
+	LogSCACIDecodeDeregisterFailed       = "Failed to decode deregister payload"
+	LogSCACIEndpointNotFoundDeregister   = "Endpoint not found for deregister"
+	LogSCACIDatabaseErrorDeregister      = "Database error during deregister"
+	LogSCACIRecordDeregisterOpFailed     = "Failed to record deregister operation"
+	LogSCACIDetachEndpointFailed         = "Failed to detach endpoint"
+	LogSCACIEndpointDeregistered         = "Endpoint deregistered"
+	LogSCACIDeregisterHandshakeComplete  = "Deregister handshake complete"
+	LogSCACILoadDeregisterOpFailed       = "Failed to load deregister operation"
+	LogSCACIDetachPropagationErrors      = "Detach propagation had errors"
+	LogSCACIUnexpectedRegisterComplete   = "regCmp for an operation that is not a reg answered with regRsp"
+	LogSCACIUnexpectedDeregisterComplete = "deregCmp for an operation that is not a dereg answered with deregRsp"
+	LogSCACIDetachPropagationSent        = "Detach propagation sent to all base stations"
+	LogSCACIRevokeDownlinksFailed        = "Failed to revoke downlinks"
+	LogSCACIDeregisterCleanupStart       = "Starting deregister cleanup"
 
 	// ========================================================================
-	// UL Data Operations (10 constants)
+	// UL Data Operations
 	// ========================================================================
 
 	LogSCACISendULDataFailed           = "Failed to send UL data to AC session"
+	LogSCACIUplinkAlreadyRecorded      = "Uplink already recorded for the AC session; its original operation stands"
+	LogSCACIOperationLeftToResume      = "Recorded operation could not be sent; connection closed so the session resume reissues it"
 	LogSCACIReceivedULDataResponse     = "Received UL data response from AC"
 	LogSCACIUpdateULDataOpAckFailed    = "Failed to update UL data operation to acknowledged"
 	LogSCACISendULDataCompleteFailed   = "Failed to send UL data complete"
 	LogSCACIULDataHandshakeComplete    = "UL data handshake complete"
 	LogSCACIMarkULDataOpCompleteFailed = "Failed to mark UL data operation completed"
-	LogSCACIRecordULDataOpFailed       = "Failed to record UL data operation"
-	LogSCACISendULToACFailed           = "Failed to send UL to AC"
 	LogSCACIUnexpectedULDataCmp        = "Received unexpected ulDataCmp from AC"
+	LogSCACIUnexpectedEPStatusCmp      = "Received unexpected epStatCmp from AC"
+	LogSCACIUnsolicitedResponse        = "Received a response to no outstanding Service Center operation"
+	LogSCACISendEPStatusCompleteFailed = "Failed to send EP status complete"
 	LogSCACIUnexpectedULDataTxRsp      = "Received unexpected ulDataTxRsp from AC"
 
 	// ========================================================================
-	// UL Transmit Operations (12 constants)
+	// UL Transmit Operations
 	// ========================================================================
 
 	LogSCACIDecodeULDataTxFailed     = "Failed to decode ulDataTx payload"
 	LogSCACIBaseStationNotFoundULTx  = "Base station not found for UL transmit"
 	LogSCACILookupBaseStationFailed  = "Failed to lookup base station"
-	LogSCACIScheduleULTransmitFailed = "Failed to schedule UL transmit"
-	LogSCACIScheduleULTxFailed       = "Failed to schedule UL transmit" // Alias
-	LogSCACIULTransmitNotSupported   = "UL data transmit not supported (scheduler not configured)"
+	LogSCACIScheduleULTxFailed       = "Failed to schedule UL transmit"                            // Alias
 	LogSCACIULDataTxNotSupported     = "UL data transmit not supported (scheduler not configured)" // Alias
-	LogSCACIULTransmitScheduled      = "UL data transmit scheduled"
-	LogSCACIULDataTxScheduled        = "UL data transmit scheduled" // Alias
+	LogSCACIULDataTxScheduled        = "UL data transmit scheduled"                                // Alias
 	LogSCACIProcessingULDataTxCmp    = "Processing ulDataTxCmp"
 	LogSCACIMarkULTxAckFailed        = "Failed to mark UL transmit acknowledged"
 	LogSCACISendULDataTxRspFailed    = "Failed to send ulDataTxRsp"
 	LogSCACIRecordULTxOpFailed       = "Failed to record UL transmit operation"
 	LogSCACIMarkULTxOpCompleteFailed = "Failed to mark UL transmit operation completed"
-	LogSCACIBaseStationUnavailable   = "Base station unavailable"
 	LogSCACIPreferenceLookupFailed   = "Failed to lookup preferred base station for endpoint"
 	LogSCACIUsingPreferredBS         = "Using endpoint's last-attached base station preference"
 
 	// ========================================================================
-	// DL Queue Operations (12 constants)
+	// DL Queue Operations
 	// ========================================================================
 
-	LogSCACIUnmarshalDLDataQueueFailed     = "Failed to unmarshal DLDataQueue"
-	LogSCACIEndpointNotFoundDLQueue        = "Endpoint not found for downlink queue"
-	LogSCACICounterLengthMismatch          = "Counter-dependent length mismatch"
-	LogSCACICntDependLengthMismatch        = "Counter-dependent length mismatch" // Alias
-	LogSCACINonCntDependMultiPayload       = "Non-counter-dependent downlink has multiple userData entries"
-	LogSCACIDuplicateQueueID               = "Duplicate queue ID detected"
-	LogSCACIDuplicateQueIDDetected         = "Duplicate queue ID detected" // Alias
-	LogSCACIInvalidDownlinkPayload         = "Invalid downlink payload"
-	LogSCACIInvalidAcUUIDLength            = "Invalid AC UUID length"
-	LogSCACIQueueIDOutOfRange              = "Queue ID exceeds maximum value"
-	LogSCACIInvalidQueueIDFromDB           = "Invalid negative queue ID from database"
-	LogSCACIEnqueueDownlinkFailed          = "Failed to enqueue downlink"
-	LogSCACIUpdateDLStatusQueuedFailed     = "Failed to update downlink status to queued"
-	LogSCACIUpdateDownlinkStatusQueued     = "Failed to update downlink status to queued" // Alias
-	LogSCACIUpdateDownlinkStatusFailed     = "Failed to update downlink status to failed"
-	LogSCACIDLDataQueueProcessed           = "DLDataQueue processed"
-	LogSCACIDLDataQueueFailed              = "DLDataQueue failed" // Internal path error logging
-	LogSCACIDLQueueHandshakeComplete       = "DLDataQueue handshake complete"
-	LogSCACIDLDataQueueHandshakeComplete   = "DLDataQueue handshake complete" // Alias
-	LogSCACIQueryDLQueueFailed             = "Failed to query downlink queue"
-	LogSCACIDownlinkSchedulerNotConfigured = "Downlink scheduler not configured"
-	LogSCACIDLQueueServiceInvoked          = "DL queue service invoked"
+	LogSCACIUnmarshalDLDataQueueFailed       = "Failed to unmarshal DLDataQueue"
+	LogSCACICntDependLengthMismatch          = "Counter-dependent length mismatch" // Alias
+	LogSCACINonCntDependMultiPayload         = "Non-counter-dependent downlink has multiple userData entries"
+	LogSCACIDuplicateQueIDDetected           = "Duplicate queue ID detected" // Alias
+	LogSCACIInvalidDownlinkPayload           = "Invalid downlink payload"
+	LogSCACIDownlinkCommandRefQueued         = "MQTT command ref already queued a downlink for the endpoint; nothing is queued"
+	LogSCACIDownlinkDeadlineElapsed          = "MQTT command deadline elapsed before its downlink could be queued"
+	LogSCACIDownlinkPayloadTooLarge          = "Downlink payload exceeds maximum size"
+	LogSCACIInvalidAcUUIDLength              = "Invalid AC UUID length"
+	LogSCACIInvalidQueueIDFromDB             = "Invalid negative queue ID from database"
+	LogSCACIEnqueueDownlinkFailed            = "Failed to enqueue downlink"
+	LogSCACIRecordEnqueuedEventFailed        = "Downlink queued without its event: the event could not be recorded"
+	LogSCACIPersistDrainTimedOut             = "Session persistence drain timed out during shutdown"
+	LogSCACIDownlinkOrgResolutionFailed      = "Failed to resolve downlink organization for tenant"
+	LogSCACIDLDataQueueProcessed             = "DLDataQueue processed"
+	LogSCACIDLDataQueueDeferred              = "DLDataQueue deferred to the endpoint's next downlink window: no connected bidirectional station serves it"
+	LogSCACIDLDataQueueDispatchFailed        = "DLDataQueue persisted but not dispatched; it waits for the next downlink window"
+	LogSCACIDLDataQueueFailed                = "DLDataQueue failed" // Internal path error logging
+	LogSCACIDownlinkEndpointNotBidirectional = "DLDataQueue refused: the endpoint is not bidirectional"
+	LogSCACIDLDataQueueHandshakeComplete     = "DLDataQueue handshake complete" // Alias
+	LogSCACIDLQueueServiceInvoked            = "DL queue service invoked"
 
 	// ========================================================================
-	// DL Revoke Operations (11 constants)
+	// DL Revoke Operations
 	// ========================================================================
 
 	LogSCACIProcessingDLDataRevoke          = "Processing DLDataRevoke"
-	LogSCACIRevokingDownlinks               = "Revoking downlinks for endpoint"
 	LogSCACIRevokingDownlinksForEndpoint    = "Revoking downlinks for endpoint" // Alias
-	LogSCACINoPendingDownlinks              = "No pending downlinks to revoke"
-	LogSCACINoPendingDownlinksToRevoke      = "No pending downlinks to revoke" // Alias
+	LogSCACINoPendingDownlinksToRevoke      = "No pending downlinks to revoke"  // Alias
 	LogSCACIRevokeDownlinkFailed            = "Failed to revoke downlink"
 	LogSCACIRevokeDownlinkItemFailed        = "Failed to revoke downlink" // Alias (per-item)
 	LogSCACIDLRevokeSuccessful              = "DL revoke successful"
 	LogSCACIDownlinkRevocationComplete      = "Downlink revocation complete"
 	LogSCACIDLDataRevokeInitiated           = "DLDataRevoke initiated"
-	LogSCACIRecordDLRevokeOpFailed          = "Failed to record DLDataRevoke operation"
 	LogSCACIRecordDLDataRevokeOpFailed      = "Failed to record DLDataRevoke operation" // Alias
-	LogSCACIDLRevokeHandshakeComplete       = "DLDataRevoke handshake complete"
-	LogSCACIDLDataRevokeHandshakeComplete   = "DLDataRevoke handshake complete" // Alias
+	LogSCACIDLDataRevokeHandshakeComplete   = "DLDataRevoke handshake complete"         // Alias
 	LogSCACIUnmarshalDLDataRevokeFailed     = "Failed to unmarshal DLDataRevoke"
-	LogSCACIStorageNoRevokeSupport          = "Storage does not support RevokeDownlink"
 	LogSCACIStorageNotAvailableRevoke       = "Storage not available for downlink revocation"
-	LogSCACIStorageNotAvailableForRevoke    = "Storage not available for downlink revocation" // Alias
-	LogSCACIDownlinkNotFoundForPacketCnt    = "Downlink not found for packet counter"
+	LogSCACIDownlinkNotFoundForPacketCnt    = "No downlink is scheduled for the packet counter; the revoke has nothing to revoke"
 	LogSCACILookupDownlinkByPacketCntFailed = "Failed to lookup downlink by packet counter"
-	LogSCACIQueueEntryNotFoundInBSSCI       = "Queue entry not found in BSSCI"
-	LogSCACIBaseStationUnavailableRevoke    = "Base station unavailable"
 	LogSCACIQueryDownlinkQueueFailed        = "Failed to query downlink queue"
 
 	// ========================================================================
-	// DL Result Operations (11 constants)
+	// DL Result Operations
 	// ========================================================================
 
-	LogSCACIReceivedDLResultResponse       = "Received DL data result response from AC"
-	LogSCACIReceivedDLDataResultResponse   = "Received DL data result response from AC" // Alias
-	LogSCACIUpdateDLResultOpAckFailed      = "Failed to update DL result operation to acknowledged"
-	LogSCACISendDLResultCompleteFailed     = "Failed to send DL result complete"
-	LogSCACISendDLResultToACFailed         = "Failed to send DL result to AC"
-	LogSCACIRecordDLResultOpFailed         = "Failed to record DL result operation"
-	LogSCACIUpdateDLResultOpCompleteFailed = "Failed to update DL result operation to completed"
-	LogSCACIUnexpectedDLResultComplete     = "Received unexpected DL result complete from AC (protocol violation)"
-	LogSCACIDownlinkNotFoundPacketCounter  = "Downlink not found for packet counter"
-	LogSCACILookupDownlinkByCounterFailed  = "Failed to lookup downlink by packet counter"
-	LogSCACIUpdateDLStatusFailedFailed     = "Failed to update downlink status to failed"
-	LogSCACIQueueEntryNotFoundBSSCI        = "Queue entry not found in BSSCI"
+	LogSCACIReceivedDLDataResultResponse         = "Received DL data result response from AC" // Alias
+	LogSCACIUpdateDLResultOpAckFailed            = "Failed to update DL result operation to acknowledged"
+	LogSCACISendDLResultCompleteFailed           = "Failed to send DL result complete"
+	LogSCACISendDLResultToACFailed               = "Failed to send DL result to AC"
+	LogSCACIDLResultNotQueuedByApplicationCenter = "DL result not sent to Application Centers: the downlink was not queued by one"
+	LogSCACIDLResultQueuerUnknown                = "DL result not sent: the downlink names no Application Center that queued it"
+	LogSCACIResumedSessionNotHeld                = "Resumed session is no longer held for resumption; closing the connection"
+	LogSCACIConnectCompleteRefused               = "Connect operation cannot complete for its session; closing the connection"
+	LogSCACIUpdateDLResultOpCompleteFailed       = "Failed to update DL result operation to completed"
+	LogSCACIUnexpectedDLResultComplete           = "Received unexpected DL result complete from AC (protocol violation)"
 
 	// ========================================================================
-	// Ping Operations (4 constants)
+	// Ping Operations
 	// ========================================================================
 
 	LogSCACIProcessingPing         = "Processing Ping"
@@ -293,36 +277,32 @@ const (
 	LogSCACIRecordConnectOpFailed    = "Failed to record connect operation"
 	LogSCACIRecordConnectRspOpFailed = "Failed to record connect response state update"
 	LogSCACIRecordConnectCmpOpFailed = "Failed to record connect complete state update"
+	LogSCACIRecordSessionEventFailed = "Failed to record application center session event"
 	LogSCACIRecordPingOpFailed       = "Failed to record ping operation"
 	LogSCACIRecordPingRspOpFailed    = "Failed to record ping response state update"
 	LogSCACIRecordPingCmpOpFailed    = "Failed to record ping complete state update"
 
 	// ========================================================================
-	// Status Operations (10 constants)
+	// Status Operations
 	// ========================================================================
 
-	LogSCACIProcessingStatus              = "Processing Status request"
-	LogSCACIQueryBaseStationsStatusFailed = "Failed to query base stations for status"
-	LogSCACIStatusResponsePrepared        = "Status response prepared"
-	LogSCACIStatusHandshakeComplete       = "Status handshake complete"
-	LogSCACIEPStatusHandshakeStub         = "EPStatus handshake complete (stub)"
-	LogSCACIEPStatusHandshakeComplete     = "EPStatus handshake complete (stub)" // Alias
-	LogSCACIRecordStatusOpFailed          = "Failed to record Status operation"
-	LogSCACIRecordStatusRspOpFailed       = "Failed to record Status response state"
-	LogSCACIRecordStatusCmpOpFailed       = "Failed to record Status complete state"
-	LogSCACIStatusDependencyFailed        = "Status dependency query failed, returning degraded status"
+	LogSCACIProcessingStatus          = "Processing Status request"
+	LogSCACIStatusResponsePrepared    = "Status response prepared"
+	LogSCACIStatusHandshakeComplete   = "Status handshake complete"
+	LogSCACIEPStatusHandshakeComplete = "EPStatus handshake complete"
+	LogSCACIRecordStatusOpFailed      = "Failed to record Status operation"
+	LogSCACIRecordStatusRspOpFailed   = "Failed to record Status response state"
+	LogSCACIRecordStatusCmpOpFailed   = "Failed to record Status complete state"
+	LogSCACIStatusDependencyFailed    = "Status dependency query failed, returning degraded status"
 
 	// ========================================================================
-	// Shared Persistence Operations (9 constants)
+	// Shared Persistence Operations
 	// ========================================================================
 
-	LogSCACIPersistACOpIdFailed         = "Failed to persist AC opId"
-	LogSCACIPersistSCOpIdFailed         = "Failed to persist SC opId"
 	LogSCACIPersistOpIDsPairFailed      = "Failed to persist opId pair atomically"
 	LogSCACIPersistHeartbeatFailed      = "Failed to persist session heartbeat"
 	LogSCACIRecordOperationFailed       = "Failed to record operation"
 	LogSCACIUpdateOperationStateFailed  = "Failed to update operation state"
-	LogSCACILookupEndpointFailed        = "Failed to lookup endpoint"
 	LogSCACIMarkOperationCompleteFailed = "Failed to mark operation completed"
 	LogSCACIReceivedErrorAck            = "Received error acknowledgement"
 
@@ -350,13 +330,12 @@ const (
 	// ========================================================================
 
 	LogSCACISendEPStatusFailed           = "Failed to send EPStatus to AC"
-	LogSCACIRecordEPStatusOpFailed       = "Failed to record EPStatus operation"
-	LogSCACINoActiveACsForTenant         = "No active ACs for tenant to broadcast EPStatus"
 	LogSCACIEPStatusResponseReceived     = "Received EPStatus response from AC"
 	LogSCACIOperationStateUpdateFailed   = "Failed to update operation state"
 	LogSCACIReplayingEPStatus            = "Replaying EPStatus operation after session resume"
 	LogSCACIReplayEPStatusInvalidData    = "Invalid data in stored EPStatus operation"
 	LogSCACIReplayEPStatusFieldDecodeErr = "Failed to decode field in EPStatus replay"
+	LogSCACIReplayULDataFieldDecodeErr   = "Failed to decode field in ulData replay"
 	LogSCACIConnectRspValidationFailed   = "SCACI ConnectResponse validation failed"
 	LogSCACIStatusRspValidationFailed    = "SCACI StatusResponse validation failed"
 	LogSCACIULDataValidationFailed       = "SCACI ULData validation failed"

@@ -20,6 +20,7 @@ import (
 	"math/big"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // ============================================================================
@@ -68,7 +69,7 @@ func precisionError(value interface{}) error {
 // Parameters:
 //   - ctx: Request context for context-aware logging
 //   - log: Logger instance for structured logging via *Context methods
-//   - command: MIOTY command mnemonic (e.g., "statusRsp", "att", "det")
+//   - command: MIOTY command mnemonic (e.g., statusRsp, att, det)
 //   - data: Raw payload map decoded from MessagePack/JSON
 //
 // Returns:
@@ -119,7 +120,7 @@ func normalizePayload(ctx context.Context, log logger.Logger, command string, da
 		if !exists {
 			// Mandatory field missing - fail normalization
 			// Sentinel error enables caller to use errors.Is() for token mapping
-			return nil, fmt.Errorf("%w: %s (spec: %s)", ErrMandatoryFieldMissing, fieldSpec.Name, fieldSpec.SpecRef)
+			return nil, fmt.Errorf(errFmtSpec, ErrMandatoryFieldMissing, fieldSpec.Name, fieldSpec.SpecRef)
 		}
 
 		// Type-coerce and validate field
@@ -128,12 +129,12 @@ func normalizePayload(ctx context.Context, log logger.Logger, command string, da
 			// Invalid field type - fail normalization
 			// Sentinel error enables caller to use errors.Is() for token mapping
 			logNumericPrecisionLoss(ctx, log, command, fieldSpec, err)
-			return nil, fmt.Errorf("%w for field %s: %v (spec: %s)", ErrInvalidFieldType, fieldSpec.Name, err, fieldSpec.SpecRef)
+			return nil, fmt.Errorf(errFmtWrapFieldSpec, ErrInvalidFieldType, fieldSpec.Name, err, fieldSpec.SpecRef)
 		}
 
 		// Custom validation if specified
 		if fieldSpec.Validator != nil && !fieldSpec.Validator(coerced) {
-			return nil, fmt.Errorf("validation failed for field %s (spec: %s)", fieldSpec.Name, fieldSpec.SpecRef)
+			return nil, fmt.Errorf(errFmtValidationFailedForFieldSpec, fieldSpec.Name, fieldSpec.SpecRef)
 		}
 
 		normalized[fieldSpec.Name] = coerced
@@ -151,19 +152,19 @@ func normalizePayload(ctx context.Context, log logger.Logger, command string, da
 			if err != nil {
 				// Sentinel error enables caller to use errors.Is() for token mapping
 				logNumericPrecisionLoss(ctx, log, command, fieldSpec, err)
-				return nil, fmt.Errorf("%w for optional field %s: %v (spec: %s)", ErrInvalidFieldType, fieldSpec.Name, err, fieldSpec.SpecRef)
+				return nil, fmt.Errorf(errFmtWrapOptionalFieldSpec, ErrInvalidFieldType, fieldSpec.Name, err, fieldSpec.SpecRef)
 			}
 
 			// Custom validation if specified
 			if fieldSpec.Validator != nil && !fieldSpec.Validator(coerced) {
-				return nil, fmt.Errorf("validation failed for optional field %s (spec: %s)", fieldSpec.Name, fieldSpec.SpecRef)
+				return nil, fmt.Errorf(errFmtValidationFailedForOptionalFieldSpec, fieldSpec.Name, fieldSpec.SpecRef)
 			}
 
 			normalized[fieldSpec.Name] = coerced
 		} else {
 			// Optional field absent
 			// Special case: Detach eqSnr defaults to snr value when absent (BSSCI §5.7.1)
-			if command == "det" && fieldSpec.Name == "eqSnr" {
+			if command == mioty.CmdDetach && fieldSpec.Name == "eqSnr" {
 				// Copy snr value as eqSnr default
 				if snr, ok := normalized["snr"]; ok {
 					normalized["eqSnr"] = snr
@@ -192,11 +193,11 @@ func normalizePayload(ctx context.Context, log logger.Logger, command string, da
 		if !seenFields[fieldName] && !baseFields[fieldName] {
 			// Unknown field detected - log at WARN level and drop
 			// Use WarnContext for context-aware logging
-			log.WarnContext(ctx, "Unknown field in message - dropping for forward compatibility",
-				"command", command,
-				"field", fieldName,
-				"specSection", spec.SpecSection,
-				"bssciRef", "§2.4",
+			log.WarnContext(ctx, LogBSSCIUnknownFieldDropped,
+				logger.FieldCommand, command,
+				logger.FieldField, fieldName,
+				logger.FieldSpecSection, spec.SpecSection,
+				logger.FieldBssciRef, specSectionNormalization,
 			)
 		}
 	}
@@ -225,7 +226,7 @@ func normalizePayload(ctx context.Context, log logger.Logger, command string, da
 					// Optional fields with nil value are considered absent
 					if value, exists := normalized[forbiddenField]; exists && value != nil {
 						// Sentinel error enables caller to use errors.Is() for token mapping
-						return nil, fmt.Errorf("%w: %s must not be present (%s)", ErrConditionalRuleFailed, forbiddenField, rule.ErrorMsg)
+						return nil, fmt.Errorf(errFmtFieldMustNotBePresent, ErrConditionalRuleFailed, forbiddenField, rule.ErrorMsg)
 					}
 				}
 			}
@@ -237,10 +238,10 @@ func normalizePayload(ctx context.Context, log logger.Logger, command string, da
 	// ========================================================================
 	// BSSCI/MIOTY Radio Protocol §3.6.5.1: When responseExp=true, dlOpen must be true
 	// ConditionalRule above ensures dlOpen is *present*; this validates its *value*
-	if command == "ulData" {
+	if command == mioty.CmdULData {
 		if responseExp, ok := normalized["responseExp"].(bool); ok && responseExp {
 			if dlOpen, ok := normalized["dlOpen"].(bool); !ok || !dlOpen {
-				return nil, fmt.Errorf("%w (MIOTY Radio Protocol §3.6.5.1)", ErrResponseExpRequiresDlOpen)
+				return nil, fmt.Errorf(errFmtWrapRadioSpecDualChannel, ErrResponseExpRequiresDlOpen)
 			}
 		}
 	}
@@ -274,14 +275,14 @@ func coerceFieldType(value interface{}, fieldSpec FieldSpec) (interface{}, error
 	case TypeString:
 		str, ok := value.(string)
 		if !ok {
-			return nil, fmt.Errorf("expected string, got %T", value)
+			return nil, fmt.Errorf(errFmtExpectedStringGot, value)
 		}
 		return str, nil
 
 	case TypeBool:
 		b, ok := value.(bool)
 		if !ok {
-			return nil, fmt.Errorf("expected bool, got %T", value)
+			return nil, fmt.Errorf(errFmtExpectedBoolGot, value)
 		}
 		return b, nil
 
@@ -290,7 +291,7 @@ func coerceFieldType(value interface{}, fieldSpec FieldSpec) (interface{}, error
 		switch v := value.(type) {
 		case []byte:
 			if fieldSpec.ByteLength > 0 && len(v) != fieldSpec.ByteLength {
-				return nil, fmt.Errorf("expected %d bytes, got %d", fieldSpec.ByteLength, len(v))
+				return nil, fmt.Errorf(errFmtExpectedBytesGot, fieldSpec.ByteLength, len(v))
 			}
 			return v, nil
 		case []interface{}:
@@ -300,16 +301,16 @@ func coerceFieldType(value interface{}, fieldSpec FieldSpec) (interface{}, error
 			for i, elem := range v {
 				b, err := numericToByte(elem)
 				if err != nil {
-					return nil, fmt.Errorf("array element at index %d: %w", i, err)
+					return nil, fmt.Errorf(errFmtArrayElementAtIndex, i, err)
 				}
 				bytes[i] = b
 			}
 			if fieldSpec.ByteLength > 0 && len(bytes) != fieldSpec.ByteLength {
-				return nil, fmt.Errorf("expected %d bytes, got %d", fieldSpec.ByteLength, len(bytes))
+				return nil, fmt.Errorf(errFmtExpectedBytesGot, fieldSpec.ByteLength, len(bytes))
 			}
 			return bytes, nil
 		default:
-			return nil, fmt.Errorf("expected byte array, got %T", value)
+			return nil, fmt.Errorf(errFmtExpectedByteArrayGot, value)
 		}
 
 	case TypeArray, TypeGeoLocation, TypeSubpackets, TypeStruct, TypeInterface:
@@ -318,7 +319,7 @@ func coerceFieldType(value interface{}, fieldSpec FieldSpec) (interface{}, error
 		return value, nil
 
 	default:
-		return nil, fmt.Errorf("unsupported field type: %s", fieldSpec.Type)
+		return nil, fmt.Errorf(errFmtUnsupportedFieldType, fieldSpec.Type)
 	}
 }
 
@@ -335,9 +336,9 @@ func logNumericPrecisionLoss(ctx context.Context, log logger.Logger, command str
 		msg = LogBSSCIEUIPrecisionLoss
 	}
 	log.WarnContext(ctx, msg,
-		"command", command,
-		"field", fieldSpec.Name,
-		"error", err.Error(),
+		logger.FieldCommand, command,
+		logger.FieldField, fieldSpec.Name,
+		logger.FieldError, err.Error(),
 	)
 }
 
@@ -346,10 +347,10 @@ func logNumericPrecisionLoss(ctx context.Context, log logger.Logger, command str
 // (2^53 for float64, 2^24 for float32).
 func checkExactIntegerFloat(v float64, bound uint64) error {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return fmt.Errorf("non-finite value %v cannot be coerced to integer", v)
+		return fmt.Errorf(errFmtNonFiniteCoerce, v)
 	}
 	if v != math.Trunc(v) {
-		return fmt.Errorf("fractional value %v cannot be coerced to integer", v)
+		return fmt.Errorf(errFmtFractionalIntegerCoerce, v)
 	}
 	if math.Abs(v) > float64(bound) {
 		return precisionError(v)
@@ -365,14 +366,14 @@ func checkExactIntegerFloat(v float64, bound uint64) error {
 func parseJSONNumber(n json.Number) (*big.Rat, error) {
 	s := string(n)
 	if s == "" || !json.Valid([]byte(s)) {
-		return nil, fmt.Errorf("invalid JSON number %q", s)
+		return nil, fmt.Errorf(errFmtInvalidJSONNumberPlain, s)
 	}
 	if c := s[0]; c != '-' && (c < '0' || c > '9') {
-		return nil, fmt.Errorf("invalid JSON number %q", s)
+		return nil, fmt.Errorf(errFmtInvalidJSONNumberPlain, s)
 	}
 	r, ok := new(big.Rat).SetString(s)
 	if !ok {
-		return nil, fmt.Errorf("invalid JSON number %q", s)
+		return nil, fmt.Errorf(errFmtInvalidJSONNumberPlain, s)
 	}
 	return r, nil
 }
@@ -387,14 +388,14 @@ func jsonNumberToUint64(n json.Number) (uint64, error) {
 		return 0, err
 	}
 	if !r.IsInt() {
-		return 0, fmt.Errorf("fractional value %s cannot be coerced to uint64", n)
+		return 0, fmt.Errorf(errFmtFractionalUint64Coerce, n)
 	}
 	i := r.Num()
 	if i.Sign() < 0 {
-		return 0, fmt.Errorf("negative value cannot be coerced to uint64: %s", n)
+		return 0, fmt.Errorf(errFmtNegativeUint64Coerce, n)
 	}
 	if !i.IsUint64() {
-		return 0, fmt.Errorf("value %s overflows uint64", n)
+		return 0, fmt.Errorf(errFmtValueOverflowsUint64, n)
 	}
 	return i.Uint64(), nil
 }
@@ -407,11 +408,11 @@ func jsonNumberToInt64(n json.Number) (int64, error) {
 		return 0, err
 	}
 	if !r.IsInt() {
-		return 0, fmt.Errorf("fractional value %s cannot be coerced to int64", n)
+		return 0, fmt.Errorf(errFmtFractionalInt64Coerce, n)
 	}
 	i := r.Num()
 	if !i.IsInt64() {
-		return 0, fmt.Errorf("value %s overflows int64", n)
+		return 0, fmt.Errorf(errFmtStringOverflowsInt64, n)
 	}
 	return i.Int64(), nil
 }
@@ -434,12 +435,12 @@ func coerceInt64(value interface{}) (int64, error) {
 		return int64(v), nil
 	case uint64:
 		if v > math.MaxInt64 {
-			return 0, fmt.Errorf("value %d overflows int64", v)
+			return 0, fmt.Errorf(errFmtValueOverflowsInt64, v)
 		}
 		return int64(v), nil
 	case uint:
 		if uint64(v) > math.MaxInt64 {
-			return 0, fmt.Errorf("value %d overflows int64", v)
+			return 0, fmt.Errorf(errFmtValueOverflowsInt64, v)
 		}
 		return int64(v), nil
 	case uint32:
@@ -462,7 +463,7 @@ func coerceInt64(value interface{}) (int64, error) {
 	case json.Number:
 		return jsonNumberToInt64(v)
 	default:
-		return 0, fmt.Errorf("cannot convert %T to int64", value)
+		return 0, fmt.Errorf(errFmtCannotConvertTypeToInt64, value)
 	}
 }
 
@@ -501,14 +502,14 @@ func coerceToUnsigned(value interface{}, targetMax uint64, typeName string) (uin
 	case json.Number:
 		return jsonNumberToTarget(v, targetMax, typeName)
 	default:
-		return 0, fmt.Errorf("cannot convert %T to %s", value, typeName)
+		return 0, fmt.Errorf(errFmtCannotConvertTypeTo, value, typeName)
 	}
 }
 
 // unsignedToTarget range-checks an unsigned wire value against the target width.
 func unsignedToTarget(v, targetMax uint64, typeName string) (uint64, error) {
 	if v > targetMax {
-		return 0, fmt.Errorf("value %d out of range for %s", v, typeName)
+		return 0, fmt.Errorf(errFmtIntOutOfRangeFor, v, typeName)
 	}
 	return v, nil
 }
@@ -520,12 +521,12 @@ func unsignedToTarget(v, targetMax uint64, typeName string) (uint64, error) {
 func signedToTarget(v int64, sourceMax, targetMax uint64, typeName string) (uint64, error) {
 	if sourceMax > targetMax {
 		if v < 0 || uint64(v) > targetMax {
-			return 0, fmt.Errorf("value %d out of range for %s", v, typeName)
+			return 0, fmt.Errorf(errFmtIntOutOfRangeFor, v, typeName)
 		}
 		return uint64(v), nil
 	}
 	if v < 0 {
-		return 0, fmt.Errorf("negative value cannot be coerced to %s: %d", typeName, v)
+		return 0, fmt.Errorf(errFmtNegativeIntCoerce, typeName, v)
 	}
 	return uint64(v), nil
 }
@@ -539,12 +540,12 @@ func floatToTarget(f float64, exactLimit, targetMax uint64, typeName string) (ui
 	}
 	if targetMax < math.MaxUint64 {
 		if f < 0 || f > float64(targetMax) {
-			return 0, fmt.Errorf("value %f out of range for %s", f, typeName)
+			return 0, fmt.Errorf(errFmtFloatOutOfRangeFor, f, typeName)
 		}
 		return uint64(f), nil
 	}
 	if f < 0 {
-		return 0, fmt.Errorf("negative value cannot be coerced to %s: %v", typeName, f)
+		return 0, fmt.Errorf(errFmtNegativeValueCoerce, typeName, f)
 	}
 	return uint64(f), nil
 }
@@ -557,19 +558,19 @@ func jsonNumberToTarget(v json.Number, targetMax uint64, typeName string) (uint6
 		return 0, err
 	}
 	if u > targetMax {
-		return 0, fmt.Errorf("value %d out of range for %s", u, typeName)
+		return 0, fmt.Errorf(errFmtIntOutOfRangeFor, u, typeName)
 	}
 	return u, nil
 }
 
 // coerceUint64 converts wire numeric values to uint64 with exact semantics.
 func coerceUint64(value interface{}) (uint64, error) {
-	return coerceToUnsigned(value, math.MaxUint64, "uint64")
+	return coerceToUnsigned(value, math.MaxUint64, typeNameUint64)
 }
 
 // coerceUint32 converts various numeric types to uint32
 func coerceUint32(value interface{}) (uint32, error) {
-	u, err := coerceToUnsigned(value, math.MaxUint32, "uint32")
+	u, err := coerceToUnsigned(value, math.MaxUint32, typeNameUint32)
 	if err != nil {
 		return 0, err
 	}
@@ -578,7 +579,7 @@ func coerceUint32(value interface{}) (uint32, error) {
 
 // coerceUint16 converts various numeric types to uint16
 func coerceUint16(value interface{}) (uint16, error) {
-	u, err := coerceToUnsigned(value, math.MaxUint16, "uint16")
+	u, err := coerceToUnsigned(value, math.MaxUint16, typeNameUint16)
 	if err != nil {
 		return 0, err
 	}
@@ -592,13 +593,13 @@ func coerceFloat64(value interface{}) (float64, error) {
 	switch v := value.(type) {
 	case float64:
 		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return 0, fmt.Errorf("non-finite value %v is not a valid field value", v)
+			return 0, fmt.Errorf(errFmtNonFiniteFieldValue, v)
 		}
 		return v, nil
 	case float32:
 		f := float64(v)
 		if math.IsNaN(f) || math.IsInf(f, 0) {
-			return 0, fmt.Errorf("non-finite value %v is not a valid field value", f)
+			return 0, fmt.Errorf(errFmtNonFiniteFieldValue, f)
 		}
 		return f, nil
 	case int64:
@@ -624,14 +625,14 @@ func coerceFloat64(value interface{}) (float64, error) {
 	case json.Number:
 		f, err := v.Float64()
 		if err != nil {
-			return 0, fmt.Errorf("invalid JSON number %q: %w", string(v), err)
+			return 0, fmt.Errorf(errFmtInvalidJSONNumber, string(v), err)
 		}
 		if math.IsNaN(f) || math.IsInf(f, 0) {
-			return 0, fmt.Errorf("non-finite value %v is not a valid field value", f)
+			return 0, fmt.Errorf(errFmtNonFiniteFieldValue, f)
 		}
 		return f, nil
 	default:
-		return 0, fmt.Errorf("cannot convert %T to float64", value)
+		return 0, fmt.Errorf(errFmtCannotConvertTypeToFloat64, value)
 	}
 }
 
@@ -644,65 +645,65 @@ func numericToByte(value interface{}) (byte, error) {
 		return v, nil
 	case int8:
 		if v < 0 {
-			return 0, fmt.Errorf("negative value %d cannot be converted to byte", v)
+			return 0, fmt.Errorf(errFmtNegativeValueCannotBeConvertedTo, v)
 		}
 		return byte(v), nil
 	case uint16:
-		if v > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", v)
+		if v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case int16:
-		if v < 0 || v > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", v)
+		if v < 0 || v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case uint32:
-		if v > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", v)
+		if v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case int32:
-		if v < 0 || v > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", v)
+		if v < 0 || v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case uint64:
-		if v > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", v)
+		if v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case int64:
-		if v < 0 || v > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", v)
+		if v < 0 || v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case int:
-		if v < 0 || v > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", v)
+		if v < 0 || v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case uint:
-		if v > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", v)
+		if v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case float32:
 		// Reject fractional values - bytes must be whole numbers
 		if v != float32(int64(v)) {
-			return 0, fmt.Errorf("value %f out of byte range (0-255)", v)
+			return 0, fmt.Errorf(errFmtFloatOutOfByteRange, v)
 		}
-		if v < 0 || v > 255 {
-			return 0, fmt.Errorf("value %f out of byte range (0-255)", v)
+		if v < 0 || v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtFloatOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case float64:
 		// Reject fractional values - bytes must be whole numbers
 		if v != float64(int64(v)) {
-			return 0, fmt.Errorf("value %f out of byte range (0-255)", v)
+			return 0, fmt.Errorf(errFmtFloatOutOfByteRange, v)
 		}
-		if v < 0 || v > 255 {
-			return 0, fmt.Errorf("value %f out of byte range (0-255)", v)
+		if v < 0 || v > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtFloatOutOfByteRange, v)
 		}
 		return byte(v), nil
 	case json.Number:
@@ -710,11 +711,11 @@ func numericToByte(value interface{}) (byte, error) {
 		if err != nil {
 			return 0, err
 		}
-		if u > 255 {
-			return 0, fmt.Errorf("value %d out of byte range (0-255)", u)
+		if u > math.MaxUint8 {
+			return 0, fmt.Errorf(errFmtIntOutOfByteRange, u)
 		}
 		return byte(u), nil
 	default:
-		return 0, fmt.Errorf("cannot convert %T to byte", value)
+		return 0, fmt.Errorf(errFmtCannotConvertTypeToByte, value)
 	}
 }

@@ -13,6 +13,9 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 )
 
+// concurrentAccessIterations is the number of concurrent lookup rounds the race test performs.
+const concurrentAccessIterations = 100
+
 var (
 	testDefaultTenantID = int64(1)
 	testDefaultOrgUUID  = uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
@@ -106,7 +109,7 @@ func TestCommunityResolver_ConcurrentAccess(_ *testing.T) {
 	ctx := testutil.TestContext()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := 0; i < concurrentAccessIterations; i++ {
 		wg.Add(3)
 		go func() {
 			defer wg.Done()

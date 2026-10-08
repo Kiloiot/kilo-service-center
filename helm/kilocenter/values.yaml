@@ -35,7 +35,17 @@ redis:
 # Secrets (all MUST be overridden in production)
 # ---------------------------------------------------------------------------
 secrets:
+  # Key-material master key (64 hex chars or base64 -> 32 bytes). REQUIRED:
+  # services fatal without it. Generate it once (openssl rand -hex 32), keep
+  # it with your deployment secrets and pass the same value to every upgrade:
+  # stored keys cannot be decrypted without it. Never commit a real value.
+  masterKey: ""
   authHmacSecret: "dev-secret-must-be-at-least-32-bytes-long"
+  # Shared secret KC-Gateway, KC-Core and KC-Identity present on internal gRPC
+  # calls. REQUIRED (at least 32 characters): the pods reach each other over
+  # the cluster network, and the services refuse to start without it.
+  #   --set secrets.internalPeerSecret=$(openssl rand -hex 32)
+  internalPeerSecret: ""
   mqttAdminPassword: "KiloCenter"
   mqttClientPassword: "kilocenter"
 
@@ -44,7 +54,7 @@ secrets:
 # ---------------------------------------------------------------------------
 kcCore:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-core
+    repository: ghcr.io/kiloiot/kc-core
     tag: ""                      # defaults to global.imageTag
   resources:
     limits:
@@ -65,16 +75,32 @@ kcCore:
       port: 5001
       tlsEnabled: true
       tlsMinVersion: "1.3"
+      # Operations a disconnected Application Center session holds for its
+      # resume; one more ends the session's resumability.
+      resumeMaxPendingOperations: 10000
     grpc:
       port: 50051
     health:
       port: 8086
     messageRetentionDays: 90
     protocol:
-      maxRetransmissions: 3
       ackTimeout: 5000
       duplicateWindow: 300
+      delivery:
+        pollInterval: "1s"
+        batchSize: 50
+        retryBackoff: "2s"
+        maxBackoff: "5m"
+        receptionWindow: "500ms"
+      downlinkExpiry:
+        lifetime: "24h"
+        sweepInterval: "5s"
+        batchSize: 100
+        # POSIX codes of a dlDataRev refusal that say the base station does not
+        # hold the downlink (BSSCI 3.17 names none; 2 is ENOENT).
+        revokeNotHeldCodes: [2]
       connectionEstablishmentTimeout: 30000
+      socketWriteTimeout: 10000
       statusRequestInterval: 30
       statusRequestInitialDelay: 5
       dlrxQueryTimeout: 300
@@ -89,7 +115,7 @@ kcCore:
 # ---------------------------------------------------------------------------
 kcGateway:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-gateway
+    repository: ghcr.io/kiloiot/kc-gateway
     tag: ""
   resources:
     limits:
@@ -124,7 +150,7 @@ kcGateway:
 # ---------------------------------------------------------------------------
 kcIdentity:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-identity
+    repository: ghcr.io/kiloiot/kc-identity
     tag: ""
   resources:
     limits:
@@ -137,15 +163,13 @@ kcIdentity:
       port: 50052
     health:
       port: 8088
-    auth:
-      registrationEnabled: true
 
 # ---------------------------------------------------------------------------
 # KC-Web — browser UI (nginx serving static files)
 # ---------------------------------------------------------------------------
 kcWeb:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-web
+    repository: ghcr.io/kiloiot/kc-web
     tag: ""
   resources:
     limits:
@@ -177,9 +201,47 @@ mosquitto:
 # ---------------------------------------------------------------------------
 certgen:
   image:
-    repository: ghcr.io/kiloiot/kiloservicecenter/kc-core
+    repository: ghcr.io/kiloiot/kc-core
     tag: ""                      # same image as kc-core; contains certgen binary
   serverName: "localhost"
+
+# ---------------------------------------------------------------------------
+# At-rest key material conversion (Helm pre-upgrade hook)
+# Converts legacy key encodings to the authenticated envelope format and
+# reconciles the retired endpoint_keys tables before the new binaries (and
+# their startup migrations) run. Idempotent: a clean database is a no-op.
+# The hook reads secrets.masterKey, postgresql.password and legacyPassphrase
+# from its own short-lived Secret, deleted once the upgrade hooks succeed.
+# ---------------------------------------------------------------------------
+rekey:
+  enabled: true
+  mode: apply
+  image:
+    repository: ghcr.io/kiloiot/kc-core
+    tag: ""                      # same image as kc-core; contains the rekey and migrate binaries
+  # Schema version the hook migrates to before rekeying: the first version
+  # whose endpoint key checks accept envelopes. Never migrates down.
+  migrateToVersion: 143
+  # Passphrase the deployment set as KC_ENCRYPTION_KEY before v1.4, needed to
+  # decrypt the rows it sealed. Leave empty when KC_ENCRYPTION_KEY was never
+  # set; when supplied, set allowPublishedDevelopmentKey to false.
+  legacyPassphrase: ""
+  # Decrypt legacy rows sealed under the published development passphrase.
+  # KC-Core used that passphrase whenever KC_ENCRYPTION_KEY was unset, and
+  # this chart never set it, so every database installed with the chart up
+  # to v1.3.0 holds such rows: their session, message, TLS and pending
+  # operation keys were never secret, and the upgrade cannot convert them
+  # without this flag.
+  allowPublishedDevelopmentKey: true
+  archiveExport:
+    # Existing PersistentVolumeClaim (writable by uid/gid 1000) that receives
+    # the master-key-encrypted export of retired endpoint_keys rows the hook
+    # cannot fold into the endpoints table, and of any endpoint_keys_archive
+    # rows. Empty: no export location, and the hook fails if such rows exist.
+    existingClaim: ""
+    # Where the claim is mounted in the hook; each upgrade writes
+    # endpoint-keys-<release revision>.enc there.
+    mountPath: /var/lib/kilocenter/rekey
 
 # ---------------------------------------------------------------------------
 # Shared certificate PVC

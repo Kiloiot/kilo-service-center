@@ -27,6 +27,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
@@ -40,6 +41,7 @@ import (
 //   - ValidateConnect: Connect flow, version negotiation, session resumption
 //   - NegotiateVersion: SCACI §2.1-2.3 version compatibility checks
 //   - ResolveResume: SCACI §3.3 session resumption validation
+//   - CertificateTenant: tenant the client certificate resolves to
 type MockHandshakeService struct {
 	mock.Mock
 }
@@ -71,16 +73,22 @@ func (m *MockHandshakeService) NegotiateVersion(ctx context.Context, clientVersi
 	return args.String(0), args.String(1)
 }
 
+// CertificateTenant mocks HandshakeService.CertificateTenant
+func (m *MockHandshakeService) CertificateTenant(ctx context.Context, cert *x509.Certificate) (int64, bool) {
+	args := m.Called(ctx, cert)
+	return args.Get(0).(int64), args.Bool(1)
+}
+
 // ResolveResume mocks HandshakeService.ResolveResume
 func (m *MockHandshakeService) ResolveResume(
 	ctx context.Context,
-	tenantID int64,
+	ac ApplicationCenter,
 	acUUID []byte,
 	scUUID []byte,
 	acOpId, scOpId int64,
 	requestVersion string,
 ) (bool, string) {
-	args := m.Called(ctx, tenantID, acUUID, scUUID, acOpId, scOpId, requestVersion)
+	args := m.Called(ctx, ac, acUUID, scUUID, acOpId, scOpId, requestVersion)
 	return args.Bool(0), args.String(1)
 }
 
@@ -145,18 +153,18 @@ func (m *MockDLService) QueueDownlink(
 	ctx context.Context,
 	req *mioty.DLDataQueue,
 	tenantID int64,
-) (uint64, uint64, string) {
-	args := m.Called(ctx, req, tenantID)
-	return args.Get(0).(uint64), args.Get(1).(uint64), args.String(2)
+	organizationID uuid.UUID,
+) (DownlinkQueueOutcome, string) {
+	args := m.Called(ctx, req, tenantID, organizationID)
+	return args.Get(0).(DownlinkQueueOutcome), args.String(1)
 }
 
 // RevokeDownlink mocks DLService.RevokeDownlink
 func (m *MockDLService) RevokeDownlink(
 	ctx context.Context,
-	queId uint64,
-	tenantID int64,
+	ref scheduler.DownlinkRef,
 ) (uint64, string) {
-	args := m.Called(ctx, queId, tenantID)
+	args := m.Called(ctx, ref)
 	return args.Get(0).(uint64), args.String(1)
 }
 
@@ -209,6 +217,19 @@ func (m *MockOperationRecorder) Record(
 	return args.Error(0)
 }
 
+// EnsureUplinkOperation mocks OperationRecorder.EnsureUplinkOperation
+func (m *MockOperationRecorder) EnsureUplinkOperation(
+	ctx context.Context,
+	session *Session,
+	opId int64,
+	sourceMessageID string,
+	data map[string]interface{},
+) (*models.SCACIOperation, bool, error) {
+	args := m.Called(ctx, session, opId, sourceMessageID, data)
+	operation, _ := args.Get(0).(*models.SCACIOperation)
+	return operation, args.Bool(1), args.Error(2)
+}
+
 // ============================================================================
 // MockSessionPersistence for ping heartbeat tests (SCACI §3.4)
 // ============================================================================
@@ -216,16 +237,11 @@ func (m *MockOperationRecorder) Record(
 // MockSessionPersistence implements SessionPersistence interface for testing
 //
 // Provides mocks for:
-//   - PersistResumeAsync: Resumed-session update after Connect
 //   - PersistConnectSync: Synchronous session creation for audit trail
-//   - PersistHeartbeatAsync: SCACI §3.4 ping heartbeat persistence
+//   - PersistHeartbeat: SCACI §3.4 ping heartbeat persistence
+//   - PersistOpIDs: SCACI §3.2 operation ID counter persistence
 type MockSessionPersistence struct {
 	mock.Mock
-}
-
-// PersistResumeAsync mocks SessionPersistence.PersistResumeAsync
-func (m *MockSessionPersistence) PersistResumeAsync(ctx context.Context, session *Session, tlsVersion, cipherSuite string) {
-	m.Called(ctx, session, tlsVersion, cipherSuite)
 }
 
 // PersistConnectSync mocks SessionPersistence.PersistConnectSync
@@ -234,14 +250,22 @@ func (m *MockSessionPersistence) PersistConnectSync(ctx context.Context, session
 	return args.Get(0).(int64), args.Error(1)
 }
 
-// PersistHeartbeatAsync mocks SessionPersistence.PersistHeartbeatAsync
-func (m *MockSessionPersistence) PersistHeartbeatAsync(ctx context.Context, session *Session) {
-	m.Called(ctx, session)
+// PersistHeartbeat mocks SessionPersistence.PersistHeartbeat
+func (m *MockSessionPersistence) PersistHeartbeat(ctx context.Context, session *Session) error {
+	return m.Called(ctx, session).Error(0)
+}
+
+// PersistOpIDs mocks SessionPersistence.PersistOpIDs
+func (m *MockSessionPersistence) PersistOpIDs(ctx context.Context, session *Session, ids OpIDPair) error {
+	return m.Called(ctx, session, ids).Error(0)
 }
 
 // ============================================================================
 // Mock net.Conn for Send* Helper Tests (SCACI §2.5)
 // ============================================================================
+
+// mockRemoteAddr is the peer address of every mockConn.
+var mockRemoteAddr net.Addr = &net.UnixAddr{Name: "application-center-under-test", Net: "unix"}
 
 // mockConn implements net.Conn for testing Send* helpers.
 // Only Write is called by sendResponse; other methods return defaults.
@@ -256,7 +280,7 @@ func (m *mockConn) Write(b []byte) (n int, err error) {
 }
 func (m *mockConn) Close() error                       { return nil }
 func (m *mockConn) LocalAddr() net.Addr                { return nil }
-func (m *mockConn) RemoteAddr() net.Addr               { return nil }
+func (m *mockConn) RemoteAddr() net.Addr               { return mockRemoteAddr }
 func (m *mockConn) SetDeadline(_ time.Time) error      { return nil }
 func (m *mockConn) SetReadDeadline(_ time.Time) error  { return nil }
 func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
@@ -268,37 +292,14 @@ func (m *mockConn) SetWriteDeadline(_ time.Time) error { return nil }
 // GetDownlinkQueue mocks DLService.GetDownlinkQueue for deregister cleanup
 func (m *MockDLService) GetDownlinkQueue(
 	ctx context.Context,
-	deviceEUI string,
-	tenantID string,
+	tenantID int64,
+	filter storage.DownlinkQueueFilter,
 ) ([]*storage.DownlinkMessage, error) {
-	args := m.Called(ctx, deviceEUI, tenantID)
+	args := m.Called(ctx, tenantID, filter)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]*storage.DownlinkMessage), args.Error(1)
-}
-
-// RevokeDownlinkByID mocks DLService.RevokeDownlinkByID for deregister cleanup
-func (m *MockDLService) RevokeDownlinkByID(
-	ctx context.Context,
-	queId int64,
-	tenantID string,
-) error {
-	args := m.Called(ctx, queId, tenantID)
-	return args.Error(0)
-}
-
-// GetDownlinkByQueueID mocks DLService.GetDownlinkByQueueID
-func (m *MockDLService) GetDownlinkByQueueID(
-	ctx context.Context,
-	queId uint64,
-	tenantID string,
-) (*storage.DownlinkMessage, error) {
-	args := m.Called(ctx, queId, tenantID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*storage.DownlinkMessage), args.Error(1)
 }
 
 // EnqueueDownlink mocks DLService.EnqueueDownlink
@@ -313,30 +314,16 @@ func (m *MockDLService) EnqueueDownlink(
 	return args.Get(0).(*storage.DownlinkMessage), args.Error(1)
 }
 
-// UpdateDownlinkStatus mocks DLService.UpdateDownlinkStatus.
-// orgID parameter scopes updates to a specific organization per §3.10.
-func (m *MockDLService) UpdateDownlinkStatus(
+// GetDownlinksByPacketCnt mocks DLService.GetDownlinksByPacketCnt
+func (m *MockDLService) GetDownlinksByPacketCnt(
 	ctx context.Context,
-	id string,
-	status string,
-	orgID *uuid.UUID,
-) error {
-	args := m.Called(ctx, id, status, orgID)
-	return args.Error(0)
-}
-
-// GetDownlinkByPacketCnt mocks DLService.GetDownlinkByPacketCnt
-func (m *MockDLService) GetDownlinkByPacketCnt(
-	ctx context.Context,
-	tenantID string,
-	epEui string,
-	packetCnt uint32,
-) (*storage.DownlinkMessage, error) {
-	args := m.Called(ctx, tenantID, epEui, packetCnt)
+	query storage.PacketCounterDownlinks,
+) ([]*storage.DownlinkMessage, error) {
+	args := m.Called(ctx, query)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*storage.DownlinkMessage), args.Error(1)
+	return args.Get(0).([]*storage.DownlinkMessage), args.Error(1)
 }
 
 // ============================================================================
@@ -344,8 +331,8 @@ func (m *MockDLService) GetDownlinkByPacketCnt(
 // ============================================================================
 
 // PropagateDetachToAll mocks EndpointService.PropagateDetachToAll
-func (m *MockEndpointService) PropagateDetachToAll(ctx context.Context, epEui uint64) []error {
-	args := m.Called(ctx, epEui)
+func (m *MockEndpointService) PropagateDetachToAll(ctx context.Context, tenantID int64, epEui uint64) []error {
+	args := m.Called(ctx, tenantID, epEui)
 	if args.Get(0) == nil {
 		return nil
 	}
@@ -365,16 +352,10 @@ func (m *MockEndpointService) GetByEUI(
 	return args.Get(0).(*models.EndPoint), args.String(1)
 }
 
-// GetGlobal mocks EndpointService.GetGlobal
-func (m *MockEndpointService) GetGlobal(
-	ctx context.Context,
-	eui []byte,
-) (*models.EndPoint, string) {
-	args := m.Called(ctx, eui)
-	if args.Get(0) == nil {
-		return nil, args.String(1)
-	}
-	return args.Get(0).(*models.EndPoint), args.String(1)
+// Attach mocks EndpointService.Attach
+func (m *MockEndpointService) Attach(ctx context.Context, endpoint *models.EndPoint) string {
+	args := m.Called(ctx, endpoint)
+	return args.String(0)
 }
 
 // ============================================================================
@@ -385,82 +366,29 @@ func (m *MockEndpointService) GetGlobal(
 // which is fine since constructor validation tests only check nil rejection.
 // ============================================================================
 
-// mockSessionRepoStub satisfies interfaces.SCACISessionRepository for constructor tests
-type mockSessionRepoStub struct{}
-
-func (m *mockSessionRepoStub) CreateSession(_ context.Context, _ *models.SCACISessionCreateRequest) (*models.SCACISession, error) {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) GetSessionByID(_ context.Context, _, _ int64) (*models.SCACISession, error) {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) GetActiveSessionByAcEUI(_ context.Context, _ int64, _ [8]byte) (*models.SCACISession, error) {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) GetSessionByAcUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) GetSessionByScUUID(_ context.Context, _ int64, _ [16]byte) (*models.SCACISession, error) {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) UpdateSession(_ context.Context, _, _ int64, _ *models.SCACISessionUpdateRequest) error {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) UpdateOperationIDs(_ context.Context, _, _, _, _ int64) error {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) UpdateHeartbeat(_ context.Context, _, _ int64) error {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) DisconnectSession(_ context.Context, _, _ int64) error {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) TerminateSession(_ context.Context, _, _ int64) error {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) TerminateAllSessions(_ context.Context, _ int64, _ [8]byte) error {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) ListSessions(_ context.Context, _ *models.SCACISessionFilter) ([]*models.SCACISession, int64, error) {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) GetSessionStatistics(_ context.Context, _ int64) (*models.SCACISessionStatistics, error) {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) CheckSessionResumable(_ context.Context, _ int64, _ [16]byte, _, _ int64) (*models.SCACISessionResumptionInfo, error) {
-	panic("not implemented")
-}
-func (m *mockSessionRepoStub) CleanupExpiredSessions(_ context.Context, _ int64) (int64, error) {
-	panic("not implemented")
-}
-
 // mockOperationRepoStub satisfies interfaces.SCACIOperationRepository for constructor tests
 type mockOperationRepoStub struct{}
 
 func (m *mockOperationRepoStub) RecordOperation(_ context.Context, _ *models.SCACIOperationRequest) (*models.SCACIOperation, error) {
 	panic("not implemented")
 }
+
 func (m *mockOperationRepoStub) UpdateOperationState(_ context.Context, _, _ int64, _ models.OperationState, _ map[string]interface{}) error {
 	panic("not implemented")
 }
+
 func (m *mockOperationRepoStub) GetOperationByOpID(_ context.Context, _, _ int64) (*models.SCACIOperation, error) {
 	panic("not implemented")
 }
+
 func (m *mockOperationRepoStub) GetPendingOperations(_ context.Context, _ int64) ([]*models.SCACIOperation, error) {
 	panic("not implemented")
 }
-func (m *mockOperationRepoStub) GetRecentOperations(_ context.Context, _ int64, _ int) ([]*models.SCACIOperation, error) {
-	panic("not implemented")
-}
-func (m *mockOperationRepoStub) CleanupCompletedOperations(_ context.Context, _ int64) (int64, error) {
-	panic("not implemented")
-}
-func (m *mockOperationRepoStub) GetTenantOperationSummary(_ context.Context, _ int64, _ int) (*models.SCACIOperationSummary, error) {
-	panic("not implemented")
-}
+
 func (m *mockOperationRepoStub) UpdateOperationStateWithError(_ context.Context, _, _ int64, _ models.OperationState, _ int, _, _ string, _ map[string]interface{}) error {
 	panic("not implemented")
 }
+
 func (m *mockOperationRepoStub) CompleteFailedOperation(_ context.Context, _, _ int64, _ map[string]interface{}) error {
 	panic("not implemented")
 }
@@ -505,4 +433,16 @@ func (m *MockStatusService) GetPreferredBaseStation(ctx context.Context, tenantI
 		return nil, args.Bool(1), args.Error(2)
 	}
 	return args.Get(0).(*uint64), args.Bool(1), args.Error(2)
+}
+
+// tenantDownlinkRef is the revoke reference of a session without an
+// organization, which reaches the whole tenant.
+func tenantDownlinkRef(tenantID int64, epEUI, queID uint64) scheduler.DownlinkRef {
+	return scheduler.DownlinkRef{TenantID: tenantID, QueID: queID, EpEUI: &epEUI}
+}
+
+// tenantCounterDownlinks is the dlDataRev lookup of a session without an
+// organization.
+func tenantCounterDownlinks(tenantID int64, epEUI uint64, packetCnt uint32) storage.PacketCounterDownlinks {
+	return storage.PacketCounterDownlinks{TenantID: tenantID, EpEUI: epEUI, PacketCnt: packetCnt}
 }

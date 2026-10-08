@@ -10,6 +10,8 @@ import React from "react";
 
 import { Box, Button, Typography } from "@mui/material";
 
+import { componentSpacing } from "@theme/index";
+
 export interface EmptyStateProps {
   /** Main title text */
   title: string;
@@ -38,7 +40,7 @@ export interface EmptyStateProps {
  * <EmptyState
  *   title="No endpoints found"
  *   description="Create your first endpoint to get started"
- *   icon={<DevicesIcon sx={{ fontSize: 64 }} />}
+ *   icon={<DevicesIcon sx={{ fontSize: componentSpacing.stateView.iconSize }} />}
  *   action={{ label: "Create Endpoint", onClick: handleCreate }}
  * />
  */
@@ -48,7 +50,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   icon,
   action,
   secondaryAction,
-  minHeight = 300,
+  minHeight = componentSpacing.stateView.minHeight,
 }) => {
   return (
     <Box
@@ -67,7 +69,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           sx={{
             mb: 2,
             color: "text.secondary",
-            opacity: 0.6,
+            opacity: componentSpacing.stateView.emptyIconOpacity,
           }}
         >
           {icon}
@@ -82,7 +84,10 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         <Typography
           variant="body2"
           color="text.secondary"
-          sx={{ maxWidth: 400, mb: action ? 3 : 0 }}
+          sx={{
+            maxWidth: componentSpacing.stateView.messageMaxWidth,
+            mb: action ? 3 : 0,
+          }}
         >
           {description}
         </Typography>

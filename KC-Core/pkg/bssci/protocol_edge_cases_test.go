@@ -29,12 +29,13 @@ type edgeMockConn struct {
 
 func (m *edgeMockConn) Write(b []byte) (n int, err error) {
 	var msg map[string]interface{}
+	payload := bsscitest.FramePayload(b)
 
 	// Support both JSON and MessagePack encodings
 	if m.encoding == "msgpack" {
-		err = msgpack.Unmarshal(b, &msg)
+		err = msgpack.Unmarshal(payload, &msg)
 	} else {
-		err = json.Unmarshal(b, &msg)
+		err = json.Unmarshal(payload, &msg)
 	}
 
 	if err == nil {
@@ -85,9 +86,6 @@ func TestBSSCI_2_4_01_forward_compat_extra_fields(t *testing.T) {
 				Name:             "TestSC",
 				SoftwareVersion:  "1.0.0",
 			})
-			server.RegisterHandlers()
-			server.RegisterHandlers()
-			server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 			session := &bssci.Session{
 				ProtocolSessionState: bssci.ProtocolSessionState{
@@ -371,7 +369,6 @@ func TestBSSCI_2_5_03_numeric_field_types(t *testing.T) {
 			server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 				queueSerializer, auditLogger, tenantResolver)
-			server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 			session := &bssci.Session{
 				ProtocolSessionState: bssci.ProtocolSessionState{
@@ -435,7 +432,6 @@ func TestNormalizationSentinelErrors(t *testing.T) {
 	server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 		queueSerializer, auditLogger, tenantResolver)
-	server.RegisterHandlers()
 
 	t.Run("MandatoryFieldMissing", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
@@ -640,7 +636,6 @@ func TestConResumeCountersIndependentlyOptional(t *testing.T) {
 	t.Run("NewConnect_NoResumeFields_Success", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
 		mockConn.Reset()
-		server.RegisterHandlers()
 
 		session := &bssci.Session{
 			ProtocolSessionState: bssci.ProtocolSessionState{
@@ -681,7 +676,6 @@ func TestConResumeCountersIndependentlyOptional(t *testing.T) {
 	t.Run("Resume_BothFields_Success", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
 		mockConn.Reset()
-		server.RegisterHandlers()
 
 		session := &bssci.Session{
 			ProtocolSessionState: bssci.ProtocolSessionState{
@@ -723,7 +717,6 @@ func TestConResumeCountersIndependentlyOptional(t *testing.T) {
 	t.Run("Resume_OnlySnBsOpId_Accepted", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
 		mockConn.Reset()
-		server.RegisterHandlers()
 
 		session := &bssci.Session{
 			ProtocolSessionState: bssci.ProtocolSessionState{
@@ -761,7 +754,6 @@ func TestConResumeCountersIndependentlyOptional(t *testing.T) {
 	t.Run("Resume_OnlySnScOpId_Accepted", func(t *testing.T) {
 		mockConn := &edgeMockConn{encoding: "json"}
 		mockConn.Reset()
-		server.RegisterHandlers()
 
 		session := &bssci.Session{
 			ProtocolSessionState: bssci.ProtocolSessionState{
@@ -925,7 +917,6 @@ func TestNormalizeResponseCommandsWithUnknownFields(t *testing.T) {
 				server := bssci.NewTestServer(testLogger, mockStorage, nil, 1,
 					sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster,
 					queueSerializer, auditLogger, tenantResolver)
-				server.RegisterHandlers() // Register command handlers for CallHandleMessage
 
 				session := &bssci.Session{
 					ProtocolSessionState: bssci.ProtocolSessionState{

@@ -30,18 +30,25 @@ func (m *MockLogger) WithFields(_ map[string]interface{}) logger.Logger {
 	return m
 }
 
+// Test broker configuration values.
+const (
+	testBrokerPort              = 1883
+	testMaxReconnectIntervalSec = 300
+	testTLSEnabled              = false
+)
+
 // testConfig returns a minimal MQTT configuration for testing.
 // Uses public KC-Core/pkg/config package.
 func testConfig() *config.MQTTConfig {
 	return &config.MQTTConfig{
 		Host:                 "localhost",
-		Port:                 1883,
+		Port:                 testBrokerPort,
 		ClientID:             "kilocenter-test",
 		KeepAlive:            60,
 		CleanSession:         true,
-		MaxReconnectInterval: 300,
+		MaxReconnectInterval: testMaxReconnectIntervalSec,
 		TLS: config.TLSConfig{
-			Enabled: false,
+			Enabled: testTLSEnabled,
 		},
 	}
 }

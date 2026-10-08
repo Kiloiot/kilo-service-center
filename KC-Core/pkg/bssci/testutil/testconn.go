@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -21,11 +22,15 @@ import (
 // Handles BSSCI two-write pattern with buffering for all edge cases
 type TestConn struct {
 	net.Conn
-	Mu            sync.Mutex
-	SentMessages  []map[string]interface{}
-	FailWrites    bool
+	Mu           sync.Mutex
+	SentMessages []map[string]interface{}
+	// FailWrites refuses every write before accepting a byte, as a closed
+	// connection does.
+	FailWrites bool
+	// StalledWrites times every write out, as a peer that stopped reading
+	// does, leaving the frame ambiguous on the wire.
+	StalledWrites bool
 	Encoding      string // "json" or "msgpack"
-	PendingHeader []byte // Buffered header waiting for payload
 }
 
 // Write captures the message for inspection in tests
@@ -38,7 +43,7 @@ type TestConn struct {
 //	Pattern 3: Payload after pending header - decode payload
 //	Pattern 4: Standalone message (no header) - decode directly
 //
-// Thread-safe: uses mutex to protect SentMessages slice and pendingHeader buffer
+// Thread-safe: uses mutex to protect SentMessages
 func (m *TestConn) Write(b []byte) (n int, err error) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
@@ -46,31 +51,16 @@ func (m *TestConn) Write(b []byte) (n int, err error) {
 	if m.FailWrites {
 		return 0, net.ErrClosed
 	}
-
-	// Pattern 1: Header-only write (12 bytes starting with MIOTYB01)
-	// Buffer the header and wait for payload in next Write() call
-	if len(b) == 12 && bytes.HasPrefix(b, mioty.MIOTYFrameIdentifier[:]) {
-		m.PendingHeader = make([]byte, len(b))
-		copy(m.PendingHeader, b)
-		return len(b), nil
+	if m.StalledWrites {
+		return 0, os.ErrDeadlineExceeded
 	}
 
-	// Pattern 2: Header + payload combined in single write (>12 bytes starting with MIOTYB01)
-	// Strip the 12-byte header and decode the payload
-	if len(b) > 12 && bytes.HasPrefix(b, mioty.MIOTYFrameIdentifier[:]) {
-		payload := b[12:]
-		m.PendingHeader = nil // Clear any pending header
-		return len(b), m.decodeAndCapture(payload)
+	// A frame arrives in one write: strip the 12-byte header and decode the payload.
+	if len(b) >= mioty.FrameHeaderSize && bytes.HasPrefix(b, mioty.MIOTYFrameIdentifier[:]) {
+		return len(b), m.decodeAndCapture(b[mioty.FrameHeaderSize:])
 	}
 
-	// Pattern 3: Payload after pending header
-	// We buffered a header in the previous Write(), now decode the payload
-	if m.PendingHeader != nil {
-		m.PendingHeader = nil // Clear buffered header
-		return len(b), m.decodeAndCapture(b)
-	}
-
-	// Pattern 4: Standalone message (no MIOTY frame header)
+	// Standalone message (no MIOTY frame header)
 	// Decode directly (used for some test scenarios)
 	return len(b), m.decodeAndCapture(b)
 }
@@ -94,14 +84,14 @@ func (m *TestConn) decodeAndCapture(payload []byte) error {
 	return nil // Always return nil to simulate successful write
 }
 
-// Reset clears captured messages, resets write failure flag, and clears pending header buffer
+// Reset clears captured messages and resets the write failure flag
 // Thread-safe: uses mutex to protect state
 func (m *TestConn) Reset() {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	m.SentMessages = nil
 	m.FailWrites = false
-	m.PendingHeader = nil
+	m.StalledWrites = false
 }
 
 // SeenCommand checks if a command was sent
@@ -117,6 +107,19 @@ func (m *TestConn) SeenCommand(cmd string) bool {
 	return false
 }
 
+// LastMessage returns the most recent captured message carrying the command,
+// or nil when none was sent.
+func (m *TestConn) LastMessage(cmd string) map[string]interface{} {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	for i := len(m.SentMessages) - 1; i >= 0; i-- {
+		if m.SentMessages[i]["command"] == cmd {
+			return m.SentMessages[i]
+		}
+	}
+	return nil
+}
+
 // LastError returns the error code and message from the most recent error frame
 // Returns (0, "") if no error frame was captured
 // Thread-safe: uses mutex to protect SentMessages access
@@ -127,7 +130,7 @@ func (m *TestConn) LastError() (int, string) {
 	// Search backwards for most recent error
 	for i := len(m.SentMessages) - 1; i >= 0; i-- {
 		msg := m.SentMessages[i]
-		if cmd, ok := msg["command"].(string); ok && cmd == "error" {
+		if cmd, ok := msg["command"].(string); ok && cmd == mioty.CmdError {
 			code := ExtractIntCode(msg["code"])
 			message := ""
 			if msgStr, ok := msg["message"].(string); ok {
@@ -212,3 +215,12 @@ func (m *TestConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 // Read reads data from the connection (no-op for tests)
 func (m *TestConn) Read(_ []byte) (n int, err error) { return 0, nil }
+
+// FramePayload returns the payload of a single-write BSSCI frame, or b itself
+// when it carries no frame header.
+func FramePayload(b []byte) []byte {
+	if len(b) >= mioty.FrameHeaderSize && bytes.HasPrefix(b, mioty.MIOTYFrameIdentifier[:]) {
+		return b[mioty.FrameHeaderSize:]
+	}
+	return b
+}

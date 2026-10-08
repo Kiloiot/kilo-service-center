@@ -4,9 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/pkg/logger"
+
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,7 +48,7 @@ func TestTerminateResumableSessions(t *testing.T) {
 	cleanupSessionTestData(t, db, "TestRetireResumable%")
 	defer cleanupSessionTestData(t, db, "TestRetireResumable%")
 
-	repo := NewBaseStationSessionRepository(db)
+	repo := NewBaseStationSessionRepository(db, clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
 	newUUIDPair := func() ([16]byte, [16]byte) {
@@ -66,7 +71,7 @@ func TestTerminateResumableSessions(t *testing.T) {
 			RemoteAddr:     stringPtr("192.168.1.120"),
 			CanResume:      true,
 			OrganizationID: uuidPtr(orgID),
-			Encoding:       bssci.EncodingMessagePack,
+			Encoding:       mioty.EncodingMessagePack,
 		})
 		require.NoError(t, err)
 		return created, bsBytes
@@ -114,7 +119,7 @@ func TestTerminateResumableSessions(t *testing.T) {
 	}
 
 	orphan, err := repo.FindResumableSession(ctx, tenantID, bsEUIToBytes(baseStationEUI), leftoverABsUUID)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, storage.ErrNotFound)
 	assert.Nil(t, orphan, "a retired leftover must never be offered for resume")
 
 	activeRow, err := repo.GetSessionByID(ctx, tenantID, active.ID)

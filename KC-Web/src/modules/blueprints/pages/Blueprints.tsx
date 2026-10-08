@@ -2,185 +2,106 @@
  * Blueprints Page
  *
  * Main page for device catalog management (manufacturers, models, blueprints).
- * Uses MUI List + Collapse for tree navigation per plan constraints.
+ * Uses MUI List for tree navigation.
  */
 
-import React, { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import React, { useId } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import type {
-  BlueprintScope,
-  CreateManufacturerRequest,
-  DeviceModelUI,
-  ManufacturerUI,
-  UpdateDeviceModelRequest,
-  UpdateManufacturerRequest,
-} from "@api-types/api";
+import type { BlueprintScope } from "@api-types/api";
 import {
   Alert,
   Box,
   Button,
-  Checkbox,
-  Chip,
   CircularProgress,
-  Collapse,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  FormControlLabel,
-  IconButton,
   List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
   Paper,
-  Tab,
-  Tabs,
-  TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "@ui";
 
-import { api } from "@services/api";
+import { TabBar, type TabBarItem } from "@components/common/TabBar";
+import { TabPanel } from "@components/common/TabPanel";
+import { useFeedback } from "@contexts/feedback";
 import { useCapabilities } from "@hooks/useCapabilities";
-import { formatTypeEUI } from "@utils/formatters";
-import { ROUTES } from "@constants/app";
+import { BLUEPRINT_SCOPE } from "@constants/app";
 import { BLUEPRINT_LABELS } from "@constants/messages";
-import { queryKeys } from "@config/query-keys";
-import {
-  AddIcon,
-  BlueprintIcon,
-  CategoryIcon,
-  DeleteIcon,
-  EditIcon,
-  ExpandLess,
-  ExpandMore,
-} from "@theme/icons";
+import { blueprintDetailPath } from "@router/paths";
+import { AddIcon } from "@theme/icons";
 
-import BulkMigrateDialog from "../components/BulkMigrateDialog";
-import ManufacturerFormFields from "../components/ManufacturerFormFields";
-import { unwrapBlueprintSpec } from "../utils/spec";
+import { AddBlueprintDialog } from "../components/AddBlueprintDialog";
+import { AddManufacturerDialog } from "../components/AddManufacturerDialog";
+import { EditDeviceModelDialog } from "../components/EditDeviceModelDialog";
+import { EditManufacturerDialog } from "../components/EditManufacturerDialog";
+import { ManufacturerItem } from "../components/ManufacturerItem";
+import RegistryStatusNotice from "../components/RegistryStatusNotice";
+import {
+  useCatalogDialogs,
+  useCatalogTree,
+  useDeleteDeviceModel,
+  useDeleteManufacturer,
+  useManufacturers,
+} from "../hooks";
+import {
+  addModelPath,
+  catalogPath,
+  scopeFromQuery,
+} from "../utils/catalog-routes";
+
+const SCOPE_TABS: readonly TabBarItem<BlueprintScope>[] = [
+  { value: BLUEPRINT_SCOPE.CUSTOM, label: BLUEPRINT_LABELS.SCOPE_CUSTOM },
+  { value: BLUEPRINT_SCOPE.SYSTEM, label: BLUEPRINT_LABELS.SCOPE_SYSTEM },
+];
 
 /**
  * Blueprints page component
  */
 export const Blueprints: React.FC = () => {
   const navigate = useNavigate();
+  const tabsId = useId();
   const { mfrId, modelId } = useParams<{ mfrId?: string; modelId?: string }>();
-  const queryClient = useQueryClient();
   const { isServerAdmin } = useCapabilities();
 
-  const [scope, setScope] = useState<BlueprintScope>("custom");
+  const [searchParams] = useSearchParams();
+  const scope = scopeFromQuery(searchParams);
   // Creating in the System catalog is admin-only.
-  const canCreateInScope = scope === "custom" || isServerAdmin;
+  const canCreateInScope = scope === BLUEPRINT_SCOPE.CUSTOM || isServerAdmin;
 
-  // State for expanded manufacturers
-  const [expandedMfrs, setExpandedMfrs] = useState<Set<string>>(new Set());
-  // State for expanded models
-  const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
-  // Dialog states - Add
-  const [showMfrDialog, setShowMfrDialog] = useState(false);
-  // Dialog states - Edit
-  const [editMfr, setEditMfr] = useState<ManufacturerUI | null>(null);
-  const [editModel, setEditModel] = useState<{
-    model: DeviceModelUI;
-    mfrId: string;
-  } | null>(null);
-  // Dialog states - Delete
-  const [deleteMfr, setDeleteMfr] = useState<ManufacturerUI | null>(null);
-  const [deleteModel, setDeleteModel] = useState<{
-    model: DeviceModelUI;
-    mfrId: string;
-  } | null>(null);
-  const [addBlueprintModel, setAddBlueprintModel] =
-    useState<DeviceModelUI | null>(null);
-
-  // Fetch manufacturers
   const {
     data: manufacturers,
     isLoading: mfrsLoading,
     error: mfrsError,
-  } = useQuery({
-    queryKey: queryKeys.blueprints.manufacturers(scope),
-    queryFn: () => api.getManufacturers(scope),
-  });
+  } = useManufacturers(scope);
+  const tree = useCatalogTree({ mfrId, modelId });
+  const { dialog, open: openDialog, close: closeDialog } = useCatalogDialogs();
+  const deleteManufacturerMutation = useDeleteManufacturer();
+  const deleteDeviceModelMutation = useDeleteDeviceModel();
+  const feedback = useFeedback();
 
-  const { data: routeModel } = useQuery({
-    queryKey: queryKeys.blueprints.deviceModelDetail(modelId!),
-    queryFn: () => api.getDeviceModel(modelId!),
-    enabled: !!modelId,
-  });
-
-  React.useEffect(() => {
-    if (!mfrId) {
-      return;
-    }
-    setExpandedMfrs((prev) => {
-      const next = new Set(prev);
-      next.add(mfrId);
-      return next;
-    });
-  }, [mfrId]);
-
-  React.useEffect(() => {
-    if (!routeModel) {
-      return;
-    }
-    setExpandedMfrs((prev) => {
-      const next = new Set(prev);
-      next.add(routeModel.manufacturerId);
-      return next;
-    });
-    setExpandedModels((prev) => {
-      const next = new Set(prev);
-      next.add(routeModel.id);
-      return next;
-    });
-  }, [routeModel]);
-
-  // Toggle manufacturer expansion
-  const toggleMfr = (id: string) => {
-    setExpandedMfrs((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  const finishDialog = (message: string) => {
+    closeDialog();
+    feedback.success(message);
   };
 
-  // Toggle model expansion
-  const toggleModel = (id: string) => {
-    setExpandedModels((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  // Navigate to blueprint detail
   const handleBlueprintClick = (blueprintId: string) => {
-    navigate(ROUTES.BLUEPRINT_DETAIL.replace(":id", blueprintId));
+    navigate(blueprintDetailPath(blueprintId));
   };
 
-  // Carry active scope so the form creates in the same tab.
-  const handleAddModel = () => {
-    navigate(`${ROUTES.BLUEPRINT_MODEL_NEW}?scope=${scope}`);
+  // The form creates in the open catalog, for the manufacturer whose "+" was clicked.
+  const handleAddModel = (manufacturerId: string) => {
+    navigate(addModelPath(scope, manufacturerId));
   };
 
-  // Navigate to model detail to add a decoder (blueprint) to an existing model
-  const handleAddDecoder = (model: DeviceModelUI) => {
-    setAddBlueprintModel(model);
+  const confirmDeleteManufacturer = async () => {
+    if (dialog.kind !== "deleteManufacturer") return;
+    await deleteManufacturerMutation.mutateAsync(dialog.manufacturer.id);
+    finishDialog(BLUEPRINT_LABELS.MSG_MANUFACTURER_DELETED);
+  };
+
+  const confirmDeleteModel = async () => {
+    if (dialog.kind !== "deleteModel") return;
+    await deleteDeviceModelMutation.mutateAsync(dialog.model.id);
+    finishDialog(BLUEPRINT_LABELS.MSG_MODEL_DELETED);
   };
 
   return (
@@ -199,991 +120,140 @@ export const Blueprints: React.FC = () => {
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => setShowMfrDialog(true)}
+            onClick={() => openDialog({ kind: "addManufacturer" })}
           >
             {BLUEPRINT_LABELS.ADD_MANUFACTURER}
           </Button>
         )}
       </Box>
 
-      <Tabs
+      <TabBar
         value={scope}
-        onChange={(_, value: BlueprintScope) => setScope(value)}
-        aria-label={BLUEPRINT_LABELS.SCOPE_TABS_ARIA}
-        sx={{ mb: 2 }}
-      >
-        <Tab value="custom" label={BLUEPRINT_LABELS.SCOPE_CUSTOM} />
-        <Tab value="system" label={BLUEPRINT_LABELS.SCOPE_SYSTEM} />
-      </Tabs>
+        onChange={(value) => navigate(catalogPath(value))}
+        items={SCOPE_TABS}
+        ariaLabel={BLUEPRINT_LABELS.SCOPE_TABS_ARIA}
+        idPrefix={tabsId}
+      />
 
-      {/* Error display */}
-      {mfrsError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {BLUEPRINT_LABELS.ERR_LOAD_MANUFACTURERS}
-        </Alert>
-      )}
+      <TabPanel idPrefix={tabsId} value={scope}>
+        {scope === BLUEPRINT_SCOPE.SYSTEM && <RegistryStatusNotice />}
 
-      {/* Loading state */}
-      {mfrsLoading && (
-        <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
-          <CircularProgress />
-        </Box>
-      )}
+        {/* Error display */}
+        {mfrsError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {BLUEPRINT_LABELS.ERR_LOAD_MANUFACTURERS}
+          </Alert>
+        )}
 
-      {/* Empty state */}
-      {!mfrsLoading && manufacturers?.length === 0 && (
-        <Paper sx={{ p: 4, textAlign: "center" }}>
-          <Typography color="text.secondary">
-            {BLUEPRINT_LABELS.NO_MANUFACTURERS}
-          </Typography>
-        </Paper>
-      )}
+        {/* Loading state */}
+        {mfrsLoading && (
+          <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+            <CircularProgress />
+          </Box>
+        )}
 
-      {/* Manufacturer list */}
-      {manufacturers && manufacturers.length > 0 && (
-        <Paper>
-          <List>
-            {manufacturers.map((mfr) => (
-              <ManufacturerItem
-                key={mfr.id}
-                manufacturer={mfr}
-                scope={scope}
-                isServerAdmin={isServerAdmin}
-                isExpanded={expandedMfrs.has(mfr.id)}
-                onToggle={() => toggleMfr(mfr.id)}
-                expandedModels={expandedModels}
-                onToggleModel={toggleModel}
-                onBlueprintClick={handleBlueprintClick}
-                onAddModel={handleAddModel}
-                onEdit={() => setEditMfr(mfr)}
-                onDelete={() => setDeleteMfr(mfr)}
-                onEditModel={(model) => setEditModel({ model, mfrId: mfr.id })}
-                onDeleteModel={(model) =>
-                  setDeleteModel({ model, mfrId: mfr.id })
-                }
-                onAddDecoder={handleAddDecoder}
-              />
-            ))}
-          </List>
-        </Paper>
-      )}
+        {/* Empty state */}
+        {!mfrsLoading && manufacturers?.length === 0 && (
+          <Paper sx={{ p: 4, textAlign: "center" }}>
+            <Typography color="text.secondary">
+              {BLUEPRINT_LABELS.NO_MANUFACTURERS}
+            </Typography>
+          </Paper>
+        )}
 
-      {/* Add Manufacturer Dialog */}
+        {/* Manufacturer list */}
+        {manufacturers && manufacturers.length > 0 && (
+          <Paper>
+            <List>
+              {manufacturers.map((mfr) => (
+                <ManufacturerItem
+                  key={mfr.id}
+                  manufacturer={mfr}
+                  scope={scope}
+                  isServerAdmin={isServerAdmin}
+                  isExpanded={tree.expandedMfrs.has(mfr.id)}
+                  onToggle={() => tree.toggleMfr(mfr.id)}
+                  expandedModels={tree.expandedModels}
+                  onToggleModel={tree.toggleModel}
+                  onBlueprintClick={handleBlueprintClick}
+                  onAddModel={() => handleAddModel(mfr.id)}
+                  onEdit={() =>
+                    openDialog({ kind: "editManufacturer", manufacturer: mfr })
+                  }
+                  onDelete={() =>
+                    openDialog({
+                      kind: "deleteManufacturer",
+                      manufacturer: mfr,
+                    })
+                  }
+                  onEditModel={(model) =>
+                    openDialog({ kind: "editModel", model })
+                  }
+                  onDeleteModel={(model) =>
+                    openDialog({ kind: "deleteModel", model })
+                  }
+                  onAddDecoder={(model) =>
+                    openDialog({ kind: "addBlueprint", model })
+                  }
+                />
+              ))}
+            </List>
+          </Paper>
+        )}
+      </TabPanel>
+
       <AddManufacturerDialog
-        open={showMfrDialog}
+        open={dialog.kind === "addManufacturer"}
         scope={scope}
-        isServerAdmin={isServerAdmin}
-        onClose={() => setShowMfrDialog(false)}
-        onSuccess={() => {
-          setShowMfrDialog(false);
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.blueprints.manufacturers(),
-          });
-        }}
+        onClose={closeDialog}
+        onSuccess={() =>
+          finishDialog(BLUEPRINT_LABELS.MSG_MANUFACTURER_CREATED)
+        }
       />
 
-      {/* Edit Manufacturer Dialog */}
       <EditManufacturerDialog
-        manufacturer={editMfr}
-        onClose={() => setEditMfr(null)}
-        onSuccess={() => {
-          setEditMfr(null);
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.blueprints.manufacturers(),
-          });
-        }}
+        manufacturer={
+          dialog.kind === "editManufacturer" ? dialog.manufacturer : null
+        }
+        onClose={closeDialog}
+        onSuccess={() =>
+          finishDialog(BLUEPRINT_LABELS.MSG_MANUFACTURER_UPDATED)
+        }
       />
 
-      {/* Edit Device Model Dialog */}
       <EditDeviceModelDialog
-        model={editModel?.model ?? null}
-        onClose={() => setEditModel(null)}
-        onSuccess={() => {
-          if (editModel) {
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.blueprints.deviceModels(editModel.mfrId),
-            });
-          }
-          setEditModel(null);
-        }}
+        model={dialog.kind === "editModel" ? dialog.model : null}
+        onClose={closeDialog}
+        onSuccess={() => finishDialog(BLUEPRINT_LABELS.MSG_MODEL_UPDATED)}
       />
 
-      {/* Delete Manufacturer Confirmation */}
-      <DeleteConfirmDialog
-        open={!!deleteMfr}
-        title={BLUEPRINT_LABELS.ACTION_DELETE}
+      <ConfirmDialog
+        confirmLabel={BLUEPRINT_LABELS.ACTION_DELETE}
+        cancelLabel={BLUEPRINT_LABELS.ACTION_CANCEL}
+        errorFallback={BLUEPRINT_LABELS.ERR_DELETE_FAILED}
+        open={dialog.kind === "deleteManufacturer"}
+        title={BLUEPRINT_LABELS.DIALOG_DELETE_MANUFACTURER}
         message={BLUEPRINT_LABELS.CONFIRM_DELETE_MANUFACTURER}
-        onClose={() => setDeleteMfr(null)}
-        onConfirm={async () => {
-          if (deleteMfr) {
-            await api.deleteManufacturer(deleteMfr.id);
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.blueprints.manufacturers(),
-            });
-            setDeleteMfr(null);
-          }
-        }}
+        onClose={closeDialog}
+        onConfirm={confirmDeleteManufacturer}
       />
 
-      {/* Delete Device Model Confirmation */}
-      <DeleteConfirmDialog
-        open={!!deleteModel}
-        title={BLUEPRINT_LABELS.ACTION_DELETE}
+      <ConfirmDialog
+        confirmLabel={BLUEPRINT_LABELS.ACTION_DELETE}
+        cancelLabel={BLUEPRINT_LABELS.ACTION_CANCEL}
+        errorFallback={BLUEPRINT_LABELS.ERR_DELETE_FAILED}
+        open={dialog.kind === "deleteModel"}
+        title={BLUEPRINT_LABELS.DIALOG_DELETE_MODEL}
         message={BLUEPRINT_LABELS.CONFIRM_DELETE_MODEL}
-        onClose={() => setDeleteModel(null)}
-        onConfirm={async () => {
-          if (deleteModel) {
-            await api.deleteDeviceModel(deleteModel.model.id);
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.blueprints.deviceModels(deleteModel.mfrId),
-            });
-            setDeleteModel(null);
-          }
-        }}
+        onClose={closeDialog}
+        onConfirm={confirmDeleteModel}
       />
 
-      {/* Add Blueprint (Decoder) Dialog */}
       <AddBlueprintDialog
-        model={addBlueprintModel}
-        onClose={() => setAddBlueprintModel(null)}
-        onSuccess={() => {
-          if (addBlueprintModel) {
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.blueprints.list(addBlueprintModel.id),
-            });
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.blueprints.deviceModels(
-                addBlueprintModel.manufacturerId,
-              ),
-            });
-          }
-          setAddBlueprintModel(null);
-        }}
+        model={dialog.kind === "addBlueprint" ? dialog.model : null}
+        onClose={closeDialog}
+        onSuccess={() => finishDialog(BLUEPRINT_LABELS.MSG_BLUEPRINT_CREATED)}
       />
     </Box>
   );
 };
-
-/**
- * Manufacturer list item with collapsible models
- */
-interface ManufacturerItemProps {
-  manufacturer: ManufacturerUI;
-  scope: BlueprintScope;
-  isServerAdmin: boolean;
-  isExpanded: boolean;
-  onToggle: () => void;
-  expandedModels: Set<string>;
-  onToggleModel: (id: string) => void;
-  onBlueprintClick: (id: string) => void;
-  onAddModel: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onEditModel: (model: DeviceModelUI) => void;
-  onDeleteModel: (model: DeviceModelUI) => void;
-  onAddDecoder: (model: DeviceModelUI) => void;
-}
-
-const ManufacturerItem: React.FC<ManufacturerItemProps> = ({
-  manufacturer,
-  scope,
-  isServerAdmin,
-  isExpanded,
-  onToggle,
-  expandedModels,
-  onToggleModel,
-  onBlueprintClick,
-  onAddModel,
-  onEdit,
-  onDelete,
-  onEditModel,
-  onDeleteModel,
-  onAddDecoder,
-}) => {
-  // System rows are mutable only by server admins; Custom rows by their tenant.
-  const canMutate = manufacturer.isSystem ? isServerAdmin : true;
-
-  // Fetch models when expanded
-  const { data: models, isLoading: modelsLoading } = useQuery({
-    queryKey: queryKeys.blueprints.deviceModels(manufacturer.id, scope),
-    queryFn: () => api.getDeviceModels(manufacturer.id, scope),
-    enabled: isExpanded,
-  });
-
-  return (
-    <>
-      <ListItem
-        disablePadding
-        secondaryAction={
-          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-            <IconButton size="small" onClick={onToggle}>
-              {isExpanded ? <ExpandLess /> : <ExpandMore />}
-            </IconButton>
-            {canMutate && (
-              <>
-                <Tooltip title={BLUEPRINT_LABELS.ACTION_EDIT}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit();
-                    }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={BLUEPRINT_LABELS.ACTION_DELETE}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete();
-                    }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={BLUEPRINT_LABELS.ADD_MODEL}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddModel();
-                    }}
-                  >
-                    <AddIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
-            {manufacturer.isSystem && (
-              <Chip
-                label={BLUEPRINT_LABELS.BADGE_SYSTEM}
-                size="small"
-                color="info"
-                sx={{
-                  textDecoration: "none",
-                  "& .MuiChip-label": { fontFamily: "inherit" },
-                }}
-              />
-            )}
-            {manufacturer.isVerified && (
-              <Chip
-                label={BLUEPRINT_LABELS.BADGE_VERIFIED}
-                size="small"
-                color="success"
-                sx={{
-                  textDecoration: "none",
-                  "& .MuiChip-label": { fontFamily: "inherit" },
-                }}
-              />
-            )}
-            <Chip
-              label={`${models?.length ?? manufacturer.modelCount} ${BLUEPRINT_LABELS.COL_MODELS}`}
-              size="small"
-              sx={{
-                textDecoration: "none",
-                "& .MuiChip-label": { fontFamily: "inherit" },
-              }}
-            />
-          </Box>
-        }
-      >
-        <ListItemButton onClick={onToggle}>
-          <ListItemIcon>
-            <CategoryIcon />
-          </ListItemIcon>
-          <ListItemText
-            primary={manufacturer.name}
-            secondary={manufacturer.website || undefined}
-          />
-        </ListItemButton>
-      </ListItem>
-
-      <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding>
-          {modelsLoading && (
-            <ListItem sx={{ pl: 4 }}>
-              <CircularProgress size={20} />
-            </ListItem>
-          )}
-          {models?.map((model) => (
-            <DeviceModelItem
-              key={model.id}
-              model={model}
-              scope={scope}
-              isServerAdmin={isServerAdmin}
-              isExpanded={expandedModels.has(model.id)}
-              onToggle={() => onToggleModel(model.id)}
-              onBlueprintClick={onBlueprintClick}
-              onEdit={() => onEditModel(model)}
-              onDelete={() => onDeleteModel(model)}
-              onAddDecoder={() => onAddDecoder(model)}
-            />
-          ))}
-          {!modelsLoading && models?.length === 0 && (
-            <ListItem sx={{ pl: 4 }}>
-              <ListItemText
-                secondary={BLUEPRINT_LABELS.NO_MODELS}
-                sx={{ color: "text.secondary" }}
-              />
-            </ListItem>
-          )}
-        </List>
-      </Collapse>
-    </>
-  );
-};
-
-/**
- * Device model list item with collapsible blueprints
- */
-interface DeviceModelItemProps {
-  model: DeviceModelUI;
-  scope: BlueprintScope;
-  isServerAdmin: boolean;
-  isExpanded: boolean;
-  onToggle: () => void;
-  onBlueprintClick: (id: string) => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onAddDecoder: () => void;
-}
-
-const DeviceModelItem: React.FC<DeviceModelItemProps> = ({
-  model,
-  scope,
-  isServerAdmin,
-  isExpanded,
-  onToggle,
-  onBlueprintClick,
-  onEdit,
-  onDelete,
-  onAddDecoder,
-}) => {
-  const canMutate = model.isSystem ? isServerAdmin : true;
-  const [showMigrate, setShowMigrate] = useState(false);
-
-  // Fetch blueprints when expanded
-  const { data: blueprints, isLoading: blueprintsLoading } = useQuery({
-    queryKey: queryKeys.blueprints.list(model.id, scope),
-    queryFn: () => api.getBlueprints(model.id, scope),
-    enabled: isExpanded,
-  });
-
-  return (
-    <>
-      <ListItem
-        disablePadding
-        sx={{ pl: 4 }}
-        secondaryAction={
-          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-            <IconButton size="small" onClick={onToggle}>
-              {isExpanded ? <ExpandLess /> : <ExpandMore />}
-            </IconButton>
-            <Button
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowMigrate(true);
-              }}
-            >
-              {BLUEPRINT_LABELS.MIGRATE_DEVICES}
-            </Button>
-            {canMutate && (
-              <>
-                <Tooltip title={BLUEPRINT_LABELS.ADD_DECODER}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddDecoder();
-                    }}
-                  >
-                    <AddIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={BLUEPRINT_LABELS.ACTION_EDIT}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit();
-                    }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={BLUEPRINT_LABELS.ACTION_DELETE}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete();
-                    }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
-            {model.isSystem && (
-              <Chip
-                label={BLUEPRINT_LABELS.BADGE_SYSTEM}
-                size="small"
-                color="info"
-                sx={{
-                  textDecoration: "none",
-                  "& .MuiChip-label": { fontFamily: "inherit" },
-                }}
-              />
-            )}
-            <Chip
-              label={`${blueprints?.length ?? model.blueprintCount} ${BLUEPRINT_LABELS.COL_BLUEPRINTS}`}
-              size="small"
-              sx={{
-                textDecoration: "none",
-                "& .MuiChip-label": { fontFamily: "inherit" },
-              }}
-            />
-          </Box>
-        }
-      >
-        <ListItemButton onClick={onToggle}>
-          <ListItemIcon>
-            <BlueprintIcon />
-          </ListItemIcon>
-          <ListItemText
-            primary={model.name}
-            secondary={
-              model.typeEui ? formatTypeEUI(model.typeEui) : model.code
-            }
-          />
-        </ListItemButton>
-      </ListItem>
-
-      <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding>
-          {blueprintsLoading && (
-            <ListItem sx={{ pl: 8 }}>
-              <CircularProgress size={16} />
-            </ListItem>
-          )}
-          {blueprints?.map((bp) => (
-            <ListItem key={bp.id} disablePadding sx={{ pl: 8 }}>
-              <ListItemButton onClick={() => onBlueprintClick(bp.id)}>
-                <ListItemText
-                  primary={bp.version}
-                  secondary={formatTypeEUI(bp.typeEui)}
-                />
-                <Box sx={{ display: "flex", gap: 1 }}>
-                  {bp.isSystem && (
-                    <Chip
-                      label={BLUEPRINT_LABELS.BADGE_SYSTEM}
-                      size="small"
-                      color="info"
-                    />
-                  )}
-                  {bp.isDefault && (
-                    <Chip
-                      label={BLUEPRINT_LABELS.BADGE_DEFAULT}
-                      size="small"
-                      color="primary"
-                    />
-                  )}
-                </Box>
-              </ListItemButton>
-            </ListItem>
-          ))}
-          {!blueprintsLoading && blueprints?.length === 0 && (
-            <ListItem sx={{ pl: 8 }}>
-              <ListItemText
-                secondary={BLUEPRINT_LABELS.NO_BLUEPRINTS}
-                sx={{ color: "text.secondary" }}
-              />
-            </ListItem>
-          )}
-        </List>
-      </Collapse>
-
-      <BulkMigrateDialog
-        open={showMigrate}
-        deviceModelId={model.id}
-        scope={scope}
-        modelIsSystem={model.isSystem}
-        onClose={() => setShowMigrate(false)}
-      />
-    </>
-  );
-};
-
-/**
- * Add Manufacturer Dialog
- */
-interface AddManufacturerDialogProps {
-  open: boolean;
-  scope: BlueprintScope;
-  isServerAdmin: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-const AddManufacturerDialog: React.FC<AddManufacturerDialogProps> = ({
-  open,
-  scope,
-  isServerAdmin,
-  onClose,
-  onSuccess,
-}) => {
-  const [formData, setFormData] = useState<CreateManufacturerRequest>({
-    name: "",
-    isSystem: scope === "system",
-  });
-  const [error, setError] = useState<string | null>(null);
-
-  // Default the System toggle to match the active scope tab.
-  React.useEffect(() => {
-    if (open) {
-      setFormData({ name: "", isSystem: scope === "system" });
-      setError(null);
-    }
-  }, [open, scope]);
-
-  const mutation = useMutation({
-    mutationFn: (data: CreateManufacturerRequest) =>
-      api.createManufacturer(data),
-    onSuccess: () => {
-      setFormData({ name: "", isSystem: scope === "system" });
-      setError(null);
-      onSuccess();
-    },
-    onError: (err: Error) => {
-      setError(err.message);
-    },
-  });
-
-  const handleSubmit = () => {
-    if (!formData.name) {
-      setError(BLUEPRINT_LABELS.ERR_NAME_REQUIRED);
-      return;
-    }
-    mutation.mutate(formData);
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{BLUEPRINT_LABELS.ADD_MANUFACTURER}</DialogTitle>
-      <DialogContent>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-        <ManufacturerFormFields
-          name={formData.name}
-          website={formData.website || ""}
-          onNameChange={(value) => setFormData({ ...formData, name: value })}
-          onWebsiteChange={(value) =>
-            setFormData({ ...formData, website: value })
-          }
-        />
-        {isServerAdmin && (
-          <FormControlLabel
-            sx={{ mt: 1 }}
-            control={
-              // Locked so a Custom-tab create can't silently produce a System row.
-              <Checkbox checked={!!formData.isSystem} disabled />
-            }
-            label={BLUEPRINT_LABELS.LABEL_IS_SYSTEM}
-          />
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{BLUEPRINT_LABELS.ACTION_CANCEL}</Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          disabled={mutation.isPending}
-        >
-          {mutation.isPending ? (
-            <CircularProgress size={20} />
-          ) : (
-            BLUEPRINT_LABELS.ACTION_CREATE
-          )}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-/**
- * Edit Manufacturer Dialog
- */
-interface EditManufacturerDialogProps {
-  manufacturer: ManufacturerUI | null;
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-const EditManufacturerDialog: React.FC<EditManufacturerDialogProps> = ({
-  manufacturer,
-  onClose,
-  onSuccess,
-}) => {
-  const [formData, setFormData] = useState<UpdateManufacturerRequest>({});
-  const [error, setError] = useState<string | null>(null);
-
-  // Reset form data when manufacturer changes
-  React.useEffect(() => {
-    if (manufacturer) {
-      setFormData({
-        name: manufacturer.name,
-        website: manufacturer.website || undefined,
-      });
-      setError(null);
-    }
-  }, [manufacturer]);
-
-  const mutation = useMutation({
-    mutationFn: (data: UpdateManufacturerRequest) => {
-      if (!manufacturer)
-        throw new Error(BLUEPRINT_LABELS.ERR_NO_MANUFACTURER_SELECTED);
-      return api.updateManufacturer(manufacturer.id, data);
-    },
-    onSuccess: () => {
-      setError(null);
-      onSuccess();
-    },
-    onError: (err: Error) => {
-      setError(err.message);
-    },
-  });
-
-  const handleSubmit = () => {
-    if (!formData.name) {
-      setError(BLUEPRINT_LABELS.ERR_NAME_REQUIRED);
-      return;
-    }
-    mutation.mutate(formData);
-  };
-
-  return (
-    <Dialog open={!!manufacturer} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{BLUEPRINT_LABELS.DIALOG_EDIT_MANUFACTURER}</DialogTitle>
-      <DialogContent>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-        <ManufacturerFormFields
-          name={formData.name || ""}
-          website={formData.website || ""}
-          onNameChange={(value) => setFormData({ ...formData, name: value })}
-          onWebsiteChange={(value) =>
-            setFormData({ ...formData, website: value })
-          }
-        />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{BLUEPRINT_LABELS.ACTION_CANCEL}</Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          disabled={mutation.isPending}
-        >
-          {mutation.isPending ? (
-            <CircularProgress size={20} />
-          ) : (
-            BLUEPRINT_LABELS.ACTION_SAVE
-          )}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-/**
- * Edit Device Model Dialog
- */
-interface EditDeviceModelDialogProps {
-  model: DeviceModelUI | null;
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-const EditDeviceModelDialog: React.FC<EditDeviceModelDialogProps> = ({
-  model,
-  onClose,
-  onSuccess,
-}) => {
-  const [formData, setFormData] = useState<UpdateDeviceModelRequest>({});
-  const [error, setError] = useState<string | null>(null);
-
-  // Reset form data when model changes
-  React.useEffect(() => {
-    if (model) {
-      setFormData({
-        name: model.name,
-        description: model.description || undefined,
-        datasheetUrl: model.datasheetUrl || undefined,
-      });
-      setError(null);
-    }
-  }, [model]);
-
-  const mutation = useMutation({
-    mutationFn: (data: UpdateDeviceModelRequest) => {
-      if (!model) throw new Error(BLUEPRINT_LABELS.ERR_NO_MODEL_SELECTED);
-      return api.updateDeviceModel(model.id, data);
-    },
-    onSuccess: () => {
-      setError(null);
-      onSuccess();
-    },
-    onError: (err: Error) => {
-      setError(err.message);
-    },
-  });
-
-  const handleSubmit = () => {
-    if (!formData.name) {
-      setError(BLUEPRINT_LABELS.ERR_NAME_REQUIRED);
-      return;
-    }
-    mutation.mutate(formData);
-  };
-
-  return (
-    <Dialog open={!!model} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{BLUEPRINT_LABELS.DIALOG_EDIT_MODEL}</DialogTitle>
-      <DialogContent>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-        <TextField
-          autoFocus
-          margin="dense"
-          label={BLUEPRINT_LABELS.LABEL_NAME}
-          fullWidth
-          value={formData.name || ""}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-        />
-        <TextField
-          margin="dense"
-          label={BLUEPRINT_LABELS.LABEL_DESCRIPTION}
-          fullWidth
-          multiline
-          rows={2}
-          value={formData.description || ""}
-          onChange={(e) =>
-            setFormData({ ...formData, description: e.target.value })
-          }
-        />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>{BLUEPRINT_LABELS.ACTION_CANCEL}</Button>
-        <Button
-          onClick={handleSubmit}
-          variant="contained"
-          disabled={mutation.isPending}
-        >
-          {mutation.isPending ? (
-            <CircularProgress size={20} />
-          ) : (
-            BLUEPRINT_LABELS.ACTION_SAVE
-          )}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-/**
- * Add Blueprint (Decoder) Dialog
- */
-interface AddBlueprintDialogProps {
-  model: DeviceModelUI | null;
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({
-  model,
-  onClose,
-  onSuccess,
-}) => {
-  const [version, setVersion] = useState("");
-  const [specJson, setSpecJson] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (model) {
-      setVersion("");
-      setSpecJson("");
-      setError(null);
-    }
-  }, [model]);
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (!model) throw new Error(BLUEPRINT_LABELS.ERR_CREATE_BLUEPRINT);
-
-      if (!version.trim()) {
-        throw new Error(BLUEPRINT_LABELS.ERR_VERSION_REQUIRED);
-      }
-      if (!specJson.trim()) {
-        throw new Error(BLUEPRINT_LABELS.ERR_SPEC_JSON_REQUIRED);
-      }
-
-      let parsedSpec: object;
-      try {
-        parsedSpec = unwrapBlueprintSpec(JSON.parse(specJson)) as object;
-      } catch {
-        throw new Error(BLUEPRINT_LABELS.ERR_INVALID_JSON);
-      }
-
-      await api.createBlueprint(model.id, {
-        version: version.trim(),
-        specJson: parsedSpec,
-        // Child ownership mirrors the parent model (System vs Custom).
-        isSystem: model.isSystem,
-      });
-    },
-    onSuccess: () => {
-      setError(null);
-      onSuccess();
-    },
-    onError: (err: Error) => {
-      setError(err.message);
-    },
-  });
-
-  return (
-    <Dialog open={!!model} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{BLUEPRINT_LABELS.ADD_DECODER}</DialogTitle>
-      <DialogContent>
-        <DialogContentText sx={{ mb: 2 }}>
-          {model ? `${BLUEPRINT_LABELS.LABEL_NAME}: ${model.name}` : ""}
-        </DialogContentText>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-        <TextField
-          autoFocus
-          margin="dense"
-          label={BLUEPRINT_LABELS.LABEL_VERSION}
-          fullWidth
-          value={version}
-          onChange={(e) => setVersion(e.target.value)}
-        />
-        <TextField
-          margin="dense"
-          label={BLUEPRINT_LABELS.LABEL_SPEC_JSON}
-          fullWidth
-          multiline
-          rows={10}
-          value={specJson}
-          onChange={(e) => setSpecJson(e.target.value)}
-          helperText={BLUEPRINT_LABELS.HELPER_SPEC_JSON}
-        />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={mutation.isPending}>
-          {BLUEPRINT_LABELS.ACTION_CANCEL}
-        </Button>
-        <Button
-          onClick={() => mutation.mutate()}
-          variant="contained"
-          disabled={mutation.isPending}
-        >
-          {mutation.isPending ? (
-            <CircularProgress size={20} />
-          ) : (
-            BLUEPRINT_LABELS.ACTION_CREATE
-          )}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-/**
- * Delete Confirmation Dialog
- */
-interface DeleteConfirmDialogProps {
-  open: boolean;
-  title: string;
-  message: string;
-  onClose: () => void;
-  onConfirm: () => Promise<void>;
-}
-
-const DeleteConfirmDialog: React.FC<DeleteConfirmDialogProps> = ({
-  open,
-  title,
-  message,
-  onClose,
-  onConfirm,
-}) => {
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleConfirm = async () => {
-    setIsDeleting(true);
-    setError(null);
-    try {
-      await onConfirm();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : BLUEPRINT_LABELS.ERR_DELETE_FAILED,
-      );
-      setIsDeleting(false);
-    }
-  };
-
-  // Reset state when dialog closes
-  React.useEffect(() => {
-    if (!open) {
-      setIsDeleting(false);
-      setError(null);
-    }
-  }, [open]);
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-        <DialogContentText>{message}</DialogContentText>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose} disabled={isDeleting}>
-          {BLUEPRINT_LABELS.ACTION_CANCEL}
-        </Button>
-        <Button
-          onClick={handleConfirm}
-          color="error"
-          variant="contained"
-          disabled={isDeleting}
-        >
-          {isDeleting ? (
-            <CircularProgress size={20} />
-          ) : (
-            BLUEPRINT_LABELS.ACTION_DELETE
-          )}
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-export default Blueprints;

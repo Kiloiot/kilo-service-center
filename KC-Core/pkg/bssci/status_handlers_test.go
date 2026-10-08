@@ -1,14 +1,15 @@
 package bssci_test
 
 import (
-	"bytes"
 	"context"
 	"net"
 	"sync"
 	"testing"
 	"time"
 
-	bssciservices "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci"
+	bssciutil "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
+
+	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/internal/testsupport/bsscitest"
 	bssci "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/interfaces"
@@ -19,6 +20,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+// statusUpdateDelay staggers concurrent status updates in the race test.
+const statusUpdateDelay = 10 * time.Millisecond
 
 // statusMockConn captures responses sent by status handlers
 type statusMockConn struct {
@@ -31,14 +35,9 @@ type statusMockConn struct {
 }
 
 func (m *statusMockConn) Write(b []byte) (n int, err error) {
-	// Skip BSSCI headers (12 bytes starting with "MIOTYB01")
-	if len(b) == 12 && bytes.HasPrefix(b, mioty.MIOTYFrameIdentifier[:]) {
-		return len(b), nil
-	}
-
-	// Decode msgpack payload
+	// Decode the msgpack payload behind the frame header
 	var msg map[string]interface{}
-	if err := msgpack.Unmarshal(b, &msg); err == nil {
+	if err := msgpack.Unmarshal(bssciutil.FramePayload(b), &msg); err == nil {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 
@@ -115,7 +114,7 @@ func (m *statusMockConn) GetLastErrorCode() int {
 // After receiving statusRsp, the SC MUST send statusCmp
 func TestStatusResponseSendsCompletion(t *testing.T) {
 	logger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServer(logger, mockStorage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -203,7 +202,7 @@ func TestStatusMandatoryFieldValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 			server := bssci.NewTestServer(logger, mockStorage, nil, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -244,7 +243,7 @@ func TestStatusMandatoryFieldValidation(t *testing.T) {
 // Optional fields should be accepted gracefully when omitted
 func TestStatusOptionalFieldHandling(t *testing.T) {
 	logger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServer(logger, mockStorage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -281,7 +280,7 @@ func TestStatusOptionalFieldHandling(t *testing.T) {
 // TestStatusWithAllFields verifies that all optional fields are accepted
 func TestStatusWithAllFields(t *testing.T) {
 	logger := logger.NewNop()
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServer(logger, mockStorage, nil, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -380,28 +379,8 @@ func (m *tenantTrackingBaseStationRepo) UpdateConnectionStatus(_ context.Context
 	return nil
 }
 
-func (m *tenantTrackingBaseStationRepo) UpdateSessionInfo(_ context.Context, _ int64, _ []byte, _ string) error {
-	return nil
-}
-
-func (m *tenantTrackingBaseStationRepo) GetStatistics(_ context.Context, _ int64) (*interfaces.BaseStationStatistics, error) {
-	return &interfaces.BaseStationStatistics{}, nil
-}
-
-func (m *tenantTrackingBaseStationRepo) GetPropagationState(_ context.Context, _ int64) (*models.BaseStationPropagationState, error) {
-	return nil, nil
-}
-
-func (m *tenantTrackingBaseStationRepo) UpsertPropagationState(_ context.Context, _ *models.BaseStationPropagationState) error {
-	return nil
-}
-
-func (m *tenantTrackingBaseStationRepo) UpdatePropagationStatus(_ context.Context, _ int64, _ string, _ *string) error {
-	return nil
-}
-
-func (m *tenantTrackingBaseStationRepo) IncrementRetryCount(_ context.Context, _ int64, _ time.Time) error {
-	return nil
+func (m *tenantTrackingBaseStationRepo) GetStatistics(_ context.Context, _ int64) (*models.BaseStationStatistics, error) {
+	return &models.BaseStationStatistics{}, nil
 }
 
 func (m *tenantTrackingBaseStationRepo) UpdateEUI(_ context.Context, _ int64, _, _ []byte) (*models.BaseStation, error) {
@@ -415,6 +394,7 @@ func (m *tenantTrackingBaseStationRepo) GetByEUIGlobal(_ context.Context, euiByt
 	}
 	return &models.BaseStation{ID: 1, TenantID: 1, EUI: eui, Name: "Test BS"}, nil
 }
+
 func (m *tenantTrackingBaseStationRepo) ListAllLocations(_ context.Context) ([]*models.BaseStation, error) {
 	return nil, nil
 }
@@ -433,7 +413,7 @@ func TestStatusResponseRespectsTenantIsolation(t *testing.T) {
 	trackingRepo := &tenantTrackingBaseStationRepo{}
 
 	// Create test services with default tenant ID = 1
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 
 	// Create server with tenant ID = 1 and our tracking repository
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
@@ -484,8 +464,9 @@ func TestStatusResponseRespectsTenantIsolation(t *testing.T) {
 
 // geoLocationTrackingRepo captures the updates map passed to Update method
 type geoLocationTrackingRepo struct {
-	updateCalled bool
-	updatesMap   map[string]interface{}
+	updateCalled   bool
+	updatesMap     map[string]interface{}
+	locationSource *string
 }
 
 func (m *geoLocationTrackingRepo) Create(_ context.Context, _ *models.BaseStation) error {
@@ -509,10 +490,11 @@ func (m *geoLocationTrackingRepo) GetByEUI(_ context.Context, tenantID int64, eu
 	}
 
 	return &models.BaseStation{
-		ID:       1,
-		TenantID: tenantID,
-		EUI:      eui,
-		Name:     "Test BS",
+		ID:             1,
+		TenantID:       tenantID,
+		EUI:            eui,
+		Name:           "Test BS",
+		LocationSource: m.locationSource,
 	}, nil
 }
 
@@ -538,28 +520,8 @@ func (m *geoLocationTrackingRepo) UpdateConnectionStatus(_ context.Context, _ in
 	return nil
 }
 
-func (m *geoLocationTrackingRepo) UpdateSessionInfo(_ context.Context, _ int64, _ []byte, _ string) error {
-	return nil
-}
-
-func (m *geoLocationTrackingRepo) GetStatistics(_ context.Context, _ int64) (*interfaces.BaseStationStatistics, error) {
-	return &interfaces.BaseStationStatistics{}, nil
-}
-
-func (m *geoLocationTrackingRepo) GetPropagationState(_ context.Context, _ int64) (*models.BaseStationPropagationState, error) {
-	return nil, nil
-}
-
-func (m *geoLocationTrackingRepo) UpsertPropagationState(_ context.Context, _ *models.BaseStationPropagationState) error {
-	return nil
-}
-
-func (m *geoLocationTrackingRepo) UpdatePropagationStatus(_ context.Context, _ int64, _ string, _ *string) error {
-	return nil
-}
-
-func (m *geoLocationTrackingRepo) IncrementRetryCount(_ context.Context, _ int64, _ time.Time) error {
-	return nil
+func (m *geoLocationTrackingRepo) GetStatistics(_ context.Context, _ int64) (*models.BaseStationStatistics, error) {
+	return &models.BaseStationStatistics{}, nil
 }
 
 func (m *geoLocationTrackingRepo) UpdateEUI(_ context.Context, _ int64, _, _ []byte) (*models.BaseStation, error) {
@@ -573,6 +535,7 @@ func (m *geoLocationTrackingRepo) GetByEUIGlobal(_ context.Context, euiBytes []b
 	}
 	return &models.BaseStation{ID: 1, TenantID: 1, EUI: eui, Name: "Test BS"}, nil
 }
+
 func (m *geoLocationTrackingRepo) ListAllLocations(_ context.Context) ([]*models.BaseStation, error) {
 	return nil, nil
 }
@@ -602,15 +565,16 @@ func TestStatusResponsePersistsGeoLocation(t *testing.T) {
 			expectAlt:   floatPtr(34.0),
 		},
 		{
-			name: "Map format with lat/lon/alt keys",
+			// geoLocation is Numeric[3] (rev1 §5.5.2); a keyed object is not a location
+			name: "Map format with lat/lon/alt keys records no location",
 			geoLocation: map[string]interface{}{
 				"lat": float64(48.8566),
 				"lon": float64(2.3522),
 				"alt": float64(35.0),
 			},
-			expectLat: floatPtr(48.8566),
-			expectLon: floatPtr(2.3522),
-			expectAlt: floatPtr(35.0),
+			expectLat: nil,
+			expectLon: nil,
+			expectAlt: nil,
 		},
 		{
 			name:        "No geoLocation field",
@@ -627,7 +591,7 @@ func TestStatusResponsePersistsGeoLocation(t *testing.T) {
 			trackingRepo := &geoLocationTrackingRepo{}
 
 			// Create test services
-			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 
 			// Create server with our tracking repository
 			server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
@@ -765,28 +729,8 @@ func (m *errorInjectingBaseStationRepo) UpdateConnectionStatus(_ context.Context
 	return nil
 }
 
-func (m *errorInjectingBaseStationRepo) UpdateSessionInfo(_ context.Context, _ int64, _ []byte, _ string) error {
-	return nil
-}
-
-func (m *errorInjectingBaseStationRepo) GetStatistics(_ context.Context, _ int64) (*interfaces.BaseStationStatistics, error) {
-	return &interfaces.BaseStationStatistics{}, nil
-}
-
-func (m *errorInjectingBaseStationRepo) GetPropagationState(_ context.Context, _ int64) (*models.BaseStationPropagationState, error) {
-	return nil, nil
-}
-
-func (m *errorInjectingBaseStationRepo) UpsertPropagationState(_ context.Context, _ *models.BaseStationPropagationState) error {
-	return nil
-}
-
-func (m *errorInjectingBaseStationRepo) UpdatePropagationStatus(_ context.Context, _ int64, _ string, _ *string) error {
-	return nil
-}
-
-func (m *errorInjectingBaseStationRepo) IncrementRetryCount(_ context.Context, _ int64, _ time.Time) error {
-	return nil
+func (m *errorInjectingBaseStationRepo) GetStatistics(_ context.Context, _ int64) (*models.BaseStationStatistics, error) {
+	return &models.BaseStationStatistics{}, nil
 }
 
 func (m *errorInjectingBaseStationRepo) UpdateEUI(_ context.Context, _ int64, _, _ []byte) (*models.BaseStation, error) {
@@ -800,6 +744,7 @@ func (m *errorInjectingBaseStationRepo) GetByEUIGlobal(_ context.Context, euiByt
 	}
 	return &models.BaseStation{ID: 1, TenantID: 1, EUI: eui, Name: "Test BS"}, nil
 }
+
 func (m *errorInjectingBaseStationRepo) ListAllLocations(_ context.Context) ([]*models.BaseStation, error) {
 	return nil, nil
 }
@@ -869,32 +814,12 @@ func (m *panicOnCallBaseStationRepo) List(_ context.Context, _ *models.BaseStati
 	panic("panicOnCallBaseStationRepo.List() called - validation should short-circuit before ANY repo access")
 }
 
-func (m *panicOnCallBaseStationRepo) GetStatistics(_ context.Context, _ int64) (*interfaces.BaseStationStatistics, error) {
+func (m *panicOnCallBaseStationRepo) GetStatistics(_ context.Context, _ int64) (*models.BaseStationStatistics, error) {
 	panic("panicOnCallBaseStationRepo.GetStatistics() called - validation should short-circuit before ANY repo access")
 }
 
 func (m *panicOnCallBaseStationRepo) UpdateConnectionStatus(_ context.Context, _ int64, _ int64, _ bool, _ *string) error {
 	panic("panicOnCallBaseStationRepo.UpdateConnectionStatus() called - validation should short-circuit before ANY repo access")
-}
-
-func (m *panicOnCallBaseStationRepo) UpdateSessionInfo(_ context.Context, _ int64, _ []byte, _ string) error {
-	panic("panicOnCallBaseStationRepo.UpdateSessionInfo() called - validation should short-circuit before ANY repo access")
-}
-
-func (m *panicOnCallBaseStationRepo) GetPropagationState(_ context.Context, _ int64) (*models.BaseStationPropagationState, error) {
-	panic("panicOnCallBaseStationRepo.GetPropagationState() called - validation should short-circuit before ANY repo access")
-}
-
-func (m *panicOnCallBaseStationRepo) UpsertPropagationState(_ context.Context, _ *models.BaseStationPropagationState) error {
-	panic("panicOnCallBaseStationRepo.UpsertPropagationState() called - validation should short-circuit before ANY repo access")
-}
-
-func (m *panicOnCallBaseStationRepo) UpdatePropagationStatus(_ context.Context, _ int64, _ string, _ *string) error {
-	panic("panicOnCallBaseStationRepo.UpdatePropagationStatus() called - validation should short-circuit before ANY repo access")
-}
-
-func (m *panicOnCallBaseStationRepo) IncrementRetryCount(_ context.Context, _ int64, _ time.Time) error {
-	panic("panicOnCallBaseStationRepo.IncrementRetryCount() called - validation should short-circuit before ANY repo access")
 }
 
 func (m *panicOnCallBaseStationRepo) UpdateEUI(_ context.Context, _ int64, _, _ []byte) (*models.BaseStation, error) {
@@ -904,6 +829,7 @@ func (m *panicOnCallBaseStationRepo) UpdateEUI(_ context.Context, _ int64, _, _ 
 func (m *panicOnCallBaseStationRepo) GetByEUIGlobal(_ context.Context, _ []byte) (*models.BaseStation, error) {
 	panic("panicOnCallBaseStationRepo.GetByEUIGlobal() called - validation should short-circuit before ANY repo access")
 }
+
 func (m *panicOnCallBaseStationRepo) ListAllLocations(_ context.Context) ([]*models.BaseStation, error) {
 	return nil, nil
 }
@@ -914,38 +840,27 @@ type mockStorageWithHistory struct {
 	baseStationRepo interfaces.BaseStationRepository
 }
 
-func (m *mockStorageWithHistory) EndPoints() interfaces.EndpointRepository          { return nil }
-func (m *mockStorageWithHistory) DownlinkQueue() interfaces.DownlinkQueueRepository { return nil }
-func (m *mockStorageWithHistory) BaseStationReceptions() interfaces.BaseStationReceptionRepository {
-	return nil
-}
+func (m *mockStorageWithHistory) EndPoints() interfaces.EndpointRepository { return nil }
+
 func (m *mockStorageWithHistory) EndPointSessions() interfaces.EndPointSessionRepository { return nil }
-func (m *mockStorageWithHistory) EndPointKeys() interfaces.EndPointKeyRepository         { return nil }
-func (m *mockStorageWithHistory) RoamingAgreements() interfaces.RoamingAgreementRepository {
-	return nil
-}
+
 func (m *mockStorageWithHistory) BaseStations() interfaces.BaseStationRepository {
 	if m.baseStationRepo != nil {
 		return m.baseStationRepo
 	}
 	return nil
 }
+
 func (m *mockStorageWithHistory) BaseStationSessions() interfaces.BaseStationSessionRepository {
 	return nil
 }
-func (m *mockStorageWithHistory) DLRXStatus() interfaces.DLRXStatusRepository { return nil }
-func (m *mockStorageWithHistory) PendingOperations() interfaces.PendingOperationRepository {
-	return nil
-}
+func (m *mockStorageWithHistory) DLRXStatus() interfaces.DLRXStatusRepository        { return nil }
 func (m *mockStorageWithHistory) MIOTYMessages() interfaces.MIOTYMessageRepository   { return nil }
 func (m *mockStorageWithHistory) MIOTYDownlinks() interfaces.MIOTYDownlinkRepository { return nil }
 func (m *mockStorageWithHistory) MIOTYBaseStationStatus() interfaces.MIOTYBaseStationStatusRepository {
 	return m.historyRepo
 }
-func (m *mockStorageWithHistory) Users() interfaces.UserRepository                 { return nil }
 func (m *mockStorageWithHistory) APIKeys() interfaces.APIKeyRepository             { return nil }
-func (m *mockStorageWithHistory) Integrations() interfaces.IntegrationRepository   { return nil }
-func (m *mockStorageWithHistory) Manufacturers() interfaces.ManufacturerRepository { return nil }
 func (m *mockStorageWithHistory) DeviceModels() interfaces.DeviceModelRepository   { return nil }
 func (m *mockStorageWithHistory) Blueprints() interfaces.BlueprintRepository       { return nil }
 func (m *mockStorageWithHistory) Organizations() interfaces.OrganizationRepository { return nil }
@@ -955,8 +870,8 @@ func (m *mockStorageWithHistory) SCACISessions() interfaces.SCACISessionReposito
 func (m *mockStorageWithHistory) SCACIOperations() interfaces.SCACIOperationRepository {
 	return nil
 }
-func (m *mockStorageWithHistory) DownlinkQueueReader() interfaces.DownlinkQueueReader { return nil }
-func (m *mockStorageWithHistory) BeginTx(_ context.Context) (interfaces.Transaction, error) {
+
+func (m *mockStorageWithHistory) BeginTx(_ context.Context) (bssci.AttachTx, error) {
 	return nil, nil
 }
 func (m *mockStorageWithHistory) Ping(_ context.Context) error { return nil }
@@ -977,7 +892,7 @@ func TestStatusGetByEUIFailure(t *testing.T) {
 		getByEUIError: assert.AnError,
 	}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, errorRepo, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -1026,7 +941,7 @@ func TestStatusUpdateFailure(t *testing.T) {
 		updateError: assert.AnError,
 	}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, errorRepo, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -1076,7 +991,7 @@ func TestStatusHistoryPersistenceFailure(t *testing.T) {
 		createError: assert.AnError,
 	}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	mockConn := &statusMockConn{}
 	session := &bssci.Session{
@@ -1145,7 +1060,7 @@ func TestStatusGeoLocationStringFormat(t *testing.T) {
 
 	trackingRepo := &geoLocationTrackingRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -1194,7 +1109,7 @@ func TestStatusGeoLocationPartialArray(t *testing.T) {
 
 	trackingRepo := &geoLocationTrackingRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -1243,7 +1158,7 @@ func TestStatusGeoLocationNonNumericArray(t *testing.T) {
 
 	trackingRepo := &geoLocationTrackingRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -1284,7 +1199,7 @@ func TestStatusGeoLocationNonNumericArray(t *testing.T) {
 
 // TestStatusGeoLocationNestedObject verifies BSSCI §3.5.2 lines 820-844:
 // geoLocation with nested object structure should be handled gracefully.
-// Only flat arrays or simple maps should be parsed.
+// Only the Numeric[3] array form is parsed.
 //
 // Lines validated: status_handlers.go:145-156
 func TestStatusGeoLocationNestedObject(t *testing.T) {
@@ -1292,7 +1207,7 @@ func TestStatusGeoLocationNestedObject(t *testing.T) {
 
 	trackingRepo := &geoLocationTrackingRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -1349,7 +1264,7 @@ func TestStatusMissingCodeFieldShortCircuits(t *testing.T) {
 
 	// Use panic-on-call stub to prove validation short-circuits before DB access
 	panicRepo := &panicOnCallBaseStationRepo{}
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	// Wire panic repo through mockStorageWithHistory to ensure server uses it
 	mockStorage := &mockStorageWithHistory{
@@ -1401,7 +1316,7 @@ func TestStatusInvalidMessageTypeShortCircuits(t *testing.T) {
 
 	// Use panic-on-call stub to prove validation short-circuits before DB access
 	panicRepo := &panicOnCallBaseStationRepo{}
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	// Wire panic repo through mockStorageWithHistory to ensure server uses it
 	mockStorage := &mockStorageWithHistory{
@@ -1453,7 +1368,7 @@ func TestStatusInvalidTimeTypeShortCircuits(t *testing.T) {
 
 	// Use panic-on-call stub to prove validation short-circuits before DB access
 	panicRepo := &panicOnCallBaseStationRepo{}
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	// Wire panic repo through mockStorageWithHistory to ensure server uses it
 	mockStorage := &mockStorageWithHistory{
@@ -1527,7 +1442,7 @@ func TestStatusTenantIsolationUnderUpdateFailure(t *testing.T) {
 	historyRepo := &tenantTrackingHistoryRepo{}
 
 	// Create storage with both repos
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	mockStorage := &mockStorageWithHistory{
 		historyRepo:     historyRepo,
@@ -1598,7 +1513,7 @@ func TestStatusTenantIsolationUnderHistoryFailure(t *testing.T) {
 	}
 
 	// Create storage with both repos
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	mockStorage := &mockStorageWithHistory{
 		historyRepo:     historyRepo,
@@ -1649,7 +1564,7 @@ func TestStatusTenantIsolationUnderHistoryFailure(t *testing.T) {
 // ========== History Success Path Tests ==========
 
 // TestStatusHistoryPersistenceSuccess verifies BSSCI §3.5.2 lines 905-930:
-// When Update succeeds AND storage.MIOTYBaseStationStatus() returns a valid repo,
+// When Update succeeds AND postgres.NewRepositories(storage).BaseStationStatus returns a valid repo,
 // history should be persisted successfully with all fields populated correctly.
 //
 // Lines validated: status_handlers.go:222-246
@@ -1662,7 +1577,7 @@ func TestStatusHistoryPersistenceSuccess(t *testing.T) {
 	// Create successful base station repo
 	successRepo := &tenantTrackingBaseStationRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	mockStorage := &mockStorageWithHistory{
 		historyRepo:     mockHistoryRepo,
@@ -1735,7 +1650,7 @@ func TestStatusHistoryPersistenceSuccess(t *testing.T) {
 }
 
 // TestStatusHistorySkippedWhenStorageNil verifies BSSCI §3.5.2 lines 905-930:
-// When storage is nil OR storage.MIOTYBaseStationStatus() returns nil,
+// When storage is nil OR postgres.NewRepositories(storage).BaseStationStatus returns nil,
 // history persistence should be gracefully skipped without errors.
 //
 // Lines validated: status_handlers.go:222 (nil guard)
@@ -1745,7 +1660,7 @@ func TestStatusHistorySkippedWhenStorageNil(t *testing.T) {
 	// Create successful base station repo
 	successRepo := &tenantTrackingBaseStationRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	// Create storage with nil history repo (simulates MIOTYBaseStationStatus() returning nil)
 	mockStorage := &mockStorageWithHistory{
@@ -1833,7 +1748,7 @@ func (m *concurrentTrackingRepo) Update(_ context.Context, _ int64, _ int64, _ m
 	m.mu.Unlock()
 
 	// Simulate some work to increase chance of concurrent execution
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(statusUpdateDelay)
 
 	m.mu.Lock()
 	m.currentConcurrent--
@@ -1854,28 +1769,8 @@ func (m *concurrentTrackingRepo) UpdateConnectionStatus(_ context.Context, _ int
 	return nil
 }
 
-func (m *concurrentTrackingRepo) UpdateSessionInfo(_ context.Context, _ int64, _ []byte, _ string) error {
-	return nil
-}
-
-func (m *concurrentTrackingRepo) GetStatistics(_ context.Context, _ int64) (*interfaces.BaseStationStatistics, error) {
-	return &interfaces.BaseStationStatistics{}, nil
-}
-
-func (m *concurrentTrackingRepo) GetPropagationState(_ context.Context, _ int64) (*models.BaseStationPropagationState, error) {
-	return nil, nil
-}
-
-func (m *concurrentTrackingRepo) UpsertPropagationState(_ context.Context, _ *models.BaseStationPropagationState) error {
-	return nil
-}
-
-func (m *concurrentTrackingRepo) UpdatePropagationStatus(_ context.Context, _ int64, _ string, _ *string) error {
-	return nil
-}
-
-func (m *concurrentTrackingRepo) IncrementRetryCount(_ context.Context, _ int64, _ time.Time) error {
-	return nil
+func (m *concurrentTrackingRepo) GetStatistics(_ context.Context, _ int64) (*models.BaseStationStatistics, error) {
+	return &models.BaseStationStatistics{}, nil
 }
 
 func (m *concurrentTrackingRepo) UpdateEUI(_ context.Context, _ int64, _, _ []byte) (*models.BaseStation, error) {
@@ -1889,6 +1784,7 @@ func (m *concurrentTrackingRepo) GetByEUIGlobal(_ context.Context, euiBytes []by
 	}
 	return &models.BaseStation{ID: 1, TenantID: 1, EUI: eui, Name: "Test BS"}, nil
 }
+
 func (m *concurrentTrackingRepo) ListAllLocations(_ context.Context) ([]*models.BaseStation, error) {
 	return nil, nil
 }
@@ -1958,7 +1854,7 @@ func TestStatusResponseConcurrentUpdates(t *testing.T) {
 	// Create thread-safe history repo to track all Create calls
 	historyRepo := &threadSafeHistoryRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, _ := bsscitest.CreateTestServices(logger, nil)
 
 	// Create storage with both repos
 	mockStorage := &mockStorageWithHistory{
@@ -2015,7 +1911,7 @@ func TestStatusResponseConcurrentUpdates(t *testing.T) {
 	close(startCh)
 
 	// Wait for all goroutines to complete
-	successCount := 0
+	var successCount int
 	for i := 0; i < numGoroutines; i++ {
 		if <-doneCh {
 			successCount++
@@ -2080,7 +1976,7 @@ func TestStatusHandler_ValidGeoLocation_SetsGPSSource(t *testing.T) {
 
 	trackingRepo := &geoLocationTrackingRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -2161,7 +2057,7 @@ func TestStatusHandler_OutOfRangeLatLon_SkipsAll(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			trackingRepo := &geoLocationTrackingRepo{}
 
-			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 			server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -2205,15 +2101,15 @@ func TestStatusHandler_OutOfRangeLatLon_SkipsAll(t *testing.T) {
 }
 
 // TestStatusHandler_ZeroGeoLocation_SkipsAll verifies that all-zero coordinates
-// (0, 0, 0) are treated as "no GPS fix" and discarded rather than persisted.
-// Base stations without GPS hardware report 0/0/0 which would otherwise appear
-// as a valid location in the Gulf of Guinea.
+// (0, 0, 0) are treated as "no GPS fix": no coordinates are persisted, which
+// would otherwise appear as a location in the Gulf of Guinea; a station with
+// no location yet is marked as GPS without a fix.
 func TestStatusHandler_ZeroGeoLocation_SkipsAll(t *testing.T) {
 	logger := logger.NewNop()
 
 	trackingRepo := &geoLocationTrackingRepo{}
 
-	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+	sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 	server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
 		sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -2248,7 +2144,7 @@ func TestStatusHandler_ZeroGeoLocation_SkipsAll(t *testing.T) {
 	assert.NotContains(t, trackingRepo.updatesMap, "latitude", "Latitude should not be persisted for 0/0/0")
 	assert.NotContains(t, trackingRepo.updatesMap, "longitude", "Longitude should not be persisted for 0/0/0")
 	assert.NotContains(t, trackingRepo.updatesMap, "altitude", "Altitude should not be persisted for 0/0/0")
-	assert.NotContains(t, trackingRepo.updatesMap, "location_source", "location_source should not be set for 0/0/0")
+	assert.Equal(t, models.LocationSourceGPS, trackingRepo.updatesMap["location_source"], "a station without a location reports GPS without a fix")
 }
 
 // TestStatusHandler_PartialTriple_SkipsAll verifies BSSCI §3.5.2:
@@ -2287,7 +2183,7 @@ func TestStatusHandler_PartialTriple_SkipsAll(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			trackingRepo := &geoLocationTrackingRepo{}
 
-			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bssciservices.CreateTestServices(logger, nil)
+			sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver, mockStorage := bsscitest.CreateTestServices(logger, nil)
 			server := bssci.NewTestServerWithBaseStationRepo(logger, mockStorage, trackingRepo, 1,
 				sessionSvc, downlinkSvc, statusSvc, connectionSvc, broadcaster, queueSerializer, auditLogger, tenantResolver)
 
@@ -2334,7 +2230,15 @@ func (m *tenantTrackingBaseStationRepo) UpdateTLSFingerprintIfBlank(_ context.Co
 	return true, nil
 }
 
+func (m *tenantTrackingBaseStationRepo) UpdateTLSCertExpiryIfBlank(_ context.Context, _, _ int64, _ time.Time) (bool, error) {
+	return true, nil
+}
+
 func (m *errorInjectingBaseStationRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
+	return true, nil
+}
+
+func (m *errorInjectingBaseStationRepo) UpdateTLSCertExpiryIfBlank(_ context.Context, _, _ int64, _ time.Time) (bool, error) {
 	return true, nil
 }
 
@@ -2342,6 +2246,14 @@ func (m *panicOnCallBaseStationRepo) UpdateTLSFingerprintIfBlank(_ context.Conte
 	return true, nil
 }
 
+func (m *panicOnCallBaseStationRepo) UpdateTLSCertExpiryIfBlank(_ context.Context, _, _ int64, _ time.Time) (bool, error) {
+	return true, nil
+}
+
 func (m *concurrentTrackingRepo) UpdateTLSFingerprintIfBlank(_ context.Context, _, _ int64, _ string) (bool, error) {
+	return true, nil
+}
+
+func (m *concurrentTrackingRepo) UpdateTLSCertExpiryIfBlank(_ context.Context, _, _ int64, _ time.Time) (bool, error) {
 	return true, nil
 }

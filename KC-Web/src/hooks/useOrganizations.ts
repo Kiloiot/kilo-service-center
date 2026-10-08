@@ -12,8 +12,11 @@ import type {
 } from "@api-types/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiService } from "@services/api";
+import { organizationsApi } from "@services/api";
+import { PAGINATION, TIMING_FALLBACK_POLL_MS } from "@constants/app";
 import { queryKeys } from "@config/query-keys";
+
+import { useCapabilities } from "./useCapabilities";
 
 // ============================================================================
 // Organization Hooks
@@ -23,14 +26,14 @@ import { queryKeys } from "@config/query-keys";
  * Fetch all organizations with pagination
  */
 export function useOrganizations(
-  limit = 50,
+  limit: number = PAGINATION.ADMIN_LIST_PAGE_SIZE,
   offset = 0,
   tenantId?: number,
   options?: { enabled?: boolean },
 ) {
   return useQuery({
     queryKey: queryKeys.organizations.list({ limit, offset, tenantId }),
-    queryFn: () => apiService.getOrganizations(limit, offset),
+    queryFn: () => organizationsApi.getOrganizations(limit, offset),
     enabled: options?.enabled ?? true,
   });
 }
@@ -41,7 +44,7 @@ export function useOrganizations(
 export function useOrganization(id: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.organizations.detail(id),
-    queryFn: () => apiService.getOrganization(id),
+    queryFn: () => organizationsApi.getOrganization(id),
     enabled: (options?.enabled ?? true) && !!id,
   });
 }
@@ -54,7 +57,7 @@ export function useCreateOrganization() {
 
   return useMutation({
     mutationFn: (data: CreateOrganizationRequest) =>
-      apiService.createOrganization(data),
+      organizationsApi.createOrganization(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
     },
@@ -74,7 +77,7 @@ export function useUpdateOrganization() {
     }: {
       id: string;
       data: UpdateOrganizationRequest;
-    }) => apiService.updateOrganization(id, data),
+    }) => organizationsApi.updateOrganization(id, data),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
       queryClient.invalidateQueries({
@@ -91,9 +94,12 @@ export function useDeleteOrganization() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => apiService.deleteOrganization(id),
+    mutationFn: (id: string) => organizationsApi.deleteOrganization(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.userOrganizations.all,
+      });
     },
   });
 }
@@ -101,6 +107,15 @@ export function useDeleteOrganization() {
 // ============================================================================
 // Organization User Hooks
 // ============================================================================
+
+/**
+ * Membership changes are audit events, which only administrators receive, so
+ * the member list polls for every other viewer.
+ */
+function useMembershipPollInterval(): number | false {
+  const { isServerAdmin } = useCapabilities();
+  return isServerAdmin ? false : TIMING_FALLBACK_POLL_MS;
+}
 
 /**
  * Fetch organization members with optional status filter
@@ -112,19 +127,9 @@ export function useOrgUsers(
 ) {
   return useQuery({
     queryKey: queryKeys.organizations.users(orgId),
-    queryFn: () => apiService.getOrgUsers(orgId, status),
+    queryFn: () => organizationsApi.getOrgUsers(orgId, status),
     enabled: (options?.enabled ?? true) && !!orgId,
-  });
-}
-
-/**
- * Fetch a single organization member
- */
-export function useOrgUser(orgId: string, userId: string) {
-  return useQuery({
-    queryKey: queryKeys.organizations.userDetail(orgId, userId),
-    queryFn: () => apiService.getOrgUser(orgId, userId),
-    enabled: !!orgId && !!userId,
+    refetchInterval: useMembershipPollInterval(),
   });
 }
 
@@ -137,14 +142,14 @@ export function useAddOrgUser() {
 
   return useMutation({
     mutationFn: ({ orgId, data }: { orgId: string; data: AddOrgUserRequest }) =>
-      apiService.addOrgUser(orgId, data),
+      organizationsApi.addOrgUser(orgId, data),
     onSuccess: (_, { orgId, data }) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.organizations.users(orgId),
       });
       if (data.user_id) {
         queryClient.invalidateQueries({
-          queryKey: queryKeys.userOrganizations(data.user_id),
+          queryKey: queryKeys.userOrganizations.list(data.user_id),
         });
       }
     },
@@ -166,14 +171,16 @@ export function useUpdateOrgUser() {
       orgId: string;
       userId: string;
       data: UpdateOrgUserRequest;
-    }) => apiService.updateOrgUser(orgId, userId, data),
+    }) => organizationsApi.updateOrgUser(orgId, userId, data),
     onSuccess: (_, { orgId, userId }) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.organizations.users(orgId),
       });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.organizations.userDetail(orgId, userId),
+        queryKey: queryKeys.userOrganizations.list(userId),
       });
+      // The member may be the signed-in user, whose roles then change.
+      queryClient.invalidateQueries({ queryKey: queryKeys.auth.rolesAll() });
     },
   });
 }
@@ -187,13 +194,13 @@ export function useRemoveOrgUser() {
 
   return useMutation({
     mutationFn: ({ orgId, userId }: { orgId: string; userId: string }) =>
-      apiService.removeOrgUser(orgId, userId),
+      organizationsApi.removeOrgUser(orgId, userId),
     onSuccess: (_, { orgId, userId }) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.organizations.users(orgId),
       });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.userOrganizations(userId),
+        queryKey: queryKeys.userOrganizations.list(userId),
       });
     },
   });

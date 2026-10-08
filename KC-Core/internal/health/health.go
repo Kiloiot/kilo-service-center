@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 )
 
@@ -22,11 +23,13 @@ const (
 	StatusHealthy   Status = "healthy"
 	StatusUnhealthy Status = "unhealthy"
 	StatusDegraded  Status = "degraded"
+	// StatusDisabled marks a component configuration turned off; it never
+	// lowers the aggregate status.
+	StatusDisabled Status = "disabled"
 )
 
 // Health check message constants (centralized per governance rules).
 const (
-	MsgHealthy         = "healthy"
 	MsgOK              = "OK"
 	MsgFailedToConnect = "Failed to connect"
 	MsgFailedToCreate  = "Failed to create request"
@@ -64,7 +67,39 @@ type Service struct {
 	version  string
 }
 
+const (
+	checkNamePostgreSQL = "postgresql"
+	checkNameMQTT       = "mqtt"
+	checkNameHTTP       = "http"
+	checkNameTCP        = "tcp"
+	checkNameListener   = "listener"
+	checkNameDisabled   = "disabled"
+)
+
+// Health check messages.
+const (
+	msgFmtDatabasePingFailed = "Failed to ping database: %v"
+	msgHighConnectionUsage   = "High connection usage"
+	msgDatabaseHealthy       = "Database is healthy"
+	msgFmtTestQueryFailed    = "Failed to execute test query: %v"
+	msgMQTTConnected         = "MQTT broker is connected"
+	msgMQTTDisconnected      = "MQTT broker is disconnected"
+	msgListening             = "Listening"
+	msgNotListening          = "Not listening"
+)
+
+// Log messages for failures that leave the health result itself intact.
+const (
+	logFailedWriteHealthResponse = "Failed to write health response"
+	logFailedCloseHealthProbe    = "Failed to close health probe connection"
+)
+
+// connectionUsageDegradedRatio marks the pool as degraded when in-use
+// connections exceed this share of the pool.
+const connectionUsageDegradedRatio = 0.9
+
 // NewService creates a new health check service
+// Health check names.
 func NewService(logger logger.Logger, version string) *Service {
 	return &Service{
 		logger:   logger,
@@ -143,20 +178,30 @@ func (s *Service) HTTPHandler() http.HandlerFunc {
 			statusCode = http.StatusOK // Still return 200 for degraded
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(grpcconst.HeaderContentType, grpcconst.ContentTypeJSON)
 		w.WriteHeader(statusCode)
-		_ = json.NewEncoder(w).Encode(response) // Error handled by HTTP layer
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			s.logger.WarnContext(ctx, logFailedWriteHealthResponse, logger.FieldError, err)
+		}
 	}
+}
+
+// PostgreSQLHealthDB is the database capability the PostgreSQL checker uses:
+// liveness ping, pool statistics, and one probe query.
+type PostgreSQLHealthDB interface {
+	PingContext(ctx context.Context) error
+	Stats() sql.DBStats
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 // PostgreSQLChecker checks PostgreSQL health
 type PostgreSQLChecker struct {
-	db     *sql.DB
+	db     PostgreSQLHealthDB
 	logger logger.Logger
 }
 
 // NewPostgreSQLChecker creates a new PostgreSQL health checker
-func NewPostgreSQLChecker(db *sql.DB, logger logger.Logger) *PostgreSQLChecker {
+func NewPostgreSQLChecker(db PostgreSQLHealthDB, logger logger.Logger) *PostgreSQLChecker {
 	return &PostgreSQLChecker{
 		db:     db,
 		logger: logger,
@@ -167,7 +212,7 @@ func NewPostgreSQLChecker(db *sql.DB, logger logger.Logger) *PostgreSQLChecker {
 func (c *PostgreSQLChecker) Check(ctx context.Context) *Check {
 	start := time.Now()
 	check := &Check{
-		Name:      "postgresql",
+		Name:      checkNamePostgreSQL,
 		Timestamp: start,
 		Metadata:  make(map[string]interface{}),
 	}
@@ -176,7 +221,7 @@ func (c *PostgreSQLChecker) Check(ctx context.Context) *Check {
 	err := c.db.PingContext(ctx)
 	if err != nil {
 		check.Status = StatusUnhealthy
-		check.Message = fmt.Sprintf("Failed to ping database: %v", err)
+		check.Message = fmt.Sprintf(msgFmtDatabasePingFailed, err)
 		check.Duration = time.Since(start)
 		return check
 	}
@@ -190,12 +235,12 @@ func (c *PostgreSQLChecker) Check(ctx context.Context) *Check {
 	check.Metadata["wait_duration"] = stats.WaitDuration.String()
 
 	// Check if we're running low on connections
-	if float64(stats.InUse)/float64(stats.MaxOpenConnections) > 0.9 {
+	if float64(stats.InUse)/float64(stats.MaxOpenConnections) > connectionUsageDegradedRatio {
 		check.Status = StatusDegraded
-		check.Message = "High connection usage"
+		check.Message = msgHighConnectionUsage
 	} else {
 		check.Status = StatusHealthy
-		check.Message = "Database is healthy"
+		check.Message = msgDatabaseHealthy
 	}
 
 	// Perform a simple query to verify functionality
@@ -203,46 +248,68 @@ func (c *PostgreSQLChecker) Check(ctx context.Context) *Check {
 	err = c.db.QueryRowContext(ctx, "SELECT 1").Scan(&result)
 	if err != nil {
 		check.Status = StatusUnhealthy
-		check.Message = fmt.Sprintf("Failed to execute test query: %v", err)
+		check.Message = fmt.Sprintf(msgFmtTestQueryFailed, err)
 	}
 
 	check.Duration = time.Since(start)
 	return check
 }
 
-// MQTTChecker checks MQTT broker connectivity
-type MQTTChecker struct {
-	isConnected func() bool
-	logger      logger.Logger
+// StateChecker reports a component from state this process holds, so the
+// check never dials anything.
+type StateChecker struct {
+	name    string
+	state   func() bool
+	upMsg   string
+	downMsg string
 }
 
-// NewMQTTChecker creates a new MQTT health checker
-func NewMQTTChecker(isConnected func() bool, logger logger.Logger) *MQTTChecker {
-	return &MQTTChecker{
-		isConnected: isConnected,
-		logger:      logger,
-	}
+// NewMQTTChecker reports the MQTT client's connection state.
+func NewMQTTChecker(isConnected func() bool) *StateChecker {
+	return &StateChecker{name: checkNameMQTT, state: isConnected, upMsg: msgMQTTConnected, downMsg: msgMQTTDisconnected}
 }
 
-// Check performs the MQTT health check
-func (c *MQTTChecker) Check(_ context.Context) *Check {
+// ListenerState reports whether a listener this process owns is accepting.
+type ListenerState interface {
+	Listening() bool
+}
+
+// NewListenerChecker reports one of this process's own listeners from its
+// in-process state instead of dialing its port.
+func NewListenerChecker(listener ListenerState) *StateChecker {
+	return &StateChecker{name: checkNameListener, state: listener.Listening, upMsg: msgListening, downMsg: msgNotListening}
+}
+
+// Check reports healthy while the state holds and unhealthy otherwise.
+func (c *StateChecker) Check(_ context.Context) *Check {
 	start := time.Now()
 	check := &Check{
-		Name:      "mqtt",
+		Name:      c.name,
 		Timestamp: start,
-		Metadata:  make(map[string]interface{}),
+		Status:    StatusUnhealthy,
+		Message:   c.downMsg,
 	}
-
-	if c.isConnected() {
+	if c.state() {
 		check.Status = StatusHealthy
-		check.Message = "MQTT broker is connected"
-	} else {
-		check.Status = StatusUnhealthy
-		check.Message = "MQTT broker is disconnected"
+		check.Message = c.upMsg
 	}
-
 	check.Duration = time.Since(start)
 	return check
+}
+
+// DisabledChecker reports a component that configuration turned off.
+type DisabledChecker struct {
+	message string
+}
+
+// NewDisabledChecker reports a disabled component with the given message.
+func NewDisabledChecker(message string) DisabledChecker {
+	return DisabledChecker{message: message}
+}
+
+// Check reports the component as disabled.
+func (c DisabledChecker) Check(_ context.Context) *Check {
+	return &Check{Name: checkNameDisabled, Status: StatusDisabled, Message: c.message, Timestamp: time.Now()}
 }
 
 // HTTPChecker checks HTTP endpoint health
@@ -261,7 +328,7 @@ func NewHTTPChecker(url string, timeout time.Duration, logger logger.Logger) *HT
 func (c *HTTPChecker) Check(ctx context.Context) *Check {
 	start := time.Now()
 	check := &Check{
-		Name:      "http",
+		Name:      checkNameHTTP,
 		Timestamp: start,
 	}
 
@@ -281,9 +348,13 @@ func (c *HTTPChecker) Check(ctx context.Context) *Check {
 		check.Duration = time.Since(start)
 		return check
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			c.logger.WarnContext(ctx, logFailedCloseHealthProbe, logger.FieldError, err)
+		}
+	}()
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		check.Status = StatusHealthy
 		check.Message = MsgOK
 	} else {
@@ -310,7 +381,7 @@ func NewTCPChecker(address string, timeout time.Duration, logger logger.Logger) 
 func (c *TCPChecker) Check(ctx context.Context) *Check {
 	start := time.Now()
 	check := &Check{
-		Name:      "tcp",
+		Name:      checkNameTCP,
 		Timestamp: start,
 	}
 
@@ -320,7 +391,9 @@ func (c *TCPChecker) Check(ctx context.Context) *Check {
 		check.Status = StatusUnhealthy
 		check.Message = fmt.Sprintf("%s: %v", MsgFailedToConnect, err)
 	} else {
-		_ = conn.Close()
+		if err := conn.Close(); err != nil {
+			c.logger.WarnContext(ctx, logFailedCloseHealthProbe, logger.FieldError, err)
+		}
 		check.Status = StatusHealthy
 		check.Message = MsgOK
 	}

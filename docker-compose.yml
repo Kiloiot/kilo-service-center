@@ -96,6 +96,9 @@ services:
       KILOCENTER_STORAGE_PORT: 5432
       KILOCENTER_STORAGE_USERNAME: ${KILOCENTER_POSTGRESQL_USERNAME:-kilocenter}
       KILOCENTER_STORAGE_PASSWORD: ${KILOCENTER_POSTGRESQL_PASSWORD:-changeme}
+      KILOCENTER_MASTER_KEY: ${KILOCENTER_MASTER_KEY:?KILOCENTER_MASTER_KEY is required (openssl rand -hex 32)}
+      # Shared secret KC-Gateway, KC-Core and KC-Identity present on internal calls (REQUIRED: the services reach each other over the network)
+      KILOCENTER_INTERNAL_AUTH_PEER_SECRET: ${KILOCENTER_INTERNAL_PEER_SECRET:?KILOCENTER_INTERNAL_PEER_SECRET is required (openssl rand -hex 32)}
       KILOCENTER_STORAGE_DATABASE: ${KILOCENTER_POSTGRESQL_DATABASE:-kilocenter}
       KILOCENTER_STORAGE_SSL_MODE: disable
       KILOCENTER_STORAGE_ENABLE_MIGRATIONS: "true"
@@ -155,6 +158,9 @@ services:
       KILOCENTER_STORAGE_PORT: 5432
       KILOCENTER_STORAGE_USERNAME: ${KILOCENTER_POSTGRESQL_USERNAME:-kilocenter}
       KILOCENTER_STORAGE_PASSWORD: ${KILOCENTER_POSTGRESQL_PASSWORD:-changeme}
+      KILOCENTER_MASTER_KEY: ${KILOCENTER_MASTER_KEY:?KILOCENTER_MASTER_KEY is required (openssl rand -hex 32)}
+      # Shared secret KC-Gateway, KC-Core and KC-Identity present on internal calls (REQUIRED: the services reach each other over the network)
+      KILOCENTER_INTERNAL_AUTH_PEER_SECRET: ${KILOCENTER_INTERNAL_PEER_SECRET:?KILOCENTER_INTERNAL_PEER_SECRET is required (openssl rand -hex 32)}
       KILOCENTER_STORAGE_DATABASE: ${KILOCENTER_POSTGRESQL_DATABASE:-kilocenter}
       KILOCENTER_STORAGE_SSL_MODE: disable
 
@@ -196,7 +202,7 @@ services:
       - cert_data:/app/certificates:ro
       - ./config/config.docker.yaml:/app/config/config.yaml:ro
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -216,6 +222,7 @@ services:
     environment:
       # Upstream KC-Core via Docker service DNS
       KILOCENTER_GATEWAY_UPSTREAM_ADDRESS: "kilocenter:50051"
+      KILOCENTER_INTERNAL_AUTH_PEER_SECRET: ${KILOCENTER_INTERNAL_PEER_SECRET:?KILOCENTER_INTERNAL_PEER_SECRET is required (openssl rand -hex 32)}
       KILOCENTER_GATEWAY_HEALTH_PORT: 8087
 
       # gRPC-web configuration

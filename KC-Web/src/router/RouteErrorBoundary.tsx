@@ -11,8 +11,10 @@ import { Box } from "@mui/material";
 import { ErrorState } from "@ui";
 
 import { logger } from "@utils/logger";
-import { ERROR_BOUNDARY, UI_COMMON } from "@constants/messages";
+import { ROUTES } from "@constants/app";
+import { ERROR_BOUNDARY, LOG_MESSAGES, UI_COMMON } from "@constants/messages";
 import { isDevelopment } from "@config/env";
+import { componentSpacing } from "@theme/index";
 
 interface RouteErrorBoundaryProps {
   children: ReactNode;
@@ -52,8 +54,8 @@ export class RouteErrorBoundary extends Component<
     // Log error in development
     if (isDevelopment) {
       logger.error(
-        "[RouteErrorBoundary]",
-        this.props.routeName || "Unknown route",
+        LOG_MESSAGES.ROUTE_ERROR_PREFIX,
+        this.props.routeName || LOG_MESSAGES.UNKNOWN_ROUTE,
         error,
       );
     }
@@ -67,7 +69,7 @@ export class RouteErrorBoundary extends Component<
   };
 
   handleGoHome = () => {
-    window.location.href = "/";
+    window.location.href = ROUTES.HOME;
   };
 
   render() {
@@ -84,7 +86,7 @@ export class RouteErrorBoundary extends Component<
               label: UI_COMMON.TITLE_DASHBOARD,
               onClick: this.handleGoHome,
             }}
-            minHeight={400}
+            minHeight={componentSpacing.stateView.pageMinHeight}
           />
         </Box>
       );

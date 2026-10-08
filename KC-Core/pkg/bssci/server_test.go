@@ -14,20 +14,20 @@ import (
 // parseBSSCIFrame parses a BSSCI frame from bytes (test-only helper)
 func parseBSSCIFrame(data []byte) (*mioty.Frame, error) {
 	if len(data) < 12 {
-		return nil, fmt.Errorf("frame too short: need at least 12 bytes, got %d", len(data))
+		return nil, fmt.Errorf(errFmtFrameTooShortNeedAtLeast, len(data))
 	}
 
 	frame := &mioty.Frame{}
 	copy(frame.Identifier[:], data[0:8])
 
 	if frame.Identifier != mioty.MIOTYFrameIdentifier {
-		return nil, fmt.Errorf("invalid frame identifier: expected MIOTYB01, got %s", string(frame.Identifier[:]))
+		return nil, fmt.Errorf(errFmtInvalidFrameIdentifierExpectedMIOTYB01Got, string(frame.Identifier[:]))
 	}
 
 	frame.PayloadSize = binary.LittleEndian.Uint32(data[8:12])
 
 	if len(data) < int(12+frame.PayloadSize) {
-		return nil, fmt.Errorf("incomplete frame: expected %d bytes payload, got %d", frame.PayloadSize, len(data)-12)
+		return nil, fmt.Errorf(errFmtIncompleteFrameExpectedBytesPayloadGot, frame.PayloadSize, len(data)-12)
 	}
 
 	frame.Payload = data[12 : 12+frame.PayloadSize]
@@ -166,3 +166,10 @@ func TestProtocolVersionConstant(t *testing.T) {
 	assert.Equal(t, 0, mioty.MIOTYVersionMinor, "Minor version should be 0")
 	assert.Equal(t, 0, mioty.MIOTYVersionPatch, "Patch version should be 0")
 }
+
+// Error format strings shared by this package's failure paths; verbs are filled at the point of failure.
+const (
+	errFmtIncompleteFrameExpectedBytesPayloadGot    = "incomplete frame: expected %d bytes payload, got %d"
+	errFmtInvalidFrameIdentifierExpectedMIOTYB01Got = "invalid frame identifier: expected MIOTYB01, got %s"
+	errFmtFrameTooShortNeedAtLeast                  = "frame too short: need at least 12 bytes, got %d"
+)

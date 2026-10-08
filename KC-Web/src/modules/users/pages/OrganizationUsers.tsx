@@ -12,24 +12,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
-import type { ApiError, OrganizationUserUI } from "@api-types/api";
+import type { ApiErrorLike, OrganizationUserUI } from "@api-types/api";
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  Grid,
   Typography,
 } from "@mui/material";
+import { ConfirmDialog } from "@ui";
 
+import { BackButton } from "@components/common/BackButton";
 import SearchField from "@components/common/SearchField";
+import { StatCard, StatCardRow } from "@components/common/StatCard";
+import { useFeedback } from "@contexts/feedback";
 import { useOrganization as useOrganizationContext } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { useCapabilities } from "@hooks/useCapabilities";
@@ -38,21 +34,30 @@ import {
   useOrgUsers,
   useRemoveOrgUser,
 } from "@hooks/useOrganizations";
-import { ROUTES } from "@constants/app";
+import { getErrorMessage } from "@utils/error-message";
+import { toggleSortDirection } from "@utils/list-query";
+import type { SortDirection } from "@constants/app";
+import {
+  DIALOG_MODE,
+  GRPC_ERROR_TOKEN,
+  HTTP_STATUS,
+  ROUTES,
+  SORT_DIRECTION,
+} from "@constants/app";
 import {
   ERR_LOAD_ORG_USERS,
   ORG_USER_FORM,
   ORG_USERS_PAGE,
 } from "@constants/messages";
-import { AddIcon, ArrowBackIcon, PeopleIcon } from "@theme/icons";
+import { organizationDetailPath } from "@router/paths";
+import { AddIcon, PeopleIcon } from "@theme/icons";
+import { componentSpacing } from "@theme/index";
 
 import AddUserDialog from "../components/AddUserDialog";
 import OrganizationUserDialog from "../components/OrganizationUserDialog";
 import OrganizationUsersTable from "../components/OrganizationUsersTable";
 
 type OrderBy = "email" | "role" | "status" | "createdAt";
-type OrderDirection = "asc" | "desc";
-
 export interface OrganizationUsersProps {
   /** Optional orgId prop - if not provided, falls back to route param then context */
   orgId?: string;
@@ -66,20 +71,16 @@ export interface OrganizationUsersProps {
 
 /** Classifies a removeOrgUser failure to the message shown in the dialog. */
 function classifyRemoveError(err: unknown): string {
-  const apiError = err as ApiError | undefined;
+  // Duck-typed on purpose: the dialog classifies whatever shape the mutation rejects with.
+  const apiError = err as Partial<ApiErrorLike> | undefined;
 
   const isLastOwnerError =
-    apiError?.status === 409 ||
-    apiError?.code === "LAST_OWNER" ||
-    apiError?.token === "LAST_OWNER" ||
-    (typeof apiError?.message === "string" &&
-      apiError.message.toLowerCase().includes("last owner"));
+    apiError?.status === HTTP_STATUS.CONFLICT ||
+    apiError?.token === GRPC_ERROR_TOKEN.CANNOT_REMOVE_LAST_OWNER;
 
   const isSelfRemovalError =
-    apiError?.status === 412 ||
-    apiError?.token === "KC-GRPC-ERR-306" ||
-    (typeof apiError?.message === "string" &&
-      apiError.message.toLowerCase().includes("cannot remove yourself"));
+    apiError?.status === HTTP_STATUS.PRECONDITION_FAILED ||
+    apiError?.token === GRPC_ERROR_TOKEN.CANNOT_REMOVE_SELF;
 
   if (isLastOwnerError) return ORG_USERS_PAGE.ERR_CANNOT_REMOVE_LAST_OWNER;
   if (isSelfRemovalError) return ORG_USERS_PAGE.ERR_CANNOT_REMOVE_SELF;
@@ -90,12 +91,12 @@ function classifyRemoveError(err: unknown): string {
 function sortUsers(
   users: OrganizationUserUI[],
   orderBy: OrderBy,
-  direction: OrderDirection,
+  direction: SortDirection,
 ): OrganizationUserUI[] {
   return [...users].sort((a, b) => {
     const aValue = a[orderBy] ?? "";
     const bValue = b[orderBy] ?? "";
-    if (direction === "asc") {
+    if (direction === SORT_DIRECTION.ASC) {
       return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
     }
     return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
@@ -125,19 +126,18 @@ const OrgUsersHeader: React.FC<OrgUsersHeaderProps> = ({
     >
       <Box display="flex" alignItems="center" gap={2}>
         {!embedded && (
-          <Button
-            startIcon={<ArrowBackIcon />}
-            onClick={() => navigate(`${ROUTES.ORGANIZATIONS}/${orgId}`)}
-          >
-            {ORG_USERS_PAGE.BACK_TO_ORG}
-          </Button>
+          <BackButton
+            label={ORG_USERS_PAGE.BACK_TO_ORG}
+            onClick={() => navigate(organizationDetailPath(orgId))}
+          />
         )}
         <Typography variant="h4" component="h1">
           {ORG_USERS_PAGE.TITLE}
         </Typography>
         {orgName && (
           <Typography variant="h6" color="text.secondary">
-            - {orgName}
+            {ORG_USERS_PAGE.ORG_NAME_PREFIX}
+            {orgName}
           </Typography>
         )}
       </Box>
@@ -171,40 +171,32 @@ const OrgUsersRemoveDialog: React.FC<OrgUsersRemoveDialogProps> = ({
   onClose,
   onConfirm,
 }) => (
-  <Dialog open={open} onClose={onClose}>
-    <DialogTitle>{ORG_USER_FORM.ACTION_REMOVE}</DialogTitle>
-    <DialogContent>
-      {removeError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {removeError}
-        </Alert>
-      )}
-      <DialogContentText>{ORG_USER_FORM.CONFIRM_REMOVE}</DialogContentText>
-      {selectedUser && (
-        <Typography variant="body2" sx={{ mt: 1, fontWeight: "medium" }}>
-          {selectedUser.email}
-        </Typography>
-      )}
-    </DialogContent>
-    <DialogActions>
-      <Button onClick={onClose}>{ORG_USER_FORM.ACTION_CANCEL}</Button>
-      <Button
-        onClick={onConfirm}
-        color="error"
-        variant="contained"
-        disabled={isPending}
-      >
-        {ORG_USER_FORM.ACTION_REMOVE}
-      </Button>
-    </DialogActions>
-  </Dialog>
+  <ConfirmDialog
+    open={open}
+    title={ORG_USER_FORM.DIALOG_REMOVE_TITLE}
+    message={ORG_USER_FORM.CONFIRM_REMOVE}
+    confirmLabel={ORG_USER_FORM.ACTION_REMOVE}
+    cancelLabel={ORG_USER_FORM.ACTION_CANCEL}
+    pending={isPending}
+    error={removeError}
+    onConfirm={onConfirm}
+    onClose={onClose}
+  >
+    {selectedUser && (
+      <Typography variant="body2" sx={{ mt: 1, fontWeight: "medium" }}>
+        {selectedUser.email}
+      </Typography>
+    )}
+  </ConfirmDialog>
 );
 
 /** Search + sort state over the loaded member list. */
 function useOrgUsersFiltering(users: OrganizationUserUI[]) {
   const [search, setSearch] = useState("");
   const [orderBy, setOrderBy] = useState<OrderBy>("email");
-  const [orderDirection, setOrderDirection] = useState<OrderDirection>("asc");
+  const [orderDirection, setOrderDirection] = useState<SortDirection>(
+    SORT_DIRECTION.ASC,
+  );
 
   const filteredUsers = useMemo(() => {
     const searchLower = search.toLowerCase();
@@ -220,10 +212,10 @@ function useOrgUsersFiltering(users: OrganizationUserUI[]) {
 
   const handleSort = (field: OrderBy) => {
     if (orderBy === field) {
-      setOrderDirection(orderDirection === "asc" ? "desc" : "asc");
+      setOrderDirection(toggleSortDirection(orderDirection));
     } else {
       setOrderBy(field);
-      setOrderDirection("asc");
+      setOrderDirection(SORT_DIRECTION.ASC);
     }
   };
 
@@ -257,6 +249,7 @@ function useOrgUsersDialogs(
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   const removeOrgUser = useRemoveOrgUser();
+  const feedback = useFeedback();
 
   const handleAddClick = () => {
     setAddDialogOpen(true);
@@ -284,6 +277,7 @@ function useOrgUsersDialogs(
           setRemoveConfirmOpen(false);
           setSelectedUser(null);
           setRemoveError(null);
+          feedback.success(ORG_USER_FORM.MSG_MEMBER_REMOVED);
         },
         onError: (err: unknown) => {
           setRemoveError(classifyRemoveError(err));
@@ -337,23 +331,14 @@ const OrgUsersToolbar: React.FC<OrgUsersToolbarProps> = ({
   onSearchChange,
 }) => (
   <>
-    <Grid container spacing={3} mb={3}>
-      <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-        <Card>
-          <CardContent>
-            <Box display="flex" alignItems="center">
-              <PeopleIcon sx={{ fontSize: 40, color: "primary.main", mr: 2 }} />
-              <Box>
-                <Typography color="text.secondary" variant="body2">
-                  {ORG_USERS_PAGE.TOTAL_MEMBERS}
-                </Typography>
-                <Typography variant="h4">{memberCount}</Typography>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
-      </Grid>
-    </Grid>
+    <StatCardRow>
+      <StatCard
+        label={ORG_USERS_PAGE.TOTAL_MEMBERS}
+        value={memberCount}
+        icon={<PeopleIcon />}
+        color="primary"
+      />
+    </StatCardRow>
 
     <Box display="flex" gap={2} mb={3}>
       <SearchField
@@ -375,14 +360,14 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   const { organizationId: contextOrgId, setOrganization } =
     useOrganizationContext();
   const { isHydrated } = useSession();
-  const { isServerAdmin, isOrgAdmin } = useCapabilities();
+  const { isServerAdmin, isTenantManager } = useCapabilities();
 
   // Resolve orgId: prop > route param > context
   const orgId = propOrgId || routeOrgId || contextOrgId || "";
 
   // React Query hooks
   const canQuery =
-    isHydrated && (isServerAdmin || isOrgAdmin) && Boolean(orgId);
+    isHydrated && (isServerAdmin || isTenantManager) && Boolean(orgId);
   const { data: org } = useOrganizationQuery(orgId, {
     enabled: canQuery && isServerAdmin,
   });
@@ -422,7 +407,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
   }
 
   // Runtime guard (deep link protection) - requires server admin or org admin
-  if (!isServerAdmin && !isOrgAdmin) {
+  if (!isServerAdmin && !isTenantManager) {
     return <Navigate to={ROUTES.HOME} replace />;
   }
 
@@ -450,7 +435,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
           display="flex"
           justifyContent="center"
           alignItems="center"
-          minHeight="200px"
+          minHeight={componentSpacing.stateView.listMinHeight}
         >
           <CircularProgress />
         </Box>
@@ -459,7 +444,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
       {/* Error Alert */}
       {isError && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          {error instanceof Error ? error.message : ERR_LOAD_ORG_USERS}
+          {getErrorMessage(error, ERR_LOAD_ORG_USERS)}
         </Alert>
       )}
 
@@ -490,7 +475,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
           open={dialogs.isAddDialogOpen}
           onClose={dialogs.handleAddDialogClose}
           orgId={orgId}
-          mode="add"
+          mode={DIALOG_MODE.ADD}
         />
       )}
 
@@ -499,7 +484,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
         open={dialogs.editDialogOpen}
         onClose={dialogs.handleEditDialogClose}
         orgId={orgId}
-        mode="edit"
+        mode={DIALOG_MODE.EDIT}
         initialUser={dialogs.selectedUser ?? undefined}
       />
 

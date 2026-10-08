@@ -200,6 +200,15 @@ CoreService.GetDownlinkResults = {
   responseType: core_pb.GetDownlinkResultsResponse
 };
 
+CoreService.UpdatePendingDownlink = {
+  methodName: "UpdatePendingDownlink",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.UpdatePendingDownlinkRequest,
+  responseType: core_pb.DownlinkMessage
+};
+
 CoreService.SendULTransmit = {
   methodName: "SendULTransmit",
   service: CoreService,
@@ -281,6 +290,24 @@ CoreService.GetReleaseInfo = {
   responseType: core_pb.ReleaseInfo
 };
 
+CoreService.ListCapabilities = {
+  methodName: "ListCapabilities",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: google_protobuf_empty_pb.Empty,
+  responseType: core_pb.ListCapabilitiesResponse
+};
+
+CoreService.GetDiagnosticsBundle = {
+  methodName: "GetDiagnosticsBundle",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.GetDiagnosticsBundleRequest,
+  responseType: core_pb.GetDiagnosticsBundleResponse
+};
+
 CoreService.CreateIntegration = {
   methodName: "CreateIntegration",
   service: CoreService,
@@ -360,6 +387,15 @@ CoreService.ListEvents = {
   responseStream: false,
   requestType: core_pb.ListEventsRequest,
   responseType: core_pb.ListEventsResponse
+};
+
+CoreService.ListErrorGroups = {
+  methodName: "ListErrorGroups",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.ListErrorGroupsRequest,
+  responseType: core_pb.ListErrorGroupsResponse
 };
 
 CoreService.ListBaseStationActivity = {
@@ -1497,6 +1533,37 @@ CoreServiceClient.prototype.getDownlinkResults = function getDownlinkResults(req
   };
 };
 
+CoreServiceClient.prototype.updatePendingDownlink = function updatePendingDownlink(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.UpdatePendingDownlink, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
 CoreServiceClient.prototype.sendULTransmit = function sendULTransmit(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
@@ -1776,6 +1843,68 @@ CoreServiceClient.prototype.getReleaseInfo = function getReleaseInfo(requestMess
   };
 };
 
+CoreServiceClient.prototype.listCapabilities = function listCapabilities(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.ListCapabilities, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+CoreServiceClient.prototype.getDiagnosticsBundle = function getDiagnosticsBundle(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.GetDiagnosticsBundle, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
 CoreServiceClient.prototype.createIntegration = function createIntegration(requestMessage, metadata, callback) {
   if (arguments.length === 2) {
     callback = arguments[1];
@@ -2029,6 +2158,37 @@ CoreServiceClient.prototype.listEvents = function listEvents(requestMessage, met
     callback = arguments[1];
   }
   var client = grpc.unary(CoreService.ListEvents, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+CoreServiceClient.prototype.listErrorGroups = function listErrorGroups(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.ListErrorGroups, {
     request: requestMessage,
     host: this.serviceHost,
     metadata: metadata,

@@ -4,12 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scaci"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
-	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/postgres"
-	"github.com/google/uuid"
 )
 
 // DLRXStatusQueryStorage defines the minimal storage interface for DL RX status query telemetry.
@@ -28,9 +24,6 @@ type DLRXStatusQueryStorage interface {
 		startTime, endTime *time.Time) (pending, received, timeout int64, err error)
 }
 
-// Compile-time verification that postgres.DB satisfies DLRXStatusQueryStorage interface
-var _ DLRXStatusQueryStorage = (*postgres.DB)(nil)
-
 // MessageStore defines the minimal storage interface for base station message statistics.
 // Exposes only the methods needed for retrieving aggregated statistics per base station.
 type MessageStore interface {
@@ -48,15 +41,10 @@ type MessageStore interface {
 	GetBaseStationLastSeen(ctx context.Context, tenantID int64, bsEui []byte) (*time.Time, error)
 }
 
-// Compile-time verification that postgres.DB satisfies MessageStore interface
-var _ MessageStore = (*postgres.DB)(nil)
-
-// EndpointStatsStore defines the minimal storage interface for endpoint message statistics.
-// Note: This interface is satisfied by adapters/wrappers, not directly by postgres.DB
+// EndpointStatsStore aggregates the message statistics of an endpoint's
+// uplinks received at or after since.
 type EndpointStatsStore interface {
-	// GetMessageStatsByEndpoint retrieves aggregated message statistics for an endpoint
-	// Returns TotalCount, UniqueEndpoints, AvgRSSI, AvgSNR, FirstSeen, LastSeen, ActiveDays
-	GetMessageStatsByEndpoint(ctx context.Context, epEui uint64, tenantID int64) (*mioty.MessageStats, error)
+	GetMessageStatsByEndpointSince(ctx context.Context, epEui uint64, tenantID int64, since time.Time) (*mioty.MessageStats, error)
 }
 
 // OperationStatusAdapter defines the interface for endpoint operation history queries.
@@ -65,40 +53,3 @@ type OperationStatusAdapter interface {
 	// Uses default categories and lookback window from bssci constants
 	GetEndpointOperations(ctx context.Context, endpointID, tenantID int64, limit, offset int) ([]models.SystemEvent, error)
 }
-
-// DownlinkStore defines the minimal storage interface for downlink operations.
-type DownlinkStore interface {
-	// EnqueueDownlink persists a downlink message to the database
-	EnqueueDownlink(ctx context.Context, msg *storage.DownlinkMessage) (*storage.DownlinkMessage, error)
-
-	// UpdateDownlinkStatus updates the status of a downlink message
-	// orgID is passed for audit tracking (can be nil for BSSCI-only paths)
-	UpdateDownlinkStatus(ctx context.Context, id string, status string, orgID *uuid.UUID) error
-}
-
-// Compile-time verification that postgres.DB satisfies DownlinkStore interface
-var _ DownlinkStore = (*postgres.DB)(nil)
-
-// SCACIDownlinkQueuer defines the minimal interface for SCACI downlink queueing.
-// Enables the gRPC service to delegate downlink operations to the SCACI handler core,
-// ensuring single-source processing for both socket and gRPC paths.
-//
-// SCACI §3.10: dlDataQue handler integration.
-type SCACIDownlinkQueuer interface {
-	// QueueDownlinkInternal queues a downlink message via the SCACI handler core.
-	// This method shares the same processing path as socket-based dlDataQue operations.
-	//
-	// Parameters:
-	//   - ctx: Request context for timeout/cancellation
-	//   - tenantID: Numeric tenant ID for isolation
-	//   - orgID: Organization UUID from fail-closed interceptor (mandatory in strict mode)
-	//   - req: MIOTY downlink queue request
-	//
-	// Returns:
-	//   - *DLDataQueueResult: Queue ID, BS EUI, op ID, and status on success
-	//   - error: SCACI error token wrapped in error if processing fails
-	QueueDownlinkInternal(ctx context.Context, tenantID int64, orgID *uuid.UUID, req *mioty.DLDataQueue) (*scaci.DLDataQueueResult, error)
-}
-
-// Compile-time verification that scaci.Server satisfies SCACIDownlinkQueuer interface
-var _ SCACIDownlinkQueuer = (*scaci.Server)(nil)

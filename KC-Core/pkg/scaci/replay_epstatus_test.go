@@ -15,15 +15,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
+
 	bsscitest "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/bssci/testutil"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/common/validation"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+// testInitialAcOpID seeds the AC operation counter for replay fixtures.
+const testInitialAcOpID = 1
 
 // =============================================================================
 // reconstructSubpackets Tests (SCACI §3.13 - subpacket reconstruction)
@@ -228,7 +234,7 @@ func TestRequestDataMap_AllFieldsPresent(t *testing.T) {
 	// Validate epEui extraction
 	epEuiStr, ok := requestData["epEui"].(string)
 	require.True(t, ok)
-	epEui, err := ParseEUI64(epEuiStr)
+	epEui, err := validation.ParseEUI(epEuiStr)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0x70B3D59CD00009E6), epEui)
 
@@ -281,7 +287,7 @@ func TestRequestDataMap_MissingOptionalFields(t *testing.T) {
 	// Required fields present
 	epEuiStr, ok := requestData["epEui"].(string)
 	require.True(t, ok)
-	_, err := ParseEUI64(epEuiStr)
+	_, err := validation.ParseEUI(epEuiStr)
 	require.NoError(t, err)
 
 	epStatus, ok := requestData["epStatus"].(string)
@@ -328,7 +334,7 @@ func TestRequestDataMap_InvalidEpEui(t *testing.T) {
 				// Empty string - invalid
 				return
 			}
-			_, err := ParseEUI64(epEuiStr)
+			_, err := validation.ParseEUI(epEuiStr)
 			// Invalid hex or length should fail
 			if len(epEuiStr) == 16 && err == nil {
 				t.Error("expected ParseEUI64 to fail for invalid hex")
@@ -397,7 +403,11 @@ func TestReplayEPStatus_MissingEpEui_ReturnsErrorAndLogs(t *testing.T) {
 	testLogger := observedLogs
 
 	s := &Server{
-		logger: testLogger,
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   testLogger,
 	}
 
 	// Create net.Pipe for connection (won't be written since error returns early)
@@ -453,7 +463,11 @@ func TestReplayEPStatus_MissingEpStatus_ReturnsErrorAndLogs(t *testing.T) {
 	testLogger := observedLogs
 
 	s := &Server{
-		logger: testLogger,
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   testLogger,
 	}
 
 	// Create net.Pipe for connection
@@ -508,7 +522,11 @@ func TestReplayEPStatus_InvalidEpEuiHex_ReturnsErrorAndLogs(t *testing.T) {
 	testLogger := observedLogs
 
 	s := &Server{
-		logger: testLogger,
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   testLogger,
 	}
 
 	clientConn, serverConn := net.Pipe()
@@ -520,7 +538,7 @@ func TestReplayEPStatus_InvalidEpEuiHex_ReturnsErrorAndLogs(t *testing.T) {
 
 	// Assert: error returned
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse epEui")
+	assert.ErrorIs(t, err, errMissingStoredEpEui)
 
 	// Assert: error log with epEui field
 	logs := observedLogs.AllAtLeast("ERROR")
@@ -560,7 +578,11 @@ func TestReplayEPStatus_InvalidNonceBase64_LogsWarning(t *testing.T) {
 	testLogger := observedLogs
 
 	s := &Server{
-		logger: testLogger,
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   testLogger,
 	}
 
 	clientConn, serverConn := net.Pipe()
@@ -624,7 +646,11 @@ func TestReplayEPStatus_InvalidSubpackets_LogsWarning(t *testing.T) {
 	testLogger := observedLogs
 
 	s := &Server{
-		logger: testLogger,
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   testLogger,
 	}
 
 	clientConn, serverConn := net.Pipe()
@@ -704,20 +730,22 @@ func TestReplayEPStatus_PreservesTelemetryFields(t *testing.T) {
 	}
 
 	// Real Session instance with WriteMu, counters, ID > 0
-	session := &Session{
-		ID:            300,
-		TenantID:      1,
-		State:         StateActive,
-		ScOpIdCounter: -1000, // Will be incremented
-		AcOpIdCounter: 1,
-		WriteMu:       sync.Mutex{},
-	}
+	session := withOpIDs(&Session{
+		ID:       300,
+		TenantID: 1,
+		State:    StateActive,
+		WriteMu:  sync.Mutex{},
+	}, OpIDPair{AC: testInitialAcOpID, SC: -1000})
 
 	// Setup logger to capture any errors
 	testLogger := bsscitest.NewRecordingLogger()
 
 	s := &Server{
-		logger: testLogger,
+		registry: newTestRegistry(nil, nil),
+		codec:    testFrameCodec,
+		commands: mustTestCommandRegistry(),
+		clock:    clock.SystemClock{},
+		logger:   testLogger,
 	}
 
 	// Create net.Pipe - serverConn used by replayEPStatus, clientConn reads

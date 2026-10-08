@@ -7,118 +7,66 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// TestDecodeMessagePack validates standard MessagePack decoding
-func TestDecodeMessagePack(t *testing.T) {
-	testMsg := map[string]interface{}{
-		"command": CmdConnect,
-		"opId":    int64(0),
-		"version": "1.0.0",
-		"acEui":   uint64(0xAABBCCDDEEFF1122),
-	}
-
-	// Encode as MessagePack
-	encoded, err := msgpack.Marshal(testMsg)
+// decodePayload reads a frame in the codec it was framed in (SCACI §1, §3).
+func TestDecodePayload_ReadsEitherCodec(t *testing.T) {
+	msg := map[string]interface{}{"command": CmdConnect, "opId": int64(0), "version": "1.0.0"}
+	msgpackPayload, err := msgpack.Marshal(msg)
 	if err != nil {
-		t.Fatalf("failed to encode test message: %v", err)
+		t.Fatal(err)
 	}
-
-	// Decode with same logic as server.go
-	var decoded map[string]interface{}
-	if err := msgpack.Unmarshal(encoded, &decoded); err != nil {
-		t.Fatalf("MessagePack decode failed: %v", err)
+	jsonPayload, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// Verify command field
-	command, ok := decoded["command"].(string)
-	if !ok || command != CmdConnect {
-		t.Errorf("expected command=%s, got %v", CmdConnect, decoded["command"])
+	for name, payload := range map[string][]byte{
+		"MessagePack":               msgpackPayload,
+		"JSON":                      jsonPayload,
+		"JSON after leading spaces": append([]byte(" \r\n\t"), jsonPayload...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			var decoded map[string]interface{}
+			if err := decodePayload(payload, &decoded); err != nil {
+				t.Fatalf("decodePayload: %v", err)
+			}
+			if decoded["command"] != CmdConnect {
+				t.Errorf("command = %v, want %s", decoded["command"], CmdConnect)
+			}
+			if opID, ok := normalizeInt64(decoded["opId"]); !ok || opID != 0 {
+				t.Errorf("opId = %v (%T), want 0", decoded["opId"], decoded["opId"])
+			}
+		})
 	}
 }
 
-// TestDecodeJSON validates JSON fallback decoding per SCACI §1
-func TestDecodeJSON(t *testing.T) {
-	testMsg := map[string]interface{}{
-		"command": CmdConnect,
-		"opId":    float64(0), // JSON numbers are float64
-		"version": "1.0.0",
-		"acEui":   float64(0xAABBCCDDEEFF1122),
+// The envelope of a JSON frame carries an opId beyond float64 precision
+// exactly (SCACI §3.2: 64-bit operation IDs).
+func TestDecodePayload_JSONEnvelopeKeepsA64BitOpID(t *testing.T) {
+	const opID = int64(1<<53 + 1)
+	var envelope map[string]interface{}
+
+	if err := decodePayload([]byte(`{"command":"ping","opId":9007199254740993}`), &envelope); err != nil {
+		t.Fatal(err)
 	}
 
-	// Encode as JSON
-	encoded, err := json.Marshal(testMsg)
-	if err != nil {
-		t.Fatalf("failed to encode test message: %v", err)
-	}
-
-	// Decode with same logic as server.go (JSON fallback path)
-	var decoded map[string]interface{}
-	if err := json.Unmarshal(encoded, &decoded); err != nil {
-		t.Fatalf("JSON decode failed: %v", err)
-	}
-
-	// Verify command field
-	command, ok := decoded["command"].(string)
-	if !ok || command != CmdConnect {
-		t.Errorf("expected command=%s, got %v", CmdConnect, decoded["command"])
+	if decoded, ok := normalizeInt64(envelope["opId"]); !ok || decoded != opID {
+		t.Errorf("opId = %v (%T), want %d", envelope["opId"], envelope["opId"], opID)
 	}
 }
 
-// TestDecodeFallbackSequence validates the fallback logic:
-// MessagePack fails → JSON succeeds
-func TestDecodeFallbackSequence(t *testing.T) {
-	testMsg := map[string]interface{}{
-		"command": CmdConnect,
-		"opId":    float64(0),
-		"version": "1.0.0",
-	}
-
-	// Encode as JSON (not valid MessagePack)
-	jsonPayload, err := json.Marshal(testMsg)
-	if err != nil {
-		t.Fatalf("failed to encode test message: %v", err)
-	}
-
-	// Simulate server.go decode logic
-	var decoded map[string]interface{}
-	msgpackErr := msgpack.Unmarshal(jsonPayload, &decoded)
-	if msgpackErr == nil {
-		// MessagePack might sometimes parse JSON-ish data
-		// If it does, the test still passes as long as command is extractable
-		command, ok := decoded["command"].(string)
-		if ok && command == CmdConnect {
-			t.Log("MessagePack parsed JSON payload (acceptable)")
-			return
-		}
-	}
-
-	// Fallback to JSON
-	decoded = nil
-	if jsonErr := json.Unmarshal(jsonPayload, &decoded); jsonErr != nil {
-		t.Fatalf("JSON fallback decode failed: %v (msgpack error: %v)", jsonErr, msgpackErr)
-	}
-
-	// Verify command field
-	command, ok := decoded["command"].(string)
-	if !ok || command != CmdConnect {
-		t.Errorf("expected command=%s, got %v", CmdConnect, decoded["command"])
-	}
-}
-
-// TestDecodeBothFail validates error when both codecs fail
-func TestDecodeBothFail(t *testing.T) {
-	// Invalid payload (not MessagePack nor JSON)
-	invalidPayload := []byte{0xFF, 0xFE, 0x00, 0x01, 0x02}
-
-	var decoded map[string]interface{}
-	msgpackErr := msgpack.Unmarshal(invalidPayload, &decoded)
-	jsonErr := json.Unmarshal(invalidPayload, &decoded)
-
-	// Both should fail
-	if msgpackErr == nil {
-		t.Error("expected MessagePack to fail on invalid payload")
-	}
-	if jsonErr == nil {
-		t.Error("expected JSON to fail on invalid payload")
+// A payload that is neither codec's object, or a JSON object followed by more
+// data, is refused.
+func TestDecodePayload_RefusesMalformedFrames(t *testing.T) {
+	for name, payload := range map[string][]byte{
+		"neither codec":            {0xFF, 0xFE, 0x00, 0x01, 0x02},
+		"data after a JSON object": []byte(`{"command":"ping","opId":1} {"x":1}`),
+		"truncated JSON":           []byte(`{"command":"ping"`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			var decoded map[string]interface{}
+			if err := decodePayload(payload, &decoded); err == nil {
+				t.Errorf("decodePayload accepted %q", payload)
+			}
+		})
 	}
 }
 
@@ -557,6 +505,15 @@ func TestUnknownFieldTolerance_TypedStruct(t *testing.T) {
 					"opId":           int64(1),
 					"epEui":          uint64(0x1122334455667788),
 					"nwkKey":         [16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10},
+					"bidi":           true,
+					"preAttach":      false,
+					"shAddr":         uint16(0x1234),
+					"attachCnt":      uint32(1),
+					"packetCnt":      uint32(2),
+					"dualChan":       false,
+					"repetition":     false,
+					"wideCarrOff":    false,
+					"longBlkDist":    false,
 					"vendorMetadata": map[string]interface{}{"vendor": "test"}, // Unknown nested object
 				}
 			},

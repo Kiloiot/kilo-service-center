@@ -5,6 +5,7 @@ import {
   FormControl,
   MenuItem,
   Pagination,
+  PaginationItem,
   Select,
   Typography,
 } from "@mui/material";
@@ -18,6 +19,8 @@ interface PaginationControlsProps {
   rowsPerPage: number;
   totalCount: number;
   pageSizeOptions?: readonly number[];
+  /** 0-based; pages after it cannot be opened yet (a forward-only cursor). */
+  lastReachablePage?: number;
   onPageChange: (newPage: number) => void; // 0-based output
   onRowsPerPageChange: (newPageSize: number) => void;
 }
@@ -27,6 +30,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
   rowsPerPage,
   totalCount,
   pageSizeOptions = PAGINATION.PAGE_SIZE_OPTIONS,
+  lastReachablePage,
   onPageChange,
   onRowsPerPageChange,
 }) => {
@@ -35,6 +39,10 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
   const pageCount = hasData ? Math.ceil(totalCount / rowsPerPage) : 1;
   const startItem = hasData ? page * rowsPerPage + 1 : 0;
   const endItem = hasData ? Math.min((page + 1) * rowsPerPage, totalCount) : 0;
+  const unreachable = (target: number | null) =>
+    lastReachablePage !== undefined &&
+    target !== null &&
+    target - 1 > lastReachablePage;
 
   return (
     <Box
@@ -83,6 +91,12 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
         showFirstButton
         showLastButton
         disabled={!hasData}
+        renderItem={(item) => (
+          <PaginationItem
+            {...item}
+            disabled={item.disabled || unreachable(item.page)}
+          />
+        )}
       />
 
       {/* Right: Item count */}
@@ -94,5 +108,3 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
     </Box>
   );
 };
-
-export default PaginationControls;

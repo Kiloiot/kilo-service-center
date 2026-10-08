@@ -4,7 +4,8 @@ package adapter
 import (
 	"context"
 	"strconv"
-	"time"
+
+	audit "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	grpcconstants "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
@@ -13,7 +14,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-// IdentityRPCEventAdapter implements grpc.EventWriter by forwarding events
+// IdentityRPCEventAdapter implements audit.EventWriter by forwarding events
 // to KC-Identity via the RecordPlatformEvent RPC. Used by KC-Gateway for
 // lifecycle and security events since Gateway has no direct DB access.
 type IdentityRPCEventAdapter struct {
@@ -23,17 +24,20 @@ type IdentityRPCEventAdapter struct {
 	log              logger.Logger
 }
 
+const componentEventAdapter = "event-adapter"
+
 // NewIdentityRPCEventAdapter creates an event adapter that persists events via KC-Identity.
-func NewIdentityRPCEventAdapter(client pb.IdentityInternalServiceClient, peerSecret string, platformTenantID int64) *IdentityRPCEventAdapter {
+// componentEventAdapter labels this adapter in structured logs.
+func NewIdentityRPCEventAdapter(client pb.IdentityInternalServiceClient, peerSecret string, platformTenantID int64, log logger.Logger) *IdentityRPCEventAdapter {
 	return &IdentityRPCEventAdapter{
 		client:           client,
 		peerSecret:       peerSecret,
 		platformTenantID: platformTenantID,
-		log:              logger.Get().WithField("component", "event-adapter"),
+		log:              log.WithField(logger.FieldComponent, componentEventAdapter),
 	}
 }
 
-// CreateEvent implements grpc.EventWriter by calling RecordPlatformEvent on KC-Identity.
+// CreateEvent implements audit.EventWriter by calling RecordPlatformEvent on KC-Identity.
 func (a *IdentityRPCEventAdapter) CreateEvent(ctx context.Context, event *models.SystemEvent) error {
 	if a.client == nil {
 		return nil
@@ -70,13 +74,13 @@ func (a *IdentityRPCEventAdapter) CreateEvent(ctx context.Context, event *models
 	ctx = a.withPeerAuth(ctx)
 
 	// Use a short timeout for event recording — don't block request processing
-	rpcCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	rpcCtx, cancel := context.WithTimeout(ctx, EventRecordTimeout)
 	defer cancel()
 
 	if _, err := a.client.RecordPlatformEvent(rpcCtx, req); err != nil {
-		a.log.Warn(LogGatewayPlatformEventViaIdentityRecordFailed,
-			"eventType", event.EventType,
-			"error", err)
+		a.log.WarnContext(rpcCtx, LogGatewayPlatformEventViaIdentityRecordFailed,
+			logger.FieldEventType, event.EventType,
+			logger.FieldError, err)
 		return err
 	}
 
@@ -93,4 +97,4 @@ func (a *IdentityRPCEventAdapter) withPeerAuth(ctx context.Context) context.Cont
 }
 
 // Verify interface compliance at compile time.
-var _ grpcconstants.EventWriter = (*IdentityRPCEventAdapter)(nil)
+var _ audit.EventWriter = (*IdentityRPCEventAdapter)(nil)
