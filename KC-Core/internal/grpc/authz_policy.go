@@ -61,6 +61,7 @@ var coreMethodRequirements = map[string]authz.Requirement{
 	pb.CoreService_SetDefaultBlueprint_FullMethodName:            authz.EndpointManager,
 	pb.CoreService_SubmitBlueprintToRegistry_FullMethodName:      authz.EndpointManager,
 	pb.CoreService_CreateDeviceModelWithBlueprint_FullMethodName: authz.EndpointManager,
+	pb.CoreService_PinCurrentBlueprints_FullMethodName:           authz.EndpointManager,
 
 	// Base stations, their traffic and certificates.
 	pb.CoreService_CreateBaseStation_FullMethodName:              authz.BaseStationManager,

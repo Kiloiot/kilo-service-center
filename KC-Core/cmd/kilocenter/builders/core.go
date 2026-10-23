@@ -357,7 +357,10 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 		Analytics:    grpc.AnalyticsHandlerDeps{Analytics: analyticsSvc, Events: eventsSvc, Alerts: alertsSvc, ErrorGroups: errorgroupsservice.New(infra.Repos.SystemEvents, infra.Clock, infra.LoggerIface)},
 		Certificates: grpc.CertificateHandlerDeps{Certificates: certificateSvc, PlatformTenantID: infra.TenantID},
 		Blueprints:   grpc.BlueprintHandlerDeps{Blueprints: blueprintSvc, Endpoints: grpcSvcBundle.EndpointSvc, Modes: infra.Repos.Tenants},
-		SnapshotOnly: grpc.SnapshotOnlyHandlerDeps{Modes: infra.Repos.Tenants},
+		SnapshotOnly: grpc.SnapshotOnlyHandlerDeps{
+			Modes:  infra.Repos.Tenants,
+			Pinner: blueprintresolver.NewPinService(protocol.BlueprintResolver, infra.Repos.Endpoints, infra.Clock.Now, infra.LoggerIface),
+		},
 		Integrations: grpc.IntegrationHandlerDeps{Integrations: integrationSvc},
 		Scaci:        grpc.ScaciHandlerDeps{Monitoring: scaciMonitoringSvc},
 		Federation:   federation,

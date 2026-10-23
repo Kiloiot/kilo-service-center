@@ -23,14 +23,7 @@ import (
 )
 
 func buildBlueprintSnapshot(bp *models.Blueprint) (json.RawMessage, error) {
-	return json.Marshal(models.BlueprintSnapshot{
-		SpecJSON:          bp.SpecJSON,
-		Version:           bp.Version,
-		TypeEUI:           mioty.FormatEUIBytes(bp.TypeEUI),
-		SourceBlueprintID: bp.ID.String(),
-		IsSystem:          bp.IsSystem,
-		AdoptedAt:         time.Now().UTC(),
-	})
+	return json.Marshal(models.NewBlueprintSnapshot(bp, time.Now().UTC()))
 }
 
 // buildSpecSnapshot pins a specification that has no catalog blueprint behind it.

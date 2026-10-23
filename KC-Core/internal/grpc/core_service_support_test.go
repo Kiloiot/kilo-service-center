@@ -62,6 +62,7 @@ type coreFields struct {
 	availabilityReader     BaseStationAvailabilityReader
 	messageBucketReader    BaseStationMessageBucketReader
 	snapshotModes          SnapshotOnlyModeStore
+	pinner                 BlueprintPinner
 }
 
 func testCoreService(f coreFields) *CoreService {
@@ -87,7 +88,7 @@ func testCoreService(f coreFields) *CoreService {
 		ScaciHandlers:        &ScaciHandlers{scaciMonitorSvc: f.scaciMonitorSvc, log: f.log},
 		FederationHandlers:   &FederationHandlers{ceBootstrapSvc: f.ceBootstrapSvc, ceRegistrySvc: f.ceRegistrySvc, log: f.log},
 		SystemHandlers:       &SystemHandlers{statisticsSvc: f.statisticsSvc, systemStatusSvc: f.systemStatusSvc, scEui: f.scEui, scVendor: f.scVendor, scModel: f.scModel, scName: f.scName, scSwVersion: f.scSwVersion, edition: f.edition, serviceStart: f.serviceStart, log: f.log},
-		SnapshotOnlyHandlers: &SnapshotOnlyHandlers{modes: f.snapshotModes, audit: recorder, log: f.log},
+		SnapshotOnlyHandlers: &SnapshotOnlyHandlers{modes: f.snapshotModes, pinner: f.pinner, audit: recorder, log: f.log},
 	}
 }
 

@@ -434,6 +434,7 @@ const (
 	ErrTokenBulkAssignOtherModel         = "KC-GRPC-ERR-0B1" // Snapshot-only owner: a target of another model
 	ErrTokenSnapshotOnlyReadFailed       = "KC-GRPC-ERR-0B2"
 	ErrTokenSnapshotOnlySetFailed        = "KC-GRPC-ERR-0B3"
+	ErrTokenPinBlueprintsFailed          = "KC-GRPC-ERR-0B4"
 )
 
 // ErrorDefinition maps error tokens to messages and gRPC codes
@@ -2114,6 +2115,11 @@ var errorCatalog = map[string]ErrorDefinition{
 	ErrTokenSnapshotOnlySetFailed: {
 		Token:   ErrTokenSnapshotOnlySetFailed,
 		Message: "failed to set snapshot-only decoding",
+		Code:    codes.Internal,
+	},
+	ErrTokenPinBlueprintsFailed: {
+		Token:   ErrTokenPinBlueprintsFailed,
+		Message: "failed to pin current blueprints",
 		Code:    codes.Internal,
 	},
 }

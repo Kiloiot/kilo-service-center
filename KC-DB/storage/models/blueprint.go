@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 )
 
 // Blueprint represents a payload decoding specification for a device model.
@@ -42,6 +44,18 @@ type BlueprintSnapshot struct {
 	SourceBlueprintID string          `json:"source_blueprint_id"`
 	IsSystem          bool            `json:"is_system"` // true = System catalog blueprint, false = tenant Custom
 	AdoptedAt         time.Time       `json:"adopted_at"`
+}
+
+// NewBlueprintSnapshot pins a catalog blueprint as adopted at adoptedAt.
+func NewBlueprintSnapshot(bp *Blueprint, adoptedAt time.Time) BlueprintSnapshot {
+	return BlueprintSnapshot{
+		SpecJSON:          bp.SpecJSON,
+		Version:           bp.Version,
+		TypeEUI:           mioty.FormatEUIBytes(bp.TypeEUI),
+		SourceBlueprintID: bp.ID.String(),
+		IsSystem:          bp.IsSystem,
+		AdoptedAt:         adoptedAt,
+	}
 }
 
 // ToBlueprint synthesizes a runtime *Blueprint from the snapshot for decoding + provenance.

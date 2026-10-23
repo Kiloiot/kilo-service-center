@@ -159,4 +159,5 @@ const (
 	LogUpdatingEndpoint                                 = "Updating endpoint"
 	LogSnapshotOnlyDecodingReadFailed                   = "read snapshot-only decoding failed"
 	LogSnapshotOnlyDecodingSetFailed                    = "set snapshot-only decoding failed"
+	LogPinCurrentBlueprintsFailed                       = "pin current blueprints failed"
 )

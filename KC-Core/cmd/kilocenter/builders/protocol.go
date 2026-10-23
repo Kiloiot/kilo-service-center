@@ -61,6 +61,7 @@ type ProtocolServers struct {
 	StatusNotifier      bssciservices.EndpointStatusNotifier
 	Propagation         *bssciservices.AttachmentPropagation
 	DownlinkReclaimer   *bssciservices.DownlinkReclaimer
+	BlueprintResolver   *blueprintresolver.ResolverService // decodes uplinks; also finds what pinning pins
 }
 
 // BuildProtocolServers constructs and starts BSSCI and (optionally) SCACI servers.
@@ -531,6 +532,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		StatusNotifier:      attachments.notifier,
 		Propagation:         attachmentPropagation,
 		DownlinkReclaimer:   downlinkReclaimer,
+		BlueprintResolver:   resolverSvc,
 	}, nil
 }
 

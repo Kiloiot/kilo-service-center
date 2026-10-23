@@ -6259,6 +6259,80 @@ export namespace SnapshotOnlyDecoding {
   }
 }
 
+export class PinCurrentBlueprintsRequest extends jspb.Message {
+  getDryRun(): boolean;
+  setDryRun(value: boolean): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): PinCurrentBlueprintsRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: PinCurrentBlueprintsRequest): PinCurrentBlueprintsRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: PinCurrentBlueprintsRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): PinCurrentBlueprintsRequest;
+  static deserializeBinaryFromReader(message: PinCurrentBlueprintsRequest, reader: jspb.BinaryReader): PinCurrentBlueprintsRequest;
+}
+
+export namespace PinCurrentBlueprintsRequest {
+  export type AsObject = {
+    dryRun: boolean,
+  }
+}
+
+export class PinCurrentBlueprintsResponse extends jspb.Message {
+  clearResultsList(): void;
+  getResultsList(): Array<PinResult>;
+  setResultsList(value: Array<PinResult>): void;
+  addResults(value?: PinResult, index?: number): PinResult;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): PinCurrentBlueprintsResponse.AsObject;
+  static toObject(includeInstance: boolean, msg: PinCurrentBlueprintsResponse): PinCurrentBlueprintsResponse.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: PinCurrentBlueprintsResponse, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): PinCurrentBlueprintsResponse;
+  static deserializeBinaryFromReader(message: PinCurrentBlueprintsResponse, reader: jspb.BinaryReader): PinCurrentBlueprintsResponse;
+}
+
+export namespace PinCurrentBlueprintsResponse {
+  export type AsObject = {
+    resultsList: Array<PinResult.AsObject>,
+  }
+}
+
+export class PinResult extends jspb.Message {
+  getEpEui(): string;
+  setEpEui(value: string): void;
+
+  getOutcome(): string;
+  setOutcome(value: string): void;
+
+  getBlueprintId(): string;
+  setBlueprintId(value: string): void;
+
+  getError(): string;
+  setError(value: string): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): PinResult.AsObject;
+  static toObject(includeInstance: boolean, msg: PinResult): PinResult.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: PinResult, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): PinResult;
+  static deserializeBinaryFromReader(message: PinResult, reader: jspb.BinaryReader): PinResult;
+}
+
+export namespace PinResult {
+  export type AsObject = {
+    epEui: string,
+    outcome: string,
+    blueprintId: string,
+    error: string,
+  }
+}
+
 export class Blueprint extends jspb.Message {
   getId(): string;
   setId(value: string): void;

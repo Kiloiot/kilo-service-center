@@ -34,3 +34,6 @@ const (
 	errFmtExpectedNumberAtPos    = "expected number at position %d"
 	errFmtInvalidNumber          = "invalid number: %s"
 )
+
+// errWrapListUnpinned prefixes a failed read of a tenant's endpoints without a snapshot.
+const errWrapListUnpinned = "list endpoints without a snapshot"

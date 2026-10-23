@@ -66,7 +66,7 @@ var expectedCallers = map[string][]string{
 		"CreateDeviceModel", "GetDeviceModel", "UpdateDeviceModel", "DeleteDeviceModel", "ListDeviceModels",
 		"CreateBlueprint", "GetBlueprint", "UpdateBlueprint", "DeleteBlueprint", "ListBlueprints",
 		"SetDefaultBlueprint", "SubmitBlueprintToRegistry", "BulkAssignBlueprint", "CreateDeviceModelWithBlueprint",
-		"DecodePreview",
+		"DecodePreview", "PinCurrentBlueprints",
 	},
 	whoBaseStation: {
 		"CreateBaseStation", "GetBaseStation", "UpdateBaseStation", "DeleteBaseStation", "ListBaseStations",

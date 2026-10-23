@@ -152,6 +152,29 @@ func (s *ResolverService) ResolveBlueprintForEndpoint(
 	return nil, nil
 }
 
+// ResolveIgnoringMode finds the blueprint ResolveBlueprintForEndpoint would
+// decode with if the tenant's switch were off. Unlike it, a failed catalog read
+// is returned rather than taken for "nothing found".
+func (s *ResolverService) ResolveIgnoringMode(ctx context.Context, tenantID int64, endpoint *models.EndPoint) (*models.Blueprint, error) {
+	if bp, ok := s.snapshotBlueprint(ctx, endpoint); ok {
+		return bp, nil
+	}
+	if endpoint.DeviceModelID != nil {
+		return foundOrNil(s.blueprintRepo.GetDefaultForModel(ctx, tenantID, *endpoint.DeviceModelID))
+	}
+	if endpoint.TypeEUI != nil {
+		return foundOrNil(s.blueprintRepo.GetByTypeEUI(ctx, tenantID, endpoint.TypeEUI[:]))
+	}
+	return nil, nil
+}
+
+func foundOrNil(bp *models.Blueprint, err error) (*models.Blueprint, error) {
+	if isNotFoundError(err) {
+		return nil, nil
+	}
+	return bp, err
+}
+
 // snapshotBlueprint reads the endpoint's pinned snapshot, the highest-priority
 // decode source; ok is false when there is none or it is malformed.
 func (s *ResolverService) snapshotBlueprint(ctx context.Context, endpoint *models.EndPoint) (*models.Blueprint, bool) {

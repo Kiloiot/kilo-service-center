@@ -23,4 +23,5 @@ const (
 	LogBlueprintCalibrationParseFailed = "Failed to parse endpoint calibration data"
 	LogBlueprintSnapshotOnlyNoSnapshot = "Endpoint not decoded: its tenant decodes only from pinned snapshots and it has no usable snapshot"
 	LogBlueprintSnapshotOnlyReadFailed = "Failed to read snapshot-only decoding; decoding only from snapshots"
+	LogBlueprintPinFailed              = "Failed to pin endpoint blueprint snapshot"
 )
