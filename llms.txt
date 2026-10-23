@@ -59,7 +59,7 @@ Default admin account (created on first startup): admin@kilocenter.local / admin
 
 ## API
 
-gRPC-web API exposed through KC-Gateway on port 9090. Proto definitions in `KC-Core/api/proto/`. 117 RPCs covering: endpoints, base stations, messages (with streaming), downlinks, events, alerts, certificates, API keys, blueprints, analytics, organizations, users, SCACI monitoring, system health.
+gRPC-web API exposed through KC-Gateway on port 9090. Proto definitions in `KC-Core/api/proto/`. 117 RPCs covering: endpoints, base stations, messages (with streaming), downlinks, events, alerts, certificates, API keys, blueprints (with per-endpoint pinned snapshots and per-tenant snapshot-only decoding), analytics, organizations, users, SCACI monitoring, system health.
 
 Streaming RPCs: StreamMessages, StreamBaseStationMessages, StreamEvents, StreamBaseStationEvents, StreamEndPointEvents.
 

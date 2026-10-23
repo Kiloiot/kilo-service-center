@@ -190,6 +190,8 @@ API exposed through KC-Gateway on port 9090 (gRPC-web). gRPC reflection enabled.
 
 **Certificates** (6 RPCs): GetCertificateStatus, GenerateServerCertificate, DownloadCACertificate, GenerateClientCertificate, DownloadClientCertificate, RevokeCertificate
 
+**Blueprints**: CreateBlueprint, GetBlueprint, UpdateBlueprint, DeleteBlueprint, ListBlueprints, SetDefaultBlueprint, BulkAssignBlueprint, DecodePreview; an endpoint can also be pinned to a specification directly with `EndPoint.blueprint_input`. Snapshot-only decoding (per tenant, off by default): SetSnapshotOnlyDecoding (admin), GetSnapshotOnlyDecoding, PinCurrentBlueprints — while on, the tenant's endpoints decode only from their pinned snapshots (see GitBook/04-Integrations/02-api.md).
+
 **SCACI Monitoring** (6 RPCs): ListScaciSessions, GetScaciSession, ListScaciOperations, GetScaciMetrics, StreamScaciEvents, GetScaciQueueStatus
 
 **System**: GetSystemStatus, GetReleaseInfo
