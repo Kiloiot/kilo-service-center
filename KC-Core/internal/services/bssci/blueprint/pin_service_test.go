@@ -94,9 +94,12 @@ func unpinned(id int64, model *uuid.UUID, typeEUI []byte) *models.EndPoint {
 	return ep
 }
 
-func newPinService(repo Reader, store *unpinnedStore) *PinService {
-	resolver := NewResolverService(logger.NewNop(), repo, fixedMode{err: errModeSource})
-	return NewPinService(resolver, store, func() time.Time { return time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC) }, logger.NewNop())
+func newPinService(t *testing.T, repo Reader, store *unpinnedStore) *PinService {
+	t.Helper()
+	resolver := newResolver(t, logger.NewNop(), repo, fixedMode{err: errModeSource})
+	svc, err := NewPinService(resolver, store, func() time.Time { return time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC) }, logger.NewNop())
+	require.NoError(t, err)
+	return svc
 }
 
 // TC-CM-108: each endpoint without a snapshot is pinned to what decoding would use without the switch.
@@ -112,7 +115,7 @@ func TestPin_PinsWhatTheResolverWouldUseWithoutTheSwitch(t *testing.T) {
 		unpinned(3, nil, nil),
 	}}
 
-	results, err := newPinService(repo, store).Pin(testutil.TestContext(), pinOwner, false)
+	results, err := newPinService(t, repo, store).Pin(testutil.TestContext(), pinOwner, false)
 
 	require.NoError(t, err)
 	require.Len(t, results, 3)
@@ -145,7 +148,7 @@ func TestPin_CatalogReadFailuresAreErrors(t *testing.T) {
 			}
 			store := &unpinnedStore{endpoints: []*models.EndPoint{ep}}
 
-			results, err := newPinService(repo, store).Pin(testutil.TestContext(), pinOwner, false)
+			results, err := newPinService(t, repo, store).Pin(testutil.TestContext(), pinOwner, false)
 
 			require.NoError(t, err)
 			require.Len(t, results, 1)
@@ -163,7 +166,7 @@ func TestPin_OneFailureLeavesTheOthersPinned(t *testing.T) {
 	repo := &failingModelRepo{catalogRepo: catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{good: bp}}, failing: bad}
 	store := &unpinnedStore{endpoints: []*models.EndPoint{unpinned(1, &bad, nil), unpinned(2, &good, nil)}}
 
-	results, err := newPinService(repo, store).Pin(testutil.TestContext(), pinOwner, false)
+	results, err := newPinService(t, repo, store).Pin(testutil.TestContext(), pinOwner, false)
 
 	require.NoError(t, err)
 	require.Len(t, results, 2)
@@ -190,7 +193,7 @@ func TestPin_DryRunWritesNothing(t *testing.T) {
 	bp := &models.Blueprint{ID: uuid.New(), DeviceModelID: model, Version: "1", SpecJSON: json.RawMessage(`{}`)}
 	store := &unpinnedStore{endpoints: []*models.EndPoint{unpinned(1, &model, nil)}}
 
-	results, err := newPinService(&catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, store).Pin(testutil.TestContext(), pinOwner, true)
+	results, err := newPinService(t, &catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, store).Pin(testutil.TestContext(), pinOwner, true)
 
 	require.NoError(t, err)
 	require.Len(t, results, 1)
@@ -204,7 +207,7 @@ func TestPin_AnEndpointPinnedMeanwhileIsLeftOut(t *testing.T) {
 	bp := &models.Blueprint{ID: uuid.New(), DeviceModelID: model, Version: "1", SpecJSON: json.RawMessage(`{}`)}
 	store := &unpinnedStore{endpoints: []*models.EndPoint{unpinned(1, &model, nil), unpinned(2, &model, nil)}, taken: map[int64]bool{1: true}}
 
-	results, err := newPinService(&catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, store).Pin(testutil.TestContext(), pinOwner, false)
+	results, err := newPinService(t, &catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, store).Pin(testutil.TestContext(), pinOwner, false)
 
 	require.NoError(t, err)
 	require.Len(t, results, 1)
@@ -220,7 +223,7 @@ func TestPin_ProcessesEveryPage(t *testing.T) {
 		store.endpoints = append(store.endpoints, unpinned(id, &model, nil))
 	}
 
-	results, err := newPinService(&catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, store).Pin(testutil.TestContext(), pinOwner, false)
+	results, err := newPinService(t, &catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, store).Pin(testutil.TestContext(), pinOwner, false)
 
 	require.NoError(t, err)
 	assert.Len(t, results, PinBatchSize+1)
@@ -232,7 +235,7 @@ func TestPin_ProcessesEveryPage(t *testing.T) {
 func TestResolveIgnoringMode_IgnoresTheSwitchAndPassesReadFailuresUp(t *testing.T) {
 	model := uuid.New()
 	bp := &models.Blueprint{ID: uuid.New(), DeviceModelID: model}
-	svc := NewResolverService(logger.NewNop(), &catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, fixedMode{on: true})
+	svc := newResolver(t, logger.NewNop(), &catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, fixedMode{on: true})
 
 	got, err := svc.ResolveIgnoringMode(testutil.TestContext(), pinOwner, unpinned(1, &model, nil))
 	require.NoError(t, err)
@@ -243,7 +246,43 @@ func TestResolveIgnoringMode_IgnoresTheSwitchAndPassesReadFailuresUp(t *testing.
 	require.NoError(t, err)
 	assert.Nil(t, none, "nothing found is not an error")
 
-	failing := NewResolverService(logger.NewNop(), &catalogRepo{defaultErr: errCatalogRead}, fixedMode{})
+	failing := newResolver(t, logger.NewNop(), &catalogRepo{defaultErr: errCatalogRead}, fixedMode{})
 	_, err = failing.ResolveIgnoringMode(testutil.TestContext(), pinOwner, unpinned(3, &model, nil))
 	require.ErrorIs(t, err, errCatalogRead)
+}
+
+// Pinning takes exactly what decoding takes with the switch off (classifier rule: pin the current source).
+func TestPin_AgreesWithDecodingWithTheSwitchOff(t *testing.T) {
+	withDefault, withoutDefault := uuid.New(), uuid.New()
+	known := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0, 0, 0x55}
+	unknown := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0, 0, 0x66}
+	byModel := &models.Blueprint{ID: uuid.New(), DeviceModelID: withDefault, Version: "1", SpecJSON: json.RawMessage(`{}`)}
+	byType := &models.Blueprint{ID: uuid.New(), DeviceModelID: uuid.New(), Version: "2", TypeEUI: known, SpecJSON: json.RawMessage(`{}`)}
+	repo := &catalogRepo{
+		defaults:  map[uuid.UUID]*models.Blueprint{withDefault: byModel},
+		byTypeEUI: map[string]*models.Blueprint{string(known): byType},
+	}
+	store := &unpinnedStore{endpoints: []*models.EndPoint{
+		unpinned(1, &withDefault, unknown),
+		unpinned(2, &withoutDefault, known),
+		unpinned(3, nil, known),
+		unpinned(4, nil, unknown),
+		unpinned(5, nil, nil),
+	}}
+	decoding := newResolver(t, logger.NewNop(), repo, fixedMode{})
+
+	results, err := newPinService(t, repo, store).Pin(testutil.TestContext(), pinOwner, true)
+
+	require.NoError(t, err)
+	require.Len(t, results, len(store.endpoints))
+	for i, ep := range store.endpoints {
+		decoded, err := decoding.ResolveBlueprintForEndpoint(testutil.TestContext(), pinOwner, ep, nil)
+		require.NoError(t, err)
+		if decoded == nil {
+			assert.Equal(t, PinOutcomeNothingToPin, results[i].Outcome, "endpoint %d", ep.ID)
+			continue
+		}
+		assert.Equal(t, PinOutcomePinned, results[i].Outcome, "endpoint %d", ep.ID)
+		assert.Equal(t, decoded.ID.String(), results[i].BlueprintID, "endpoint %d", ep.ID)
+	}
 }

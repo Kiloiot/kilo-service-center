@@ -37,3 +37,9 @@ const (
 
 // errWrapListUnpinned prefixes a failed read of a tenant's endpoints without a snapshot.
 const errWrapListUnpinned = "list endpoints without a snapshot"
+
+// errNilSnapshotOnlyModes rejects a resolver built without the tenant switch reader.
+var errNilSnapshotOnlyModes = errors.New("blueprint resolver: snapshot-only mode reader is required")
+
+// errNilPinDependency rejects a pin service built without its resolver, endpoint store or clock.
+var errNilPinDependency = errors.New("blueprint pin service: resolver, endpoint store and clock are required")

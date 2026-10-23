@@ -38,6 +38,18 @@ func (s *countingModeSource) GetSnapshotOnlyDecoding(context.Context, int64) (bo
 	return s.enabled, s.err
 }
 
+func newResolver(t *testing.T, log logger.Logger, repo Reader, modes SnapshotOnlyModeReader) *ResolverService {
+	t.Helper()
+	svc, err := NewResolverService(log, repo, modes)
+	require.NoError(t, err)
+	return svc
+}
+
+func TestNewResolverService_RequiresTheModeReader(t *testing.T) {
+	_, err := NewResolverService(logger.NewNop(), &stubBlueprintRepo{}, nil)
+	require.ErrorIs(t, err, errNilSnapshotOnlyModes)
+}
+
 // TC-CM-107: a tenant in snapshot-only mode decodes only from a snapshot.
 func TestResolveBlueprintForEndpoint_SnapshotOnlyMode(t *testing.T) {
 	snapshotSource := uuid.New()
@@ -69,7 +81,7 @@ func TestResolveBlueprintForEndpoint_SnapshotOnlyMode(t *testing.T) {
 			}}
 			modelID := uuid.New()
 			ep := &models.EndPoint{EUI: models.EUIFromString("1122334455667788"), DeviceModelID: &modelID, BlueprintSnapshot: tt.snapshot}
-			svc := NewResolverService(logger.NewNop(), repo, tt.mode)
+			svc := newResolver(t, logger.NewNop(), repo, tt.mode)
 
 			bp, err := svc.ResolveBlueprintForEndpoint(testutil.TestContext(), 1, ep, nil)
 

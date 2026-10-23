@@ -205,8 +205,11 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	log.Info(LogIngressDispositionResolverWired, logger.FieldEdition, cfg.General.Edition)
 
 	// Blueprint resolver and decoder for automatic payload decoding on uplinks
-	resolverSvc := blueprintresolver.NewResolverService(infra.LoggerIface, infra.Repos.Blueprints,
+	resolverSvc, err := blueprintresolver.NewResolverService(infra.LoggerIface, infra.Repos.Blueprints,
 		blueprintresolver.NewCachedSnapshotOnlyModes(infra.Repos.Tenants, infra.Clock.Now))
+	if err != nil {
+		return nil, err
+	}
 	decoderSvc := blueprintresolver.NewDecoderService(infra.LoggerIface)
 
 	attachments, err := buildAttachmentDecisions(infra, bssciInfra, bssciSvcBundle.EPStatusBroadcaster, mqttAttachmentEvents, backgroundWork)
@@ -781,11 +784,14 @@ func startAndWireSCACI(bundle *bssciservices.BSSCIServiceBundle, server scaciRun
 // federation-ingress binary. It wires all real collaborators (org resolver, blueprint resolver,
 // blueprint decoder, uplink store) so the ingress binary shares identical ingest behaviour.
 func BuildFederationIngestDeps(_ context.Context, infra *Infrastructure) (*bssciservices.UplinkIngestServiceImpl, error) {
-	resolverSvc := blueprintresolver.NewResolverService(
+	resolverSvc, err := blueprintresolver.NewResolverService(
 		infra.LoggerIface,
 		infra.Repos.Blueprints,
 		blueprintresolver.NewCachedSnapshotOnlyModes(infra.Repos.Tenants, infra.Clock.Now),
 	)
+	if err != nil {
+		return nil, err
+	}
 	decoderSvc := blueprintresolver.NewDecoderService(infra.LoggerIface)
 
 	cfg := infra.Config

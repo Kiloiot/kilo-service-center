@@ -308,6 +308,10 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	if err != nil {
 		log.Fatal(LogDownlinkServiceCreateFailed, logger.Err(err))
 	}
+	pinner, err := blueprintresolver.NewPinService(protocol.BlueprintResolver, infra.Repos.Endpoints, infra.Clock.Now, infra.LoggerIface)
+	if err != nil {
+		log.Fatal(LogFailedCreateCoreService, logger.Err(err))
+	}
 	coreService, err := grpc.NewCoreService(grpc.CoreServiceDeps{
 		Log:   infra.LoggerIface,
 		Audit: auditRecorder,
@@ -359,7 +363,7 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 		Blueprints:   grpc.BlueprintHandlerDeps{Blueprints: blueprintSvc, Endpoints: grpcSvcBundle.EndpointSvc, Modes: infra.Repos.Tenants},
 		SnapshotOnly: grpc.SnapshotOnlyHandlerDeps{
 			Modes:  infra.Repos.Tenants,
-			Pinner: blueprintresolver.NewPinService(protocol.BlueprintResolver, infra.Repos.Endpoints, infra.Clock.Now, infra.LoggerIface),
+			Pinner: pinner,
 		},
 		Integrations: grpc.IntegrationHandlerDeps{Integrations: integrationSvc},
 		Scaci:        grpc.ScaciHandlerDeps{Monitoring: scaciMonitoringSvc},

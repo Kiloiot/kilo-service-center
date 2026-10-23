@@ -35,8 +35,8 @@ type PinResult struct {
 	Error       string
 }
 
-// modeIgnoringResolver finds what an endpoint decodes with regardless of the tenant's switch.
-type modeIgnoringResolver interface {
+// ModeIgnoringResolver finds what an endpoint decodes with regardless of the tenant's switch.
+type ModeIgnoringResolver interface {
 	ResolveIgnoringMode(ctx context.Context, tenantID int64, endpoint *models.EndPoint) (*models.Blueprint, error)
 }
 
@@ -49,15 +49,18 @@ type UnpinnedEndpoints interface {
 // PinService pins every endpoint a tenant owns without a snapshot to the
 // blueprint it currently decodes with.
 type PinService struct {
-	resolver  modeIgnoringResolver
+	resolver  ModeIgnoringResolver
 	endpoints UnpinnedEndpoints
 	now       func() time.Time
 	log       logger.Logger
 }
 
 // NewPinService builds the service; now stamps the snapshots it pins.
-func NewPinService(resolver modeIgnoringResolver, endpoints UnpinnedEndpoints, now func() time.Time, log logger.Logger) *PinService {
-	return &PinService{resolver: resolver, endpoints: endpoints, now: now, log: log}
+func NewPinService(resolver ModeIgnoringResolver, endpoints UnpinnedEndpoints, now func() time.Time, log logger.Logger) (*PinService, error) {
+	if resolver == nil || endpoints == nil || now == nil {
+		return nil, errNilPinDependency
+	}
+	return &PinService{resolver: resolver, endpoints: endpoints, now: now, log: log}, nil
 }
 
 // Pin pins the tenant's endpoints without a snapshot; a dry run reports the

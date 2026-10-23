@@ -48,9 +48,11 @@ func TestUplinkIngest_SnapshotWithoutSourceWritesNoBlueprintReference(t *testing
 	owners, err := NewEndpointOwnerResolver(repo)
 	require.NoError(t, err)
 	store := &fakeUplinkStore{}
+	resolver, err := blueprint.NewResolverService(logger.NewNop(), nil, snapshotOnlyOff{})
+	require.NoError(t, err)
 	svc, err := NewUplinkIngestService(store, testUplinkWindows, allChannels(), nil,
 		&fakeOrgResolver{defaultOrgByTenant: map[int64]uuid.UUID{}}, nil, repo, owners,
-		blueprint.NewResolverService(logger.NewNop(), nil, snapshotOnlyOff{}), blueprint.NewDecoderService(logger.NewNop()),
+		resolver, blueprint.NewDecoderService(logger.NewNop()),
 		&recordingDownlinkAcks{}, logger.NewNop(), uplinkIngestTestTenantID, 0)
 	require.NoError(t, err)
 	payload := buildUplinkPayload()
