@@ -5,7 +5,7 @@ package blueprint
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
@@ -65,23 +65,22 @@ func (s *DecoderService) Decode(
 	formatID uint8,
 	calibration map[string]interface{},
 ) (*blueprint.DecodeResult, error) {
-	// Parse the blueprint specification
-	spec, err := s.parseBlueprint(bp.SpecJSON)
-	if err != nil {
+	spec, err := blueprint.ParseAndValidate(bp.SpecJSON)
+	var pe *blueprint.ParseError
+	if errors.As(err, &pe) {
 		s.log.WarnContext(ctx, LogBlueprintSpecParseFailed,
 			logger.FieldBlueprintID, bp.ID,
 			logger.FieldError, err)
 		return blueprint.NewDecodeError(blueprint.ErrInvalidBlueprintJSON, err.Error()), nil
 	}
-
-	// Validate the specification
-	if err := spec.Validate(); err != nil {
+	var ve *blueprint.ValidationError
+	if errors.As(err, &ve) {
 		s.log.WarnContext(ctx, LogBlueprintValidationFailed,
 			logger.FieldBlueprintID, bp.ID,
 			logger.FieldError, err)
-		if ve, ok := err.(*blueprint.ValidationError); ok {
-			return blueprint.NewDecodeError(ve.Token, ve.Detail), nil
-		}
+		return blueprint.NewDecodeError(ve.Token, ve.Detail), nil
+	}
+	if err != nil {
 		return blueprint.NewDecodeError(blueprint.ErrInvalidBlueprintJSON, err.Error()), nil
 	}
 
@@ -134,11 +133,6 @@ func (s *DecoderService) Decode(
 		logger.FieldFieldCountSnake, len(decodedData))
 
 	return blueprint.NewDecodeResult(decodedData, formatID, bp.Version), nil
-}
-
-// parseBlueprint parses the blueprint JSON specification.
-func (s *DecoderService) parseBlueprint(specJSON json.RawMessage) (*blueprint.Spec, error) {
-	return blueprint.ParseSpec(specJSON)
 }
 
 // calculateRequiredBits calculates the total bits required for a payload format.
