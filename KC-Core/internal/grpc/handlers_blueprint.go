@@ -22,6 +22,7 @@ import (
 	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 )
 
 // BlueprintHandlers serves the manufacturer, device model and blueprint RPCs.
@@ -29,6 +30,7 @@ type BlueprintHandlers struct {
 	blueprintSvc grpcservices.BlueprintService
 	endpointSvc  grpcservices.EndpointService
 	modes        SnapshotOnlyModeLookup
+	snapClock    clock.Clock
 	audit        AuditRecorder
 	log          logger.Logger
 }
@@ -38,19 +40,28 @@ type BlueprintHandlers struct {
 type BlueprintHandlerDeps struct {
 	Blueprints grpcservices.BlueprintService
 	Endpoints  grpcservices.EndpointService
-	// Modes reads each endpoint owner's snapshot-only decoding for BulkAssignBlueprint.
+	// Modes reads each endpoint owner's snapshot-only decoding for BulkAssignBlueprint; required.
 	Modes SnapshotOnlyModeLookup
+	// Clock stamps the snapshots BulkAssignBlueprint pins; required.
+	Clock clock.Clock
 }
 
 // NewBlueprintHandlers builds the group; recorder records the catalog changes.
-func NewBlueprintHandlers(d BlueprintHandlerDeps, recorder AuditRecorder, log logger.Logger) *BlueprintHandlers {
+func NewBlueprintHandlers(d BlueprintHandlerDeps, recorder AuditRecorder, log logger.Logger) (*BlueprintHandlers, error) {
+	if d.Modes == nil {
+		return nil, errors.New(errMsgSnapshotOnlyModesCannotBeNil)
+	}
+	if d.Clock == nil {
+		return nil, errors.New(errMsgBlueprintClockCannotBeNil)
+	}
 	return &BlueprintHandlers{
 		blueprintSvc: d.Blueprints,
 		endpointSvc:  d.Endpoints,
 		modes:        d.Modes,
+		snapClock:    d.Clock,
 		audit:        recorder,
 		log:          log,
-	}
+	}, nil
 }
 
 // Manufacturer handlers
@@ -586,7 +597,7 @@ func (s *BlueprintHandlers) rematerializeSnapshotOnEndpoints(ctx context.Context
 		if len(ep.BlueprintSnapshot) == 0 {
 			continue // skip catalog-default followers
 		}
-		if err := applyBlueprintSnapshot(ctx, s.log, s.blueprintSvc, ep, blueprintID); err != nil {
+		if err := applyBlueprintSnapshot(ctx, s.log, s.blueprintSvc, ep, blueprintID, s.snapClock.Now()); err != nil {
 			return 0, err // same blueprint for all targets — a fetch/validation failure is fatal
 		}
 		if _, updErr := s.endpointSvc.Update(ctx, ep); updErr != nil {

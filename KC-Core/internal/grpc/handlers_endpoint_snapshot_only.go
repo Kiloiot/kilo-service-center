@@ -61,17 +61,18 @@ func (s *EndpointHandlers) applyEndpointSnapshotTrigger(ctx context.Context, ten
 }
 
 // pinSelectedBlueprint pins the request's blueprint_id; a snapshot-only
-// owner accepts only a blueprint of the requested device_model_id.
+// owner accepts only a blueprint of the endpoint's model as the update mask
+// leaves it, never one taken from an unmasked field of the request.
 func (s *EndpointHandlers) pinSelectedBlueprint(ctx context.Context, endpoint *models.EndPoint, in *pb.EndPoint, snapshotOnly bool) error {
 	bp, err := loadBlueprint(ctx, s.blueprintSvc, in.GetBlueprintId())
 	if err != nil {
 		return err
 	}
-	if snapshotOnly && !blueprintOfModel(bp, in.GetDeviceModelId()) {
+	if snapshotOnly && !blueprintOfModel(bp, endpoint.DeviceModelID) {
 		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotOfRequestedModel),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotOfRequestedModel))
 	}
-	return pinBlueprint(ctx, s.log, endpoint, bp)
+	return pinBlueprint(ctx, s.log, endpoint, bp, s.clock.Now())
 }
 
 // pinModelDefault pins the endpoint's model's default blueprint; without one
@@ -97,12 +98,11 @@ func (s *EndpointHandlers) pinModelDefault(ctx context.Context, tenantID int64, 
 			logger.FieldEndpointEui, endpoint.EUI.String())
 		return nil
 	}
-	return applyBlueprintSnapshot(ctx, s.log, s.blueprintSvc, endpoint, def.ID.String())
+	return applyBlueprintSnapshot(ctx, s.log, s.blueprintSvc, endpoint, def.ID.String(), s.clock.Now())
 }
 
-func blueprintOfModel(bp *models.Blueprint, requestedModelID string) bool {
-	id, err := uuid.Parse(requestedModelID)
-	return err == nil && id == bp.DeviceModelID
+func blueprintOfModel(bp *models.Blueprint, modelID *uuid.UUID) bool {
+	return modelID != nil && *modelID == bp.DeviceModelID
 }
 
 func snapshotRequiredError() error {

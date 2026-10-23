@@ -75,7 +75,7 @@ func catalogPinnedEndpoint(t *testing.T) *models.EndPoint {
 	t.Helper()
 	model := uuid.New()
 	snap, err := buildBlueprintSnapshot(&models.Blueprint{ID: uuid.New(), DeviceModelID: model,
-		TypeEUI: []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0, 0, 1}, Version: "1", SpecJSON: []byte(`{"a":1}`)})
+		TypeEUI: []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0, 0, 1}, Version: "1", SpecJSON: []byte(`{"a":1}`)}, testServiceStart)
 	require.NoError(t, err)
 	return &models.EndPoint{EUI: models.EUIFromString(inputTestEUI), TenantID: 1, OwnerTenantID: 1,
 		DeviceModelID: &model, BlueprintSnapshot: snap}

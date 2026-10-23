@@ -389,7 +389,7 @@ func TestSendDownlink_ValidPacketCounters(t *testing.T) {
 			// Use single shared storage instance to mirror production state sharing
 			storage := &fakeLegacyStorage{}
 
-			svc, err := NewCoreService(CoreServiceDeps{
+			svc, err := NewCoreService(withSnapshotOnlyOff(CoreServiceDeps{
 				Log:          logger.NewNop(),
 				Audit:        &captureAuditRecorder{},
 				Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
@@ -398,7 +398,7 @@ func TestSendDownlink_ValidPacketCounters(t *testing.T) {
 				ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
 				DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
 				System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
-			})
+			}))
 			if err != nil {
 				t.Fatalf("NewCoreService() error = %v", err)
 			}
@@ -482,7 +482,7 @@ func TestSendDownlink_NegativePacketCounter(t *testing.T) {
 			scaciQueuer := &fakeSCACIQueuer{}
 			storage := &fakeLegacyStorage{}
 
-			svc, err := NewCoreService(CoreServiceDeps{
+			svc, err := NewCoreService(withSnapshotOnlyOff(CoreServiceDeps{
 				Log:          logger.NewNop(),
 				Audit:        &captureAuditRecorder{},
 				Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
@@ -491,7 +491,7 @@ func TestSendDownlink_NegativePacketCounter(t *testing.T) {
 				ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
 				DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
 				System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
-			})
+			}))
 			if err != nil {
 				t.Fatalf("NewCoreService() error = %v", err)
 			}
@@ -564,7 +564,7 @@ func TestSendDownlink_OverflowPacketCounter(t *testing.T) {
 			scaciQueuer := &fakeSCACIQueuer{}
 			storage := &fakeLegacyStorage{}
 
-			svc, err := NewCoreService(CoreServiceDeps{
+			svc, err := NewCoreService(withSnapshotOnlyOff(CoreServiceDeps{
 				Log:          logger.NewNop(),
 				Audit:        &captureAuditRecorder{},
 				Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
@@ -573,7 +573,7 @@ func TestSendDownlink_OverflowPacketCounter(t *testing.T) {
 				ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
 				DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
 				System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
-			})
+			}))
 			if err != nil {
 				t.Fatalf("NewCoreService() error = %v", err)
 			}
@@ -651,7 +651,7 @@ func TestSendDownlink_MixedValidInvalid(t *testing.T) {
 			scaciQueuer := &fakeSCACIQueuer{}
 			storage := &fakeLegacyStorage{}
 
-			svc, err := NewCoreService(CoreServiceDeps{
+			svc, err := NewCoreService(withSnapshotOnlyOff(CoreServiceDeps{
 				Log:          logger.NewNop(),
 				Audit:        &captureAuditRecorder{},
 				Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
@@ -660,7 +660,7 @@ func TestSendDownlink_MixedValidInvalid(t *testing.T) {
 				ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
 				DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
 				System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
-			})
+			}))
 			if err != nil {
 				t.Fatalf("NewCoreService() error = %v", err)
 			}

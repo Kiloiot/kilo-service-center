@@ -360,7 +360,7 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 		Messages:     grpc.MessageHandlerDeps{Listing: messagesSvc, Activity: activitySvc},
 		Analytics:    grpc.AnalyticsHandlerDeps{Analytics: analyticsSvc, Events: eventsSvc, Alerts: alertsSvc, ErrorGroups: errorgroupsservice.New(infra.Repos.SystemEvents, infra.Clock, infra.LoggerIface)},
 		Certificates: grpc.CertificateHandlerDeps{Certificates: certificateSvc, PlatformTenantID: infra.TenantID},
-		Blueprints:   grpc.BlueprintHandlerDeps{Blueprints: blueprintSvc, Endpoints: grpcSvcBundle.EndpointSvc, Modes: infra.Repos.Tenants},
+		Blueprints:   grpc.BlueprintHandlerDeps{Blueprints: blueprintSvc, Endpoints: grpcSvcBundle.EndpointSvc, Modes: infra.Repos.Tenants, Clock: infra.Clock},
 		SnapshotOnly: grpc.SnapshotOnlyHandlerDeps{
 			Modes:  infra.Repos.Tenants,
 			Pinner: pinner,

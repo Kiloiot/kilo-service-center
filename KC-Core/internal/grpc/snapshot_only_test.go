@@ -21,6 +21,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 )
 
 const (
@@ -214,7 +215,7 @@ func ownedEndpoint(t *testing.T, owner int64, model *uuid.UUID, pinned *models.B
 	t.Helper()
 	ep := &models.EndPoint{EUI: models.EUIFromString(modeTestEUI), TenantID: modeTenant, OwnerTenantID: owner, DeviceModelID: model}
 	if pinned != nil {
-		snap, err := buildBlueprintSnapshot(pinned)
+		snap, err := buildBlueprintSnapshot(pinned, testServiceStart)
 		require.NoError(t, err)
 		ep.BlueprintSnapshot = snap
 	}
@@ -231,13 +232,14 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 	c := newCatalog()
 	pinnedOther := c.otherModelBp
 	tests := []struct {
-		name       string
-		owner      int64
-		modesOn    []int64
-		existing   func(t *testing.T) *models.EndPoint
-		req        *pb.UpdateEndPointRequest
-		wantCode   codes.Code
-		wantSource string
+		name           string
+		owner          int64
+		modesOn        []int64
+		existing       func(t *testing.T) *models.EndPoint
+		req            *pb.UpdateEndPointRequest
+		wantCode       codes.Code
+		wantSource     string
+		wantNoSnapshot bool
 	}{
 		{
 			name: "model change pins the new model's default", owner: modeTenant, modesOn: []int64{modeTenant},
@@ -285,8 +287,17 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 		},
 		{
 			name: "an edit that changes neither model nor blueprint passes without a snapshot", owner: modeTenant, modesOn: []int64{modeTenant},
-			existing: func(t *testing.T) *models.EndPoint { return ownedEndpoint(t, modeTenant, &c.modelWithDefault, nil) },
-			req:      updateRequest(&pb.EndPoint{Name: "renamed"}, fieldMaskName),
+			existing:       func(t *testing.T) *models.EndPoint { return ownedEndpoint(t, modeTenant, &c.modelWithDefault, nil) },
+			req:            updateRequest(&pb.EndPoint{Name: "renamed"}, fieldMaskName),
+			wantNoSnapshot: true,
+		},
+		{
+			name: "an unmasked device_model_id does not stand in for the endpoint's model", owner: modeTenant, modesOn: []int64{modeTenant},
+			existing: func(t *testing.T) *models.EndPoint {
+				return ownedEndpoint(t, modeTenant, &c.modelWithDefault, c.defaultBp)
+			},
+			req:      updateRequest(&pb.EndPoint{DeviceModelId: c.otherModel.String(), BlueprintId: c.otherModelBp.ID.String()}, fieldMaskBlueprintID),
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "roaming: the owner's mode applies, not the serving tenant's", owner: foreignOwner, modesOn: []int64{foreignOwner},
@@ -316,6 +327,9 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, endpoints.updateCapture)
 			assert.Equal(t, tt.wantSource, snapshotSourceID(endpoints.updateCapture.BlueprintSnapshot))
+			if tt.wantNoSnapshot {
+				assert.Empty(t, endpoints.updateCapture.BlueprintSnapshot, "no snapshot is pinned")
+			}
 		})
 	}
 }
@@ -353,7 +367,7 @@ func pinnedAt(t *testing.T, eui string, owner int64, model *uuid.UUID, pinned js
 // TC-CM-107: BulkAssignBlueprint while an owner decodes only from snapshots.
 func TestBulkAssignBlueprint_SnapshotOnlyModeOfEachOwner(t *testing.T) {
 	c := newCatalog()
-	pinned, err := buildBlueprintSnapshot(c.defaultBp)
+	pinned, err := buildBlueprintSnapshot(c.defaultBp, testServiceStart)
 	require.NoError(t, err)
 	inputPinned, err := buildSpecSnapshot(json.RawMessage(`{"i":1}`), "1", []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0, 0, 0x33}, testServiceStart)
 	require.NoError(t, err)
@@ -497,4 +511,52 @@ func TestSnapshotOnlyDecoding_OnlyAnAdministratorSwitchesIt(t *testing.T) {
 	assert.False(t, admitted(t, matrixInterceptor(authz.Roles{TenantManager: true}), set, false), "tenant manager")
 	assert.True(t, admitted(t, matrixInterceptor(authz.AllRoles), set, false), "administrator")
 	assert.True(t, admitted(t, matrixInterceptor(authz.ServiceAccountRoles), get, false), "organization key reads")
+}
+
+func TestUpdateEndPoint_ModeReadFailureRefuses(t *testing.T) {
+	c := newCatalog()
+	modes := newMemModes()
+	modes.err = errModeReadFailed
+	endpoints := &mockEndpointSvcForUpdate{getByEUIResult: ownedEndpoint(t, modeTenant, &c.otherModel, c.otherModelBp)}
+	svc, _ := modeService(modes, endpoints, c.service())
+
+	_, err := svc.UpdateEndPoint(testutil.TestContextWithTenant(modeTenant),
+		updateRequest(&pb.EndPoint{DeviceModelId: c.modelWithDefault.String()}, fieldMaskDeviceModelID))
+
+	requireCode(t, err, codes.Internal)
+	assert.Nil(t, endpoints.updateCapture)
+}
+
+func TestBulkAssignBlueprint_ModeReadFailureWritesNothing(t *testing.T) {
+	c := newCatalog()
+	pinned, err := buildBlueprintSnapshot(c.defaultBp, testServiceStart)
+	require.NoError(t, err)
+	endpoints := &bulkEndpoints{mockEndpointSvcForUpdate: &mockEndpointSvcForUpdate{}, byEUI: map[string]*models.EndPoint{
+		models.EUIFromString(modeTestEUI).String(): pinnedAt(t, modeTestEUI, modeTenant, &c.modelWithDefault, pinned),
+	}}
+	modes := newMemModes()
+	modes.err = errModeReadFailed
+	svc := testCoreService(coreFields{endpointSvc: endpoints, blueprintSvc: c.service(), snapshotModes: modes, log: &mockLogger{}})
+
+	_, err = svc.BulkAssignBlueprint(testutil.TestContextWithTenant(modeTenant),
+		&pb.BulkAssignBlueprintRequest{BlueprintId: c.defaultBp.ID.String(), EpEuis: []string{modeTestEUI}})
+
+	requireCode(t, err, codes.Internal)
+	assert.Empty(t, endpoints.written)
+}
+
+func TestConstructors_RequireTheSnapshotOnlyDependencies(t *testing.T) {
+	_, err := NewEndpointHandlers(EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{},
+		Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}}, &captureAuditRecorder{}, &mockLogger{})
+	require.EqualError(t, err, errMsgSnapshotOnlyModesCannotBeNil)
+
+	_, err = NewBlueprintHandlers(BlueprintHandlerDeps{Clock: clock.SystemClock{}}, &captureAuditRecorder{}, &mockLogger{})
+	require.EqualError(t, err, errMsgSnapshotOnlyModesCannotBeNil)
+	_, err = NewBlueprintHandlers(BlueprintHandlerDeps{Modes: switchOff{}}, &captureAuditRecorder{}, &mockLogger{})
+	require.EqualError(t, err, errMsgBlueprintClockCannotBeNil)
+
+	_, err = NewSnapshotOnlyHandlers(SnapshotOnlyHandlerDeps{Pinner: nothingToPin{}}, &captureAuditRecorder{}, &mockLogger{})
+	require.EqualError(t, err, errMsgSnapshotOnlyModesCannotBeNil)
+	_, err = NewSnapshotOnlyHandlers(SnapshotOnlyHandlerDeps{Modes: switchOff{}}, &captureAuditRecorder{}, &mockLogger{})
+	require.EqualError(t, err, errMsgBlueprintPinnerCannotBeNil)
 }

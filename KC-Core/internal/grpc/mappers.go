@@ -22,8 +22,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-func buildBlueprintSnapshot(bp *models.Blueprint) (json.RawMessage, error) {
-	return json.Marshal(models.NewBlueprintSnapshot(bp, time.Now().UTC()))
+func buildBlueprintSnapshot(bp *models.Blueprint, adoptedAt time.Time) (json.RawMessage, error) {
+	return json.Marshal(models.NewBlueprintSnapshot(bp, adoptedAt.UTC()))
 }
 
 // buildSpecSnapshot pins a specification that has no catalog blueprint behind it.
@@ -75,15 +75,14 @@ func modelChanged(oldID, newID *uuid.UUID) bool {
 	}
 }
 
-// applyBlueprintSnapshot materializes the blueprint snapshot onto the endpoint; model-membership mismatch is advisory (logged only).
 // applyBlueprintSnapshot pins the blueprint onto the endpoint: device model, type
-// EUI and the serialized snapshot.
-func applyBlueprintSnapshot(ctx context.Context, log logger.Logger, blueprints grpcservices.BlueprintService, endpoint *models.EndPoint, blueprintID string) error {
+// EUI and the serialized snapshot adopted at adoptedAt.
+func applyBlueprintSnapshot(ctx context.Context, log logger.Logger, blueprints grpcservices.BlueprintService, endpoint *models.EndPoint, blueprintID string, adoptedAt time.Time) error {
 	bp, err := loadBlueprint(ctx, blueprints, blueprintID)
 	if err != nil {
 		return err
 	}
-	return pinBlueprint(ctx, log, endpoint, bp)
+	return pinBlueprint(ctx, log, endpoint, bp, adoptedAt)
 }
 
 // loadBlueprint reads the blueprint an endpoint request selects.
@@ -105,14 +104,15 @@ func loadBlueprint(ctx context.Context, blueprints grpcservices.BlueprintService
 	return bp, nil
 }
 
-// pinBlueprint pins a loaded blueprint onto the endpoint; the endpoint takes the blueprint's model.
-func pinBlueprint(ctx context.Context, log logger.Logger, endpoint *models.EndPoint, bp *models.Blueprint) error {
+// pinBlueprint pins a loaded blueprint onto the endpoint; the endpoint takes the
+// blueprint's model, and a model mismatch is only logged.
+func pinBlueprint(ctx context.Context, log logger.Logger, endpoint *models.EndPoint, bp *models.Blueprint, adoptedAt time.Time) error {
 	if endpoint.DeviceModelID != nil && bp.DeviceModelID != *endpoint.DeviceModelID {
 		log.WarnContext(ctx, LogSelectedBlueprintBelongsToADifferentDeviceModel,
 			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldBlueprintID, bp.ID,
 			logger.FieldBlueprintModel, bp.DeviceModelID, logger.FieldEndpointModel, *endpoint.DeviceModelID)
 	}
-	raw, marshalErr := buildBlueprintSnapshot(bp)
+	raw, marshalErr := buildBlueprintSnapshot(bp, adoptedAt)
 	if marshalErr != nil {
 		log.ErrorContext(ctx, LogFailedToBuildBlueprintSnapshot,
 			logger.FieldBlueprintID, bp.ID, logger.FieldError, marshalErr)

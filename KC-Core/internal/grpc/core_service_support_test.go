@@ -1,10 +1,12 @@
 package grpc
 
 import (
+	"context"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
+	bpresolver "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci/blueprint"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/downlinks"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
@@ -65,7 +67,38 @@ type coreFields struct {
 	pinner                 BlueprintPinner
 }
 
+// switchOff is a tenant switch store that is off for every tenant.
+type switchOff struct{}
+
+func (switchOff) GetSnapshotOnlyDecoding(context.Context, int64) (bool, error) {
+	return false, nil
+}
+func (switchOff) SetSnapshotOnlyDecoding(context.Context, int64, bool) error { return nil }
+
+// nothingToPin is a pinner for a tenant whose endpoints all have a snapshot.
+type nothingToPin struct{}
+
+func (nothingToPin) Pin(context.Context, int64, bool) ([]bpresolver.PinResult, error) {
+	return nil, nil
+}
+
+// withSnapshotOnlyOff completes deps with a switch that is off for every tenant
+// and a pinner with nothing to pin.
+func withSnapshotOnlyOff(d CoreServiceDeps) CoreServiceDeps {
+	d.Endpoints.Modes = switchOff{}
+	d.Blueprints.Modes = switchOff{}
+	d.Blueprints.Clock = clock.SystemClock{}
+	d.SnapshotOnly = SnapshotOnlyHandlerDeps{Modes: switchOff{}, Pinner: nothingToPin{}}
+	return d
+}
+
 func testCoreService(f coreFields) *CoreService {
+	if f.snapshotModes == nil {
+		f.snapshotModes = switchOff{}
+	}
+	if f.pinner == nil {
+		f.pinner = nothingToPin{}
+	}
 	recorder := f.audit
 	if recorder == nil {
 		recorder = &captureAuditRecorder{}
@@ -83,7 +116,7 @@ func testCoreService(f coreFields) *CoreService {
 		MessageHandlers:      &MessageHandlers{msgListingSvc: f.msgListingSvc, activitySvc: f.activitySvc, log: f.log},
 		AnalyticsHandlers:    &AnalyticsHandlers{analyticsSvc: f.analyticsSvc, eventSvc: f.eventSvc, alertSvc: f.alertSvc, log: f.log},
 		CertificateHandlers:  &CertificateHandlers{certSvc: f.certSvc, audit: recorder, platformTenantID: f.platformTenantID, log: f.log},
-		BlueprintHandlers:    &BlueprintHandlers{blueprintSvc: f.blueprintSvc, endpointSvc: f.endpointSvc, modes: f.snapshotModes, audit: recorder, log: f.log},
+		BlueprintHandlers:    &BlueprintHandlers{blueprintSvc: f.blueprintSvc, endpointSvc: f.endpointSvc, modes: f.snapshotModes, snapClock: clock.SystemClock{}, audit: recorder, log: f.log},
 		IntegrationHandlers:  &IntegrationHandlers{integrationSvc: f.integrationSvc, audit: recorder, log: f.log},
 		ScaciHandlers:        &ScaciHandlers{scaciMonitorSvc: f.scaciMonitorSvc, log: f.log},
 		FederationHandlers:   &FederationHandlers{ceBootstrapSvc: f.ceBootstrapSvc, ceRegistrySvc: f.ceRegistrySvc, log: f.log},

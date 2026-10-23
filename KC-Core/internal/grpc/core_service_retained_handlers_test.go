@@ -326,7 +326,7 @@ func (s *retainedStatsStore) GetBaseStationMessageStats(_ context.Context, tenan
 
 func newRetainedService(t *testing.T, f *retainedFakes) *CoreService {
 	t.Helper()
-	svc, err := NewCoreService(CoreServiceDeps{
+	svc, err := NewCoreService(withSnapshotOnlyOff(CoreServiceDeps{
 		Log:          logger.NewNop(),
 		Audit:        &captureAuditRecorder{},
 		Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
@@ -335,7 +335,7 @@ func newRetainedService(t *testing.T, f *retainedFakes) *CoreService {
 		ULTransmit:   ULTransmitHandlerDeps{Sessions: &retainedSessionDir{f: f}, Transmitter: &fakeULTransmit{}, BaseStations: &retainedBasestationSvc{f: f}},
 		DLRX:         DLRXHandlerDeps{Queries: &stubDLRXStorage{}, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &retainedSessionDir{f: f}},
 		System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: retainedBsEUI, SCVendor: "test", SCModel: "test", SCName: "test", SCSwVersion: "1.0.0"},
-	})
+	}))
 	require.NoError(t, err)
 	svc.scaciMonitorSvc = f
 	svc.analyticsSvc = f

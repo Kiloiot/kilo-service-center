@@ -70,7 +70,7 @@ type EndpointHandlerDeps struct {
 	Clock clock.Clock
 	// ServingStations names the station an endpoint's downlinks go to, shown on its detail.
 	ServingStations ServingStationLocator
-	// Modes reads the owner's snapshot-only decoding; without it endpoints follow the catalog as before.
+	// Modes reads the owner's snapshot-only decoding; required.
 	Modes SnapshotOnlyModeLookup
 }
 
@@ -90,6 +90,9 @@ func NewEndpointHandlers(d EndpointHandlerDeps, recorder AuditRecorder, log logg
 	}
 	if d.KeyReveals == nil {
 		return nil, audit.ErrNilRecorder
+	}
+	if d.Modes == nil {
+		return nil, errors.New(errMsgSnapshotOnlyModesCannotBeNil)
 	}
 	window := d.ActivityWindow
 	if window <= 0 {

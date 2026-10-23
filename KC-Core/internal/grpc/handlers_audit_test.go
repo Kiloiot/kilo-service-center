@@ -82,7 +82,7 @@ func TestNewCoreService_RequiresAnAuditRecorder(t *testing.T) {
 func TestSendDownlink_RecordsQueuedAudit(t *testing.T) {
 	scaciQueuer := &fakeSCACIQueuer{}
 	recorder, emitter := productionRecorder(t)
-	svc, err := NewCoreService(CoreServiceDeps{
+	svc, err := NewCoreService(withSnapshotOnlyOff(CoreServiceDeps{
 		Log:          logger.NewNop(),
 		Audit:        recorder,
 		Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
@@ -91,7 +91,7 @@ func TestSendDownlink_RecordsQueuedAudit(t *testing.T) {
 		ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
 		DLRX:         DLRXHandlerDeps{Queries: &fakeLegacyStorage{}, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
 		System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 1, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
-	})
+	}))
 	require.NoError(t, err)
 
 	resp, err := svc.SendDownlink(actorCtx(), &pb.SendDownlinkRequest{EpEui: auditTestEpEUI, Payloads: [][]byte{{0x01}}})

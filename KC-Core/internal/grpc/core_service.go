@@ -108,6 +108,14 @@ func NewCoreService(deps CoreServiceDeps) (*CoreService, error) {
 	if err != nil {
 		return nil, err
 	}
+	blueprints, err := NewBlueprintHandlers(deps.Blueprints, deps.Audit, log)
+	if err != nil {
+		return nil, err
+	}
+	snapshotOnlyHandlers, err := NewSnapshotOnlyHandlers(deps.SnapshotOnly, deps.Audit, log)
+	if err != nil {
+		return nil, err
+	}
 	return &CoreService{
 		EndpointHandlers:     endpoints,
 		BaseStationHandlers:  baseStations,
@@ -117,12 +125,12 @@ func NewCoreService(deps CoreServiceDeps) (*CoreService, error) {
 		MessageHandlers:      NewMessageHandlers(deps.Messages, log),
 		AnalyticsHandlers:    NewAnalyticsHandlers(deps.Analytics, log),
 		CertificateHandlers:  NewCertificateHandlers(deps.Certificates, deps.Audit, log),
-		BlueprintHandlers:    NewBlueprintHandlers(deps.Blueprints, deps.Audit, log),
+		BlueprintHandlers:    blueprints,
 		IntegrationHandlers:  NewIntegrationHandlers(deps.Integrations, deps.Audit, log),
 		ScaciHandlers:        NewScaciHandlers(deps.Scaci, log),
 		FederationHandlers:   NewFederationHandlers(deps.Federation, log),
 		SystemHandlers:       system,
-		SnapshotOnlyHandlers: NewSnapshotOnlyHandlers(deps.SnapshotOnly, deps.Audit, log),
+		SnapshotOnlyHandlers: snapshotOnlyHandlers,
 	}, nil
 }
 

@@ -2220,6 +2220,9 @@ func TestPinning_SelectsAndWritesByOwnerTenant(t *testing.T) {
 	pinnedHome := insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x64, Name: "TestPin-AApinned", TenantID: 601})
 	_, err := db.Exec(`UPDATE endpoints SET blueprint_snapshot = '{"version":"0"}' WHERE id = $1`, pinnedHome)
 	require.NoError(t, err)
+	homeModel := createTestDeviceModel(t, db, 601, "pin-model")
+	_, err = db.Exec(`UPDATE endpoints SET device_model_id = $2 WHERE id = $1`, ownedHome, homeModel)
+	require.NoError(t, err)
 	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
 	ctx := testutil.TestContext()
 
@@ -2250,6 +2253,13 @@ func TestPinning_SelectsAndWritesByOwnerTenant(t *testing.T) {
 	assert.False(t, model.Valid, "the endpoint's model is not touched")
 	require.NoError(t, db.QueryRow(`SELECT blueprint_snapshot FROM endpoints WHERE id = $1`, servedForB).Scan(&stored))
 	assert.Nil(t, stored, "the served endpoint keeps decoding as before")
+
+	written, err = repo.PinSnapshotIfUnpinned(ctx, 601, ownedHome, snap)
+	require.NoError(t, err)
+	assert.True(t, written)
+	var keptModel uuid.UUID
+	require.NoError(t, db.QueryRow(`SELECT device_model_id FROM endpoints WHERE id = $1`, ownedHome).Scan(&keptModel))
+	assert.Equal(t, homeModel, keptModel, "pinning keeps the endpoint's device model")
 }
 
 func TestPinning_ListPagesByIDCursor(t *testing.T) {

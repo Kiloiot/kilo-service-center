@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"google.golang.org/grpc/status"
@@ -42,16 +43,21 @@ type SnapshotOnlyHandlers struct {
 	log    logger.Logger
 }
 
-// SnapshotOnlyHandlerDeps wires SnapshotOnlyHandlers; a nil Modes store or
-// Pinner answers its RPCs as not configured.
+// SnapshotOnlyHandlerDeps wires SnapshotOnlyHandlers; both are required.
 type SnapshotOnlyHandlerDeps struct {
 	Modes  SnapshotOnlyModeStore
 	Pinner BlueprintPinner
 }
 
 // NewSnapshotOnlyHandlers builds the group; recorder records every switch and pinning pass.
-func NewSnapshotOnlyHandlers(d SnapshotOnlyHandlerDeps, recorder AuditRecorder, log logger.Logger) *SnapshotOnlyHandlers {
-	return &SnapshotOnlyHandlers{modes: d.Modes, pinner: d.Pinner, audit: recorder, log: log}
+func NewSnapshotOnlyHandlers(d SnapshotOnlyHandlerDeps, recorder AuditRecorder, log logger.Logger) (*SnapshotOnlyHandlers, error) {
+	if d.Modes == nil {
+		return nil, errors.New(errMsgSnapshotOnlyModesCannotBeNil)
+	}
+	if d.Pinner == nil {
+		return nil, errors.New(errMsgBlueprintPinnerCannotBeNil)
+	}
+	return &SnapshotOnlyHandlers{modes: d.Modes, pinner: d.Pinner, audit: recorder, log: log}, nil
 }
 
 // Event description words for the switch's new value.
@@ -62,10 +68,6 @@ const (
 
 // SetSnapshotOnlyDecoding switches the caller's tenant.
 func (s *SnapshotOnlyHandlers) SetSnapshotOnlyDecoding(ctx context.Context, req *pb.SetSnapshotOnlyDecodingRequest) (*pb.SnapshotOnlyDecoding, error) {
-	if s.modes == nil {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
-	}
 	tenantID, err := GetTenantFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -93,10 +95,6 @@ func (s *SnapshotOnlyHandlers) SetSnapshotOnlyDecoding(ctx context.Context, req 
 
 // GetSnapshotOnlyDecoding reads the caller's tenant.
 func (s *SnapshotOnlyHandlers) GetSnapshotOnlyDecoding(ctx context.Context, _ *emptypb.Empty) (*pb.SnapshotOnlyDecoding, error) {
-	if s.modes == nil {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
-	}
 	tenantID, err := GetTenantFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -111,10 +109,6 @@ func (s *SnapshotOnlyHandlers) GetSnapshotOnlyDecoding(ctx context.Context, _ *e
 // PinCurrentBlueprints pins every endpoint the caller's tenant owns without a
 // snapshot; a dry run reports the outcomes, writes nothing and is not recorded.
 func (s *SnapshotOnlyHandlers) PinCurrentBlueprints(ctx context.Context, req *pb.PinCurrentBlueprintsRequest) (*pb.PinCurrentBlueprintsResponse, error) {
-	if s.pinner == nil {
-		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
-	}
 	tenantID, err := GetTenantFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -153,12 +147,8 @@ func snapshotOnlyReadError(ctx context.Context, log logger.Logger, tenantID int6
 		grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenSnapshotOnlyReadFailed))
 }
 
-// snapshotOnly reads the switch of an endpoint's owner from storage on every
-// call; a group built without the lookup decodes as before.
+// snapshotOnly reads the switch of an endpoint's owner from storage on every call.
 func snapshotOnly(ctx context.Context, modes SnapshotOnlyModeLookup, log logger.Logger, ownerTenantID int64) (bool, error) {
-	if modes == nil {
-		return false, nil
-	}
 	on, err := modes.GetSnapshotOnlyDecoding(ctx, ownerTenantID)
 	if err != nil {
 		return false, snapshotOnlyReadError(ctx, log, ownerTenantID, err)

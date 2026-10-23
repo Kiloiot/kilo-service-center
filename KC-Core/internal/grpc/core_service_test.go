@@ -1394,7 +1394,7 @@ func TestApplyBlueprintSnapshot_Materializes(t *testing.T) {
 		getBlueprintFn: func(_ uuid.UUID) (*models.Blueprint, error) { return bp, nil },
 	}})
 
-	err := applyBlueprintSnapshot(testutil.TestContext(), svc.EndpointHandlers.log, svc.EndpointHandlers.blueprintSvc, endpoint, bp.ID.String())
+	err := applyBlueprintSnapshot(testutil.TestContext(), svc.EndpointHandlers.log, svc.EndpointHandlers.blueprintSvc, endpoint, bp.ID.String(), testServiceStart)
 	require.NoError(t, err)
 	require.NotEmpty(t, endpoint.BlueprintSnapshot)
 	require.NotNil(t, endpoint.DeviceModelID)
@@ -1425,7 +1425,7 @@ func TestApplyBlueprintSnapshot_Errors(t *testing.T) {
 				svc.EndpointHandlers.blueprintSvc = tt.svc
 			}
 			endpoint := &models.EndPoint{EUI: models.EUIFromString("0123456789abcdef")}
-			err := applyBlueprintSnapshot(testutil.TestContext(), svc.EndpointHandlers.log, svc.EndpointHandlers.blueprintSvc, endpoint, tt.blueprintID)
+			err := applyBlueprintSnapshot(testutil.TestContext(), svc.EndpointHandlers.log, svc.EndpointHandlers.blueprintSvc, endpoint, tt.blueprintID, testServiceStart)
 			require.Error(t, err)
 			assert.Equal(t, tt.wantCode, status.Code(err))
 			assert.Empty(t, endpoint.BlueprintSnapshot, "no snapshot on error")
@@ -1442,7 +1442,7 @@ func TestUpdateEndPoint_SnapshotTrigger(t *testing.T) {
 	teDef := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0x00, 0x00, 0x03}
 	const eui = "1122334455667788"
 
-	priorSnap, err := buildBlueprintSnapshot(&models.Blueprint{ID: priorBp, DeviceModelID: priorModel, TypeEUI: tePrior, Version: "1", SpecJSON: []byte(`{"a":1}`)})
+	priorSnap, err := buildBlueprintSnapshot(&models.Blueprint{ID: priorBp, DeviceModelID: priorModel, TypeEUI: tePrior, Version: "1", SpecJSON: []byte(`{"a":1}`)}, testServiceStart)
 	require.NoError(t, err)
 	existing := func() *models.EndPoint {
 		m := priorModel
@@ -2525,7 +2525,7 @@ func TestNewCoreService_DefaultEndpointActivityWindow(t *testing.T) {
 	mockStorage := &mockStorageForEndpoint{}
 	epSvc := grpcservices.NewEndpointService(mockStorage, nil)
 
-	svc, err := NewCoreService(CoreServiceDeps{
+	svc, err := NewCoreService(withSnapshotOnlyOff(CoreServiceDeps{
 		Log:          logger.NewNop(),
 		Audit:        &captureAuditRecorder{},
 		Endpoints:    EndpointHandlerDeps{Endpoints: epSvc, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
@@ -2534,7 +2534,7 @@ func TestNewCoreService_DefaultEndpointActivityWindow(t *testing.T) {
 		ULTransmit:   ULTransmitHandlerDeps{Sessions: &mockSessionDir{}, Transmitter: &mockULTransmit{}, BaseStations: &mockBasestationSvc{}},
 		DLRX:         DLRXHandlerDeps{Queries: &stubDLRXStorage{}, Statuses: &mockMessageSvc{}, Stations: &mockMessageSvc{}, Commander: &mockDownlinkCmd{}, Sessions: &mockSessionDir{}},
 		System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0011223344556677, SCVendor: "test", SCModel: "test", SCName: "test", SCSwVersion: "1.0.0"},
-	})
+	}))
 	require.NoError(t, err, "NewCoreService must succeed")
 
 	expected := time.Duration(config.DefaultEndpointActivityWindowHours) * time.Hour
