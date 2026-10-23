@@ -609,8 +609,7 @@ func (s *BlueprintHandlers) rematerializeSnapshotOnEndpoints(ctx context.Context
 	return affected, nil
 }
 
-// loadBulkAssignTargets loads the full endpoints (list columns are partial and
-// would clobber on Update); an EUI the serving tenant does not have is skipped.
+// loadBulkAssignTargets loads full endpoints, since list columns are partial and would clobber on Update.
 func (s *BlueprintHandlers) loadBulkAssignTargets(ctx context.Context, tenantID int64, euis []models.EUI) ([]*models.EndPoint, error) {
 	targets := make([]*models.EndPoint, 0, len(euis))
 	for _, eui := range euis {
@@ -628,9 +627,7 @@ func (s *BlueprintHandlers) loadBulkAssignTargets(ctx context.Context, tenantID 
 	return targets, nil
 }
 
-// refuseOtherModelTargets refuses the whole request when an endpoint whose
-// owner decodes only from snapshots is not of the blueprint's model: the
-// response carries only a count, so no target can be refused alone.
+// refuseOtherModelTargets refuses the whole request: the response carries only a count, so no target can be refused alone.
 func (s *BlueprintHandlers) refuseOtherModelTargets(ctx context.Context, blueprintID string, targets []*models.EndPoint) error {
 	owners := map[int64]bool{}
 	var bp *models.Blueprint

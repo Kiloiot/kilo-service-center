@@ -329,9 +329,11 @@ It is off for every tenant until an administrator turns it on. While it is on, a
 
 - An uplink is decoded only from the endpoint's pinned snapshot. An endpoint without a snapshot, or with a damaged one, is not decoded. If the setting cannot be read, it counts as on.
 - `CreateEndPoint`, and an `UpdateEndPoint` that changes the device model, end with a snapshot: the given `blueprint_input`, the given `blueprint_id`, or the model's default blueprint. With none of them the call returns `FAILED_PRECONDITION` (`KC-GRPC-ERR-0AF`).
-- A `blueprint_id` must belong to the `device_model_id` of the same request, an empty one included; otherwise `INVALID_ARGUMENT` (`KC-GRPC-ERR-0B0`).
+- A `blueprint_id` must belong to the `device_model_id` of the same request, an empty one included, and, unless `device_model_id` is in `update_mask`, to the endpoint's current model; otherwise `INVALID_ARGUMENT` (`KC-GRPC-ERR-0B0`).
 - `BulkAssignBlueprint` with an endpoint of another device model, or of none, returns `INVALID_ARGUMENT` (`KC-GRPC-ERR-0B1`) and changes no endpoint.
 - An update that changes neither the device model nor the blueprint is accepted as before, also for an endpoint without a snapshot.
+
+When the setting cannot be read, `CreateEndPoint`, an `UpdateEndPoint` that changes the device model or the blueprint, and `BulkAssignBlueprint` return `INTERNAL` (`KC-GRPC-ERR-0B2`) and change nothing, on every installation and with the setting on or off.
 
 #### How do I pin the endpoints that still decode from the catalog?
 

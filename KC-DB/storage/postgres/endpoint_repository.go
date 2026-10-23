@@ -465,8 +465,7 @@ func (r *EndPointRepository) ListByModelWithSnapshot(ctx context.Context, tenant
 	return endpoints, nil
 }
 
-// ListUnpinnedByOwner pages the endpoints an owner tenant owns, wherever they
-// roam, that have no blueprint snapshot, in id order after afterID.
+// ListUnpinnedByOwner selects by owner_tenant_id, so roaming endpoints are the owner's.
 func (r *EndPointRepository) ListUnpinnedByOwner(ctx context.Context, ownerTenantID, afterID int64, limit int) ([]*models.EndPoint, error) {
 	query := `SELECT` + endpointListSelectColumns + `
 		FROM endpoints
@@ -498,9 +497,7 @@ func (r *EndPointRepository) ListUnpinnedByOwner(ctx context.Context, ownerTenan
 	return endpoints, nil
 }
 
-// PinSnapshotIfUnpinned writes only the blueprint snapshot of an owner's
-// endpoint that still has none; false when another write got there first or
-// the endpoint is not the owner's.
+// PinSnapshotIfUnpinned never replaces a snapshot written meanwhile; false when nothing was written.
 func (r *EndPointRepository) PinSnapshotIfUnpinned(ctx context.Context, ownerTenantID, endpointID int64, snapshot json.RawMessage) (bool, error) {
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE endpoints SET blueprint_snapshot = $3 WHERE id = $1 AND owner_tenant_id = $2 AND blueprint_snapshot IS NULL`,

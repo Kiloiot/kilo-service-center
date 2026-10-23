@@ -104,8 +104,7 @@ func loadBlueprint(ctx context.Context, blueprints grpcservices.BlueprintService
 	return bp, nil
 }
 
-// pinBlueprint pins a loaded blueprint onto the endpoint; the endpoint takes the
-// blueprint's model, and a model mismatch is only logged.
+// pinBlueprint pins a loaded blueprint; the endpoint takes the blueprint's model.
 func pinBlueprint(ctx context.Context, log logger.Logger, endpoint *models.EndPoint, bp *models.Blueprint, adoptedAt time.Time) error {
 	if endpoint.DeviceModelID != nil && bp.DeviceModelID != *endpoint.DeviceModelID {
 		log.WarnContext(ctx, LogSelectedBlueprintBelongsToADifferentDeviceModel,

@@ -2099,7 +2099,7 @@ var errorCatalog = map[string]ErrorDefinition{
 	},
 	ErrTokenBlueprintNotOfRequestedModel: {
 		Token:   ErrTokenBlueprintNotOfRequestedModel,
-		Message: "blueprint_id is not a blueprint of the requested device_model_id",
+		Message: "blueprint_id is not a blueprint of the requested device_model_id and, unless device_model_id is in update_mask, of the endpoint's current model",
 		Code:    codes.InvalidArgument,
 	},
 	ErrTokenBulkAssignOtherModel: {

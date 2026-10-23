@@ -279,9 +279,7 @@ func ParseSpec(specJSON []byte) (*Spec, error) {
 	return &spec, nil
 }
 
-// ParseAndValidate parses a specification and checks it the way the decoder
-// does. A parse failure is always a *ParseError, a failed check a
-// *ValidationError.
+// ParseAndValidate is the decoder's check; parse failures are *ParseError, failed checks *ValidationError.
 func ParseAndValidate(specJSON []byte) (*Spec, error) {
 	spec, err := ParseSpec(specJSON)
 	var ve *ValidationError

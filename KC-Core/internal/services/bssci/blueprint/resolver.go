@@ -73,9 +73,7 @@ func (s *ResolverService) ResolveBlueprint(
 	return bp, nil
 }
 
-// ResolveBlueprintForEndpoint finds the applicable blueprint for an endpoint:
-// its pinned snapshot, else - unless the tenant decodes only from snapshots -
-// the catalog (catalogBlueprint). A failed catalog read skips decoding.
+// ResolveBlueprintForEndpoint: snapshot, else the catalog unless snapshot-only; a failed read skips decoding.
 func (s *ResolverService) ResolveBlueprintForEndpoint(
 	ctx context.Context,
 	tenantID int64,
@@ -97,9 +95,7 @@ func (s *ResolverService) ResolveBlueprintForEndpoint(
 	return bp, nil
 }
 
-// ResolveIgnoringMode finds the blueprint ResolveBlueprintForEndpoint would
-// decode with if the tenant's switch were off. Unlike it, a failed catalog read
-// is returned rather than taken for "nothing found".
+// ResolveIgnoringMode returns a failed catalog read so pinning never takes it for nothing found.
 func (s *ResolverService) ResolveIgnoringMode(ctx context.Context, tenantID int64, endpoint *models.EndPoint) (*models.Blueprint, error) {
 	if bp, ok := s.snapshotBlueprint(ctx, endpoint); ok {
 		return bp, nil
@@ -107,10 +103,7 @@ func (s *ResolverService) ResolveIgnoringMode(ctx context.Context, tenantID int6
 	return s.catalogBlueprint(ctx, tenantID, endpoint)
 }
 
-// catalogBlueprint applies the TypeEUI precedence rule: an endpoint with a
-// device model decodes with the model's default blueprint, which keeps a loose
-// type EUI from overriding the model; otherwise with the blueprint of its type
-// EUI. Nothing found is (nil, nil); a failed read is logged and returned.
+// catalogBlueprint: a model's default wins over the type EUI so a loose type EUI never overrides the model.
 func (s *ResolverService) catalogBlueprint(ctx context.Context, tenantID int64, endpoint *models.EndPoint) (*models.Blueprint, error) {
 	if endpoint.DeviceModelID != nil {
 		return s.modelDefaultBlueprint(ctx, tenantID, endpoint)
@@ -160,8 +153,7 @@ func (s *ResolverService) blueprintByTypeEUI(ctx context.Context, tenantID int64
 	return nil, nil
 }
 
-// snapshotBlueprint reads the endpoint's pinned snapshot, the highest-priority
-// decode source; ok is false when there is none or it is malformed.
+// snapshotBlueprint reads the pinned snapshot; ok is false when it is absent or malformed.
 func (s *ResolverService) snapshotBlueprint(ctx context.Context, endpoint *models.EndPoint) (*models.Blueprint, bool) {
 	if len(endpoint.BlueprintSnapshot) == 0 {
 		return nil, false
@@ -184,8 +176,7 @@ func (s *ResolverService) snapshotBlueprint(ctx context.Context, endpoint *model
 	return bp, true
 }
 
-// decodesOnlySnapshots reports the owner tenant's switch; an unreadable
-// switch counts as on, so a failed read never decodes from the catalog.
+// decodesOnlySnapshots counts an unreadable switch as on, so a failed read never decodes from the catalog.
 func (s *ResolverService) decodesOnlySnapshots(ctx context.Context, tenantID int64) bool {
 	on, err := s.modes.IsSnapshotOnly(ctx, tenantID)
 	if err != nil {

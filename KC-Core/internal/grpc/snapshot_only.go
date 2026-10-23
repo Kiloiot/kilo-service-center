@@ -16,8 +16,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-// SnapshotOnlyModeLookup reads whether a tenant decodes its endpoints only
-// from their pinned blueprint snapshots.
+// SnapshotOnlyModeLookup reads a tenant's snapshot-only decoding switch.
 type SnapshotOnlyModeLookup interface {
 	GetSnapshotOnlyDecoding(ctx context.Context, tenantID int64) (bool, error)
 }
@@ -28,14 +27,12 @@ type SnapshotOnlyModeStore interface {
 	SetSnapshotOnlyDecoding(ctx context.Context, tenantID int64, enabled bool) error
 }
 
-// BlueprintPinner pins a tenant's endpoints without a snapshot to the
-// blueprint they decode with now.
+// BlueprintPinner pins a tenant's endpoints without a snapshot to what they decode with now.
 type BlueprintPinner interface {
 	Pin(ctx context.Context, tenantID int64, dryRun bool) ([]bpresolver.PinResult, error)
 }
 
-// SnapshotOnlyHandlers serves the tenant's snapshot-only decoding switch and
-// the pinning that prepares a tenant for it.
+// SnapshotOnlyHandlers serves the tenant's snapshot-only switch and pinning.
 type SnapshotOnlyHandlers struct {
 	modes  SnapshotOnlyModeStore
 	pinner BlueprintPinner
@@ -106,8 +103,7 @@ func (s *SnapshotOnlyHandlers) GetSnapshotOnlyDecoding(ctx context.Context, _ *e
 	return &pb.SnapshotOnlyDecoding{Enabled: enabled}, nil
 }
 
-// PinCurrentBlueprints pins every endpoint the caller's tenant owns without a
-// snapshot; a dry run reports the outcomes, writes nothing and is not recorded.
+// PinCurrentBlueprints pins the caller's tenant; a dry run writes and records nothing.
 func (s *SnapshotOnlyHandlers) PinCurrentBlueprints(ctx context.Context, req *pb.PinCurrentBlueprintsRequest) (*pb.PinCurrentBlueprintsResponse, error) {
 	tenantID, err := GetTenantFromContext(ctx)
 	if err != nil {

@@ -157,8 +157,7 @@ func (r *TenantRepository) SetStatus(ctx context.Context, id int64, active bool)
 	return nil
 }
 
-// GetSnapshotOnlyDecoding reports whether the tenant decodes only from pinned
-// blueprint snapshots; storage.ErrNotFound when the tenant does not exist.
+// GetSnapshotOnlyDecoding returns storage.ErrNotFound for a missing tenant.
 func (r *TenantRepository) GetSnapshotOnlyDecoding(ctx context.Context, tenantID int64) (bool, error) {
 	var enabled bool
 	err := r.db.QueryRowContext(ctx, `SELECT is_snapshot_only_decoding FROM tenants WHERE id = $1`, tenantID).Scan(&enabled)
@@ -171,8 +170,7 @@ func (r *TenantRepository) GetSnapshotOnlyDecoding(ctx context.Context, tenantID
 	return enabled, nil
 }
 
-// SetSnapshotOnlyDecoding switches the tenant's snapshot-only decoding;
-// storage.ErrNotFound when the tenant does not exist.
+// SetSnapshotOnlyDecoding returns storage.ErrNotFound for a missing tenant.
 func (r *TenantRepository) SetSnapshotOnlyDecoding(ctx context.Context, tenantID int64, enabled bool) error {
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE tenants SET is_snapshot_only_decoding = $1, updated_at = NOW() WHERE id = $2`, enabled, tenantID)

@@ -34,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - creating an endpoint, or changing its device model, pins the model's default blueprint, or
     is refused with `FAILED_PRECONDITION` (`KC-GRPC-ERR-0AF`) when there is none and no
     `blueprint_id` or `blueprint_input` is given;
-  - a `blueprint_id` must be a blueprint of the requested `device_model_id`, otherwise
+  - a `blueprint_id` must be a blueprint of the requested `device_model_id` and, unless
+    `device_model_id` is in `update_mask`, of the endpoint's current model; otherwise
     `INVALID_ARGUMENT` (`KC-GRPC-ERR-0B0`) instead of moving the endpoint to the blueprint's
     model;
   - `BulkAssignBlueprint` with an endpoint of another device model, or without one, is refused
@@ -56,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BulkAssignBlueprint` reads every listed endpoint before it changes any. A read failure other
   than "not found" refuses the call with `INTERNAL` and changes nothing; it used to skip the
   endpoint.
+- When the tenant setting cannot be read, `CreateEndPoint`, an `UpdateEndPoint` that changes the
+  device model or the blueprint, and `BulkAssignBlueprint` are refused with `INTERNAL`
+  (`KC-GRPC-ERR-0B2`) and change nothing, whether the setting is on or off.
 
 ### Fixed
 

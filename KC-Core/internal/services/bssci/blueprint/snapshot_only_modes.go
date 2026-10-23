@@ -19,9 +19,7 @@ type cachedMode struct {
 	readAt time.Time
 }
 
-// CachedSnapshotOnlyModes serves the decode path the tenant switch, reading
-// storage at most once per SnapshotOnlyModeCacheTTL per tenant; failed reads
-// are not kept.
+// CachedSnapshotOnlyModes caches a tenant's switch for SnapshotOnlyModeCacheTTL; failed reads are not kept.
 type CachedSnapshotOnlyModes struct {
 	source  SnapshotOnlyModeSource
 	now     func() time.Time

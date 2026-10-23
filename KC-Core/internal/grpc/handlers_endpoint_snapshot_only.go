@@ -13,8 +13,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-// pinOnCreate pins the selected blueprint of a new endpoint; a snapshot-only
-// tenant's endpoint is pinned to its model's default blueprint or refused.
+// pinOnCreate pins the selected blueprint of a new endpoint, or its model's default in snapshot-only mode.
 func (s *EndpointHandlers) pinOnCreate(ctx context.Context, tenantID int64, endpoint *models.EndPoint, in *pb.EndPoint) error {
 	on, err := snapshotOnly(ctx, s.modes, s.log, tenantID)
 	if err != nil {
@@ -32,10 +31,7 @@ func (s *EndpointHandlers) pinOnCreate(ctx context.Context, tenantID int64, endp
 	return s.pinModelDefault(ctx, tenantID, endpoint, on)
 }
 
-// applyEndpointSnapshotTrigger re-pins an updated endpoint: an explicit
-// selection wins; else a model change re-seeds from the new model's default
-// when the pinned blueprint isn't native to it. A snapshot-only owner's
-// endpoint ends with a snapshot of its model or the update is refused.
+// applyEndpointSnapshotTrigger re-pins an updated endpoint: an explicit selection wins, else a model change re-seeds.
 func (s *EndpointHandlers) applyEndpointSnapshotTrigger(ctx context.Context, tenantID int64, endpoint *models.EndPoint, req *pb.UpdateEndPointRequest, mask *fieldmaskpb.FieldMask, priorDeviceModelID *uuid.UUID, priorSnapshotSourceID string) error {
 	explicit := fieldInMask(mask, fieldMaskBlueprintID) && req.Endpoint.BlueprintId != "" && req.Endpoint.BlueprintId != priorSnapshotSourceID
 	if !explicit && !modelChanged(priorDeviceModelID, endpoint.DeviceModelID) {
@@ -60,10 +56,7 @@ func (s *EndpointHandlers) applyEndpointSnapshotTrigger(ctx context.Context, ten
 	return s.pinModelDefault(ctx, tenantID, endpoint, on)
 }
 
-// pinSelectedBlueprint pins the request's blueprint_id; a snapshot-only
-// owner accepts only a blueprint of the request's device_model_id, an empty
-// one refused, that is also the endpoint's model as the update mask leaves
-// it, so an unmasked device_model_id cannot move the endpoint to another model.
+// pinSelectedBlueprint: the endpoint-model check keeps an unmasked device_model_id from moving the endpoint.
 func (s *EndpointHandlers) pinSelectedBlueprint(ctx context.Context, endpoint *models.EndPoint, in *pb.EndPoint, snapshotOnly bool) error {
 	bp, err := loadBlueprint(ctx, s.blueprintSvc, in.GetBlueprintId())
 	if err != nil {
@@ -76,8 +69,7 @@ func (s *EndpointHandlers) pinSelectedBlueprint(ctx context.Context, endpoint *m
 	return pinBlueprint(ctx, s.log, endpoint, bp, s.clock.Now())
 }
 
-// pinModelDefault pins the endpoint's model's default blueprint; without one
-// a snapshot-only owner's change is refused and any other keeps its snapshot.
+// pinModelDefault pins the model's default blueprint; without one only a snapshot-only owner is refused.
 func (s *EndpointHandlers) pinModelDefault(ctx context.Context, tenantID int64, endpoint *models.EndPoint, snapshotOnly bool) error {
 	if s.blueprintSvc == nil {
 		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),

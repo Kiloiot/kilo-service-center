@@ -251,7 +251,7 @@ func TestResolveIgnoringMode_IgnoresTheSwitchAndPassesReadFailuresUp(t *testing.
 	require.ErrorIs(t, err, errCatalogRead)
 }
 
-// Pinning takes exactly what decoding takes with the switch off (classifier rule: pin the current source).
+// Pinning takes exactly what decoding uses with the switch off.
 func TestPin_AgreesWithDecodingWithTheSwitchOff(t *testing.T) {
 	withDefault, withoutDefault := uuid.New(), uuid.New()
 	known := []byte{0x70, 0xb3, 0xd5, 0x9c, 0xd0, 0, 0, 0x55}

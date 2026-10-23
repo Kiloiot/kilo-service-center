@@ -12,9 +12,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-// inputSnapshot checks the request's blueprint_input the way the decoder
-// checks a specification and builds the snapshot it pins. A request without
-// input, or with an empty specification, yields no snapshot.
+// inputSnapshot builds the snapshot a blueprint_input pins; an empty specification yields none.
 func inputSnapshot(ep *pb.EndPoint, adoptedAt time.Time) (json.RawMessage, error) {
 	spec := ep.GetBlueprintInput().GetSpec()
 	if len(spec) == 0 {
@@ -43,8 +41,7 @@ func inputSnapshot(ep *pb.EndPoint, adoptedAt time.Time) (json.RawMessage, error
 	return raw, nil
 }
 
-// pinInputSnapshot pins a blueprint_input snapshot: the endpoint leaves its
-// KC model and takes its type EUI from the specification.
+// pinInputSnapshot pins a blueprint_input snapshot; the endpoint leaves its model.
 func pinInputSnapshot(endpoint *models.EndPoint, snapshot json.RawMessage) {
 	endpoint.DeviceModelID = nil
 	endpoint.BlueprintSnapshot = snapshot

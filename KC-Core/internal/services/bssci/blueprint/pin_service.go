@@ -46,8 +46,7 @@ type UnpinnedEndpoints interface {
 	PinSnapshotIfUnpinned(ctx context.Context, ownerTenantID, endpointID int64, snapshot json.RawMessage) (bool, error)
 }
 
-// PinService pins every endpoint a tenant owns without a snapshot to the
-// blueprint it currently decodes with.
+// PinService pins a tenant's endpoints without a snapshot to what they decode with now.
 type PinService struct {
 	resolver  ModeIgnoringResolver
 	endpoints UnpinnedEndpoints
@@ -63,9 +62,7 @@ func NewPinService(resolver ModeIgnoringResolver, endpoints UnpinnedEndpoints, n
 	return &PinService{resolver: resolver, endpoints: endpoints, now: now, log: log}, nil
 }
 
-// Pin pins the tenant's endpoints without a snapshot; a dry run reports the
-// same outcomes and writes nothing. An endpoint pinned by another write while
-// this runs is left out of the results.
+// Pin leaves out an endpoint another write pinned meanwhile: it no longer lacks a snapshot.
 func (p *PinService) Pin(ctx context.Context, tenantID int64, dryRun bool) ([]PinResult, error) {
 	var results []PinResult
 	var after int64
