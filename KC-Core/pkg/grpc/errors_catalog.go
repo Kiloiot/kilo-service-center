@@ -422,6 +422,11 @@ const (
 	ErrTokenCEOnboardingUnavailable = "KC-GRPC-ERR-90B"
 	ErrTokenCERegistryUnavailable   = "KC-GRPC-ERR-90C"
 	ErrTokenCEOnboardingCompleted   = "KC-GRPC-ERR-90D"
+
+	// Blueprint input errors
+	ErrTokenBlueprintInputConflict       = "KC-GRPC-ERR-0AC" // blueprint_input with blueprint_id or device_model_id
+	ErrTokenBlueprintInputSpecInvalid    = "KC-GRPC-ERR-0AD" // Decoder refuses the blueprint_input specification
+	ErrTokenBlueprintInputTypeEUIInvalid = "KC-GRPC-ERR-0AE" // blueprint_input typeEui is not 16 hex digits
 )
 
 // ErrorDefinition maps error tokens to messages and gRPC codes
@@ -2059,6 +2064,23 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenCEOnboardingCompleted,
 		Message: "CE onboarding is already completed",
 		Code:    codes.AlreadyExists,
+	},
+
+	// Blueprint input errors
+	ErrTokenBlueprintInputConflict: {
+		Token:   ErrTokenBlueprintInputConflict,
+		Message: "blueprint_input cannot be combined with blueprint_id or device_model_id",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenBlueprintInputSpecInvalid: {
+		Token:   ErrTokenBlueprintInputSpecInvalid,
+		Message: "blueprint_input specification is not accepted by the decoder",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenBlueprintInputTypeEUIInvalid: {
+		Token:   ErrTokenBlueprintInputTypeEUIInvalid,
+		Message: "blueprint_input specification typeEui must be 16 hexadecimal digits",
+		Code:    codes.InvalidArgument,
 	},
 }
 

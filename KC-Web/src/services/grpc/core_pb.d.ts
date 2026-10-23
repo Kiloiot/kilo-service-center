@@ -127,6 +127,11 @@ export class EndPoint extends jspb.Message {
   getAppKeySet(): boolean;
   setAppKeySet(value: boolean): void;
 
+  hasBlueprintInput(): boolean;
+  clearBlueprintInput(): void;
+  getBlueprintInput(): BlueprintInput | undefined;
+  setBlueprintInput(value?: BlueprintInput): void;
+
   serializeBinary(): Uint8Array;
   toObject(includeInstance?: boolean): EndPoint.AsObject;
   static toObject(includeInstance: boolean, msg: EndPoint): EndPoint.AsObject;
@@ -172,6 +177,29 @@ export namespace EndPoint {
     servingBsEui: string,
     nwkSnKeySet: boolean,
     appKeySet: boolean,
+    blueprintInput?: BlueprintInput.AsObject,
+  }
+}
+
+export class BlueprintInput extends jspb.Message {
+  getSpec(): Uint8Array | string;
+  getSpec_asU8(): Uint8Array;
+  getSpec_asB64(): string;
+  setSpec(value: Uint8Array | string): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): BlueprintInput.AsObject;
+  static toObject(includeInstance: boolean, msg: BlueprintInput): BlueprintInput.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: BlueprintInput, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): BlueprintInput;
+  static deserializeBinaryFromReader(message: BlueprintInput, reader: jspb.BinaryReader): BlueprintInput;
+}
+
+export namespace BlueprintInput {
+  export type AsObject = {
+    spec: Uint8Array | string,
   }
 }
 

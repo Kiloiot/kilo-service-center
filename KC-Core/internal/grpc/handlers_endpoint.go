@@ -4,6 +4,7 @@ package grpc
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -289,6 +290,11 @@ func (s *EndpointHandlers) CreateEndPoint(ctx context.Context, req *pb.CreateEnd
 		return nil, err
 	}
 
+	inputSnap, err := inputSnapshot(req.Endpoint, s.clock.Now())
+	if err != nil {
+		return nil, err
+	}
+
 	// Now safe to log after validation
 	s.log.InfoContext(ctx, LogCreatingEndpoint, logger.FieldEui, req.Endpoint.EpEui, logger.FieldTenantIDSnake, tenantID)
 
@@ -395,6 +401,9 @@ func (s *EndpointHandlers) CreateEndPoint(ctx context.Context, req *pb.CreateEnd
 			return nil, err
 		}
 	}
+	if inputSnap != nil {
+		pinInputSnapshot(endpoint, inputSnap)
+	}
 
 	created, err := s.storeNewEndpoint(ctx, endpoint, req.Endpoint.PreAttach)
 	if err != nil {
@@ -488,25 +497,26 @@ func (s *EndpointHandlers) servingStationEUI(ctx context.Context, tenantID int64
 // supportedEndpointUpdateMaskPaths enumerates every field path UpdateEndPoint
 // honors. A path outside this set is rejected before any mutation.
 var supportedEndpointUpdateMaskPaths = map[string]struct{}{
-	fieldMaskName:          {},
-	fieldMaskDescription:   {},
-	fieldMaskEpClass:       {},
-	fieldMaskStatus:        {},
-	fieldMaskNwkSnKey:      {},
-	fieldMaskAppKey:        {},
-	fieldMaskTags:          {},
-	fieldMaskDualChan:      {},
-	fieldMaskRepetition:    {},
-	fieldMaskWideCarrOff:   {},
-	fieldMaskLongBlkDist:   {},
-	fieldMaskShAddr:        {},
-	fieldMaskAttachCnt:     {},
-	fieldMaskPreAttach:     {},
-	fieldMaskLastPacketCnt: {},
-	fieldMaskCarrierOffset: {},
-	fieldMaskDeviceModelID: {},
-	fieldMaskTypeEUI:       {},
-	fieldMaskBlueprintID:   {},
+	fieldMaskName:           {},
+	fieldMaskDescription:    {},
+	fieldMaskEpClass:        {},
+	fieldMaskStatus:         {},
+	fieldMaskNwkSnKey:       {},
+	fieldMaskAppKey:         {},
+	fieldMaskTags:           {},
+	fieldMaskDualChan:       {},
+	fieldMaskRepetition:     {},
+	fieldMaskWideCarrOff:    {},
+	fieldMaskLongBlkDist:    {},
+	fieldMaskShAddr:         {},
+	fieldMaskAttachCnt:      {},
+	fieldMaskPreAttach:      {},
+	fieldMaskLastPacketCnt:  {},
+	fieldMaskCarrierOffset:  {},
+	fieldMaskDeviceModelID:  {},
+	fieldMaskTypeEUI:        {},
+	fieldMaskBlueprintID:    {},
+	fieldMaskBlueprintInput: {},
 }
 
 // fieldInMask delegates to the shared package for cross-service use.
@@ -568,6 +578,13 @@ func requireEndpointUpdateMask(req *pb.UpdateEndPointRequest) (*fieldmaskpb.Fiel
 // applyEndpointUpdate applies the masked fields to the loaded endpoint,
 // together with the device model, type EUI and blueprint snapshot they imply.
 func (s *EndpointHandlers) applyEndpointUpdate(ctx context.Context, tenantID int64, endpoint *models.EndPoint, req *pb.UpdateEndPointRequest, mask *fieldmaskpb.FieldMask) error {
+	var inputSnap json.RawMessage
+	if fieldInMask(mask, fieldMaskBlueprintInput) {
+		var err error
+		if inputSnap, err = inputSnapshot(req.Endpoint, s.clock.Now()); err != nil {
+			return err
+		}
+	}
 	// Captured before mask mutations — needed by the snapshot re-materialization trigger.
 	priorDeviceModelID := endpoint.DeviceModelID
 	priorSnapshotSourceID := snapshotSourceID(endpoint.BlueprintSnapshot)
@@ -577,6 +594,10 @@ func (s *EndpointHandlers) applyEndpointUpdate(ctx context.Context, tenantID int
 		return err
 	}
 	endpointpkg.RecordProfileChange(endpoint, priorProfile, s.clock.Now())
+	if inputSnap != nil {
+		pinInputSnapshot(endpoint, inputSnap)
+		return nil
+	}
 	if err := s.resolveEndpointDeviceModel(ctx, tenantID, endpoint, req, mask); err != nil {
 		return err
 	}

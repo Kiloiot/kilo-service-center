@@ -213,6 +213,12 @@ message EndPoint {
   string serving_bs_eui = 31;                   // Read-only, GetEndPoint only: the base station a downlink queued now would go to; empty when none serves the endpoint
   bool nwk_sn_key_set = 32; // Read-only: a network session key is stored
   bool app_key_set = 33;    // Read-only: an application key is stored
+  BlueprintInput blueprint_input = 34; // Input only: pin a snapshot of this specification instead of a catalog blueprint; never echoed
+}
+
+// A blueprint specification an endpoint is pinned to without a catalog blueprint.
+message BlueprintInput {
+  bytes spec = 1; // Blueprint specification JSON; empty is the same as no input
 }
 
 // An endpoint key GetEndPoint can reveal.

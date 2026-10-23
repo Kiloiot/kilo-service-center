@@ -33,6 +33,16 @@ func buildBlueprintSnapshot(bp *models.Blueprint) (json.RawMessage, error) {
 	})
 }
 
+// buildSpecSnapshot pins a specification that has no catalog blueprint behind it.
+func buildSpecSnapshot(spec json.RawMessage, version string, typeEUI []byte, adoptedAt time.Time) (json.RawMessage, error) {
+	return json.Marshal(models.BlueprintSnapshot{
+		SpecJSON:  spec,
+		Version:   version,
+		TypeEUI:   mioty.FormatEUIBytes(typeEUI),
+		AdoptedAt: adoptedAt.UTC(),
+	})
+}
+
 func snapshotSourceID(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
