@@ -6219,6 +6219,46 @@ export namespace BulkAssignBlueprintResponse {
   }
 }
 
+export class SetSnapshotOnlyDecodingRequest extends jspb.Message {
+  getEnabled(): boolean;
+  setEnabled(value: boolean): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): SetSnapshotOnlyDecodingRequest.AsObject;
+  static toObject(includeInstance: boolean, msg: SetSnapshotOnlyDecodingRequest): SetSnapshotOnlyDecodingRequest.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: SetSnapshotOnlyDecodingRequest, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): SetSnapshotOnlyDecodingRequest;
+  static deserializeBinaryFromReader(message: SetSnapshotOnlyDecodingRequest, reader: jspb.BinaryReader): SetSnapshotOnlyDecodingRequest;
+}
+
+export namespace SetSnapshotOnlyDecodingRequest {
+  export type AsObject = {
+    enabled: boolean,
+  }
+}
+
+export class SnapshotOnlyDecoding extends jspb.Message {
+  getEnabled(): boolean;
+  setEnabled(value: boolean): void;
+
+  serializeBinary(): Uint8Array;
+  toObject(includeInstance?: boolean): SnapshotOnlyDecoding.AsObject;
+  static toObject(includeInstance: boolean, msg: SnapshotOnlyDecoding): SnapshotOnlyDecoding.AsObject;
+  static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+  static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+  static serializeBinaryToWriter(message: SnapshotOnlyDecoding, writer: jspb.BinaryWriter): void;
+  static deserializeBinary(bytes: Uint8Array): SnapshotOnlyDecoding;
+  static deserializeBinaryFromReader(message: SnapshotOnlyDecoding, reader: jspb.BinaryReader): SnapshotOnlyDecoding;
+}
+
+export namespace SnapshotOnlyDecoding {
+  export type AsObject = {
+    enabled: boolean,
+  }
+}
+
 export class Blueprint extends jspb.Message {
   getId(): string;
   setId(value: string): void;

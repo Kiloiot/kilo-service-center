@@ -96,6 +96,7 @@ var coreMethodRequirements = map[string]authz.Requirement{
 	pb.CoreService_ListEvents_FullMethodName:                authz.AnyRole,
 	pb.CoreService_StreamEvents_FullMethodName:              authz.AnyRole,
 	pb.CoreService_ListErrorGroups_FullMethodName:           authz.AnyRole,
+	pb.CoreService_GetSnapshotOnlyDecoding_FullMethodName:   authz.AnyRole,
 
 	// Installation-wide operations; integration settings may hold credentials.
 	pb.CoreService_CreateIntegration_FullMethodName:           authz.AdminOnly,
@@ -111,6 +112,7 @@ var coreMethodRequirements = map[string]authz.Requirement{
 	pb.CoreService_ListAllBaseStationLocations_FullMethodName: authz.AdminOnly,
 	pb.CoreService_ListCEInstances_FullMethodName:             authz.AdminOnly,
 	pb.CoreService_RevokeCEInstance_FullMethodName:            authz.AdminOnly,
+	pb.CoreService_SetSnapshotOnlyDecoding_FullMethodName:     authz.AdminOnly,
 }
 
 // methodPolicy answers role requirements for CoreService RPCs and for their

@@ -26,6 +26,11 @@ func (r *ownerEndpointRepo) GetByEUI(_ context.Context, _ int64, _ []byte) (*mod
 	return r.endpoints[uplinkIngestTestEpEUI], nil
 }
 
+// snapshotOnlyOff answers every tenant with the switch off.
+type snapshotOnlyOff struct{}
+
+func (snapshotOnlyOff) IsSnapshotOnly(context.Context, int64) (bool, error) { return false, nil }
+
 // TC-CM-109
 func TestUplinkIngest_SnapshotWithoutSourceWritesNoBlueprintReference(t *testing.T) {
 	snapshot, err := json.Marshal(models.BlueprintSnapshot{
@@ -45,7 +50,7 @@ func TestUplinkIngest_SnapshotWithoutSourceWritesNoBlueprintReference(t *testing
 	store := &fakeUplinkStore{}
 	svc, err := NewUplinkIngestService(store, testUplinkWindows, allChannels(), nil,
 		&fakeOrgResolver{defaultOrgByTenant: map[int64]uuid.UUID{}}, nil, repo, owners,
-		blueprint.NewResolverService(logger.NewNop(), nil), blueprint.NewDecoderService(logger.NewNop()),
+		blueprint.NewResolverService(logger.NewNop(), nil, snapshotOnlyOff{}), blueprint.NewDecoderService(logger.NewNop()),
 		&recordingDownlinkAcks{}, logger.NewNop(), uplinkIngestTestTenantID, 0)
 	require.NoError(t, err)
 	payload := buildUplinkPayload()

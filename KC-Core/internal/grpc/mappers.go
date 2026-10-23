@@ -86,20 +86,34 @@ func modelChanged(oldID, newID *uuid.UUID) bool {
 // applyBlueprintSnapshot pins the blueprint onto the endpoint: device model, type
 // EUI and the serialized snapshot.
 func applyBlueprintSnapshot(ctx context.Context, log logger.Logger, blueprints grpcservices.BlueprintService, endpoint *models.EndPoint, blueprintID string) error {
+	bp, err := loadBlueprint(ctx, blueprints, blueprintID)
+	if err != nil {
+		return err
+	}
+	return pinBlueprint(ctx, log, endpoint, bp)
+}
+
+// loadBlueprint reads the blueprint an endpoint request selects.
+func loadBlueprint(ctx context.Context, blueprints grpcservices.BlueprintService, blueprintID string) (*models.Blueprint, error) {
 	if blueprints == nil {
-		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenServiceNotConfigured),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenServiceNotConfigured))
 	}
 	bpUUID, parseErr := uuid.Parse(blueprintID)
 	if parseErr != nil {
-		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidBlueprintIDFormat),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidBlueprintIDFormat))
 	}
 	bp, fetchErr := blueprints.GetBlueprint(ctx, bpUUID)
 	if fetchErr != nil || bp == nil {
-		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
+		return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBlueprintNotFound),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBlueprintNotFound))
 	}
+	return bp, nil
+}
+
+// pinBlueprint pins a loaded blueprint onto the endpoint; the endpoint takes the blueprint's model.
+func pinBlueprint(ctx context.Context, log logger.Logger, endpoint *models.EndPoint, bp *models.Blueprint) error {
 	if endpoint.DeviceModelID != nil && bp.DeviceModelID != *endpoint.DeviceModelID {
 		log.WarnContext(ctx, LogSelectedBlueprintBelongsToADifferentDeviceModel,
 			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldBlueprintID, bp.ID,

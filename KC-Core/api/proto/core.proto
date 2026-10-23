@@ -144,6 +144,10 @@ service CoreService {
   // Blueprint decode preview
   rpc DecodePreview(DecodePreviewRequest) returns (DecodePreviewResponse);
 
+  // Snapshot-only decoding of the caller's tenant: when on, endpoints decode only from their pinned blueprint snapshots
+  rpc SetSnapshotOnlyDecoding(SetSnapshotOnlyDecodingRequest) returns (SnapshotOnlyDecoding);
+  rpc GetSnapshotOnlyDecoding(google.protobuf.Empty) returns (SnapshotOnlyDecoding);
+
   // Messages (listing + streaming + search/export)
   rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
   rpc StreamMessages(StreamMessagesRequest) returns (stream Message);
@@ -1583,6 +1587,15 @@ message BulkAssignBlueprintRequest {
 
 message BulkAssignBlueprintResponse {
   int32 affected_count = 1;    // endpoints re-materialized
+}
+
+message SetSnapshotOnlyDecodingRequest {
+  bool enabled = 1;
+}
+
+// Whether the tenant decodes its endpoints only from their pinned blueprint snapshots; off unless set.
+message SnapshotOnlyDecoding {
+  bool enabled = 1;
 }
 
 message Blueprint {

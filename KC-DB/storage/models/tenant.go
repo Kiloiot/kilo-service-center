@@ -12,4 +12,6 @@ type Tenant struct {
 	Status      string    `db:"status"`      // VARCHAR(50) NOT NULL DEFAULT 'active'
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
+	// IsSnapshotOnlyDecoding decodes the tenant's endpoints only from their pinned blueprint snapshots.
+	IsSnapshotOnlyDecoding bool `db:"is_snapshot_only_decoding"`
 }

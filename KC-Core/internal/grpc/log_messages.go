@@ -157,4 +157,6 @@ const (
 	LogUpdatingBaseStation                              = "Updating base station"
 	LogUpdatingBaseStationEUI                           = "Updating base station EUI"
 	LogUpdatingEndpoint                                 = "Updating endpoint"
+	LogSnapshotOnlyDecodingReadFailed                   = "read snapshot-only decoding failed"
+	LogSnapshotOnlyDecodingSetFailed                    = "set snapshot-only decoding failed"
 )

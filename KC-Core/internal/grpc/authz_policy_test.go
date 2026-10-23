@@ -79,12 +79,14 @@ var expectedCallers = map[string][]string{
 	whoAnyRole: {
 		"GetSystemStatus", "GetStatistics", "GetAnalyticsOverview", "GetActivityAnalytics", "GetSignalQualityAnalytics",
 		"ListCapabilities", "ListEvents", "StreamEvents", "ListErrorGroups",
+		"GetSnapshotOnlyDecoding",
 	},
 	whoAdmin: {
 		"GetDiagnosticsBundle", "ListAlerts", "GetAlertSummary",
 		"GenerateServerCertificates", "RenewServerCertificates", "ListAllBaseStationLocations",
 		"ListCEInstances", "RevokeCEInstance",
 		"CreateIntegration", "GetIntegration", "UpdateIntegration", "DeleteIntegration", "ListIntegrations",
+		"SetSnapshotOnlyDecoding",
 	},
 }
 

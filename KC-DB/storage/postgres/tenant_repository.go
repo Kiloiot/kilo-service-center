@@ -3,9 +3,11 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/jmoiron/sqlx"
 )
@@ -26,7 +28,7 @@ func (r *TenantRepository) ListTenants(ctx context.Context, statusFilter string)
 	var tenants []models.Tenant
 
 	query := `
-		SELECT id, name, description, status, created_at, updated_at
+		SELECT id, name, description, status, created_at, updated_at, is_snapshot_only_decoding
 		FROM tenants
 	`
 
@@ -50,7 +52,7 @@ func (r *TenantRepository) CreateTenant(ctx context.Context, name string, descri
 	query := `
 		INSERT INTO tenants (name, description, status, created_at, updated_at)
 		VALUES ($1, $2, $3, NOW(), NOW())
-		RETURNING id, name, description, status, created_at, updated_at
+		RETURNING id, name, description, status, created_at, updated_at, is_snapshot_only_decoding
 	`
 
 	var tenant models.Tenant
@@ -64,7 +66,7 @@ func (r *TenantRepository) CreateTenant(ctx context.Context, name string, descri
 // GetTenantByID retrieves a tenant by ID
 func (r *TenantRepository) GetTenantByID(ctx context.Context, id int64) (*models.Tenant, error) {
 	query := `
-		SELECT id, name, description, status, created_at, updated_at
+		SELECT id, name, description, status, created_at, updated_at, is_snapshot_only_decoding
 		FROM tenants
 		WHERE id = $1
 	`
@@ -111,7 +113,7 @@ func (r *TenantRepository) UpdateTenant(ctx context.Context, id int64, updates m
 		UPDATE tenants
 		SET %s
 		WHERE id = $%d
-		RETURNING id, name, description, status, created_at, updated_at
+		RETURNING id, name, description, status, created_at, updated_at, is_snapshot_only_decoding
 	`, strings.Join(setClauses, ", "), argNum)
 
 	var tenant models.Tenant
@@ -152,6 +154,38 @@ func (r *TenantRepository) SetStatus(ctx context.Context, id int64, active bool)
 		return fmt.Errorf(errFmtPostgresTenantSetStatusTenantNotFoundID, id)
 	}
 
+	return nil
+}
+
+// GetSnapshotOnlyDecoding reports whether the tenant decodes only from pinned
+// blueprint snapshots; storage.ErrNotFound when the tenant does not exist.
+func (r *TenantRepository) GetSnapshotOnlyDecoding(ctx context.Context, tenantID int64) (bool, error) {
+	var enabled bool
+	err := r.db.QueryRowContext(ctx, `SELECT is_snapshot_only_decoding FROM tenants WHERE id = $1`, tenantID).Scan(&enabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, storage.ErrNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", errWrapPostgresTenantGetSnapshotOnly, err)
+	}
+	return enabled, nil
+}
+
+// SetSnapshotOnlyDecoding switches the tenant's snapshot-only decoding;
+// storage.ErrNotFound when the tenant does not exist.
+func (r *TenantRepository) SetSnapshotOnlyDecoding(ctx context.Context, tenantID int64, enabled bool) error {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE tenants SET is_snapshot_only_decoding = $1, updated_at = NOW() WHERE id = $2`, enabled, tenantID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapPostgresTenantSetSnapshotOnly, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapPostgresTenantSetSnapshotOnly, err)
+	}
+	if rows == 0 {
+		return storage.ErrNotFound
+	}
 	return nil
 }
 

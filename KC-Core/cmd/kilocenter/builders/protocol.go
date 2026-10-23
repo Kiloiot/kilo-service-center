@@ -204,7 +204,8 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	log.Info(LogIngressDispositionResolverWired, logger.FieldEdition, cfg.General.Edition)
 
 	// Blueprint resolver and decoder for automatic payload decoding on uplinks
-	resolverSvc := blueprintresolver.NewResolverService(infra.LoggerIface, infra.Repos.Blueprints)
+	resolverSvc := blueprintresolver.NewResolverService(infra.LoggerIface, infra.Repos.Blueprints,
+		blueprintresolver.NewCachedSnapshotOnlyModes(infra.Repos.Tenants, infra.Clock.Now))
 	decoderSvc := blueprintresolver.NewDecoderService(infra.LoggerIface)
 
 	attachments, err := buildAttachmentDecisions(infra, bssciInfra, bssciSvcBundle.EPStatusBroadcaster, mqttAttachmentEvents, backgroundWork)
@@ -781,6 +782,7 @@ func BuildFederationIngestDeps(_ context.Context, infra *Infrastructure) (*bssci
 	resolverSvc := blueprintresolver.NewResolverService(
 		infra.LoggerIface,
 		infra.Repos.Blueprints,
+		blueprintresolver.NewCachedSnapshotOnlyModes(infra.Repos.Tenants, infra.Clock.Now),
 	)
 	decoderSvc := blueprintresolver.NewDecoderService(infra.LoggerIface)
 

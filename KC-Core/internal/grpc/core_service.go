@@ -51,6 +51,7 @@ type CoreService struct {
 	*ScaciHandlers
 	*FederationHandlers
 	*SystemHandlers
+	*SnapshotOnlyHandlers
 }
 
 // CoreServiceDeps wires every handler group; Log and Audit are required.
@@ -70,6 +71,7 @@ type CoreServiceDeps struct {
 	Scaci        ScaciHandlerDeps
 	Federation   FederationHandlerDeps
 	System       SystemHandlerDeps
+	SnapshotOnly SnapshotOnlyHandlerDeps
 }
 
 // NewCoreService builds the facade; the first group that rejects its
@@ -107,19 +109,20 @@ func NewCoreService(deps CoreServiceDeps) (*CoreService, error) {
 		return nil, err
 	}
 	return &CoreService{
-		EndpointHandlers:    endpoints,
-		BaseStationHandlers: baseStations,
-		DownlinkHandlers:    downlinks,
-		ULTransmitHandlers:  ulTransmit,
-		DLRXHandlers:        dlrx,
-		MessageHandlers:     NewMessageHandlers(deps.Messages, log),
-		AnalyticsHandlers:   NewAnalyticsHandlers(deps.Analytics, log),
-		CertificateHandlers: NewCertificateHandlers(deps.Certificates, deps.Audit, log),
-		BlueprintHandlers:   NewBlueprintHandlers(deps.Blueprints, deps.Audit, log),
-		IntegrationHandlers: NewIntegrationHandlers(deps.Integrations, deps.Audit, log),
-		ScaciHandlers:       NewScaciHandlers(deps.Scaci, log),
-		FederationHandlers:  NewFederationHandlers(deps.Federation, log),
-		SystemHandlers:      system,
+		EndpointHandlers:     endpoints,
+		BaseStationHandlers:  baseStations,
+		DownlinkHandlers:     downlinks,
+		ULTransmitHandlers:   ulTransmit,
+		DLRXHandlers:         dlrx,
+		MessageHandlers:      NewMessageHandlers(deps.Messages, log),
+		AnalyticsHandlers:    NewAnalyticsHandlers(deps.Analytics, log),
+		CertificateHandlers:  NewCertificateHandlers(deps.Certificates, deps.Audit, log),
+		BlueprintHandlers:    NewBlueprintHandlers(deps.Blueprints, deps.Audit, log),
+		IntegrationHandlers:  NewIntegrationHandlers(deps.Integrations, deps.Audit, log),
+		ScaciHandlers:        NewScaciHandlers(deps.Scaci, log),
+		FederationHandlers:   NewFederationHandlers(deps.Federation, log),
+		SystemHandlers:       system,
+		SnapshotOnlyHandlers: NewSnapshotOnlyHandlers(deps.SnapshotOnly, deps.Audit, log),
 	}, nil
 }
 

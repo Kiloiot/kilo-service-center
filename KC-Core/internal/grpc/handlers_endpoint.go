@@ -47,6 +47,7 @@ type EndpointHandlers struct {
 	endpointActivityWindow time.Duration
 	clock                  clock.Clock
 	servingStations        ServingStationLocator
+	modes                  SnapshotOnlyModeLookup
 	log                    logger.Logger
 }
 
@@ -69,6 +70,8 @@ type EndpointHandlerDeps struct {
 	Clock clock.Clock
 	// ServingStations names the station an endpoint's downlinks go to, shown on its detail.
 	ServingStations ServingStationLocator
+	// Modes reads the owner's snapshot-only decoding; without it endpoints follow the catalog as before.
+	Modes SnapshotOnlyModeLookup
 }
 
 // NewEndpointHandlers validates the group and builds it.
@@ -104,6 +107,7 @@ func NewEndpointHandlers(d EndpointHandlerDeps, recorder AuditRecorder, log logg
 		endpointActivityWindow: window,
 		clock:                  d.Clock,
 		servingStations:        d.ServingStations,
+		modes:                  d.Modes,
 		log:                    log,
 	}, nil
 }
@@ -396,13 +400,10 @@ func (s *EndpointHandlers) CreateEndPoint(ctx context.Context, req *pb.CreateEnd
 		endpoint.TypeEUI = effectiveTypeEui
 	}
 
-	if req.Endpoint.BlueprintId != "" {
-		if err := applyBlueprintSnapshot(ctx, s.log, s.blueprintSvc, endpoint, req.Endpoint.BlueprintId); err != nil {
-			return nil, err
-		}
-	}
 	if inputSnap != nil {
 		pinInputSnapshot(endpoint, inputSnap)
+	} else if err := s.pinOnCreate(ctx, tenantID, endpoint, req.Endpoint); err != nil {
+		return nil, err
 	}
 
 	created, err := s.storeNewEndpoint(ctx, endpoint, req.Endpoint.PreAttach)
@@ -842,32 +843,6 @@ func (s *EndpointHandlers) normalizeEndpointTypeEUIFromModel(ctx context.Context
 	}
 	endpoint.TypeEUI = effectiveTypeEui
 	return nil
-}
-
-// Explicit selection wins; else re-seed from the new model's default when the model changed and the pinned blueprint isn't native.
-func (s *EndpointHandlers) applyEndpointSnapshotTrigger(ctx context.Context, tenantID int64, endpoint *models.EndPoint, req *pb.UpdateEndPointRequest, mask *fieldmaskpb.FieldMask, priorDeviceModelID *uuid.UUID, priorSnapshotSourceID string) error {
-	if fieldInMask(mask, fieldMaskBlueprintID) && req.Endpoint.BlueprintId != "" && req.Endpoint.BlueprintId != priorSnapshotSourceID {
-		return applyBlueprintSnapshot(ctx, s.log, s.blueprintSvc, endpoint, req.Endpoint.BlueprintId)
-	}
-	reSeed := modelChanged(priorDeviceModelID, endpoint.DeviceModelID) && endpoint.DeviceModelID != nil &&
-		!pinnedBlueprintBelongsToModel(ctx, s.blueprintSvc, priorSnapshotSourceID, *endpoint.DeviceModelID)
-	if !reSeed {
-		return nil
-	}
-	def, defErr := s.blueprintSvc.GetDefaultForModel(ctx, tenantID, *endpoint.DeviceModelID)
-	if defErr != nil {
-		// Infra failure — do not silently continue an update that touches the decode source.
-		s.log.ErrorContext(ctx, LogFailedToResolveNewModelDefaultBlueprintForReSeed,
-			logger.FieldError, defErr, logger.FieldEndpointEui, endpoint.EUI.String())
-		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenResolveTypeEUIFailed),
-			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenResolveTypeEUIFailed))
-	}
-	if def == nil {
-		s.log.WarnContext(ctx, LogDeviceModelChangedNoDefaultBlueprint,
-			logger.FieldEndpointEui, endpoint.EUI.String())
-		return nil
-	}
-	return applyBlueprintSnapshot(ctx, s.log, s.blueprintSvc, endpoint, def.ID.String())
 }
 
 // Maps storage errors common to both persist paths; nil when unmatched (caller applies its default).

@@ -21,11 +21,17 @@ type Reader interface {
 	GetDefaultForModel(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) (*models.Blueprint, error)
 }
 
+// SnapshotOnlyModeReader tells whether a tenant decodes only from pinned snapshots.
+type SnapshotOnlyModeReader interface {
+	IsSnapshotOnly(ctx context.Context, tenantID int64) (bool, error)
+}
+
 // ResolverService implements the BlueprintResolver interface.
 // It finds blueprints for endpoints based on Type EUI and device model associations.
 type ResolverService struct {
 	log           logger.Logger
 	blueprintRepo Reader
+	modes         SnapshotOnlyModeReader
 }
 
 const componentBlueprintResolver = "blueprint-resolver"
@@ -35,10 +41,12 @@ const componentBlueprintResolver = "blueprint-resolver"
 func NewResolverService(
 	log logger.Logger,
 	blueprintRepo Reader,
+	modes SnapshotOnlyModeReader,
 ) *ResolverService {
 	return &ResolverService{
 		log:           log.WithField(logger.FieldComponent, componentBlueprintResolver),
 		blueprintRepo: blueprintRepo,
+		modes:         modes,
 	}
 }
 
@@ -92,21 +100,13 @@ func (s *ResolverService) ResolveBlueprintForEndpoint(
 	endpoint *models.EndPoint,
 	formatID *uint8,
 ) (*models.Blueprint, error) {
-	// Snapshot is the highest-priority decode source; on a malformed snapshot, fall through to catalog resolution.
-	if len(endpoint.BlueprintSnapshot) > 0 {
-		var snap models.BlueprintSnapshot
-		if err := json.Unmarshal(endpoint.BlueprintSnapshot, &snap); err != nil {
-			s.log.WarnContext(ctx, LogBlueprintSnapshotParseFailed,
-				logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
-		} else if bp, err := snap.ToBlueprint(); err != nil {
-			s.log.WarnContext(ctx, LogBlueprintSnapshotInvalid,
-				logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
-		} else {
-			s.log.DebugContext(ctx, LogBlueprintResolvedFromSnapshot,
-				logger.FieldEndpointEui, endpoint.EUI.String(),
-				logger.FieldBlueprintID, bp.ID, logger.FieldVersion, bp.Version)
-			return bp, nil
-		}
+	if bp, ok := s.snapshotBlueprint(ctx, endpoint); ok {
+		return bp, nil
+	}
+	if s.decodesOnlySnapshots(ctx, tenantID) {
+		s.log.ErrorContext(ctx, LogBlueprintSnapshotOnlyNoSnapshot,
+			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldTenantIDSnake, tenantID)
+		return nil, nil
 	}
 
 	// Check if endpoint has a device model assigned
@@ -150,6 +150,42 @@ func (s *ResolverService) ResolveBlueprintForEndpoint(
 	s.log.DebugContext(ctx, LogBlueprintNoTypeEUIOrModel,
 		logger.FieldEndpointEui, endpoint.EUI.String())
 	return nil, nil
+}
+
+// snapshotBlueprint reads the endpoint's pinned snapshot, the highest-priority
+// decode source; ok is false when there is none or it is malformed.
+func (s *ResolverService) snapshotBlueprint(ctx context.Context, endpoint *models.EndPoint) (*models.Blueprint, bool) {
+	if len(endpoint.BlueprintSnapshot) == 0 {
+		return nil, false
+	}
+	var snap models.BlueprintSnapshot
+	if err := json.Unmarshal(endpoint.BlueprintSnapshot, &snap); err != nil {
+		s.log.WarnContext(ctx, LogBlueprintSnapshotParseFailed,
+			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
+		return nil, false
+	}
+	bp, err := snap.ToBlueprint()
+	if err != nil {
+		s.log.WarnContext(ctx, LogBlueprintSnapshotInvalid,
+			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
+		return nil, false
+	}
+	s.log.DebugContext(ctx, LogBlueprintResolvedFromSnapshot,
+		logger.FieldEndpointEui, endpoint.EUI.String(),
+		logger.FieldBlueprintID, bp.ID, logger.FieldVersion, bp.Version)
+	return bp, true
+}
+
+// decodesOnlySnapshots reports the owner tenant's switch; an unreadable
+// switch counts as on, so a failed read never decodes from the catalog.
+func (s *ResolverService) decodesOnlySnapshots(ctx context.Context, tenantID int64) bool {
+	on, err := s.modes.IsSnapshotOnly(ctx, tenantID)
+	if err != nil {
+		s.log.ErrorContext(ctx, LogBlueprintSnapshotOnlyReadFailed,
+			logger.FieldTenantIDSnake, tenantID, logger.FieldError, err)
+		return true
+	}
+	return on
 }
 
 // GetEndpointCalibration retrieves calibration data for an endpoint.

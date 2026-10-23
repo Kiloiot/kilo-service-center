@@ -28,6 +28,7 @@ import (
 type BlueprintHandlers struct {
 	blueprintSvc grpcservices.BlueprintService
 	endpointSvc  grpcservices.EndpointService
+	modes        SnapshotOnlyModeLookup
 	audit        AuditRecorder
 	log          logger.Logger
 }
@@ -37,6 +38,8 @@ type BlueprintHandlers struct {
 type BlueprintHandlerDeps struct {
 	Blueprints grpcservices.BlueprintService
 	Endpoints  grpcservices.EndpointService
+	// Modes reads each endpoint owner's snapshot-only decoding for BulkAssignBlueprint.
+	Modes SnapshotOnlyModeLookup
 }
 
 // NewBlueprintHandlers builds the group; recorder records the catalog changes.
@@ -44,6 +47,7 @@ func NewBlueprintHandlers(d BlueprintHandlerDeps, recorder AuditRecorder, log lo
 	return &BlueprintHandlers{
 		blueprintSvc: d.Blueprints,
 		endpointSvc:  d.Endpoints,
+		modes:        d.Modes,
 		audit:        recorder,
 		log:          log,
 	}
@@ -568,15 +572,17 @@ func (s *BlueprintHandlers) resolveBulkAssignTargets(ctx context.Context, tenant
 	return euis, nil
 }
 
-// Skips missing endpoints and catalog-default followers; returns the affected count.
+// Loads every target before writing any, then skips catalog-default followers; returns the affected count.
 func (s *BlueprintHandlers) rematerializeSnapshotOnEndpoints(ctx context.Context, tenantID int64, blueprintID string, euis []models.EUI) (int32, error) {
+	targets, err := s.loadBulkAssignTargets(ctx, tenantID, euis)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.refuseOtherModelTargets(ctx, blueprintID, targets); err != nil {
+		return 0, err
+	}
 	var affected int32
-	for _, eui := range euis {
-		// Load the full endpoint (list columns are partial and would clobber on Update).
-		ep, getErr := s.endpointSvc.GetByEUI(ctx, eui[:], tenantID)
-		if getErr != nil || ep == nil {
-			continue // best-effort per target: skip missing endpoints
-		}
+	for _, ep := range targets {
 		if len(ep.BlueprintSnapshot) == 0 {
 			continue // skip catalog-default followers
 		}
@@ -590,6 +596,57 @@ func (s *BlueprintHandlers) rematerializeSnapshotOnEndpoints(ctx context.Context
 		affected++
 	}
 	return affected, nil
+}
+
+// loadBulkAssignTargets loads the full endpoints (list columns are partial and
+// would clobber on Update); an EUI the serving tenant does not have is skipped.
+func (s *BlueprintHandlers) loadBulkAssignTargets(ctx context.Context, tenantID int64, euis []models.EUI) ([]*models.EndPoint, error) {
+	targets := make([]*models.EndPoint, 0, len(euis))
+	for _, eui := range euis {
+		ep, getErr := s.endpointSvc.GetByEUI(ctx, eui[:], tenantID)
+		if errors.Is(getErr, storage.ErrNotFound) || (getErr == nil && ep == nil) {
+			continue
+		}
+		if getErr != nil {
+			s.log.ErrorContext(ctx, LogFailedToGetEndpoint, logger.FieldEpEuiSnake, eui.String(), logger.FieldError, getErr)
+			return nil, status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenGetEndpointFailed),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenGetEndpointFailed))
+		}
+		targets = append(targets, ep)
+	}
+	return targets, nil
+}
+
+// refuseOtherModelTargets refuses the whole request when an endpoint whose
+// owner decodes only from snapshots is not of the blueprint's model: the
+// response carries only a count, so no target can be refused alone.
+func (s *BlueprintHandlers) refuseOtherModelTargets(ctx context.Context, blueprintID string, targets []*models.EndPoint) error {
+	owners := map[int64]bool{}
+	var bp *models.Blueprint
+	for _, ep := range targets {
+		on, known := owners[ep.OwnerTenantID]
+		if !known {
+			var err error
+			if on, err = snapshotOnly(ctx, s.modes, s.log, ep.OwnerTenantID); err != nil {
+				return err
+			}
+			owners[ep.OwnerTenantID] = on
+		}
+		if !on {
+			continue
+		}
+		if bp == nil {
+			var err error
+			if bp, err = loadBlueprint(ctx, s.blueprintSvc, blueprintID); err != nil {
+				return err
+			}
+		}
+		if ep.DeviceModelID == nil || *ep.DeviceModelID != bp.DeviceModelID {
+			return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenBulkAssignOtherModel),
+				grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenBulkAssignOtherModel))
+		}
+	}
+	return nil
 }
 
 // mapRegistryError translates service errors to gRPC catalog tokens.
