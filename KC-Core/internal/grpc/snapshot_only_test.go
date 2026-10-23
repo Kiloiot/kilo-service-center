@@ -240,6 +240,7 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 		wantCode       codes.Code
 		wantSource     string
 		wantNoSnapshot bool
+		wantModel      *uuid.UUID
 	}{
 		{
 			name: "model change pins the new model's default", owner: modeTenant, modesOn: []int64{modeTenant},
@@ -271,10 +272,19 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 		{
 			name: "blueprint with an empty requested model is refused", owner: modeTenant, modesOn: []int64{modeTenant},
 			existing: func(t *testing.T) *models.EndPoint {
-				return ownedEndpoint(t, modeTenant, &c.modelWithDefault, c.defaultBp)
+				return ownedEndpoint(t, modeTenant, &c.modelWithDefault, nil)
 			},
-			req:      updateRequest(&pb.EndPoint{BlueprintId: c.otherModelBp.ID.String()}, fieldMaskBlueprintID),
+			req:      updateRequest(&pb.EndPoint{BlueprintId: c.defaultBp.ID.String()}, fieldMaskBlueprintID),
 			wantCode: codes.InvalidArgument,
+		},
+		{
+			name: "blueprint of the requested model, which is the endpoint's own, is pinned", owner: modeTenant, modesOn: []int64{modeTenant},
+			existing: func(t *testing.T) *models.EndPoint {
+				return ownedEndpoint(t, modeTenant, &c.modelWithDefault, nil)
+			},
+			req:        updateRequest(&pb.EndPoint{DeviceModelId: c.modelWithDefault.String(), BlueprintId: c.defaultBp.ID.String()}, fieldMaskBlueprintID),
+			wantSource: c.defaultBp.ID.String(),
+			wantModel:  &c.modelWithDefault,
 		},
 		{
 			name: "blueprint of the requested model is pinned", owner: modeTenant, modesOn: []int64{modeTenant},
@@ -327,6 +337,10 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, endpoints.updateCapture)
 			assert.Equal(t, tt.wantSource, snapshotSourceID(endpoints.updateCapture.BlueprintSnapshot))
+			if tt.wantModel != nil {
+				require.NotNil(t, endpoints.updateCapture.DeviceModelID)
+				assert.Equal(t, *tt.wantModel, *endpoints.updateCapture.DeviceModelID, "the endpoint keeps its model")
+			}
 			if tt.wantNoSnapshot {
 				assert.Empty(t, endpoints.updateCapture.BlueprintSnapshot, "no snapshot is pinned")
 			}
