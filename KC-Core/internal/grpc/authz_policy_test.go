@@ -66,7 +66,7 @@ var expectedCallers = map[string][]string{
 		"CreateDeviceModel", "GetDeviceModel", "UpdateDeviceModel", "DeleteDeviceModel", "ListDeviceModels",
 		"CreateBlueprint", "GetBlueprint", "UpdateBlueprint", "DeleteBlueprint", "ListBlueprints",
 		"SetDefaultBlueprint", "SubmitBlueprintToRegistry", "BulkAssignBlueprint", "CreateDeviceModelWithBlueprint",
-		"DecodePreview",
+		"DecodePreview", "PinCurrentBlueprints",
 	},
 	whoBaseStation: {
 		"CreateBaseStation", "GetBaseStation", "UpdateBaseStation", "DeleteBaseStation", "ListBaseStations",
@@ -79,12 +79,14 @@ var expectedCallers = map[string][]string{
 	whoAnyRole: {
 		"GetSystemStatus", "GetStatistics", "GetAnalyticsOverview", "GetActivityAnalytics", "GetSignalQualityAnalytics",
 		"ListCapabilities", "ListEvents", "StreamEvents", "ListErrorGroups",
+		"GetSnapshotOnlyDecoding",
 	},
 	whoAdmin: {
 		"GetDiagnosticsBundle", "ListAlerts", "GetAlertSummary",
 		"GenerateServerCertificates", "RenewServerCertificates", "ListAllBaseStationLocations",
 		"ListCEInstances", "RevokeCEInstance",
 		"CreateIntegration", "GetIntegration", "UpdateIntegration", "DeleteIntegration", "ListIntegrations",
+		"SetSnapshotOnlyDecoding",
 	},
 }
 

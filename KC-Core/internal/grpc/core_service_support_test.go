@@ -1,10 +1,12 @@
 package grpc
 
 import (
+	"context"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
+	bpresolver "github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/bssci/blueprint"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/downlinks"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/internal/services/grpcservices"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/basestation"
@@ -61,9 +63,42 @@ type coreFields struct {
 	ceRegistrySvc          CERegistryHandler
 	availabilityReader     BaseStationAvailabilityReader
 	messageBucketReader    BaseStationMessageBucketReader
+	snapshotModes          SnapshotOnlyModeStore
+	pinner                 BlueprintPinner
+}
+
+// switchOff is a tenant switch store that is off for every tenant.
+type switchOff struct{}
+
+func (switchOff) GetSnapshotOnlyDecoding(context.Context, int64) (bool, error) {
+	return false, nil
+}
+func (switchOff) SetSnapshotOnlyDecoding(context.Context, int64, bool) error { return nil }
+
+// nothingToPin is a pinner for a tenant whose endpoints all have a snapshot.
+type nothingToPin struct{}
+
+func (nothingToPin) Pin(context.Context, int64, bool) ([]bpresolver.PinResult, error) {
+	return nil, nil
+}
+
+// withSnapshotOnlyOff completes deps with a switch that is off for every tenant
+// and a pinner with nothing to pin.
+func withSnapshotOnlyOff(d CoreServiceDeps) CoreServiceDeps {
+	d.Endpoints.Modes = switchOff{}
+	d.Blueprints.Modes = switchOff{}
+	d.Blueprints.Clock = clock.SystemClock{}
+	d.SnapshotOnly = SnapshotOnlyHandlerDeps{Modes: switchOff{}, Pinner: nothingToPin{}}
+	return d
 }
 
 func testCoreService(f coreFields) *CoreService {
+	if f.snapshotModes == nil {
+		f.snapshotModes = switchOff{}
+	}
+	if f.pinner == nil {
+		f.pinner = nothingToPin{}
+	}
 	recorder := f.audit
 	if recorder == nil {
 		recorder = &captureAuditRecorder{}
@@ -73,19 +108,20 @@ func testCoreService(f coreFields) *CoreService {
 		keyReveals = &captureAuditRecorder{}
 	}
 	return &CoreService{
-		EndpointHandlers:    &EndpointHandlers{endpointSvc: f.endpointSvc, blueprintSvc: f.blueprintSvc, endpointAttachmentSvc: f.endpointAttachmentSvc, endpointStatsStore: f.endpointStatsStore, registrationWindow: f.registrationWindow, opStatusAdapter: f.opStatusAdapter, audit: recorder, keyReveals: keyReveals, endpointActivityWindow: f.endpointActivityWindow, clock: clock.SystemClock{}, log: f.log},
-		BaseStationHandlers: &BaseStationHandlers{basestationSvc: f.basestationSvc, statsStore: f.statsStore, statusReq: f.statusReq, pingCmd: f.pingCmd, sessionDir: f.sessionDir, bssciSessionCloser: f.bssciSessionCloser, bsEventRecorder: f.bsEventRecorder, audit: recorder, availabilityReader: f.availabilityReader, messageBucketReader: f.messageBucketReader, orgMapper: f.orgMapper, log: f.log},
-		DownlinkHandlers:    testDownlinkHandlers(downlinkFakes{messages: f.messageSvc, queuer: f.scaciQueuer, revoker: f.revoker, endpoints: f.endpointSvc, audit: recorder}),
-		ULTransmitHandlers:  &ULTransmitHandlers{sessions: f.sessionDir, transmitter: f.ulTransmit, baseStations: f.basestationSvc, log: f.log},
-		DLRXHandlers:        &DLRXHandlers{queries: f.dlrxStorage, statuses: f.messageSvc, stations: f.messageSvc, command: f.downlinkCmd, sessions: f.sessionDir, log: f.log},
-		MessageHandlers:     &MessageHandlers{msgListingSvc: f.msgListingSvc, activitySvc: f.activitySvc, log: f.log},
-		AnalyticsHandlers:   &AnalyticsHandlers{analyticsSvc: f.analyticsSvc, eventSvc: f.eventSvc, alertSvc: f.alertSvc, log: f.log},
-		CertificateHandlers: &CertificateHandlers{certSvc: f.certSvc, audit: recorder, platformTenantID: f.platformTenantID, log: f.log},
-		BlueprintHandlers:   &BlueprintHandlers{blueprintSvc: f.blueprintSvc, endpointSvc: f.endpointSvc, audit: recorder, log: f.log},
-		IntegrationHandlers: &IntegrationHandlers{integrationSvc: f.integrationSvc, audit: recorder, log: f.log},
-		ScaciHandlers:       &ScaciHandlers{scaciMonitorSvc: f.scaciMonitorSvc, log: f.log},
-		FederationHandlers:  &FederationHandlers{ceBootstrapSvc: f.ceBootstrapSvc, ceRegistrySvc: f.ceRegistrySvc, log: f.log},
-		SystemHandlers:      &SystemHandlers{statisticsSvc: f.statisticsSvc, systemStatusSvc: f.systemStatusSvc, scEui: f.scEui, scVendor: f.scVendor, scModel: f.scModel, scName: f.scName, scSwVersion: f.scSwVersion, edition: f.edition, serviceStart: f.serviceStart, log: f.log},
+		EndpointHandlers:     &EndpointHandlers{endpointSvc: f.endpointSvc, blueprintSvc: f.blueprintSvc, endpointAttachmentSvc: f.endpointAttachmentSvc, endpointStatsStore: f.endpointStatsStore, registrationWindow: f.registrationWindow, opStatusAdapter: f.opStatusAdapter, audit: recorder, keyReveals: keyReveals, endpointActivityWindow: f.endpointActivityWindow, clock: clock.SystemClock{}, modes: f.snapshotModes, log: f.log},
+		BaseStationHandlers:  &BaseStationHandlers{basestationSvc: f.basestationSvc, statsStore: f.statsStore, statusReq: f.statusReq, pingCmd: f.pingCmd, sessionDir: f.sessionDir, bssciSessionCloser: f.bssciSessionCloser, bsEventRecorder: f.bsEventRecorder, audit: recorder, availabilityReader: f.availabilityReader, messageBucketReader: f.messageBucketReader, orgMapper: f.orgMapper, log: f.log},
+		DownlinkHandlers:     testDownlinkHandlers(downlinkFakes{messages: f.messageSvc, queuer: f.scaciQueuer, revoker: f.revoker, endpoints: f.endpointSvc, audit: recorder}),
+		ULTransmitHandlers:   &ULTransmitHandlers{sessions: f.sessionDir, transmitter: f.ulTransmit, baseStations: f.basestationSvc, log: f.log},
+		DLRXHandlers:         &DLRXHandlers{queries: f.dlrxStorage, statuses: f.messageSvc, stations: f.messageSvc, command: f.downlinkCmd, sessions: f.sessionDir, log: f.log},
+		MessageHandlers:      &MessageHandlers{msgListingSvc: f.msgListingSvc, activitySvc: f.activitySvc, log: f.log},
+		AnalyticsHandlers:    &AnalyticsHandlers{analyticsSvc: f.analyticsSvc, eventSvc: f.eventSvc, alertSvc: f.alertSvc, log: f.log},
+		CertificateHandlers:  &CertificateHandlers{certSvc: f.certSvc, audit: recorder, platformTenantID: f.platformTenantID, log: f.log},
+		BlueprintHandlers:    &BlueprintHandlers{blueprintSvc: f.blueprintSvc, endpointSvc: f.endpointSvc, modes: f.snapshotModes, snapClock: clock.SystemClock{}, audit: recorder, log: f.log},
+		IntegrationHandlers:  &IntegrationHandlers{integrationSvc: f.integrationSvc, audit: recorder, log: f.log},
+		ScaciHandlers:        &ScaciHandlers{scaciMonitorSvc: f.scaciMonitorSvc, log: f.log},
+		FederationHandlers:   &FederationHandlers{ceBootstrapSvc: f.ceBootstrapSvc, ceRegistrySvc: f.ceRegistrySvc, log: f.log},
+		SystemHandlers:       &SystemHandlers{statisticsSvc: f.statisticsSvc, systemStatusSvc: f.systemStatusSvc, scEui: f.scEui, scVendor: f.scVendor, scModel: f.scModel, scName: f.scName, scSwVersion: f.scSwVersion, edition: f.edition, serviceStart: f.serviceStart, log: f.log},
+		SnapshotOnlyHandlers: &SnapshotOnlyHandlers{modes: f.snapshotModes, pinner: f.pinner, audit: recorder, log: f.log},
 	}
 }
 

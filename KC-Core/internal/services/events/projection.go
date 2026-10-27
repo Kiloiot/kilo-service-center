@@ -199,6 +199,9 @@ var detailProjection = map[string][]string{
 	models.EventTypeDLDataRequeued:             downlinkOpKeys,
 
 	models.EventTypeCertificatePrivateKeyDownloaded: {detailKeyBsEui, detailKeyServiceAcct},
+
+	models.EventTypeSnapshotOnlyDecodingChanged: {models.EventDetailKeySnapshotOnlyDecoding},
+	models.EventTypeBlueprintsPinned:            {models.EventDetailKeyPinnedCount},
 }
 
 // emptyDetails is what an event without an allowlisted key projects to.

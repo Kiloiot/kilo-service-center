@@ -46,6 +46,7 @@ var retryableSnapshot = []string{
 	"/kilocenter.api.v1.CoreService/GetScaciStatus",
 	"/kilocenter.api.v1.CoreService/GetServerCertificateStatus",
 	"/kilocenter.api.v1.CoreService/GetSignalQualityAnalytics",
+	"/kilocenter.api.v1.CoreService/GetSnapshotOnlyDecoding",
 	"/kilocenter.api.v1.CoreService/GetStatistics",
 	"/kilocenter.api.v1.CoreService/GetSystemStatus",
 	"/kilocenter.api.v1.CoreService/ListAlerts",

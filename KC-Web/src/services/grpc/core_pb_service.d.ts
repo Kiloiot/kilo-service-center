@@ -725,6 +725,33 @@ type CoreServiceDecodePreview = {
   readonly responseType: typeof core_pb.DecodePreviewResponse;
 };
 
+type CoreServiceSetSnapshotOnlyDecoding = {
+  readonly methodName: string;
+  readonly service: typeof CoreService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.SetSnapshotOnlyDecodingRequest;
+  readonly responseType: typeof core_pb.SnapshotOnlyDecoding;
+};
+
+type CoreServiceGetSnapshotOnlyDecoding = {
+  readonly methodName: string;
+  readonly service: typeof CoreService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof google_protobuf_empty_pb.Empty;
+  readonly responseType: typeof core_pb.SnapshotOnlyDecoding;
+};
+
+type CoreServicePinCurrentBlueprints = {
+  readonly methodName: string;
+  readonly service: typeof CoreService;
+  readonly requestStream: false;
+  readonly responseStream: false;
+  readonly requestType: typeof core_pb.PinCurrentBlueprintsRequest;
+  readonly responseType: typeof core_pb.PinCurrentBlueprintsResponse;
+};
+
 type CoreServiceListMessages = {
   readonly methodName: string;
   readonly service: typeof CoreService;
@@ -951,6 +978,9 @@ export class CoreService {
   static readonly BulkAssignBlueprint: CoreServiceBulkAssignBlueprint;
   static readonly CreateDeviceModelWithBlueprint: CoreServiceCreateDeviceModelWithBlueprint;
   static readonly DecodePreview: CoreServiceDecodePreview;
+  static readonly SetSnapshotOnlyDecoding: CoreServiceSetSnapshotOnlyDecoding;
+  static readonly GetSnapshotOnlyDecoding: CoreServiceGetSnapshotOnlyDecoding;
+  static readonly PinCurrentBlueprints: CoreServicePinCurrentBlueprints;
   static readonly ListMessages: CoreServiceListMessages;
   static readonly StreamMessages: CoreServiceStreamMessages;
   static readonly ListBaseStationMessages: CoreServiceListBaseStationMessages;
@@ -1712,6 +1742,33 @@ export class CoreServiceClient {
   decodePreview(
     requestMessage: core_pb.DecodePreviewRequest,
     callback: (error: ServiceError|null, responseMessage: core_pb.DecodePreviewResponse|null) => void
+  ): UnaryResponse;
+  setSnapshotOnlyDecoding(
+    requestMessage: core_pb.SetSnapshotOnlyDecodingRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.SnapshotOnlyDecoding|null) => void
+  ): UnaryResponse;
+  setSnapshotOnlyDecoding(
+    requestMessage: core_pb.SetSnapshotOnlyDecodingRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.SnapshotOnlyDecoding|null) => void
+  ): UnaryResponse;
+  getSnapshotOnlyDecoding(
+    requestMessage: google_protobuf_empty_pb.Empty,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.SnapshotOnlyDecoding|null) => void
+  ): UnaryResponse;
+  getSnapshotOnlyDecoding(
+    requestMessage: google_protobuf_empty_pb.Empty,
+    callback: (error: ServiceError|null, responseMessage: core_pb.SnapshotOnlyDecoding|null) => void
+  ): UnaryResponse;
+  pinCurrentBlueprints(
+    requestMessage: core_pb.PinCurrentBlueprintsRequest,
+    metadata: grpc.Metadata,
+    callback: (error: ServiceError|null, responseMessage: core_pb.PinCurrentBlueprintsResponse|null) => void
+  ): UnaryResponse;
+  pinCurrentBlueprints(
+    requestMessage: core_pb.PinCurrentBlueprintsRequest,
+    callback: (error: ServiceError|null, responseMessage: core_pb.PinCurrentBlueprintsResponse|null) => void
   ): UnaryResponse;
   listMessages(
     requestMessage: core_pb.ListMessagesRequest,

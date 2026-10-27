@@ -4,6 +4,7 @@ package blueprint
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 )
@@ -276,6 +277,22 @@ func ParseSpec(specJSON []byte) (*Spec, error) {
 	}
 
 	return &spec, nil
+}
+
+// ParseAndValidate is the decoder's check; parse failures are *ParseError, failed checks *ValidationError.
+func ParseAndValidate(specJSON []byte) (*Spec, error) {
+	spec, err := ParseSpec(specJSON)
+	var ve *ValidationError
+	if errors.As(err, &ve) {
+		return nil, &ParseError{Token: ve.Token, Detail: ve.Detail}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := spec.Validate(); err != nil {
+		return nil, err
+	}
+	return spec, nil
 }
 
 // ParseError represents a blueprint parsing error with an error token.

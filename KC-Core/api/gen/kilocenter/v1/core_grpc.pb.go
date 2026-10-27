@@ -100,6 +100,9 @@ const (
 	CoreService_BulkAssignBlueprint_FullMethodName            = "/kilocenter.api.v1.CoreService/BulkAssignBlueprint"
 	CoreService_CreateDeviceModelWithBlueprint_FullMethodName = "/kilocenter.api.v1.CoreService/CreateDeviceModelWithBlueprint"
 	CoreService_DecodePreview_FullMethodName                  = "/kilocenter.api.v1.CoreService/DecodePreview"
+	CoreService_SetSnapshotOnlyDecoding_FullMethodName        = "/kilocenter.api.v1.CoreService/SetSnapshotOnlyDecoding"
+	CoreService_GetSnapshotOnlyDecoding_FullMethodName        = "/kilocenter.api.v1.CoreService/GetSnapshotOnlyDecoding"
+	CoreService_PinCurrentBlueprints_FullMethodName           = "/kilocenter.api.v1.CoreService/PinCurrentBlueprints"
 	CoreService_ListMessages_FullMethodName                   = "/kilocenter.api.v1.CoreService/ListMessages"
 	CoreService_StreamMessages_FullMethodName                 = "/kilocenter.api.v1.CoreService/StreamMessages"
 	CoreService_ListBaseStationMessages_FullMethodName        = "/kilocenter.api.v1.CoreService/ListBaseStationMessages"
@@ -233,6 +236,11 @@ type CoreServiceClient interface {
 	CreateDeviceModelWithBlueprint(ctx context.Context, in *CreateDeviceModelWithBlueprintRequest, opts ...grpc.CallOption) (*CreateDeviceModelWithBlueprintResponse, error)
 	// Blueprint decode preview
 	DecodePreview(ctx context.Context, in *DecodePreviewRequest, opts ...grpc.CallOption) (*DecodePreviewResponse, error)
+	// Snapshot-only decoding of the caller's tenant: when on, endpoints decode only from their pinned blueprint snapshots
+	SetSnapshotOnlyDecoding(ctx context.Context, in *SetSnapshotOnlyDecodingRequest, opts ...grpc.CallOption) (*SnapshotOnlyDecoding, error)
+	GetSnapshotOnlyDecoding(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SnapshotOnlyDecoding, error)
+	// Pins every endpoint the caller's tenant owns without a snapshot to the blueprint it decodes with now
+	PinCurrentBlueprints(ctx context.Context, in *PinCurrentBlueprintsRequest, opts ...grpc.CallOption) (*PinCurrentBlueprintsResponse, error)
 	// Messages (listing + streaming + search/export)
 	ListMessages(ctx context.Context, in *ListMessagesRequest, opts ...grpc.CallOption) (*ListMessagesResponse, error)
 	StreamMessages(ctx context.Context, in *StreamMessagesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Message], error)
@@ -1074,6 +1082,36 @@ func (c *coreServiceClient) DecodePreview(ctx context.Context, in *DecodePreview
 	return out, nil
 }
 
+func (c *coreServiceClient) SetSnapshotOnlyDecoding(ctx context.Context, in *SetSnapshotOnlyDecodingRequest, opts ...grpc.CallOption) (*SnapshotOnlyDecoding, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SnapshotOnlyDecoding)
+	err := c.cc.Invoke(ctx, CoreService_SetSnapshotOnlyDecoding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) GetSnapshotOnlyDecoding(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*SnapshotOnlyDecoding, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SnapshotOnlyDecoding)
+	err := c.cc.Invoke(ctx, CoreService_GetSnapshotOnlyDecoding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *coreServiceClient) PinCurrentBlueprints(ctx context.Context, in *PinCurrentBlueprintsRequest, opts ...grpc.CallOption) (*PinCurrentBlueprintsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PinCurrentBlueprintsResponse)
+	err := c.cc.Invoke(ctx, CoreService_PinCurrentBlueprints_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *coreServiceClient) ListMessages(ctx context.Context, in *ListMessagesRequest, opts ...grpc.CallOption) (*ListMessagesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListMessagesResponse)
@@ -1367,6 +1405,11 @@ type CoreServiceServer interface {
 	CreateDeviceModelWithBlueprint(context.Context, *CreateDeviceModelWithBlueprintRequest) (*CreateDeviceModelWithBlueprintResponse, error)
 	// Blueprint decode preview
 	DecodePreview(context.Context, *DecodePreviewRequest) (*DecodePreviewResponse, error)
+	// Snapshot-only decoding of the caller's tenant: when on, endpoints decode only from their pinned blueprint snapshots
+	SetSnapshotOnlyDecoding(context.Context, *SetSnapshotOnlyDecodingRequest) (*SnapshotOnlyDecoding, error)
+	GetSnapshotOnlyDecoding(context.Context, *emptypb.Empty) (*SnapshotOnlyDecoding, error)
+	// Pins every endpoint the caller's tenant owns without a snapshot to the blueprint it decodes with now
+	PinCurrentBlueprints(context.Context, *PinCurrentBlueprintsRequest) (*PinCurrentBlueprintsResponse, error)
 	// Messages (listing + streaming + search/export)
 	ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesResponse, error)
 	StreamMessages(*StreamMessagesRequest, grpc.ServerStreamingServer[Message]) error
@@ -1637,6 +1680,15 @@ func (UnimplementedCoreServiceServer) CreateDeviceModelWithBlueprint(context.Con
 }
 func (UnimplementedCoreServiceServer) DecodePreview(context.Context, *DecodePreviewRequest) (*DecodePreviewResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DecodePreview not implemented")
+}
+func (UnimplementedCoreServiceServer) SetSnapshotOnlyDecoding(context.Context, *SetSnapshotOnlyDecodingRequest) (*SnapshotOnlyDecoding, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetSnapshotOnlyDecoding not implemented")
+}
+func (UnimplementedCoreServiceServer) GetSnapshotOnlyDecoding(context.Context, *emptypb.Empty) (*SnapshotOnlyDecoding, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSnapshotOnlyDecoding not implemented")
+}
+func (UnimplementedCoreServiceServer) PinCurrentBlueprints(context.Context, *PinCurrentBlueprintsRequest) (*PinCurrentBlueprintsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PinCurrentBlueprints not implemented")
 }
 func (UnimplementedCoreServiceServer) ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMessages not implemented")
@@ -3139,6 +3191,60 @@ func _CoreService_DecodePreview_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CoreService_SetSnapshotOnlyDecoding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetSnapshotOnlyDecodingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).SetSnapshotOnlyDecoding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_SetSnapshotOnlyDecoding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).SetSnapshotOnlyDecoding(ctx, req.(*SetSnapshotOnlyDecodingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_GetSnapshotOnlyDecoding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).GetSnapshotOnlyDecoding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_GetSnapshotOnlyDecoding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).GetSnapshotOnlyDecoding(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CoreService_PinCurrentBlueprints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PinCurrentBlueprintsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).PinCurrentBlueprints(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_PinCurrentBlueprints_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).PinCurrentBlueprints(ctx, req.(*PinCurrentBlueprintsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CoreService_ListMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListMessagesRequest)
 	if err := dec(in); err != nil {
@@ -3735,6 +3841,18 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DecodePreview",
 			Handler:    _CoreService_DecodePreview_Handler,
+		},
+		{
+			MethodName: "SetSnapshotOnlyDecoding",
+			Handler:    _CoreService_SetSnapshotOnlyDecoding_Handler,
+		},
+		{
+			MethodName: "GetSnapshotOnlyDecoding",
+			Handler:    _CoreService_GetSnapshotOnlyDecoding_Handler,
+		},
+		{
+			MethodName: "PinCurrentBlueprints",
+			Handler:    _CoreService_PinCurrentBlueprints_Handler,
 		},
 		{
 			MethodName: "ListMessages",

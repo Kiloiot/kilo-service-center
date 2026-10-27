@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-23
+
+> **Upgrade note:** migration 000192 adds the tenant setting `is_snapshot_only_decoding`, off for
+> every tenant, so an upgraded installation decodes exactly as before. The migration runs on
+> start-up. To go back to 2.0.0, stop the services and run this release's
+> `migrate -command=down -steps=1` before starting the previous release.
+
+### Added
+
+- **An endpoint can be pinned to a blueprint specification directly.** `EndPoint.blueprint_input`
+  (field 34, message `BlueprintInput`) carries a specification on `CreateEndPoint`, and on
+  `UpdateEndPoint` with `blueprint_input` in the update mask. KiloCenter checks it exactly as the
+  decoder does and pins a snapshot of it; the endpoint has no device model, and its type EUI is
+  the specification's `typeEui`. The response returns the snapshot, never the input. The request
+  is refused with `INVALID_ARGUMENT` and changes nothing when the input comes with a
+  `blueprint_id` or a `device_model_id` (`KC-GRPC-ERR-0AC`), when the decoder does not accept
+  the specification, for example without uplink and downlink formats or with a repeated format
+  id (`KC-GRPC-ERR-0AD`, with the reason), or when its `typeEui` is not 16 hexadecimal digits
+  (`KC-GRPC-ERR-0AE`). An empty specification is the same as no input.
+- **Snapshot-only decoding, per tenant and off by default.** `SetSnapshotOnlyDecoding`
+  (administrators) and `GetSnapshotOnlyDecoding` (any role) switch and read the caller's tenant.
+  While it is on, for the endpoints the tenant owns, roaming ones included:
+  - an uplink is decoded only from the endpoint's pinned snapshot; an endpoint without one, or
+    with a damaged one, is not decoded. When the setting cannot be read, it counts as on;
+  - creating an endpoint, or changing its device model, pins the model's default blueprint, or
+    is refused with `FAILED_PRECONDITION` (`KC-GRPC-ERR-0AF`) when there is none and no
+    `blueprint_id` or `blueprint_input` is given;
+  - a `blueprint_id` must be a blueprint of the requested `device_model_id` and, unless
+    `device_model_id` is in `update_mask`, of the endpoint's current model; otherwise
+    `INVALID_ARGUMENT` (`KC-GRPC-ERR-0B0`) instead of moving the endpoint to the blueprint's
+    model;
+  - `BulkAssignBlueprint` with an endpoint of another device model, or without one, is refused
+    as a whole with `INVALID_ARGUMENT` (`KC-GRPC-ERR-0B1`);
+  - an update that changes neither the model nor the blueprint is not affected.
+  Each switch is recorded as a `tenant.snapshot_only_decoding.changed` event.
+- **`PinCurrentBlueprints`** (Endpoint Manager) pins every endpoint the caller's tenant owns that
+  has no snapshot to the blueprint it decodes with now: its model's default, else the blueprint
+  of its type EUI. Only the snapshot is written, and only while the endpoint still has none; its
+  model is not changed. The response lists each endpoint as `pinned`, `nothing_to_pin` or
+  `error`; `dry_run` reports the same without writing. A pass is recorded as a
+  `blueprints.pinned` event.
+
+### Changed
+
+- The decoder checks a specification with `blueprint.ParseAndValidate`, the same check that
+  accepts `blueprint_input`. `CreateBlueprint` and `CreateDeviceModelWithBlueprint` still accept
+  any valid JSON, as before.
+- `BulkAssignBlueprint` reads every listed endpoint before it changes any. A read failure other
+  than "not found" refuses the call with `INTERNAL` and changes nothing; it used to skip the
+  endpoint.
+- When the tenant setting cannot be read, `CreateEndPoint`, an `UpdateEndPoint` that changes the
+  device model or the blueprint, and `BulkAssignBlueprint` are refused with `INTERNAL`
+  (`KC-GRPC-ERR-0B2`) and change nothing, whether the setting is on or off.
+
+### Fixed
+
+- An uplink decoded from a snapshot that has no source blueprint is stored with an empty
+  `blueprint_version_id` instead of the nil UUID.
+
 ## [2.0.0] - 2026-10-08
 
 KiloCenter 2.0 is a major release. Upgrading from 1.x takes a few manual steps, described in

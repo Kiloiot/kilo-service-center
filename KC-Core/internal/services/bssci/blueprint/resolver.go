@@ -21,11 +21,17 @@ type Reader interface {
 	GetDefaultForModel(ctx context.Context, tenantID int64, deviceModelID uuid.UUID) (*models.Blueprint, error)
 }
 
+// SnapshotOnlyModeReader tells whether a tenant decodes only from pinned snapshots.
+type SnapshotOnlyModeReader interface {
+	IsSnapshotOnly(ctx context.Context, tenantID int64) (bool, error)
+}
+
 // ResolverService implements the BlueprintResolver interface.
 // It finds blueprints for endpoints based on Type EUI and device model associations.
 type ResolverService struct {
 	log           logger.Logger
 	blueprintRepo Reader
+	modes         SnapshotOnlyModeReader
 }
 
 const componentBlueprintResolver = "blueprint-resolver"
@@ -35,17 +41,19 @@ const componentBlueprintResolver = "blueprint-resolver"
 func NewResolverService(
 	log logger.Logger,
 	blueprintRepo Reader,
-) *ResolverService {
+	modes SnapshotOnlyModeReader,
+) (*ResolverService, error) {
+	if modes == nil {
+		return nil, errNilSnapshotOnlyModes
+	}
 	return &ResolverService{
 		log:           log.WithField(logger.FieldComponent, componentBlueprintResolver),
 		blueprintRepo: blueprintRepo,
-	}
+		modes:         modes,
+	}, nil
 }
 
 // ResolveBlueprint finds the applicable blueprint for an endpoint's type EUI.
-// It implements the TypeEUI precedence rule:
-// 1. If endpoint has device_model_id, get the default blueprint from that model
-// 2. Otherwise, look up blueprint by Type EUI directly
 //
 // Returns nil if no blueprint is found (not an error - means decoding should be skipped).
 func (s *ResolverService) ResolveBlueprint(
@@ -54,13 +62,80 @@ func (s *ResolverService) ResolveBlueprint(
 	typeEUI []byte,
 	_ *uint8, // formatID reserved for future format-specific blueprint selection
 ) (*models.Blueprint, error) {
-	// If typeEUI is nil or empty, we can't resolve
 	if len(typeEUI) == 0 {
 		s.log.DebugContext(ctx, LogBlueprintNoTypeEUI)
 		return nil, nil
 	}
+	bp, err := s.blueprintByTypeEUI(ctx, tenantID, typeEUI)
+	if err != nil {
+		return nil, nil
+	}
+	return bp, nil
+}
 
-	// Try to find blueprint by Type EUI directly
+// ResolveBlueprintForEndpoint: snapshot, else the catalog unless snapshot-only; a failed read skips decoding.
+func (s *ResolverService) ResolveBlueprintForEndpoint(
+	ctx context.Context,
+	tenantID int64,
+	endpoint *models.EndPoint,
+	_ *uint8, // formatID reserved for future format-specific blueprint selection
+) (*models.Blueprint, error) {
+	if bp, ok := s.snapshotBlueprint(ctx, endpoint); ok {
+		return bp, nil
+	}
+	if s.decodesOnlySnapshots(ctx, tenantID) {
+		s.log.ErrorContext(ctx, LogBlueprintSnapshotOnlyNoSnapshot,
+			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldTenantIDSnake, tenantID)
+		return nil, nil
+	}
+	bp, err := s.catalogBlueprint(ctx, tenantID, endpoint)
+	if err != nil {
+		return nil, nil
+	}
+	return bp, nil
+}
+
+// ResolveIgnoringMode returns a failed catalog read so pinning never takes it for nothing found.
+func (s *ResolverService) ResolveIgnoringMode(ctx context.Context, tenantID int64, endpoint *models.EndPoint) (*models.Blueprint, error) {
+	if bp, ok := s.snapshotBlueprint(ctx, endpoint); ok {
+		return bp, nil
+	}
+	return s.catalogBlueprint(ctx, tenantID, endpoint)
+}
+
+// catalogBlueprint: a model's default wins over the type EUI so a loose type EUI never overrides the model.
+func (s *ResolverService) catalogBlueprint(ctx context.Context, tenantID int64, endpoint *models.EndPoint) (*models.Blueprint, error) {
+	if endpoint.DeviceModelID != nil {
+		return s.modelDefaultBlueprint(ctx, tenantID, endpoint)
+	}
+	if endpoint.TypeEUI != nil {
+		return s.blueprintByTypeEUI(ctx, tenantID, endpoint.TypeEUI[:])
+	}
+	s.log.DebugContext(ctx, LogBlueprintNoTypeEUIOrModel,
+		logger.FieldEndpointEui, endpoint.EUI.String())
+	return nil, nil
+}
+
+func (s *ResolverService) modelDefaultBlueprint(ctx context.Context, tenantID int64, endpoint *models.EndPoint) (*models.Blueprint, error) {
+	modelID := *endpoint.DeviceModelID
+	bp, err := s.blueprintRepo.GetDefaultForModel(ctx, tenantID, modelID)
+	if err != nil && !isNotFoundError(err) {
+		s.log.DebugContext(ctx, LogBlueprintModelDefaultError,
+			logger.FieldDeviceModelID, modelID, logger.FieldError, err)
+		return nil, err
+	}
+	if err != nil || bp == nil {
+		s.log.DebugContext(ctx, LogBlueprintModelNoDefault,
+			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldDeviceModelID, modelID)
+		return nil, nil
+	}
+	s.log.DebugContext(ctx, LogBlueprintResolvedFromModel,
+		logger.FieldEndpointEui, endpoint.EUI.String(),
+		logger.FieldDeviceModelID, modelID, logger.FieldBlueprintID, bp.ID)
+	return bp, nil
+}
+
+func (s *ResolverService) blueprintByTypeEUI(ctx context.Context, tenantID int64, typeEUI []byte) (*models.Blueprint, error) {
 	bp, err := s.blueprintRepo.GetByTypeEUI(ctx, tenantID, typeEUI)
 	if err == nil && bp != nil {
 		s.log.DebugContext(ctx, LogBlueprintFoundByTypeEUI,
@@ -69,87 +144,47 @@ func (s *ResolverService) ResolveBlueprint(
 			logger.FieldVersion, bp.Version)
 		return bp, nil
 	}
-
-	// Log if error is not "not found"
+	s.log.DebugContext(ctx, LogBlueprintNotFoundForTypeEUI, logger.FieldTypeEui, mioty.FormatEUIBytes(typeEUI))
 	if err != nil && !isNotFoundError(err) {
 		s.log.WarnContext(ctx, LogBlueprintTypeEUILookupError,
-			logger.FieldTypeEui, mioty.FormatEUIBytes(typeEUI),
-			logger.FieldError, err)
+			logger.FieldTypeEui, mioty.FormatEUIBytes(typeEUI), logger.FieldError, err)
+		return nil, err
 	}
-
-	s.log.DebugContext(ctx, LogBlueprintNotFoundForTypeEUI,
-		logger.FieldTypeEui, mioty.FormatEUIBytes(typeEUI))
 	return nil, nil
 }
 
-// ResolveBlueprintForEndpoint finds the applicable blueprint for an endpoint.
-// It implements the TypeEUI precedence rule:
-// 1. If endpoint has device_model_id, get the default blueprint from that model
-// 2. Otherwise, fall back to endpoint's TypeEUI for direct lookup
-func (s *ResolverService) ResolveBlueprintForEndpoint(
-	ctx context.Context,
-	tenantID int64,
-	endpoint *models.EndPoint,
-	formatID *uint8,
-) (*models.Blueprint, error) {
-	// Snapshot is the highest-priority decode source; on a malformed snapshot, fall through to catalog resolution.
-	if len(endpoint.BlueprintSnapshot) > 0 {
-		var snap models.BlueprintSnapshot
-		if err := json.Unmarshal(endpoint.BlueprintSnapshot, &snap); err != nil {
-			s.log.WarnContext(ctx, LogBlueprintSnapshotParseFailed,
-				logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
-		} else if bp, err := snap.ToBlueprint(); err != nil {
-			s.log.WarnContext(ctx, LogBlueprintSnapshotInvalid,
-				logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
-		} else {
-			s.log.DebugContext(ctx, LogBlueprintResolvedFromSnapshot,
-				logger.FieldEndpointEui, endpoint.EUI.String(),
-				logger.FieldBlueprintID, bp.ID, logger.FieldVersion, bp.Version)
-			return bp, nil
-		}
+// snapshotBlueprint reads the pinned snapshot; ok is false when it is absent or malformed.
+func (s *ResolverService) snapshotBlueprint(ctx context.Context, endpoint *models.EndPoint) (*models.Blueprint, bool) {
+	if len(endpoint.BlueprintSnapshot) == 0 {
+		return nil, false
 	}
-
-	// Check if endpoint has a device model assigned
-	if endpoint.DeviceModelID != nil {
-		// TypeEUI precedence rule: Must get Type EUI from model's default blueprint
-		// This prevents "loose" TypeEUI when a device model is assigned
-
-		// DeviceModelID is now *uuid.UUID, use directly
-		modelID := *endpoint.DeviceModelID
-
-		// Get the default blueprint for this model
-		bp, err := s.blueprintRepo.GetDefaultForModel(ctx, tenantID, modelID)
-		if err != nil {
-			s.log.DebugContext(ctx, LogBlueprintModelDefaultError,
-				logger.FieldDeviceModelID, *endpoint.DeviceModelID,
-				logger.FieldError, err)
-			return nil, nil
-		}
-
-		if bp != nil {
-			s.log.DebugContext(ctx, LogBlueprintResolvedFromModel,
-				logger.FieldEndpointEui, endpoint.EUI.String(),
-				logger.FieldDeviceModelID, *endpoint.DeviceModelID,
-				logger.FieldBlueprintID, bp.ID)
-			return bp, nil
-		}
-
-		// Model has no default blueprint - return nil (decode will be skipped)
-		s.log.DebugContext(ctx, LogBlueprintModelNoDefault,
-			logger.FieldEndpointEui, endpoint.EUI.String(),
-			logger.FieldDeviceModelID, *endpoint.DeviceModelID)
-		return nil, nil
+	var snap models.BlueprintSnapshot
+	if err := json.Unmarshal(endpoint.BlueprintSnapshot, &snap); err != nil {
+		s.log.WarnContext(ctx, LogBlueprintSnapshotParseFailed,
+			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
+		return nil, false
 	}
-
-	// No device model - use endpoint's Type EUI for direct lookup
-	if endpoint.TypeEUI != nil {
-		typeEUIBytes := endpoint.TypeEUI[:]
-		return s.ResolveBlueprint(ctx, tenantID, typeEUIBytes, formatID)
+	bp, err := snap.ToBlueprint()
+	if err != nil {
+		s.log.WarnContext(ctx, LogBlueprintSnapshotInvalid,
+			logger.FieldEndpointEui, endpoint.EUI.String(), logger.FieldError, err)
+		return nil, false
 	}
+	s.log.DebugContext(ctx, LogBlueprintResolvedFromSnapshot,
+		logger.FieldEndpointEui, endpoint.EUI.String(),
+		logger.FieldBlueprintID, bp.ID, logger.FieldVersion, bp.Version)
+	return bp, true
+}
 
-	s.log.DebugContext(ctx, LogBlueprintNoTypeEUIOrModel,
-		logger.FieldEndpointEui, endpoint.EUI.String())
-	return nil, nil
+// decodesOnlySnapshots counts an unreadable switch as on, so a failed read never decodes from the catalog.
+func (s *ResolverService) decodesOnlySnapshots(ctx context.Context, tenantID int64) bool {
+	on, err := s.modes.IsSnapshotOnly(ctx, tenantID)
+	if err != nil {
+		s.log.ErrorContext(ctx, LogBlueprintSnapshotOnlyReadFailed,
+			logger.FieldTenantIDSnake, tenantID, logger.FieldError, err)
+		return true
+	}
+	return on
 }
 
 // GetEndpointCalibration retrieves calibration data for an endpoint.

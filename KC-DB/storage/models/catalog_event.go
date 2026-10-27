@@ -46,3 +46,21 @@ const (
 	EventDetailKeyCatalogID   = "catalogId"
 	EventDetailKeyCatalogName = "name"
 )
+
+// Decoding source events of a tenant (category: endpoint).
+const (
+	EventTypeSnapshotOnlyDecodingChanged  = "tenant.snapshot_only_decoding.changed"
+	EventTitleSnapshotOnlyDecodingChanged = "Snapshot-only decoding changed"
+	// EventDescriptionSnapshotOnlyDecodingChangedFmt is completed with on or off.
+	EventDescriptionSnapshotOnlyDecodingChangedFmt = "Snapshot-only decoding turned %s"
+	EventDetailKeySnapshotOnlyDecoding             = "snapshotOnlyDecoding"
+)
+
+// Pinning events of a tenant (category: endpoint).
+const (
+	EventTypeBlueprintsPinned  = "blueprints.pinned"
+	EventTitleBlueprintsPinned = "Blueprints pinned"
+	// EventDescriptionBlueprintsPinnedFmt is completed with the number of endpoints pinned.
+	EventDescriptionBlueprintsPinnedFmt = "%d endpoints pinned to the blueprint they decode with"
+	EventDetailKeyPinnedCount           = "pinnedCount"
+)

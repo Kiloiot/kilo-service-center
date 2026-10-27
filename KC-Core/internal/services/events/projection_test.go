@@ -77,6 +77,7 @@ func TestDetailProjection_CoversEveryModelEventType(t *testing.T) {
 		models.EventTypeManufacturerCreated, models.EventTypeManufacturerUpdated, models.EventTypeManufacturerDeleted,
 		models.EventTypeDeviceModelCreated, models.EventTypeDeviceModelUpdated, models.EventTypeDeviceModelDeleted,
 		models.EventTypeBlueprintCreated, models.EventTypeBlueprintUpdated, models.EventTypeBlueprintDeleted,
+		models.EventTypeSnapshotOnlyDecodingChanged, models.EventTypeBlueprintsPinned,
 		models.EventTypeIntegrationCreated, models.EventTypeIntegrationUpdated, models.EventTypeIntegrationDeleted,
 		models.EventTypeCertificateGenerated, models.EventTypeCertificateServerGenerated, models.EventTypeCertificateServerRenewed,
 		models.EventTypeCertificatePrivateKeyDownloaded,

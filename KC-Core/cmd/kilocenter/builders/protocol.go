@@ -61,6 +61,7 @@ type ProtocolServers struct {
 	StatusNotifier      bssciservices.EndpointStatusNotifier
 	Propagation         *bssciservices.AttachmentPropagation
 	DownlinkReclaimer   *bssciservices.DownlinkReclaimer
+	BlueprintResolver   *blueprintresolver.ResolverService // decodes uplinks; also finds what pinning pins
 }
 
 // BuildProtocolServers constructs and starts BSSCI and (optionally) SCACI servers.
@@ -204,7 +205,11 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 	log.Info(LogIngressDispositionResolverWired, logger.FieldEdition, cfg.General.Edition)
 
 	// Blueprint resolver and decoder for automatic payload decoding on uplinks
-	resolverSvc := blueprintresolver.NewResolverService(infra.LoggerIface, infra.Repos.Blueprints)
+	resolverSvc, err := blueprintresolver.NewResolverService(infra.LoggerIface, infra.Repos.Blueprints,
+		blueprintresolver.NewCachedSnapshotOnlyModes(infra.Repos.Tenants, infra.Clock.Now))
+	if err != nil {
+		return nil, err
+	}
 	decoderSvc := blueprintresolver.NewDecoderService(infra.LoggerIface)
 
 	attachments, err := buildAttachmentDecisions(infra, bssciInfra, bssciSvcBundle.EPStatusBroadcaster, mqttAttachmentEvents, backgroundWork)
@@ -530,6 +535,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		StatusNotifier:      attachments.notifier,
 		Propagation:         attachmentPropagation,
 		DownlinkReclaimer:   downlinkReclaimer,
+		BlueprintResolver:   resolverSvc,
 	}, nil
 }
 
@@ -778,10 +784,14 @@ func startAndWireSCACI(bundle *bssciservices.BSSCIServiceBundle, server scaciRun
 // federation-ingress binary. It wires all real collaborators (org resolver, blueprint resolver,
 // blueprint decoder, uplink store) so the ingress binary shares identical ingest behaviour.
 func BuildFederationIngestDeps(_ context.Context, infra *Infrastructure) (*bssciservices.UplinkIngestServiceImpl, error) {
-	resolverSvc := blueprintresolver.NewResolverService(
+	resolverSvc, err := blueprintresolver.NewResolverService(
 		infra.LoggerIface,
 		infra.Repos.Blueprints,
+		blueprintresolver.NewCachedSnapshotOnlyModes(infra.Repos.Tenants, infra.Clock.Now),
 	)
+	if err != nil {
+		return nil, err
+	}
 	decoderSvc := blueprintresolver.NewDecoderService(infra.LoggerIface)
 
 	cfg := infra.Config

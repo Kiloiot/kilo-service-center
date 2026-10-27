@@ -251,7 +251,9 @@ func (svc *UplinkIngestServiceImpl) Ingest(
 				} else if bp != nil {
 					ulDataMsg.DecodeStatus = pkgblueprint.DecodeStatusPending
 					ulDataMsg.BlueprintTypeEUI = bp.TypeEUI
-					ulDataMsg.BlueprintVersionID = &bp.ID
+					if bp.ID != uuid.Nil {
+						ulDataMsg.BlueprintVersionID = &bp.ID
+					}
 
 					calibration := svc.blueprintResolver.GetEndpointCalibration(ownerCtx, ownerTenantID, epModel)
 

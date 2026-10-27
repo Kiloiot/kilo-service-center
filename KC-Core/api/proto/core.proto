@@ -144,6 +144,12 @@ service CoreService {
   // Blueprint decode preview
   rpc DecodePreview(DecodePreviewRequest) returns (DecodePreviewResponse);
 
+  // Snapshot-only decoding of the caller's tenant: when on, endpoints decode only from their pinned blueprint snapshots
+  rpc SetSnapshotOnlyDecoding(SetSnapshotOnlyDecodingRequest) returns (SnapshotOnlyDecoding);
+  rpc GetSnapshotOnlyDecoding(google.protobuf.Empty) returns (SnapshotOnlyDecoding);
+  // Pins every endpoint the caller's tenant owns without a snapshot to the blueprint it decodes with now
+  rpc PinCurrentBlueprints(PinCurrentBlueprintsRequest) returns (PinCurrentBlueprintsResponse);
+
   // Messages (listing + streaming + search/export)
   rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
   rpc StreamMessages(StreamMessagesRequest) returns (stream Message);
@@ -213,6 +219,12 @@ message EndPoint {
   string serving_bs_eui = 31;                   // Read-only, GetEndPoint only: the base station a downlink queued now would go to; empty when none serves the endpoint
   bool nwk_sn_key_set = 32; // Read-only: a network session key is stored
   bool app_key_set = 33;    // Read-only: an application key is stored
+  BlueprintInput blueprint_input = 34; // Input only: pin a snapshot of this specification instead of a catalog blueprint; never echoed
+}
+
+// A blueprint specification an endpoint is pinned to without a catalog blueprint.
+message BlueprintInput {
+  bytes spec = 1; // Blueprint specification JSON; empty is the same as no input
 }
 
 // An endpoint key GetEndPoint can reveal.
@@ -1577,6 +1589,30 @@ message BulkAssignBlueprintRequest {
 
 message BulkAssignBlueprintResponse {
   int32 affected_count = 1;    // endpoints re-materialized
+}
+
+message SetSnapshotOnlyDecodingRequest {
+  bool enabled = 1;
+}
+
+// Whether the tenant decodes its endpoints only from their pinned blueprint snapshots; off unless set.
+message SnapshotOnlyDecoding {
+  bool enabled = 1;
+}
+
+message PinCurrentBlueprintsRequest {
+  bool dry_run = 1; // report the outcomes without writing
+}
+
+message PinCurrentBlueprintsResponse {
+  repeated PinResult results = 1; // only endpoints that had no snapshot
+}
+
+message PinResult {
+  string ep_eui = 1;
+  string outcome = 2;      // pinned | nothing_to_pin | error
+  string blueprint_id = 3; // pinned: the source blueprint
+  string error = 4;
 }
 
 message Blueprint {

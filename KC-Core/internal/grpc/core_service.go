@@ -51,6 +51,7 @@ type CoreService struct {
 	*ScaciHandlers
 	*FederationHandlers
 	*SystemHandlers
+	*SnapshotOnlyHandlers
 }
 
 // CoreServiceDeps wires every handler group; Log and Audit are required.
@@ -70,6 +71,7 @@ type CoreServiceDeps struct {
 	Scaci        ScaciHandlerDeps
 	Federation   FederationHandlerDeps
 	System       SystemHandlerDeps
+	SnapshotOnly SnapshotOnlyHandlerDeps
 }
 
 // NewCoreService builds the facade; the first group that rejects its
@@ -106,20 +108,29 @@ func NewCoreService(deps CoreServiceDeps) (*CoreService, error) {
 	if err != nil {
 		return nil, err
 	}
+	blueprints, err := NewBlueprintHandlers(deps.Blueprints, deps.Audit, log)
+	if err != nil {
+		return nil, err
+	}
+	snapshotOnlyHandlers, err := NewSnapshotOnlyHandlers(deps.SnapshotOnly, deps.Audit, log)
+	if err != nil {
+		return nil, err
+	}
 	return &CoreService{
-		EndpointHandlers:    endpoints,
-		BaseStationHandlers: baseStations,
-		DownlinkHandlers:    downlinks,
-		ULTransmitHandlers:  ulTransmit,
-		DLRXHandlers:        dlrx,
-		MessageHandlers:     NewMessageHandlers(deps.Messages, log),
-		AnalyticsHandlers:   NewAnalyticsHandlers(deps.Analytics, log),
-		CertificateHandlers: NewCertificateHandlers(deps.Certificates, deps.Audit, log),
-		BlueprintHandlers:   NewBlueprintHandlers(deps.Blueprints, deps.Audit, log),
-		IntegrationHandlers: NewIntegrationHandlers(deps.Integrations, deps.Audit, log),
-		ScaciHandlers:       NewScaciHandlers(deps.Scaci, log),
-		FederationHandlers:  NewFederationHandlers(deps.Federation, log),
-		SystemHandlers:      system,
+		EndpointHandlers:     endpoints,
+		BaseStationHandlers:  baseStations,
+		DownlinkHandlers:     downlinks,
+		ULTransmitHandlers:   ulTransmit,
+		DLRXHandlers:         dlrx,
+		MessageHandlers:      NewMessageHandlers(deps.Messages, log),
+		AnalyticsHandlers:    NewAnalyticsHandlers(deps.Analytics, log),
+		CertificateHandlers:  NewCertificateHandlers(deps.Certificates, deps.Audit, log),
+		BlueprintHandlers:    blueprints,
+		IntegrationHandlers:  NewIntegrationHandlers(deps.Integrations, deps.Audit, log),
+		ScaciHandlers:        NewScaciHandlers(deps.Scaci, log),
+		FederationHandlers:   NewFederationHandlers(deps.Federation, log),
+		SystemHandlers:       system,
+		SnapshotOnlyHandlers: snapshotOnlyHandlers,
 	}, nil
 }
 
@@ -133,25 +144,26 @@ const (
 
 // FieldMask path constants for UpdateEndPoint partial updates
 const (
-	fieldMaskName          = "name"
-	fieldMaskDescription   = "description"
-	fieldMaskEpClass       = "ep_class"
-	fieldMaskStatus        = "status"
-	fieldMaskNwkSnKey      = "nwk_sn_key"
-	fieldMaskAppKey        = "app_key"
-	fieldMaskTags          = "tags"
-	fieldMaskDualChan      = "dual_chan"
-	fieldMaskRepetition    = "repetition"
-	fieldMaskWideCarrOff   = "wide_carr_off"
-	fieldMaskLongBlkDist   = "long_blk_dist"
-	fieldMaskShAddr        = "sh_addr"
-	fieldMaskAttachCnt     = "attach_cnt"
-	fieldMaskPreAttach     = "pre_attach"
-	fieldMaskLastPacketCnt = "last_packet_cnt"
-	fieldMaskCarrierOffset = "carrier_offset"
-	fieldMaskDeviceModelID = "device_model_id"
-	fieldMaskTypeEUI       = "type_eui"
-	fieldMaskBlueprintID   = "blueprint_id"
+	fieldMaskName           = "name"
+	fieldMaskDescription    = "description"
+	fieldMaskEpClass        = "ep_class"
+	fieldMaskStatus         = "status"
+	fieldMaskNwkSnKey       = "nwk_sn_key"
+	fieldMaskAppKey         = "app_key"
+	fieldMaskTags           = "tags"
+	fieldMaskDualChan       = "dual_chan"
+	fieldMaskRepetition     = "repetition"
+	fieldMaskWideCarrOff    = "wide_carr_off"
+	fieldMaskLongBlkDist    = "long_blk_dist"
+	fieldMaskShAddr         = "sh_addr"
+	fieldMaskAttachCnt      = "attach_cnt"
+	fieldMaskPreAttach      = "pre_attach"
+	fieldMaskLastPacketCnt  = "last_packet_cnt"
+	fieldMaskCarrierOffset  = "carrier_offset"
+	fieldMaskDeviceModelID  = "device_model_id"
+	fieldMaskTypeEUI        = "type_eui"
+	fieldMaskBlueprintID    = "blueprint_id"
+	fieldMaskBlueprintInput = "blueprint_input"
 
 	// Session-key and Type-EUI byte lengths per MIOTY BSSCI v1.0.0.
 	endpointKeyLen = 16

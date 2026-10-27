@@ -308,6 +308,10 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 	if err != nil {
 		log.Fatal(LogDownlinkServiceCreateFailed, logger.Err(err))
 	}
+	pinner, err := blueprintresolver.NewPinService(protocol.BlueprintResolver, infra.Repos.Endpoints, infra.Clock.Now, infra.LoggerIface)
+	if err != nil {
+		log.Fatal(LogFailedCreateCoreService, logger.Err(err))
+	}
 	coreService, err := grpc.NewCoreService(grpc.CoreServiceDeps{
 		Log:   infra.LoggerIface,
 		Audit: auditRecorder,
@@ -322,6 +326,7 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 			ActivityWindow:  time.Duration(cfg.General.ActivityWindowHours) * time.Hour,
 			Clock:           infra.Clock,
 			ServingStations: protocol.BSSCIServices.ServingStations,
+			Modes:           infra.Repos.Tenants,
 		},
 		BaseStations: grpc.BaseStationHandlerDeps{
 			BaseStations:   grpcSvcBundle.BaseStationSvc,
@@ -355,7 +360,11 @@ func BuildCoreService(ctx context.Context, infra *Infrastructure, protocol *Prot
 		Messages:     grpc.MessageHandlerDeps{Listing: messagesSvc, Activity: activitySvc},
 		Analytics:    grpc.AnalyticsHandlerDeps{Analytics: analyticsSvc, Events: eventsSvc, Alerts: alertsSvc, ErrorGroups: errorgroupsservice.New(infra.Repos.SystemEvents, infra.Clock, infra.LoggerIface)},
 		Certificates: grpc.CertificateHandlerDeps{Certificates: certificateSvc, PlatformTenantID: infra.TenantID},
-		Blueprints:   grpc.BlueprintHandlerDeps{Blueprints: blueprintSvc, Endpoints: grpcSvcBundle.EndpointSvc},
+		Blueprints:   grpc.BlueprintHandlerDeps{Blueprints: blueprintSvc, Endpoints: grpcSvcBundle.EndpointSvc, Modes: infra.Repos.Tenants, Clock: infra.Clock},
+		SnapshotOnly: grpc.SnapshotOnlyHandlerDeps{
+			Modes:  infra.Repos.Tenants,
+			Pinner: pinner,
+		},
 		Integrations: grpc.IntegrationHandlerDeps{Integrations: integrationSvc},
 		Scaci:        grpc.ScaciHandlerDeps{Monitoring: scaciMonitoringSvc},
 		Federation:   federation,

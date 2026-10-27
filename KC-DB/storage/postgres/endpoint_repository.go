@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -462,6 +463,53 @@ func (r *EndPointRepository) ListByModelWithSnapshot(ctx context.Context, tenant
 	}
 
 	return endpoints, nil
+}
+
+// ListUnpinnedByOwner selects by owner_tenant_id, so roaming endpoints are the owner's.
+func (r *EndPointRepository) ListUnpinnedByOwner(ctx context.Context, ownerTenantID, afterID int64, limit int) ([]*models.EndPoint, error) {
+	query := `SELECT` + endpointListSelectColumns + `
+		FROM endpoints
+		WHERE owner_tenant_id = $1 AND blueprint_snapshot IS NULL AND id > $2
+		ORDER BY id
+		LIMIT $3`
+
+	rows, err := r.db.QueryContext(ctx, query, ownerTenantID, afterID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", errWrapListUnpinnedEndpoints, err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			r.log.Warn(logMsgCloseRowsEndpoints, logger.FieldError, err)
+		}
+	}()
+
+	var endpoints []*models.EndPoint
+	for rows.Next() {
+		endpoint, err := scanEndpointListRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", errWrapIterateEndpoints, err)
+	}
+	return endpoints, nil
+}
+
+// PinSnapshotIfUnpinned never replaces a snapshot written meanwhile; false when nothing was written.
+func (r *EndPointRepository) PinSnapshotIfUnpinned(ctx context.Context, ownerTenantID, endpointID int64, snapshot json.RawMessage) (bool, error) {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE endpoints SET blueprint_snapshot = $3 WHERE id = $1 AND owner_tenant_id = $2 AND blueprint_snapshot IS NULL`,
+		endpointID, ownerTenantID, []byte(snapshot))
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", errWrapPinEndpointSnapshot, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", errWrapPinEndpointSnapshot, err)
+	}
+	return rows == 1, nil
 }
 
 // Update updates an endpoint with tenant isolation

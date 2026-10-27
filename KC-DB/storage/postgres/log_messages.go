@@ -615,6 +615,10 @@ const (
 	errWrapPostgresTenantSetStatus                = "postgres: tenant: set_status"
 	errWrapPostgresTenantSetStatusCheckRows       = "postgres: tenant: set_status: check rows"
 	errWrapPostgresTenantUpdate                   = "postgres: tenant: update"
+	errWrapPostgresTenantGetSnapshotOnly          = "postgres: tenant: get snapshot-only decoding"
+	errWrapListUnpinnedEndpoints                  = "postgres: endpoint: list unpinned by owner"
+	errWrapPinEndpointSnapshot                    = "postgres: endpoint: pin snapshot"
+	errWrapPostgresTenantSetSnapshotOnly          = "postgres: tenant: set snapshot-only decoding"
 
 	// transaction.go
 	errWrapFailedToBeginTransaction  = "failed to begin transaction"

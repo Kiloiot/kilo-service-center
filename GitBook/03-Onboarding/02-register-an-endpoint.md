@@ -48,6 +48,8 @@ KiloCenter sends an attached endpoint to every connected base station and to eve
 
 The model's default blueprint decodes every uplink received from then on; earlier uplinks keep the decode status they were stored with. Each uplink in the endpoint's **Activity** tab shows its decoded values, or why it was not decoded, below its payload.
 
+When an administrator has turned on snapshot-only decoding for your tenant, an endpoint decodes only with the blueprint pinned to it. Registering an endpoint, or changing its model, then needs a model with a default blueprint, or a blueprint of that model chosen explicitly; see [Snapshot-only decoding](../04-Integrations/02-api.md#what-does-snapshot-only-decoding-change).
+
 ## Optional MIOTY Profile Fields (Enterprise Edition)
 
 The MIOTY specification defines additional endpoint profile fields that control radio behavior. These fields are available in the Enterprise Edition:

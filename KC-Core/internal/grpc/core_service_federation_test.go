@@ -39,7 +39,7 @@ func (m *mockCERegistryHandler) RevokeCEInstance(_ context.Context, _ *pb.Revoke
 func newTestCoreServiceForFederation(t *testing.T) *CoreService {
 	t.Helper()
 	storage := &fakeLegacyStorage{}
-	svc, err := NewCoreService(CoreServiceDeps{
+	svc, err := NewCoreService(withSnapshotOnlyOff(CoreServiceDeps{
 		Log:          logger.NewNop(),
 		Audit:        &captureAuditRecorder{},
 		Endpoints:    EndpointHandlerDeps{Endpoints: &fakeEndpointSvc{}, Attachment: &mockEndpointAttachmentSvc{}, Clock: clock.SystemClock{}, KeyReveals: &captureAuditRecorder{}},
@@ -48,7 +48,7 @@ func newTestCoreServiceForFederation(t *testing.T) *CoreService {
 		ULTransmit:   ULTransmitHandlerDeps{Sessions: &fakeSessionDirectory{}, Transmitter: &fakeULTransmit{}, BaseStations: &fakeBasestationSvc{}},
 		DLRX:         DLRXHandlerDeps{Queries: storage, Statuses: &fakeMessageSvc{}, Stations: &fakeMessageSvc{}, Commander: &fakeDownlinkCmd{}, Sessions: &fakeSessionDirectory{}},
 		System:       SystemHandlerDeps{StartedAt: testServiceStart, SCEui: 0x0000000000000001, SCVendor: "Test", SCModel: "TestCenter", SCName: "test-instance", SCSwVersion: "test-1.0"},
-	})
+	}))
 	require.NoError(t, err)
 	return svc
 }

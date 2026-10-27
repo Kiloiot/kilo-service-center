@@ -731,6 +731,33 @@ CoreService.DecodePreview = {
   responseType: core_pb.DecodePreviewResponse
 };
 
+CoreService.SetSnapshotOnlyDecoding = {
+  methodName: "SetSnapshotOnlyDecoding",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.SetSnapshotOnlyDecodingRequest,
+  responseType: core_pb.SnapshotOnlyDecoding
+};
+
+CoreService.GetSnapshotOnlyDecoding = {
+  methodName: "GetSnapshotOnlyDecoding",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: google_protobuf_empty_pb.Empty,
+  responseType: core_pb.SnapshotOnlyDecoding
+};
+
+CoreService.PinCurrentBlueprints = {
+  methodName: "PinCurrentBlueprints",
+  service: CoreService,
+  requestStream: false,
+  responseStream: false,
+  requestType: core_pb.PinCurrentBlueprintsRequest,
+  responseType: core_pb.PinCurrentBlueprintsResponse
+};
+
 CoreService.ListMessages = {
   methodName: "ListMessages",
   service: CoreService,
@@ -3344,6 +3371,99 @@ CoreServiceClient.prototype.decodePreview = function decodePreview(requestMessag
     callback = arguments[1];
   }
   var client = grpc.unary(CoreService.DecodePreview, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+CoreServiceClient.prototype.setSnapshotOnlyDecoding = function setSnapshotOnlyDecoding(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.SetSnapshotOnlyDecoding, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+CoreServiceClient.prototype.getSnapshotOnlyDecoding = function getSnapshotOnlyDecoding(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.GetSnapshotOnlyDecoding, {
+    request: requestMessage,
+    host: this.serviceHost,
+    metadata: metadata,
+    transport: this.options.transport,
+    debug: this.options.debug,
+    onEnd: function (response) {
+      if (callback) {
+        if (response.status !== grpc.Code.OK) {
+          var err = new Error(response.statusMessage);
+          err.code = response.status;
+          err.metadata = response.trailers;
+          callback(err, null);
+        } else {
+          callback(null, response.message);
+        }
+      }
+    }
+  });
+  return {
+    cancel: function () {
+      callback = null;
+      client.close();
+    }
+  };
+};
+
+CoreServiceClient.prototype.pinCurrentBlueprints = function pinCurrentBlueprints(requestMessage, metadata, callback) {
+  if (arguments.length === 2) {
+    callback = arguments[1];
+  }
+  var client = grpc.unary(CoreService.PinCurrentBlueprints, {
     request: requestMessage,
     host: this.serviceHost,
     metadata: metadata,

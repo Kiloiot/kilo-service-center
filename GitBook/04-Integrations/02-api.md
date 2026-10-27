@@ -108,6 +108,22 @@ With `status` in `update_mask`, `UpdateEndPoint` attaches (`attached`) or detach
 - Any other value, `attaching` included, returns `INVALID_ARGUMENT`.
 - On a server without the attachment service, a status change returns `UNIMPLEMENTED` (`KC-GRPC-ERR-906`) and nothing is saved.
 
+#### How do I pin an endpoint to a blueprint specification without a catalog blueprint?
+
+Send the specification in `blueprint_input.spec` on `CreateEndPoint`, or on `UpdateEndPoint` with `blueprint_input` in `update_mask`. KiloCenter checks it the same way the decoder does and pins a snapshot of it to the endpoint. The endpoint then has no device model, its type EUI is the specification's `typeEui`, and every uplink is decoded with that snapshot until another blueprint is pinned.
+
+- The response carries the pinned `blueprint_snapshot` (its `source_blueprint_id` is empty) and an empty `blueprint_id`; `blueprint_input` is never returned.
+- An empty `spec` is the same as no input.
+- Each refusal returns `INVALID_ARGUMENT` and changes nothing:
+
+| Token | When |
+|-------|------|
+| `KC-GRPC-ERR-0AC` | `blueprint_input` comes with a `blueprint_id` or a non-empty `device_model_id` |
+| `KC-GRPC-ERR-0AD` | the decoder does not accept the specification, for example it has no uplink and no downlink format or repeats a format id; the message gives the reason |
+| `KC-GRPC-ERR-0AE` | the specification's `typeEui` is not 16 hexadecimal digits |
+
+`CreateBlueprint` keeps accepting any valid JSON; only `blueprint_input` and the decoder apply the full check.
+
 ### Base Stations (9)
 
 | RPC | Request | Response | Description |
@@ -298,6 +314,32 @@ The `BaseStation` message includes geolocation fields:
 | RPC | Request | Response | Description |
 |-----|---------|----------|-------------|
 | `DecodePreview` | DecodePreviewRequest | DecodePreviewResponse | Preview blueprint payload decoding |
+
+### Snapshot-Only Decoding (3)
+
+| RPC | Request | Response | Description |
+|-----|---------|----------|-------------|
+| `SetSnapshotOnlyDecoding` | SetSnapshotOnlyDecodingRequest | SnapshotOnlyDecoding | Switch the caller's tenant; Admin only, recorded as `tenant.snapshot_only_decoding.changed` |
+| `GetSnapshotOnlyDecoding` | Empty | SnapshotOnlyDecoding | Read the caller's tenant; any role |
+| `PinCurrentBlueprints` | PinCurrentBlueprintsRequest | PinCurrentBlueprintsResponse | Pin the tenant's endpoints that have no snapshot; Endpoint Manager, recorded as `blueprints.pinned` |
+
+#### What does snapshot-only decoding change?
+
+It is off for every tenant until an administrator turns it on. While it is on, a blueprint reaches an endpoint the tenant owns, including one that roams to another tenant, only by being pinned to it:
+
+- An uplink is decoded only from the endpoint's pinned snapshot. An endpoint without a snapshot, or with a damaged one, is not decoded. If the setting cannot be read, it counts as on.
+- `CreateEndPoint`, and an `UpdateEndPoint` that changes the device model, end with a snapshot: the given `blueprint_input`, the given `blueprint_id`, or the model's default blueprint. With none of them the call returns `FAILED_PRECONDITION` (`KC-GRPC-ERR-0AF`).
+- A `blueprint_id` must belong to the `device_model_id` of the same request, an empty one included, and, unless `device_model_id` is in `update_mask`, to the endpoint's current model; otherwise `INVALID_ARGUMENT` (`KC-GRPC-ERR-0B0`).
+- `BulkAssignBlueprint` with an endpoint of another device model, or of none, returns `INVALID_ARGUMENT` (`KC-GRPC-ERR-0B1`) and changes no endpoint.
+- An update that changes neither the device model nor the blueprint is accepted as before, also for an endpoint without a snapshot.
+
+When the setting cannot be read, `CreateEndPoint`, an `UpdateEndPoint` that changes the device model or the blueprint, and `BulkAssignBlueprint` return `INTERNAL` (`KC-GRPC-ERR-0B2`) and change nothing, on every installation and with the setting on or off.
+
+#### How do I pin the endpoints that still decode from the catalog?
+
+Call `PinCurrentBlueprints` before turning snapshot-only decoding on. It pins every endpoint the caller's tenant owns that has no snapshot to the blueprint it decodes with now: its device model's default blueprint, else the blueprint of its type EUI. Only the snapshot is written, and only if the endpoint still has none; the endpoint's model is not changed and the tenant setting is not touched.
+
+The response lists each endpoint that had no snapshot with an `outcome`: `pinned` (with the source `blueprint_id`), `nothing_to_pin`, or `error` (with a short `error`; the other endpoints are still pinned). With `dry_run` the call reports the same outcomes and writes nothing. Run it once more after turning the setting on, to pin endpoints created in between.
 
 ### Endpoint Stats (2)
 

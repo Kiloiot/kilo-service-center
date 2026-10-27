@@ -2205,3 +2205,81 @@ func TestUpdateWithEUI_ClearsTypeEUI(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, retrieved.TypeEUI, "TypeEUI should be nil after clearing via UpdateWithEUI")
 }
+
+// TC-CM-108: pinning selects and writes by the endpoint's owner, never by the tenant serving it.
+func TestPinning_SelectsAndWritesByOwnerTenant(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	db := setupEndpointTestDB(t)
+	createTestTenant(t, db, 601, "TestPinA")
+	createTestTenant(t, db, 602, "TestPinB")
+	servedForB := insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x61, Name: "TestPin-AforB", TenantID: 601, OwnerTenantID: 602})
+	ownedRoaming := insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x62, Name: "TestPin-BforA", TenantID: 602, OwnerTenantID: 601})
+	ownedHome := insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x63, Name: "TestPin-AA", TenantID: 601})
+	pinnedHome := insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x64, Name: "TestPin-AApinned", TenantID: 601})
+	_, err := db.Exec(`UPDATE endpoints SET blueprint_snapshot = '{"version":"0"}' WHERE id = $1`, pinnedHome)
+	require.NoError(t, err)
+	homeModel := createTestDeviceModel(t, db, 601, "pin-model")
+	_, err = db.Exec(`UPDATE endpoints SET device_model_id = $2 WHERE id = $1`, ownedHome, homeModel)
+	require.NoError(t, err)
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
+	ctx := testutil.TestContext()
+
+	unpinned, err := repo.ListUnpinnedByOwner(ctx, 601, 0, 10)
+	require.NoError(t, err)
+	ids := make([]int64, 0, len(unpinned))
+	for _, ep := range unpinned {
+		ids = append(ids, ep.ID)
+		assert.Equal(t, int64(601), ep.OwnerTenantID)
+	}
+	assert.Equal(t, []int64{ownedRoaming, ownedHome}, ids, "owned endpoints without a snapshot, in id order")
+
+	snap := json.RawMessage(`{"version":"1","source_blueprint_id":"` + uuid.NewString() + `"}`)
+	written, err := repo.PinSnapshotIfUnpinned(ctx, 601, servedForB, snap)
+	require.NoError(t, err)
+	assert.False(t, written, "an endpoint the tenant only serves is not written")
+	written, err = repo.PinSnapshotIfUnpinned(ctx, 601, ownedRoaming, snap)
+	require.NoError(t, err)
+	assert.True(t, written, "an owned endpoint served by another tenant is written")
+	written, err = repo.PinSnapshotIfUnpinned(ctx, 601, ownedRoaming, json.RawMessage(`{"version":"2"}`))
+	require.NoError(t, err)
+	assert.False(t, written, "a snapshot written meanwhile is never replaced")
+
+	var stored []byte
+	var model sql.NullString
+	require.NoError(t, db.QueryRow(`SELECT blueprint_snapshot, device_model_id FROM endpoints WHERE id = $1`, ownedRoaming).Scan(&stored, &model))
+	assert.JSONEq(t, string(snap), string(stored))
+	assert.False(t, model.Valid, "the endpoint's model is not touched")
+	require.NoError(t, db.QueryRow(`SELECT blueprint_snapshot FROM endpoints WHERE id = $1`, servedForB).Scan(&stored))
+	assert.Nil(t, stored, "the served endpoint keeps decoding as before")
+
+	written, err = repo.PinSnapshotIfUnpinned(ctx, 601, ownedHome, snap)
+	require.NoError(t, err)
+	assert.True(t, written)
+	var keptModel uuid.UUID
+	require.NoError(t, db.QueryRow(`SELECT device_model_id FROM endpoints WHERE id = $1`, ownedHome).Scan(&keptModel))
+	assert.Equal(t, homeModel, keptModel, "pinning keeps the endpoint's device model")
+}
+
+func TestPinning_ListPagesByIDCursor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	db := setupEndpointTestDB(t)
+	createTestTenant(t, db, 603, "TestPinPages")
+	var want []int64
+	for i := uint64(0); i < 3; i++ {
+		want = append(want, insertEndpoint(t, db, EndpointInsertParams{EpEUI: 0x70 + i, Name: fmt.Sprintf("TestPinPage-%d", i), TenantID: 603}))
+	}
+	repo := NewEndPointRepository(db, testsupport.TestCipher(), clock.SystemClock{}, logger.Get())
+	ctx := testutil.TestContext()
+
+	first, err := repo.ListUnpinnedByOwner(ctx, 603, 0, 2)
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+	rest, err := repo.ListUnpinnedByOwner(ctx, 603, first[1].ID, 2)
+	require.NoError(t, err)
+	require.Len(t, rest, 1)
+	assert.Equal(t, want, []int64{first[0].ID, first[1].ID, rest[0].ID})
+}

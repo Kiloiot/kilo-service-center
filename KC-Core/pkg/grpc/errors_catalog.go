@@ -422,6 +422,19 @@ const (
 	ErrTokenCEOnboardingUnavailable = "KC-GRPC-ERR-90B"
 	ErrTokenCERegistryUnavailable   = "KC-GRPC-ERR-90C"
 	ErrTokenCEOnboardingCompleted   = "KC-GRPC-ERR-90D"
+
+	// Blueprint input errors
+	ErrTokenBlueprintInputConflict       = "KC-GRPC-ERR-0AC" // blueprint_input with blueprint_id or device_model_id
+	ErrTokenBlueprintInputSpecInvalid    = "KC-GRPC-ERR-0AD" // Decoder refuses the blueprint_input specification
+	ErrTokenBlueprintInputTypeEUIInvalid = "KC-GRPC-ERR-0AE" // blueprint_input typeEui is not 16 hex digits
+
+	// Snapshot-only decoding errors
+	ErrTokenSnapshotRequired             = "KC-GRPC-ERR-0AF" // Snapshot-only tenant: nothing to pin a snapshot from
+	ErrTokenBlueprintNotOfRequestedModel = "KC-GRPC-ERR-0B0" // Snapshot-only tenant: blueprint_id of another model
+	ErrTokenBulkAssignOtherModel         = "KC-GRPC-ERR-0B1" // Snapshot-only owner: a target of another model
+	ErrTokenSnapshotOnlyReadFailed       = "KC-GRPC-ERR-0B2"
+	ErrTokenSnapshotOnlySetFailed        = "KC-GRPC-ERR-0B3"
+	ErrTokenPinBlueprintsFailed          = "KC-GRPC-ERR-0B4"
 )
 
 // ErrorDefinition maps error tokens to messages and gRPC codes
@@ -2059,6 +2072,55 @@ var errorCatalog = map[string]ErrorDefinition{
 		Token:   ErrTokenCEOnboardingCompleted,
 		Message: "CE onboarding is already completed",
 		Code:    codes.AlreadyExists,
+	},
+
+	// Blueprint input errors
+	ErrTokenBlueprintInputConflict: {
+		Token:   ErrTokenBlueprintInputConflict,
+		Message: "blueprint_input cannot be combined with blueprint_id or device_model_id",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenBlueprintInputSpecInvalid: {
+		Token:   ErrTokenBlueprintInputSpecInvalid,
+		Message: "blueprint_input specification is not accepted by the decoder",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenBlueprintInputTypeEUIInvalid: {
+		Token:   ErrTokenBlueprintInputTypeEUIInvalid,
+		Message: "blueprint_input specification typeEui must be 16 hexadecimal digits",
+		Code:    codes.InvalidArgument,
+	},
+
+	// Snapshot-only decoding errors
+	ErrTokenSnapshotRequired: {
+		Token:   ErrTokenSnapshotRequired,
+		Message: "the tenant decodes only from pinned snapshots: give a blueprint_input, a blueprint_id, or a device model with a default blueprint",
+		Code:    codes.FailedPrecondition,
+	},
+	ErrTokenBlueprintNotOfRequestedModel: {
+		Token:   ErrTokenBlueprintNotOfRequestedModel,
+		Message: "blueprint_id is not a blueprint of the requested device_model_id and, unless device_model_id is in update_mask, of the endpoint's current model",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenBulkAssignOtherModel: {
+		Token:   ErrTokenBulkAssignOtherModel,
+		Message: "an endpoint of the request decodes only from pinned snapshots and is not of the blueprint's device model",
+		Code:    codes.InvalidArgument,
+	},
+	ErrTokenSnapshotOnlyReadFailed: {
+		Token:   ErrTokenSnapshotOnlyReadFailed,
+		Message: "failed to read snapshot-only decoding",
+		Code:    codes.Internal,
+	},
+	ErrTokenSnapshotOnlySetFailed: {
+		Token:   ErrTokenSnapshotOnlySetFailed,
+		Message: "failed to set snapshot-only decoding",
+		Code:    codes.Internal,
+	},
+	ErrTokenPinBlueprintsFailed: {
+		Token:   ErrTokenPinBlueprintsFailed,
+		Message: "failed to pin current blueprints",
+		Code:    codes.Internal,
 	},
 }
 

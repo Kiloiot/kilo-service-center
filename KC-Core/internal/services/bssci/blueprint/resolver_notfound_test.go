@@ -70,7 +70,7 @@ func TestResolveBlueprint_NotFoundClassification(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			log := &warnCapturingLogger{}
-			svc := NewResolverService(log, &typeEUIStubRepo{err: tt.err})
+			svc := newResolver(t, log, &typeEUIStubRepo{err: tt.err}, fixedMode{})
 
 			bp, err := svc.ResolveBlueprint(testutil.TestContext(), 1, typeEUI, nil)
 
