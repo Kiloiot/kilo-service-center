@@ -60,6 +60,29 @@ func TestPinCurrentBlueprints_PinsTheCallersTenantAndIsRecorded(t *testing.T) {
 	assert.Equal(t, 1, ev.Details[models.EventDetailKeyPinnedCount])
 }
 
+// TC-CM-108: a pass that pins nothing is recorded too, with a zero count.
+func TestPinCurrentBlueprints_APassThatPinsNothingIsRecorded(t *testing.T) {
+	for name, results := range map[string][]bpresolver.PinResult{
+		"no endpoint without a snapshot": nil,
+		"nothing to pin and a failure":   pinResults[1:],
+	} {
+		t.Run(name, func(t *testing.T) {
+			recorder := &captureAuditRecorder{}
+			svc := testCoreService(coreFields{pinner: &recordingPinner{results: results}, audit: recorder, log: &mockLogger{}})
+
+			resp, err := svc.PinCurrentBlueprints(testutil.TestContextWithTenant(modeTenant), &pb.PinCurrentBlueprintsRequest{})
+
+			require.NoError(t, err)
+			assert.Len(t, resp.GetResults(), len(results))
+			require.Len(t, recorder.events, 1)
+			ev := recorder.events[0]
+			assert.Equal(t, modeTenant, ev.TenantID)
+			assert.Equal(t, models.EventTypeBlueprintsPinned, ev.EventType)
+			assert.Equal(t, 0, ev.Details[models.EventDetailKeyPinnedCount])
+		})
+	}
+}
+
 func TestPinCurrentBlueprints_ADryRunIsNotRecorded(t *testing.T) {
 	pinner := &recordingPinner{results: pinResults}
 	recorder := &captureAuditRecorder{}

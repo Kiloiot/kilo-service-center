@@ -18,7 +18,10 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
-var errCatalogRead = errors.New("catalog unreadable")
+var (
+	errCatalogRead  = errors.New("catalog unreadable")
+	errSnapshotSave = errors.New("pq: deadlock detected on endpoints")
+)
 
 const pinOwner = int64(9)
 
@@ -57,6 +60,7 @@ type unpinnedStore struct {
 	pages     int
 	pinned    map[int64]json.RawMessage
 	taken     map[int64]bool
+	failing   map[int64]bool
 	owners    []int64
 }
 
@@ -74,6 +78,9 @@ func (s *unpinnedStore) ListUnpinnedByOwner(_ context.Context, ownerTenantID, af
 
 func (s *unpinnedStore) PinSnapshotIfUnpinned(_ context.Context, ownerTenantID, endpointID int64, snapshot json.RawMessage) (bool, error) {
 	s.owners = append(s.owners, ownerTenantID)
+	if s.failing[endpointID] {
+		return false, errSnapshotSave
+	}
 	if s.taken[endpointID] {
 		return false, nil
 	}
@@ -128,6 +135,7 @@ func TestPin_PinsWhatTheResolverWouldUseWithoutTheSwitch(t *testing.T) {
 	assert.JSONEq(t, `{"t":1}`, string(snap.SpecJSON))
 	assert.Equal(t, "4", snap.Version)
 	assert.NotContains(t, store.pinned, int64(3))
+	assert.Nil(t, store.endpoints[1].DeviceModelID, "pinning by type EUI leaves the endpoint without a model")
 	for _, owner := range store.owners {
 		assert.Equal(t, pinOwner, owner, "every read and write is the owner's")
 	}
@@ -152,8 +160,8 @@ func TestPin_CatalogReadFailuresAreErrors(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Len(t, results, 1)
-			assert.Equal(t, PinOutcomeError, results[0].Outcome)
-			assert.NotEmpty(t, results[0].Error)
+			assert.Equal(t, PinResult{EpEUI: ep.EUI.String(), Outcome: PinOutcomeError, Error: pinErrResolve}, results[0])
+			assert.NotContains(t, results[0].Error, errCatalogRead.Error())
 			assert.Empty(t, store.pinned)
 		})
 	}
@@ -170,7 +178,23 @@ func TestPin_OneFailureLeavesTheOthersPinned(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, results, 2)
-	assert.Equal(t, PinOutcomeError, results[0].Outcome)
+	assert.Equal(t, PinResult{EpEUI: store.endpoints[0].EUI.String(), Outcome: PinOutcomeError, Error: pinErrResolve}, results[0])
+	assert.Equal(t, PinOutcomePinned, results[1].Outcome)
+	assert.Contains(t, store.pinned, int64(2))
+}
+
+// TC-CM-108: a failed write is reported with a fixed text, never the database's.
+func TestPin_AFailedWriteIsAnErrorWithAFixedText(t *testing.T) {
+	model := uuid.New()
+	bp := &models.Blueprint{ID: uuid.New(), DeviceModelID: model, Version: "1", SpecJSON: json.RawMessage(`{}`)}
+	store := &unpinnedStore{endpoints: []*models.EndPoint{unpinned(1, &model, nil), unpinned(2, &model, nil)}, failing: map[int64]bool{1: true}}
+
+	results, err := newPinService(t, &catalogRepo{defaults: map[uuid.UUID]*models.Blueprint{model: bp}}, store).Pin(testutil.TestContext(), pinOwner, false)
+
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	assert.Equal(t, PinResult{EpEUI: store.endpoints[0].EUI.String(), Outcome: PinOutcomeError, Error: pinErrWrite}, results[0])
+	assert.NotContains(t, results[0].Error, errSnapshotSave.Error())
 	assert.Equal(t, PinOutcomePinned, results[1].Outcome)
 	assert.Contains(t, store.pinned, int64(2))
 }
