@@ -17,6 +17,7 @@ import (
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/authz"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
@@ -133,6 +134,12 @@ func requireCode(t *testing.T, err error, want codes.Code) {
 	assert.Equal(t, want, status.Code(err), "%v", err)
 }
 
+func requireToken(t *testing.T, err error, token string) {
+	t.Helper()
+	requireCode(t, err, grpcerrors.GetGRPCCode(token))
+	assert.Equal(t, grpcerrors.ResolveErrorMessage(token), status.Convert(err).Message())
+}
+
 // TC-CM-107: creating an endpoint while its tenant decodes only from snapshots.
 func TestCreateEndPoint_SnapshotOnlyModeEndsWithASnapshotOrARefusal(t *testing.T) {
 	c := newCatalog()
@@ -140,15 +147,15 @@ func TestCreateEndPoint_SnapshotOnlyModeEndsWithASnapshotOrARefusal(t *testing.T
 		name       string
 		model      string
 		blueprint  string
-		wantCode   codes.Code
+		wantToken  string
 		wantSource string
 	}{
 		{name: "model with a default blueprint pins it", model: c.modelWithDefault.String(), wantSource: c.defaultBp.ID.String()},
-		{name: "no model and no blueprint", wantCode: codes.FailedPrecondition},
-		{name: "model without a default blueprint", model: c.modelWithout.String(), wantCode: codes.FailedPrecondition},
+		{name: "no model and no blueprint", wantToken: grpcerrors.ErrTokenSnapshotRequired},
+		{name: "model without a default blueprint", model: c.modelWithout.String(), wantToken: grpcerrors.ErrTokenSnapshotRequired},
 		{name: "blueprint of the requested model", model: c.otherModel.String(), blueprint: c.otherModelBp.ID.String(), wantSource: c.otherModelBp.ID.String()},
-		{name: "blueprint of another model", model: c.modelWithDefault.String(), blueprint: c.otherModelBp.ID.String(), wantCode: codes.InvalidArgument},
-		{name: "blueprint without a requested model", blueprint: c.otherModelBp.ID.String(), wantCode: codes.InvalidArgument},
+		{name: "blueprint of another model", model: c.modelWithDefault.String(), blueprint: c.otherModelBp.ID.String(), wantToken: grpcerrors.ErrTokenBlueprintNotOfRequestedModel},
+		{name: "blueprint without a requested model", blueprint: c.otherModelBp.ID.String(), wantToken: grpcerrors.ErrTokenBlueprintNotOfRequestedModel},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -156,8 +163,8 @@ func TestCreateEndPoint_SnapshotOnlyModeEndsWithASnapshotOrARefusal(t *testing.T
 
 			_, err := svc.CreateEndPoint(testutil.TestContextWithTenant(modeTenant), newEndpointRequest(tt.model, tt.blueprint))
 
-			if tt.wantCode != codes.OK {
-				requireCode(t, err, tt.wantCode)
+			if tt.wantToken != "" {
+				requireToken(t, err, tt.wantToken)
 				assert.Nil(t, created.created, "nothing is stored")
 				return
 			}
@@ -192,7 +199,7 @@ func TestCreateEndPoint_ModeReadFailureRefuses(t *testing.T) {
 
 	_, err := svc.CreateEndPoint(testutil.TestContextWithTenant(modeTenant), newEndpointRequest(c.modelWithDefault.String(), ""))
 
-	requireCode(t, err, codes.Internal)
+	requireToken(t, err, grpcerrors.ErrTokenSnapshotOnlyReadFailed)
 	assert.Nil(t, created.created)
 }
 
@@ -207,7 +214,7 @@ func TestCreateEndPoint_SeesTheModeRightAfterItIsSwitchedOn(t *testing.T) {
 	require.NoError(t, err)
 	_, err = svc.CreateEndPoint(ctx, newEndpointRequest("", ""))
 
-	requireCode(t, err, codes.FailedPrecondition)
+	requireToken(t, err, grpcerrors.ErrTokenSnapshotRequired)
 	assert.Nil(t, created.created)
 }
 
@@ -237,7 +244,7 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 		modesOn        []int64
 		existing       func(t *testing.T) *models.EndPoint
 		req            *pb.UpdateEndPointRequest
-		wantCode       codes.Code
+		wantToken      string
 		wantSource     string
 		wantNoSnapshot bool
 		wantModel      *uuid.UUID
@@ -250,15 +257,15 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 		},
 		{
 			name: "model change to a model without default is refused", owner: modeTenant, modesOn: []int64{modeTenant},
-			existing: func(t *testing.T) *models.EndPoint { return ownedEndpoint(t, modeTenant, &c.otherModel, pinnedOther) },
-			req:      updateRequest(&pb.EndPoint{DeviceModelId: c.modelWithout.String()}, fieldMaskDeviceModelID),
-			wantCode: codes.FailedPrecondition,
+			existing:  func(t *testing.T) *models.EndPoint { return ownedEndpoint(t, modeTenant, &c.otherModel, pinnedOther) },
+			req:       updateRequest(&pb.EndPoint{DeviceModelId: c.modelWithout.String()}, fieldMaskDeviceModelID),
+			wantToken: grpcerrors.ErrTokenSnapshotRequired,
 		},
 		{
 			name: "clearing the model is refused", owner: modeTenant, modesOn: []int64{modeTenant},
-			existing: func(t *testing.T) *models.EndPoint { return ownedEndpoint(t, modeTenant, &c.otherModel, pinnedOther) },
-			req:      updateRequest(&pb.EndPoint{}, fieldMaskDeviceModelID),
-			wantCode: codes.FailedPrecondition,
+			existing:  func(t *testing.T) *models.EndPoint { return ownedEndpoint(t, modeTenant, &c.otherModel, pinnedOther) },
+			req:       updateRequest(&pb.EndPoint{}, fieldMaskDeviceModelID),
+			wantToken: grpcerrors.ErrTokenSnapshotRequired,
 		},
 		{
 			name: "blueprint of another model is refused", owner: modeTenant, modesOn: []int64{modeTenant},
@@ -267,15 +274,15 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 			},
 			req: updateRequest(&pb.EndPoint{DeviceModelId: c.modelWithDefault.String(), BlueprintId: c.otherModelBp.ID.String()},
 				fieldMaskDeviceModelID, fieldMaskBlueprintID),
-			wantCode: codes.InvalidArgument,
+			wantToken: grpcerrors.ErrTokenBlueprintNotOfRequestedModel,
 		},
 		{
 			name: "blueprint with an empty requested model is refused", owner: modeTenant, modesOn: []int64{modeTenant},
 			existing: func(t *testing.T) *models.EndPoint {
 				return ownedEndpoint(t, modeTenant, &c.modelWithDefault, nil)
 			},
-			req:      updateRequest(&pb.EndPoint{BlueprintId: c.defaultBp.ID.String()}, fieldMaskBlueprintID),
-			wantCode: codes.InvalidArgument,
+			req:       updateRequest(&pb.EndPoint{BlueprintId: c.defaultBp.ID.String()}, fieldMaskBlueprintID),
+			wantToken: grpcerrors.ErrTokenBlueprintNotOfRequestedModel,
 		},
 		{
 			name: "blueprint of the requested model, which is the endpoint's own, is pinned", owner: modeTenant, modesOn: []int64{modeTenant},
@@ -306,14 +313,14 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 			existing: func(t *testing.T) *models.EndPoint {
 				return ownedEndpoint(t, modeTenant, &c.modelWithDefault, c.defaultBp)
 			},
-			req:      updateRequest(&pb.EndPoint{DeviceModelId: c.otherModel.String(), BlueprintId: c.otherModelBp.ID.String()}, fieldMaskBlueprintID),
-			wantCode: codes.InvalidArgument,
+			req:       updateRequest(&pb.EndPoint{DeviceModelId: c.otherModel.String(), BlueprintId: c.otherModelBp.ID.String()}, fieldMaskBlueprintID),
+			wantToken: grpcerrors.ErrTokenBlueprintNotOfRequestedModel,
 		},
 		{
 			name: "roaming: the owner's mode applies, not the serving tenant's", owner: foreignOwner, modesOn: []int64{foreignOwner},
-			existing: func(t *testing.T) *models.EndPoint { return ownedEndpoint(t, foreignOwner, &c.otherModel, pinnedOther) },
-			req:      updateRequest(&pb.EndPoint{DeviceModelId: c.modelWithout.String()}, fieldMaskDeviceModelID),
-			wantCode: codes.FailedPrecondition,
+			existing:  func(t *testing.T) *models.EndPoint { return ownedEndpoint(t, foreignOwner, &c.otherModel, pinnedOther) },
+			req:       updateRequest(&pb.EndPoint{DeviceModelId: c.modelWithout.String()}, fieldMaskDeviceModelID),
+			wantToken: grpcerrors.ErrTokenSnapshotRequired,
 		},
 		{
 			name: "roaming: a serving tenant's mode does not bind another owner", owner: foreignOwner, modesOn: []int64{modeTenant},
@@ -329,8 +336,8 @@ func TestUpdateEndPoint_SnapshotOnlyModeOfTheOwner(t *testing.T) {
 
 			_, err := svc.UpdateEndPoint(testutil.TestContextWithTenant(modeTenant), tt.req)
 
-			if tt.wantCode != codes.OK {
-				requireCode(t, err, tt.wantCode)
+			if tt.wantToken != "" {
+				requireToken(t, err, tt.wantToken)
 				assert.Nil(t, endpoints.updateCapture, "nothing is stored")
 				return
 			}
@@ -390,7 +397,7 @@ func TestBulkAssignBlueprint_SnapshotOnlyModeOfEachOwner(t *testing.T) {
 		modesOn     []int64
 		endpoints   func(t *testing.T) []*models.EndPoint
 		euis        []string
-		wantCode    codes.Code
+		wantToken   string
 		wantWritten int
 	}{
 		{
@@ -408,7 +415,7 @@ func TestBulkAssignBlueprint_SnapshotOnlyModeOfEachOwner(t *testing.T) {
 					pinnedAt(t, modeOtherEUI, modeTenant, &c.otherModel, pinned),
 				}
 			},
-			euis: []string{modeTestEUI, modeOtherEUI}, wantCode: codes.InvalidArgument,
+			euis: []string{modeTestEUI, modeOtherEUI}, wantToken: grpcerrors.ErrTokenBulkAssignOtherModel,
 		},
 		{
 			name: "an endpoint pinned from blueprint_input has no model and refuses the request", modesOn: []int64{modeTenant},
@@ -418,14 +425,14 @@ func TestBulkAssignBlueprint_SnapshotOnlyModeOfEachOwner(t *testing.T) {
 					pinnedAt(t, modeOtherEUI, modeTenant, nil, inputPinned),
 				}
 			},
-			euis: []string{modeTestEUI, modeOtherEUI}, wantCode: codes.InvalidArgument,
+			euis: []string{modeTestEUI, modeOtherEUI}, wantToken: grpcerrors.ErrTokenBulkAssignOtherModel,
 		},
 		{
 			name: "roaming: a serving tenant without the mode cannot repin an owner's endpoint of another model", modesOn: []int64{foreignOwner},
 			endpoints: func(t *testing.T) []*models.EndPoint {
 				return []*models.EndPoint{pinnedAt(t, modeTestEUI, foreignOwner, &c.otherModel, pinned)}
 			},
-			euis: []string{modeTestEUI}, wantCode: codes.InvalidArgument,
+			euis: []string{modeTestEUI}, wantToken: grpcerrors.ErrTokenBulkAssignOtherModel,
 		},
 		{
 			name: "an unknown EUI is skipped, the others are written", modesOn: []int64{modeTenant},
@@ -454,8 +461,8 @@ func TestBulkAssignBlueprint_SnapshotOnlyModeOfEachOwner(t *testing.T) {
 			resp, err := svc.BulkAssignBlueprint(testutil.TestContextWithTenant(modeTenant),
 				&pb.BulkAssignBlueprintRequest{BlueprintId: c.defaultBp.ID.String(), EpEuis: tt.euis})
 
-			if tt.wantCode != codes.OK {
-				requireCode(t, err, tt.wantCode)
+			if tt.wantToken != "" {
+				requireToken(t, err, tt.wantToken)
 				assert.Empty(t, endpoints.written, "nothing is written")
 				return
 			}
@@ -537,7 +544,7 @@ func TestUpdateEndPoint_ModeReadFailureRefuses(t *testing.T) {
 	_, err := svc.UpdateEndPoint(testutil.TestContextWithTenant(modeTenant),
 		updateRequest(&pb.EndPoint{DeviceModelId: c.modelWithDefault.String()}, fieldMaskDeviceModelID))
 
-	requireCode(t, err, codes.Internal)
+	requireToken(t, err, grpcerrors.ErrTokenSnapshotOnlyReadFailed)
 	assert.Nil(t, endpoints.updateCapture)
 }
 
@@ -555,7 +562,7 @@ func TestBulkAssignBlueprint_ModeReadFailureWritesNothing(t *testing.T) {
 	_, err = svc.BulkAssignBlueprint(testutil.TestContextWithTenant(modeTenant),
 		&pb.BulkAssignBlueprintRequest{BlueprintId: c.defaultBp.ID.String(), EpEuis: []string{modeTestEUI}})
 
-	requireCode(t, err, codes.Internal)
+	requireToken(t, err, grpcerrors.ErrTokenSnapshotOnlyReadFailed)
 	assert.Empty(t, endpoints.written)
 }
 
