@@ -14,11 +14,10 @@ const (
 	errWrapDownlinkReservationReserve = "downlink reservation: reserve"
 
 	// refresh_token_adapter.go
-	errWrapRefreshTokenAdapterCreate         = "refresh token adapter: create"
-	errWrapRefreshTokenAdapterGetByHash      = "refresh token adapter: get_by_hash"
-	errWrapRefreshTokenAdapterMarkReplaced   = "refresh token adapter: mark_replaced"
-	errWrapRefreshTokenAdapterRevokeByHash   = "refresh token adapter: revoke_by_hash"
-	errWrapRefreshTokenAdapterRevokeByUserID = "refresh token adapter: revoke_by_user_id"
+	errWrapRefreshTokenAdapterCreateForPassword = "refresh token adapter: create_for_password" // #nosec G101 -- error context string, not a credential
+	errWrapRefreshTokenAdapterGetByHash         = "refresh token adapter: get_by_hash"
+	errWrapRefreshTokenAdapterRevokeByUserID    = "refresh token adapter: revoke_by_user_id"
+	errWrapRefreshTokenAdapterRotate            = "refresh token adapter: rotate"
 
 	// tenant_adapter.go
 	errWrapTenantAdapterCreate    = "tenant adapter: create"
@@ -35,6 +34,7 @@ const (
 	errWrapUserAdapterGetByEmail      = "user adapter: get_by_email"
 	errWrapUserAdapterGetByExternalID = "user adapter: get_by_external_id"
 	errWrapUserAdapterGetByID         = "user adapter: get_by_id"
+	errWrapUserAdapterLinkExternalID  = "user adapter: link_external_id"
 	errWrapUserAdapterList            = "user adapter: list"
 	errWrapUserAdapterSetPasswordHash = "user adapter: set_password_hash" // #nosec G101 -- error context string, not a credential
 	errWrapUserAdapterUpdate          = "user adapter: update"

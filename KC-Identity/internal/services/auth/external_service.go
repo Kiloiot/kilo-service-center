@@ -58,6 +58,7 @@ const (
 	logExternalAuthUserCreateFailed = "external.auth.user.create.failed"
 	logExternalAuthUserCreated      = "external.auth.user.created"
 	logExternalAuthLinkFailed       = "external.auth.link.failed"
+	logExternalAuthUserInactive     = "external.auth.user.inactive"
 	logExternalAuthNoMemberships    = "external.auth.no_memberships"
 	logExternalAuthSuccess          = "external.auth.success"
 	logRegistrationCallbackFailed   = "external.auth.callback.failed"
@@ -416,14 +417,19 @@ func (s *ExternalAuthService) findOrCreateUserFromOIDC(ctx context.Context, clai
 
 	user, err := s.userStore.GetByExternalID(ctx, claims.Sub)
 	if err == nil && user != nil {
+		if err := s.refuseInactive(ctx, user); err != nil {
+			return nil, err
+		}
 		return user, nil
 	}
 
 	user, err = s.userStore.GetByEmail(ctx, claims.Email)
 	if err == nil && user != nil {
-		user.ExternalID = &claims.Sub
-		if err := s.userStore.Update(ctx, user); err != nil {
-			s.logger.WarnContext(ctx, logExternalAuthLinkFailed, logger.FieldError, err)
+		if err := s.refuseInactive(ctx, user); err != nil {
+			return nil, err
+		}
+		if err := s.linkExternalID(ctx, user, claims.Sub); err != nil {
+			return nil, err
 		}
 		return user, nil
 	}
@@ -466,16 +472,21 @@ func (s *ExternalAuthService) findOrCreateUserFromOAuth2(ctx context.Context, us
 	if externalID != "" {
 		user, err := s.userStore.GetByExternalID(ctx, externalID)
 		if err == nil && user != nil {
+			if err := s.refuseInactive(ctx, user); err != nil {
+				return nil, err
+			}
 			return user, nil
 		}
 	}
 
 	user, err := s.userStore.GetByEmail(ctx, userInfo.Email)
 	if err == nil && user != nil {
+		if err := s.refuseInactive(ctx, user); err != nil {
+			return nil, err
+		}
 		if externalID != "" && (user.ExternalID == nil || *user.ExternalID == "") {
-			user.ExternalID = &externalID
-			if err := s.userStore.Update(ctx, user); err != nil {
-				s.logger.WarnContext(ctx, logExternalAuthLinkFailed, logger.FieldError, err)
+			if err := s.linkExternalID(ctx, user, externalID); err != nil {
+				return nil, err
 			}
 		}
 		return user, nil
@@ -557,35 +568,7 @@ func (s *ExternalAuthService) issueLocalTokensWithOrg(ctx context.Context, user 
 		return nil, err
 	}
 
-	// Build profile
-	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
-	profile := &grpcservices.UserProfile{
-		ID:           user.ID,
-		Email:        user.Email,
-		IsAdmin:      user.IsAdmin,
-		HasPassword:  hasPassword,
-		DefaultOrgID: &defaultOrgID,
-		Memberships:  make([]grpcservices.OrganizationMembership, len(memberships)),
-	}
-
-	if user.FirstName != nil {
-		profile.FirstName = *user.FirstName
-	}
-	if user.LastName != nil {
-		profile.LastName = *user.LastName
-	}
-
-	for i, m := range memberships {
-		profile.Memberships[i] = grpcservices.OrganizationMembership{
-			OrgID:              m.OrgID,
-			OrgName:            m.OrgName,
-			Role:               m.Role,
-			DisplayName:        m.OrgName,
-			IsOrgAdmin:         m.IsOrgAdmin,
-			IsBaseStationAdmin: m.IsBaseStationAdmin,
-			IsEndpointAdmin:    m.IsEndpointAdmin,
-		}
-	}
+	profile := newLoginProfile(user, memberships, defaultOrgID)
 
 	s.logger.InfoContext(ctx, logExternalAuthSuccess, logger.FieldUserIDSnake, user.ID)
 

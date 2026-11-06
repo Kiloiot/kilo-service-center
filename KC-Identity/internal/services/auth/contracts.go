@@ -31,9 +31,9 @@ type OrgDirectory interface {
 
 // RefreshTokenStore provides refresh token persistence.
 type RefreshTokenStore interface {
-	Create(ctx context.Context, token *models.RefreshToken) error
+	CreateForPassword(ctx context.Context, token *models.RefreshToken, passwordHash string) error
 	GetByHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
-	MarkReplaced(ctx context.Context, tokenID, replacedByID uuid.UUID) error
+	Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error
 	RevokeByUserID(ctx context.Context, userID uuid.UUID) error
 }
 
@@ -44,7 +44,9 @@ type ExternalUserStore interface {
 	UserStore
 	GetByExternalID(ctx context.Context, externalID string) (*models.User, error)
 	Create(ctx context.Context, user *models.User) error
-	Update(ctx context.Context, user *models.User) error
+	// LinkExternalID records the external identity of an active user only; it
+	// fails with storage.ErrUserInactive when the user is missing or deactivated.
+	LinkExternalID(ctx context.Context, userID uuid.UUID, externalID string) error
 }
 
 // StateStore provides state/nonce/verifier storage for external auth flows.

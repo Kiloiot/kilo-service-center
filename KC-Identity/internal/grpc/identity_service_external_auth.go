@@ -121,6 +121,9 @@ func mapExternalAuthError(err error) error {
 	case errors.Is(err, auth.ErrOrgResolutionFailed):
 		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenAuthExternalOrgFailed),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenAuthExternalOrgFailed))
+	case errors.Is(err, auth.ErrUserNotActive):
+		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenInvalidCredentials),
+			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidCredentials))
 	case errors.Is(err, auth.ErrMembershipRequired):
 		return status.Error(grpcerrors.GetGRPCCode(grpcerrors.ErrTokenMembershipRequired),
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenMembershipRequired))

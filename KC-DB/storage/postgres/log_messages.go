@@ -491,13 +491,17 @@ const (
 	logMsgRoamingAgreementsRepositoryNotSupported = "RoamingAgreements repository not supported"
 
 	// refresh_token_repository.go
-	errFmtRefreshTokenNotFound        = "refresh token %s not found"
-	errWrapCreateRefreshToken         = "create refresh token"
-	errWrapDeleteExpiredRefreshTokens = "delete expired refresh tokens"
-	errWrapGetRefreshToken            = "get refresh token"
-	errWrapMarkRefreshTokenReplaced   = "mark refresh token replaced"
-	errWrapRevokeRefreshToken         = "revoke refresh token"
-	errWrapRevokeRefreshTokensForUser = "revoke refresh tokens for user"
+	errWrapBeginRefreshTokenCreation    = "begin refresh token creation transaction"
+	errWrapBeginRefreshTokenRevocation  = "begin refresh token revocation transaction"
+	errWrapBeginRefreshTokenRotation    = "begin refresh token rotation transaction"
+	errWrapClaimRefreshToken            = "claim refresh token"
+	errWrapCommitRefreshTokenCreation   = "commit refresh token creation transaction"
+	errWrapCommitRefreshTokenRevocation = "commit refresh token revocation transaction"
+	errWrapCommitRefreshTokenRotation   = "commit refresh token rotation transaction"
+	errWrapCreateRefreshToken           = "create refresh token"
+	errWrapGetRefreshToken              = "get refresh token"
+	errWrapLockRefreshTokenUser         = "lock refresh token user"
+	errWrapRevokeRefreshTokensForUser   = "revoke refresh tokens for user"
 
 	// registration_repository.go
 	errWrapBeginCERegistrationTransaction  = "begin CE registration transaction"
@@ -663,6 +667,7 @@ const (
 	errWrapGetUser             = "get user"
 	errWrapGetUserByEmail      = "get user by email"
 	errWrapGetUserByExternalID = "get user by external_id"
+	errWrapLinkExternalID      = "link external_id"
 	errWrapListUsers           = "list users"
 	errWrapSetPasswordHash     = "set password hash"
 	errWrapUpdateUser          = "update user"

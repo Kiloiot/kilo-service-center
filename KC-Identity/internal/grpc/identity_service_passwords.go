@@ -57,11 +57,12 @@ func (s *IdentityService) ChangePassword(ctx context.Context, req *pb.ChangePass
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenNewPasswordRequired))
 	}
 
-	if err := s.authSvc.ChangePassword(ctx, userID, req.CurrentPassword, req.NewPassword); err != nil {
+	err = s.authSvc.ChangePassword(ctx, userID, req.CurrentPassword, req.NewPassword)
+	s.auditStoredPassword(ctx, userID, err)
+	if err != nil {
 		s.log.ErrorContext(ctx, LogChangePasswordFailed, logger.FieldUserIDSnake, userID, logger.FieldError, err)
 		return nil, passwordRefusal(err, grpcerrors.ErrTokenChangePasswordFailed)
 	}
-	s.auditPasswordChange(ctx, userID)
 
 	return &pb.ChangePasswordResponse{Success: true}, nil
 }
@@ -87,13 +88,23 @@ func (s *IdentityService) UpdateUserPassword(ctx context.Context, req *pb.Update
 			grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenInvalidIDFormat))
 	}
 
-	if err := s.adminUserSvc.UpdatePassword(ctx, userID, req.NewPassword); err != nil {
+	err = s.adminUserSvc.UpdatePassword(ctx, userID, req.NewPassword)
+	s.auditStoredPassword(ctx, userID, err)
+	if err != nil {
 		s.log.ErrorContext(ctx, LogUpdateUserPasswordFailed, logger.FieldUserIDSnake, req.Id, logger.FieldError, err)
 		return nil, passwordRefusal(err, grpcerrors.ErrTokenUpdatePasswordFailed)
 	}
-	s.auditPasswordChange(ctx, userID)
 
 	return &pb.UpdateUserPasswordResponse{Success: true}, nil
+}
+
+// auditStoredPassword audits subject's password change whenever the new
+// password was stored: on success, and when only ending the old sessions
+// failed.
+func (s *IdentityService) auditStoredPassword(ctx context.Context, subject uuid.UUID, err error) {
+	if err == nil || errors.Is(err, auth.ErrPasswordChangedSessionsKept) {
+		s.auditPasswordChange(ctx, subject)
+	}
 }
 
 // auditPasswordChange records that subject's password changed, set by the
