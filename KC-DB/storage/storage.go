@@ -47,6 +47,12 @@ var (
 	// ErrInstallationOnboarded reports an onboarding of a CE installation
 	// that has already completed onboarding.
 	ErrInstallationOnboarded = errors.New("installation already onboarded")
+	// ErrRefreshTokenNotClaimable reports a refresh token that is already
+	// replaced, revoked or expired, so it cannot be rotated.
+	ErrRefreshTokenNotClaimable = errors.New("refresh token not claimable")
+	// ErrRefreshTokenUserInactive reports a rotation for a user who is
+	// missing or deactivated.
+	ErrRefreshTokenUserInactive = errors.New("refresh token user inactive")
 
 	// Database constraint errors - Blueprint feature (Migration 000102-000104)
 	ErrDuplicateKey        = errors.New("duplicate key violation")

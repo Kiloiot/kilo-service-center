@@ -43,7 +43,6 @@ const (
 	logAuthPasswordChangeFailed  = "auth.password.change.failed"
 	logAuthPasswordChangeSuccess = "auth.password.change.success"
 	logAuthProfileFetched        = "auth.profile.fetched"
-	logMarkTokenReplacedFailed   = "auth.mark_replaced.failed"
 	logAuthPasswordRevokeFailed  = "auth.password.change.revoke_failed"
 
 	reasonUserNotFound       = "user_not_found"
@@ -58,6 +57,7 @@ const (
 	reasonTokenReuseDetected = "token_reuse_detected"
 	reasonTokenRevoked       = "token_revoked"
 	reasonTokenExpired       = "token_expired"
+	reasonTokenNotClaimable  = "token_not_claimable"
 	reasonTokenGenDisabled   = "token_generation_disabled"
 	reasonPasswordWeak       = "password_weak"
 )
@@ -125,10 +125,9 @@ func (s *Service) Login(ctx context.Context, email, password string) (*grpcservi
 		return nil, ErrInvalidCredentials
 	}
 
-	// Check if user is active
-	if !user.IsActive {
+	if err := requireActive(user); err != nil {
 		s.logger.WarnContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldReason, reasonUserInactive)
-		return nil, ErrUserNotActive
+		return nil, err
 	}
 
 	// Check if user has a password set
@@ -243,135 +242,6 @@ func (s *Service) Login(ctx context.Context, email, password string) (*grpcservi
 			RefreshExpiresIn: s.tokenIssuer.GetRefreshTTL(),
 		},
 		Profile: profile,
-	}, nil
-}
-
-// RefreshTokens exchanges refresh token for new token pair.
-func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*grpcservices.AuthTokens, error) {
-	s.logger.InfoContext(ctx, logAuthTokenRefresh)
-
-	if !s.localLoginEnabled {
-		return nil, ErrLocalLoginDisabled
-	}
-	if !s.refreshTokenEnabled {
-		return nil, ErrRefreshTokenDisabled
-	}
-
-	// Defensive nil check: tokenIssuer may be nil when token generation is disabled
-	if s.tokenIssuer == nil {
-		return nil, ErrTokenGenerationDisabled
-	}
-
-	// Parse and validate the refresh token
-	userID, _, err := s.tokenIssuer.ParseRefreshToken(refreshToken)
-	if err != nil {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonInvalidToken)
-		return nil, err
-	}
-
-	// Look up stored token by hash
-	tokenHash := HashRefreshToken(refreshToken)
-	storedToken, err := s.refreshTokenStore.GetByHash(ctx, tokenHash)
-	if err != nil {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonTokenLookupFailed, logger.FieldError, err)
-		return nil, ErrInvalidRefreshToken
-	}
-	if storedToken == nil {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonTokenNotFound)
-		return nil, ErrInvalidRefreshToken
-	}
-
-	// Check for reuse (token already replaced)
-	if storedToken.IsReplaced() {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonTokenReuseDetected, logger.FieldUserIDSnake, userID)
-		// Revoke entire token family
-		if err := s.refreshTokenStore.RevokeByUserID(ctx, userID); err != nil {
-			s.logger.ErrorContext(ctx, logAuthRevokeTokenFailed, logger.FieldError, err)
-		}
-		return nil, ErrRefreshTokenReused
-	}
-
-	// Check if revoked
-	if storedToken.IsRevoked() {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonTokenRevoked)
-		return nil, ErrRefreshTokenRevoked
-	}
-
-	// Check expiration
-	if storedToken.IsExpired() {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonTokenExpired)
-		return nil, ErrInvalidRefreshToken
-	}
-
-	// Get user to find default org
-	user, err := s.userStore.GetByID(ctx, userID)
-	if err != nil {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonUserNotFound, logger.FieldUserIDSnake, userID)
-		return nil, ErrInvalidRefreshToken
-	}
-
-	// Get memberships for default org (CE synthesizes one if needed)
-	memberships, err := s.membershipStore.ListUserMemberships(ctx, userID)
-	if err != nil {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonNoMemberships, logger.FieldUserIDSnake, userID)
-		return nil, ErrMembershipRequired
-	}
-	if len(memberships) == 0 && s.ceProvider != nil {
-		ceMembership, ceErr := s.ceProvider.SynthesizeMembership(ctx, user)
-		if ceErr != nil {
-			return nil, ceErr
-		}
-		memberships = append(memberships, &models.OrganizationMembershipWithOrg{
-			OrgID:              ceMembership.OrgID,
-			OrgName:            ceMembership.OrgName,
-			Role:               ceMembership.Role,
-			IsOrgAdmin:         ceMembership.IsOrgAdmin,
-			IsBaseStationAdmin: ceMembership.IsBaseStationAdmin,
-			IsEndpointAdmin:    ceMembership.IsEndpointAdmin,
-		})
-	} else if len(memberships) == 0 {
-		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonNoMemberships, logger.FieldUserIDSnake, userID)
-		return nil, ErrMembershipRequired
-	}
-	defaultOrgID := memberships[0].OrgID
-
-	// Issue new tokens
-	newAccessToken, err := s.tokenIssuer.IssueAccessToken(user.ID, &defaultOrgID)
-	if err != nil {
-		return nil, err
-	}
-
-	newRefreshToken, err := s.tokenIssuer.IssueRefreshToken(user.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Store new refresh token
-	newTokenHash := HashRefreshToken(newRefreshToken)
-	newRT := &models.RefreshToken{
-		ID:        uuid.New(),
-		UserID:    userID,
-		TokenHash: newTokenHash,
-		IssuedAt:  time.Now().UTC(),
-		ExpiresAt: s.tokenIssuer.GetRefreshExpiresAt(),
-	}
-	if err := s.refreshTokenStore.Create(ctx, newRT); err != nil {
-		return nil, err
-	}
-
-	// Mark old token as replaced
-	if err := s.refreshTokenStore.MarkReplaced(ctx, storedToken.ID, newRT.ID); err != nil {
-		s.logger.WarnContext(ctx, logMarkTokenReplacedFailed, logger.FieldError, err)
-		// Non-fatal, continue
-	}
-
-	s.logger.InfoContext(ctx, logAuthTokenRotated, logger.FieldUserIDSnake, userID)
-
-	return &grpcservices.AuthTokens{
-		AccessToken:      newAccessToken,
-		RefreshToken:     newRefreshToken,
-		AccessExpiresIn:  s.tokenIssuer.GetAccessTTL(),
-		RefreshExpiresIn: s.tokenIssuer.GetRefreshTTL(),
 	}, nil
 }
 

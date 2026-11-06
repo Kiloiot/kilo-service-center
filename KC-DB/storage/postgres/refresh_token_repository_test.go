@@ -1,14 +1,17 @@
 package postgres
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -203,96 +206,175 @@ func TestRefreshTokenRepository_RevokeByUserID_Success(t *testing.T) {
 	}
 }
 
-// TestRefreshTokenRepository_MarkReplaced_Success tests token replacement tracking
-func TestRefreshTokenRepository_MarkReplaced_Success(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := SetupTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
-
-	repo := NewRefreshTokenRepository(db, clock.SystemClock{})
-	userRepo := NewUserRepository(db, clock.SystemClock{})
-	ctx := testutil.TestContext()
-
-	// Create a test user first
-	userID := uuid.New()
-	user := &models.User{
-		ID:       userID,
-		Email:    "refresh-markreplaced@example.com",
-		IsActive: true,
-	}
-	err := userRepo.Create(ctx, user)
-	require.NoError(t, err)
-
-	// Create old token
-	oldTokenID := uuid.New()
-	oldToken := &models.RefreshToken{
-		ID:        oldTokenID,
-		UserID:    userID,
-		TokenHash: "oldhash" + oldTokenID.String()[:8],
-		IssuedAt:  time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(testTokenTTL),
-	}
-	err = repo.Create(ctx, oldToken)
-	require.NoError(t, err)
-
-	// Create new token
-	newTokenID := uuid.New()
-	newToken := &models.RefreshToken{
-		ID:        newTokenID,
-		UserID:    userID,
-		TokenHash: "newhash" + newTokenID.String()[:8],
-		IssuedAt:  time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(testTokenTTL),
-	}
-	err = repo.Create(ctx, newToken)
-	require.NoError(t, err)
-
-	// Cleanup after test
-	defer func() {
-		_, _ = db.Exec("DELETE FROM refresh_tokens WHERE id = $1", oldTokenID)
-		_, _ = db.Exec("DELETE FROM refresh_tokens WHERE id = $1", newTokenID)
-		_, _ = db.Exec("DELETE FROM users WHERE id = $1", userID)
-	}()
-
-	// Test: Mark old token as replaced by new token
-	err = repo.MarkReplaced(ctx, oldTokenID, newTokenID)
-	require.NoError(t, err)
-
-	// Verify replacement is tracked
-	retrieved, err := repo.GetByHash(ctx, oldToken.TokenHash)
-	require.NoError(t, err)
-	require.NotNil(t, retrieved)
-	assert.True(t, retrieved.IsReplaced())
-	assert.Equal(t, newTokenID, *retrieved.ReplacedBy)
+// rotationFixture holds a repository, one user and one usable refresh token of that user.
+type rotationFixture struct {
+	db     *sqlx.DB
+	repo   *RefreshTokenRepository
+	userID uuid.UUID
+	old    *models.RefreshToken
 }
 
-// TestRefreshTokenRepository_MarkReplaced_NotFound tests marking non-existent token
-func TestRefreshTokenRepository_MarkReplaced_NotFound(t *testing.T) {
+func newRotationFixture(t *testing.T, userActive bool, oldExpiresAt time.Time) rotationFixture {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
-
 	db := SetupTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
-
 	repo := NewRefreshTokenRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
-	// Test: Mark non-existent token
-	oldID := uuid.New()
-	newID := uuid.New()
-	err := repo.MarkReplaced(ctx, oldID, newID)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	userID := uuid.New()
+	user := &models.User{ID: userID, Email: "rotate-" + userID.String() + "@example.com", IsActive: userActive}
+	require.NoError(t, NewUserRepository(db, clock.SystemClock{}).Create(ctx, user))
+	t.Cleanup(func() {
+		for _, query := range []string{"DELETE FROM refresh_tokens WHERE user_id = $1", "DELETE FROM users WHERE id = $1"} {
+			if _, err := db.Exec(query, userID); err != nil {
+				t.Logf("cleanup %q: %v", query, err)
+			}
+		}
+		if err := db.Close(); err != nil {
+			t.Logf("failed to close db: %v", err)
+		}
+	})
+
+	old := rotationToken(userID, oldExpiresAt)
+	_, err := db.NamedExec(insertRefreshTokenQuery, old)
+	require.NoError(t, err)
+	return rotationFixture{db: db, repo: repo, userID: userID, old: old}
+}
+
+func rotationToken(userID uuid.UUID, expiresAt time.Time) *models.RefreshToken {
+	id := uuid.New()
+	now := time.Now().UTC()
+	return &models.RefreshToken{ID: id, UserID: userID, TokenHash: "rotate" + id.String(), IssuedAt: now, ExpiresAt: expiresAt, CreatedAt: now}
+}
+
+func (f rotationFixture) stored(t *testing.T, token *models.RefreshToken) *models.RefreshToken {
+	t.Helper()
+	got, err := f.repo.GetByHash(testutil.TestContext(), token.TokenHash)
+	require.NoError(t, err)
+	return got
+}
+
+func TestRefreshTokenRepository_Rotate_StoresTheSuccessorAndClaimsTheOldToken(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+
+	require.NoError(t, f.repo.Rotate(testutil.TestContext(), f.old.ID, successor))
+
+	old := f.stored(t, f.old)
+	require.NotNil(t, old)
+	require.NotNil(t, old.ReplacedBy)
+	assert.Equal(t, successor.ID, *old.ReplacedBy)
+	stored := f.stored(t, successor)
+	require.NotNil(t, stored)
+	assert.True(t, stored.IsValid())
+}
+
+func TestRefreshTokenRepository_Rotate_RefusesAnUnclaimableOldToken(t *testing.T) {
+	tests := []struct {
+		name         string
+		oldExpiresAt time.Time
+		prepare      func(t *testing.T, f rotationFixture)
+	}{
+		{
+			name:         "already rotated",
+			oldExpiresAt: time.Now().UTC().Add(testTokenTTL),
+			prepare: func(t *testing.T, f rotationFixture) {
+				require.NoError(t, f.repo.Rotate(testutil.TestContext(), f.old.ID, rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))))
+			},
+		},
+		{
+			name:         "revoked",
+			oldExpiresAt: time.Now().UTC().Add(testTokenTTL),
+			prepare: func(t *testing.T, f rotationFixture) {
+				require.NoError(t, f.repo.RevokeByUserID(testutil.TestContext(), f.userID))
+			},
+		},
+		{
+			name:         "expired",
+			oldExpiresAt: time.Now().UTC().Add(-time.Minute),
+			prepare:      func(*testing.T, rotationFixture) {},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newRotationFixture(t, true, tt.oldExpiresAt)
+			tt.prepare(t, f)
+			successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+
+			err := f.repo.Rotate(testutil.TestContext(), f.old.ID, successor)
+
+			require.ErrorIs(t, err, storage.ErrRefreshTokenNotClaimable)
+			assert.Nil(t, f.stored(t, successor), "a refused rotation must not leave the successor behind")
+		})
+	}
+}
+
+func TestRefreshTokenRepository_Rotate_ConcurrentClaimsLetExactlyOneWin(t *testing.T) {
+	const contenders = 8
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+
+	errs := make([]error, contenders)
+	var wg sync.WaitGroup
+	for i := range contenders {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = f.repo.Rotate(testutil.TestContext(), f.old.ID, rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL)))
+		}(i)
+	}
+	wg.Wait()
+
+	won := 0
+	for _, err := range errs {
+		if err == nil {
+			won++
+			continue
+		}
+		require.ErrorIs(t, err, storage.ErrRefreshTokenNotClaimable)
+	}
+	assert.Equal(t, 1, won)
+	var successors int
+	require.NoError(t, f.db.Get(&successors, "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1 AND id <> $2", f.userID, f.old.ID))
+	assert.Equal(t, 1, successors)
+}
+
+func TestRefreshTokenRepository_Rotate_RefusesAnInactiveUser(t *testing.T) {
+	f := newRotationFixture(t, false, time.Now().UTC().Add(testTokenTTL))
+	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+
+	err := f.repo.Rotate(testutil.TestContext(), f.old.ID, successor)
+
+	require.ErrorIs(t, err, storage.ErrRefreshTokenUserInactive)
+	assert.Nil(t, f.stored(t, successor))
+	old := f.stored(t, f.old)
+	require.NotNil(t, old)
+	assert.False(t, old.IsReplaced())
+}
+
+func TestRefreshTokenRepository_RevokeByUserID_RevokesARotatedSuccessor(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+	require.NoError(t, f.repo.Rotate(testutil.TestContext(), f.old.ID, successor))
+
+	require.NoError(t, f.repo.RevokeByUserID(testutil.TestContext(), f.userID))
+
+	stored := f.stored(t, successor)
+	require.NotNil(t, stored)
+	assert.True(t, stored.IsRevoked())
+}
+
+func TestRefreshTokenRepository_RevokeByUserID_UnknownUserIsNoError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	db := SetupTestDB(t)
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Logf("failed to close db: %v", err)
+		}
+	})
+
+	require.NoError(t, NewRefreshTokenRepository(db, clock.SystemClock{}).RevokeByUserID(testutil.TestContext(), uuid.New()))
 }

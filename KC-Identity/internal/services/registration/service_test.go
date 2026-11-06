@@ -69,7 +69,7 @@ func (m *mockUserStore) SetPasswordHash(ctx context.Context, userID uuid.UUID, h
 type mockRefreshTokenStore struct {
 	createFn       func(ctx context.Context, token *models.RefreshToken) error
 	getByHashFn    func(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
-	markReplacedFn func(ctx context.Context, tokenID, replacedByID uuid.UUID) error
+	rotateFn       func(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error
 	revokeByUserFn func(ctx context.Context, userID uuid.UUID) error
 }
 
@@ -81,8 +81,8 @@ func (m *mockRefreshTokenStore) GetByHash(ctx context.Context, tokenHash string)
 	return m.getByHashFn(ctx, tokenHash)
 }
 
-func (m *mockRefreshTokenStore) MarkReplaced(ctx context.Context, tokenID, replacedByID uuid.UUID) error {
-	return m.markReplacedFn(ctx, tokenID, replacedByID)
+func (m *mockRefreshTokenStore) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error {
+	return m.rotateFn(ctx, oldTokenID, newToken)
 }
 
 func (m *mockRefreshTokenStore) RevokeByUserID(ctx context.Context, userID uuid.UUID) error {

@@ -45,10 +45,10 @@ func (a *RefreshTokenStoreAdapter) RevokeByUserID(ctx context.Context, userID uu
 	return nil
 }
 
-// MarkReplaced links old token to new token during rotation
-func (a *RefreshTokenStoreAdapter) MarkReplaced(ctx context.Context, oldTokenID, newTokenID uuid.UUID) error {
-	if err := a.repo.MarkReplaced(ctx, oldTokenID, newTokenID); err != nil {
-		return fmt.Errorf("%s: %w", errWrapRefreshTokenAdapterMarkReplaced, err)
+// Rotate atomically stores newToken and marks oldTokenID as replaced by it.
+func (a *RefreshTokenStoreAdapter) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error {
+	if err := a.repo.Rotate(ctx, oldTokenID, newToken); err != nil {
+		return fmt.Errorf("%s: %w", errWrapRefreshTokenAdapterRotate, err)
 	}
 	return nil
 }

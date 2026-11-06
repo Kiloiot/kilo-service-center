@@ -33,7 +33,7 @@ type OrgDirectory interface {
 type RefreshTokenStore interface {
 	Create(ctx context.Context, token *models.RefreshToken) error
 	GetByHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
-	MarkReplaced(ctx context.Context, tokenID, replacedByID uuid.UUID) error
+	Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error
 	RevokeByUserID(ctx context.Context, userID uuid.UUID) error
 }
 

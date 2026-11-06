@@ -32,14 +32,17 @@ const (
 
 var errSessionRevokeUnavailable = errors.New("refresh token store unavailable")
 
+// refreshTokenMemory honours the refresh token store contract: an unknown
+// hash is (nil, nil) and Rotate claims only a usable token of an active user.
 type refreshTokenMemory struct {
 	mu        sync.Mutex
 	byHash    map[string]*models.RefreshToken
+	owners    UserAdminStore
 	revokeErr error
 }
 
-func newRefreshTokenMemory() *refreshTokenMemory {
-	return &refreshTokenMemory{byHash: map[string]*models.RefreshToken{}}
+func newRefreshTokenMemory(owners UserAdminStore) *refreshTokenMemory {
+	return &refreshTokenMemory{byHash: map[string]*models.RefreshToken{}, owners: owners}
 }
 
 func (m *refreshTokenMemory) Create(_ context.Context, token *models.RefreshToken) error {
@@ -55,21 +58,28 @@ func (m *refreshTokenMemory) GetByHash(_ context.Context, tokenHash string) (*mo
 	defer m.mu.Unlock()
 	token, ok := m.byHash[tokenHash]
 	if !ok {
-		return nil, storage.ErrRecordNotFound
+		return nil, nil
 	}
 	copied := *token
 	return &copied, nil
 }
 
-func (m *refreshTokenMemory) MarkReplaced(_ context.Context, tokenID, replacedByID uuid.UUID) error {
+func (m *refreshTokenMemory) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error {
+	owner, err := m.owners.GetByID(ctx, newToken.UserID)
+	if err != nil || !owner.IsActive {
+		return storage.ErrRefreshTokenUserInactive
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, token := range m.byHash {
-		if token.ID == tokenID {
-			token.ReplacedBy = &replacedByID
+		if token.ID == oldTokenID && token.IsValid() {
+			token.ReplacedBy = &newToken.ID
+			stored := *newToken
+			m.byHash[newToken.TokenHash] = &stored
+			return nil
 		}
 	}
-	return nil
+	return storage.ErrRefreshTokenNotClaimable
 }
 
 func (m *refreshTokenMemory) RevokeByUserID(_ context.Context, userID uuid.UUID) error {
@@ -126,7 +136,7 @@ func sessionAuthService(users auth.UserStore, tokens auth.RefreshTokenStore) *au
 func TestUpdatePassword_RefusesRefreshTokensIssuedBeforeTheReset(t *testing.T) {
 	ctx := testutil.TestContext()
 	users, userID := oneUserStore(t)
-	tokens := newRefreshTokenMemory()
+	tokens := newRefreshTokenMemory(users)
 	login := sessionAuthService(users, tokens)
 	admin := NewUserAdminService(users, tokens, newTestLogger())
 
@@ -143,7 +153,7 @@ func TestUpdatePassword_RefusesRefreshTokensIssuedBeforeTheReset(t *testing.T) {
 func TestUpdatePassword_ReportsASessionRevocationFailure(t *testing.T) {
 	ctx := testutil.TestContext()
 	users, userID := oneUserStore(t)
-	tokens := newRefreshTokenMemory()
+	tokens := newRefreshTokenMemory(users)
 	tokens.revokeErr = errSessionRevokeUnavailable
 	admin := NewUserAdminService(users, tokens, newTestLogger())
 

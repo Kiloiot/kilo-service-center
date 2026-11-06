@@ -491,13 +491,15 @@ const (
 	logMsgRoamingAgreementsRepositoryNotSupported = "RoamingAgreements repository not supported"
 
 	// refresh_token_repository.go
-	errFmtRefreshTokenNotFound        = "refresh token %s not found"
-	errWrapCreateRefreshToken         = "create refresh token"
-	errWrapDeleteExpiredRefreshTokens = "delete expired refresh tokens"
-	errWrapGetRefreshToken            = "get refresh token"
-	errWrapMarkRefreshTokenReplaced   = "mark refresh token replaced"
-	errWrapRevokeRefreshToken         = "revoke refresh token"
-	errWrapRevokeRefreshTokensForUser = "revoke refresh tokens for user"
+	errWrapBeginRefreshTokenRevocation  = "begin refresh token revocation transaction"
+	errWrapBeginRefreshTokenRotation    = "begin refresh token rotation transaction"
+	errWrapClaimRefreshToken            = "claim refresh token"
+	errWrapCommitRefreshTokenRevocation = "commit refresh token revocation transaction"
+	errWrapCommitRefreshTokenRotation   = "commit refresh token rotation transaction"
+	errWrapCreateRefreshToken           = "create refresh token"
+	errWrapGetRefreshToken              = "get refresh token"
+	errWrapLockRefreshTokenUser         = "lock refresh token user"
+	errWrapRevokeRefreshTokensForUser   = "revoke refresh tokens for user"
 
 	// registration_repository.go
 	errWrapBeginCERegistrationTransaction  = "begin CE registration transaction"
