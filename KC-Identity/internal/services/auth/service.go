@@ -204,35 +204,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*grpcservi
 
 	s.logger.InfoContext(ctx, logAuthLoginSuccess, logger.FieldEmail, email, logger.FieldUserIDSnake, user.ID)
 
-	// Build user profile from already-loaded user and memberships
-	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
-	profile := &grpcservices.UserProfile{
-		ID:           user.ID,
-		Email:        user.Email,
-		IsAdmin:      user.IsAdmin,
-		HasPassword:  hasPassword,
-		DefaultOrgID: &defaultOrgID,
-		Memberships:  make([]grpcservices.OrganizationMembership, len(memberships)),
-	}
-
-	if user.FirstName != nil {
-		profile.FirstName = *user.FirstName
-	}
-	if user.LastName != nil {
-		profile.LastName = *user.LastName
-	}
-
-	for i, m := range memberships {
-		profile.Memberships[i] = grpcservices.OrganizationMembership{
-			OrgID:              m.OrgID,
-			OrgName:            m.OrgName,
-			Role:               m.Role,
-			DisplayName:        m.OrgName,
-			IsOrgAdmin:         m.IsOrgAdmin,
-			IsBaseStationAdmin: m.IsBaseStationAdmin,
-			IsEndpointAdmin:    m.IsEndpointAdmin,
-		}
-	}
+	profile := newLoginProfile(user, memberships, defaultOrgID)
 
 	return &grpcservices.AuthLoginResult{
 		Tokens: &grpcservices.AuthTokens{
