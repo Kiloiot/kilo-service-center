@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are updated within their declared ranges.
 - **Plaintext HTTP/2 now comes from the standard library.** KC-Core without TLS and KC-Gateway accept
   native gRPC over HTTP/2 with prior knowledge and gRPC-web over HTTP/1.1, as before; the HTTP/1.1
-  `Upgrade: h2c` handshake is no longer offered.
+  `Upgrade: h2c` handshake is no longer offered. On shutdown KC-Core lets open calls finish for up to
+  10 seconds (or its HTTP write timeout, if shorter) and then ends the streams still open, so it stops
+  within a Kubernetes pod's default grace period.
 
 ## [2.1.0] - 2026-10-23
 
