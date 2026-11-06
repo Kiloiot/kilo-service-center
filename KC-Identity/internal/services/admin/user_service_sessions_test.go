@@ -138,10 +138,27 @@ func oneUserStore(t *testing.T) (*mockUserStore, uuid.UUID) {
 		updateFn: func(_ context.Context, updated *models.User) error {
 			mu.Lock()
 			defer mu.Unlock()
-			*user = *updated
+			applyStoredUpdate(user, updated)
 			return nil
 		},
 	}, user.ID
+}
+
+// applyStoredUpdate copies the columns UserRepository.Update writes; the
+// password hash is never among them.
+func applyStoredUpdate(stored, updated *models.User) {
+	stored.ExternalID = updated.ExternalID
+	stored.Email = updated.Email
+	stored.EmailVerified = updated.EmailVerified
+	stored.IsAdmin = updated.IsAdmin
+	stored.IsActive = updated.IsActive
+	stored.IsTenantManager = updated.IsTenantManager
+	stored.IsBaseStationManager = updated.IsBaseStationManager
+	stored.IsEndpointManager = updated.IsEndpointManager
+	stored.Note = updated.Note
+	stored.FirstName = updated.FirstName
+	stored.LastName = updated.LastName
+	stored.CompanyName = updated.CompanyName
 }
 
 func sessionAuthService(users auth.UserStore, tokens auth.RefreshTokenStore) *auth.Service {
