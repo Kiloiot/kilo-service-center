@@ -208,18 +208,21 @@ func (c *countingRevoker) RevokeByUserID(context.Context, uuid.UUID) error {
 	return nil
 }
 
-func TestUpdate_KeepsSessionsWhenTheUserIsNotDeactivated(t *testing.T) {
+func TestUpdate_RevokesSessionsOnEveryDeactivatingRequest(t *testing.T) {
 	active, inactive := true, false
 	note := "rotated on-call duty"
 	tests := []struct {
 		name        string
 		startActive bool
 		req         grpcservices.UserUpdateRequest
+		wantRevokes int
 	}{
+		{name: "active user deactivated", startActive: true, req: grpcservices.UserUpdateRequest{IsActive: &inactive}, wantRevokes: 1},
+		{name: "inactive user deactivated again", startActive: false, req: grpcservices.UserUpdateRequest{IsActive: &inactive}, wantRevokes: 1},
 		{name: "active user confirmed active", startActive: true, req: grpcservices.UserUpdateRequest{IsActive: &active}},
 		{name: "unrelated field on an active user", startActive: true, req: grpcservices.UserUpdateRequest{Note: &note}},
+		{name: "unrelated field on an inactive user", startActive: false, req: grpcservices.UserUpdateRequest{Note: &note}},
 		{name: "inactive user reactivated", startActive: false, req: grpcservices.UserUpdateRequest{IsActive: &active}},
-		{name: "inactive user kept inactive", startActive: false, req: grpcservices.UserUpdateRequest{IsActive: &inactive}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -233,7 +236,7 @@ func TestUpdate_KeepsSessionsWhenTheUserIsNotDeactivated(t *testing.T) {
 			_, err := admin.Update(testutil.TestContext(), userID, &tt.req)
 
 			require.NoError(t, err)
-			require.Zero(t, revoker.calls)
+			require.Equal(t, tt.wantRevokes, revoker.calls)
 		})
 	}
 }

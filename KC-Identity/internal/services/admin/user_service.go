@@ -127,7 +127,6 @@ func (s *UserAdminService) Update(ctx context.Context, id uuid.UUID, req *grpcse
 	if err := s.applyEmailChange(ctx, user, req); err != nil {
 		return nil, err
 	}
-	wasActive := user.IsActive
 	applyUserFields(user, req)
 
 	if err := s.store.Update(ctx, user); err != nil {
@@ -135,8 +134,8 @@ func (s *UserAdminService) Update(ctx context.Context, id uuid.UUID, req *grpcse
 		return nil, fmt.Errorf("%s: %w", errOpUpdateUser, err)
 	}
 
-	// Revoked after the deactivation is stored, so no refresh can mint a token in between.
-	if wasActive && !user.IsActive {
+	// Revoked after the deactivation is stored, and on every deactivating request, so a retry repairs a failed revoke.
+	if deactivates(req) {
 		if err := s.sessions.RevokeByUserID(ctx, id); err != nil {
 			s.logger.ErrorContext(ctx, LogUserDeactivationRevokeFailed, logger.FieldUserIDCamel, id, logger.FieldError, err)
 			return nil, fmt.Errorf("%s: %w", errOpRevokeSessions, err)
@@ -145,6 +144,11 @@ func (s *UserAdminService) Update(ctx context.Context, id uuid.UUID, req *grpcse
 
 	s.logger.InfoContext(ctx, LogUserUpdated, logger.FieldUserIDCamel, id)
 	return user, nil
+}
+
+// deactivates reports whether req switches the user off.
+func deactivates(req *grpcservices.UserUpdateRequest) bool {
+	return req.IsActive != nil && !*req.IsActive
 }
 
 // applyEmailChange normalizes the requested email and moves user to it,
