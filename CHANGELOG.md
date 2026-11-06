@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **A deactivated user can no longer renew a session.** Refreshing tokens for a user whose
+  **Is active** is off is refused and ends every session the user still holds; signing in with
+  OIDC or OAuth2 to an existing deactivated account is refused before the account is linked to
+  the provider or receives a token.
+- **Deactivating a user ends their sessions.** Switching **Is active** off through the admin API
+  revokes the user's refresh tokens, as a password reset already does.
+- **A refresh token can be used only once, also under concurrent requests.** Storing the new
+  token and retiring the presented one happen in one database transaction that accepts only a
+  token that is not yet replaced, revoked or expired, so two simultaneous refreshes with the same
+  token yield one new session, and a revocation also covers a token minted by a refresh that was
+  still running.
+
 ## [2.1.0] - 2026-10-23
 
 > **Upgrade note:** migration 000192 adds the tenant setting `is_snapshot_only_decoding`, off for
