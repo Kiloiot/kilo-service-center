@@ -41,13 +41,14 @@ func (s *Service) Login(ctx context.Context, email, password string) (*grpcservi
 	}
 	defaultOrgID := memberships[0].OrgID
 
-	refreshToken, err := s.openRefreshSession(ctx, user, email)
-	if err != nil {
-		return nil, err
-	}
+	// Signed before the session is stored, so a signing failure leaves no session behind.
 	accessToken, err := s.tokenIssuer.IssueAccessToken(user.ID, &defaultOrgID)
 	if err != nil {
 		s.logger.ErrorContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldError, err)
+		return nil, err
+	}
+	refreshToken, err := s.openRefreshSession(ctx, user, email)
+	if err != nil {
 		return nil, err
 	}
 

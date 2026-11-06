@@ -31,7 +31,10 @@ const (
 	svcTestRefresh     = true
 )
 
-var errSvcTestStoreDown = errors.New("refresh token store unavailable")
+var (
+	errSvcTestStoreDown   = errors.New("refresh token store unavailable")
+	errSvcTestSigningDown = errors.New("signing key unavailable")
+)
 
 // userMemory is a user store whose lookups miss with a wrapped
 // storage.ErrRecordNotFound, like the real one.
@@ -282,6 +285,24 @@ func TestLogin_RefusesWhenTheAccountChangesBeforeTheSessionOpens(t *testing.T) {
 }
 
 func ptrTo(s string) *string { return &s }
+
+// failingAccessIssuer signs refresh tokens but cannot sign access tokens.
+type failingAccessIssuer struct{ *JWTTokenIssuer }
+
+func (failingAccessIssuer) IssueAccessToken(uuid.UUID, *uuid.UUID) (string, error) {
+	return "", errSvcTestSigningDown
+}
+
+func TestLogin_OpensNoSessionWhenTheAccessTokenCannotBeSigned(t *testing.T) {
+	f := newAuthFixture(t, true)
+	svc := NewService(f.users, oneMembership{}, f.tokens, failingAccessIssuer{f.issuer}, svcTestLocalLogin, svcTestRefresh, logger.NewNop())
+
+	result, err := svc.Login(testutil.TestContext(), svcTestEmail, svcTestPassword)
+
+	require.ErrorIs(t, err, errSvcTestSigningDown)
+	assert.Nil(t, result)
+	assert.Zero(t, f.tokens.count(), "no session may be stored without a token to return")
+}
 
 func TestRefreshTokens_RotatesAUsableToken(t *testing.T) {
 	f := newAuthFixture(t, true)
