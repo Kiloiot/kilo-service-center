@@ -28,6 +28,12 @@ type IdentityResult struct {
 	Cleanups                []func()
 }
 
+// selfRegistrationEnabled reports whether self-service sign-up is served:
+// only when it is enabled and local login is on.
+func selfRegistrationEnabled(auth pkgconfig.AuthConfig) bool {
+	return auth.RegistrationEnabled && auth.LocalLoginEnabled
+}
+
 // BuildIdentityService constructs the IdentityService with admin, auth, and
 // external auth wired. ctx is the process lifecycle context and bounds the
 // startup connectivity checks of the external auth clients.
@@ -122,7 +128,7 @@ func BuildIdentityService(ctx context.Context, infra *Infrastructure) *IdentityR
 	log.Info(LogAuthServiceWired, logger.FieldLocalLoginEnabled, cfg.Auth.LocalLoginEnabled)
 
 	// RegistrationService (self-service signup, only when explicitly enabled)
-	if cfg.Auth.RegistrationEnabled && cfg.Auth.LocalLoginEnabled {
+	if selfRegistrationEnabled(cfg.Auth) {
 		registrationAdapter := dbadapters.NewRegistrationAdapter(infra.Repos.Registrations)
 		registrationSvc := registration.NewService(
 			registrationAdapter,
