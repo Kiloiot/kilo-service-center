@@ -111,7 +111,7 @@ func (m *tokenMemory) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, token := range m.byHash {
-		if token.ID == oldTokenID && token.IsValid() {
+		if token.ID == oldTokenID && token.UserID == newToken.UserID && token.IsValid() {
 			token.ReplacedBy = &newToken.ID
 			stored := *newToken
 			m.byHash[newToken.TokenHash] = &stored

@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"database/sql"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -226,21 +228,28 @@ func newRotationFixture(t *testing.T, userActive bool, oldExpiresAt time.Time) r
 	userID := uuid.New()
 	user := &models.User{ID: userID, Email: "rotate-" + userID.String() + "@example.com", IsActive: userActive}
 	require.NoError(t, NewUserRepository(db, clock.SystemClock{}).Create(ctx, user))
+	f := rotationFixture{db: db, repo: repo, userID: userID}
 	t.Cleanup(func() {
-		for _, query := range []string{"DELETE FROM refresh_tokens WHERE user_id = $1", "DELETE FROM users WHERE id = $1"} {
-			if _, err := db.Exec(query, userID); err != nil {
-				t.Logf("cleanup %q: %v", query, err)
-			}
-		}
+		f.deleteUser(t, userID)
 		if err := db.Close(); err != nil {
 			t.Logf("failed to close db: %v", err)
 		}
 	})
 
-	old := rotationToken(userID, oldExpiresAt)
-	_, err := db.NamedExec(insertRefreshTokenQuery, old)
+	f.old = rotationToken(userID, oldExpiresAt)
+	_, err := db.NamedExec(insertRefreshTokenQuery, f.old)
 	require.NoError(t, err)
-	return rotationFixture{db: db, repo: repo, userID: userID, old: old}
+	return f
+}
+
+// deleteUser removes a test user and every refresh token of that user.
+func (f rotationFixture) deleteUser(t *testing.T, userID uuid.UUID) {
+	t.Helper()
+	for _, query := range []string{"DELETE FROM refresh_tokens WHERE user_id = $1", "DELETE FROM users WHERE id = $1"} {
+		if _, err := f.db.Exec(query, userID); err != nil {
+			t.Logf("cleanup %q: %v", query, err)
+		}
+	}
 }
 
 func rotationToken(userID uuid.UUID, expiresAt time.Time) *models.RefreshToken {
@@ -312,6 +321,52 @@ func TestRefreshTokenRepository_Rotate_RefusesAnUnclaimableOldToken(t *testing.T
 			assert.Nil(t, f.stored(t, successor), "a refused rotation must not leave the successor behind")
 		})
 	}
+}
+
+func TestRefreshTokenRepository_Rotate_RefusesAnotherUsersToken(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	ctx := testutil.TestContext()
+	otherID := uuid.New()
+	require.NoError(t, NewUserRepository(f.db, clock.SystemClock{}).Create(ctx, &models.User{ID: otherID, Email: "rotate-" + otherID.String() + "@example.com", IsActive: true}))
+	t.Cleanup(func() { f.deleteUser(t, otherID) })
+	successor := rotationToken(otherID, time.Now().UTC().Add(testTokenTTL))
+
+	err := f.repo.Rotate(ctx, f.old.ID, successor)
+
+	require.ErrorIs(t, err, storage.ErrRefreshTokenNotClaimable)
+	assert.Nil(t, f.stored(t, successor))
+	assert.False(t, f.stored(t, f.old).IsReplaced())
+}
+
+func TestRefreshTokenRepository_RevokeByUserID_WaitsForAnInFlightRotation(t *testing.T) {
+	const notBlockedWithin = 300 * time.Millisecond
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	ctx := testutil.TestContext()
+
+	rotation, err := f.db.BeginTxx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := rotation.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			t.Logf("roll back rotation: %v", err)
+		}
+	})
+	var isActive bool
+	require.NoError(t, rotation.GetContext(ctx, &isActive, `SELECT is_active FROM users WHERE id = $1 FOR SHARE`, f.userID))
+	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+	_, err = rotation.NamedExecContext(ctx, insertRefreshTokenQuery, successor)
+	require.NoError(t, err)
+
+	revoked := make(chan error, 1)
+	go func() { revoked <- f.repo.RevokeByUserID(ctx, f.userID) }()
+	select {
+	case err := <-revoked:
+		t.Fatalf("revocation finished while a rotation of the user was in flight: %v", err)
+	case <-time.After(notBlockedWithin):
+	}
+
+	require.NoError(t, rotation.Commit())
+	require.NoError(t, <-revoked)
+	assert.True(t, f.stored(t, successor).IsRevoked(), "the revocation must cover the token the rotation minted")
 }
 
 func TestRefreshTokenRepository_Rotate_ConcurrentClaimsLetExactlyOneWin(t *testing.T) {

@@ -107,8 +107,9 @@ func (r *RefreshTokenRepository) RevokeByUserID(ctx context.Context, userID uuid
 // Rotate atomically stores newToken and marks oldTokenID as replaced by it.
 // It fails with storage.ErrRefreshTokenUserInactive when the owner of
 // newToken is missing or deactivated, and with
-// storage.ErrRefreshTokenNotClaimable when the old token is already
-// replaced, revoked or expired; nothing is stored in either case.
+// storage.ErrRefreshTokenNotClaimable when the old token belongs to another
+// user or is already replaced, revoked or expired; nothing is stored in either
+// case.
 func (r *RefreshTokenRepository) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) (err error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -122,7 +123,7 @@ func (r *RefreshTokenRepository) Rotate(ctx context.Context, oldTokenID uuid.UUI
 	if err = r.insert(ctx, tx, newToken); err != nil {
 		return fmt.Errorf("%s: %w", errWrapCreateRefreshToken, err)
 	}
-	if err = claimRefreshToken(ctx, tx, oldTokenID, newToken.ID); err != nil {
+	if err = claimRefreshToken(ctx, tx, oldTokenID, newToken); err != nil {
 		return err
 	}
 
@@ -149,13 +150,14 @@ func requireActiveUser(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) error
 	return nil
 }
 
-// claimRefreshToken marks a still usable token as replaced by newTokenID.
-func claimRefreshToken(ctx context.Context, tx *sqlx.Tx, oldTokenID, newTokenID uuid.UUID) error {
+// claimRefreshToken marks a still usable token of the successor's owner as
+// replaced by the successor.
+func claimRefreshToken(ctx context.Context, tx *sqlx.Tx, oldTokenID uuid.UUID, successor *models.RefreshToken) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE refresh_tokens
 		SET replaced_by = $2
-		WHERE id = $1 AND replaced_by IS NULL AND revoked_at IS NULL AND expires_at > NOW()`,
-		oldTokenID, newTokenID)
+		WHERE id = $1 AND user_id = $3 AND replaced_by IS NULL AND revoked_at IS NULL AND expires_at > NOW()`,
+		oldTokenID, successor.ID, successor.UserID)
 	if err != nil {
 		return fmt.Errorf("%s: %w", errWrapClaimRefreshToken, err)
 	}
