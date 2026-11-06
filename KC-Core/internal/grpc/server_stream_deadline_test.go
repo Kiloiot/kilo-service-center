@@ -59,8 +59,7 @@ func TestServer_StreamOutlivesHTTPWriteTimeout(t *testing.T) {
 	require.Equal(t, healthpb.HealthCheckResponse_NOT_SERVING, next.GetStatus())
 }
 
-// A stream exempt from the write timeout must not hold Stop past the drain:
-// the cleanups after Stop have to fit in the pod's grace period.
+// A stream exempt from the write timeout must not hold Stop past the drain, so the cleanups after it still run.
 func TestServer_StopEndsAnOpenStreamAfterTheDrain(t *testing.T) {
 	srv, err := NewServer(Config{
 		Log:          logger.NewNop(),
@@ -74,6 +73,7 @@ func TestServer_StopEndsAnOpenStreamAfterTheDrain(t *testing.T) {
 	srv.shutdownDrain = testShutdownDrain
 	done := make(chan error, 1)
 	go func() { done <- srv.Start() }()
+	t.Cleanup(srv.Stop)
 	require.Eventually(t, srv.Listening, testServerWait, testServerPoll)
 
 	conn, err := grpclib.NewClient(srv.listener.Addr().String(), grpclib.WithTransportCredentials(insecure.NewCredentials()))
