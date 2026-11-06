@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/mioty"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -92,7 +92,7 @@ func (s *unpinnedStore) PinSnapshotIfUnpinned(_ context.Context, ownerTenantID, 
 }
 
 func unpinned(id int64, model *uuid.UUID, typeEUI []byte) *models.EndPoint {
-	ep := &models.EndPoint{ID: id, EUI: models.EUIFromString(fmt.Sprintf("%016x", 0x7000+id)), OwnerTenantID: pinOwner, DeviceModelID: model}
+	ep := &models.EndPoint{ID: id, EUI: models.EUIFromString(mioty.FormatEUI64Lower(uint64(0x7000 + id))), OwnerTenantID: pinOwner, DeviceModelID: model}
 	if typeEUI != nil {
 		var e models.EUI
 		copy(e[:], typeEUI)
