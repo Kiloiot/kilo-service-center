@@ -19,16 +19,15 @@ import (
 )
 
 func TestRefreshTokenRepository_CreateForPassword_OpensASessionForCurrentCredentials(t *testing.T) {
-	const verifiedHash = "pbkdf2-verified-hash"
 	tests := []struct {
 		name       string
 		active     bool
 		storedHash *string
 		wantErr    error
 	}{
-		{name: "active user with the verified password", active: true, storedHash: ptr(verifiedHash)},
-		{name: "deactivated user", active: false, storedHash: ptr(verifiedHash), wantErr: storage.ErrUserInactive},
-		{name: "password changed after verification", active: true, storedHash: ptr("pbkdf2-newer-hash"), wantErr: storage.ErrUserCredentialsChanged},
+		{name: "active user with the verified password", active: true, storedHash: ptr(testVerifiedPasswordHash)},
+		{name: "deactivated user", active: false, storedHash: ptr(testVerifiedPasswordHash), wantErr: storage.ErrUserInactive},
+		{name: "password changed after verification", active: true, storedHash: ptr(testNewerPasswordHash), wantErr: storage.ErrUserCredentialsChanged},
 		{name: "password removed after verification", active: true, wantErr: storage.ErrUserCredentialsChanged},
 	}
 	for _, tt := range tests {
@@ -38,7 +37,7 @@ func TestRefreshTokenRepository_CreateForPassword_OpensASessionForCurrentCredent
 			require.NoError(t, err)
 			token := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
 
-			err = f.repo.CreateForPassword(testutil.TestContext(), token, verifiedHash)
+			err = f.repo.CreateForPassword(testutil.TestContext(), token, testVerifiedPasswordHash)
 
 			require.ErrorIs(t, err, tt.wantErr)
 			stored := f.stored(t, token)
@@ -333,34 +332,106 @@ func TestRefreshTokenRepository_Rotate_RefusesAnotherUsersToken(t *testing.T) {
 	assert.False(t, f.stored(t, f.old).IsReplaced())
 }
 
+// holdOwnerLock opens a transaction that holds the session owner lock of the
+// fixture user, as an in-flight rotation or sign-in does.
+func (f rotationFixture) holdOwnerLock(t *testing.T) *sqlx.Tx {
+	t.Helper()
+	ctx := testutil.TestContext()
+	tx, err := f.db.BeginTxx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { rollbackOpenTx(t, tx) })
+	_, err = lockActiveOwner(ctx, tx, f.userID)
+	require.NoError(t, err)
+	return tx
+}
+
+func rollbackOpenTx(t *testing.T, tx *sqlx.Tx) {
+	t.Helper()
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		t.Logf("roll back open transaction: %v", err)
+	}
+}
+
+// requireBlocked fails when done delivers within testLockWaitWindow.
+func requireBlocked(t *testing.T, done <-chan error, what string) {
+	t.Helper()
+	select {
+	case err := <-done:
+		t.Fatalf("%s finished while another transaction held the user: %v", what, err)
+	case <-time.After(testLockWaitWindow):
+	}
+}
+
 func TestRefreshTokenRepository_RevokeByUserID_WaitsForAnInFlightRotation(t *testing.T) {
 	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
 	ctx := testutil.TestContext()
-
-	rotation, err := f.db.BeginTxx(ctx, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		if err := rotation.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			t.Logf("roll back rotation: %v", err)
-		}
-	})
-	var isActive bool
-	require.NoError(t, rotation.GetContext(ctx, &isActive, `SELECT is_active FROM users WHERE id = $1 FOR SHARE`, f.userID))
+	rotation := f.holdOwnerLock(t)
 	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
-	_, err = rotation.NamedExecContext(ctx, insertRefreshTokenQuery, successor)
+	_, err := rotation.NamedExecContext(ctx, insertRefreshTokenQuery, successor)
 	require.NoError(t, err)
 
 	revoked := make(chan error, 1)
 	go func() { revoked <- f.repo.RevokeByUserID(ctx, f.userID) }()
-	select {
-	case err := <-revoked:
-		t.Fatalf("revocation finished while a rotation of the user was in flight: %v", err)
-	case <-time.After(testRevokeNotBlockedWithin):
-	}
+	requireBlocked(t, revoked, "revocation")
 
 	require.NoError(t, rotation.Commit())
 	require.NoError(t, <-revoked)
 	assert.True(t, f.stored(t, successor).IsRevoked(), "the revocation must cover the token the rotation minted")
+}
+
+// accountChanges are the writes that must not slip past an opening session.
+var accountChanges = []struct {
+	name    string
+	query   string
+	args    func(userID uuid.UUID) []any
+	wantErr error
+}{
+	{name: "deactivation", query: "UPDATE users SET is_active = false WHERE id = $1", args: func(id uuid.UUID) []any { return []any{id} }, wantErr: storage.ErrUserInactive},
+	{name: "password change", query: "UPDATE users SET password_hash = $2 WHERE id = $1", args: func(id uuid.UUID) []any { return []any{id, testNewerPasswordHash} }, wantErr: storage.ErrUserCredentialsChanged},
+}
+
+func TestRefreshTokenRepository_OwnerLock_HoldsBackAccountChanges(t *testing.T) {
+	for _, change := range accountChanges {
+		t.Run(change.name, func(t *testing.T) {
+			f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+			session := f.holdOwnerLock(t)
+
+			changed := make(chan error, 1)
+			go func() {
+				_, err := f.db.ExecContext(testutil.TestContext(), change.query, change.args(f.userID)...)
+				changed <- err
+			}()
+			requireBlocked(t, changed, change.name)
+
+			require.NoError(t, session.Commit())
+			require.NoError(t, <-changed)
+		})
+	}
+}
+
+func TestRefreshTokenRepository_CreateForPassword_WaitsForAnAccountChangeAndIsRefused(t *testing.T) {
+	for _, change := range accountChanges {
+		t.Run(change.name, func(t *testing.T) {
+			f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+			ctx := testutil.TestContext()
+			_, err := f.db.Exec("UPDATE users SET password_hash = $2 WHERE id = $1", f.userID, testVerifiedPasswordHash)
+			require.NoError(t, err)
+			tx, err := f.db.BeginTxx(ctx, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { rollbackOpenTx(t, tx) })
+			_, err = tx.ExecContext(ctx, change.query, change.args(f.userID)...)
+			require.NoError(t, err)
+			token := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+
+			opened := make(chan error, 1)
+			go func() { opened <- f.repo.CreateForPassword(ctx, token, testVerifiedPasswordHash) }()
+			requireBlocked(t, opened, "opening a session")
+
+			require.NoError(t, tx.Commit())
+			require.ErrorIs(t, <-opened, change.wantErr)
+			assert.Nil(t, f.stored(t, token), "a refused session must store nothing")
+		})
+	}
 }
 
 func TestRefreshTokenRepository_Rotate_ConcurrentClaimsLetExactlyOneWin(t *testing.T) {

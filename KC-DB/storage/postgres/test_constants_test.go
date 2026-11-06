@@ -17,8 +17,12 @@ const (
 	testEventWindow = 24 * time.Hour
 	// testTokenTTL is the refresh token lifetime used by repository tests.
 	testTokenTTL = 24 * time.Hour
-	// testRevokeNotBlockedWithin is how long a revocation must stay blocked behind an open rotation.
-	testRevokeNotBlockedWithin = 300 * time.Millisecond
+	// testLockWaitWindow is how long a write must stay blocked behind a user row lock held by another transaction.
+	testLockWaitWindow = 300 * time.Millisecond
+	// testVerifiedPasswordHash is the stored password hash a sign-in verified.
+	testVerifiedPasswordHash = "pbkdf2-verified-hash"
+	// testNewerPasswordHash is a password hash stored after a sign-in verified the previous one.
+	testNewerPasswordHash = "pbkdf2-newer-hash"
 	// testAggregationWindow is the summary aggregation window used by event tests.
 	testAggregationWindow = 5 * time.Minute
 	// testEventQueryLimit is the default page size for event query tests.
