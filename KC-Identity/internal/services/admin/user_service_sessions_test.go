@@ -192,6 +192,7 @@ func TestUpdatePassword_ReportsASessionRevocationFailure(t *testing.T) {
 
 	err := admin.UpdatePassword(ctx, userID, sessionTestNewPassword)
 	require.ErrorIs(t, err, errSessionRevokeUnavailable)
+	require.ErrorIs(t, err, auth.ErrPasswordChangedSessionsKept, "the caller must learn that the new password was stored")
 }
 
 func TestUpdate_DeactivationEndsSessionsAndRefusesRefresh(t *testing.T) {

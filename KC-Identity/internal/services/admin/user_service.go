@@ -273,7 +273,7 @@ func (s *UserAdminService) UpdatePassword(ctx context.Context, id uuid.UUID, new
 	// Revoked after the new hash is stored, so no login with the old password can slip in between.
 	if err := s.sessions.RevokeByUserID(ctx, id); err != nil {
 		s.logger.ErrorContext(ctx, LogUserSessionsRevokeFailed, logger.FieldUserIDCamel, id, logger.FieldError, err)
-		return fmt.Errorf("%s: %w", errOpRevokeSessions, err)
+		return fmt.Errorf("%s: %w: %w", errOpRevokeSessions, auth.ErrPasswordChangedSessionsKept, err)
 	}
 
 	s.logger.InfoContext(ctx, LogUserPasswordChanged, logger.FieldUserIDCamel, id)

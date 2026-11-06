@@ -420,6 +420,7 @@ func TestChangePassword_EndsOldSessionsOrReportsWhyNot(t *testing.T) {
 	}{
 		{name: "old sessions are revoked"},
 		{name: "a failed revocation is reported", revokeErr: errSvcTestStoreDown, wantErr: errSvcTestStoreDown},
+		{name: "a failed revocation says the password was stored", revokeErr: errSvcTestStoreDown, wantErr: ErrPasswordChangedSessionsKept},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

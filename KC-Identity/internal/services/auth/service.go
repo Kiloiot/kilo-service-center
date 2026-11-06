@@ -264,7 +264,7 @@ func (s *Service) endSessionsAfterPasswordChange(ctx context.Context, userID uui
 	}
 	if err := s.refreshTokenStore.RevokeByUserID(ctx, userID); err != nil {
 		s.logger.ErrorContext(ctx, logAuthPasswordRevokeFailed, logger.FieldUserIDSnake, userID, logger.FieldError, err)
-		return fmt.Errorf("%s: %w", errPrefixRevokeSessions, err)
+		return fmt.Errorf("%s: %w: %w", errPrefixRevokeSessions, ErrPasswordChangedSessionsKept, err)
 	}
 	return nil
 }
