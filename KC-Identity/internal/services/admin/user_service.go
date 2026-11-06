@@ -112,7 +112,8 @@ func (s *UserAdminService) GetByID(ctx context.Context, id uuid.UUID) (*models.U
 	return user, nil
 }
 
-// Update modifies an existing user.
+// Update modifies an existing user. Deactivating a user ends every session
+// they hold.
 func (s *UserAdminService) Update(ctx context.Context, id uuid.UUID, req *grpcservices.UserUpdateRequest) (*models.User, error) {
 	user, err := s.store.GetByID(ctx, id)
 	if err != nil {
@@ -123,24 +124,56 @@ func (s *UserAdminService) Update(ctx context.Context, id uuid.UUID, req *grpcse
 		return nil, fmt.Errorf("%s: %w", errOpGetUser, err)
 	}
 
-	// Check for duplicate email if email is being changed
-	if req.Email != nil {
-		normalized := auth.NormalizeEmail(*req.Email)
-		req.Email = &normalized
+	if err := s.applyEmailChange(ctx, user, req); err != nil {
+		return nil, err
 	}
-	if req.Email != nil && *req.Email != auth.NormalizeEmail(user.Email) {
-		existing, err := s.store.GetByEmail(ctx, *req.Email)
-		if err == nil && existing != nil && existing.ID != id {
-			return nil, ErrUserEmailExists
-		}
-		if err != nil && !errors.Is(err, storage.ErrRecordNotFound) {
-			s.logger.ErrorContext(ctx, LogUserEmailCheckFailed, logger.FieldError, err)
-			return nil, fmt.Errorf("%s: %w", errOpCheckEmail, err)
-		}
-		user.Email = *req.Email
+	wasActive := user.IsActive
+	applyUserFields(user, req)
+
+	if err := s.store.Update(ctx, user); err != nil {
+		s.logger.ErrorContext(ctx, LogUserUpdateFailed, logger.FieldUserIDCamel, id, logger.FieldError, err)
+		return nil, fmt.Errorf("%s: %w", errOpUpdateUser, err)
 	}
 
-	// Apply partial updates
+	// Revoked after the deactivation is stored, so no refresh can mint a token in between.
+	if wasActive && !user.IsActive {
+		if err := s.sessions.RevokeByUserID(ctx, id); err != nil {
+			s.logger.ErrorContext(ctx, LogUserDeactivationRevokeFailed, logger.FieldUserIDCamel, id, logger.FieldError, err)
+			return nil, fmt.Errorf("%s: %w", errOpRevokeSessions, err)
+		}
+	}
+
+	s.logger.InfoContext(ctx, LogUserUpdated, logger.FieldUserIDCamel, id)
+	return user, nil
+}
+
+// applyEmailChange normalizes the requested email and moves user to it,
+// refusing an address another account already holds.
+func (s *UserAdminService) applyEmailChange(ctx context.Context, user *models.User, req *grpcservices.UserUpdateRequest) error {
+	if req.Email == nil {
+		return nil
+	}
+	normalized := auth.NormalizeEmail(*req.Email)
+	req.Email = &normalized
+	if normalized == auth.NormalizeEmail(user.Email) {
+		return nil
+	}
+
+	existing, err := s.store.GetByEmail(ctx, normalized)
+	if err == nil && existing != nil && existing.ID != user.ID {
+		return ErrUserEmailExists
+	}
+	if err != nil && !errors.Is(err, storage.ErrRecordNotFound) {
+		s.logger.ErrorContext(ctx, LogUserEmailCheckFailed, logger.FieldError, err)
+		return fmt.Errorf("%s: %w", errOpCheckEmail, err)
+	}
+	user.Email = normalized
+	return nil
+}
+
+// applyUserFields copies the requested partial update onto user; an
+// administrator always holds every manager permission.
+func applyUserFields(user *models.User, req *grpcservices.UserUpdateRequest) {
 	if req.Note != nil {
 		user.Note = req.Note
 	}
@@ -162,21 +195,11 @@ func (s *UserAdminService) Update(ctx context.Context, id uuid.UUID, req *grpcse
 	if req.IsEndpointManager != nil {
 		user.IsEndpointManager = *req.IsEndpointManager
 	}
-
-	// Admin users automatically get all manager permissions
 	if req.IsAdmin != nil && *req.IsAdmin {
 		user.IsTenantManager = true
 		user.IsBaseStationManager = true
 		user.IsEndpointManager = true
 	}
-
-	if err := s.store.Update(ctx, user); err != nil {
-		s.logger.ErrorContext(ctx, LogUserUpdateFailed, logger.FieldUserIDCamel, id, logger.FieldError, err)
-		return nil, fmt.Errorf("%s: %w", errOpUpdateUser, err)
-	}
-
-	s.logger.InfoContext(ctx, LogUserUpdated, logger.FieldUserIDCamel, id)
-	return user, nil
 }
 
 // Delete removes a user.

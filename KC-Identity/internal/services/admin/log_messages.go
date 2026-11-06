@@ -59,6 +59,10 @@ const (
 	// the user's refresh-token sessions.
 	LogUserSessionsRevokeFailed = "failed to revoke user sessions after password reset"
 
+	// LogUserDeactivationRevokeFailed is logged when deactivating a user
+	// cannot end the user's refresh-token sessions.
+	LogUserDeactivationRevokeFailed = "failed to revoke user sessions after deactivation"
+
 	// LogUserPasswordChanged is logged after a user's password is changed.
 	LogUserPasswordChanged = "user password changed"
 )
