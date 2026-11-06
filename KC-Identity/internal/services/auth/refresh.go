@@ -169,12 +169,14 @@ func (s *Service) rotateRefreshToken(ctx context.Context, old *models.RefreshTok
 	}, nil
 }
 
-// rotationRefused maps a failed rotation to the error the caller sees. A token
-// another request claimed first is merely invalid, not reuse.
+// rotationRefused maps a failed rotation to the error the caller sees. A user
+// deactivated meanwhile loses every session; a token another request claimed
+// first is merely invalid, not reuse.
 func (s *Service) rotationRefused(ctx context.Context, userID uuid.UUID, err error) error {
 	switch {
 	case errors.Is(err, storage.ErrUserInactive):
 		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonUserInactive, logger.FieldUserIDSnake, userID)
+		s.revokeUserTokens(ctx, userID)
 		return ErrUserNotActive
 	case errors.Is(err, storage.ErrRefreshTokenNotClaimable):
 		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonTokenNotClaimable, logger.FieldUserIDSnake, userID)

@@ -350,12 +350,13 @@ func TestRefreshTokens_RefusesADeactivatedUserAndEndsTheirSessions(t *testing.T)
 
 func TestRefreshTokens_MapsARefusedRotation(t *testing.T) {
 	tests := []struct {
-		name      string
-		rotateErr error
-		wantErr   error
+		name        string
+		rotateErr   error
+		wantErr     error
+		wantRevokes int
 	}{
-		{name: "another request claimed the token first", rotateErr: storage.ErrRefreshTokenNotClaimable, wantErr: ErrInvalidRefreshToken},
-		{name: "user deactivated during the rotation", rotateErr: storage.ErrUserInactive, wantErr: ErrUserNotActive},
+		{name: "another request claimed the token first is not reuse", rotateErr: storage.ErrRefreshTokenNotClaimable, wantErr: ErrInvalidRefreshToken},
+		{name: "user deactivated during the rotation loses every session", rotateErr: storage.ErrUserInactive, wantErr: ErrUserNotActive, wantRevokes: 1},
 		{name: "store failure", rotateErr: errSvcTestStoreDown, wantErr: errSvcTestStoreDown},
 	}
 	for _, tt := range tests {
@@ -368,7 +369,7 @@ func TestRefreshTokens_MapsARefusedRotation(t *testing.T) {
 
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, tokens)
-			assert.Zero(t, f.tokens.revokes, "a lost race is not reuse: no session may be revoked")
+			assert.Equal(t, tt.wantRevokes, f.tokens.revokes)
 		})
 	}
 }
