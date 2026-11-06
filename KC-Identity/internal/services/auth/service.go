@@ -247,15 +247,25 @@ func (s *Service) ChangePassword(ctx context.Context, userID uuid.UUID, currentP
 		return err
 	}
 
-	// Revoke all refresh tokens (force re-login)
-	if s.refreshTokenEnabled {
-		if err := s.refreshTokenStore.RevokeByUserID(ctx, userID); err != nil {
-			// Log but don't fail - password was changed successfully
-			s.logger.WarnContext(ctx, logAuthPasswordRevokeFailed, logger.FieldUserIDSnake, userID, logger.FieldError, err)
-		}
+	if err := s.endSessionsAfterPasswordChange(ctx, userID); err != nil {
+		return err
 	}
 
 	s.logger.InfoContext(ctx, logAuthPasswordChangeSuccess, logger.FieldUserIDSnake, userID)
+	return nil
+}
+
+// endSessionsAfterPasswordChange revokes every refresh token of the user, so
+// a session opened with the old password cannot be renewed; a failure is
+// reported because the caller would otherwise believe the old sessions ended.
+func (s *Service) endSessionsAfterPasswordChange(ctx context.Context, userID uuid.UUID) error {
+	if !s.refreshTokenEnabled {
+		return nil
+	}
+	if err := s.refreshTokenStore.RevokeByUserID(ctx, userID); err != nil {
+		s.logger.ErrorContext(ctx, logAuthPasswordRevokeFailed, logger.FieldUserIDSnake, userID, logger.FieldError, err)
+		return fmt.Errorf("%s: %w", errPrefixRevokeSessions, err)
+	}
 	return nil
 }
 

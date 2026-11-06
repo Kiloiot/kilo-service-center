@@ -25,6 +25,7 @@ const (
 	svcTestTenantClaim = "org_id"
 	svcTestEmail       = "operator@example.com"
 	svcTestPassword    = "correct-horse1"
+	svcTestNewPassword = "battery-staple2"
 	svcTestAccessTTL   = time.Minute
 	svcTestRefreshTTL  = time.Hour
 	svcTestLocalLogin  = true
@@ -83,6 +84,7 @@ type tokenMemory struct {
 	owners    UserStore
 	createErr error
 	rotateErr error
+	revokeErr error
 	revokes   int
 }
 
@@ -144,6 +146,9 @@ func (m *tokenMemory) RevokeByUserID(_ context.Context, userID uuid.UUID) error 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.revokes++
+	if m.revokeErr != nil {
+		return m.revokeErr
+	}
 	now := time.Now().UTC()
 	for _, token := range m.byHash {
 		if token.UserID == userID && token.RevokedAt == nil {
@@ -405,4 +410,28 @@ func TestRefreshTokens_PresentingARotatedTokenAgainIsReuse(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrRefreshTokenReused)
 	assert.True(t, f.stored(t, first.RefreshToken).IsRevoked(), "reuse must revoke the successor too")
+}
+
+func TestChangePassword_EndsOldSessionsOrReportsWhyNot(t *testing.T) {
+	tests := []struct {
+		name      string
+		revokeErr error
+		wantErr   error
+	}{
+		{name: "old sessions are revoked"},
+		{name: "a failed revocation is reported", revokeErr: errSvcTestStoreDown, wantErr: errSvcTestStoreDown},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAuthFixture(t, true)
+			raw := f.seedRefreshToken(t, keepToken)
+			f.tokens.revokeErr = tt.revokeErr
+
+			err := f.svc.ChangePassword(testutil.TestContext(), f.user.ID, svcTestPassword, svcTestNewPassword)
+
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Equal(t, 1, f.tokens.revokes)
+			assert.Equal(t, tt.revokeErr == nil, f.stored(t, raw).IsRevoked())
+		})
+	}
 }
