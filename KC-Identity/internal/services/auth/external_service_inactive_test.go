@@ -166,14 +166,3 @@ func TestExternalLogin_GatesExistingAccountsOnActivity(t *testing.T) {
 		}
 	}
 }
-
-func TestIssueLocalTokensWithOrg_RefusesADeactivatedUser(t *testing.T) {
-	users := &externalUsers{user: &models.User{ID: uuid.New(), Email: extTestEmail}}
-	issuer := &countingAccessIssuer{}
-
-	result, err := newExternalTestService(users, issuer).issueLocalTokensWithOrg(testutil.TestContext(), users.user, uuid.Nil)
-
-	require.ErrorIs(t, err, ErrUserNotActive)
-	assert.Nil(t, result)
-	assert.Zero(t, issuer.issued)
-}

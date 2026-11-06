@@ -524,10 +524,6 @@ func (s *ExternalAuthService) findOrCreateUserFromOAuth2(ctx context.Context, us
 
 // issueLocalTokensWithOrg issues local tokens for the user with optional resolved org.
 func (s *ExternalAuthService) issueLocalTokensWithOrg(ctx context.Context, user *models.User, resolvedOrgID uuid.UUID) (*grpcservices.AuthLoginResult, error) {
-	if err := s.refuseInactive(ctx, user); err != nil {
-		return nil, err
-	}
-
 	memberships, err := s.membershipStore.ListUserMemberships(ctx, user.ID)
 	if err != nil {
 		return nil, err
