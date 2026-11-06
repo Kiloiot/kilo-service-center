@@ -33,7 +33,7 @@ This Code of Conduct applies within all project spaces — including the reposit
 
 ## Enforcement
 
-Instances of unacceptable behavior may be reported by contacting the project team at **opensource@kiloiot.io**. All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances. The project team is obligated to maintain confidentiality with regard to the reporter of an incident.
+Instances of unacceptable behavior may be reported by contacting the project team at **info@kiloiot.de**. All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances. The project team is obligated to maintain confidentiality with regard to the reporter of an incident.
 
 ## Attribution
 
