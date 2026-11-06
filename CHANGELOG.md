@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Built with Go 1.27.3.** Every module requires Go 1.27.3 and the images build on `golang:1.27-alpine`,
+  which brings the standard-library security fixes released since Go 1.26.3. No configuration changes.
+- **Dependencies refreshed for known vulnerabilities.** gRPC 1.85.0, OpenTelemetry 1.47.0,
+  `golang.org/x/net` 0.62.0 and `golang.org/x/crypto` 0.58.0, plus the testcontainers stack used by the
+  database tests. The runtime images move to Alpine 3.24 and KC-Web to nginx 1.30, and KC-Web's packages
+  are updated within their declared ranges.
+- **Plaintext HTTP/2 now comes from the standard library.** KC-Core without TLS and KC-Gateway accept
+  native gRPC over HTTP/2 with prior knowledge and gRPC-web over HTTP/1.1, as before; the HTTP/1.1
+  `Upgrade: h2c` handshake is no longer offered.
+
 ## [2.1.0] - 2026-10-23
 
 > **Upgrade note:** migration 000192 adds the tenant setting `is_snapshot_only_decoding`, off for
