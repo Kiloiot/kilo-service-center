@@ -95,5 +95,6 @@ const (
 	errPrefixIssueAccessToken   = "issue access token"
 	errPrefixIssueRefreshToken  = "issue refresh token"
 	errPrefixRotateRefreshToken = "rotate refresh token"
+	errPrefixOpenRefreshSession = "open refresh session"
 	errPrefixGenerateSalt       = "generate salt"
 )

@@ -173,7 +173,7 @@ func (s *Service) rotateRefreshToken(ctx context.Context, old *models.RefreshTok
 // another request claimed first is merely invalid, not reuse.
 func (s *Service) rotationRefused(ctx context.Context, userID uuid.UUID, err error) error {
 	switch {
-	case errors.Is(err, storage.ErrRefreshTokenUserInactive):
+	case errors.Is(err, storage.ErrUserInactive):
 		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonUserInactive, logger.FieldUserIDSnake, userID)
 		return ErrUserNotActive
 	case errors.Is(err, storage.ErrRefreshTokenNotClaimable):

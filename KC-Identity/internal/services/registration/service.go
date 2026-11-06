@@ -56,6 +56,12 @@ type SessionTokenIssuer interface {
 	GetRefreshExpiresAt() time.Time
 }
 
+// SessionStore opens the first session of a new account: it stores the
+// refresh token only while the user is active and still has passwordHash.
+type SessionStore interface {
+	CreateForPassword(ctx context.Context, token *models.RefreshToken, passwordHash string) error
+}
+
 // AccountRegistrar atomically provisions an account (user, tenant, org, membership).
 type AccountRegistrar interface {
 	RegisterAccount(ctx context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error)
@@ -67,7 +73,7 @@ type Service struct {
 	registrationRepo    AccountRegistrar
 	userStore           auth.UserStore
 	tokenIssuer         SessionTokenIssuer
-	refreshTokenStore   auth.RefreshTokenStore
+	refreshTokenStore   SessionStore
 	membershipStore     auth.OrganizationMembershipStore
 	registrationEnabled bool
 	localLoginEnabled   bool
@@ -83,7 +89,7 @@ func NewService(
 	registrationRepo AccountRegistrar,
 	userStore auth.UserStore,
 	tokenIssuer SessionTokenIssuer,
-	refreshTokenStore auth.RefreshTokenStore,
+	refreshTokenStore SessionStore,
 	membershipStore auth.OrganizationMembershipStore,
 	registrationEnabled bool,
 	localLoginEnabled bool,
@@ -247,7 +253,7 @@ func (s *Service) RegisterAccount(ctx context.Context, req *grpcservices.Registe
 				IssuedAt:  time.Now().UTC(),
 				ExpiresAt: s.tokenIssuer.GetRefreshExpiresAt(),
 			}
-			if storeErr := s.refreshTokenStore.Create(ctx, rt); storeErr != nil {
+			if storeErr := s.refreshTokenStore.CreateForPassword(ctx, rt, hash); storeErr != nil {
 				s.log.ErrorContext(ctx, LogRegistrationRefreshTokenStoreFailed, logger.FieldUserIDSnake, result.User.ID, logger.FieldError, storeErr)
 			} else {
 				tokens.RefreshToken = refreshToken

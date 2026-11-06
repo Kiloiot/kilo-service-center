@@ -491,9 +491,11 @@ const (
 	logMsgRoamingAgreementsRepositoryNotSupported = "RoamingAgreements repository not supported"
 
 	// refresh_token_repository.go
+	errWrapBeginRefreshTokenCreation    = "begin refresh token creation transaction"
 	errWrapBeginRefreshTokenRevocation  = "begin refresh token revocation transaction"
 	errWrapBeginRefreshTokenRotation    = "begin refresh token rotation transaction"
 	errWrapClaimRefreshToken            = "claim refresh token"
+	errWrapCommitRefreshTokenCreation   = "commit refresh token creation transaction"
 	errWrapCommitRefreshTokenRevocation = "commit refresh token revocation transaction"
 	errWrapCommitRefreshTokenRotation   = "commit refresh token rotation transaction"
 	errWrapCreateRefreshToken           = "create refresh token"

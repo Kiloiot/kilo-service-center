@@ -67,26 +67,11 @@ func (m *mockUserStore) SetPasswordHash(ctx context.Context, userID uuid.UUID, h
 }
 
 type mockRefreshTokenStore struct {
-	createFn       func(ctx context.Context, token *models.RefreshToken) error
-	getByHashFn    func(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
-	rotateFn       func(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error
-	revokeByUserFn func(ctx context.Context, userID uuid.UUID) error
+	createForPasswordFn func(ctx context.Context, token *models.RefreshToken, passwordHash string) error
 }
 
-func (m *mockRefreshTokenStore) Create(ctx context.Context, token *models.RefreshToken) error {
-	return m.createFn(ctx, token)
-}
-
-func (m *mockRefreshTokenStore) GetByHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error) {
-	return m.getByHashFn(ctx, tokenHash)
-}
-
-func (m *mockRefreshTokenStore) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error {
-	return m.rotateFn(ctx, oldTokenID, newToken)
-}
-
-func (m *mockRefreshTokenStore) RevokeByUserID(ctx context.Context, userID uuid.UUID) error {
-	return m.revokeByUserFn(ctx, userID)
+func (m *mockRefreshTokenStore) CreateForPassword(ctx context.Context, token *models.RefreshToken, passwordHash string) error {
+	return m.createForPasswordFn(ctx, token, passwordHash)
 }
 
 type mockMembershipStore struct {
@@ -126,6 +111,7 @@ func validRequest() *grpcservices.RegisterAccountRequest {
 
 func TestRegisterAccount_Success(t *testing.T) {
 	orgID := uuid.New()
+	var registeredHash *string
 
 	regRepo := &mockRegistrationRepo{
 		registerAccountFn: func(_ context.Context, params *models.RegistrationParams) (*models.RegistrationResult, error) {
@@ -134,6 +120,7 @@ func TestRegisterAccount_Success(t *testing.T) {
 			assert.NotNil(t, params.User.PasswordHash, "password hash should be set")
 			assert.False(t, params.User.IsAdmin, "new user must not be admin")
 			assert.True(t, params.User.IsActive, "new user must be active")
+			registeredHash = params.User.PasswordHash
 
 			// Return the user as-is with an org
 			return &models.RegistrationResult{
@@ -151,9 +138,11 @@ func TestRegisterAccount_Success(t *testing.T) {
 	}
 
 	var storedRefreshToken *models.RefreshToken
+	var sessionPasswordHash string
 	refreshStore := &mockRefreshTokenStore{
-		createFn: func(_ context.Context, token *models.RefreshToken) error {
+		createForPasswordFn: func(_ context.Context, token *models.RefreshToken, passwordHash string) error {
 			storedRefreshToken = token
+			sessionPasswordHash = passwordHash
 			return nil
 		},
 	}
@@ -196,6 +185,8 @@ func TestRegisterAccount_Success(t *testing.T) {
 	require.NotNil(t, storedRefreshToken, "refresh token should be persisted")
 	assert.NotEqual(t, uuid.Nil, storedRefreshToken.UserID)
 	assert.NotEmpty(t, storedRefreshToken.TokenHash)
+	require.NotNil(t, registeredHash)
+	assert.Equal(t, *registeredHash, sessionPasswordHash, "the session must be bound to the password just stored")
 
 	// Verify profile
 	require.NotNil(t, result.Profile)
@@ -235,7 +226,7 @@ func TestRegisterAccount_Success_RefreshDisabled(t *testing.T) {
 	}
 
 	refreshStore := &mockRefreshTokenStore{
-		createFn: func(_ context.Context, _ *models.RefreshToken) error {
+		createForPasswordFn: func(_ context.Context, _ *models.RefreshToken, _ string) error {
 			t.Fatal("refresh token store should not be called when disabled")
 			return nil
 		},
@@ -501,7 +492,7 @@ func TestRegisterAccount_MembershipLoadFailure_StillSucceeds(t *testing.T) {
 	}
 
 	refreshStore := &mockRefreshTokenStore{
-		createFn: func(_ context.Context, _ *models.RefreshToken) error {
+		createForPasswordFn: func(_ context.Context, _ *models.RefreshToken, _ string) error {
 			return nil
 		},
 	}
@@ -545,7 +536,7 @@ func TestRegisterAccount_RefreshTokenStoreFailure_StillSucceeds(t *testing.T) {
 	}
 
 	refreshStore := &mockRefreshTokenStore{
-		createFn: func(_ context.Context, _ *models.RefreshToken) error {
+		createForPasswordFn: func(_ context.Context, _ *models.RefreshToken, _ string) error {
 			return errRedisUnavailable
 		},
 	}
@@ -624,7 +615,7 @@ func TestRegisterAccount_PasswordBoundary(t *testing.T) {
 	}
 
 	refreshStore := &mockRefreshTokenStore{
-		createFn: func(_ context.Context, _ *models.RefreshToken) error { return nil },
+		createForPasswordFn: func(_ context.Context, _ *models.RefreshToken, _ string) error { return nil },
 	}
 
 	membershipStore := &mockMembershipStore{
@@ -676,7 +667,7 @@ func TestRegisterAccount_UserModelFields(t *testing.T) {
 	}
 
 	refreshStore := &mockRefreshTokenStore{
-		createFn: func(_ context.Context, _ *models.RefreshToken) error { return nil },
+		createForPasswordFn: func(_ context.Context, _ *models.RefreshToken, _ string) error { return nil },
 	}
 
 	membershipStore := &mockMembershipStore{
@@ -736,7 +727,7 @@ func TestRegisterAccount_EmailNormalization(t *testing.T) {
 	}
 
 	refreshStore := &mockRefreshTokenStore{
-		createFn: func(_ context.Context, _ *models.RefreshToken) error { return nil },
+		createForPasswordFn: func(_ context.Context, _ *models.RefreshToken, _ string) error { return nil },
 	}
 
 	membershipStore := &mockMembershipStore{

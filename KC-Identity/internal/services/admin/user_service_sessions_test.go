@@ -34,7 +34,9 @@ const (
 var errSessionRevokeUnavailable = errors.New("refresh token store unavailable")
 
 // refreshTokenMemory honours the refresh token store contract: an unknown
-// hash is (nil, nil) and Rotate claims only a usable token of an active user.
+// hash is (nil, nil), a session opens only for an active owner who still has
+// the verified password, and Rotate claims only a usable token of an active
+// owner.
 type refreshTokenMemory struct {
 	mu        sync.Mutex
 	byHash    map[string]*models.RefreshToken
@@ -46,7 +48,14 @@ func newRefreshTokenMemory(owners UserAdminStore) *refreshTokenMemory {
 	return &refreshTokenMemory{byHash: map[string]*models.RefreshToken{}, owners: owners}
 }
 
-func (m *refreshTokenMemory) Create(_ context.Context, token *models.RefreshToken) error {
+func (m *refreshTokenMemory) CreateForPassword(ctx context.Context, token *models.RefreshToken, passwordHash string) error {
+	owner, err := m.owners.GetByID(ctx, token.UserID)
+	if err != nil || !owner.IsActive {
+		return storage.ErrUserInactive
+	}
+	if owner.PasswordHash == nil || *owner.PasswordHash != passwordHash {
+		return storage.ErrUserCredentialsChanged
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	stored := *token
@@ -68,7 +77,7 @@ func (m *refreshTokenMemory) GetByHash(_ context.Context, tokenHash string) (*mo
 func (m *refreshTokenMemory) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error {
 	owner, err := m.owners.GetByID(ctx, newToken.UserID)
 	if err != nil || !owner.IsActive {
-		return storage.ErrRefreshTokenUserInactive
+		return storage.ErrUserInactive
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

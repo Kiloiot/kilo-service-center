@@ -36,22 +36,42 @@ const insertRefreshTokenQuery = `
 		:revoked_at, :replaced_by, :created_at
 	)`
 
-// Create inserts a new refresh token
-func (r *RefreshTokenRepository) Create(ctx context.Context, token *models.RefreshToken) error {
-	if err := r.insert(ctx, r.db, token); err != nil {
+// CreateForPassword opens a session: it stores token only while its owner is
+// active and still has passwordHash, the hash the caller verified or set. It
+// fails with storage.ErrUserInactive or storage.ErrUserCredentialsChanged and
+// stores nothing otherwise.
+func (r *RefreshTokenRepository) CreateForPassword(ctx context.Context, token *models.RefreshToken, passwordHash string) (err error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapBeginRefreshTokenCreation, err)
+	}
+	defer sqlcleanup.RollbackUncommitted(tx, errWrapRollbackTransaction, &err)
+
+	owner, err := lockActiveOwner(ctx, tx, token.UserID)
+	if err != nil {
+		return err
+	}
+	if owner.PasswordHash == nil || *owner.PasswordHash != passwordHash {
+		return storage.ErrUserCredentialsChanged
+	}
+	if err = r.insert(ctx, tx, token); err != nil {
 		return fmt.Errorf("%s: %w", errWrapCreateRefreshToken, err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("%s: %w", errWrapCommitRefreshTokenCreation, err)
 	}
 	return nil
 }
 
-// insert stamps the creation times of token and stores it through ext.
-func (r *RefreshTokenRepository) insert(ctx context.Context, ext sqlx.ExtContext, token *models.RefreshToken) error {
+// insert stamps the creation times of token and stores it within tx.
+func (r *RefreshTokenRepository) insert(ctx context.Context, tx *sqlx.Tx, token *models.RefreshToken) error {
 	now := r.clock.Now().UTC()
 	token.CreatedAt = now
 	if token.IssuedAt.IsZero() {
 		token.IssuedAt = now
 	}
-	_, err := sqlx.NamedExecContext(ctx, ext, insertRefreshTokenQuery, token)
+	_, err := tx.NamedExecContext(ctx, insertRefreshTokenQuery, token)
 	return err
 }
 
@@ -105,7 +125,7 @@ func (r *RefreshTokenRepository) RevokeByUserID(ctx context.Context, userID uuid
 }
 
 // Rotate atomically stores newToken and marks oldTokenID as replaced by it.
-// It fails with storage.ErrRefreshTokenUserInactive when the owner of
+// It fails with storage.ErrUserInactive when the owner of
 // newToken is missing or deactivated, and with
 // storage.ErrRefreshTokenNotClaimable when the old token belongs to another
 // user or is already replaced, revoked or expired; nothing is stored in either
@@ -117,7 +137,7 @@ func (r *RefreshTokenRepository) Rotate(ctx context.Context, oldTokenID uuid.UUI
 	}
 	defer sqlcleanup.RollbackUncommitted(tx, errWrapRollbackTransaction, &err)
 
-	if err = requireActiveUser(ctx, tx, newToken.UserID); err != nil {
+	if _, err = lockActiveOwner(ctx, tx, newToken.UserID); err != nil {
 		return err
 	}
 	if err = r.insert(ctx, tx, newToken); err != nil {
@@ -133,21 +153,29 @@ func (r *RefreshTokenRepository) Rotate(ctx context.Context, oldTokenID uuid.UUI
 	return nil
 }
 
-// requireActiveUser share-locks the user row for the rest of tx and refuses a
-// missing or deactivated user.
-func requireActiveUser(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) error {
-	var isActive bool
-	err := tx.GetContext(ctx, &isActive, `SELECT is_active FROM users WHERE id = $1 FOR SHARE`, userID)
+// tokenOwner is the state of a user that decides whether a session may be
+// opened or renewed for them.
+type tokenOwner struct {
+	IsActive     bool    `db:"is_active"`
+	PasswordHash *string `db:"password_hash"`
+}
+
+// lockActiveOwner share-locks the user row for the rest of tx, so a
+// deactivation, password change or revocation of the user waits for tx, and
+// refuses a missing or deactivated user.
+func lockActiveOwner(ctx context.Context, tx *sqlx.Tx, userID uuid.UUID) (*tokenOwner, error) {
+	var owner tokenOwner
+	err := tx.GetContext(ctx, &owner, `SELECT is_active, password_hash FROM users WHERE id = $1 FOR SHARE`, userID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return storage.ErrRefreshTokenUserInactive
+		return nil, storage.ErrUserInactive
 	}
 	if err != nil {
-		return fmt.Errorf("%s: %w", errWrapLockRefreshTokenUser, err)
+		return nil, fmt.Errorf("%s: %w", errWrapLockRefreshTokenUser, err)
 	}
-	if !isActive {
-		return storage.ErrRefreshTokenUserInactive
+	if !owner.IsActive {
+		return nil, storage.ErrUserInactive
 	}
-	return nil
+	return &owner, nil
 }
 
 // claimRefreshToken marks a still usable token of the successor's owner as

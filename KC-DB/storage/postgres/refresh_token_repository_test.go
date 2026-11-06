@@ -18,53 +18,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRefreshTokenRepository_Create_Success tests successful token creation
-func TestRefreshTokenRepository_Create_Success(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
+func TestRefreshTokenRepository_CreateForPassword_OpensASessionForCurrentCredentials(t *testing.T) {
+	const verifiedHash = "pbkdf2-verified-hash"
+	tests := []struct {
+		name       string
+		active     bool
+		storedHash *string
+		wantErr    error
+	}{
+		{name: "active user with the verified password", active: true, storedHash: ptr(verifiedHash)},
+		{name: "deactivated user", active: false, storedHash: ptr(verifiedHash), wantErr: storage.ErrUserInactive},
+		{name: "password changed after verification", active: true, storedHash: ptr("pbkdf2-newer-hash"), wantErr: storage.ErrUserCredentialsChanged},
+		{name: "password removed after verification", active: true, wantErr: storage.ErrUserCredentialsChanged},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newRotationFixture(t, tt.active, time.Now().UTC().Add(testTokenTTL))
+			_, err := f.db.Exec("UPDATE users SET password_hash = $2 WHERE id = $1", f.userID, tt.storedHash)
+			require.NoError(t, err)
+			token := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
 
-	db := SetupTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
+			err = f.repo.CreateForPassword(testutil.TestContext(), token, verifiedHash)
 
-	repo := NewRefreshTokenRepository(db, clock.SystemClock{})
-	userRepo := NewUserRepository(db, clock.SystemClock{})
-	ctx := testutil.TestContext()
-
-	// Create a test user first (FK constraint)
-	userID := uuid.New()
-	user := &models.User{
-		ID:       userID,
-		Email:    "refresh-create@example.com",
-		IsActive: true,
+			require.ErrorIs(t, err, tt.wantErr)
+			stored := f.stored(t, token)
+			if tt.wantErr != nil {
+				assert.Nil(t, stored, "a refused session must store nothing")
+				return
+			}
+			require.NotNil(t, stored)
+			assert.True(t, stored.IsValid())
+			assert.False(t, token.CreatedAt.IsZero())
+		})
 	}
-	err := userRepo.Create(ctx, user)
-	require.NoError(t, err)
+}
 
-	tokenID := uuid.New()
-	tokenHash := "testhash" + tokenID.String()[:8]
-	token := &models.RefreshToken{
-		ID:        tokenID,
-		UserID:    userID,
-		TokenHash: tokenHash,
-		IssuedAt:  time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(testTokenTTL),
-	}
+func TestRefreshTokenRepository_CreateForPassword_RefusesAMissingUser(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	token := rotationToken(uuid.New(), time.Now().UTC().Add(testTokenTTL))
 
-	// Cleanup after test
-	defer func() {
-		_, _ = db.Exec("DELETE FROM refresh_tokens WHERE id = $1", tokenID)
-		_, _ = db.Exec("DELETE FROM users WHERE id = $1", userID)
-	}()
+	err := f.repo.CreateForPassword(testutil.TestContext(), token, "any-hash")
 
-	// Test: Create token
-	err = repo.Create(ctx, token)
-	require.NoError(t, err)
-	assert.False(t, token.CreatedAt.IsZero())
+	require.ErrorIs(t, err, storage.ErrUserInactive)
+	assert.Nil(t, f.stored(t, token))
 }
 
 // TestRefreshTokenRepository_GetByHash_Success tests successful token retrieval
@@ -110,8 +106,7 @@ func TestRefreshTokenRepository_GetByHash_Success(t *testing.T) {
 		_, _ = db.Exec("DELETE FROM users WHERE id = $1", userID)
 	}()
 
-	// Create token first
-	err = repo.Create(ctx, token)
+	_, err = db.NamedExec(insertRefreshTokenQuery, token)
 	require.NoError(t, err)
 
 	// Test: Get token by hash
@@ -183,7 +178,7 @@ func TestRefreshTokenRepository_RevokeByUserID_Success(t *testing.T) {
 			IssuedAt:  time.Now().UTC(),
 			ExpiresAt: time.Now().UTC().Add(testTokenTTL),
 		}
-		err := repo.Create(ctx, token)
+		_, err := db.NamedExec(insertRefreshTokenQuery, token)
 		require.NoError(t, err)
 	}
 
@@ -404,7 +399,7 @@ func TestRefreshTokenRepository_Rotate_RefusesAnInactiveUser(t *testing.T) {
 
 	err := f.repo.Rotate(testutil.TestContext(), f.old.ID, successor)
 
-	require.ErrorIs(t, err, storage.ErrRefreshTokenUserInactive)
+	require.ErrorIs(t, err, storage.ErrUserInactive)
 	assert.Nil(t, f.stored(t, successor))
 	old := f.stored(t, f.old)
 	require.NotNil(t, old)

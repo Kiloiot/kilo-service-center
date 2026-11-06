@@ -31,7 +31,7 @@ type OrgDirectory interface {
 
 // RefreshTokenStore provides refresh token persistence.
 type RefreshTokenStore interface {
-	Create(ctx context.Context, token *models.RefreshToken) error
+	CreateForPassword(ctx context.Context, token *models.RefreshToken, passwordHash string) error
 	GetByHash(ctx context.Context, tokenHash string) (*models.RefreshToken, error)
 	Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error
 	RevokeByUserID(ctx context.Context, userID uuid.UUID) error

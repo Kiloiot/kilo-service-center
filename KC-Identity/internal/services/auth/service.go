@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -47,6 +46,7 @@ const (
 
 	reasonUserNotFound       = "user_not_found"
 	reasonUserInactive       = "user_inactive"
+	reasonCredentialsChanged = "credentials_changed"
 	reasonNoPasswordSet      = "no_password_set"
 	reasonInvalidPassword    = "invalid_password"
 	reasonNoMemberships      = "no_memberships"
@@ -99,122 +99,6 @@ func NewService(
 func (s *Service) WithCEProvider(provider MembershipSynthesizer) *Service {
 	s.ceProvider = provider
 	return s
-}
-
-// Login authenticates user and returns tokens with user profile.
-func (s *Service) Login(ctx context.Context, email, password string) (*grpcservices.AuthLoginResult, error) {
-	email = NormalizeEmail(email)
-	s.logger.InfoContext(ctx, logAuthLoginAttempt)
-
-	if !s.localLoginEnabled {
-		s.logger.WarnContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldReason, reasonLocalLoginDisabled)
-		return nil, ErrLocalLoginDisabled
-	}
-
-	// Defensive nil check: tokenIssuer may be nil when token generation is disabled
-	if s.tokenIssuer == nil {
-		s.logger.WarnContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldReason, reasonTokenGenDisabled)
-		return nil, ErrTokenGenerationDisabled
-	}
-
-	// Look up user by email
-	user, err := s.userStore.GetByEmail(ctx, email)
-	if err != nil {
-		// Don't reveal whether email exists
-		s.logger.WarnContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldReason, reasonUserNotFound)
-		return nil, ErrInvalidCredentials
-	}
-
-	if err := requireActive(user); err != nil {
-		s.logger.WarnContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldReason, reasonUserInactive)
-		return nil, err
-	}
-
-	// Check if user has a password set
-	if user.PasswordHash == nil || *user.PasswordHash == "" {
-		s.logger.WarnContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldReason, reasonNoPasswordSet)
-		return nil, ErrNoPasswordSet
-	}
-
-	// Verify password
-	if err := VerifyPassword(password, *user.PasswordHash); err != nil {
-		s.logger.WarnContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldReason, reasonInvalidPassword)
-		return nil, ErrInvalidCredentials
-	}
-
-	// Get user memberships
-	memberships, err := s.membershipStore.ListUserMemberships(ctx, user.ID)
-	if err != nil {
-		s.logger.ErrorContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldError, err)
-		return nil, err
-	}
-
-	// User must have at least one active membership (CE synthesizes one if needed)
-	if len(memberships) == 0 && s.ceProvider != nil {
-		ceMembership, ceErr := s.ceProvider.SynthesizeMembership(ctx, user)
-		if ceErr != nil {
-			s.logger.ErrorContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldError, ceErr)
-			return nil, ceErr
-		}
-		memberships = append(memberships, &models.OrganizationMembershipWithOrg{
-			OrgID:              ceMembership.OrgID,
-			OrgName:            ceMembership.OrgName,
-			Role:               ceMembership.Role,
-			IsOrgAdmin:         ceMembership.IsOrgAdmin,
-			IsBaseStationAdmin: ceMembership.IsBaseStationAdmin,
-			IsEndpointAdmin:    ceMembership.IsEndpointAdmin,
-		})
-	} else if len(memberships) == 0 {
-		s.logger.WarnContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldReason, reasonNoMemberships)
-		return nil, ErrMembershipRequired
-	}
-
-	// Get default org (first membership by created_at)
-	defaultOrgID := memberships[0].OrgID
-
-	// Issue tokens
-	accessToken, err := s.tokenIssuer.IssueAccessToken(user.ID, &defaultOrgID)
-	if err != nil {
-		s.logger.ErrorContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldError, err)
-		return nil, err
-	}
-
-	var refreshToken string
-	if s.refreshTokenEnabled {
-		refreshToken, err = s.tokenIssuer.IssueRefreshToken(user.ID)
-		if err != nil {
-			s.logger.ErrorContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldError, err)
-			return nil, err
-		}
-
-		// Store refresh token hash
-		tokenHash := HashRefreshToken(refreshToken)
-		rt := &models.RefreshToken{
-			ID:        uuid.New(),
-			UserID:    user.ID,
-			TokenHash: tokenHash,
-			IssuedAt:  time.Now().UTC(),
-			ExpiresAt: s.tokenIssuer.GetRefreshExpiresAt(),
-		}
-		if err := s.refreshTokenStore.Create(ctx, rt); err != nil {
-			s.logger.ErrorContext(ctx, logAuthLoginFailed, logger.FieldEmail, email, logger.FieldError, err)
-			return nil, err
-		}
-	}
-
-	s.logger.InfoContext(ctx, logAuthLoginSuccess, logger.FieldEmail, email, logger.FieldUserIDSnake, user.ID)
-
-	profile := newLoginProfile(user, memberships, defaultOrgID)
-
-	return &grpcservices.AuthLoginResult{
-		Tokens: &grpcservices.AuthTokens{
-			AccessToken:      accessToken,
-			RefreshToken:     refreshToken,
-			AccessExpiresIn:  s.tokenIssuer.GetAccessTTL(),
-			RefreshExpiresIn: s.tokenIssuer.GetRefreshTTL(),
-		},
-		Profile: profile,
-	}, nil
 }
 
 // GetProfile retrieves user profile with memberships.

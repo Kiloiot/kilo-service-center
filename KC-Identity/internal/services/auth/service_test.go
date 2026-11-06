@@ -71,22 +71,38 @@ func (m *userMemory) SetPasswordHash(_ context.Context, id uuid.UUID, hash strin
 }
 
 // tokenMemory honours the refresh token store contract: an unknown hash is
-// (nil, nil) and Rotate claims only a usable token of an active user.
-// rotateErr, when set, replaces the outcome of Rotate.
+// (nil, nil), a session opens only for an active owner who still has the
+// verified password, and Rotate claims only a usable token of an active
+// owner. createErr and rotateErr, when set, replace those outcomes.
 type tokenMemory struct {
 	mu        sync.Mutex
 	byHash    map[string]*models.RefreshToken
 	owners    UserStore
+	createErr error
 	rotateErr error
 	revokes   int
 }
 
-func (m *tokenMemory) Create(_ context.Context, token *models.RefreshToken) error {
+func (m *tokenMemory) CreateForPassword(ctx context.Context, token *models.RefreshToken, passwordHash string) error {
+	if m.createErr != nil {
+		return m.createErr
+	}
+	owner, err := m.owners.GetByID(ctx, token.UserID)
+	if err != nil || !owner.IsActive {
+		return storage.ErrUserInactive
+	}
+	if owner.PasswordHash == nil || *owner.PasswordHash != passwordHash {
+		return storage.ErrUserCredentialsChanged
+	}
+	m.seed(token)
+	return nil
+}
+
+func (m *tokenMemory) seed(token *models.RefreshToken) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	stored := *token
 	m.byHash[token.TokenHash] = &stored
-	return nil
 }
 
 func (m *tokenMemory) GetByHash(_ context.Context, tokenHash string) (*models.RefreshToken, error) {
@@ -106,7 +122,7 @@ func (m *tokenMemory) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken
 	}
 	owner, err := m.owners.GetByID(ctx, newToken.UserID)
 	if err != nil || !owner.IsActive {
-		return storage.ErrRefreshTokenUserInactive
+		return storage.ErrUserInactive
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -183,7 +199,7 @@ func (f authFixture) seedRefreshToken(t *testing.T, edit func(*models.RefreshTok
 		ExpiresAt: time.Now().UTC().Add(svcTestRefreshTTL),
 	}
 	edit(token)
-	require.NoError(t, f.tokens.Create(testutil.TestContext(), token))
+	f.tokens.seed(token)
 	return raw
 }
 
@@ -224,6 +240,48 @@ func TestLogin_IssuesTokensOnlyToActiveUsers(t *testing.T) {
 		})
 	}
 }
+
+// staleByEmail answers sign-in lookups with the account as it was before a
+// concurrent change, while every other read sees the change.
+type staleByEmail struct {
+	*userMemory
+	snapshot models.User
+}
+
+func (s staleByEmail) GetByEmail(context.Context, string) (*models.User, error) {
+	copied := s.snapshot
+	return &copied, nil
+}
+
+func TestLogin_RefusesWhenTheAccountChangesBeforeTheSessionOpens(t *testing.T) {
+	tests := []struct {
+		name      string
+		change    func(*models.User)
+		createErr error
+		wantErr   error
+	}{
+		{name: "deactivated after the password check", change: func(u *models.User) { u.IsActive = false }, wantErr: ErrUserNotActive},
+		{name: "password changed after the password check", change: func(u *models.User) { u.PasswordHash = ptrTo("pbkdf2-newer") }, wantErr: ErrInvalidCredentials},
+		{name: "session store failure", change: func(*models.User) {}, createErr: errSvcTestStoreDown, wantErr: errSvcTestStoreDown},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAuthFixture(t, true)
+			stale := staleByEmail{userMemory: f.users, snapshot: *f.user}
+			tt.change(f.user)
+			f.tokens.createErr = tt.createErr
+			svc := NewService(stale, oneMembership{}, f.tokens, f.issuer, svcTestLocalLogin, svcTestRefresh, logger.NewNop())
+
+			result, err := svc.Login(testutil.TestContext(), svcTestEmail, svcTestPassword)
+
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Nil(t, result, "a refused session must return no token at all")
+			assert.Zero(t, f.tokens.count())
+		})
+	}
+}
+
+func ptrTo(s string) *string { return &s }
 
 func TestRefreshTokens_RotatesAUsableToken(t *testing.T) {
 	f := newAuthFixture(t, true)
@@ -297,7 +355,7 @@ func TestRefreshTokens_MapsARefusedRotation(t *testing.T) {
 		wantErr   error
 	}{
 		{name: "another request claimed the token first", rotateErr: storage.ErrRefreshTokenNotClaimable, wantErr: ErrInvalidRefreshToken},
-		{name: "user deactivated during the rotation", rotateErr: storage.ErrRefreshTokenUserInactive, wantErr: ErrUserNotActive},
+		{name: "user deactivated during the rotation", rotateErr: storage.ErrUserInactive, wantErr: ErrUserNotActive},
 		{name: "store failure", rotateErr: errSvcTestStoreDown, wantErr: errSvcTestStoreDown},
 	}
 	for _, tt := range tests {

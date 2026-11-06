@@ -14,10 +14,10 @@ const (
 	errWrapDownlinkReservationReserve = "downlink reservation: reserve"
 
 	// refresh_token_adapter.go
-	errWrapRefreshTokenAdapterCreate         = "refresh token adapter: create"
-	errWrapRefreshTokenAdapterGetByHash      = "refresh token adapter: get_by_hash"
-	errWrapRefreshTokenAdapterRevokeByUserID = "refresh token adapter: revoke_by_user_id"
-	errWrapRefreshTokenAdapterRotate         = "refresh token adapter: rotate"
+	errWrapRefreshTokenAdapterCreateForPassword = "refresh token adapter: create_for_password" // #nosec G101 -- error context string, not a credential
+	errWrapRefreshTokenAdapterGetByHash         = "refresh token adapter: get_by_hash"
+	errWrapRefreshTokenAdapterRevokeByUserID    = "refresh token adapter: revoke_by_user_id"
+	errWrapRefreshTokenAdapterRotate            = "refresh token adapter: rotate"
 
 	// tenant_adapter.go
 	errWrapTenantAdapterCreate    = "tenant adapter: create"
