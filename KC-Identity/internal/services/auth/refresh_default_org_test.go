@@ -77,7 +77,7 @@ func TestRefreshTokens_ScopesTheRenewedAccessTokenToTheDefaultOrg(t *testing.T) 
 			f := newAuthFixture(t, true)
 			raw := f.seedRefreshToken(t, keepToken)
 			svc := NewService(f.users, tt.memberships, f.tokens, f.issuer, svcTestLocalLogin, svcTestRefresh, logger.NewNop())
-			synthesized := 0
+			var synthesized int
 			if tt.withCE {
 				svc.WithCEProvider(fixedSynthesizer{orgID: ceOrg, err: tt.synthesisErr, calls: &synthesized})
 			}

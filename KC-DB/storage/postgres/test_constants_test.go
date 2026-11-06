@@ -17,6 +17,8 @@ const (
 	testEventWindow = 24 * time.Hour
 	// testTokenTTL is the refresh token lifetime used by repository tests.
 	testTokenTTL = 24 * time.Hour
+	// testRevokeNotBlockedWithin is how long a revocation must stay blocked behind an open rotation.
+	testRevokeNotBlockedWithin = 300 * time.Millisecond
 	// testAggregationWindow is the summary aggregation window used by event tests.
 	testAggregationWindow = 5 * time.Minute
 	// testEventQueryLimit is the default page size for event query tests.

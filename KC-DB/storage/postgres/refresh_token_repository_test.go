@@ -334,7 +334,6 @@ func TestRefreshTokenRepository_Rotate_RefusesAnotherUsersToken(t *testing.T) {
 }
 
 func TestRefreshTokenRepository_RevokeByUserID_WaitsForAnInFlightRotation(t *testing.T) {
-	const notBlockedWithin = 300 * time.Millisecond
 	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
 	ctx := testutil.TestContext()
 
@@ -356,7 +355,7 @@ func TestRefreshTokenRepository_RevokeByUserID_WaitsForAnInFlightRotation(t *tes
 	select {
 	case err := <-revoked:
 		t.Fatalf("revocation finished while a rotation of the user was in flight: %v", err)
-	case <-time.After(notBlockedWithin):
+	case <-time.After(testRevokeNotBlockedWithin):
 	}
 
 	require.NoError(t, rotation.Commit())
