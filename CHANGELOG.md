@@ -10,16 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **A deactivated user can no longer renew a session.** Refreshing tokens for a user whose
-  **Is active** is off is refused and ends every session the user still holds; signing in with
+  **Is active** is off is refused and ends every session the user still holds. Signing in with
   OIDC or OAuth2 to an existing deactivated account is refused before the account is linked to
-  the provider or receives a token.
-- **Deactivating a user ends their sessions.** Switching **Is active** off through the admin API
-  revokes the user's refresh tokens, as a password reset already does.
+  the provider or receives a token, and answers with the same code as a wrong password
+  (`UNAUTHENTICATED`) instead of an internal error.
+- **Deactivating a user ends their sessions.** Every admin API request that switches **Is active**
+  off revokes the user's refresh tokens, as a password reset already does, so retrying a
+  deactivation whose revocation failed revokes them too.
+- **A session opens only for the account as it was checked.** Password sign-in and registration
+  store their refresh token only while the account is still active and still has the password
+  that was just verified or set; a deactivation or password change that lands during sign-in
+  refuses it with no token returned.
 - **A refresh token can be used only once, also under concurrent requests.** Storing the new
   token and retiring the presented one happen in one database transaction that accepts only a
-  token that is not yet replaced, revoked or expired, so two simultaneous refreshes with the same
-  token yield one new session, and a revocation also covers a token minted by a refresh that was
-  still running.
+  token of the same user that is not yet replaced, revoked or expired, so two simultaneous
+  refreshes with the same token yield one new session, and a revocation also covers a token
+  minted by a refresh that was still running.
+- **Linking an external identity no longer rewrites the account.** It updates only the identity
+  and only while the account is active, so it cannot undo a deactivation made at the same time.
 
 ## [2.1.0] - 2026-10-23
 
