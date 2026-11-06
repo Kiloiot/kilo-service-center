@@ -272,6 +272,9 @@ func TestRefreshTokenRepository_Rotate_StoresTheSuccessorAndClaimsTheOldToken(t 
 }
 
 func TestRefreshTokenRepository_Rotate_RefusesAnUnclaimableOldToken(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
 	tests := []struct {
 		name         string
 		oldExpiresAt time.Time
