@@ -44,7 +44,9 @@ type ExternalUserStore interface {
 	UserStore
 	GetByExternalID(ctx context.Context, externalID string) (*models.User, error)
 	Create(ctx context.Context, user *models.User) error
-	Update(ctx context.Context, user *models.User) error
+	// LinkExternalID records the external identity of an active user only; it
+	// fails with storage.ErrUserInactive when the user is missing or deactivated.
+	LinkExternalID(ctx context.Context, userID uuid.UUID, externalID string) error
 }
 
 // StateStore provides state/nonce/verifier storage for external auth flows.

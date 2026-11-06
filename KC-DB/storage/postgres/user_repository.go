@@ -148,6 +148,28 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return nil
 }
 
+// LinkExternalID records the external identity of an active user and touches
+// no other column, so it cannot undo a concurrent change such as a
+// deactivation. It fails with storage.ErrUserInactive when the user is
+// missing or deactivated.
+func (r *UserRepository) LinkExternalID(ctx context.Context, id uuid.UUID, externalID string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE users
+		SET external_id = $2, updated_at = NOW()
+		WHERE id = $1 AND is_active`, id, externalID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapLinkExternalID, err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("%s: %w", errWrapGetRowsAffected, err)
+	}
+	if rowsAffected == 0 {
+		return storage.ErrUserInactive
+	}
+	return nil
+}
+
 // SetPasswordHash updates only the password hash field
 func (r *UserRepository) SetPasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
 	query := `

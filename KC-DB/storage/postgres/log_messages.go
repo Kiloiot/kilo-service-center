@@ -667,6 +667,7 @@ const (
 	errWrapGetUser             = "get user"
 	errWrapGetUserByEmail      = "get user by email"
 	errWrapGetUserByExternalID = "get user by external_id"
+	errWrapLinkExternalID      = "link external_id"
 	errWrapListUsers           = "list users"
 	errWrapSetPasswordHash     = "set password hash"
 	errWrapUpdateUser          = "update user"

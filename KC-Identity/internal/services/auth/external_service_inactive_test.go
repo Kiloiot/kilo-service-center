@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -17,6 +18,8 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
+var errExtTestLinkDown = errors.New("user store unavailable")
+
 const (
 	extTestSubject = "idp-subject-1"
 	extTestEmail   = "member@example.com"
@@ -26,10 +29,14 @@ const (
 )
 
 // externalUsers is an external user store whose lookups miss with a wrapped
-// storage.ErrRecordNotFound, like the real one; it counts every write.
+// storage.ErrRecordNotFound and whose link refuses an inactive account, like
+// the real one; it counts every write. deactivatedAtLink makes the account
+// inactive after it was read, linkErr fails the link.
 type externalUsers struct {
-	user   *models.User
-	writes int
+	user              *models.User
+	deactivatedAtLink bool
+	linkErr           error
+	writes            int
 }
 
 func (e *externalUsers) lookup(match bool, key string) (*models.User, error) {
@@ -62,7 +69,13 @@ func (e *externalUsers) Create(context.Context, *models.User) error {
 	return nil
 }
 
-func (e *externalUsers) Update(context.Context, *models.User) error {
+func (e *externalUsers) LinkExternalID(_ context.Context, userID uuid.UUID, _ string) error {
+	if userID != e.user.ID || !e.user.IsActive || e.deactivatedAtLink {
+		return storage.ErrUserInactive
+	}
+	if e.linkErr != nil {
+		return e.linkErr
+	}
 	e.writes++
 	return nil
 }
@@ -139,22 +152,30 @@ func TestExternalLogin_GatesExistingAccountsOnActivity(t *testing.T) {
 		{name: "oauth2", login: completeOAuth2},
 	}
 	accounts := []struct {
-		name       string
-		externalID *string
-		active     bool
-		wantErr    error
-		wantWrites int
-		wantIssued int
+		name              string
+		externalID        *string
+		active            bool
+		deactivatedAtLink bool
+		linkErr           error
+		wantErr           error
+		wantWrites        int
+		wantIssued        int
 	}{
 		{name: "deactivated, found by external id", externalID: &subject, wantErr: ErrUserNotActive},
 		{name: "deactivated, found by email", wantErr: ErrUserNotActive},
+		{name: "deactivated between lookup and link", active: true, deactivatedAtLink: true, wantErr: ErrUserNotActive},
 		{name: "active, found by external id", externalID: &subject, active: true, wantIssued: 1},
 		{name: "active, found by email is linked", active: true, wantWrites: 1, wantIssued: 1},
+		{name: "active, link store failure does not block sign-in", active: true, linkErr: errExtTestLinkDown, wantIssued: 1},
 	}
 	for _, provider := range providers {
 		for _, account := range accounts {
 			t.Run(provider.name+"/"+account.name, func(t *testing.T) {
-				users := &externalUsers{user: &models.User{ID: uuid.New(), Email: extTestEmail, ExternalID: account.externalID, IsActive: account.active}}
+				users := &externalUsers{
+					user:              &models.User{ID: uuid.New(), Email: extTestEmail, ExternalID: account.externalID, IsActive: account.active},
+					deactivatedAtLink: account.deactivatedAtLink,
+					linkErr:           account.linkErr,
+				}
 				issuer := &countingAccessIssuer{}
 
 				err := provider.login(newExternalTestService(users, issuer))

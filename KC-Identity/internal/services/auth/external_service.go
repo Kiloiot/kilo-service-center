@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	"github.com/google/uuid"
@@ -428,9 +430,8 @@ func (s *ExternalAuthService) findOrCreateUserFromOIDC(ctx context.Context, clai
 		if err := s.refuseInactive(ctx, user); err != nil {
 			return nil, err
 		}
-		user.ExternalID = &claims.Sub
-		if err := s.userStore.Update(ctx, user); err != nil {
-			s.logger.WarnContext(ctx, logExternalAuthLinkFailed, logger.FieldError, err)
+		if err := s.linkExternalID(ctx, user, claims.Sub); err != nil {
+			return nil, err
 		}
 		return user, nil
 	}
@@ -486,9 +487,8 @@ func (s *ExternalAuthService) findOrCreateUserFromOAuth2(ctx context.Context, us
 			return nil, err
 		}
 		if externalID != "" && (user.ExternalID == nil || *user.ExternalID == "") {
-			user.ExternalID = &externalID
-			if err := s.userStore.Update(ctx, user); err != nil {
-				s.logger.WarnContext(ctx, logExternalAuthLinkFailed, logger.FieldError, err)
+			if err := s.linkExternalID(ctx, user, externalID); err != nil {
+				return nil, err
 			}
 		}
 		return user, nil
@@ -520,6 +520,23 @@ func (s *ExternalAuthService) findOrCreateUserFromOAuth2(ctx context.Context, us
 	s.sendRegistrationCallback(ctx, s.oauth2RegCallbackURL, newUser, ProviderOAuth2)
 
 	return newUser, nil
+}
+
+// linkExternalID records the provider identity on an existing account. An
+// account deactivated since it was read is refused; any other failure is
+// logged and sign-in goes on, as the link only speeds up the next lookup.
+func (s *ExternalAuthService) linkExternalID(ctx context.Context, user *models.User, externalID string) error {
+	err := s.userStore.LinkExternalID(ctx, user.ID, externalID)
+	if errors.Is(err, storage.ErrUserInactive) {
+		s.logger.WarnContext(ctx, logExternalAuthUserInactive, logger.FieldUserIDSnake, user.ID)
+		return ErrUserNotActive
+	}
+	if err != nil {
+		s.logger.WarnContext(ctx, logExternalAuthLinkFailed, logger.FieldError, err)
+		return nil
+	}
+	user.ExternalID = &externalID
+	return nil
 }
 
 // issueLocalTokensWithOrg issues local tokens for the user with optional resolved org.
