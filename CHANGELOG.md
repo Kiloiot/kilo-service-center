@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Redis 8.10 and Mosquitto 2.1.2 in the Compose stacks.** Both read the data an earlier version
+  wrote, so an existing volume upgrades in place; Redis 8 is licensed under RSALv2, SSPLv1 or AGPLv3.
+- **Token handling moved to jwx v4 and go-redis v9.** Signing algorithm, claims and validation are
+  unchanged, and tokens issued before the upgrade stay valid.
+- **KC-Web on React 19.3, MUI 9, TypeScript 6 and google-protobuf 4**, built with bun 1.4.
 - **Built with Go 1.27.3.** Every module requires Go 1.27.3 and the images build on `golang:1.27-alpine`,
   which brings the standard-library security fixes released since Go 1.26.3. No configuration changes.
 - **Dependencies refreshed for known vulnerabilities.** gRPC 1.85.0, OpenTelemetry 1.47.0,
