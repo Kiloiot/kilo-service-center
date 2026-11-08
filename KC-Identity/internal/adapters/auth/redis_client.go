@@ -21,6 +21,9 @@ type RedisClient struct {
 
 const defaultRedisPort = "6379"
 
+// redisStopsAtRequestDeadline keeps a stalled Redis from holding a request past its deadline.
+const redisStopsAtRequestDeadline = true
+
 // unknownCommandErrorText identifies pre-6.2 Redis servers lacking GETDEL.
 const unknownCommandErrorText = "unknown command"
 
@@ -37,6 +40,8 @@ func NewRedisClient(ctx context.Context, cfg *config.RedisConfig, log logger.Log
 		DialTimeout:  config.AuthRedisConnectTimeout,
 		ReadTimeout:  config.AuthRedisConnectTimeout,
 		WriteTimeout: config.AuthRedisConnectTimeout,
+
+		ContextTimeoutEnabled: redisStopsAtRequestDeadline,
 	})
 
 	// Verify connection

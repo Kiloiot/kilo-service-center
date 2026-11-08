@@ -150,7 +150,7 @@ helm install kilocenter ./helm/kilocenter -f my-values.yaml
 
 | Parameter | Description | Default |
 |---|---|---|
-| `mosquitto.image.tag` | Eclipse Mosquitto image tag | `2.0.22` |
+| `mosquitto.image.tag` | Eclipse Mosquitto image tag | `2.1.2-alpine` |
 | `mosquitto.persistence.enabled` | Enable persistent storage | `true` |
 | `mosquitto.persistence.size` | PVC size | `1Gi` |
 

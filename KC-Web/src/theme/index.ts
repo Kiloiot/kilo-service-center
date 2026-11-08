@@ -284,10 +284,6 @@ interface SemanticTokens {
   typography: typeof semanticTypography;
 }
 
-/**
- * Hover, focus and selection surface; the same blue in both modes keeps it
- * visible on the dark paper.
- */
 const standardAlertColor = (colorClass: string, color: string) => ({
   [`&.${alertClasses.standard}.${colorClass}`]: {
     color,
@@ -295,6 +291,10 @@ const standardAlertColor = (colorClass: string, color: string) => ({
   },
 });
 
+/**
+ * Hover, focus and selection surface; the same blue in both modes keeps it
+ * visible on the dark paper.
+ */
 const HIGHLIGHT_SECONDARY_TEXT_OPACITY = 0.9;
 const highlightPalette: HighlightPalette = {
   main: kiloColors.additional.buttonHoverLight,

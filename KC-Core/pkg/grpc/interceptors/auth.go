@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -70,7 +71,9 @@ func NewAuthInterceptor(cfg AuthConfig) (*AuthInterceptor, error) {
 	}
 
 	if cfg.JWKSEndpoint != "" {
-		keySet, err := jwkfetch.NewClient().Fetch(context.Background(), cfg.JWKSEndpoint) // context-root: jwks-init
+		// http.DefaultClient honors the process proxy settings; jwkfetch's own transport ignores them.
+		fetcher := jwkfetch.NewClient(jwkfetch.WithHTTPClient(jwkfetch.WrapHTTPClientDefaults(http.DefaultClient)))
+		keySet, err := fetcher.Fetch(context.Background(), cfg.JWKSEndpoint) // context-root: jwks-init
 		if err != nil {
 			return nil, fmt.Errorf(errFmtJWKSFetchFailed, cfg.JWKSEndpoint, err)
 		}

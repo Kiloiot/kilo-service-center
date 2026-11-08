@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,17 +25,18 @@ import (
 )
 
 const (
-	validationTestIssuer      = "validation-issuer"
-	validationTestAudience    = "validation-audience"
-	validationTestOtherValue  = "someone-else"
-	validationTestTenantClaim = "tenant_id"
-	validationTestTenantID    = int64(42)
-	validationTestMethod      = "/kc.Test/Method"
-	validationTestOtherSecret = "another-secret-of-at-least-32-bytes!"
-	validationTestKeyID       = "validation-key"
-	validationTestRSABits     = 2048
-	validationTestNoneHeader  = `{"alg":"none","typ":"JWT"}`
-	validationTestPartSep     = "."
+	validationTestIssuer          = "validation-issuer"
+	validationTestAudience        = "validation-audience"
+	validationTestOtherValue      = "someone-else"
+	validationTestTenantClaim     = "tenant_id"
+	validationTestTenantID        = int64(42)
+	validationTestMethod          = "/kc.Test/Method"
+	validationTestOtherSecret     = "another-secret-of-at-least-32-bytes!"
+	validationTestKeyID           = "validation-key"
+	validationTestRSABits         = 2048
+	validationTestNoneHeader      = `{"alg":"none","typ":"JWT"}`
+	validationTestNoneHeaderKeyID = `{"alg":"none","typ":"JWT","kid":"%s"}`
+	validationTestPartSep         = "."
 )
 
 func validationInterceptor(t *testing.T) *AuthInterceptor {
@@ -78,13 +81,6 @@ func TestAuthenticateJWT_AcceptsAValidToken(t *testing.T) {
 }
 
 func TestAuthenticateJWT_RefusesInvalidTokens(t *testing.T) {
-	unsigned := func(t *testing.T) string {
-		t.Helper()
-		payload, err := json.Marshal(validationClaims(t))
-		require.NoError(t, err)
-		encode := base64.RawURLEncoding.EncodeToString
-		return encode([]byte(validationTestNoneHeader)) + validationTestPartSep + encode(payload) + validationTestPartSep
-	}
 	withClaim := func(name string, value any) func(*testing.T) string {
 		return func(t *testing.T) string {
 			t.Helper()
@@ -99,7 +95,10 @@ func TestAuthenticateJWT_RefusesInvalidTokens(t *testing.T) {
 		"not yet valid":  withClaim(jwt.NotBeforeKey, time.Now().Add(time.Hour)),
 		"wrong issuer":   withClaim(jwt.IssuerKey, validationTestOtherValue),
 		"wrong audience": withClaim(jwt.AudienceKey, []string{validationTestOtherValue}),
-		"unsigned":       unsigned,
+		"unsigned": func(t *testing.T) string {
+			t.Helper()
+			return unsignedToken(t, validationTestNoneHeader)
+		},
 		"forged signature": func(t *testing.T) string {
 			t.Helper()
 			return signHS256(t, validationClaims(t), validationTestOtherSecret)
@@ -148,6 +147,26 @@ func TestAuthenticateJWT_UsesTheConfiguredKeySet(t *testing.T) {
 
 	_, err = ai.authenticateJWT(testutil.TestContext(), signWith(newRSASigningKey(t)), validationTestMethod)
 	require.Error(t, err)
+
+	unsigned := unsignedToken(t, fmt.Sprintf(validationTestNoneHeaderKeyID, validationTestKeyID))
+	_, err = ai.authenticateJWT(testutil.TestContext(), unsigned, validationTestMethod)
+	require.Error(t, err)
+
+	// An HS256 token keyed with the published key must not verify against it.
+	headers := jws.NewHeaders()
+	require.NoError(t, headers.Set(jws.KeyIDKey, validationTestKeyID))
+	swapped, err := jwt.Sign(validationClaims(t), jwt.WithKey(jwa.HS256(), body, jws.WithProtectedHeaders(headers)))
+	require.NoError(t, err)
+	_, err = ai.authenticateJWT(testutil.TestContext(), string(swapped), validationTestMethod)
+	require.Error(t, err)
+}
+
+func unsignedToken(t *testing.T, header string) string {
+	t.Helper()
+	payload, err := json.Marshal(validationClaims(t))
+	require.NoError(t, err)
+	encode := base64.RawURLEncoding.EncodeToString
+	return encode([]byte(header)) + validationTestPartSep + encode(payload) + validationTestPartSep
 }
 
 func newRSASigningKey(t *testing.T) jwk.Key {
