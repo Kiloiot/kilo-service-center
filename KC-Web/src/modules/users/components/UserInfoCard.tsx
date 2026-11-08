@@ -19,10 +19,10 @@ export default function UserInfoCard({
         <Typography variant="h6" gutterBottom>
           {USER_FORM.INFO_TITLE}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {USER_FORM.INFO_CREATED}: {formatRelativeDuration(user.createdAt)}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {USER_FORM.INFO_UPDATED}: {formatRelativeDuration(user.updatedAt)}
         </Typography>
         <Button

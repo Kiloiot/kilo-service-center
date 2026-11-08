@@ -82,7 +82,7 @@ const UsersTableRow: React.FC<UsersTableRowProps> = ({
   return (
     <TableRow hover>
       <TableCell>
-        <Typography variant="body2" fontWeight="medium">
+        <Typography variant="body2" sx={{ fontWeight: "medium" }}>
           {user.email}
         </Typography>
       </TableCell>
@@ -118,7 +118,7 @@ const UsersTableRow: React.FC<UsersTableRowProps> = ({
       </TableCell>
 
       <TableCell>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {formatRelativeDuration(user.createdAt)}
         </Typography>
       </TableCell>
@@ -170,7 +170,7 @@ const UsersTableBase: React.FC<UsersTableBaseProps> = ({
   if (users.length === 0) {
     return (
       <Paper sx={{ p: 4, textAlign: "center" }}>
-        <Typography color="text.secondary">
+        <Typography color="textSecondary">
           {emptyMessage ?? ORG_USERS_PAGE.NO_USERS}
         </Typography>
       </Paper>

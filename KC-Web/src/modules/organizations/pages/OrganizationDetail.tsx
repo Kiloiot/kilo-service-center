@@ -67,12 +67,14 @@ const OrganizationDetailHeader: React.FC<OrganizationDetailHeaderProps> = ({
   const navigate = useNavigate();
   return (
     <Box
-      display="flex"
-      justifyContent="space-between"
-      alignItems="center"
-      mb={3}
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        mb: 3,
+      }}
     >
-      <Box display="flex" alignItems="center" gap={2}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         <BackButton
           label={ORGANIZATIONS_PAGE.BACK_TO_LIST}
           onClick={() => navigate(ROUTES.ORGANIZATIONS)}
@@ -100,7 +102,7 @@ const OrganizationDetailHeader: React.FC<OrganizationDetailHeaderProps> = ({
 const OrganizationInfoCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
   <Card>
     <CardContent>
-      <Box display="flex" alignItems="center" gap={2} mb={3}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 3 }}>
         <BusinessIcon
           sx={{
             fontSize: componentSpacing.headerIcon.size,
@@ -112,13 +114,13 @@ const OrganizationInfoCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
 
       <Grid container spacing={2}>
         <Grid size={componentSpacing.gridSpan.halfFromSm}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ORGANIZATION_FORM.LABEL_NAME}
           </Typography>
           <Typography variant="body1">{org.name}</Typography>
         </Grid>
         <Grid size={componentSpacing.gridSpan.halfFromSm}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ORGANIZATION_FORM.LABEL_STATE}
           </Typography>
           <Typography variant="body1">
@@ -126,13 +128,13 @@ const OrganizationInfoCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
           </Typography>
         </Grid>
         <Grid size={componentSpacing.gridSpan.full}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ORGANIZATION_FORM.LABEL_DESCRIPTION}
           </Typography>
           <Typography variant="body1">{org.description || "-"}</Typography>
         </Grid>
         <Grid size={componentSpacing.gridSpan.halfFromSm}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ORGANIZATION_FORM.INFO_TENANT_ID}
           </Typography>
           <Typography variant="body1">{org.tenantId}</Typography>
@@ -145,11 +147,11 @@ const OrganizationInfoCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
 const OrganizationMetaCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
   <Card>
     <CardContent>
-      <Typography variant="h6" mb={2}>
+      <Typography variant="h6" sx={{ mb: 2 }}>
         {ORGANIZATION_FORM.INFO_TITLE}
       </Typography>
-      <Box mb={2}>
-        <Typography variant="body2" color="text.secondary">
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="body2" color="textSecondary">
           {ORGANIZATION_FORM.INFO_CREATED}
         </Typography>
         <Typography variant="body1">
@@ -157,7 +159,7 @@ const OrganizationMetaCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
         </Typography>
       </Box>
       <Box>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {ORGANIZATION_FORM.INFO_UPDATED}
         </Typography>
         <Typography variant="body1">
@@ -173,10 +175,10 @@ const OrganizationTagsCard: React.FC<{ org: OrganizationUI }> = ({ org }) => {
   return (
     <Card sx={{ mt: 2 }}>
       <CardContent>
-        <Typography variant="h6" mb={2}>
+        <Typography variant="h6" sx={{ mb: 2 }}>
           {ORGANIZATION_FORM.LABEL_TAGS}
         </Typography>
-        <Box display="flex" flexWrap="wrap" gap={1}>
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
           {Object.entries(org.tags).map(([key, value]) => (
             <Chip
               key={key}
@@ -224,10 +226,12 @@ const OrganizationDetail: React.FC = () => {
   if (isLoading) {
     return (
       <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight={componentSpacing.stateView.pageMinHeight}
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: componentSpacing.stateView.pageMinHeight,
+        }}
       >
         <CircularProgress />
       </Box>

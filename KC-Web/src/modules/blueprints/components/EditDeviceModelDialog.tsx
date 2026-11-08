@@ -16,6 +16,7 @@ import {
   TextField,
 } from "@mui/material";
 
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { getErrorMessage } from "@utils/error-message";
 import { BLUEPRINT_LABELS } from "@constants/messages";
 import { componentSpacing } from "@theme/index";
@@ -41,7 +42,7 @@ export const EditDeviceModelDialog: React.FC<EditDeviceModelDialogProps> = ({
   const [nameError, setNameError] = useState<string | null>(null);
 
   // Reset form data when model changes
-  React.useEffect(() => {
+  useAdjustStateOnChange([model], () => {
     if (model) {
       setFormData({
         name: model.name,
@@ -51,7 +52,7 @@ export const EditDeviceModelDialog: React.FC<EditDeviceModelDialogProps> = ({
       setError(null);
       setNameError(null);
     }
-  }, [model]);
+  });
 
   const mutation = useUpdateDeviceModel();
 

@@ -97,8 +97,14 @@ func TestResolveBlueprintForEndpoint_SnapshotOnlyMode(t *testing.T) {
 	}
 }
 
+const (
+	modeOn      = true
+	modeOff     = false
+	pastModeTTL = 2 * time.Second
+)
+
 func TestCachedSnapshotOnlyModes_ReadsTheStoreAtMostOncePerMinute(t *testing.T) {
-	source := &countingModeSource{enabled: true}
+	source := &countingModeSource{enabled: modeOn}
 	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
 	modes := NewCachedSnapshotOnlyModes(source, func() time.Time { return now })
 	ctx := testutil.TestContext()
@@ -115,8 +121,8 @@ func TestCachedSnapshotOnlyModes_ReadsTheStoreAtMostOncePerMinute(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, 2, source.reads, "each tenant has its own entry")
 
-	now = now.Add(2 * time.Second)
-	source.enabled = false
+	now = now.Add(pastModeTTL)
+	source.enabled = modeOff
 	on, err = modes.IsSnapshotOnly(ctx, 7)
 	require.NoError(t, err)
 	assert.False(t, on, "an expired value is read again")

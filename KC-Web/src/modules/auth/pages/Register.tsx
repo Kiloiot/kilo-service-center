@@ -144,10 +144,12 @@ const Register: React.FC = () => {
 
   return (
     <Box
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      minHeight={AUTH_LAYOUT.FULL_HEIGHT}
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: AUTH_LAYOUT.FULL_HEIGHT,
+      }}
     >
       <Paper
         sx={{
@@ -170,7 +172,7 @@ const Register: React.FC = () => {
         )}
 
         <Box component="form" onSubmit={handleSubmit} noValidate>
-          <Box display="flex" gap={2}>
+          <Box sx={{ display: "flex", gap: 2 }}>
             <TextField
               label={LABEL_FIRST_NAME}
               value={firstName}
@@ -251,7 +253,7 @@ const Register: React.FC = () => {
             )}
           </Button>
 
-          <Typography variant="body2" textAlign="center">
+          <Typography variant="body2" sx={{ textAlign: "center" }}>
             {ACTION_HAVE_ACCOUNT}{" "}
             <RouterLink to={ROUTES.LOGIN} style={{ textDecoration: "none" }}>
               {ACTION_LOGIN}

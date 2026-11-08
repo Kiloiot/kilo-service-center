@@ -48,6 +48,7 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({
       const stored = storageService.getItem(STORAGE_KEYS.USER_PROFILE);
       if (stored) {
         const parsed = JSON.parse(stored) as UserProfileAPI;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- restored in an effect so dependents wait for isHydrated
         setUserState(parsed);
       }
     } catch {

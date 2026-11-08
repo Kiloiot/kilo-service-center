@@ -13,13 +13,7 @@
 
 var jspb = require('google-protobuf');
 var goog = jspb;
-var global = (function() {
-  if (this) { return this; }
-  if (typeof window !== 'undefined') { return window; }
-  if (typeof global !== 'undefined') { return global; }
-  if (typeof self !== 'undefined') { return self; }
-  return Function('return this')();
-}.call(null));
+var global = globalThis;
 
 var google_protobuf_timestamp_pb = require('google-protobuf/google/protobuf/timestamp_pb.js');
 goog.object.extend(proto, google_protobuf_timestamp_pb);
@@ -1553,8 +1547,8 @@ proto.kilocenter.api.v1.LoginRequest.prototype.toObject = function(opt_includeIn
  */
 proto.kilocenter.api.v1.LoginRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    email: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    password: jspb.Message.getFieldWithDefault(msg, 2, "")
+email: jspb.Message.getFieldWithDefault(msg, 1, ""),
+password: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -1567,7 +1561,7 @@ proto.kilocenter.api.v1.LoginRequest.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.LoginRequest}
  */
 proto.kilocenter.api.v1.LoginRequest.deserializeBinary = function(bytes) {
@@ -1592,11 +1586,11 @@ proto.kilocenter.api.v1.LoginRequest.deserializeBinaryFromReader = function(msg,
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEmail(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPassword(value);
       break;
     default:
@@ -1713,8 +1707,8 @@ proto.kilocenter.api.v1.LoginResponse.prototype.toObject = function(opt_includeI
  */
 proto.kilocenter.api.v1.LoginResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    tokens: (f = msg.getTokens()) && proto.kilocenter.api.v1.AuthTokens.toObject(includeInstance, f),
-    user: (f = msg.getUser()) && proto.kilocenter.api.v1.UserProfile.toObject(includeInstance, f)
+tokens: (f = msg.getTokens()) && proto.kilocenter.api.v1.AuthTokens.toObject(includeInstance, f),
+user: (f = msg.getUser()) && proto.kilocenter.api.v1.UserProfile.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -1727,7 +1721,7 @@ proto.kilocenter.api.v1.LoginResponse.toObject = function(includeInstance, msg) 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.LoginResponse}
  */
 proto.kilocenter.api.v1.LoginResponse.deserializeBinary = function(bytes) {
@@ -1915,7 +1909,7 @@ proto.kilocenter.api.v1.RefreshTokensRequest.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.RefreshTokensRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    refreshToken: jspb.Message.getFieldWithDefault(msg, 1, "")
+refreshToken: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -1928,7 +1922,7 @@ proto.kilocenter.api.v1.RefreshTokensRequest.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RefreshTokensRequest}
  */
 proto.kilocenter.api.v1.RefreshTokensRequest.deserializeBinary = function(bytes) {
@@ -1953,7 +1947,7 @@ proto.kilocenter.api.v1.RefreshTokensRequest.deserializeBinaryFromReader = funct
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRefreshToken(value);
       break;
     default:
@@ -2045,7 +2039,7 @@ proto.kilocenter.api.v1.RefreshTokensResponse.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.RefreshTokensResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    tokens: (f = msg.getTokens()) && proto.kilocenter.api.v1.AuthTokens.toObject(includeInstance, f)
+tokens: (f = msg.getTokens()) && proto.kilocenter.api.v1.AuthTokens.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -2058,7 +2052,7 @@ proto.kilocenter.api.v1.RefreshTokensResponse.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RefreshTokensResponse}
  */
 proto.kilocenter.api.v1.RefreshTokensResponse.deserializeBinary = function(bytes) {
@@ -2209,7 +2203,7 @@ proto.kilocenter.api.v1.GetProfileRequest.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetProfileRequest}
  */
 proto.kilocenter.api.v1.GetProfileRequest.deserializeBinary = function(bytes) {
@@ -2297,7 +2291,7 @@ proto.kilocenter.api.v1.GetProfileResponse.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.GetProfileResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    user: (f = msg.getUser()) && proto.kilocenter.api.v1.UserProfile.toObject(includeInstance, f)
+user: (f = msg.getUser()) && proto.kilocenter.api.v1.UserProfile.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -2310,7 +2304,7 @@ proto.kilocenter.api.v1.GetProfileResponse.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetProfileResponse}
  */
 proto.kilocenter.api.v1.GetProfileResponse.deserializeBinary = function(bytes) {
@@ -2461,7 +2455,7 @@ proto.kilocenter.api.v1.GetAuthSettingsRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetAuthSettingsRequest}
  */
 proto.kilocenter.api.v1.GetAuthSettingsRequest.deserializeBinary = function(bytes) {
@@ -2549,7 +2543,7 @@ proto.kilocenter.api.v1.GetAuthSettingsResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.GetAuthSettingsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    settings: (f = msg.getSettings()) && proto.kilocenter.api.v1.AuthSettings.toObject(includeInstance, f)
+settings: (f = msg.getSettings()) && proto.kilocenter.api.v1.AuthSettings.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -2562,7 +2556,7 @@ proto.kilocenter.api.v1.GetAuthSettingsResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetAuthSettingsResponse}
  */
 proto.kilocenter.api.v1.GetAuthSettingsResponse.deserializeBinary = function(bytes) {
@@ -2700,7 +2694,7 @@ proto.kilocenter.api.v1.LogoutRequest.prototype.toObject = function(opt_includeI
  */
 proto.kilocenter.api.v1.LogoutRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    refreshToken: jspb.Message.getFieldWithDefault(msg, 1, "")
+refreshToken: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -2713,7 +2707,7 @@ proto.kilocenter.api.v1.LogoutRequest.toObject = function(includeInstance, msg) 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.LogoutRequest}
  */
 proto.kilocenter.api.v1.LogoutRequest.deserializeBinary = function(bytes) {
@@ -2738,7 +2732,7 @@ proto.kilocenter.api.v1.LogoutRequest.deserializeBinaryFromReader = function(msg
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRefreshToken(value);
       break;
     default:
@@ -2830,7 +2824,7 @@ proto.kilocenter.api.v1.LogoutResponse.prototype.toObject = function(opt_include
  */
 proto.kilocenter.api.v1.LogoutResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -2843,7 +2837,7 @@ proto.kilocenter.api.v1.LogoutResponse.toObject = function(includeInstance, msg)
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.LogoutResponse}
  */
 proto.kilocenter.api.v1.LogoutResponse.deserializeBinary = function(bytes) {
@@ -2960,8 +2954,8 @@ proto.kilocenter.api.v1.ChangePasswordRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.ChangePasswordRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    currentPassword: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    newPassword: jspb.Message.getFieldWithDefault(msg, 2, "")
+currentPassword: jspb.Message.getFieldWithDefault(msg, 1, ""),
+newPassword: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -2974,7 +2968,7 @@ proto.kilocenter.api.v1.ChangePasswordRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ChangePasswordRequest}
  */
 proto.kilocenter.api.v1.ChangePasswordRequest.deserializeBinary = function(bytes) {
@@ -2999,11 +2993,11 @@ proto.kilocenter.api.v1.ChangePasswordRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCurrentPassword(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNewPassword(value);
       break;
     default:
@@ -3120,7 +3114,7 @@ proto.kilocenter.api.v1.ChangePasswordResponse.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.ChangePasswordResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -3133,7 +3127,7 @@ proto.kilocenter.api.v1.ChangePasswordResponse.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ChangePasswordResponse}
  */
 proto.kilocenter.api.v1.ChangePasswordResponse.deserializeBinary = function(bytes) {
@@ -3250,8 +3244,8 @@ proto.kilocenter.api.v1.ExchangeOIDCRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.ExchangeOIDCRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    code: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    state: jspb.Message.getFieldWithDefault(msg, 2, "")
+code: jspb.Message.getFieldWithDefault(msg, 1, ""),
+state: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -3264,7 +3258,7 @@ proto.kilocenter.api.v1.ExchangeOIDCRequest.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ExchangeOIDCRequest}
  */
 proto.kilocenter.api.v1.ExchangeOIDCRequest.deserializeBinary = function(bytes) {
@@ -3289,11 +3283,11 @@ proto.kilocenter.api.v1.ExchangeOIDCRequest.deserializeBinaryFromReader = functi
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCode(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setState(value);
       break;
     default:
@@ -3410,8 +3404,8 @@ proto.kilocenter.api.v1.ExchangeOAuth2Request.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.ExchangeOAuth2Request.toObject = function(includeInstance, msg) {
   var f, obj = {
-    code: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    state: jspb.Message.getFieldWithDefault(msg, 2, "")
+code: jspb.Message.getFieldWithDefault(msg, 1, ""),
+state: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -3424,7 +3418,7 @@ proto.kilocenter.api.v1.ExchangeOAuth2Request.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ExchangeOAuth2Request}
  */
 proto.kilocenter.api.v1.ExchangeOAuth2Request.deserializeBinary = function(bytes) {
@@ -3449,11 +3443,11 @@ proto.kilocenter.api.v1.ExchangeOAuth2Request.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCode(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setState(value);
       break;
     default:
@@ -3570,11 +3564,11 @@ proto.kilocenter.api.v1.RegisterAccountRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.RegisterAccountRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    email: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    password: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    firstName: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    lastName: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    companyName: jspb.Message.getFieldWithDefault(msg, 5, "")
+email: jspb.Message.getFieldWithDefault(msg, 1, ""),
+password: jspb.Message.getFieldWithDefault(msg, 2, ""),
+firstName: jspb.Message.getFieldWithDefault(msg, 3, ""),
+lastName: jspb.Message.getFieldWithDefault(msg, 4, ""),
+companyName: jspb.Message.getFieldWithDefault(msg, 5, "")
   };
 
   if (includeInstance) {
@@ -3587,7 +3581,7 @@ proto.kilocenter.api.v1.RegisterAccountRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RegisterAccountRequest}
  */
 proto.kilocenter.api.v1.RegisterAccountRequest.deserializeBinary = function(bytes) {
@@ -3612,23 +3606,23 @@ proto.kilocenter.api.v1.RegisterAccountRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEmail(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPassword(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setFirstName(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLastName(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCompanyName(value);
       break;
     default:
@@ -3820,10 +3814,10 @@ proto.kilocenter.api.v1.AuthTokens.prototype.toObject = function(opt_includeInst
  */
 proto.kilocenter.api.v1.AuthTokens.toObject = function(includeInstance, msg) {
   var f, obj = {
-    accessToken: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    refreshToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    accessExpiresIn: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    refreshExpiresIn: jspb.Message.getFieldWithDefault(msg, 4, 0)
+accessToken: jspb.Message.getFieldWithDefault(msg, 1, ""),
+refreshToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+accessExpiresIn: jspb.Message.getFieldWithDefault(msg, 3, 0),
+refreshExpiresIn: jspb.Message.getFieldWithDefault(msg, 4, 0)
   };
 
   if (includeInstance) {
@@ -3836,7 +3830,7 @@ proto.kilocenter.api.v1.AuthTokens.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.AuthTokens}
  */
 proto.kilocenter.api.v1.AuthTokens.deserializeBinary = function(bytes) {
@@ -3861,11 +3855,11 @@ proto.kilocenter.api.v1.AuthTokens.deserializeBinaryFromReader = function(msg, r
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setAccessToken(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRefreshToken(value);
       break;
     case 3:
@@ -4047,16 +4041,16 @@ proto.kilocenter.api.v1.UserProfile.prototype.toObject = function(opt_includeIns
  */
 proto.kilocenter.api.v1.UserProfile.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    email: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    isAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
-    hasPassword: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    membershipsList: jspb.Message.toObjectList(msg.getMembershipsList(),
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+email: jspb.Message.getFieldWithDefault(msg, 2, ""),
+isAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
+hasPassword: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+membershipsList: jspb.Message.toObjectList(msg.getMembershipsList(),
     proto.kilocenter.api.v1.UserMembership.toObject, includeInstance),
-    defaultOrgId: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    firstName: jspb.Message.getFieldWithDefault(msg, 7, ""),
-    lastName: jspb.Message.getFieldWithDefault(msg, 8, ""),
-    roles: (f = msg.getRoles()) && proto.kilocenter.api.v1.UserRoles.toObject(includeInstance, f)
+defaultOrgId: jspb.Message.getFieldWithDefault(msg, 6, ""),
+firstName: jspb.Message.getFieldWithDefault(msg, 7, ""),
+lastName: jspb.Message.getFieldWithDefault(msg, 8, ""),
+roles: (f = msg.getRoles()) && proto.kilocenter.api.v1.UserRoles.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -4069,7 +4063,7 @@ proto.kilocenter.api.v1.UserProfile.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UserProfile}
  */
 proto.kilocenter.api.v1.UserProfile.deserializeBinary = function(bytes) {
@@ -4094,11 +4088,11 @@ proto.kilocenter.api.v1.UserProfile.deserializeBinaryFromReader = function(msg, 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEmail(value);
       break;
     case 3:
@@ -4115,15 +4109,15 @@ proto.kilocenter.api.v1.UserProfile.deserializeBinaryFromReader = function(msg, 
       msg.addMemberships(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDefaultOrgId(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setFirstName(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLastName(value);
       break;
     case 9:
@@ -4461,10 +4455,10 @@ proto.kilocenter.api.v1.UserRoles.prototype.toObject = function(opt_includeInsta
  */
 proto.kilocenter.api.v1.UserRoles.toObject = function(includeInstance, msg) {
   var f, obj = {
-    admin: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    tenantManager: jspb.Message.getBooleanFieldWithDefault(msg, 2, false),
-    baseStationManager: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
-    endpointManager: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
+admin: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+tenantManager: jspb.Message.getBooleanFieldWithDefault(msg, 2, false),
+baseStationManager: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
+endpointManager: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
   };
 
   if (includeInstance) {
@@ -4477,7 +4471,7 @@ proto.kilocenter.api.v1.UserRoles.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UserRoles}
  */
 proto.kilocenter.api.v1.UserRoles.deserializeBinary = function(bytes) {
@@ -4681,13 +4675,13 @@ proto.kilocenter.api.v1.UserMembership.prototype.toObject = function(opt_include
  */
 proto.kilocenter.api.v1.UserMembership.toObject = function(includeInstance, msg) {
   var f, obj = {
-    orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    orgName: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    role: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    isOrgAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
-    isBaseStationAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
-    isEndpointAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 7, false)
+orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+orgName: jspb.Message.getFieldWithDefault(msg, 2, ""),
+role: jspb.Message.getFieldWithDefault(msg, 3, ""),
+status: jspb.Message.getFieldWithDefault(msg, 4, ""),
+isOrgAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
+isBaseStationAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
+isEndpointAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 7, false)
   };
 
   if (includeInstance) {
@@ -4700,7 +4694,7 @@ proto.kilocenter.api.v1.UserMembership.toObject = function(includeInstance, msg)
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UserMembership}
  */
 proto.kilocenter.api.v1.UserMembership.deserializeBinary = function(bytes) {
@@ -4725,19 +4719,19 @@ proto.kilocenter.api.v1.UserMembership.deserializeBinaryFromReader = function(ms
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRole(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 5:
@@ -4991,17 +4985,17 @@ proto.kilocenter.api.v1.AuthSettings.prototype.toObject = function(opt_includeIn
  */
 proto.kilocenter.api.v1.AuthSettings.toObject = function(includeInstance, msg) {
   var f, obj = {
-    enabled: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    localLoginEnabled: jspb.Message.getBooleanFieldWithDefault(msg, 2, false),
-    loginUrl: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    loginLabel: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    loginRedirect: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
-    logoutUrl: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    refreshTokenEnabled: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    oidc: (f = msg.getOidc()) && proto.kilocenter.api.v1.ProviderSettings.toObject(includeInstance, f),
-    oauth2: (f = msg.getOauth2()) && proto.kilocenter.api.v1.ProviderSettings.toObject(includeInstance, f),
-    registrationEnabled: jspb.Message.getBooleanFieldWithDefault(msg, 10, false),
-    passwordPolicy: (f = msg.getPasswordPolicy()) && proto.kilocenter.api.v1.PasswordPolicy.toObject(includeInstance, f)
+enabled: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+localLoginEnabled: jspb.Message.getBooleanFieldWithDefault(msg, 2, false),
+loginUrl: jspb.Message.getFieldWithDefault(msg, 3, ""),
+loginLabel: jspb.Message.getFieldWithDefault(msg, 4, ""),
+loginRedirect: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
+logoutUrl: jspb.Message.getFieldWithDefault(msg, 6, ""),
+refreshTokenEnabled: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+oidc: (f = msg.getOidc()) && proto.kilocenter.api.v1.ProviderSettings.toObject(includeInstance, f),
+oauth2: (f = msg.getOauth2()) && proto.kilocenter.api.v1.ProviderSettings.toObject(includeInstance, f),
+registrationEnabled: jspb.Message.getBooleanFieldWithDefault(msg, 10, false),
+passwordPolicy: (f = msg.getPasswordPolicy()) && proto.kilocenter.api.v1.PasswordPolicy.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -5014,7 +5008,7 @@ proto.kilocenter.api.v1.AuthSettings.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.AuthSettings}
  */
 proto.kilocenter.api.v1.AuthSettings.deserializeBinary = function(bytes) {
@@ -5047,11 +5041,11 @@ proto.kilocenter.api.v1.AuthSettings.deserializeBinaryFromReader = function(msg,
       msg.setLocalLoginEnabled(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLoginUrl(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLoginLabel(value);
       break;
     case 5:
@@ -5059,7 +5053,7 @@ proto.kilocenter.api.v1.AuthSettings.deserializeBinaryFromReader = function(msg,
       msg.setLoginRedirect(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLogoutUrl(value);
       break;
     case 7:
@@ -5484,10 +5478,10 @@ proto.kilocenter.api.v1.PasswordPolicy.prototype.toObject = function(opt_include
  */
 proto.kilocenter.api.v1.PasswordPolicy.toObject = function(includeInstance, msg) {
   var f, obj = {
-    minLength: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    maxLength: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    requiresLetter: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
-    requiresDigit: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
+minLength: jspb.Message.getFieldWithDefault(msg, 1, 0),
+maxLength: jspb.Message.getFieldWithDefault(msg, 2, 0),
+requiresLetter: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
+requiresDigit: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
   };
 
   if (includeInstance) {
@@ -5500,7 +5494,7 @@ proto.kilocenter.api.v1.PasswordPolicy.toObject = function(includeInstance, msg)
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.PasswordPolicy}
  */
 proto.kilocenter.api.v1.PasswordPolicy.deserializeBinary = function(bytes) {
@@ -5704,11 +5698,11 @@ proto.kilocenter.api.v1.ProviderSettings.prototype.toObject = function(opt_inclu
  */
 proto.kilocenter.api.v1.ProviderSettings.toObject = function(includeInstance, msg) {
   var f, obj = {
-    enabled: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    loginUrl: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    loginLabel: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    loginRedirect: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    logoutUrl: jspb.Message.getFieldWithDefault(msg, 5, "")
+enabled: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+loginUrl: jspb.Message.getFieldWithDefault(msg, 2, ""),
+loginLabel: jspb.Message.getFieldWithDefault(msg, 3, ""),
+loginRedirect: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+logoutUrl: jspb.Message.getFieldWithDefault(msg, 5, "")
   };
 
   if (includeInstance) {
@@ -5721,7 +5715,7 @@ proto.kilocenter.api.v1.ProviderSettings.toObject = function(includeInstance, ms
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ProviderSettings}
  */
 proto.kilocenter.api.v1.ProviderSettings.deserializeBinary = function(bytes) {
@@ -5750,11 +5744,11 @@ proto.kilocenter.api.v1.ProviderSettings.deserializeBinaryFromReader = function(
       msg.setEnabled(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLoginUrl(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLoginLabel(value);
       break;
     case 4:
@@ -5762,7 +5756,7 @@ proto.kilocenter.api.v1.ProviderSettings.deserializeBinaryFromReader = function(
       msg.setLoginRedirect(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLogoutUrl(value);
       break;
     default:
@@ -5954,17 +5948,17 @@ proto.kilocenter.api.v1.CreateUserRequest.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.CreateUserRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    email: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    password: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    note: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    isAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    isActive: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
-    isTenantManager: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
-    isBaseStationManager: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    isEndpointManager: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
-    firstName: jspb.Message.getFieldWithDefault(msg, 9, ""),
-    lastName: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    companyName: jspb.Message.getFieldWithDefault(msg, 11, "")
+email: jspb.Message.getFieldWithDefault(msg, 1, ""),
+password: jspb.Message.getFieldWithDefault(msg, 2, ""),
+note: jspb.Message.getFieldWithDefault(msg, 3, ""),
+isAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+isActive: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
+isTenantManager: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
+isBaseStationManager: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+isEndpointManager: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
+firstName: jspb.Message.getFieldWithDefault(msg, 9, ""),
+lastName: jspb.Message.getFieldWithDefault(msg, 10, ""),
+companyName: jspb.Message.getFieldWithDefault(msg, 11, "")
   };
 
   if (includeInstance) {
@@ -5977,7 +5971,7 @@ proto.kilocenter.api.v1.CreateUserRequest.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateUserRequest}
  */
 proto.kilocenter.api.v1.CreateUserRequest.deserializeBinary = function(bytes) {
@@ -6002,15 +5996,15 @@ proto.kilocenter.api.v1.CreateUserRequest.deserializeBinaryFromReader = function
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEmail(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPassword(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNote(value);
       break;
     case 4:
@@ -6034,15 +6028,15 @@ proto.kilocenter.api.v1.CreateUserRequest.deserializeBinaryFromReader = function
       msg.setIsEndpointManager(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setFirstName(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLastName(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCompanyName(value);
       break;
     default:
@@ -6384,7 +6378,7 @@ proto.kilocenter.api.v1.CreateUserResponse.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.CreateUserResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    user: (f = msg.getUser()) && proto.kilocenter.api.v1.User.toObject(includeInstance, f)
+user: (f = msg.getUser()) && proto.kilocenter.api.v1.User.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -6397,7 +6391,7 @@ proto.kilocenter.api.v1.CreateUserResponse.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateUserResponse}
  */
 proto.kilocenter.api.v1.CreateUserResponse.deserializeBinary = function(bytes) {
@@ -6535,7 +6529,7 @@ proto.kilocenter.api.v1.GetUserRequest.prototype.toObject = function(opt_include
  */
 proto.kilocenter.api.v1.GetUserRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -6548,7 +6542,7 @@ proto.kilocenter.api.v1.GetUserRequest.toObject = function(includeInstance, msg)
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetUserRequest}
  */
 proto.kilocenter.api.v1.GetUserRequest.deserializeBinary = function(bytes) {
@@ -6573,7 +6567,7 @@ proto.kilocenter.api.v1.GetUserRequest.deserializeBinaryFromReader = function(ms
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -6665,7 +6659,7 @@ proto.kilocenter.api.v1.GetUserResponse.prototype.toObject = function(opt_includ
  */
 proto.kilocenter.api.v1.GetUserResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    user: (f = msg.getUser()) && proto.kilocenter.api.v1.User.toObject(includeInstance, f)
+user: (f = msg.getUser()) && proto.kilocenter.api.v1.User.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -6678,7 +6672,7 @@ proto.kilocenter.api.v1.GetUserResponse.toObject = function(includeInstance, msg
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetUserResponse}
  */
 proto.kilocenter.api.v1.GetUserResponse.deserializeBinary = function(bytes) {
@@ -6816,15 +6810,15 @@ proto.kilocenter.api.v1.UpdateUserRequest.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.UpdateUserRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    email: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    note: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    isAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    isActive: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
-    isTenantManager: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
-    isBaseStationManager: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    isEndpointManager: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
-    updateMask: (f = msg.getUpdateMask()) && google_protobuf_field_mask_pb.FieldMask.toObject(includeInstance, f)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+email: jspb.Message.getFieldWithDefault(msg, 2, ""),
+note: jspb.Message.getFieldWithDefault(msg, 3, ""),
+isAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+isActive: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
+isTenantManager: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
+isBaseStationManager: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+isEndpointManager: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
+updateMask: (f = msg.getUpdateMask()) && google_protobuf_field_mask_pb.FieldMask.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -6837,7 +6831,7 @@ proto.kilocenter.api.v1.UpdateUserRequest.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateUserRequest}
  */
 proto.kilocenter.api.v1.UpdateUserRequest.deserializeBinary = function(bytes) {
@@ -6862,15 +6856,15 @@ proto.kilocenter.api.v1.UpdateUserRequest.deserializeBinaryFromReader = function
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEmail(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNote(value);
       break;
     case 4:
@@ -7207,7 +7201,7 @@ proto.kilocenter.api.v1.UpdateUserResponse.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.UpdateUserResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    user: (f = msg.getUser()) && proto.kilocenter.api.v1.User.toObject(includeInstance, f)
+user: (f = msg.getUser()) && proto.kilocenter.api.v1.User.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -7220,7 +7214,7 @@ proto.kilocenter.api.v1.UpdateUserResponse.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateUserResponse}
  */
 proto.kilocenter.api.v1.UpdateUserResponse.deserializeBinary = function(bytes) {
@@ -7358,7 +7352,7 @@ proto.kilocenter.api.v1.DeleteUserRequest.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.DeleteUserRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -7371,7 +7365,7 @@ proto.kilocenter.api.v1.DeleteUserRequest.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteUserRequest}
  */
 proto.kilocenter.api.v1.DeleteUserRequest.deserializeBinary = function(bytes) {
@@ -7396,7 +7390,7 @@ proto.kilocenter.api.v1.DeleteUserRequest.deserializeBinaryFromReader = function
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -7488,7 +7482,7 @@ proto.kilocenter.api.v1.DeleteUserResponse.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.DeleteUserResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -7501,7 +7495,7 @@ proto.kilocenter.api.v1.DeleteUserResponse.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteUserResponse}
  */
 proto.kilocenter.api.v1.DeleteUserResponse.deserializeBinary = function(bytes) {
@@ -7618,8 +7612,8 @@ proto.kilocenter.api.v1.ListUsersRequest.prototype.toObject = function(opt_inclu
  */
 proto.kilocenter.api.v1.ListUsersRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, "")
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -7632,7 +7626,7 @@ proto.kilocenter.api.v1.ListUsersRequest.toObject = function(includeInstance, ms
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListUsersRequest}
  */
 proto.kilocenter.api.v1.ListUsersRequest.deserializeBinary = function(bytes) {
@@ -7661,7 +7655,7 @@ proto.kilocenter.api.v1.ListUsersRequest.deserializeBinaryFromReader = function(
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     default:
@@ -7785,10 +7779,10 @@ proto.kilocenter.api.v1.ListUsersResponse.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.ListUsersResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    usersList: jspb.Message.toObjectList(msg.getUsersList(),
+usersList: jspb.Message.toObjectList(msg.getUsersList(),
     proto.kilocenter.api.v1.User.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -7801,7 +7795,7 @@ proto.kilocenter.api.v1.ListUsersResponse.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListUsersResponse}
  */
 proto.kilocenter.api.v1.ListUsersResponse.deserializeBinary = function(bytes) {
@@ -7831,7 +7825,7 @@ proto.kilocenter.api.v1.ListUsersResponse.deserializeBinaryFromReader = function
       msg.addUsers(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -7998,8 +7992,8 @@ proto.kilocenter.api.v1.UpdateUserPasswordRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.UpdateUserPasswordRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    newPassword: jspb.Message.getFieldWithDefault(msg, 2, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+newPassword: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -8012,7 +8006,7 @@ proto.kilocenter.api.v1.UpdateUserPasswordRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateUserPasswordRequest}
  */
 proto.kilocenter.api.v1.UpdateUserPasswordRequest.deserializeBinary = function(bytes) {
@@ -8037,11 +8031,11 @@ proto.kilocenter.api.v1.UpdateUserPasswordRequest.deserializeBinaryFromReader = 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNewPassword(value);
       break;
     default:
@@ -8158,7 +8152,7 @@ proto.kilocenter.api.v1.UpdateUserPasswordResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.UpdateUserPasswordResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -8171,7 +8165,7 @@ proto.kilocenter.api.v1.UpdateUserPasswordResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateUserPasswordResponse}
  */
 proto.kilocenter.api.v1.UpdateUserPasswordResponse.deserializeBinary = function(bytes) {
@@ -8288,19 +8282,19 @@ proto.kilocenter.api.v1.User.prototype.toObject = function(opt_includeInstance) 
  */
 proto.kilocenter.api.v1.User.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    email: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    isAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
-    isActive: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    isTenantManager: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
-    isBaseStationManager: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
-    isEndpointManager: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    note: jspb.Message.getFieldWithDefault(msg, 8, ""),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    firstName: jspb.Message.getFieldWithDefault(msg, 11, ""),
-    lastName: jspb.Message.getFieldWithDefault(msg, 12, ""),
-    companyName: jspb.Message.getFieldWithDefault(msg, 13, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+email: jspb.Message.getFieldWithDefault(msg, 2, ""),
+isAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
+isActive: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+isTenantManager: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
+isBaseStationManager: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
+isEndpointManager: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+note: jspb.Message.getFieldWithDefault(msg, 8, ""),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+firstName: jspb.Message.getFieldWithDefault(msg, 11, ""),
+lastName: jspb.Message.getFieldWithDefault(msg, 12, ""),
+companyName: jspb.Message.getFieldWithDefault(msg, 13, "")
   };
 
   if (includeInstance) {
@@ -8313,7 +8307,7 @@ proto.kilocenter.api.v1.User.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.User}
  */
 proto.kilocenter.api.v1.User.deserializeBinary = function(bytes) {
@@ -8338,11 +8332,11 @@ proto.kilocenter.api.v1.User.deserializeBinaryFromReader = function(msg, reader)
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEmail(value);
       break;
     case 3:
@@ -8366,7 +8360,7 @@ proto.kilocenter.api.v1.User.deserializeBinaryFromReader = function(msg, reader)
       msg.setIsEndpointManager(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNote(value);
       break;
     case 9:
@@ -8380,15 +8374,15 @@ proto.kilocenter.api.v1.User.deserializeBinaryFromReader = function(msg, reader)
       msg.setUpdatedAt(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setFirstName(value);
       break;
     case 12:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLastName(value);
       break;
     case 13:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCompanyName(value);
       break;
     default:
@@ -8820,9 +8814,9 @@ proto.kilocenter.api.v1.CreateOrganizationRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.CreateOrganizationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    name: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : []
+name: jspb.Message.getFieldWithDefault(msg, 1, ""),
+description: jspb.Message.getFieldWithDefault(msg, 2, ""),
+tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : []
   };
 
   if (includeInstance) {
@@ -8835,7 +8829,7 @@ proto.kilocenter.api.v1.CreateOrganizationRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateOrganizationRequest}
  */
 proto.kilocenter.api.v1.CreateOrganizationRequest.deserializeBinary = function(bytes) {
@@ -8860,17 +8854,17 @@ proto.kilocenter.api.v1.CreateOrganizationRequest.deserializeBinaryFromReader = 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 6:
       var value = msg.getTagsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readString, null, "", "");
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readStringRequireUtf8, null, "", "");
          });
       break;
     default:
@@ -8918,7 +8912,12 @@ proto.kilocenter.api.v1.CreateOrganizationRequest.serializeBinaryToWriter = func
   }
   f = message.getTagsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(6, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeString);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getTagsMap(true),
+    6,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeString);
   }
 };
 
@@ -8978,7 +8977,8 @@ proto.kilocenter.api.v1.CreateOrganizationRequest.prototype.getTagsMap = functio
  */
 proto.kilocenter.api.v1.CreateOrganizationRequest.prototype.clearTagsMap = function() {
   this.getTagsMap().clear();
-  return this;};
+  return this;
+};
 
 
 
@@ -9013,7 +9013,7 @@ proto.kilocenter.api.v1.CreateOrganizationResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.CreateOrganizationResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    organization: (f = msg.getOrganization()) && proto.kilocenter.api.v1.Organization.toObject(includeInstance, f)
+organization: (f = msg.getOrganization()) && proto.kilocenter.api.v1.Organization.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -9026,7 +9026,7 @@ proto.kilocenter.api.v1.CreateOrganizationResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateOrganizationResponse}
  */
 proto.kilocenter.api.v1.CreateOrganizationResponse.deserializeBinary = function(bytes) {
@@ -9164,7 +9164,7 @@ proto.kilocenter.api.v1.GetOrganizationRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.GetOrganizationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -9177,7 +9177,7 @@ proto.kilocenter.api.v1.GetOrganizationRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetOrganizationRequest}
  */
 proto.kilocenter.api.v1.GetOrganizationRequest.deserializeBinary = function(bytes) {
@@ -9202,7 +9202,7 @@ proto.kilocenter.api.v1.GetOrganizationRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -9294,7 +9294,7 @@ proto.kilocenter.api.v1.GetOrganizationResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.GetOrganizationResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    organization: (f = msg.getOrganization()) && proto.kilocenter.api.v1.Organization.toObject(includeInstance, f)
+organization: (f = msg.getOrganization()) && proto.kilocenter.api.v1.Organization.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -9307,7 +9307,7 @@ proto.kilocenter.api.v1.GetOrganizationResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetOrganizationResponse}
  */
 proto.kilocenter.api.v1.GetOrganizationResponse.deserializeBinary = function(bytes) {
@@ -9445,10 +9445,10 @@ proto.kilocenter.api.v1.UpdateOrganizationRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.UpdateOrganizationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : []
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+description: jspb.Message.getFieldWithDefault(msg, 3, ""),
+tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : []
   };
 
   if (includeInstance) {
@@ -9461,7 +9461,7 @@ proto.kilocenter.api.v1.UpdateOrganizationRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateOrganizationRequest}
  */
 proto.kilocenter.api.v1.UpdateOrganizationRequest.deserializeBinary = function(bytes) {
@@ -9486,21 +9486,21 @@ proto.kilocenter.api.v1.UpdateOrganizationRequest.deserializeBinaryFromReader = 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 7:
       var value = msg.getTagsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readString, null, "", "");
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readStringRequireUtf8, null, "", "");
          });
       break;
     default:
@@ -9555,7 +9555,12 @@ proto.kilocenter.api.v1.UpdateOrganizationRequest.serializeBinaryToWriter = func
   }
   f = message.getTagsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(7, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeString);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getTagsMap(true),
+    7,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeString);
   }
 };
 
@@ -9633,7 +9638,8 @@ proto.kilocenter.api.v1.UpdateOrganizationRequest.prototype.getTagsMap = functio
  */
 proto.kilocenter.api.v1.UpdateOrganizationRequest.prototype.clearTagsMap = function() {
   this.getTagsMap().clear();
-  return this;};
+  return this;
+};
 
 
 
@@ -9668,7 +9674,7 @@ proto.kilocenter.api.v1.UpdateOrganizationResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.UpdateOrganizationResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    organization: (f = msg.getOrganization()) && proto.kilocenter.api.v1.Organization.toObject(includeInstance, f)
+organization: (f = msg.getOrganization()) && proto.kilocenter.api.v1.Organization.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -9681,7 +9687,7 @@ proto.kilocenter.api.v1.UpdateOrganizationResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateOrganizationResponse}
  */
 proto.kilocenter.api.v1.UpdateOrganizationResponse.deserializeBinary = function(bytes) {
@@ -9819,7 +9825,7 @@ proto.kilocenter.api.v1.DeleteOrganizationRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.DeleteOrganizationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -9832,7 +9838,7 @@ proto.kilocenter.api.v1.DeleteOrganizationRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteOrganizationRequest}
  */
 proto.kilocenter.api.v1.DeleteOrganizationRequest.deserializeBinary = function(bytes) {
@@ -9857,7 +9863,7 @@ proto.kilocenter.api.v1.DeleteOrganizationRequest.deserializeBinaryFromReader = 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -9949,7 +9955,7 @@ proto.kilocenter.api.v1.DeleteOrganizationResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.DeleteOrganizationResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -9962,7 +9968,7 @@ proto.kilocenter.api.v1.DeleteOrganizationResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteOrganizationResponse}
  */
 proto.kilocenter.api.v1.DeleteOrganizationResponse.deserializeBinary = function(bytes) {
@@ -10079,9 +10085,9 @@ proto.kilocenter.api.v1.ListOrganizationsRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.ListOrganizationsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 3, 0)
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -10094,7 +10100,7 @@ proto.kilocenter.api.v1.ListOrganizationsRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListOrganizationsRequest}
  */
 proto.kilocenter.api.v1.ListOrganizationsRequest.deserializeBinary = function(bytes) {
@@ -10123,7 +10129,7 @@ proto.kilocenter.api.v1.ListOrganizationsRequest.deserializeBinaryFromReader = f
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 3:
@@ -10276,10 +10282,10 @@ proto.kilocenter.api.v1.ListOrganizationsResponse.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.ListOrganizationsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    organizationsList: jspb.Message.toObjectList(msg.getOrganizationsList(),
+organizationsList: jspb.Message.toObjectList(msg.getOrganizationsList(),
     proto.kilocenter.api.v1.Organization.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -10292,7 +10298,7 @@ proto.kilocenter.api.v1.ListOrganizationsResponse.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListOrganizationsResponse}
  */
 proto.kilocenter.api.v1.ListOrganizationsResponse.deserializeBinary = function(bytes) {
@@ -10322,7 +10328,7 @@ proto.kilocenter.api.v1.ListOrganizationsResponse.deserializeBinaryFromReader = 
       msg.addOrganizations(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -10489,15 +10495,15 @@ proto.kilocenter.api.v1.Organization.prototype.toObject = function(opt_includeIn
  */
 proto.kilocenter.api.v1.Organization.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    name: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    state: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    externalId: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : [],
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, 0),
+name: jspb.Message.getFieldWithDefault(msg, 3, ""),
+description: jspb.Message.getFieldWithDefault(msg, 4, ""),
+state: jspb.Message.getFieldWithDefault(msg, 5, ""),
+externalId: jspb.Message.getFieldWithDefault(msg, 6, ""),
+tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : [],
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -10510,7 +10516,7 @@ proto.kilocenter.api.v1.Organization.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Organization}
  */
 proto.kilocenter.api.v1.Organization.deserializeBinary = function(bytes) {
@@ -10535,7 +10541,7 @@ proto.kilocenter.api.v1.Organization.deserializeBinaryFromReader = function(msg,
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
@@ -10543,25 +10549,25 @@ proto.kilocenter.api.v1.Organization.deserializeBinaryFromReader = function(msg,
       msg.setTenantId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setState(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setExternalId(value);
       break;
     case 10:
       var value = msg.getTagsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readString, null, "", "");
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readStringRequireUtf8, null, "", "");
          });
       break;
     case 11:
@@ -10647,7 +10653,12 @@ proto.kilocenter.api.v1.Organization.serializeBinaryToWriter = function(message,
   }
   f = message.getTagsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(10, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeString);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getTagsMap(true),
+    10,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeString);
   }
   f = message.getCreatedAt();
   if (f != null) {
@@ -10795,7 +10806,8 @@ proto.kilocenter.api.v1.Organization.prototype.getTagsMap = function(opt_noLazyC
  */
 proto.kilocenter.api.v1.Organization.prototype.clearTagsMap = function() {
   this.getTagsMap().clear();
-  return this;};
+  return this;
+};
 
 
 /**
@@ -10904,13 +10916,13 @@ proto.kilocenter.api.v1.AddOrganizationUserRequest.prototype.toObject = function
  */
 proto.kilocenter.api.v1.AddOrganizationUserRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    userId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    role: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    isOrgAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    isBaseStationAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
-    isEndpointAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
-    email: jspb.Message.getFieldWithDefault(msg, 7, "")
+orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+userId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+role: jspb.Message.getFieldWithDefault(msg, 3, ""),
+isOrgAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+isBaseStationAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
+isEndpointAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
+email: jspb.Message.getFieldWithDefault(msg, 7, "")
   };
 
   if (includeInstance) {
@@ -10923,7 +10935,7 @@ proto.kilocenter.api.v1.AddOrganizationUserRequest.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.AddOrganizationUserRequest}
  */
 proto.kilocenter.api.v1.AddOrganizationUserRequest.deserializeBinary = function(bytes) {
@@ -10948,15 +10960,15 @@ proto.kilocenter.api.v1.AddOrganizationUserRequest.deserializeBinaryFromReader =
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRole(value);
       break;
     case 4:
@@ -10972,7 +10984,7 @@ proto.kilocenter.api.v1.AddOrganizationUserRequest.deserializeBinaryFromReader =
       msg.setIsEndpointAdmin(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEmail(value);
       break;
     default:
@@ -11214,7 +11226,7 @@ proto.kilocenter.api.v1.AddOrganizationUserResponse.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.AddOrganizationUserResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    member: (f = msg.getMember()) && proto.kilocenter.api.v1.OrganizationUser.toObject(includeInstance, f)
+member: (f = msg.getMember()) && proto.kilocenter.api.v1.OrganizationUser.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -11227,7 +11239,7 @@ proto.kilocenter.api.v1.AddOrganizationUserResponse.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.AddOrganizationUserResponse}
  */
 proto.kilocenter.api.v1.AddOrganizationUserResponse.deserializeBinary = function(bytes) {
@@ -11365,8 +11377,8 @@ proto.kilocenter.api.v1.GetOrganizationUserRequest.prototype.toObject = function
  */
 proto.kilocenter.api.v1.GetOrganizationUserRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    userId: jspb.Message.getFieldWithDefault(msg, 2, "")
+orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+userId: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -11379,7 +11391,7 @@ proto.kilocenter.api.v1.GetOrganizationUserRequest.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetOrganizationUserRequest}
  */
 proto.kilocenter.api.v1.GetOrganizationUserRequest.deserializeBinary = function(bytes) {
@@ -11404,11 +11416,11 @@ proto.kilocenter.api.v1.GetOrganizationUserRequest.deserializeBinaryFromReader =
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     default:
@@ -11525,7 +11537,7 @@ proto.kilocenter.api.v1.GetOrganizationUserResponse.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.GetOrganizationUserResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    member: (f = msg.getMember()) && proto.kilocenter.api.v1.OrganizationUser.toObject(includeInstance, f)
+member: (f = msg.getMember()) && proto.kilocenter.api.v1.OrganizationUser.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -11538,7 +11550,7 @@ proto.kilocenter.api.v1.GetOrganizationUserResponse.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetOrganizationUserResponse}
  */
 proto.kilocenter.api.v1.GetOrganizationUserResponse.deserializeBinary = function(bytes) {
@@ -11676,13 +11688,13 @@ proto.kilocenter.api.v1.UpdateOrganizationUserRequest.prototype.toObject = funct
  */
 proto.kilocenter.api.v1.UpdateOrganizationUserRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    userId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    role: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    isOrgAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    isBaseStationAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
-    isEndpointAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
-    updateMask: (f = msg.getUpdateMask()) && google_protobuf_field_mask_pb.FieldMask.toObject(includeInstance, f)
+orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+userId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+role: jspb.Message.getFieldWithDefault(msg, 3, ""),
+isOrgAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+isBaseStationAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
+isEndpointAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
+updateMask: (f = msg.getUpdateMask()) && google_protobuf_field_mask_pb.FieldMask.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -11695,7 +11707,7 @@ proto.kilocenter.api.v1.UpdateOrganizationUserRequest.toObject = function(includ
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateOrganizationUserRequest}
  */
 proto.kilocenter.api.v1.UpdateOrganizationUserRequest.deserializeBinary = function(bytes) {
@@ -11720,15 +11732,15 @@ proto.kilocenter.api.v1.UpdateOrganizationUserRequest.deserializeBinaryFromReade
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRole(value);
       break;
     case 4:
@@ -12007,7 +12019,7 @@ proto.kilocenter.api.v1.UpdateOrganizationUserResponse.prototype.toObject = func
  */
 proto.kilocenter.api.v1.UpdateOrganizationUserResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    member: (f = msg.getMember()) && proto.kilocenter.api.v1.OrganizationUser.toObject(includeInstance, f)
+member: (f = msg.getMember()) && proto.kilocenter.api.v1.OrganizationUser.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -12020,7 +12032,7 @@ proto.kilocenter.api.v1.UpdateOrganizationUserResponse.toObject = function(inclu
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateOrganizationUserResponse}
  */
 proto.kilocenter.api.v1.UpdateOrganizationUserResponse.deserializeBinary = function(bytes) {
@@ -12158,8 +12170,8 @@ proto.kilocenter.api.v1.RemoveOrganizationUserRequest.prototype.toObject = funct
  */
 proto.kilocenter.api.v1.RemoveOrganizationUserRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    userId: jspb.Message.getFieldWithDefault(msg, 2, "")
+orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+userId: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -12172,7 +12184,7 @@ proto.kilocenter.api.v1.RemoveOrganizationUserRequest.toObject = function(includ
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RemoveOrganizationUserRequest}
  */
 proto.kilocenter.api.v1.RemoveOrganizationUserRequest.deserializeBinary = function(bytes) {
@@ -12197,11 +12209,11 @@ proto.kilocenter.api.v1.RemoveOrganizationUserRequest.deserializeBinaryFromReade
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     default:
@@ -12318,7 +12330,7 @@ proto.kilocenter.api.v1.RemoveOrganizationUserResponse.prototype.toObject = func
  */
 proto.kilocenter.api.v1.RemoveOrganizationUserResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -12331,7 +12343,7 @@ proto.kilocenter.api.v1.RemoveOrganizationUserResponse.toObject = function(inclu
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RemoveOrganizationUserResponse}
  */
 proto.kilocenter.api.v1.RemoveOrganizationUserResponse.deserializeBinary = function(bytes) {
@@ -12448,10 +12460,10 @@ proto.kilocenter.api.v1.ListOrganizationUsersRequest.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.ListOrganizationUsersRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 4, "")
+orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+status: jspb.Message.getFieldWithDefault(msg, 2, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 3, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -12464,7 +12476,7 @@ proto.kilocenter.api.v1.ListOrganizationUsersRequest.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListOrganizationUsersRequest}
  */
 proto.kilocenter.api.v1.ListOrganizationUsersRequest.deserializeBinary = function(bytes) {
@@ -12489,11 +12501,11 @@ proto.kilocenter.api.v1.ListOrganizationUsersRequest.deserializeBinaryFromReader
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 3:
@@ -12501,7 +12513,7 @@ proto.kilocenter.api.v1.ListOrganizationUsersRequest.deserializeBinaryFromReader
       msg.setPageSize(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     default:
@@ -12675,10 +12687,10 @@ proto.kilocenter.api.v1.ListOrganizationUsersResponse.prototype.toObject = funct
  */
 proto.kilocenter.api.v1.ListOrganizationUsersResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    membersList: jspb.Message.toObjectList(msg.getMembersList(),
+membersList: jspb.Message.toObjectList(msg.getMembersList(),
     proto.kilocenter.api.v1.OrganizationUser.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -12691,7 +12703,7 @@ proto.kilocenter.api.v1.ListOrganizationUsersResponse.toObject = function(includ
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListOrganizationUsersResponse}
  */
 proto.kilocenter.api.v1.ListOrganizationUsersResponse.deserializeBinary = function(bytes) {
@@ -12721,7 +12733,7 @@ proto.kilocenter.api.v1.ListOrganizationUsersResponse.deserializeBinaryFromReade
       msg.addMembers(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -12888,16 +12900,16 @@ proto.kilocenter.api.v1.OrganizationUser.prototype.toObject = function(opt_inclu
  */
 proto.kilocenter.api.v1.OrganizationUser.toObject = function(includeInstance, msg) {
   var f, obj = {
-    orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    userId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    email: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    role: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    isOrgAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
-    isBaseStationAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    isEndpointAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+orgId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+userId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+email: jspb.Message.getFieldWithDefault(msg, 3, ""),
+role: jspb.Message.getFieldWithDefault(msg, 4, ""),
+status: jspb.Message.getFieldWithDefault(msg, 5, ""),
+isOrgAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
+isBaseStationAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+isEndpointAdmin: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -12910,7 +12922,7 @@ proto.kilocenter.api.v1.OrganizationUser.toObject = function(includeInstance, ms
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.OrganizationUser}
  */
 proto.kilocenter.api.v1.OrganizationUser.deserializeBinary = function(bytes) {
@@ -12935,23 +12947,23 @@ proto.kilocenter.api.v1.OrganizationUser.deserializeBinaryFromReader = function(
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEmail(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRole(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 6:
@@ -13330,7 +13342,7 @@ proto.kilocenter.api.v1.ListUserOrganizationsRequest.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.ListUserOrganizationsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    userId: jspb.Message.getFieldWithDefault(msg, 1, "")
+userId: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -13343,7 +13355,7 @@ proto.kilocenter.api.v1.ListUserOrganizationsRequest.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListUserOrganizationsRequest}
  */
 proto.kilocenter.api.v1.ListUserOrganizationsRequest.deserializeBinary = function(bytes) {
@@ -13368,7 +13380,7 @@ proto.kilocenter.api.v1.ListUserOrganizationsRequest.deserializeBinaryFromReader
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     default:
@@ -13467,7 +13479,7 @@ proto.kilocenter.api.v1.ListUserOrganizationsResponse.prototype.toObject = funct
  */
 proto.kilocenter.api.v1.ListUserOrganizationsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    membershipsList: jspb.Message.toObjectList(msg.getMembershipsList(),
+membershipsList: jspb.Message.toObjectList(msg.getMembershipsList(),
     proto.kilocenter.api.v1.UserMembership.toObject, includeInstance)
   };
 
@@ -13481,7 +13493,7 @@ proto.kilocenter.api.v1.ListUserOrganizationsResponse.toObject = function(includ
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListUserOrganizationsResponse}
  */
 proto.kilocenter.api.v1.ListUserOrganizationsResponse.deserializeBinary = function(bytes) {
@@ -13620,10 +13632,10 @@ proto.kilocenter.api.v1.CreateApiKeyRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.CreateApiKeyRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    name: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    keyType: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    organizationId: jspb.Message.getFieldWithDefault(msg, 4, "")
+name: jspb.Message.getFieldWithDefault(msg, 1, ""),
+keyType: jspb.Message.getFieldWithDefault(msg, 2, ""),
+expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+organizationId: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -13636,7 +13648,7 @@ proto.kilocenter.api.v1.CreateApiKeyRequest.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateApiKeyRequest}
  */
 proto.kilocenter.api.v1.CreateApiKeyRequest.deserializeBinary = function(bytes) {
@@ -13661,11 +13673,11 @@ proto.kilocenter.api.v1.CreateApiKeyRequest.deserializeBinaryFromReader = functi
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setKeyType(value);
       break;
     case 3:
@@ -13674,7 +13686,7 @@ proto.kilocenter.api.v1.CreateApiKeyRequest.deserializeBinaryFromReader = functi
       msg.setExpiresAt(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrganizationId(value);
       break;
     default:
@@ -13861,8 +13873,8 @@ proto.kilocenter.api.v1.CreateApiKeyResponse.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.CreateApiKeyResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    apiKey: (f = msg.getApiKey()) && proto.kilocenter.api.v1.ApiKey.toObject(includeInstance, f),
-    rawKey: jspb.Message.getFieldWithDefault(msg, 2, "")
+apiKey: (f = msg.getApiKey()) && proto.kilocenter.api.v1.ApiKey.toObject(includeInstance, f),
+rawKey: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -13875,7 +13887,7 @@ proto.kilocenter.api.v1.CreateApiKeyResponse.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateApiKeyResponse}
  */
 proto.kilocenter.api.v1.CreateApiKeyResponse.deserializeBinary = function(bytes) {
@@ -13905,7 +13917,7 @@ proto.kilocenter.api.v1.CreateApiKeyResponse.deserializeBinaryFromReader = funct
       msg.setApiKey(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRawKey(value);
       break;
     default:
@@ -14042,7 +14054,7 @@ proto.kilocenter.api.v1.GetApiKeyRequest.prototype.toObject = function(opt_inclu
  */
 proto.kilocenter.api.v1.GetApiKeyRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -14055,7 +14067,7 @@ proto.kilocenter.api.v1.GetApiKeyRequest.toObject = function(includeInstance, ms
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetApiKeyRequest}
  */
 proto.kilocenter.api.v1.GetApiKeyRequest.deserializeBinary = function(bytes) {
@@ -14080,7 +14092,7 @@ proto.kilocenter.api.v1.GetApiKeyRequest.deserializeBinaryFromReader = function(
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -14172,7 +14184,7 @@ proto.kilocenter.api.v1.GetApiKeyResponse.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.GetApiKeyResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    apiKey: (f = msg.getApiKey()) && proto.kilocenter.api.v1.ApiKey.toObject(includeInstance, f)
+apiKey: (f = msg.getApiKey()) && proto.kilocenter.api.v1.ApiKey.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -14185,7 +14197,7 @@ proto.kilocenter.api.v1.GetApiKeyResponse.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetApiKeyResponse}
  */
 proto.kilocenter.api.v1.GetApiKeyResponse.deserializeBinary = function(bytes) {
@@ -14323,7 +14335,7 @@ proto.kilocenter.api.v1.DeleteApiKeyRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.DeleteApiKeyRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -14336,7 +14348,7 @@ proto.kilocenter.api.v1.DeleteApiKeyRequest.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteApiKeyRequest}
  */
 proto.kilocenter.api.v1.DeleteApiKeyRequest.deserializeBinary = function(bytes) {
@@ -14361,7 +14373,7 @@ proto.kilocenter.api.v1.DeleteApiKeyRequest.deserializeBinaryFromReader = functi
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -14453,7 +14465,7 @@ proto.kilocenter.api.v1.DeleteApiKeyResponse.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.DeleteApiKeyResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -14466,7 +14478,7 @@ proto.kilocenter.api.v1.DeleteApiKeyResponse.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteApiKeyResponse}
  */
 proto.kilocenter.api.v1.DeleteApiKeyResponse.deserializeBinary = function(bytes) {
@@ -14583,9 +14595,9 @@ proto.kilocenter.api.v1.ListApiKeysRequest.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.ListApiKeysRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    userId: jspb.Message.getFieldWithDefault(msg, 3, "")
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+userId: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -14598,7 +14610,7 @@ proto.kilocenter.api.v1.ListApiKeysRequest.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListApiKeysRequest}
  */
 proto.kilocenter.api.v1.ListApiKeysRequest.deserializeBinary = function(bytes) {
@@ -14627,11 +14639,11 @@ proto.kilocenter.api.v1.ListApiKeysRequest.deserializeBinaryFromReader = functio
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     default:
@@ -14780,10 +14792,10 @@ proto.kilocenter.api.v1.ListApiKeysResponse.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.ListApiKeysResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    apiKeysList: jspb.Message.toObjectList(msg.getApiKeysList(),
+apiKeysList: jspb.Message.toObjectList(msg.getApiKeysList(),
     proto.kilocenter.api.v1.ApiKey.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -14796,7 +14808,7 @@ proto.kilocenter.api.v1.ListApiKeysResponse.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListApiKeysResponse}
  */
 proto.kilocenter.api.v1.ListApiKeysResponse.deserializeBinary = function(bytes) {
@@ -14826,7 +14838,7 @@ proto.kilocenter.api.v1.ListApiKeysResponse.deserializeBinaryFromReader = functi
       msg.addApiKeys(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -14993,16 +15005,16 @@ proto.kilocenter.api.v1.ApiKey.prototype.toObject = function(opt_includeInstance
  */
 proto.kilocenter.api.v1.ApiKey.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    orgId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    userId: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    keyPrefix: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    keyType: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    isActive: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastUsedAt: (f = msg.getLastUsedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+orgId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+userId: jspb.Message.getFieldWithDefault(msg, 3, ""),
+name: jspb.Message.getFieldWithDefault(msg, 4, ""),
+keyPrefix: jspb.Message.getFieldWithDefault(msg, 5, ""),
+keyType: jspb.Message.getFieldWithDefault(msg, 6, ""),
+isActive: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastUsedAt: (f = msg.getLastUsedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -15015,7 +15027,7 @@ proto.kilocenter.api.v1.ApiKey.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ApiKey}
  */
 proto.kilocenter.api.v1.ApiKey.deserializeBinary = function(bytes) {
@@ -15040,27 +15052,27 @@ proto.kilocenter.api.v1.ApiKey.deserializeBinaryFromReader = function(msg, reade
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setKeyPrefix(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setKeyType(value);
       break;
     case 7:

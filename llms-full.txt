@@ -74,8 +74,8 @@ This is a MIOTY-native implementation built from scratch, not a fork of another 
 
 ### Technology Stack
 
-- Backend: Go 1.24.4, MessagePack for BSSCI encoding
-- Frontend: React 19.1, Material-UI 7.1.1, TypeScript 5.8, Vite 7
+- Backend: Go 1.27.3, MessagePack for BSSCI encoding
+- Frontend: React 19.3, Material UI 9, TypeScript 6, Vite 8
 - Database: PostgreSQL 18.1
 - API: gRPC + gRPC-web (117 RPCs)
 - Infrastructure: Docker Compose, Helm chart
@@ -150,7 +150,7 @@ helm install kilocenter ./helm/kilocenter -f my-values.yaml
 
 ### Linux Host (source)
 
-Requires Go 1.24.4+ and Bun runtime. Docker for infrastructure services (PostgreSQL, Redis, Mosquitto).
+Requires Go 1.27.3+ and Bun runtime. Docker for infrastructure services (PostgreSQL, Redis, Mosquitto).
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d    # infrastructure

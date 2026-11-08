@@ -82,7 +82,7 @@ export class ErrorBoundary extends Component<
           <Typography variant="h4" color="error" gutterBottom>
             {ERROR_BOUNDARY.TITLE}
           </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body1" color="textSecondary" sx={{ mb: 2 }}>
             {this.state.error?.message || UI_COMMON.ERR_GENERIC}
           </Typography>
           <Button variant="contained" onClick={this.handleReset}>

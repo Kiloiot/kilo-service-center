@@ -42,7 +42,7 @@ const MONO_CELL = (theme: Theme) => ({
 function StatusTable({ statuses }: { statuses: DlRxStatusDTO[] }) {
   if (statuses.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+      <Typography variant="body2" color="textSecondary" sx={{ py: 1 }}>
         {DL_RX_STATUS.MSG_EMPTY_STATUSES}
       </Typography>
     );
@@ -85,7 +85,7 @@ function PendingQueries({ queries }: { queries: DlRxStatusQueryDTO[] }) {
         {DL_RX_STATUS.SECTION_PENDING}
       </Typography>
       {pending.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ py: 1 }}>
           {DL_RX_STATUS.MSG_EMPTY_PENDING}
         </Typography>
       ) : (
@@ -96,13 +96,13 @@ function PendingQueries({ queries }: { queries: DlRxStatusQueryDTO[] }) {
               disableGutters
               sx={{ gap: 2, flexWrap: "wrap" }}
             >
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="textSecondary">
                 {DL_RX_STATUS.LABEL_REQUESTED_AT}
               </Typography>
               <Typography variant="body2">
                 {formatDateTime(query.requestedAt)}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="textSecondary">
                 {SCACI_FIELD.BS_EUI}
               </Typography>
               <Typography variant="body2" sx={MONO_CELL}>
@@ -152,7 +152,7 @@ const DlRxStatusPanel: React.FC<DlRxStatusPanelProps> = ({ epEui }) => {
             : DL_RX_STATUS.ACTION_QUERY}
         </Button>
       </Box>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {DL_RX_STATUS.HELPER}
       </Typography>
       <StatusTable statuses={statusesQuery.data?.statuses ?? []} />

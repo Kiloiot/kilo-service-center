@@ -113,7 +113,7 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
           />
         </Box>
 
-        <Box display="flex" gap={2} mt={2}>
+        <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
           <Button
             variant="contained"
             size="small"

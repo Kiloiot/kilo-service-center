@@ -72,11 +72,11 @@ const UserMembershipsCard: React.FC<UserMembershipsCardProps> = ({
       </Typography>
 
       {isOrgsLoading ? (
-        <Box display="flex" justifyContent="center" py={2}>
+        <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
           <CircularProgress size={componentSpacing.spinner.section} />
         </Box>
       ) : memberships.length === 0 ? (
-        <Typography color="text.secondary" sx={{ py: 2 }}>
+        <Typography color="textSecondary" sx={{ py: 2 }}>
           {USER_FORM.EMPTY_NO_MEMBERSHIPS}
         </Typography>
       ) : (
@@ -129,7 +129,7 @@ const UserMembershipsCard: React.FC<UserMembershipsCardProps> = ({
         <Typography variant="subtitle2" gutterBottom>
           {USER_FORM.LABEL_ADD_TO_ORG}
         </Typography>
-        <Box display="flex" gap={2} alignItems="flex-start">
+        <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
           <Autocomplete
             options={availableOrgs}
             getOptionLabel={(option) => option.name}

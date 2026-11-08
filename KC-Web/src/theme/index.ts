@@ -6,10 +6,12 @@
 // No inline hex/RGB colors, no hardcoded spacing values.
 // Use theme.palette.*, theme.spacing(), theme.typography.* exclusively.
 
+import { alertClasses } from "@mui/material";
 import type { Theme, ThemeOptions } from "@mui/material/styles";
 import { alpha, createTheme } from "@mui/material/styles";
 
 import { createButtonOverrides } from "./buttons";
+import { componentSpacing } from "./componentSpacing";
 import { foregroundOverrides } from "./foreground";
 import {
   chipHighlight,
@@ -19,7 +21,7 @@ import {
 import { tabOverrides } from "./tabs";
 
 export { livePulseAnimation } from "./animations";
-export { componentSpacing } from "./componentSpacing";
+export { componentSpacing };
 
 // =============================================================================
 // SEMANTIC TOKEN DEFINITIONS
@@ -281,6 +283,13 @@ interface SemanticTokens {
   elevation: typeof semanticElevation;
   typography: typeof semanticTypography;
 }
+
+const standardAlertColor = (colorClass: string, color: string) => ({
+  [`&.${alertClasses.standard}.${colorClass}`]: {
+    color,
+    [`& .${alertClasses.icon}`]: { color },
+  },
+});
 
 /**
  * Hover, focus and selection surface; the same blue in both modes keeps it
@@ -624,42 +633,33 @@ const createComponentOverrides = (
     },
   },
   ...createHighlightOverrides(tokens.palette.highlight),
+  MuiListItemIcon: {
+    styleOverrides: {
+      root: { minWidth: componentSpacing.listItemIcon.minWidth },
+    },
+  },
   MuiAlert: {
     styleOverrides: {
       root: {
         borderRadius: 8,
-      },
-      // Light mode: use darker text colors for better visibility
-      standardSuccess: {
+        // Light mode: use darker text colors for better visibility
         ...(mode === "light" && {
-          color: tokens.status.success.dark,
-          "& .MuiAlert-icon": {
-            color: tokens.status.success.dark,
-          },
-        }),
-      },
-      standardError: {
-        ...(mode === "light" && {
-          color: tokens.status.error.dark,
-          "& .MuiAlert-icon": {
-            color: tokens.status.error.dark,
-          },
-        }),
-      },
-      standardWarning: {
-        ...(mode === "light" && {
-          color: tokens.status.warning.dark,
-          "& .MuiAlert-icon": {
-            color: tokens.status.warning.dark,
-          },
-        }),
-      },
-      standardInfo: {
-        ...(mode === "light" && {
-          color: tokens.status.info.dark,
-          "& .MuiAlert-icon": {
-            color: tokens.status.info.dark,
-          },
+          ...standardAlertColor(
+            alertClasses.colorSuccess,
+            tokens.status.success.dark,
+          ),
+          ...standardAlertColor(
+            alertClasses.colorError,
+            tokens.status.error.dark,
+          ),
+          ...standardAlertColor(
+            alertClasses.colorWarning,
+            tokens.status.warning.dark,
+          ),
+          ...standardAlertColor(
+            alertClasses.colorInfo,
+            tokens.status.info.dark,
+          ),
         }),
       },
     },

@@ -104,9 +104,11 @@ function TableState({
   if (isLoading) {
     return (
       <Box
-        display="flex"
-        justifyContent="center"
-        p={DATA_TABLE_LAYOUT.STATE_PADDING}
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          p: DATA_TABLE_LAYOUT.STATE_PADDING,
+        }}
       >
         <CircularProgress size={componentSpacing.spinner.section} />
       </Box>
@@ -116,7 +118,7 @@ function TableState({
     return (
       <Typography
         variant="body2"
-        color="text.secondary"
+        color="textSecondary"
         sx={{ p: DATA_TABLE_LAYOUT.STATE_PADDING }}
       >
         {emptyMessage}
@@ -192,7 +194,7 @@ export function DataTable<T>({
                   {expandable && open && (
                     <TableRow>
                       <TableCell colSpan={columnCount}>
-                        <Box p={DATA_TABLE_LAYOUT.DETAILS_PADDING}>
+                        <Box sx={{ p: DATA_TABLE_LAYOUT.DETAILS_PADDING }}>
                           {renderDetails(row)}
                         </Box>
                       </TableCell>

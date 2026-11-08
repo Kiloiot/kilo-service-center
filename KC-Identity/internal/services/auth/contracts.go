@@ -9,7 +9,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 // UserStore provides user persistence operations.
@@ -146,7 +145,7 @@ type OrganizationResolver = org.OrganizationResolver
 type TokenIssuer interface {
 	IssueAccessToken(userID uuid.UUID, orgID *uuid.UUID) (string, error)
 	IssueRefreshToken(userID uuid.UUID) (string, error)
-	ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Token, error)
+	ParseRefreshToken(tokenString string) (uuid.UUID, error)
 	GetAccessTTL() int64
 	GetRefreshTTL() int64
 	GetRefreshExpiresAt() time.Time

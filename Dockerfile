@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for KiloCenter (KC-Core)
 # Build context: kilocenter-modules/ root
 # Stage 1: Builder
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 RUN apk add --no-cache git make gcc musl-dev
 
@@ -44,7 +44,7 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} go build \
 WORKDIR /build/KC-Core
 
 # Stage 2: Runtime
-FROM alpine:3.23
+FROM alpine:3.24
 ARG SOURCE_URL=https://github.com/Kiloiot/kilo-service-center
 ARG DOCS_URL=https://docs.kiloiot.io/
 LABEL org.opencontainers.image.title="KiloCenter"

@@ -45,12 +45,14 @@ const BsConfigSummary: React.FC<BsConfigSummaryProps> = ({
     <Box sx={{ mt: 2 }}>
       {/* Name */}
       <Box
-        display="flex"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ mb: 1 }}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 1,
+        }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {LABEL_NAME}
         </Typography>
         <Typography variant="body2">{name}</Typography>
@@ -58,15 +60,17 @@ const BsConfigSummary: React.FC<BsConfigSummaryProps> = ({
 
       {/* EUI with copy */}
       <Box
-        display="flex"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ mb: 1 }}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 1,
+        }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {LABEL_BS_EUI_DISPLAY}
         </Typography>
-        <Box display="flex" alignItems="center" gap={1}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Typography variant="body2" sx={(theme) => monoSxGetter(theme)}>
             {formatEui(eui)}
           </Typography>

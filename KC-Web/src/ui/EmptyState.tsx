@@ -76,14 +76,14 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         </Box>
       )}
 
-      <Typography variant="h6" color="text.primary" gutterBottom>
+      <Typography variant="h6" color="textPrimary" gutterBottom>
         {title}
       </Typography>
 
       {description && (
         <Typography
           variant="body2"
-          color="text.secondary"
+          color="textSecondary"
           sx={{
             maxWidth: componentSpacing.stateView.messageMaxWidth,
             mb: action ? 3 : 0,

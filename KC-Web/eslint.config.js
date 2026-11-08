@@ -1,198 +1,211 @@
-import js from '@eslint/js';
-import globals from 'globals';
-import reactHooks from 'eslint-plugin-react-hooks';
-import reactRefresh from 'eslint-plugin-react-refresh';
-import tseslint from 'typescript-eslint';
-import simpleImportSort from 'eslint-plugin-simple-import-sort';
-import importPlugin from 'eslint-plugin-import';
+import js from "@eslint/js";
+import globals from "globals";
+import reactHooks from "eslint-plugin-react-hooks";
+import reactRefresh from "eslint-plugin-react-refresh";
+import tseslint from "typescript-eslint";
+import simpleImportSort from "eslint-plugin-simple-import-sort";
+import importPlugin from "eslint-plugin-import-x";
 
 // Import restrictions shared by every layer block below; flat-config blocks
 // replace a rule's options instead of merging them.
 const restrictedImportPatterns = [
-    {
-      group: ['../../*', '../../../*'],
-      message: 'Deep relative imports banned. Use @aliases.',
-    },
-    {
-      group: ['@mui/icons-material/*', '@mui/icons-material'],
-      message: 'Import icons from @theme/icons only.',
-    },
-    // Block deep relative imports to constants - use @constants/* aliases
-    {
-      group: ['../constants/*', '../../constants/*', '../../../constants/*'],
-      message: 'Use @constants/app or @constants/messages aliases for constants.',
-    },
+  {
+    group: ["../../*", "../../../*"],
+    message: "Deep relative imports banned. Use @aliases.",
+  },
+  {
+    group: ["@mui/icons-material/*", "@mui/icons-material"],
+    message: "Import icons from @theme/icons only.",
+  },
+  // Block deep relative imports to constants - use @constants/* aliases
+  {
+    group: ["../constants/*", "../../constants/*", "../../../constants/*"],
+    message: "Use @constants/app or @constants/messages aliases for constants.",
+  },
 ];
 
 // Data access lives in hooks: components render what hooks return.
 const reactQueryHookImports = {
-  name: '@tanstack/react-query',
+  name: "@tanstack/react-query",
   importNames: [
-    'useQuery',
-    'useMutation',
-    'useInfiniteQuery',
-    'useQueries',
-    'useSuspenseQuery',
-    'useSuspenseInfiniteQuery',
-    'useSuspenseQueries',
+    "useQuery",
+    "useMutation",
+    "useInfiniteQuery",
+    "useQueries",
+    "useSuspenseQuery",
+    "useSuspenseInfiniteQuery",
+    "useSuspenseQueries",
   ],
-  message: 'React Query hooks belong in src/hooks or src/modules/*/hooks.',
+  message: "React Query hooks belong in src/hooks or src/modules/*/hooks.",
 };
 const apiFacadeImports = {
-  name: '@services/api',
-  message: 'Components import hooks, not the api facade.',
+  name: "@services/api",
+  message: "Components import hooks, not the api facade.",
 };
 const grpcLayerImports = {
-  group: ['@services/grpc', '@services/grpc/*', '@services/grpc/**'],
-  message: 'Only src/services may reach the gRPC layer.',
+  group: ["@services/grpc", "@services/grpc/*", "@services/grpc/**"],
+  message: "Only src/services may reach the gRPC layer.",
 };
-const testFiles = ['**/*.test.{ts,tsx}', '**/__tests__/**', '**/test/**'];
+const testFiles = ["**/*.test.{ts,tsx}", "**/__tests__/**", "**/test/**"];
 
 export default tseslint.config(
   // Global ignores
   {
     ignores: [
-      'dist',
-      'node_modules',
-      'coverage',
-      'vite.config.ts',
-      'vitest.config.ts',
-      'playwright.config.ts',
-      'e2e/**',
+      "dist",
+      "node_modules",
+      "coverage",
+      "vite.config.ts",
+      "vitest.config.ts",
+      "playwright.config.ts",
+      "e2e/**",
       // Test setup files are excluded from KC-Web/tsconfig.app.json (they are
       // contributor-only via the kc-web-dev vitest harness). Excluding them
       // from ESLint here prevents @typescript-eslint/parser from failing on
       // "file not found in any of the provided project(s)".
-      'src/test/**',
+      "src/test/**",
       // Generated gRPC-web stubs - auto-generated code
-      'src/services/grpc/identity_pb.js',
-      'src/services/grpc/identity_pb.d.ts',
-      'src/services/grpc/identity_pb_service.js',
-      'src/services/grpc/identity_pb_service.d.ts',
-      'src/services/grpc/core_pb.js',
-      'src/services/grpc/core_pb.d.ts',
-      'src/services/grpc/core_pb_service.js',
-      'src/services/grpc/core_pb_service.d.ts',
+      "src/services/grpc/identity_pb.js",
+      "src/services/grpc/identity_pb.d.ts",
+      "src/services/grpc/identity_pb_service.js",
+      "src/services/grpc/identity_pb_service.d.ts",
+      "src/services/grpc/core_pb.js",
+      "src/services/grpc/core_pb.d.ts",
+      "src/services/grpc/core_pb_service.js",
+      "src/services/grpc/core_pb_service.d.ts",
     ],
   },
   // Main configuration for all TypeScript files
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
-    files: ['**/*.{ts,tsx}'],
+    files: ["**/*.{ts,tsx}"],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
       parserOptions: {
-        project: './tsconfig.app.json',
+        project: "./tsconfig.app.json",
       },
     },
     plugins: {
-      'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
-      'simple-import-sort': simpleImportSort,
-      import: importPlugin,
+      "react-hooks": reactHooks,
+      "react-refresh": reactRefresh,
+      "simple-import-sort": simpleImportSort,
+      "import-x": importPlugin,
     },
     settings: {
-      'import/resolver': {
+      "import-x/resolver": {
         typescript: {
-          project: './tsconfig.app.json',
+          project: "./tsconfig.app.json",
         },
       },
     },
     rules: {
       // React hooks rules
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
 
       // MANDATORY: Import sorting with groups
-      'simple-import-sort/imports': [
-        'error',
+      "simple-import-sort/imports": [
+        "error",
         {
           groups: [
             // React and react-dom
-            ['^react', '^react-dom'],
+            ["^react", "^react-dom"],
             // External packages
-            ['^@?\\w'],
+            ["^@?\\w"],
             // Internal aliases
             [
-              '^@/',
-              '^@app/',
-              '^@modules/',
-              '^@components/',
-              '^@ui/',
-              '^@layouts/',
-              '^@services/',
-              '^@contexts/',
-              '^@hooks/',
-              '^@utils/',
-              '^@constants/',
-              '^@styles/',
-              '^@router/',
-              '^@types/',
-              '^@locales/',
-              '^@assets/',
-              '^@config/',
-              '^@theme/',
+              "^@/",
+              "^@app/",
+              "^@modules/",
+              "^@components/",
+              "^@ui/",
+              "^@layouts/",
+              "^@services/",
+              "^@contexts/",
+              "^@hooks/",
+              "^@utils/",
+              "^@constants/",
+              "^@styles/",
+              "^@router/",
+              "^@types/",
+              "^@locales/",
+              "^@assets/",
+              "^@config/",
+              "^@theme/",
             ],
             // Relative imports
-            ['^\\.'],
+            ["^\\."],
             // Style imports
-            ['^.+\\.css$'],
+            ["^.+\\.css$"],
           ],
         },
       ],
-      'simple-import-sort/exports': 'error',
+      "simple-import-sort/exports": "error",
 
       // MANDATORY: Block restricted imports (error, not warn)
-      'no-restricted-imports': ['error', { patterns: restrictedImportPatterns }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: restrictedImportPatterns },
+      ],
 
       // MANDATORY: Force barrel exports for modules - enforce barrels for feature modules
       // NOTE: This rule is configured to allow relative imports within modules
       // External consumers of modules MUST use barrel exports (@modules/*/index)
-      'import/no-internal-modules': [
-        'error',
+      "import-x/no-internal-modules": [
+        "error",
         {
           allow: [
             // React standard imports
-            'react-dom/client',
+            "react-dom/client",
             // Module barrels only - external consumers use index.ts
-            '@modules/*/index',
+            "@modules/*/index",
             // Cross-module hook imports (avoids pulling in heavy page components via barrel)
-            '@modules/*/hooks',
+            "@modules/*/hooks",
             // Theme registry
-            '@theme/icons',
-            '@theme/index',
+            "@theme/icons",
+            "@theme/index",
             // MUI components and date pickers
-            '@mui/material/**',
-            '@mui/x-date-pickers/**',
+            "@mui/material/**",
+            "@mui/x-date-pickers/**",
             // Shared components (not feature modules)
-            '@components/common/**',
-            '@components/layout/**',
+            "@components/common/**",
+            "@components/layout/**",
             // Config files
-            '@config/**',
+            "@config/**",
             // Local relative imports within modules (pages, components, utils subdirs)
-            '**/pages/**',
-            '**/components/**',
-            '**/utils/**',
+            "**/pages/**",
+            "**/components/**",
+            "**/utils/**",
             // gRPC-web generated stubs and google-protobuf
-            '@services/grpc/**',
-            'google-protobuf/**',
+            "@services/grpc/**",
+            "google-protobuf/**",
             // Leaflet CSS and asset imports required for map rendering
-            'leaflet/**',
+            "leaflet/**",
           ],
         },
       ],
 
       // MANDATORY: Ban hardcoded hex/RGB color literals
-      'no-restricted-syntax': [
-        'error',
+      "no-restricted-syntax": [
+        "error",
         {
-          selector: 'Literal[value=/^#[0-9A-Fa-f]{3,8}$/]',
-          message: 'Hex colors banned. Use theme.palette.* tokens.',
+          selector: "Literal[value=/^#[0-9A-Fa-f]{3,8}$/]",
+          message: "Hex colors banned. Use theme.palette.* tokens.",
         },
         {
-          selector: 'Literal[value=/^rgb\\(|^rgba\\(/]',
-          message: 'RGB colors banned. Use theme.palette.* tokens.',
+          selector: "Literal[value=/^rgb\\(|^rgba\\(/]",
+          message: "RGB colors banned. Use theme.palette.* tokens.",
+        },
+        // Typography ignores palette paths in its color prop since MUI 9.
+        {
+          selector:
+            "JSXOpeningElement[name.name='Typography'] > JSXAttribute[name.name='color'] Literal[value=/^[a-z]+\\.[a-zA-Z0-9]+$/]",
+          message:
+            "Use a Typography color such as textSecondary, or sx for a palette path.",
         },
       ],
     },
@@ -200,19 +213,19 @@ export default tseslint.config(
   // Layer boundaries. Each block lists the full option set for its files
   // because a later block replaces, not merges, the rule's options.
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ["src/**/*.{ts,tsx}"],
     ignores: [
       ...testFiles,
-      'src/hooks/**',
-      'src/modules/*/hooks/**',
-      'src/services/**',
-      'src/context/SessionContext.tsx',
-      'src/context/OrganizationContext.tsx',
-      'src/utils/tokenRefresh.ts',
+      "src/hooks/**",
+      "src/modules/*/hooks/**",
+      "src/services/**",
+      "src/context/SessionContext.tsx",
+      "src/context/OrganizationContext.tsx",
+      "src/utils/tokenRefresh.ts",
     ],
     rules: {
-      'no-restricted-imports': [
-        'error',
+      "no-restricted-imports": [
+        "error",
         {
           patterns: [...restrictedImportPatterns, grpcLayerImports],
           paths: [reactQueryHookImports, apiFacadeImports],
@@ -221,24 +234,24 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/hooks/**/*.{ts,tsx}', 'src/modules/*/hooks/**/*.{ts,tsx}'],
+    files: ["src/hooks/**/*.{ts,tsx}", "src/modules/*/hooks/**/*.{ts,tsx}"],
     ignores: testFiles,
     rules: {
-      'no-restricted-imports': [
-        'error',
+      "no-restricted-imports": [
+        "error",
         { patterns: [...restrictedImportPatterns, grpcLayerImports] },
       ],
     },
   },
   {
     files: [
-      'src/context/SessionContext.tsx',
-      'src/context/OrganizationContext.tsx',
-      'src/utils/tokenRefresh.ts',
+      "src/context/SessionContext.tsx",
+      "src/context/OrganizationContext.tsx",
+      "src/utils/tokenRefresh.ts",
     ],
     rules: {
-      'no-restricted-imports': [
-        'error',
+      "no-restricted-imports": [
+        "error",
         {
           patterns: [...restrictedImportPatterns, grpcLayerImports],
           paths: [reactQueryHookImports],
@@ -247,11 +260,11 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/services/**/*.{ts,tsx}'],
+    files: ["src/services/**/*.{ts,tsx}"],
     ignores: testFiles,
     rules: {
-      'no-restricted-imports': [
-        'error',
+      "no-restricted-imports": [
+        "error",
         { patterns: restrictedImportPatterns, paths: [reactQueryHookImports] },
       ],
     },
@@ -259,114 +272,122 @@ export default tseslint.config(
   // MANDATORY: no-default-export for shared layers
   {
     files: [
-      'src/contexts/**/*.{ts,tsx}',
-      'src/context/**/*.{ts,tsx}',
-      'src/hooks/**/*.{ts,tsx}',
-      'src/utils/**/*.{ts,tsx}',
-      'src/services/**/*.{ts,tsx}',
-      'src/ui/**/*.{ts,tsx}',
-      'src/router/**/*.{ts,tsx}',
-      'src/config/**/*.{ts,tsx}',
-      'src/constants/**/*.{ts,tsx}',
+      "src/contexts/**/*.{ts,tsx}",
+      "src/context/**/*.{ts,tsx}",
+      "src/hooks/**/*.{ts,tsx}",
+      "src/utils/**/*.{ts,tsx}",
+      "src/services/**/*.{ts,tsx}",
+      "src/ui/**/*.{ts,tsx}",
+      "src/router/**/*.{ts,tsx}",
+      "src/config/**/*.{ts,tsx}",
+      "src/constants/**/*.{ts,tsx}",
     ],
     ignores: [
       // Explicit exceptions for React Router lazy loading
-      'src/modules/**/pages/**',
-      'src/router/AppRouter.tsx',
+      "src/modules/**/pages/**",
+      "src/router/AppRouter.tsx",
     ],
     rules: {
-      'import/no-default-export': 'error',
+      "import-x/no-default-export": "error",
     },
   },
   // Exception: Theme definition file may use hex/RGB colors
   {
-    files: ['**/src/theme/index.ts'],
+    files: ["**/src/theme/index.ts"],
     rules: {
-      'no-restricted-syntax': 'off',
+      "no-restricted-syntax": "off",
     },
   },
   // Exception: Icon registry may import from @mui/icons-material
   {
-    files: ['**/src/theme/icons.ts'],
+    files: ["**/src/theme/icons.ts"],
     rules: {
-      'no-restricted-imports': 'off',
+      "no-restricted-imports": "off",
     },
   },
   // MANDATORY: Block inline UI literals, hex colors, import.meta.env, and console
   // Scoped to production code only - tests may use inline strings for assertions
   // NOTE: All selectors merged into single block to prevent override conflicts
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ["src/**/*.{ts,tsx}"],
     ignores: [
-      '**/*.test.{ts,tsx}',
-      '**/__tests__/**',
-      '**/test/**',
-      'src/config/env.ts',
-      'src/theme/**/*.ts',
-      'src/utils/logger.ts',
+      "**/*.test.{ts,tsx}",
+      "**/__tests__/**",
+      "**/test/**",
+      "src/config/env.ts",
+      "src/theme/**/*.ts",
+      "src/utils/logger.ts",
     ],
     rules: {
-      'no-console': 'error',
-      'no-restricted-syntax': [
-        'error',
+      "no-console": "error",
+      "no-restricted-syntax": [
+        "error",
         // Hex/RGB color bans - use theme.palette.* tokens
         {
-          selector: 'Literal[value=/^#[0-9A-Fa-f]{3,8}$/]',
-          message: 'Hex colors banned. Use theme.palette.* tokens.',
+          selector: "Literal[value=/^#[0-9A-Fa-f]{3,8}$/]",
+          message: "Hex colors banned. Use theme.palette.* tokens.",
         },
         {
-          selector: 'Literal[value=/^rgb\\(|^rgba\\(/]',
-          message: 'RGB colors banned. Use theme.palette.* tokens.',
+          selector: "Literal[value=/^rgb\\(|^rgba\\(/]",
+          message: "RGB colors banned. Use theme.palette.* tokens.",
+        },
+        // Typography ignores palette paths in its color prop since MUI 9.
+        {
+          selector:
+            "JSXOpeningElement[name.name='Typography'] > JSXAttribute[name.name='color'] Literal[value=/^[a-z]+\\.[a-zA-Z0-9]+$/]",
+          message:
+            "Use a Typography color such as textSecondary, or sx for a palette path.",
         },
         // Block string literals in JSX text content (4+ chars to allow punctuation)
         {
-          selector: 'JSXText:matches([value=/[a-zA-Z]{4,}/])',
-          message: 'UI text must come from @constants/messages or @constants/app.',
+          selector: "JSXText:matches([value=/[a-zA-Z]{4,}/])",
+          message:
+            "UI text must come from @constants/messages or @constants/app.",
         },
         // Block string literals in common UI attribute props
         {
           selector:
-            'JSXAttribute[name.name=/^(title|label|placeholder|helperText|message|alt|aria-label)$/] > Literal',
-          message: 'UI attribute text must come from @constants/messages.',
+            "JSXAttribute[name.name=/^(title|label|placeholder|helperText|message|alt|aria-label)$/] > Literal",
+          message: "UI attribute text must come from @constants/messages.",
         },
         // Block raw fetch - every call goes through the gRPC transport
         {
           selector: "CallExpression[callee.name='fetch']",
-          message: 'Raw fetch banned. Use the gRPC transport via hooks.',
+          message: "Raw fetch banned. Use the gRPC transport via hooks.",
         },
         // Block import.meta.env access - must use @config/env
         {
           selector:
             'MemberExpression[object.object.name="import"][object.property.name="meta"][property.name="env"]',
-          message: 'import.meta.env access banned. Import from @config/env.',
+          message: "import.meta.env access banned. Import from @config/env.",
         },
       ],
     },
   },
   // Exception: Blueprints module allows underscore-prefixed unused vars (React Query destructuring pattern)
   {
-    files: ['src/modules/blueprints/**/*.{ts,tsx}'],
+    files: ["src/modules/blueprints/**/*.{ts,tsx}"],
     rules: {
-      '@typescript-eslint/no-unused-vars': [
-        'error',
+      "@typescript-eslint/no-unused-vars": [
+        "error",
         {
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          caughtErrorsIgnorePattern: '^_',
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
         },
       ],
     },
   },
   // Exception: Services layer allows underscore-prefixed unused vars (API signature compatibility)
   {
-    files: ['src/services/**/*.{ts,tsx}'],
+    files: ["src/services/**/*.{ts,tsx}"],
     rules: {
-      '@typescript-eslint/no-unused-vars': [
-        'error',
+      "@typescript-eslint/no-unused-vars": [
+        "error",
         {
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          caughtErrorsIgnorePattern: '^_',
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
         },
       ],
     },
@@ -375,10 +396,10 @@ export default tseslint.config(
   // module paths directly (testing internals). Production code is still guarded
   // by the broader rules in the main block above.
   {
-    files: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
+    files: ["**/*.test.{ts,tsx}", "**/__tests__/**"],
     rules: {
-      'no-restricted-syntax': 'off',
-      'import/no-internal-modules': 'off',
+      "no-restricted-syntax": "off",
+      "import-x/no-internal-modules": "off",
     },
-  }
+  },
 );

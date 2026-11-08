@@ -9,12 +9,19 @@ import { AddIcon } from "@theme/icons";
 const ApiKeysHeader: React.FC<{
   onCreate: () => void;
 }> = ({ onCreate }) => (
-  <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+  <Box
+    sx={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      mb: 3,
+    }}
+  >
     <Box>
       <Typography variant="h4" component="h1" gutterBottom>
         {API_KEYS_PAGE.TITLE}
       </Typography>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {API_KEYS_PAGE.DESCRIPTION}
       </Typography>
     </Box>

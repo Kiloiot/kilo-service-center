@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { GenerateCertificateResponse } from "@api-types/api";
 import { useGenerateCertificate } from "@hooks";
 
 import { useFeedback } from "@contexts/feedback";
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { CERT_VALIDITY_DAYS } from "@constants/app";
 import { BASE_STATION_DETAILS } from "@constants/messages";
 
@@ -24,12 +25,12 @@ export function useCertificateRegeneration(
     null,
   );
 
-  useEffect(() => {
+  useAdjustStateOnChange([open, bsEui], () => {
     if (open) {
       setIssued(null);
       setConfirming(false);
     }
-  }, [open, bsEui]);
+  });
 
   const regenerate = async () => {
     try {

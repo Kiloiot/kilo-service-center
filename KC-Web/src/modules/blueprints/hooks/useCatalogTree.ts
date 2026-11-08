@@ -3,7 +3,9 @@
  * manufacturer or device model named in the URL is expanded on arrival.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 
 import { useDeviceModel } from "./useDeviceModels";
 
@@ -33,13 +35,13 @@ export function useCatalogTree({
     if (id) setExpandedModels((prev) => withId(prev, id));
   }, []);
 
-  useEffect(() => {
+  useAdjustStateOnChange([mfrId, expandPath], () => {
     if (mfrId) expandPath(mfrId);
-  }, [mfrId, expandPath]);
+  });
 
-  useEffect(() => {
+  useAdjustStateOnChange([routeModel, expandPath], () => {
     if (routeModel) expandPath(routeModel.manufacturerId, routeModel.id);
-  }, [routeModel, expandPath]);
+  });
 
   const toggleMfr = useCallback(
     (id: string) => setExpandedMfrs((prev) => toggled(prev, id)),

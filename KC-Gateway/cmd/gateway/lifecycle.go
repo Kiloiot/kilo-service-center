@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -59,7 +60,7 @@ func initObservability(cfg *config.Config, l logger.Logger) func() {
 func shutdownServers(l logger.Logger, httpServer *http.Server, proxyServer *grpc.Server, timeout time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout) // context-root: shutdown
 	defer cancel()
-	if err := httpServer.Shutdown(ctx); err != nil {
+	if err := httpServer.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		l.Error(LogGatewayShutdownError, logger.FieldError, err)
 	}
 	proxyServer.Stop()

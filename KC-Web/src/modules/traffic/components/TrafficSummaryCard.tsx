@@ -71,7 +71,7 @@ export function TrafficSummaryCard({
         >
           {summaryItems(summary).map((item) => (
             <Box key={item.label}>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="textSecondary">
                 {item.label}
               </Typography>
               <Typography variant="body1">{item.value}</Typography>

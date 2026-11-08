@@ -73,6 +73,7 @@ export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({
     if (!token) return;
 
     const orgId = extractOrganizationId(token);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the transport must be scoped by this commit, and descendants wait on it
     applyOrganization(
       orgId,
       orgId ? extractOrganizationName(token) || DEFAULT_ORG_NAME : null,
@@ -87,6 +88,7 @@ export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({
     const membership = user.memberships?.find(
       (m) => m.orgId === user.defaultOrgId,
     );
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the transport must be scoped by this commit, and descendants wait on it
     applyOrganization(
       user.defaultOrgId,
       membership?.orgName || DEFAULT_ORG_NAME,
@@ -98,6 +100,7 @@ export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({
   useEffect(() => {
     if (!isHydrated) return;
     if (!user && !storageService.getItem(STORAGE_KEYS.AUTH_TOKEN)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the transport must be scoped by this commit, and descendants wait on it
       applyOrganization(null, null, null);
     }
   }, [isHydrated, user, applyOrganization]);

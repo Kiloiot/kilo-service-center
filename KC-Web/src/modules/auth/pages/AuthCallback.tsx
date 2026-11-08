@@ -122,12 +122,14 @@ const AuthCallback: React.FC = () => {
   if (error) {
     return (
       <Box
-        display="flex"
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        minHeight={AUTH_LAYOUT.FULL_HEIGHT}
-        gap={AUTH_LAYOUT.SPACING_MT}
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: AUTH_LAYOUT.FULL_HEIGHT,
+          gap: AUTH_LAYOUT.SPACING_MT,
+        }}
       >
         <Alert severity="error">{error}</Alert>
         <Link
@@ -143,10 +145,12 @@ const AuthCallback: React.FC = () => {
 
   return (
     <Box
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      minHeight={AUTH_LAYOUT.FULL_HEIGHT}
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: AUTH_LAYOUT.FULL_HEIGHT,
+      }}
     >
       <CircularProgress />
       <Typography sx={{ ml: AUTH_LAYOUT.SPACING_ML }}>

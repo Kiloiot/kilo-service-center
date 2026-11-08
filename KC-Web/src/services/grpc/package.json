@@ -4,7 +4,7 @@
   "description": "Generated gRPC-web stubs for KiloCenter",
   "type": "commonjs",
   "dependencies": {
-    "google-protobuf": "^3.21.4",
+    "google-protobuf": "^4.0.3",
     "@improbable-eng/grpc-web": "^0.15.0"
   }
 }

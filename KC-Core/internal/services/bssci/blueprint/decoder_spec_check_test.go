@@ -1,12 +1,12 @@
 package blueprint
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
 	pkgblueprint "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/blueprint"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 )
 
@@ -44,7 +44,7 @@ func TestDecode_SpecCheckFailuresKeepTheirTokens(t *testing.T) {
 	svc := NewDecoderService(logger.NewNop())
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, err := svc.Decode(context.Background(),
+			res, err := svc.Decode(testutil.TestContext(),
 				&models.Blueprint{SpecJSON: json.RawMessage(tt.spec)}, []byte{0x01}, 1, nil)
 			if err != nil {
 				t.Fatalf("Decode: %v", err)
