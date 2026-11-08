@@ -63,7 +63,7 @@ function FilterGroup({
   onChange: (values: string[]) => void;
 }) {
   return (
-    <Box mb={1}>
+    <Box sx={{ mb: 1 }}>
       <Typography variant="subtitle2" color="text.secondary">
         {title}
       </Typography>
@@ -96,7 +96,7 @@ export const EndpointsFiltersBar: React.FC<EndpointsFiltersBarProps> = ({
 }) => {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return (
-    <Box display="flex" gap={2} mb={2}>
+    <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
       <TextField
         placeholder={ENDPOINTS_PAGE.SEARCH_PLACEHOLDER}
         value={search}
@@ -131,7 +131,7 @@ export const EndpointsFiltersBar: React.FC<EndpointsFiltersBarProps> = ({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <Box p={2}>
+        <Box sx={{ p: 2 }}>
           <FilterGroup
             title={ENDPOINTS_PAGE.FILTER_ATTACH_STATE}
             options={ATTACH_OPTIONS}

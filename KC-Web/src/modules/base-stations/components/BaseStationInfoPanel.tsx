@@ -34,7 +34,7 @@ function InfoRow({
   children: React.ReactNode;
 }) {
   return (
-    <Box mb={1}>
+    <Box sx={{ mb: 1 }}>
       <Typography variant="body2" color="text.secondary">
         {label}
       </Typography>
@@ -58,7 +58,7 @@ function DetailColumnContent({
   if (hasData) return <>{children}</>;
   if (loading)
     return (
-      <Box display="flex" alignItems="center" gap={1}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <CircularProgress size={componentSpacing.spinner.inline} />
         <Typography variant="body2" color="text.secondary">
           {LOADER.LOADING}

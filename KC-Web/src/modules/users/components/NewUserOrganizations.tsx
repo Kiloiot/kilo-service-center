@@ -57,9 +57,9 @@ const NewUserOrganizations: React.FC<NewUserOrganizationsProps> = ({
       value={value}
       onChange={(_, next) => onChange(next)}
       isOptionEqualToValue={(option, selected) => option.id === selected.id}
-      renderTags={(selected, getTagProps) =>
+      renderValue={(selected, getItemProps) =>
         selected.map((option, index) => {
-          const { key, ...chipProps } = getTagProps({ index });
+          const { key, ...chipProps } = getItemProps({ index });
           return (
             <Chip key={key} label={option.name} size="small" {...chipProps} />
           );

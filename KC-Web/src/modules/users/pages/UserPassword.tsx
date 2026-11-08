@@ -117,10 +117,7 @@ const UserPassword: React.FC = () => {
     <Box sx={{ p: 3, pt: 4 }}>
       {/* Header */}
       <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={3}
+        sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}
       >
         <Typography variant="h4" component="h1">
           {USER_FORM.ACTION_CHANGE_PASSWORD}
@@ -147,7 +144,7 @@ const UserPassword: React.FC = () => {
               confirmationLabel={USER_FORM.LABEL_CONFIRM_PASSWORD}
               autoFocus
             />
-            <Box display="flex" gap={2} mt={2}>
+            <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
               <Button
                 variant="contained"
                 onClick={handleChangePassword}

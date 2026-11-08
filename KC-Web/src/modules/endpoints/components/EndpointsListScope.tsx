@@ -42,11 +42,7 @@ export const EndpointsListScope: React.FC<EndpointsListScopeProps> = ({
   return (
     <Box
       data-testid="endpoints-list-scope"
-      display="flex"
-      alignItems="center"
-      flexWrap="wrap"
-      gap={1}
-      mb={2}
+      sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 1, mb: 2 }}
     >
       <Typography variant="body2" color="text.secondary">
         {`${ENDPOINTS_PAGE.SHOWING} ${shown} ${ENDPOINTS_PAGE.OF} ${total}`}

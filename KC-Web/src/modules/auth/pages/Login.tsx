@@ -17,6 +17,7 @@ import {
 import { useOrganization } from "@contexts/OrganizationContext";
 import { useSession } from "@contexts/SessionContext";
 import { useSystem } from "@contexts/SystemContext";
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { persistAuthSession } from "@utils/auth-session";
 import { AUTH_LAYOUT, ROUTES } from "@constants/app";
 import {
@@ -57,9 +58,9 @@ const Login: React.FC = () => {
   const { setOrganization } = useOrganization();
   const { setUser } = useSession();
 
-  useEffect(() => {
+  useAdjustStateOnChange([settingsFailed], () => {
     if (settingsFailed) setError(ERR_AUTH_SETTINGS_LOAD);
-  }, [settingsFailed]);
+  });
 
   // Auto-redirect if configured (provider takes precedence)
   useEffect(() => {
@@ -112,10 +113,7 @@ const Login: React.FC = () => {
   if (loading) {
     return (
       <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        minHeight={AUTH_LAYOUT.FULL_HEIGHT}
+        sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: AUTH_LAYOUT.FULL_HEIGHT }}
       >
         <CircularProgress />
       </Box>
@@ -124,10 +122,7 @@ const Login: React.FC = () => {
 
   return (
     <Box
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      minHeight={AUTH_LAYOUT.FULL_HEIGHT}
+      sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: AUTH_LAYOUT.FULL_HEIGHT }}
     >
       <Paper
         sx={{
@@ -182,7 +177,7 @@ const Login: React.FC = () => {
               )}
             </Button>
             {settings?.registration_enabled && (
-              <Typography variant="body2" textAlign="center" sx={{ mt: 1 }}>
+              <Typography variant="body2" sx={{ textAlign: "center", mt: 1 }}>
                 {ACTION_NO_ACCOUNT}{" "}
                 <RouterLink
                   to={ROUTES.REGISTER}

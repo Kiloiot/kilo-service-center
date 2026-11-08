@@ -130,15 +130,14 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
             </Link>
             <Typography
               variant="caption"
-              display="block"
-              sx={{ mt: 2 }}
+              sx={{ display: "block", mt: 2 }}
               color="text.secondary"
             >
               {BLUEPRINT_LABELS.REGISTRY_BRANCH} {result.branch}
             </Typography>
             <Typography
               variant="caption"
-              display="block"
+              sx={{ display: "block" }}
               color="text.secondary"
             >
               {BLUEPRINT_LABELS.REGISTRY_COMMIT}{" "}

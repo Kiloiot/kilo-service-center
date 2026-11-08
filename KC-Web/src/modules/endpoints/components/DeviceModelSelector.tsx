@@ -64,23 +64,19 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
     }
   }, [value]);
 
-  // Effect 2 — Manufacturer resolution from resolved model
-  useEffect(() => {
-    if (resolvedModel && manufacturers.length > 0 && !selectedMfg) {
-      const mfg = manufacturers.find(
-        (m) => m.id === resolvedModel.manufacturerId,
-      );
-      if (mfg) setSelectedMfg(mfg);
-    }
-  }, [resolvedModel, manufacturers, selectedMfg]);
+  // Manufacturer resolution from resolved model; settles once one is selected
+  if (resolvedModel && manufacturers.length > 0 && !selectedMfg) {
+    const mfg = manufacturers.find(
+      (m) => m.id === resolvedModel.manufacturerId,
+    );
+    if (mfg) setSelectedMfg(mfg);
+  }
 
-  // Effect 3 — Model resolution once device models load for the resolved manufacturer
-  useEffect(() => {
-    if (value && deviceModels.length > 0 && !selectedModel) {
-      const model = deviceModels.find((m) => m.id === value);
-      if (model) setSelectedModel(model);
-    }
-  }, [value, deviceModels, selectedModel]);
+  // Model resolution once device models load for the resolved manufacturer
+  if (value && deviceModels.length > 0 && !selectedModel) {
+    const model = deviceModels.find((m) => m.id === value);
+    if (model) setSelectedModel(model);
+  }
 
   // Clear option visibility keyed on value prop (existing bond), not just local state
   const hasBond = !!value;
@@ -128,10 +124,10 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
   return (
     <>
       <Grid size={componentSpacing.gridSpan.full}>
-        <Typography variant="subtitle2" fontWeight="bold" mb={1} mt={1}>
+        <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1, mt: 1 }}>
           {ENDPOINT_FORM.SECTION_BLUEPRINT}
         </Typography>
-        <Typography variant="body2" color="text.secondary" mb={1}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
           {ENDPOINT_FORM.HELPER_DEVICE_MODEL}
         </Typography>
       </Grid>

@@ -15,7 +15,7 @@ export function SeverityChip({ severity }: { severity: string }) {
 function CaptionLine({ text }: { text?: string }) {
   if (!text) return null;
   return (
-    <Typography variant="caption" color="text.secondary" display="block">
+    <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
       {text}
     </Typography>
   );

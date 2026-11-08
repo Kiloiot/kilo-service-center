@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
-import importPlugin from 'eslint-plugin-import';
+import importPlugin from 'eslint-plugin-import-x';
 
 // Import restrictions shared by every layer block below; flat-config blocks
 // replace a rule's options instead of merging them.
@@ -90,10 +90,10 @@ export default tseslint.config(
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
       'simple-import-sort': simpleImportSort,
-      import: importPlugin,
+      'import-x': importPlugin,
     },
     settings: {
-      'import/resolver': {
+      'import-x/resolver': {
         typescript: {
           project: './tsconfig.app.json',
         },
@@ -149,7 +149,7 @@ export default tseslint.config(
       // MANDATORY: Force barrel exports for modules - enforce barrels for feature modules
       // NOTE: This rule is configured to allow relative imports within modules
       // External consumers of modules MUST use barrel exports (@modules/*/index)
-      'import/no-internal-modules': [
+      'import-x/no-internal-modules': [
         'error',
         {
           allow: [
@@ -275,7 +275,7 @@ export default tseslint.config(
       'src/router/AppRouter.tsx',
     ],
     rules: {
-      'import/no-default-export': 'error',
+      'import-x/no-default-export': 'error',
     },
   },
   // Exception: Theme definition file may use hex/RGB colors
@@ -378,7 +378,7 @@ export default tseslint.config(
     files: ['**/*.test.{ts,tsx}', '**/__tests__/**'],
     rules: {
       'no-restricted-syntax': 'off',
-      'import/no-internal-modules': 'off',
+      'import-x/no-internal-modules': 'off',
     },
   }
 );

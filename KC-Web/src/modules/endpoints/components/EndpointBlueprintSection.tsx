@@ -28,7 +28,7 @@ function LabeledValue({ label, value }: { label: string; value: string }) {
 
 function BoundModel({ blueprintInfo }: { blueprintInfo: BlueprintInfo }) {
   return (
-    <Box display="flex" gap={4}>
+    <Box sx={{ display: "flex", gap: 4 }}>
       <LabeledValue
         label={ENDPOINT_DETAILS.OPTION_SELECT_MANUFACTURER}
         value={blueprintInfo.manufacturerName}
@@ -43,7 +43,7 @@ function BoundModel({ blueprintInfo }: { blueprintInfo: BlueprintInfo }) {
 
 function NoModel({ onAssign }: { onAssign: () => void }) {
   return (
-    <Box display="flex" alignItems="center" gap={2}>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
       <Typography variant="body1">{ENDPOINT_DETAILS.BLUEPRINT_NONE}</Typography>
       <Button
         variant="outlined"

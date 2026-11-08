@@ -119,12 +119,9 @@ const OrgUsersHeader: React.FC<OrgUsersHeaderProps> = ({
   const navigate = useNavigate();
   return (
     <Box
-      display="flex"
-      justifyContent="space-between"
-      alignItems="center"
-      mb={3}
+      sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}
     >
-      <Box display="flex" alignItems="center" gap={2}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         {!embedded && (
           <BackButton
             label={ORG_USERS_PAGE.BACK_TO_ORG}
@@ -340,7 +337,7 @@ const OrgUsersToolbar: React.FC<OrgUsersToolbarProps> = ({
       />
     </StatCardRow>
 
-    <Box display="flex" gap={2} mb={3}>
+    <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
       <SearchField
         placeholder={ORG_USERS_PAGE.SEARCH_PLACEHOLDER}
         value={search}
@@ -432,10 +429,7 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
       {/* Loading State */}
       {isLoading && (
         <Box
-          display="flex"
-          justifyContent="center"
-          alignItems="center"
-          minHeight={componentSpacing.stateView.listMinHeight}
+          sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: componentSpacing.stateView.listMinHeight }}
         >
           <CircularProgress />
         </Box>

@@ -17,6 +17,7 @@ import React, {
   useState,
 } from "react";
 
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { APP_ERRORS } from "@constants/messages";
 import defaultFlags from "@config/flags/default.json";
 
@@ -85,14 +86,14 @@ export const FeatureFlagProvider: React.FC<FeatureFlagProviderProps> = ({
   }, []); // RUN ONCE - do not depend on overrides
 
   // Recompute flags when overrides change (e.g., edition info arrives asynchronously)
-  useEffect(() => {
+  useAdjustStateOnChange([overrides], () => {
     if (overrides !== undefined) {
       setFlags((prev) => ({
         ...prev,
         ...overrides,
       }));
     }
-  }, [overrides]);
+  });
 
   const isEnabled = (flag: FeatureFlagName): boolean => {
     return flags[flag] === true;

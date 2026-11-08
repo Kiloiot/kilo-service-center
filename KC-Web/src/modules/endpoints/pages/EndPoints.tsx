@@ -71,10 +71,7 @@ const EndpointDetailView: React.FC<{
   return (
     <Box sx={{ pt: 4 }}>
       <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={3}
+        sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}
       >
         <Typography variant="h4" component="h1">
           {ENDPOINTS_PAGE.DETAILS_TITLE}
@@ -111,10 +108,7 @@ const EndpointListView: React.FC<{ onOpen: (epEui: string) => void }> = ({
   return (
     <Box data-testid="endpoints-page" sx={{ p: 3, pt: 4 }}>
       <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={3}
+        sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}
       >
         <Typography variant="h4" component="h1">
           {ENDPOINTS_PAGE.TITLE}

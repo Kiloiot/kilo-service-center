@@ -16,14 +16,13 @@ export function DisclosureLinks() {
 
   return (
     <Box sx={{ px: 2, py: 1.5, borderTop: 1, borderColor: "divider" }}>
-      <Typography variant="caption" display="block" color="text.secondary">
+      <Typography variant="caption" sx={{ display: "block" }} color="text.secondary">
         {edition}
       </Typography>
       <Typography
         variant="caption"
-        display="block"
         color="text.secondary"
-        sx={{ mb: 0.5 }}
+        sx={{ display: "block", mb: 0.5 }}
       >
         {formatPoweredByLabel(edition)}
       </Typography>

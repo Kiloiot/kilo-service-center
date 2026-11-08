@@ -112,8 +112,7 @@ export const SecretKeyField: React.FC<SecretKeyFieldProps> = ({
         value={displayed}
         placeholder={placeholder}
         type={shown ? "text" : "password"}
-        inputProps={{ autoComplete: "off", spellCheck: false }}
-        InputProps={{
+        slotProps={{ htmlInput: { autoComplete: "off", spellCheck: false }, input: {
           readOnly: showsStored,
           endAdornment: (
             <InputAdornment position="end">
@@ -163,7 +162,7 @@ export const SecretKeyField: React.FC<SecretKeyFieldProps> = ({
               )}
             </InputAdornment>
           ),
-        }}
+        } }}
       />
       {onRemove && (
         <ConfirmDialog

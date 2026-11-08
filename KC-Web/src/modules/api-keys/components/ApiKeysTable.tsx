@@ -100,7 +100,7 @@ const EmptyRow: React.FC<{ isLoading: boolean }> = ({ isLoading }) => (
       {isLoading ? (
         API_KEYS_PAGE.LOADING
       ) : (
-        <Box py={4}>
+        <Box sx={{ py: 4 }}>
           <Typography variant="body1" color="text.secondary">
             {API_KEYS_PAGE.NO_API_KEYS}
           </Typography>

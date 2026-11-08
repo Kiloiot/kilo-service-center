@@ -71,11 +71,11 @@ export default function BaseStationCommissioningDialog({
       onClose={handleClose}
       maxWidth="md"
       fullWidth
-      PaperProps={{ sx: { bgcolor: "background.paper" } }}
+      slotProps={{ paper: { sx: { bgcolor: "background.paper" } } }}
     >
       <DialogTitle>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Box display="flex" alignItems="center" gap={1}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <SecurityIcon
               color={
                 wizard.phase === COMMISSIONING_PHASE.PARTIAL

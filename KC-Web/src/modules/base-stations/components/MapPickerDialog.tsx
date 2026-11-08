@@ -5,7 +5,7 @@
  * Uses OpenStreetMap tiles — no API key required.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { MapContainer, useMapEvents } from "react-leaflet";
 
 import {
@@ -19,6 +19,7 @@ import {
 
 import { BaseTileLayer } from "@components/common/map/BaseTileLayer";
 import { PositionMarker } from "@components/common/map/PositionMarker";
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { MAP_DEFAULTS } from "@constants/app";
 import {
   ACTION_CANCEL,
@@ -60,7 +61,7 @@ export default function MapPickerDialog({
     [number, number] | null
   >(null);
 
-  useEffect(() => {
+  useAdjustStateOnChange([open, initialLat, initialLng], () => {
     if (open) {
       setSelectedPosition(
         initialLat !== undefined && initialLng !== undefined
@@ -68,7 +69,7 @@ export default function MapPickerDialog({
           : null,
       );
     }
-  }, [open, initialLat, initialLng]);
+  });
 
   const handleLocationSelect = useCallback((lat: number, lng: number) => {
     setSelectedPosition([lat, lng]);

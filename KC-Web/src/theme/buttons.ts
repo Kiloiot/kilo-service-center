@@ -22,6 +22,7 @@ interface ButtonScale {
   minHeight: number;
   paddingX: number;
   fontSize: number;
+  iconSize: number;
 }
 
 interface IconButtonScale {
@@ -29,14 +30,15 @@ interface IconButtonScale {
   iconSize: number;
 }
 
-const buttonSize = ({ minHeight, paddingX, fontSize }: ButtonScale) => ({
+const buttonIconSize = (fontSize: number) => ({
+  "& > *:nth-of-type(1)": { fontSize },
+});
+
+const buttonSize = ({ minHeight, paddingX, fontSize, iconSize }: ButtonScale) => ({
   minHeight,
   padding: `0 ${paddingX}px`,
   fontSize,
-});
-
-const buttonIconSize = (fontSize: number) => ({
-  "& > *:nth-of-type(1)": { fontSize },
+  [`& .${buttonClasses.icon}`]: buttonIconSize(iconSize),
 });
 
 const iconButtonSize = ({ padding, iconSize }: IconButtonScale) => ({
@@ -58,9 +60,6 @@ export const createButtonOverrides = (
       sizeSmall: buttonSize(button.small),
       sizeMedium: buttonSize(button.medium),
       sizeLarge: buttonSize(button.medium),
-      iconSizeSmall: buttonIconSize(button.small.iconSize),
-      iconSizeMedium: buttonIconSize(button.medium.iconSize),
-      iconSizeLarge: buttonIconSize(button.medium.iconSize),
     },
     // Only the default color is repainted; error, warning and the other colors keep their palette styles.
     variants: [

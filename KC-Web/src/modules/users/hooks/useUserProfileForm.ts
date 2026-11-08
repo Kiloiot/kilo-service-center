@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { SystemUserUI } from "@api-types/api";
 import { useUpdateUser } from "@hooks";
 
 import { useFeedback } from "@contexts/feedback";
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { getErrorMessage } from "@utils/error-message";
 import { MSG_USER_UPDATED, USER_FORM } from "@constants/messages";
 
@@ -19,9 +20,9 @@ export function useUserProfileForm(user: SystemUserUI | null | undefined) {
   const feedback = useFeedback();
   const updateUser = useUpdateUser();
 
-  useEffect(() => {
+  useAdjustStateOnChange([user], () => {
     if (user) setForm(userProfileFormFrom(user));
-  }, [user]);
+  });
 
   const updateForm = <K extends keyof UserProfileForm>(
     key: K,

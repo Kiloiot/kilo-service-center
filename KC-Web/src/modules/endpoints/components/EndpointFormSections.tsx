@@ -29,7 +29,7 @@ interface SectionHeadingProps {
 
 const SectionHeading: React.FC<SectionHeadingProps> = ({ title }) => (
   <Grid size={componentSpacing.gridSpan.full}>
-    <Typography variant="subtitle2" fontWeight="bold" mb={1} mt={1}>
+    <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1, mt: 1 }}>
       {title}
     </Typography>
   </Grid>
@@ -47,14 +47,13 @@ const IdentitySection: React.FC<SectionProps> = ({ form }) => (
       field="epEui"
       label={ENDPOINT_FORM.LABEL_EUI}
       helper={ENDPOINT_FORM.HELPER_EUI}
-      inputProps={{ maxLength: EUI_INPUT_MAX_LENGTH }}
-      InputProps={{
+      slotProps={{ htmlInput: { maxLength: EUI_INPUT_MAX_LENGTH }, input: {
         endAdornment: isValidEui(form.values.epEui) && (
           <InputAdornment position="end">
             <CheckCircleIcon color="success" />
           </InputAdornment>
         ),
-      }}
+      } }}
     />
     <EndpointTextField
       form={form}
@@ -74,7 +73,7 @@ const NetworkSection: React.FC<SectionProps> = ({ form }) => (
       label={ENDPOINT_FORM.LABEL_SHORT_ADDR}
       helper={ENDPOINT_FORM.HELPER_SHORT_ADDR}
       placeholder={ENDPOINT_FORM.PLACEHOLDER_SHORT_ADDR}
-      inputProps={{ maxLength: ENDPOINT_FORM.PLACEHOLDER_SHORT_ADDR.length }}
+      slotProps={{ htmlInput: { maxLength: ENDPOINT_FORM.PLACEHOLDER_SHORT_ADDR.length } }}
     />
     <EndpointTextField
       form={form}
@@ -118,7 +117,7 @@ const RadioSection: React.FC<SectionProps> = ({ form }) => (
         label={COUNTER_LABELS[field]}
         helper={COUNTER_HELPERS[field]}
         type="number"
-        inputProps={{ min: 0, max: MIOTY_UINT32_MAX }}
+        slotProps={{ htmlInput: { min: 0, max: MIOTY_UINT32_MAX } }}
       />
     ))}
   </>

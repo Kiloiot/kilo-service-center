@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 import type { BaseStationUI } from "@api-types/api";
 import { useUpdateBaseStation, useUpdateBaseStationEui } from "@hooks";
@@ -14,6 +14,7 @@ import {
   TextField,
 } from "@mui/material";
 
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { useClipboard } from "@hooks/useClipboard";
 import {
   formatEui,
@@ -102,7 +103,7 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
     baseStation.serviceCenterUrl;
 
   // Initialize form data when dialog opens
-  useEffect(() => {
+  useAdjustStateOnChange([open, baseStation.eui, baseStation.name, baseStationDetails], () => {
     if (open) {
       setEditFormData(
         initialEditForm(baseStation.name, baseStation.eui, baseStationDetails),
@@ -111,7 +112,7 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
       setLocationErrors({});
       setEditError(null);
     }
-  }, [open, baseStation.eui, baseStation.name, baseStationDetails]);
+  });
 
   const handleEuiChange = (value: string) => {
     setEditFormData((prev) => ({ ...prev, eui: formatEuiInput(value) }));

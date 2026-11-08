@@ -10,7 +10,7 @@ interface UserDetailHeaderProps {
 }
 
 const UserDetailHeader: React.FC<UserDetailHeaderProps> = ({ onBack }) => (
-  <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
     <Typography variant="h4" component="h1">
       {USERS_PAGE.DETAILS_TITLE}
     </Typography>

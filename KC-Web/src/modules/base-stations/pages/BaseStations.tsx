@@ -71,10 +71,7 @@ const BaseStations: React.FC = () => {
 
   const loadingIndicator = (
     <Box
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      minHeight={componentSpacing.stateView.listMinHeight}
+      sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: componentSpacing.stateView.listMinHeight }}
     >
       <CircularProgress />
     </Box>
@@ -96,10 +93,7 @@ const BaseStations: React.FC = () => {
     return (
       <Box sx={{ pt: theme.spacing(4) }}>
         <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          mb={theme.spacing(3)}
+          sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: theme.spacing(3) }}
         >
           <Typography variant="h4" component="h1">
             {BASE_STATIONS_PAGE.DETAILS_TITLE}
@@ -134,25 +128,25 @@ const BaseStations: React.FC = () => {
 
       {/* The map reads every tenant's stations, so it is for administrators only */}
       {isServerAdmin && (
-        <Box mb={3}>
+        <Box sx={{ mb: 3 }}>
           <BaseStationMap />
         </Box>
       )}
 
-      <Box mb={3}>
+      <Box sx={{ mb: 3 }}>
         <TextField
           fullWidth
           variant="outlined"
           placeholder={BASE_STATIONS_PAGE.SEARCH_PLACEHOLDER}
           value={view.filters.search}
           onChange={(e) => view.setSearch(e.target.value)}
-          InputProps={{
+          slotProps={{ input: {
             startAdornment: (
               <InputAdornment position="start">
                 <SearchIcon />
               </InputAdornment>
             ),
-          }}
+          } }}
         />
       </Box>
 

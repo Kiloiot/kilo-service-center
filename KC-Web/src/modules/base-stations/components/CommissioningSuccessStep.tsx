@@ -69,11 +69,11 @@ export default function CommissioningSuccessStep({
         onCopy={clipboard.copy}
         monoSxGetter={getMonoBody2}
       >
-        <Box display="flex" alignItems="center" justifyContent="space-between">
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography variant="body2" color="text.secondary">
             {LABEL_SC_URL_DISPLAY}
           </Typography>
-          <Box display="flex" alignItems="center" gap={1}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Typography variant="body2" sx={(theme) => getMonoBody2(theme)}>
               {serviceCenterUrl || DATA_TABLE.NO_VALUE}
             </Typography>
@@ -123,10 +123,10 @@ export default function CommissioningSuccessStep({
       <Box sx={{ mt: 1 }}>
         {certificateData ? (
           <>
-            <Typography variant="body2" paragraph>
+            <Typography variant="body2" sx={{ mb: 2 }}>
               {INSTR_STEP_1}
             </Typography>
-            <Typography variant="body2" paragraph>
+            <Typography variant="body2" sx={{ mb: 2 }}>
               {INSTR_STEP_2_HEADER}
               <br />
               &nbsp;&nbsp;• {LABEL_SC_URL_DISPLAY}{" "}
@@ -142,7 +142,7 @@ export default function CommissioningSuccessStep({
               {formatEui(certificateData.bsEui)}
               {LABEL_PRIVATE_KEY_SUFFIX}
             </Typography>
-            <Typography variant="body2" paragraph>
+            <Typography variant="body2" sx={{ mb: 2 }}>
               {INSTR_STEP_3}
             </Typography>
             <Typography variant="body2" color="text.secondary">

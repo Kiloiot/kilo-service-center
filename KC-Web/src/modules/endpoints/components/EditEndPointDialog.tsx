@@ -115,7 +115,7 @@ const EditEndPointDialog: React.FC<EditEndPointDialogProps> = ({
           <Typography variant="body2" color="text.secondary">
             {ENDPOINT_FORM.EDIT_DIALOG_SUBTITLE}
           </Typography>
-          <Box mt={1} display="flex" gap={1} flexWrap="wrap">
+          <Box sx={{ mt: 1, display: "flex", gap: 1, flexWrap: "wrap" }}>
             <AttachStatusChip status={endpoint.attachStatus} />
             <ReattachPendingBadge pending={endpoint.reattachPending} />
           </Box>

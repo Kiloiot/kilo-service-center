@@ -6,7 +6,7 @@
  * - Edit mode: Shows user email (read-only), allows role/permission changes
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 import type { OrganizationUserUI } from "@api-types/api";
 import {
@@ -26,6 +26,7 @@ import {
 } from "@mui/material";
 
 import { useFeedback } from "@contexts/feedback";
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { useCapabilities } from "@hooks/useCapabilities";
 import { useAddOrgUser, useUpdateOrgUser } from "@hooks/useOrganizations";
 import { useUsersForLookup } from "@hooks/useUsers";
@@ -87,8 +88,27 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
     enabled: open && showUserPicker,
   });
 
+  // Filter users by email input (client-side) - only used in add mode
+  const users = usersData?.users;
+  const filteredUsers = useMemo(() => {
+    if (!users || !email) return [];
+    const searchLower = email.toLowerCase();
+    return users.filter((u) => u.email.toLowerCase().includes(searchLower));
+  }, [users, email]);
+
+  const handleReset = () => {
+    setEmail("");
+    setSelectedUserId(null);
+    setSelectedUserOption(null);
+    setRole(ORG_ROLE.MEMBER);
+    setIsOrgAdmin(false);
+    setIsBsAdmin(false);
+    setIsEpAdmin(false);
+    setSubmitError(null);
+  };
+
   // Initialize form when dialog opens or initialUser changes
-  useEffect(() => {
+  useAdjustStateOnChange([open, isEditMode, initialUser], () => {
     if (open && isEditMode && initialUser) {
       setEmail(initialUser.email);
       setSelectedUserId(initialUser.userId);
@@ -105,27 +125,7 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
       // Reset form for add mode
       handleReset();
     }
-  }, [open, isEditMode, initialUser]);
-
-  // Filter users by email input (client-side) - only used in add mode
-  const filteredUsers = useMemo(() => {
-    if (!usersData?.users || !email) return [];
-    const searchLower = email.toLowerCase();
-    return usersData.users.filter((u) =>
-      u.email.toLowerCase().includes(searchLower),
-    );
-  }, [usersData?.users, email]);
-
-  const handleReset = () => {
-    setEmail("");
-    setSelectedUserId(null);
-    setSelectedUserOption(null);
-    setRole(ORG_ROLE.MEMBER);
-    setIsOrgAdmin(false);
-    setIsBsAdmin(false);
-    setIsEpAdmin(false);
-    setSubmitError(null);
-  };
+  });
 
   const handleClose = () => {
     handleReset();
@@ -263,8 +263,9 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
                 margin="normal"
                 type="email"
                 slotProps={{
+                  ...params.slotProps,
                   input: {
-                    ...params.InputProps,
+                    ...params.slotProps.input,
                     endAdornment: (
                       <>
                         {isLoadingUsers ? (
@@ -273,7 +274,7 @@ const OrganizationUserDialog: React.FC<OrganizationUserDialogProps> = ({
                             size={componentSpacing.spinner.button}
                           />
                         ) : null}
-                        {params.InputProps.endAdornment}
+                        {params.slotProps.input.endAdornment}
                       </>
                     ),
                   },

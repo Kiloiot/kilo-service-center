@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@mui/material";
 
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { getErrorMessage } from "@utils/error-message";
 import { BLUEPRINT_LABELS } from "@constants/messages";
 import { componentSpacing } from "@theme/index";
@@ -41,7 +42,7 @@ export const EditManufacturerDialog: React.FC<EditManufacturerDialogProps> = ({
   const [nameError, setNameError] = useState<string | null>(null);
 
   // Reset form data when manufacturer changes
-  React.useEffect(() => {
+  useAdjustStateOnChange([manufacturer], () => {
     if (manufacturer) {
       setFormData({
         name: manufacturer.name,
@@ -50,7 +51,7 @@ export const EditManufacturerDialog: React.FC<EditManufacturerDialogProps> = ({
       setError(null);
       setNameError(null);
     }
-  }, [manufacturer]);
+  });
 
   const mutation = useUpdateManufacturer();
 
