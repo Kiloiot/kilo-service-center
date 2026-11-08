@@ -17,9 +17,10 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/jwx-go/jwkfetch/v4"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -69,7 +70,7 @@ func NewAuthInterceptor(cfg AuthConfig) (*AuthInterceptor, error) {
 	}
 
 	if cfg.JWKSEndpoint != "" {
-		keySet, err := jwk.Fetch(context.Background(), cfg.JWKSEndpoint) // context-root: jwks-init
+		keySet, err := jwkfetch.NewClient().Fetch(context.Background(), cfg.JWKSEndpoint) // context-root: jwks-init
 		if err != nil {
 			return nil, fmt.Errorf(errFmtJWKSFetchFailed, cfg.JWKSEndpoint, err)
 		}
@@ -232,7 +233,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 	var token jwt.Token
 	var err error
 	if ai.hmacKey != nil {
-		token, err = jwt.Parse([]byte(tokenString), jwt.WithKey(jwa.HS256, ai.hmacKey))
+		token, err = jwt.Parse([]byte(tokenString), jwt.WithKey(jwa.HS256(), ai.hmacKey))
 	} else if ai.keySet != nil {
 		token, err = jwt.Parse([]byte(tokenString), jwt.WithKeySet(ai.keySet))
 	} else {
@@ -248,7 +249,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 
 	// Validate issuer
 	if ai.issuer != "" {
-		if iss, ok := token.Get(jwt.IssuerKey); !ok || iss != ai.issuer {
+		if iss, ok := token.Field(jwt.IssuerKey); !ok || iss != ai.issuer {
 			ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailInvalidTokenIssuer)
 			return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenInvalidTokenIssuer),
 				grpcconst.ResolveErrorMessage(grpcconst.ErrTokenInvalidTokenIssuer))
@@ -257,7 +258,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 
 	// Validate audience
 	if ai.audience != "" {
-		aud, ok := token.Get(jwt.AudienceKey)
+		aud, ok := token.Field(jwt.AudienceKey)
 		if !ok {
 			ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailMissingAudienceClaim)
 			return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenMissingAudience),
@@ -292,7 +293,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 	}
 
 	// Extract tenant claim
-	claimValue, ok := token.Get(ai.tenantClaim)
+	claimValue, ok := token.Field(ai.tenantClaim)
 	if !ok {
 		ai.emitSecurityEvent(ctx, method, models.EventTypeAuthInvalidToken, models.EventTitleAuthInvalidToken, detailMissingTenantClaim)
 		return nil, status.Error(grpcconst.GetGRPCCode(grpcconst.ErrTokenMissingTenantClaim),
@@ -346,7 +347,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 
 	// Extract user ID from JWT token
 	if ai.userClaim != "" {
-		if userIDVal, ok := token.Get(ai.userClaim); ok {
+		if userIDVal, ok := token.Field(ai.userClaim); ok {
 			if userID, ok := userIDVal.(string); ok && userID != "" {
 				ctx = pkgcontext.WithUserID(ctx, userID)
 			}
@@ -358,7 +359,7 @@ func (ai *AuthInterceptor) authenticateJWT(ctx context.Context, tokenString stri
 
 // extractTenantFromClaims extracts tenant ID from JWT claims.
 func extractTenantFromClaims(token jwt.Token, claimPath string) int64 {
-	if tenantVal, ok := token.Get(claimPath); ok {
+	if tenantVal, ok := token.Field(claimPath); ok {
 		switch v := tenantVal.(type) {
 		case float64:
 			return int64(v)
@@ -371,7 +372,7 @@ func extractTenantFromClaims(token jwt.Token, claimPath string) int64 {
 
 	parts := strings.Split(claimPath, ":")
 	if len(parts) > 1 {
-		if val, ok := token.Get(claimPath); ok {
+		if val, ok := token.Field(claimPath); ok {
 			switch v := val.(type) {
 			case string:
 				return parseTenantClaim(v)
@@ -383,7 +384,7 @@ func extractTenantFromClaims(token jwt.Token, claimPath string) int64 {
 
 	alternatives := []string{"tenant_id", "org_id", "organization_id", "project_id"}
 	for _, alt := range alternatives {
-		if val, ok := token.Get(alt); ok {
+		if val, ok := token.Field(alt); ok {
 			switch v := val.(type) {
 			case float64:
 				return int64(v)
