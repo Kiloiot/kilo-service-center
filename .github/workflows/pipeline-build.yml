@@ -77,6 +77,25 @@ jobs:
             (cd "$mod" && go vet ./...)
           done
 
+  web-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install KC-Web dependencies
+        working-directory: KC-Web
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Wire the committed gRPC stubs
+        working-directory: KC-Web
+        run: bun run grpc:setup
+      - name: Lint and type-check KC-Web
+        working-directory: KC-Web
+        run: |
+          bun run lint
+          bun run typecheck
+
   test:
     runs-on: ubuntu-latest
     steps:

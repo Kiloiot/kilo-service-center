@@ -203,7 +203,7 @@ export default tseslint.config(
         // Typography ignores palette paths in its color prop since MUI 9.
         {
           selector:
-            "JSXOpeningElement[name.name='Typography'] > JSXAttribute[name.name='color'] Literal[value=/^[a-z]+\\.[a-zA-Z]+$/]",
+            "JSXOpeningElement[name.name='Typography'] > JSXAttribute[name.name='color'] Literal[value=/^[a-z]+\\.[a-zA-Z0-9]+$/]",
           message:
             "Use a Typography color such as textSecondary, or sx for a palette path.",
         },
@@ -334,7 +334,7 @@ export default tseslint.config(
         // Typography ignores palette paths in its color prop since MUI 9.
         {
           selector:
-            "JSXOpeningElement[name.name='Typography'] > JSXAttribute[name.name='color'] Literal[value=/^[a-z]+\\.[a-zA-Z]+$/]",
+            "JSXOpeningElement[name.name='Typography'] > JSXAttribute[name.name='color'] Literal[value=/^[a-z]+\\.[a-zA-Z0-9]+$/]",
           message:
             "Use a Typography color such as textSecondary, or sx for a palette path.",
         },

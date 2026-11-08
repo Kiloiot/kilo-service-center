@@ -21,9 +21,9 @@
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc -b --pretty false",
     "grpc:setup": "mkdir -p node_modules/@kilocenter/grpc-stubs && node -e \"const fs=require('fs'),d='node_modules/@kilocenter/grpc-stubs',s='src/services/grpc';['identity_pb.js','identity_pb.d.ts','core_pb.js','core_pb.d.ts','identity_pb_service.js','identity_pb_service.d.ts','core_pb_service.js','core_pb_service.d.ts','package.json'].forEach(f=>{try{fs.copyFileSync(s+'/'+f,d+'/'+f)}catch(e){console.warn('skip',f)}})\"",
-    "grpc:generate": "mkdir -p src/services/grpc && grpc_tools_node_protoc --js_out=import_style=commonjs,binary:src/services/grpc --grpc_out=grpc_js:src/services/grpc --plugin=protoc-gen-grpc=node_modules/.bin/grpc_tools_node_protoc_plugin --plugin=protoc-gen-ts=node_modules/.bin/protoc-gen-ts --ts_out=service=grpc-web:src/services/grpc -I ../KC-Core/api/proto -I /usr/local/include ../KC-Core/api/proto/core.proto ../KC-Core/api/proto/identity.proto && rm -f src/services/grpc/*_grpc_pb.js",
+    "grpc:generate": "mkdir -p src/services/grpc && grpc_tools_node_protoc --plugin=protoc-gen-js4=node_modules/.bin/protoc-gen-js --js4_out=import_style=commonjs,binary:src/services/grpc --grpc_out=grpc_js:src/services/grpc --plugin=protoc-gen-grpc=node_modules/.bin/grpc_tools_node_protoc_plugin --plugin=protoc-gen-ts=node_modules/.bin/protoc-gen-ts --ts_out=service=grpc-web:src/services/grpc -I ../KC-Core/api/proto -I /usr/local/include ../KC-Core/api/proto/core.proto ../KC-Core/api/proto/identity.proto && rm -f src/services/grpc/*_grpc_pb.js",
     "grpc:sync": "bun run grpc:generate && bun run grpc:setup",
-    "grpc:verify": "TMPD=$(mktemp -d) && trap 'rm -rf \"$TMPD\"' EXIT && mkdir -p $TMPD && grpc_tools_node_protoc --js_out=import_style=commonjs,binary:$TMPD --grpc_out=grpc_js:$TMPD --plugin=protoc-gen-grpc=node_modules/.bin/grpc_tools_node_protoc_plugin --plugin=protoc-gen-ts=node_modules/.bin/protoc-gen-ts --ts_out=service=grpc-web:$TMPD -I ../KC-Core/api/proto -I /usr/local/include ../KC-Core/api/proto/core.proto ../KC-Core/api/proto/identity.proto && rm -f $TMPD/*_grpc_pb.js && for f in core_pb.js core_pb.d.ts core_pb_service.js core_pb_service.d.ts identity_pb.js identity_pb.d.ts identity_pb_service.js identity_pb_service.d.ts ; do cmp -s \"src/services/grpc/$f\" \"$TMPD/$f\" || exit 1; done"
+    "grpc:verify": "TMPD=$(mktemp -d) && trap 'rm -rf \"$TMPD\"' EXIT && mkdir -p $TMPD && grpc_tools_node_protoc --plugin=protoc-gen-js4=node_modules/.bin/protoc-gen-js --js4_out=import_style=commonjs,binary:$TMPD --grpc_out=grpc_js:$TMPD --plugin=protoc-gen-grpc=node_modules/.bin/grpc_tools_node_protoc_plugin --plugin=protoc-gen-ts=node_modules/.bin/protoc-gen-ts --ts_out=service=grpc-web:$TMPD -I ../KC-Core/api/proto -I /usr/local/include ../KC-Core/api/proto/core.proto ../KC-Core/api/proto/identity.proto && rm -f $TMPD/*_grpc_pb.js && for f in core_pb.js core_pb.d.ts core_pb_service.js core_pb_service.d.ts identity_pb.js identity_pb.d.ts identity_pb_service.js identity_pb_service.d.ts ; do cmp -s \"src/services/grpc/$f\" \"$TMPD/$f\" || exit 1; done"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -57,9 +57,14 @@
     "eslint-plugin-simple-import-sort": "^14.0.0",
     "globals": "^17.6.0",
     "grpc-tools": "^1.13.1",
+    "protoc-gen-js": "^4.0.3",
     "ts-protoc-gen": "^0.15.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.30.1",
     "vite": "^8.0.11"
-  }
+  },
+  "trustedDependencies": [
+    "grpc-tools",
+    "protoc-gen-js"
+  ]
 }

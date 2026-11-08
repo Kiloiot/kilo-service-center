@@ -169,6 +169,17 @@ func unsignedToken(t *testing.T, header string) string {
 	return encode([]byte(header)) + validationTestPartSep + encode(payload) + validationTestPartSep
 }
 
+// A nil transport means http.DefaultTransport, which reads the proxy settings.
+func TestJWKSHTTPClient_KeepsProxySettingsAndFetchLimits(t *testing.T) {
+	client := jwksHTTPClient()
+
+	assert.Nil(t, client.Transport)
+	assert.NotZero(t, client.Timeout)
+	assert.NotNil(t, client.CheckRedirect)
+	assert.Zero(t, http.DefaultClient.Timeout)
+	assert.Nil(t, http.DefaultClient.CheckRedirect)
+}
+
 func newRSASigningKey(t *testing.T) jwk.Key {
 	t.Helper()
 	raw, err := rsa.GenerateKey(rand.Reader, validationTestRSABits)

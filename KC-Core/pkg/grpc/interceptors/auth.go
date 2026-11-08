@@ -71,8 +71,7 @@ func NewAuthInterceptor(cfg AuthConfig) (*AuthInterceptor, error) {
 	}
 
 	if cfg.JWKSEndpoint != "" {
-		// http.DefaultClient honors the process proxy settings; jwkfetch's own transport ignores them.
-		fetcher := jwkfetch.NewClient(jwkfetch.WithHTTPClient(jwkfetch.WrapHTTPClientDefaults(http.DefaultClient)))
+		fetcher := jwkfetch.NewClient(jwkfetch.WithHTTPClient(jwksHTTPClient()))
 		keySet, err := fetcher.Fetch(context.Background(), cfg.JWKSEndpoint) // context-root: jwks-init
 		if err != nil {
 			return nil, fmt.Errorf(errFmtJWKSFetchFailed, cfg.JWKSEndpoint, err)
@@ -91,6 +90,11 @@ func NewAuthInterceptor(cfg AuthConfig) (*AuthInterceptor, error) {
 	}
 
 	return ai, nil
+}
+
+// jwksHTTPClient builds on http.DefaultClient because jwkfetch's own transport ignores proxy settings.
+func jwksHTTPClient() *http.Client {
+	return jwkfetch.WrapHTTPClientDefaults(http.DefaultClient)
 }
 
 // WithOrganizationResolver sets the organization resolver for the interceptor.
