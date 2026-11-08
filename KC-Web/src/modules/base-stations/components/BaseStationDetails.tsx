@@ -112,7 +112,12 @@ const BaseStationDetails: React.FC<BaseStationDetailsProps> = ({
     <Card sx={{ mt: 2, mb: 2 }}>
       <CardContent>
         <Box
-          sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", mb: 2 }}
+          sx={{
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            mb: 2,
+          }}
         >
           <Box>
             <BaseStationStatusRequestButton bsEui={baseStation.eui} />

@@ -28,13 +28,15 @@ const SearchField: React.FC<SearchFieldProps> = ({
     value={value}
     onChange={onChange}
     sx={{ flexGrow: 1 }}
-    slotProps={{ input: {
-      startAdornment: (
-        <InputAdornment position="start">
-          <SearchIcon />
-        </InputAdornment>
-      ),
-    } }}
+    slotProps={{
+      input: {
+        startAdornment: (
+          <InputAdornment position="start">
+            <SearchIcon />
+          </InputAdornment>
+        ),
+      },
+    }}
   />
 );
 

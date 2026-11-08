@@ -638,10 +638,22 @@ const createComponentOverrides = (
         borderRadius: 8,
         // Light mode: use darker text colors for better visibility
         ...(mode === "light" && {
-          ...standardAlertColor(alertClasses.colorSuccess, tokens.status.success.dark),
-          ...standardAlertColor(alertClasses.colorError, tokens.status.error.dark),
-          ...standardAlertColor(alertClasses.colorWarning, tokens.status.warning.dark),
-          ...standardAlertColor(alertClasses.colorInfo, tokens.status.info.dark),
+          ...standardAlertColor(
+            alertClasses.colorSuccess,
+            tokens.status.success.dark,
+          ),
+          ...standardAlertColor(
+            alertClasses.colorError,
+            tokens.status.error.dark,
+          ),
+          ...standardAlertColor(
+            alertClasses.colorWarning,
+            tokens.status.warning.dark,
+          ),
+          ...standardAlertColor(
+            alertClasses.colorInfo,
+            tokens.status.info.dark,
+          ),
         }),
       },
     },

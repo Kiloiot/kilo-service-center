@@ -103,7 +103,9 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
               onClick={() => onRowClick(org.id)}
             >
               <TableCell>
-                <Typography sx={{ fontWeight: "medium" }}>{org.name}</Typography>
+                <Typography sx={{ fontWeight: "medium" }}>
+                  {org.name}
+                </Typography>
               </TableCell>
               <TableCell>
                 <Typography

@@ -142,7 +142,12 @@ const Organizations: React.FC = () => {
   return (
     <Box data-testid="organizations-page" sx={{ p: 3, pt: 4 }}>
       <Box
-        sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          mb: 3,
+        }}
       >
         <Typography variant="h4" component="h1">
           {ORGANIZATIONS_PAGE.TITLE}
@@ -195,7 +200,12 @@ const Organizations: React.FC = () => {
       {/* Loading State */}
       {isLoading && (
         <Box
-          sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: componentSpacing.stateView.listMinHeight }}
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: componentSpacing.stateView.listMinHeight,
+          }}
         >
           <CircularProgress />
         </Box>

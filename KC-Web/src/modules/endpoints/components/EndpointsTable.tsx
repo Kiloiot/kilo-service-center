@@ -29,11 +29,7 @@ import { ENDPOINTS_PAGE } from "@constants/messages";
 import AttachStatusChip from "./AttachStatusChip";
 
 export type EndpointsOrderBy =
-  | "name"
-  | "epEui"
-  | "attachState"
-  | "status"
-  | "lastSeen";
+  "name" | "epEui" | "attachState" | "status" | "lastSeen";
 
 const COLUMNS: { field: EndpointsOrderBy; label: string }[] = [
   { field: "name", label: ENDPOINTS_PAGE.COL_NAME },

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	grpcconst "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
@@ -31,8 +32,6 @@ const (
 	validationTestOtherSecret = "another-secret-of-at-least-32-bytes!"
 	validationTestKeyID       = "validation-key"
 	validationTestRSABits     = 2048
-	validationTestContentType = "application/json"
-	validationTestHeaderType  = "Content-Type"
 	validationTestNoneHeader  = `{"alg":"none","typ":"JWT"}`
 	validationTestPartSep     = "."
 )
@@ -124,7 +123,7 @@ func TestAuthenticateJWT_UsesTheConfiguredKeySet(t *testing.T) {
 	require.NoError(t, err)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set(validationTestHeaderType, validationTestContentType)
+		w.Header().Set(grpcconst.HeaderContentType, grpcconst.ContentTypeJSON)
 		_, writeErr := w.Write(body)
 		assert.NoError(t, writeErr)
 	}))

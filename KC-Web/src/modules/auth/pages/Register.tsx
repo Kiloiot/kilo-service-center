@@ -144,7 +144,12 @@ const Register: React.FC = () => {
 
   return (
     <Box
-      sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: AUTH_LAYOUT.FULL_HEIGHT }}
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: AUTH_LAYOUT.FULL_HEIGHT,
+      }}
     >
       <Paper
         sx={{

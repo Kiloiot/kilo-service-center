@@ -7,12 +7,7 @@ import { Box, Card, CardContent, Chip, Grid, Typography } from "@mui/material";
 import { componentSpacing } from "@theme/index";
 
 export type StatCardColor =
-  | "primary"
-  | "secondary"
-  | "success"
-  | "warning"
-  | "error"
-  | "info";
+  "primary" | "secondary" | "success" | "warning" | "error" | "info";
 
 interface StatCardProps {
   label: string;

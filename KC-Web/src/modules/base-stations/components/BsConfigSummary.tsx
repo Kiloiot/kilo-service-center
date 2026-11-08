@@ -45,7 +45,12 @@ const BsConfigSummary: React.FC<BsConfigSummaryProps> = ({
     <Box sx={{ mt: 2 }}>
       {/* Name */}
       <Box
-        sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 1,
+        }}
       >
         <Typography variant="body2" color="text.secondary">
           {LABEL_NAME}
@@ -55,7 +60,12 @@ const BsConfigSummary: React.FC<BsConfigSummaryProps> = ({
 
       {/* EUI with copy */}
       <Box
-        sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 1,
+        }}
       >
         <Typography variant="body2" color="text.secondary">
           {LABEL_BS_EUI_DISPLAY}

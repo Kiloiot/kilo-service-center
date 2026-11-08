@@ -103,16 +103,23 @@ const BaseStationEditDialog: React.FC<BaseStationEditDialogProps> = ({
     baseStation.serviceCenterUrl;
 
   // Initialize form data when dialog opens
-  useAdjustStateOnChange([open, baseStation.eui, baseStation.name, baseStationDetails], () => {
-    if (open) {
-      setEditFormData(
-        initialEditForm(baseStation.name, baseStation.eui, baseStationDetails),
-      );
-      setEuiError(null);
-      setLocationErrors({});
-      setEditError(null);
-    }
-  });
+  useAdjustStateOnChange(
+    [open, baseStation.eui, baseStation.name, baseStationDetails],
+    () => {
+      if (open) {
+        setEditFormData(
+          initialEditForm(
+            baseStation.name,
+            baseStation.eui,
+            baseStationDetails,
+          ),
+        );
+        setEuiError(null);
+        setLocationErrors({});
+        setEditError(null);
+      }
+    },
+  );
 
   const handleEuiChange = (value: string) => {
     setEditFormData((prev) => ({ ...prev, eui: formatEuiInput(value) }));

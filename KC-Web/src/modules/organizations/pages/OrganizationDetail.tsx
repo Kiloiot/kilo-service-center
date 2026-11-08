@@ -67,7 +67,12 @@ const OrganizationDetailHeader: React.FC<OrganizationDetailHeaderProps> = ({
   const navigate = useNavigate();
   return (
     <Box
-      sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        mb: 3,
+      }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         <BackButton
@@ -221,7 +226,12 @@ const OrganizationDetail: React.FC = () => {
   if (isLoading) {
     return (
       <Box
-        sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: componentSpacing.stateView.pageMinHeight }}
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: componentSpacing.stateView.pageMinHeight,
+        }}
       >
         <CircularProgress />
       </Box>

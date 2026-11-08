@@ -74,7 +74,13 @@ export default function BaseStationCommissioningDialog({
       slotProps={{ paper: { sx: { bgcolor: "background.paper" } } }}
     >
       <DialogTitle>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <SecurityIcon
               color={

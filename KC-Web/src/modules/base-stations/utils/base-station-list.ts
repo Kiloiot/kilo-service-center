@@ -11,11 +11,7 @@ import {
 } from "@constants/app";
 
 export type BaseStationSortField =
-  | "name"
-  | "eui"
-  | "status"
-  | "connectionType"
-  | "lastSeen";
+  "name" | "eui" | "status" | "connectionType" | "lastSeen";
 
 export type StatusOverlay = BaseStationStatus | null;
 

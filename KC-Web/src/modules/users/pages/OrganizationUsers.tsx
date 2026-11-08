@@ -119,7 +119,12 @@ const OrgUsersHeader: React.FC<OrgUsersHeaderProps> = ({
   const navigate = useNavigate();
   return (
     <Box
-      sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        mb: 3,
+      }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
         {!embedded && (
@@ -429,7 +434,12 @@ const OrganizationUsers: React.FC<OrganizationUsersProps> = ({
       {/* Loading State */}
       {isLoading && (
         <Box
-          sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: componentSpacing.stateView.listMinHeight }}
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: componentSpacing.stateView.listMinHeight,
+          }}
         >
           <CircularProgress />
         </Box>

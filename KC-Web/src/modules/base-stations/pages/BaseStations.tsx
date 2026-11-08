@@ -71,7 +71,12 @@ const BaseStations: React.FC = () => {
 
   const loadingIndicator = (
     <Box
-      sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: componentSpacing.stateView.listMinHeight }}
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: componentSpacing.stateView.listMinHeight,
+      }}
     >
       <CircularProgress />
     </Box>
@@ -93,7 +98,12 @@ const BaseStations: React.FC = () => {
     return (
       <Box sx={{ pt: theme.spacing(4) }}>
         <Box
-          sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: theme.spacing(3) }}
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: theme.spacing(3),
+          }}
         >
           <Typography variant="h4" component="h1">
             {BASE_STATIONS_PAGE.DETAILS_TITLE}
@@ -140,13 +150,15 @@ const BaseStations: React.FC = () => {
           placeholder={BASE_STATIONS_PAGE.SEARCH_PLACEHOLDER}
           value={view.filters.search}
           onChange={(e) => view.setSearch(e.target.value)}
-          slotProps={{ input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          } }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+            },
+          }}
         />
       </Box>
 

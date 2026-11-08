@@ -104,7 +104,11 @@ function TableState({
   if (isLoading) {
     return (
       <Box
-        sx={{ display: "flex", justifyContent: "center", p: DATA_TABLE_LAYOUT.STATE_PADDING }}
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          p: DATA_TABLE_LAYOUT.STATE_PADDING,
+        }}
       >
         <CircularProgress size={componentSpacing.spinner.section} />
       </Box>

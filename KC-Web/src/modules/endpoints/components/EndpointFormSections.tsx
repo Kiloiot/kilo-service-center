@@ -47,13 +47,16 @@ const IdentitySection: React.FC<SectionProps> = ({ form }) => (
       field="epEui"
       label={ENDPOINT_FORM.LABEL_EUI}
       helper={ENDPOINT_FORM.HELPER_EUI}
-      slotProps={{ htmlInput: { maxLength: EUI_INPUT_MAX_LENGTH }, input: {
-        endAdornment: isValidEui(form.values.epEui) && (
-          <InputAdornment position="end">
-            <CheckCircleIcon color="success" />
-          </InputAdornment>
-        ),
-      } }}
+      slotProps={{
+        htmlInput: { maxLength: EUI_INPUT_MAX_LENGTH },
+        input: {
+          endAdornment: isValidEui(form.values.epEui) && (
+            <InputAdornment position="end">
+              <CheckCircleIcon color="success" />
+            </InputAdornment>
+          ),
+        },
+      }}
     />
     <EndpointTextField
       form={form}
@@ -73,7 +76,9 @@ const NetworkSection: React.FC<SectionProps> = ({ form }) => (
       label={ENDPOINT_FORM.LABEL_SHORT_ADDR}
       helper={ENDPOINT_FORM.HELPER_SHORT_ADDR}
       placeholder={ENDPOINT_FORM.PLACEHOLDER_SHORT_ADDR}
-      slotProps={{ htmlInput: { maxLength: ENDPOINT_FORM.PLACEHOLDER_SHORT_ADDR.length } }}
+      slotProps={{
+        htmlInput: { maxLength: ENDPOINT_FORM.PLACEHOLDER_SHORT_ADDR.length },
+      }}
     />
     <EndpointTextField
       form={form}

@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 const changed = (seen: readonly unknown[], deps: readonly unknown[]): boolean =>
-  seen.length !== deps.length || deps.some((dep, i) => !Object.is(dep, seen[i]));
+  seen.length !== deps.length ||
+  deps.some((dep, i) => !Object.is(dep, seen[i]));
 
 /**
  * Runs adjust during render on mount and whenever a dep changes, so state

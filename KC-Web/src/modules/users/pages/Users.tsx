@@ -190,7 +190,12 @@ const Users: React.FC<UsersProps> = ({
     >
       {!embedded && (
         <Box
-          sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 3,
+          }}
         >
           <Typography variant="h4" component="h1">
             {USERS_PAGE.TITLE}
@@ -244,7 +249,12 @@ const Users: React.FC<UsersProps> = ({
       {/* Loading State */}
       {isLoading && (
         <Box
-          sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: componentSpacing.stateView.listMinHeight }}
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: componentSpacing.stateView.listMinHeight,
+          }}
         >
           <CircularProgress />
         </Box>

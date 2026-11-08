@@ -124,7 +124,10 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
   return (
     <>
       <Grid size={componentSpacing.gridSpan.full}>
-        <Typography variant="subtitle2" sx={{ fontWeight: "bold", mb: 1, mt: 1 }}>
+        <Typography
+          variant="subtitle2"
+          sx={{ fontWeight: "bold", mb: 1, mt: 1 }}
+        >
           {ENDPOINT_FORM.SECTION_BLUEPRINT}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>

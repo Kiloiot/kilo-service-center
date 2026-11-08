@@ -66,7 +66,14 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
   onDeleteClick,
 }) => (
   <>
-    <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", mb: 2 }}>
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        mb: 2,
+      }}
+    >
       <Box>
         <Tooltip title={ENDPOINT_DETAILS.TOOLTIP_EDIT}>
           <IconButton size="small" onClick={onEdit}>
