@@ -228,7 +228,7 @@ jobs:
           tags: ${{ needs.generate-version.outputs.registry }}/kc-identity:${{ needs.generate-version.outputs.version }}
 
   build-kc-web:
-    needs: [generate-version, lint, test, test-postgres]
+    needs: [generate-version, lint, test, test-postgres, web-lint]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
