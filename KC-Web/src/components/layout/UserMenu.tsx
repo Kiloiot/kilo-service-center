@@ -157,7 +157,7 @@ export function UserMenu() {
               borderBottom: `1px solid ${theme.palette.divider}`,
             }}
           >
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="textSecondary">
               {versionInfo.version}
               {!versionInfo.isProduction && USER_MENU.DEVELOPMENT_BUILD_SUFFIX}
             </Typography>

@@ -116,7 +116,7 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
             <Typography variant="h6" gutterBottom>
               {BLUEPRINT_LABELS.REGISTRY_SUBMIT_SUCCESS}
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
               {BLUEPRINT_LABELS.REGISTRY_PR_CREATED}
             </Typography>
             <Link
@@ -131,14 +131,14 @@ export const RegistrySubmitDialog: React.FC<RegistrySubmitDialogProps> = ({
             <Typography
               variant="caption"
               sx={{ display: "block", mt: 2 }}
-              color="text.secondary"
+              color="textSecondary"
             >
               {BLUEPRINT_LABELS.REGISTRY_BRANCH} {result.branch}
             </Typography>
             <Typography
               variant="caption"
               sx={{ display: "block" }}
-              color="text.secondary"
+              color="textSecondary"
             >
               {BLUEPRINT_LABELS.REGISTRY_COMMIT}{" "}
               {result.commitSha.substring(0, SHORT_COMMIT_SHA_LENGTH)}

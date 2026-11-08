@@ -114,13 +114,13 @@ const OrganizationInfoCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
 
       <Grid container spacing={2}>
         <Grid size={componentSpacing.gridSpan.halfFromSm}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ORGANIZATION_FORM.LABEL_NAME}
           </Typography>
           <Typography variant="body1">{org.name}</Typography>
         </Grid>
         <Grid size={componentSpacing.gridSpan.halfFromSm}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ORGANIZATION_FORM.LABEL_STATE}
           </Typography>
           <Typography variant="body1">
@@ -128,13 +128,13 @@ const OrganizationInfoCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
           </Typography>
         </Grid>
         <Grid size={componentSpacing.gridSpan.full}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ORGANIZATION_FORM.LABEL_DESCRIPTION}
           </Typography>
           <Typography variant="body1">{org.description || "-"}</Typography>
         </Grid>
         <Grid size={componentSpacing.gridSpan.halfFromSm}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ORGANIZATION_FORM.INFO_TENANT_ID}
           </Typography>
           <Typography variant="body1">{org.tenantId}</Typography>
@@ -151,7 +151,7 @@ const OrganizationMetaCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
         {ORGANIZATION_FORM.INFO_TITLE}
       </Typography>
       <Box sx={{ mb: 2 }}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {ORGANIZATION_FORM.INFO_CREATED}
         </Typography>
         <Typography variant="body1">
@@ -159,7 +159,7 @@ const OrganizationMetaCard: React.FC<{ org: OrganizationUI }> = ({ org }) => (
         </Typography>
       </Box>
       <Box>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {ORGANIZATION_FORM.INFO_UPDATED}
         </Typography>
         <Typography variant="body1">

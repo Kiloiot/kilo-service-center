@@ -17,7 +17,7 @@ function CaptionLine({ text }: { text?: string }) {
   return (
     <Typography
       variant="caption"
-      color="text.secondary"
+      color="textSecondary"
       sx={{ display: "block" }}
     >
       {text}

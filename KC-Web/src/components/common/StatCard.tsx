@@ -45,7 +45,7 @@ export function StatCard({
           }}
         >
           <Box sx={{ flex: 1 }}>
-            <Typography color="text.secondary" variant="body2" gutterBottom>
+            <Typography color="textSecondary" variant="body2" gutterBottom>
               {label}
             </Typography>
             <Typography
@@ -55,7 +55,7 @@ export function StatCard({
               {value}
             </Typography>
             {caption && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="textSecondary">
                 {caption}
               </Typography>
             )}

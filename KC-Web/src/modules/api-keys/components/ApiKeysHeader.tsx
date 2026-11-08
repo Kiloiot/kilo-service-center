@@ -21,7 +21,7 @@ const ApiKeysHeader: React.FC<{
       <Typography variant="h4" component="h1" gutterBottom>
         {API_KEYS_PAGE.TITLE}
       </Typography>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {API_KEYS_PAGE.DESCRIPTION}
       </Typography>
     </Box>

@@ -76,7 +76,7 @@ const UserMembershipsCard: React.FC<UserMembershipsCardProps> = ({
           <CircularProgress size={componentSpacing.spinner.section} />
         </Box>
       ) : memberships.length === 0 ? (
-        <Typography color="text.secondary" sx={{ py: 2 }}>
+        <Typography color="textSecondary" sx={{ py: 2 }}>
           {USER_FORM.EMPTY_NO_MEMBERSHIPS}
         </Typography>
       ) : (

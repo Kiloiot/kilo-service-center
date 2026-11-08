@@ -11,6 +11,7 @@ import type { Theme, ThemeOptions } from "@mui/material/styles";
 import { alpha, createTheme } from "@mui/material/styles";
 
 import { createButtonOverrides } from "./buttons";
+import { componentSpacing } from "./componentSpacing";
 import { foregroundOverrides } from "./foreground";
 import {
   chipHighlight,
@@ -20,7 +21,7 @@ import {
 import { tabOverrides } from "./tabs";
 
 export { livePulseAnimation } from "./animations";
-export { componentSpacing } from "./componentSpacing";
+export { componentSpacing };
 
 // =============================================================================
 // SEMANTIC TOKEN DEFINITIONS
@@ -632,6 +633,11 @@ const createComponentOverrides = (
     },
   },
   ...createHighlightOverrides(tokens.palette.highlight),
+  MuiListItemIcon: {
+    styleOverrides: {
+      root: { minWidth: componentSpacing.listItemIcon.minWidth },
+    },
+  },
   MuiAlert: {
     styleOverrides: {
       root: {

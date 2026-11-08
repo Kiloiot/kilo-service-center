@@ -94,7 +94,7 @@ export default function MapPickerDialog({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>{TITLE_MAP_PICKER}</DialogTitle>
       <DialogContent>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
           {INSTR_MAP_PICKER}
         </Typography>
         <MapContainer

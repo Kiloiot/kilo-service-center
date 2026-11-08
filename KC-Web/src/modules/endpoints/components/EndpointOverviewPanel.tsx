@@ -92,7 +92,7 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
       <Grid size={componentSpacing.gridSpan.half}>
         <Typography
           variant="subtitle2"
-          color="text.secondary"
+          color="textSecondary"
           gutterBottom
           sx={{ mb: 2 }}
         >
@@ -100,14 +100,14 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
         </Typography>
         {endPoint.name && (
           <Box sx={{ mb: 1 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="textSecondary">
               {ENDPOINT_DETAILS.LABEL_DEVICE_NAME}
             </Typography>
             <Typography variant="body1">{endPoint.name}</Typography>
           </Box>
         )}
         <Box sx={{ mb: 1 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ENDPOINT_DETAILS.LABEL_DEVICE_EUI}
           </Typography>
           <Typography variant="body1" sx={(theme) => getMonoBody1(theme)}>
@@ -119,14 +119,14 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
       <Grid size={componentSpacing.gridSpan.half}>
         <Typography
           variant="subtitle2"
-          color="text.secondary"
+          color="textSecondary"
           gutterBottom
           sx={{ mb: 2 }}
         >
           {ENDPOINT_DETAILS.SECTION_STATUS_INFO}
         </Typography>
         <Box sx={{ mb: 1 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ENDPOINT_DETAILS.LABEL_ATTACH_STATUS}
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -136,7 +136,7 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
         </Box>
         {endpointData.isRoaming !== undefined && (
           <Box sx={{ mb: 1 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="textSecondary">
               {ENDPOINT_DETAILS.LABEL_ROAMING_STATUS}
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -151,7 +151,7 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
                 icon={endpointData.isRoaming ? <LinkIcon /> : undefined}
               />
               {endpointData.ownerTenantId && (
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="textSecondary">
                   ({ENDPOINT_DETAILS.LABEL_OWNER_TENANT}{" "}
                   {endpointData.ownerTenantId})
                 </Typography>
@@ -160,7 +160,7 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
           </Box>
         )}
         <Box sx={{ mb: 1 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {ENDPOINT_DETAILS.LABEL_LAST_SEEN}
           </Typography>
           <Typography

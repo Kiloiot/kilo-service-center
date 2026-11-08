@@ -76,7 +76,7 @@ export default function CommissioningSuccessStep({
             justifyContent: "space-between",
           }}
         >
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {LABEL_SC_URL_DISPLAY}
           </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -129,10 +129,10 @@ export default function CommissioningSuccessStep({
       <Box sx={{ mt: 1 }}>
         {certificateData ? (
           <>
-            <Typography variant="body2" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ mb: 4 }}>
               {INSTR_STEP_1}
             </Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ mb: 4 }}>
               {INSTR_STEP_2_HEADER}
               <br />
               &nbsp;&nbsp;• {LABEL_SC_URL_DISPLAY}{" "}
@@ -148,15 +148,15 @@ export default function CommissioningSuccessStep({
               {formatEui(certificateData.bsEui)}
               {LABEL_PRIVATE_KEY_SUFFIX}
             </Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ mb: 4 }}>
               {INSTR_STEP_3}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="textSecondary">
               {INSTR_TLS_NOTE}
             </Typography>
           </>
         ) : (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {INSTR_BS_CREATED_FALLBACK}
           </Typography>
         )}

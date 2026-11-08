@@ -42,13 +42,13 @@ const BaseStationCertSection: React.FC<BaseStationCertSectionProps> = ({
   return (
     <>
       <Divider sx={{ mb: 2 }} />
-      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+      <Typography variant="subtitle2" color="textSecondary" gutterBottom>
         {BASE_STATION_DETAILS.CERTIFICATES_SECTION_TITLE}
       </Typography>
 
       {regenCertData ? (
         <Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
             {BASE_STATION_DETAILS.REGENERATE_CERTS_INSTALL_HINT}
           </Typography>
           {effectiveServiceCenterUrl && (
@@ -64,7 +64,7 @@ const BaseStationCertSection: React.FC<BaseStationCertSectionProps> = ({
         </Box>
       ) : (
         <Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
             {BASE_STATION_DETAILS.CERTIFICATES_HINT}
           </Typography>
           <Button

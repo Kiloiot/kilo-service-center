@@ -101,10 +101,10 @@ const EmptyRow: React.FC<{ isLoading: boolean }> = ({ isLoading }) => (
         API_KEYS_PAGE.LOADING
       ) : (
         <Box sx={{ py: 4 }}>
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" color="textSecondary">
             {API_KEYS_PAGE.NO_API_KEYS}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {API_KEYS_PAGE.NO_API_KEYS_DESCRIPTION}
           </Typography>
         </Box>

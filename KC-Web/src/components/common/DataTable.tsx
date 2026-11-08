@@ -118,7 +118,7 @@ function TableState({
     return (
       <Typography
         variant="body2"
-        color="text.secondary"
+        color="textSecondary"
         sx={{ p: DATA_TABLE_LAYOUT.STATE_PADDING }}
       >
         {emptyMessage}

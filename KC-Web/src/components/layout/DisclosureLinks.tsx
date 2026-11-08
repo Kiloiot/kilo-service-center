@@ -19,13 +19,13 @@ export function DisclosureLinks() {
       <Typography
         variant="caption"
         sx={{ display: "block" }}
-        color="text.secondary"
+        color="textSecondary"
       >
         {edition}
       </Typography>
       <Typography
         variant="caption"
-        color="text.secondary"
+        color="textSecondary"
         sx={{ display: "block", mb: 0.5 }}
       >
         {formatPoweredByLabel(edition)}

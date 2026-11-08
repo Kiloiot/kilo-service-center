@@ -102,7 +102,7 @@ export const BaseStationCertificateCard: React.FC<
   return (
     <DataCard title={BS_OPERATIONS.CERTIFICATE_TITLE}>
       {expiry.state === CERTIFICATE_EXPIRY_STATE.NOT_ISSUED ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {BS_OPERATIONS.NOT_ISSUED}
         </Typography>
       ) : (

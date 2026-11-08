@@ -48,7 +48,7 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
   if (organizations.length === 0) {
     return (
       <Paper sx={{ p: 4, textAlign: "center" }}>
-        <Typography color="text.secondary">{emptyMessage}</Typography>
+        <Typography color="textSecondary">{emptyMessage}</Typography>
       </Paper>
     );
   }
@@ -110,7 +110,7 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
               <TableCell>
                 <Typography
                   variant="body2"
-                  color="text.secondary"
+                  color="textSecondary"
                   sx={{
                     maxWidth: componentSpacing.truncatedCell.maxWidth,
                     overflow: "hidden",
@@ -129,7 +129,7 @@ const OrganizationsTable: React.FC<OrganizationsTableProps> = ({
                 />
               </TableCell>
               <TableCell>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="textSecondary">
                   {formatRelativeDuration(org.createdAt)}
                 </Typography>
               </TableCell>

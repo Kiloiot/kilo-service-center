@@ -21,7 +21,7 @@ export const InfoGrid: React.FC<{ items: InfoGridItem[] }> = ({ items }) => (
   >
     {items.map((item) => (
       <Box key={item.label} sx={{ minWidth: 0 }}>
-        <Typography variant="caption" color="text.secondary" component="div">
+        <Typography variant="caption" color="textSecondary" component="div">
           {item.label}
         </Typography>
         <Typography

@@ -35,7 +35,7 @@ function InfoRow({
 }) {
   return (
     <Box sx={{ mb: 1 }}>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {label}
       </Typography>
       {children}
@@ -60,7 +60,7 @@ function DetailColumnContent({
     return (
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <CircularProgress size={componentSpacing.spinner.inline} />
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {LOADER.LOADING}
         </Typography>
       </Box>
@@ -116,7 +116,7 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
       <Box sx={{ minWidth: 0 }}>
         <Typography
           variant="subtitle2"
-          color="text.secondary"
+          color="textSecondary"
           gutterBottom
           sx={{ mb: 2 }}
         >
@@ -141,7 +141,7 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
       <Box sx={{ minWidth: 0 }}>
         <Typography
           variant="subtitle2"
-          color="text.secondary"
+          color="textSecondary"
           gutterBottom
           sx={{ mb: 2 }}
         >
@@ -199,7 +199,7 @@ const BaseStationInfoPanel: React.FC<BaseStationInfoPanelProps> = ({
       <Box sx={{ minWidth: 0 }}>
         <Typography
           variant="subtitle2"
-          color="text.secondary"
+          color="textSecondary"
           gutterBottom
           sx={{ mb: 2 }}
         >

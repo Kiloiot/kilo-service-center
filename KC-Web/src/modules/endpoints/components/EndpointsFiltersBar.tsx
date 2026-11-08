@@ -64,7 +64,7 @@ function FilterGroup({
 }) {
   return (
     <Box sx={{ mb: 1 }}>
-      <Typography variant="subtitle2" color="text.secondary">
+      <Typography variant="subtitle2" color="textSecondary">
         {title}
       </Typography>
       <FormGroup>

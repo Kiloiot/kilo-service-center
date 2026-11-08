@@ -46,7 +46,7 @@ export const DataCard: React.FC<DataCardProps> = ({
           {title}
         </Typography>
         {subtitle && (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             {subtitle}
           </Typography>
         )}

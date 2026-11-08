@@ -100,16 +100,16 @@ const Certificates: React.FC = () => {
               </Typography>
               <Chip label={status.label} color={status.color} size="small" />
             </Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
+            <Typography variant="body2" color="textSecondary" gutterBottom>
               {CERTIFICATE_INFO.ISSUER}: {cert.issuer}
             </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
+            <Typography variant="body2" color="textSecondary" gutterBottom>
               {CERTIFICATE_INFO.SUBJECT}: {cert.subject}
             </Typography>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
+            <Typography variant="body2" color="textSecondary" gutterBottom>
               {CERTIFICATE_INFO.EXPIRES}: {formatDate(cert.notAfter)}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="textSecondary">
               {CERTIFICATE_INFO.DAYS_UNTIL_EXPIRY}: {cert.daysUntilExpiry}
             </Typography>
           </CardContent>
@@ -173,7 +173,7 @@ const Certificates: React.FC = () => {
         ) : !hasCerts ? (
           <Grid size={componentSpacing.gridSpan.full}>
             <Box sx={{ display: "flex", justifyContent: "center", py: 5 }}>
-              <Typography color="text.secondary">
+              <Typography color="textSecondary">
                 {CERTIFICATES_PAGE.NO_CERTIFICATES}
               </Typography>
             </Box>

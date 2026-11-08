@@ -130,7 +130,7 @@ const DeviceModelSelector: React.FC<DeviceModelSelectorProps> = ({
         >
           {ENDPOINT_FORM.SECTION_BLUEPRINT}
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
           {ENDPOINT_FORM.HELPER_DEVICE_MODEL}
         </Typography>
       </Grid>

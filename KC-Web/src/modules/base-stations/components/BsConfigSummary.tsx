@@ -52,7 +52,7 @@ const BsConfigSummary: React.FC<BsConfigSummaryProps> = ({
           mb: 1,
         }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {LABEL_NAME}
         </Typography>
         <Typography variant="body2">{name}</Typography>
@@ -67,7 +67,7 @@ const BsConfigSummary: React.FC<BsConfigSummaryProps> = ({
           mb: 1,
         }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {LABEL_BS_EUI_DISPLAY}
         </Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>

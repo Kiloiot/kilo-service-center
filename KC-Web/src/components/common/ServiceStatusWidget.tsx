@@ -86,7 +86,7 @@ export function ServiceStatusTable({
         </TableBody>
       </Table>
       <Box sx={{ mt: 2, textAlign: "center" }}>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="textSecondary">
           {SYSTEM_STATUS.LABEL_LAST_CHECKED}:{" "}
           {timestamp ? formatTime24h(timestamp) : SYSTEM_STATUS.NOT_CHECKED}
         </Typography>

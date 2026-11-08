@@ -76,7 +76,7 @@ function EndpointRow({
       <TableCell>
         <Typography
           variant="body2"
-          color={endpoint.lastSeen ? "text.secondary" : "error"}
+          color={endpoint.lastSeen ? "textSecondary" : "error"}
         >
           {formatRelativeDuration(endpoint.lastSeen)}
         </Typography>
@@ -116,7 +116,7 @@ export const EndpointsTable: React.FC<EndpointsTableProps> = ({
         {endpoints.length === 0 ? (
           <TableRow>
             <TableCell colSpan={COLUMNS.length} align="center" sx={{ py: 4 }}>
-              <Typography color="text.secondary">{emptyMessage}</Typography>
+              <Typography color="textSecondary">{emptyMessage}</Typography>
             </TableCell>
           </TableRow>
         ) : (

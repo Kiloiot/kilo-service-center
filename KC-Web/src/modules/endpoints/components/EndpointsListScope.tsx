@@ -50,7 +50,7 @@ export const EndpointsListScope: React.FC<EndpointsListScopeProps> = ({
         mb: 2,
       }}
     >
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {`${ENDPOINTS_PAGE.SHOWING} ${shown} ${ENDPOINTS_PAGE.OF} ${total}`}
       </Typography>
       {labels.map((label) => (

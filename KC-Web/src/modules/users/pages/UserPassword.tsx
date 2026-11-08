@@ -133,7 +133,7 @@ const UserPassword: React.FC = () => {
       </Box>
 
       {/* User context */}
-      <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography variant="subtitle1" color="textSecondary" sx={{ mb: 3 }}>
         {user.email}
       </Typography>
 

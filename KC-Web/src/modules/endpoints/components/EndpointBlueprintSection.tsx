@@ -18,7 +18,7 @@ export interface BlueprintInfo {
 function LabeledValue({ label, value }: { label: string; value: string }) {
   return (
     <Box>
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {label}
       </Typography>
       <Typography variant="body1">{value}</Typography>
@@ -64,7 +64,7 @@ export const EndpointBlueprintSection: React.FC<{
   <>
     <Typography
       variant="subtitle2"
-      color="text.secondary"
+      color="textSecondary"
       gutterBottom
       sx={{ mt: 1, display: "flex", alignItems: "center", gap: 0.5 }}
     >

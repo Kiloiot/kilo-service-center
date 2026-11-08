@@ -39,7 +39,7 @@ export const BaseStationPingCard: React.FC<BaseStationPingCardProps> = ({
   return (
     <DataCard title={BS_OPERATIONS.ACTIONS_TITLE}>
       <Stack spacing={componentSpacing.infoGrid.rowGap}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {BS_OPERATIONS.PING_HINT}
         </Typography>
         <div>

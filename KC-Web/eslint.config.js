@@ -194,6 +194,12 @@ export default tseslint.config(
           selector: 'Literal[value=/^rgb\\(|^rgba\\(/]',
           message: 'RGB colors banned. Use theme.palette.* tokens.',
         },
+        // Typography ignores palette paths in its color prop since MUI 9.
+        {
+          selector:
+            "JSXOpeningElement[name.name='Typography'] > JSXAttribute[name.name='color'] Literal[value=/^[a-z]+\\.[a-zA-Z]+$/]",
+          message: 'Use a Typography color such as textSecondary, or sx for a palette path.',
+        },
       ],
     },
   },
@@ -317,6 +323,12 @@ export default tseslint.config(
         {
           selector: 'Literal[value=/^rgb\\(|^rgba\\(/]',
           message: 'RGB colors banned. Use theme.palette.* tokens.',
+        },
+        // Typography ignores palette paths in its color prop since MUI 9.
+        {
+          selector:
+            "JSXOpeningElement[name.name='Typography'] > JSXAttribute[name.name='color'] Literal[value=/^[a-z]+\\.[a-zA-Z]+$/]",
+          message: 'Use a Typography color such as textSecondary, or sx for a palette path.',
         },
         // Block string literals in JSX text content (4+ chars to allow punctuation)
         {

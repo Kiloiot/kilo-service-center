@@ -137,7 +137,7 @@ const OrgUsersHeader: React.FC<OrgUsersHeaderProps> = ({
           {ORG_USERS_PAGE.TITLE}
         </Typography>
         {orgName && (
-          <Typography variant="h6" color="text.secondary">
+          <Typography variant="h6" color="textSecondary">
             {ORG_USERS_PAGE.ORG_NAME_PREFIX}
             {orgName}
           </Typography>
