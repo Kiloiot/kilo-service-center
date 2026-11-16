@@ -165,6 +165,8 @@ const (
 	LogBSSCISendingDetachPropagateComplete = "Sending detach propagate complete"
 	// LogBSSCINoConnectedBaseStationsForDetachPropagate is a log message constant
 	LogBSSCINoConnectedBaseStationsForDetachPropagate = "No connected base stations available for detach propagate"
+	// LogBSSCIPropagationEndpointTenantUnknown is a log message constant
+	LogBSSCIPropagationEndpointTenantUnknown = "Endpoint tenant unknown, propagation sent to no base station"
 	// LogBSSCIUpdatedEndpointWithDetachInfo is a log message constant
 	LogBSSCIUpdatedEndpointWithDetachInfo = "Updated endpoint with detach info"
 	// LogBSSCIFailedToPersistDetachMessage is a log message constant

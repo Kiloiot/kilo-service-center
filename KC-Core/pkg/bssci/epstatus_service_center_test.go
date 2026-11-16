@@ -47,10 +47,8 @@ func (f *attachFixture) completeOperation(t *testing.T, sessionID string, conn *
 // neither attaches it again nor announces it, whichever station confirms.
 func TestLateAttachPropagateDoesNotUndoADetachment(t *testing.T) {
 	f, broadcaster, second := newServiceCenterStatusFixture(t, endpoint.EndpointStatusDetached)
-	_, foreign := f.newStation("attach-foreign-station", TestBsEui03, attachRoamingOwnerTenant)
 
-	require.Empty(t, f.server.SendAttachPropagateToAll(TestEpEui01, testPresharedKey(), 0x1505, false, 0, false, 0, false, false))
-	f.completeOperation(t, "attach-foreign-station", foreign, mioty.CmdAttachPropagate, mioty.CmdAttachPropagateResponse)
+	require.Empty(t, f.server.SendAttachPropagateToAll(attachResponseTenant, TestEpEui01, testPresharedKey(), 0x1505, false, 0, false, 0, false, false))
 	f.completeOperation(t, f.session.ID, f.conn, mioty.CmdAttachPropagate, mioty.CmdAttachPropagateResponse)
 	f.completeOperation(t, "attach-second-station", second, mioty.CmdAttachPropagate, mioty.CmdAttachPropagateResponse)
 	f.server.wg.Wait()
@@ -64,7 +62,7 @@ func TestLateAttachPropagateDoesNotUndoADetachment(t *testing.T) {
 func TestLateDetachPropagateDoesNotUndoAnAttachment(t *testing.T) {
 	f, broadcaster, second := newServiceCenterStatusFixture(t, EndpointStatusAttached)
 
-	require.Empty(t, f.server.SendDetachPropagateToAll(TestEpEui01))
+	require.Empty(t, f.server.SendDetachPropagateToAll(attachResponseTenant, TestEpEui01))
 	f.completeOperation(t, f.session.ID, f.conn, mioty.CmdDetachPropagate, mioty.CmdDetachPropagateResponse)
 	f.completeOperation(t, "attach-second-station", second, mioty.CmdDetachPropagate, mioty.CmdDetachPropagateResponse)
 	f.server.wg.Wait()

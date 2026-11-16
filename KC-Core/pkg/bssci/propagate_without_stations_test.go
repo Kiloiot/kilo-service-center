@@ -46,9 +46,11 @@ func stationlessServer(owners EndpointOwnerResolver) (*Server, *recordingEventSt
 }
 
 var propagationsToAllStations = map[string]func(*Server) []error{
-	"detPrp": func(s *Server) []error { return s.SendDetachPropagateToAll(stationlessEndpointEUI) },
+	"detPrp": func(s *Server) []error {
+		return s.SendDetachPropagateToAll(stationlessOwnerTenant, stationlessEndpointEUI)
+	},
 	"attPrp": func(s *Server) []error {
-		return s.SendAttachPropagateToAll(stationlessEndpointEUI, make([]byte, 16), 1, true, 0, false, 0, false, false)
+		return s.SendAttachPropagateToAll(stationlessOwnerTenant, stationlessEndpointEUI, make([]byte, 16), 1, true, 0, false, 0, false, false)
 	},
 }
 

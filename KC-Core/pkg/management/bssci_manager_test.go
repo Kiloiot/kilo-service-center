@@ -15,11 +15,15 @@ const (
 	wantSingleSession = 1
 )
 
-// fakeSessionPropagator is a focused stand-in for the BSSCI server. Only the
-// connected-session listing is exercised here; the propagation methods exist to
-// satisfy SessionPropagator.
+// fakeSessionPropagator is a focused stand-in for the BSSCI server: it lists
+// the given sessions, names owner as every endpoint's owner unless ownerErr is
+// set, and records the tenant each fan-out was scoped to.
 type fakeSessionPropagator struct {
-	sessions []map[string]interface{}
+	sessions      []map[string]interface{}
+	owner         int64
+	ownerErr      error
+	attachTenants []int64
+	detachTenants []int64
 }
 
 func (f *fakeSessionPropagator) SendAttachPropagate(_ string, _ uint64, _ []byte,
@@ -27,14 +31,22 @@ func (f *fakeSessionPropagator) SendAttachPropagate(_ string, _ uint64, _ []byte
 	return nil
 }
 
-func (f *fakeSessionPropagator) SendAttachPropagateToAll(_ uint64, _ []byte,
+func (f *fakeSessionPropagator) SendAttachPropagateToAll(endpointTenantID int64, _ uint64, _ []byte,
 	_ uint16, _ bool, _ uint32, _ bool, _ uint8, _ bool, _ bool) []error {
+	f.attachTenants = append(f.attachTenants, endpointTenantID)
 	return nil
 }
 
 func (f *fakeSessionPropagator) SendDetachPropagate(_ string, _ uint64) error { return nil }
 
-func (f *fakeSessionPropagator) SendDetachPropagateToAll(_ uint64) []error { return nil }
+func (f *fakeSessionPropagator) SendDetachPropagateToAll(endpointTenantID int64, _ uint64) []error {
+	f.detachTenants = append(f.detachTenants, endpointTenantID)
+	return nil
+}
+
+func (f *fakeSessionPropagator) EndpointOwnerTenant(_ uint64) (int64, error) {
+	return f.owner, f.ownerErr
+}
 
 func (f *fakeSessionPropagator) GetConnectedSessions() []map[string]interface{} {
 	return f.sessions
