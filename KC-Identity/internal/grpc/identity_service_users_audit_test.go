@@ -2,17 +2,21 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/Kiloiot/kilo-service-center/KC-Core/api/gen/kilocenter/v1"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/audit"
+	grpcerrors "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/testutil"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
+	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/auth"
 	"github.com/Kiloiot/kilo-service-center/KC-Identity/internal/services/grpcservices"
 	pkgcontext "github.com/Kiloiot/kilo-service-center/pkg/context"
 )
@@ -61,6 +65,81 @@ func TestPasswordChange_IsAuditedWithoutThePassword(t *testing.T) {
 		assert.Equal(t, subject.String(), ev.Details[auditKeyUserID])
 		assert.NotContains(t, fmt.Sprint(ev), testNewPassword)
 	}
+}
+
+// errTestSessionsKept is a password change that stored the new password but
+// could not end the old sessions, wrapped as the services return it.
+var errTestSessionsKept = fmt.Errorf("revoke sessions: %w: %w", auth.ErrPasswordChangedSessionsKept, errTestRevokeUnavailable)
+
+var errTestRevokeUnavailable = errors.New("refresh token store unavailable")
+
+// A stored password is audited exactly once, also when ending the old
+// sessions failed and the caller gets an error.
+func TestPasswordChange_IsAuditedWheneverTheNewPasswordIsStored(t *testing.T) {
+	actorID := uuid.New()
+	entries := []struct {
+		name      string
+		failToken string
+		change    func(*IdentityService, context.Context, error) error
+	}{
+		{name: "self-service change", failToken: grpcerrors.ErrTokenChangePasswordFailed, change: func(svc *IdentityService, ctx context.Context, outcome error) error {
+			svc.WithAuthService(&mockAuthService{changePasswordFunc: func(context.Context, uuid.UUID, string, string) error { return outcome }})
+			_, err := svc.ChangePassword(ctx, &pb.ChangePasswordRequest{CurrentPassword: testNewPassword, NewPassword: testNewPassword})
+			return err
+		}},
+		{name: "admin reset", failToken: grpcerrors.ErrTokenUpdatePasswordFailed, change: func(svc *IdentityService, ctx context.Context, outcome error) error {
+			svc.WithAdminUserService(&mockAdminUserService{
+				getByIDFunc: func(_ context.Context, id uuid.UUID) (*models.User, error) {
+					return &models.User{ID: id, Email: testSubjectEmail, IsAdmin: id == actorID, IsActive: true}, nil
+				},
+				updatePasswordFunc: func(context.Context, uuid.UUID, string) error { return outcome },
+			})
+			_, err := svc.UpdateUserPassword(ctx, &pb.UpdateUserPasswordRequest{Id: uuid.NewString(), NewPassword: testNewPassword})
+			return err
+		}},
+	}
+	outcomes := []struct {
+		name    string
+		outcome error
+		failed  bool
+	}{
+		{name: "stored and sessions ended"},
+		{name: "stored but sessions kept", outcome: errTestSessionsKept, failed: true},
+	}
+	for _, entry := range entries {
+		for _, oc := range outcomes {
+			t.Run(entry.name+"/"+oc.name, func(t *testing.T) {
+				svc, emitter := recordingService(t)
+				ctx := pkgcontext.WithUserID(contextForTenant(testAuditCallerTenant), actorID.String())
+
+				err := entry.change(svc, ctx, oc.outcome)
+
+				require.Len(t, emitter.events, 1)
+				assert.Equal(t, models.EventTypeUserPasswordChanged, emitter.events[0].EventType)
+				if !oc.failed {
+					require.NoError(t, err)
+					return
+				}
+				st, ok := status.FromError(err)
+				require.True(t, ok)
+				assert.Equal(t, grpcerrors.GetGRPCCode(entry.failToken), st.Code())
+				assert.Equal(t, grpcerrors.ResolveErrorMessage(entry.failToken), st.Message())
+			})
+		}
+	}
+}
+
+func TestPasswordChange_IsNotAuditedWhenNothingWasStored(t *testing.T) {
+	svc, emitter := recordingService(t)
+	svc.WithAuthService(&mockAuthService{changePasswordFunc: func(context.Context, uuid.UUID, string, string) error {
+		return auth.ErrInvalidCredentials
+	}})
+	ctx := pkgcontext.WithUserID(contextForTenant(testAuditCallerTenant), uuid.NewString())
+
+	_, err := svc.ChangePassword(ctx, &pb.ChangePasswordRequest{CurrentPassword: testNewPassword, NewPassword: testNewPassword})
+
+	require.Error(t, err)
+	assert.Empty(t, emitter.events)
 }
 
 const testRegisterPassword = "register-secret-1"

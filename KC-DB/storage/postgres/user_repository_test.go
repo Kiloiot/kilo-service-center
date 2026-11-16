@@ -5,6 +5,7 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
@@ -204,6 +205,61 @@ func TestUserRepository_Update_Success(t *testing.T) {
 	assert.True(t, retrieved.EmailVerified)
 	assert.True(t, retrieved.IsAdmin)
 	assert.Equal(t, "test-update-new@example.com", retrieved.Email)
+}
+
+func TestUserRepository_LinkExternalID_WritesOnlyTheIdentityOfAnActiveUser(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	const subject = "idp-subject-link"
+	tests := []struct {
+		name    string
+		active  bool
+		missing bool
+		wantErr error
+	}{
+		{name: "active user is linked", active: true},
+		{name: "deactivated user is refused and stays deactivated", active: false, wantErr: storage.ErrUserInactive},
+		{name: "missing user is refused", missing: true, wantErr: storage.ErrUserInactive},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := SetupTestDB(t)
+			repo := NewUserRepository(db, clock.SystemClock{})
+			ctx := testutil.TestContext()
+			userID := uuid.New()
+			note := "kept as is"
+			t.Cleanup(func() {
+				if _, err := db.Exec("DELETE FROM users WHERE id = $1", userID); err != nil {
+					t.Logf("cleanup user: %v", err)
+				}
+				if err := db.Close(); err != nil {
+					t.Logf("failed to close db: %v", err)
+				}
+			})
+			if !tt.missing {
+				require.NoError(t, repo.Create(ctx, &models.User{ID: userID, Email: "link-" + userID.String() + "@example.com", IsActive: tt.active, Note: &note}))
+			}
+
+			err := repo.LinkExternalID(ctx, userID, subject)
+
+			require.ErrorIs(t, err, tt.wantErr)
+			if tt.missing {
+				return
+			}
+			got, err := repo.GetByID(ctx, userID)
+			require.NoError(t, err)
+			assert.Equal(t, tt.active, got.IsActive)
+			require.NotNil(t, got.Note)
+			assert.Equal(t, note, *got.Note)
+			if tt.wantErr != nil {
+				assert.Nil(t, got.ExternalID)
+				return
+			}
+			require.NotNil(t, got.ExternalID)
+			assert.Equal(t, subject, *got.ExternalID)
+		})
+	}
 }
 
 // TestUserRepository_SetPasswordHash_Success tests password hash update

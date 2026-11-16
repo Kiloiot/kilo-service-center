@@ -20,10 +20,10 @@ func NewRefreshTokenStoreAdapter(repo *postgres.RefreshTokenRepository) *Refresh
 	return &RefreshTokenStoreAdapter{repo: repo}
 }
 
-// Create stores a new refresh token (hash pre-computed by caller)
-func (a *RefreshTokenStoreAdapter) Create(ctx context.Context, token *models.RefreshToken) error {
-	if err := a.repo.Create(ctx, token); err != nil {
-		return fmt.Errorf("%s: %w", errWrapRefreshTokenAdapterCreate, err)
+// CreateForPassword opens a session for an active user who still has passwordHash.
+func (a *RefreshTokenStoreAdapter) CreateForPassword(ctx context.Context, token *models.RefreshToken, passwordHash string) error {
+	if err := a.repo.CreateForPassword(ctx, token, passwordHash); err != nil {
+		return fmt.Errorf("%s: %w", errWrapRefreshTokenAdapterCreateForPassword, err)
 	}
 	return nil
 }
@@ -45,10 +45,10 @@ func (a *RefreshTokenStoreAdapter) RevokeByUserID(ctx context.Context, userID uu
 	return nil
 }
 
-// MarkReplaced links old token to new token during rotation
-func (a *RefreshTokenStoreAdapter) MarkReplaced(ctx context.Context, oldTokenID, newTokenID uuid.UUID) error {
-	if err := a.repo.MarkReplaced(ctx, oldTokenID, newTokenID); err != nil {
-		return fmt.Errorf("%s: %w", errWrapRefreshTokenAdapterMarkReplaced, err)
+// Rotate atomically stores newToken and marks oldTokenID as replaced by it.
+func (a *RefreshTokenStoreAdapter) Rotate(ctx context.Context, oldTokenID uuid.UUID, newToken *models.RefreshToken) error {
+	if err := a.repo.Rotate(ctx, oldTokenID, newToken); err != nil {
+		return fmt.Errorf("%s: %w", errWrapRefreshTokenAdapterRotate, err)
 	}
 	return nil
 }

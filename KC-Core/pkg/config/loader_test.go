@@ -355,6 +355,32 @@ func validBaseConfig() *Config {
 	}
 }
 
+// testConfigLocalLoginWithoutRegistration turns local login on for the
+// identity service on loopback and says nothing about self-registration.
+const testConfigLocalLoginWithoutRegistration = `
+grpc:
+  host: 127.0.0.1
+auth:
+  enabled: true
+  local_login_enabled: true
+  hmac_secret: this-is-a-secret-that-is-at-least-32-bytes-long!
+`
+
+func TestLoadIdentity_KeepsSelfRegistrationOffWhenTheKeyIsAbsent(t *testing.T) {
+	t.Setenv("KILOCENTER_AUTH_REGISTRATION_ENABLED", "")
+
+	cfg, err := LoadIdentity(writeTestConfig(t, testConfigLocalLoginWithoutRegistration))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !cfg.Auth.LocalLoginEnabled {
+		t.Fatal("fixture must enable local login, or the registration default is not what is under test")
+	}
+	if cfg.Auth.RegistrationEnabled {
+		t.Error("self-registration must stay off unless auth.registration_enabled is set")
+	}
+}
+
 func TestValidate_RegistrationRequiresLocalLogin(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Auth.RegistrationEnabled = flagEnabled
