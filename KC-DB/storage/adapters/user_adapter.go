@@ -63,6 +63,14 @@ func (a *UserStoreAdapter) Update(ctx context.Context, user *models.User) error 
 	return nil
 }
 
+// LinkExternalID records the external identity of an active user
+func (a *UserStoreAdapter) LinkExternalID(ctx context.Context, id uuid.UUID, externalID string) error {
+	if err := a.repo.LinkExternalID(ctx, id, externalID); err != nil {
+		return fmt.Errorf("%s: %w", errWrapUserAdapterLinkExternalID, err)
+	}
+	return nil
+}
+
 // SetPasswordHash updates only the password hash field
 func (a *UserStoreAdapter) SetPasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
 	if err := a.repo.SetPasswordHash(ctx, id, hash); err != nil {
