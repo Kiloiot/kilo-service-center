@@ -5,8 +5,11 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
+	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/crypto"
 )
 
 // TLSFiles names the PEM files a mutual-TLS listener needs.
@@ -31,6 +34,8 @@ func (f TLSFiles) Exist() bool {
 type TLSOptions struct {
 	MinVersion   string
 	CipherSuites []string
+	// DeniedCertFingerprints are SHA-256 fingerprints of client certificates refused at the handshake even though the CA signed them.
+	DeniedCertFingerprints []string
 }
 
 // defaultCipherSuites is the modern AEAD set both protocol servers offer when
@@ -81,14 +86,50 @@ func BuildServerTLSConfig(files TLSFiles, opts TLSOptions) (*tls.Config, error) 
 	if err != nil {
 		return nil, err
 	}
+	denied, err := deniedFingerprints(opts.DeniedCertFingerprints)
+	if err != nil {
+		return nil, err
+	}
 	//nolint:gosec // G402: MinVersion is validated by config.ParseTLSMinVersion
-	return &tls.Config{
+	cfg := &tls.Config{
 		GetCertificate: keyPair.GetCertificate,
 		ClientAuth:     tls.RequireAndVerifyClientCert,
 		ClientCAs:      caPool,
 		MinVersion:     minVersion,
 		CipherSuites:   suites,
-	}, nil
+	}
+	if len(denied) > 0 {
+		cfg.VerifyConnection = refuseDenied(denied)
+	}
+	return cfg, nil
+}
+
+var fingerprintPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// deniedFingerprints accepts the forms operators copy from openssl (colons, upper case) and refuses anything else, so a typo cannot silently deny nothing.
+func deniedFingerprints(values []string) (map[string]struct{}, error) {
+	denied := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		fingerprint := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), ":", ""))
+		if !fingerprintPattern.MatchString(fingerprint) {
+			return nil, fmt.Errorf(errFmtInvalidCertFingerprint, ErrInvalidCertFingerprint, value)
+		}
+		denied[fingerprint] = struct{}{}
+	}
+	return denied, nil
+}
+
+// refuseDenied runs on every handshake, resumed ones included, after the chain is verified.
+func refuseDenied(denied map[string]struct{}) func(tls.ConnectionState) error {
+	return func(state tls.ConnectionState) error {
+		if len(state.PeerCertificates) == 0 {
+			return nil
+		}
+		if _, ok := denied[crypto.CertFingerprintSHA256(state.PeerCertificates[0].Raw)]; ok {
+			return ErrDeniedClientCertificate
+		}
+		return nil
+	}
 }
 
 func resolveCipherSuites(names []string) ([]uint16, error) {
