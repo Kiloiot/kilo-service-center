@@ -208,7 +208,7 @@ func (c deregisterCleanup) responseData() map[string]interface{} {
 }
 
 // detachDeregisteredEndpoint revokes the tenant's endpoint's downlinks and
-// sends its detPrp to every connected base station.
+// sends its detPrp to every connected base station of the tenant.
 func (s *Server) detachDeregisteredEndpoint(ctx context.Context, session *Session, opId int64, epEui uint64) deregisterCleanup {
 	s.logger.DebugContext(s.sessionContext(session), LogSCACIDeregisterCleanupStart,
 		logger.FieldOpID, opId,

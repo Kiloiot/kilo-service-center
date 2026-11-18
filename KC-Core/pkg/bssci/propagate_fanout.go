@@ -10,12 +10,16 @@ import (
 )
 
 // SendAttachPropagateToAll sends attach propagate to every connected base
-// station that completed its handshake (BSSCI §5.8, BSSCI-3.3-03).
-func (s *Server) SendAttachPropagateToAll(endpointEUI uint64, nwkSnKey []byte,
+// station of the endpoint's tenant that completed its handshake (BSSCI §5.8,
+// BSSCI-3.3-03). Cross-tenant roaming is not propagated.
+func (s *Server) SendAttachPropagateToAll(endpointTenantID int64, endpointEUI uint64, nwkSnKey []byte,
 	shortAddr uint16, bidirectional bool, lastPacketCnt uint32, dualChannel bool,
 	repetition uint8, wideCarrOff bool, longBlkDist bool,
 ) []error {
-	sessionIDs := s.handshakeCompleteSessionIDs(noExcludedSession)
+	if endpointTenantID <= 0 {
+		return s.propagationWithoutTenant(endpointEUI)
+	}
+	sessionIDs := s.tenantSessionIDs(endpointTenantID, noExcludedSession)
 	if len(sessionIDs) == 0 {
 		s.logger.WarnContext(s.safeCtx(), LogBSSCINoConnectedBaseStationsForAttachPropagate,
 			logger.FieldEndpointEUI, endpointEUI)
@@ -40,9 +44,13 @@ func (s *Server) SendAttachPropagateToAll(endpointEUI uint64, nwkSnKey []byte,
 }
 
 // SendDetachPropagateToAll sends detach propagate to every connected base
-// station that completed its handshake (BSSCI §5.9, BSSCI-3.3-03).
-func (s *Server) SendDetachPropagateToAll(endpointEUI uint64) []error {
-	sessionIDs := s.handshakeCompleteSessionIDs(noExcludedSession)
+// station of the endpoint's tenant that completed its handshake (BSSCI §5.9,
+// BSSCI-3.3-03). Cross-tenant roaming is not propagated.
+func (s *Server) SendDetachPropagateToAll(endpointTenantID int64, endpointEUI uint64) []error {
+	if endpointTenantID <= 0 {
+		return s.propagationWithoutTenant(endpointEUI)
+	}
+	sessionIDs := s.tenantSessionIDs(endpointTenantID, noExcludedSession)
 	if len(sessionIDs) == 0 {
 		s.logger.WarnContext(s.safeCtx(), LogBSSCINoConnectedBaseStationsForDetachPropagate,
 			logger.FieldEndpointEUI, endpointEUI)
@@ -57,20 +65,40 @@ func (s *Server) SendDetachPropagateToAll(endpointEUI uint64) []error {
 	return s.sendDetachPropagateTo(sessionIDs, endpointEUI)
 }
 
+// EndpointOwnerTenant names the tenant that owns the endpoint.
+func (s *Server) EndpointOwnerTenant(endpointEUI uint64) (int64, error) {
+	owner, err := s.endpointOwners.ResolveOwner(s.safeCtx(), storedEUI(endpointEUI))
+	if err != nil {
+		return 0, fmt.Errorf(errFmtResolveEndpointOwnerTenant, mioty.FormatEUI64(endpointEUI), err)
+	}
+	return owner.TenantID, nil
+}
+
 // noExcludedSession names no session to leave out of a fan-out.
 const noExcludedSession = ""
 
-// handshakeCompleteSessionIDs lists the sessions that may receive a service
-// center operation (BSSCI-3.3-03), leaving out the excluded one.
-func (s *Server) handshakeCompleteSessionIDs(excluded string) []string {
+// tenantSessionIDs lists the sessions of the tenant that may receive a
+// service center operation (BSSCI-3.3-03), leaving out the excluded one.
+func (s *Server) tenantSessionIDs(tenantID int64, excluded string) []string {
+	if tenantID <= 0 {
+		return nil
+	}
 	live := s.sessions.snapshot()
 	sessionIDs := make([]string, 0, len(live))
 	for _, session := range live {
-		if session.HandshakeComplete && session.ID != excluded {
+		if session.HandshakeComplete && session.ID != excluded && resolvedTenant(session, s.tenantID) == tenantID {
 			sessionIDs = append(sessionIDs, session.ID)
 		}
 	}
 	return sessionIDs
+}
+
+// propagationWithoutTenant refuses a propagation whose endpoint tenant is not
+// known: its network key must reach no base station.
+func (s *Server) propagationWithoutTenant(endpointEUI uint64) []error {
+	s.logger.WarnContext(s.safeCtx(), LogBSSCIPropagationEndpointTenantUnknown,
+		logger.FieldEpEui, mioty.FormatEUI64(endpointEUI))
+	return []error{ErrEndpointTenantUnknown}
 }
 
 // sendDetachPropagateTo sends detach propagate for the endpoint to each session.

@@ -34,13 +34,16 @@ func (r *tenantScopedEndpointRepo) GetByEUI(ctx context.Context, tenantID int64,
 	return r.mockEndpointRepo.GetByEUI(ctx, tenantID, eui)
 }
 
-// recordingDetachPropagator records the endpoints it sent detPrp for.
+// recordingDetachPropagator records the endpoints it sent detPrp for and the
+// tenant whose stations they were sent to.
 type recordingDetachPropagator struct {
-	sent []uint64
+	sent    []uint64
+	tenants []int64
 }
 
-func (p *recordingDetachPropagator) SendDetachPropagateToAll(epEUI uint64) []error {
+func (p *recordingDetachPropagator) SendDetachPropagateToAll(endpointTenantID int64, epEUI uint64) []error {
 	p.sent = append(p.sent, epEUI)
+	p.tenants = append(p.tenants, endpointTenantID)
 	return nil
 }
 
@@ -78,4 +81,5 @@ func TestPropagateDetachToAllSendsTheOwnersEndpoint(t *testing.T) {
 
 	assert.Empty(t, propagate(detachOwnerTenant))
 	assert.Equal(t, []uint64{detachEndpointEUI}, stations.sent)
+	assert.Equal(t, []int64{detachOwnerTenant}, stations.tenants, "detPrp goes only to the owner tenant's stations")
 }

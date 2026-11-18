@@ -142,14 +142,14 @@ type recordingPropagateSender struct {
 	keys chan []byte
 }
 
-func (r *recordingPropagateSender) SendAttachPropagateToAll(_ uint64, nwkSnKey []byte, _ uint16, _ bool, _ uint32, _ bool, _ uint8, _ bool, _ bool) []error {
+func (r *recordingPropagateSender) SendAttachPropagateToAll(_ int64, _ uint64, nwkSnKey []byte, _ uint16, _ bool, _ uint32, _ bool, _ uint8, _ bool, _ bool) []error {
 	r.keys <- nwkSnKey
 	return nil
 }
 
-func (r *recordingPropagateSender) SendDetachPropagateToAll(uint64) []error { return nil }
+func (r *recordingPropagateSender) SendDetachPropagateToAll(int64, uint64) []error { return nil }
 
-func (r *recordingPropagateSender) GetConnectedSessionEUIs() []string { return nil }
+func (r *recordingPropagateSender) GetConnectedSessionEUIs(int64) []string { return nil }
 
 type sessionKeyEndpointLookup struct {
 	endpoint *models.EndPoint

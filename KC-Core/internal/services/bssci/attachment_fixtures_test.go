@@ -92,10 +92,10 @@ func (discardedEvents) CreateEvent(context.Context, *models.SystemEvent) error {
 // idleStations connects no base station.
 type idleStations struct{}
 
-func (idleStations) SendAttachPropagateToAll(uint64, []byte, uint16, bool, uint32, bool, uint8, bool, bool) []error {
+func (idleStations) SendAttachPropagateToAll(int64, uint64, []byte, uint16, bool, uint32, bool, uint8, bool, bool) []error {
 	return nil
 }
 
-func (idleStations) SendDetachPropagateToAll(uint64) []error { return nil }
+func (idleStations) SendDetachPropagateToAll(int64, uint64) []error { return nil }
 
-func (idleStations) GetConnectedSessionEUIs() []string { return nil }
+func (idleStations) GetConnectedSessionEUIs(int64) []string { return nil }
