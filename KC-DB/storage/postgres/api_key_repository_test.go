@@ -381,3 +381,55 @@ func TestAPIKeyRepository_DeleteByIDAndOrg_WrongOrg(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, storage.ErrRecordNotFound))
 }
+
+// These tests need a Postgres testcontainer and rely on CI to run.
+func TestAPIKeyRepository_GetByHash_OwnerActivity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	db, cleanup := SetupPostgresContainer(t)
+	defer cleanup()
+
+	tenantID, orgA, _, userID := setupAPIKeyTestData(t, db)
+	ctx := testutil.TestContext()
+	repo := NewAPIKeyRepository(db, clock.SystemClock{})
+
+	disabledUserID := uuid.New()
+	_, err := db.Exec(`
+		INSERT INTO users (id, email, email_verified, is_admin, is_active, created_at, updated_at)
+		VALUES ($1, 'apikey-disabled@example.com', true, false, false, NOW(), NOW())
+	`, disabledUserID)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name       string
+		userID     *uuid.UUID
+		keyType    string
+		keyActive  bool
+		wantActive bool
+	}{
+		{"active owner and active key", &userID, models.KeyTypeUser, true, true},
+		{"disabled owner", &disabledUserID, models.KeyTypeUser, true, false},
+		{"revoked key of active owner", &userID, models.KeyTypeUser, false, false},
+		{"revoked key of disabled owner", &disabledUserID, models.KeyTypeUser, false, false},
+		{"service account key without owner", nil, models.KeyTypeServiceAccount, true, true},
+		{"revoked service account key", nil, models.KeyTypeServiceAccount, false, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			keyID := insertTestAPIKey(t, db, apiKeyTestParams{
+				TenantID: tenantID, OrgID: orgA, UserID: tc.userID,
+				Name: tc.name, KeyType: tc.keyType, IsActive: tc.keyActive,
+			})
+			stored, err := repo.GetByID(ctx, keyID)
+			require.NoError(t, err)
+
+			got, err := repo.GetByHash(ctx, stored.KeyHash)
+			require.NoError(t, err)
+			assert.Equal(t, keyID, got.ID)
+			assert.Equal(t, tc.wantActive, got.IsActive)
+		})
+	}
+}
