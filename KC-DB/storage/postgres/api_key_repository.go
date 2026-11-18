@@ -66,14 +66,19 @@ func (r *APIKeyRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.A
 	return &key, nil
 }
 
-// GetByHash retrieves an API key by its SHA-256 hash
+// GetByHash retrieves an API key by its SHA-256 hash.
+// The returned IsActive is false when the key is revoked or its owning user is deactivated;
+// service account keys (user_id NULL) depend on the key flag alone.
 func (r *APIKeyRepository) GetByHash(ctx context.Context, hash string) (*models.APIKey, error) {
 	var key models.APIKey
 	query := `
-		SELECT id, tenant_id, org_id, user_id, name, key_hash, key_prefix,
-			   key_type, expires_at, last_used_at, is_active, created_at
-		FROM api_keys
-		WHERE key_hash = $1`
+		SELECT k.id, k.tenant_id, k.org_id, k.user_id, k.name, k.key_hash, k.key_prefix,
+			   k.key_type, k.expires_at, k.last_used_at,
+			   (k.is_active AND (k.user_id IS NULL OR u.is_active)) AS is_active,
+			   k.created_at
+		FROM api_keys k
+		LEFT JOIN users u ON u.id = k.user_id
+		WHERE k.key_hash = $1`
 
 	err := r.db.GetContext(ctx, &key, query, hash)
 	if err != nil {

@@ -260,31 +260,39 @@ func TestRegisterAccount_Handler_MissingCompanyName(t *testing.T) {
 	assert.Contains(t, st.Message(), grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenCompanyNameRequired))
 }
 
-func TestRegisterAccount_Handler_ServiceNotConfigured(t *testing.T) {
+func TestRegisterAccount_Handler_RefusedWhenRegistrationIsNotWired(t *testing.T) {
 	svc := &IdentityService{
 		audit:           discardAudit{},
 		registrationSvc: nil,
 		log:             &mockLogger{},
 	}
-
-	ctx := testutil.TestContext()
-	req := &pb.RegisterAccountRequest{
-		Email:       "newuser@example.com",
-		Password:    "securepassword123",
-		FirstName:   "John",
-		LastName:    "Doe",
-		CompanyName: "Acme Corp",
+	entryPoints := []struct {
+		name     string
+		register func(context.Context, *pb.RegisterAccountRequest) (*pb.LoginResponse, error)
+	}{
+		{name: "IdentityService", register: svc.RegisterAccount},
+		{name: "KiloCenterService", register: NewKiloCenterServiceCompatIdentity(svc).RegisterAccount},
 	}
+	for _, entry := range entryPoints {
+		t.Run(entry.name, func(t *testing.T) {
+			req := &pb.RegisterAccountRequest{
+				Email:       "newuser@example.com",
+				Password:    "securepassword123",
+				FirstName:   "John",
+				LastName:    "Doe",
+				CompanyName: "Acme Corp",
+			}
 
-	resp, err := svc.RegisterAccount(ctx, req)
+			resp, err := entry.register(testutil.TestContext(), req)
 
-	require.Error(t, err)
-	assert.Nil(t, resp)
-
-	st, ok := status.FromError(err)
-	require.True(t, ok)
-	assert.Equal(t, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenRegistrationDisabled), st.Code())
-	assert.Equal(t, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenRegistrationDisabled), st.Message())
+			require.Error(t, err)
+			assert.Nil(t, resp)
+			st, ok := status.FromError(err)
+			require.True(t, ok)
+			assert.Equal(t, grpcerrors.GetGRPCCode(grpcerrors.ErrTokenRegistrationDisabled), st.Code())
+			assert.Equal(t, grpcerrors.ResolveErrorMessage(grpcerrors.ErrTokenRegistrationDisabled), st.Message())
+		})
+	}
 }
 
 func TestRegisterAccount_Handler_ServiceError_DuplicateEmail(t *testing.T) {

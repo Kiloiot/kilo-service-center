@@ -355,6 +355,32 @@ func validBaseConfig() *Config {
 	}
 }
 
+// testConfigLocalLoginWithoutRegistration turns local login on for the
+// identity service on loopback and says nothing about self-registration.
+const testConfigLocalLoginWithoutRegistration = `
+grpc:
+  host: 127.0.0.1
+auth:
+  enabled: true
+  local_login_enabled: true
+  hmac_secret: this-is-a-secret-that-is-at-least-32-bytes-long!
+`
+
+func TestLoadIdentity_KeepsSelfRegistrationOffWhenTheKeyIsAbsent(t *testing.T) {
+	t.Setenv("KILOCENTER_AUTH_REGISTRATION_ENABLED", "")
+
+	cfg, err := LoadIdentity(writeTestConfig(t, testConfigLocalLoginWithoutRegistration))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !cfg.Auth.LocalLoginEnabled {
+		t.Fatal("fixture must enable local login, or the registration default is not what is under test")
+	}
+	if cfg.Auth.RegistrationEnabled {
+		t.Error("self-registration must stay off unless auth.registration_enabled is set")
+	}
+}
+
 func TestValidate_RegistrationRequiresLocalLogin(t *testing.T) {
 	cfg := validBaseConfig()
 	cfg.Auth.RegistrationEnabled = flagEnabled
@@ -485,5 +511,29 @@ registry_provider:
 
 	if cfg.RegistryProvider.BlueprintPath != wantPath {
 		t.Errorf("RegistryProvider.BlueprintPath = %q, want %q", cfg.RegistryProvider.BlueprintPath, wantPath)
+	}
+}
+
+func TestLoad_DeniedCertFingerprintsFromEnvWithoutAYAMLKey(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("protocol:\n  bsci_port: 5000\n"), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	const first = "aa00000000000000000000000000000000000000000000000000000000000000"
+	const second = "bb00000000000000000000000000000000000000000000000000000000000000"
+	t.Setenv("KILOCENTER_PROTOCOL_BSCI_TLS_DENIED_CERT_FINGERPRINTS", first+","+second)
+	t.Setenv("KILOCENTER_PROTOCOL_SCACI_TLS_DENIED_CERT_FINGERPRINTS", first)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if got := cfg.Protocol.BSCITLS.DeniedCertFingerprints; len(got) != 2 || got[0] != first || got[1] != second {
+		t.Errorf("BSCI denied fingerprints = %v, want [%s %s]", got, first, second)
+	}
+	if got := cfg.Protocol.SCACITLS.DeniedCertFingerprints; len(got) != 1 || got[0] != first {
+		t.Errorf("SCACI denied fingerprints = %v, want [%s]", got, first)
 	}
 }

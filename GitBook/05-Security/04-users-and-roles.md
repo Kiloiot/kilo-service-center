@@ -172,7 +172,9 @@ upgrade and switch off what people do not need.
    in again.
 
 Removing a role takes effect in the same time. Switching off **Is active**
-removes every role at once.
+removes every role at once and ends the user's sessions: their refresh tokens
+are revoked. A deactivated user can no longer sign in, with a password or with
+an external provider, and cannot refresh a session.
 
 ## How long does a role change take to apply?
 

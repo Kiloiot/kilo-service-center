@@ -11,6 +11,8 @@ var (
 	ErrShortWrite              = errors.New("short write")
 	ErrWriteTimeoutRequired    = errors.New("frame codec has no write timeout")
 	ErrUnsupportedCipherSuite  = errors.New("unsupported cipher suite")
+	ErrInvalidCertFingerprint  = errors.New("denied certificate fingerprint is not 64 hex digits")
+	ErrDeniedClientCertificate = errors.New("client certificate is denied")
 	ErrInvalidCertPollInterval = errors.New("certificate poll interval must be positive")
 	ErrListenerAlreadyStarted  = errors.New("listener already started")
 	ErrListenerStopped         = errors.New("listener stopped")
@@ -28,6 +30,7 @@ const (
 	errFmtLoadServerCertificate   = "failed to load server certificate: %w"
 	errFmtReadCACertificate       = "failed to read CA certificate: %w"
 	errFmtNoValidCACertificates   = "no valid CA certificates found in %s"
+	errFmtInvalidCertFingerprint  = "%w: %q"
 	errFmtTLSMinVersion           = "TLS configuration: %w"
 	errFmtUnsupportedCipher       = "%w: %s"
 	errFmtTLSConfig               = "TLS configuration failed: %w"

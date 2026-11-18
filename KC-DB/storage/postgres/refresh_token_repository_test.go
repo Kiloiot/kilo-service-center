@@ -1,65 +1,65 @@
 package postgres
 
 import (
+	"database/sql"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/pkg/clock"
 
+	"github.com/Kiloiot/kilo-service-center/KC-DB/storage"
 	"github.com/Kiloiot/kilo-service-center/KC-DB/storage/models"
 	"github.com/Kiloiot/kilo-service-center/pkg/testutil"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestRefreshTokenRepository_Create_Success tests successful token creation
-func TestRefreshTokenRepository_Create_Success(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
+func TestRefreshTokenRepository_CreateForPassword_OpensASessionForCurrentCredentials(t *testing.T) {
+	tests := []struct {
+		name       string
+		active     bool
+		storedHash *string
+		wantErr    error
+	}{
+		{name: "active user with the verified password", active: true, storedHash: ptr(testVerifiedPasswordHash)},
+		{name: "deactivated user", active: false, storedHash: ptr(testVerifiedPasswordHash), wantErr: storage.ErrUserInactive},
+		{name: "password changed after verification", active: true, storedHash: ptr(testNewerPasswordHash), wantErr: storage.ErrUserCredentialsChanged},
+		{name: "password removed after verification", active: true, wantErr: storage.ErrUserCredentialsChanged},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newRotationFixture(t, tt.active, time.Now().UTC().Add(testTokenTTL))
+			_, err := f.db.Exec("UPDATE users SET password_hash = $2 WHERE id = $1", f.userID, tt.storedHash)
+			require.NoError(t, err)
+			token := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
 
-	db := SetupTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
+			err = f.repo.CreateForPassword(testutil.TestContext(), token, testVerifiedPasswordHash)
 
-	repo := NewRefreshTokenRepository(db, clock.SystemClock{})
-	userRepo := NewUserRepository(db, clock.SystemClock{})
-	ctx := testutil.TestContext()
-
-	// Create a test user first (FK constraint)
-	userID := uuid.New()
-	user := &models.User{
-		ID:       userID,
-		Email:    "refresh-create@example.com",
-		IsActive: true,
+			require.ErrorIs(t, err, tt.wantErr)
+			stored := f.stored(t, token)
+			if tt.wantErr != nil {
+				assert.Nil(t, stored, "a refused session must store nothing")
+				return
+			}
+			require.NotNil(t, stored)
+			assert.True(t, stored.IsValid())
+			assert.False(t, token.CreatedAt.IsZero())
+		})
 	}
-	err := userRepo.Create(ctx, user)
-	require.NoError(t, err)
+}
 
-	tokenID := uuid.New()
-	tokenHash := "testhash" + tokenID.String()[:8]
-	token := &models.RefreshToken{
-		ID:        tokenID,
-		UserID:    userID,
-		TokenHash: tokenHash,
-		IssuedAt:  time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(testTokenTTL),
-	}
+func TestRefreshTokenRepository_CreateForPassword_RefusesAMissingUser(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	token := rotationToken(uuid.New(), time.Now().UTC().Add(testTokenTTL))
 
-	// Cleanup after test
-	defer func() {
-		_, _ = db.Exec("DELETE FROM refresh_tokens WHERE id = $1", tokenID)
-		_, _ = db.Exec("DELETE FROM users WHERE id = $1", userID)
-	}()
+	err := f.repo.CreateForPassword(testutil.TestContext(), token, "any-hash")
 
-	// Test: Create token
-	err = repo.Create(ctx, token)
-	require.NoError(t, err)
-	assert.False(t, token.CreatedAt.IsZero())
+	require.ErrorIs(t, err, storage.ErrUserInactive)
+	assert.Nil(t, f.stored(t, token))
 }
 
 // TestRefreshTokenRepository_GetByHash_Success tests successful token retrieval
@@ -105,8 +105,7 @@ func TestRefreshTokenRepository_GetByHash_Success(t *testing.T) {
 		_, _ = db.Exec("DELETE FROM users WHERE id = $1", userID)
 	}()
 
-	// Create token first
-	err = repo.Create(ctx, token)
+	_, err = db.NamedExec(insertRefreshTokenQuery, token)
 	require.NoError(t, err)
 
 	// Test: Get token by hash
@@ -178,7 +177,7 @@ func TestRefreshTokenRepository_RevokeByUserID_Success(t *testing.T) {
 			IssuedAt:  time.Now().UTC(),
 			ExpiresAt: time.Now().UTC().Add(testTokenTTL),
 		}
-		err := repo.Create(ctx, token)
+		_, err := db.NamedExec(insertRefreshTokenQuery, token)
 		require.NoError(t, err)
 	}
 
@@ -203,96 +202,302 @@ func TestRefreshTokenRepository_RevokeByUserID_Success(t *testing.T) {
 	}
 }
 
-// TestRefreshTokenRepository_MarkReplaced_Success tests token replacement tracking
-func TestRefreshTokenRepository_MarkReplaced_Success(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
-
-	db := SetupTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
-
-	repo := NewRefreshTokenRepository(db, clock.SystemClock{})
-	userRepo := NewUserRepository(db, clock.SystemClock{})
-	ctx := testutil.TestContext()
-
-	// Create a test user first
-	userID := uuid.New()
-	user := &models.User{
-		ID:       userID,
-		Email:    "refresh-markreplaced@example.com",
-		IsActive: true,
-	}
-	err := userRepo.Create(ctx, user)
-	require.NoError(t, err)
-
-	// Create old token
-	oldTokenID := uuid.New()
-	oldToken := &models.RefreshToken{
-		ID:        oldTokenID,
-		UserID:    userID,
-		TokenHash: "oldhash" + oldTokenID.String()[:8],
-		IssuedAt:  time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(testTokenTTL),
-	}
-	err = repo.Create(ctx, oldToken)
-	require.NoError(t, err)
-
-	// Create new token
-	newTokenID := uuid.New()
-	newToken := &models.RefreshToken{
-		ID:        newTokenID,
-		UserID:    userID,
-		TokenHash: "newhash" + newTokenID.String()[:8],
-		IssuedAt:  time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(testTokenTTL),
-	}
-	err = repo.Create(ctx, newToken)
-	require.NoError(t, err)
-
-	// Cleanup after test
-	defer func() {
-		_, _ = db.Exec("DELETE FROM refresh_tokens WHERE id = $1", oldTokenID)
-		_, _ = db.Exec("DELETE FROM refresh_tokens WHERE id = $1", newTokenID)
-		_, _ = db.Exec("DELETE FROM users WHERE id = $1", userID)
-	}()
-
-	// Test: Mark old token as replaced by new token
-	err = repo.MarkReplaced(ctx, oldTokenID, newTokenID)
-	require.NoError(t, err)
-
-	// Verify replacement is tracked
-	retrieved, err := repo.GetByHash(ctx, oldToken.TokenHash)
-	require.NoError(t, err)
-	require.NotNil(t, retrieved)
-	assert.True(t, retrieved.IsReplaced())
-	assert.Equal(t, newTokenID, *retrieved.ReplacedBy)
+// rotationFixture holds a repository, one user and one usable refresh token of that user.
+type rotationFixture struct {
+	db     *sqlx.DB
+	repo   *RefreshTokenRepository
+	userID uuid.UUID
+	old    *models.RefreshToken
 }
 
-// TestRefreshTokenRepository_MarkReplaced_NotFound tests marking non-existent token
-func TestRefreshTokenRepository_MarkReplaced_NotFound(t *testing.T) {
+func newRotationFixture(t *testing.T, userActive bool, oldExpiresAt time.Time) rotationFixture {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("Skipping integration test")
 	}
-
 	db := SetupTestDB(t)
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Logf("failed to close db: %v", err)
-		}
-	}()
-
 	repo := NewRefreshTokenRepository(db, clock.SystemClock{})
 	ctx := testutil.TestContext()
 
-	// Test: Mark non-existent token
-	oldID := uuid.New()
-	newID := uuid.New()
-	err := repo.MarkReplaced(ctx, oldID, newID)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	userID := uuid.New()
+	user := &models.User{ID: userID, Email: "rotate-" + userID.String() + "@example.com", IsActive: userActive}
+	require.NoError(t, NewUserRepository(db, clock.SystemClock{}).Create(ctx, user))
+	f := rotationFixture{db: db, repo: repo, userID: userID}
+	t.Cleanup(func() {
+		f.deleteUser(t, userID)
+		if err := db.Close(); err != nil {
+			t.Logf("failed to close db: %v", err)
+		}
+	})
+
+	f.old = rotationToken(userID, oldExpiresAt)
+	_, err := db.NamedExec(insertRefreshTokenQuery, f.old)
+	require.NoError(t, err)
+	return f
+}
+
+// deleteUser removes a test user and every refresh token of that user.
+func (f rotationFixture) deleteUser(t *testing.T, userID uuid.UUID) {
+	t.Helper()
+	for _, query := range []string{"DELETE FROM refresh_tokens WHERE user_id = $1", "DELETE FROM users WHERE id = $1"} {
+		if _, err := f.db.Exec(query, userID); err != nil {
+			t.Logf("cleanup %q: %v", query, err)
+		}
+	}
+}
+
+func rotationToken(userID uuid.UUID, expiresAt time.Time) *models.RefreshToken {
+	id := uuid.New()
+	now := time.Now().UTC()
+	return &models.RefreshToken{ID: id, UserID: userID, TokenHash: "rotate" + id.String(), IssuedAt: now, ExpiresAt: expiresAt, CreatedAt: now}
+}
+
+func (f rotationFixture) stored(t *testing.T, token *models.RefreshToken) *models.RefreshToken {
+	t.Helper()
+	got, err := f.repo.GetByHash(testutil.TestContext(), token.TokenHash)
+	require.NoError(t, err)
+	return got
+}
+
+func TestRefreshTokenRepository_Rotate_StoresTheSuccessorAndClaimsTheOldToken(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+
+	require.NoError(t, f.repo.Rotate(testutil.TestContext(), f.old.ID, successor))
+
+	old := f.stored(t, f.old)
+	require.NotNil(t, old)
+	require.NotNil(t, old.ReplacedBy)
+	assert.Equal(t, successor.ID, *old.ReplacedBy)
+	stored := f.stored(t, successor)
+	require.NotNil(t, stored)
+	assert.True(t, stored.IsValid())
+}
+
+func TestRefreshTokenRepository_Rotate_RefusesAnUnclaimableOldToken(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	tests := []struct {
+		name         string
+		oldExpiresAt time.Time
+		prepare      func(t *testing.T, f rotationFixture)
+	}{
+		{
+			name:         "already rotated",
+			oldExpiresAt: time.Now().UTC().Add(testTokenTTL),
+			prepare: func(t *testing.T, f rotationFixture) {
+				require.NoError(t, f.repo.Rotate(testutil.TestContext(), f.old.ID, rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))))
+			},
+		},
+		{
+			name:         "revoked",
+			oldExpiresAt: time.Now().UTC().Add(testTokenTTL),
+			prepare: func(t *testing.T, f rotationFixture) {
+				require.NoError(t, f.repo.RevokeByUserID(testutil.TestContext(), f.userID))
+			},
+		},
+		{
+			name:         "expired",
+			oldExpiresAt: time.Now().UTC().Add(-time.Minute),
+			prepare:      func(*testing.T, rotationFixture) {},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newRotationFixture(t, true, tt.oldExpiresAt)
+			tt.prepare(t, f)
+			successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+
+			err := f.repo.Rotate(testutil.TestContext(), f.old.ID, successor)
+
+			require.ErrorIs(t, err, storage.ErrRefreshTokenNotClaimable)
+			assert.Nil(t, f.stored(t, successor), "a refused rotation must not leave the successor behind")
+		})
+	}
+}
+
+func TestRefreshTokenRepository_Rotate_RefusesAnotherUsersToken(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	ctx := testutil.TestContext()
+	otherID := uuid.New()
+	require.NoError(t, NewUserRepository(f.db, clock.SystemClock{}).Create(ctx, &models.User{ID: otherID, Email: "rotate-" + otherID.String() + "@example.com", IsActive: true}))
+	t.Cleanup(func() { f.deleteUser(t, otherID) })
+	successor := rotationToken(otherID, time.Now().UTC().Add(testTokenTTL))
+
+	err := f.repo.Rotate(ctx, f.old.ID, successor)
+
+	require.ErrorIs(t, err, storage.ErrRefreshTokenNotClaimable)
+	assert.Nil(t, f.stored(t, successor))
+	assert.False(t, f.stored(t, f.old).IsReplaced())
+}
+
+// holdOwnerLock opens a transaction that holds the session owner lock of the
+// fixture user, as an in-flight rotation or sign-in does.
+func (f rotationFixture) holdOwnerLock(t *testing.T) *sqlx.Tx {
+	t.Helper()
+	ctx := testutil.TestContext()
+	tx, err := f.db.BeginTxx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { rollbackOpenTx(t, tx) })
+	_, err = lockActiveOwner(ctx, tx, f.userID)
+	require.NoError(t, err)
+	return tx
+}
+
+func rollbackOpenTx(t *testing.T, tx *sqlx.Tx) {
+	t.Helper()
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		t.Logf("roll back open transaction: %v", err)
+	}
+}
+
+// requireBlocked fails when done delivers within testLockWaitWindow.
+func requireBlocked(t *testing.T, done <-chan error, what string) {
+	t.Helper()
+	select {
+	case err := <-done:
+		t.Fatalf("%s finished while another transaction held the user: %v", what, err)
+	case <-time.After(testLockWaitWindow):
+	}
+}
+
+func TestRefreshTokenRepository_RevokeByUserID_WaitsForAnInFlightRotation(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	ctx := testutil.TestContext()
+	rotation := f.holdOwnerLock(t)
+	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+	_, err := rotation.NamedExecContext(ctx, insertRefreshTokenQuery, successor)
+	require.NoError(t, err)
+
+	revoked := make(chan error, 1)
+	go func() { revoked <- f.repo.RevokeByUserID(ctx, f.userID) }()
+	requireBlocked(t, revoked, "revocation")
+
+	require.NoError(t, rotation.Commit())
+	require.NoError(t, <-revoked)
+	assert.True(t, f.stored(t, successor).IsRevoked(), "the revocation must cover the token the rotation minted")
+}
+
+// accountChanges are the writes that must not slip past an opening session.
+var accountChanges = []struct {
+	name    string
+	query   string
+	args    func(userID uuid.UUID) []any
+	wantErr error
+}{
+	{name: "deactivation", query: "UPDATE users SET is_active = false WHERE id = $1", args: func(id uuid.UUID) []any { return []any{id} }, wantErr: storage.ErrUserInactive},
+	{name: "password change", query: "UPDATE users SET password_hash = $2 WHERE id = $1", args: func(id uuid.UUID) []any { return []any{id, testNewerPasswordHash} }, wantErr: storage.ErrUserCredentialsChanged},
+}
+
+func TestRefreshTokenRepository_OwnerLock_HoldsBackAccountChanges(t *testing.T) {
+	for _, change := range accountChanges {
+		t.Run(change.name, func(t *testing.T) {
+			f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+			session := f.holdOwnerLock(t)
+
+			changed := make(chan error, 1)
+			go func() {
+				_, err := f.db.ExecContext(testutil.TestContext(), change.query, change.args(f.userID)...)
+				changed <- err
+			}()
+			requireBlocked(t, changed, change.name)
+
+			require.NoError(t, session.Commit())
+			require.NoError(t, <-changed)
+		})
+	}
+}
+
+func TestRefreshTokenRepository_CreateForPassword_WaitsForAnAccountChangeAndIsRefused(t *testing.T) {
+	for _, change := range accountChanges {
+		t.Run(change.name, func(t *testing.T) {
+			f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+			ctx := testutil.TestContext()
+			_, err := f.db.Exec("UPDATE users SET password_hash = $2 WHERE id = $1", f.userID, testVerifiedPasswordHash)
+			require.NoError(t, err)
+			tx, err := f.db.BeginTxx(ctx, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { rollbackOpenTx(t, tx) })
+			_, err = tx.ExecContext(ctx, change.query, change.args(f.userID)...)
+			require.NoError(t, err)
+			token := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+
+			opened := make(chan error, 1)
+			go func() { opened <- f.repo.CreateForPassword(ctx, token, testVerifiedPasswordHash) }()
+			requireBlocked(t, opened, "opening a session")
+
+			require.NoError(t, tx.Commit())
+			require.ErrorIs(t, <-opened, change.wantErr)
+			assert.Nil(t, f.stored(t, token), "a refused session must store nothing")
+		})
+	}
+}
+
+func TestRefreshTokenRepository_Rotate_ConcurrentClaimsLetExactlyOneWin(t *testing.T) {
+	const contenders = 8
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+
+	errs := make([]error, contenders)
+	var wg sync.WaitGroup
+	for i := range contenders {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = f.repo.Rotate(testutil.TestContext(), f.old.ID, rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL)))
+		}(i)
+	}
+	wg.Wait()
+
+	won := 0
+	for _, err := range errs {
+		if err == nil {
+			won++
+			continue
+		}
+		require.ErrorIs(t, err, storage.ErrRefreshTokenNotClaimable)
+	}
+	assert.Equal(t, 1, won)
+	var successors int
+	require.NoError(t, f.db.Get(&successors, "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = $1 AND id <> $2", f.userID, f.old.ID))
+	assert.Equal(t, 1, successors)
+}
+
+func TestRefreshTokenRepository_Rotate_RefusesAnInactiveUser(t *testing.T) {
+	f := newRotationFixture(t, false, time.Now().UTC().Add(testTokenTTL))
+	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+
+	err := f.repo.Rotate(testutil.TestContext(), f.old.ID, successor)
+
+	require.ErrorIs(t, err, storage.ErrUserInactive)
+	assert.Nil(t, f.stored(t, successor))
+	old := f.stored(t, f.old)
+	require.NotNil(t, old)
+	assert.False(t, old.IsReplaced())
+}
+
+func TestRefreshTokenRepository_RevokeByUserID_RevokesARotatedSuccessor(t *testing.T) {
+	f := newRotationFixture(t, true, time.Now().UTC().Add(testTokenTTL))
+	successor := rotationToken(f.userID, time.Now().UTC().Add(testTokenTTL))
+	require.NoError(t, f.repo.Rotate(testutil.TestContext(), f.old.ID, successor))
+
+	require.NoError(t, f.repo.RevokeByUserID(testutil.TestContext(), f.userID))
+
+	stored := f.stored(t, successor)
+	require.NotNil(t, stored)
+	assert.True(t, stored.IsRevoked())
+}
+
+func TestRefreshTokenRepository_RevokeByUserID_UnknownUserIsNoError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+	db := SetupTestDB(t)
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Logf("failed to close db: %v", err)
+		}
+	})
+
+	require.NoError(t, NewRefreshTokenRepository(db, clock.SystemClock{}).RevokeByUserID(testutil.TestContext(), uuid.New()))
 }

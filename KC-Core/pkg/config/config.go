@@ -65,6 +65,8 @@ type TLSConfig struct {
 	InsecureSkipVerify bool     `mapstructure:"insecure_skip_verify"`
 	MinVersion         string   `mapstructure:"min_version"`
 	AllowedCiphers     []string `mapstructure:"allowed_ciphers"`
+	// DeniedCertFingerprints refuses client certificates by SHA-256 fingerprint; the CA cannot revoke them.
+	DeniedCertFingerprints []string `mapstructure:"denied_cert_fingerprints"`
 }
 
 // MQTTConfig contains MQTT broker settings

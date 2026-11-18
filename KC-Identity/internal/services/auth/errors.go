@@ -42,6 +42,10 @@ var (
 
 	// ErrTokenGenerationDisabled indicates token issuer is not configured.
 	ErrTokenGenerationDisabled = errors.New("token generation disabled")
+
+	// ErrPasswordChangedSessionsKept reports that a new password was stored
+	// but the sessions opened with the old one could not be ended.
+	ErrPasswordChangedSessionsKept = errors.New("password changed but old sessions not ended")
 )
 
 // External authentication service errors.
@@ -94,5 +98,8 @@ const (
 	errPrefixVerifyPassword     = "verify password"
 	errPrefixIssueAccessToken   = "issue access token"
 	errPrefixIssueRefreshToken  = "issue refresh token"
+	errPrefixRotateRefreshToken = "rotate refresh token"
+	errPrefixOpenRefreshSession = "open refresh session"
+	errPrefixRevokeSessions     = "revoke sessions"
 	errPrefixGenerateSalt       = "generate salt"
 )

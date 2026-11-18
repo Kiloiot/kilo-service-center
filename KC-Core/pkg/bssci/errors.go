@@ -23,6 +23,10 @@ var ErrDetachSignatureInvalid = errors.New("detach signature validation failed")
 // another attach of the endpoint with that counter was served first.
 var ErrAttachCounterStale = errors.New("attach counter does not advance the stored counter")
 
+// ErrEndpointTenantUnknown is returned by a propagation fan-out called
+// without the endpoint's tenant; it is sent to no base station.
+var ErrEndpointTenantUnknown = errors.New("endpoint tenant unknown: propagation sent to no base station")
+
 // CatalogError wraps error catalog tokens for structured error handling
 // This enables services to return tokens that transports resolve via ResolveErrorMessage
 type CatalogError struct {
@@ -111,6 +115,7 @@ const (
 	errFmtTokenOpIDMetadata                       = "%s: opId %d metadata: %w" //nolint:gosec // G101: catalog-token format string, not a credential
 	errFmtTokenOpIDWrap                           = "%s: opId %d: %w"          //nolint:gosec // G101: catalog-token format string, not a credential
 	errFmtSessionWrap                             = "session %s: %w"
+	errFmtResolveEndpointOwnerTenant              = "resolve owner tenant of endpoint %s: %w"
 	errFmtTokenGotBytes                           = "%s, got %d bytes" //nolint:gosec // G101: catalog-token format string, not a credential
 	errFmtSessionNotFound                         = "session %s not found"
 	errFmtEncodeRelayFrame                        = "encode relay frame: %w"

@@ -12,6 +12,7 @@ type Config struct {
 	TLSKey                           string
 	TLSCACert                        string
 	TLSMinVersion                    string // "1.2" or "1.3", parsed by config.ParseTLSMinVersion
+	TLSDeniedCertFingerprints        []string
 	ServiceCenterEUI                 uint64
 	Vendor                           string
 	Model                            string

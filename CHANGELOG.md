@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **A deactivated user can no longer renew a session or sign in with a provider.** Refreshing
+  tokens for a user whose **Is active** is off is refused and ends every session the user still
+  holds. Signing in with OIDC or OAuth2 to an existing deactivated account is refused before the
+  account is linked to the provider or receives a token; the refusal answers like invalid
+  credentials (`UNAUTHENTICATED`, the same code as a wrong password) instead of an internal
+  error.
+- **Deactivating a user ends their sessions.** Every admin API request that switches **Is active**
+  off revokes the user's refresh tokens, as a password reset already does, so retrying a
+  deactivation whose revocation failed revokes them too.
+- **A refresh session opens only for the account as it was checked.** When password sign-in or
+  registration opens a refresh session, the account is checked again in the same database
+  transaction that stores the refresh token: it must still be active and still have the password
+  that was just verified or set. A deactivation or password change that lands during sign-in
+  refuses it, and no token is returned.
+- **A self-service password change reports a failed session revocation** instead of succeeding
+  while the old sessions stay valid, as an administrator's password reset already does.
+- **A refresh token can be used only once, also under concurrent requests.** Storing the new
+  token and retiring the presented one happen in one database transaction that accepts only a
+  token of the same user that is not yet replaced, revoked or expired, so two simultaneous
+  refreshes with the same token yield one new session, and a revocation also covers a token
+  minted by a refresh that was still running.
+- **Linking an external identity no longer rewrites the account.** It updates only the identity
+  and only while the account is active, so it cannot undo a deactivation made at the same time.
+
 ## [2.1.0] - 2026-10-23
 
 > **Upgrade note:** migration 000192 adds the tenant setting `is_snapshot_only_decoding`, off for
