@@ -513,3 +513,27 @@ registry_provider:
 		t.Errorf("RegistryProvider.BlueprintPath = %q, want %q", cfg.RegistryProvider.BlueprintPath, wantPath)
 	}
 }
+
+func TestLoad_DeniedCertFingerprintsFromEnvWithoutAYAMLKey(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("protocol:\n  bsci_port: 5000\n"), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	const first = "aa00000000000000000000000000000000000000000000000000000000000000"
+	const second = "bb00000000000000000000000000000000000000000000000000000000000000"
+	t.Setenv("KILOCENTER_PROTOCOL_BSCI_TLS_DENIED_CERT_FINGERPRINTS", first+","+second)
+	t.Setenv("KILOCENTER_PROTOCOL_SCACI_TLS_DENIED_CERT_FINGERPRINTS", first)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if got := cfg.Protocol.BSCITLS.DeniedCertFingerprints; len(got) != 2 || got[0] != first || got[1] != second {
+		t.Errorf("BSCI denied fingerprints = %v, want [%s %s]", got, first, second)
+	}
+	if got := cfg.Protocol.SCACITLS.DeniedCertFingerprints; len(got) != 1 || got[0] != first {
+		t.Errorf("SCACI denied fingerprints = %v, want [%s]", got, first)
+	}
+}

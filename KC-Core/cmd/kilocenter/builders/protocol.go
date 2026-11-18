@@ -102,6 +102,7 @@ func BuildProtocolServers(ctx context.Context, infra *Infrastructure) (*Protocol
 		TLSKey:                           cfg.Protocol.BSCITLS.KeyFile,
 		TLSCACert:                        cfg.Protocol.BSCITLS.CAFile,
 		TLSMinVersion:                    cfg.Protocol.BSCITLS.MinVersion,
+		TLSDeniedCertFingerprints:        cfg.Protocol.BSCITLS.DeniedCertFingerprints,
 		ServiceCenterEUI:                 serviceCenterEUI,
 		Vendor:                           cfg.Protocol.SCVendor,
 		Model:                            cfg.Protocol.SCModel,

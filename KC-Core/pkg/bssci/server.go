@@ -517,7 +517,7 @@ func (s *Server) Start() error {
 		Name:             listenerName,
 		Addr:             s.config.ListenAddr,
 		Files:            nettransport.TLSFiles{Cert: s.config.TLSCert, Key: s.config.TLSKey, CA: s.config.TLSCACert},
-		TLS:              nettransport.TLSOptions{MinVersion: s.config.TLSMinVersion},
+		TLS:              nettransport.TLSOptions{MinVersion: s.config.TLSMinVersion, DeniedCertFingerprints: s.config.TLSDeniedCertFingerprints},
 		CertPollInterval: s.config.CertificatePollInterval,
 		// Background work starts only once the listener is committed, so an
 		// immediate TLS failure leaves nothing running.

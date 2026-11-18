@@ -16,8 +16,9 @@ func (s *Server) Start() error {
 		Addr:  s.config.ListenAddr,
 		Files: nettransport.TLSFiles{Cert: s.config.TLS.CertFile, Key: s.config.TLS.KeyFile, CA: s.config.TLS.CAFile},
 		TLS: nettransport.TLSOptions{
-			MinVersion:   s.config.TLS.MinVersion,
-			CipherSuites: s.config.TLS.AllowedCiphers,
+			MinVersion:             s.config.TLS.MinVersion,
+			CipherSuites:           s.config.TLS.AllowedCiphers,
+			DeniedCertFingerprints: s.config.TLS.DeniedCertFingerprints,
 		},
 		CertPollInterval: certPollRetryInterval,
 		OnListening:      s.startIdleMonitor,
