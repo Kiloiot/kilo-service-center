@@ -63,7 +63,7 @@ const AddEndPointDialog: React.FC<AddEndPointDialogProps> = ({
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
         {ENDPOINT_FORM.DIALOG_TITLE}
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {ENDPOINT_FORM.DIALOG_SUBTITLE}
         </Typography>
       </DialogTitle>

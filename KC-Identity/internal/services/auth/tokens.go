@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
-	"github.com/go-chi/jwtauth/v5"
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // Token type claim values
@@ -31,7 +31,7 @@ const (
 
 // JWTTokenIssuer handles JWT token creation for local authentication.
 type JWTTokenIssuer struct {
-	jwtAuth     *jwtauth.JWTAuth
+	hmacSecret  []byte
 	tenantClaim string
 	issuer      string
 	audience    string
@@ -39,10 +39,7 @@ type JWTTokenIssuer struct {
 	refreshTTL  time.Duration
 }
 
-const jwtAlgHS256 = "HS256"
-
 // NewJWTTokenIssuer creates a new token issuer with the given configuration.
-// jwtAlgHS256 is the HMAC-SHA256 JWT signing algorithm identifier.
 func NewJWTTokenIssuer(
 	hmacSecret []byte,
 	tenantClaim string,
@@ -59,10 +56,8 @@ func NewJWTTokenIssuer(
 		audience = config.AuthDefaultAudience
 	}
 
-	jwtAuth := jwtauth.New(jwtAlgHS256, hmacSecret, nil)
-
 	return &JWTTokenIssuer{
-		jwtAuth:     jwtAuth,
+		hmacSecret:  hmacSecret,
 		tenantClaim: tenantClaim,
 		issuer:      issuer,
 		audience:    audience,
@@ -90,7 +85,7 @@ func (ti *JWTTokenIssuer) IssueAccessToken(userID uuid.UUID, orgID *uuid.UUID) (
 		claims[ti.tenantClaim] = orgID.String()
 	}
 
-	_, tokenString, err := ti.jwtAuth.Encode(claims)
+	tokenString, err := ti.sign(claims)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", errPrefixIssueAccessToken, err)
 	}
@@ -117,7 +112,7 @@ func (ti *JWTTokenIssuer) IssueRefreshToken(userID uuid.UUID) (string, error) {
 		claimJWTID:      tokenID.String(), // JWT ID for uniqueness
 	}
 
-	_, tokenString, err := ti.jwtAuth.Encode(claims)
+	tokenString, err := ti.sign(claims)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", errPrefixIssueRefreshToken, err)
 	}
@@ -126,39 +121,49 @@ func (ti *JWTTokenIssuer) IssueRefreshToken(userID uuid.UUID) (string, error) {
 }
 
 // ParseRefreshToken validates and parses a refresh token.
-// Returns the user ID and token if valid.
-func (ti *JWTTokenIssuer) ParseRefreshToken(tokenString string) (uuid.UUID, jwt.Token, error) {
-	token, err := ti.jwtAuth.Decode(tokenString)
+// Returns the user ID if valid.
+func (ti *JWTTokenIssuer) ParseRefreshToken(tokenString string) (uuid.UUID, error) {
+	// Expiry is checked below so every refusal is the same ErrInvalidRefreshToken.
+	token, err := jwt.Parse([]byte(tokenString), jwt.WithKey(jwa.HS256(), ti.hmacSecret), jwt.WithValidate(false))
 	if err != nil {
-		return uuid.Nil, nil, ErrInvalidRefreshToken
+		return uuid.Nil, ErrInvalidRefreshToken
 	}
 
-	// Validate typ claim
-	var typClaim interface{}
-	if err := token.Get(claimTokenType, &typClaim); err != nil {
-		return uuid.Nil, nil, ErrInvalidRefreshToken
-	}
-	if typStr, ok := typClaim.(string); !ok || typStr != tokenTypeRefresh {
-		return uuid.Nil, nil, ErrInvalidRefreshToken
+	tokenType, err := jwt.Get[string](token, claimTokenType)
+	if err != nil || tokenType != tokenTypeRefresh {
+		return uuid.Nil, ErrInvalidRefreshToken
 	}
 
-	// Validate expiration
 	exp, ok := token.Expiration()
 	if !ok || time.Now().After(exp) {
-		return uuid.Nil, nil, ErrInvalidRefreshToken
+		return uuid.Nil, ErrInvalidRefreshToken
 	}
 
-	// Extract user ID from subject
 	subjectStr, ok := token.Subject()
 	if !ok {
-		return uuid.Nil, nil, ErrInvalidRefreshToken
+		return uuid.Nil, ErrInvalidRefreshToken
 	}
 	userID, err := uuid.Parse(subjectStr)
 	if err != nil {
-		return uuid.Nil, nil, ErrInvalidRefreshToken
+		return uuid.Nil, ErrInvalidRefreshToken
 	}
 
-	return userID, token, nil
+	return userID, nil
+}
+
+// sign builds an HS256 token from the claims.
+func (ti *JWTTokenIssuer) sign(claims map[string]interface{}) (string, error) {
+	token := jwt.New()
+	for name, value := range claims {
+		if err := token.Set(name, value); err != nil {
+			return "", fmt.Errorf("%s %s: %w", errPrefixSetClaim, name, err)
+		}
+	}
+	signed, err := jwt.Sign(token, jwt.WithKey(jwa.HS256(), ti.hmacSecret))
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", errPrefixSignToken, err)
+	}
+	return string(signed), nil
 }
 
 // GetAccessTTL returns the access token TTL in seconds.

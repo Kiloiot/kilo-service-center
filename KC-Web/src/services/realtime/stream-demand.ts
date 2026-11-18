@@ -21,8 +21,7 @@ export interface TabDemand extends StreamContext {
 export type StreamSpec =
   | {
       kind:
-        | typeof REALTIME_STREAM_KIND.EVENT
-        | typeof REALTIME_STREAM_KIND.MESSAGE;
+        typeof REALTIME_STREAM_KIND.EVENT | typeof REALTIME_STREAM_KIND.MESSAGE;
       context: StreamContext;
     }
   | {
@@ -64,13 +63,11 @@ export function demandSpecs(demand: TabDemand): StreamSpec[] {
   const context = contextOf(demand);
   const stations = demand.uplinks
     ? []
-    : demand.stations.map(
-        (bsEui): StreamSpec => ({
-          kind: REALTIME_STREAM_KIND.BASE_STATION,
-          context,
-          bsEui,
-        }),
-      );
+    : demand.stations.map((bsEui): StreamSpec => ({
+        kind: REALTIME_STREAM_KIND.BASE_STATION,
+        context,
+        bsEui,
+      }));
   return [...heldSpecs(demand), ...stations];
 }
 

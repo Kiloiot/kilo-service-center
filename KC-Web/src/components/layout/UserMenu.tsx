@@ -125,10 +125,6 @@ export function UserMenu() {
         anchorEl={anchorEl}
         open={open}
         onClose={handleClose}
-        MenuListProps={{
-          "aria-labelledby": "user-menu-button",
-          "aria-label": ARIA.USER_MENU,
-        }}
         anchorOrigin={{
           vertical: "top",
           horizontal: "left",
@@ -138,6 +134,10 @@ export function UserMenu() {
           horizontal: "left",
         }}
         slotProps={{
+          list: {
+            "aria-labelledby": "user-menu-button",
+            "aria-label": ARIA.USER_MENU,
+          },
           paper: {
             sx: {
               minWidth: componentSpacing.userMenu.menuMinWidth,
@@ -157,7 +157,7 @@ export function UserMenu() {
               borderBottom: `1px solid ${theme.palette.divider}`,
             }}
           >
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="textSecondary">
               {versionInfo.version}
               {!versionInfo.isProduction && USER_MENU.DEVELOPMENT_BUILD_SUFFIX}
             </Typography>

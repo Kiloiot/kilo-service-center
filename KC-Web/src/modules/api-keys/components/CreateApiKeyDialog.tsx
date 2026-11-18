@@ -29,7 +29,7 @@ interface CreateApiKeyDialogProps {
 type ApiKeyForm = ReturnType<typeof useApiKeyForm>;
 
 const ApiKeyFields: React.FC<{ form: ApiKeyForm }> = ({ form }) => (
-  <Box display="flex" flexDirection="column" gap={2} mt={1}>
+  <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
     <TextField
       required
       label={API_KEY_FORM.LABEL_NAME}

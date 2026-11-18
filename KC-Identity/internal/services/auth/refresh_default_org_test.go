@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -50,8 +50,8 @@ func accessTokenOrg(t *testing.T, accessToken string) string {
 	t.Helper()
 	token, err := jwt.ParseInsecure([]byte(accessToken))
 	require.NoError(t, err)
-	var org string
-	require.NoError(t, token.Get(svcTestTenantClaim, &org))
+	org, err := jwt.Get[string](token, svcTestTenantClaim)
+	require.NoError(t, err)
 	return org
 }
 

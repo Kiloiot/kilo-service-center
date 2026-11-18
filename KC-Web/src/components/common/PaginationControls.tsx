@@ -57,11 +57,13 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
     >
       {/* Left: Rows per page */}
       <Box
-        display="flex"
-        alignItems="center"
-        gap={componentSpacing.pagination.controlGap}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: componentSpacing.pagination.controlGap,
+        }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {PAGINATION_LABELS.ROWS_PER_PAGE}
         </Typography>
         <FormControl
@@ -100,7 +102,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
       />
 
       {/* Right: Item count */}
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {hasData
           ? `${startItem}–${endItem} ${PAGINATION_LABELS.OF} ${totalCount}`
           : `0 ${PAGINATION_LABELS.OF} 0`}

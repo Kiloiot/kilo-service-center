@@ -13,13 +13,7 @@
 
 var jspb = require('google-protobuf');
 var goog = jspb;
-var global = (function() {
-  if (this) { return this; }
-  if (typeof window !== 'undefined') { return window; }
-  if (typeof global !== 'undefined') { return global; }
-  if (typeof self !== 'undefined') { return self; }
-  return Function('return this')();
-}.call(null));
+var global = globalThis;
 
 var google_protobuf_timestamp_pb = require('google-protobuf/google/protobuf/timestamp_pb.js');
 goog.object.extend(proto, google_protobuf_timestamp_pb);
@@ -4819,40 +4813,40 @@ proto.kilocenter.api.v1.EndPoint.prototype.toObject = function(opt_includeInstan
  */
 proto.kilocenter.api.v1.EndPoint.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    epClass: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    nwkSnKey: msg.getNwkSnKey_asB64(),
-    appKey: msg.getAppKey_asB64(),
-    status: jspb.Message.getFieldWithDefault(msg, 8, ""),
-    tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : [],
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastSeenAt: (f = msg.getLastSeenAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    attachStatus: jspb.Message.getFieldWithDefault(msg, 13, ""),
-    shAddr: jspb.Message.getFieldWithDefault(msg, 14, 0),
-    dualChan: jspb.Message.getBooleanFieldWithDefault(msg, 15, false),
-    repetition: jspb.Message.getBooleanFieldWithDefault(msg, 16, false),
-    wideCarrOff: jspb.Message.getBooleanFieldWithDefault(msg, 17, false),
-    longBlkDist: jspb.Message.getBooleanFieldWithDefault(msg, 18, false),
-    attachCnt: jspb.Message.getFieldWithDefault(msg, 19, 0),
-    preAttach: jspb.Message.getBooleanFieldWithDefault(msg, 20, false),
-    lastPacketCnt: jspb.Message.getFieldWithDefault(msg, 21, 0),
-    typeEui: msg.getTypeEui_asB64(),
-    carrierOffset: jspb.Message.getFieldWithDefault(msg, 23, 0),
-    deviceModelId: jspb.Message.getFieldWithDefault(msg, 24, ""),
-    blueprintId: jspb.Message.getFieldWithDefault(msg, 25, ""),
-    blueprintSnapshot: msg.getBlueprintSnapshot_asB64(),
-    reattachPending: jspb.Message.getBooleanFieldWithDefault(msg, 27, false),
-    lastRssi: (f = msg.getLastRssi()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    lastSnr: (f = msg.getLastSnr()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    lastEqSnr: (f = msg.getLastEqSnr()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    servingBsEui: jspb.Message.getFieldWithDefault(msg, 31, ""),
-    nwkSnKeySet: jspb.Message.getBooleanFieldWithDefault(msg, 32, false),
-    appKeySet: jspb.Message.getBooleanFieldWithDefault(msg, 33, false),
-    blueprintInput: (f = msg.getBlueprintInput()) && proto.kilocenter.api.v1.BlueprintInput.toObject(includeInstance, f)
+epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+name: jspb.Message.getFieldWithDefault(msg, 3, ""),
+description: jspb.Message.getFieldWithDefault(msg, 4, ""),
+epClass: jspb.Message.getFieldWithDefault(msg, 5, ""),
+nwkSnKey: msg.getNwkSnKey_asB64(),
+appKey: msg.getAppKey_asB64(),
+status: jspb.Message.getFieldWithDefault(msg, 8, ""),
+tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : [],
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastSeenAt: (f = msg.getLastSeenAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+attachStatus: jspb.Message.getFieldWithDefault(msg, 13, ""),
+shAddr: jspb.Message.getFieldWithDefault(msg, 14, 0),
+dualChan: jspb.Message.getBooleanFieldWithDefault(msg, 15, false),
+repetition: jspb.Message.getBooleanFieldWithDefault(msg, 16, false),
+wideCarrOff: jspb.Message.getBooleanFieldWithDefault(msg, 17, false),
+longBlkDist: jspb.Message.getBooleanFieldWithDefault(msg, 18, false),
+attachCnt: jspb.Message.getFieldWithDefault(msg, 19, 0),
+preAttach: jspb.Message.getBooleanFieldWithDefault(msg, 20, false),
+lastPacketCnt: jspb.Message.getFieldWithDefault(msg, 21, 0),
+typeEui: msg.getTypeEui_asB64(),
+carrierOffset: jspb.Message.getFieldWithDefault(msg, 23, 0),
+deviceModelId: jspb.Message.getFieldWithDefault(msg, 24, ""),
+blueprintId: jspb.Message.getFieldWithDefault(msg, 25, ""),
+blueprintSnapshot: msg.getBlueprintSnapshot_asB64(),
+reattachPending: jspb.Message.getBooleanFieldWithDefault(msg, 27, false),
+lastRssi: (f = msg.getLastRssi()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+lastSnr: (f = msg.getLastSnr()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+lastEqSnr: (f = msg.getLastEqSnr()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+servingBsEui: jspb.Message.getFieldWithDefault(msg, 31, ""),
+nwkSnKeySet: jspb.Message.getBooleanFieldWithDefault(msg, 32, false),
+appKeySet: jspb.Message.getBooleanFieldWithDefault(msg, 33, false),
+blueprintInput: (f = msg.getBlueprintInput()) && proto.kilocenter.api.v1.BlueprintInput.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -4865,7 +4859,7 @@ proto.kilocenter.api.v1.EndPoint.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.EndPoint}
  */
 proto.kilocenter.api.v1.EndPoint.deserializeBinary = function(bytes) {
@@ -4890,23 +4884,23 @@ proto.kilocenter.api.v1.EndPoint.deserializeBinaryFromReader = function(msg, rea
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpClass(value);
       break;
     case 6:
@@ -4918,13 +4912,13 @@ proto.kilocenter.api.v1.EndPoint.deserializeBinaryFromReader = function(msg, rea
       msg.setAppKey(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 9:
       var value = msg.getTagsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readString, null, "", "");
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readStringRequireUtf8, null, "", "");
          });
       break;
     case 10:
@@ -4943,7 +4937,7 @@ proto.kilocenter.api.v1.EndPoint.deserializeBinaryFromReader = function(msg, rea
       msg.setLastSeenAt(value);
       break;
     case 13:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setAttachStatus(value);
       break;
     case 14:
@@ -4987,11 +4981,11 @@ proto.kilocenter.api.v1.EndPoint.deserializeBinaryFromReader = function(msg, rea
       msg.setCarrierOffset(value);
       break;
     case 24:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDeviceModelId(value);
       break;
     case 25:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBlueprintId(value);
       break;
     case 26:
@@ -5018,7 +5012,7 @@ proto.kilocenter.api.v1.EndPoint.deserializeBinaryFromReader = function(msg, rea
       msg.setLastEqSnr(value);
       break;
     case 31:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setServingBsEui(value);
       break;
     case 32:
@@ -5121,7 +5115,12 @@ proto.kilocenter.api.v1.EndPoint.serializeBinaryToWriter = function(message, wri
   }
   f = message.getTagsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(9, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeString);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getTagsMap(true),
+    9,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeString);
   }
   f = message.getCreatedAt();
   if (f != null) {
@@ -5519,7 +5518,8 @@ proto.kilocenter.api.v1.EndPoint.prototype.getTagsMap = function(opt_noLazyCreat
  */
 proto.kilocenter.api.v1.EndPoint.prototype.clearTagsMap = function() {
   this.getTagsMap().clear();
-  return this;};
+  return this;
+};
 
 
 /**
@@ -6185,7 +6185,7 @@ proto.kilocenter.api.v1.BlueprintInput.prototype.toObject = function(opt_include
  */
 proto.kilocenter.api.v1.BlueprintInput.toObject = function(includeInstance, msg) {
   var f, obj = {
-    spec: msg.getSpec_asB64()
+spec: msg.getSpec_asB64()
   };
 
   if (includeInstance) {
@@ -6198,7 +6198,7 @@ proto.kilocenter.api.v1.BlueprintInput.toObject = function(includeInstance, msg)
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BlueprintInput}
  */
 proto.kilocenter.api.v1.BlueprintInput.deserializeBinary = function(bytes) {
@@ -6339,32 +6339,32 @@ proto.kilocenter.api.v1.BaseStation.prototype.toObject = function(opt_includeIns
  */
 proto.kilocenter.api.v1.BaseStation.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    latitude: (f = msg.getLatitude()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    longitude: (f = msg.getLongitude()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    altitude: (f = msg.getAltitude()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    status: jspb.Message.getFieldWithDefault(msg, 8, ""),
-    tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : [],
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastSeenAt: (f = msg.getLastSeenAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    systemTime: (f = msg.getSystemTime()) && google_protobuf_wrappers_pb.Int64Value.toObject(includeInstance, f),
-    dutyCycle: (f = msg.getDutyCycle()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    uptimeSeconds: (f = msg.getUptimeSeconds()) && google_protobuf_wrappers_pb.Int64Value.toObject(includeInstance, f),
-    temperatureCelsius: (f = msg.getTemperatureCelsius()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    cpuLoad: (f = msg.getCpuLoad()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    memoryLoad: (f = msg.getMemoryLoad()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    bsConfig: (f = msg.getBsConfig()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
-    lastStatusAt: (f = msg.getLastStatusAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    serviceCenterUrl: jspb.Message.getFieldWithDefault(msg, 21, ""),
-    locationSource: jspb.Message.getFieldWithDefault(msg, 22, ""),
-    locationUpdatedAt: (f = msg.getLocationUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    certificateExpiresAt: (f = msg.getCertificateExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    tlsCertFingerprint: jspb.Message.getFieldWithDefault(msg, 25, ""),
-    sessionStartedAt: (f = msg.getSessionStartedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+name: jspb.Message.getFieldWithDefault(msg, 3, ""),
+description: jspb.Message.getFieldWithDefault(msg, 4, ""),
+latitude: (f = msg.getLatitude()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+longitude: (f = msg.getLongitude()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+altitude: (f = msg.getAltitude()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+status: jspb.Message.getFieldWithDefault(msg, 8, ""),
+tagsMap: (f = msg.getTagsMap()) ? f.toObject(includeInstance, undefined) : [],
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastSeenAt: (f = msg.getLastSeenAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+systemTime: (f = msg.getSystemTime()) && google_protobuf_wrappers_pb.Int64Value.toObject(includeInstance, f),
+dutyCycle: (f = msg.getDutyCycle()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+uptimeSeconds: (f = msg.getUptimeSeconds()) && google_protobuf_wrappers_pb.Int64Value.toObject(includeInstance, f),
+temperatureCelsius: (f = msg.getTemperatureCelsius()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+cpuLoad: (f = msg.getCpuLoad()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+memoryLoad: (f = msg.getMemoryLoad()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+bsConfig: (f = msg.getBsConfig()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
+lastStatusAt: (f = msg.getLastStatusAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+serviceCenterUrl: jspb.Message.getFieldWithDefault(msg, 21, ""),
+locationSource: jspb.Message.getFieldWithDefault(msg, 22, ""),
+locationUpdatedAt: (f = msg.getLocationUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+certificateExpiresAt: (f = msg.getCertificateExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+tlsCertFingerprint: jspb.Message.getFieldWithDefault(msg, 25, ""),
+sessionStartedAt: (f = msg.getSessionStartedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -6377,7 +6377,7 @@ proto.kilocenter.api.v1.BaseStation.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStation}
  */
 proto.kilocenter.api.v1.BaseStation.deserializeBinary = function(bytes) {
@@ -6402,19 +6402,19 @@ proto.kilocenter.api.v1.BaseStation.deserializeBinaryFromReader = function(msg, 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 5:
@@ -6433,13 +6433,13 @@ proto.kilocenter.api.v1.BaseStation.deserializeBinaryFromReader = function(msg, 
       msg.setAltitude(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 9:
       var value = msg.getTagsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readString, null, "", "");
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readStringRequireUtf8, null, "", "");
          });
       break;
     case 10:
@@ -6498,11 +6498,11 @@ proto.kilocenter.api.v1.BaseStation.deserializeBinaryFromReader = function(msg, 
       msg.setLastStatusAt(value);
       break;
     case 21:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setServiceCenterUrl(value);
       break;
     case 22:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLocationSource(value);
       break;
     case 23:
@@ -6516,7 +6516,7 @@ proto.kilocenter.api.v1.BaseStation.deserializeBinaryFromReader = function(msg, 
       msg.setCertificateExpiresAt(value);
       break;
     case 25:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTlsCertFingerprint(value);
       break;
     case 26:
@@ -6614,7 +6614,12 @@ proto.kilocenter.api.v1.BaseStation.serializeBinaryToWriter = function(message, 
   }
   f = message.getTagsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(9, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeString);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getTagsMap(true),
+    9,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeString);
   }
   f = message.getCreatedAt();
   if (f != null) {
@@ -6972,7 +6977,8 @@ proto.kilocenter.api.v1.BaseStation.prototype.getTagsMap = function(opt_noLazyCr
  */
 proto.kilocenter.api.v1.BaseStation.prototype.clearTagsMap = function() {
   this.getTagsMap().clear();
-  return this;};
+  return this;
+};
 
 
 /**
@@ -7586,10 +7592,10 @@ proto.kilocenter.api.v1.SubpacketInfo.prototype.toObject = function(opt_includeI
  */
 proto.kilocenter.api.v1.SubpacketInfo.toObject = function(includeInstance, msg) {
   var f, obj = {
-    snrList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 1)) == null ? undefined : f,
-    rssiList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 2)) == null ? undefined : f,
-    frequencyList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f,
-    phaseList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 4)) == null ? undefined : f
+snrList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 1)) == null ? undefined : f,
+rssiList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 2)) == null ? undefined : f,
+frequencyList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f,
+phaseList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 4)) == null ? undefined : f
   };
 
   if (includeInstance) {
@@ -7602,7 +7608,7 @@ proto.kilocenter.api.v1.SubpacketInfo.toObject = function(includeInstance, msg) 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SubpacketInfo}
  */
 proto.kilocenter.api.v1.SubpacketInfo.deserializeBinary = function(bytes) {
@@ -7627,28 +7633,16 @@ proto.kilocenter.api.v1.SubpacketInfo.deserializeBinaryFromReader = function(msg
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedDouble() : [reader.readDouble()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addSnr(values[i]);
-      }
+      reader.readPackableDoubleInto(msg.getSnrList());
       break;
     case 2:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedDouble() : [reader.readDouble()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addRssi(values[i]);
-      }
+      reader.readPackableDoubleInto(msg.getRssiList());
       break;
     case 3:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedInt64() : [reader.readInt64()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addFrequency(values[i]);
-      }
+      reader.readPackableInt64Into(msg.getFrequencyList());
       break;
     case 4:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedDouble() : [reader.readDouble()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addPhase(values[i]);
-      }
+      reader.readPackableDoubleInto(msg.getPhaseList());
       break;
     default:
       reader.skipField();
@@ -7890,17 +7884,17 @@ proto.kilocenter.api.v1.BaseStationReceptionInfo.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.BaseStationReceptionInfo.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    rxTime: jspb.Message.getFieldWithDefault(msg, 2, "0"),
-    snr: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
-    rssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
-    eqSnr: (f = msg.getEqSnr()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    rxDuration: (f = msg.getRxDuration()) && google_protobuf_wrappers_pb.Int64Value.toObject(includeInstance, f),
-    profile: (f = msg.getProfile()) && google_protobuf_wrappers_pb.StringValue.toObject(includeInstance, f),
-    mode: (f = msg.getMode()) && google_protobuf_wrappers_pb.StringValue.toObject(includeInstance, f),
-    dlRxSnr: (f = msg.getDlRxSnr()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    dlRxRssi: (f = msg.getDlRxRssi()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    subpackets: (f = msg.getSubpackets()) && proto.kilocenter.api.v1.SubpacketInfo.toObject(includeInstance, f)
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+rxTime: jspb.Message.getFieldWithDefault(msg, 2, "0"),
+snr: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
+rssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
+eqSnr: (f = msg.getEqSnr()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+rxDuration: (f = msg.getRxDuration()) && google_protobuf_wrappers_pb.Int64Value.toObject(includeInstance, f),
+profile: (f = msg.getProfile()) && google_protobuf_wrappers_pb.StringValue.toObject(includeInstance, f),
+mode: (f = msg.getMode()) && google_protobuf_wrappers_pb.StringValue.toObject(includeInstance, f),
+dlRxSnr: (f = msg.getDlRxSnr()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+dlRxRssi: (f = msg.getDlRxRssi()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+subpackets: (f = msg.getSubpackets()) && proto.kilocenter.api.v1.SubpacketInfo.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -7913,7 +7907,7 @@ proto.kilocenter.api.v1.BaseStationReceptionInfo.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStationReceptionInfo}
  */
 proto.kilocenter.api.v1.BaseStationReceptionInfo.deserializeBinary = function(bytes) {
@@ -7938,7 +7932,7 @@ proto.kilocenter.api.v1.BaseStationReceptionInfo.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
@@ -8474,32 +8468,32 @@ proto.kilocenter.api.v1.Message.prototype.toObject = function(opt_includeInstanc
  */
 proto.kilocenter.api.v1.Message.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    epeui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    bseui: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    payload: msg.getPayload_asB64(),
-    frequency: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
-    rssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
-    snr: jspb.Message.getFloatingPointFieldWithDefault(msg, 8, 0.0),
-    eqSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 9, 0.0),
-    uplinkMode: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    packetCounter: jspb.Message.getFieldWithDefault(msg, 11, 0),
-    dlOpen: jspb.Message.getBooleanFieldWithDefault(msg, 12, false),
-    resExp: jspb.Message.getBooleanFieldWithDefault(msg, 13, false),
-    dlAck: jspb.Message.getBooleanFieldWithDefault(msg, 14, false),
-    cryptoMode: jspb.Message.getFieldWithDefault(msg, 15, 0),
-    receivedAt: (f = msg.getReceivedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    decodedPayload: msg.getDecodedPayload_asB64(),
-    decodeStatus: jspb.Message.getFieldWithDefault(msg, 18, ""),
-    decodeErrorCode: jspb.Message.getFieldWithDefault(msg, 19, ""),
-    blueprintTypeEui: msg.getBlueprintTypeEui_asB64(),
-    blueprintVersionId: jspb.Message.getFieldWithDefault(msg, 21, ""),
-    baseStationsList: jspb.Message.toObjectList(msg.getBaseStationsList(),
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+epeui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+bseui: jspb.Message.getFieldWithDefault(msg, 3, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 4, ""),
+payload: msg.getPayload_asB64(),
+frequency: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
+rssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
+snr: jspb.Message.getFloatingPointFieldWithDefault(msg, 8, 0.0),
+eqSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 9, 0.0),
+uplinkMode: jspb.Message.getFieldWithDefault(msg, 10, ""),
+packetCounter: jspb.Message.getFieldWithDefault(msg, 11, 0),
+dlOpen: jspb.Message.getBooleanFieldWithDefault(msg, 12, false),
+resExp: jspb.Message.getBooleanFieldWithDefault(msg, 13, false),
+dlAck: jspb.Message.getBooleanFieldWithDefault(msg, 14, false),
+cryptoMode: jspb.Message.getFieldWithDefault(msg, 15, 0),
+receivedAt: (f = msg.getReceivedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+decodedPayload: msg.getDecodedPayload_asB64(),
+decodeStatus: jspb.Message.getFieldWithDefault(msg, 18, ""),
+decodeErrorCode: jspb.Message.getFieldWithDefault(msg, 19, ""),
+blueprintTypeEui: msg.getBlueprintTypeEui_asB64(),
+blueprintVersionId: jspb.Message.getFieldWithDefault(msg, 21, ""),
+baseStationsList: jspb.Message.toObjectList(msg.getBaseStationsList(),
     proto.kilocenter.api.v1.BaseStationReceptionInfo.toObject, includeInstance),
-    duplicate: jspb.Message.getBooleanFieldWithDefault(msg, 23, false),
-    opId: jspb.Message.getFieldWithDefault(msg, 24, "0"),
-    format: jspb.Message.getFieldWithDefault(msg, 25, 0)
+duplicate: jspb.Message.getBooleanFieldWithDefault(msg, 23, false),
+opId: jspb.Message.getFieldWithDefault(msg, 24, "0"),
+format: (f = jspb.Message.getField(msg, 25)) == null ? undefined : f
   };
 
   if (includeInstance) {
@@ -8512,7 +8506,7 @@ proto.kilocenter.api.v1.Message.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Message}
  */
 proto.kilocenter.api.v1.Message.deserializeBinary = function(bytes) {
@@ -8537,19 +8531,19 @@ proto.kilocenter.api.v1.Message.deserializeBinaryFromReader = function(msg, read
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 5:
@@ -8573,7 +8567,7 @@ proto.kilocenter.api.v1.Message.deserializeBinaryFromReader = function(msg, read
       msg.setEqSnr(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUplinkMode(value);
       break;
     case 11:
@@ -8606,11 +8600,11 @@ proto.kilocenter.api.v1.Message.deserializeBinaryFromReader = function(msg, read
       msg.setDecodedPayload(value);
       break;
     case 18:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDecodeStatus(value);
       break;
     case 19:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDecodeErrorCode(value);
       break;
     case 20:
@@ -8618,7 +8612,7 @@ proto.kilocenter.api.v1.Message.deserializeBinaryFromReader = function(msg, read
       msg.setBlueprintTypeEui(value);
       break;
     case 21:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBlueprintVersionId(value);
       break;
     case 22:
@@ -9458,7 +9452,7 @@ proto.kilocenter.api.v1.CreateEndPointRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.CreateEndPointRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    endpoint: (f = msg.getEndpoint()) && proto.kilocenter.api.v1.EndPoint.toObject(includeInstance, f)
+endpoint: (f = msg.getEndpoint()) && proto.kilocenter.api.v1.EndPoint.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -9471,7 +9465,7 @@ proto.kilocenter.api.v1.CreateEndPointRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateEndPointRequest}
  */
 proto.kilocenter.api.v1.CreateEndPointRequest.deserializeBinary = function(bytes) {
@@ -9616,9 +9610,9 @@ proto.kilocenter.api.v1.GetEndPointRequest.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.GetEndPointRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    revealKeysList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f
+epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+revealKeysList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f
   };
 
   if (includeInstance) {
@@ -9631,7 +9625,7 @@ proto.kilocenter.api.v1.GetEndPointRequest.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetEndPointRequest}
  */
 proto.kilocenter.api.v1.GetEndPointRequest.deserializeBinary = function(bytes) {
@@ -9656,18 +9650,15 @@ proto.kilocenter.api.v1.GetEndPointRequest.deserializeBinaryFromReader = functio
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 3:
-      var values = /** @type {!Array<!proto.kilocenter.api.v1.EndpointKey>} */ (reader.isDelimited() ? reader.readPackedEnum() : [reader.readEnum()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addRevealKeys(values[i]);
-      }
+      reader.readPackableEnumInto(msg.getRevealKeysList());
       break;
     default:
       reader.skipField();
@@ -9827,9 +9818,9 @@ proto.kilocenter.api.v1.UpdateEndPointRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.UpdateEndPointRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    endpoint: (f = msg.getEndpoint()) && proto.kilocenter.api.v1.EndPoint.toObject(includeInstance, f),
-    updateMask: (f = msg.getUpdateMask()) && google_protobuf_field_mask_pb.FieldMask.toObject(includeInstance, f),
-    newEpEui: jspb.Message.getFieldWithDefault(msg, 3, "")
+endpoint: (f = msg.getEndpoint()) && proto.kilocenter.api.v1.EndPoint.toObject(includeInstance, f),
+updateMask: (f = msg.getUpdateMask()) && google_protobuf_field_mask_pb.FieldMask.toObject(includeInstance, f),
+newEpEui: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -9842,7 +9833,7 @@ proto.kilocenter.api.v1.UpdateEndPointRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateEndPointRequest}
  */
 proto.kilocenter.api.v1.UpdateEndPointRequest.deserializeBinary = function(bytes) {
@@ -9877,7 +9868,7 @@ proto.kilocenter.api.v1.UpdateEndPointRequest.deserializeBinaryFromReader = func
       msg.setUpdateMask(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNewEpEui(value);
       break;
     default:
@@ -10059,8 +10050,8 @@ proto.kilocenter.api.v1.DeleteEndPointRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.DeleteEndPointRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, "")
+epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -10073,7 +10064,7 @@ proto.kilocenter.api.v1.DeleteEndPointRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteEndPointRequest}
  */
 proto.kilocenter.api.v1.DeleteEndPointRequest.deserializeBinary = function(bytes) {
@@ -10098,11 +10089,11 @@ proto.kilocenter.api.v1.DeleteEndPointRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     default:
@@ -10219,11 +10210,11 @@ proto.kilocenter.api.v1.ListEndPointsRequest.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.ListEndPointsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    statusFilter: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    deviceModelId: jspb.Message.getFieldWithDefault(msg, 5, "")
+tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
+statusFilter: jspb.Message.getFieldWithDefault(msg, 4, ""),
+deviceModelId: jspb.Message.getFieldWithDefault(msg, 5, "")
   };
 
   if (includeInstance) {
@@ -10236,7 +10227,7 @@ proto.kilocenter.api.v1.ListEndPointsRequest.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListEndPointsRequest}
  */
 proto.kilocenter.api.v1.ListEndPointsRequest.deserializeBinary = function(bytes) {
@@ -10261,7 +10252,7 @@ proto.kilocenter.api.v1.ListEndPointsRequest.deserializeBinaryFromReader = funct
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 2:
@@ -10269,15 +10260,15 @@ proto.kilocenter.api.v1.ListEndPointsRequest.deserializeBinaryFromReader = funct
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatusFilter(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDeviceModelId(value);
       break;
     default:
@@ -10476,10 +10467,10 @@ proto.kilocenter.api.v1.ListEndPointsResponse.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.ListEndPointsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    endpointsList: jspb.Message.toObjectList(msg.getEndpointsList(),
+endpointsList: jspb.Message.toObjectList(msg.getEndpointsList(),
     proto.kilocenter.api.v1.EndPoint.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -10492,7 +10483,7 @@ proto.kilocenter.api.v1.ListEndPointsResponse.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListEndPointsResponse}
  */
 proto.kilocenter.api.v1.ListEndPointsResponse.deserializeBinary = function(bytes) {
@@ -10522,7 +10513,7 @@ proto.kilocenter.api.v1.ListEndPointsResponse.deserializeBinaryFromReader = func
       msg.addEndpoints(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -10689,7 +10680,7 @@ proto.kilocenter.api.v1.AttachEndPointRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.AttachEndPointRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -10702,7 +10693,7 @@ proto.kilocenter.api.v1.AttachEndPointRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.AttachEndPointRequest}
  */
 proto.kilocenter.api.v1.AttachEndPointRequest.deserializeBinary = function(bytes) {
@@ -10727,7 +10718,7 @@ proto.kilocenter.api.v1.AttachEndPointRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     default:
@@ -10819,8 +10810,8 @@ proto.kilocenter.api.v1.AttachEndPointResponse.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.AttachEndPointResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    operationId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 2, "")
+operationId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+status: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -10833,7 +10824,7 @@ proto.kilocenter.api.v1.AttachEndPointResponse.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.AttachEndPointResponse}
  */
 proto.kilocenter.api.v1.AttachEndPointResponse.deserializeBinary = function(bytes) {
@@ -10858,11 +10849,11 @@ proto.kilocenter.api.v1.AttachEndPointResponse.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOperationId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     default:
@@ -10979,7 +10970,7 @@ proto.kilocenter.api.v1.DetachEndPointRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.DetachEndPointRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -10992,7 +10983,7 @@ proto.kilocenter.api.v1.DetachEndPointRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DetachEndPointRequest}
  */
 proto.kilocenter.api.v1.DetachEndPointRequest.deserializeBinary = function(bytes) {
@@ -11017,7 +11008,7 @@ proto.kilocenter.api.v1.DetachEndPointRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     default:
@@ -11109,8 +11100,8 @@ proto.kilocenter.api.v1.DetachEndPointResponse.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.DetachEndPointResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    operationId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 2, "")
+operationId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+status: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -11123,7 +11114,7 @@ proto.kilocenter.api.v1.DetachEndPointResponse.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DetachEndPointResponse}
  */
 proto.kilocenter.api.v1.DetachEndPointResponse.deserializeBinary = function(bytes) {
@@ -11148,11 +11139,11 @@ proto.kilocenter.api.v1.DetachEndPointResponse.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOperationId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     default:
@@ -11269,7 +11260,7 @@ proto.kilocenter.api.v1.CreateBaseStationRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.CreateBaseStationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    basestation: (f = msg.getBasestation()) && proto.kilocenter.api.v1.BaseStation.toObject(includeInstance, f)
+basestation: (f = msg.getBasestation()) && proto.kilocenter.api.v1.BaseStation.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -11282,7 +11273,7 @@ proto.kilocenter.api.v1.CreateBaseStationRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateBaseStationRequest}
  */
 proto.kilocenter.api.v1.CreateBaseStationRequest.deserializeBinary = function(bytes) {
@@ -11420,8 +11411,8 @@ proto.kilocenter.api.v1.GetBaseStationRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.GetBaseStationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, "")
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -11434,7 +11425,7 @@ proto.kilocenter.api.v1.GetBaseStationRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationRequest}
  */
 proto.kilocenter.api.v1.GetBaseStationRequest.deserializeBinary = function(bytes) {
@@ -11459,11 +11450,11 @@ proto.kilocenter.api.v1.GetBaseStationRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     default:
@@ -11580,8 +11571,8 @@ proto.kilocenter.api.v1.UpdateBaseStationRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.UpdateBaseStationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    basestation: (f = msg.getBasestation()) && proto.kilocenter.api.v1.BaseStation.toObject(includeInstance, f),
-    updateMask: (f = msg.getUpdateMask()) && google_protobuf_field_mask_pb.FieldMask.toObject(includeInstance, f)
+basestation: (f = msg.getBasestation()) && proto.kilocenter.api.v1.BaseStation.toObject(includeInstance, f),
+updateMask: (f = msg.getUpdateMask()) && google_protobuf_field_mask_pb.FieldMask.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -11594,7 +11585,7 @@ proto.kilocenter.api.v1.UpdateBaseStationRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateBaseStationRequest}
  */
 proto.kilocenter.api.v1.UpdateBaseStationRequest.deserializeBinary = function(bytes) {
@@ -11782,8 +11773,8 @@ proto.kilocenter.api.v1.DeleteBaseStationRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.DeleteBaseStationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, "")
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -11796,7 +11787,7 @@ proto.kilocenter.api.v1.DeleteBaseStationRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteBaseStationRequest}
  */
 proto.kilocenter.api.v1.DeleteBaseStationRequest.deserializeBinary = function(bytes) {
@@ -11821,11 +11812,11 @@ proto.kilocenter.api.v1.DeleteBaseStationRequest.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     default:
@@ -11942,8 +11933,8 @@ proto.kilocenter.api.v1.UpdateBaseStationEuiRequest.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.UpdateBaseStationEuiRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    newBsEui: jspb.Message.getFieldWithDefault(msg, 2, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+newBsEui: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -11956,7 +11947,7 @@ proto.kilocenter.api.v1.UpdateBaseStationEuiRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateBaseStationEuiRequest}
  */
 proto.kilocenter.api.v1.UpdateBaseStationEuiRequest.deserializeBinary = function(bytes) {
@@ -11981,11 +11972,11 @@ proto.kilocenter.api.v1.UpdateBaseStationEuiRequest.deserializeBinaryFromReader 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNewBsEui(value);
       break;
     default:
@@ -12102,10 +12093,10 @@ proto.kilocenter.api.v1.ListBaseStationsRequest.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.ListBaseStationsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    statusFilter: jspb.Message.getFieldWithDefault(msg, 4, "")
+tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
+statusFilter: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -12118,7 +12109,7 @@ proto.kilocenter.api.v1.ListBaseStationsRequest.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListBaseStationsRequest}
  */
 proto.kilocenter.api.v1.ListBaseStationsRequest.deserializeBinary = function(bytes) {
@@ -12143,7 +12134,7 @@ proto.kilocenter.api.v1.ListBaseStationsRequest.deserializeBinaryFromReader = fu
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 2:
@@ -12151,11 +12142,11 @@ proto.kilocenter.api.v1.ListBaseStationsRequest.deserializeBinaryFromReader = fu
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatusFilter(value);
       break;
     default:
@@ -12329,10 +12320,10 @@ proto.kilocenter.api.v1.ListBaseStationsResponse.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.ListBaseStationsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    basestationsList: jspb.Message.toObjectList(msg.getBasestationsList(),
+basestationsList: jspb.Message.toObjectList(msg.getBasestationsList(),
     proto.kilocenter.api.v1.BaseStation.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -12345,7 +12336,7 @@ proto.kilocenter.api.v1.ListBaseStationsResponse.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListBaseStationsResponse}
  */
 proto.kilocenter.api.v1.ListBaseStationsResponse.deserializeBinary = function(bytes) {
@@ -12375,7 +12366,7 @@ proto.kilocenter.api.v1.ListBaseStationsResponse.deserializeBinaryFromReader = f
       msg.addBasestations(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -12542,10 +12533,10 @@ proto.kilocenter.api.v1.GetBaseStationStatsRequest.prototype.toObject = function
  */
 proto.kilocenter.api.v1.GetBaseStationStatsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -12558,7 +12549,7 @@ proto.kilocenter.api.v1.GetBaseStationStatsRequest.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationStatsRequest}
  */
 proto.kilocenter.api.v1.GetBaseStationStatsRequest.deserializeBinary = function(bytes) {
@@ -12583,11 +12574,11 @@ proto.kilocenter.api.v1.GetBaseStationStatsRequest.deserializeBinaryFromReader =
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 3:
@@ -12804,18 +12795,18 @@ proto.kilocenter.api.v1.GetBaseStationStatsResponse.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.GetBaseStationStatsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    totalMessages: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    totalEndpoints: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    messagesToday: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    messagesThisWeek: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    messagesThisMonth: jspb.Message.getFieldWithDefault(msg, 6, 0),
-    avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
-    avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 8, 0.0),
-    lastMessageAt: (f = msg.getLastMessageAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endpointMessageCountsMap: (f = msg.getEndpointMessageCountsMap()) ? f.toObject(includeInstance, undefined) : [],
-    status: jspb.Message.getFieldWithDefault(msg, 11, ""),
-    lastSeenAt: (f = msg.getLastSeenAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+totalMessages: jspb.Message.getFieldWithDefault(msg, 2, 0),
+totalEndpoints: jspb.Message.getFieldWithDefault(msg, 3, 0),
+messagesToday: jspb.Message.getFieldWithDefault(msg, 4, 0),
+messagesThisWeek: jspb.Message.getFieldWithDefault(msg, 5, 0),
+messagesThisMonth: jspb.Message.getFieldWithDefault(msg, 6, 0),
+avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
+avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 8, 0.0),
+lastMessageAt: (f = msg.getLastMessageAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endpointMessageCountsMap: (f = msg.getEndpointMessageCountsMap()) ? f.toObject(includeInstance, undefined) : [],
+status: jspb.Message.getFieldWithDefault(msg, 11, ""),
+lastSeenAt: (f = msg.getLastSeenAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -12828,7 +12819,7 @@ proto.kilocenter.api.v1.GetBaseStationStatsResponse.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationStatsResponse}
  */
 proto.kilocenter.api.v1.GetBaseStationStatsResponse.deserializeBinary = function(bytes) {
@@ -12853,7 +12844,7 @@ proto.kilocenter.api.v1.GetBaseStationStatsResponse.deserializeBinaryFromReader 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
@@ -12892,11 +12883,11 @@ proto.kilocenter.api.v1.GetBaseStationStatsResponse.deserializeBinaryFromReader 
     case 10:
       var value = msg.getEndpointMessageCountsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readInt64, null, "", 0);
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readInt64, null, "", 0);
          });
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 12:
@@ -12999,7 +12990,12 @@ proto.kilocenter.api.v1.GetBaseStationStatsResponse.serializeBinaryToWriter = fu
   }
   f = message.getEndpointMessageCountsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(10, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeInt64);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getEndpointMessageCountsMap(true),
+    10,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeInt64);
   }
   f = message.getStatus();
   if (f.length > 0) {
@@ -13219,7 +13215,8 @@ proto.kilocenter.api.v1.GetBaseStationStatsResponse.prototype.getEndpointMessage
  */
 proto.kilocenter.api.v1.GetBaseStationStatsResponse.prototype.clearEndpointMessageCountsMap = function() {
   this.getEndpointMessageCountsMap().clear();
-  return this;};
+  return this;
+};
 
 
 /**
@@ -13309,10 +13306,10 @@ proto.kilocenter.api.v1.GetBaseStationAvailabilityRequest.prototype.toObject = f
  */
 proto.kilocenter.api.v1.GetBaseStationAvailabilityRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    intervalSeconds: jspb.Message.getFieldWithDefault(msg, 4, 0)
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+intervalSeconds: jspb.Message.getFieldWithDefault(msg, 4, 0)
   };
 
   if (includeInstance) {
@@ -13325,7 +13322,7 @@ proto.kilocenter.api.v1.GetBaseStationAvailabilityRequest.toObject = function(in
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationAvailabilityRequest}
  */
 proto.kilocenter.api.v1.GetBaseStationAvailabilityRequest.deserializeBinary = function(bytes) {
@@ -13350,7 +13347,7 @@ proto.kilocenter.api.v1.GetBaseStationAvailabilityRequest.deserializeBinaryFromR
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
@@ -13578,10 +13575,10 @@ proto.kilocenter.api.v1.GetBaseStationAvailabilityResponse.prototype.toObject = 
  */
 proto.kilocenter.api.v1.GetBaseStationAvailabilityResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    availabilityList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 2)) == null ? undefined : f,
-    intervalSeconds: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    lastPointTimestamp: (f = msg.getLastPointTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+availabilityList: (f = jspb.Message.getRepeatedFloatingPointField(msg, 2)) == null ? undefined : f,
+intervalSeconds: jspb.Message.getFieldWithDefault(msg, 3, 0),
+lastPointTimestamp: (f = msg.getLastPointTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -13594,7 +13591,7 @@ proto.kilocenter.api.v1.GetBaseStationAvailabilityResponse.toObject = function(i
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationAvailabilityResponse}
  */
 proto.kilocenter.api.v1.GetBaseStationAvailabilityResponse.deserializeBinary = function(bytes) {
@@ -13619,14 +13616,11 @@ proto.kilocenter.api.v1.GetBaseStationAvailabilityResponse.deserializeBinaryFrom
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedDouble() : [reader.readDouble()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addAvailability(values[i]);
-      }
+      reader.readPackableDoubleInto(msg.getAvailabilityList());
       break;
     case 3:
       var value = /** @type {number} */ (reader.readInt64());
@@ -13840,10 +13834,10 @@ proto.kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.prototype.toObject
  */
 proto.kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    intervalSeconds: jspb.Message.getFieldWithDefault(msg, 4, 0)
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+intervalSeconds: jspb.Message.getFieldWithDefault(msg, 4, 0)
   };
 
   if (includeInstance) {
@@ -13856,7 +13850,7 @@ proto.kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.toObject = functio
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationMessagesReceivedRequest}
  */
 proto.kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.deserializeBinary = function(bytes) {
@@ -13881,7 +13875,7 @@ proto.kilocenter.api.v1.GetBaseStationMessagesReceivedRequest.deserializeBinaryF
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
@@ -14109,10 +14103,10 @@ proto.kilocenter.api.v1.GetBaseStationMessagesReceivedResponse.prototype.toObjec
  */
 proto.kilocenter.api.v1.GetBaseStationMessagesReceivedResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    receivedList: (f = jspb.Message.getRepeatedField(msg, 2)) == null ? undefined : f,
-    intervalSeconds: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    lastPointTimestamp: (f = msg.getLastPointTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bseui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+receivedList: (f = jspb.Message.getRepeatedField(msg, 2)) == null ? undefined : f,
+intervalSeconds: jspb.Message.getFieldWithDefault(msg, 3, 0),
+lastPointTimestamp: (f = msg.getLastPointTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -14125,7 +14119,7 @@ proto.kilocenter.api.v1.GetBaseStationMessagesReceivedResponse.toObject = functi
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationMessagesReceivedResponse}
  */
 proto.kilocenter.api.v1.GetBaseStationMessagesReceivedResponse.deserializeBinary = function(bytes) {
@@ -14150,14 +14144,11 @@ proto.kilocenter.api.v1.GetBaseStationMessagesReceivedResponse.deserializeBinary
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBseui(value);
       break;
     case 2:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedInt64() : [reader.readInt64()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addReceived(values[i]);
-      }
+      reader.readPackableInt64Into(msg.getReceivedList());
       break;
     case 3:
       var value = /** @type {number} */ (reader.readInt64());
@@ -14371,8 +14362,8 @@ proto.kilocenter.api.v1.GetMessageRequest.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.GetMessageRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -14385,7 +14376,7 @@ proto.kilocenter.api.v1.GetMessageRequest.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetMessageRequest}
  */
 proto.kilocenter.api.v1.GetMessageRequest.deserializeBinary = function(bytes) {
@@ -14410,11 +14401,11 @@ proto.kilocenter.api.v1.GetMessageRequest.deserializeBinaryFromReader = function
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     default:
@@ -14538,18 +14529,18 @@ proto.kilocenter.api.v1.SendDownlinkRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.SendDownlinkRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    payloadsList: msg.getPayloadsList_asB64(),
-    priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
-    cntDepend: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    packetCntList: (f = jspb.Message.getRepeatedField(msg, 8)) == null ? undefined : f,
-    format: jspb.Message.getFieldWithDefault(msg, 9, 0),
-    responseExp: jspb.Message.getBooleanFieldWithDefault(msg, 10, false),
-    responsePrio: jspb.Message.getBooleanFieldWithDefault(msg, 11, false),
-    dlWindReq: jspb.Message.getBooleanFieldWithDefault(msg, 12, false),
-    expOnly: jspb.Message.getBooleanFieldWithDefault(msg, 13, false),
-    dlRxStatQry: jspb.Message.getBooleanFieldWithDefault(msg, 14, false)
+epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+payloadsList: msg.getPayloadsList_asB64(),
+priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
+cntDepend: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+packetCntList: (f = jspb.Message.getRepeatedField(msg, 8)) == null ? undefined : f,
+format: jspb.Message.getFieldWithDefault(msg, 9, 0),
+responseExp: jspb.Message.getBooleanFieldWithDefault(msg, 10, false),
+responsePrio: jspb.Message.getBooleanFieldWithDefault(msg, 11, false),
+dlWindReq: jspb.Message.getBooleanFieldWithDefault(msg, 12, false),
+expOnly: jspb.Message.getBooleanFieldWithDefault(msg, 13, false),
+dlRxStatQry: jspb.Message.getBooleanFieldWithDefault(msg, 14, false)
   };
 
   if (includeInstance) {
@@ -14562,7 +14553,7 @@ proto.kilocenter.api.v1.SendDownlinkRequest.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SendDownlinkRequest}
  */
 proto.kilocenter.api.v1.SendDownlinkRequest.deserializeBinary = function(bytes) {
@@ -14587,11 +14578,11 @@ proto.kilocenter.api.v1.SendDownlinkRequest.deserializeBinaryFromReader = functi
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 3:
@@ -14607,10 +14598,7 @@ proto.kilocenter.api.v1.SendDownlinkRequest.deserializeBinaryFromReader = functi
       msg.setCntDepend(value);
       break;
     case 8:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedInt64() : [reader.readInt64()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addPacketCnt(values[i]);
-      }
+      reader.readPackableInt64Into(msg.getPacketCntList());
       break;
     case 9:
       var value = /** @type {number} */ (reader.readUint32());
@@ -15062,8 +15050,8 @@ proto.kilocenter.api.v1.SendDownlinkResponse.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.SendDownlinkResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 2, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+status: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -15076,7 +15064,7 @@ proto.kilocenter.api.v1.SendDownlinkResponse.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SendDownlinkResponse}
  */
 proto.kilocenter.api.v1.SendDownlinkResponse.deserializeBinary = function(bytes) {
@@ -15101,11 +15089,11 @@ proto.kilocenter.api.v1.SendDownlinkResponse.deserializeBinaryFromReader = funct
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     default:
@@ -15229,18 +15217,18 @@ proto.kilocenter.api.v1.UpdatePendingDownlinkRequest.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.UpdatePendingDownlinkRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    queId: jspb.Message.getFieldWithDefault(msg, 2, "0"),
-    payloadsList: msg.getPayloadsList_asB64(),
-    priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
-    cntDepend: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
-    packetCntList: (f = jspb.Message.getRepeatedField(msg, 6)) == null ? undefined : f,
-    format: jspb.Message.getFieldWithDefault(msg, 7, 0),
-    responseExp: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
-    responsePrio: jspb.Message.getBooleanFieldWithDefault(msg, 9, false),
-    dlWindReq: jspb.Message.getBooleanFieldWithDefault(msg, 10, false),
-    expOnly: jspb.Message.getBooleanFieldWithDefault(msg, 11, false),
-    dlRxStatQry: jspb.Message.getBooleanFieldWithDefault(msg, 12, false)
+epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+queId: jspb.Message.getFieldWithDefault(msg, 2, "0"),
+payloadsList: msg.getPayloadsList_asB64(),
+priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
+cntDepend: jspb.Message.getBooleanFieldWithDefault(msg, 5, false),
+packetCntList: (f = jspb.Message.getRepeatedField(msg, 6)) == null ? undefined : f,
+format: jspb.Message.getFieldWithDefault(msg, 7, 0),
+responseExp: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
+responsePrio: jspb.Message.getBooleanFieldWithDefault(msg, 9, false),
+dlWindReq: jspb.Message.getBooleanFieldWithDefault(msg, 10, false),
+expOnly: jspb.Message.getBooleanFieldWithDefault(msg, 11, false),
+dlRxStatQry: jspb.Message.getBooleanFieldWithDefault(msg, 12, false)
   };
 
   if (includeInstance) {
@@ -15253,7 +15241,7 @@ proto.kilocenter.api.v1.UpdatePendingDownlinkRequest.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdatePendingDownlinkRequest}
  */
 proto.kilocenter.api.v1.UpdatePendingDownlinkRequest.deserializeBinary = function(bytes) {
@@ -15278,7 +15266,7 @@ proto.kilocenter.api.v1.UpdatePendingDownlinkRequest.deserializeBinaryFromReader
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 2:
@@ -15298,10 +15286,7 @@ proto.kilocenter.api.v1.UpdatePendingDownlinkRequest.deserializeBinaryFromReader
       msg.setCntDepend(value);
       break;
     case 6:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedInt64() : [reader.readInt64()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addPacketCnt(values[i]);
-      }
+      reader.readPackableInt64Into(msg.getPacketCntList());
       break;
     case 7:
       var value = /** @type {number} */ (reader.readUint32());
@@ -15753,9 +15738,9 @@ proto.kilocenter.api.v1.RevokeDownlinkRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.RevokeDownlinkRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    queueId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 3, "")
+epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+queueId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -15768,7 +15753,7 @@ proto.kilocenter.api.v1.RevokeDownlinkRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RevokeDownlinkRequest}
  */
 proto.kilocenter.api.v1.RevokeDownlinkRequest.deserializeBinary = function(bytes) {
@@ -15793,15 +15778,15 @@ proto.kilocenter.api.v1.RevokeDownlinkRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setQueueId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     default:
@@ -15943,8 +15928,8 @@ proto.kilocenter.api.v1.RevokeDownlinkResponse.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.RevokeDownlinkResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    status: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    message: jspb.Message.getFieldWithDefault(msg, 2, "")
+status: jspb.Message.getFieldWithDefault(msg, 1, ""),
+message: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -15957,7 +15942,7 @@ proto.kilocenter.api.v1.RevokeDownlinkResponse.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RevokeDownlinkResponse}
  */
 proto.kilocenter.api.v1.RevokeDownlinkResponse.deserializeBinary = function(bytes) {
@@ -15982,11 +15967,11 @@ proto.kilocenter.api.v1.RevokeDownlinkResponse.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessage(value);
       break;
     default:
@@ -16103,14 +16088,14 @@ proto.kilocenter.api.v1.ListDownlinkQueueRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.ListDownlinkQueueRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    epeui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
-    queId: jspb.Message.getFieldWithDefault(msg, 7, "0"),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 8, "")
+tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+epeui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 3, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 4, ""),
+status: jspb.Message.getFieldWithDefault(msg, 5, ""),
+priority: (f = jspb.Message.getOptionalFloatingPointField(msg, 6)) == null ? undefined : f,
+queId: (f = jspb.Message.getField(msg, 7)) == null ? undefined : f,
+bsEui: jspb.Message.getFieldWithDefault(msg, 8, "")
   };
 
   if (includeInstance) {
@@ -16123,7 +16108,7 @@ proto.kilocenter.api.v1.ListDownlinkQueueRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListDownlinkQueueRequest}
  */
 proto.kilocenter.api.v1.ListDownlinkQueueRequest.deserializeBinary = function(bytes) {
@@ -16148,11 +16133,11 @@ proto.kilocenter.api.v1.ListDownlinkQueueRequest.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 3:
@@ -16160,11 +16145,11 @@ proto.kilocenter.api.v1.ListDownlinkQueueRequest.deserializeBinaryFromReader = f
       msg.setPageSize(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 6:
@@ -16176,7 +16161,7 @@ proto.kilocenter.api.v1.ListDownlinkQueueRequest.deserializeBinaryFromReader = f
       msg.setQueId(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     default:
@@ -16486,10 +16471,10 @@ proto.kilocenter.api.v1.ListDownlinkQueueResponse.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.ListDownlinkQueueResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
+messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
     proto.kilocenter.api.v1.DownlinkMessage.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -16502,7 +16487,7 @@ proto.kilocenter.api.v1.ListDownlinkQueueResponse.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListDownlinkQueueResponse}
  */
 proto.kilocenter.api.v1.ListDownlinkQueueResponse.deserializeBinary = function(bytes) {
@@ -16532,7 +16517,7 @@ proto.kilocenter.api.v1.ListDownlinkQueueResponse.deserializeBinaryFromReader = 
       msg.addMessages(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -16706,33 +16691,33 @@ proto.kilocenter.api.v1.DownlinkMessage.prototype.toObject = function(opt_includ
  */
 proto.kilocenter.api.v1.DownlinkMessage.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    epeui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    payload: msg.getPayload_asB64(),
-    priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
-    status: jspb.Message.getFieldWithDefault(msg, 7, ""),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    scheduledAt: (f = msg.getScheduledAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    transmittedAt: (f = msg.getTransmittedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    result: jspb.Message.getFieldWithDefault(msg, 11, ""),
-    txTime: jspb.Message.getFieldWithDefault(msg, 12, "0"),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 13, ""),
-    cntDepend: jspb.Message.getBooleanFieldWithDefault(msg, 14, false),
-    packetCntList: (f = jspb.Message.getRepeatedField(msg, 15)) == null ? undefined : f,
-    format: jspb.Message.getFieldWithDefault(msg, 16, 0),
-    responseExp: jspb.Message.getBooleanFieldWithDefault(msg, 17, false),
-    responsePrio: jspb.Message.getBooleanFieldWithDefault(msg, 18, false),
-    dlWindReq: jspb.Message.getBooleanFieldWithDefault(msg, 19, false),
-    expOnly: jspb.Message.getBooleanFieldWithDefault(msg, 20, false),
-    queId: jspb.Message.getFieldWithDefault(msg, 22, "0"),
-    attempts: jspb.Message.getFieldWithDefault(msg, 23, 0),
-    maxAttempts: jspb.Message.getFieldWithDefault(msg, 24, 0),
-    transmissionPacketCnt: jspb.Message.getFieldWithDefault(msg, 25, 0),
-    payloadsList: msg.getPayloadsList_asB64(),
-    dlRxStatQry: jspb.Message.getBooleanFieldWithDefault(msg, 27, false),
-    endpointAckedAt: (f = msg.getEndpointAckedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    acceptedAt: (f = msg.getAcceptedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+epeui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+tenantId: jspb.Message.getFieldWithDefault(msg, 3, ""),
+payload: msg.getPayload_asB64(),
+priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
+status: jspb.Message.getFieldWithDefault(msg, 7, ""),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+scheduledAt: (f = msg.getScheduledAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+transmittedAt: (f = msg.getTransmittedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+result: jspb.Message.getFieldWithDefault(msg, 11, ""),
+txTime: jspb.Message.getFieldWithDefault(msg, 12, "0"),
+bsEui: jspb.Message.getFieldWithDefault(msg, 13, ""),
+cntDepend: jspb.Message.getBooleanFieldWithDefault(msg, 14, false),
+packetCntList: (f = jspb.Message.getRepeatedField(msg, 15)) == null ? undefined : f,
+format: jspb.Message.getFieldWithDefault(msg, 16, 0),
+responseExp: jspb.Message.getBooleanFieldWithDefault(msg, 17, false),
+responsePrio: jspb.Message.getBooleanFieldWithDefault(msg, 18, false),
+dlWindReq: jspb.Message.getBooleanFieldWithDefault(msg, 19, false),
+expOnly: jspb.Message.getBooleanFieldWithDefault(msg, 20, false),
+queId: jspb.Message.getFieldWithDefault(msg, 22, "0"),
+attempts: jspb.Message.getFieldWithDefault(msg, 23, 0),
+maxAttempts: jspb.Message.getFieldWithDefault(msg, 24, 0),
+transmissionPacketCnt: jspb.Message.getFieldWithDefault(msg, 25, 0),
+payloadsList: msg.getPayloadsList_asB64(),
+dlRxStatQry: jspb.Message.getBooleanFieldWithDefault(msg, 27, false),
+endpointAckedAt: (f = msg.getEndpointAckedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+acceptedAt: (f = msg.getAcceptedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -16745,7 +16730,7 @@ proto.kilocenter.api.v1.DownlinkMessage.toObject = function(includeInstance, msg
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DownlinkMessage}
  */
 proto.kilocenter.api.v1.DownlinkMessage.deserializeBinary = function(bytes) {
@@ -16770,15 +16755,15 @@ proto.kilocenter.api.v1.DownlinkMessage.deserializeBinaryFromReader = function(m
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 4:
@@ -16790,7 +16775,7 @@ proto.kilocenter.api.v1.DownlinkMessage.deserializeBinaryFromReader = function(m
       msg.setPriority(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 8:
@@ -16809,7 +16794,7 @@ proto.kilocenter.api.v1.DownlinkMessage.deserializeBinaryFromReader = function(m
       msg.setTransmittedAt(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setResult(value);
       break;
     case 12:
@@ -16817,7 +16802,7 @@ proto.kilocenter.api.v1.DownlinkMessage.deserializeBinaryFromReader = function(m
       msg.setTxTime(value);
       break;
     case 13:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 14:
@@ -16825,10 +16810,7 @@ proto.kilocenter.api.v1.DownlinkMessage.deserializeBinaryFromReader = function(m
       msg.setCntDepend(value);
       break;
     case 15:
-      var values = /** @type {!Array<number>} */ (reader.isDelimited() ? reader.readPackedInt64() : [reader.readInt64()]);
-      for (var i = 0; i < values.length; i++) {
-        msg.addPacketCnt(values[i]);
-      }
+      reader.readPackableInt64Into(msg.getPacketCntList());
       break;
     case 16:
       var value = /** @type {number} */ (reader.readUint32());
@@ -17809,15 +17791,15 @@ proto.kilocenter.api.v1.GetDownlinkResultsRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.GetDownlinkResultsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    epeui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    statusFilter: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    timeFrom: (f = msg.getTimeFrom()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    timeTo: (f = msg.getTimeTo()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 8, ""),
-    queId: jspb.Message.getFieldWithDefault(msg, 9, "0")
+tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+epeui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+statusFilter: jspb.Message.getFieldWithDefault(msg, 3, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 4, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 5, ""),
+timeFrom: (f = msg.getTimeFrom()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+timeTo: (f = msg.getTimeTo()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+bsEui: jspb.Message.getFieldWithDefault(msg, 8, ""),
+queId: (f = jspb.Message.getField(msg, 9)) == null ? undefined : f
   };
 
   if (includeInstance) {
@@ -17830,7 +17812,7 @@ proto.kilocenter.api.v1.GetDownlinkResultsRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDownlinkResultsRequest}
  */
 proto.kilocenter.api.v1.GetDownlinkResultsRequest.deserializeBinary = function(bytes) {
@@ -17855,15 +17837,15 @@ proto.kilocenter.api.v1.GetDownlinkResultsRequest.deserializeBinaryFromReader = 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatusFilter(value);
       break;
     case 4:
@@ -17871,7 +17853,7 @@ proto.kilocenter.api.v1.GetDownlinkResultsRequest.deserializeBinaryFromReader = 
       msg.setPageSize(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 6:
@@ -17885,7 +17867,7 @@ proto.kilocenter.api.v1.GetDownlinkResultsRequest.deserializeBinaryFromReader = 
       msg.setTimeTo(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 9:
@@ -18246,10 +18228,10 @@ proto.kilocenter.api.v1.GetDownlinkResultsResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.GetDownlinkResultsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    resultsList: jspb.Message.toObjectList(msg.getResultsList(),
+resultsList: jspb.Message.toObjectList(msg.getResultsList(),
     proto.kilocenter.api.v1.DownlinkMessage.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -18262,7 +18244,7 @@ proto.kilocenter.api.v1.GetDownlinkResultsResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDownlinkResultsResponse}
  */
 proto.kilocenter.api.v1.GetDownlinkResultsResponse.deserializeBinary = function(bytes) {
@@ -18292,7 +18274,7 @@ proto.kilocenter.api.v1.GetDownlinkResultsResponse.deserializeBinaryFromReader =
       msg.addResults(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -18459,15 +18441,15 @@ proto.kilocenter.api.v1.SendULTransmitRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.SendULTransmitRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    userData: msg.getUserData_asB64(),
-    packetCnt: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    nwkSnKey: msg.getNwkSnKey_asB64(),
-    shAddr: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    profile: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    format: jspb.Message.getFieldWithDefault(msg, 7, 0),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 8, ""),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 9, "")
+epeui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+userData: msg.getUserData_asB64(),
+packetCnt: jspb.Message.getFieldWithDefault(msg, 3, 0),
+nwkSnKey: msg.getNwkSnKey_asB64(),
+shAddr: jspb.Message.getFieldWithDefault(msg, 5, 0),
+profile: jspb.Message.getFieldWithDefault(msg, 6, ""),
+format: jspb.Message.getFieldWithDefault(msg, 7, 0),
+tenantId: jspb.Message.getFieldWithDefault(msg, 8, ""),
+bsEui: jspb.Message.getFieldWithDefault(msg, 9, "")
   };
 
   if (includeInstance) {
@@ -18480,7 +18462,7 @@ proto.kilocenter.api.v1.SendULTransmitRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SendULTransmitRequest}
  */
 proto.kilocenter.api.v1.SendULTransmitRequest.deserializeBinary = function(bytes) {
@@ -18505,7 +18487,7 @@ proto.kilocenter.api.v1.SendULTransmitRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpeui(value);
       break;
     case 2:
@@ -18525,7 +18507,7 @@ proto.kilocenter.api.v1.SendULTransmitRequest.deserializeBinaryFromReader = func
       msg.setShAddr(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setProfile(value);
       break;
     case 7:
@@ -18533,11 +18515,11 @@ proto.kilocenter.api.v1.SendULTransmitRequest.deserializeBinaryFromReader = func
       msg.setFormat(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     default:
@@ -18877,9 +18859,9 @@ proto.kilocenter.api.v1.SendULTransmitResponse.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.SendULTransmitResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    message: jspb.Message.getFieldWithDefault(msg, 3, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+status: jspb.Message.getFieldWithDefault(msg, 2, ""),
+message: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -18892,7 +18874,7 @@ proto.kilocenter.api.v1.SendULTransmitResponse.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SendULTransmitResponse}
  */
 proto.kilocenter.api.v1.SendULTransmitResponse.deserializeBinary = function(bytes) {
@@ -18917,15 +18899,15 @@ proto.kilocenter.api.v1.SendULTransmitResponse.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessage(value);
       break;
     default:
@@ -19067,8 +19049,8 @@ proto.kilocenter.api.v1.BaseStationStatusRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.BaseStationStatusRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    bsEuiHex: jspb.Message.getFieldWithDefault(msg, 2, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, 0),
+bsEuiHex: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -19081,7 +19063,7 @@ proto.kilocenter.api.v1.BaseStationStatusRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStationStatusRequest}
  */
 proto.kilocenter.api.v1.BaseStationStatusRequest.deserializeBinary = function(bytes) {
@@ -19110,7 +19092,7 @@ proto.kilocenter.api.v1.BaseStationStatusRequest.deserializeBinaryFromReader = f
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEuiHex(value);
       break;
     default:
@@ -19227,9 +19209,9 @@ proto.kilocenter.api.v1.BaseStationStatusResponse.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.BaseStationStatusResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    message: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    opId: jspb.Message.getFieldWithDefault(msg, 3, "0")
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+message: jspb.Message.getFieldWithDefault(msg, 2, ""),
+opId: jspb.Message.getFieldWithDefault(msg, 3, "0")
   };
 
   if (includeInstance) {
@@ -19242,7 +19224,7 @@ proto.kilocenter.api.v1.BaseStationStatusResponse.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStationStatusResponse}
  */
 proto.kilocenter.api.v1.BaseStationStatusResponse.deserializeBinary = function(bytes) {
@@ -19271,7 +19253,7 @@ proto.kilocenter.api.v1.BaseStationStatusResponse.deserializeBinaryFromReader = 
       msg.setSuccess(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessage(value);
       break;
     case 3:
@@ -19417,8 +19399,8 @@ proto.kilocenter.api.v1.InitiatePingRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.InitiatePingRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    bsEuiHex: jspb.Message.getFieldWithDefault(msg, 2, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, 0),
+bsEuiHex: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -19431,7 +19413,7 @@ proto.kilocenter.api.v1.InitiatePingRequest.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.InitiatePingRequest}
  */
 proto.kilocenter.api.v1.InitiatePingRequest.deserializeBinary = function(bytes) {
@@ -19460,7 +19442,7 @@ proto.kilocenter.api.v1.InitiatePingRequest.deserializeBinaryFromReader = functi
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEuiHex(value);
       break;
     default:
@@ -19577,9 +19559,9 @@ proto.kilocenter.api.v1.InitiatePingResponse.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.InitiatePingResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    message: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    opId: jspb.Message.getFieldWithDefault(msg, 3, "0")
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+message: jspb.Message.getFieldWithDefault(msg, 2, ""),
+opId: jspb.Message.getFieldWithDefault(msg, 3, "0")
   };
 
   if (includeInstance) {
@@ -19592,7 +19574,7 @@ proto.kilocenter.api.v1.InitiatePingResponse.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.InitiatePingResponse}
  */
 proto.kilocenter.api.v1.InitiatePingResponse.deserializeBinary = function(bytes) {
@@ -19621,7 +19603,7 @@ proto.kilocenter.api.v1.InitiatePingResponse.deserializeBinaryFromReader = funct
       msg.setSuccess(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessage(value);
       break;
     case 3:
@@ -19767,12 +19749,12 @@ proto.kilocenter.api.v1.ServiceStatus.prototype.toObject = function(opt_includeI
  */
 proto.kilocenter.api.v1.ServiceStatus.toObject = function(includeInstance, msg) {
   var f, obj = {
-    name: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    url: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    healthy: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
-    latencyMs: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    error: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    checkedAt: (f = msg.getCheckedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+name: jspb.Message.getFieldWithDefault(msg, 1, ""),
+url: jspb.Message.getFieldWithDefault(msg, 2, ""),
+healthy: jspb.Message.getBooleanFieldWithDefault(msg, 3, false),
+latencyMs: jspb.Message.getFieldWithDefault(msg, 4, 0),
+error: jspb.Message.getFieldWithDefault(msg, 5, ""),
+checkedAt: (f = msg.getCheckedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -19785,7 +19767,7 @@ proto.kilocenter.api.v1.ServiceStatus.toObject = function(includeInstance, msg) 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ServiceStatus}
  */
 proto.kilocenter.api.v1.ServiceStatus.deserializeBinary = function(bytes) {
@@ -19810,11 +19792,11 @@ proto.kilocenter.api.v1.ServiceStatus.deserializeBinaryFromReader = function(msg
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUrl(value);
       break;
     case 3:
@@ -19826,7 +19808,7 @@ proto.kilocenter.api.v1.ServiceStatus.deserializeBinaryFromReader = function(msg
       msg.setLatencyMs(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setError(value);
       break;
     case 6:
@@ -20075,13 +20057,13 @@ proto.kilocenter.api.v1.SystemStatus.prototype.toObject = function(opt_includeIn
  */
 proto.kilocenter.api.v1.SystemStatus.toObject = function(includeInstance, msg) {
   var f, obj = {
-    version: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    uptime: (f = msg.getUptime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    activeEndpoints: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    activeBasestations: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    messagesProcessed: jspb.Message.getFieldWithDefault(msg, 6, 0),
-    servicesList: jspb.Message.toObjectList(msg.getServicesList(),
+version: jspb.Message.getFieldWithDefault(msg, 1, ""),
+status: jspb.Message.getFieldWithDefault(msg, 2, ""),
+uptime: (f = msg.getUptime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+activeEndpoints: jspb.Message.getFieldWithDefault(msg, 4, 0),
+activeBasestations: jspb.Message.getFieldWithDefault(msg, 5, 0),
+messagesProcessed: jspb.Message.getFieldWithDefault(msg, 6, 0),
+servicesList: jspb.Message.toObjectList(msg.getServicesList(),
     proto.kilocenter.api.v1.ServiceStatus.toObject, includeInstance)
   };
 
@@ -20095,7 +20077,7 @@ proto.kilocenter.api.v1.SystemStatus.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SystemStatus}
  */
 proto.kilocenter.api.v1.SystemStatus.deserializeBinary = function(bytes) {
@@ -20120,11 +20102,11 @@ proto.kilocenter.api.v1.SystemStatus.deserializeBinaryFromReader = function(msg,
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setVersion(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 3:
@@ -20429,27 +20411,27 @@ proto.kilocenter.api.v1.ReleaseInfo.prototype.toObject = function(opt_includeIns
  */
 proto.kilocenter.api.v1.ReleaseInfo.toObject = function(includeInstance, msg) {
   var f, obj = {
-    version: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    buildTime: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    gitCommit: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    gitBranch: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    buildUser: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    goVersion: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    schemaVersion: jspb.Message.getFieldWithDefault(msg, 7, 0),
-    artifactsMap: (f = msg.getArtifactsMap()) ? f.toObject(includeInstance, undefined) : [],
-    scEui: jspb.Message.getFieldWithDefault(msg, 9, "0"),
-    scVendor: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    scModel: jspb.Message.getFieldWithDefault(msg, 11, ""),
-    scName: jspb.Message.getFieldWithDefault(msg, 12, ""),
-    scSwVersion: jspb.Message.getFieldWithDefault(msg, 13, ""),
-    edition: jspb.Message.getFieldWithDefault(msg, 14, ""),
-    licenseId: jspb.Message.getFieldWithDefault(msg, 15, ""),
-    licenseUrl: jspb.Message.getFieldWithDefault(msg, 16, ""),
-    sourceUrl: jspb.Message.getFieldWithDefault(msg, 17, ""),
-    documentationUrl: jspb.Message.getFieldWithDefault(msg, 18, ""),
-    homepageUrl: jspb.Message.getFieldWithDefault(msg, 19, ""),
-    trademarkNotice: jspb.Message.getFieldWithDefault(msg, 20, ""),
-    editionCode: jspb.Message.getFieldWithDefault(msg, 21, "")
+version: jspb.Message.getFieldWithDefault(msg, 1, ""),
+buildTime: jspb.Message.getFieldWithDefault(msg, 2, ""),
+gitCommit: jspb.Message.getFieldWithDefault(msg, 3, ""),
+gitBranch: jspb.Message.getFieldWithDefault(msg, 4, ""),
+buildUser: jspb.Message.getFieldWithDefault(msg, 5, ""),
+goVersion: jspb.Message.getFieldWithDefault(msg, 6, ""),
+schemaVersion: jspb.Message.getFieldWithDefault(msg, 7, 0),
+artifactsMap: (f = msg.getArtifactsMap()) ? f.toObject(includeInstance, undefined) : [],
+scEui: jspb.Message.getFieldWithDefault(msg, 9, "0"),
+scVendor: jspb.Message.getFieldWithDefault(msg, 10, ""),
+scModel: jspb.Message.getFieldWithDefault(msg, 11, ""),
+scName: jspb.Message.getFieldWithDefault(msg, 12, ""),
+scSwVersion: jspb.Message.getFieldWithDefault(msg, 13, ""),
+edition: jspb.Message.getFieldWithDefault(msg, 14, ""),
+licenseId: jspb.Message.getFieldWithDefault(msg, 15, ""),
+licenseUrl: jspb.Message.getFieldWithDefault(msg, 16, ""),
+sourceUrl: jspb.Message.getFieldWithDefault(msg, 17, ""),
+documentationUrl: jspb.Message.getFieldWithDefault(msg, 18, ""),
+homepageUrl: jspb.Message.getFieldWithDefault(msg, 19, ""),
+trademarkNotice: jspb.Message.getFieldWithDefault(msg, 20, ""),
+editionCode: jspb.Message.getFieldWithDefault(msg, 21, "")
   };
 
   if (includeInstance) {
@@ -20462,7 +20444,7 @@ proto.kilocenter.api.v1.ReleaseInfo.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ReleaseInfo}
  */
 proto.kilocenter.api.v1.ReleaseInfo.deserializeBinary = function(bytes) {
@@ -20487,27 +20469,27 @@ proto.kilocenter.api.v1.ReleaseInfo.deserializeBinaryFromReader = function(msg, 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setVersion(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBuildTime(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setGitCommit(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setGitBranch(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBuildUser(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setGoVersion(value);
       break;
     case 7:
@@ -20517,7 +20499,7 @@ proto.kilocenter.api.v1.ReleaseInfo.deserializeBinaryFromReader = function(msg, 
     case 8:
       var value = msg.getArtifactsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readString, null, "", "");
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readStringRequireUtf8, null, "", "");
          });
       break;
     case 9:
@@ -20525,51 +20507,51 @@ proto.kilocenter.api.v1.ReleaseInfo.deserializeBinaryFromReader = function(msg, 
       msg.setScEui(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setScVendor(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setScModel(value);
       break;
     case 12:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setScName(value);
       break;
     case 13:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setScSwVersion(value);
       break;
     case 14:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEdition(value);
       break;
     case 15:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLicenseId(value);
       break;
     case 16:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLicenseUrl(value);
       break;
     case 17:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSourceUrl(value);
       break;
     case 18:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDocumentationUrl(value);
       break;
     case 19:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setHomepageUrl(value);
       break;
     case 20:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTrademarkNotice(value);
       break;
     case 21:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEditionCode(value);
       break;
     default:
@@ -20652,7 +20634,12 @@ proto.kilocenter.api.v1.ReleaseInfo.serializeBinaryToWriter = function(message, 
   }
   f = message.getArtifactsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(8, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeString);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getArtifactsMap(true),
+    8,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeString);
   }
   f = message.getScEui();
   if (parseInt(f, 10) !== 0) {
@@ -20893,7 +20880,8 @@ proto.kilocenter.api.v1.ReleaseInfo.prototype.getArtifactsMap = function(opt_noL
  */
 proto.kilocenter.api.v1.ReleaseInfo.prototype.clearArtifactsMap = function() {
   this.getArtifactsMap().clear();
-  return this;};
+  return this;
+};
 
 
 /**
@@ -21162,10 +21150,10 @@ proto.kilocenter.api.v1.GetStatisticsRequest.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.GetStatisticsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    granularity: jspb.Message.getFieldWithDefault(msg, 4, "")
+tenantId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+granularity: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -21178,7 +21166,7 @@ proto.kilocenter.api.v1.GetStatisticsRequest.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetStatisticsRequest}
  */
 proto.kilocenter.api.v1.GetStatisticsRequest.deserializeBinary = function(bytes) {
@@ -21203,7 +21191,7 @@ proto.kilocenter.api.v1.GetStatisticsRequest.deserializeBinaryFromReader = funct
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 2:
@@ -21217,7 +21205,7 @@ proto.kilocenter.api.v1.GetStatisticsRequest.deserializeBinaryFromReader = funct
       msg.setEndTime(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setGranularity(value);
       break;
     default:
@@ -21431,13 +21419,13 @@ proto.kilocenter.api.v1.Statistics.prototype.toObject = function(opt_includeInst
  */
 proto.kilocenter.api.v1.Statistics.toObject = function(includeInstance, msg) {
   var f, obj = {
-    totalMessages: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    totalEndpoints: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    totalBasestations: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    messageCountsList: jspb.Message.toObjectList(msg.getMessageCountsList(),
+totalMessages: jspb.Message.getFieldWithDefault(msg, 1, 0),
+totalEndpoints: jspb.Message.getFieldWithDefault(msg, 2, 0),
+totalBasestations: jspb.Message.getFieldWithDefault(msg, 3, 0),
+messageCountsList: jspb.Message.toObjectList(msg.getMessageCountsList(),
     proto.kilocenter.api.v1.TimeSeriesData.toObject, includeInstance),
-    endpointMessageCountsMap: (f = msg.getEndpointMessageCountsMap()) ? f.toObject(includeInstance, undefined) : [],
-    basestationMessageCountsMap: (f = msg.getBasestationMessageCountsMap()) ? f.toObject(includeInstance, undefined) : []
+endpointMessageCountsMap: (f = msg.getEndpointMessageCountsMap()) ? f.toObject(includeInstance, undefined) : [],
+basestationMessageCountsMap: (f = msg.getBasestationMessageCountsMap()) ? f.toObject(includeInstance, undefined) : []
   };
 
   if (includeInstance) {
@@ -21450,7 +21438,7 @@ proto.kilocenter.api.v1.Statistics.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Statistics}
  */
 proto.kilocenter.api.v1.Statistics.deserializeBinary = function(bytes) {
@@ -21494,13 +21482,13 @@ proto.kilocenter.api.v1.Statistics.deserializeBinaryFromReader = function(msg, r
     case 5:
       var value = msg.getEndpointMessageCountsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readInt64, null, "", 0);
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readInt64, null, "", 0);
          });
       break;
     case 6:
       var value = msg.getBasestationMessageCountsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readInt64, null, "", 0);
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readInt64, null, "", 0);
          });
       break;
     default:
@@ -21563,11 +21551,21 @@ proto.kilocenter.api.v1.Statistics.serializeBinaryToWriter = function(message, w
   }
   f = message.getEndpointMessageCountsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(5, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeInt64);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getEndpointMessageCountsMap(true),
+    5,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeInt64);
   }
   f = message.getBasestationMessageCountsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(6, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeInt64);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getBasestationMessageCountsMap(true),
+    6,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeInt64);
   }
 };
 
@@ -21683,7 +21681,8 @@ proto.kilocenter.api.v1.Statistics.prototype.getEndpointMessageCountsMap = funct
  */
 proto.kilocenter.api.v1.Statistics.prototype.clearEndpointMessageCountsMap = function() {
   this.getEndpointMessageCountsMap().clear();
-  return this;};
+  return this;
+};
 
 
 /**
@@ -21705,7 +21704,8 @@ proto.kilocenter.api.v1.Statistics.prototype.getBasestationMessageCountsMap = fu
  */
 proto.kilocenter.api.v1.Statistics.prototype.clearBasestationMessageCountsMap = function() {
   this.getBasestationMessageCountsMap().clear();
-  return this;};
+  return this;
+};
 
 
 
@@ -21740,8 +21740,8 @@ proto.kilocenter.api.v1.TimeSeriesData.prototype.toObject = function(opt_include
  */
 proto.kilocenter.api.v1.TimeSeriesData.toObject = function(includeInstance, msg) {
   var f, obj = {
-    timestamp: (f = msg.getTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    value: jspb.Message.getFieldWithDefault(msg, 2, 0)
+timestamp: (f = msg.getTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+value: jspb.Message.getFieldWithDefault(msg, 2, 0)
   };
 
   if (includeInstance) {
@@ -21754,7 +21754,7 @@ proto.kilocenter.api.v1.TimeSeriesData.toObject = function(includeInstance, msg)
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.TimeSeriesData}
  */
 proto.kilocenter.api.v1.TimeSeriesData.deserializeBinary = function(bytes) {
@@ -21921,13 +21921,13 @@ proto.kilocenter.api.v1.DLRXStatus.prototype.toObject = function(opt_includeInst
  */
 proto.kilocenter.api.v1.DLRXStatus.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    rxTime: jspb.Message.getFieldWithDefault(msg, 3, "0"),
-    packetCnt: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    dlRxSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
-    dlRxRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+bsEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+rxTime: jspb.Message.getFieldWithDefault(msg, 3, "0"),
+packetCnt: jspb.Message.getFieldWithDefault(msg, 4, 0),
+dlRxSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
+dlRxRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -21940,7 +21940,7 @@ proto.kilocenter.api.v1.DLRXStatus.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DLRXStatus}
  */
 proto.kilocenter.api.v1.DLRXStatus.deserializeBinary = function(bytes) {
@@ -21965,11 +21965,11 @@ proto.kilocenter.api.v1.DLRXStatus.deserializeBinaryFromReader = function(msg, r
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 3:
@@ -22252,11 +22252,11 @@ proto.kilocenter.api.v1.GetDLRXStatusRequest.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.GetDLRXStatusRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    limit: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    offset: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+limit: jspb.Message.getFieldWithDefault(msg, 2, 0),
+offset: jspb.Message.getFieldWithDefault(msg, 3, 0),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -22269,7 +22269,7 @@ proto.kilocenter.api.v1.GetDLRXStatusRequest.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDLRXStatusRequest}
  */
 proto.kilocenter.api.v1.GetDLRXStatusRequest.deserializeBinary = function(bytes) {
@@ -22294,7 +22294,7 @@ proto.kilocenter.api.v1.GetDLRXStatusRequest.deserializeBinaryFromReader = funct
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
@@ -22551,11 +22551,11 @@ proto.kilocenter.api.v1.GetDLRXStatusResponse.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.GetDLRXStatusResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    statusesList: jspb.Message.toObjectList(msg.getStatusesList(),
+statusesList: jspb.Message.toObjectList(msg.getStatusesList(),
     proto.kilocenter.api.v1.DLRXStatus.toObject, includeInstance),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
-    avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0)
+totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
+avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
+avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0)
   };
 
   if (includeInstance) {
@@ -22568,7 +22568,7 @@ proto.kilocenter.api.v1.GetDLRXStatusResponse.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDLRXStatusResponse}
  */
 proto.kilocenter.api.v1.GetDLRXStatusResponse.deserializeBinary = function(bytes) {
@@ -22794,7 +22794,7 @@ proto.kilocenter.api.v1.QueryDLRXStatusRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.QueryDLRXStatusRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -22807,7 +22807,7 @@ proto.kilocenter.api.v1.QueryDLRXStatusRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.QueryDLRXStatusRequest}
  */
 proto.kilocenter.api.v1.QueryDLRXStatusRequest.deserializeBinary = function(bytes) {
@@ -22832,7 +22832,7 @@ proto.kilocenter.api.v1.QueryDLRXStatusRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     default:
@@ -22924,8 +22924,8 @@ proto.kilocenter.api.v1.QueryDLRXStatusResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.QueryDLRXStatusResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    queryInitiated: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    message: jspb.Message.getFieldWithDefault(msg, 2, "")
+queryInitiated: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+message: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -22938,7 +22938,7 @@ proto.kilocenter.api.v1.QueryDLRXStatusResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.QueryDLRXStatusResponse}
  */
 proto.kilocenter.api.v1.QueryDLRXStatusResponse.deserializeBinary = function(bytes) {
@@ -22967,7 +22967,7 @@ proto.kilocenter.api.v1.QueryDLRXStatusResponse.deserializeBinaryFromReader = fu
       msg.setQueryInitiated(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessage(value);
       break;
     default:
@@ -23084,13 +23084,13 @@ proto.kilocenter.api.v1.DLRXStatusQuery.prototype.toObject = function(opt_includ
  */
 proto.kilocenter.api.v1.DLRXStatusQuery.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    opId: jspb.Message.getFieldWithDefault(msg, 3, "0"),
-    status: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    requestedAt: (f = msg.getRequestedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    receivedAt: (f = msg.getReceivedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    orgUuid: jspb.Message.getFieldWithDefault(msg, 7, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+bsEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+opId: jspb.Message.getFieldWithDefault(msg, 3, "0"),
+status: jspb.Message.getFieldWithDefault(msg, 4, ""),
+requestedAt: (f = msg.getRequestedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+receivedAt: (f = msg.getReceivedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+orgUuid: jspb.Message.getFieldWithDefault(msg, 7, "")
   };
 
   if (includeInstance) {
@@ -23103,7 +23103,7 @@ proto.kilocenter.api.v1.DLRXStatusQuery.toObject = function(includeInstance, msg
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DLRXStatusQuery}
  */
 proto.kilocenter.api.v1.DLRXStatusQuery.deserializeBinary = function(bytes) {
@@ -23128,11 +23128,11 @@ proto.kilocenter.api.v1.DLRXStatusQuery.deserializeBinaryFromReader = function(m
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 3:
@@ -23140,7 +23140,7 @@ proto.kilocenter.api.v1.DLRXStatusQuery.deserializeBinaryFromReader = function(m
       msg.setOpId(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 5:
@@ -23154,7 +23154,7 @@ proto.kilocenter.api.v1.DLRXStatusQuery.deserializeBinaryFromReader = function(m
       msg.setReceivedAt(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgUuid(value);
       break;
     default:
@@ -23436,11 +23436,11 @@ proto.kilocenter.api.v1.GetDLRXStatusQueriesRequest.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.GetDLRXStatusQueriesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    limit: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    offset: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+limit: jspb.Message.getFieldWithDefault(msg, 2, 0),
+offset: jspb.Message.getFieldWithDefault(msg, 3, 0),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -23453,7 +23453,7 @@ proto.kilocenter.api.v1.GetDLRXStatusQueriesRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDLRXStatusQueriesRequest}
  */
 proto.kilocenter.api.v1.GetDLRXStatusQueriesRequest.deserializeBinary = function(bytes) {
@@ -23478,7 +23478,7 @@ proto.kilocenter.api.v1.GetDLRXStatusQueriesRequest.deserializeBinaryFromReader 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
@@ -23728,9 +23728,9 @@ proto.kilocenter.api.v1.DLRXStatusQueryStats.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.DLRXStatusQueryStats.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pending: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    received: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    timeout: jspb.Message.getFieldWithDefault(msg, 3, 0)
+pending: jspb.Message.getFieldWithDefault(msg, 1, 0),
+received: jspb.Message.getFieldWithDefault(msg, 2, 0),
+timeout: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -23743,7 +23743,7 @@ proto.kilocenter.api.v1.DLRXStatusQueryStats.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DLRXStatusQueryStats}
  */
 proto.kilocenter.api.v1.DLRXStatusQueryStats.deserializeBinary = function(bytes) {
@@ -23925,10 +23925,10 @@ proto.kilocenter.api.v1.GetDLRXStatusQueriesResponse.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.GetDLRXStatusQueriesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    queriesList: jspb.Message.toObjectList(msg.getQueriesList(),
+queriesList: jspb.Message.toObjectList(msg.getQueriesList(),
     proto.kilocenter.api.v1.DLRXStatusQuery.toObject, includeInstance),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    stats: (f = msg.getStats()) && proto.kilocenter.api.v1.DLRXStatusQueryStats.toObject(includeInstance, f)
+totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
+stats: (f = msg.getStats()) && proto.kilocenter.api.v1.DLRXStatusQueryStats.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -23941,7 +23941,7 @@ proto.kilocenter.api.v1.GetDLRXStatusQueriesResponse.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDLRXStatusQueriesResponse}
  */
 proto.kilocenter.api.v1.GetDLRXStatusQueriesResponse.deserializeBinary = function(bytes) {
@@ -24159,16 +24159,16 @@ proto.kilocenter.api.v1.Integration.prototype.toObject = function(opt_includeIns
  */
 proto.kilocenter.api.v1.Integration.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    type: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    config: (f = msg.getConfig()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
-    eventFilter: (f = msg.getEventFilter()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
-    deliveryFormat: jspb.Message.getFieldWithDefault(msg, 7, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 8, ""),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+id: jspb.Message.getFieldWithDefault(msg, 1, 0),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+description: jspb.Message.getFieldWithDefault(msg, 3, ""),
+type: jspb.Message.getFieldWithDefault(msg, 4, ""),
+config: (f = msg.getConfig()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
+eventFilter: (f = msg.getEventFilter()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
+deliveryFormat: jspb.Message.getFieldWithDefault(msg, 7, ""),
+status: jspb.Message.getFieldWithDefault(msg, 8, ""),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -24181,7 +24181,7 @@ proto.kilocenter.api.v1.Integration.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Integration}
  */
 proto.kilocenter.api.v1.Integration.deserializeBinary = function(bytes) {
@@ -24210,15 +24210,15 @@ proto.kilocenter.api.v1.Integration.deserializeBinaryFromReader = function(msg, 
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setType(value);
       break;
     case 5:
@@ -24232,11 +24232,11 @@ proto.kilocenter.api.v1.Integration.deserializeBinaryFromReader = function(msg, 
       msg.setEventFilter(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDeliveryFormat(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 9:
@@ -24643,12 +24643,12 @@ proto.kilocenter.api.v1.CreateIntegrationRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.CreateIntegrationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    name: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    type: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    config: (f = msg.getConfig()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
-    eventFilter: (f = msg.getEventFilter()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
-    deliveryFormat: jspb.Message.getFieldWithDefault(msg, 6, "")
+name: jspb.Message.getFieldWithDefault(msg, 1, ""),
+description: jspb.Message.getFieldWithDefault(msg, 2, ""),
+type: jspb.Message.getFieldWithDefault(msg, 3, ""),
+config: (f = msg.getConfig()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
+eventFilter: (f = msg.getEventFilter()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
+deliveryFormat: jspb.Message.getFieldWithDefault(msg, 6, "")
   };
 
   if (includeInstance) {
@@ -24661,7 +24661,7 @@ proto.kilocenter.api.v1.CreateIntegrationRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateIntegrationRequest}
  */
 proto.kilocenter.api.v1.CreateIntegrationRequest.deserializeBinary = function(bytes) {
@@ -24686,15 +24686,15 @@ proto.kilocenter.api.v1.CreateIntegrationRequest.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setType(value);
       break;
     case 4:
@@ -24708,7 +24708,7 @@ proto.kilocenter.api.v1.CreateIntegrationRequest.deserializeBinaryFromReader = f
       msg.setEventFilter(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDeliveryFormat(value);
       break;
     default:
@@ -24965,7 +24965,7 @@ proto.kilocenter.api.v1.GetIntegrationRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.GetIntegrationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, 0)
+id: jspb.Message.getFieldWithDefault(msg, 1, 0)
   };
 
   if (includeInstance) {
@@ -24978,7 +24978,7 @@ proto.kilocenter.api.v1.GetIntegrationRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetIntegrationRequest}
  */
 proto.kilocenter.api.v1.GetIntegrationRequest.deserializeBinary = function(bytes) {
@@ -25095,12 +25095,12 @@ proto.kilocenter.api.v1.UpdateIntegrationRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.UpdateIntegrationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    config: (f = msg.getConfig()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
-    eventFilter: (f = msg.getEventFilter()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
-    status: jspb.Message.getFieldWithDefault(msg, 6, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, 0),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+description: jspb.Message.getFieldWithDefault(msg, 3, ""),
+config: (f = msg.getConfig()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
+eventFilter: (f = msg.getEventFilter()) && google_protobuf_struct_pb.Struct.toObject(includeInstance, f),
+status: jspb.Message.getFieldWithDefault(msg, 6, "")
   };
 
   if (includeInstance) {
@@ -25113,7 +25113,7 @@ proto.kilocenter.api.v1.UpdateIntegrationRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateIntegrationRequest}
  */
 proto.kilocenter.api.v1.UpdateIntegrationRequest.deserializeBinary = function(bytes) {
@@ -25142,11 +25142,11 @@ proto.kilocenter.api.v1.UpdateIntegrationRequest.deserializeBinaryFromReader = f
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 4:
@@ -25160,7 +25160,7 @@ proto.kilocenter.api.v1.UpdateIntegrationRequest.deserializeBinaryFromReader = f
       msg.setEventFilter(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     default:
@@ -25417,7 +25417,7 @@ proto.kilocenter.api.v1.DeleteIntegrationRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.DeleteIntegrationRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, 0)
+id: jspb.Message.getFieldWithDefault(msg, 1, 0)
   };
 
   if (includeInstance) {
@@ -25430,7 +25430,7 @@ proto.kilocenter.api.v1.DeleteIntegrationRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteIntegrationRequest}
  */
 proto.kilocenter.api.v1.DeleteIntegrationRequest.deserializeBinary = function(bytes) {
@@ -25547,8 +25547,8 @@ proto.kilocenter.api.v1.ListIntegrationsRequest.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.ListIntegrationsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    offset: jspb.Message.getFieldWithDefault(msg, 2, 0)
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+offset: jspb.Message.getFieldWithDefault(msg, 2, 0)
   };
 
   if (includeInstance) {
@@ -25561,7 +25561,7 @@ proto.kilocenter.api.v1.ListIntegrationsRequest.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListIntegrationsRequest}
  */
 proto.kilocenter.api.v1.ListIntegrationsRequest.deserializeBinary = function(bytes) {
@@ -25714,9 +25714,9 @@ proto.kilocenter.api.v1.ListIntegrationsResponse.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.ListIntegrationsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    integrationsList: jspb.Message.toObjectList(msg.getIntegrationsList(),
+integrationsList: jspb.Message.toObjectList(msg.getIntegrationsList(),
     proto.kilocenter.api.v1.Integration.toObject, includeInstance),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0)
+totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0)
   };
 
   if (includeInstance) {
@@ -25729,7 +25729,7 @@ proto.kilocenter.api.v1.ListIntegrationsResponse.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListIntegrationsResponse}
  */
 proto.kilocenter.api.v1.ListIntegrationsResponse.deserializeBinary = function(bytes) {
@@ -25897,8 +25897,8 @@ proto.kilocenter.api.v1.GetAnalyticsOverviewRequest.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.GetAnalyticsOverviewRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -25911,7 +25911,7 @@ proto.kilocenter.api.v1.GetAnalyticsOverviewRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetAnalyticsOverviewRequest}
  */
 proto.kilocenter.api.v1.GetAnalyticsOverviewRequest.deserializeBinary = function(bytes) {
@@ -26099,7 +26099,7 @@ proto.kilocenter.api.v1.GetAnalyticsOverviewResponse.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.GetAnalyticsOverviewResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    overview: (f = msg.getOverview()) && proto.kilocenter.api.v1.AnalyticsOverview.toObject(includeInstance, f)
+overview: (f = msg.getOverview()) && proto.kilocenter.api.v1.AnalyticsOverview.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -26112,7 +26112,7 @@ proto.kilocenter.api.v1.GetAnalyticsOverviewResponse.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetAnalyticsOverviewResponse}
  */
 proto.kilocenter.api.v1.GetAnalyticsOverviewResponse.deserializeBinary = function(bytes) {
@@ -26250,9 +26250,9 @@ proto.kilocenter.api.v1.GetActivityAnalyticsRequest.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.GetActivityAnalyticsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    granularity: jspb.Message.getFieldWithDefault(msg, 3, "")
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+granularity: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -26265,7 +26265,7 @@ proto.kilocenter.api.v1.GetActivityAnalyticsRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetActivityAnalyticsRequest}
  */
 proto.kilocenter.api.v1.GetActivityAnalyticsRequest.deserializeBinary = function(bytes) {
@@ -26300,7 +26300,7 @@ proto.kilocenter.api.v1.GetActivityAnalyticsRequest.deserializeBinaryFromReader 
       msg.setEndTime(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setGranularity(value);
       break;
     default:
@@ -26482,7 +26482,7 @@ proto.kilocenter.api.v1.GetActivityAnalyticsResponse.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.GetActivityAnalyticsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    activity: (f = msg.getActivity()) && proto.kilocenter.api.v1.ActivityAnalytics.toObject(includeInstance, f)
+activity: (f = msg.getActivity()) && proto.kilocenter.api.v1.ActivityAnalytics.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -26495,7 +26495,7 @@ proto.kilocenter.api.v1.GetActivityAnalyticsResponse.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetActivityAnalyticsResponse}
  */
 proto.kilocenter.api.v1.GetActivityAnalyticsResponse.deserializeBinary = function(bytes) {
@@ -26633,8 +26633,8 @@ proto.kilocenter.api.v1.GetSignalQualityAnalyticsRequest.prototype.toObject = fu
  */
 proto.kilocenter.api.v1.GetSignalQualityAnalyticsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -26647,7 +26647,7 @@ proto.kilocenter.api.v1.GetSignalQualityAnalyticsRequest.toObject = function(inc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetSignalQualityAnalyticsRequest}
  */
 proto.kilocenter.api.v1.GetSignalQualityAnalyticsRequest.deserializeBinary = function(bytes) {
@@ -26835,7 +26835,7 @@ proto.kilocenter.api.v1.GetSignalQualityAnalyticsResponse.prototype.toObject = f
  */
 proto.kilocenter.api.v1.GetSignalQualityAnalyticsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    signalQuality: (f = msg.getSignalQuality()) && proto.kilocenter.api.v1.SignalQualityAnalytics.toObject(includeInstance, f)
+signalQuality: (f = msg.getSignalQuality()) && proto.kilocenter.api.v1.SignalQualityAnalytics.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -26848,7 +26848,7 @@ proto.kilocenter.api.v1.GetSignalQualityAnalyticsResponse.toObject = function(in
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetSignalQualityAnalyticsResponse}
  */
 proto.kilocenter.api.v1.GetSignalQualityAnalyticsResponse.deserializeBinary = function(bytes) {
@@ -26993,19 +26993,19 @@ proto.kilocenter.api.v1.AnalyticsOverview.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.AnalyticsOverview.toObject = function(includeInstance, msg) {
   var f, obj = {
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    totalMessages: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    activeEndpoints: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    activeBaseStations: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
-    avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
-    firstMessage: (f = msg.getFirstMessage()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastMessage: (f = msg.getLastMessage()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    hourlyActivityList: jspb.Message.toObjectList(msg.getHourlyActivityList(),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+totalMessages: jspb.Message.getFieldWithDefault(msg, 3, 0),
+activeEndpoints: jspb.Message.getFieldWithDefault(msg, 4, 0),
+activeBaseStations: jspb.Message.getFieldWithDefault(msg, 5, 0),
+avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
+avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
+firstMessage: (f = msg.getFirstMessage()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastMessage: (f = msg.getLastMessage()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+hourlyActivityList: jspb.Message.toObjectList(msg.getHourlyActivityList(),
     proto.kilocenter.api.v1.HourlyActivity.toObject, includeInstance),
-    messagesLast24h: jspb.Message.getFieldWithDefault(msg, 11, 0),
-    messagesLastWeek: jspb.Message.getFieldWithDefault(msg, 12, 0)
+messagesLast24h: jspb.Message.getFieldWithDefault(msg, 11, 0),
+messagesLastWeek: jspb.Message.getFieldWithDefault(msg, 12, 0)
   };
 
   if (includeInstance) {
@@ -27018,7 +27018,7 @@ proto.kilocenter.api.v1.AnalyticsOverview.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.AnalyticsOverview}
  */
 proto.kilocenter.api.v1.AnalyticsOverview.deserializeBinary = function(bytes) {
@@ -27560,8 +27560,8 @@ proto.kilocenter.api.v1.HourlyActivity.prototype.toObject = function(opt_include
  */
 proto.kilocenter.api.v1.HourlyActivity.toObject = function(includeInstance, msg) {
   var f, obj = {
-    hour: (f = msg.getHour()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    messageCount: jspb.Message.getFieldWithDefault(msg, 2, 0)
+hour: (f = msg.getHour()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+messageCount: jspb.Message.getFieldWithDefault(msg, 2, 0)
   };
 
   if (includeInstance) {
@@ -27574,7 +27574,7 @@ proto.kilocenter.api.v1.HourlyActivity.toObject = function(includeInstance, msg)
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.HourlyActivity}
  */
 proto.kilocenter.api.v1.HourlyActivity.deserializeBinary = function(bytes) {
@@ -27748,12 +27748,12 @@ proto.kilocenter.api.v1.ActivityAnalytics.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.ActivityAnalytics.toObject = function(includeInstance, msg) {
   var f, obj = {
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    totalMessages: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    uniqueEndpoints: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    uniqueBaseStations: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    timeSlotsList: jspb.Message.toObjectList(msg.getTimeSlotsList(),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+totalMessages: jspb.Message.getFieldWithDefault(msg, 3, 0),
+uniqueEndpoints: jspb.Message.getFieldWithDefault(msg, 4, 0),
+uniqueBaseStations: jspb.Message.getFieldWithDefault(msg, 5, 0),
+timeSlotsList: jspb.Message.toObjectList(msg.getTimeSlotsList(),
     proto.kilocenter.api.v1.TimeSlotActivity.toObject, includeInstance)
   };
 
@@ -27767,7 +27767,7 @@ proto.kilocenter.api.v1.ActivityAnalytics.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ActivityAnalytics}
  */
 proto.kilocenter.api.v1.ActivityAnalytics.deserializeBinary = function(bytes) {
@@ -28093,9 +28093,9 @@ proto.kilocenter.api.v1.TimeSlotActivity.prototype.toObject = function(opt_inclu
  */
 proto.kilocenter.api.v1.TimeSlotActivity.toObject = function(includeInstance, msg) {
   var f, obj = {
-    slot: (f = msg.getSlot()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    messageCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    endpointCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+slot: (f = msg.getSlot()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+messageCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
+endpointCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -28108,7 +28108,7 @@ proto.kilocenter.api.v1.TimeSlotActivity.toObject = function(includeInstance, ms
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.TimeSlotActivity}
  */
 proto.kilocenter.api.v1.TimeSlotActivity.deserializeBinary = function(bytes) {
@@ -28311,10 +28311,10 @@ proto.kilocenter.api.v1.SignalQualityAnalytics.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.SignalQualityAnalytics.toObject = function(includeInstance, msg) {
   var f, obj = {
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    overall: (f = msg.getOverall()) && proto.kilocenter.api.v1.SignalQualityOverall.toObject(includeInstance, f),
-    byBaseStationList: jspb.Message.toObjectList(msg.getByBaseStationList(),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+overall: (f = msg.getOverall()) && proto.kilocenter.api.v1.SignalQualityOverall.toObject(includeInstance, f),
+byBaseStationList: jspb.Message.toObjectList(msg.getByBaseStationList(),
     proto.kilocenter.api.v1.BaseStationSignalQuality.toObject, includeInstance)
   };
 
@@ -28328,7 +28328,7 @@ proto.kilocenter.api.v1.SignalQualityAnalytics.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SignalQualityAnalytics}
  */
 proto.kilocenter.api.v1.SignalQualityAnalytics.deserializeBinary = function(bytes) {
@@ -28617,14 +28617,14 @@ proto.kilocenter.api.v1.SignalQualityOverall.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.SignalQualityOverall.toObject = function(includeInstance, msg) {
   var f, obj = {
-    avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 1, 0.0),
-    minRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 2, 0.0),
-    maxRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
-    medianRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
-    avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
-    minSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
-    maxSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
-    medianSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 8, 0.0)
+avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 1, 0.0),
+minRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 2, 0.0),
+maxRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
+medianRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
+avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
+minSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
+maxSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
+medianSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 8, 0.0)
   };
 
   if (includeInstance) {
@@ -28637,7 +28637,7 @@ proto.kilocenter.api.v1.SignalQualityOverall.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SignalQualityOverall}
  */
 proto.kilocenter.api.v1.SignalQualityOverall.deserializeBinary = function(bytes) {
@@ -28957,10 +28957,10 @@ proto.kilocenter.api.v1.BaseStationSignalQuality.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.BaseStationSignalQuality.toObject = function(includeInstance, msg) {
   var f, obj = {
-    eui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 2, 0.0),
-    avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
-    messageCount: jspb.Message.getFieldWithDefault(msg, 4, 0)
+eui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 2, 0.0),
+avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
+messageCount: jspb.Message.getFieldWithDefault(msg, 4, 0)
   };
 
   if (includeInstance) {
@@ -28973,7 +28973,7 @@ proto.kilocenter.api.v1.BaseStationSignalQuality.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStationSignalQuality}
  */
 proto.kilocenter.api.v1.BaseStationSignalQuality.deserializeBinary = function(bytes) {
@@ -28998,7 +28998,7 @@ proto.kilocenter.api.v1.BaseStationSignalQuality.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEui(value);
       break;
     case 2:
@@ -29184,18 +29184,18 @@ proto.kilocenter.api.v1.ListEventsRequest.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.ListEventsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    categoriesList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f,
-    severity: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    eventTypesList: (f = jspb.Message.getRepeatedField(msg, 7)) == null ? undefined : f,
-    opId: jspb.Message.getFieldWithDefault(msg, 8, "0"),
-    epEui: jspb.Message.getFieldWithDefault(msg, 9, ""),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    outcome: jspb.Message.getFieldWithDefault(msg, 11, ""),
-    search: jspb.Message.getFieldWithDefault(msg, 12, "")
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+categoriesList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f,
+severity: jspb.Message.getFieldWithDefault(msg, 4, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+eventTypesList: (f = jspb.Message.getRepeatedField(msg, 7)) == null ? undefined : f,
+opId: (f = jspb.Message.getField(msg, 8)) == null ? undefined : f,
+epEui: jspb.Message.getFieldWithDefault(msg, 9, ""),
+bsEui: jspb.Message.getFieldWithDefault(msg, 10, ""),
+outcome: jspb.Message.getFieldWithDefault(msg, 11, ""),
+search: jspb.Message.getFieldWithDefault(msg, 12, "")
   };
 
   if (includeInstance) {
@@ -29208,7 +29208,7 @@ proto.kilocenter.api.v1.ListEventsRequest.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListEventsRequest}
  */
 proto.kilocenter.api.v1.ListEventsRequest.deserializeBinary = function(bytes) {
@@ -29237,15 +29237,15 @@ proto.kilocenter.api.v1.ListEventsRequest.deserializeBinaryFromReader = function
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.addCategories(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSeverity(value);
       break;
     case 5:
@@ -29259,7 +29259,7 @@ proto.kilocenter.api.v1.ListEventsRequest.deserializeBinaryFromReader = function
       msg.setEndTime(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.addEventTypes(value);
       break;
     case 8:
@@ -29267,19 +29267,19 @@ proto.kilocenter.api.v1.ListEventsRequest.deserializeBinaryFromReader = function
       msg.setOpId(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOutcome(value);
       break;
     case 12:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSearch(value);
       break;
     default:
@@ -29742,11 +29742,11 @@ proto.kilocenter.api.v1.ListErrorGroupsRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.ListErrorGroupsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bucket: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 5, "")
+bucket: jspb.Message.getFieldWithDefault(msg, 1, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+pageSize: jspb.Message.getFieldWithDefault(msg, 4, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 5, "")
   };
 
   if (includeInstance) {
@@ -29759,7 +29759,7 @@ proto.kilocenter.api.v1.ListErrorGroupsRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListErrorGroupsRequest}
  */
 proto.kilocenter.api.v1.ListErrorGroupsRequest.deserializeBinary = function(bytes) {
@@ -29784,7 +29784,7 @@ proto.kilocenter.api.v1.ListErrorGroupsRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBucket(value);
       break;
     case 2:
@@ -29802,7 +29802,7 @@ proto.kilocenter.api.v1.ListErrorGroupsRequest.deserializeBinaryFromReader = fun
       msg.setPageSize(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     default:
@@ -30041,10 +30041,10 @@ proto.kilocenter.api.v1.ListErrorGroupsResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.ListErrorGroupsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    groupsList: jspb.Message.toObjectList(msg.getGroupsList(),
+groupsList: jspb.Message.toObjectList(msg.getGroupsList(),
     proto.kilocenter.api.v1.ErrorGroup.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -30057,7 +30057,7 @@ proto.kilocenter.api.v1.ListErrorGroupsResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListErrorGroupsResponse}
  */
 proto.kilocenter.api.v1.ListErrorGroupsResponse.deserializeBinary = function(bytes) {
@@ -30087,7 +30087,7 @@ proto.kilocenter.api.v1.ListErrorGroupsResponse.deserializeBinaryFromReader = fu
       msg.addGroups(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -30254,15 +30254,15 @@ proto.kilocenter.api.v1.ErrorGroup.prototype.toObject = function(opt_includeInst
  */
 proto.kilocenter.api.v1.ErrorGroup.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bucket: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    eventType: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    code: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    message: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    sourceName: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    firstSeen: (f = msg.getFirstSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastSeen: (f = msg.getLastSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    count: jspb.Message.getFieldWithDefault(msg, 8, 0),
-    lastOpId: jspb.Message.getFieldWithDefault(msg, 9, "")
+bucket: jspb.Message.getFieldWithDefault(msg, 1, ""),
+eventType: jspb.Message.getFieldWithDefault(msg, 2, ""),
+code: jspb.Message.getFieldWithDefault(msg, 3, ""),
+message: jspb.Message.getFieldWithDefault(msg, 4, ""),
+sourceName: jspb.Message.getFieldWithDefault(msg, 5, ""),
+firstSeen: (f = msg.getFirstSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastSeen: (f = msg.getLastSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+count: jspb.Message.getFieldWithDefault(msg, 8, 0),
+lastOpId: jspb.Message.getFieldWithDefault(msg, 9, "")
   };
 
   if (includeInstance) {
@@ -30275,7 +30275,7 @@ proto.kilocenter.api.v1.ErrorGroup.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ErrorGroup}
  */
 proto.kilocenter.api.v1.ErrorGroup.deserializeBinary = function(bytes) {
@@ -30300,23 +30300,23 @@ proto.kilocenter.api.v1.ErrorGroup.deserializeBinaryFromReader = function(msg, r
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBucket(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEventType(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCode(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessage(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSourceName(value);
       break;
     case 6:
@@ -30334,7 +30334,7 @@ proto.kilocenter.api.v1.ErrorGroup.deserializeBinaryFromReader = function(msg, r
       msg.setCount(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLastOpId(value);
       break;
     default:
@@ -30673,10 +30673,10 @@ proto.kilocenter.api.v1.ListEventsResponse.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.ListEventsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    eventsList: jspb.Message.toObjectList(msg.getEventsList(),
+eventsList: jspb.Message.toObjectList(msg.getEventsList(),
     proto.kilocenter.api.v1.Event.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -30689,7 +30689,7 @@ proto.kilocenter.api.v1.ListEventsResponse.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListEventsResponse}
  */
 proto.kilocenter.api.v1.ListEventsResponse.deserializeBinary = function(bytes) {
@@ -30719,7 +30719,7 @@ proto.kilocenter.api.v1.ListEventsResponse.deserializeBinaryFromReader = functio
       msg.addEvents(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -30886,11 +30886,11 @@ proto.kilocenter.api.v1.ListBaseStationActivityRequest.prototype.toObject = func
  */
 proto.kilocenter.api.v1.ListBaseStationActivityRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -30903,7 +30903,7 @@ proto.kilocenter.api.v1.ListBaseStationActivityRequest.toObject = function(inclu
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListBaseStationActivityRequest}
  */
 proto.kilocenter.api.v1.ListBaseStationActivityRequest.deserializeBinary = function(bytes) {
@@ -30928,7 +30928,7 @@ proto.kilocenter.api.v1.ListBaseStationActivityRequest.deserializeBinaryFromRead
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
@@ -30936,7 +30936,7 @@ proto.kilocenter.api.v1.ListBaseStationActivityRequest.deserializeBinaryFromRead
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 4:
@@ -31185,10 +31185,10 @@ proto.kilocenter.api.v1.ListBaseStationActivityResponse.prototype.toObject = fun
  */
 proto.kilocenter.api.v1.ListBaseStationActivityResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    itemsList: jspb.Message.toObjectList(msg.getItemsList(),
+itemsList: jspb.Message.toObjectList(msg.getItemsList(),
     proto.kilocenter.api.v1.BaseStationActivityItem.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -31201,7 +31201,7 @@ proto.kilocenter.api.v1.ListBaseStationActivityResponse.toObject = function(incl
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListBaseStationActivityResponse}
  */
 proto.kilocenter.api.v1.ListBaseStationActivityResponse.deserializeBinary = function(bytes) {
@@ -31231,7 +31231,7 @@ proto.kilocenter.api.v1.ListBaseStationActivityResponse.deserializeBinaryFromRea
       msg.addItems(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -31424,9 +31424,9 @@ proto.kilocenter.api.v1.BaseStationActivityItem.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.BaseStationActivityItem.toObject = function(includeInstance, msg) {
   var f, obj = {
-    occurredAt: (f = msg.getOccurredAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    event: (f = msg.getEvent()) && proto.kilocenter.api.v1.Event.toObject(includeInstance, f),
-    message: (f = msg.getMessage()) && proto.kilocenter.api.v1.BaseStationMessage.toObject(includeInstance, f)
+occurredAt: (f = msg.getOccurredAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+event: (f = msg.getEvent()) && proto.kilocenter.api.v1.Event.toObject(includeInstance, f),
+message: (f = msg.getMessage()) && proto.kilocenter.api.v1.BaseStationMessage.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -31439,7 +31439,7 @@ proto.kilocenter.api.v1.BaseStationActivityItem.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStationActivityItem}
  */
 proto.kilocenter.api.v1.BaseStationActivityItem.deserializeBinary = function(bytes) {
@@ -31677,11 +31677,11 @@ proto.kilocenter.api.v1.ListEndpointActivityRequest.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.ListEndpointActivityRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -31694,7 +31694,7 @@ proto.kilocenter.api.v1.ListEndpointActivityRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListEndpointActivityRequest}
  */
 proto.kilocenter.api.v1.ListEndpointActivityRequest.deserializeBinary = function(bytes) {
@@ -31719,7 +31719,7 @@ proto.kilocenter.api.v1.ListEndpointActivityRequest.deserializeBinaryFromReader 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
@@ -31727,7 +31727,7 @@ proto.kilocenter.api.v1.ListEndpointActivityRequest.deserializeBinaryFromReader 
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 4:
@@ -31976,10 +31976,10 @@ proto.kilocenter.api.v1.ListEndpointActivityResponse.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.ListEndpointActivityResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    itemsList: jspb.Message.toObjectList(msg.getItemsList(),
+itemsList: jspb.Message.toObjectList(msg.getItemsList(),
     proto.kilocenter.api.v1.EndpointActivityItem.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -31992,7 +31992,7 @@ proto.kilocenter.api.v1.ListEndpointActivityResponse.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListEndpointActivityResponse}
  */
 proto.kilocenter.api.v1.ListEndpointActivityResponse.deserializeBinary = function(bytes) {
@@ -32022,7 +32022,7 @@ proto.kilocenter.api.v1.ListEndpointActivityResponse.deserializeBinaryFromReader
       msg.addItems(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -32215,9 +32215,9 @@ proto.kilocenter.api.v1.EndpointActivityItem.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.EndpointActivityItem.toObject = function(includeInstance, msg) {
   var f, obj = {
-    occurredAt: (f = msg.getOccurredAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    event: (f = msg.getEvent()) && proto.kilocenter.api.v1.Event.toObject(includeInstance, f),
-    message: (f = msg.getMessage()) && proto.kilocenter.api.v1.Message.toObject(includeInstance, f)
+occurredAt: (f = msg.getOccurredAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+event: (f = msg.getEvent()) && proto.kilocenter.api.v1.Event.toObject(includeInstance, f),
+message: (f = msg.getMessage()) && proto.kilocenter.api.v1.Message.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -32230,7 +32230,7 @@ proto.kilocenter.api.v1.EndpointActivityItem.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.EndpointActivityItem}
  */
 proto.kilocenter.api.v1.EndpointActivityItem.deserializeBinary = function(bytes) {
@@ -32468,10 +32468,10 @@ proto.kilocenter.api.v1.StreamEventsRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.StreamEventsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    category: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    severity: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+category: jspb.Message.getFieldWithDefault(msg, 1, ""),
+severity: jspb.Message.getFieldWithDefault(msg, 2, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -32484,7 +32484,7 @@ proto.kilocenter.api.v1.StreamEventsRequest.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.StreamEventsRequest}
  */
 proto.kilocenter.api.v1.StreamEventsRequest.deserializeBinary = function(bytes) {
@@ -32509,11 +32509,11 @@ proto.kilocenter.api.v1.StreamEventsRequest.deserializeBinaryFromReader = functi
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCategory(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSeverity(value);
       break;
     case 3:
@@ -32730,10 +32730,10 @@ proto.kilocenter.api.v1.ListAlertsRequest.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.ListAlertsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    severity: jspb.Message.getFieldWithDefault(msg, 4, "")
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+status: jspb.Message.getFieldWithDefault(msg, 3, ""),
+severity: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -32746,7 +32746,7 @@ proto.kilocenter.api.v1.ListAlertsRequest.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListAlertsRequest}
  */
 proto.kilocenter.api.v1.ListAlertsRequest.deserializeBinary = function(bytes) {
@@ -32775,15 +32775,15 @@ proto.kilocenter.api.v1.ListAlertsRequest.deserializeBinaryFromReader = function
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSeverity(value);
       break;
     default:
@@ -32957,10 +32957,10 @@ proto.kilocenter.api.v1.ListAlertsResponse.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.ListAlertsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    alertsList: jspb.Message.toObjectList(msg.getAlertsList(),
+alertsList: jspb.Message.toObjectList(msg.getAlertsList(),
     proto.kilocenter.api.v1.Alert.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -32973,7 +32973,7 @@ proto.kilocenter.api.v1.ListAlertsResponse.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListAlertsResponse}
  */
 proto.kilocenter.api.v1.ListAlertsResponse.deserializeBinary = function(bytes) {
@@ -33003,7 +33003,7 @@ proto.kilocenter.api.v1.ListAlertsResponse.deserializeBinaryFromReader = functio
       msg.addAlerts(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -33183,7 +33183,7 @@ proto.kilocenter.api.v1.GetAlertSummaryRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetAlertSummaryRequest}
  */
 proto.kilocenter.api.v1.GetAlertSummaryRequest.deserializeBinary = function(bytes) {
@@ -33271,7 +33271,7 @@ proto.kilocenter.api.v1.GetAlertSummaryResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.GetAlertSummaryResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    summary: (f = msg.getSummary()) && proto.kilocenter.api.v1.AlertSummary.toObject(includeInstance, f)
+summary: (f = msg.getSummary()) && proto.kilocenter.api.v1.AlertSummary.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -33284,7 +33284,7 @@ proto.kilocenter.api.v1.GetAlertSummaryResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetAlertSummaryResponse}
  */
 proto.kilocenter.api.v1.GetAlertSummaryResponse.deserializeBinary = function(bytes) {
@@ -33422,17 +33422,17 @@ proto.kilocenter.api.v1.Event.prototype.toObject = function(opt_includeInstance)
  */
 proto.kilocenter.api.v1.Event.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    eventType: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    category: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    severity: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    title: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    sourceName: jspb.Message.getFieldWithDefault(msg, 7, ""),
-    timestamp: (f = msg.getTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    data: msg.getData_asB64(),
-    userId: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    userEmail: jspb.Message.getFieldWithDefault(msg, 11, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+eventType: jspb.Message.getFieldWithDefault(msg, 2, ""),
+category: jspb.Message.getFieldWithDefault(msg, 3, ""),
+severity: jspb.Message.getFieldWithDefault(msg, 4, ""),
+title: jspb.Message.getFieldWithDefault(msg, 5, ""),
+description: jspb.Message.getFieldWithDefault(msg, 6, ""),
+sourceName: jspb.Message.getFieldWithDefault(msg, 7, ""),
+timestamp: (f = msg.getTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+data: msg.getData_asB64(),
+userId: jspb.Message.getFieldWithDefault(msg, 10, ""),
+userEmail: jspb.Message.getFieldWithDefault(msg, 11, "")
   };
 
   if (includeInstance) {
@@ -33445,7 +33445,7 @@ proto.kilocenter.api.v1.Event.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Event}
  */
 proto.kilocenter.api.v1.Event.deserializeBinary = function(bytes) {
@@ -33470,31 +33470,31 @@ proto.kilocenter.api.v1.Event.deserializeBinaryFromReader = function(msg, reader
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEventType(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCategory(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSeverity(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTitle(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSourceName(value);
       break;
     case 8:
@@ -33507,11 +33507,11 @@ proto.kilocenter.api.v1.Event.deserializeBinaryFromReader = function(msg, reader
       msg.setData(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserId(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUserEmail(value);
       break;
     default:
@@ -33897,14 +33897,14 @@ proto.kilocenter.api.v1.Alert.prototype.toObject = function(opt_includeInstance)
  */
 proto.kilocenter.api.v1.Alert.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    severity: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    category: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    title: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    sourceName: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    timestamp: (f = msg.getTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    status: jspb.Message.getFieldWithDefault(msg, 8, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+severity: jspb.Message.getFieldWithDefault(msg, 2, ""),
+category: jspb.Message.getFieldWithDefault(msg, 3, ""),
+title: jspb.Message.getFieldWithDefault(msg, 4, ""),
+description: jspb.Message.getFieldWithDefault(msg, 5, ""),
+sourceName: jspb.Message.getFieldWithDefault(msg, 6, ""),
+timestamp: (f = msg.getTimestamp()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+status: jspb.Message.getFieldWithDefault(msg, 8, "")
   };
 
   if (includeInstance) {
@@ -33917,7 +33917,7 @@ proto.kilocenter.api.v1.Alert.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Alert}
  */
 proto.kilocenter.api.v1.Alert.deserializeBinary = function(bytes) {
@@ -33942,27 +33942,27 @@ proto.kilocenter.api.v1.Alert.deserializeBinaryFromReader = function(msg, reader
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSeverity(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCategory(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTitle(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSourceName(value);
       break;
     case 7:
@@ -33971,7 +33971,7 @@ proto.kilocenter.api.v1.Alert.deserializeBinaryFromReader = function(msg, reader
       msg.setTimestamp(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     default:
@@ -34265,12 +34265,12 @@ proto.kilocenter.api.v1.AlertSummary.prototype.toObject = function(opt_includeIn
  */
 proto.kilocenter.api.v1.AlertSummary.toObject = function(includeInstance, msg) {
   var f, obj = {
-    critical: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    warning: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    info: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    recentList: jspb.Message.toObjectList(msg.getRecentList(),
+critical: jspb.Message.getFieldWithDefault(msg, 1, 0),
+warning: jspb.Message.getFieldWithDefault(msg, 2, 0),
+info: jspb.Message.getFieldWithDefault(msg, 3, 0),
+recentList: jspb.Message.toObjectList(msg.getRecentList(),
     proto.kilocenter.api.v1.Alert.toObject, includeInstance),
-    error: jspb.Message.getFieldWithDefault(msg, 5, 0)
+error: jspb.Message.getFieldWithDefault(msg, 5, 0)
   };
 
   if (includeInstance) {
@@ -34283,7 +34283,7 @@ proto.kilocenter.api.v1.AlertSummary.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.AlertSummary}
  */
 proto.kilocenter.api.v1.AlertSummary.deserializeBinary = function(bytes) {
@@ -34538,11 +34538,11 @@ proto.kilocenter.api.v1.ListScaciSessionsRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.ListScaciSessionsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    canResume: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    canResumeFilter: jspb.Message.getBooleanFieldWithDefault(msg, 5, false)
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+status: jspb.Message.getFieldWithDefault(msg, 3, ""),
+canResume: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+canResumeFilter: (f = jspb.Message.getBooleanField(msg, 5)) == null ? undefined : f
   };
 
   if (includeInstance) {
@@ -34555,7 +34555,7 @@ proto.kilocenter.api.v1.ListScaciSessionsRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListScaciSessionsRequest}
  */
 proto.kilocenter.api.v1.ListScaciSessionsRequest.deserializeBinary = function(bytes) {
@@ -34584,11 +34584,11 @@ proto.kilocenter.api.v1.ListScaciSessionsRequest.deserializeBinaryFromReader = f
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 4:
@@ -34813,10 +34813,10 @@ proto.kilocenter.api.v1.ListScaciSessionsResponse.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.ListScaciSessionsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    sessionsList: jspb.Message.toObjectList(msg.getSessionsList(),
+sessionsList: jspb.Message.toObjectList(msg.getSessionsList(),
     proto.kilocenter.api.v1.ScaciSession.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -34829,7 +34829,7 @@ proto.kilocenter.api.v1.ListScaciSessionsResponse.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListScaciSessionsResponse}
  */
 proto.kilocenter.api.v1.ListScaciSessionsResponse.deserializeBinary = function(bytes) {
@@ -34859,7 +34859,7 @@ proto.kilocenter.api.v1.ListScaciSessionsResponse.deserializeBinaryFromReader = 
       msg.addSessions(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -35026,7 +35026,7 @@ proto.kilocenter.api.v1.GetScaciSessionRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.GetScaciSessionRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -35039,7 +35039,7 @@ proto.kilocenter.api.v1.GetScaciSessionRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetScaciSessionRequest}
  */
 proto.kilocenter.api.v1.GetScaciSessionRequest.deserializeBinary = function(bytes) {
@@ -35064,7 +35064,7 @@ proto.kilocenter.api.v1.GetScaciSessionRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -35156,7 +35156,7 @@ proto.kilocenter.api.v1.GetScaciSessionResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.GetScaciSessionResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    session: (f = msg.getSession()) && proto.kilocenter.api.v1.ScaciSession.toObject(includeInstance, f)
+session: (f = msg.getSession()) && proto.kilocenter.api.v1.ScaciSession.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -35169,7 +35169,7 @@ proto.kilocenter.api.v1.GetScaciSessionResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetScaciSessionResponse}
  */
 proto.kilocenter.api.v1.GetScaciSessionResponse.deserializeBinary = function(bytes) {
@@ -35307,8 +35307,8 @@ proto.kilocenter.api.v1.GetScaciStatisticsRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.GetScaciStatisticsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -35321,7 +35321,7 @@ proto.kilocenter.api.v1.GetScaciStatisticsRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetScaciStatisticsRequest}
  */
 proto.kilocenter.api.v1.GetScaciStatisticsRequest.deserializeBinary = function(bytes) {
@@ -35509,7 +35509,7 @@ proto.kilocenter.api.v1.GetScaciStatisticsResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.GetScaciStatisticsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    statistics: (f = msg.getStatistics()) && proto.kilocenter.api.v1.ScaciStatistics.toObject(includeInstance, f)
+statistics: (f = msg.getStatistics()) && proto.kilocenter.api.v1.ScaciStatistics.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -35522,7 +35522,7 @@ proto.kilocenter.api.v1.GetScaciStatisticsResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetScaciStatisticsResponse}
  */
 proto.kilocenter.api.v1.GetScaciStatisticsResponse.deserializeBinary = function(bytes) {
@@ -35660,10 +35660,10 @@ proto.kilocenter.api.v1.ListScaciErrorsRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.ListScaciErrorsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -35676,7 +35676,7 @@ proto.kilocenter.api.v1.ListScaciErrorsRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListScaciErrorsRequest}
  */
 proto.kilocenter.api.v1.ListScaciErrorsRequest.deserializeBinary = function(bytes) {
@@ -35705,7 +35705,7 @@ proto.kilocenter.api.v1.ListScaciErrorsRequest.deserializeBinaryFromReader = fun
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 3:
@@ -35929,10 +35929,10 @@ proto.kilocenter.api.v1.ListScaciErrorsResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.ListScaciErrorsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    errorsList: jspb.Message.toObjectList(msg.getErrorsList(),
+errorsList: jspb.Message.toObjectList(msg.getErrorsList(),
     proto.kilocenter.api.v1.ScaciError.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -35945,7 +35945,7 @@ proto.kilocenter.api.v1.ListScaciErrorsResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListScaciErrorsResponse}
  */
 proto.kilocenter.api.v1.ListScaciErrorsResponse.deserializeBinary = function(bytes) {
@@ -35975,7 +35975,7 @@ proto.kilocenter.api.v1.ListScaciErrorsResponse.deserializeBinaryFromReader = fu
       msg.addErrors(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -36142,9 +36142,9 @@ proto.kilocenter.api.v1.ListScaciQueuesRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.ListScaciQueuesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -36157,7 +36157,7 @@ proto.kilocenter.api.v1.ListScaciQueuesRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListScaciQueuesRequest}
  */
 proto.kilocenter.api.v1.ListScaciQueuesRequest.deserializeBinary = function(bytes) {
@@ -36182,7 +36182,7 @@ proto.kilocenter.api.v1.ListScaciQueuesRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
@@ -36190,7 +36190,7 @@ proto.kilocenter.api.v1.ListScaciQueuesRequest.deserializeBinaryFromReader = fun
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     default:
@@ -36339,10 +36339,10 @@ proto.kilocenter.api.v1.ListScaciQueuesResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.ListScaciQueuesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    queueEntriesList: jspb.Message.toObjectList(msg.getQueueEntriesList(),
+queueEntriesList: jspb.Message.toObjectList(msg.getQueueEntriesList(),
     proto.kilocenter.api.v1.ScaciQueueEntry.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -36355,7 +36355,7 @@ proto.kilocenter.api.v1.ListScaciQueuesResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListScaciQueuesResponse}
  */
 proto.kilocenter.api.v1.ListScaciQueuesResponse.deserializeBinary = function(bytes) {
@@ -36385,7 +36385,7 @@ proto.kilocenter.api.v1.ListScaciQueuesResponse.deserializeBinaryFromReader = fu
       msg.addQueueEntries(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -36559,7 +36559,7 @@ proto.kilocenter.api.v1.ListCapabilitiesResponse.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.ListCapabilitiesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    capabilitiesList: jspb.Message.toObjectList(msg.getCapabilitiesList(),
+capabilitiesList: jspb.Message.toObjectList(msg.getCapabilitiesList(),
     proto.kilocenter.api.v1.Capability.toObject, includeInstance)
   };
 
@@ -36573,7 +36573,7 @@ proto.kilocenter.api.v1.ListCapabilitiesResponse.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListCapabilitiesResponse}
  */
 proto.kilocenter.api.v1.ListCapabilitiesResponse.deserializeBinary = function(bytes) {
@@ -36712,8 +36712,8 @@ proto.kilocenter.api.v1.Capability.prototype.toObject = function(opt_includeInst
  */
 proto.kilocenter.api.v1.Capability.toObject = function(includeInstance, msg) {
   var f, obj = {
-    name: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    enabled: jspb.Message.getBooleanFieldWithDefault(msg, 2, false)
+name: jspb.Message.getFieldWithDefault(msg, 1, ""),
+enabled: jspb.Message.getBooleanFieldWithDefault(msg, 2, false)
   };
 
   if (includeInstance) {
@@ -36726,7 +36726,7 @@ proto.kilocenter.api.v1.Capability.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Capability}
  */
 proto.kilocenter.api.v1.Capability.deserializeBinary = function(bytes) {
@@ -36751,7 +36751,7 @@ proto.kilocenter.api.v1.Capability.deserializeBinaryFromReader = function(msg, r
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 2:
@@ -36885,7 +36885,7 @@ proto.kilocenter.api.v1.GetDiagnosticsBundleRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDiagnosticsBundleRequest}
  */
 proto.kilocenter.api.v1.GetDiagnosticsBundleRequest.deserializeBinary = function(bytes) {
@@ -36973,11 +36973,11 @@ proto.kilocenter.api.v1.GetDiagnosticsBundleResponse.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.GetDiagnosticsBundleResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    archive: msg.getArchive_asB64(),
-    filename: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    contentType: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    sizeBytes: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    generatedAt: (f = msg.getGeneratedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+archive: msg.getArchive_asB64(),
+filename: jspb.Message.getFieldWithDefault(msg, 2, ""),
+contentType: jspb.Message.getFieldWithDefault(msg, 3, ""),
+sizeBytes: jspb.Message.getFieldWithDefault(msg, 4, 0),
+generatedAt: (f = msg.getGeneratedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -36990,7 +36990,7 @@ proto.kilocenter.api.v1.GetDiagnosticsBundleResponse.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDiagnosticsBundleResponse}
  */
 proto.kilocenter.api.v1.GetDiagnosticsBundleResponse.deserializeBinary = function(bytes) {
@@ -37019,11 +37019,11 @@ proto.kilocenter.api.v1.GetDiagnosticsBundleResponse.deserializeBinaryFromReader
       msg.setArchive(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setFilename(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setContentType(value);
       break;
     case 4:
@@ -37268,8 +37268,8 @@ proto.kilocenter.api.v1.GetScaciStatusRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.GetScaciStatusRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -37282,7 +37282,7 @@ proto.kilocenter.api.v1.GetScaciStatusRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetScaciStatusRequest}
  */
 proto.kilocenter.api.v1.GetScaciStatusRequest.deserializeBinary = function(bytes) {
@@ -37470,7 +37470,7 @@ proto.kilocenter.api.v1.GetScaciStatusResponse.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.GetScaciStatusResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    status: (f = msg.getStatus()) && proto.kilocenter.api.v1.ScaciStatus.toObject(includeInstance, f)
+status: (f = msg.getStatus()) && proto.kilocenter.api.v1.ScaciStatus.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -37483,7 +37483,7 @@ proto.kilocenter.api.v1.GetScaciStatusResponse.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetScaciStatusResponse}
  */
 proto.kilocenter.api.v1.GetScaciStatusResponse.deserializeBinary = function(bytes) {
@@ -37621,19 +37621,19 @@ proto.kilocenter.api.v1.ScaciSession.prototype.toObject = function(opt_includeIn
  */
 proto.kilocenter.api.v1.ScaciSession.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    acEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    canResume: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
-    protocolVersion: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    connectedAt: (f = msg.getConnectedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastActivityAt: (f = msg.getLastActivityAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    operationsCount: jspb.Message.getFieldWithDefault(msg, 8, 0),
-    snAcUuid: jspb.Message.getFieldWithDefault(msg, 9, ""),
-    snScUuid: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    lastOpIdAc: jspb.Message.getFieldWithDefault(msg, 11, "0"),
-    lastOpIdSc: jspb.Message.getFieldWithDefault(msg, 12, "0"),
-    disconnectedAt: (f = msg.getDisconnectedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+acEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+status: jspb.Message.getFieldWithDefault(msg, 3, ""),
+canResume: jspb.Message.getBooleanFieldWithDefault(msg, 4, false),
+protocolVersion: jspb.Message.getFieldWithDefault(msg, 5, ""),
+connectedAt: (f = msg.getConnectedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastActivityAt: (f = msg.getLastActivityAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+operationsCount: jspb.Message.getFieldWithDefault(msg, 8, 0),
+snAcUuid: jspb.Message.getFieldWithDefault(msg, 9, ""),
+snScUuid: jspb.Message.getFieldWithDefault(msg, 10, ""),
+lastOpIdAc: jspb.Message.getFieldWithDefault(msg, 11, "0"),
+lastOpIdSc: jspb.Message.getFieldWithDefault(msg, 12, "0"),
+disconnectedAt: (f = msg.getDisconnectedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -37646,7 +37646,7 @@ proto.kilocenter.api.v1.ScaciSession.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ScaciSession}
  */
 proto.kilocenter.api.v1.ScaciSession.deserializeBinary = function(bytes) {
@@ -37671,15 +37671,15 @@ proto.kilocenter.api.v1.ScaciSession.deserializeBinaryFromReader = function(msg,
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setAcEui(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 4:
@@ -37687,7 +37687,7 @@ proto.kilocenter.api.v1.ScaciSession.deserializeBinaryFromReader = function(msg,
       msg.setCanResume(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setProtocolVersion(value);
       break;
     case 6:
@@ -37705,11 +37705,11 @@ proto.kilocenter.api.v1.ScaciSession.deserializeBinaryFromReader = function(msg,
       msg.setOperationsCount(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSnAcUuid(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSnScUuid(value);
       break;
     case 11:
@@ -38174,13 +38174,13 @@ proto.kilocenter.api.v1.ScaciStatistics.prototype.toObject = function(opt_includ
  */
 proto.kilocenter.api.v1.ScaciStatistics.toObject = function(includeInstance, msg) {
   var f, obj = {
-    totalSessions: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    activeSessions: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    totalOperations: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    successfulOperations: jspb.Message.getFieldWithDefault(msg, 4, 0),
-    failedOperations: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    successRate: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
-    uptimeSince: (f = msg.getUptimeSince()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+totalSessions: jspb.Message.getFieldWithDefault(msg, 1, 0),
+activeSessions: jspb.Message.getFieldWithDefault(msg, 2, 0),
+totalOperations: jspb.Message.getFieldWithDefault(msg, 3, 0),
+successfulOperations: jspb.Message.getFieldWithDefault(msg, 4, 0),
+failedOperations: jspb.Message.getFieldWithDefault(msg, 5, 0),
+successRate: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
+uptimeSince: (f = msg.getUptimeSince()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -38193,7 +38193,7 @@ proto.kilocenter.api.v1.ScaciStatistics.toObject = function(includeInstance, msg
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ScaciStatistics}
  */
 proto.kilocenter.api.v1.ScaciStatistics.deserializeBinary = function(bytes) {
@@ -38505,16 +38505,16 @@ proto.kilocenter.api.v1.ScaciError.prototype.toObject = function(opt_includeInst
  */
 proto.kilocenter.api.v1.ScaciError.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    errorCode: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    errorMessage: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    sessionId: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    operationType: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    occurredAt: (f = msg.getOccurredAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    firstSeen: (f = msg.getFirstSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastSeen: (f = msg.getLastSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    count: jspb.Message.getFieldWithDefault(msg, 9, 0),
-    errorToken: jspb.Message.getFieldWithDefault(msg, 10, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+errorCode: jspb.Message.getFieldWithDefault(msg, 2, ""),
+errorMessage: jspb.Message.getFieldWithDefault(msg, 3, ""),
+sessionId: jspb.Message.getFieldWithDefault(msg, 4, ""),
+operationType: jspb.Message.getFieldWithDefault(msg, 5, ""),
+occurredAt: (f = msg.getOccurredAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+firstSeen: (f = msg.getFirstSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastSeen: (f = msg.getLastSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+count: jspb.Message.getFieldWithDefault(msg, 9, 0),
+errorToken: jspb.Message.getFieldWithDefault(msg, 10, "")
   };
 
   if (includeInstance) {
@@ -38527,7 +38527,7 @@ proto.kilocenter.api.v1.ScaciError.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ScaciError}
  */
 proto.kilocenter.api.v1.ScaciError.deserializeBinary = function(bytes) {
@@ -38552,23 +38552,23 @@ proto.kilocenter.api.v1.ScaciError.deserializeBinaryFromReader = function(msg, r
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setErrorCode(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setErrorMessage(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSessionId(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOperationType(value);
       break;
     case 6:
@@ -38591,7 +38591,7 @@ proto.kilocenter.api.v1.ScaciError.deserializeBinaryFromReader = function(msg, r
       msg.setCount(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setErrorToken(value);
       break;
     default:
@@ -38968,15 +38968,15 @@ proto.kilocenter.api.v1.ScaciQueueEntry.prototype.toObject = function(opt_includ
  */
 proto.kilocenter.api.v1.ScaciQueueEntry.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    epEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    operationType: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    payload: msg.getPayload_asB64(),
-    queuedAt: (f = msg.getQueuedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    processedAt: (f = msg.getProcessedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    queId: jspb.Message.getFieldWithDefault(msg, 8, "0"),
-    priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 9, 0.0)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+epEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+operationType: jspb.Message.getFieldWithDefault(msg, 3, ""),
+status: jspb.Message.getFieldWithDefault(msg, 4, ""),
+payload: msg.getPayload_asB64(),
+queuedAt: (f = msg.getQueuedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+processedAt: (f = msg.getProcessedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+queId: jspb.Message.getFieldWithDefault(msg, 8, "0"),
+priority: jspb.Message.getFloatingPointFieldWithDefault(msg, 9, 0.0)
   };
 
   if (includeInstance) {
@@ -38989,7 +38989,7 @@ proto.kilocenter.api.v1.ScaciQueueEntry.toObject = function(includeInstance, msg
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ScaciQueueEntry}
  */
 proto.kilocenter.api.v1.ScaciQueueEntry.deserializeBinary = function(bytes) {
@@ -39014,19 +39014,19 @@ proto.kilocenter.api.v1.ScaciQueueEntry.deserializeBinaryFromReader = function(m
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOperationType(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 5:
@@ -39404,17 +39404,17 @@ proto.kilocenter.api.v1.ScaciStatus.prototype.toObject = function(opt_includeIns
  */
 proto.kilocenter.api.v1.ScaciStatus.toObject = function(includeInstance, msg) {
   var f, obj = {
-    serviceOnline: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    activeSessions: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pendingOperations: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    uptimeSince: (f = msg.getUptimeSince()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    protocolVersion: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    scEui: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    lastPingAt: (f = msg.getLastPingAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastPingRttMs: jspb.Message.getFieldWithDefault(msg, 8, 0),
-    missedPings: jspb.Message.getFieldWithDefault(msg, 9, 0),
-    reconnectAttempts: jspb.Message.getFieldWithDefault(msg, 10, 0),
-    lastConnectResult: jspb.Message.getFieldWithDefault(msg, 11, "")
+serviceOnline: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+activeSessions: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pendingOperations: jspb.Message.getFieldWithDefault(msg, 3, 0),
+uptimeSince: (f = msg.getUptimeSince()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+protocolVersion: jspb.Message.getFieldWithDefault(msg, 5, ""),
+scEui: jspb.Message.getFieldWithDefault(msg, 6, ""),
+lastPingAt: (f = msg.getLastPingAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastPingRttMs: jspb.Message.getFieldWithDefault(msg, 8, 0),
+missedPings: jspb.Message.getFieldWithDefault(msg, 9, 0),
+reconnectAttempts: jspb.Message.getFieldWithDefault(msg, 10, 0),
+lastConnectResult: jspb.Message.getFieldWithDefault(msg, 11, "")
   };
 
   if (includeInstance) {
@@ -39427,7 +39427,7 @@ proto.kilocenter.api.v1.ScaciStatus.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ScaciStatus}
  */
 proto.kilocenter.api.v1.ScaciStatus.deserializeBinary = function(bytes) {
@@ -39469,11 +39469,11 @@ proto.kilocenter.api.v1.ScaciStatus.deserializeBinaryFromReader = function(msg, 
       msg.setUptimeSince(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setProtocolVersion(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setScEui(value);
       break;
     case 7:
@@ -39494,7 +39494,7 @@ proto.kilocenter.api.v1.ScaciStatus.deserializeBinaryFromReader = function(msg, 
       msg.setReconnectAttempts(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLastConnectResult(value);
       break;
     default:
@@ -39876,9 +39876,9 @@ proto.kilocenter.api.v1.GenerateCertificateRequest.prototype.toObject = function
  */
 proto.kilocenter.api.v1.GenerateCertificateRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    baseStationName: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    validityDays: jspb.Message.getFieldWithDefault(msg, 3, 0)
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+baseStationName: jspb.Message.getFieldWithDefault(msg, 2, ""),
+validityDays: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -39891,7 +39891,7 @@ proto.kilocenter.api.v1.GenerateCertificateRequest.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GenerateCertificateRequest}
  */
 proto.kilocenter.api.v1.GenerateCertificateRequest.deserializeBinary = function(bytes) {
@@ -39916,11 +39916,11 @@ proto.kilocenter.api.v1.GenerateCertificateRequest.deserializeBinaryFromReader =
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBaseStationName(value);
       break;
     case 3:
@@ -40066,10 +40066,10 @@ proto.kilocenter.api.v1.GenerateCertificateResponse.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.GenerateCertificateResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    serviceCenterUrl: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    downloadUrlsMap: (f = msg.getDownloadUrlsMap()) ? f.toObject(includeInstance, undefined) : [],
-    expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+serviceCenterUrl: jspb.Message.getFieldWithDefault(msg, 2, ""),
+downloadUrlsMap: (f = msg.getDownloadUrlsMap()) ? f.toObject(includeInstance, undefined) : [],
+expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -40082,7 +40082,7 @@ proto.kilocenter.api.v1.GenerateCertificateResponse.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GenerateCertificateResponse}
  */
 proto.kilocenter.api.v1.GenerateCertificateResponse.deserializeBinary = function(bytes) {
@@ -40107,17 +40107,17 @@ proto.kilocenter.api.v1.GenerateCertificateResponse.deserializeBinaryFromReader 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setServiceCenterUrl(value);
       break;
     case 3:
       var value = msg.getDownloadUrlsMap();
       reader.readMessage(value, function(message, reader) {
-        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readString, jspb.BinaryReader.prototype.readString, null, "", "");
+        jspb.Map.deserializeBinary(message, reader, jspb.BinaryReader.prototype.readStringRequireUtf8, jspb.BinaryReader.prototype.readStringRequireUtf8, null, "", "");
          });
       break;
     case 4:
@@ -40170,7 +40170,12 @@ proto.kilocenter.api.v1.GenerateCertificateResponse.serializeBinaryToWriter = fu
   }
   f = message.getDownloadUrlsMap(true);
   if (f && f.getLength() > 0) {
-    f.serializeBinary(3, writer, jspb.BinaryWriter.prototype.writeString, jspb.BinaryWriter.prototype.writeString);
+jspb.internal.public_for_gencode.serializeMapToBinary(
+    message.getDownloadUrlsMap(true),
+    3,
+    writer,
+    jspb.BinaryWriter.prototype.writeString,
+    jspb.BinaryWriter.prototype.writeString);
   }
   f = message.getExpiresAt();
   if (f != null) {
@@ -40238,7 +40243,8 @@ proto.kilocenter.api.v1.GenerateCertificateResponse.prototype.getDownloadUrlsMap
  */
 proto.kilocenter.api.v1.GenerateCertificateResponse.prototype.clearDownloadUrlsMap = function() {
   this.getDownloadUrlsMap().clear();
-  return this;};
+  return this;
+};
 
 
 /**
@@ -40310,8 +40316,8 @@ proto.kilocenter.api.v1.DownloadCertificateRequest.prototype.toObject = function
  */
 proto.kilocenter.api.v1.DownloadCertificateRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    certType: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    id: jspb.Message.getFieldWithDefault(msg, 2, "")
+certType: jspb.Message.getFieldWithDefault(msg, 1, ""),
+id: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -40324,7 +40330,7 @@ proto.kilocenter.api.v1.DownloadCertificateRequest.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DownloadCertificateRequest}
  */
 proto.kilocenter.api.v1.DownloadCertificateRequest.deserializeBinary = function(bytes) {
@@ -40349,11 +40355,11 @@ proto.kilocenter.api.v1.DownloadCertificateRequest.deserializeBinaryFromReader =
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCertType(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -40470,9 +40476,9 @@ proto.kilocenter.api.v1.DownloadCertificateResponse.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.DownloadCertificateResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    content: msg.getContent_asB64(),
-    filename: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    contentType: jspb.Message.getFieldWithDefault(msg, 3, "")
+content: msg.getContent_asB64(),
+filename: jspb.Message.getFieldWithDefault(msg, 2, ""),
+contentType: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -40485,7 +40491,7 @@ proto.kilocenter.api.v1.DownloadCertificateResponse.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DownloadCertificateResponse}
  */
 proto.kilocenter.api.v1.DownloadCertificateResponse.deserializeBinary = function(bytes) {
@@ -40514,11 +40520,11 @@ proto.kilocenter.api.v1.DownloadCertificateResponse.deserializeBinaryFromReader 
       msg.setContent(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setFilename(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setContentType(value);
       break;
     default:
@@ -40684,8 +40690,8 @@ proto.kilocenter.api.v1.DownloadBaseStationCertificateRequest.prototype.toObject
  */
 proto.kilocenter.api.v1.DownloadBaseStationCertificateRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    certType: jspb.Message.getFieldWithDefault(msg, 2, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+certType: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -40698,7 +40704,7 @@ proto.kilocenter.api.v1.DownloadBaseStationCertificateRequest.toObject = functio
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DownloadBaseStationCertificateRequest}
  */
 proto.kilocenter.api.v1.DownloadBaseStationCertificateRequest.deserializeBinary = function(bytes) {
@@ -40723,11 +40729,11 @@ proto.kilocenter.api.v1.DownloadBaseStationCertificateRequest.deserializeBinaryF
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCertType(value);
       break;
     default:
@@ -40857,7 +40863,7 @@ proto.kilocenter.api.v1.GenerateServerCertificatesRequest.toObject = function(in
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GenerateServerCertificatesRequest}
  */
 proto.kilocenter.api.v1.GenerateServerCertificatesRequest.deserializeBinary = function(bytes) {
@@ -40945,9 +40951,9 @@ proto.kilocenter.api.v1.GenerateServerCertificatesResponse.prototype.toObject = 
  */
 proto.kilocenter.api.v1.GenerateServerCertificatesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    message: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+message: jspb.Message.getFieldWithDefault(msg, 2, ""),
+expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -40960,7 +40966,7 @@ proto.kilocenter.api.v1.GenerateServerCertificatesResponse.toObject = function(i
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GenerateServerCertificatesResponse}
  */
 proto.kilocenter.api.v1.GenerateServerCertificatesResponse.deserializeBinary = function(bytes) {
@@ -40989,7 +40995,7 @@ proto.kilocenter.api.v1.GenerateServerCertificatesResponse.deserializeBinaryFrom
       msg.setSuccess(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessage(value);
       break;
     case 3:
@@ -41169,7 +41175,7 @@ proto.kilocenter.api.v1.RenewServerCertificatesRequest.toObject = function(inclu
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RenewServerCertificatesRequest}
  */
 proto.kilocenter.api.v1.RenewServerCertificatesRequest.deserializeBinary = function(bytes) {
@@ -41257,9 +41263,9 @@ proto.kilocenter.api.v1.RenewServerCertificatesResponse.prototype.toObject = fun
  */
 proto.kilocenter.api.v1.RenewServerCertificatesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    message: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+message: jspb.Message.getFieldWithDefault(msg, 2, ""),
+expiresAt: (f = msg.getExpiresAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -41272,7 +41278,7 @@ proto.kilocenter.api.v1.RenewServerCertificatesResponse.toObject = function(incl
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RenewServerCertificatesResponse}
  */
 proto.kilocenter.api.v1.RenewServerCertificatesResponse.deserializeBinary = function(bytes) {
@@ -41301,7 +41307,7 @@ proto.kilocenter.api.v1.RenewServerCertificatesResponse.deserializeBinaryFromRea
       msg.setSuccess(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessage(value);
       break;
     case 3:
@@ -41481,7 +41487,7 @@ proto.kilocenter.api.v1.GetServerCertificateStatusRequest.toObject = function(in
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetServerCertificateStatusRequest}
  */
 proto.kilocenter.api.v1.GetServerCertificateStatusRequest.deserializeBinary = function(bytes) {
@@ -41576,9 +41582,9 @@ proto.kilocenter.api.v1.GetServerCertificateStatusResponse.prototype.toObject = 
  */
 proto.kilocenter.api.v1.GetServerCertificateStatusResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    serverCert: (f = msg.getServerCert()) && proto.kilocenter.api.v1.CertificateStatus.toObject(includeInstance, f),
-    caCert: (f = msg.getCaCert()) && proto.kilocenter.api.v1.CertificateStatus.toObject(includeInstance, f),
-    renewalNamesList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f
+serverCert: (f = msg.getServerCert()) && proto.kilocenter.api.v1.CertificateStatus.toObject(includeInstance, f),
+caCert: (f = msg.getCaCert()) && proto.kilocenter.api.v1.CertificateStatus.toObject(includeInstance, f),
+renewalNamesList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f
   };
 
   if (includeInstance) {
@@ -41591,7 +41597,7 @@ proto.kilocenter.api.v1.GetServerCertificateStatusResponse.toObject = function(i
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetServerCertificateStatusResponse}
  */
 proto.kilocenter.api.v1.GetServerCertificateStatusResponse.deserializeBinary = function(bytes) {
@@ -41626,7 +41632,7 @@ proto.kilocenter.api.v1.GetServerCertificateStatusResponse.deserializeBinaryFrom
       msg.setCaCert(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.addRenewalNames(value);
       break;
     default:
@@ -41827,12 +41833,12 @@ proto.kilocenter.api.v1.CertificateStatus.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.CertificateStatus.toObject = function(includeInstance, msg) {
   var f, obj = {
-    subject: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    issuer: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    notBefore: (f = msg.getNotBefore()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    notAfter: (f = msg.getNotAfter()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    daysUntilExpiry: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    isValid: jspb.Message.getBooleanFieldWithDefault(msg, 6, false)
+subject: jspb.Message.getFieldWithDefault(msg, 1, ""),
+issuer: jspb.Message.getFieldWithDefault(msg, 2, ""),
+notBefore: (f = msg.getNotBefore()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+notAfter: (f = msg.getNotAfter()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+daysUntilExpiry: jspb.Message.getFieldWithDefault(msg, 5, 0),
+isValid: jspb.Message.getBooleanFieldWithDefault(msg, 6, false)
   };
 
   if (includeInstance) {
@@ -41845,7 +41851,7 @@ proto.kilocenter.api.v1.CertificateStatus.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CertificateStatus}
  */
 proto.kilocenter.api.v1.CertificateStatus.deserializeBinary = function(bytes) {
@@ -41870,11 +41876,11 @@ proto.kilocenter.api.v1.CertificateStatus.deserializeBinaryFromReader = function
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSubject(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setIssuer(value);
       break;
     case 3:
@@ -42149,12 +42155,12 @@ proto.kilocenter.api.v1.CreateManufacturerRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.CreateManufacturerRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    name: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    code: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    website: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    contactEmail: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 6, false)
+name: jspb.Message.getFieldWithDefault(msg, 1, ""),
+code: jspb.Message.getFieldWithDefault(msg, 2, ""),
+description: jspb.Message.getFieldWithDefault(msg, 3, ""),
+website: jspb.Message.getFieldWithDefault(msg, 4, ""),
+contactEmail: jspb.Message.getFieldWithDefault(msg, 5, ""),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 6, false)
   };
 
   if (includeInstance) {
@@ -42167,7 +42173,7 @@ proto.kilocenter.api.v1.CreateManufacturerRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateManufacturerRequest}
  */
 proto.kilocenter.api.v1.CreateManufacturerRequest.deserializeBinary = function(bytes) {
@@ -42192,23 +42198,23 @@ proto.kilocenter.api.v1.CreateManufacturerRequest.deserializeBinaryFromReader = 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCode(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setWebsite(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setContactEmail(value);
       break;
     case 6:
@@ -42429,7 +42435,7 @@ proto.kilocenter.api.v1.CreateManufacturerResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.CreateManufacturerResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    manufacturer: (f = msg.getManufacturer()) && proto.kilocenter.api.v1.Manufacturer.toObject(includeInstance, f)
+manufacturer: (f = msg.getManufacturer()) && proto.kilocenter.api.v1.Manufacturer.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -42442,7 +42448,7 @@ proto.kilocenter.api.v1.CreateManufacturerResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateManufacturerResponse}
  */
 proto.kilocenter.api.v1.CreateManufacturerResponse.deserializeBinary = function(bytes) {
@@ -42580,7 +42586,7 @@ proto.kilocenter.api.v1.GetManufacturerRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.GetManufacturerRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -42593,7 +42599,7 @@ proto.kilocenter.api.v1.GetManufacturerRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetManufacturerRequest}
  */
 proto.kilocenter.api.v1.GetManufacturerRequest.deserializeBinary = function(bytes) {
@@ -42618,7 +42624,7 @@ proto.kilocenter.api.v1.GetManufacturerRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -42710,7 +42716,7 @@ proto.kilocenter.api.v1.GetManufacturerResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.GetManufacturerResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    manufacturer: (f = msg.getManufacturer()) && proto.kilocenter.api.v1.Manufacturer.toObject(includeInstance, f)
+manufacturer: (f = msg.getManufacturer()) && proto.kilocenter.api.v1.Manufacturer.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -42723,7 +42729,7 @@ proto.kilocenter.api.v1.GetManufacturerResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetManufacturerResponse}
  */
 proto.kilocenter.api.v1.GetManufacturerResponse.deserializeBinary = function(bytes) {
@@ -42861,11 +42867,11 @@ proto.kilocenter.api.v1.UpdateManufacturerRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.UpdateManufacturerRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    website: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    contactEmail: jspb.Message.getFieldWithDefault(msg, 5, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+description: jspb.Message.getFieldWithDefault(msg, 3, ""),
+website: jspb.Message.getFieldWithDefault(msg, 4, ""),
+contactEmail: jspb.Message.getFieldWithDefault(msg, 5, "")
   };
 
   if (includeInstance) {
@@ -42878,7 +42884,7 @@ proto.kilocenter.api.v1.UpdateManufacturerRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateManufacturerRequest}
  */
 proto.kilocenter.api.v1.UpdateManufacturerRequest.deserializeBinary = function(bytes) {
@@ -42903,23 +42909,23 @@ proto.kilocenter.api.v1.UpdateManufacturerRequest.deserializeBinaryFromReader = 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setWebsite(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setContactEmail(value);
       break;
     default:
@@ -43111,7 +43117,7 @@ proto.kilocenter.api.v1.UpdateManufacturerResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.UpdateManufacturerResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    manufacturer: (f = msg.getManufacturer()) && proto.kilocenter.api.v1.Manufacturer.toObject(includeInstance, f)
+manufacturer: (f = msg.getManufacturer()) && proto.kilocenter.api.v1.Manufacturer.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -43124,7 +43130,7 @@ proto.kilocenter.api.v1.UpdateManufacturerResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateManufacturerResponse}
  */
 proto.kilocenter.api.v1.UpdateManufacturerResponse.deserializeBinary = function(bytes) {
@@ -43262,7 +43268,7 @@ proto.kilocenter.api.v1.DeleteManufacturerRequest.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.DeleteManufacturerRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -43275,7 +43281,7 @@ proto.kilocenter.api.v1.DeleteManufacturerRequest.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteManufacturerRequest}
  */
 proto.kilocenter.api.v1.DeleteManufacturerRequest.deserializeBinary = function(bytes) {
@@ -43300,7 +43306,7 @@ proto.kilocenter.api.v1.DeleteManufacturerRequest.deserializeBinaryFromReader = 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -43392,7 +43398,7 @@ proto.kilocenter.api.v1.DeleteManufacturerResponse.prototype.toObject = function
  */
 proto.kilocenter.api.v1.DeleteManufacturerResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -43405,7 +43411,7 @@ proto.kilocenter.api.v1.DeleteManufacturerResponse.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteManufacturerResponse}
  */
 proto.kilocenter.api.v1.DeleteManufacturerResponse.deserializeBinary = function(bytes) {
@@ -43522,9 +43528,9 @@ proto.kilocenter.api.v1.ListManufacturersRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.ListManufacturersRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 3, false)
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 3, false)
   };
 
   if (includeInstance) {
@@ -43537,7 +43543,7 @@ proto.kilocenter.api.v1.ListManufacturersRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListManufacturersRequest}
  */
 proto.kilocenter.api.v1.ListManufacturersRequest.deserializeBinary = function(bytes) {
@@ -43566,7 +43572,7 @@ proto.kilocenter.api.v1.ListManufacturersRequest.deserializeBinaryFromReader = f
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 3:
@@ -43719,10 +43725,10 @@ proto.kilocenter.api.v1.ListManufacturersResponse.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.ListManufacturersResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    manufacturersList: jspb.Message.toObjectList(msg.getManufacturersList(),
+manufacturersList: jspb.Message.toObjectList(msg.getManufacturersList(),
     proto.kilocenter.api.v1.Manufacturer.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -43735,7 +43741,7 @@ proto.kilocenter.api.v1.ListManufacturersResponse.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListManufacturersResponse}
  */
 proto.kilocenter.api.v1.ListManufacturersResponse.deserializeBinary = function(bytes) {
@@ -43765,7 +43771,7 @@ proto.kilocenter.api.v1.ListManufacturersResponse.deserializeBinaryFromReader = 
       msg.addManufacturers(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -43932,18 +43938,18 @@ proto.kilocenter.api.v1.Manufacturer.prototype.toObject = function(opt_includeIn
  */
 proto.kilocenter.api.v1.Manufacturer.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    code: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    website: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    contactEmail: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 9, ""),
-    isVerified: jspb.Message.getBooleanFieldWithDefault(msg, 10, false),
-    modelCount: jspb.Message.getFieldWithDefault(msg, 11, 0),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 12, false)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+code: jspb.Message.getFieldWithDefault(msg, 3, ""),
+description: jspb.Message.getFieldWithDefault(msg, 4, ""),
+website: jspb.Message.getFieldWithDefault(msg, 5, ""),
+contactEmail: jspb.Message.getFieldWithDefault(msg, 6, ""),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+tenantId: jspb.Message.getFieldWithDefault(msg, 9, ""),
+isVerified: jspb.Message.getBooleanFieldWithDefault(msg, 10, false),
+modelCount: jspb.Message.getFieldWithDefault(msg, 11, 0),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 12, false)
   };
 
   if (includeInstance) {
@@ -43956,7 +43962,7 @@ proto.kilocenter.api.v1.Manufacturer.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Manufacturer}
  */
 proto.kilocenter.api.v1.Manufacturer.deserializeBinary = function(bytes) {
@@ -43981,27 +43987,27 @@ proto.kilocenter.api.v1.Manufacturer.deserializeBinaryFromReader = function(msg,
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCode(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setWebsite(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setContactEmail(value);
       break;
     case 7:
@@ -44015,7 +44021,7 @@ proto.kilocenter.api.v1.Manufacturer.deserializeBinaryFromReader = function(msg,
       msg.setUpdatedAt(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 10:
@@ -44434,12 +44440,12 @@ proto.kilocenter.api.v1.CreateDeviceModelRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.CreateDeviceModelRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    manufacturerId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    code: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    typeEui: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 6, false)
+manufacturerId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+code: jspb.Message.getFieldWithDefault(msg, 3, ""),
+typeEui: jspb.Message.getFieldWithDefault(msg, 4, ""),
+description: jspb.Message.getFieldWithDefault(msg, 5, ""),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 6, false)
   };
 
   if (includeInstance) {
@@ -44452,7 +44458,7 @@ proto.kilocenter.api.v1.CreateDeviceModelRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateDeviceModelRequest}
  */
 proto.kilocenter.api.v1.CreateDeviceModelRequest.deserializeBinary = function(bytes) {
@@ -44477,23 +44483,23 @@ proto.kilocenter.api.v1.CreateDeviceModelRequest.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setManufacturerId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCode(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTypeEui(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 6:
@@ -44714,7 +44720,7 @@ proto.kilocenter.api.v1.CreateDeviceModelResponse.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.CreateDeviceModelResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    deviceModel: (f = msg.getDeviceModel()) && proto.kilocenter.api.v1.DeviceModel.toObject(includeInstance, f)
+deviceModel: (f = msg.getDeviceModel()) && proto.kilocenter.api.v1.DeviceModel.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -44727,7 +44733,7 @@ proto.kilocenter.api.v1.CreateDeviceModelResponse.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateDeviceModelResponse}
  */
 proto.kilocenter.api.v1.CreateDeviceModelResponse.deserializeBinary = function(bytes) {
@@ -44865,7 +44871,7 @@ proto.kilocenter.api.v1.GetDeviceModelRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.GetDeviceModelRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -44878,7 +44884,7 @@ proto.kilocenter.api.v1.GetDeviceModelRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDeviceModelRequest}
  */
 proto.kilocenter.api.v1.GetDeviceModelRequest.deserializeBinary = function(bytes) {
@@ -44903,7 +44909,7 @@ proto.kilocenter.api.v1.GetDeviceModelRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -44995,7 +45001,7 @@ proto.kilocenter.api.v1.GetDeviceModelResponse.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.GetDeviceModelResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    deviceModel: (f = msg.getDeviceModel()) && proto.kilocenter.api.v1.DeviceModel.toObject(includeInstance, f)
+deviceModel: (f = msg.getDeviceModel()) && proto.kilocenter.api.v1.DeviceModel.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -45008,7 +45014,7 @@ proto.kilocenter.api.v1.GetDeviceModelResponse.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetDeviceModelResponse}
  */
 proto.kilocenter.api.v1.GetDeviceModelResponse.deserializeBinary = function(bytes) {
@@ -45146,9 +45152,9 @@ proto.kilocenter.api.v1.UpdateDeviceModelRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.UpdateDeviceModelRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 3, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+description: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -45161,7 +45167,7 @@ proto.kilocenter.api.v1.UpdateDeviceModelRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateDeviceModelRequest}
  */
 proto.kilocenter.api.v1.UpdateDeviceModelRequest.deserializeBinary = function(bytes) {
@@ -45186,15 +45192,15 @@ proto.kilocenter.api.v1.UpdateDeviceModelRequest.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     default:
@@ -45336,7 +45342,7 @@ proto.kilocenter.api.v1.UpdateDeviceModelResponse.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.UpdateDeviceModelResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    deviceModel: (f = msg.getDeviceModel()) && proto.kilocenter.api.v1.DeviceModel.toObject(includeInstance, f)
+deviceModel: (f = msg.getDeviceModel()) && proto.kilocenter.api.v1.DeviceModel.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -45349,7 +45355,7 @@ proto.kilocenter.api.v1.UpdateDeviceModelResponse.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateDeviceModelResponse}
  */
 proto.kilocenter.api.v1.UpdateDeviceModelResponse.deserializeBinary = function(bytes) {
@@ -45487,7 +45493,7 @@ proto.kilocenter.api.v1.DeleteDeviceModelRequest.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.DeleteDeviceModelRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -45500,7 +45506,7 @@ proto.kilocenter.api.v1.DeleteDeviceModelRequest.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteDeviceModelRequest}
  */
 proto.kilocenter.api.v1.DeleteDeviceModelRequest.deserializeBinary = function(bytes) {
@@ -45525,7 +45531,7 @@ proto.kilocenter.api.v1.DeleteDeviceModelRequest.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -45617,7 +45623,7 @@ proto.kilocenter.api.v1.DeleteDeviceModelResponse.prototype.toObject = function(
  */
 proto.kilocenter.api.v1.DeleteDeviceModelResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -45630,7 +45636,7 @@ proto.kilocenter.api.v1.DeleteDeviceModelResponse.toObject = function(includeIns
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteDeviceModelResponse}
  */
 proto.kilocenter.api.v1.DeleteDeviceModelResponse.deserializeBinary = function(bytes) {
@@ -45747,10 +45753,10 @@ proto.kilocenter.api.v1.ListDeviceModelsRequest.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.ListDeviceModelsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    manufacturerId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
+manufacturerId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
   };
 
   if (includeInstance) {
@@ -45763,7 +45769,7 @@ proto.kilocenter.api.v1.ListDeviceModelsRequest.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListDeviceModelsRequest}
  */
 proto.kilocenter.api.v1.ListDeviceModelsRequest.deserializeBinary = function(bytes) {
@@ -45788,7 +45794,7 @@ proto.kilocenter.api.v1.ListDeviceModelsRequest.deserializeBinaryFromReader = fu
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setManufacturerId(value);
       break;
     case 2:
@@ -45796,7 +45802,7 @@ proto.kilocenter.api.v1.ListDeviceModelsRequest.deserializeBinaryFromReader = fu
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 4:
@@ -45974,10 +45980,10 @@ proto.kilocenter.api.v1.ListDeviceModelsResponse.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.ListDeviceModelsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    deviceModelsList: jspb.Message.toObjectList(msg.getDeviceModelsList(),
+deviceModelsList: jspb.Message.toObjectList(msg.getDeviceModelsList(),
     proto.kilocenter.api.v1.DeviceModel.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -45990,7 +45996,7 @@ proto.kilocenter.api.v1.ListDeviceModelsResponse.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListDeviceModelsResponse}
  */
 proto.kilocenter.api.v1.ListDeviceModelsResponse.deserializeBinary = function(bytes) {
@@ -46020,7 +46026,7 @@ proto.kilocenter.api.v1.ListDeviceModelsResponse.deserializeBinaryFromReader = f
       msg.addDeviceModels(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -46187,18 +46193,18 @@ proto.kilocenter.api.v1.DeviceModel.prototype.toObject = function(opt_includeIns
  */
 proto.kilocenter.api.v1.DeviceModel.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    manufacturerId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    code: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    typeEui: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    tenantId: jspb.Message.getFieldWithDefault(msg, 9, ""),
-    datasheetUrl: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    blueprintCount: jspb.Message.getFieldWithDefault(msg, 11, 0),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 12, false)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+manufacturerId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+name: jspb.Message.getFieldWithDefault(msg, 3, ""),
+code: jspb.Message.getFieldWithDefault(msg, 4, ""),
+typeEui: jspb.Message.getFieldWithDefault(msg, 5, ""),
+description: jspb.Message.getFieldWithDefault(msg, 6, ""),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+tenantId: jspb.Message.getFieldWithDefault(msg, 9, ""),
+datasheetUrl: jspb.Message.getFieldWithDefault(msg, 10, ""),
+blueprintCount: jspb.Message.getFieldWithDefault(msg, 11, 0),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 12, false)
   };
 
   if (includeInstance) {
@@ -46211,7 +46217,7 @@ proto.kilocenter.api.v1.DeviceModel.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeviceModel}
  */
 proto.kilocenter.api.v1.DeviceModel.deserializeBinary = function(bytes) {
@@ -46236,27 +46242,27 @@ proto.kilocenter.api.v1.DeviceModel.deserializeBinaryFromReader = function(msg, 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setManufacturerId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCode(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTypeEui(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 7:
@@ -46270,11 +46276,11 @@ proto.kilocenter.api.v1.DeviceModel.deserializeBinaryFromReader = function(msg, 
       msg.setUpdatedAt(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTenantId(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDatasheetUrl(value);
       break;
     case 11:
@@ -46689,13 +46695,13 @@ proto.kilocenter.api.v1.CreateBlueprintRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.CreateBlueprintRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    deviceModelId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    version: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    decoderScript: msg.getDecoderScript_asB64(),
-    isDefault: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 7, false)
+deviceModelId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+version: jspb.Message.getFieldWithDefault(msg, 3, ""),
+description: jspb.Message.getFieldWithDefault(msg, 4, ""),
+decoderScript: msg.getDecoderScript_asB64(),
+isDefault: jspb.Message.getBooleanFieldWithDefault(msg, 6, false),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 7, false)
   };
 
   if (includeInstance) {
@@ -46708,7 +46714,7 @@ proto.kilocenter.api.v1.CreateBlueprintRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateBlueprintRequest}
  */
 proto.kilocenter.api.v1.CreateBlueprintRequest.deserializeBinary = function(bytes) {
@@ -46733,19 +46739,19 @@ proto.kilocenter.api.v1.CreateBlueprintRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDeviceModelId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setVersion(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 5:
@@ -47023,7 +47029,7 @@ proto.kilocenter.api.v1.CreateBlueprintResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.CreateBlueprintResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
+blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -47036,7 +47042,7 @@ proto.kilocenter.api.v1.CreateBlueprintResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateBlueprintResponse}
  */
 proto.kilocenter.api.v1.CreateBlueprintResponse.deserializeBinary = function(bytes) {
@@ -47174,7 +47180,7 @@ proto.kilocenter.api.v1.GetBlueprintRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.GetBlueprintRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -47187,7 +47193,7 @@ proto.kilocenter.api.v1.GetBlueprintRequest.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBlueprintRequest}
  */
 proto.kilocenter.api.v1.GetBlueprintRequest.deserializeBinary = function(bytes) {
@@ -47212,7 +47218,7 @@ proto.kilocenter.api.v1.GetBlueprintRequest.deserializeBinaryFromReader = functi
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -47304,7 +47310,7 @@ proto.kilocenter.api.v1.GetBlueprintResponse.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.GetBlueprintResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
+blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -47317,7 +47323,7 @@ proto.kilocenter.api.v1.GetBlueprintResponse.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBlueprintResponse}
  */
 proto.kilocenter.api.v1.GetBlueprintResponse.deserializeBinary = function(bytes) {
@@ -47455,11 +47461,11 @@ proto.kilocenter.api.v1.UpdateBlueprintRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.UpdateBlueprintRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    version: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    decoderScript: msg.getDecoderScript_asB64()
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+version: jspb.Message.getFieldWithDefault(msg, 3, ""),
+description: jspb.Message.getFieldWithDefault(msg, 4, ""),
+decoderScript: msg.getDecoderScript_asB64()
   };
 
   if (includeInstance) {
@@ -47472,7 +47478,7 @@ proto.kilocenter.api.v1.UpdateBlueprintRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateBlueprintRequest}
  */
 proto.kilocenter.api.v1.UpdateBlueprintRequest.deserializeBinary = function(bytes) {
@@ -47497,19 +47503,19 @@ proto.kilocenter.api.v1.UpdateBlueprintRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setVersion(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 5:
@@ -47729,7 +47735,7 @@ proto.kilocenter.api.v1.UpdateBlueprintResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.UpdateBlueprintResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
+blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -47742,7 +47748,7 @@ proto.kilocenter.api.v1.UpdateBlueprintResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.UpdateBlueprintResponse}
  */
 proto.kilocenter.api.v1.UpdateBlueprintResponse.deserializeBinary = function(bytes) {
@@ -47880,7 +47886,7 @@ proto.kilocenter.api.v1.DeleteBlueprintRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.DeleteBlueprintRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -47893,7 +47899,7 @@ proto.kilocenter.api.v1.DeleteBlueprintRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteBlueprintRequest}
  */
 proto.kilocenter.api.v1.DeleteBlueprintRequest.deserializeBinary = function(bytes) {
@@ -47918,7 +47924,7 @@ proto.kilocenter.api.v1.DeleteBlueprintRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -48010,7 +48016,7 @@ proto.kilocenter.api.v1.DeleteBlueprintResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.DeleteBlueprintResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -48023,7 +48029,7 @@ proto.kilocenter.api.v1.DeleteBlueprintResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DeleteBlueprintResponse}
  */
 proto.kilocenter.api.v1.DeleteBlueprintResponse.deserializeBinary = function(bytes) {
@@ -48140,10 +48146,10 @@ proto.kilocenter.api.v1.ListBlueprintsRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.ListBlueprintsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    deviceModelId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
+deviceModelId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
   };
 
   if (includeInstance) {
@@ -48156,7 +48162,7 @@ proto.kilocenter.api.v1.ListBlueprintsRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListBlueprintsRequest}
  */
 proto.kilocenter.api.v1.ListBlueprintsRequest.deserializeBinary = function(bytes) {
@@ -48181,7 +48187,7 @@ proto.kilocenter.api.v1.ListBlueprintsRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDeviceModelId(value);
       break;
     case 2:
@@ -48189,7 +48195,7 @@ proto.kilocenter.api.v1.ListBlueprintsRequest.deserializeBinaryFromReader = func
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 4:
@@ -48367,10 +48373,10 @@ proto.kilocenter.api.v1.ListBlueprintsResponse.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.ListBlueprintsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    blueprintsList: jspb.Message.toObjectList(msg.getBlueprintsList(),
+blueprintsList: jspb.Message.toObjectList(msg.getBlueprintsList(),
     proto.kilocenter.api.v1.Blueprint.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -48383,7 +48389,7 @@ proto.kilocenter.api.v1.ListBlueprintsResponse.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListBlueprintsResponse}
  */
 proto.kilocenter.api.v1.ListBlueprintsResponse.deserializeBinary = function(bytes) {
@@ -48413,7 +48419,7 @@ proto.kilocenter.api.v1.ListBlueprintsResponse.deserializeBinaryFromReader = fun
       msg.addBlueprints(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -48580,7 +48586,7 @@ proto.kilocenter.api.v1.SetDefaultBlueprintRequest.prototype.toObject = function
  */
 proto.kilocenter.api.v1.SetDefaultBlueprintRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -48593,7 +48599,7 @@ proto.kilocenter.api.v1.SetDefaultBlueprintRequest.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SetDefaultBlueprintRequest}
  */
 proto.kilocenter.api.v1.SetDefaultBlueprintRequest.deserializeBinary = function(bytes) {
@@ -48618,7 +48624,7 @@ proto.kilocenter.api.v1.SetDefaultBlueprintRequest.deserializeBinaryFromReader =
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     default:
@@ -48710,8 +48716,8 @@ proto.kilocenter.api.v1.SetDefaultBlueprintResponse.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.SetDefaultBlueprintResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -48724,7 +48730,7 @@ proto.kilocenter.api.v1.SetDefaultBlueprintResponse.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SetDefaultBlueprintResponse}
  */
 proto.kilocenter.api.v1.SetDefaultBlueprintResponse.deserializeBinary = function(bytes) {
@@ -48891,10 +48897,10 @@ proto.kilocenter.api.v1.SubmitBlueprintToRegistryRequest.prototype.toObject = fu
  */
 proto.kilocenter.api.v1.SubmitBlueprintToRegistryRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    contributorName: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    contributorEmail: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    notes: jspb.Message.getFieldWithDefault(msg, 4, "")
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+contributorName: jspb.Message.getFieldWithDefault(msg, 2, ""),
+contributorEmail: jspb.Message.getFieldWithDefault(msg, 3, ""),
+notes: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -48907,7 +48913,7 @@ proto.kilocenter.api.v1.SubmitBlueprintToRegistryRequest.toObject = function(inc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SubmitBlueprintToRegistryRequest}
  */
 proto.kilocenter.api.v1.SubmitBlueprintToRegistryRequest.deserializeBinary = function(bytes) {
@@ -48932,19 +48938,19 @@ proto.kilocenter.api.v1.SubmitBlueprintToRegistryRequest.deserializeBinaryFromRe
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setContributorName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setContributorEmail(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNotes(value);
       break;
     default:
@@ -49111,10 +49117,10 @@ proto.kilocenter.api.v1.SubmitBlueprintToRegistryResponse.prototype.toObject = f
  */
 proto.kilocenter.api.v1.SubmitBlueprintToRegistryResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    prUrl: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    commitSha: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    branchName: jspb.Message.getFieldWithDefault(msg, 4, "")
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+prUrl: jspb.Message.getFieldWithDefault(msg, 2, ""),
+commitSha: jspb.Message.getFieldWithDefault(msg, 3, ""),
+branchName: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -49127,7 +49133,7 @@ proto.kilocenter.api.v1.SubmitBlueprintToRegistryResponse.toObject = function(in
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SubmitBlueprintToRegistryResponse}
  */
 proto.kilocenter.api.v1.SubmitBlueprintToRegistryResponse.deserializeBinary = function(bytes) {
@@ -49156,15 +49162,15 @@ proto.kilocenter.api.v1.SubmitBlueprintToRegistryResponse.deserializeBinaryFromR
       msg.setSuccess(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPrUrl(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCommitSha(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBranchName(value);
       break;
     default:
@@ -49338,10 +49344,10 @@ proto.kilocenter.api.v1.BulkAssignBlueprintRequest.prototype.toObject = function
  */
 proto.kilocenter.api.v1.BulkAssignBlueprintRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    blueprintId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    deviceModelId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    epEuisList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f,
-    setAsDefault: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
+blueprintId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+deviceModelId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+epEuisList: (f = jspb.Message.getRepeatedField(msg, 3)) == null ? undefined : f,
+setAsDefault: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
   };
 
   if (includeInstance) {
@@ -49354,7 +49360,7 @@ proto.kilocenter.api.v1.BulkAssignBlueprintRequest.toObject = function(includeIn
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BulkAssignBlueprintRequest}
  */
 proto.kilocenter.api.v1.BulkAssignBlueprintRequest.deserializeBinary = function(bytes) {
@@ -49379,15 +49385,15 @@ proto.kilocenter.api.v1.BulkAssignBlueprintRequest.deserializeBinaryFromReader =
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBlueprintId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDeviceModelId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.addEpEuis(value);
       break;
     case 4:
@@ -49577,7 +49583,7 @@ proto.kilocenter.api.v1.BulkAssignBlueprintResponse.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.BulkAssignBlueprintResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    affectedCount: jspb.Message.getFieldWithDefault(msg, 1, 0)
+affectedCount: jspb.Message.getFieldWithDefault(msg, 1, 0)
   };
 
   if (includeInstance) {
@@ -49590,7 +49596,7 @@ proto.kilocenter.api.v1.BulkAssignBlueprintResponse.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BulkAssignBlueprintResponse}
  */
 proto.kilocenter.api.v1.BulkAssignBlueprintResponse.deserializeBinary = function(bytes) {
@@ -49707,7 +49713,7 @@ proto.kilocenter.api.v1.SetSnapshotOnlyDecodingRequest.prototype.toObject = func
  */
 proto.kilocenter.api.v1.SetSnapshotOnlyDecodingRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    enabled: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+enabled: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -49720,7 +49726,7 @@ proto.kilocenter.api.v1.SetSnapshotOnlyDecodingRequest.toObject = function(inclu
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SetSnapshotOnlyDecodingRequest}
  */
 proto.kilocenter.api.v1.SetSnapshotOnlyDecodingRequest.deserializeBinary = function(bytes) {
@@ -49837,7 +49843,7 @@ proto.kilocenter.api.v1.SnapshotOnlyDecoding.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.SnapshotOnlyDecoding.toObject = function(includeInstance, msg) {
   var f, obj = {
-    enabled: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+enabled: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -49850,7 +49856,7 @@ proto.kilocenter.api.v1.SnapshotOnlyDecoding.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SnapshotOnlyDecoding}
  */
 proto.kilocenter.api.v1.SnapshotOnlyDecoding.deserializeBinary = function(bytes) {
@@ -49967,7 +49973,7 @@ proto.kilocenter.api.v1.PinCurrentBlueprintsRequest.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.PinCurrentBlueprintsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    dryRun: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+dryRun: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -49980,7 +49986,7 @@ proto.kilocenter.api.v1.PinCurrentBlueprintsRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.PinCurrentBlueprintsRequest}
  */
 proto.kilocenter.api.v1.PinCurrentBlueprintsRequest.deserializeBinary = function(bytes) {
@@ -50104,7 +50110,7 @@ proto.kilocenter.api.v1.PinCurrentBlueprintsResponse.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.PinCurrentBlueprintsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    resultsList: jspb.Message.toObjectList(msg.getResultsList(),
+resultsList: jspb.Message.toObjectList(msg.getResultsList(),
     proto.kilocenter.api.v1.PinResult.toObject, includeInstance)
   };
 
@@ -50118,7 +50124,7 @@ proto.kilocenter.api.v1.PinCurrentBlueprintsResponse.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.PinCurrentBlueprintsResponse}
  */
 proto.kilocenter.api.v1.PinCurrentBlueprintsResponse.deserializeBinary = function(bytes) {
@@ -50257,10 +50263,10 @@ proto.kilocenter.api.v1.PinResult.prototype.toObject = function(opt_includeInsta
  */
 proto.kilocenter.api.v1.PinResult.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    outcome: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    blueprintId: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    error: jspb.Message.getFieldWithDefault(msg, 4, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+outcome: jspb.Message.getFieldWithDefault(msg, 2, ""),
+blueprintId: jspb.Message.getFieldWithDefault(msg, 3, ""),
+error: jspb.Message.getFieldWithDefault(msg, 4, "")
   };
 
   if (includeInstance) {
@@ -50273,7 +50279,7 @@ proto.kilocenter.api.v1.PinResult.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.PinResult}
  */
 proto.kilocenter.api.v1.PinResult.deserializeBinary = function(bytes) {
@@ -50298,19 +50304,19 @@ proto.kilocenter.api.v1.PinResult.deserializeBinaryFromReader = function(msg, re
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOutcome(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBlueprintId(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setError(value);
       break;
     default:
@@ -50477,22 +50483,22 @@ proto.kilocenter.api.v1.Blueprint.prototype.toObject = function(opt_includeInsta
  */
 proto.kilocenter.api.v1.Blueprint.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    deviceModelId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    version: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    description: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    decoderScript: msg.getDecoderScript_asB64(),
-    isDefault: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    typeEui: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    specJson: msg.getSpecJson_asB64(),
-    registryRepo: jspb.Message.getFieldWithDefault(msg, 12, ""),
-    registryCommitSha: jspb.Message.getFieldWithDefault(msg, 13, ""),
-    registryVerified: jspb.Message.getBooleanFieldWithDefault(msg, 14, false),
-    registryPrUrl: jspb.Message.getFieldWithDefault(msg, 15, ""),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 16, false)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+deviceModelId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+name: jspb.Message.getFieldWithDefault(msg, 3, ""),
+version: jspb.Message.getFieldWithDefault(msg, 4, ""),
+description: jspb.Message.getFieldWithDefault(msg, 5, ""),
+decoderScript: msg.getDecoderScript_asB64(),
+isDefault: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+updatedAt: (f = msg.getUpdatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+typeEui: jspb.Message.getFieldWithDefault(msg, 10, ""),
+specJson: msg.getSpecJson_asB64(),
+registryRepo: jspb.Message.getFieldWithDefault(msg, 12, ""),
+registryCommitSha: jspb.Message.getFieldWithDefault(msg, 13, ""),
+registryVerified: jspb.Message.getBooleanFieldWithDefault(msg, 14, false),
+registryPrUrl: jspb.Message.getFieldWithDefault(msg, 15, ""),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 16, false)
   };
 
   if (includeInstance) {
@@ -50505,7 +50511,7 @@ proto.kilocenter.api.v1.Blueprint.toObject = function(includeInstance, msg) {
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.Blueprint}
  */
 proto.kilocenter.api.v1.Blueprint.deserializeBinary = function(bytes) {
@@ -50530,23 +50536,23 @@ proto.kilocenter.api.v1.Blueprint.deserializeBinaryFromReader = function(msg, re
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDeviceModelId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setVersion(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDescription(value);
       break;
     case 6:
@@ -50568,7 +50574,7 @@ proto.kilocenter.api.v1.Blueprint.deserializeBinaryFromReader = function(msg, re
       msg.setUpdatedAt(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTypeEui(value);
       break;
     case 11:
@@ -50576,11 +50582,11 @@ proto.kilocenter.api.v1.Blueprint.deserializeBinaryFromReader = function(msg, re
       msg.setSpecJson(value);
       break;
     case 12:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRegistryRepo(value);
       break;
     case 13:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRegistryCommitSha(value);
       break;
     case 14:
@@ -50588,7 +50594,7 @@ proto.kilocenter.api.v1.Blueprint.deserializeBinaryFromReader = function(msg, re
       msg.setRegistryVerified(value);
       break;
     case 15:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setRegistryPrUrl(value);
       break;
     case 16:
@@ -51147,11 +51153,11 @@ proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest.prototype.toObject
  */
 proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    manufacturerId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    version: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    decoderScript: msg.getDecoderScript_asB64(),
-    isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 5, false)
+manufacturerId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+version: jspb.Message.getFieldWithDefault(msg, 3, ""),
+decoderScript: msg.getDecoderScript_asB64(),
+isSystem: jspb.Message.getBooleanFieldWithDefault(msg, 5, false)
   };
 
   if (includeInstance) {
@@ -51164,7 +51170,7 @@ proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest.toObject = functio
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest}
  */
 proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest.deserializeBinary = function(bytes) {
@@ -51189,15 +51195,15 @@ proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintRequest.deserializeBinaryF
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setManufacturerId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setVersion(value);
       break;
     case 4:
@@ -51421,8 +51427,8 @@ proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse.prototype.toObjec
  */
 proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    deviceModel: (f = msg.getDeviceModel()) && proto.kilocenter.api.v1.DeviceModel.toObject(includeInstance, f),
-    blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
+deviceModel: (f = msg.getDeviceModel()) && proto.kilocenter.api.v1.DeviceModel.toObject(includeInstance, f),
+blueprint: (f = msg.getBlueprint()) && proto.kilocenter.api.v1.Blueprint.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -51435,7 +51441,7 @@ proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse.toObject = functi
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse}
  */
 proto.kilocenter.api.v1.CreateDeviceModelWithBlueprintResponse.deserializeBinary = function(bytes) {
@@ -51649,10 +51655,10 @@ proto.kilocenter.api.v1.DecodePreviewRequest.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.DecodePreviewRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    blueprintId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    specJson: msg.getSpecJson_asB64(),
-    payload: msg.getPayload_asB64(),
-    formatId: jspb.Message.getFieldWithDefault(msg, 3, 0)
+blueprintId: (f = jspb.Message.getField(msg, 1)) == null ? undefined : f,
+specJson: msg.getSpecJson_asB64(),
+payload: msg.getPayload_asB64(),
+formatId: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -51665,7 +51671,7 @@ proto.kilocenter.api.v1.DecodePreviewRequest.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DecodePreviewRequest}
  */
 proto.kilocenter.api.v1.DecodePreviewRequest.deserializeBinary = function(bytes) {
@@ -51690,7 +51696,7 @@ proto.kilocenter.api.v1.DecodePreviewRequest.deserializeBinaryFromReader = funct
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBlueprintId(value);
       break;
     case 4:
@@ -51953,12 +51959,12 @@ proto.kilocenter.api.v1.DecodePreviewResponse.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.DecodePreviewResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    decodedPayload: msg.getDecodedPayload_asB64(),
-    errorCode: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    errorDetail: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    formatId: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    blueprintVersion: jspb.Message.getFieldWithDefault(msg, 6, "")
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+decodedPayload: msg.getDecodedPayload_asB64(),
+errorCode: jspb.Message.getFieldWithDefault(msg, 3, ""),
+errorDetail: jspb.Message.getFieldWithDefault(msg, 4, ""),
+formatId: jspb.Message.getFieldWithDefault(msg, 5, 0),
+blueprintVersion: jspb.Message.getFieldWithDefault(msg, 6, "")
   };
 
   if (includeInstance) {
@@ -51971,7 +51977,7 @@ proto.kilocenter.api.v1.DecodePreviewResponse.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.DecodePreviewResponse}
  */
 proto.kilocenter.api.v1.DecodePreviewResponse.deserializeBinary = function(bytes) {
@@ -52004,11 +52010,11 @@ proto.kilocenter.api.v1.DecodePreviewResponse.deserializeBinaryFromReader = func
       msg.setDecodedPayload(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setErrorCode(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setErrorDetail(value);
       break;
     case 5:
@@ -52016,7 +52022,7 @@ proto.kilocenter.api.v1.DecodePreviewResponse.deserializeBinaryFromReader = func
       msg.setFormatId(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBlueprintVersion(value);
       break;
     default:
@@ -52257,16 +52263,16 @@ proto.kilocenter.api.v1.ListMessagesRequest.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.ListMessagesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    epEui: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    duplicate: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    dlOpen: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
-    profile: jspb.Message.getFieldWithDefault(msg, 9, ""),
-    mode: jspb.Message.getFieldWithDefault(msg, 10, "")
+pageSize: jspb.Message.getFieldWithDefault(msg, 1, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+epEui: jspb.Message.getFieldWithDefault(msg, 3, ""),
+bsEui: jspb.Message.getFieldWithDefault(msg, 4, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+duplicate: (f = jspb.Message.getBooleanField(msg, 7)) == null ? undefined : f,
+dlOpen: (f = jspb.Message.getBooleanField(msg, 8)) == null ? undefined : f,
+profile: jspb.Message.getFieldWithDefault(msg, 9, ""),
+mode: jspb.Message.getFieldWithDefault(msg, 10, "")
   };
 
   if (includeInstance) {
@@ -52279,7 +52285,7 @@ proto.kilocenter.api.v1.ListMessagesRequest.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListMessagesRequest}
  */
 proto.kilocenter.api.v1.ListMessagesRequest.deserializeBinary = function(bytes) {
@@ -52308,15 +52314,15 @@ proto.kilocenter.api.v1.ListMessagesRequest.deserializeBinaryFromReader = functi
       msg.setPageSize(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 5:
@@ -52338,11 +52344,11 @@ proto.kilocenter.api.v1.ListMessagesRequest.deserializeBinaryFromReader = functi
       msg.setDlOpen(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setProfile(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMode(value);
       break;
     default:
@@ -52742,10 +52748,10 @@ proto.kilocenter.api.v1.ListMessagesResponse.prototype.toObject = function(opt_i
  */
 proto.kilocenter.api.v1.ListMessagesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
+messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
     proto.kilocenter.api.v1.Message.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -52758,7 +52764,7 @@ proto.kilocenter.api.v1.ListMessagesResponse.toObject = function(includeInstance
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListMessagesResponse}
  */
 proto.kilocenter.api.v1.ListMessagesResponse.deserializeBinary = function(bytes) {
@@ -52788,7 +52794,7 @@ proto.kilocenter.api.v1.ListMessagesResponse.deserializeBinaryFromReader = funct
       msg.addMessages(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -52955,9 +52961,9 @@ proto.kilocenter.api.v1.ListEndpointMessagesRequest.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.ListEndpointMessagesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -52970,7 +52976,7 @@ proto.kilocenter.api.v1.ListEndpointMessagesRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListEndpointMessagesRequest}
  */
 proto.kilocenter.api.v1.ListEndpointMessagesRequest.deserializeBinary = function(bytes) {
@@ -52995,7 +53001,7 @@ proto.kilocenter.api.v1.ListEndpointMessagesRequest.deserializeBinaryFromReader 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
@@ -53003,7 +53009,7 @@ proto.kilocenter.api.v1.ListEndpointMessagesRequest.deserializeBinaryFromReader 
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     default:
@@ -53152,10 +53158,10 @@ proto.kilocenter.api.v1.ListEndpointMessagesResponse.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.ListEndpointMessagesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
+messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
     proto.kilocenter.api.v1.Message.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -53168,7 +53174,7 @@ proto.kilocenter.api.v1.ListEndpointMessagesResponse.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListEndpointMessagesResponse}
  */
 proto.kilocenter.api.v1.ListEndpointMessagesResponse.deserializeBinary = function(bytes) {
@@ -53198,7 +53204,7 @@ proto.kilocenter.api.v1.ListEndpointMessagesResponse.deserializeBinaryFromReader
       msg.addMessages(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -53365,8 +53371,8 @@ proto.kilocenter.api.v1.StreamMessagesRequest.prototype.toObject = function(opt_
  */
 proto.kilocenter.api.v1.StreamMessagesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 2, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+bsEui: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -53379,7 +53385,7 @@ proto.kilocenter.api.v1.StreamMessagesRequest.toObject = function(includeInstanc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.StreamMessagesRequest}
  */
 proto.kilocenter.api.v1.StreamMessagesRequest.deserializeBinary = function(bytes) {
@@ -53404,11 +53410,11 @@ proto.kilocenter.api.v1.StreamMessagesRequest.deserializeBinaryFromReader = func
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     default:
@@ -53525,17 +53531,17 @@ proto.kilocenter.api.v1.ListBaseStationMessagesRequest.prototype.toObject = func
  */
 proto.kilocenter.api.v1.ListBaseStationMessagesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    direction: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    epEui: jspb.Message.getFieldWithDefault(msg, 7, ""),
-    duplicate: jspb.Message.getBooleanFieldWithDefault(msg, 8, false),
-    dlOpen: jspb.Message.getBooleanFieldWithDefault(msg, 9, false),
-    profile: jspb.Message.getFieldWithDefault(msg, 10, ""),
-    mode: jspb.Message.getFieldWithDefault(msg, 11, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+direction: jspb.Message.getFieldWithDefault(msg, 6, ""),
+epEui: jspb.Message.getFieldWithDefault(msg, 7, ""),
+duplicate: (f = jspb.Message.getBooleanField(msg, 8)) == null ? undefined : f,
+dlOpen: (f = jspb.Message.getBooleanField(msg, 9)) == null ? undefined : f,
+profile: jspb.Message.getFieldWithDefault(msg, 10, ""),
+mode: jspb.Message.getFieldWithDefault(msg, 11, "")
   };
 
   if (includeInstance) {
@@ -53548,7 +53554,7 @@ proto.kilocenter.api.v1.ListBaseStationMessagesRequest.toObject = function(inclu
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListBaseStationMessagesRequest}
  */
 proto.kilocenter.api.v1.ListBaseStationMessagesRequest.deserializeBinary = function(bytes) {
@@ -53573,7 +53579,7 @@ proto.kilocenter.api.v1.ListBaseStationMessagesRequest.deserializeBinaryFromRead
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
@@ -53581,7 +53587,7 @@ proto.kilocenter.api.v1.ListBaseStationMessagesRequest.deserializeBinaryFromRead
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 4:
@@ -53595,11 +53601,11 @@ proto.kilocenter.api.v1.ListBaseStationMessagesRequest.deserializeBinaryFromRead
       msg.setEndTime(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDirection(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 8:
@@ -53611,11 +53617,11 @@ proto.kilocenter.api.v1.ListBaseStationMessagesRequest.deserializeBinaryFromRead
       msg.setDlOpen(value);
       break;
     case 10:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setProfile(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMode(value);
       break;
     default:
@@ -54040,10 +54046,10 @@ proto.kilocenter.api.v1.ListBaseStationMessagesResponse.prototype.toObject = fun
  */
 proto.kilocenter.api.v1.ListBaseStationMessagesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
+messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
     proto.kilocenter.api.v1.BaseStationMessage.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -54056,7 +54062,7 @@ proto.kilocenter.api.v1.ListBaseStationMessagesResponse.toObject = function(incl
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListBaseStationMessagesResponse}
  */
 proto.kilocenter.api.v1.ListBaseStationMessagesResponse.deserializeBinary = function(bytes) {
@@ -54086,7 +54092,7 @@ proto.kilocenter.api.v1.ListBaseStationMessagesResponse.deserializeBinaryFromRea
       msg.addMessages(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -54253,8 +54259,8 @@ proto.kilocenter.api.v1.GetBaseStationMessageRequest.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.GetBaseStationMessageRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    messageId: jspb.Message.getFieldWithDefault(msg, 2, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+messageId: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -54267,7 +54273,7 @@ proto.kilocenter.api.v1.GetBaseStationMessageRequest.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationMessageRequest}
  */
 proto.kilocenter.api.v1.GetBaseStationMessageRequest.deserializeBinary = function(bytes) {
@@ -54292,11 +54298,11 @@ proto.kilocenter.api.v1.GetBaseStationMessageRequest.deserializeBinaryFromReader
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setMessageId(value);
       break;
     default:
@@ -54413,7 +54419,7 @@ proto.kilocenter.api.v1.GetBaseStationMessageResponse.prototype.toObject = funct
  */
 proto.kilocenter.api.v1.GetBaseStationMessageResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    message: (f = msg.getMessage()) && proto.kilocenter.api.v1.BaseStationMessage.toObject(includeInstance, f)
+message: (f = msg.getMessage()) && proto.kilocenter.api.v1.BaseStationMessage.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -54426,7 +54432,7 @@ proto.kilocenter.api.v1.GetBaseStationMessageResponse.toObject = function(includ
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationMessageResponse}
  */
 proto.kilocenter.api.v1.GetBaseStationMessageResponse.deserializeBinary = function(bytes) {
@@ -54564,9 +54570,9 @@ proto.kilocenter.api.v1.GetBaseStationMessageStatsRequest.prototype.toObject = f
  */
 proto.kilocenter.api.v1.GetBaseStationMessageStatsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -54579,7 +54585,7 @@ proto.kilocenter.api.v1.GetBaseStationMessageStatsRequest.toObject = function(in
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationMessageStatsRequest}
  */
 proto.kilocenter.api.v1.GetBaseStationMessageStatsRequest.deserializeBinary = function(bytes) {
@@ -54604,7 +54610,7 @@ proto.kilocenter.api.v1.GetBaseStationMessageStatsRequest.deserializeBinaryFromR
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
@@ -54796,7 +54802,7 @@ proto.kilocenter.api.v1.GetBaseStationMessageStatsResponse.prototype.toObject = 
  */
 proto.kilocenter.api.v1.GetBaseStationMessageStatsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    stats: (f = msg.getStats()) && proto.kilocenter.api.v1.BaseStationMessageStats.toObject(includeInstance, f)
+stats: (f = msg.getStats()) && proto.kilocenter.api.v1.BaseStationMessageStats.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -54809,7 +54815,7 @@ proto.kilocenter.api.v1.GetBaseStationMessageStatsResponse.toObject = function(i
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetBaseStationMessageStatsResponse}
  */
 proto.kilocenter.api.v1.GetBaseStationMessageStatsResponse.deserializeBinary = function(bytes) {
@@ -54947,14 +54953,14 @@ proto.kilocenter.api.v1.SearchBaseStationMessagesRequest.prototype.toObject = fu
  */
 proto.kilocenter.api.v1.SearchBaseStationMessagesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    query: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    direction: jspb.Message.getFieldWithDefault(msg, 7, ""),
-    epEui: jspb.Message.getFieldWithDefault(msg, 8, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+query: jspb.Message.getFieldWithDefault(msg, 2, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 3, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 4, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+direction: jspb.Message.getFieldWithDefault(msg, 7, ""),
+epEui: jspb.Message.getFieldWithDefault(msg, 8, "")
   };
 
   if (includeInstance) {
@@ -54967,7 +54973,7 @@ proto.kilocenter.api.v1.SearchBaseStationMessagesRequest.toObject = function(inc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SearchBaseStationMessagesRequest}
  */
 proto.kilocenter.api.v1.SearchBaseStationMessagesRequest.deserializeBinary = function(bytes) {
@@ -54992,11 +54998,11 @@ proto.kilocenter.api.v1.SearchBaseStationMessagesRequest.deserializeBinaryFromRe
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setQuery(value);
       break;
     case 3:
@@ -55004,7 +55010,7 @@ proto.kilocenter.api.v1.SearchBaseStationMessagesRequest.deserializeBinaryFromRe
       msg.setPageSize(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     case 5:
@@ -55018,11 +55024,11 @@ proto.kilocenter.api.v1.SearchBaseStationMessagesRequest.deserializeBinaryFromRe
       msg.setEndTime(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDirection(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     default:
@@ -55336,10 +55342,10 @@ proto.kilocenter.api.v1.SearchBaseStationMessagesResponse.prototype.toObject = f
  */
 proto.kilocenter.api.v1.SearchBaseStationMessagesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
+messagesList: jspb.Message.toObjectList(msg.getMessagesList(),
     proto.kilocenter.api.v1.BaseStationMessage.toObject, includeInstance),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 2, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -55352,7 +55358,7 @@ proto.kilocenter.api.v1.SearchBaseStationMessagesResponse.toObject = function(in
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.SearchBaseStationMessagesResponse}
  */
 proto.kilocenter.api.v1.SearchBaseStationMessagesResponse.deserializeBinary = function(bytes) {
@@ -55382,7 +55388,7 @@ proto.kilocenter.api.v1.SearchBaseStationMessagesResponse.deserializeBinaryFromR
       msg.addMessages(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     case 3:
@@ -55549,12 +55555,12 @@ proto.kilocenter.api.v1.ExportBaseStationMessagesRequest.prototype.toObject = fu
  */
 proto.kilocenter.api.v1.ExportBaseStationMessagesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    format: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    direction: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    epEui: jspb.Message.getFieldWithDefault(msg, 6, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+format: jspb.Message.getFieldWithDefault(msg, 2, ""),
+startTime: (f = msg.getStartTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+endTime: (f = msg.getEndTime()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+direction: jspb.Message.getFieldWithDefault(msg, 5, ""),
+epEui: jspb.Message.getFieldWithDefault(msg, 6, "")
   };
 
   if (includeInstance) {
@@ -55567,7 +55573,7 @@ proto.kilocenter.api.v1.ExportBaseStationMessagesRequest.toObject = function(inc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ExportBaseStationMessagesRequest}
  */
 proto.kilocenter.api.v1.ExportBaseStationMessagesRequest.deserializeBinary = function(bytes) {
@@ -55592,11 +55598,11 @@ proto.kilocenter.api.v1.ExportBaseStationMessagesRequest.deserializeBinaryFromRe
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setFormat(value);
       break;
     case 3:
@@ -55610,11 +55616,11 @@ proto.kilocenter.api.v1.ExportBaseStationMessagesRequest.deserializeBinaryFromRe
       msg.setEndTime(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDirection(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     default:
@@ -55871,9 +55877,9 @@ proto.kilocenter.api.v1.ExportBaseStationMessagesResponse.prototype.toObject = f
  */
 proto.kilocenter.api.v1.ExportBaseStationMessagesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    content: msg.getContent_asB64(),
-    filename: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    contentType: jspb.Message.getFieldWithDefault(msg, 3, "")
+content: msg.getContent_asB64(),
+filename: jspb.Message.getFieldWithDefault(msg, 2, ""),
+contentType: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -55886,7 +55892,7 @@ proto.kilocenter.api.v1.ExportBaseStationMessagesResponse.toObject = function(in
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ExportBaseStationMessagesResponse}
  */
 proto.kilocenter.api.v1.ExportBaseStationMessagesResponse.deserializeBinary = function(bytes) {
@@ -55915,11 +55921,11 @@ proto.kilocenter.api.v1.ExportBaseStationMessagesResponse.deserializeBinaryFromR
       msg.setContent(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setFilename(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setContentType(value);
       break;
     default:
@@ -56085,9 +56091,9 @@ proto.kilocenter.api.v1.StreamBaseStationMessagesRequest.prototype.toObject = fu
  */
 proto.kilocenter.api.v1.StreamBaseStationMessagesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    direction: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    epEui: jspb.Message.getFieldWithDefault(msg, 3, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+direction: jspb.Message.getFieldWithDefault(msg, 2, ""),
+epEui: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -56100,7 +56106,7 @@ proto.kilocenter.api.v1.StreamBaseStationMessagesRequest.toObject = function(inc
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.StreamBaseStationMessagesRequest}
  */
 proto.kilocenter.api.v1.StreamBaseStationMessagesRequest.deserializeBinary = function(bytes) {
@@ -56125,15 +56131,15 @@ proto.kilocenter.api.v1.StreamBaseStationMessagesRequest.deserializeBinaryFromRe
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDirection(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     default:
@@ -56282,28 +56288,28 @@ proto.kilocenter.api.v1.BaseStationMessage.prototype.toObject = function(opt_inc
  */
 proto.kilocenter.api.v1.BaseStationMessage.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    bsEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    epEui: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    payload: msg.getPayload_asB64(),
-    rssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
-    snr: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
-    eqSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
-    uplinkMode: jspb.Message.getFieldWithDefault(msg, 8, ""),
-    packetCounter: jspb.Message.getFieldWithDefault(msg, 9, 0),
-    receivedAt: (f = msg.getReceivedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    direction: jspb.Message.getFieldWithDefault(msg, 11, ""),
-    baseStationsList: jspb.Message.toObjectList(msg.getBaseStationsList(),
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+bsEui: jspb.Message.getFieldWithDefault(msg, 2, ""),
+epEui: jspb.Message.getFieldWithDefault(msg, 3, ""),
+payload: msg.getPayload_asB64(),
+rssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
+snr: jspb.Message.getFloatingPointFieldWithDefault(msg, 6, 0.0),
+eqSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 7, 0.0),
+uplinkMode: jspb.Message.getFieldWithDefault(msg, 8, ""),
+packetCounter: jspb.Message.getFieldWithDefault(msg, 9, 0),
+receivedAt: (f = msg.getReceivedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+direction: jspb.Message.getFieldWithDefault(msg, 11, ""),
+baseStationsList: jspb.Message.toObjectList(msg.getBaseStationsList(),
     proto.kilocenter.api.v1.BaseStationReceptionInfo.toObject, includeInstance),
-    duplicate: jspb.Message.getBooleanFieldWithDefault(msg, 13, false),
-    decodedPayload: msg.getDecodedPayload_asB64(),
-    decodeStatus: jspb.Message.getFieldWithDefault(msg, 21, ""),
-    decodeErrorCode: jspb.Message.getFieldWithDefault(msg, 22, ""),
-    dlOpen: jspb.Message.getBooleanFieldWithDefault(msg, 23, false),
-    dlAck: jspb.Message.getBooleanFieldWithDefault(msg, 24, false),
-    resExp: jspb.Message.getBooleanFieldWithDefault(msg, 25, false),
-    opId: jspb.Message.getFieldWithDefault(msg, 26, "0"),
-    format: jspb.Message.getFieldWithDefault(msg, 27, 0)
+duplicate: jspb.Message.getBooleanFieldWithDefault(msg, 13, false),
+decodedPayload: msg.getDecodedPayload_asB64(),
+decodeStatus: jspb.Message.getFieldWithDefault(msg, 21, ""),
+decodeErrorCode: jspb.Message.getFieldWithDefault(msg, 22, ""),
+dlOpen: jspb.Message.getBooleanFieldWithDefault(msg, 23, false),
+dlAck: jspb.Message.getBooleanFieldWithDefault(msg, 24, false),
+resExp: jspb.Message.getBooleanFieldWithDefault(msg, 25, false),
+opId: jspb.Message.getFieldWithDefault(msg, 26, "0"),
+format: (f = jspb.Message.getField(msg, 27)) == null ? undefined : f
   };
 
   if (includeInstance) {
@@ -56316,7 +56322,7 @@ proto.kilocenter.api.v1.BaseStationMessage.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStationMessage}
  */
 proto.kilocenter.api.v1.BaseStationMessage.deserializeBinary = function(bytes) {
@@ -56341,15 +56347,15 @@ proto.kilocenter.api.v1.BaseStationMessage.deserializeBinaryFromReader = functio
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 4:
@@ -56369,7 +56375,7 @@ proto.kilocenter.api.v1.BaseStationMessage.deserializeBinaryFromReader = functio
       msg.setEqSnr(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setUplinkMode(value);
       break;
     case 9:
@@ -56382,7 +56388,7 @@ proto.kilocenter.api.v1.BaseStationMessage.deserializeBinaryFromReader = functio
       msg.setReceivedAt(value);
       break;
     case 11:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDirection(value);
       break;
     case 12:
@@ -56399,11 +56405,11 @@ proto.kilocenter.api.v1.BaseStationMessage.deserializeBinaryFromReader = functio
       msg.setDecodedPayload(value);
       break;
     case 21:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDecodeStatus(value);
       break;
     case 22:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setDecodeErrorCode(value);
       break;
     case 23:
@@ -57122,16 +57128,16 @@ proto.kilocenter.api.v1.BaseStationMessageStats.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.BaseStationMessageStats.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    totalMessages: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    uniqueEndpoints: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
-    avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
-    messagesToday: jspb.Message.getFieldWithDefault(msg, 6, 0),
-    messagesThisWeek: jspb.Message.getFieldWithDefault(msg, 7, 0),
-    messagesThisMonth: jspb.Message.getFieldWithDefault(msg, 8, 0),
-    firstMessageAt: (f = msg.getFirstMessageAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastMessageAt: (f = msg.getLastMessageAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+totalMessages: jspb.Message.getFieldWithDefault(msg, 2, 0),
+uniqueEndpoints: jspb.Message.getFieldWithDefault(msg, 3, 0),
+avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
+avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
+messagesToday: jspb.Message.getFieldWithDefault(msg, 6, 0),
+messagesThisWeek: jspb.Message.getFieldWithDefault(msg, 7, 0),
+messagesThisMonth: jspb.Message.getFieldWithDefault(msg, 8, 0),
+firstMessageAt: (f = msg.getFirstMessageAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastMessageAt: (f = msg.getLastMessageAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -57144,7 +57150,7 @@ proto.kilocenter.api.v1.BaseStationMessageStats.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStationMessageStats}
  */
 proto.kilocenter.api.v1.BaseStationMessageStats.deserializeBinary = function(bytes) {
@@ -57169,7 +57175,7 @@ proto.kilocenter.api.v1.BaseStationMessageStats.deserializeBinaryFromReader = fu
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
@@ -57564,7 +57570,7 @@ proto.kilocenter.api.v1.GetEndPointStatsRequest.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.GetEndPointStatsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -57577,7 +57583,7 @@ proto.kilocenter.api.v1.GetEndPointStatsRequest.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetEndPointStatsRequest}
  */
 proto.kilocenter.api.v1.GetEndPointStatsRequest.deserializeBinary = function(bytes) {
@@ -57602,7 +57608,7 @@ proto.kilocenter.api.v1.GetEndPointStatsRequest.deserializeBinaryFromReader = fu
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     default:
@@ -57694,15 +57700,15 @@ proto.kilocenter.api.v1.GetEndPointStatsResponse.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.GetEndPointStatsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    uniqueEndpoints: jspb.Message.getFieldWithDefault(msg, 3, 0),
-    avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
-    avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
-    firstSeen: (f = msg.getFirstSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastSeen: (f = msg.getLastSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    activeDays: jspb.Message.getFieldWithDefault(msg, 8, 0),
-    attachStatus: jspb.Message.getFieldWithDefault(msg, 9, "")
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
+uniqueEndpoints: jspb.Message.getFieldWithDefault(msg, 3, 0),
+avgRssi: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
+avgSnr: jspb.Message.getFloatingPointFieldWithDefault(msg, 5, 0.0),
+firstSeen: (f = msg.getFirstSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastSeen: (f = msg.getLastSeen()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+activeDays: jspb.Message.getFieldWithDefault(msg, 8, 0),
+attachStatus: jspb.Message.getFieldWithDefault(msg, 9, "")
   };
 
   if (includeInstance) {
@@ -57715,7 +57721,7 @@ proto.kilocenter.api.v1.GetEndPointStatsResponse.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetEndPointStatsResponse}
  */
 proto.kilocenter.api.v1.GetEndPointStatsResponse.deserializeBinary = function(bytes) {
@@ -57740,7 +57746,7 @@ proto.kilocenter.api.v1.GetEndPointStatsResponse.deserializeBinaryFromReader = f
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
@@ -57774,7 +57780,7 @@ proto.kilocenter.api.v1.GetEndPointStatsResponse.deserializeBinaryFromReader = f
       msg.setActiveDays(value);
       break;
     case 9:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setAttachStatus(value);
       break;
     default:
@@ -58106,9 +58112,9 @@ proto.kilocenter.api.v1.GetEndPointOperationsRequest.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.GetEndPointOperationsRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    offset: jspb.Message.getFieldWithDefault(msg, 3, 0)
+epEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+offset: jspb.Message.getFieldWithDefault(msg, 3, 0)
   };
 
   if (includeInstance) {
@@ -58121,7 +58127,7 @@ proto.kilocenter.api.v1.GetEndPointOperationsRequest.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetEndPointOperationsRequest}
  */
 proto.kilocenter.api.v1.GetEndPointOperationsRequest.deserializeBinary = function(bytes) {
@@ -58146,7 +58152,7 @@ proto.kilocenter.api.v1.GetEndPointOperationsRequest.deserializeBinaryFromReader
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEpEui(value);
       break;
     case 2:
@@ -58303,7 +58309,7 @@ proto.kilocenter.api.v1.GetEndPointOperationsResponse.prototype.toObject = funct
  */
 proto.kilocenter.api.v1.GetEndPointOperationsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    operationsList: jspb.Message.toObjectList(msg.getOperationsList(),
+operationsList: jspb.Message.toObjectList(msg.getOperationsList(),
     proto.kilocenter.api.v1.EndPointOperation.toObject, includeInstance)
   };
 
@@ -58317,7 +58323,7 @@ proto.kilocenter.api.v1.GetEndPointOperationsResponse.toObject = function(includ
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetEndPointOperationsResponse}
  */
 proto.kilocenter.api.v1.GetEndPointOperationsResponse.deserializeBinary = function(bytes) {
@@ -58456,12 +58462,12 @@ proto.kilocenter.api.v1.EndPointOperation.prototype.toObject = function(opt_incl
  */
 proto.kilocenter.api.v1.EndPointOperation.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    eventType: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    category: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    severity: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    title: jspb.Message.getFieldWithDefault(msg, 5, ""),
-    createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+id: jspb.Message.getFieldWithDefault(msg, 1, ""),
+eventType: jspb.Message.getFieldWithDefault(msg, 2, ""),
+category: jspb.Message.getFieldWithDefault(msg, 3, ""),
+severity: jspb.Message.getFieldWithDefault(msg, 4, ""),
+title: jspb.Message.getFieldWithDefault(msg, 5, ""),
+createdAt: (f = msg.getCreatedAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -58474,7 +58480,7 @@ proto.kilocenter.api.v1.EndPointOperation.toObject = function(includeInstance, m
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.EndPointOperation}
  */
 proto.kilocenter.api.v1.EndPointOperation.deserializeBinary = function(bytes) {
@@ -58499,23 +58505,23 @@ proto.kilocenter.api.v1.EndPointOperation.deserializeBinaryFromReader = function
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setEventType(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCategory(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setSeverity(value);
       break;
     case 5:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setTitle(value);
       break;
     case 6:
@@ -58770,7 +58776,7 @@ proto.kilocenter.api.v1.ListAllBaseStationLocationsRequest.toObject = function(i
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListAllBaseStationLocationsRequest}
  */
 proto.kilocenter.api.v1.ListAllBaseStationLocationsRequest.deserializeBinary = function(bytes) {
@@ -58858,14 +58864,14 @@ proto.kilocenter.api.v1.BaseStationLocation.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.BaseStationLocation.toObject = function(includeInstance, msg) {
   var f, obj = {
-    bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    name: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    latitude: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
-    longitude: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
-    altitude: (f = msg.getAltitude()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
-    locationSource: jspb.Message.getFieldWithDefault(msg, 6, ""),
-    isOnline: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
-    orgId: jspb.Message.getFieldWithDefault(msg, 8, "")
+bsEui: jspb.Message.getFieldWithDefault(msg, 1, ""),
+name: jspb.Message.getFieldWithDefault(msg, 2, ""),
+latitude: jspb.Message.getFloatingPointFieldWithDefault(msg, 3, 0.0),
+longitude: jspb.Message.getFloatingPointFieldWithDefault(msg, 4, 0.0),
+altitude: (f = msg.getAltitude()) && google_protobuf_wrappers_pb.DoubleValue.toObject(includeInstance, f),
+locationSource: jspb.Message.getFieldWithDefault(msg, 6, ""),
+isOnline: jspb.Message.getBooleanFieldWithDefault(msg, 7, false),
+orgId: jspb.Message.getFieldWithDefault(msg, 8, "")
   };
 
   if (includeInstance) {
@@ -58878,7 +58884,7 @@ proto.kilocenter.api.v1.BaseStationLocation.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.BaseStationLocation}
  */
 proto.kilocenter.api.v1.BaseStationLocation.deserializeBinary = function(bytes) {
@@ -58903,11 +58909,11 @@ proto.kilocenter.api.v1.BaseStationLocation.deserializeBinaryFromReader = functi
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setBsEui(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setName(value);
       break;
     case 3:
@@ -58924,7 +58930,7 @@ proto.kilocenter.api.v1.BaseStationLocation.deserializeBinaryFromReader = functi
       msg.setAltitude(value);
       break;
     case 6:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setLocationSource(value);
       break;
     case 7:
@@ -58932,7 +58938,7 @@ proto.kilocenter.api.v1.BaseStationLocation.deserializeBinaryFromReader = functi
       msg.setIsOnline(value);
       break;
     case 8:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setOrgId(value);
       break;
     default:
@@ -59226,9 +59232,9 @@ proto.kilocenter.api.v1.ListAllBaseStationLocationsResponse.prototype.toObject =
  */
 proto.kilocenter.api.v1.ListAllBaseStationLocationsResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    locationsList: jspb.Message.toObjectList(msg.getLocationsList(),
+locationsList: jspb.Message.toObjectList(msg.getLocationsList(),
     proto.kilocenter.api.v1.BaseStationLocation.toObject, includeInstance),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0)
+totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0)
   };
 
   if (includeInstance) {
@@ -59241,7 +59247,7 @@ proto.kilocenter.api.v1.ListAllBaseStationLocationsResponse.toObject = function(
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListAllBaseStationLocationsResponse}
  */
 proto.kilocenter.api.v1.ListAllBaseStationLocationsResponse.deserializeBinary = function(bytes) {
@@ -59422,7 +59428,7 @@ proto.kilocenter.api.v1.GetCEStatusRequest.toObject = function(includeInstance, 
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetCEStatusRequest}
  */
 proto.kilocenter.api.v1.GetCEStatusRequest.deserializeBinary = function(bytes) {
@@ -59510,10 +59516,10 @@ proto.kilocenter.api.v1.GetCEStatusResponse.prototype.toObject = function(opt_in
  */
 proto.kilocenter.api.v1.GetCEStatusResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    onboardingRequired: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
-    ceId: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    companyName: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    federationConnected: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
+onboardingRequired: jspb.Message.getBooleanFieldWithDefault(msg, 1, false),
+ceId: jspb.Message.getFieldWithDefault(msg, 2, ""),
+companyName: jspb.Message.getFieldWithDefault(msg, 3, ""),
+federationConnected: jspb.Message.getBooleanFieldWithDefault(msg, 4, false)
   };
 
   if (includeInstance) {
@@ -59526,7 +59532,7 @@ proto.kilocenter.api.v1.GetCEStatusResponse.toObject = function(includeInstance,
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.GetCEStatusResponse}
  */
 proto.kilocenter.api.v1.GetCEStatusResponse.deserializeBinary = function(bytes) {
@@ -59555,11 +59561,11 @@ proto.kilocenter.api.v1.GetCEStatusResponse.deserializeBinaryFromReader = functi
       msg.setOnboardingRequired(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCeId(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCompanyName(value);
       break;
     case 4:
@@ -59730,7 +59736,7 @@ proto.kilocenter.api.v1.CompleteCEOnboardingRequest.prototype.toObject = functio
  */
 proto.kilocenter.api.v1.CompleteCEOnboardingRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    companyName: jspb.Message.getFieldWithDefault(msg, 1, "")
+companyName: jspb.Message.getFieldWithDefault(msg, 1, "")
   };
 
   if (includeInstance) {
@@ -59743,7 +59749,7 @@ proto.kilocenter.api.v1.CompleteCEOnboardingRequest.toObject = function(includeI
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CompleteCEOnboardingRequest}
  */
 proto.kilocenter.api.v1.CompleteCEOnboardingRequest.deserializeBinary = function(bytes) {
@@ -59768,7 +59774,7 @@ proto.kilocenter.api.v1.CompleteCEOnboardingRequest.deserializeBinaryFromReader 
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCompanyName(value);
       break;
     default:
@@ -59860,8 +59866,8 @@ proto.kilocenter.api.v1.CompleteCEOnboardingResponse.prototype.toObject = functi
  */
 proto.kilocenter.api.v1.CompleteCEOnboardingResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    ceId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    companyName: jspb.Message.getFieldWithDefault(msg, 2, "")
+ceId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+companyName: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -59874,7 +59880,7 @@ proto.kilocenter.api.v1.CompleteCEOnboardingResponse.toObject = function(include
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CompleteCEOnboardingResponse}
  */
 proto.kilocenter.api.v1.CompleteCEOnboardingResponse.deserializeBinary = function(bytes) {
@@ -59899,11 +59905,11 @@ proto.kilocenter.api.v1.CompleteCEOnboardingResponse.deserializeBinaryFromReader
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCeId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCompanyName(value);
       break;
     default:
@@ -60020,15 +60026,15 @@ proto.kilocenter.api.v1.CEInstanceInfo.prototype.toObject = function(opt_include
  */
 proto.kilocenter.api.v1.CEInstanceInfo.toObject = function(includeInstance, msg) {
   var f, obj = {
-    ceId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    companyName: jspb.Message.getFieldWithDefault(msg, 2, ""),
-    status: jspb.Message.getFieldWithDefault(msg, 3, ""),
-    connectionStatus: jspb.Message.getFieldWithDefault(msg, 4, ""),
-    activeBasestationCount: jspb.Message.getFieldWithDefault(msg, 5, 0),
-    totalPacketsRelayed: jspb.Message.getFieldWithDefault(msg, 6, 0),
-    ceVersion: jspb.Message.getFieldWithDefault(msg, 7, ""),
-    firstSeenAt: (f = msg.getFirstSeenAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
-    lastHeartbeatAt: (f = msg.getLastHeartbeatAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
+ceId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+companyName: jspb.Message.getFieldWithDefault(msg, 2, ""),
+status: jspb.Message.getFieldWithDefault(msg, 3, ""),
+connectionStatus: jspb.Message.getFieldWithDefault(msg, 4, ""),
+activeBasestationCount: jspb.Message.getFieldWithDefault(msg, 5, 0),
+totalPacketsRelayed: jspb.Message.getFieldWithDefault(msg, 6, 0),
+ceVersion: jspb.Message.getFieldWithDefault(msg, 7, ""),
+firstSeenAt: (f = msg.getFirstSeenAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f),
+lastHeartbeatAt: (f = msg.getLastHeartbeatAt()) && google_protobuf_timestamp_pb.Timestamp.toObject(includeInstance, f)
   };
 
   if (includeInstance) {
@@ -60041,7 +60047,7 @@ proto.kilocenter.api.v1.CEInstanceInfo.toObject = function(includeInstance, msg)
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.CEInstanceInfo}
  */
 proto.kilocenter.api.v1.CEInstanceInfo.deserializeBinary = function(bytes) {
@@ -60066,19 +60072,19 @@ proto.kilocenter.api.v1.CEInstanceInfo.deserializeBinaryFromReader = function(ms
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCeId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCompanyName(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatus(value);
       break;
     case 4:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setConnectionStatus(value);
       break;
     case 5:
@@ -60090,7 +60096,7 @@ proto.kilocenter.api.v1.CEInstanceInfo.deserializeBinaryFromReader = function(ms
       msg.setTotalPacketsRelayed(value);
       break;
     case 7:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCeVersion(value);
       break;
     case 8:
@@ -60432,9 +60438,9 @@ proto.kilocenter.api.v1.ListCEInstancesRequest.prototype.toObject = function(opt
  */
 proto.kilocenter.api.v1.ListCEInstancesRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    statusFilter: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    pageToken: jspb.Message.getFieldWithDefault(msg, 3, "")
+statusFilter: jspb.Message.getFieldWithDefault(msg, 1, ""),
+pageSize: jspb.Message.getFieldWithDefault(msg, 2, 0),
+pageToken: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -60447,7 +60453,7 @@ proto.kilocenter.api.v1.ListCEInstancesRequest.toObject = function(includeInstan
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListCEInstancesRequest}
  */
 proto.kilocenter.api.v1.ListCEInstancesRequest.deserializeBinary = function(bytes) {
@@ -60472,7 +60478,7 @@ proto.kilocenter.api.v1.ListCEInstancesRequest.deserializeBinaryFromReader = fun
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setStatusFilter(value);
       break;
     case 2:
@@ -60480,7 +60486,7 @@ proto.kilocenter.api.v1.ListCEInstancesRequest.deserializeBinaryFromReader = fun
       msg.setPageSize(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setPageToken(value);
       break;
     default:
@@ -60629,10 +60635,10 @@ proto.kilocenter.api.v1.ListCEInstancesResponse.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.ListCEInstancesResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    instancesList: jspb.Message.toObjectList(msg.getInstancesList(),
+instancesList: jspb.Message.toObjectList(msg.getInstancesList(),
     proto.kilocenter.api.v1.CEInstanceInfo.toObject, includeInstance),
-    totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
-    nextPageToken: jspb.Message.getFieldWithDefault(msg, 3, "")
+totalCount: jspb.Message.getFieldWithDefault(msg, 2, 0),
+nextPageToken: jspb.Message.getFieldWithDefault(msg, 3, "")
   };
 
   if (includeInstance) {
@@ -60645,7 +60651,7 @@ proto.kilocenter.api.v1.ListCEInstancesResponse.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.ListCEInstancesResponse}
  */
 proto.kilocenter.api.v1.ListCEInstancesResponse.deserializeBinary = function(bytes) {
@@ -60679,7 +60685,7 @@ proto.kilocenter.api.v1.ListCEInstancesResponse.deserializeBinaryFromReader = fu
       msg.setTotalCount(value);
       break;
     case 3:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setNextPageToken(value);
       break;
     default:
@@ -60842,8 +60848,8 @@ proto.kilocenter.api.v1.RevokeCEInstanceRequest.prototype.toObject = function(op
  */
 proto.kilocenter.api.v1.RevokeCEInstanceRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    ceId: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    reason: jspb.Message.getFieldWithDefault(msg, 2, "")
+ceId: jspb.Message.getFieldWithDefault(msg, 1, ""),
+reason: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -60856,7 +60862,7 @@ proto.kilocenter.api.v1.RevokeCEInstanceRequest.toObject = function(includeInsta
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RevokeCEInstanceRequest}
  */
 proto.kilocenter.api.v1.RevokeCEInstanceRequest.deserializeBinary = function(bytes) {
@@ -60881,11 +60887,11 @@ proto.kilocenter.api.v1.RevokeCEInstanceRequest.deserializeBinaryFromReader = fu
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setCeId(value);
       break;
     case 2:
-      var value = /** @type {string} */ (reader.readString());
+      var value = /** @type {string} */ (reader.readStringRequireUtf8());
       msg.setReason(value);
       break;
     default:
@@ -61002,7 +61008,7 @@ proto.kilocenter.api.v1.RevokeCEInstanceResponse.prototype.toObject = function(o
  */
 proto.kilocenter.api.v1.RevokeCEInstanceResponse.toObject = function(includeInstance, msg) {
   var f, obj = {
-    success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
+success: jspb.Message.getBooleanFieldWithDefault(msg, 1, false)
   };
 
   if (includeInstance) {
@@ -61015,7 +61021,7 @@ proto.kilocenter.api.v1.RevokeCEInstanceResponse.toObject = function(includeInst
 
 /**
  * Deserializes binary data (in protobuf wire format).
- * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @param {jspb.binary.bytesource.ByteSource} bytes The bytes to deserialize.
  * @return {!proto.kilocenter.api.v1.RevokeCEInstanceResponse}
  */
 proto.kilocenter.api.v1.RevokeCEInstanceResponse.deserializeBinary = function(bytes) {

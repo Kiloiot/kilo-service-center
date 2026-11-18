@@ -96,7 +96,7 @@ export function BaseStationMap() {
           ))}
         </MapContainer>
       ) : (
-        <Typography color="text.secondary">
+        <Typography color="textSecondary">
           {BASE_STATIONS_PAGE.MAP_EMPTY}
         </Typography>
       )}

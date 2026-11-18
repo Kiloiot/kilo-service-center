@@ -91,6 +91,9 @@ export const componentSpacing = {
     registerMaxWidth: 480, // Registration card (px)
     pageMaxWidth: 800, // Full-page form (px)
   },
+  listItemIcon: {
+    minWidth: 56, // Column the list's icons sit in (px)
+  },
   userMenu: {
     labelMaxWidth: 160, // Signed-in user's email before it truncates (px)
     menuMinWidth: 200, // Open menu (px)

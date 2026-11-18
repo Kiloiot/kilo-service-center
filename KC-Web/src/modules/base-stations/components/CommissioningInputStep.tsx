@@ -135,7 +135,7 @@ export default function CommissioningInputStep({
         </Alert>
       )}
 
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+      <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
         <strong>{INFO_NOTE_PREFIX}</strong> {INFO_TLS_NOTE}
       </Typography>
     </Box>

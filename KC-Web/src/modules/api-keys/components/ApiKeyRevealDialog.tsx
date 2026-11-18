@@ -53,7 +53,7 @@ const ApiKeyRevealDialog: React.FC<ApiKeyRevealDialogProps> = ({
         <Alert severity="warning" sx={{ mb: 2 }}>
           {API_KEY_CREATED_DIALOG.WARNING}
         </Alert>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
+        <Typography variant="body2" color="textSecondary" gutterBottom>
           {API_KEY_CREATED_DIALOG.LABEL_API_KEY}
         </Typography>
         <Box
@@ -84,7 +84,7 @@ const ApiKeyRevealDialog: React.FC<ApiKeyRevealDialogProps> = ({
           </IconButton>
         </Box>
         {copied && (
-          <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
+          <Typography variant="body2" color="success" sx={{ mt: 1 }}>
             {API_KEYS_PAGE.ACTION_COPIED}
           </Typography>
         )}

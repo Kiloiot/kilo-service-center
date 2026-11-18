@@ -48,7 +48,7 @@ const BaseStationLocationFields: React.FC<BaseStationLocationFieldsProps> = ({
 
   return (
     <>
-      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+      <Typography variant="subtitle2" color="textSecondary" gutterBottom>
         {LABEL_LOCATION}
       </Typography>
       {isGps ? (

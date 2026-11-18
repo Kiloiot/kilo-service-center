@@ -40,7 +40,7 @@ import (
 // in step with docker-compose.yml, compose.gates.yml and the CI service
 // container; a version skew between them hides ordering and syntax differences
 // until deployment.
-const postgresImage = "docker.io/postgres:18.1-alpine"
+const postgresImage = "docker.io/postgres:18.6-alpine"
 
 // containerStartupTimeout bounds the shared postgres container boot.
 const containerStartupTimeout = 60 * time.Second

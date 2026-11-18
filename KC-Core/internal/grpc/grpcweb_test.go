@@ -26,6 +26,7 @@ const (
 	testGRPCWebEnabled     = true
 	testAllowAllOriginsOff = false
 	testTLSDisabled        = false
+	testTLSEnabled         = true
 )
 
 // Wire values the gRPC-web transport must emit; asserted here, not exported.
@@ -104,6 +105,9 @@ func TestCreateHTTPServer_ServesGRPCWebAndPreflight(t *testing.T) {
 	}, logger.Get())
 
 	assert.Equal(t, writeTimeout, server.WriteTimeout)
+	require.NotNil(t, server.Protocols)
+	assert.True(t, server.Protocols.UnencryptedHTTP2(), "native gRPC reaches a plaintext listener over HTTP/2")
+	assert.True(t, server.Protocols.HTTP1(), "gRPC-web reaches a plaintext listener over HTTP/1.1")
 
 	preflight := httptest.NewRequestWithContext(testutil.TestContext(), http.MethodOptions, testRootPath, nil)
 	preflight.Header.Set(grpcerrors.HeaderOrigin, testOrigin)
@@ -119,4 +123,11 @@ func TestCreateHTTPServer_ServesGRPCWebAndPreflight(t *testing.T) {
 	w = httptest.NewRecorder()
 	server.Handler.ServeHTTP(w, web)
 	assert.True(t, strings.HasPrefix(w.Header().Get(grpcerrors.HeaderContentType), testContentTypeGRPCWebPrefix))
+}
+
+// With TLS the server keeps the default protocols: HTTP/2 is negotiated
+// through ALPN and plaintext HTTP/2 is refused.
+func TestCreateHTTPServer_TLSKeepsDefaultProtocols(t *testing.T) {
+	server := createHTTPServer(grpc.NewServer(), Config{EnableTLS: testTLSEnabled}, logger.Get())
+	assert.Nil(t, server.Protocols)
 }

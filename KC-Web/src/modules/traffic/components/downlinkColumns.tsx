@@ -56,7 +56,7 @@ const userDataCell = (d: Downlink) => (
       <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "baseline" }}>
         <HexText>{formatUserData(line.payload)}</HexText>
         {line.packetCnt !== undefined && (
-          <Typography variant="caption" color="text.secondary" noWrap>
+          <Typography variant="caption" color="textSecondary" noWrap>
             {`${LABEL_DL_PAYLOAD_COUNTER} ${line.packetCnt}`}
           </Typography>
         )}
@@ -70,7 +70,7 @@ const holdingStationCell = (d: Downlink) =>
   d.bsEui ? (
     <Box sx={{ display: "flex", flexDirection: "column" }}>
       {euiCell(d.bsEui)}
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" color="textSecondary">
         {d.acceptedAt
           ? `${LABEL_DL_ACCEPTED} ${formatDateTime(d.acceptedAt)}`
           : MSG_DL_AWAITING_ACCEPTANCE}

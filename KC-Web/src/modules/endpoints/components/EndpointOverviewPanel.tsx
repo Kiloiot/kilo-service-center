@@ -66,7 +66,14 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
   onDeleteClick,
 }) => (
   <>
-    <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        mb: 2,
+      }}
+    >
       <Box>
         <Tooltip title={ENDPOINT_DETAILS.TOOLTIP_EDIT}>
           <IconButton size="small" onClick={onEdit}>
@@ -85,22 +92,22 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
       <Grid size={componentSpacing.gridSpan.half}>
         <Typography
           variant="subtitle2"
-          color="text.secondary"
+          color="textSecondary"
           gutterBottom
           sx={{ mb: 2 }}
         >
           {ENDPOINT_DETAILS.SECTION_DEVICE_INFO}
         </Typography>
         {endPoint.name && (
-          <Box mb={1}>
-            <Typography variant="body2" color="text.secondary">
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="body2" color="textSecondary">
               {ENDPOINT_DETAILS.LABEL_DEVICE_NAME}
             </Typography>
             <Typography variant="body1">{endPoint.name}</Typography>
           </Box>
         )}
-        <Box mb={1}>
-          <Typography variant="body2" color="text.secondary">
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="body2" color="textSecondary">
             {ENDPOINT_DETAILS.LABEL_DEVICE_EUI}
           </Typography>
           <Typography variant="body1" sx={(theme) => getMonoBody1(theme)}>
@@ -112,27 +119,27 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
       <Grid size={componentSpacing.gridSpan.half}>
         <Typography
           variant="subtitle2"
-          color="text.secondary"
+          color="textSecondary"
           gutterBottom
           sx={{ mb: 2 }}
         >
           {ENDPOINT_DETAILS.SECTION_STATUS_INFO}
         </Typography>
-        <Box mb={1}>
-          <Typography variant="body2" color="text.secondary">
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="body2" color="textSecondary">
             {ENDPOINT_DETAILS.LABEL_ATTACH_STATUS}
           </Typography>
-          <Box display="flex" alignItems="center" gap={1}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <AttachStatusChip status={endpointData.attachStatus} />
             <ReattachPendingBadge pending={endpointData.reattachPending} />
           </Box>
         </Box>
         {endpointData.isRoaming !== undefined && (
-          <Box mb={1}>
-            <Typography variant="body2" color="text.secondary">
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="body2" color="textSecondary">
               {ENDPOINT_DETAILS.LABEL_ROAMING_STATUS}
             </Typography>
-            <Box display="flex" alignItems="center" gap={1}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <Chip
                 label={
                   endpointData.isRoaming
@@ -144,7 +151,7 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
                 icon={endpointData.isRoaming ? <LinkIcon /> : undefined}
               />
               {endpointData.ownerTenantId && (
-                <Typography variant="caption" color="text.secondary">
+                <Typography variant="caption" color="textSecondary">
                   ({ENDPOINT_DETAILS.LABEL_OWNER_TENANT}{" "}
                   {endpointData.ownerTenantId})
                 </Typography>
@@ -152,8 +159,8 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
             </Box>
           </Box>
         )}
-        <Box mb={1}>
-          <Typography variant="body2" color="text.secondary">
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="body2" color="textSecondary">
             {ENDPOINT_DETAILS.LABEL_LAST_SEEN}
           </Typography>
           <Typography
@@ -165,7 +172,7 @@ export const EndpointOverviewPanel: React.FC<EndpointOverviewPanelProps> = ({
               : ENDPOINT_DETAILS.STATUS_NEVER}
           </Typography>
         </Box>
-        <Box mt={2}>
+        <Box sx={{ mt: 2 }}>
           {endpointData.attachStatus !== ENDPOINT_ATTACH_STATUS.ATTACHED ? (
             <Button
               variant="contained"

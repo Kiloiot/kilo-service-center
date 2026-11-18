@@ -4,13 +4,14 @@
  * Editable organization configuration form with delete action.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 import type { OrganizationUI, UpdateOrganizationRequest } from "@api-types/api";
 import { Box, Button } from "@mui/material";
 import { ConfirmDialog } from "@ui";
 
 import { useFeedback } from "@contexts/feedback";
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import {
   useDeleteOrganization,
   useUpdateOrganization,
@@ -41,11 +42,11 @@ const OrganizationForm: React.FC<OrganizationFormProps> = ({
   const updateOrganization = useUpdateOrganization();
   const deleteOrganization = useDeleteOrganization();
 
-  useEffect(() => {
+  useAdjustStateOnChange([organization], () => {
     setName(organization.name);
     setDescription(organization.description ?? "");
     setTags(organization.tags ?? {});
-  }, [organization]);
+  });
 
   const buildUpdateRequest = (): UpdateOrganizationRequest => {
     return {

@@ -73,7 +73,7 @@ func (s *ResolverService) ResolveBlueprint(
 	return bp, nil
 }
 
-// ResolveBlueprintForEndpoint: snapshot, else the catalog unless snapshot-only; a failed read skips decoding.
+// ResolveBlueprintForEndpoint returns the snapshot, else the catalog unless snapshot-only; a failed read skips decoding.
 func (s *ResolverService) ResolveBlueprintForEndpoint(
 	ctx context.Context,
 	tenantID int64,

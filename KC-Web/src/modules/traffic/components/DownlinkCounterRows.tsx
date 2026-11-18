@@ -63,7 +63,7 @@ export function DownlinkCounterRows({ form }: { form: DownlinkForm }) {
   const { payloadRows } = form;
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" color="textSecondary">
         {HELPER_DL_CNT_DEPEND_PAYLOADS}
       </Typography>
       {payloadRows.map((row, idx) => (

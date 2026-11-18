@@ -38,7 +38,7 @@ export function DownlinkComposer({
       </Typography>
       <Typography
         variant="caption"
-        color="text.secondary"
+        color="textSecondary"
         component="p"
         sx={{ mb: 1 }}
       >

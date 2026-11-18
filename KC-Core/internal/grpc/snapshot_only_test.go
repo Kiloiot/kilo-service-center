@@ -26,11 +26,12 @@ import (
 )
 
 const (
-	modeTenant    = int64(1)
-	foreignOwner  = int64(2)
-	modeTestEUI   = "1122334455667788"
-	modeOtherEUI  = "8877665544332211"
-	modeAbsentEUI = "0101010101010101"
+	modeTenant     = int64(1)
+	foreignOwner   = int64(2)
+	modeTestEUI    = "1122334455667788"
+	modeOtherEUI   = "8877665544332211"
+	modeAbsentEUI  = "0101010101010101"
+	modeSwitchedOn = true
 )
 
 var errModeReadFailed = errors.New("mode read failed")
@@ -210,7 +211,7 @@ func TestCreateEndPoint_SeesTheModeRightAfterItIsSwitchedOn(t *testing.T) {
 	svc, created := modeService(modes, &mockEndpointSvcForUpdate{}, c.service())
 	ctx := testutil.TestContextWithTenant(modeTenant)
 
-	_, err := svc.SetSnapshotOnlyDecoding(ctx, &pb.SetSnapshotOnlyDecodingRequest{Enabled: true})
+	_, err := svc.SetSnapshotOnlyDecoding(ctx, &pb.SetSnapshotOnlyDecodingRequest{Enabled: modeSwitchedOn})
 	require.NoError(t, err)
 	_, err = svc.CreateEndPoint(ctx, newEndpointRequest("", ""))
 
@@ -492,7 +493,7 @@ func TestSnapshotOnlyDecoding_SwitchesTheCallersTenantAndIsRecorded(t *testing.T
 	svc := testCoreService(coreFields{snapshotModes: modes, audit: recorder, log: &mockLogger{}})
 	ctx := testutil.TestContextWithTenant(modeTenant)
 
-	resp, err := svc.SetSnapshotOnlyDecoding(ctx, &pb.SetSnapshotOnlyDecodingRequest{Enabled: true})
+	resp, err := svc.SetSnapshotOnlyDecoding(ctx, &pb.SetSnapshotOnlyDecodingRequest{Enabled: modeSwitchedOn})
 	require.NoError(t, err)
 	assert.True(t, resp.GetEnabled())
 
@@ -517,7 +518,7 @@ func TestSnapshotOnlyDecoding_AFailedSwitchIsNotRecorded(t *testing.T) {
 	recorder := &captureAuditRecorder{}
 	svc := testCoreService(coreFields{snapshotModes: modes, audit: recorder, log: &mockLogger{}})
 
-	_, err := svc.SetSnapshotOnlyDecoding(testutil.TestContextWithTenant(modeTenant), &pb.SetSnapshotOnlyDecodingRequest{Enabled: true})
+	_, err := svc.SetSnapshotOnlyDecoding(testutil.TestContextWithTenant(modeTenant), &pb.SetSnapshotOnlyDecodingRequest{Enabled: modeSwitchedOn})
 
 	requireCode(t, err, codes.Internal)
 	assert.Empty(t, recorder.events)

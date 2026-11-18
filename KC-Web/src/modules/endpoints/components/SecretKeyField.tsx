@@ -112,57 +112,59 @@ export const SecretKeyField: React.FC<SecretKeyFieldProps> = ({
         value={displayed}
         placeholder={placeholder}
         type={shown ? "text" : "password"}
-        inputProps={{ autoComplete: "off", spellCheck: false }}
-        InputProps={{
-          readOnly: showsStored,
-          endAdornment: (
-            <InputAdornment position="end">
-              <Tooltip title={toggleLabel}>
-                <span>
-                  <IconButton
-                    size="small"
-                    aria-label={toggleLabel}
-                    disabled={revealing}
-                    onClick={toggle}
-                  >
-                    {shown ? (
-                      <VisibilityOffIcon fontSize="small" />
-                    ) : (
-                      <VisibilityIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Tooltip title={copyLabel}>
-                <span>
-                  <IconButton
-                    size="small"
-                    aria-label={copyLabel}
-                    disabled={!displayed}
-                    onClick={() => clipboard.copy(displayed, field)}
-                  >
-                    {copied ? (
-                      <CheckCircleIcon fontSize="small" color="success" />
-                    ) : (
-                      <ContentCopyIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <Button size="small" onClick={onGenerate}>
-                {ENDPOINT_FORM.BUTTON_GENERATE}
-              </Button>
-              {onRemove && (
-                <Button
-                  size="small"
-                  color="error"
-                  onClick={() => setConfirmingRemoval(true)}
-                >
-                  {ENDPOINT_FORM.ACTION_REMOVE_KEY}
+        slotProps={{
+          htmlInput: { autoComplete: "off", spellCheck: false },
+          input: {
+            readOnly: showsStored,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title={toggleLabel}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      aria-label={toggleLabel}
+                      disabled={revealing}
+                      onClick={toggle}
+                    >
+                      {shown ? (
+                        <VisibilityOffIcon fontSize="small" />
+                      ) : (
+                        <VisibilityIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title={copyLabel}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      aria-label={copyLabel}
+                      disabled={!displayed}
+                      onClick={() => clipboard.copy(displayed, field)}
+                    >
+                      {copied ? (
+                        <CheckCircleIcon fontSize="small" color="success" />
+                      ) : (
+                        <ContentCopyIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Button size="small" onClick={onGenerate}>
+                  {ENDPOINT_FORM.BUTTON_GENERATE}
                 </Button>
-              )}
-            </InputAdornment>
-          ),
+                {onRemove && (
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={() => setConfirmingRemoval(true)}
+                  >
+                    {ENDPOINT_FORM.ACTION_REMOVE_KEY}
+                  </Button>
+                )}
+              </InputAdornment>
+            ),
+          },
         }}
       />
       {onRemove && (

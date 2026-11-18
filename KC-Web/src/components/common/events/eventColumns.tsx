@@ -18,12 +18,7 @@ import { EVENT_LOG_TABLE, SCACI_FIELD } from "@constants/messages";
 import { SeverityChip, SummaryCell } from "./EventCells";
 
 export type EventColumnId =
-  | "time"
-  | "eventType"
-  | "opId"
-  | "source"
-  | "severity"
-  | "summary";
+  "time" | "eventType" | "opId" | "source" | "severity" | "summary";
 
 const EVENT_COLUMN_ORDER: readonly EventColumnId[] = [
   "time",

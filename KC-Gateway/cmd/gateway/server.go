@@ -11,8 +11,6 @@ import (
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/grpc/webmux"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
 	"github.com/Kiloiot/kilo-service-center/KC-Gateway/internal/rpccatalog"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c" //nolint:staticcheck // TODO: migrate to http.Server.Protocols when ecosystem support is stable
 	"google.golang.org/grpc"
 )
 
@@ -28,8 +26,7 @@ func isStreamingMethod(fullMethod string) bool {
 // preflight onto one listener.
 func newMuxHandler(cfg *config.Config, l logger.Logger, proxyServer *grpc.Server) http.Handler {
 	routed := withoutHopByHopHeaders(webmux.NewHandler(proxyServer, cfg.GRPC.Web))
-	streamsExempt := grpcconst.ExemptStreamsFromHTTPDeadlines(routed, isStreamingMethod, l)
-	return h2c.NewHandler(streamsExempt, &http2.Server{}) //nolint:staticcheck // TODO: migrate to http.Server.Protocols
+	return grpcconst.ExemptStreamsFromHTTPDeadlines(routed, isStreamingMethod, l)
 }
 
 // withoutHopByHopHeaders strips headers the HTTP/2 upstream rejects with 400 once gRPC-web turns them into metadata.
@@ -54,13 +51,19 @@ func buildServer(cfg *config.Config, l logger.Logger, proxyServer *grpc.Server) 
 	if cfg.GRPC.Web.Enabled {
 		l.Info(LogGatewayGRPCWebEnabled, logger.FieldOrigins, cfg.GRPC.Web.AllowedOrigins)
 	}
-	httpServer := &http.Server{
+	return newHTTPServer(cfg, l, proxyServer), listener, nil
+}
+
+// newHTTPServer fronts the proxy with the configured timeouts on a plaintext
+// listener.
+func newHTTPServer(cfg *config.Config, l logger.Logger, proxyServer *grpc.Server) *http.Server {
+	return &http.Server{
 		Handler:      newMuxHandler(cfg, l, proxyServer),
 		ReadTimeout:  cfg.GRPC.HTTP.ReadTimeout,
 		WriteTimeout: cfg.GRPC.HTTP.WriteTimeout,
 		IdleTimeout:  cfg.GRPC.HTTP.IdleTimeout,
+		Protocols:    grpcconst.CleartextProtocols(),
 	}
-	return httpServer, listener, nil
 }
 
 // serve runs the HTTP server until it stops; an unexpected failure cancels

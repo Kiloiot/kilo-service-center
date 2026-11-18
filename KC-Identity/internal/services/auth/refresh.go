@@ -22,7 +22,7 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*grpc
 		return nil, err
 	}
 
-	userID, _, err := s.tokenIssuer.ParseRefreshToken(refreshToken)
+	userID, err := s.tokenIssuer.ParseRefreshToken(refreshToken)
 	if err != nil {
 		s.logger.WarnContext(ctx, logAuthTokenRefreshFailed, logger.FieldReason, reasonInvalidToken)
 		return nil, err

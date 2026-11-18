@@ -17,6 +17,7 @@ import {
   TextField,
 } from "@mui/material";
 
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { getErrorMessage } from "@utils/error-message";
 import { BLUEPRINT_SPEC_ROWS } from "@constants/app";
 import { BLUEPRINT_LABELS } from "@constants/messages";
@@ -46,7 +47,7 @@ export const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({
   const [versionError, setVersionError] = useState<string | null>(null);
   const [specError, setSpecError] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  useAdjustStateOnChange([model], () => {
     if (model) {
       setVersion("");
       setSpecJson("");
@@ -54,7 +55,7 @@ export const AddBlueprintDialog: React.FC<AddBlueprintDialogProps> = ({
       setVersionError(null);
       setSpecError(null);
     }
-  }, [model]);
+  });
 
   const mutation = useCreateBlueprint();
 

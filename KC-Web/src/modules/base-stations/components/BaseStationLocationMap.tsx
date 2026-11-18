@@ -64,7 +64,7 @@ export default function BaseStationLocationMap({
             mb: 1,
           }}
         />
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" color="textSecondary">
           {state === STATION_LOCATION_STATE.GPS_NO_FIX
             ? MSG_NO_GPS_FIX
             : MSG_NO_LOCATION_SET}
@@ -105,7 +105,7 @@ export default function BaseStationLocationMap({
         }}
       >
         <Box>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="textSecondary">
             {LABEL_LATITUDE}
           </Typography>
           <Typography variant="body2">
@@ -113,7 +113,7 @@ export default function BaseStationLocationMap({
           </Typography>
         </Box>
         <Box>
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" color="textSecondary">
             {LABEL_LONGITUDE}
           </Typography>
           <Typography variant="body2">
@@ -122,7 +122,7 @@ export default function BaseStationLocationMap({
         </Box>
         {altitude != null && (
           <Box>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="textSecondary">
               {LABEL_ALTITUDE}
             </Typography>
             <Typography variant="body2">{formatAltitude(altitude)}</Typography>

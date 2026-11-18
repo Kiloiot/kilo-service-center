@@ -26,8 +26,7 @@ export interface EndpointTextFieldProps {
   label: string;
   helper: string;
   size?: FieldSize;
-  inputProps?: TextFieldProps["inputProps"];
-  InputProps?: TextFieldProps["InputProps"];
+  slotProps?: TextFieldProps["slotProps"];
   type?: string;
   placeholder?: string;
   disabled?: boolean;

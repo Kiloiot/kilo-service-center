@@ -100,7 +100,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
 
       <Typography
         variant="body2"
-        color="text.secondary"
+        color="textSecondary"
         sx={{ maxWidth: componentSpacing.stateView.messageMaxWidth, mb: 2 }}
       >
         {displayMessage}
@@ -138,7 +138,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
             >
               <Typography
                 variant="caption"
-                color="text.secondary"
+                color="textSecondary"
                 component="span"
               >
                 {ERROR_BOUNDARY.STACK_TRACE_SUMMARY}

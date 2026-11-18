@@ -7,12 +7,7 @@ import { Box, Card, CardContent, Chip, Grid, Typography } from "@mui/material";
 import { componentSpacing } from "@theme/index";
 
 export type StatCardColor =
-  | "primary"
-  | "secondary"
-  | "success"
-  | "warning"
-  | "error"
-  | "info";
+  "primary" | "secondary" | "success" | "warning" | "error" | "info";
 
 interface StatCardProps {
   label: string;
@@ -50,7 +45,7 @@ export function StatCard({
           }}
         >
           <Box sx={{ flex: 1 }}>
-            <Typography color="text.secondary" variant="body2" gutterBottom>
+            <Typography color="textSecondary" variant="body2" gutterBottom>
               {label}
             </Typography>
             <Typography
@@ -60,7 +55,7 @@ export function StatCard({
               {value}
             </Typography>
             {caption && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="textSecondary">
                 {caption}
               </Typography>
             )}

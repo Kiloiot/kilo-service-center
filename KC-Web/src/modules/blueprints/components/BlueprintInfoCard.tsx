@@ -45,7 +45,7 @@ const BlueprintInfoCard: React.FC<BlueprintInfoCardProps> = ({
         />
       ) : (
         <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" color="text.secondary">
+          <Typography variant="subtitle2" color="textSecondary">
             {BLUEPRINT_LABELS.LABEL_VERSION}
           </Typography>
           <Typography>{blueprint.version}</Typography>
@@ -53,7 +53,7 @@ const BlueprintInfoCard: React.FC<BlueprintInfoCardProps> = ({
       )}
 
       <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle2" color="text.secondary">
+        <Typography variant="subtitle2" color="textSecondary">
           {BLUEPRINT_LABELS.LABEL_TYPE_EUI}
         </Typography>
         <Typography sx={getMonoBody1}>
@@ -62,14 +62,14 @@ const BlueprintInfoCard: React.FC<BlueprintInfoCardProps> = ({
       </Box>
 
       <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle2" color="text.secondary">
+        <Typography variant="subtitle2" color="textSecondary">
           {BLUEPRINT_LABELS.LABEL_CREATED}
         </Typography>
         <Typography>{formatDateTime(blueprint.createdAt)}</Typography>
       </Box>
 
       <Box>
-        <Typography variant="subtitle2" color="text.secondary">
+        <Typography variant="subtitle2" color="textSecondary">
           {BLUEPRINT_LABELS.LABEL_UPDATED}
         </Typography>
         <Typography>{formatDateTime(blueprint.updatedAt)}</Typography>

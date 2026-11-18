@@ -54,7 +54,7 @@ export function ReattachPromptDialog({
             </ListItem>
           ))}
         </List>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
           {ENDPOINT_FORM.REATTACH_LATER_HINT}
         </Typography>
       </DialogContent>

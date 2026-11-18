@@ -39,7 +39,12 @@ type Server struct {
 	tlsKey       string
 	log          logger.Logger
 	serving      atomic.Bool
+	// shutdownDrain caps how long Stop lets open calls finish before ending them.
+	shutdownDrain time.Duration
 }
+
+// serverShutdownDrain keeps Stop and the cleanups after it inside a pod's default 30s grace period.
+const serverShutdownDrain = 10 * time.Second
 
 // Config holds the gRPC server configuration
 type Config struct {
@@ -171,15 +176,16 @@ func NewServer(cfg Config) (*Server, error) {
 	httpServer := createHTTPServer(grpcServer, cfg, log)
 
 	return &Server{
-		grpcServer:   grpcServer,
-		httpServer:   httpServer,
-		healthServer: healthSvc,
-		listener:     listener,
-		port:         cfg.Port,
-		enableTLS:    cfg.EnableTLS,
-		tlsCert:      cfg.TLSCert,
-		tlsKey:       cfg.TLSKey,
-		log:          log,
+		grpcServer:    grpcServer,
+		httpServer:    httpServer,
+		healthServer:  healthSvc,
+		listener:      listener,
+		port:          cfg.Port,
+		enableTLS:     cfg.EnableTLS,
+		tlsCert:       cfg.TLSCert,
+		tlsKey:        cfg.TLSKey,
+		log:           log,
+		shutdownDrain: serverShutdownDrain,
 	}, nil
 }
 
@@ -222,15 +228,14 @@ func (s *Server) Stop() {
 		s.healthServer.SetServingStatus(pb.CoreService_ServiceDesc.ServiceName, healthpb.HealthCheckResponse_NOT_SERVING)
 	}
 
-	// Graceful HTTP shutdown (includes gRPC)
-	ctx, cancel := context.WithTimeout(context.Background(), s.httpServer.WriteTimeout) // context-root: shutdown
+	// Streams are exempt from the write timeout, so the drain ends with calls still open and they are stopped.
+	ctx, cancel := context.WithTimeout(context.Background(), min(s.httpServer.WriteTimeout, s.shutdownDrain)) // context-root: shutdown
 	defer cancel()
 
-	if err := s.httpServer.Shutdown(ctx); err != nil {
+	if err := s.httpServer.Shutdown(ctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		s.log.Error(LogHTTPServerShutdownError, logger.FieldError, err)
-		// Force close if graceful fails
-		s.grpcServer.Stop()
 	}
+	s.grpcServer.Stop()
 }
 
 // GetServer returns the underlying gRPC server for service registration

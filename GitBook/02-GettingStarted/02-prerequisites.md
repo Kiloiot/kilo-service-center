@@ -18,7 +18,7 @@ data. Read the [installation safety notice](../05-Security/02-installation-safet
 
 If you are building KC-Core, KC-Identity, KC-Gateway, or KC-Web from source (development or contribution):
 
-- Go 1.24.4+
+- Go 1.27.3+
 - Bun runtime (for KC-Web build and dev server)
 
 ## Optional Tools

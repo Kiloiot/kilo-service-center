@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 import {
   Alert,
@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@mui/material";
 
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { getErrorMessage } from "@utils/error-message";
 import { ACTION_CANCEL } from "@constants/messages";
 import { componentSpacing } from "@theme/index";
@@ -60,12 +61,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useAdjustStateOnChange([open], () => {
     if (!open) {
       setRunning(false);
       setRunError(null);
     }
-  }, [open]);
+  });
 
   const handleConfirm = async () => {
     const result = onConfirm();

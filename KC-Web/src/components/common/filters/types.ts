@@ -41,6 +41,4 @@ export interface ToggleFilterField<F> extends FilterFieldBase {
 }
 
 export type FilterField<F> =
-  | SelectFilterField<F>
-  | TextFilterField<F>
-  | ToggleFilterField<F>;
+  SelectFilterField<F> | TextFilterField<F> | ToggleFilterField<F>;

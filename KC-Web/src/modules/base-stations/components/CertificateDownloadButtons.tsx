@@ -41,7 +41,7 @@ export default function CertificateDownloadButtons({
       <Typography variant="subtitle2" gutterBottom>
         {SECTION_DOWNLOAD_CERTS}
       </Typography>
-      <Typography variant="caption" color="text.secondary" gutterBottom>
+      <Typography variant="caption" color="textSecondary" gutterBottom>
         {INFO_CERT_EXPIRY}
       </Typography>
       <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>

@@ -190,10 +190,12 @@ const Users: React.FC<UsersProps> = ({
     >
       {!embedded && (
         <Box
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          mb={3}
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 3,
+          }}
         >
           <Typography variant="h4" component="h1">
             {USERS_PAGE.TITLE}
@@ -236,7 +238,7 @@ const Users: React.FC<UsersProps> = ({
       </StatCardRow>
 
       {/* Search */}
-      <Box display="flex" gap={2} mb={3}>
+      <Box sx={{ display: "flex", gap: 2, mb: 3 }}>
         <SearchField
           placeholder={USERS_PAGE.SEARCH_PLACEHOLDER}
           value={search}
@@ -247,10 +249,12 @@ const Users: React.FC<UsersProps> = ({
       {/* Loading State */}
       {isLoading && (
         <Box
-          display="flex"
-          justifyContent="center"
-          alignItems="center"
-          minHeight={componentSpacing.stateView.listMinHeight}
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: componentSpacing.stateView.listMinHeight,
+          }}
         >
           <CircularProgress />
         </Box>

@@ -11,7 +11,7 @@ import { EVENT_LOG_TABLE } from "@constants/messages";
 export function EventData({ entry }: { entry: EventLogEntryUI }) {
   if (!entry.data) {
     return (
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {EVENT_LOG_TABLE.NO_DATA}
       </Typography>
     );

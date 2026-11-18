@@ -184,7 +184,7 @@ kcWeb:
 mosquitto:
   image:
     repository: eclipse-mosquitto
-    tag: "2.0.22"
+    tag: "2.1.2-alpine"
   resources:
     limits:
       memory: 64Mi

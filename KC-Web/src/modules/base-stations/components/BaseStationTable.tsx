@@ -44,7 +44,7 @@ const COLUMNS: { label: string; sortField?: BaseStationSortField }[] = [
 function CertificateExpiryCell({ expiryDate }: { expiryDate?: string }) {
   if (!expiryDate) {
     return (
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {DATA_TABLE.NO_VALUE}
       </Typography>
     );

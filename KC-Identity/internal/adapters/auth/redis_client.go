@@ -10,7 +10,7 @@ import (
 
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/config"
 	"github.com/Kiloiot/kilo-service-center/KC-Core/pkg/logger"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 // RedisClient provides state storage for OIDC/OAuth2 flows.
@@ -20,6 +20,9 @@ type RedisClient struct {
 }
 
 const defaultRedisPort = "6379"
+
+// redisStopsAtRequestDeadline keeps a stalled Redis from holding a request past its deadline.
+const redisStopsAtRequestDeadline = true
 
 // unknownCommandErrorText identifies pre-6.2 Redis servers lacking GETDEL.
 const unknownCommandErrorText = "unknown command"
@@ -37,6 +40,8 @@ func NewRedisClient(ctx context.Context, cfg *config.RedisConfig, log logger.Log
 		DialTimeout:  config.AuthRedisConnectTimeout,
 		ReadTimeout:  config.AuthRedisConnectTimeout,
 		WriteTimeout: config.AuthRedisConnectTimeout,
+
+		ContextTimeoutEnabled: redisStopsAtRequestDeadline,
 	})
 
 	// Verify connection

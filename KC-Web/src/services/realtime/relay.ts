@@ -52,10 +52,7 @@ export interface StatesMessage {
 
 /** What the leader relays about its streams to every tab, itself included. */
 export type StreamMessage =
-  | EventMessage
-  | ConnectionMessage
-  | ErrorMessage
-  | StatesMessage;
+  EventMessage | ConnectionMessage | ErrorMessage | StatesMessage;
 
 export type RelayMessage = DemandMessage | CensusMessage | StreamMessage;
 

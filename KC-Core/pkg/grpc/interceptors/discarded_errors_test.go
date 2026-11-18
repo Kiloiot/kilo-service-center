@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -163,7 +163,7 @@ func TestAuthenticateJWT_OrgResolutionFailureIsLogged(t *testing.T) {
 	})
 	require.NoError(t, err)
 	ai.WithOrganizationResolver(failingOrgResolver{})
-	signed, err := jwt.Sign(tenantClaimToken(t, "1"), jwt.WithKey(jwa.HS256, []byte(testHMACSecret)))
+	signed, err := jwt.Sign(tenantClaimToken(t, "1"), jwt.WithKey(jwa.HS256(), []byte(testHMACSecret)))
 	require.NoError(t, err)
 	ctx := metadata.NewIncomingContext(testutil.TestContext(),
 		metadata.Pairs(grpcconst.MetadataKeyAuthorization, grpcconst.BearerPrefix+string(signed)))

@@ -155,7 +155,7 @@ export const Blueprints: React.FC = () => {
         {/* Empty state */}
         {!mfrsLoading && manufacturers?.length === 0 && (
           <Paper sx={{ p: 4, textAlign: "center" }}>
-            <Typography color="text.secondary">
+            <Typography color="textSecondary">
               {BLUEPRINT_LABELS.NO_MANUFACTURERS}
             </Typography>
           </Paper>

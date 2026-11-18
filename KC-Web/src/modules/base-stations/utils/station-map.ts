@@ -11,8 +11,7 @@ type Position = [number, number];
 
 /** One position is centered at the location zoom; distinct positions are fitted. */
 export type StationMapView =
-  | { center: Position; zoom: number }
-  | { bounds: [Position, Position] };
+  { center: Position; zoom: number } | { bounds: [Position, Position] };
 
 /** The view that shows every pin, or null when no station has a location. */
 export function stationMapView(

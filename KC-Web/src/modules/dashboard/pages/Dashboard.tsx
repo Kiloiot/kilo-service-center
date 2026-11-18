@@ -81,7 +81,7 @@ const Dashboard: React.FC = () => {
         <Typography variant="h4" component="h1">
           {DASHBOARD_PAGE.TITLE}
         </Typography>
-        <Typography variant="body1" color="text.secondary">
+        <Typography variant="body1" color="textSecondary">
           {DASHBOARD_PAGE.SUBTITLE}
         </Typography>
       </Box>
@@ -169,7 +169,7 @@ const Dashboard: React.FC = () => {
                 }}
               >
                 <CircularProgress size={componentSpacing.spinner.section} />
-                <Typography sx={{ ml: 1 }} color="text.secondary">
+                <Typography sx={{ ml: 1 }} color="textSecondary">
                   {SYSTEM_STATUS.LABEL_CHECKING}
                 </Typography>
               </Box>
@@ -179,7 +179,7 @@ const Dashboard: React.FC = () => {
                 timestamp={systemStatusData.timestamp}
               />
             ) : (
-              <Typography color="text.secondary">
+              <Typography color="textSecondary">
                 {SYSTEM_STATUS.TOOLTIP_UNABLE}
               </Typography>
             )}

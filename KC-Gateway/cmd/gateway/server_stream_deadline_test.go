@@ -54,11 +54,10 @@ func TestMuxHandler_StreamOutlivesHTTPWriteTimeout(t *testing.T) {
 	pb.RegisterCoreServiceServer(proxied, slowEvents{})
 	lis, err := net.Listen("tcp", testUpstreamListen)
 	require.NoError(t, err)
-	server := &http.Server{
-		Handler:      newMuxHandler(&config.Config{}, logger.NewNop(), proxied),
-		ReadTimeout:  testStreamWriteTimeout,
-		WriteTimeout: testStreamWriteTimeout,
-	}
+	cfg := &config.Config{}
+	cfg.GRPC.HTTP.ReadTimeout = testStreamWriteTimeout
+	cfg.GRPC.HTTP.WriteTimeout = testStreamWriteTimeout
+	server := newHTTPServer(cfg, logger.NewNop(), proxied)
 	go func() { _ = server.Serve(lis) }()
 	t.Cleanup(func() { _ = server.Close() })
 

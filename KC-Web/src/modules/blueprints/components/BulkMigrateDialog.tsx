@@ -2,7 +2,7 @@
  * Re-materializes a device model's snapshot endpoints onto a chosen blueprint via KC-Core.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 
 import type { BlueprintScope } from "@api-types/api";
 import {
@@ -21,6 +21,7 @@ import {
 } from "@mui/material";
 
 import { useFeedback } from "@contexts/feedback";
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { getErrorMessage } from "@utils/error-message";
 import { BLUEPRINT_LABELS } from "@constants/messages";
 import { componentSpacing } from "@theme/index";
@@ -62,19 +63,19 @@ const BulkMigrateDialog: React.FC<BulkMigrateDialogProps> = ({
   const { data: affectedCount, isLoading: countLoading } =
     useModelSnapshotCount(deviceModelId, { enabled: open });
 
-  useEffect(() => {
+  useAdjustStateOnChange([open, modelIsSystem], () => {
     if (!open) return;
     setError(null);
     setSetAsDefault(!modelIsSystem);
-  }, [open, modelIsSystem]);
+  });
 
   // Preselect the requested blueprint, else the model default, else the first.
-  useEffect(() => {
+  useAdjustStateOnChange([open, blueprints, initialBlueprintId], () => {
     if (!open || !blueprints) return;
     const fallback =
       blueprints.find((b) => b.isDefault)?.id ?? blueprints[0]?.id ?? "";
     setSelectedBlueprintId(initialBlueprintId ?? fallback);
-  }, [open, blueprints, initialBlueprintId]);
+  });
 
   const mutation = useBulkAssignBlueprint();
 

@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@mui/material";
 
+import { useAdjustStateOnChange } from "@hooks/useAdjustStateOnChange";
 import { getErrorMessage } from "@utils/error-message";
 import { BLUEPRINT_SCOPE } from "@constants/app";
 import { BLUEPRINT_LABELS } from "@constants/messages";
@@ -48,13 +49,13 @@ export const AddManufacturerDialog: React.FC<AddManufacturerDialogProps> = ({
   const [nameError, setNameError] = useState<string | null>(null);
 
   // Default the System toggle to match the active scope tab.
-  React.useEffect(() => {
+  useAdjustStateOnChange([open, scope], () => {
     if (open) {
       setFormData({ name: "", isSystem: scope === BLUEPRINT_SCOPE.SYSTEM });
       setError(null);
       setNameError(null);
     }
-  }, [open, scope]);
+  });
 
   const mutation = useCreateManufacturer();
 

@@ -47,7 +47,7 @@ function DownlinkNumberFields({ form }: { form: DownlinkForm }) {
         error={!!validation.priorityError}
         helperText={validation.priorityError || PRIORITY_PRESETS_HINT}
         type="number"
-        inputProps={{ step: DOWNLINK_LIMITS.PRIORITY_STEP }}
+        slotProps={{ htmlInput: { step: DOWNLINK_LIMITS.PRIORITY_STEP } }}
         size="small"
         sx={{ width: componentSpacing.downlinkForm.priorityWidth }}
       />

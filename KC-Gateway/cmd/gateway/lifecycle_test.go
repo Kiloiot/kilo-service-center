@@ -2,7 +2,6 @@ package main
 
 import (
 	"net"
-	"net/http"
 	"testing"
 	"time"
 
@@ -27,10 +26,8 @@ func TestShutdownServers_WithAnOpenStream(t *testing.T) {
 
 	lis, err := net.Listen("tcp", testUpstreamListen)
 	require.NoError(t, err)
-	httpServer := &http.Server{
-		Handler:           newMuxHandler(&config.Config{}, logger.NewNop(), proxyServer),
-		ReadHeaderTimeout: testShutdownTimeout,
-	}
+	httpServer := newHTTPServer(&config.Config{}, logger.NewNop(), proxyServer)
+	httpServer.ReadHeaderTimeout = testShutdownTimeout
 	go func() { _ = httpServer.Serve(lis) }()
 
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))

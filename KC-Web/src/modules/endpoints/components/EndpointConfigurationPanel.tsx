@@ -124,13 +124,13 @@ function receptionRows(endpoint: EndpointUI): ConfigRow[] {
 function ConfigSection({ title, rows }: { title: string; rows: ConfigRow[] }) {
   return (
     <Box>
-      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+      <Typography variant="subtitle2" color="textSecondary" sx={{ mb: 2 }}>
         {title}
       </Typography>
       <Grid container spacing={1}>
         {rows.map((row) => (
           <Grid key={row.label} size={componentSpacing.gridSpan.halfFromSm}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="textSecondary">
               {row.label}
             </Typography>
             <Typography

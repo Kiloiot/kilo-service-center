@@ -13,7 +13,7 @@ export function UplinkUserDataCell({ uplink }: { uplink: UplinkUI }) {
   return (
     <Box>
       <Typography variant="body2">{decoded}</Typography>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" color="textSecondary">
         {hex}
       </Typography>
     </Box>

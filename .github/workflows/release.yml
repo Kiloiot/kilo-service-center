@@ -18,7 +18,7 @@ jobs:
       minor: ${{ steps.meta.outputs.minor }}
       registry: ${{ steps.meta.outputs.registry }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Extract version metadata
         id: meta
@@ -56,7 +56,7 @@ jobs:
           - name: kc-web
             dockerfile: KC-Web/Dockerfile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Update release manifest
         run: |
@@ -69,14 +69,14 @@ jobs:
              '.version=$v | .buildTime=$bt | .gitCommit=$gc | .gitBranch=$gb | .buildUser=$bu' \
              release/manifest.json > pkg/version/release-manifest.json
 
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -91,7 +91,7 @@ jobs:
     needs: [validate, release-images]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

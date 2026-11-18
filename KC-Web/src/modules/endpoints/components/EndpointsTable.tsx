@@ -29,11 +29,7 @@ import { ENDPOINTS_PAGE } from "@constants/messages";
 import AttachStatusChip from "./AttachStatusChip";
 
 export type EndpointsOrderBy =
-  | "name"
-  | "epEui"
-  | "attachState"
-  | "status"
-  | "lastSeen";
+  "name" | "epEui" | "attachState" | "status" | "lastSeen";
 
 const COLUMNS: { field: EndpointsOrderBy; label: string }[] = [
   { field: "name", label: ENDPOINTS_PAGE.COL_NAME },
@@ -80,7 +76,7 @@ function EndpointRow({
       <TableCell>
         <Typography
           variant="body2"
-          color={endpoint.lastSeen ? "text.secondary" : "error"}
+          color={endpoint.lastSeen ? "textSecondary" : "error"}
         >
           {formatRelativeDuration(endpoint.lastSeen)}
         </Typography>
@@ -120,7 +116,7 @@ export const EndpointsTable: React.FC<EndpointsTableProps> = ({
         {endpoints.length === 0 ? (
           <TableRow>
             <TableCell colSpan={COLUMNS.length} align="center" sx={{ py: 4 }}>
-              <Typography color="text.secondary">{emptyMessage}</Typography>
+              <Typography color="textSecondary">{emptyMessage}</Typography>
             </TableCell>
           </TableRow>
         ) : (
