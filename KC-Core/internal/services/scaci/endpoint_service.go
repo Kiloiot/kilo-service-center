@@ -53,7 +53,7 @@ import (
 //
 // BSSCI Integration:
 //   - Deregister triggers DetachPropagator.SendDetachPropagateToAll()
-//   - This ensures the tenant's connected base stations clear endpoint state
+//   - This ensures all connected base stations clear endpoint state
 type endpointService struct {
 	endpointRepo     EndpointStore          // Endpoint persistence
 	detachPropagator scaci.DetachPropagator // BSSCI detach propagation
@@ -359,8 +359,8 @@ func (es *endpointService) Attach(ctx context.Context, ep *models.EndPoint) stri
 }
 
 // PropagateDetachToAll implements EndpointService.PropagateDetachToAll: it
-// sends detPrp to the tenant's connected base stations only for an endpoint
-// the tenant owns, so an application center never detaches another tenant's
+// sends detPrp to every connected base station only for an endpoint the
+// tenant owns, so an application center never detaches another tenant's
 // endpoint.
 func (es *endpointService) PropagateDetachToAll(ctx context.Context, tenantID int64, epEui uint64) []error {
 	var eui models.EUI
@@ -377,5 +377,5 @@ func (es *endpointService) PropagateDetachToAll(ctx context.Context, tenantID in
 		return []error{fmt.Errorf("%w: %w", errDetachPropagationEndpointLookup, err)}
 	}
 
-	return es.detachPropagator.SendDetachPropagateToAll(tenantID, epEui)
+	return es.detachPropagator.SendDetachPropagateToAll(epEui)
 }

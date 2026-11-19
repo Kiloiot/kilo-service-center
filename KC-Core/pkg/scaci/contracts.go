@@ -172,7 +172,7 @@ type HandshakeService interface {
 //
 // BSSCI Integration:
 //   - Deregister calls DetachPropagator.SendDetachPropagateToAll()
-//   - This ensures the tenant's connected base stations clear their local endpoint state
+//   - This ensures all connected base stations clear their local endpoint state
 //
 // Error Handling:
 //   - Returns error tokens from errors_catalog.go (e.g., ErrMissingEpEui)

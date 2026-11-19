@@ -8,9 +8,9 @@ import "github.com/Kiloiot/kilo-service-center/KC-Core/pkg/scheduler"
 // When an Application Center deregisters an endpoint, SCACI uses this interface to notify
 // all connected base stations so they can clear their local endpoint state.
 type DetachPropagator interface {
-	// SendDetachPropagateToAll sends detach propagate to the connected base stations of the endpoint's tenant
+	// SendDetachPropagateToAll sends detach propagate to all connected base stations
 	// Returns a slice of errors (one per failed base station), empty if all succeeded
-	SendDetachPropagateToAll(endpointTenantID int64, epEUI uint64) []error
+	SendDetachPropagateToAll(epEUI uint64) []error
 }
 
 // Scheduler interface aliases for backward compatibility

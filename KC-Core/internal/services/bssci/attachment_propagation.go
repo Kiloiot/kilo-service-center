@@ -14,14 +14,14 @@ import (
 )
 
 // AttachPropagateSender sends an attachment decision to the connected base
-// stations of the endpoint's tenant.
+// stations.
 type AttachPropagateSender interface {
-	SendAttachPropagateToAll(endpointTenantID int64, endpointEUI uint64, nwkSnKey []byte, shortAddr uint16,
+	SendAttachPropagateToAll(endpointEUI uint64, nwkSnKey []byte, shortAddr uint16,
 		bidirectional bool, lastPacketCnt uint32, dualChannel bool,
 		repetition uint8, wideCarrOff bool, longBlkDist bool) []error
-	SendDetachPropagateToAll(endpointTenantID int64, endpointEUI uint64) []error
-	// GetConnectedSessionEUIs names the tenant's connected base stations for the operation events.
-	GetConnectedSessionEUIs(tenantID int64) []string
+	SendDetachPropagateToAll(endpointEUI uint64) []error
+	// GetConnectedSessionEUIs names the connected base stations for the operation events.
+	GetConnectedSessionEUIs() []string
 }
 
 // AttachmentPropagation sends an attach or detach decided in the service
@@ -63,11 +63,11 @@ func NewAttachmentPropagation(
 }
 
 // PropagateAttach sends the endpoint's attPrp to every connected base
-// station of the tenant in the background.
+// station in the background.
 func (p *AttachmentPropagation) PropagateAttach(ctx context.Context, tenantID int64, ep *models.EndPoint) *grpcservices.EndpointOperationResult {
 	op := p.start(ctx, bssci.OperationIDPrefixAttach, bssci.OperationTypeAttach, tenantID, ep)
 	p.runInBackground(ctx, func(ctx context.Context) {
-		if err := p.sendAttach(ctx, op.tenantID, ep); err != nil {
+		if err := p.sendAttach(ctx, ep); err != nil {
 			p.recordFailure(ctx, op, err, bssci.EventTypeAttachPropagateFailed)
 		}
 	})
@@ -75,11 +75,11 @@ func (p *AttachmentPropagation) PropagateAttach(ctx context.Context, tenantID in
 }
 
 // PropagateDetach sends the endpoint's detPrp to every connected base
-// station of the tenant in the background.
+// station in the background.
 func (p *AttachmentPropagation) PropagateDetach(ctx context.Context, tenantID int64, ep *models.EndPoint) *grpcservices.EndpointOperationResult {
 	op := p.start(ctx, bssci.OperationIDPrefixDetach, bssci.OperationTypeDetach, tenantID, ep)
 	p.runInBackground(ctx, func(ctx context.Context) {
-		if errs := p.stations.SendDetachPropagateToAll(op.tenantID, op.epEUI); len(errs) > 0 {
+		if errs := p.stations.SendDetachPropagateToAll(op.epEUI); len(errs) > 0 {
 			p.recordFailure(ctx, op, errs[0], bssci.EventTypeDetachPropagateFailed)
 		}
 	})
@@ -96,7 +96,7 @@ func (p *AttachmentPropagation) runInBackground(ctx context.Context, fn func(con
 	})
 }
 
-func (p *AttachmentPropagation) sendAttach(ctx context.Context, tenantID int64, ep *models.EndPoint) error {
+func (p *AttachmentPropagation) sendAttach(ctx context.Context, ep *models.EndPoint) error {
 	nwkSnKey, err := p.sessionKeys.NetworkSessionKey(ctx, ep)
 	if err != nil {
 		return err
@@ -115,7 +115,7 @@ func (p *AttachmentPropagation) sendAttach(ctx context.Context, tenantID int64, 
 	if ep.Repetition {
 		repetition = 1
 	}
-	errs := p.stations.SendAttachPropagateToAll(tenantID, ep.EUI.ToUint64(), nwkSnKey, shortAddr, ep.Bidi,
+	errs := p.stations.SendAttachPropagateToAll(ep.EUI.ToUint64(), nwkSnKey, shortAddr, ep.Bidi,
 		ep.LastPacketCnt, ep.DualChan, repetition, ep.WideCarrOff, ep.LongBlkDist)
 	if len(errs) > 0 {
 		return errs[0]
@@ -142,7 +142,7 @@ func (p *AttachmentPropagation) start(ctx context.Context, idPrefix, operationTy
 		tenantID:   tenantID,
 		endpointID: ep.ID,
 		epEUI:      ep.EUI.ToUint64(),
-		stations:   p.stations.GetConnectedSessionEUIs(tenantID),
+		stations:   p.stations.GetConnectedSessionEUIs(),
 	}
 	p.recordStart(ctx, op, operationType)
 	return op
