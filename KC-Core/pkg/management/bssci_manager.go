@@ -21,18 +21,17 @@ const (
 )
 
 // SessionPropagator is the BSSCI server surface the management API drives:
-// attach/detach propagation to one session or to every connected session of
-// the endpoint's owner, plus the connected-session listing.
+// attach/detach propagation to one session or to every connected session, plus
+// the connected-session listing.
 type SessionPropagator interface {
 	SendAttachPropagate(sessionID string, endpointEUI uint64, nwkSnKey []byte,
 		shortAddr uint16, bidirectional bool, lastPacketCnt uint32, dualChannel bool,
 		repetition uint8, wideCarrOff bool, longBlkDist bool) error
-	SendAttachPropagateToAll(endpointTenantID int64, endpointEUI uint64, nwkSnKey []byte,
+	SendAttachPropagateToAll(endpointEUI uint64, nwkSnKey []byte,
 		shortAddr uint16, bidirectional bool, lastPacketCnt uint32, dualChannel bool,
 		repetition uint8, wideCarrOff bool, longBlkDist bool) []error
 	SendDetachPropagate(sessionID string, endpointEUI uint64) error
-	SendDetachPropagateToAll(endpointTenantID int64, endpointEUI uint64) []error
-	EndpointOwnerTenant(endpointEUI uint64) (int64, error)
+	SendDetachPropagateToAll(endpointEUI uint64) []error
 	GetConnectedSessions() []map[string]interface{}
 }
 
@@ -242,20 +241,17 @@ func (m *BSSCIManager) handleAttachPropagateAll(w http.ResponseWriter, r *http.R
 
 	// Run the attach propagate synchronously to return accurate result
 	m.logger.InfoContext(r.Context(), logMgmtAttachPropagateAllStarting, logger.FieldEndpointEUI, req.EndpointEUI)
-	errors := m.toOwnerStations(req.EndpointEUI, func(ownerTenantID int64) []error {
-		return m.server.SendAttachPropagateToAll(
-			ownerTenantID,
-			req.EndpointEUI,
-			nwkSnKey,
-			req.ShortAddr,
-			req.Bidirectional,
-			req.LastPacketCnt,
-			req.DualChannel,
-			repetitionValue,
-			req.WideCarrOff,
-			req.LongBlkDist,
-		)
-	})
+	errors := m.server.SendAttachPropagateToAll(
+		req.EndpointEUI,
+		nwkSnKey,
+		req.ShortAddr,
+		req.Bidirectional,
+		req.LastPacketCnt,
+		req.DualChannel,
+		repetitionValue,
+		req.WideCarrOff,
+		req.LongBlkDist,
+	)
 
 	var response map[string]interface{}
 	if len(errors) > 0 {
@@ -398,9 +394,7 @@ func (m *BSSCIManager) handleDetachPropagateAll(w http.ResponseWriter, r *http.R
 
 	// Run the detach propagate synchronously to return accurate result
 	m.logger.InfoContext(r.Context(), logMgmtDetachPropagateAllStarting, logger.FieldEndpointEUI, req.EndpointEUI)
-	errors := m.toOwnerStations(req.EndpointEUI, func(ownerTenantID int64) []error {
-		return m.server.SendDetachPropagateToAll(ownerTenantID, req.EndpointEUI)
-	})
+	errors := m.server.SendDetachPropagateToAll(req.EndpointEUI)
 
 	var response map[string]interface{}
 	if len(errors) > 0 {
@@ -431,14 +425,4 @@ func (m *BSSCIManager) handleDetachPropagateAll(w http.ResponseWriter, r *http.R
 		http.Error(w, bssci.ResolveErrorMessage(bssci.ErrMgmtJSONEncodeFailed), http.StatusInternalServerError)
 		return
 	}
-}
-
-// toOwnerStations runs a propagation for the endpoint's owner tenant; an
-// endpoint whose owner is not known is propagated to no base station.
-func (m *BSSCIManager) toOwnerStations(endpointEUI uint64, propagate func(ownerTenantID int64) []error) []error {
-	ownerTenantID, err := m.server.EndpointOwnerTenant(endpointEUI)
-	if err != nil {
-		return []error{err}
-	}
-	return propagate(ownerTenantID)
 }

@@ -404,7 +404,7 @@ func (s *Server) handleDetachComplete(session *Session, msg *Message, data map[s
 	// A det heard by several stations completes at each; only the completion
 	// that detached the endpoint announces and propagates it.
 	if s.decideOverTheAirDetach(completion) {
-		s.propagateOverTheAirDetach(completion.ownerCtx, completion.ownerTenantID, session, completion.epEUI)
+		s.propagateOverTheAirDetach(completion.ownerCtx, session, completion.epEUI)
 	}
 	s.recordDetachEvent(completion)
 
@@ -610,28 +610,18 @@ func overTheAirDetachStatus(epEUI uint64, typedMeta *detachMetadata, metadata ma
 	return status
 }
 
-// propagateOverTheAirDetach tells every other station of the endpoint's
-// tenant to drop an endpoint that detached over the air at the reporting one
-// (radio spec §3.7.1).
-func (s *Server) propagateOverTheAirDetach(ownerCtx context.Context, ownerTenantID int64, reporting *Session, epEUI uint64) {
+// propagateOverTheAirDetach tells every other station to drop an endpoint
+// that detached over the air at the reporting one (radio spec §3.7.1).
+func (s *Server) propagateOverTheAirDetach(ownerCtx context.Context, reporting *Session, epEUI uint64) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		for _, err := range s.overTheAirDetachPropagation(ownerTenantID, reporting.ID, epEUI) {
+		for _, err := range s.sendDetachPropagateTo(s.handshakeCompleteSessionIDs(reporting.ID), epEUI) {
 			s.logger.WarnContext(ownerCtx, LogBSSCIDetachPropagationFailedAfterOTADetach,
 				logger.FieldEpEui, mioty.FormatEUI64(epEUI),
 				logger.FieldError, err)
 		}
 	}()
-}
-
-// overTheAirDetachPropagation sends detPrp to the endpoint tenant's other
-// stations; without the tenant it sends none.
-func (s *Server) overTheAirDetachPropagation(ownerTenantID int64, reportingSessionID string, epEUI uint64) []error {
-	if ownerTenantID <= 0 {
-		return s.propagationWithoutTenant(epEUI)
-	}
-	return s.sendDetachPropagateTo(s.tenantSessionIDs(ownerTenantID, reportingSessionID), epEUI)
 }
 
 // normalizeDetachPayload converts raw detach message payload to concrete types for JSONB storage.

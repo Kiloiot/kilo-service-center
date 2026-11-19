@@ -39,17 +39,17 @@ type gatedPropagateSender struct {
 	release chan struct{}
 }
 
-func (g *gatedPropagateSender) SendAttachPropagateToAll(int64, uint64, []byte, uint16, bool, uint32, bool, uint8, bool, bool) []error {
+func (g *gatedPropagateSender) SendAttachPropagateToAll(uint64, []byte, uint16, bool, uint32, bool, uint8, bool, bool) []error {
 	<-g.release
 	return []error{errFailureEventTestPropagate}
 }
 
-func (g *gatedPropagateSender) SendDetachPropagateToAll(int64, uint64) []error {
+func (g *gatedPropagateSender) SendDetachPropagateToAll(uint64) []error {
 	<-g.release
 	return []error{errFailureEventTestPropagate}
 }
 
-func (g *gatedPropagateSender) GetConnectedSessionEUIs(int64) []string { return nil }
+func (g *gatedPropagateSender) GetConnectedSessionEUIs() []string { return nil }
 
 type failureEventEndpointLookup struct{}
 

@@ -82,15 +82,14 @@ func (r *sessionRegistry) displace(session *Session) []*Session {
 	return displaced
 }
 
-// GetConnectedSessionEUIs returns, as hex strings, the EUIs of the tenant's
-// connected sessions - the stations its propagations reach.
+// GetConnectedSessionEUIs returns the EUIs of all connected sessions as hex strings.
 // Used by EndpointAttachmentService for event logging.
-func (s *Server) GetConnectedSessionEUIs(tenantID int64) []string {
+func (s *Server) GetConnectedSessionEUIs() []string {
 	live := s.sessions.snapshot()
 	euis := make([]string, 0, len(live))
 	for _, session := range live {
 		// Connected is a time.Time - check if not zero (session is active)
-		if !session.Connected.IsZero() && session.HandshakeComplete && tenantID > 0 && resolvedTenant(session, s.tenantID) == tenantID {
+		if !session.Connected.IsZero() && session.HandshakeComplete {
 			euis = append(euis, mioty.FormatEUI64(session.BaseStationEUI))
 		}
 	}

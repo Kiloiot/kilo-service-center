@@ -126,21 +126,21 @@ type statusStations struct {
 	announced []string
 }
 
-func (s *statusStations) SendAttachPropagateToAll(int64, uint64, []byte, uint16, bool, uint32, bool, uint8, bool, bool) []error {
+func (s *statusStations) SendAttachPropagateToAll(uint64, []byte, uint16, bool, uint32, bool, uint8, bool, bool) []error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.attaches++
 	return nil
 }
 
-func (s *statusStations) SendDetachPropagateToAll(int64, uint64) []error {
+func (s *statusStations) SendDetachPropagateToAll(uint64) []error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.detaches++
 	return nil
 }
 
-func (s *statusStations) GetConnectedSessionEUIs(int64) []string { return nil }
+func (s *statusStations) GetConnectedSessionEUIs() []string { return nil }
 
 func (s *statusStations) NotifyEndpointStatus(_ context.Context, notice bssciservices.EndpointStatusNotice) {
 	s.mu.Lock()
